@@ -96,12 +96,30 @@ async function main() {
   await ensureStagingSchema();
   await ensureIdMap();
 
-  // Deterministic picks: lowest-nid staged workers with a non-stub worker
+  // Deterministic picks: non-user-linked staged workers first (see ORDER
+  // BY note), then lowest nid, each with a non-stub worker
   // mapping (9 needed), plus one staged worker with NO mapping at all.
   const mappedRes = await db.execute(sql`
     SELECT r.nid, m.s2_id FROM s1_staging.records r
       JOIN s1_staging.id_map m ON m.entity = 'worker' AND m.s1_id = r.nid AND m.stub = false
-     WHERE r.bundle = 'sirius_worker' ORDER BY r.nid LIMIT 13
+     WHERE r.bundle = 'sirius_worker'
+     -- Prefer workers whose CONTACT email is NOT a staged user's mail: the
+     -- fleet-smoke delete target must carry a fake WITHOUT being user-linked,
+     -- or deleting its staged row would strand a migration-owned t27 worker
+     -- link ("retains stale migration-owned worker link" verify failure).
+     -- Stable within each group (nid) so re-seeds stay deterministic.
+     ORDER BY (EXISTS (
+       SELECT 1 FROM s1_staging.records c
+         JOIN s1_staging.raw_users u
+           ON lower(u.mail) = lower(COALESCE(c.fields #>> '{field_sirius_email,value}',
+                                             c.fields ->> 'field_sirius_email'))
+        WHERE c.bundle = 'sirius_contact'
+          AND c.nid = COALESCE(r.fields #>> '{field_sirius_contact,target_id}',
+                               r.fields #>> '{field_sirius_contact,0,target_id}',
+                               r.fields #>> '{field_sirius_contact,0}',
+                               CASE WHEN jsonb_typeof(r.fields -> 'field_sirius_contact') IN ('number','string')
+                                    THEN r.fields ->> 'field_sirius_contact' END)::bigint
+     )) ASC, r.nid ASC LIMIT 13
   `);
   const mapped = (mappedRes as unknown as { rows: Array<{ nid: string | number; s2_id: string }> }).rows.map(
     (r) => ({ nid: Number(r.nid), workerId: r.s2_id }),

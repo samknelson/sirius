@@ -69,6 +69,7 @@
  * loader ran with or the gate would judge coverage T17 deliberately never
  * loaded.
  */
+import { writeFileSync } from "node:fs";
 import { db, pool as pgPool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
@@ -605,6 +606,8 @@ async function main() {
   report.result = failures.length === 0 ? "PASS" : "FAIL";
 
   console.log(JSON.stringify(report, null, 2));
+  // Machine-readable handoff for the sync orchestrator (§11).
+  if (process.env.S1_RESULT_JSON_PATH) writeFileSync(process.env.S1_RESULT_JSON_PATH, JSON.stringify(report));
   await recordRun(
     startedAt,
     {

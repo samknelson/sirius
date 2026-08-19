@@ -130,3 +130,6 @@
 - [Soft-delete vs set-reconcile](soft-delete-vs-set-reconcile.md) — check delete semantics first; reconcile reads must filter is_active or the already-check matches dead rows and skips re-creates.
 - [S1 loader fund-config prereqs](s1-loader-fund-config-prereqs.md) — employer-rates needs the one enabled bao-hourly charge config; copy-fund-config doesn't provide it; dev smokes seed transiently.
 - [Span→month sync scratch table](span-month-sync-scratch-table.md) — derived-set loaders diff a persisted desired-set scratch (fps on scratch, not id_map); anchors repoint-don't-reject.
+- [S1 sync orchestrator](s1-sync-orchestrator.md) — envelope-contract gating, S1_SYNC_LOCK_HELD child escape, ruled step findings vs daily acknowledgements, mid-fleet dev seeds.
+- [Fleet-smoke rehearsal](s1-fleet-smoke-rehearsal.md) — throwaway-DB full-fleet smoke; mutation targets are cross-loader constrained; dev baseline findings ≠ zero.
+- [Rerun reject stability](s1-rerun-reject-stability.md) — fast-path skips must feed dedup registries/caches or reject classes flip across daily runs.

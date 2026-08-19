@@ -62,6 +62,7 @@
  *   npx tsx scripts/s1-migration/verify-balance-parity.ts \
  *     [--tolerance-cents 0] [--allow-mismatches r1,r2]
  */
+import { writeFileSync } from "node:fs";
 import { db, pool as pgPool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { ensureStagingSchema, recordRun, pagedRawLedger, stagedRawLedgerCount, ensureRawLedgerTable } from "./lib/staging";
@@ -456,6 +457,8 @@ async function main() {
 
   console.log(JSON.stringify(report, null, 2));
   await recordRun(startedAt, { harness: HARNESS, toleranceCents: TOLERANCE_CENTS, allowedMismatches: ALLOWED }, report);
+  // Machine-readable handoff for the sync orchestrator (§11).
+  if (process.env.S1_RESULT_JSON_PATH) writeFileSync(process.env.S1_RESULT_JSON_PATH, JSON.stringify(report));
   await pgPool.end();
   if (failures.length > 0) {
     console.error(`FAIL: ${failures.length} parity failure(s) — see report.failures`);

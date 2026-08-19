@@ -321,7 +321,7 @@ canary and §4.17 cutover sections.)*
 | `category_missing` / `category_unmapped` / `handler_missing` | call-logs | ALLOWED (1 each, synthetic traps) | Run clean; triage real occurrences (report `unmappedCategories` tallies every unmapped value), then allow with observed counts. First-rehearsal `category_unmapped=700` was entirely `"issue reported for member"` — **RULED 2026-08-11: new `issue_reported` channel**. The prod run's 2 residual rejects — `"in person visit"` (nid 17239418) and `"provider call"` (nid 17267794) — are **RULED 2026-08-12**: "in person visit" folds into `office_visit` (like "visit"), "provider call" becomes the new `provider_call` channel. With those, residual `category_unmapped` should be **0**; any occurrence is a new value needing its own ruling. |
 | `handler_unresolved` | call-logs | ALLOWED (1, seeded staged fake) | Staged-but-unmapped handler target = a REAL resolution gap (check report `unresolvedHandlerNids.byStagedBundle` for the bundle). First-rehearsal 9,202 were worker refs, now resolved by the id_map("worker") fallback — expect ~0; triage any occurrence before allowing. |
 | `handler_dangling` | call-logs | ALLOWED (1, seeded staged fake) | No handler target exists in staging (deleted S1 nodes — same family as `relation_unmapped`). Verify count against report `unresolvedHandlerNids.notStaged`, then allow with observed counts. **Prod expectation: 2** (handler nids 17748264 and 17748261, `unresolvedHandlerNids.notStaged=2`, observed on the 2026-08 prod run) — verify both nids are deleted S1 nodes (`SELECT ... FROM <ref> LEFT JOIN node ON nid WHERE node.nid IS NULL` in MariaDB) before allowing. |
-| `ssn_collision_q36`, `worker_contact_unresolved`, `worker_gender_unresolved`, `sirius_id_assigned`, … | contacts-workers | reported (annotations — non-fatal) | Same; review the report, no flag needed. `sirius_id_assigned` = workers with no/non-numeric `field_sirius_id` loaded with a sequence-assigned sirius_id (documented T1 rule) |
+| `ssn_collision_q36`, `worker_contact_unresolved`, `worker_gender_unresolved`, `sirius_id_assigned`, … | contacts-workers | reported (annotations — non-fatal) | Same; RULED annotation family — the standardized reject gate (§10/§11) still requires the explicit allowance (sync-config lists them), then review counts in the report. `sirius_id_assigned` = workers with no/non-numeric `field_sirius_id` loaded with a sequence-assigned sirius_id (documented T1 rule) |
 | sirius_id collision (pre-scan / cross-run) | contacts-workers | not present | **FATAL, no allow flag exists.** Fund finding 2026-08-06: S1's unlocked ID counter duplicated ~1 in 410 sirius_ids; 19 values are each shared by two DISTINCT people (38 workers). The loader aborts before any write and lists the colliding values + nids. NEVER dedupe/merge — that combines two people's benefit histories. Triage: fund re-numbers one member of each pair in S1 (or rules a manual assignment), re-stage, re-run. |
 | `bad_json` / `bad_shape` | beneficiaries | `bad_json` ALLOWED (1 seeded trap) | Run clean; unparseable/misshapen `field_sirius_json` is unloadable — inspect nid samples, then allow observed counts |
 | `worker_unmapped` | beneficiaries | ALLOWED (1 seeded trap: staged worker with no id_map row) | Expected family: deleted/merged S1 contacts (same as benefit-history) — sample nids, verify, allow observed count |
@@ -388,13 +388,12 @@ mismatch-class census derived from recorded t19 rejects.
 - Re-run counter shapes shift by design: `created` → `matched`/`adopted`/
   `alreadyMapped`; employee-ids dup pairs become one adopt + one
   `code_owned_by_other_worker`.
-- **stage.ts re-run** re-extracts and re-verifies counts; safe to repeat, but
-  re-staging after loaders have run must only happen from the SAME freeze
-  snapshot — **except for loaders converted to sync semantics (§10: options,
-  policies, elections, benefit-history, beneficiaries, cardchecks), whose
-  re-run after ANY restage is a true reconcile by design.**
-  The same-freeze rule is retired wholesale only once the entire fleet is
-  converted.
+- **stage.ts re-run** re-extracts and re-verifies counts; safe to repeat at
+  any time. **The historical same-freeze-only restage constraint is RETIRED:
+  the entire fleet is converted (§10)** — every loader's re-run after ANY
+  restage is a true reconcile (t27 users and §4.0b trust-config reconcile by
+  full scan each run rather than fingerprints, with the same effect). The
+  standard way to restage + re-run everything is the one-command sync (§11).
 - **Converted loaders reconcile, not just adopt (§10).** Their re-runs
   classify every mapped row (created / updated / unchanged / deleted-in-S1)
   from consumed fingerprints and skip unchanged rows without per-row storage
@@ -513,7 +512,7 @@ Dev-only notes:
   environment.
 
 
-## 10. Dual-run sync semantics (converted loaders: options, policies, payments, ledger, hours)
+## 10. Dual-run sync semantics (ALL fleet loaders converted)
 
 S1 stays live and authoritative for ~1 month after the initial production
 load, with roughly daily S1→S2 syncs (full re-stage → re-run loaders). S2 is
@@ -549,7 +548,10 @@ non-stub id_map entries whose S1 source vanished from staging and applies its
 declared per-entity policy: hard-delete (through storage), deactivate (stamps
 `s1_deleted_at`), or report-only. Options and policies are both
 **report-only** (options rows and policies may be FK-referenced by live S2
-data — deletion needs an operator ruling). Report-only findings are TYPED
+data — deletion needs an operator ruling); elections and benefit-history
+month rows are **hard-delete** (suppressed storage writes; delete-policy
+sweeps do NOT raise blocking findings — only report-only sweeps do).
+Report-only findings are TYPED
 (`deleted_in_s1`) and BLOCKING: the loader exits 1 until the finding is
 resolved (restore in S1 + restage, or rule and remove the mapping) or
 explicitly acknowledged per run via `--allow-findings deleted_in_s1`.
@@ -557,7 +559,9 @@ Mappings and provenance stay intact; findings re-emit on every run until
 resolved. Already-deactivated entries count as `alreadyHandled`, not new
 findings.
 
-**Money loaders (t19 payments / t18 ledger / t20 hours).** All three
+### 10.1 Money loaders (t19 payments / t18 ledger / t20 hours)
+
+All three
 reconcile with **hard-delete** sweep policies (S1 wins; every write under
 charge-plugin + notification suppression — no sync run can bill):
 - *t18 ledger* — identity is id_map entity `ledger-ar` (S1 `ledger_id` ↔
@@ -619,59 +623,18 @@ findings. Reports stay aggregates-only (no names/PII), and say when
 - `--force-reconcile` is the escape hatch when fingerprints can't be trusted
   (repair after out-of-band S2 changes); it never changes source data or
   mappings.
-- Unconverted loaders keep §7's same-freeze restage rule until their
-  conversion tasks land.
+- The ENTIRE fleet now reconciles (t27 users and §4.0b trust-config by full
+  scan each run rather than fingerprints — same effect): §7's same-freeze
+  restage constraint is retired, and §11's one-command sync is the standard
+  way to run the fleet.
 - Dev smoke: `npx tsx scripts/s1-migration/dev/smoke-sync-foundation.ts
   --phase units|options|policies` proves unchanged-skip, S1-edit update,
   logic-version-only update, forced update, and vanished-source handling
   end to end (also wired into the `typecheck`/`typecheck-scripts`
   validations for static health).
 
-## 10. Dual-run sync semantics (converted loaders: options, policies, beneficiaries, cardchecks)
+### 10.2 Beneficiaries & cardchecks specifics
 
-S1 stays live and authoritative for ~1 month after the initial production
-load, with roughly daily S1→S2 syncs (full re-stage → re-run loaders). S2 is
-shadow/read-only during the dual-run; **S1 wins migration-owned fields
-unconditionally** (ruled conflict policy). Staging already mirrors S1 exactly
-(upsert + watermark stale-delete); this section covers how converted loaders
-turn a re-run into a true reconcile.
-
-**Mechanism.**
-- Staged rows (records, terms, raw ledger, raw user tables) carry
-  `content_hash` — a canonical SHA-256 of source content only (scalars +
-  key-sorted fields JSON; extraction metadata excluded), written at staging
-  upsert time. Count-verify and watermark semantics are unchanged.
-- `s1_staging.id_map` carries `consumed_fingerprint`, `logic_version`,
-  `last_synced_at`, `s1_deleted_at` (upgraded in place by `ensureIdMap`).
-- Each converted loader declares a required `LOGIC_VERSION`. The consumed
-  fingerprint is derived from the staged hash(es) — composite inputs combine
-  multiple labeled hashes — so a row reconciles when EITHER its S1 content
-  changed OR the loader's transform logic changed (version bump).
-- Fast path: mapped + fingerprint match + version match → `unchanged`,
-  skipped without any per-row storage read. Fingerprints advance only AFTER
-  the loader's verify pass, so failed writes stay retryable. Rows with NULL
-  staged hashes never fast-skip (they classify as changed until the next
-  real `stage.ts` run populates hashes — harmless adopt/patch).
-- **`--force-reconcile`** ignores matching fingerprints for the run (envelope
-  reports `forceReconcile: true`). Use for emergency repair — e.g. S2 rows
-  edited or damaged out-of-band — and for validation; ordinary
-  adoption/ownership safeguards still apply. S1 wins: forced runs overwrite
-  migration-owned fields back to staged values.
-
-**Deletion sweep.** After its writes+verify, a converted loader sweeps
-non-stub id_map entries whose S1 source vanished from staging and applies its
-declared per-entity policy: hard-delete (through storage), deactivate (stamps
-`s1_deleted_at`), or report-only. Options and policies are both
-**report-only** (options rows and policies may be FK-referenced by live S2
-data — deletion needs an operator ruling). Report-only findings are TYPED
-(`deleted_in_s1`) and BLOCKING: the loader exits 1 until the finding is
-resolved (restore in S1 + restage, or rule and remove the mapping) or
-explicitly acknowledged per run via `--allow-findings deleted_in_s1`.
-Mappings and provenance stay intact; findings re-emit on every run until
-resolved. Already-deactivated entries count as `alreadyHandled`, not new
-findings.
-
-**Beneficiaries & cardchecks specifics.**
 - `load-beneficiaries` (entity `bao-beneficiaries`): the consumed fingerprint
   encodes the DECODED staged state — absent key, empty primary list,
   malformed JSON and populated rows are all distinguishable — so absent/empty
@@ -702,35 +665,6 @@ findings.
   history; STOP-THE-LINE for the final freeze run until the fund/legal
   retention ruling. Definitions use the standard `deleted_in_s1` finding.
 
-**Standard result envelope.** Converted loaders emit (stdout JSON, plus a
-file when `S1_RESULT_JSON_PATH` is set — for orchestration):
-
-```
-summary:  { created, updated, unchanged, deleted, deactivated, reportOnly, rejected }
-rejectGate: { status: pass|fail, counts, allowed, disallowed }
-verify:     { status: pass|fail, failures: [] }
-findings / blockingFindings   (typed, aggregates-only)
-detail:     the loader's full legacy domain report (nested, nothing dropped)
-```
-
-Exit code is 1 on reject-gate failure, verify failure, or unresolved blocking
-findings. Reports stay aggregates-only (no names/PII), and say when
-`--force-reconcile` was used.
-
-**Rules of thumb.**
-- Transform change → bump that loader's `LOGIC_VERSION` in the same commit.
-- Unchanged counters on a post-restage re-run mean "confirmed in sync", not
-  "skipped work": that IS the daily sync green path.
-- `--force-reconcile` is the escape hatch when fingerprints can't be trusted
-  (repair after out-of-band S2 changes); it never changes source data or
-  mappings.
-- Unconverted loaders keep §7's same-freeze restage rule until their
-  conversion tasks land.
-- Dev smoke: `npx tsx scripts/s1-migration/dev/smoke-sync-foundation.ts
-  --phase units|options|policies` proves unchanged-skip, S1-edit update,
-  logic-version-only update, forced update, and vanished-source handling
-  end to end (also wired into the `typecheck`/`typecheck-scripts`
-  validations for static health).
 - Beneficiaries & cardchecks sync smokes (both need the §4 seeded fakes in
   place):
   `dev/smoke-sync-beneficiaries.ts` — unchanged skip without S2 reads, drift
@@ -741,84 +675,8 @@ findings. Reports stay aggregates-only (no names/PII), and say when
   refresh, definition-input edit precision (records do NOT reprocess),
   duplicate-signed conflict, deleted-source `pending_retention` behavior.
 
-## 10. Dual-run sync semantics (converted loaders: options, policies, elections, benefit-history)
+### 10.3 Elections + benefit-history specifics (t16/t17)
 
-S1 stays live and authoritative for ~1 month after the initial production
-load, with roughly daily S1→S2 syncs (full re-stage → re-run loaders). S2 is
-shadow/read-only during the dual-run; **S1 wins migration-owned fields
-unconditionally** (ruled conflict policy). Staging already mirrors S1 exactly
-(upsert + watermark stale-delete); this section covers how converted loaders
-turn a re-run into a true reconcile.
-
-**Mechanism.**
-- Staged rows (records, terms, raw ledger, raw user tables) carry
-  `content_hash` — a canonical SHA-256 of source content only (scalars +
-  key-sorted fields JSON; extraction metadata excluded), written at staging
-  upsert time. Count-verify and watermark semantics are unchanged.
-- `s1_staging.id_map` carries `consumed_fingerprint`, `logic_version`,
-  `last_synced_at`, `s1_deleted_at` (upgraded in place by `ensureIdMap`).
-- Each converted loader declares a required `LOGIC_VERSION`. The consumed
-  fingerprint is derived from the staged hash(es) — composite inputs combine
-  multiple labeled hashes — so a row reconciles when EITHER its S1 content
-  changed OR the loader's transform logic changed (version bump).
-- Fast path: mapped + fingerprint match + version match → `unchanged`,
-  skipped without any per-row storage read. Fingerprints advance only AFTER
-  the loader's verify pass, so failed writes stay retryable. Rows with NULL
-  staged hashes never fast-skip (they classify as changed until the next
-  real `stage.ts` run populates hashes — harmless adopt/patch).
-- **`--force-reconcile`** ignores matching fingerprints for the run (envelope
-  reports `forceReconcile: true`). Use for emergency repair — e.g. S2 rows
-  edited or damaged out-of-band — and for validation; ordinary
-  adoption/ownership safeguards still apply. S1 wins: forced runs overwrite
-  migration-owned fields back to staged values.
-
-**Deletion sweep.** After its writes+verify, a converted loader sweeps
-non-stub id_map entries whose S1 source vanished from staging and applies its
-declared per-entity policy: hard-delete (through storage), deactivate (stamps
-`s1_deleted_at`), or report-only. Options and policies are both
-**report-only** (options rows and policies may be FK-referenced by live S2
-data — deletion needs an operator ruling); elections and benefit-history
-month rows are **hard-delete** (suppressed storage writes; delete-policy
-sweeps do NOT raise blocking findings — only report-only sweeps do).
-Report-only findings are TYPED
-(`deleted_in_s1`) and BLOCKING: the loader exits 1 until the finding is
-resolved (restore in S1 + restage, or rule and remove the mapping) or
-explicitly acknowledged per run via `--allow-findings deleted_in_s1`.
-Mappings and provenance stay intact; findings re-emit on every run until
-resolved. Already-deactivated entries count as `alreadyHandled`, not new
-findings.
-
-**Standard result envelope.** Converted loaders emit (stdout JSON, plus a
-file when `S1_RESULT_JSON_PATH` is set — for orchestration):
-
-```
-summary:  { created, updated, unchanged, deleted, deactivated, reportOnly, rejected }
-rejectGate: { status: pass|fail, counts, allowed, disallowed }
-verify:     { status: pass|fail, failures: [] }
-findings / blockingFindings   (typed, aggregates-only)
-detail:     the loader's full legacy domain report (nested, nothing dropped)
-```
-
-Exit code is 1 on reject-gate failure, verify failure, or unresolved blocking
-findings. Reports stay aggregates-only (no names/PII), and say when
-`--force-reconcile` was used.
-
-**Rules of thumb.**
-- Transform change → bump that loader's `LOGIC_VERSION` in the same commit.
-- Unchanged counters on a post-restage re-run mean "confirmed in sync", not
-  "skipped work": that IS the daily sync green path.
-- `--force-reconcile` is the escape hatch when fingerprints can't be trusted
-  (repair after out-of-band S2 changes); it never changes source data or
-  mappings.
-- Unconverted loaders keep §7's same-freeze restage rule until their
-  conversion tasks land.
-- Dev smoke: `npx tsx scripts/s1-migration/dev/smoke-sync-foundation.ts
-  --phase units|options|policies` proves unchanged-skip, S1-edit update,
-  logic-version-only update, forced update, and vanished-source handling
-  end to end (also wired into the `typecheck`/`typecheck-scripts`
-  validations for static health).
-
-**Elections + benefit-history specifics (t16/t17).**
 - t17's unit of reconciliation is the MONTH SET, not the row: desired months
   derive from ALL staged spans covering a (worker, employer, benefit,
   relation) tuple via the scratch table `s1_staging.t17_desired_spans`, then
@@ -854,6 +712,116 @@ findings. Reports stay aggregates-only (no names/PII), and say when
   Prereq after a synthetic regen: re-run `load-relationships.ts` first
   (per-type id_map liveness — with zero live relation mappings every
   dependent span rejects `relation_unmapped`).
+
+## 11. One-command daily sync (`sync.ts`) — full-fleet gates
+
+    npx tsx scripts/s1-migration/sync.ts --mode daily [--profile production] \
+        [--dry-run] [--force-reconcile] [--skip-stage] [--keep-going]
+
+One run = migration advisory lock (727001; concurrent sync/bootstrap/seed
+refused) → `stage.ts` (count-verified, abort on any mismatch) → dev fake
+re-seeds (dev profile only) → the WHOLE loader fleet in §3 order with the
+§5-ruled allowances → per-loader verify/reject/finding gates → balance parity
+(0¢) + month parity (rolling ruled months) → ONE aggregate report printed and
+persisted to `s1_staging.runs` (`report->>'command' = 'sync'`; also written
+to `S1_RESULT_JSON_PATH` when set). Exit 0 only when EVERY gate passes.
+
+**Config is checked in** (`sync-config.ts`), never ad-hoc shell flags: fleet
+order (§3, including beneficiaries + cardchecks), per-loader `--allow-rejects`
+(§5 rulings), per-loader LOGIC_VERSION expectations, open-end policy
+(production: current LA month — the open-span month advances per sync; dev:
+pinned), parity month selection (freeze month + one mid-history month + the
+current open-span month), and the ruled report-only finding kinds per mode.
+UNKNOWN reject/finding classes are never forwarded — loaders fail closed on
+them (§5 fail-loud policy). Config changes are commits, reviewed like code.
+
+**Result contract (no log scraping).** Every fleet step must write the §10
+standard envelope to its `S1_RESULT_JSON_PATH` file. The orchestrator
+validates presence, schema, loader name, dry-run/force echo, and
+LOGIC_VERSION against `sync-config.ts` — a transform fix that bumps a
+loader's version without updating sync-config FAILS the run (the §10 bump
+rule, enforced), and a loader that exits 0 without a valid envelope fails the
+run too. All counters aggregate from envelopes only.
+
+**Gates** (any failure ⇒ exit 1; a later PASS never overrides an earlier
+failure — balance/month parity cover money and coverage, NOT contacts,
+beneficiaries, cardchecks, call logs, packet tags or other entity/config
+state; loader-level exact verification is the convergence gate for those):
+
+| gate | fails when |
+|---|---|
+| stage | any staged-vs-S1 count mismatch (aborts before any loader runs) |
+| fleet | any loader: non-zero exit, missing/malformed envelope, LOGIC_VERSION drift, disallowed reject class, `verifyFailures` ≠ 0, blocking findings |
+| findings (mode) | final-freeze: ANY unresolved report-only finding, ruled or not (daily: ruled kinds surface in the report for triage) |
+| balance parity | any account drifts ≥ 1¢ (`--tolerance-cents 0`) |
+| month parity | any ruled month fails at `--max-disagreement-pct 0` (allow-unresolved mirrors t17's §5 allowances exactly) |
+
+**Modes.**
+- `--mode daily` — the dual-run daily. Ruled report-only deletion findings
+  (`deleted_in_s1`, `source_worker_missing`, `pending_retention`) surface in
+  the aggregate report for triage; retained rows stay untouched.
+- `--mode final-freeze` — the cutover sync against frozen S1. EVERY
+  unresolved report-only finding is stop-the-line (signed cardchecks pending
+  a retention ruling, beneficiary lists whose source worker vanished,
+  unresolved S1 deletes) — resolve in S1 + restage, or rule the mapping away;
+  per-run acknowledgement does not unblock this mode.
+
+**Controls.**
+- `--dry-run` — stage + dev seeds still run (staging is migration scratch);
+  loaders run with `--dry-run` (no S2 writes, preview counters); parity and
+  the runs row are skipped (they would judge/record the un-applied state).
+- `--force-reconcile` — forwarded to every supporting loader; §10
+  emergency-repair semantics; recorded PROMINENTLY (console banner +
+  top-level `forceReconcile: true` + per-step echo in the report).
+- `--skip-stage` — re-run gates/loaders against staging as-is (mid-fleet
+  retry without the ~25-min restage).
+- `--keep-going` — collect every loader's result instead of aborting at the
+  first failed step (the run still fails; use for fleet-wide triage).
+
+**Concurrency / retry.** One sync per target, ever — enforced by the same
+advisory lock the bootstrap/seed tools take. Failed runs are safely
+re-runnable (§7): loaders are idempotent reconcilers and fingerprints only
+advance after each loader's verify pass.
+
+**Rehearsal proof** (throwaway DB; never the shared dev DB):
+`npx tsx scripts/s1-migration/dev/smoke-sync-fleet.ts` bootstraps a fresh
+target, then proves end to end: lock refusal; a full stage→fleet→parity PASS
+from the synthetic MariaDB; dry-run + force-reconcile forwarding (no runs
+row); synthetic S1 adds/edits/deletes across people, config, beneficiaries,
+cardchecks, elections, benefit months and money (including source deletions)
+converging through one daily sync with all three finding kinds surfaced;
+final-freeze BLOCKED by the retained deletions while fleet + parity gates
+pass; and final-freeze PASS after the S1 side is restored.
+
+## 12. Dual-run procedure (initial load → daily sync → freeze → cutover)
+
+1. **Initial production load** — §2 bootstrap, then the §4 command sequence
+   for the first full load (operator-paced, per-step triage), §6 parity.
+   Okta pre-provisioning (§4.15) is DEFERRED to step 5.
+2. **Daily sync + triage (~1 month)** — once per day, operator-invoked from
+   inside the production boundary (§1; no cron, no app-hosted automation):
+   `npx tsx scripts/s1-migration/sync.ts --mode daily`. Read the aggregate
+   report (console or `s1_staging.runs`). Triage rules:
+   - New reject class → triage (§5), obtain the fund ruling, then add it to
+     `sync-config.ts` (a reviewed commit) — never a one-off shell flag.
+   - Report-only findings → rule each one: restore the row in S1 (next sync
+     converges) or record the explicit ruling. Final-freeze requires ZERO
+     unresolved findings, so rulings cannot be deferred indefinitely.
+   - Transform fix shipped → bump that loader's `LOGIC_VERSION` and
+     `sync-config.ts` in the SAME commit; the next daily reconciles the
+     corrected shape everywhere. The orchestrator fails on version drift, so
+     a forgotten bump cannot pass silently.
+   - Out-of-band S2 damage suspected → one `--force-reconcile` run (recorded
+     in the report), then investigate how S2 got touched during shadow.
+3. **S1 freeze** — the fund stops writing to S1; confirm quiesce (§4.0
+   freeze checklist / final crawl).
+4. **Final-freeze sync** — `npx tsx scripts/s1-migration/sync.ts --mode
+   final-freeze`. Must be FULLY green: every loader's verify/reject gate,
+   zero unresolved report-only findings, balance parity at 0¢, all ruled
+   months at 0% disagreement. This is the final data movement of the
+   migration.
+5. **Okta provisioning → canary → cutover** — §4.15 → §4.16 → §4.17
+   (manual, unchanged by the sync command).
 
 ### 4.15 (continued) Okta pre-provisioning commands
 

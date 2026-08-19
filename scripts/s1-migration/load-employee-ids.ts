@@ -186,6 +186,17 @@ async function main() {
     if (classifyRow(mapped, fp, LOGIC_VERSION, FORCE_RECONCILE) === "unchanged") {
       summary.unchanged++;
       fastPathSkips++;
+      // Rerun stability: register this (mapped, unchanged) row's code claim
+      // so fp-less duplicate rows keep classifying as duplicate_code instead
+      // of flipping to code_owned_by_other_worker once the winner fast-paths
+      // (the winner owns the S2 row; without this the loser becomes the
+      // in-run registry "first" and reaches the ownership clash check).
+      const fpShop = targetNidOf(r.fields, "field_grievance_shop");
+      const fpValue = strOf(r.fields, "field_sirius_id");
+      if (fpShop != null && fpValue) {
+        const k = `${fpShop}|${fpValue}`;
+        if (!seenTypeValue.has(k)) seenTypeValue.set(k, r.nid);
+      }
       continue;
     }
     processedRows.push(r);
@@ -228,8 +239,10 @@ async function main() {
       continue;
     }
 
-    // duplicate code within one employer (the (type,value) UNIQUE would trip)
-    const tvKey = `${typeId}|${value}`;
+    // duplicate code within one employer (the (type,value) UNIQUE would
+    // trip). Keyed by shop -- the id type is 1:1 per shop -- so fast-path
+    // rows can register their claim without resolving the type.
+    const tvKey = `${shopNid}|${value}`;
     const firstNid = seenTypeValue.get(tvKey);
     if (firstNid != null && firstNid !== r.nid) {
       rejects.add("duplicate_code", { nid: r.nid, shopNid, firstNid }, r.nid);

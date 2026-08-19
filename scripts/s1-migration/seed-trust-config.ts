@@ -30,8 +30,11 @@ import { resolveDatabaseUrl, describeDatabaseTarget } from "../../shared/databas
 import { loadStaged } from "./lib/loader-utils";
 import { getMappings, putMapping, ensureIdMap } from "./lib/idmap";
 import { recordRun } from "./lib/staging";
+import { buildLoaderResult, emitLoaderResult, loaderExitCode, emptySummary } from "./lib/sync";
 
 const LOADER = "seed-trust-config";
+/** §10 result contract version — bump with sync-config.ts in the same commit. */
+const LOGIC_VERSION = 1;
 const DRY_RUN = process.argv.includes("--dry-run");
 
 interface SideReport {
@@ -147,12 +150,18 @@ async function main() {
   console.log(`[${LOADER}] target: ${describeDatabaseTarget(resolveDatabaseUrl())}${DRY_RUN ? " (DRY RUN)" : ""}`);
 
   // Single-run guard: read-then-create resolution is not concurrency-safe.
-  // Session-scoped advisory lock (same key as bootstrap-target); released on exit.
-  const lockClient = await pool.connect();
-  const [{ got }] = (await lockClient.query(`SELECT pg_try_advisory_lock(727001) AS got`)).rows;
-  if (!got) {
-    console.error("FAIL: another migration process holds the advisory lock on this target.");
-    process.exit(1);
+  // Session-scoped advisory lock (same key as bootstrap-target); released on
+  // exit. Under the sync orchestrator (S1_SYNC_LOCK_HELD=1) the PARENT already
+  // holds the key in its own session — trying to take it here would
+  // self-starve, so the child trusts the parent's exclusion.
+  const lockHeldByParent = process.env.S1_SYNC_LOCK_HELD === "1";
+  const lockClient = lockHeldByParent ? null : await pool.connect();
+  if (lockClient) {
+    const [{ got }] = (await lockClient.query(`SELECT pg_try_advisory_lock(727001) AS got`)).rows;
+    if (!got) {
+      console.error("FAIL: another migration process holds the advisory lock on this target.");
+      process.exit(1);
+    }
   }
 
   await ensureIdMap();
@@ -164,26 +173,41 @@ async function main() {
   });
 
   const report = { loader: LOADER, dryRun: DRY_RUN, providers, benefits };
-  console.log(JSON.stringify(report, null, 2));
+
+  // §10 standard envelope (machine-readable handoff for the sync
+  // orchestrator). "Verify" here = the title-missing precondition: a staged
+  // node that cannot carry over is a stop-the-line failure, same as before.
+  const missing = providers.titleMissingNids.length + benefits.titleMissingNids.length;
+  const summary = emptySummary();
+  summary.created = providers.created + benefits.created;
+  summary.unchanged =
+    providers.viaIdMap + providers.viaSiriusId + providers.viaProvenance + providers.viaName +
+    benefits.viaIdMap + benefits.viaSiriusId + benefits.viaProvenance + benefits.viaName;
+  const result = buildLoaderResult({
+    loader: LOADER,
+    logicVersion: LOGIC_VERSION,
+    dryRun: DRY_RUN,
+    forceReconcile: false,
+    summary,
+    verifyFailures: missing,
+    detail: report,
+  });
+  emitLoaderResult(result);
 
   if (!DRY_RUN) {
     try {
-      await recordRun(startedAt, { loader: LOADER, argv: process.argv.slice(2) }, report);
+      await recordRun(startedAt, { loader: LOADER, argv: process.argv.slice(2) }, result as unknown as Record<string, unknown>);
     } catch (e) {
       console.error("recordRun failed (non-fatal):", (e as Error).message?.split("\n")[0]);
     }
   }
 
-  const missing = providers.titleMissingNids.length + benefits.titleMissingNids.length;
   if (missing > 0) {
     console.error(`FAIL: ${missing} staged node(s) have no title — cannot carry over. nids: ${[...providers.titleMissingNids, ...benefits.titleMissingNids].join(",")}`);
-    lockClient.release();
-    await pool.end();
-    process.exit(1);
   }
-  lockClient.release();
+  lockClient?.release();
   await pool.end();
-  process.exit(0);
+  process.exit(loaderExitCode(result));
 }
 
 main().catch((e) => {

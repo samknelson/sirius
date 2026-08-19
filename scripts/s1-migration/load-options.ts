@@ -481,6 +481,16 @@ async function main() {
           if (type === "gender") byCode.set(genderCodeOf(t.name, t.tid), created);
         }
       }
+      // Feed the intra-run industry cache for EVERY resolved disposition —
+      // matched, adopted, created — INCLUDING dry-run (it is in-memory state,
+      // not a write): worker-ms terms later in this run resolve through it.
+      // Force-reconcile + dry-run previously starved it (the only feeds were
+      // the fast-path skip and the id_map block below, which is !DRY_RUN),
+      // making preview runs on a loaded target falsely report every
+      // member-status term as industry-unresolvable. On an EMPTY-target
+      // dry-run a created industry has no id yet — that combination
+      // legitimately cannot resolve and is not supported.
+      if (type === "industry" && row) industryByTid.set(t.tid, row.id);
       if (!DRY_RUN && row) {
         let winnerId = row.id;
         if (!existingMap.has(t.tid)) {

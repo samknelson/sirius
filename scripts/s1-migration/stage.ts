@@ -475,6 +475,23 @@ async function main() {
     rawUserTables: rawUserReports,
   });
 
+  // Machine-readable handoff for the sync orchestrator (§11): aggregates only.
+  const resultPath = process.env.S1_RESULT_JSON_PATH;
+  if (resultPath) {
+    const { writeFileSync } = await import("fs");
+    writeFileSync(
+      resultPath,
+      JSON.stringify({
+        step: "stage",
+        mismatches,
+        bundles: reports.length,
+        nulSanitizedValues: nulSanitizedCount(),
+        rawLedgerStaged: rawLedgerReport?.staged ?? null,
+        rawUserTables: rawUserReports?.length ?? null,
+      }),
+    );
+  }
+
   console.log(
     mismatches === 0
       ? `\nDone: ${reports.length} bundle(s) staged, all counts verified.`

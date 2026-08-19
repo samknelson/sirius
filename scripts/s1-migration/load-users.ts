@@ -58,6 +58,7 @@
  */
 import { storage } from "../../server/storage/database";
 import { withNotificationsSuppressed } from "../../server/middleware/request-context";
+import { buildLoaderResult, emitLoaderResult, loaderExitCode, emptySummary } from "./lib/sync";
 import {
   ensureStagingSchema,
   recordRun,
@@ -78,6 +79,10 @@ const ALLOWED_REJECTS: string[] = (() => {
   return i >= 0 ? String(process.argv[i + 1] ?? "").split(",").filter(Boolean) : [];
 })();
 const LOADER = "t27-users";
+/** §10 result contract version — bump with sync-config.ts in the same commit.
+ * (t27 reconciles by FULL SCAN each run — no fingerprint fast path — so this
+ * version only labels the envelope; bumping it does not change reprocessing.) */
+const LOGIC_VERSION = 1;
 const PAGE = 500;
 
 /** Row-skipping reasons — the verify pass skips exactly these. */
@@ -679,19 +684,36 @@ async function main() {
   report.verifyFailures = verifyFailures;
   report.annotations = ANNOTATIONS;
 
-  const disallowed = rejects.disallowedReasons([...ALLOWED_REJECTS, ...ANNOTATIONS]);
-  console.log(JSON.stringify(report, null, 2));
-  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, allowedRejects: ALLOWED_REJECTS }, report);
+  // §10 standard envelope (machine-readable handoff for the sync
+  // orchestrator); legacy report (stats/reconciliation/roles) rides in
+  // `detail`. Gate semantics unchanged: verify failures or non-allowed
+  // FATAL classes fail the run; annotations stay always-allowed.
+  const summary = emptySummary();
+  summary.created = stats.created;
+  summary.updated = stats.updated;
+  summary.unchanged = stats.matched;
+  summary.deactivated = stats.deactivatedBlocked + stats.deactivatedDeleted;
+  const result = buildLoaderResult({
+    loader: LOADER,
+    logicVersion: LOGIC_VERSION,
+    dryRun: DRY_RUN,
+    forceReconcile: false, // t27 has no fingerprint fast path — every run full-scans
+    summary,
+    rejects,
+    allowedRejects: [...ALLOWED_REJECTS, ...ANNOTATIONS],
+    verifyFailures,
+    detail: report,
+  });
+  emitLoaderResult(result);
+  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, allowedRejects: ALLOWED_REJECTS }, result as unknown as Record<string, unknown>);
 
-  if (verifyFailures > 0) process.exit(1);
-  if (disallowed.length > 0) {
+  if (result.rejectGate.status === "fail") {
     console.error(
-      `FAIL: reject reason(s) not allowed for this run: ${disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
+      `FAIL: reject reason(s) not allowed for this run: ${result.rejectGate.disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
         `Annotations (no_resolvable_worker, ambiguous_worker_email) are always allowed; every FATAL class must be consciously allowed via --allow-rejects.`,
     );
-    process.exit(1);
   }
-  process.exit(0);
+  process.exit(loaderExitCode(result));
 }
 
 main().catch((err) => {
