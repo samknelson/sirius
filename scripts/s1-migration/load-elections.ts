@@ -2,6 +2,21 @@
  * T16 loader — S1 trust worker elections → worker_trust_elections.
  * Load-order step: after T15 (relationships) and the policies adopt-mapper.
  *
+ * CONVERTED SYNC LOADER (Task 294): during the ~1-month dual-run S1 stays the
+ * system of record and this loader runs daily. Semantics per run:
+ *   - unchanged staged content (consumed fingerprint match at this
+ *     LOGIC_VERSION) → fast-path skip, no reads/writes for that row.
+ *   - changed content on a mapped row → re-resolve and, when the S2 row
+ *     drifted, S1-wins overwrite via updateForMigration (suppressed).
+ *     Fingerprints advance only after the page verify pass.
+ *   - new staged rows → createForMigration + mapping (fingerprint stamped at
+ *     insert, mirroring the t-policies pilot).
+ *   - staged row deleted in S1 → deletion sweep storage-deletes the S2
+ *     election (suppressed) and drops the mapping.
+ *   NOTE the fast path skips ALL storage reads, so out-of-band S2 deletion of
+ *   an unchanged mapped row is not detected until the row changes in S1 or a
+ *   `--force-reconcile` run re-verifies everything.
+ *
  * Rules (03-transformations T16, 06-strategy-revision):
  *   - Source bundle `sirius_trust_worker_election`.
  *   - worker ← field_sirius_worker, employer ← field_grievance_shop (S1
@@ -24,15 +39,19 @@
  *     end-dates the election from node.changed (same convention as T15).
  *   - Dates are D7 wall-time datetimes → date-only cast (toYmd, no tz math).
  *
- * Writes go through storage.workerTrustElections.createForMigration — verbatim
- * history: FK + end>start contracts enforced, but NO dual-coverage assert
- * and NO auto-end of prior open elections (S1 is the record of its own era).
+ * Writes go through storage.workerTrustElections.createForMigration /
+ * updateForMigration / delete — verbatim history: FK + end>start contracts
+ * enforced, but NO dual-coverage assert and NO auto-end of prior open
+ * elections (S1 is the record of its own era). All writes stay inside
+ * notification + charge-plugin suppression.
  *
- * Idempotency: id_map entity `election`. Mapped rows are adopted and
- * re-verified; a mapping pointing at a deleted S2 row fails loud.
+ * Idempotency: id_map entity `election`. A mapping pointing at a deleted S2
+ * row still fails loud (mapped_row_missing); crash-repair re-adopts rows by
+ * their stashed data->>'s1Nid' provenance.
  *
  * Usage: npx tsx scripts/s1-migration/load-elections.ts \
- *          [--dry-run] [--allow-rejects r1,r2] [--type-map tid=code,...]
+ *          [--dry-run] [--allow-rejects r1,r2] [--type-map tid=code,...] \
+ *          [--force-reconcile] [--allow-findings k1,k2]
  * Output is aggregate counts only (no PII).
  */
 import { storage } from "../../server/storage/database";
@@ -44,7 +63,7 @@ import { ENROLLMENT_TYPES, type EnrollmentType } from "../../shared/schema/trust
 import { db, pool as pgPool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
-import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
+import { ensureIdMap, getMappings, putMapping, advanceFingerprints } from "./lib/idmap";
 import {
   RejectLog,
   pagedStaged,
@@ -60,10 +79,28 @@ import {
 } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
 import { targetNidsOf, resolveBenefitNidMap } from "./lib/resolvers";
+import {
+  buildLoaderResult,
+  canonicalJson,
+  classifyRow,
+  emitLoaderResult,
+  emptySummary,
+  loaderExitCode,
+  parseAllowedFindings,
+  parseForceReconcile,
+  sweepDeletions,
+  type SyncFinding,
+} from "./lib/sync";
 
 const LOADER = "t16-elections";
 const BUNDLE = "sirius_trust_worker_election";
 const DRY_RUN = process.argv.includes("--dry-run");
+/** Loader logic version — BUMP whenever resolution logic (type map, date
+ * conventions, data stash shape) changes so mapped rows re-reconcile on
+ * their next run. */
+const LOGIC_VERSION = 1;
+const FORCE_RECONCILE = parseForceReconcile();
+const ALLOWED_FINDINGS = parseAllowedFindings();
 const ALLOWED_REJECTS: string[] = (() => {
   const i = process.argv.indexOf("--allow-rejects");
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1].split(",").map((s) => s.trim()).filter(Boolean) : [];
@@ -116,6 +153,7 @@ const FATAL_REASONS = [
   "benefit_unmapped",
   "relation_unmapped",
   "election_create_failed",
+  "election_update_failed",
   "mapped_row_missing",
 ] as const;
 
@@ -129,6 +167,7 @@ function classifyError(e: unknown): string {
 
 interface ResolvedElection {
   nid: number;
+  contentHash: string | null;
   workerId: string;
   employerId: string;
   startYmd: string;
@@ -139,6 +178,35 @@ interface ResolvedElection {
   data: Record<string, unknown>;
 }
 
+interface CurrentRow {
+  id: string;
+  worker_id: string;
+  employer_id: string;
+  start_ymd: string;
+  end_ymd: string | null;
+  enrollment_type: string | null;
+  benefit_ids: string[] | null;
+  relationship_ids: string[] | null;
+  data: unknown;
+}
+
+/** Exact S1-wins drift check: migration-owned fields plus the data stash
+ * (canonical-compared — Postgres jsonb reorders keys; memory:
+ * jsonb-adopt-compare-key-order). Array order is significant (delta order). */
+function rowMatches(row: CurrentRow, w: ResolvedElection): boolean {
+  const rowData = typeof row.data === "string" ? JSON.parse(row.data) : row.data ?? null;
+  return (
+    row.worker_id === w.workerId &&
+    row.employer_id === w.employerId &&
+    row.start_ymd === w.startYmd &&
+    (row.end_ymd ?? null) === w.endYmd &&
+    (row.enrollment_type ?? null) === w.enrollmentType &&
+    JSON.stringify(row.benefit_ids ?? []) === JSON.stringify(w.benefitIds) &&
+    JSON.stringify(row.relationship_ids ?? []) === JSON.stringify(w.relationshipIds) &&
+    canonicalJson(rowData) === canonicalJson(w.data)
+  );
+}
+
 async function main() {
   const startedAt = new Date();
   await ensureStagingSchema();
@@ -147,6 +215,7 @@ async function main() {
 
   const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowedRejects: ALLOWED_REJECTS };
   const rejects = new RejectLog();
+  const summary = emptySummary();
 
   report.staged = await stagedCountOf(BUNDLE);
 
@@ -191,47 +260,66 @@ async function main() {
 
   // ---- global counters (accumulated across pages) ----
   let resolvedCount = 0;
+  let fastPathSkips = 0;
   let typed = 0;
   let untyped = 0;
   let typedButIrrelevant = 0; // S1 type tid present but maps to a coverage-tier term (single/family/waived), not an S2 enrollment event type — silently null
   let endDatedFromChanged = 0;
   const perType: Record<string, number> = {};
   let created = 0;
+  let updated = 0;
+  let reconciledDriftFree = 0;
   let adopted = 0;
   let adoptedByProvenance = 0;
   let verifyFailures = 0;
   const verifySamples: Array<Record<string, unknown>> = [];
   let pages = 0;
 
-  // ---- keyset-paged pipeline: resolve → write → verify, one page at a time.
-  // Staged rows, id_map lookups, existence checks and verification are all
-  // page-bounded — memory stays flat at production volume (~224k elections).
+  // ---- keyset-paged pipeline: classify → resolve → reconcile → verify, one
+  // page at a time. Staged rows, id_map lookups, current-row reads and
+  // verification are all page-bounded — memory stays flat at production
+  // volume (~243k elections). Fingerprints advance post-verify per page.
   for await (const staged of pagedStaged(BUNDLE)) {
     pages++;
     progress.phase(null);
 
-    // ---- per-page bulk id_map lookups ----
+    // ---- classification (consumed-fingerprint fast path, Task 292/294) ----
+    const electionMap = await getMappings("election", staged.map((s) => s.nid));
+    const toProcess: typeof staged = [];
+    for (const s of staged) {
+      const mapping = electionMap.get(s.nid);
+      if (mapping && classifyRow(mapping, s.contentHash, LOGIC_VERSION, FORCE_RECONCILE) === "unchanged") {
+        summary.unchanged++;
+        fastPathSkips++;
+        progressDone++;
+        continue;
+      }
+      toProcess.push(s);
+    }
+    progress.update(progressDone);
+    if (toProcess.length === 0) continue;
+
+    // ---- per-page bulk id_map lookups (changed/new rows only) ----
     const workerNids: number[] = [];
     const employerNids: number[] = [];
     const relationNids: number[] = [];
-    for (const s of staged) {
+    for (const s of toProcess) {
       const w = targetNidOf(s.fields, "field_sirius_worker");
       if (w != null) workerNids.push(w);
       const e = targetNidOf(s.fields, "field_grievance_shop");
       if (e != null) employerNids.push(e);
       relationNids.push(...targetNidsOf(s.fields, "field_sirius_contact_relations"));
     }
-    const [workerMap, employerMap, relationMap, electionMap] = await Promise.all([
+    const [workerMap, employerMap, relationMap] = await Promise.all([
       getMappings("worker", workerNids),
       getMappings("employer", employerNids),
       getMappings("relation", relationNids),
-      getMappings("election", staged.map((s) => s.nid)),
     ]);
 
     // ---- resolve pass (page-scoped; reject-complete before any page write) ----
     const resolved: ResolvedElection[] = [];
 
-    for (const s of staged) {
+    for (const s of toProcess) {
     const nid = s.nid;
     const f = s.fields;
 
@@ -364,52 +452,99 @@ async function main() {
     if (active != null) data.s1Active = active;
     if (rowEndDatedFromChanged) data.endDatedFromChanged = true;
 
-    resolved.push({ nid, workerId, employerId, startYmd, endYmd, benefitIds, relationshipIds, enrollmentType, data });
+    resolved.push({ nid, contentHash: s.contentHash, workerId, employerId, startYmd, endYmd, benefitIds, relationshipIds, enrollmentType, data });
     }
     resolvedCount += resolved.length;
     // rejected rows are fully handled — count them toward progress now
-    progressDone += staged.length - resolved.length;
+    progressDone += toProcess.length - resolved.length;
     progress.update(progressDone);
 
-    // ---- batched adoption existence check (one IN-query set per page) ----
-    const mappedIds = resolved
-      .map((r) => electionMap.get(r.nid)?.s2Id)
-      .filter((id): id is string => !!id);
-    const mappedExists = new Set<string>();
-    for (const ids of chunk([...new Set(mappedIds)], 500)) {
+    // ---- batched current-row read (mapped targets + provenance orphans) ----
+    // One IN-query set per page fetches the full migration-owned field set so
+    // the reconcile below is an in-memory compare (no per-row reads).
+    const compareIds = new Set<string>();
+    for (const r of resolved) {
+      const mapped = electionMap.get(r.nid)?.s2Id;
+      if (mapped) compareIds.add(mapped);
+      else {
+        const orphan = provenanceByNid.get(r.nid);
+        if (orphan) compareIds.add(orphan);
+      }
+    }
+    const currentById = new Map<string, CurrentRow>();
+    for (const ids of chunk([...compareIds], 500)) {
       const res = (await db.execute(sql`
-        SELECT id FROM worker_trust_elections
+        SELECT id, worker_id, employer_id, start_ymd::text AS start_ymd, end_ymd::text AS end_ymd,
+               enrollment_type, benefit_ids, relationship_ids, data
+          FROM worker_trust_elections
          WHERE id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
-      `)) as unknown as { rows: Array<{ id: string }> };
-      for (const row of res.rows) mappedExists.add(row.id);
+      `)) as unknown as { rows: CurrentRow[] };
+      for (const row of res.rows) currentById.set(row.id, row);
     }
 
     // ---- write pass (page-scoped) ----
     const expectations: Array<{ nid: number; s2Id: string; want: ResolvedElection }> = [];
+    /** fingerprint advances for pre-existing/orphan mappings — applied after
+     * the page verify pass so a verify failure keeps the row re-processable. */
+    const pendingAdvance: Array<{ s1Id: number; fingerprint: string | null }> = [];
 
     for (const r of resolved) {
       progress.update(++progressDone);
       const mapped = electionMap.get(r.nid)?.s2Id;
-      if (mapped) {
-        if (!mappedExists.has(mapped)) {
+      // crash-repair: row exists (provenance) but id_map lost the mapping
+      const orphanId = mapped ? undefined : provenanceByNid.get(r.nid);
+      const targetId = mapped ?? orphanId;
+      if (targetId) {
+        const current = currentById.get(targetId);
+        if (!current) {
           rejects.add("mapped_row_missing", { nid: r.nid }, r.nid);
           continue;
         }
+        if (orphanId) {
+          if (!DRY_RUN) {
+            const winner = await putMapping("election", r.nid, orphanId, { stub: false, loader: LOADER });
+            if (winner !== orphanId) console.error(`RACE: election nid ${r.nid} already mapped to ${winner}`);
+          }
+          adoptedByProvenance++;
+        }
         adopted++;
-        expectations.push({ nid: r.nid, s2Id: mapped, want: r });
-        continue;
-      }
-      // crash-repair: row exists (provenance) but id_map lost the mapping
-      const orphanId = provenanceByNid.get(r.nid);
-      if (orphanId) {
-        const winner = DRY_RUN ? orphanId : await putMapping("election", r.nid, orphanId, { stub: false, loader: LOADER });
-        adopted++;
-        adoptedByProvenance++;
-        expectations.push({ nid: r.nid, s2Id: winner, want: r });
+        if (rowMatches(current, r)) {
+          reconciledDriftFree++;
+          summary.unchanged++;
+        } else if (DRY_RUN) {
+          updated++;
+          summary.updated++;
+          continue; // no write happened — verify would false-fail
+        } else {
+          try {
+            await withNotificationsSuppressed(() =>
+              withChargePluginsSuppressed(() =>
+                storage.workerTrustElections.updateForMigration(targetId, {
+                  workerId: r.workerId,
+                  employerId: r.employerId,
+                  startYmd: r.startYmd,
+                  endYmd: r.endYmd,
+                  benefitIds: r.benefitIds,
+                  relationshipIds: r.relationshipIds,
+                  enrollmentType: r.enrollmentType,
+                  data: r.data,
+                }),
+              ),
+            );
+            updated++;
+            summary.updated++;
+          } catch (e) {
+            rejects.add("election_update_failed", { nid: r.nid, code: classifyError(e) }, r.nid);
+            continue;
+          }
+        }
+        expectations.push({ nid: r.nid, s2Id: targetId, want: r });
+        if (!DRY_RUN) pendingAdvance.push({ s1Id: r.nid, fingerprint: r.contentHash });
         continue;
       }
       if (DRY_RUN) {
         created++;
+        summary.created++;
         continue;
       }
       try {
@@ -427,8 +562,16 @@ async function main() {
             }),
           ),
         );
-        const winner = await putMapping("election", r.nid, row.id, { stub: false, loader: LOADER });
+        // Stamped at insert (t-policies pilot pattern): the row was just
+        // written from exactly this staged content.
+        const winner = await putMapping("election", r.nid, row.id, {
+          stub: false,
+          loader: LOADER,
+          fingerprint: r.contentHash,
+          logicVersion: LOGIC_VERSION,
+        });
         created++;
+        summary.created++;
         expectations.push({ nid: r.nid, s2Id: winner, want: r });
       } catch (e) {
         rejects.add("election_create_failed", { nid: r.nid, code: classifyError(e) }, r.nid);
@@ -458,6 +601,7 @@ async function main() {
       `)) as unknown as { rows: VerifyRow[] };
       for (const row of res.rows) verifyById.set(row.id, row);
     }
+    const verifyFailedNids = new Set<number>();
     for (const ex of expectations) {
       const row = verifyById.get(ex.s2Id);
       const w = ex.want;
@@ -476,42 +620,100 @@ async function main() {
       }
       if (mismatches.length > 0) {
         verifyFailures++;
+        verifyFailedNids.add(ex.nid);
         if (verifySamples.length < 25) verifySamples.push({ nid: ex.nid, fields: mismatches });
       }
+    }
+
+    // ---- advance consumed fingerprints (verify-passed rows only) ----
+    if (!DRY_RUN) {
+      const toAdvance = pendingAdvance.filter((p) => !verifyFailedNids.has(p.s1Id));
+      await advanceFingerprints("election", toAdvance, LOGIC_VERSION);
     }
   }
   progress.stop();
 
+  // ---- deletion sweep: mapped elections whose staged source vanished are
+  // deleted in S2 (S1 wins; suppressed side effects) and unmapped. Guarded
+  // against an empty/truncated staging table — a sweep there would delete
+  // EVERY migrated election. ----
+  const findings: SyncFinding[] = [];
+  if ((report.staged as number) > 0) {
+    const sweep = await sweepDeletions({
+      entity: "election",
+      loaders: [LOADER],
+      sourceSql: sql`SELECT nid AS s1_id FROM s1_staging.records WHERE bundle = ${BUNDLE}`,
+      dryRun: DRY_RUN,
+      policy: async (c) => ({
+        action: "delete",
+        apply: async () => {
+          await withNotificationsSuppressed(() =>
+            withChargePluginsSuppressed(async () => {
+              // idempotent: delete() of an already-gone row returns false
+              await storage.workerTrustElections.delete(c.s2Id);
+            }),
+          );
+        },
+      }),
+    });
+    summary.deleted += sweep.deleted;
+    summary.reportOnly += sweep.reportOnly;
+    findings.push(...sweep.findings);
+    report.sweep = { candidates: sweep.candidates, alreadyHandled: sweep.alreadyHandled, deleted: sweep.deleted };
+  } else {
+    report.sweep = { skipped: "staging empty — refusing to sweep (would delete every migrated election)" };
+  }
+
   report.pages = pages;
   report.resolved = resolvedCount;
+  report.fastPathSkips = fastPathSkips;
   report.typedElections = typed;
   report.untypedElections = untyped;
   report.typedButIrrelevant = typedButIrrelevant;
   report.perEnrollmentType = perType;
   report.endDatedFromChanged = endDatedFromChanged;
   report.created = created;
+  report.updated = updated;
+  report.reconciledDriftFree = reconciledDriftFree;
   report.adopted = adopted;
   report.adoptedByProvenance = adoptedByProvenance;
-
   report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;
   report.verifyFailures = verifyFailures;
   if (verifySamples.length > 0) report.verifyFailureSamples = verifySamples;
 
-  const disallowed = rejects.disallowedReasons(ALLOWED_REJECTS);
-  console.log(JSON.stringify(report, null, 2));
-  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, allowedRejects: ALLOWED_REJECTS }, report);
+  const result = buildLoaderResult({
+    loader: LOADER,
+    logicVersion: LOGIC_VERSION,
+    dryRun: DRY_RUN,
+    forceReconcile: FORCE_RECONCILE,
+    summary,
+    rejects,
+    allowedRejects: ALLOWED_REJECTS,
+    verifyFailures,
+    findings,
+    allowedFindings: ALLOWED_FINDINGS,
+    detail: report,
+  });
+  emitLoaderResult(result);
+  if (!DRY_RUN) {
+    await recordRun(startedAt, { loader: LOADER, allowedRejects: ALLOWED_REJECTS, forceReconcile: FORCE_RECONCILE }, result as unknown as Record<string, unknown>);
+  }
 
-  await pgPool.end();
-  if (verifyFailures > 0) process.exit(1);
-  if (disallowed.length > 0) {
+  if (result.rejectGate.status === "fail") {
     console.error(
-      `FAIL: reject reason(s) not allowed for this run: ${disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
+      `FAIL: reject reason(s) not allowed for this run: ${result.rejectGate.disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
         `Every expected reject class must be explicitly allowed via --allow-rejects.`,
     );
-    process.exit(1);
   }
-  process.exit(0);
+  if (result.blockingFindings.length > 0) {
+    console.error(
+      `FAIL: ${result.blockingFindings.length} blocking sync finding(s) (${[...new Set(result.blockingFindings.map((f) => f.kind))].join(", ")}). ` +
+        `Resolve them or acknowledge per run via --allow-findings.`,
+    );
+  }
+  await pgPool.end();
+  process.exit(loaderExitCode(result));
 }
 
 main().catch((err) => {

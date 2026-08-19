@@ -283,8 +283,8 @@ SELECT count(*) FROM worker_trust_elections;  -- elections
 | 5c | `npx tsx scripts/s1-migration/load-employer-rates.ts --allow-rejects bad_rate` | same (dev no-ops: synthetic shops lack charge_plugins JSON; covered via seeded staged fakes) | **After employers (4) + fund config (bao-hourly charge config must exist — the loader resolves its account and aborts unless exactly one is enabled).** Imports per-employer hourly rate history from shop `field_sirius_json` → `charge_plugins.settings.<uuid>.rates.history` into `sitespecific_bao_employer_rates`; without it post-cutover hours rows silently create NO hourly charges. Prod expects ≈698 rates / ≈136 shops (incl. future-dated rows to 2028 — real negotiated increases). Expected rejects: `bad_rate=2` (known colon typos `6:00`/`6:75` on one shop, cleanly re-entered under another uuid — allow), `rate_conflict=1` — shop 8865846 (CONRAD LOS ANGELES, H0305) has BOTH 5.75 and 6.50 entered for 2023-12-01 under the same instance; the S1 UI report shows the same duplicate pair. Conrad is an ACTIVE hourly employer (rates through 2025) — do NOT skip it via allow; have the fund delete the wrong 2023-12-01 row in S1, re-stage `grievance_shop` (the loader reads staged JSON, not live S1), and rerun. Allowing `rate_conflict` drops Conrad's ENTIRE rate history. `verifyFailures: 0` | 10 staged, 0 with rates (documented no-op; parse/precedence/write/idempotency covered via seeded staged fakes) |
 | 6 | `npx tsx scripts/s1-migration/load-relationships.ts` | same | `rejects: {}` — no-start rows load via the N26 default-dates ruling; prod expects `datesDefaulted ≈ 115` | 24 relations, datesDefaulted=2 |
 | 7 | `npx tsx scripts/s1-migration/load-employee-ids.ts` | `--allow-rejects duplicate_code` (2 synthetic) | Run clean first. `duplicate_code` may genuinely occur in prod — inspect, then allow with the observed count. On RE-run, one of a dup pair becomes `code_owned_by_other_worker` and one adopts. | 28 created, 10 types, duplicate_code=2 |
-| 8 | `npx tsx scripts/s1-migration/load-elections.ts` | same | `resolved == staged`, `benefitResolution.unresolved: 0`, `ambiguousNames: 0`; untyped elections are the prod majority (expected). **Typed elections (finding 2026-08-09):** S1's election-type vocabulary holds COVERAGE TIERS (single/family/waived), not enrollment types — typed rows load with NULL `enrollment_type` exactly like untyped ones (fix in images ≥ `a000e65b`; earlier images skipped typed rows entirely, which also starved t17's election→employer fallback). **Real-target run 2026-08-09:** staged 243,475 → resolved 242,532 (adopted 180,709 + created 61,823 previously-skipped typed rows on the post-fix rerun); 943 rejects, all allowed after triage (deleted-node refs / dirty rows). | 40/40; 30 untyped |
-| 9 | `npx tsx scripts/s1-migration/load-benefit-history.ts --open-end-through <transition-month>` | `--open-end-through 2026-12` + `--allow-rejects start_missing,subscriber_worker_mismatch,relation_subscriber_mismatch` (3 synthetic traps) | **`--open-end-through` = the month the migration run happens in (RULED, amended 2026-08-09** — supersedes the fixed `2026-09`, which assumed the 2026-10-01 cutover; "when we actually transition we go through the month of transition"). Open spans project coverage months through that value; the 2026-08 rehearsal used `2026-08`. Run clean first; every reject is a triage item — ruled classes in §5. **Real-target run 2026-08-09:** 612,076 staged spans → 528,656 anchors, 6,435,517 month rows, ≈4.2 h wall (steady ≈41 spans/s); 83,420 rejects, every class §5-ruled. The first pass failed the END gate only on the then-new `benefit_ref_missing` class — all writes had persisted — and the rerun with it allowed was pure adopt (created 0). `benefitResolution.unresolved: 0`, `verifyFailures: 0`. | 102 spans → 99 resolved, 24 open, 896 month rows, 3 trap rejects |
+| 8 | `npx tsx scripts/s1-migration/load-elections.ts` | `--allow-rejects relation_unmapped` (synthetic dangling relation refs) | **Standard sync envelope (§10) — full reconcile.** Re-runs fast-skip unchanged nids via consumed fingerprints (`detail.fastPathSkips`); an election edited in S1 (dates/benefits/relationships/employer/active) is UPDATED in S2 (`summary.updated`, migration-owned fields overwritten verbatim, S1 wins; policy stays derived — never written); an election deleted in S1 is hard-DELETED via the sweep (`detail.sweep`, suppressed side effects); a mapped S2 row deleted out-of-band rejects as `mapped_row_missing` (triage; drop the mapping to let the next run recreate). Expect `resolved + fastPathSkips + rejects == staged` and `verifyFailures: 0`; rejected nids re-resolve every run (never fingerprint-advanced). Untyped elections remain the prod majority (typed = COVERAGE TIERS, load with NULL `enrollment_type` — finding 2026-08-09; fix ≥ `a000e65b`). **Freeze-era real-target run 2026-08-09:** staged 243,475 → resolved 242,532; 943 rejects, all allowed after triage. First converted run re-resolves everything once (fingerprint bootstrap), then dailies fast-skip. | 40 staged: 35 steady-state fast-skips, 5 `relation_unmapped` traps |
+| 9 | `npx tsx scripts/s1-migration/load-benefit-history.ts [--open-end-through <YYYY-MM>]` | `--open-end-through 2026-12` + `--allow-rejects start_missing,subscriber_worker_mismatch,relation_subscriber_mismatch,employer_unresolved` (4 synthetic traps) | **Standard sync envelope (§10) — month-set reconcile.** Desired months are computed set-based into the persistent scratch table `s1_staging.t17_desired_spans` (fingerprints live THERE, not id_map) and diffed against `trust_wmb` for migrated workers: missing months created, stale months deleted, `source_relation_id` divergence repaired, wb anchors auto-created/repointed/retired (`detail.anchors`) so T18 provenance never dangles. `--open-end-through` is now OPTIONAL: **omitted → current LA month** (`detail.openEndThroughSource: "default-current-la-month"`) — the daily dual-run default; pass it explicitly only for the ruled transition month at final cutover (**= the month the migration run happens in, RULED, amended 2026-08-09**) or dev's 2026-12 convention. A later horizon adds only the delta months for open spans; spans closed in S1 retract previously-projected months. Retired rejects: `open_end_through_required`, `open_span_after_through` (now counter `detail.openSpansStartingAfterHorizon`, loads with empty month set), `mapped_anchor_missing` (anchors self-heal). Months beyond the horizon are never deleted (`detail.staleBeyondHorizon` — nonzero during dual-run means something else writes migrated months; investigate). Expect `verifyFailures: 0` (missing/stale/relDiverged/danglingAnchors all 0 post-apply). **Freeze-era real-target run 2026-08-09:** 612,076 staged spans → 528,656 anchors, 6,435,517 month rows, ≈4.2 h wall; 83,420 rejects, every class §5-ruled. First converted run re-resolves everything once (scratch bootstrap — expect freeze-scale wall time), then dailies fast-skip unchanged spans (`detail.fastPathSkips`) and write proportionally to churn. | 102 spans → 98 in scratch, 894 desired months, 24 open, 4 trap rejects |
 | 10 | `npx tsx scripts/s1-migration/load-payments.ts` | same | `created+adopted == staged`, `accounts.failed: 0`; per-status split mirrors S1 (Cleared/Received/Canceled/Failed → cleared/draft/canceled/error) | 30 payments across 3 accounts |
 | 11 | `npx tsx scripts/s1-migration/load-ledger.ts` | `--allow-rejects non_cleared_status` (2 Pending) | **After payments.** Non-cleared S1 AR rows are intentionally not migrated → `non_cleared_status` is expected in prod too: verify the count equals the frozen S1 non-cleared count, then allow. `perAccount[*].ok: true` for every account (count+sum match is built in). | 58/58 rows, all 3 accounts ok, sums exact |
 | 12 | `npx tsx scripts/s1-migration/load-hours.ts --migration-mode` | same | **`--migration-mode` is REQUIRED on prod** (suppresses charge plugins — T18 already migrated ledger; replay = double-billing; the loader preflight aborts if runnable charge plugins exist without it). Hard gate: `verifyMismatchCount: 0`. **`unresolvedWorker`/`unresolvedEmployer` are NOT expected to be 0 on a real extract** (first full real-target run 2026-08-09: 3363 / 7 month-groups) — the report now carries `unresolved*DistinctNids` + ≤20 sample nids per side; triage via 07 §P7: `staged_but_unmapped > 0` = loader gap (MUST fix before cutover), `not_staged` = deleted in S1 (documented skip, confirm with the §P7e/P7f LEFT JOIN node queries). `missing_json` will exceed the ~1,853 sparse-field baseline on any no-freeze extract (observed 3,462) — surplus rows are payperiods whose JSON row landed after the extract read the node (live hours imports racing the extract); they recur in every live extract and their pickup belongs to the parallel-run full-sync design, not to T20 (profile with §P7d/P7g). `legacy_json_format` skips are known-format legacy rows. `multiStatusMonths` counts SAME-employer mixed hour types within one month only — a worker with different statuses at different employers is the supported norm (status is per-employer) and never hits this counter. **No `--allow-rejects` gate by design:** hours has no reject gate — problem rows are counted skips, never fatal; the skip-block + §P7 triage IS the gate. `--stub-missing` is FORBIDDEN on a real target (dev-only crutch). | 300 staged → 298 written+verified, 2 legacy skips |
@@ -389,7 +389,8 @@ mismatch-class census derived from recorded t19 rejects.
 - **stage.ts re-run** re-extracts and re-verifies counts; safe to repeat, but
   re-staging after loaders have run must only happen from the SAME freeze
   snapshot — **except for loaders converted to sync semantics (§10: options,
-  policies), whose re-run after ANY restage is a true reconcile by design.**
+  policies, elections, benefit-history), whose re-run after ANY restage is a
+  true reconcile by design.**
   The same-freeze rule is retired wholesale only once the entire fleet is
   converted.
 - **Converted loaders reconcile, not just adopt (§10).** Their re-runs
@@ -509,7 +510,7 @@ Dev-only notes:
   The parity harness must be given the same value the loader used, in each
   environment.
 
-## 10. Dual-run sync semantics (converted loaders: options, policies)
+## 10. Dual-run sync semantics (converted loaders: options, policies, elections, benefit-history)
 
 S1 stays live and authoritative for ~1 month after the initial production
 load, with roughly daily S1→S2 syncs (full re-stage → re-run loaders). S2 is
@@ -545,7 +546,10 @@ non-stub id_map entries whose S1 source vanished from staging and applies its
 declared per-entity policy: hard-delete (through storage), deactivate (stamps
 `s1_deleted_at`), or report-only. Options and policies are both
 **report-only** (options rows and policies may be FK-referenced by live S2
-data — deletion needs an operator ruling). Report-only findings are TYPED
+data — deletion needs an operator ruling); elections and benefit-history
+month rows are **hard-delete** (suppressed storage writes; delete-policy
+sweeps do NOT raise blocking findings — only report-only sweeps do).
+Report-only findings are TYPED
 (`deleted_in_s1`) and BLOCKING: the loader exits 1 until the finding is
 resolved (restore in S1 + restage, or rule and remove the mapping) or
 explicitly acknowledged per run via `--allow-findings deleted_in_s1`.
@@ -582,6 +586,43 @@ findings. Reports stay aggregates-only (no names/PII), and say when
   logic-version-only update, forced update, and vanished-source handling
   end to end (also wired into the `typecheck`/`typecheck-scripts`
   validations for static health).
+
+**Elections + benefit-history specifics (t16/t17).**
+- t17's unit of reconciliation is the MONTH SET, not the row: desired months
+  derive from ALL staged spans covering a (worker, employer, benefit,
+  relation) tuple via the scratch table `s1_staging.t17_desired_spans`, then
+  diff set-based against `trust_wmb`. Fingerprints + logic_version live on
+  the scratch rows, NOT id_map; the id_map `wb` entry remains purely the T18
+  provenance anchor and must always point at a live `trust_wmb` row — the
+  anchor pass repoints/retires/creates accordingly every run. Dropping the
+  scratch table is safe: the next run re-resolves all spans (freeze-scale
+  wall time) and converges to the same state.
+- Stale-month deletion is scoped to migrated workers (non-stub id_map worker
+  mappings) at months ≤ the horizon; everything else is untouchable.
+  Corollary: **the S2 benefits scan must stay OFF for migrated workers during
+  the dual-run** — rows it writes in covered months would be swept as stale
+  on the next sync (see `detail.staleBeyondHorizon` for the beyond-horizon
+  early-warning counter).
+- **Horizon rule (§9 stands):** the parity harness must be given the SAME
+  `--open-end-through` the loader last used, per environment.
+- **After an id_map repair/remap** (worker/benefit/relation retarget, or an
+  election remap), t17 scratch rows still carry resolutions computed from the
+  OLD mappings and their fingerprints won't budge — run
+  `load-benefit-history.ts --force-reconcile` once to rebuild. EXCEPTION
+  (automatic): election-EMPLOYER drift needs no force — scratch rows flagged
+  `employer_from_election` re-check their election's current employer every
+  run (`detail.employerRefreshedFromElection`).
+- Rejected spans keep their last-good scratch rows
+  (`detail.rejectedWithStaleDesired`) — coverage never vanishes because one
+  daily extract went bad; fix the reject, the next run reconciles.
+- Dev smoke: `npx tsx scripts/s1-migration/dev/smoke-sync-elections-benefits.ts
+  [--phase elections|benefits|parity]` proves S1-edit update,
+  delete+recreate, extend/shorten/retarget/close-open convergence,
+  rel-divergence repair, horizon advance/retract, anchor maintenance, and
+  month parity (3 ruled months at `--max-disagreement-pct 0`) end to end.
+  Prereq after a synthetic regen: re-run `load-relationships.ts` first
+  (per-type id_map liveness — with zero live relation mappings every
+  dependent span rejects `relation_unmapped`).
 
 ### 4.15 (continued) Okta pre-provisioning commands
 
