@@ -1,0 +1,146 @@
+	
+{
+migration
+August 19, 2026, 09:18
+"loader": "t-bao-beneficiaries",
+migration
+August 19, 2026, 09:18
+"dryRun": false,
+migration
+August 19, 2026, 09:18
+"allowedRejects": [],
+migration
+August 19, 2026, 09:18
+"stagedWorkers": 117736,
+migration
+August 19, 2026, 09:18
+"workersWithJson": 116641,
+migration
+August 19, 2026, 09:18
+"extraDeltaArrays": 0,
+migration
+August 19, 2026, 09:18
+"blankRowsFiltered": 36729,
+migration
+August 19, 2026, 09:18
+"blankNameWithData": 0,
+migration
+August 19, 2026, 09:18
+"stagedCounts": {
+migration
+August 19, 2026, 09:18
+"workersWithBeneficiariesKey": 5227,
+migration
+August 19, 2026, 09:18
+"workersWithPopulatedRows": 3062,
+migration
+August 19, 2026, 09:18
+"populatedRows": 5087
+migration
+August 19, 2026, 09:18
+},
+migration
+August 19, 2026, 09:18
+"rejects": {
+migration
+August 19, 2026, 09:18
+"pct_unusable": 2
+migration
+August 19, 2026, 09:18
+},
+migration
+August 19, 2026, 09:18
+"rejectSamples": {
+migration
+August 19, 2026, 09:18
+"pct_unusable": [
+migration
+August 19, 2026, 09:18
+{
+migration
+August 19, 2026, 09:18
+"nid": 2505802,
+migration
+August 19, 2026, 09:18
+"badRows": 2,
+migration
+August 19, 2026, 09:18
+"rows": 2
+migration
+August 19, 2026, 09:18
+},
+migration
+August 19, 2026, 09:18
+{
+migration
+August 19, 2026, 09:18
+"nid": 2602233,
+migration
+August 19, 2026, 09:18
+"badRows": 1,
+migration
+August 19, 2026, 09:18
+"rows": 3
+migration
+August 19, 2026, 09:18
+}
+migration
+August 19, 2026, 09:18
+]
+migration
+August 19, 2026, 09:18
+}
+migration
+August 19, 2026, 09:18
+}
+migration
+August 19, 2026, 09:18
+FATAL (pre-scan): reject reason(s) not allowed for this run: pct_unusable=2. Nothing was written. Triage, then re-run with --allow-rejects for the classes you have justified.
+migration
+August 19, 2026, 09:18
+storage-operation logging SUPPRESSED for this run (default) — winston_logs will not reflect this run; failures surface via the RejectLog/run report. Re-enable with S1_LOADER_LOG_SAMPLE=1 (full) or N>1 (sampled)
+migration
+August 19, 2026, 09:18
+01:18:04 PM [app] INFO: Registered charge plugin: bao-hourly {"service":"charge-plugin-registry","triggers":["hours_saved"],"requiredComponent":"sitespecific.bao"}
+migration
+August 19, 2026, 09:18
+01:18:04 PM [app] INFO: Registered charge plugin: bao-er-report-to-ee-allocation {"service":"charge-plugin-registry","triggers":["payment_saved"],"requiredComponent":"sitespecific.bao"}
+migration
+August 19, 2026, 09:18
+01:18:04 PM [app] INFO: Registered charge plugin: sitespecific-bao-echp {"service":"charge-plugin-registry","triggers":["hours_saved"],"requiredComponent":"sitespecific.bao"}
+migration
+August 19, 2026, 09:18
+01:18:04 PM [app] INFO: Registered charge plugin: sitespecific-bao-premium {"service":"charge-plugin-registry","triggers":["wmb_saved"],"requiredComponent":"sitespecific.bao"}
+migration
+August 19, 2026, 09:18
+01:18:04 PM [app] INFO: Registered eligibility plugin: sitespecific-bao-buildup {"service":"eligibility-plugin-registry"}
+migration
+August 19, 2026, 09:18
+01:18:04 PM [app] INFO: Registered charge plugin: btu-dues-allocation {"service":"charge-plugin-registry","triggers":["dues_import_saved"],"requiredComponent":"sitespecific.btu"}
+migration
+August 19, 2026, 09:18
+01:18:04 PM [app] INFO: Registered charge plugin: sitespecific-bao-cobra {"service":"charge-plugin-registry","triggers":["cron"],"requiredComponent":"sitespecific.bao"}
+migration
+August 19, 2026, 09:18
+01:18:04 PM [app] INFO: Registered charge plugin: sitespecific-bao-dp {"service":"charge-plugin-registry","triggers":["cron"],"requiredComponent":"sitespecific.bao"}
+migration
+August 19, 2026, 09:18
+01:18:04 PM [app] INFO: Registered charge plugin: payment-simple-allocation {"service":"charge-plugin-registry","triggers":["payment_saved"]}
+migration
+August 19, 2026, 09:18
+01:18:04 PM [app] INFO: Registered charge plugin: btu-steward-attendance {"service":"charge-plugin-registry","triggers":["participant_saved"],"requiredComponent":"sitespecific.btu"}
+migration
+August 19, 2026, 09:18
+01:18:04 PM [app] INFO: Registered charge plugin: gbhe-hourly-charge {"service":"charge-plugin-registry","triggers":["hours_saved"],"requiredComponent":"sitespecific.gbhet"}
+migration
+August 19, 2026, 09:18
+01:18:04 PM [app] INFO: Registered charge plugin: gbhet-pension-sla-hourly {"service":"charge-plugin-registry","triggers":["hours_saved"],"requiredComponent":"sitespecific.gbhet.pension"}
+migration
+August 19, 2026, 09:18
+01:18:04 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {"service":"charge-plugin-registry","triggers":["wmb_saved"],"requiredComponent":"sitespecific.gbhet.legal"}
+migration
+August 19, 2026, 09:18
+[db] driver=neon (serverless/WebSocket)
+migration
+August 19, 2026, 09:18
+[db] Target database: ep-delicate-frog-aflo0zan.c-2.us-west-2.aws.neon.tech/neondb (from EXTERNAL_DATABASE_URL)
