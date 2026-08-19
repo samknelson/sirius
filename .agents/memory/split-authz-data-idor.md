@@ -19,7 +19,7 @@ supplied id to belong to the requested resource (else 404); use that same
 envelope for BOTH the role/permission check AND the settings/data read. If the
 request resolves to no config, deny — never fall back to unrestricted content.
 
-**Why:** dashboard content gating (Task #414) shipped with this exact gap —
+**Why:** a dashboard content-gating feature shipped with this exact gap —
 role-checked the named configId but read settings via a separate helper that
 silently fell back to canonical. Single-envelope resolution closes it.
 

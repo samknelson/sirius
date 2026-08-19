@@ -16,7 +16,7 @@ legitimate no-op (zero in scope), NOT a loader bug. Staged rows show
 `field_sirius_contact_tags: [null, ...]`.
 
 **How to apply:** don't "fix" the extractor when dev tag runs come back empty —
-verify against production or use seeded staged fakes (see the T29 smoke:
+verify against production or use seeded staged fakes (see the packet-tag smoke:
 seed fake terms + fake staged worker-month rows in `s1_staging` directly,
 self-cleaning). Regenerating the dev MariaDB would fix tids but also churn
 nids, breaking existing id_map state from prior loader runs — don't do it

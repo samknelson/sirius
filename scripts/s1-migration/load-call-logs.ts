@@ -36,8 +36,21 @@
  *   - provenance: original type/category/nid preserved in
  *     comm_interaction.data.s1.
  *
- * Idempotent via id_map entity "call_log" (nid → comm id); mapped rows are
- * skipped on rerun.
+ * Sync semantics (Task 293 — RUNBOOK §10): RECONCILING. Consumed fingerprint
+ * = the staged node's content hash PLUS the resolved handler outcome
+ * ("<hash>|h:<s2 contact id>", or "<hash>|h:unresolved" when nothing
+ * resolves) — handler resolution runs BEFORE classification, so a repointed
+ * worker→contact or a repaired/remapped handler mapping retargets the comm
+ * even though the log node itself never changed (resolution-outcome
+ * fingerprint pattern, same as employer contact links). S1-wins on mismatch:
+ * contact, channel, reason, notes, and timestamp all converge through the
+ * transactional updateInteractionWithCommForMigration storage method (comm +
+ * interaction in one tx). Deletion sweep over the IN-SCOPE staged nid set — both
+ * S1-deleted log nodes AND rows whose type moved out of MSR scope sweep;
+ * comms are SAFE CHILD ROWS (ruled): deleteComm hard-deletes (FK cascades
+ * the interaction), mapping dropped.
+ *
+ * Idempotent via id_map entity "call_log" (nid → comm id).
  *
  * REJECT POLICY (fail loud): every reject reason present in the run must be
  * explicitly allowed via `--allow-rejects r1,r2,...` or the run exits 1
@@ -47,7 +60,8 @@
  * scope (loader convention); notification suppression always applies.
  *
  * Usage:
- *   npx tsx scripts/s1-migration/load-call-logs.ts [--dry-run] [--allow-rejects r1,r2] [--migration-mode]
+ *   npx tsx scripts/s1-migration/load-call-logs.ts [--dry-run] [--force-reconcile]
+ *       [--allow-rejects r1,r2] [--allow-findings k1,k2] [--migration-mode]
  *
  * Output is AGGREGATES ONLY (plus S1 nids, which are opaque ids). Note and
  * summary content is NEVER logged.
@@ -56,17 +70,27 @@ import { db } from "../../server/storage/db";
 // IMPORTANT: initialize the storage barrel BEFORE importing ./comm directly —
 // importing comm.ts first creates a partial-init cycle (database.ts reads
 // commLoggingConfig mid-initialization → TDZ ReferenceError at module load).
-import "../../server/storage/database";
+import { storage } from "../../server/storage/database";
 import { sql } from "drizzle-orm";
 import {
   withNotificationsSuppressed,
   withChargePluginsSuppressed,
 } from "../../server/middleware/request-context";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
-import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
+import { ensureIdMap, getMappings, putMapping, advanceFingerprints, type MappingInfo } from "./lib/idmap";
 import { RejectLog, strOf, throttleStorageOpLogs, LOADER_PAGE_SIZE, stagedCountOf } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
 import { createCommInteractionStorage } from "../../server/storage/comm";
+import {
+  buildLoaderResult,
+  classifyRow,
+  emitLoaderResult,
+  emptySummary,
+  loaderExitCode,
+  parseAllowedFindings,
+  parseForceReconcile,
+  sweepDeletions,
+} from "./lib/sync";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const MIGRATION_MODE = process.argv.includes("--migration-mode");
@@ -76,6 +100,12 @@ const ALLOWED_REJECTS: string[] = (() => {
 })();
 const LOADER = "n21-call-logs";
 const ID_MAP_ENTITY = "call_log";
+/** BUMP whenever transform logic changes so unchanged S1 rows reprocess.
+ * v2: fingerprint now embeds the resolved handler outcome (one full
+ * reprocess migrates pre-existing content-only fingerprints). */
+const LOGIC_VERSION = 2;
+const FORCE_RECONCILE = parseForceReconcile();
+const ALLOWED_FINDINGS = parseAllowedFindings();
 
 function loaderScope<T>(fn: () => Promise<T>): Promise<T> {
   return MIGRATION_MODE
@@ -91,6 +121,7 @@ const FATAL_REASONS = [
   "category_missing",
   "category_unmapped",
   "create_failed",
+  "update_failed",
 ] as const;
 
 /**
@@ -169,23 +200,25 @@ interface StagedLogRow {
   nid: number;
   created: number | null;
   fields: Record<string, unknown>;
+  contentHash: string | null;
 }
 
-type RawLogRow = { nid: string | number; created: string | number | null; fields: unknown };
+type RawLogRow = { nid: string | number; created: string | number | null; fields: unknown; content_hash: string | null };
 
 function mapLogRow(r: RawLogRow): StagedLogRow {
   return {
     nid: Number(r.nid),
     created: r.created == null ? null : Number(r.created),
     fields: (typeof r.fields === "string" ? JSON.parse(r.fields) : r.fields ?? {}) as Record<string, unknown>,
+    contentHash: r.content_hash ?? null,
   };
 }
 
 /**
  * Keyset-paged staged read for sirius_log: yields pages of at most `pageSize`
- * StagedLogRows in ascending nid order. Selects `nid, created, fields` (not
- * title/changed like the generic pagedStaged helper, which is why this is a
- * local variant).
+ * StagedLogRows in ascending nid order. Selects `nid, created, fields,
+ * content_hash` (not title/changed like the generic pagedStaged helper, which
+ * is why this is a local variant).
  */
 async function* pagedStagedLogs(
   pageSize: number = LOADER_PAGE_SIZE,
@@ -193,7 +226,7 @@ async function* pagedStagedLogs(
   let lastNid = -1;
   for (;;) {
     const res = await db.execute(sql`
-      SELECT nid, created, fields FROM s1_staging.records
+      SELECT nid, created, fields, content_hash FROM s1_staging.records
        WHERE bundle = 'sirius_log' AND nid > ${lastNid}
        ORDER BY nid LIMIT ${pageSize}
     `);
@@ -209,12 +242,13 @@ async function main() {
   const startedAt = new Date();
   await ensureStagingSchema();
   await ensureIdMap();
+  void storage; // barrel-init anchor (see import note above)
 
   if (MIGRATION_MODE) {
     console.error("MIGRATION MODE: charge-plugin execution is suppressed for all writes in this run.");
   }
 
-  const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowedRejects: ALLOWED_REJECTS };
+  const report: Record<string, unknown> = {};
   const rejects = new RejectLog();
 
   // ---- resolve seeded reasons up front; fail loudly on missing seeds ----
@@ -243,11 +277,19 @@ async function main() {
 
   let stagedLogs = 0;
   let inScope = 0;
-  const stats = { alreadyMapped: 0, created: 0, handlerViaWorker: 0 };
+  const stats = { created: 0, updated: 0, handlerViaWorker: 0 };
   const byReason: Record<string, number> = {};
   const byChannel: Record<string, number> = {};
-  /** nid array for the verify pass (mapped nids only — ~12K max). */
-  const mappedNids: number[] = [];
+  const summary = emptySummary();
+  let fastPathSkips = 0;
+  const pendingAdvance: Array<{ s1Id: number; fingerprint: string | null }> = [];
+  const verifyFailedNids = new Set<number>();
+  /** nids processed this run (created or updated) — verify scope. */
+  const processedNids: number[] = [];
+  /** ALL in-scope staged nids — the sweep's current-source set (rows whose
+   * type moved OUT of MSR scope must sweep too, so this is built from the
+   * full pagination, not from mappings). */
+  const inScopeNids = new Set<number>();
   // ---- triage aggregates (counts only — never note/summary content) ----
   /** Every category_unmapped occurrence tallied by normalized value. */
   const unmappedCategories: Record<string, number> = {};
@@ -268,14 +310,24 @@ async function main() {
       return t != null && t in TYPE_TO_REASON_SIRIUS_ID;
     });
     inScope += scopedPage.length;
+    for (const r of scopedPage) inScopeNids.add(r.nid);
 
-    if (scopedPage.length === 0) continue;
+    if (scopedPage.length === 0) {
+      progress.add(page.length);
+      continue;
+    }
 
-    // Fetch id_map and handler mappings for this page only.
-    // Handler resolution is per-target: id_map("contact") first, then
-    // id_map("worker") (worker's S2 contact_id) — S1 handler refs target both
-    // sirius_contact and sirius_worker nodes.
-    const idMap = await getMappings(ID_MAP_ENTITY, scopedPage.map((r) => r.nid));
+    // Handler resolution runs BEFORE classification: the consumed fingerprint
+    // embeds the RESOLVED outcome (contact id / unresolved sentinel), not just
+    // staged bytes. A repointed worker→contact or a repaired/remapped handler
+    // mapping changes the outcome without touching the log node, and S1-wins
+    // must retarget the comm — content-only fingerprints would fast-skip such
+    // rows forever. Batched per page, so steady-state cost is a few IN
+    // queries; per-row WRITES still skip via the fast path.
+    //
+    // Resolution is per-target: id_map("contact") first, then id_map("worker")
+    // (worker's S2 contact_id) — S1 handler refs target both sirius_contact
+    // and sirius_worker nodes. First resolvable target wins.
     const handlerNids = new Set<number>();
     for (const r of scopedPage) for (const n of targetNidsOf(r.fields, "field_sirius_log_handler")) handlerNids.add(n);
     const contactMap = await getMappings("contact", [...handlerNids]);
@@ -303,13 +355,55 @@ async function main() {
       }
     }
 
-    // Staged-existence lookup for handler nids resolvable via neither map —
+    const resolveHandler = (r: StagedLogRow): { contactId: string | null; viaWorker: boolean } => {
+      for (const n of targetNidsOf(r.fields, "field_sirius_log_handler")) {
+        const c = contactMap.get(n);
+        if (c) return { contactId: c.s2Id, viaWorker: false };
+        const wc = workerContactIdByNid.get(n);
+        if (wc) return { contactId: wc, viaWorker: true };
+      }
+      return { contactId: null, viaWorker: false };
+    };
+
+    // Classify AFTER resolution, against the composed fingerprint.
+    const idMap = await getMappings(ID_MAP_ENTITY, scopedPage.map((r) => r.nid));
+    const workPage: Array<{
+      row: StagedLogRow;
+      mapped: MappingInfo | undefined;
+      resolvedContactId: string | null;
+      viaWorker: boolean;
+      fingerprint: string | null;
+    }> = [];
+    for (const r of scopedPage) {
+      const mapped = idMap.get(r.nid);
+      const { contactId, viaWorker } = resolveHandler(r);
+      const fingerprint = r.contentHash == null ? null : `${r.contentHash}|h:${contactId ?? "unresolved"}`;
+      if (classifyRow(mapped, fingerprint, LOGIC_VERSION, FORCE_RECONCILE) === "unchanged") {
+        summary.unchanged++;
+        fastPathSkips++;
+        continue;
+      }
+      workPage.push({ row: r, mapped, resolvedContactId: contactId, viaWorker, fingerprint });
+    }
+    progress.add(page.length - workPage.length);
+    if (workPage.length === 0) continue;
+
+    // Staged-existence lookup for unresolved handler nids on WORK rows only —
     // splits handler_unresolved (staged but unmapped) from handler_dangling
     // (target absent from staging entirely) and feeds the bundle triage tally.
-    const stillUnresolved = unresolvedAfterContact.filter((n) => !workerContactIdByNid.has(n));
+    // (Unresolved rows always land in workPage: an unresolved outcome is never
+    // stored as a fingerprint, so it can't fast-skip.)
+    const stillUnresolved = new Set<number>();
+    for (const w of workPage) {
+      if (w.resolvedContactId != null) continue;
+      for (const n of targetNidsOf(w.row.fields, "field_sirius_log_handler")) {
+        if (!contactMap.has(n) && !workerContactIdByNid.has(n)) stillUnresolved.add(n);
+      }
+    }
     const stagedBundlesByNid = new Map<number, string[]>();
-    for (let i = 0; i < stillUnresolved.length; i += 500) {
-      const chunk = stillUnresolved.slice(i, i + 500);
+    const stillUnresolvedArr = [...stillUnresolved];
+    for (let i = 0; i < stillUnresolvedArr.length; i += 500) {
+      const chunk = stillUnresolvedArr.slice(i, i + 500);
       const res = await db.execute(sql`
         SELECT nid, bundle FROM s1_staging.records
          WHERE nid IN (${sql.join(chunk.map((n) => sql`${n}`), sql`, `)})
@@ -322,14 +416,8 @@ async function main() {
       }
     }
 
-    for (const r of scopedPage) {
+    for (const { row: r, mapped, resolvedContactId, viaWorker, fingerprint } of workPage) {
       progress.add(1);
-      if (idMap.has(r.nid)) {
-        stats.alreadyMapped++;
-        // still track it for the verify pass
-        mappedNids.push(r.nid);
-        continue;
-      }
 
       const type = norm(strOf(r.fields, "field_sirius_type"))!;
       const reasonSiriusId = TYPE_TO_REASON_SIRIUS_ID[type];
@@ -353,22 +441,6 @@ async function main() {
         rejects.add("handler_missing", { nid: r.nid, type }, r.nid);
         continue;
       }
-      // First resolvable target wins: contact mapping, else worker fallback.
-      let resolvedContactId: string | null = null;
-      let viaWorker = false;
-      for (const n of handlers) {
-        const c = contactMap.get(n);
-        if (c) {
-          resolvedContactId = c.s2Id;
-          break;
-        }
-        const wc = workerContactIdByNid.get(n);
-        if (wc) {
-          resolvedContactId = wc;
-          viaWorker = true;
-          break;
-        }
-      }
       if (!resolvedContactId) {
         // Triage tally: distinct unresolved handler nids by staged bundle vs
         // not staged at all (aggregate counts only).
@@ -389,16 +461,55 @@ async function main() {
       }
       if (viaWorker) stats.handlerViaWorker++;
 
-      const summary = strOf(r.fields, "field_sirius_summary");
+      const summaryText = strOf(r.fields, "field_sirius_summary");
       const notes = strOf(r.fields, "field_sirius_notes");
-      const combinedNotes = [summary, notes].filter(Boolean).join("\n\n") || null;
+      const combinedNotes = [summaryText, notes].filter(Boolean).join("\n\n") || null;
       const occurredAt = r.created != null ? new Date(r.created * 1000) : null;
 
       byReason[reasonSiriusId] = (byReason[reasonSiriusId] ?? 0) + 1;
       byChannel[channel] = (byChannel[channel] ?? 0) + 1;
 
+      // ---- matched: full reconcile (S1 wins — comm + interaction in one tx) ----
+      if (mapped) {
+        if (DRY_RUN) {
+          stats.updated++;
+          summary.updated++; // classification says changed; approximate under --dry-run
+          continue;
+        }
+        try {
+          const ok = await loaderScope(() =>
+            interactions.updateInteractionWithCommForMigration(mapped.s2Id, {
+              contactId: resolvedContactId!,
+              ...(occurredAt ? { occurredAt } : {}),
+              channel,
+              callReasonId,
+              notes: combinedNotes,
+              interactionData: { s1: { nid: r.nid, type, category: rawCategory } },
+              commData: { s1Loader: LOADER },
+            }),
+          );
+          if (!ok) {
+            // mapping points at a vanished/non-interaction comm — surface via
+            // verify (never silently re-create mid-reconcile)
+            console.error(`VERIFY: call_log nid ${r.nid} maps to missing/incomplete comm ${mapped.s2Id}`);
+            verifyFailedNids.add(r.nid);
+            continue;
+          }
+          stats.updated++;
+          summary.updated++;
+          processedNids.push(r.nid);
+          pendingAdvance.push({ s1Id: r.nid, fingerprint });
+        } catch {
+          // SANITIZED: never log raw error text here — notes/summary content
+          // may be embedded in driver messages.
+          rejects.add("update_failed", { nid: r.nid, type }, r.nid);
+        }
+        continue;
+      }
+
       if (DRY_RUN) {
         stats.created++;
+        summary.created++;
         continue;
       }
 
@@ -414,9 +525,15 @@ async function main() {
             commData: { s1Loader: LOADER },
           }),
         );
-        await putMapping(ID_MAP_ENTITY, r.nid, comm.id, { stub: false, loader: LOADER });
-        mappedNids.push(r.nid);
+        await putMapping(ID_MAP_ENTITY, r.nid, comm.id, {
+          stub: false,
+          loader: LOADER,
+          fingerprint,
+          logicVersion: LOGIC_VERSION,
+        });
+        processedNids.push(r.nid);
         stats.created++;
+        summary.created++;
       } catch {
         // SANITIZED: never log raw error text here — notes/summary content may
         // be embedded in driver messages.
@@ -429,18 +546,21 @@ async function main() {
   report.inScope = inScope;
 
   // ---------------- verify pass ----------------
-  progress.phase("verify", mappedNids.length);
-  let verifyFailures = 0;
+  // Scoped to rows PROCESSED this run (fast-path rows were verified when
+  // last processed; --force-reconcile re-verifies the whole population).
+  progress.phase("verify", processedNids.length);
+  let verifyFailures = verifyFailedNids.size; // missing-pair hits from the loop
   if (!DRY_RUN) {
-    // Re-fetch all mappings for mapped nids (small set, ~12K max)
-    const vMap = await getMappings(ID_MAP_ENTITY, mappedNids);
-    for (const nid of mappedNids) {
+    const vMap = await getMappings(ID_MAP_ENTITY, processedNids);
+    for (const nid of processedNids) {
       progress.add(1);
       if (rejects.hasAnyIn(nid, FATAL_REASONS)) continue;
+      if (verifyFailedNids.has(nid)) continue; // already counted above
       const m = vMap.get(nid);
       if (!m) {
         console.error(`VERIFY: call_log nid ${nid} has no id_map entry`);
         verifyFailures++;
+        verifyFailedNids.add(nid);
         continue;
       }
       const res = await db.execute(sql`
@@ -452,15 +572,46 @@ async function main() {
       if (!hit || !hit.interaction_id) {
         console.error(`VERIFY: call_log nid ${nid} maps to missing/incomplete comm ${m.s2Id}`);
         verifyFailures++;
+        verifyFailedNids.add(nid);
       }
     }
   }
+
+  // ---- advance consumed fingerprints (pre-existing mappings) — after verify
+  // so failed rows stay retryable ----
+  if (!DRY_RUN) {
+    await advanceFingerprints(
+      ID_MAP_ENTITY,
+      pendingAdvance.filter((p) => !verifyFailedNids.has(p.s1Id)),
+      LOGIC_VERSION,
+    );
+  }
+
+  // ---- deletion sweep: source = the IN-SCOPE staged nid set ----
+  // Covers BOTH S1-deleted log nodes and rows whose type moved out of MSR
+  // scope. Comms are safe child rows (ruled): deleteComm hard-deletes the
+  // comm (FK cascades the interaction), mapping dropped.
+  const sweep = await sweepDeletions({
+    entity: ID_MAP_ENTITY,
+    loaders: [LOADER],
+    sourceIds: inScopeNids,
+    dryRun: DRY_RUN,
+    policy: async (c) => ({
+      action: "delete",
+      apply: async () => {
+        await loaderScope(() => storage.comm.deleteComm(c.s2Id));
+      },
+    }),
+  });
+  summary.deleted += sweep.deleted;
+  report.sweep = { candidates: sweep.candidates, deleted: sweep.deleted, alreadyHandled: sweep.alreadyHandled };
 
   progress.stop();
 
   report.stats = stats;
   report.byReason = byReason;
   report.byChannel = byChannel;
+  report.fastPathSkips = fastPathSkips;
   // Triage aggregates (counts only): every unmapped category by normalized
   // value; distinct unresolved/dangling handler nids by staged bundle plus a
   // not-staged count — future runs are self-explanatory without re-profiling.
@@ -469,23 +620,34 @@ async function main() {
     byStagedBundle: unresolvedHandlersByBundle,
     notStaged: unresolvedHandlersNotStaged,
   };
-  report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;
-  report.verifyFailures = verifyFailures;
 
-  const disallowed = rejects.disallowedReasons(ALLOWED_REJECTS);
-  console.log(JSON.stringify(report, null, 2));
-  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, allowedRejects: ALLOWED_REJECTS }, report);
+  const result = buildLoaderResult({
+    loader: LOADER,
+    logicVersion: LOGIC_VERSION,
+    dryRun: DRY_RUN,
+    forceReconcile: FORCE_RECONCILE,
+    summary,
+    rejects,
+    allowedRejects: ALLOWED_REJECTS,
+    verifyFailures,
+    findings: sweep.findings,
+    allowedFindings: ALLOWED_FINDINGS,
+    detail: report,
+  });
+  emitLoaderResult(result);
+  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, forceReconcile: FORCE_RECONCILE }, result as unknown as Record<string, unknown>);
 
-  if (verifyFailures > 0) process.exit(1);
-  if (disallowed.length > 0) {
+  if (result.rejectGate.status === "fail") {
     console.error(
-      `FAIL: reject reason(s) not allowed for this run: ${disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
+      `FAIL: reject reason(s) not allowed for this run: ${result.rejectGate.disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
         `Every expected reject class must be explicitly allowed via --allow-rejects.`,
     );
-    process.exit(1);
   }
-  process.exit(0);
+  if (result.blockingFindings.length > 0) {
+    console.error(`FAIL: ${result.blockingFindings.length} blocking sync finding(s) — resolve or acknowledge via --allow-findings.`);
+  }
+  process.exit(loaderExitCode(result));
 }
 
 main().catch((err) => {

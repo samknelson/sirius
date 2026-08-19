@@ -24,7 +24,19 @@
  * across 540 workers — one worker holds codes at two shops, which becomes two
  * rows under two types (fine). Duplicate codes within one employer violate
  * the (type, value) constraint and are surfaced as `duplicate_code` rejects,
- * never silently skipped.
+ * never silently skipped. (A duplicate whose twin was fast-path-skipped this
+ * run is caught by the existing-row clash check instead and surfaces as
+ * code_owned_by_other_worker — same gate, different reason label.)
+ *
+ * Sync semantics (Task 293 — RUNBOOK §10): RECONCILING. Consumed fingerprint
+ * = the staged node's content hash (worker/shop retargets and code edits all
+ * change the node). S1-wins on fingerprint mismatch: workerId, typeId, and
+ * value all converge via updateWorkerId. Deletion sweep: employee-id rows are
+ * SAFE CHILD ROWS — S1-deleted sirius_employee nodes hard-delete the S2
+ * worker_ids row (loader-scoped mappings only; adopted operator rows were
+ * mapped by this loader and are swept too — ruled acceptable, the adopt
+ * asserted S1 ownership of the code). Per-employer ID TYPES are never swept
+ * (harmless when empty, shared feature surface).
  *
  * REJECT POLICY (fail loud): every reject reason present in the run must be
  * explicitly allowed via `--allow-rejects r1,r2,...` or the run exits 1
@@ -33,22 +45,34 @@
  * allowances first; every allowance must be a conscious ruling.
  *
  * Writes go through storage (workerIds / unified options) under notification
- * suppression. Idempotent via id_map entity "employee-id"; matched rows
- * drift-reconcile the code value. Failures are reported as SANITIZED codes
- * (storage_error) — never raw error text (HIPAA).
+ * suppression. Idempotent via id_map entity "employee-id". Failures are
+ * reported as SANITIZED codes (storage_error) — never raw error text (HIPAA).
  *
  * Usage:
- *   npx tsx scripts/s1-migration/load-employee-ids.ts [--dry-run] [--allow-rejects r1,r2]
+ *   npx tsx scripts/s1-migration/load-employee-ids.ts [--dry-run]
+ *       [--force-reconcile] [--allow-rejects r1,r2] [--allow-findings k1,k2]
  *
  * Output is AGGREGATES ONLY (plus S1 nids / opaque ids) — safe inside the
  * HIPAA boundary.
  */
+import { db } from "../../server/storage/db";
+import { sql } from "drizzle-orm";
 import { storage } from "../../server/storage/database";
 import { withNotificationsSuppressed } from "../../server/middleware/request-context";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
-import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
-import { RejectLog, loadStaged, strOf, targetNidOf } from "./lib/loader-utils";
+import { ensureIdMap, getMappings, putMapping, advanceFingerprints } from "./lib/idmap";
+import { RejectLog, loadStaged, strOf, targetNidOf, type StagedNode } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
+import {
+  buildLoaderResult,
+  classifyRow,
+  emitLoaderResult,
+  emptySummary,
+  loaderExitCode,
+  parseAllowedFindings,
+  parseForceReconcile,
+  sweepDeletions,
+} from "./lib/sync";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const ALLOWED_REJECTS: string[] = (() => {
@@ -56,6 +80,10 @@ const ALLOWED_REJECTS: string[] = (() => {
   return i >= 0 ? String(process.argv[i + 1] ?? "").split(",").filter(Boolean) : [];
 })();
 const LOADER = "n4-employee-ids";
+/** BUMP whenever transform logic changes so unchanged S1 rows reprocess. */
+const LOGIC_VERSION = 1;
+const FORCE_RECONCILE = parseForceReconcile();
+const ALLOWED_FINDINGS = parseAllowedFindings();
 
 /** All reasons are row-skipping (fatal) — the verify pass skips exactly
  * these. Kept explicit so a future annotation-style reason can't silently
@@ -82,7 +110,7 @@ async function main() {
   await ensureStagingSchema();
   await ensureIdMap();
 
-  const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowedRejects: ALLOWED_REJECTS };
+  const report: Record<string, unknown> = {};
   const rejects = new RejectLog();
 
   // Heartbeat from process start — staged load + bulk id_map lookups emit
@@ -109,13 +137,20 @@ async function main() {
   const { createUnifiedOptionsStorage } = await import("../../server/storage/unified-options");
   const options = createUnifiedOptionsStorage();
 
-  const stats = { matched: 0, created: 0, updated: 0, typesCreated: 0, typesReused: 0 };
+  const stats = { matched: 0, created: 0, updated: 0, adopted: 0, typesCreated: 0, typesReused: 0 };
   /** shopNid → ensured type id (per-run cache). */
   const typeIdByShopNid = new Map<number, string>();
   /** (typeId|value) → nid seen this run — duplicate codes within one employer. */
   const seenTypeValue = new Map<string, number>();
   /** nid → expected row shape (for the verify pass). */
   const expected = new Map<number, { workerId: string; typeId: string; value: string }>();
+
+  const summary = emptySummary();
+  let fastPathSkips = 0;
+  const pendingAdvance: Array<{ s1Id: number; fingerprint: string | null }> = [];
+  const verifyFailedNids = new Set<number>();
+  /** rows actually processed this run (changed/new) — verify scope */
+  const processedRows: StagedNode[] = [];
 
   async function ensureTypeForShop(shopNid: number, employerS2Id: string): Promise<string | null> {
     const cached = typeIdByShopNid.get(shopNid);
@@ -146,6 +181,14 @@ async function main() {
   progress.phase(null);
   for (const r of rows) {
     progress.add(1);
+    const mapped = idMap.get(r.nid);
+    const fp = r.contentHash;
+    if (classifyRow(mapped, fp, LOGIC_VERSION, FORCE_RECONCILE) === "unchanged") {
+      summary.unchanged++;
+      fastPathSkips++;
+      continue;
+    }
+    processedRows.push(r);
     // ---- resolve + validate EVERYTHING before any write for this row ----
     const workerNid = targetNidOf(r.fields, "field_sirius_worker");
     if (workerNid == null) {
@@ -194,30 +237,42 @@ async function main() {
     }
     seenTypeValue.set(tvKey, r.nid);
 
-    // ---- matched: drift-reconcile the value; new: create ----
-    const mapped = idMap.get(r.nid);
-    if (mapped) {
+    // ---- matched: full reconcile (workerId/typeId/value — S1 wins); new: create ----
+    const mapped2 = mapped;
+    if (mapped2) {
       stats.matched++;
       expected.set(r.nid, { workerId: worker.s2Id, typeId, value });
-      if (!DRY_RUN) {
-        const row = await storage.workerIds.getWorkerId(mapped.s2Id);
-        if (row && (row.value !== value || row.typeId !== typeId)) {
-          try {
-            await withNotificationsSuppressed(() =>
-              storage.workerIds.updateWorkerId(mapped.s2Id, { typeId: typeId!, value }),
-            );
-            stats.updated++;
-          } catch {
-            rejects.add("worker_id_update_failed", { nid: r.nid, code: "storage_error" }, r.nid);
-          }
-        }
-        // structural drift (workerId) is NOT auto-fixed — verify flags it
+      if (DRY_RUN) {
+        summary.updated++; // classification says changed; counts approximate under --dry-run
+        continue;
       }
+      const row = await storage.workerIds.getWorkerId(mapped2.s2Id);
+      if (!row) {
+        console.error(`VERIFY: employee-id nid ${r.nid} maps to missing worker_ids row ${mapped2.s2Id}`);
+        verifyFailedNids.add(r.nid);
+        continue;
+      }
+      if (row.value !== value || row.typeId !== typeId || row.workerId !== worker.s2Id) {
+        try {
+          await withNotificationsSuppressed(() =>
+            storage.workerIds.updateWorkerId(mapped2.s2Id, { workerId: worker.s2Id, typeId: typeId!, value }),
+          );
+          stats.updated++;
+          summary.updated++;
+        } catch {
+          rejects.add("worker_id_update_failed", { nid: r.nid, code: "storage_error" }, r.nid);
+          continue; // no fingerprint advance — retries next run
+        }
+      } else {
+        summary.unchanged++; // reconciled, proven drift-free
+      }
+      pendingAdvance.push({ s1Id: r.nid, fingerprint: fp });
       continue;
     }
 
     if (DRY_RUN) {
       stats.created++;
+      summary.created++;
       continue;
     }
 
@@ -226,8 +281,15 @@ async function main() {
     if (clash) {
       if (clash.workerId === worker.s2Id) {
         // same worker already carries this code — adopt the row
-        await putMapping("employee-id", r.nid, clash.id, { stub: false, loader: LOADER });
+        await putMapping("employee-id", r.nid, clash.id, {
+          stub: false,
+          loader: LOADER,
+          fingerprint: fp,
+          logicVersion: LOGIC_VERSION,
+        });
         stats.matched++;
+        stats.adopted++;
+        summary.updated++; // mapping written; row itself already matched S1
         expected.set(r.nid, { workerId: worker.s2Id, typeId, value });
       } else {
         rejects.add("code_owned_by_other_worker", { nid: r.nid, shopNid }, r.nid);
@@ -239,11 +301,17 @@ async function main() {
       const created = await withNotificationsSuppressed(() =>
         storage.workerIds.createWorkerId({ workerId: worker.s2Id, typeId, value }),
       );
-      const winner = await putMapping("employee-id", r.nid, created.id, { stub: false, loader: LOADER });
+      const winner = await putMapping("employee-id", r.nid, created.id, {
+        stub: false,
+        loader: LOADER,
+        fingerprint: fp,
+        logicVersion: LOGIC_VERSION,
+      });
       if (winner !== created.id) {
         console.error(`RACE: employee-id nid ${r.nid} already mapped to ${winner}; row ${created.id} may be an orphan`);
       }
       stats.created++;
+      summary.created++;
       expected.set(r.nid, { workerId: worker.s2Id, typeId, value });
     } catch {
       rejects.add("worker_id_create_failed", { nid: r.nid, code: "storage_error" }, r.nid);
@@ -252,52 +320,99 @@ async function main() {
   report.employeeIds = stats;
 
   // ---------------- verify pass ----------------
-  progress.phase("verify", rows.length);
-  let verifyFailures = 0;
+  // Scoped to rows PROCESSED this run (fast-path rows were verified when
+  // last processed; --force-reconcile re-verifies the whole population).
+  progress.phase("verify", processedRows.length);
+  let verifyFailures = verifyFailedNids.size; // missing-row hits from the loop
   if (!DRY_RUN) {
-    const vMap = await getMappings("employee-id", rows.map((r) => r.nid));
-    for (const r of rows) {
+    const vMap = await getMappings("employee-id", processedRows.map((r) => r.nid));
+    for (const r of processedRows) {
       progress.add(1);
       if (rejects.hasAnyIn(r.nid, FATAL_REASONS)) continue;
+      if (verifyFailedNids.has(r.nid)) continue; // already counted above
       const m = vMap.get(r.nid);
       if (!m) {
         console.error(`VERIFY: employee-id nid ${r.nid} has no id_map entry`);
         verifyFailures++;
+        verifyFailedNids.add(r.nid);
         continue;
       }
       const row = await storage.workerIds.getWorkerId(m.s2Id);
       if (!row) {
         console.error(`VERIFY: employee-id nid ${r.nid} maps to missing worker_ids row ${m.s2Id}`);
         verifyFailures++;
+        verifyFailedNids.add(r.nid);
         continue;
       }
       const exp = expected.get(r.nid);
       if (exp && (row.workerId !== exp.workerId || row.typeId !== exp.typeId || row.value !== exp.value)) {
         console.error(`VERIFY: employee-id nid ${r.nid} row does not match expected resolution`);
         verifyFailures++;
+        verifyFailedNids.add(r.nid);
       }
     }
   }
 
+  // ---- advance consumed fingerprints (pre-existing mappings) — after verify
+  // so failed rows stay retryable ----
+  if (!DRY_RUN) {
+    await advanceFingerprints(
+      "employee-id",
+      pendingAdvance.filter((p) => !verifyFailedNids.has(p.s1Id)),
+      LOGIC_VERSION,
+    );
+  }
+
+  // ---- deletion sweep: sirius_employee nodes deleted in S1 ----
+  // Employee-id rows are SAFE CHILD ROWS (ruled): hard-delete the S2
+  // worker_ids row and drop the mapping. deleteWorkerId returns false on a
+  // missing row (idempotent retry-safe).
+  const sweep = await sweepDeletions({
+    entity: "employee-id",
+    loaders: [LOADER],
+    sourceSql: sql`SELECT nid AS s1_id FROM s1_staging.records WHERE bundle = 'sirius_employee'`,
+    dryRun: DRY_RUN,
+    policy: async (c) => ({
+      action: "delete",
+      apply: async () => {
+        await withNotificationsSuppressed(() => storage.workerIds.deleteWorkerId(c.s2Id));
+      },
+    }),
+  });
+  summary.deleted += sweep.deleted;
+  report.sweep = { candidates: sweep.candidates, deleted: sweep.deleted, alreadyHandled: sweep.alreadyHandled };
+
   progress.stop();
 
-  report.rejects = rejects.counts;
+  report.fastPathSkips = fastPathSkips;
   report.rejectSamples = rejects.samples;
-  report.verifyFailures = verifyFailures;
 
-  const disallowed = rejects.disallowedReasons(ALLOWED_REJECTS);
-  console.log(JSON.stringify(report, null, 2));
-  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, allowedRejects: ALLOWED_REJECTS }, report);
+  const result = buildLoaderResult({
+    loader: LOADER,
+    logicVersion: LOGIC_VERSION,
+    dryRun: DRY_RUN,
+    forceReconcile: FORCE_RECONCILE,
+    summary,
+    rejects,
+    allowedRejects: ALLOWED_REJECTS,
+    verifyFailures,
+    findings: sweep.findings,
+    allowedFindings: ALLOWED_FINDINGS,
+    detail: report,
+  });
+  emitLoaderResult(result);
+  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, forceReconcile: FORCE_RECONCILE }, result as unknown as Record<string, unknown>);
 
-  if (verifyFailures > 0) process.exit(1);
-  if (disallowed.length > 0) {
+  if (result.rejectGate.status === "fail") {
     console.error(
-      `FAIL: reject reason(s) not allowed for this run: ${disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
+      `FAIL: reject reason(s) not allowed for this run: ${result.rejectGate.disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
         `Every expected reject class must be explicitly allowed via --allow-rejects (dev synthetic gap: worker_ref_missing).`,
     );
-    process.exit(1);
   }
-  process.exit(0);
+  if (result.blockingFindings.length > 0) {
+    console.error(`FAIL: ${result.blockingFindings.length} blocking sync finding(s) — resolve or acknowledge via --allow-findings.`);
+  }
+  process.exit(loaderExitCode(result));
 }
 
 main().catch((err) => {

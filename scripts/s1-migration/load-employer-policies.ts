@@ -24,11 +24,28 @@
  *      policy nid → S2 policy (id_map "policy", written by load-policies).
  *   3. Validate the WHOLE shop first (any bad entry rejects the whole shop —
  *      never a partial history that would sync a wrong denorm_policy_id).
- *   4. Create employer_policy_history rows through storage (which auto-syncs
- *      employers.denorm_policy_id to the latest-dated row). Idempotent:
- *      existing (date, policyId) rows are adopted, not duplicated.
+ *   4. TRUE DIFF against employer_policy_history (Task 293 sync): create
+ *      missing (date, policyId) rows, DELETE migration-owned rows whose pair
+ *      vanished from the S1 blob (storage auto-resyncs denorm_policy_id on
+ *      both). Foreign (operator-entered) rows are never deleted; identical
+ *      foreign pairs are adopted.
  *   5. Verify denorm_policy_id landed (and matches the S1 current nid when
  *      one is present).
+ *
+ * Sync semantics (Task 293 — RUNBOOK §10): RECONCILING.
+ *   - Anchor id_map entity `employer-policy` (s1_id = shop nid, s2_id =
+ *     employer id) — written only after a shop's history loaded cleanly, so
+ *     rejected shops re-validate every run until fixed or ruled.
+ *   - Consumed fingerprint = targeted hash of the EXTRACTED policy block plus
+ *     each entry's policy-resolution outcome — a rate edit elsewhere in the
+ *     shop JSON does NOT reprocess this loader, but a policy nid that becomes
+ *     resolvable (load-policies re-run) does. Staged NULL content hash is
+ *     irrelevant here (the hash is computed from the block, not the node).
+ *   - Unchanged shops skip via the fingerprint fast path (no storage reads).
+ *   - Deletion sweep: a shop whose ledger.policy block VANISHED (or whose
+ *     node was deleted in S1) has its migration-owned history rows deleted
+ *     (denorm auto-resyncs; operator rows survive). Shops with unparseable
+ *     JSON are kept in the source set — never sweep over a parse failure.
  *
  * Ordering: AFTER load-employers (employer id_map) and load-policies (policy
  * id_map). Elections need no rerun — policy resolution is derived at read
@@ -45,27 +62,57 @@
  *   current_mismatch         — ledger.policy.nid differs from the latest ebh
  *                              entry (S1 self-inconsistent — needs a ruling)
  *   history_create_failed    — storage write failed (sanitized code only)
+ *   history_delete_failed    — reconcile delete failed (sanitized code only)
  *
  * Output is AGGREGATES ONLY — safe inside the HIPAA boundary (nids are node
  * ids, consistent with the other loaders' reject samples).
  *
  * Usage:
- *   npx tsx scripts/s1-migration/load-employer-policies.ts [--dry-run] [--allow-rejects a,b]
+ *   npx tsx scripts/s1-migration/load-employer-policies.ts [--dry-run]
+ *       [--force-reconcile] [--allow-rejects a,b] [--allow-findings k1,k2]
  */
 import { storage } from "../../server/storage/database";
 import { withNotificationsSuppressed } from "../../server/middleware/request-context";
 import { runInTransaction } from "../../server/storage/transaction-context";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
-import { ensureIdMap, getMappings } from "./lib/idmap";
+import { ensureIdMap, getMappings, putMapping, advanceFingerprints } from "./lib/idmap";
 import { RejectLog, loadStaged, toYmd, throttleStorageOpLogs } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
+import {
+  buildLoaderResult,
+  classifyRow,
+  contentHashOf,
+  emitLoaderResult,
+  emptySummary,
+  loaderExitCode,
+  parseAllowedFindings,
+  parseForceReconcile,
+  sweepDeletions,
+} from "./lib/sync";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const LOADER = "t-employer-policies";
+const ID_MAP_ENTITY = "employer-policy";
+/** BUMP whenever transform logic changes so unchanged S1 rows reprocess. */
+const LOGIC_VERSION = 1;
 const ALLOWED_REJECTS: string[] = (() => {
   const i = process.argv.indexOf("--allow-rejects");
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1].split(",").map((s) => s.trim()).filter(Boolean) : [];
 })();
+const FORCE_RECONCILE = parseForceReconcile();
+const ALLOWED_FINDINGS = parseAllowedFindings();
+
+/** Every reject is whole-shop fatal — advance/verify skip exactly these. */
+const FATAL_REASONS = [
+  "bad_json",
+  "shop_unmapped",
+  "policy_unmapped",
+  "bad_date",
+  "current_without_history",
+  "current_mismatch",
+  "history_create_failed",
+  "history_delete_failed",
+] as const;
 
 interface EbhEntry {
   s1PolicyNid: number;
@@ -111,8 +158,12 @@ async function main() {
 
   throttleStorageOpLogs();
 
-  const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowedRejects: ALLOWED_REJECTS };
+  const report: Record<string, unknown> = {};
   const rejects = new RejectLog();
+  const summary = emptySummary();
+  let fastPathSkips = 0;
+  const pendingAdvance: Array<{ s1Id: number; fingerprint: string | null }> = [];
+  const verifyFailedNids = new Set<number>();
   const progress = makeProgressLogger(LOADER, 0);
   progress.phase("pre-scan");
 
@@ -126,6 +177,9 @@ async function main() {
     currentS1Nid: number | null;
   };
   const withPolicy: ShopPolicy[] = [];
+  /** Sweep source set: every shop that still CARRIES a policy block — plus
+   * unparseable-JSON shops (never sweep over a parse failure). */
+  const sourceNids = new Set<number>();
   let shopsWithJson = 0;
   let shopsWithoutPolicy = 0;
 
@@ -135,6 +189,7 @@ async function main() {
     shopsWithJson++;
     if (parseError) {
       rejects.add("bad_json", { nid: s.nid }, s.nid);
+      sourceNids.add(s.nid); // unparseable ≠ removed — keep
       continue;
     }
     const pol = (json as any)?.ledger?.policy;
@@ -142,6 +197,7 @@ async function main() {
       shopsWithoutPolicy++;
       continue;
     }
+    sourceNids.add(s.nid);
     const ebhRaw = Array.isArray((pol as any).ebh) ? ((pol as any).ebh as unknown[]) : [];
     const entries: Array<{ s1PolicyNid: number; rawDate: unknown }> = [];
     for (const e of ebhRaw) {
@@ -159,6 +215,7 @@ async function main() {
 
   // ── Batched id_map resolution ─────────────────────────────────────────────
   const employerMap = await getMappings("employer", withPolicy.map((s) => s.nid));
+  const anchorMap = await getMappings(ID_MAP_ENTITY, withPolicy.map((s) => s.nid));
   const allPolicyNids = [
     ...new Set(
       withPolicy.flatMap((s) => [
@@ -170,20 +227,46 @@ async function main() {
   const policyMap = await getMappings("policy", allPolicyNids);
   report.distinctS1PolicyNids = allPolicyNids.length;
 
-  // ── Pass 2: validate whole-shop, then write ───────────────────────────────
+  // ── Pass 2: classify, validate whole-shop, then diff + write ─────────────
   progress.phase(null);
   progress.setTotal(withPolicy.length);
   let created = 0;
   let adopted = 0;
+  let removed = 0;
   let employersTouched = 0;
   let denormRepaired = 0;
-  const okShops: Array<{ nid: number; employerId: string; expectedCurrentPolicyId: string | null }> = [];
+  const okShops: Array<{ nid: number; employerId: string; expectedCurrentPolicyId: string | null; isNew: boolean }> = [];
 
   for (const shop of withPolicy) {
     progress.add(1);
     const emp = employerMap.get(shop.nid);
     if (!emp || emp.stub) {
       rejects.add("shop_unmapped", { nid: shop.nid, stub: emp?.stub ?? false }, shop.nid);
+      continue;
+    }
+
+    // Consumed fingerprint = the extracted block + each entry's resolution
+    // outcome (computed BEFORE validation so unchanged-but-broken shops
+    // classify identically each run — but broken shops never get a mapping,
+    // so they re-validate until fixed or ruled anyway).
+    const fp = contentHashOf({
+      entries: shop.entries.map((e) => ({
+        nid: Number.isFinite(e.s1PolicyNid) ? e.s1PolicyNid : String(e.s1PolicyNid),
+        date: e.rawDate ?? null,
+        s2: Number.isFinite(e.s1PolicyNid)
+          ? (() => {
+              const m = policyMap.get(e.s1PolicyNid);
+              return m && !m.stub ? m.s2Id : "unresolved";
+            })()
+          : "unresolved",
+      })),
+      current: shop.currentS1Nid,
+      employer: emp.s2Id,
+    });
+    const mapping = anchorMap.get(shop.nid);
+    if (classifyRow(mapping, fp, LOGIC_VERSION, FORCE_RECONCILE) === "unchanged") {
+      summary.unchanged++;
+      fastPathSkips++;
       continue;
     }
 
@@ -223,7 +306,11 @@ async function main() {
         }
       }
     }
-    if (shopRejected || valid.length === 0) continue;
+    // A mapped shop whose block became EMPTY of valid entries but still has a
+    // policy object is unusual (ebh cleared by hand) — reconcile to the empty
+    // owned set rather than skipping, so S1-removed rows disappear.
+    if (shopRejected) continue;
+    if (valid.length === 0 && !mapping) continue; // nothing to load, nothing owned
 
     // Dedupe identical (date, policy) pairs within the S1 blob itself.
     const seen = new Set<string>();
@@ -234,25 +321,34 @@ async function main() {
       return true;
     });
 
-    const expectedCurrent = entries.reduce((a, b) => (b.date >= a.date ? b : a));
-    const expectedCurrentPolicyId = policyMap.get(expectedCurrent.s1PolicyNid)!.s2Id;
+    const expectedCurrent = entries.length > 0 ? entries.reduce((a, b) => (b.date >= a.date ? b : a)) : null;
+    const expectedCurrentPolicyId = expectedCurrent ? policyMap.get(expectedCurrent.s1PolicyNid)!.s2Id : null;
 
     if (DRY_RUN) {
       created += entries.length;
-      okShops.push({ nid: shop.nid, employerId: emp.s2Id, expectedCurrentPolicyId });
+      if (mapping) summary.updated++; // approximate under --dry-run
+      else summary.created++;
+      okShops.push({ nid: shop.nid, employerId: emp.s2Id, expectedCurrentPolicyId, isNew: !mapping });
       continue;
     }
 
     try {
       const existing = await storage.employerPolicyHistory.getEmployerPolicyHistory(emp.s2Id);
       const existingKeys = new Set(existing.map((r: any) => `${r.date}|${r.policyId}`));
+      const desiredKeys = new Set(entries.map((e) => `${e.date}|${policyMap.get(e.s1PolicyNid)!.s2Id}`));
       const toCreate = entries.filter((e) => !existingKeys.has(`${e.date}|${policyMap.get(e.s1PolicyNid)!.s2Id}`));
+      // Reconcile deletes: migration-owned rows whose (date, policyId) pair
+      // vanished from the S1 blob. Foreign rows are NEVER deleted.
+      const toDelete = (existing as any[]).filter(
+        (r) => (r.data as any)?.source === "s1-migration" && !desiredKeys.has(`${r.date}|${r.policyId}`),
+      );
       adopted += entries.length - toCreate.length;
 
-      if (toCreate.length > 0) {
-        // One transaction per shop: either ALL of this shop's rows land (and
-        // the denorm sync sees the complete history) or none do — a mid-shop
-        // failure must never leave a partial history driving denorm_policy_id.
+      if (toCreate.length > 0 || toDelete.length > 0) {
+        // One transaction per shop: either ALL of this shop's adds+removes
+        // land (and the denorm sync sees the complete history) or none do — a
+        // mid-shop failure must never leave a partial history driving
+        // denorm_policy_id.
         await withNotificationsSuppressed(() =>
           runInTransaction(async () => {
             for (const e of toCreate) {
@@ -263,36 +359,68 @@ async function main() {
                 data: { source: "s1-migration", s1ShopNid: shop.nid, s1PolicyNid: e.s1PolicyNid },
               });
             }
+            for (const r of toDelete) {
+              const ok = await storage.employerPolicyHistory.deleteEmployerPolicyHistory(r.id);
+              if (!ok) throw new Error("history_delete_failed");
+            }
           }),
         );
         created += toCreate.length;
+        removed += toDelete.length;
         employersTouched++;
+        if (mapping) summary.updated++;
+        else summary.created++;
       } else {
         // Adopt-only rerun: rows already exist, but a past crash between
         // insert-commit and denorm sync (or a manual edit) can leave
         // denorm_policy_id stale. Reconcile — only when a migration-owned row
         // is the rightful winner (foreign winners belong to S2 operators).
         const winner = winnerOf(existing as any[]);
+        let repaired = false;
         if (winner && (winner.data as any)?.source === "s1-migration") {
           const empRow = await storage.employers.getEmployer(emp.s2Id);
           if (empRow && (((empRow as any).denormPolicyId ?? null) !== winner.policyId)) {
             await withNotificationsSuppressed(() => storage.employers.updateEmployerPolicy(emp.s2Id, winner.policyId));
             denormRepaired++;
+            repaired = true;
           }
         }
+        if (mapping) {
+          if (repaired) summary.updated++;
+          else summary.unchanged++;
+        } else {
+          summary.created++; // first mapping over pre-existing rows (adopt)
+        }
       }
-      okShops.push({ nid: shop.nid, employerId: emp.s2Id, expectedCurrentPolicyId });
+
+      if (!mapping) {
+        await putMapping(ID_MAP_ENTITY, shop.nid, emp.s2Id, {
+          stub: false,
+          loader: LOADER,
+          fingerprint: fp,
+          logicVersion: LOGIC_VERSION,
+        });
+      } else {
+        pendingAdvance.push({ s1Id: shop.nid, fingerprint: fp });
+      }
+      okShops.push({ nid: shop.nid, employerId: emp.s2Id, expectedCurrentPolicyId, isNew: !mapping });
     } catch (err) {
       // Sanitized: class/code only — never raw error text (HIPAA boundary).
       const code = err instanceof Error ? err.constructor.name : "unknown";
-      rejects.add("history_create_failed", { nid: shop.nid, code }, shop.nid);
+      if (err instanceof Error && err.message === "history_delete_failed") {
+        rejects.add("history_delete_failed", { nid: shop.nid }, shop.nid);
+      } else {
+        rejects.add("history_create_failed", { nid: shop.nid, code }, shop.nid);
+      }
     }
   }
 
   report.historyCreated = created;
   report.historyAdopted = adopted;
+  report.historyRemoved = removed;
   report.employersTouched = employersTouched;
   report.denormRepaired = denormRepaired;
+  report.fastPathSkips = fastPathSkips;
 
   // ── Verify: denorm_policy_id synced for every ok shop ─────────────────────
   let verifyFailures = 0;
@@ -304,14 +432,19 @@ async function main() {
       if (!emp) {
         console.error(`VERIFY: shop nid ${ok.nid} maps to missing employer ${ok.employerId}`);
         verifyFailures++;
+        verifyFailedNids.add(ok.nid);
         continue;
       }
       const denorm = (emp as any).denormPolicyId ?? null;
       const history = await storage.employerPolicyHistory.getEmployerPolicyHistory(ok.employerId);
       const winner = winnerOf(history as any[]);
       if (!winner) {
-        console.error(`VERIFY: shop nid ${ok.nid} employer has no policy history after load`);
-        verifyFailures++;
+        // an all-owned history reconciled away is legal only when S1 says so
+        if (ok.expectedCurrentPolicyId != null) {
+          console.error(`VERIFY: shop nid ${ok.nid} employer has no policy history after load`);
+          verifyFailures++;
+          verifyFailedNids.add(ok.nid);
+        }
         continue;
       }
       // denorm must equal the row the storage ordering actually picks —
@@ -319,6 +452,7 @@ async function main() {
       if (denorm !== winner.policyId) {
         console.error(`VERIFY: shop nid ${ok.nid} denorm_policy_id != winning history row`);
         verifyFailures++;
+        verifyFailedNids.add(ok.nid);
         continue;
       }
       // And when a migration row wins, it must be the S1 latest-ebh policy.
@@ -329,27 +463,71 @@ async function main() {
       ) {
         console.error(`VERIFY: shop nid ${ok.nid} winning migration row != latest S1 ebh policy`);
         verifyFailures++;
+        verifyFailedNids.add(ok.nid);
       }
     }
   }
 
+  // ---- advance consumed fingerprints (pre-existing mappings) — post-verify ----
+  if (!DRY_RUN) {
+    await advanceFingerprints(
+      ID_MAP_ENTITY,
+      pendingAdvance.filter((p) => !verifyFailedNids.has(p.s1Id) && !rejects.hasAnyIn(p.s1Id, FATAL_REASONS)),
+      LOGIC_VERSION,
+    );
+  }
+
+  // ---- deletion sweep: shops whose policy block vanished (or node deleted) ----
+  // Migration-owned history rows are SAFE CHILD ROWS: deleted (denorm
+  // auto-resyncs per delete); operator-entered rows always survive.
+  const sweep = await sweepDeletions({
+    entity: ID_MAP_ENTITY,
+    loaders: [LOADER],
+    sourceIds: sourceNids,
+    dryRun: DRY_RUN,
+    policy: async (c) => ({
+      action: "delete",
+      apply: async () => {
+        const rows = await storage.employerPolicyHistory.getEmployerPolicyHistory(c.s2Id);
+        for (const r of rows as any[]) {
+          if ((r.data as any)?.source !== "s1-migration") continue;
+          await withNotificationsSuppressed(() => storage.employerPolicyHistory.deleteEmployerPolicyHistory(r.id));
+        }
+      },
+    }),
+  });
+  summary.deleted += sweep.deleted;
+  report.sweep = { candidates: sweep.candidates, deleted: sweep.deleted, alreadyHandled: sweep.alreadyHandled };
+
   progress.stop();
-  report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;
-  report.verifyFailures = verifyFailures;
 
-  console.log(JSON.stringify(report, null, 2));
-  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER }, report);
+  const result = buildLoaderResult({
+    loader: LOADER,
+    logicVersion: LOGIC_VERSION,
+    dryRun: DRY_RUN,
+    forceReconcile: FORCE_RECONCILE,
+    summary,
+    rejects,
+    allowedRejects: ALLOWED_REJECTS,
+    verifyFailures,
+    findings: sweep.findings,
+    allowedFindings: ALLOWED_FINDINGS,
+    detail: report,
+  });
+  emitLoaderResult(result);
+  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, forceReconcile: FORCE_RECONCILE }, result as unknown as Record<string, unknown>);
 
-  const disallowed = rejects.disallowedReasons(ALLOWED_REJECTS);
-  if (disallowed.length > 0) {
+  if (result.rejectGate.status === "fail") {
     console.error(
-      `FAIL: reject reason(s) not allowed for this run: ${disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
+      `FAIL: reject reason(s) not allowed for this run: ${result.rejectGate.disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
         `Every expected reject class must be explicitly allowed via --allow-rejects.`,
     );
-    process.exit(1);
   }
-  process.exit(verifyFailures > 0 ? 1 : 0);
+  if (result.blockingFindings.length > 0) {
+    console.error(`FAIL: ${result.blockingFindings.length} blocking sync finding(s) — resolve or acknowledge via --allow-findings.`);
+  }
+  process.exit(loaderExitCode(result));
 }
 
 main().catch((err) => {

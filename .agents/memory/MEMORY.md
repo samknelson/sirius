@@ -125,5 +125,8 @@
 - [Loader writes precede reject gate](loader-writes-before-reject-gate.md) — a run failing on disallowed rejects already wrote; smokes need --allow-rejects on run 1 (dry-run priming); FK crash = dangling id_map.
 - [S1 loader run order](s1-loader-run-order.md) — t18 references resolve via id_map; loading ledger before payments/WMB silently types everything s1-unknown; adopt never re-resolves.
 - [FK parent delete race](fk-parent-delete-race.md) — deleting an ON DELETE SET NULL parent needs FOR UPDATE + recheck in one tx, or concurrent child inserts get silently NULLed.
-- [S1 sync fingerprints & sweeps](s1-sync-fingerprints.md) — fps = content not resolution env; dep fps = identity; stamp INSERT/advance post-verify; report-only sweeps relabel; self-heal; hours sidecar.
+- [S1 sync fingerprints & sweeps](s1-sync-fingerprints.md) — fps = content not resolution env; dep fps = identity; anchor-entity, owned-set, shared-child reconcile patterns; sweeps relabel; sidecar.
+- [S1 sync reconcile allowances](s1-sync-reconcile-allowances.md) — full reconcile re-validates everything; pre-existing rejects recur every run (fps never advance) and need vetted stable allow-lists.
+- [Soft-delete vs set-reconcile](soft-delete-vs-set-reconcile.md) — check delete semantics first; reconcile reads must filter is_active or the already-check matches dead rows and skips re-creates.
+- [S1 loader fund-config prereqs](s1-loader-fund-config-prereqs.md) — employer-rates needs the one enabled bao-hourly charge config; copy-fund-config doesn't provide it; dev smokes seed transiently.
 - [Span→month sync scratch table](span-month-sync-scratch-table.md) — derived-set loaders diff a persisted desired-set scratch (fps on scratch, not id_map); anchors repoint-don't-reject.

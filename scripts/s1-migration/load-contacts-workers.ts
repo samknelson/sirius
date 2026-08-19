@@ -25,10 +25,15 @@
  *   - phones (T5): strip non-digits → E.164 (+1, len 10 or 11-leading-1);
  *     field_sirius_phone is_primary=true, field_sirius_phone_alt "Alt";
  *     rejects counted. Twilio validation is NOT invoked (bulk mode).
+ *     SYNC: phones reconcile as a SET — loader-owned rows (friendly names
+ *     "Primary"/"Alt") whose number vanished from S1 are DELETED; rows the
+ *     operator added under other names are never touched.
  *   - address (T13): compound merge via createOrMatchAddress (idempotent by
  *     normalized match), source="import" (closest AddressSource to the
  *     spec's 's1-migration'), geo left/top as lon/lat ONLY when the bbox is
- *     degenerate (left=right, top=bottom) — else coordinates are rejected
+ *     degenerate (left=right, top=bottom) — else coordinates are rejected.
+ *     SYNC: import-sourced rows that no longer match the (single) staged S1
+ *     address are DELETED; rows with any other source are operator-owned.
  *   - stub absorption: if a contact's referencing worker was stubbed by the
  *     hours loader, ADOPT the stub worker's auto-created contact row instead
  *     of creating a duplicate (update name/email in place)
@@ -62,25 +67,46 @@
  *     (Q36 review queue). Masked snapshot values fail the 9-digit rule and
  *     are counted (expected in dev, must be ~0 in production).
  *   - dob/gender → the worker's CONTACT (updateBirthDate/updateGender);
- *     gender tid resolves via id_map term else options_gender name match
+ *     gender tid resolves via id_map term else options_gender name match.
+ *     SYNC: dob/gender removal in S1 clears the contact fields (only when a
+ *     worker node exists as the source; parse failures keep existing values
+ *     and reject instead of clearing).
  *   - worker_ids (06 §4.9, amended 2026-08-06): nid → "Legacy NID",
  *     _id2 → "Union ID", _id3 → "External ID", _aat → "AAT"; NO "Sirius ID"
  *     row anymore (the value lives on workers.sirius_id itself); types
  *     ensured via unified options; (type, value) is UNIQUE — cross-worker
- *     collisions are rejects
+ *     collisions are rejects.
+ *     SYNC: the four loader types reconcile as sets — S2 rows of those types
+ *     equal the S1 value (S1-wins: changed values replace the old row,
+ *     removed values delete it). Rows under any OTHER type are untouched.
  *   - field_sirius_aat_required (T14 Yes/No) → workers.data.aatRequired
+ *     (merged into workers.data; other data keys preserved; key removed when
+ *     the S1 field disappears)
  *   - contact-style fields directly on the worker bundle are MIRRORS — the
  *     contact node wins (N10); they are not read
  *   - dispatch/member-status/denorm/headshot fields: out of scope here
- *     (member-status association = T6 pending N12 target schema; headshot =
- *     T10 file transfer, later)
+ *
+ * Sync semantics (Task 292/293 — RUNBOOK §10): RECONCILING. Consumed
+ * fingerprints: workers use the staged node content_hash directly; contacts
+ * use a combined hash of (contact node, referencing worker node — dob/gender
+ * source, shared-email plan outcome) so ownership changes reprocess exactly
+ * the affected contacts. Unchanged rows skip all storage reads (fast path).
+ * The verify pass covers rows PROCESSED this run (fast-path rows were
+ * verified when last processed; --force-reconcile re-verifies everything).
+ * Deletion sweeps: contacts and workers are HIGH BLAST RADIUS — S1 deletions
+ * are report-only findings (`deleted_in_s1`, blocking unless allowed via
+ * --allow-findings deleted_in_s1); nothing is auto-deleted. Known limits:
+ * a contact/worker email or SSN deferred by a cross-row collision is NOT
+ * fingerprint-tracked against the blocker's release — those rows skip
+ * fingerprint advance so they retry on every run until clean.
  *
  * Writes go through the storage layer under notification suppression.
  * Idempotent: re-runs resolve via id_map and only write on drift.
  *
  * Usage:
  *   npx tsx scripts/s1-migration/load-contacts-workers.ts [--dry-run]
- *       [--allow-rejects shared_email_multiple_owners]
+ *       [--force-reconcile] [--allow-rejects class1,class2]
+ *       [--allow-findings deleted_in_s1]
  *
  * Output is AGGREGATES ONLY (plus S1 nids / opaque ids) — safe inside the
  * HIPAA boundary. Email addresses are NEVER printed; shared-address report
@@ -97,21 +123,53 @@ import {
   loadRawUserContacts,
   loadRawUserMails,
 } from "./lib/staging";
-import { ensureIdMap, getMappings, putMapping, markAbsorbed } from "./lib/idmap";
-import { throttleStorageOpLogs } from "./lib/loader-utils";
+import { ensureIdMap, getMappings, putMapping, markAbsorbed, advanceFingerprints } from "./lib/idmap";
+import {
+  throttleStorageOpLogs,
+  RejectLog,
+  loadStaged,
+  scalarOf,
+  strOf,
+  tidOf,
+  targetNidOf,
+  toE164,
+  yesNo,
+  toYmd,
+  type StagedNode,
+} from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
+import {
+  buildLoaderResult,
+  canonicalJson,
+  classifyRow,
+  combineFingerprints,
+  contentHashOf,
+  emitLoaderResult,
+  emptySummary,
+  loaderExitCode,
+  parseAllowedFindings,
+  parseForceReconcile,
+  sweepDeletions,
+  type SyncFinding,
+} from "./lib/sync";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 /** Reject classes the operator explicitly allows for THIS run (comma-sep).
- * Only FATAL classes consult this list — today that is exactly
- * `shared_email_multiple_owners` (sirius_id collisions have NO allow flag by
- * ruling). Allowing it defers the affected addresses (all contacts null). */
+ * EVERY reject reason present in a run must be allowed or the run fails
+ * (standard reject gate). `shared_email_multiple_owners` additionally
+ * aborts in the pre-scan (before any write) unless allowed — allowing it
+ * defers the affected addresses (all contacts null). sirius_id collisions
+ * have NO allow flag by ruling. */
 const ALLOWED_REJECTS: string[] = (() => {
   const i = process.argv.indexOf("--allow-rejects");
   return i >= 0 ? String(process.argv[i + 1] ?? "").split(",").map((s) => s.trim()).filter(Boolean) : [];
 })();
 const LOADER = "t3t1-contacts-workers";
-const REJECT_SAMPLE_CAP = 25;
+/** Loader logic version — BUMP whenever transform logic changes so unchanged
+ * S1 rows reprocess into the corrected S2 shape on their next run. */
+const LOGIC_VERSION = 1;
+const FORCE_RECONCILE = parseForceReconcile();
+const ALLOWED_FINDINGS = parseAllowedFindings();
 
 // ---------- placeholder email suppression (T12 ruling) ----------
 /** Exact addresses (lowercased) that must never be stored in contacts.email.
@@ -131,80 +189,10 @@ function isPlaceholderEmail(email: string): boolean {
   return false;
 }
 
-interface StagedNode {
-  nid: number;
-  title: string | null;
-  fields: Record<string, unknown>;
-}
-
-// ---------- field helpers (staged D7 shapes: {value}, scalar, array) ----------
-
-function scalarOf(v: unknown): unknown {
-  const s = Array.isArray(v) ? v[0] : v;
-  if (s && typeof s === "object" && "value" in (s as Record<string, unknown>)) {
-    return (s as Record<string, unknown>).value;
-  }
-  return s;
-}
-
-function strOf(fields: Record<string, unknown>, key: string): string | null {
-  const v = scalarOf(fields[key]);
-  if (v == null) return null;
-  const s = String(v).trim();
-  return s.length > 0 ? s : null;
-}
-
-function tidOf(fields: Record<string, unknown>, key: string): number | null {
-  const v = scalarOf(fields[key]);
-  if (typeof v === "number") return v;
-  if (typeof v === "string" && /^\d+$/.test(v)) return Number(v);
-  if (v && typeof v === "object" && "tid" in (v as Record<string, unknown>)) {
-    return Number((v as Record<string, unknown>).tid) || null;
-  }
-  return null;
-}
-
-function targetNidOf(fields: Record<string, unknown>, key: string): number | null {
-  const raw = fields[key];
-  const s = Array.isArray(raw) ? raw[0] : raw;
-  if (typeof s === "number") return s;
-  if (typeof s === "string" && /^\d+$/.test(s)) return Number(s);
-  if (s && typeof s === "object") {
-    const o = s as Record<string, unknown>;
-    const cand = o.target_id ?? o.value;
-    if (typeof cand === "number") return cand;
-    if (typeof cand === "string" && /^\d+$/.test(cand)) return Number(cand);
-  }
-  return null;
-}
-
-/** T5: bare/formatted phone → E.164 (+1...), or null if not 10/11-leading-1 digits. */
-function toE164(raw: string): string | null {
-  const digits = raw.replace(/\D/g, "");
-  if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-  return null;
-}
-
-/** T14: Yes/No text → boolean (case-insensitive), null passthrough. */
-function yesNo(v: string | null): boolean | null {
-  if (v == null) return null;
-  const s = v.trim().toLowerCase();
-  if (s === "yes") return true;
-  if (s === "no") return false;
-  return null;
-}
-
 /** T3: SSN digits-only; must be exactly 9. */
 function normalizeSsn(raw: string): string | null {
   const digits = raw.replace(/\D/g, "");
   return digits.length === 9 ? digits : null;
-}
-
-/** "1971-06-07 00:00:00" → "1971-06-07" (D7 wall-time datetimes, date-only). */
-function toYmd(raw: string): string | null {
-  const m = raw.trim().match(/^(\d{4}-\d{2}-\d{2})/);
-  return m ? m[1] : null;
 }
 
 interface NameParts {
@@ -237,35 +225,10 @@ function namePartsOf(fields: Record<string, unknown>): NameParts | null {
   };
 }
 
-async function loadStaged(bundle: string): Promise<StagedNode[]> {
-  const res = await db.execute(sql`
-    SELECT nid, title, fields FROM s1_staging.records WHERE bundle = ${bundle} ORDER BY nid
-  `);
-  return (res as unknown as { rows: Array<{ nid: string | number; title: string | null; fields: unknown }> }).rows.map(
-    (r) => ({
-      nid: Number(r.nid),
-      title: r.title,
-      fields: (typeof r.fields === "string" ? JSON.parse(r.fields) : r.fields ?? {}) as Record<string, unknown>,
-    }),
-  );
-}
-
-class RejectLog {
-  counts: Record<string, number> = {};
-  samples: Record<string, Array<Record<string, unknown>>> = {};
-  /** FULL key membership per reason (verify allowlist) — samples are capped
-   * for the report, but verification must never depend on the cap. */
-  private keys: Record<string, Set<number>> = {};
-  add(reason: string, detail: Record<string, unknown>, key?: number) {
-    this.counts[reason] = (this.counts[reason] ?? 0) + 1;
-    const arr = (this.samples[reason] ??= []);
-    if (arr.length < REJECT_SAMPLE_CAP) arr.push(detail);
-    if (key != null) (this.keys[reason] ??= new Set()).add(key);
-  }
-  has(reason: string, key: number): boolean {
-    return this.keys[reason]?.has(key) ?? false;
-  }
-}
+/** Loader-owned phone rows carry these friendly names — set reconciliation
+ * only ever deletes rows named this way; operator-added phones (any other
+ * name) are never touched. */
+const LOADER_PHONE_NAMES = new Set(["Primary", "Alt"]);
 
 async function main() {
   const startedAt = new Date();
@@ -273,8 +236,7 @@ async function main() {
   await ensureIdMap();
   await ensureRawUserTables(); // raw_user_contact may predate a full staging run
 
-  const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN };
-  if (ALLOWED_REJECTS.length > 0) report.allowedRejects = ALLOWED_REJECTS;
+  const report: Record<string, unknown> = {};
   const rejects = new RejectLog();
 
   // throttle per-row storage-op logging + heartbeat (aggregates only:
@@ -438,6 +400,36 @@ async function main() {
   const contactMap = await getMappings("contact", stagedContacts.map((c) => c.nid));
   const workerMap = await getMappings("worker", stagedWorkers.map((w) => w.nid));
 
+  // ---- consumed fingerprints (Task 293) ----
+  // Worker: the staged node hash directly (single source, SQL-joinable).
+  // Contact: combined hash — the contact node, the referencing worker node
+  // (dob/gender/nota source), and the shared-email plan OUTCOME for the
+  // contact's address (ownership can change via raw_user tables without the
+  // contact node changing; folding the plan in reprocesses exactly the
+  // affected contacts). Null staged hashes classify "changed" (never skip).
+  const contactFpOf = (c: StagedNode): string => {
+    const wnid = workerNidByContactNid.get(c.nid);
+    const w = wnid != null ? stagedWorkerByNid.get(wnid) : undefined;
+    const rawEmail = strOf(c.fields, "field_sirius_email");
+    const plan = rawEmail ? sharedEmailPlan.get(rawEmail.toLowerCase()) : undefined;
+    return combineFingerprints([
+      ["node", c.contentHash],
+      ["workerNode", w?.contentHash ?? null],
+      ["sharedEmail", plan ? contentHashOf({ rule: plan.rule, winnerNid: plan.winnerNid }) : null],
+    ]);
+  };
+
+  const summary = emptySummary();
+  /** rows skipped by the consumed-fingerprint fast path (subset of summary.unchanged) */
+  let fastPathSkips = 0;
+  /** fingerprint advances for PRE-EXISTING mappings, applied after verify —
+   * NEW mappings are stamped at putMapping time (the S2 write just landed). */
+  const pendingContactAdvance: Array<{ s1Id: number; fingerprint: string | null }> = [];
+  const pendingWorkerAdvance: Array<{ s1Id: number; fingerprint: string | null }> = [];
+  /** rows actually processed this run (changed/new) — verify scope */
+  const processedContacts: StagedNode[] = [];
+  const processedWorkers: StagedNode[] = [];
+
   // Existing unique-column values (dedupe pre-checks). Direct reads — the
   // storage layer has no "list all emails/ssns" surface; loader-side keyset
   // paging is a documented production TODO (README).
@@ -511,6 +503,15 @@ async function main() {
     siriusOwner.set(newVal, rowId);
     rowSirius.set(rowId, newVal);
   };
+  // workers.data by row id — storage worker reads strip `data`
+  // (stripWorkerData), so the aatRequired merge/compare needs a direct read.
+  const wdataRes = await db.execute(sql`SELECT id, data FROM workers WHERE data IS NOT NULL`);
+  const workerDataById = new Map(
+    (wdataRes as unknown as { rows: Array<{ id: string; data: unknown }> }).rows.map((r) => [
+      r.id,
+      (typeof r.data === "string" ? JSON.parse(r.data) : r.data) as Record<string, unknown>,
+    ]),
+  );
 
   // gender resolution: options_gender by lowered name (term remap fallback)
   const genderRes = await db.execute(sql`SELECT id, name FROM options_gender`);
@@ -546,13 +547,27 @@ async function main() {
   };
 
   // ---------------- contacts pass ----------------
-  const cStats = { matched: 0, adoptedStubContact: 0, created: 0, updated: 0, phonesCreated: 0, addressesUpserted: 0, addressesMatched: 0 };
+  const cStats = {
+    matched: 0,
+    adoptedStubContact: 0,
+    created: 0,
+    updated: 0,
+    phonesCreated: 0,
+    phonesRemoved: 0,
+    addressesUpserted: 0,
+    addressesMatched: 0,
+    addressesRemoved: 0,
+  };
   // per-address suppression counts (address → count); populated by both the
   // new-contact and existing-contact code paths
   const suppressions = new Map<string, number>();
 
   /** Reconcile an EXISTING contact row to the staged values (adopted stubs
    * and already-mapped rows — makes crash-interrupted absorption resumable).
+   * S1-wins: staged values overwrite, including CLEARING fields whose S1
+   * source vanished (email/birthDate/gender) — but a value we could not
+   * apply (duplicate email) or could not parse (bad dob, unresolved gender)
+   * keeps the existing value and stays a visible reject.
    * Only writes fields that differ; returns count of update calls. */
   const reconcileContact = async (
     contactId: string,
@@ -562,8 +577,12 @@ async function main() {
       displayName: string;
       email: string | null;
       birthDate: string | null;
+      /** false when the dob source exists but failed to parse (keep existing) */
+      reconcileBirthDate: boolean;
       genderId: string | null;
       genderNota: string | null;
+      /** false when the gender tid exists but did not resolve (keep existing) */
+      reconcileGender: boolean;
     },
   ): Promise<number> => {
     let writes = 0;
@@ -595,6 +614,9 @@ async function main() {
       writes++;
     }
     let email = vals.email;
+    /** true when the desired email could not be APPLIED (owned elsewhere) —
+     * never clear the existing value in that case */
+    let keepExistingEmail = false;
     // Suppress placeholder emails before the dedupe check (T12 ruling)
     if (email && isPlaceholderEmail(email)) {
       suppressions.set(email, (suppressions.get(email) ?? 0) + 1);
@@ -603,6 +625,7 @@ async function main() {
     if (email && emailOwner.has(email) && emailOwner.get(email) !== contactId) {
       rejects.add("duplicate_email", { nid: cNid }, cNid);
       email = null;
+      keepExistingEmail = true;
     }
     // If the existing row carries a stale placeholder value written by a prior
     // run (before suppression existed), treat it as null so the rerun clears it
@@ -613,21 +636,32 @@ async function main() {
     if (email != null && effectiveExistingEmail !== email) {
       await withNotificationsSuppressed(() => storage.contacts.updateEmail(contactId, email));
       writes++;
-    } else if (existingIsPlaceholder && email == null) {
-      // Clear the stale placeholder — never leave a fake address in place
+    } else if (
+      email == null &&
+      ((!keepExistingEmail && effectiveExistingEmail != null) || existingIsPlaceholder)
+    ) {
+      // S1-wins removal (address gone from S1 / suppressed / deferred) — and
+      // stale placeholders are cleared even when the desired value is kept
+      // elsewhere (never leave a fake address in place).
       await withNotificationsSuppressed(() => storage.contacts.updateEmail(contactId, null));
+      if (!keepExistingEmail && effectiveExistingEmail != null) emailOwner.delete(effectiveExistingEmail);
       writes++;
     }
     if (email) emailOwner.set(email, contactId);
-    if (vals.birthDate && existing.birthDate !== vals.birthDate) {
+    if (vals.reconcileBirthDate && (existing.birthDate ?? null) !== (vals.birthDate ?? null)) {
       await withNotificationsSuppressed(() => storage.contacts.updateBirthDate(contactId, vals.birthDate));
       writes++;
     }
-    if (vals.genderId && existing.gender !== vals.genderId) {
-      await withNotificationsSuppressed(() =>
-        storage.contacts.updateGender(contactId, vals.genderId, vals.genderNota),
-      );
-      writes++;
+    if (vals.reconcileGender) {
+      const genderDrift =
+        (existing.gender ?? null) !== (vals.genderId ?? null) ||
+        (vals.genderId != null && ((existing.genderNota ?? null) !== (vals.genderNota ?? null)));
+      if (genderDrift) {
+        await withNotificationsSuppressed(() =>
+          storage.contacts.updateGender(contactId, vals.genderId, vals.genderNota),
+        );
+        writes++;
+      }
     }
     return writes;
   };
@@ -635,6 +669,15 @@ async function main() {
   progress.phase(null); // contacts row loop
   for (const c of stagedContacts) {
     progress.add(1);
+    const mapped = contactMap.get(c.nid);
+    const fp = contactFpOf(c);
+    // Consumed-fingerprint fast path (Task 292): unchanged rows skip ALL
+    // storage reads (contact, phones, addresses).
+    if (classifyRow(mapped, fp, LOGIC_VERSION, FORCE_RECONCILE) === "unchanged") {
+      summary.unchanged++;
+      fastPathSkips++;
+      continue;
+    }
     const parts = namePartsOf(c.fields);
     const displayName =
       c.title?.trim() ||
@@ -644,6 +687,11 @@ async function main() {
       rejects.add("contact_no_name", { nid: c.nid }, c.nid);
       continue;
     }
+    processedContacts.push(c);
+    /** writes performed for THIS staged row (summary.updated accounting) */
+    let rowWrites = 0;
+    /** fresh row created this run (already counted summary.created) */
+    let isFreshCreate = false;
 
     let email = strOf(c.fields, "field_sirius_email")?.toLowerCase() ?? null;
     // shared-address ownership (S1 user association) — non-owners and
@@ -661,8 +709,11 @@ async function main() {
     if (genderTid != null && !genderId) rejects.add("worker_gender_unresolved", { workerNid: wnid, tid: genderTid });
     const genderCalc = w ? strOf(w.fields, "field_sirius_gender_nota_calc") : null;
     const genderNota = w ? strOf(w.fields, "field_sirius_gender_nota_val") : null;
+    // dob/gender clear ONLY when a worker source exists and the field is
+    // genuinely absent — a parse/resolution failure keeps the existing value
+    const reconcileBirthDate = w != null && !(dobRaw != null && birthDate == null);
+    const reconcileGender = w != null && !(genderTid != null && genderId == null);
 
-    const mapped = contactMap.get(c.nid);
     let contactId = mapped?.s2Id;
 
     if (!contactId) {
@@ -677,14 +728,18 @@ async function main() {
         contactId = worker.contactId;
         cStats.adoptedStubContact++;
         if (!DRY_RUN) {
-          cStats.updated += await reconcileContact(contactId, c.nid, {
+          const fieldWrites = await reconcileContact(contactId, c.nid, {
             parts,
             displayName,
             email,
             birthDate,
+            reconcileBirthDate,
             genderId,
             genderNota,
+            reconcileGender,
           });
+          cStats.updated += fieldWrites;
+          rowWrites += fieldWrites;
         }
       } else {
         // fresh contact
@@ -697,7 +752,9 @@ async function main() {
           rejects.add("duplicate_email", { nid: c.nid }, c.nid);
           email = null;
         }
+        isFreshCreate = true;
         cStats.created++;
+        summary.created++;
         if (!DRY_RUN) {
           const created = await withNotificationsSuppressed(() =>
             storage.contacts.createContact({
@@ -720,36 +777,67 @@ async function main() {
         }
       }
       if (!DRY_RUN && contactId) {
-        const winner = await putMapping("contact", c.nid, contactId, { stub: false, loader: LOADER });
+        const winner = await putMapping("contact", c.nid, contactId, {
+          stub: false,
+          loader: LOADER,
+          fingerprint: fp,
+          logicVersion: LOGIC_VERSION,
+        });
         if (winner !== contactId) {
           console.error(`RACE: contact nid ${c.nid} already mapped to ${winner}; row ${contactId} may be an orphan`);
           contactId = winner;
         }
       }
     } else {
-      // already mapped — reconcile drift (resumability after a partial run)
+      // already mapped — reconcile drift (S1-wins full field coverage)
       cStats.matched++;
       if (!DRY_RUN) {
-        cStats.updated += await reconcileContact(contactId, c.nid, {
+        const fieldWrites = await reconcileContact(contactId, c.nid, {
           parts,
           displayName,
           email,
           birthDate,
+          reconcileBirthDate,
           genderId,
           genderNota,
+          reconcileGender,
         });
+        cStats.updated += fieldWrites;
+        rowWrites += fieldWrites;
       }
     }
 
-    if (DRY_RUN || !contactId) continue;
+    // Fingerprint advance for pre-existing mappings — deferred to after
+    // verify. Rows with a cross-row-dependent deferral (duplicate email)
+    // never advance: they retry every run until the blocker clears.
+    const finishRow = () => {
+      if (mapped) {
+        if (!rejects.has("duplicate_email", c.nid)) {
+          pendingContactAdvance.push({ s1Id: c.nid, fingerprint: fp });
+        }
+        if (rowWrites > 0) summary.updated++;
+        else summary.unchanged++; // reconciled, proven drift-free
+      } else if (!isFreshCreate) {
+        // stub-adopt: new mapping onto an existing row (fingerprint stamped
+        // at putMapping) — counts as updated when anything was written
+        if (rowWrites > 0) summary.updated++;
+        else summary.unchanged++;
+      }
+    };
 
-    // phones (T5) — idempotent by E.164 value per contact
+    if (DRY_RUN || !contactId) {
+      finishRow();
+      continue;
+    }
+
+    // phones (T5) — SET reconcile per contact: desired = S1 numbers; rows
+    // with loader-owned friendly names not in the desired set are deleted
+    // (S1-wins); operator-added names are never touched.
     const phoneSpecs: Array<{ key: string; friendly: string; primary: boolean }> = [
       { key: "field_sirius_phone", friendly: "Primary", primary: true },
       { key: "field_sirius_phone_alt", friendly: "Alt", primary: false },
     ];
-    const existingPhones = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);
-    const existingByNumber = new Set(existingPhones.map((p) => p.phoneNumber));
+    const desiredPhones: Array<{ e164: string; friendly: string; primary: boolean }> = [];
     for (const spec of phoneSpecs) {
       const raw = strOf(c.fields, spec.key);
       if (!raw) continue;
@@ -758,22 +846,49 @@ async function main() {
         rejects.add("phone_invalid", { nid: c.nid, field: spec.key });
         continue;
       }
-      if (existingByNumber.has(e164)) continue;
+      desiredPhones.push({ e164, friendly: spec.friendly, primary: spec.primary });
+    }
+    const desiredNumbers = new Set(desiredPhones.map((d) => d.e164));
+    const existingPhones = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);
+    const remainingPhones: typeof existingPhones = [];
+    for (const p of existingPhones) {
+      if (LOADER_PHONE_NAMES.has(p.friendlyName ?? "") && !desiredNumbers.has(p.phoneNumber)) {
+        await withNotificationsSuppressed(() => storage.contacts.phoneNumbers.deletePhoneNumber(p.id));
+        cStats.phonesRemoved++;
+        rowWrites++;
+      } else {
+        remainingPhones.push(p);
+      }
+    }
+    const presentNumbers = new Set(remainingPhones.map((p) => p.phoneNumber));
+    for (const d of desiredPhones) {
+      if (presentNumbers.has(d.e164)) continue;
       await withNotificationsSuppressed(() =>
         storage.contacts.phoneNumbers.createPhoneNumber({
           contactId: contactId!,
-          phoneNumber: e164,
-          friendlyName: spec.friendly,
-          isPrimary: spec.primary && existingPhones.length === 0,
+          phoneNumber: d.e164,
+          friendlyName: d.friendly,
+          isPrimary: d.primary && !remainingPhones.some((p) => p.isPrimary),
         }),
       );
-      existingByNumber.add(e164);
+      presentNumbers.add(d.e164);
       cStats.phonesCreated++;
+      rowWrites++;
     }
 
-    // address (T13) — pre-check existing rows so re-runs don't touch storage
-    // (createOrMatchAddress "matches" by rewriting updatedAt on the match)
+    // address (T13) — SET reconcile: S1 stages at most ONE address; existing
+    // import-sourced rows that no longer match it are deleted (S1-wins).
+    // Rows with any other source (worker_self/admin/…) are operator-owned.
+    // An INCOMPLETE staged address rejects and touches nothing (the source
+    // still has an address; we just cannot load it).
+    const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+    const zip5 = (s: string | null | undefined) => (s ?? "").trim().slice(0, 5);
     const addrRaw = scalarOf(c.fields["field_sirius_address"]);
+    let desiredAddr: { street: string; city: string; state: string; postalCode: string; country: string } | null = null;
+    let addrIncomplete = false;
+    let latitude: number | undefined;
+    let longitude: number | undefined;
+    let accuracy: string | undefined;
     if (addrRaw && typeof addrRaw === "object") {
       const a = addrRaw as Record<string, unknown>;
       const pick = (k: string) => {
@@ -787,9 +902,9 @@ async function main() {
       const country = pick("country") ?? "US";
       if (!street || !city || !state || !postalCode) {
         rejects.add("address_incomplete", { nid: c.nid });
+        addrIncomplete = true;
       } else {
-        let latitude: number | undefined;
-        let longitude: number | undefined;
+        desiredAddr = { street, city, state, postalCode, country };
         const geo = scalarOf(c.fields["field_sirius_address_geo"]);
         if (geo && typeof geo === "object") {
           const g = geo as Record<string, unknown>;
@@ -801,19 +916,38 @@ async function main() {
             rejects.add("geo_bbox_not_degenerate", { nid: c.nid }); // T13 assertion
           }
         }
-        const accuracy = strOf(c.fields, "field_sirius_address_accuracy") ?? undefined;
+        accuracy = strOf(c.fields, "field_sirius_address_accuracy") ?? undefined;
+      }
+    }
+    if (!addrIncomplete) {
+      const equivalent = (e: { street: string | null; city: string | null; state: string | null; postalCode: string | null }) =>
+        desiredAddr != null &&
+        norm(e.street) === norm(desiredAddr.street) &&
+        norm(e.city) === norm(desiredAddr.city) &&
+        norm(e.state) === norm(desiredAddr.state) &&
+        zip5(e.postalCode) === zip5(desiredAddr.postalCode);
+      // Soft-delete semantics: deleteContactPostal flips isActive=false (rows
+      // stay in the table). Reconcile must only consider ACTIVE rows — else the
+      // already-check can match a dead row and skip re-creating an address S1
+      // still stages, and long-inactive import rows get "removed" again on
+      // every run (counter churn that defeats the no-write fast path).
+      const existingAddrs = (
+        await storage.contacts.addresses.getContactPostalByContact(contactId)
+      ).filter((e) => e.isActive);
+      // remove import-owned rows that no longer match the staged address
+      // (including ALL import rows when S1 no longer stages one)
+      for (const e of existingAddrs) {
+        if (e.source === "import" && !equivalent(e)) {
+          await withNotificationsSuppressed(() => storage.contacts.addresses.deleteContactPostal(e.id));
+          cStats.addressesRemoved++;
+          rowWrites++;
+        }
+      }
+      if (desiredAddr) {
         // re-run guard: skip storage entirely when an equivalent row already
         // exists (createOrMatchAddress touches updatedAt even on a match)
-        const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-        const zip5 = (s: string | null | undefined) => (s ?? "").trim().slice(0, 5);
-        const existingAddrs = await storage.contacts.addresses.getContactPostalByContact(contactId);
         const already = existingAddrs.some(
-          (e) =>
-            norm(e.street) === norm(street) &&
-            norm(e.city) === norm(city) &&
-            norm(e.state) === norm(state) &&
-            zip5(e.postalCode) === zip5(postalCode) &&
-            (latitude == null || e.latitude != null),
+          (e) => equivalent(e) && (latitude == null || e.latitude != null),
         );
         if (already) {
           cStats.addressesMatched++;
@@ -821,15 +955,17 @@ async function main() {
           await withNotificationsSuppressed(() =>
             storage.contacts.addresses.createOrMatchAddress(
               contactId!,
-              { street, city, state, postalCode, country },
+              desiredAddr,
               "import",
               { latitude, longitude, accuracy },
             ),
           );
           cStats.addressesUpserted++;
+          rowWrites++;
         }
       }
     }
+    finishRow();
   }
   report.contacts = cStats;
   // Per-address suppression counts (omit entirely when nothing was suppressed)
@@ -907,6 +1043,7 @@ async function main() {
     created: 0,
     updated: 0,
     workerIdsCreated: 0,
+    workerIdsRemoved: 0,
     siriusIdAssigned: 0,
     oldMappingRepaired: 0,
     oldSiriusIdRowsRemoved: 0,
@@ -967,6 +1104,17 @@ async function main() {
 
   for (const w of stagedWorkers) {
     progress.add(1);
+    const mapped = workerMap.get(w.nid);
+    const fp = w.contentHash;
+    // Consumed-fingerprint fast path — unchanged workers skip all storage
+    // reads (worker row, worker_ids). Stub mappings always classify changed.
+    if (classifyRow(mapped, fp, LOGIC_VERSION, FORCE_RECONCILE) === "unchanged") {
+      summary.unchanged++;
+      fastPathSkips++;
+      continue;
+    }
+    processedWorkers.push(w);
+    let rowWrites = 0;
     const cnid = targetNidOf(w.fields, "field_sirius_contact");
     const contactMapping = cnid != null ? finalContactMap.get(cnid) : undefined;
     if (!contactMapping) {
@@ -981,15 +1129,13 @@ async function main() {
       ssn = normalizeSsn(ssnRaw);
       if (!ssn) rejects.add("ssn_not_9_digits", { workerNid: w.nid });
       else if (ssnOwner.has(ssn) && ssnOwner.get(ssn) !== w.nid) {
-        rejects.add("ssn_collision_q36", { workerNid: w.nid });
+        rejects.add("ssn_collision_q36", { workerNid: w.nid }, w.nid);
         ssn = null;
       }
     }
 
     const aatRequired = yesNo(strOf(w.fields, "field_sirius_aat_required"));
-    const data = aatRequired == null ? null : { aatRequired };
 
-    const mapped = workerMap.get(w.nid);
     let workerId = mapped?.s2Id;
 
     // ---- resolve target sirius_id (T1 ruling: field_sirius_id) ----
@@ -1034,8 +1180,20 @@ async function main() {
       }
     }
 
+    /** workers.data reconcile: merge aatRequired into the existing data
+     * object (other keys preserved); remove the key when the S1 field is
+     * gone. Compares canonically — jsonb reorders keys. */
+    const desiredDataOf = (rowId: string | null): { value: Record<string, unknown> | null; drift: boolean } => {
+      const existing = rowId ? (workerDataById.get(rowId) ?? null) : null;
+      const base: Record<string, unknown> = { ...(existing ?? {}) };
+      if (aatRequired == null) delete base.aatRequired;
+      else base.aatRequired = aatRequired;
+      const value = Object.keys(base).length === 0 ? null : base;
+      return { value, drift: canonicalJson(value) !== canonicalJson(existing) };
+    };
+
     if (mapped && !mapped.stub) {
-      // already loaded — reconcile drift (resumability after a partial run)
+      // already loaded — reconcile drift (S1-wins full field coverage)
       wStats.matched++;
       if (!DRY_RUN) {
         const worker = await storage.workers.getWorker(mapped.s2Id);
@@ -1046,21 +1204,26 @@ async function main() {
         if (worker.siriusId === w.nid && worker.siriusId !== expectedSirius) {
           wStats.oldMappingRepaired++; // row loaded under the old nid-based mapping
         }
+        const dataPlan = desiredDataOf(mapped.s2Id);
         const drift =
           worker.siriusId !== expectedSirius ||
           (worker.ssn ?? null) !== ssn ||
-          worker.contactId !== contactMapping.s2Id;
+          worker.contactId !== contactMapping.s2Id ||
+          dataPlan.drift;
         if (drift) {
           await withNotificationsSuppressed(() =>
             storage.workers.updateWorkerForMigration(mapped.s2Id, {
               siriusId: expectedSirius,
               contactId: contactMapping.s2Id,
               ssn,
-              ...(data ? { data } : {}),
+              data: dataPlan.value,
             }),
           );
           rekeyOwnerMaps(mapped.s2Id, expectedSirius);
+          if (dataPlan.value == null) workerDataById.delete(mapped.s2Id);
+          else workerDataById.set(mapped.s2Id, dataPlan.value);
           wStats.updated++;
+          rowWrites++;
         }
       }
       if (ssn) ssnOwner.set(ssn, w.nid);
@@ -1077,21 +1240,27 @@ async function main() {
           // means the contact node mapped elsewhere first; repoint and log
           rejects.add("stub_contact_repointed", { workerNid: w.nid });
         }
+        const dataPlan = desiredDataOf(mapped.s2Id);
         await withNotificationsSuppressed(() =>
           storage.workers.updateWorkerForMigration(mapped.s2Id, {
             siriusId: expectedSirius,
             contactId: contactMapping.s2Id,
             ssn,
-            ...(data ? { data } : {}),
+            data: dataPlan.value,
           }),
         );
         rekeyOwnerMaps(mapped.s2Id, expectedSirius);
+        if (dataPlan.value == null) workerDataById.delete(mapped.s2Id);
+        else workerDataById.set(mapped.s2Id, dataPlan.value);
         if (ssn) ssnOwner.set(ssn, w.nid);
         await markAbsorbed("worker", w.nid, LOADER);
+        rowWrites++;
       }
     } else {
       wStats.created++;
+      summary.created++;
       if (!DRY_RUN) {
+        const data = aatRequired == null ? null : { aatRequired };
         const created = await withNotificationsSuppressed(() =>
           storage.workers.createWorkerForMigration({
             siriusId: expectedSirius,
@@ -1102,8 +1271,14 @@ async function main() {
         );
         workerId = created.id;
         rekeyOwnerMaps(created.id, expectedSirius);
+        if (data) workerDataById.set(created.id, data);
         if (ssn) ssnOwner.set(ssn, w.nid);
-        const winner = await putMapping("worker", w.nid, created.id, { stub: false, loader: LOADER });
+        const winner = await putMapping("worker", w.nid, created.id, {
+          stub: false,
+          loader: LOADER,
+          fingerprint: fp,
+          logicVersion: LOGIC_VERSION,
+        });
         if (winner !== created.id) {
           console.error(`RACE: worker nid ${w.nid} already mapped to ${winner}; row ${created.id} may be an orphan`);
           workerId = winner;
@@ -1111,11 +1286,32 @@ async function main() {
       }
     }
 
-    if (DRY_RUN || !workerId) continue;
+    const finishWorkerRow = () => {
+      if (mapped) {
+        if (!rejects.has("ssn_collision_q36", w.nid) && !rejects.has("worker_id_value_collision", w.nid)) {
+          pendingWorkerAdvance.push({ s1Id: w.nid, fingerprint: fp });
+        }
+        if (!mapped.stub) {
+          if (rowWrites > 0) summary.updated++;
+          else summary.unchanged++; // reconciled, proven drift-free
+        } else {
+          summary.updated++; // stub absorption always writes
+        }
+      }
+    };
 
-    // worker_ids (06 §4.9, amended 2026-08-06) — idempotent per
-    // (worker, type, value); (type,value) UNIQUE. NO "Sirius ID" row anymore
-    // — the value lives on workers.sirius_id; the nid loads as "Legacy NID".
+    if (DRY_RUN || !workerId) {
+      finishWorkerRow();
+      continue;
+    }
+
+    // worker_ids (06 §4.9, amended 2026-08-06) — SET reconcile per loader
+    // type: S2 rows of the four loader types converge to exactly the S1
+    // value (changed → old row deleted + new created; removed → deleted).
+    // (type,value) UNIQUE — cross-worker collisions are rejects. Rows under
+    // any OTHER type (operator-defined) are never touched. NO "Sirius ID"
+    // row anymore — the value lives on workers.sirius_id; the nid loads as
+    // "Legacy NID".
     const idSpecs: Array<{ key: string | null; label: string; fixedValue?: string }> = [
       { key: null, label: "Legacy NID", fixedValue: String(w.nid) },
       { key: "field_sirius_id2", label: "Union ID" },
@@ -1123,29 +1319,43 @@ async function main() {
       { key: "field_sirius_aat", label: "AAT" },
     ];
     const existingIds = await storage.workerIds.getWorkerIdsByWorkerId(workerId);
+    const removedIdRows = new Set<string>();
     // repair: drop the old-mapping "Sirius ID" row (loader-created — its value
     // equals the staged field_sirius_id); operator rows with other values stay
     if (oldSiriusIdTypeId && fsidRaw != null) {
       for (const e of existingIds) {
         if (e.typeId === oldSiriusIdTypeId && e.value === fsidRaw) {
           await withNotificationsSuppressed(() => storage.workerIds.deleteWorkerId(e.id));
+          removedIdRows.add(e.id);
           wStats.oldSiriusIdRowsRemoved++;
         }
       }
     }
     for (const spec of idSpecs) {
       const value = spec.fixedValue ?? (spec.key ? strOf(w.fields, spec.key) : null);
-      if (!value) continue;
       const typeId = idTypeByLabel.get(spec.label);
       if (!typeId) {
-        rejects.add("worker_id_type_missing", { label: spec.label });
+        if (value) rejects.add("worker_id_type_missing", { label: spec.label });
         continue;
       }
-      if (existingIds.some((e) => e.typeId === typeId && e.value === value)) continue;
+      // S1-wins set reconcile: delete loader-type rows whose value is not
+      // the (single) current S1 value — including ALL rows when S1 no longer
+      // carries the field.
+      for (const e of existingIds) {
+        if (removedIdRows.has(e.id) || e.typeId !== typeId) continue;
+        if (value == null || e.value !== value) {
+          await withNotificationsSuppressed(() => storage.workerIds.deleteWorkerId(e.id));
+          removedIdRows.add(e.id);
+          wStats.workerIdsRemoved++;
+          rowWrites++;
+        }
+      }
+      if (!value) continue;
+      if (existingIds.some((e) => !removedIdRows.has(e.id) && e.typeId === typeId && e.value === value)) continue;
       const clash = await storage.workerIds.getWorkerIdByTypeAndValue(typeId, value);
-      if (clash) {
+      if (clash && !removedIdRows.has(clash.id)) {
         if (clash.workerId !== workerId) {
-          rejects.add("worker_id_value_collision", { workerNid: w.nid, label: spec.label });
+          rejects.add("worker_id_value_collision", { workerNid: w.nid, label: spec.label }, w.nid);
         }
         continue;
       }
@@ -1153,7 +1363,9 @@ async function main() {
         storage.workerIds.createWorkerId({ workerId, typeId, value }),
       );
       wStats.workerIdsCreated++;
+      rowWrites++;
     }
+    finishWorkerRow();
   }
   report.workers = wStats;
 
@@ -1168,17 +1380,28 @@ async function main() {
   }
 
   // ---------------- verify pass ----------------
-  progress.phase("verify", stagedContacts.length + stagedWorkers.length);
+  // Scoped to rows PROCESSED this run (fast-path rows were verified when
+  // last processed; --force-reconcile re-verifies the whole population).
+  progress.phase("verify", processedContacts.length + processedWorkers.length);
   let verifyFailures = 0;
+  const verifyFailedContactNids = new Set<number>();
+  const verifyFailedWorkerNids = new Set<number>();
   if (!DRY_RUN) {
-    const vContactMap = await getMappings("contact", stagedContacts.map((c) => c.nid));
-    for (const c of stagedContacts) {
+    const planMemberNids = [...sharedEmailPlan.values()].flatMap((p) => p.memberNids);
+    const workerCnids = processedWorkers
+      .map((w) => targetNidOf(w.fields, "field_sirius_contact"))
+      .filter((n): n is number => n != null);
+    const vContactMap = await getMappings("contact", [
+      ...new Set([...processedContacts.map((c) => c.nid), ...planMemberNids, ...workerCnids]),
+    ]);
+    for (const c of processedContacts) {
       progress.add(1);
       const m = vContactMap.get(c.nid);
       if (!m) {
         if (!rejects.has("contact_no_name", c.nid)) {
           console.error(`VERIFY: contact nid ${c.nid} has no id_map entry`);
           verifyFailures++;
+          verifyFailedContactNids.add(c.nid);
         }
         continue;
       }
@@ -1186,6 +1409,7 @@ async function main() {
       if (!row) {
         console.error(`VERIFY: contact nid ${c.nid} maps to missing row ${m.s2Id}`);
         verifyFailures++;
+        verifyFailedContactNids.add(c.nid);
       }
     }
 
@@ -1226,16 +1450,18 @@ async function main() {
           if (rowEmail !== addr && !rejects.has("duplicate_email", nid)) {
             console.error(`VERIFY: shared-address owner contact nid ${nid} does not carry its address`);
             verifyFailures++;
+            verifyFailedContactNids.add(nid);
           }
         } else if (rowEmail === addr) {
           console.error(`VERIFY: contact nid ${nid} carries a shared address it does not own (rule ${plan.rule})`);
           verifyFailures++;
+          verifyFailedContactNids.add(nid);
         }
       }
     }
     const legacyNidTypeId = idTypeByLabel.get("Legacy NID");
-    const vWorkerMap = await getMappings("worker", stagedWorkers.map((w) => w.nid));
-    for (const w of stagedWorkers) {
+    const vWorkerMap = await getMappings("worker", processedWorkers.map((w) => w.nid));
+    for (const w of processedWorkers) {
       progress.add(1);
       const cnid = targetNidOf(w.fields, "field_sirius_contact");
       const m = vWorkerMap.get(w.nid);
@@ -1243,18 +1469,21 @@ async function main() {
         if (!rejects.has("worker_contact_unresolved", w.nid)) {
           console.error(`VERIFY: worker nid ${w.nid} has no id_map entry`);
           verifyFailures++;
+          verifyFailedWorkerNids.add(w.nid);
         }
         continue;
       }
       if (m.stub) {
         console.error(`VERIFY: worker nid ${w.nid} still marked stub after load`);
         verifyFailures++;
+        verifyFailedWorkerNids.add(w.nid);
         continue;
       }
       const row = await storage.workers.getWorker(m.s2Id);
       if (!row) {
         console.error(`VERIFY: worker nid ${w.nid} maps to missing row ${m.s2Id}`);
         verifyFailures++;
+        verifyFailedWorkerNids.add(w.nid);
         continue;
       }
       // sirius_id == staged field_sirius_id (T1 ruling); workers without one
@@ -1264,10 +1493,12 @@ async function main() {
         if (row.siriusId !== vFsid) {
           console.error(`VERIFY: worker nid ${w.nid} row has sirius_id ${row.siriusId}, expected field_sirius_id ${vFsid}`);
           verifyFailures++;
+          verifyFailedWorkerNids.add(w.nid);
         }
       } else if (row.siriusId === w.nid) {
         console.error(`VERIFY: worker nid ${w.nid} still carries nid-based sirius_id`);
         verifyFailures++;
+        verifyFailedWorkerNids.add(w.nid);
       }
       // Legacy NID coverage: every loaded worker carries its nid
       if (legacyNidTypeId) {
@@ -1275,27 +1506,97 @@ async function main() {
         if (!ids.some((e) => e.typeId === legacyNidTypeId && e.value === String(w.nid))) {
           console.error(`VERIFY: worker nid ${w.nid} has no Legacy NID worker_ids row`);
           verifyFailures++;
+          verifyFailedWorkerNids.add(w.nid);
         }
       }
       const cm = cnid != null ? vContactMap.get(cnid) : undefined;
       if (cm && row.contactId !== cm.s2Id) {
         console.error(`VERIFY: worker nid ${w.nid} contact_id mismatch`);
         verifyFailures++;
+        verifyFailedWorkerNids.add(w.nid);
       }
     }
   }
 
   progress.stop();
 
-  report.rejects = rejects.counts;
+  // ---- advance consumed fingerprints (pre-existing mappings) — only after
+  // the S2 writes landed and the verify pass established the target, so
+  // failed writes stay retryable on the next run ----
+  if (!DRY_RUN) {
+    await advanceFingerprints(
+      "contact",
+      pendingContactAdvance.filter((p) => !verifyFailedContactNids.has(p.s1Id)),
+      LOGIC_VERSION,
+    );
+    await advanceFingerprints(
+      "worker",
+      pendingWorkerAdvance.filter((p) => !verifyFailedWorkerNids.has(p.s1Id)),
+      LOGIC_VERSION,
+    );
+  }
+
+  // ---- deletion sweeps: contacts/workers deleted in S1 ----
+  // HIGH BLAST RADIUS (report-only ruling): contacts are referenced by
+  // workers/comms/relations; workers anchor benefit history, elections and
+  // ledger. An S1 deletion therefore surfaces as a `deleted_in_s1` finding
+  // every run (blocking unless --allow-findings deleted_in_s1) and is NEVER
+  // auto-deleted. Sweeps are loader-scoped: entity `contact` is also written
+  // by the employers loader (shop contacts) — each loader sweeps only the
+  // mappings it recorded.
+  const findings: SyncFinding[] = [];
+  for (const [entity, bundle, reason] of [
+    ["contact", "sirius_contact", "contact rows are referenced by workers/comms/relations — S1 deletion needs an operator ruling"],
+    ["worker", "sirius_worker", "worker rows anchor benefit history/elections/ledger — S1 deletion needs an operator ruling"],
+  ] as const) {
+    const sweep = await sweepDeletions({
+      entity,
+      loaders: [LOADER],
+      sourceSql: sql`SELECT nid AS s1_id FROM s1_staging.records WHERE bundle = ${bundle}`,
+      dryRun: DRY_RUN,
+      policy: async () => ({ action: "report-only", detail: { reason } }),
+    });
+    summary.deleted += sweep.deleted;
+    summary.deactivated += sweep.deactivated;
+    summary.reportOnly += sweep.reportOnly;
+    findings.push(...sweep.findings);
+    report[`sweep_${entity}`] = { candidates: sweep.candidates, alreadyHandled: sweep.alreadyHandled };
+  }
+
+  report.fastPathSkips = fastPathSkips;
   report.rejectSamples = rejects.samples;
-  report.verifyFailures = verifyFailures;
 
-  console.log(JSON.stringify(report, null, 2));
-  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER }, report);
+  const result = buildLoaderResult({
+    loader: LOADER,
+    logicVersion: LOGIC_VERSION,
+    dryRun: DRY_RUN,
+    forceReconcile: FORCE_RECONCILE,
+    summary,
+    rejects,
+    allowedRejects: ALLOWED_REJECTS,
+    verifyFailures,
+    findings,
+    allowedFindings: ALLOWED_FINDINGS,
+    detail: report,
+  });
+  emitLoaderResult(result);
+  if (!DRY_RUN) {
+    await recordRun(startedAt, { loader: LOADER, forceReconcile: FORCE_RECONCILE }, result as unknown as Record<string, unknown>);
+  }
 
-  if (verifyFailures > 0) process.exit(1);
-  process.exit(0);
+  if (result.rejectGate.status === "fail") {
+    console.error(
+      `FAIL: disallowed reject reason(s): ${result.rejectGate.disallowed.map((d) => `${d.reason}(${d.count})`).join(", ")}. ` +
+        `Every expected class must be explicitly allowed per run via --allow-rejects.`,
+    );
+  }
+  if (result.blockingFindings.length > 0) {
+    console.error(
+      `FAIL: ${result.blockingFindings.length} blocking sync finding(s) (${[...new Set(result.blockingFindings.map((f) => f.kind))].join(", ")}). ` +
+        `Resolve them or acknowledge per run via --allow-findings.`,
+    );
+  }
+  process.exit(loaderExitCode(result));
 }
 
 main().catch((err) => {

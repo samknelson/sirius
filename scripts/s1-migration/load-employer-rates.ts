@@ -49,11 +49,25 @@
  *      silently. Same-uuid same-date differing rates = S1 self-inconsistent →
  *      whole-shop reject (rule/fix in S1, never guess a rate).
  *   4. Resolve shop nid → S2 employer (id_map "employer"; stubs unmapped).
- *   5. Idempotent write via storage.baoEmployerRates.bulkUpsert — existing
- *      equal rows adopt; migration-owned rows with drifted rates update;
- *      foreign (operator-entered) rows are NEVER overwritten → reject.
- *   6. Verify: re-read every ok shop's rows — each winning (date, rate) must
- *      be present with a numerically equal rate.
+ *   5. TRUE DIFF (Task 293 sync) via storage.baoEmployerRates — missing rows
+ *      create, migration-owned rows with drifted rates update, migration-
+ *      owned rows whose effective DATE vanished from S1 delete; foreign
+ *      (operator-entered) rows are NEVER overwritten (reject) or deleted.
+ *   6. Verify: re-read every ok shop's rows — each winning (date, rate)
+ *      present with a numerically equal rate AND no stale migration-owned
+ *      date remains.
+ *
+ * Sync semantics (Task 293 — RUNBOOK §10): RECONCILING.
+ *   - Anchor id_map entity `employer-rate` (s1_id = shop nid, s2_id =
+ *     employer id) — written after a shop's rates loaded cleanly.
+ *   - Consumed fingerprint = targeted hash of the WINNING entries
+ *     ({date, rate, uuid}, date-sorted) — a policy edit elsewhere in the
+ *     shop JSON does not reprocess this loader.
+ *   - Unchanged shops skip via the fingerprint fast path (no storage reads).
+ *   - Deletion sweep: a shop whose hourly rate history VANISHED (or whose
+ *     node was deleted in S1) has its migration-owned rate rows deleted.
+ *     Unparseable JSON keeps the shop in the source set — never sweep over a
+ *     parse failure.
  *
  * Ordering: AFTER load-employers (employer id_map) and after fund config
  * exists (copy-fund-config — provides the bao-hourly config + account).
@@ -70,26 +84,58 @@
  *   rate_exists_foreign  — a non-migration row occupies (employer, account,
  *                          date) with a different rate (entry skipped)
  *   rate_write_failed    — storage write failed (sanitized code only; whole shop)
+ *   rate_delete_failed   — reconcile delete failed (sanitized code only; whole shop)
  *
  * Output is AGGREGATES ONLY — safe inside the HIPAA boundary (nids are node
  * ids, rates are employer billing config, consistent with sibling loaders).
  *
  * Usage:
- *   npx tsx scripts/s1-migration/load-employer-rates.ts [--dry-run] [--allow-rejects a,b]
+ *   npx tsx scripts/s1-migration/load-employer-rates.ts [--dry-run]
+ *       [--force-reconcile] [--allow-rejects a,b] [--allow-findings k1,k2]
  */
 import { storage } from "../../server/storage/database";
 import { withNotificationsSuppressed } from "../../server/middleware/request-context";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
-import { ensureIdMap, getMappings } from "./lib/idmap";
+import { ensureIdMap, getMappings, putMapping, advanceFingerprints } from "./lib/idmap";
 import { RejectLog, loadStaged, toYmd, throttleStorageOpLogs } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
+import {
+  buildLoaderResult,
+  classifyRow,
+  contentHashOf,
+  emitLoaderResult,
+  emptySummary,
+  loaderExitCode,
+  parseAllowedFindings,
+  parseForceReconcile,
+  sweepDeletions,
+} from "./lib/sync";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const LOADER = "t-employer-rates";
+const ID_MAP_ENTITY = "employer-rate";
+/** BUMP whenever transform logic changes so unchanged S1 rows reprocess. */
+const LOGIC_VERSION = 1;
 const ALLOWED_REJECTS: string[] = (() => {
   const i = process.argv.indexOf("--allow-rejects");
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1].split(",").map((s) => s.trim()).filter(Boolean) : [];
 })();
+const FORCE_RECONCILE = parseForceReconcile();
+const ALLOWED_FINDINGS = parseAllowedFindings();
+
+/** Whole-shop fatal reasons — advance/verify skip exactly these. Entry-level
+ * annotations (bad_date/bad_rate/rate_exists_foreign) also block advance so
+ * the shop keeps reprocessing until fixed or ruled. */
+const ADVANCE_BLOCKERS = [
+  "bad_json",
+  "shop_unmapped",
+  "bad_date",
+  "bad_rate",
+  "rate_conflict",
+  "rate_exists_foreign",
+  "rate_write_failed",
+  "rate_delete_failed",
+] as const;
 
 /** Hourly plugin-instance uuids, in precedence order (index 0 wins ties). */
 const HOURLY_UUIDS = [
@@ -155,8 +201,12 @@ async function main() {
 
   throttleStorageOpLogs();
 
-  const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowedRejects: ALLOWED_REJECTS };
+  const report: Record<string, unknown> = {};
   const rejects = new RejectLog();
+  const summary = emptySummary();
+  let fastPathSkips = 0;
+  const pendingAdvance: Array<{ s1Id: number; fingerprint: string | null }> = [];
+  const verifyFailedNids = new Set<number>();
   const progress = makeProgressLogger(LOADER, 0);
   progress.phase("pre-scan");
 
@@ -174,6 +224,9 @@ async function main() {
     entries: Array<{ date: string; rate: string; uuid: string; ts: unknown }>;
   };
   const withRates: ShopRates[] = [];
+  /** Sweep source set: every shop that still CARRIES hourly rate history —
+   * plus unparseable/conflicted shops (never sweep over a parse failure). */
+  const sourceNids = new Set<number>();
   let shopsWithJson = 0;
   let shopsWithoutRates = 0;
   let entriesSeen = 0;
@@ -187,6 +240,7 @@ async function main() {
     shopsWithJson++;
     if (parseError) {
       rejects.add("bad_json", { nid: s.nid }, s.nid);
+      sourceNids.add(s.nid); // unparseable ≠ removed — keep
       continue;
     }
     const settings = (json as any)?.charge_plugins?.settings;
@@ -250,6 +304,7 @@ async function main() {
       }
     }
 
+    if (sawAny || shopRejected) sourceNids.add(s.nid);
     if (shopRejected) continue;
     if (!sawAny) {
       shopsWithoutRates++;
@@ -268,20 +323,23 @@ async function main() {
   report.entriesDeduped = entriesDeduped;
   report.tiesResolvedByPrecedence = tiesResolvedByPrecedence;
 
-  // ── Batched employer resolution ──────────────────────────────────────────
+  // ── Batched employer + anchor resolution ─────────────────────────────────
   const employerMap = await getMappings("employer", withRates.map((s) => s.nid));
+  const anchorMap = await getMappings(ID_MAP_ENTITY, withRates.map((s) => s.nid));
 
-  // ── Pass 2: write ─────────────────────────────────────────────────────────
+  // ── Pass 2: classify + diff + write ──────────────────────────────────────
   progress.phase(null);
   progress.setTotal(withRates.length);
   let created = 0;
   let updated = 0;
   let adopted = 0;
+  let removed = 0;
   const perYear: Record<string, number> = {};
   const okShops: Array<{
     nid: number;
     employerId: string;
     entries: Array<{ date: string; rate: string }>;
+    desiredDates: Set<string>;
   }> = [];
 
   for (const shop of withRates) {
@@ -292,17 +350,33 @@ async function main() {
       continue;
     }
 
+    // Consumed fingerprint = the winning entries only (ts excluded — it is
+    // provenance metadata, not billing content).
+    const fp = contentHashOf({
+      employer: emp.s2Id,
+      entries: shop.entries.map((e) => ({ date: e.date, rate: e.rate, uuid: e.uuid })),
+    });
+    const mapping = anchorMap.get(shop.nid);
+    if (classifyRow(mapping, fp, LOGIC_VERSION, FORCE_RECONCILE) === "unchanged") {
+      summary.unchanged++;
+      fastPathSkips++;
+      continue;
+    }
+
     for (const e of shop.entries) perYear[e.date.slice(0, 4)] = (perYear[e.date.slice(0, 4)] ?? 0) + 1;
 
     if (DRY_RUN) {
       created += shop.entries.length;
-      okShops.push({ nid: shop.nid, employerId: emp.s2Id, entries: shop.entries });
+      if (mapping) summary.updated++; // approximate under --dry-run
+      else summary.created++;
+      okShops.push({ nid: shop.nid, employerId: emp.s2Id, entries: shop.entries, desiredDates: new Set(shop.entries.map((e) => e.date)) });
       continue;
     }
 
     try {
       const existing = await storage.baoEmployerRates.list({ employerId: emp.s2Id, accountId });
       const byYmd = new Map(existing.map((r) => [r.effectiveYmd, r]));
+      const desiredDates = new Set(shop.entries.map((e) => e.date));
       const toWrite: Array<{ date: string; rate: string; uuid: string; ts: unknown; isUpdate: boolean }> = [];
       let entryRejected = false;
 
@@ -326,6 +400,12 @@ async function main() {
         }
       }
 
+      // Reconcile deletes: migration-owned rows whose effective DATE vanished
+      // from the S1 winners. Foreign rows are never deleted.
+      const toDelete = existing.filter(
+        (r) => (r.data as any)?.source === "s1-migration" && !desiredDates.has(r.effectiveYmd),
+      );
+
       if (toWrite.length > 0) {
         await withNotificationsSuppressed(() =>
           storage.baoEmployerRates.bulkUpsert(
@@ -342,6 +422,29 @@ async function main() {
         created += toWrite.filter((e) => !e.isUpdate).length;
         updated += toWrite.filter((e) => e.isUpdate).length;
       }
+      for (const r of toDelete) {
+        const ok = await withNotificationsSuppressed(() => storage.baoEmployerRates.delete(r.id));
+        if (!ok) {
+          rejects.add("rate_delete_failed", { nid: shop.nid, date: r.effectiveYmd }, shop.nid);
+        } else {
+          removed++;
+        }
+      }
+
+      const wrote = toWrite.length > 0 || toDelete.length > 0;
+      if (mapping) {
+        if (wrote) summary.updated++;
+        else summary.unchanged++;
+      } else {
+        summary.created++;
+        await putMapping(ID_MAP_ENTITY, shop.nid, emp.s2Id, {
+          stub: false,
+          loader: LOADER,
+          fingerprint: fp,
+          logicVersion: LOGIC_VERSION,
+        });
+      }
+      if (mapping) pendingAdvance.push({ s1Id: shop.nid, fingerprint: fp });
 
       // Foreign-occupied slots stay foreign; verify checks only our own rows.
       okShops.push({
@@ -353,6 +456,7 @@ async function main() {
               return !cur || Number(cur.rate) === Number(e.rate) || (cur.data as any)?.source === "s1-migration";
             })
           : shop.entries,
+        desiredDates,
       });
     } catch (err) {
       // Sanitized: class/code only — never raw error text (HIPAA boundary).
@@ -364,10 +468,13 @@ async function main() {
   report.ratesCreated = created;
   report.ratesUpdated = updated;
   report.ratesAdopted = adopted;
+  report.ratesRemoved = removed;
   report.employersLoaded = okShops.length;
   report.entriesPerYear = perYear;
+  report.fastPathSkips = fastPathSkips;
 
-  // ── Verify: every winning entry present with a numerically equal rate ────
+  // ── Verify: every winning entry present with a numerically equal rate,
+  //    and no stale migration-owned date remains ────────────────────────────
   let verifyFailures = 0;
   if (!DRY_RUN) {
     progress.phase("verify", okShops.length);
@@ -380,28 +487,79 @@ async function main() {
         if (!row || Number(row.rate) !== Number(e.rate)) {
           console.error(`VERIFY: shop nid ${ok.nid} missing/mismatched rate row for ${e.date}`);
           verifyFailures++;
+          verifyFailedNids.add(ok.nid);
+        }
+      }
+      for (const r of rows) {
+        if ((r.data as any)?.source === "s1-migration" && !ok.desiredDates.has(r.effectiveYmd)) {
+          console.error(`VERIFY: shop nid ${ok.nid} stale migration-owned rate row remains for ${r.effectiveYmd}`);
+          verifyFailures++;
+          verifyFailedNids.add(ok.nid);
         }
       }
     }
   }
 
+  // ---- advance consumed fingerprints (pre-existing mappings) — post-verify ----
+  if (!DRY_RUN) {
+    await advanceFingerprints(
+      ID_MAP_ENTITY,
+      pendingAdvance.filter((p) => !verifyFailedNids.has(p.s1Id) && !rejects.hasAnyIn(p.s1Id, ADVANCE_BLOCKERS)),
+      LOGIC_VERSION,
+    );
+  }
+
+  // ---- deletion sweep: shops whose hourly history vanished (or node deleted) ----
+  // Migration-owned rate rows are SAFE CHILD ROWS: deleted; operator rows
+  // always survive.
+  const sweep = await sweepDeletions({
+    entity: ID_MAP_ENTITY,
+    loaders: [LOADER],
+    sourceIds: sourceNids,
+    dryRun: DRY_RUN,
+    policy: async (c) => ({
+      action: "delete",
+      apply: async () => {
+        const rows = await storage.baoEmployerRates.list({ employerId: c.s2Id, accountId });
+        for (const r of rows) {
+          if ((r.data as any)?.source !== "s1-migration") continue;
+          await withNotificationsSuppressed(() => storage.baoEmployerRates.delete(r.id));
+        }
+      },
+    }),
+  });
+  summary.deleted += sweep.deleted;
+  report.sweep = { candidates: sweep.candidates, deleted: sweep.deleted, alreadyHandled: sweep.alreadyHandled };
+
   progress.stop();
-  report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;
-  report.verifyFailures = verifyFailures;
 
-  console.log(JSON.stringify(report, null, 2));
-  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER }, report);
+  const result = buildLoaderResult({
+    loader: LOADER,
+    logicVersion: LOGIC_VERSION,
+    dryRun: DRY_RUN,
+    forceReconcile: FORCE_RECONCILE,
+    summary,
+    rejects,
+    allowedRejects: ALLOWED_REJECTS,
+    verifyFailures,
+    findings: sweep.findings,
+    allowedFindings: ALLOWED_FINDINGS,
+    detail: report,
+  });
+  emitLoaderResult(result);
+  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, forceReconcile: FORCE_RECONCILE }, result as unknown as Record<string, unknown>);
 
-  const disallowed = rejects.disallowedReasons(ALLOWED_REJECTS);
-  if (disallowed.length > 0) {
+  if (result.rejectGate.status === "fail") {
     console.error(
-      `FAIL: reject reason(s) not allowed for this run: ${disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
+      `FAIL: reject reason(s) not allowed for this run: ${result.rejectGate.disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
         `Every expected reject class must be explicitly allowed via --allow-rejects.`,
     );
-    process.exit(1);
   }
-  process.exit(verifyFailures > 0 ? 1 : 0);
+  if (result.blockingFindings.length > 0) {
+    console.error(`FAIL: ${result.blockingFindings.length} blocking sync finding(s) — resolve or acknowledge via --allow-findings.`);
+  }
+  process.exit(loaderExitCode(result));
 }
 
 main().catch((err) => {
