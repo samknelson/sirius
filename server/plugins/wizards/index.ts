@@ -25,6 +25,7 @@ import "./plugins/report-employer-users";
 import "./plugins/report-ledger-integrity";
 import "./plugins/report-btu-workers-invalid-cardcheck";
 import "./plugins/report-edls-soop";
+import "./plugins/report-elections-only-one-violations";
 import "./plugins/report-edls-scheduled-too-soon";
 import "./plugins/btu-worker-import";
 import "./plugins/btu-dues-allocation";
