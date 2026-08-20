@@ -10,16 +10,18 @@ and `main` end up with identical content under different SHAs → the
 "Push to bao-dev" workflow fails with `non-fast-forward` on both refs.
 
 **Rule:** A user-triggered deployment push may auto-reconcile divergent remote
-history only when the remote branch's complete net patch since its merge base
-reverse-applies cleanly to committed `main`. That proves the remote changes are
-already present. The resulting reconciliation commit must reuse `main`'s exact
-tree and add the remote tip only as a parent.
+history only when either (a) the remote tip's complete tree exactly matches a
+commit already reachable from `main`, or (b) the remote branch's complete net
+patch since its merge base reverse-applies cleanly to committed `main`. The
+resulting reconciliation commit must reuse `main`'s exact tree and add the
+remote tip only as a parent.
 
 **Why:** Patch IDs are not reliable here because the same task may be applied
-against a different parent/context during the platform merge. Reverse-applying
-the full net patch is conservative and handles rewritten commits without
-accepting unrelated content. Keeping the tree unchanged avoids resurrecting
-the older duplicate.
+against a different parent/context during the platform merge. Exact full-tree
+matching handles a rewritten task snapshot even after later tasks edit the same
+lines (where reverse-apply cannot work); the reverse-patch fallback remains
+conservative for other equivalent histories. Keeping the tree unchanged avoids
+resurrecting the older duplicate.
 
 **How to apply:** Fetch both the selected deployment branch and
 `bao-replit-main`, check each independently, and refuse the push if either patch
