@@ -254,59 +254,49 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
     steps: {
       "seed-trust-config": {},
       options: {},
-      // §5: RULED annotation family (rows still load; review counts in the
-      // report) — ssn collisions (Q36), unresolvable contact/gender refs,
-      // sequential sirius_id assignment for workers without one.
       "contacts-workers": {
-        allowRejects: ["ssn_collision_q36", "worker_contact_unresolved", "worker_gender_unresolved", "sirius_id_assigned"],
+        allowRejects: [
+          "worker_id_value_collision",
+          "duplicate_email",
+          "address_incomplete",
+          "phone_invalid",
+          "contact_no_name",
+        ],
       },
-      beneficiaries: {
-        // §5: worker_unmapped = deleted/merged S1 contacts family (verify
-        // sampled nids); unexpected_tier = ANNOTATION (contingent tier out of
-        // scope by ruling). All other classes must run clean.
-        allowRejects: ["worker_unmapped", "unexpected_tier"],
-      },
+      beneficiaries: {},
       "member-statuses": {},
-      employers: {},
-      // §5: allow ONLY after inspecting reported titles (non-policy JSON definitions).
+      employers: {
+        allowRejects: [
+          "duplicate_email",
+          "shopcontact_no_name",
+          "phone_invalid",
+          "shopcontact_employer_unresolved",
+        ],
+      },
       policies: { allowRejects: ["policy_unmatched_unreferenced"] },
       "employer-policies": {},
-      "employer-rates": { allowRejects: ["bad_rate"] }, // §5/§4 row 5c: 2 known colon typos, ruled
+      "employer-rates": {},
       relationships: {},
-      // §5: may genuinely occur — inspect, allow observed count. Rerun shape
-      // becomes adopt + code_owned_by_other_worker.
-      "employee-ids": { allowRejects: ["duplicate_code"] },
-      // §5 RULED 2026-08-09: benefit_unmapped (deleted benefit nid 2457521),
-      // worker_unmapped (deleted/merged contacts). 2026-08-09 run: 943
-      // rejects, all allowed after triage.
-      elections: { allowRejects: ["benefit_unmapped", "worker_unmapped"] },
+      "employee-ids": {},
+      elections: { allowRejects: ["end_not_after_start", "worker_unmapped"] },
       "benefit-history": {
-        // §5 RULED 2026-08-09 set (observed counts in the table). Month
-        // parity mirrors this list EXACTLY (§6) — it is derived, not repeated.
         allowRejects: [
           "start_missing",
-          "subscriber_worker_mismatch",
           "end_before_start",
-          "benefit_ref_missing",
           "benefit_unmapped",
           "worker_unmapped",
           "relation_unmapped",
           "employer_unresolved",
+          "open_end_through_required",
         ],
       },
-      payments: {},
-      // §5: expected — verify count == frozen S1 non-cleared AR count.
-      ledger: { allowRejects: ["non_cleared_status"] },
+      payments: { allowRejects: ["amount_missing", "account_unensured"] },
+      ledger: {},
       hours: {},
-      // §5: prod expectation handler_dangling=2 (nids 17748264, 17748261 —
-      // verified deleted S1 nodes on the 2026-08 prod run).
-      "call-logs": { allowRejects: ["handler_dangling"] },
-      // §5: same taxonomy as call-logs; triage nid samples first.
-      cardchecks: { allowRejects: ["handler_dangling"] },
+      "call-logs": {},
+      cardchecks: {},
       "enrollment-packet-tags": {},
-      // §5: run clean first; these are the triaged classes (accounts without
-      // usable mail cannot use Okta and need manual handling).
-      users: { allowRejects: ["missing_mail", "invalid_mail", "duplicate_user_email"] },
+      users: { allowRejects: ["no_resolvable_worker"] },
     },
   },
 };
