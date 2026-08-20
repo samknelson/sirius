@@ -49,6 +49,10 @@ import { initBaoDpAutoRescan } from "./services/bao-dp-auto-rescan";
 import "@shared/access-policies/loader";
 import { registerEntityAccessModule } from "./modules/entity-access";
 import { isComponentEnabled } from "./modules/components";
+import {
+  createS1WriteFenceMiddleware,
+  installS1WriteFenceHandlerTracking,
+} from "./middleware/s1-write-fence";
 
 // Helper function to redact sensitive data from responses before logging
 function redactSensitiveData(data: any): any {
@@ -75,6 +79,10 @@ function redactSensitiveData(data: any): any {
  * requests that arrive during startup are parsed/logged consistently.
  */
 function installBaseMiddleware(app: Express): void {
+  // Fence before body parsing so a wet sync rejects large mutating requests
+  // without spending time or memory decoding payloads that cannot be handled.
+  app.use(createS1WriteFenceMiddleware());
+
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 
@@ -152,6 +160,9 @@ function installBaseMiddleware(app: Express): void {
  */
 export async function bootstrapApp(app: Express, server: Server): Promise<void> {
   installBaseMiddleware(app);
+  // Express 4 does not await async route handlers. Track their returned
+  // promises so an aborted mutation retains its fence until handler work ends.
+  installS1WriteFenceHandlerTracking(app);
 
   // Initialize the permission system
   initializePermissions();

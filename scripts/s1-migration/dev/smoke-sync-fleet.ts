@@ -164,6 +164,11 @@ async function phaseInitial() {
   expect(r.report?.gates?.stage === "pass", "stage gate pass (count-verified)");
   expect(r.report?.gates?.fleet === "pass", "fleet gate pass (all loaders: envelope+rejects+verify)");
   expect(r.report?.gates?.parity === "pass", "parity gate pass (balance 0¢ + ruled months)");
+  expect(
+    r.report?.writeFence?.status === "acquired" &&
+      r.report?.writeFence?.heldThroughAggregateRecord === true,
+    "wet sync report records app fence acquisition through aggregate recording",
+  );
   expect((r.report?.fleetTotals?.created ?? 0) > 0, "fleet created rows on initial load");
   {
     // Dev-structural baseline: synthetic staging has no keep-tag terms, so
@@ -190,6 +195,10 @@ async function phaseDryrun() {
   expect(r.report?.dryRun === true, "report records dryRun=true");
   expect(r.report?.forceReconcile === true, "report PROMINENTLY records forceReconcile=true");
   expect(r.report?.parity?.status === "skipped", "parity skipped on dry-run");
+  expect(
+    r.report?.writeFence?.status === "skipped" && r.report?.writeFence?.reason === "dry-run",
+    "dry-run does NOT acquire the app write fence",
+  );
   expect(
     (r.report?.fleet ?? []).every((s: any) => s.forceReconcile === true || s.forceReconcile === false),
     "per-step forceReconcile echoed",
@@ -223,6 +232,7 @@ async function phaseModes() {
   expect(r.report?.gates?.findingsMode === "fail", "findings gate=fail in final-freeze mode");
   expect(r.report?.gates?.fleet === "pass", "fleet gate itself passes (loaders converged) — findings alone block");
   expect(r.report?.gates?.parity === "pass", "parity passes — parity PASS cannot override the findings gate");
+  expect(r.report?.writeFence?.status === "acquired", "failed wet sync acquired the app write fence");
   expect((r.report?.finalFreezeBlocked ?? []).length > 0, "finalFreezeBlocked lists the blocking steps");
 
   r = run(MUTATE, ["--restore", "--snapshot-file", SNAPSHOT]);
@@ -232,6 +242,7 @@ async function phaseModes() {
   r = run(SYNC, ["--mode", "final-freeze", "--profile", "dev", "--skip-stage"], { resultFile: rf2 });
   expect(r.exit === 0, "final-freeze sync exits 0 after the S1 side is restored (resolved)");
   expect(r.report?.result === "PASS", "final-freeze report result=PASS after resolution");
+  expect(r.report?.writeFence?.status === "acquired", "second wet sync acquires after failed run cleanup");
   {
     const fk2: Record<string, number> = r.report?.findingsByKind ?? { missing: 1 };
     expect(

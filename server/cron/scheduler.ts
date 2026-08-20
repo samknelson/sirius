@@ -8,6 +8,7 @@ import {
 } from "../plugins/system/cron";
 import { getEnabledComponentIds } from "../modules/components";
 import { eventBus, EventType, type PluginConfigSavedPayload } from "../services/event-bus";
+import { tryAcquireAppWriteFence } from "../services/s1-write-fence";
 
 /**
  * Normalized view of a cron job the scheduler operates on, projected from a
@@ -15,7 +16,7 @@ import { eventBus, EventType, type PluginConfigSavedPayload } from "../services/
  * (the stable cron job name that keys `cron_job_runs.jobName`); `settings` is
  * the operator-saved `data`.
  */
-interface ScheduledCronJob {
+export interface ScheduledCronJob {
   /** The base config row's id — unique per config, so non-singleton plugins
    * can run several configs of one plugin side by side. */
   configId: string;
@@ -30,7 +31,7 @@ interface ScheduledJob {
   task: cron.ScheduledTask;
 }
 
-class CronScheduler {
+export class CronScheduler {
   private scheduledJobs: Map<string, ScheduledJob> = new Map();
   private isRunning: boolean = false;
   private configSubscriptionRegistered = false;
@@ -236,110 +237,134 @@ class CronScheduler {
   async executeJob(job: ScheduledCronJob, isManual: boolean, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<void> {
     const startedAt = new Date();
 
-    // Create run record - id and startedAt are auto-generated
-    const run = await storage.cronJobRuns.create({
-      jobName: job.name,
-      status: 'running',
-      mode,
-      triggeredBy: triggeredBy || null,
-    });
-
-    const runId = run.id;
-
-    logger.info(`Starting job execution: ${job.name}`, {
-      service: 'cron-scheduler',
-      jobName: job.name,
-      runId,
-      isManual,
-      triggeredBy,
-      mode,
-    });
+    // Do this before creating a "running" record or invoking plugin code.
+    // The skipped record is intentionally a tiny operational breadcrumb, not a
+    // failed run: the next normal schedule remains eligible after the sync.
+    const fenceLease = await tryAcquireAppWriteFence();
+    if (!fenceLease) {
+      const run = await storage.cronJobRuns.create({
+        jobName: job.name,
+        status: "skipped",
+        mode,
+        triggeredBy: triggeredBy || null,
+      });
+      await storage.cronJobRuns.update(run.id, {
+        status: "skipped",
+        completedAt: new Date(),
+        output: JSON.stringify({ message: "Deferred: S1 sync write fence is active", reason: "s1-sync-deferred" }),
+      });
+      logger.info(`Job deferred by S1 sync: ${job.name}`, {
+        service: "cron-scheduler", jobName: job.name, runId: run.id, isManual, mode,
+      });
+      return;
+    }
 
     try {
-      // Get the plugin to access default settings + component gating
-      const plugin = cronPluginRegistry.get(job.name);
-
-      // Check if job requires a component that is disabled
-      const requiredComponent = plugin?.metadata.requiredComponent;
-      if (requiredComponent) {
-        const enabledComponents = await getEnabledComponentIds();
-        if (!enabledComponents.includes(requiredComponent)) {
-          const skipMessage = `Skipped: required component '${requiredComponent}' is disabled`;
-          logger.info(`Job skipped due to disabled component: ${job.name}`, {
-            service: 'cron-scheduler',
-            jobName: job.name,
-            runId,
-            requiredComponent,
-          });
-
-          // Update run as skipped
-          await storage.cronJobRuns.update(runId, {
-            status: 'skipped',
-            completedAt: new Date(),
-            output: JSON.stringify({ message: skipMessage, requiredComponent }),
-          });
-
-          return;
-        }
-      }
-
-      const defaultSettings = plugin?.getDefaultSettings?.() ?? {};
-      const mergedSettings = { ...defaultSettings, ...job.settings };
-
-      // Execute the plugin
-      const summary = await executeCronPlugin(job.name, {
-        jobId: job.name,
+      // Create run record - id and startedAt are auto-generated.
+      const run = await storage.cronJobRuns.create({
         jobName: job.name,
-        triggeredBy,
-        isManual,
+        status: 'running',
         mode,
-        settings: mergedSettings,
+        triggeredBy: triggeredBy || null,
       });
+      const runId = run.id;
 
-      // Calculate execution time
-      const executionTimeMs = Date.now() - startedAt.getTime();
-
-      // Prepare output with execution time and summary
-      const outputData = {
-        executionTimeMs,
-        executionTimeSec: (executionTimeMs / 1000).toFixed(2),
-        summary,
-      };
-
-      // Update run as successful
-      await storage.cronJobRuns.update(runId, {
-        status: 'success',
-        completedAt: new Date(),
-        output: JSON.stringify(outputData),
-      });
-
-      logger.info(`Job completed successfully: ${job.name}`, {
+      logger.info(`Starting job execution: ${job.name}`, {
         service: 'cron-scheduler',
         jobName: job.name,
         runId,
-        duration: executionTimeMs,
-        summary,
+        isManual,
+        triggeredBy,
+        mode,
       });
 
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      try {
+        // Get the plugin to access default settings + component gating
+        const plugin = cronPluginRegistry.get(job.name);
 
-      // Update run as failed
-      await storage.cronJobRuns.update(runId, {
-        status: 'error',
-        completedAt: new Date(),
-        error: errorMessage,
-      });
+        // Check if job requires a component that is disabled
+        const requiredComponent = plugin?.metadata.requiredComponent;
+        if (requiredComponent) {
+          const enabledComponents = await getEnabledComponentIds();
+          if (!enabledComponents.includes(requiredComponent)) {
+            const skipMessage = `Skipped: required component '${requiredComponent}' is disabled`;
+            logger.info(`Job skipped due to disabled component: ${job.name}`, {
+              service: 'cron-scheduler',
+              jobName: job.name,
+              runId,
+              requiredComponent,
+            });
 
-      logger.error(`Job failed: ${job.name}`, {
-        service: 'cron-scheduler',
-        jobName: job.name,
-        runId,
-        error: errorMessage,
-        duration: Date.now() - startedAt.getTime(),
-      });
+            // Update run as skipped
+            await storage.cronJobRuns.update(runId, {
+              status: 'skipped',
+              completedAt: new Date(),
+              output: JSON.stringify({ message: skipMessage, requiredComponent }),
+            });
 
-      throw error;
+            return;
+          }
+        }
+
+        const defaultSettings = plugin?.getDefaultSettings?.() ?? {};
+        const mergedSettings = { ...defaultSettings, ...job.settings };
+
+        // Execute the plugin
+        const summary = await executeCronPlugin(job.name, {
+          jobId: job.name,
+          jobName: job.name,
+          triggeredBy,
+          isManual,
+          mode,
+          settings: mergedSettings,
+        });
+
+        // Calculate execution time
+        const executionTimeMs = Date.now() - startedAt.getTime();
+
+        // Prepare output with execution time and summary
+        const outputData = {
+          executionTimeMs,
+          executionTimeSec: (executionTimeMs / 1000).toFixed(2),
+          summary,
+        };
+
+        // Update run as successful
+        await storage.cronJobRuns.update(runId, {
+          status: 'success',
+          completedAt: new Date(),
+          output: JSON.stringify(outputData),
+        });
+
+        logger.info(`Job completed successfully: ${job.name}`, {
+          service: 'cron-scheduler',
+          jobName: job.name,
+          runId,
+          duration: executionTimeMs,
+          summary,
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        // Update run as failed
+        await storage.cronJobRuns.update(runId, {
+          status: 'error',
+          completedAt: new Date(),
+          error: errorMessage,
+        });
+
+        logger.error(`Job failed: ${job.name}`, {
+          service: 'cron-scheduler',
+          jobName: job.name,
+          runId,
+          error: errorMessage,
+          duration: Date.now() - startedAt.getTime(),
+        });
+
+        throw error;
+      }
+    } finally {
+      await fenceLease.release();
     }
   }
 

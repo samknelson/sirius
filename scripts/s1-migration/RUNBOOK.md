@@ -118,9 +118,11 @@ the staged S1 nodes (§4.0b), so no hand-maintained benefit list exists anywhere
 
 Remaining manual preconditions:
 1. **S1 access** — read access to the frozen S1 MariaDB from the migration host.
-2. **App traffic stopped** on the target for the duration of the run (loaders
-   suppress notifications and — with `--migration-mode` — charge plugins, but
-   concurrent user writes would race the id_map).
+2. **Traffic mode matches the command.** For the initial operator-paced
+   bootstrap/manual loader sequence, app traffic remains stopped because those
+   standalone commands do not take the app-write fence. For a wet `sync.ts`
+   daily or final-freeze run, keep the app at desired count 1: the sync's
+   exclusive fence preserves reads and defers writes/background work.
 
 ## 3. Load order (load-bearing — do not reorder)
 
@@ -732,7 +734,7 @@ findings. Reports stay aggregates-only (no names/PII), and say when
         [--dry-run] [--force-reconcile] [--skip-stage] [--keep-going]
 
 One run = migration advisory lock (727001; concurrent sync/bootstrap/seed
-refused) → `stage.ts` (count-verified, abort on any mismatch) → dev fake
+refused) → exclusive app-write fence → `stage.ts` (count-verified, abort on any mismatch) → dev fake
 re-seeds (dev profile only) → the WHOLE loader fleet in §3 order with the
 §5-ruled allowances → per-loader verify/reject/finding gates → balance parity
 (0¢) + month parity (rolling ruled months) → ONE aggregate report printed and
@@ -791,10 +793,21 @@ state; loader-level exact verification is the convergence gate for those):
 - `--keep-going` — collect every loader's result instead of aborting at the
   first failed step (the run still fails; use for fleet-wide triage).
 
-**Concurrency / retry.** One sync per target, ever — enforced by the same
-advisory lock the bootstrap/seed tools take. Failed runs are safely
-re-runnable (§7): loaders are idempotent reconcilers and fingerprints only
-advance after each loader's verify pass.
+**Concurrency / retry.** Keep the app service at desired count **1** during a
+wet daily or final-freeze sync. After refusing a second migration command via
+the migration lock, the sync waits for already-running app mutations and then
+holds a separate exclusive app-write fence through staging, loaders, parity,
+and aggregate-run recording. `GET`/`HEAD`/`OPTIONS` remain online. New HTTP
+mutations receive a retryable `503`; scheduler and WMB work defer without
+claiming queue rows and resume on their next normal run after release. Console
+and aggregate output show fence wait/acquisition; console output confirms
+release. Session locks are also released by PostgreSQL if the migration
+process exits because of a signal. `--dry-run` does not take the app fence and
+leaves the service fully writable.
+
+One sync per target, ever remains enforced by the migration advisory lock.
+Failed runs are safely re-runnable (§7): loaders are idempotent reconcilers and
+fingerprints only advance after each loader's verify pass.
 
 **Rehearsal proof** (throwaway DB; never the shared dev DB):
 `npx tsx scripts/s1-migration/dev/smoke-sync-fleet.ts` bootstraps a fresh

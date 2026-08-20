@@ -279,10 +279,25 @@ export async function recordRun(
   startedAt: Date,
   args: Record<string, unknown>,
   report: Record<string, unknown>,
-): Promise<void> {
-  await db.execute(sql`
+): Promise<number> {
+  const result = await db.execute(sql`
     INSERT INTO s1_staging.runs (started_at, args, report)
     VALUES (${startedAt.toISOString()}::timestamptz, ${JSON.stringify(sanitizeNulDeep(args))}::jsonb, ${JSON.stringify(sanitizeNulDeep(report))}::jsonb)
+    RETURNING id
+  `);
+  const rows = (result as unknown as { rows: Array<{ id: number }> }).rows;
+  return Number(rows[0].id);
+}
+
+export async function updateRunReport(
+  runId: number,
+  report: Record<string, unknown>,
+): Promise<void> {
+  await db.execute(sql`
+    UPDATE s1_staging.runs
+    SET report = ${JSON.stringify(sanitizeNulDeep(report))}::jsonb,
+        finished_at = now()
+    WHERE id = ${runId}
   `);
 }
 

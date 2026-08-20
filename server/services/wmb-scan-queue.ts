@@ -14,6 +14,7 @@ import {
   WMB_IMMEDIATE_SCAN_FLOOD_EVENT,
   WMB_IMMEDIATE_SCAN_WORKER_FLOOD_EVENT,
 } from "../flood/events";
+import { tryAcquireAppWriteFence } from "./s1-write-fence";
 
 /**
  * Per-worker, event-driven trigger sources. Jobs from these sources also
@@ -47,13 +48,29 @@ export interface ProcessingResult {
 export async function processNextQueueJob(
   storage: IStorage,
   triggerSources?: string[],
-  policyCache?: PolicyResolutionCache
+  policyCache?: PolicyResolutionCache,
+  deps: {
+    acquireFence?: typeof tryAcquireAppWriteFence;
+    processJob?: typeof processClaimedJob;
+  } = {},
 ): Promise<{ processed: boolean; workerId?: string; success?: boolean }> {
-  const job = await storage.wmbScanQueue.claimNextJob(triggerSources);
-  if (!job) {
+  const lease = await (deps.acquireFence ?? tryAcquireAppWriteFence)();
+  if (!lease) {
+    logger.info("WMB queue processing deferred by S1 sync", { service: "wmb-scan-queue" });
     return { processed: false };
   }
-  return processClaimedJob(storage, job, policyCache);
+  try {
+    const job = await storage.wmbScanQueue.claimNextJob(triggerSources);
+    if (!job) {
+      return { processed: false };
+    }
+    // `await` is required here: without it, JavaScript evaluates the returned
+    // promise and runs `finally` immediately, releasing the fence while the
+    // claimed job is still processing.
+    return await (deps.processJob ?? processClaimedJob)(storage, job, policyCache);
+  } finally {
+    await lease.release();
+  }
 }
 
 /**
@@ -175,7 +192,7 @@ export async function processClaimedJob(
 export interface ImmediateScanOutcome {
   ran: boolean;
   /** Why the fast path was skipped (when ran=false). */
-  deferredReason?: "disabled" | "worker-cap" | "global-cap" | "flood-error";
+  deferredReason?: "disabled" | "worker-cap" | "global-cap" | "flood-error" | "s1-sync";
   claimedJobs?: number;
 }
 
@@ -196,74 +213,86 @@ export async function tryImmediateScan(
   storage: IStorage,
   workerId: string,
   queueIds: string[],
-  deps: { processJob?: typeof processClaimedJob } = {}
+  deps: {
+    processJob?: typeof processClaimedJob;
+    acquireFence?: typeof tryAcquireAppWriteFence;
+  } = {}
 ): Promise<ImmediateScanOutcome> {
   const processJob = deps.processJob ?? processClaimedJob;
   const logCtx = { service: "wmb-immediate-scan", workerId, queueIds };
-
-  // Flood gate — fail OPEN toward the cron path: any error means "defer".
-  try {
-    const globalDef = floodEventRegistry.get(WMB_IMMEDIATE_SCAN_FLOOD_EVENT);
-    if (!globalDef || globalDef.threshold <= 0) {
-      logger.info("Immediate WMB scan disabled (cap 0); deferring to cron", logCtx);
-      return { ran: false, deferredReason: "disabled" };
-    }
-
-    const workerCheck = await checkFlood(WMB_IMMEDIATE_SCAN_WORKER_FLOOD_EVENT, { workerId });
-    if (!workerCheck.allowed) {
-      logger.info("Immediate WMB scan deferred to cron: worker scanned within the last minute", {
-        ...logCtx,
-        count: workerCheck.count,
-        threshold: workerCheck.threshold,
-      });
-      return { ran: false, deferredReason: "worker-cap" };
-    }
-
-    const globalCheck = await checkFlood(WMB_IMMEDIATE_SCAN_FLOOD_EVENT, {});
-    if (!globalCheck.allowed) {
-      logger.info("Immediate WMB scan deferred to cron: per-minute budget exhausted", {
-        ...logCtx,
-        count: globalCheck.count,
-        threshold: globalCheck.threshold,
-      });
-      return { ran: false, deferredReason: "global-cap" };
-    }
-
-    await recordFloodEvent(WMB_IMMEDIATE_SCAN_WORKER_FLOOD_EVENT, { workerId });
-    await recordFloodEvent(WMB_IMMEDIATE_SCAN_FLOOD_EVENT, {});
-  } catch (err) {
-    logger.warn("Immediate WMB scan flood check failed; deferring to cron", {
-      ...logCtx,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return { ran: false, deferredReason: "flood-error" };
+  const lease = await (deps.acquireFence ?? tryAcquireAppWriteFence)();
+  if (!lease) {
+    logger.info("Immediate WMB scan deferred by S1 sync", logCtx);
+    return { ran: false, deferredReason: "s1-sync" };
   }
 
-  let claimedJobs = 0;
-  for (const queueId of queueIds) {
+  try {
+    // Flood gate — fail OPEN toward the cron path: any error means "defer".
     try {
-      const job = await storage.wmbScanQueue.claimJobById(queueId);
-      // Already claimed elsewhere (e.g. the cron got there first) — skip.
-      if (!job) continue;
-      claimedJobs++;
-      // processClaimedJob records success/failure on the job itself exactly
-      // like the cron path, so a scan failure here never throws upward.
-      await processJob(storage, job);
+      const globalDef = floodEventRegistry.get(WMB_IMMEDIATE_SCAN_FLOOD_EVENT);
+      if (!globalDef || globalDef.threshold <= 0) {
+        logger.info("Immediate WMB scan disabled (cap 0); deferring to cron", logCtx);
+        return { ran: false, deferredReason: "disabled" };
+      }
+
+      const workerCheck = await checkFlood(WMB_IMMEDIATE_SCAN_WORKER_FLOOD_EVENT, { workerId });
+      if (!workerCheck.allowed) {
+        logger.info("Immediate WMB scan deferred to cron: worker scanned within the last minute", {
+          ...logCtx,
+          count: workerCheck.count,
+          threshold: workerCheck.threshold,
+        });
+        return { ran: false, deferredReason: "worker-cap" };
+      }
+
+      const globalCheck = await checkFlood(WMB_IMMEDIATE_SCAN_FLOOD_EVENT, {});
+      if (!globalCheck.allowed) {
+        logger.info("Immediate WMB scan deferred to cron: per-minute budget exhausted", {
+          ...logCtx,
+          count: globalCheck.count,
+          threshold: globalCheck.threshold,
+        });
+        return { ran: false, deferredReason: "global-cap" };
+      }
+
+      await recordFloodEvent(WMB_IMMEDIATE_SCAN_WORKER_FLOOD_EVENT, { workerId });
+      await recordFloodEvent(WMB_IMMEDIATE_SCAN_FLOOD_EVENT, {});
     } catch (err) {
-      logger.error("Immediate WMB scan job processing failed", {
+      logger.warn("Immediate WMB scan flood check failed; deferring to cron", {
         ...logCtx,
-        queueId,
         error: err instanceof Error ? err.message : String(err),
       });
+      return { ran: false, deferredReason: "flood-error" };
     }
-  }
 
-  logger.info(`Immediate WMB scan ran for worker ${workerId}`, {
-    ...logCtx,
-    claimedJobs,
-    requestedJobs: queueIds.length,
-  });
-  return { ran: true, claimedJobs };
+    let claimedJobs = 0;
+    for (const queueId of queueIds) {
+      try {
+        const job = await storage.wmbScanQueue.claimJobById(queueId);
+        // Already claimed elsewhere (e.g. the cron got there first) — skip.
+        if (!job) continue;
+        claimedJobs++;
+        // processClaimedJob records success/failure on the job itself exactly
+        // like the cron path, so a scan failure here never throws upward.
+        await processJob(storage, job);
+      } catch (err) {
+        logger.error("Immediate WMB scan job processing failed", {
+          ...logCtx,
+          queueId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    logger.info(`Immediate WMB scan ran for worker ${workerId}`, {
+      ...logCtx,
+      claimedJobs,
+      requestedJobs: queueIds.length,
+    });
+    return { ran: true, claimedJobs };
+  } finally {
+    await lease.release();
+  }
 }
 
 export async function processBatchQueueJobs(

@@ -134,3 +134,4 @@
 - [Fleet-smoke rehearsal](s1-fleet-smoke-rehearsal.md) — throwaway-DB full-fleet smoke; mutation targets are cross-loader constrained; dev baseline findings ≠ zero.
 - [Rerun reject stability](s1-rerun-reject-stability.md) — fast-path skips must feed dedup registries/caches or reject classes flip across daily runs.
 - [Regression-smoke failure cleanup](regression-smoke-failure-cleanup.md) — tripwire fixtures must remove the bad output they intentionally detect, not just setup rows.
+- [Advisory write-fence lifecycle](advisory-write-fence-lifecycle.md) — isolate session-lock capacity and track handler settlement past client disconnects.

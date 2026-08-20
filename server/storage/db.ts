@@ -224,6 +224,32 @@ export const pool = poolInstance as pg.Pool;
 export const db = dbInstance;
 
 /**
+ * Create a small, independent pool for infrastructure protocols that must
+ * hold session-scoped state (for example advisory locks) across application
+ * work. Keeping these clients out of the main storage pool prevents a set of
+ * long-lived leases from consuming every connection handlers need to finish.
+ */
+export function createInfrastructurePool(options: { max: number }): pg.Pool {
+  let infrastructurePool: NeonPool | pg.Pool;
+  if (driverKind === "neon") {
+    infrastructurePool = new NeonPool({
+      connectionString: effectiveDatabaseUrl,
+      max: options.max,
+    });
+  } else {
+    infrastructurePool = new pg.Pool({
+      connectionString: stripSslParams(databaseUrl),
+      ssl: sslConfigFromUrl(databaseUrl),
+      max: options.max,
+    });
+  }
+  infrastructurePool.on("error", (err: Error) => {
+    console.error("PG infrastructure pool error (idle client terminated, recovering):", err.message);
+  });
+  return infrastructurePool as pg.Pool;
+}
+
+/**
  * Credential-free description of the resolved database target, for admin
  * display (Task #178). Derived from the EFFECTIVE connection string (after
  * the Neon pooler rewrite), so the Neon endpoint ID matches the endpoint the

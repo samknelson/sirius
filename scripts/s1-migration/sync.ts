@@ -63,7 +63,9 @@ import * as os from "os";
 import * as path from "path";
 import { pool as pgPool } from "../../server/storage/db";
 import { resolveDatabaseUrl, describeDatabaseTarget } from "../../shared/database-url";
-import { ensureStagingSchema, recordRun } from "./lib/staging";
+import { acquireExclusiveAppWriteFence, type AppWriteFenceLease } from "../../server/services/s1-write-fence";
+import { ensureStagingSchema, recordRun, updateRunReport } from "./lib/staging";
+import { finalizeWriteFenceReport } from "./lib/write-fence-report";
 import {
   FLEET,
   PROFILES,
@@ -238,8 +240,24 @@ async function main() {
     openEndThrough: horizon,
     parityMonths: months,
   };
+  let writeFence: AppWriteFenceLease | undefined;
+  let aggregateRunId: number | undefined;
 
   try {
+    if (DRY_RUN) {
+      report.writeFence = { status: "skipped", reason: "dry-run" };
+      console.log("[sync] app write fence: SKIPPED (dry-run leaves the app fully writable)");
+    } else {
+      console.log("[sync] app write fence: waiting for in-flight app mutations to finish …");
+      const fenceStartedAt = Date.now();
+      // Use this process's normal pool: unlike the live app, the migration
+      // process has no concurrent handlers whose pool capacity must be
+      // reserved. The dedicated lock client remains held for the whole run.
+      writeFence = await acquireExclusiveAppWriteFence(pgPool);
+      const waitSec = Math.round((Date.now() - fenceStartedAt) / 100) / 10;
+      report.writeFence = { status: "acquired", waitSec, heldThroughAggregateRecord: true };
+      console.log(`[sync] app write fence: ACQUIRED after ${waitSec}s — reads stay online; writes and background work defer until release`);
+    }
     // --- 1. Stage (count-verified mirror of live S1) ----------------------
     if (SKIP_STAGE) {
       report.stage = { status: "skipped", note: "operator ran with --skip-stage; staging used as-is" };
@@ -428,6 +446,10 @@ async function main() {
         allowUnresolved,
       };
     }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    failures.push(`sync aborted by an unexpected error: ${message.split("\n")[0]}`);
+    console.error(`[sync] unexpected error: ${message.split("\n")[0]}`);
   } finally {
     // --- 4. One aggregate run report, always ------------------------------
     const durationSec = Math.round((Date.now() - startedAt.getTime()) / 100) / 10;
@@ -462,7 +484,7 @@ async function main() {
     }
     if (!DRY_RUN) {
       try {
-        await recordRun(startedAt, { command: "sync", mode: MODE, profile: PROFILE_NAME, dryRun: DRY_RUN, forceReconcile: FORCE_RECONCILE, skipStage: SKIP_STAGE, keepGoing: KEEP_GOING }, report);
+        aggregateRunId = await recordRun(startedAt, { command: "sync", mode: MODE, profile: PROFILE_NAME, dryRun: DRY_RUN, forceReconcile: FORCE_RECONCILE, skipStage: SKIP_STAGE, keepGoing: KEEP_GOING }, report);
       } catch (e) {
         console.error(`[sync] recordRun failed (non-fatal): ${(e as Error).message?.split("\n")[0]}`);
       }
@@ -474,9 +496,37 @@ async function main() {
     } catch {
       /* ignore */
     }
+    if (writeFence) {
+      await finalizeWriteFenceReport(writeFence, report, failures);
+      if ((report.writeFence as { releaseStatus?: string }).releaseStatus === "released") {
+        console.log("[sync] app write fence: RELEASED — writes and background work may resume");
+      } else {
+        console.error("[sync] app write fence: explicit release failed; lock session discarded and database pool will close");
+      }
+      if (aggregateRunId !== undefined) {
+        try {
+          await updateRunReport(aggregateRunId, report);
+        } catch (e) {
+          failures.push("aggregate sync run could not be updated with final fence cleanup status");
+          report.failures = failures;
+          report.result = "FAIL";
+          console.error(`[sync] final aggregate run update failed: ${(e as Error).message?.split("\n")[0]}`);
+        }
+      }
+      // Write the process result after every cleanup/persistence attempt so
+      // operators never read a stale PASS when terminal cleanup failed.
+      if (resultPath) {
+        try {
+          fs.writeFileSync(resultPath, JSON.stringify(report));
+        } catch (e) {
+          console.error(`[sync] could not update S1_RESULT_JSON_PATH with fence cleanup: ${(e as Error).message}`);
+        }
+      }
+      console.log(`[sync] FINAL RESULT after fence cleanup: ${String(report.result)}`);
+    }
     lockClient.release();
     await pgPool.end();
-    process.exit(failures.length === 0 ? 0 : 1);
+    process.exitCode = failures.length === 0 ? 0 : 1;
   }
 }
 

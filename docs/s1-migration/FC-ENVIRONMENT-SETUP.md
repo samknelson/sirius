@@ -122,9 +122,10 @@ Test: `mysql -h <rds-endpoint> -u s1ro -p -e "SELECT COUNT(*) FROM smf_prod.node
 (prod shows ~9.2M). Then update the `sirius-migration/S1_DATABASE_URL` secret
 (REGULAR tab).
 
-### 7. Stop app traffic on the target
+### 7. Choose the target traffic mode
 
-Required by the runbook — the FC web app's cron writes race the id_map:
+For the initial operator-paced bootstrap/manual loader chain, stop app traffic
+because the standalone loader commands do not take the app-write fence:
 
 ```bash
 aws ecs update-service --region us-west-2 --cluster <cluster> \
@@ -133,7 +134,12 @@ aws ecs update-service --region us-west-2 --cluster <cluster> \
 
 Scale back to 1 whenever you want to check the migration dashboard
 (`/config/s1-migration`, component `sitespecific.bao.s1migration`), back to 0
-before the next loader. Leave it up after parity gates pass.
+before the next standalone loader. Leave it up after parity gates pass.
+
+For one-command wet daily or final-freeze runs (`sync.ts`), keep desired count
+at **1**. The sync waits for in-flight writes, keeps reads online, returns
+retryable 503s for new mutations, and defers cron/WMB work until it releases
+the fence automatically.
 
 ## Running steps
 
@@ -205,7 +211,9 @@ Same procedure with these differences:
 3. Target = the real production Neon DB (update the EXTERNAL secret) —
    bootstrap-target will demand `--wipe` if it holds data; be sure that is
    intended.
-4. Web app stays scaled to 0 for the whole run; sirius_id collisions must
-   already be renumbered in S1 (loader aborts otherwise, no override).
+4. Web app stays scaled to 0 for the initial standalone loader chain. During
+   later wet daily/final-freeze `sync.ts` runs it stays at desired count 1
+   under the app-write fence. Sirius_id collisions must already be renumbered
+   in S1 (loader aborts otherwise, no override).
 5. After parity gates: Okta pre-provisioning real run + cutover steps per
    RUNBOOK.
