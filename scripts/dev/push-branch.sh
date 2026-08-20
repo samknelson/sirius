@@ -45,7 +45,7 @@ fetch_branch() {
 reconcile_equivalent_remote_history() {
   local branch="$1"
   local remote_ref="$TRACKING_NAMESPACE/$branch"
-  local base patch_file index_file old_main main_tree reconciled_main
+  local base patch_file index_file old_main main_tree remote_tree matching_main_commit reconciled_main
 
   if git merge-base --is-ancestor "$remote_ref" main; then
     return
@@ -55,6 +55,33 @@ reconcile_equivalent_remote_history() {
     echo "ERROR: origin/$branch has no common ancestor with main."
     echo "Refusing to overwrite unrelated remote history."
     exit 1
+  fi
+
+  # Task-agent merges can preserve the task's complete tree under a rewritten
+  # commit SHA. Later tasks may then edit the same lines, which makes a reverse
+  # patch check fail even though the exact remote snapshot is already a commit
+  # in main's history. An exact full-tree match is stronger evidence: it proves
+  # the complete remote tip was incorporated before main moved forward.
+  remote_tree=$(git rev-parse "$remote_ref^{tree}")
+  matching_main_commit=$(
+    git log --format='%H %T' main |
+      awk -v tree="$remote_tree" '$2 == tree && !found { print $1; found = 1 }'
+  )
+  if [ -n "$matching_main_commit" ]; then
+    old_main=$(git rev-parse main)
+    main_tree=$(git rev-parse 'main^{tree}')
+    reconciled_main=$(
+      printf 'Reconcile %s before deployment push\n\nRemote tip tree exactly matches main commit %s; keep the current main tree unchanged.\n' \
+        "origin/$branch" "$matching_main_commit" |
+        GIT_AUTHOR_NAME="$WORKFLOW_GIT_NAME" \
+        GIT_AUTHOR_EMAIL="$WORKFLOW_GIT_EMAIL" \
+        GIT_COMMITTER_NAME="$WORKFLOW_GIT_NAME" \
+        GIT_COMMITTER_EMAIL="$WORKFLOW_GIT_EMAIL" \
+        git commit-tree "$main_tree" -p "$old_main" -p "$remote_ref"
+    )
+    git update-ref refs/heads/main "$reconciled_main" "$old_main"
+    echo "Reconciled origin/$branch: its complete tree matches main commit $matching_main_commit."
+    return
   fi
 
   patch_file=$(mktemp)
