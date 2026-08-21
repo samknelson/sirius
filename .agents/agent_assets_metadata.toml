@@ -13,3 +13,10 @@ uri = "file://docs/s1-rehearsal-reject-triage.xlsx"
 type = "table"
 title = "S1 Rehearsal Reject Triage"
 description = "56 triage rows across 18 loaders — sorted largest-count-first, with dropdown validations, trend data, run history, and instructions."
+
+[[outputs]]
+id = "g36etJfs66BokrwqsQLtH"
+uri = "file://attached_assets/s1-daily-rehearsal-cloudshell-19c10b22.sh"
+type = "unspecified"
+title = "S1 wet daily rehearsal CloudShell launcher"
+description = "Pinned internally to final SHA 0db6c980. Builds/registers the migration image, verifies the deployed write fence, and launches the wet daily full-fleet ECS rehearsal with complete-log instructions."
