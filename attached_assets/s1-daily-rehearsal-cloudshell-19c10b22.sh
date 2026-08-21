@@ -13,6 +13,8 @@
 #   export APP_URL='https://...'
 #   export REPO_DIR='/tmp/sirius'   # clone with origin/bao-dev already available
 #   export CONFIRM_REHEARSAL_TARGET='migration-rehearsal-2026-08-06'
+# Optional only after verifying the pinned image tag exists in ECR:
+#   export SKIP_IMAGE_BUILD=1
 
 REGION=us-west-2
 SHA=0db6c980d0df09ab4d36efbae1ab8534347d1f7e
@@ -57,15 +59,26 @@ ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text --region 
   fail "AWS identity lookup"
 ECR="$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com"
 IMAGE="$ECR/sirius-migration:$SHA"
-aws ecr get-login-password --region "$REGION" |
-  docker login --username AWS --password-stdin "$ECR" >/dev/null ||
-  fail "ECR login"
-docker build --pull --target migration \
-  --label "org.opencontainers.image.revision=$SHA" \
-  -t "$IMAGE" "$REPO_DIR" ||
-  fail "migration image build"
-docker push "$IMAGE" || fail "migration image push"
-echo "image pushed: sirius-migration:$SHA"
+if [ "${SKIP_IMAGE_BUILD:-0}" = "1" ]; then
+  aws ecr describe-images \
+    --region "$REGION" \
+    --repository-name sirius-migration \
+    --image-ids "imageTag=$SHA" \
+    --query 'imageDetails[0].imageDigest' \
+    --output text >/dev/null ||
+    fail "SKIP_IMAGE_BUILD=1 was set, but the pinned ECR image tag does not exist"
+  echo "reusing verified ECR image: sirius-migration:$SHA"
+else
+  aws ecr get-login-password --region "$REGION" |
+    docker login --username AWS --password-stdin "$ECR" >/dev/null ||
+    fail "ECR login"
+  docker build --pull --target migration \
+    --label "org.opencontainers.image.revision=$SHA" \
+    -t "$IMAGE" "$REPO_DIR" ||
+    fail "migration image build"
+  docker push "$IMAGE" || fail "migration image push"
+  echo "image pushed: sirius-migration:$SHA"
+fi
 
 echo
 echo "== 3. Register task-definition revision pinned to immutable image =="
