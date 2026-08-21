@@ -18,5 +18,5 @@ description = "56 triage rows across 18 loaders — sorted largest-count-first, 
 id = "g36etJfs66BokrwqsQLtH"
 uri = "file://attached_assets/s1-daily-rehearsal-cloudshell-19c10b22.sh"
 type = "unspecified"
-title = "Resumable S1 wet daily rehearsal launcher"
-description = "Pinned to bao-dev SHA 0db6c980. Supports SKIP_IMAGE_BUILD=1 only after it verifies the exact immutable ECR image tag exists."
+title = "Updated resumable S1 rehearsal launcher"
+description = "Pinned to bao-dev SHA 0db6c980. Reuses the existing image with SKIP_IMAGE_BUILD=1 and safely matches either DATABASE_URL or EXTERNAL_DATABASE_URL task secret mappings."

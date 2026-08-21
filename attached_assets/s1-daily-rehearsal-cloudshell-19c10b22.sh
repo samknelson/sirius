@@ -147,24 +147,28 @@ aws ecs describe-task-definition \
   --task-definition "$WEB_TD" \
   --query taskDefinition > "$WEB_TD_JSON" ||
   fail "describe web task definition"
-MIGRATION_DB_REF=$(jq -r '
-  .containerDefinitions[]
-  | select(.name == "migration")
-  | .secrets[]?
-  | select(.name == "EXTERNAL_DATABASE_URL")
-  | .valueFrom
-' "$BASE_TD")
-WEB_DB_REF=$(jq -r '
+MIGRATION_DB_REFS=$(mktemp)
+WEB_DB_REFS=$(mktemp)
+COMMON_DB_REFS=$(mktemp)
+jq -r '
   .containerDefinitions[]
   | .secrets[]?
-  | select(.name == "EXTERNAL_DATABASE_URL")
+  | select(.name == "EXTERNAL_DATABASE_URL" or .name == "DATABASE_URL")
   | .valueFrom
-' "$WEB_TD_JSON" | head -n 1)
-if [ -z "$MIGRATION_DB_REF" ] || [ -z "$WEB_DB_REF" ]; then
-  fail "could not resolve EXTERNAL_DATABASE_URL secret references for migration and web tasks"
+' "$BASE_TD" | sort -u > "$MIGRATION_DB_REFS"
+jq -r '
+  .containerDefinitions[]
+  | .secrets[]?
+  | select(.name == "EXTERNAL_DATABASE_URL" or .name == "DATABASE_URL")
+  | .valueFrom
+' "$WEB_TD_JSON" | sort -u > "$WEB_DB_REFS"
+comm -12 "$MIGRATION_DB_REFS" "$WEB_DB_REFS" > "$COMMON_DB_REFS"
+COMMON_DB_COUNT=$(grep -c . "$COMMON_DB_REFS" || true)
+if [ "$COMMON_DB_COUNT" = "0" ]; then
+  fail "migration and web tasks share no EXTERNAL_DATABASE_URL/DATABASE_URL secret reference"
 fi
-if [ "$MIGRATION_DB_REF" != "$WEB_DB_REF" ]; then
-  fail "migration and web tasks do not reference the same EXTERNAL_DATABASE_URL target"
+if [ "$COMMON_DB_COUNT" != "1" ]; then
+  fail "migration and web tasks share multiple database secret references; select an unambiguous rehearsal service"
 fi
 echo "migration and web task database secret references match"
 
