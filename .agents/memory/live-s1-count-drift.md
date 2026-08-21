@@ -3,8 +3,8 @@ name: Live S1 count drift
 description: Daily staging count policy for a changing real-S1 source versus final-freeze.
 ---
 
-Daily sync staging against the live S1 database must not require every extracted bundle count to exactly equal a separately queried source count. Report the bundle, direction, magnitude, and extraction window; fail only when evidence indicates incomplete staging or drift outside the defined live-change contract. Final-freeze retains a strict stable-source consistency requirement.
+Daily node staging may accept live count movement only after two complete ordered identity scans agree on the same identity fingerprint/count and a post-scan source count agrees too. A moving identity set must retry only a bounded number of times, then fail before stale cleanup or loaders. Source surfaces without an equivalent identity contract remain strict even in daily mode. Final-freeze retains a strict stable-source consistency requirement under an operational write freeze.
 
-**Why:** The first real-source daily rehearsal ran against an actively changing database and produced small count deltas in the largest tables even though extraction completed normally. Exact zero drift is unattainable when the count and extraction do not share a stable snapshot.
+**Why:** Exact zero drift is unattainable when count and extraction do not share a snapshot, but count bounds alone miss inserts beyond a captured shard boundary, lower-ID type corrections, and equal-count delete/insert churn. No S1 journal or snapshot transaction exists to close those gaps.
 
-**How to apply:** Design daily gates around auditable extraction boundaries, bounded drift, and relational/content verification. Do not weaken final-freeze: use a quiesced or consistent source and require strict parity there.
+**How to apply:** Require an auditable, complete identity workset before deletion reconciliation or wet loading; never raise retry/concurrency limits to force a moving source through. Treat post-verification mutations as next-daily-run work. Do not weaken final-freeze: quiesce S1 for the entire stage/load window and require strict parity.
