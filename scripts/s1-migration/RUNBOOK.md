@@ -824,6 +824,17 @@ release. Session locks are also released by PostgreSQL if the migration
 process exits because of a signal. `--dry-run` does not take the app fence and
 leaves the service fully writable.
 
+Before the first wet run of a newly deployed web image, run the migration-image
+preflight for two minutes:
+
+    npx tsx scripts/s1-migration/preflight-write-fence.ts --seconds 120
+
+While its log says `READY`, a public `GET /health` must remain successful and a
+`POST /api/__s1-write-fence-probe` must return the stable retryable 503 fence
+response (not 404/401). The preflight writes no application rows, takes the
+migration lock, and releases both locks before exit. Do not launch `sync.ts`
+until the preflight task has stopped with exit 0.
+
 One sync per target, ever remains enforced by the migration advisory lock.
 Failed runs are safely re-runnable (§7): loaders are idempotent reconcilers and
 fingerprints only advance after each loader's verify pass.
