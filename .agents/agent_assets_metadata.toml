@@ -18,5 +18,5 @@ description = "56 triage rows across 18 loaders — sorted largest-count-first, 
 id = "g36etJfs66BokrwqsQLtH"
 uri = "file://attached_assets/s1-daily-rehearsal-cloudshell-19c10b22.sh"
 type = "unspecified"
-title = "Corrected resumable S1 rehearsal launcher"
-description = "Pinned to bao-dev SHA 0db6c980. Removes the invalid secret-reference equality check and verifies the shared database directly through the deployed write-fence behavior."
+title = "CloudWatch-fixed S1 rehearsal launcher"
+description = "Pinned to bao-dev SHA 0db6c980. Derives the Fargate CloudWatch stream from the configured awslogs prefix, migration container name, and task ID."

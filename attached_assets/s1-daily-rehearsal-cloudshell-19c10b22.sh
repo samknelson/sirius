@@ -174,21 +174,27 @@ run_task() {
 
 task_log_stream() {
   TASK_ARN="$1"
-  STREAM=""
-  for _ in $(seq 1 120); do
-    STREAM=$(aws ecs describe-tasks \
-      --region "$REGION" \
-      --cluster "$CLUSTER" \
-      --tasks "$TASK_ARN" \
-      --query 'tasks[0].containers[?name==`migration`].logStreamName | [0]' \
-      --output text 2>/dev/null)
-    if [ -n "$STREAM" ] && [ "$STREAM" != "None" ]; then
-      printf '%s\n' "$STREAM"
-      return 0
-    fi
-    sleep 2
-  done
-  return 1
+  TASK_DEF_ARN=$(aws ecs describe-tasks \
+    --region "$REGION" \
+    --cluster "$CLUSTER" \
+    --tasks "$TASK_ARN" \
+    --query 'tasks[0].taskDefinitionArn' \
+    --output text) || return 1
+  TASK_DEF_JSON=$(mktemp)
+  aws ecs describe-task-definition \
+    --region "$REGION" \
+    --task-definition "$TASK_DEF_ARN" \
+    --query taskDefinition > "$TASK_DEF_JSON" || return 1
+  STREAM_PREFIX=$(jq -r '
+    .containerDefinitions[]
+    | select(.name == "migration")
+    | .logConfiguration.options["awslogs-stream-prefix"] // empty
+  ' "$TASK_DEF_JSON")
+  if [ -z "$STREAM_PREFIX" ]; then
+    return 1
+  fi
+  TASK_ID=${TASK_ARN##*/}
+  printf '%s/migration/%s\n' "$STREAM_PREFIX" "$TASK_ID"
 }
 
 task_exit_code() {
