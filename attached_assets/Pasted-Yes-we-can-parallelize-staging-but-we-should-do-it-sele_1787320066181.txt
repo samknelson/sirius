@@ -1,0 +1,125 @@
+Yes, we can parallelize staging—but we should do it selectively, not by simply starting every stager at once.
+
+Did this run any S2 loaders?
+No.
+
+Your attached staging result had:
+
+mismatches: 3
+
+The current orchestrator treats any stage mismatch as a stage failure. It stops there, so the S2 loader fleet never starts.
+
+The entries labeled “raw/user loaders” in the attachment are still S1 staging extractors. They copied source-table data into the staging area; they are not the S2 migration loaders.
+
+What --dry-run means
+A daily dry run does:
+
+Connects to real S1.
+Stages S1 data into the migration staging tables.
+This is a real write to the isolated s1_staging area.
+It can update staged rows and remove stale staged rows.
+If staging passes, it runs the complete dependency-ordered loader fleet in simulation mode:
+reads staged S1 data;
+performs transformations, lookups, validation, reject checks, and verification;
+produces loader result envelopes;
+does not write imported business data into the rehearsal S2 tables.
+It skips balance/month parity because those checks require applied S2 writes.
+It does not record a completed sync-run row.
+Because staging failed on the strict count gate, this attempt only did steps 1–2.
+
+Can we parallelize stagers?
+Yes, but there are three different approaches
+A. Parallelize independent bundles
+For example, a small contact-related bundle and an unrelated configuration bundle may extract independently.
+
+This is safe only with:
+
+bounded concurrency, initially 2;
+separate source connections;
+separate staging result files;
+source-load limits;
+no shared destructive cleanup until the whole bundle completes.
+This will reduce the small tail, but it will not fix the 11-hour duration because the three largest bundles take almost all of it.
+
+B. Parallelize one huge bundle by ID range
+For the heavy bundles—pay periods, worker months, and logs—we can split work into bounded key ranges:
+
+worker-month IDs 1–500,000
+worker-month IDs 500,001–1,000,000
+...
+
+Each worker stages a disjoint range. This is the parallelism most likely to reduce elapsed time materially.
+
+However, it should start conservatively:
+
+2 workers → measure S1 CPU, DB load, read latency, replication lag
+3–4 workers → only if S1 remains healthy
+
+Running all three huge bundles simultaneously would likely just move the bottleneck to S1 I/O and make production load worse.
+
+C. Stop restaging unchanged records every day
+This is likely the biggest long-term win.
+
+Use each source record’s change metadata as a high-water mark:
+
+daily run:
+  fetch records changed since last successful staging watermark
+  re-stage only those records
+
+Use a small overlap window so clock skew and in-progress source writes do not create gaps:
+
+changed_after = previous_successful_watermark - safety_window
+
+Reprocessing the overlap is okay because staging is idempotent.
+
+What about S1 records that were deleted?
+You identified the important issue correctly:
+
+Changed-since extraction alone cannot see a row that was physically deleted from S1.
+
+If a source row is gone, it has no new changed value. A pure incremental process would leave its old staged/S2 counterpart forever.
+
+The usual safe design is:
+
+Daily:
+  1. Incrementally re-stage changed rows.
+  2. Run a lightweight key-only reconciliation sweep.
+  3. Mark/delete staged rows whose source IDs no longer exist.
+Periodic / final-freeze:
+  4. Run a complete full-source reconciliation.
+
+The key-only sweep should fetch only the stable source identity and change marker:
+
+source ID + changed timestamp
+
+—not every field table and JSON payload. That makes deletion detection much cheaper than the current full bundle extraction.
+
+If Drupal/S1 has a reliable deletion or audit/tombstone source, we can consume that instead. If physical deletion leaves no audit trail, the key-only sweep is necessary.
+
+Recommended staging model
+Initial migration / periodic full sweep:
+  Full extraction of all source data
+  Full deletion reconciliation
+Normal daily sync:
+  Incremental changed-row extraction
+  Short safety overlap
+  Key-only missing-record sweep
+  Bounded parallel shards for the largest changed sets
+  Strict relational/content validation
+Final-freeze:
+  Stable or quiesced source
+  Full extraction/reconciliation
+  Strict count and parity rules
+
+Immediate implication
+Before another dry run can exercise the actual loaders, we need to change the staging gate from:
+
+all count mismatches must equal zero
+
+to:
+
+daily live-source drift is reported and bounded;
+evidence of incomplete/corrupt staging still fails;
+final-freeze remains strict.
+
+That is the current blocker preventing this dry run from reaching any migration loader.
