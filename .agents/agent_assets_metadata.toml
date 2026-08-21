@@ -18,5 +18,5 @@ description = "56 triage rows across 18 loaders — sorted largest-count-first, 
 id = "g36etJfs66BokrwqsQLtH"
 uri = "file://attached_assets/s1-daily-rehearsal-cloudshell-19c10b22.sh"
 type = "unspecified"
-title = "CloudWatch-fixed S1 rehearsal launcher"
-description = "Pinned to bao-dev SHA 0db6c980. Derives the Fargate CloudWatch stream from the configured awslogs prefix, migration container name, and task ID."
+title = "S1 rehearsal retry launcher — stack fix"
+description = "Pinned to hotfix SHA 1f24ef08. Rebuilds the migration image, re-runs safe daily staging, verifies the deployed fence, and retries the full loader fleet."
