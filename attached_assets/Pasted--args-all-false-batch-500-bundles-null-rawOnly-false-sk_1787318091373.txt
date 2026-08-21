@@ -1,0 +1,535 @@
+
+  "args": {
+    "all": false,
+    "batch": 500,
+    "bundles": null,
+    "rawOnly": false,
+    "skipRaw": false,
+    "skipTerms": false
+  },
+  "report": {
+    "reports": [
+      {
+        "bundle": "sirius_contact",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 132194,
+        "durationMs": 93535,
+        "s1NodeCount": 132194,
+        "fieldRowCounts": {
+          "field_sirius_id": 10000,
+          "field_sirius_json": 129072,
+          "field_sirius_lang": 1345,
+          "field_sirius_name": 132115,
+          "field_sirius_email": 28370,
+          "field_sirius_phone": 50174,
+          "field_sirius_domain": 129770,
+          "field_sirius_source": 58907,
+          "field_sirius_address": 56105,
+          "field_sirius_phone_alt": 990,
+          "field_sirius_phone_fax": 0,
+          "field_sirius_address_geo": 53399,
+          "field_sirius_contact_tags": 549949,
+          "field_sirius_address_canon": 119072,
+          "field_sirius_address_county": 52507,
+          "field_sirius_fastload_status": 10000,
+          "field_sirius_address_accuracy": 53223
+        }
+      },
+      {
+        "bundle": "sirius_worker",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 118709,
+        "durationMs": 104771,
+        "s1NodeCount": 118709,
+        "fieldRowCounts": {
+          "field_sirius_id": 118709,
+          "field_sirius_aat": 118709,
+          "field_sirius_dob": 84017,
+          "field_sirius_id2": 33614,
+          "field_sirius_id3": 78883,
+          "field_sirius_ssn": 118594,
+          "field_sirius_json": 117576,
+          "field_sirius_name": 118709,
+          "field_sirius_email": 17386,
+          "field_sirius_phone": 37395,
+          "field_sirius_skill": 0,
+          "field_sirius_domain": 118709,
+          "field_sirius_gender": 80626,
+          "field_grievance_shop": 7473,
+          "field_sirius_address": 53024,
+          "field_sirius_contact": 118709,
+          "field_sirius_headshot": 2,
+          "field_sirius_industry": 69954,
+          "field_sirius_phone_alt": 753,
+          "field_sirius_phone_fax": 0,
+          "field_sirius_work_status": 167,
+          "field_sirius_aat_required": 118709,
+          "field_sirius_denorm_level": 0,
+          "field_sirius_dispatch_asi": 22451,
+          "field_sirius_dispatch_cbn": 0,
+          "field_sirius_dispatch_eba": 118709,
+          "field_sirius_dispatch_hfe": 0,
+          "field_sirius_phone_mobile": 25,
+          "field_sirius_skill_expire": 114,
+          "field_sirius_skills_avail": 0,
+          "field_sirius_dispatch_dncs": 0,
+          "field_sirius_member_status": 69794,
+          "field_sirius_skills_availx": 118709,
+          "field_grievance_departments": 0,
+          "field_sirius_dispatch_dncs2": 0,
+          "field_sirius_denorm_benefits": 141200,
+          "field_sirius_dispatch_medium": 118709,
+          "field_sirius_gender_nota_val": 1260,
+          "field_sirius_gender_nota_calc": 118709,
+          "field_sirius_worker_dispstatus": 805,
+          "field_sirius_dispatch_availdate": 114,
+          "field_sirius_dispatch_eba_dates": 0,
+          "field_sirius_dispatch_hfe_until": 114,
+          "field_sirius_dispatch_sib_status": 0
+        }
+      },
+      {
+        "bundle": "sirius_contact_relationship",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 35815,
+        "durationMs": 20646,
+        "s1NodeCount": 35815,
+        "fieldRowCounts": {
+          "field_sirius_json": 0,
+          "field_sirius_count": 35815,
+          "field_sirius_active": 35815,
+          "field_sirius_domain": 35815,
+          "field_sirius_contact": 35815,
+          "field_sirius_date_end": 128,
+          "field_sirius_date_start": 35701,
+          "field_sirius_contact_alt": 35815,
+          "field_sirius_contact_reltype": 35815
+        }
+      },
+      {
+        "bundle": "grievance_shop",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 252,
+        "durationMs": 122,
+        "s1NodeCount": 252,
+        "fieldRowCounts": {
+          "field_sirius_id": 231,
+          "field_sirius_json": 246,
+          "field_sirius_active": 252,
+          "field_sirius_domain": 252,
+          "field_grievance_tags": 0,
+          "field_sirius_industry": 254,
+          "field_sirius_name_tts": 1,
+          "field_grievance_chapter": 0,
+          "field_grievance_company": 0,
+          "field_grievance_contract": 125,
+          "field_grievance_rep_lead": 0,
+          "field_sirius_attachments": 0,
+          "field_grievance_rep_filed": 0,
+          "field_grievance_attachments": 190,
+          "field_grievance_external_id": 9,
+          "field_grievance_rep_manager": 0,
+          "field_grievance_rep_assignee": 0,
+          "field_grievance_rep_watching": 0,
+          "field_grievance_contract_tplt": 0,
+          "field_grievance_rep_organizer": 0,
+          "field_grievance_assignee_notes": 0,
+          "field_sirius_dispatch_job_types": 3
+        }
+      },
+      {
+        "bundle": "grievance_shop_contact",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 570,
+        "durationMs": 214,
+        "s1NodeCount": 570,
+        "fieldRowCounts": {
+          "field_grievance_min": 0,
+          "field_sirius_domain": 570,
+          "field_sirius_contact": 570,
+          "field_grievance_shops": 576,
+          "field_grievance_co_fax": 6,
+          "field_grievance_co_zip": 122,
+          "field_grievance_co_city": 122,
+          "field_grievance_co_name": 467,
+          "field_grievance_co_role": 382,
+          "field_grievance_company": 3,
+          "field_grievance_co_email": 460,
+          "field_grievance_co_phone": 135,
+          "field_grievance_co_state": 122,
+          "field_grievance_co_address": 122,
+          "field_grievance_co_phone_2": 28,
+          "field_grievance_description": 20,
+          "field_grievance_external_id": 0,
+          "field_grievance_co_address_2": 1,
+          "field_grievance_contact_types": 575
+        }
+      },
+      {
+        "bundle": "sirius_trust_provider",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 13,
+        "durationMs": 70,
+        "s1NodeCount": 13,
+        "fieldRowCounts": {
+          "body": 0,
+          "field_sirius_id": 0,
+          "field_sirius_ssn": 0,
+          "field_sirius_json": 13,
+          "field_sirius_phone": 0,
+          "field_sirius_active": 13,
+          "field_sirius_domain": 13,
+          "field_sirius_address": 13,
+          "field_sirius_address_geo": 13,
+          "field_sirius_provider_npi": 0,
+          "field_sirius_trust_prov_levels": 0
+        }
+      },
+      {
+        "bundle": "sirius_trust_benefit",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 19,
+        "durationMs": 31,
+        "s1NodeCount": 19,
+        "fieldRowCounts": {
+          "body": 14,
+          "field_sirius_id": 19,
+          "field_sirius_json": 4,
+          "field_sirius_active": 19,
+          "field_sirius_domain": 19,
+          "field_sirius_trust_benefit_type": 19
+        }
+      },
+      {
+        "bundle": "sirius_trust_worker_election",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 244483,
+        "durationMs": 172747,
+        "s1NodeCount": 244483,
+        "fieldRowCounts": {
+          "field_sirius_json": 0,
+          "field_sirius_active": 244483,
+          "field_sirius_domain": 244483,
+          "field_sirius_worker": 244483,
+          "field_grievance_shop": 244482,
+          "field_sirius_date_end": 171428,
+          "field_sirius_date_start": 244483,
+          "field_sirius_attachments": 3,
+          "field_sirius_trust_policy": 243704,
+          "field_sirius_trust_benefits": 825168,
+          "field_sirius_contact_relations": 29511,
+          "field_sirius_trust_election_type": 61997
+        }
+      },
+      {
+        "bundle": "sirius_trust_worker_benefit",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 612857,
+        "durationMs": 863996,
+        "s1NodeCount": 612857,
+        "fieldRowCounts": {
+          "field_sirius_json": 258340,
+          "field_sirius_notes": 612729,
+          "field_sirius_active": 612857,
+          "field_sirius_domain": 612857,
+          "field_sirius_worker": 612851,
+          "field_grievance_shop": 575877,
+          "field_sirius_date_end": 449124,
+          "field_sirius_date_start": 612842,
+          "field_sirius_trust_benefit": 612857,
+          "field_sirius_trust_election": 521253,
+          "field_sirius_contact_relation": 313579,
+          "field_sirius_trust_subscriber": 612857
+        }
+      },
+      {
+        "bundle": "sirius_json_definition",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 144,
+        "durationMs": 575,
+        "s1NodeCount": 144,
+        "fieldRowCounts": {
+          "field_sirius_json": 140,
+          "field_sirius_type": 144,
+          "field_sirius_audio": 0,
+          "field_sirius_domain": 108,
+          "field_sirius_public": 5,
+          "field_sirius_callerids": 0
+        }
+      },
+      {
+        "bundle": "sirius_payperiod",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 3636732,
+        "durationMs": 23074387,
+        "s1NodeCount": 3636724,
+        "fieldRowCounts": {
+          "field_sirius_json": 3633279,
+          "field_sirius_notes": 1,
+          "field_sirius_active": 3636732,
+          "field_sirius_domain": 3636722,
+          "field_sirius_worker": 3636732,
+          "field_grievance_shop": 3636732,
+          "field_sirius_date_end": 3636722,
+          "field_sirius_datetime": 2936064,
+          "field_sirius_date_start": 3636732,
+          "field_sirius_attachments": 0,
+          "field_sirius_payperiod_type": 0,
+          "field_sirius_datetime_completed": 2936064
+        }
+      },
+      {
+        "bundle": "smf_worker_month",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 2552810,
+        "durationMs": 11074009,
+        "s1NodeCount": 2552539,
+        "fieldRowCounts": {
+          "field_sirius_json": 2494848,
+          "field_sirius_domain": 2552810,
+          "field_sirius_worker": 2552810,
+          "field_grievance_shop": 1530377,
+          "field_sirius_date_start": 2552810,
+          "field_sirius_contact_tags": 13732948
+        }
+      },
+      {
+        "bundle": "sirius_employee",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 457,
+        "durationMs": 71,
+        "s1NodeCount": 457,
+        "fieldRowCounts": {
+          "field_sirius_id": 457,
+          "field_sirius_json": 0,
+          "field_sirius_domain": 457,
+          "field_sirius_worker": 457,
+          "field_grievance_shop": 457
+        }
+      },
+      {
+        "bundle": "sirius_payment",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 3605,
+        "durationMs": 1063,
+        "s1NodeCount": 3605,
+        "fieldRowCounts": {
+          "field_sirius_id": 827,
+          "field_sirius_json": 539,
+          "field_sirius_notes": 2104,
+          "field_sirius_payer": 3605,
+          "field_sirius_domain": 3605,
+          "field_sirius_datetime": 3240,
+          "field_sirius_dollar_amt": 3596,
+          "field_sirius_check_number": 1268,
+          "field_sirius_payment_type": 3605,
+          "field_sirius_merchant_name": 1922,
+          "field_sirius_ledger_account": 3605,
+          "field_sirius_payment_status": 3605,
+          "field_sirius_datetime_created": 3605,
+          "field_sirius_ledger_allocated": 3605
+        }
+      },
+      {
+        "bundle": "sirius_ledger_account",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 3,
+        "durationMs": 20,
+        "s1NodeCount": 3,
+        "fieldRowCounts": {
+          "field_sirius_id": 3,
+          "field_sirius_json": 3,
+          "field_sirius_domain": 3,
+          "field_sirius_currency": 3,
+          "field_sirius_name_short": 1
+        }
+      },
+      {
+        "bundle": "sirius_phonenumber",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 4009,
+        "durationMs": 1285,
+        "s1NodeCount": 4009,
+        "fieldRowCounts": {
+          "field_sirius_id": 4009,
+          "field_sirius_json": 4009,
+          "field_sirius_domain": 3993,
+          "field_sirius_datetime": 1,
+          "field_sirius_sms_possible": 4009,
+          "field_sirius_voice_possible": 4009
+        }
+      },
+      {
+        "bundle": "sirius_log",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 1833138,
+        "durationMs": 5263707,
+        "s1NodeCount": 1833131,
+        "fieldRowCounts": {
+          "field_sirius_json": 258730,
+          "field_sirius_type": 1833132,
+          "field_sirius_notes": 1820837,
+          "field_sirius_domain": 1768736,
+          "field_sirius_message": 1823090,
+          "field_sirius_summary": 1823075,
+          "field_sirius_category": 1833134,
+          "field_sirius_attachments": 11294,
+          "field_sirius_log_handler": 1854976,
+          "field_sirius_fastload_status": 10027
+        }
+      },
+      {
+        "bundle": "sirius_bulk",
+        "anomalies": {
+          "duplicateDelta": 0,
+          "nonUndLanguage": 0,
+          "extraDeltaOnSingle": 0
+        },
+        "extracted": 45,
+        "durationMs": 142,
+        "s1NodeCount": 45,
+        "fieldRowCounts": {
+          "body": 16,
+          "field_sirius_sms": 23,
+          "field_sirius_json": 38,
+          "field_sirius_voice": 1,
+          "field_sirius_domain": 44,
+          "field_sirius_datetime": 29,
+          "field_sirius_callerids": 0,
+          "field_sirius_bulk_medium": 45,
+          "field_sirius_bulk_status": 45,
+          "field_sirius_audio_public": 0,
+          "field_grievance_notify_subject": 1,
+          "field_sirius_datetime_completed": 28
+        }
+      }
+    ],
+    "mismatches": 3,
+    "rawLedgerAr": {
+      "table": "sirius_ledger_ar",
+      "staged": 290889,
+      "s1Count": 290889,
+      "extracted": 290889,
+      "durationMs": 21783,
+      "staleRemoved": 48
+    },
+    "rawUserTables": [
+      {
+        "table": "users",
+        "staged": 3387,
+        "s1Count": 3387,
+        "extracted": 3387,
+        "durationMs": 254,
+        "staleRemoved": 7
+      },
+      {
+        "table": "users_roles",
+        "staged": 6930,
+        "s1Count": 6930,
+        "extracted": 6930,
+        "durationMs": 324,
+        "staleRemoved": 14
+      },
+      {
+        "table": "role",
+        "staged": 15,
+        "s1Count": 15,
+        "extracted": 15,
+        "durationMs": 21,
+        "staleRemoved": 0
+      },
+      {
+        "table": "authmap",
+        "staged": 2818,
+        "s1Count": 2818,
+        "extracted": 2818,
+        "durationMs": 159,
+        "staleRemoved": 4
+      },
+      {
+        "table": "field_data_field_sirius_contact (entity_type='user')",
+        "staged": 62473,
+        "s1Count": 62473,
+        "extracted": 62473,
+        "durationMs": 2451,
+        "staleRemoved": 0
+      }
+    ],
+    "documentedSkips": [
+      {
+        "bundle": "sirius_employer_payperiod",
+        "reason": "employer_payperiod_workflow_state",
+        "s1NodeCount": 18491
+      }
+    ],
+    "nulSanitizedValues": 1502
+  }
+}

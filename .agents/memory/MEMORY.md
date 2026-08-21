@@ -135,3 +135,4 @@
 - [Rerun reject stability](s1-rerun-reject-stability.md) — fast-path skips must feed dedup registries/caches or reject classes flip across daily runs.
 - [Regression-smoke failure cleanup](regression-smoke-failure-cleanup.md) — tripwire fixtures must remove the bad output they intentionally detect, not just setup rows.
 - [Advisory write-fence lifecycle](advisory-write-fence-lifecycle.md) — isolate session-lock capacity and track handler settlement past client disconnects.
+- [Live S1 count drift](live-s1-count-drift.md) — daily staging cannot require exact source counts while S1 is changing; final-freeze remains strict.
