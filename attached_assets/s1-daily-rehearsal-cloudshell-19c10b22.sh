@@ -12,6 +12,7 @@
 #   export WEB_SERVICE='...'
 #   export APP_URL='https://...'
 #   export REPO_DIR='/tmp/sirius'   # clone with origin/bao-dev already available
+#   export CONFIRM_REHEARSAL_TARGET='migration-rehearsal-2026-08-06'
 
 REGION=us-west-2
 SHA=0db6c980d0df09ab4d36efbae1ab8534347d1f7e
@@ -31,6 +32,9 @@ fail() {
 if [ -z "${CLUSTER:-}" ]; then fail "export CLUSTER before running"; fi
 if [ -z "${WEB_SERVICE:-}" ]; then fail "export WEB_SERVICE before running"; fi
 if [ -z "${APP_URL:-}" ]; then fail "export APP_URL before running"; fi
+if [ "${CONFIRM_REHEARSAL_TARGET:-}" != "migration-rehearsal-2026-08-06" ]; then
+  fail "export CONFIRM_REHEARSAL_TARGET=migration-rehearsal-2026-08-06 after verifying the selected service/task target"
+fi
 if [ ! -d "$REPO_DIR/.git" ]; then
   fail "$REPO_DIR is not a git clone; clone samknelson/sirius with access to origin/bao-dev first"
 fi
@@ -123,6 +127,33 @@ if [ "$SERVICE_STATUS" != "ACTIVE" ] || [ "$DESIRED" != "1" ] || [ "$RUNNING" !=
   fail "web service must be ACTIVE desired=1 running=1 (got: $SERVICE_ROW)"
 fi
 echo "web service online: desired=$DESIRED running=$RUNNING task=${WEB_TD##*/}"
+
+WEB_TD_JSON=$(mktemp)
+aws ecs describe-task-definition \
+  --region "$REGION" \
+  --task-definition "$WEB_TD" \
+  --query taskDefinition > "$WEB_TD_JSON" ||
+  fail "describe web task definition"
+MIGRATION_DB_REF=$(jq -r '
+  .containerDefinitions[]
+  | select(.name == "migration")
+  | .secrets[]?
+  | select(.name == "EXTERNAL_DATABASE_URL")
+  | .valueFrom
+' "$BASE_TD")
+WEB_DB_REF=$(jq -r '
+  .containerDefinitions[]
+  | .secrets[]?
+  | select(.name == "EXTERNAL_DATABASE_URL")
+  | .valueFrom
+' "$WEB_TD_JSON" | head -n 1)
+if [ -z "$MIGRATION_DB_REF" ] || [ -z "$WEB_DB_REF" ]; then
+  fail "could not resolve EXTERNAL_DATABASE_URL secret references for migration and web tasks"
+fi
+if [ "$MIGRATION_DB_REF" != "$WEB_DB_REF" ]; then
+  fail "migration and web tasks do not reference the same EXTERNAL_DATABASE_URL target"
+fi
+echo "migration and web task database secret references match"
 
 RUNNING_MIGRATIONS=$(aws ecs list-tasks \
   --region "$REGION" \
