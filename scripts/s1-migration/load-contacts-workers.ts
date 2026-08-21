@@ -152,6 +152,7 @@ import {
   sweepDeletions,
   type SyncFinding,
 } from "./lib/sync";
+import { nextSiriusId } from "./lib/sirius-id";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 /** Reject classes the operator explicitly allows for THIS run (comma-sep).
@@ -1067,8 +1068,7 @@ async function main() {
   // assign counter for missing/invalid field_sirius_id: above BOTH the staged
   // field_sirius_id range and everything already in the DB (nids from an
   // old-mapping load included), so assignment can never collide.
-  let nextAssigned =
-    Math.max(0, ...fsidFirstOwner.keys(), ...siriusOwner.keys()) + 1;
+  let nextAssigned = nextSiriusId(fsidFirstOwner.keys(), siriusOwner.keys());
 
   // ---- collision-safe repair pre-pass (swaps/cycles among old values) ----
   // Plan every already-mapped worker's target sirius_id first; any mapped row
