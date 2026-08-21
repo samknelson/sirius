@@ -62,6 +62,17 @@ export interface StagedRecord {
   fields: Record<string, unknown>;
 }
 
+export interface StagedRecordMetadata {
+  nid: number;
+  vid: number | null;
+  title: string | null;
+  uid: number | null;
+  status: number | null;
+  created: number | null;
+  changed: number | null;
+  extractedAt: string | Date;
+}
+
 export interface StagedTerm {
   tid: number;
   vocabulary: string;
@@ -252,6 +263,66 @@ export async function deleteStaleRecords(bundle: string, watermark: string): Pro
      WHERE bundle = ${bundle} AND extracted_at < ${watermark}::timestamptz
   `);
   return Number((res as unknown as { rowCount?: number }).rowCount ?? 0);
+}
+
+/**
+ * Lightweight staging metadata lookup used by daily incremental node staging.
+ * Payload JSON is intentionally not read: source identity/change scans decide
+ * whether the costly field-table reassembly is required.
+ */
+export async function stagedRecordMetadata(
+  bundle: string,
+  nids: number[],
+): Promise<Map<number, StagedRecordMetadata>> {
+  if (nids.length === 0) return new Map();
+  const res = await db.execute(sql`
+    SELECT nid, vid, title, uid, status, created, changed, extracted_at
+      FROM s1_staging.records
+     WHERE bundle = ${bundle}
+       AND nid IN (${sql.join(nids.map((nid) => sql`${nid}`), sql`, `)})
+  `);
+  const rows = (res as unknown as {
+    rows: Array<{
+      nid: number | string;
+      vid: number | string | null;
+      title: string | null;
+      uid: number | string | null;
+      status: number | null;
+      created: number | string | null;
+      changed: number | string | null;
+      extracted_at: string | Date;
+    }>;
+  }).rows;
+  return new Map(
+    rows.map((row) => [
+      Number(row.nid),
+      {
+        nid: Number(row.nid),
+        vid: row.vid == null ? null : Number(row.vid),
+        title: row.title,
+        uid: row.uid == null ? null : Number(row.uid),
+        status: row.status == null ? null : Number(row.status),
+        created: row.created == null ? null : Number(row.created),
+        changed: row.changed == null ? null : Number(row.changed),
+        extractedAt: row.extracted_at,
+      },
+    ]),
+  );
+}
+
+/**
+ * Mark every identity observed by the daily source key scan as present in this
+ * staging generation. The caller must only run stale cleanup after every batch
+ * has completed, so a failed/incomplete scan can never masquerade as deletes.
+ */
+export async function markStagedRecordsSeen(bundle: string, nids: number[], watermark: string): Promise<void> {
+  if (nids.length === 0) return;
+  await db.execute(sql`
+    UPDATE s1_staging.records
+       SET extracted_at = ${watermark}::timestamptz
+     WHERE bundle = ${bundle}
+       AND nid IN (${sql.join(nids.map((nid) => sql`${nid}`), sql`, `)})
+  `);
 }
 
 export async function deleteStaleTerms(watermark: string): Promise<number> {

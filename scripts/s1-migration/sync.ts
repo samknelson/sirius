@@ -6,8 +6,9 @@
  *       [--skip-stage] [--keep-going]
  *
  * One run performs: advisory lock (727001, same key as bootstrap/seed — no
- * concurrent migration process of any kind) → stage.ts (count-verified,
- * abort on mismatch) → the whole fleet with dependency-ordered dev fake
+ * concurrent migration process of any kind) → stage.ts (mode-aware evidence
+ * gate; daily permits bounded live drift, final-freeze requires exact counts)
+ * → the whole fleet with dependency-ordered dev fake
  * re-seeds (dev profile only; each seed runs after the step it needs) → the whole
  * loader fleet in RUNBOOK order with the RULED per-loader allowances from
  * sync-config.ts → per-loader verify/reject/finding gates → balance parity +
@@ -22,7 +23,10 @@
  * Missing/malformed results fail the run even when the process exited 0.
  *
  * Gates (any failure ⇒ exit 1; parity PASS can never override them):
- *   stage      — staged counts must equal S1 counts.
+ *   stage      — staged identities must equal the completed source scan;
+ *                daily node drift requires a verified identity fingerprint,
+ *                while terms/raw stay strict and final-freeze requires exact
+ *                stable-source equality under an operational source freeze.
  *   fleet      — per step: process exit 0, valid envelope, rejectGate pass
  *                (only RULED classes), verify pass, no blocking findings.
  *   findings   — mode policy on report-only deletion findings (§10 sweeps):
@@ -66,6 +70,10 @@ import { resolveDatabaseUrl, describeDatabaseTarget } from "../../shared/databas
 import { acquireExclusiveAppWriteFence, type AppWriteFenceLease } from "../../server/services/s1-write-fence";
 import { ensureStagingSchema, recordRun, updateRunReport } from "./lib/staging";
 import { finalizeWriteFenceReport } from "./lib/write-fence-report";
+import {
+  validateStageResultPayload,
+  type StageResultLike,
+} from "./lib/stage-result-contract";
 import {
   FLEET,
   PROFILES,
@@ -137,6 +145,13 @@ function runChild(script: string, args: string[], resultFile: string): ChildRun 
     resultError = fs.existsSync(resultFile) ? "result file unparseable" : "result file missing";
   }
   return { exitCode, durationSec, result, resultError };
+}
+
+function validateStageResult(run: ChildRun): { result: StageResultLike | null; errors: string[] } {
+  if (run.result == null) {
+    return { result: null, errors: [run.resultError ?? "stage result missing"] };
+  }
+  return validateStageResultPayload(MODE, run.result);
 }
 
 // ---------------------------------------------------------------------------
@@ -258,22 +273,30 @@ async function main() {
       report.writeFence = { status: "acquired", waitSec, heldThroughAggregateRecord: true };
       console.log(`[sync] app write fence: ACQUIRED after ${waitSec}s — reads stay online; writes and background work defer until release`);
     }
-    // --- 1. Stage (count-verified mirror of live S1) ----------------------
+    // --- 1. Stage (mode-aware evidence gate over live S1) -----------------
     if (SKIP_STAGE) {
       report.stage = { status: "skipped", note: "operator ran with --skip-stage; staging used as-is" };
       console.log("[sync] stage: SKIPPED (--skip-stage)");
     } else {
       console.log("[sync] stage: re-staging from S1 …");
-      const run = runChild("stage.ts", profile.stageArgs, path.join(tmpDir, "stage.json"));
-      const r = (run.result ?? {}) as { mismatches?: number };
-      const mismatches = typeof r.mismatches === "number" ? r.mismatches : null;
-      const ok = run.exitCode === 0 && mismatches === 0;
-      report.stage = { status: ok ? "pass" : "fail", exitCode: run.exitCode, durationSec: run.durationSec, mismatches, resultError: run.resultError };
+      const run = runChild("stage.ts", ["--mode", MODE, ...profile.stageArgs], path.join(tmpDir, "stage.json"));
+      const validation = validateStageResult(run);
+      const ok = run.exitCode === 0 && validation.errors.length === 0 && validation.result?.status === "pass";
+      report.stage = {
+        status: ok ? "pass" : "fail",
+        exitCode: run.exitCode,
+        durationSec: run.durationSec,
+        mismatches: validation.result?.mismatches ?? null,
+        acceptedLiveDrifts: validation.result?.acceptedLiveDrifts ?? null,
+        countEvidence: validation.result?.countEvidence ?? null,
+        contractErrors: validation.errors,
+        resultError: run.resultError,
+      };
       if (!ok) {
         failures.push(
           run.resultError
             ? `stage: ${run.resultError} (exit ${run.exitCode})`
-            : `stage: count mismatch(es)=${String(mismatches)} exit=${run.exitCode} — staged view does not mirror S1; aborting before any loader runs`,
+            : `stage: evidence gate failed (exit ${run.exitCode}): ${validation.errors.join("; ") || "stage reported failure"} — aborting before any loader runs`,
         );
         return; // stage gate: abort everything
       }

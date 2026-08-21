@@ -106,7 +106,7 @@ export interface StepPolicy {
 }
 
 export interface SyncProfile {
-  /** Extra args for stage.ts (none today; the default in-scope run). */
+  /** Extra args for stage.ts. The orchestrator always prepends --mode. */
   stageArgs: string[];
   /** Dev-only: staged-fake seed scripts that must re-run after EVERY restage
    * (restage sweeps them). Paths relative to scripts/s1-migration/. Each seed

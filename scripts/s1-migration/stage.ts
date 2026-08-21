@@ -2,19 +2,31 @@
  * S1 -> s1_staging extractor CLI.
  *
  * Usage:
- *   npx tsx scripts/s1-migration/stage.ts                 # in-scope bundles + taxonomy terms
- *   npx tsx scripts/s1-migration/stage.ts --bundles sirius_worker,sirius_contact
- *   npx tsx scripts/s1-migration/stage.ts --all           # every populated node bundle
- *   npx tsx scripts/s1-migration/stage.ts --skip-terms --batch 1000
+ *   npx tsx scripts/s1-migration/stage.ts --mode daily
+ *   npx tsx scripts/s1-migration/stage.ts --mode final-freeze
+ *   npx tsx scripts/s1-migration/stage.ts --mode daily --bundles sirius_worker,sirius_contact
+ *   npx tsx scripts/s1-migration/stage.ts --mode daily --skip-terms --batch 1000
  *
  * Output is AGGREGATES ONLY (counts, durations, anomaly tallies) — never row
  * values; the production run happens inside the HIPAA boundary and this
  * report format must stay safe to share.
  *
- * Exit code 1 if any bundle's staged count != S1 node count.
+ * Daily node cleanup requires matching extraction/verification NID
+ * fingerprints and a matching post-scan source count; moving sets retry
+ * three times, then fail closed. Daily terms/raw scans remain strict.
+ * Final-freeze exits 1 unless all source/scanned/staged counts are exact.
  */
-import { createS1Pool, listNodeBundles, buildFieldCatalog } from "./lib/s1";
-import { extractBundle, extractTerms, makeProgressLogger, type BundleExtractReport } from "./lib/extract";
+import { createS1Pool, listNodeBundles, buildFieldCatalog, type S1FieldInstance } from "./lib/s1";
+import {
+  extractBundle,
+  extractBundleIncremental,
+  extractBundleIncrementalSharded,
+  verifyBundleIdentityWorkset,
+  extractTerms,
+  makeProgressLogger,
+  type BundleExtractReport,
+  type IncrementalBundleHooks,
+} from "./lib/extract";
 import {
   ensureStagingSchema,
   upsertRecords,
@@ -40,7 +52,11 @@ import {
   stagedRawUserTableCount,
   type RawUserTable,
   nulSanitizedCount,
+  stagedRecordMetadata,
+  markStagedRecordsSeen,
 } from "./lib/staging";
+import { assessCountEvidence, type CountEvidence, type StageMode } from "./lib/stage-evidence";
+import { shouldRefreshNodePayload } from "./lib/incremental-node";
 import { pool as pgPool } from "../../server/storage/db";
 import type { Pool } from "mysql2/promise";
 import type { RowDataPacket } from "mysql2/promise";
@@ -70,6 +86,11 @@ const IN_SCOPE_BUNDLES = [
   "sirius_bulk",
 ];
 
+/** The three bundles that dominated the first real-S1 stage (~96.8%). They
+ * shard within the bundle, but remain serial relative to one another so daily
+ * staging never launches all three source-intensive scans at once. */
+const DAILY_SHARDED_BUNDLES = new Set(["sirius_payperiod", "smf_worker_month", "sirius_log"]);
+
 /**
  * Ruled-DROP bundles: never staged, never silently ignored. Each run logs the
  * live S1 node count with the documented skip reason so the production run
@@ -84,18 +105,39 @@ const DOCUMENTED_SKIP_BUNDLES: Record<string, string> = {
 };
 
 interface CliArgs {
+  mode: StageMode;
   bundles: string[] | null;
   all: boolean;
   skipTerms: boolean;
   skipRaw: boolean;
   rawOnly: boolean;
   batch: number;
+  heavyShards: number;
+  bundleConcurrency: number;
 }
 
 function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = { bundles: null, all: false, skipTerms: false, skipRaw: false, rawOnly: false, batch: 500 };
+  const args: CliArgs = {
+    mode: "final-freeze",
+    bundles: null,
+    all: false,
+    skipTerms: false,
+    skipRaw: false,
+    rawOnly: false,
+    batch: 500,
+    heavyShards: 2,
+    bundleConcurrency: 2,
+  };
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
+      case "--mode": {
+        const mode = String(argv[++i] ?? "");
+        if (mode !== "daily" && mode !== "final-freeze") {
+          throw new Error(`--mode must be daily or final-freeze (got "${mode}")`);
+        }
+        args.mode = mode;
+        break;
+      }
       case "--bundles":
         args.bundles = String(argv[++i] ?? "").split(",").filter(Boolean);
         break;
@@ -117,6 +159,12 @@ function parseArgs(argv: string[]): CliArgs {
       case "--batch":
         args.batch = Math.max(1, Number(argv[++i] ?? 500));
         break;
+      case "--heavy-shards":
+        args.heavyShards = Math.max(1, Math.min(4, Number(argv[++i] ?? 2)));
+        break;
+      case "--bundle-concurrency":
+        args.bundleConcurrency = Math.max(1, Math.min(2, Number(argv[++i] ?? 2)));
+        break;
       default:
         throw new Error(`Unknown argument: ${argv[i]}`);
     }
@@ -133,7 +181,7 @@ function parseArgs(argv: string[]): CliArgs {
 async function stageRawLedgerAr(
   s1: Pool,
   batch: number,
-): Promise<{ table: string; s1Count: number; extracted: number; staged: number; staleRemoved: number; durationMs: number }> {
+): Promise<{ table: string; s1Count: number; sourceCountAfter: number; extracted: number; staged: number; staleRemoved: number; durationMs: number }> {
   const t0 = Date.now();
   await ensureRawLedgerTable();
   const watermark = await stagingNow();
@@ -173,12 +221,22 @@ async function stageRawLedgerAr(
   }
   const staleRemoved = await deleteStaleRawLedger(watermark);
   const staged = await stagedRawLedgerCount();
-  return { table: "sirius_ledger_ar", s1Count, extracted, staged, staleRemoved, durationMs: Date.now() - t0 };
+  const [afterRows] = await s1.query<RowDataPacket[]>(`SELECT COUNT(*) AS n FROM sirius_ledger_ar`);
+  return {
+    table: "sirius_ledger_ar",
+    s1Count,
+    sourceCountAfter: Number(afterRows[0]?.n ?? 0),
+    extracted,
+    staged,
+    staleRemoved,
+    durationMs: Date.now() - t0,
+  };
 }
 
 interface RawTableReport {
   table: string;
   s1Count: number;
+  sourceCountAfter: number;
   extracted: number;
   staged: number;
   staleRemoved: number;
@@ -234,6 +292,7 @@ async function stageRawUserTables(s1: Pool, batch: number): Promise<RawTableRepo
     reports.push({
       table: "users",
       s1Count,
+      sourceCountAfter: Number((await s1.query<RowDataPacket[]>(`SELECT COUNT(*) AS n FROM users WHERE uid > 1`))[0][0]?.n ?? 0),
       extracted,
       staged: await stagedRawUserTableCount("raw_users"),
       staleRemoved,
@@ -329,6 +388,7 @@ async function stageRawUserTables(s1: Pool, batch: number): Promise<RawTableRepo
     reports.push({
       table: t.table,
       s1Count,
+      sourceCountAfter: Number((await s1.query<RowDataPacket[]>(t.countSql))[0][0]?.n ?? 0),
       extracted,
       staged: await stagedRawUserTableCount(t.raw),
       staleRemoved,
@@ -336,6 +396,136 @@ async function stageRawUserTables(s1: Pool, batch: number): Promise<RawTableRepo
     });
   }
   return reports;
+}
+
+interface NamedCountEvidence extends CountEvidence {
+  source: string;
+  extractionStartedAt: string;
+  extractionFinishedAt: string;
+  payloadExtracted: number;
+  staleRemoved: number;
+  identityVerified?: boolean;
+  identityVerificationAttempts?: number;
+}
+
+async function stageNodeBundle(params: {
+  s1: Pool;
+  bundle: string;
+  fields: S1FieldInstance[];
+  batch: number;
+  mode: StageMode;
+  heavyShards: number;
+}): Promise<{ report: BundleExtractReport; evidence: NamedCountEvidence }> {
+  const { s1, bundle, fields, batch, mode, heavyShards } = params;
+  const extractionStartedAt = new Date();
+  let watermark = await stagingNow();
+  let report: BundleExtractReport;
+  let identityVerified = mode !== "daily";
+  let identityVerificationAttempts = 0;
+  let initialSourceCountBefore: number | null = null;
+  let totalPayloadExtracted = 0;
+  let totalIdentityReadMs = 0;
+  let totalFieldReadMs = 0;
+  let totalStagingCallbackMs = 0;
+
+  if (mode === "daily") {
+    const maxIdentityAttempts = 3;
+    let finalReport: BundleExtractReport | null = null;
+    for (let attempt = 1; attempt <= maxIdentityAttempts; attempt++) {
+      identityVerificationAttempts = attempt;
+      watermark = await stagingNow();
+      const incrementalHooks: IncrementalBundleHooks = {
+        selectPayloadIds: async (nodes) => {
+          const prior = await stagedRecordMetadata(bundle, nodes.map((node) => node.nid));
+          const selected = new Set<number>();
+          for (const node of nodes) {
+            const staged = prior.get(node.nid);
+            if (shouldRefreshNodePayload(node, staged)) selected.add(node.nid);
+          }
+          await markStagedRecordsSeen(bundle, nodes.map((node) => node.nid), watermark);
+          return selected;
+        },
+        onPayload: upsertRecords,
+      };
+      const attemptReport =
+        DAILY_SHARDED_BUNDLES.has(bundle) && heavyShards > 1
+          ? await extractBundleIncrementalSharded(s1, bundle, fields, batch, incrementalHooks, heavyShards)
+          : await extractBundleIncremental(s1, bundle, fields, batch, incrementalHooks);
+      initialSourceCountBefore ??= attemptReport.s1NodeCount;
+      totalPayloadExtracted += attemptReport.payloadExtracted;
+      totalIdentityReadMs += attemptReport.timings.identityReadMs;
+      totalFieldReadMs += attemptReport.timings.fieldReadMs;
+      totalStagingCallbackMs += attemptReport.timings.stagingCallbackMs;
+      const verification = await verifyBundleIdentityWorkset(s1, bundle, batch, attemptReport.shards);
+      identityVerified =
+        verification.identitiesScanned === attemptReport.identitiesScanned &&
+        verification.identityHash === attemptReport.identityHash &&
+        verification.sourceCountAfter === verification.identitiesScanned;
+      if (identityVerified) {
+        attemptReport.s1NodeCount = initialSourceCountBefore;
+        attemptReport.sourceCountAfter = verification.sourceCountAfter;
+        attemptReport.payloadExtracted = totalPayloadExtracted;
+        attemptReport.timings = {
+          identityReadMs: totalIdentityReadMs,
+          fieldReadMs: totalFieldReadMs,
+          stagingCallbackMs: totalStagingCallbackMs,
+        };
+        attemptReport.durationMs = Date.now() - extractionStartedAt.getTime();
+        finalReport = attemptReport;
+        break;
+      }
+      console.warn(
+        `${bundle}: identity workset moved during attempt ${attempt}/${maxIdentityAttempts} ` +
+          `(extracted=${attemptReport.identitiesScanned}, verified=${verification.identitiesScanned}); retrying before cleanup`,
+      );
+    }
+    if (!finalReport || !identityVerified) {
+      throw new Error(`${bundle}: source identity workset did not stabilize after ${maxIdentityAttempts} attempts; no stale cleanup performed`);
+    }
+    report = finalReport;
+  } else {
+    report = await extractBundle(s1, bundle, fields, batch, upsertRecords);
+  }
+
+  // Cleanup is intentionally after the whole bundle (including every shard)
+  // settles. A rejected extraction never reaches this destructive step.
+  const stale = await deleteStaleRecords(bundle, watermark);
+  const staged = await stagedCount(bundle);
+  const finishedAt = new Date();
+  const evidence: NamedCountEvidence = {
+    source: bundle,
+    extractionStartedAt: extractionStartedAt.toISOString(),
+    extractionFinishedAt: finishedAt.toISOString(),
+    payloadExtracted: report.payloadExtracted,
+    staleRemoved: stale,
+    identityVerified,
+    identityVerificationAttempts,
+    ...assessCountEvidence(mode, {
+      sourceCountBefore: report.s1NodeCount,
+      sourceCountAfter: report.sourceCountAfter,
+      identitiesScanned: report.identitiesScanned,
+      stagedCount: staged,
+    }),
+  };
+  const ok = evidence.status === "pass" ? (evidence.acceptedLiveDrift ? "LIVE-DRIFT-ACCEPTED" : "OK") : "MISMATCH";
+  console.log(
+    `${bundle}: sourceBefore=${report.s1NodeCount} sourceAfter=${report.sourceCountAfter} scanned=${report.identitiesScanned} payloads=${report.payloadExtracted} staged=${staged}${stale ? ` staleRemoved=${stale}` : ""} ${ok} (${report.durationMs}ms)`,
+  );
+  console.log(
+    `  timings: identityRead=${report.timings.identityReadMs}ms fieldRead=${report.timings.fieldReadMs}ms stagingCallbacks=${report.timings.stagingCallbackMs}ms`,
+  );
+  if (report.shards?.length) {
+    console.log(
+      `  shards: ${report.shards.map((shard) => `${shard.index}[${shard.afterNid + 1}-${shard.throughNid}]=${shard.identitiesScanned}/${shard.payloadExtracted} (${shard.durationMs}ms)`).join(" ")}`,
+    );
+  }
+  const fieldSummary = Object.entries(report.fieldRowCounts)
+    .filter(([, rows]) => rows > 0)
+    .map(([field, rows]) => `${field}=${rows}`)
+    .join(" ");
+  if (fieldSummary) console.log(`  field rows: ${fieldSummary}`);
+  logAnomalies(report.anomalies);
+  return { report, evidence };
 }
 
 async function main() {
@@ -394,52 +584,112 @@ async function main() {
 
   const reports: BundleExtractReport[] = [];
   let mismatches = 0;
+  let acceptedLiveDrifts = 0;
+  const countEvidence: NamedCountEvidence[] = [];
+
+  const assess = (
+    source: string,
+    started: Date,
+    finished: Date,
+    counts: {
+      sourceCountBefore: number;
+      sourceCountAfter: number;
+      identitiesScanned: number;
+      stagedCount: number;
+      payloadExtracted: number;
+      staleRemoved: number;
+    },
+    gateMode: StageMode = args.mode,
+  ): NamedCountEvidence => {
+    const evidence = {
+      source,
+      extractionStartedAt: started.toISOString(),
+      extractionFinishedAt: finished.toISOString(),
+      payloadExtracted: counts.payloadExtracted,
+      staleRemoved: counts.staleRemoved,
+      ...assessCountEvidence(gateMode, counts),
+    };
+    countEvidence.push(evidence);
+    if (evidence.status === "fail") mismatches++;
+    if (evidence.acceptedLiveDrift) acceptedLiveDrifts++;
+    return evidence;
+  };
 
   if (!args.skipTerms) {
+    const extractionStartedAt = new Date();
     const watermark = await stagingNow();
     const { catalog: termCatalog } = await buildFieldCatalog(s1, "taxonomy_term");
     const termReport = await extractTerms(s1, termCatalog, args.batch, upsertTerms);
     const stale = await deleteStaleTerms(watermark);
     const staged = await stagedTermCount();
-    const ok = staged === termReport.s1TermCount ? "OK" : "MISMATCH";
-    if (ok === "MISMATCH") mismatches++;
+    const evidence = assess("terms", extractionStartedAt, new Date(), {
+      sourceCountBefore: termReport.s1TermCount,
+      sourceCountAfter: termReport.sourceCountAfter,
+      identitiesScanned: termReport.extracted,
+      stagedCount: staged,
+      payloadExtracted: termReport.extracted,
+      staleRemoved: stale,
+    }, "final-freeze");
+    const ok = evidence.status === "pass" ? (evidence.acceptedLiveDrift ? "LIVE-DRIFT-ACCEPTED" : "OK") : "MISMATCH";
     console.log(
-      `terms: s1=${termReport.s1TermCount} extracted=${termReport.extracted} staged=${staged}${stale ? ` staleRemoved=${stale}` : ""} ${ok} (${termReport.durationMs}ms)`,
+      `terms: sourceBefore=${termReport.s1TermCount} sourceAfter=${termReport.sourceCountAfter} scanned=${termReport.extracted} staged=${staged}${stale ? ` staleRemoved=${stale}` : ""} ${ok} (${termReport.durationMs}ms)`,
     );
     console.log(`  vocabularies: ${JSON.stringify(termReport.vocabularies)}`);
     logAnomalies(termReport.anomalies);
   }
 
-  for (const bundle of targets) {
-    const watermark = await stagingNow();
-    const report = await extractBundle(s1, bundle, nodeCatalog.get(bundle) ?? [], args.batch, upsertRecords);
+  const runBundle = (bundle: string) =>
+    stageNodeBundle({
+      s1,
+      bundle,
+      fields: nodeCatalog.get(bundle) ?? [],
+      batch: args.batch,
+      mode: args.mode,
+      heavyShards: args.heavyShards,
+    });
+  const bundleResults: Array<{ report: BundleExtractReport; evidence: NamedCountEvidence }> = [];
+  if (args.mode === "daily") {
+    const lightBundles = targets.filter((bundle) => !DAILY_SHARDED_BUNDLES.has(bundle));
+    for (let i = 0; i < lightBundles.length; i += args.bundleConcurrency) {
+      const wave = lightBundles.slice(i, i + args.bundleConcurrency);
+      console.log(`daily bundle wave: ${wave.join(", ")} (concurrency=${wave.length})`);
+      bundleResults.push(...(await Promise.all(wave.map(runBundle))));
+    }
+    for (const bundle of targets.filter((name) => DAILY_SHARDED_BUNDLES.has(name))) {
+      console.log(`daily heavy bundle: ${bundle} (serial bundle, ${args.heavyShards} identity-range shard(s))`);
+      bundleResults.push(await runBundle(bundle));
+    }
+  } else {
+    for (const bundle of targets) bundleResults.push(await runBundle(bundle));
+  }
+  const targetOrder = new Map(targets.map((bundle, index) => [bundle, index]));
+  bundleResults.sort(
+    (a, b) => (targetOrder.get(a.report.bundle) ?? Number.MAX_SAFE_INTEGER) - (targetOrder.get(b.report.bundle) ?? Number.MAX_SAFE_INTEGER),
+  );
+  for (const { report, evidence } of bundleResults) {
     reports.push(report);
-    // Only reconcile after a fully successful extraction — a thrown batch
-    // aborts the run before this point, leaving prior staged rows intact.
-    const stale = await deleteStaleRecords(bundle, watermark);
-    const staged = await stagedCount(bundle);
-    const ok = staged === report.s1NodeCount ? "OK" : "MISMATCH";
-    if (ok === "MISMATCH") mismatches++;
-    console.log(
-      `${bundle}: s1=${report.s1NodeCount} extracted=${report.extracted} staged=${staged}${stale ? ` staleRemoved=${stale}` : ""} ${ok} (${report.durationMs}ms)`,
-    );
-    const fieldSummary = Object.entries(report.fieldRowCounts)
-      .filter(([, n]) => n > 0)
-      .map(([f, n]) => `${f}=${n}`)
-      .join(" ");
-    if (fieldSummary) console.log(`  field rows: ${fieldSummary}`);
-    logAnomalies(report.anomalies);
+    countEvidence.push(evidence);
+    if (evidence.status === "fail") mismatches++;
+    if (evidence.acceptedLiveDrift) acceptedLiveDrifts++;
   }
 
   // Raw tables stage on default and --all runs; selective --bundles runs
   // skip them (like bundles they weren't asked for), --skip-raw always skips.
   let rawLedgerReport: Awaited<ReturnType<typeof stageRawLedgerAr>> | null = null;
   if (!args.skipRaw && (args.bundles == null || args.rawOnly)) {
+    const extractionStartedAt = new Date();
     rawLedgerReport = await stageRawLedgerAr(s1, args.batch);
-    const ok = rawLedgerReport.staged === rawLedgerReport.s1Count ? "OK" : "MISMATCH";
-    if (ok === "MISMATCH") mismatches++;
+    const evidence = assess("raw:sirius_ledger_ar", extractionStartedAt, new Date(), {
+      sourceCountBefore: rawLedgerReport.s1Count,
+      sourceCountAfter: rawLedgerReport.sourceCountAfter,
+      identitiesScanned: rawLedgerReport.extracted,
+      stagedCount: rawLedgerReport.staged,
+      payloadExtracted: rawLedgerReport.extracted,
+      staleRemoved: rawLedgerReport.staleRemoved,
+    }, "final-freeze");
+    const ok = evidence.status === "pass" ? (evidence.acceptedLiveDrift ? "LIVE-DRIFT-ACCEPTED" : "OK") : "MISMATCH";
     console.log(
-      `raw sirius_ledger_ar: s1=${rawLedgerReport.s1Count} extracted=${rawLedgerReport.extracted} staged=${rawLedgerReport.staged}${rawLedgerReport.staleRemoved ? ` staleRemoved=${rawLedgerReport.staleRemoved}` : ""} ${ok} (${rawLedgerReport.durationMs}ms)`,
+      `raw sirius_ledger_ar: sourceBefore=${rawLedgerReport.s1Count} sourceAfter=${rawLedgerReport.sourceCountAfter} extracted=${rawLedgerReport.extracted} staged=${rawLedgerReport.staged}${rawLedgerReport.staleRemoved ? ` staleRemoved=${rawLedgerReport.staleRemoved}` : ""} ${ok} (${rawLedgerReport.durationMs}ms)`,
     );
   } else if (args.bundles != null && !args.skipRaw) {
     console.log("raw sirius_ledger_ar: skipped (selective --bundles run)");
@@ -448,12 +698,20 @@ async function main() {
   // T27 raw user tables stage under the same policy as raw AR.
   let rawUserReports: RawTableReport[] | null = null;
   if (!args.skipRaw && (args.bundles == null || args.rawOnly)) {
+    const extractionStartedAt = new Date();
     rawUserReports = await stageRawUserTables(s1, args.batch);
     for (const r of rawUserReports) {
-      const ok = r.staged === r.s1Count ? "OK" : "MISMATCH";
-      if (ok === "MISMATCH") mismatches++;
+      const evidence = assess(`raw:${r.table}`, extractionStartedAt, new Date(), {
+        sourceCountBefore: r.s1Count,
+        sourceCountAfter: r.sourceCountAfter,
+        identitiesScanned: r.extracted,
+        stagedCount: r.staged,
+        payloadExtracted: r.extracted,
+        staleRemoved: r.staleRemoved,
+      }, "final-freeze");
+      const ok = evidence.status === "pass" ? (evidence.acceptedLiveDrift ? "LIVE-DRIFT-ACCEPTED" : "OK") : "MISMATCH";
       console.log(
-        `raw ${r.table}: s1=${r.s1Count} extracted=${r.extracted} staged=${r.staged}${r.staleRemoved ? ` staleRemoved=${r.staleRemoved}` : ""} ${ok} (${r.durationMs}ms)`,
+        `raw ${r.table}: sourceBefore=${r.s1Count} sourceAfter=${r.sourceCountAfter} extracted=${r.extracted} staged=${r.staged}${r.staleRemoved ? ` staleRemoved=${r.staleRemoved}` : ""} ${ok} (${r.durationMs}ms)`,
       );
     }
   } else if (args.bundles != null && !args.skipRaw) {
@@ -469,6 +727,8 @@ async function main() {
   await recordRun(startedAt, args as unknown as Record<string, unknown>, {
     reports,
     mismatches,
+    acceptedLiveDrifts,
+    countEvidence,
     documentedSkips,
     nulSanitizedValues: nulSanitizedCount(),
     rawLedgerAr: rawLedgerReport,
@@ -482,8 +742,13 @@ async function main() {
     writeFileSync(
       resultPath,
       JSON.stringify({
+        contractVersion: 2,
         step: "stage",
+        mode: args.mode,
+        status: mismatches === 0 ? "pass" : "fail",
         mismatches,
+        acceptedLiveDrifts,
+        countEvidence,
         bundles: reports.length,
         nulSanitizedValues: nulSanitizedCount(),
         rawLedgerStaged: rawLedgerReport?.staged ?? null,
@@ -494,8 +759,8 @@ async function main() {
 
   console.log(
     mismatches === 0
-      ? `\nDone: ${reports.length} bundle(s) staged, all counts verified.`
-      : `\nDone with ${mismatches} COUNT MISMATCH(ES) — inspect before loading.`,
+      ? `\nDone: ${reports.length} bundle(s) staged; evidence gate passed${acceptedLiveDrifts ? ` with ${acceptedLiveDrifts} bounded live-source drift(s)` : ""}.`
+      : `\nDone with ${mismatches} STAGING EVIDENCE FAILURE(S) — inspect before loading.`,
   );
 
   await s1.end();

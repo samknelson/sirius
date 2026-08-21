@@ -138,14 +138,31 @@ run report prints which source was used.
 ## Usage
 
 ```bash
-npx tsx scripts/s1-migration/stage.ts                  # in-scope bundles + taxonomy terms
-npx tsx scripts/s1-migration/stage.ts --bundles sirius_worker,sirius_contact
-npx tsx scripts/s1-migration/stage.ts --all            # every populated node bundle
-npx tsx scripts/s1-migration/stage.ts --skip-terms --batch 1000
+npx tsx scripts/s1-migration/stage.ts --mode daily
+npx tsx scripts/s1-migration/stage.ts --mode final-freeze
+npx tsx scripts/s1-migration/stage.ts --mode daily --bundles sirius_worker,sirius_contact
+npx tsx scripts/s1-migration/stage.ts --mode daily --skip-terms --batch 1000
 ```
 
-Exit code 1 if any staged count mismatches the S1 node count. Every run is
-recorded in `s1_staging.runs` (args + per-bundle report).
+Daily mode performs a complete lightweight node identity/change scan, rebuilds
+full field payloads only for new/changed/overlap records, and reconciles hard
+deletes from the complete scanned identity set. Independent light bundles run
+in bounded two-wide waves; `sirius_payperiod`, `smf_worker_month`, and
+`sirius_log` remain serial relative to one another but use two disjoint NID
+range shards by default. `--bundle-concurrency 1` and `--heavy-shards 1`
+disable those optimizations for diagnosis.
+
+For node bundles, the daily gate accepts live-source movement only after the
+extraction identity count/fingerprint matches a second complete key-only scan
+and an independent post-scan count. A moving identity set retries at most
+three times with a fresh cleanup watermark, then fails without deleting stale
+rows. Terms and raw tables remain full-scanned and strict (no live count drift)
+until they have an equivalent source-specific identity contract.
+Missing/inconsistent evidence exits 1. Final-freeze is a full payload
+extraction and requires exact stable counts under an operational S1 write
+freeze.
+Every run is recorded in `s1_staging.runs` with aggregate-only count,
+performance, shard, and extraction-window evidence.
 
 **Typechecking:** the migration scripts live OUTSIDE the app tsconfig, so the
 app `tsc` does NOT cover them. After touching anything under

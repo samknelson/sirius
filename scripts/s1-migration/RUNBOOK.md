@@ -176,13 +176,14 @@ needed; **dev-only flags are forbidden in prod**.
 ### 4.0 Stage (AT FREEZE)
 
 ```bash
-npx tsx scripts/s1-migration/stage.ts          # prod: default in-scope bundles
+npx tsx scripts/s1-migration/stage.ts --mode final-freeze
 # dev rehearsal used: stage.ts --all   (synthetic policies live in sirius_trust_policy;
 #                                       prod's policy bundle sirius_json_definition is in-scope by default)
 ```
-- Exits 1 if any bundle's staged count ≠ S1 node count — that is the gate.
-- Expected shape: every line `s1=N extracted=N staged=N OK`; final
-  `Done: <n> bundle(s) staged, all counts verified.`
+- Final-freeze performs a full payload extraction and exits 1 unless source
+  count before = identities scanned = source count after = staged count.
+- Expected shape: every line
+  `sourceBefore=N sourceAfter=N scanned=N payloads=N staged=N OK`.
 - **Liveness:** bundles that run longer than ~60s emit a timer-driven
   heartbeat once a minute — `  progress <bundle>: staged=N/M (P%) elapsed=Es
   rate=R rows/s` (aggregates only). The heartbeat fires even while a single
@@ -734,7 +735,7 @@ findings. Reports stay aggregates-only (no names/PII), and say when
         [--dry-run] [--force-reconcile] [--skip-stage] [--keep-going]
 
 One run = migration advisory lock (727001; concurrent sync/bootstrap/seed
-refused) → exclusive app-write fence → `stage.ts` (count-verified, abort on any mismatch) → dev fake
+refused) → exclusive app-write fence → `stage.ts` (mode-aware evidence gate) → dev fake
 re-seeds (dev profile only) → the WHOLE loader fleet in §3 order with the
 §5-ruled allowances → per-loader verify/reject/finding gates → balance parity
 (0¢) + month parity (rolling ruled months) → ONE aggregate report printed and
@@ -758,6 +759,15 @@ loader's version without updating sync-config FAILS the run (the §10 bump
 rule, enforced), and a loader that exits 0 without a valid envelope fails the
 run too. All counters aggregate from envelopes only.
 
+Stage writes contract version 2 with mode, status, extraction windows, source
+counts before/after, identities scanned, payloads rebuilt, staged counts,
+stale removals, and accepted live-drift classification. The orchestrator
+validates the contract independently; a missing/malformed result or a daily
+node scan without two matching complete NID fingerprints plus a matching
+post-scan count aborts before any loader. A moving node identity set retries
+at most three times, then stops without stale cleanup. Terms/raw tables remain
+full-scanned and strict: any live count drift stops the daily run.
+
 **Gates** (any failure ⇒ exit 1; a later PASS never overrides an earlier
 failure — balance/month parity cover money and coverage, NOT contacts,
 beneficiaries, cardchecks, call logs, packet tags or other entity/config
@@ -765,7 +775,7 @@ state; loader-level exact verification is the convergence gate for those):
 
 | gate | fails when |
 |---|---|
-| stage | any staged-vs-S1 count mismatch (aborts before any loader runs) |
+| stage | daily: staged identities differ from the completed scan, scan falls outside source before/after counts, or evidence is missing; final-freeze: any non-exact source/scanned/staged count |
 | fleet | any loader: non-zero exit, missing/malformed envelope, LOGIC_VERSION drift, disallowed reject class, `verifyFailures` ≠ 0, blocking findings |
 | findings (mode) | final-freeze: ANY unresolved report-only finding, ruled or not (daily: ruled kinds surface in the report for triage) |
 | balance parity | any account drifts ≥ 1¢ (`--tolerance-cents 0`) |
@@ -774,12 +784,21 @@ state; loader-level exact verification is the convergence gate for those):
 **Modes.**
 - `--mode daily` — the dual-run daily. Ruled report-only deletion findings
   (`deleted_in_s1`, `source_worker_missing`, `pending_retention`) surface in
-  the aggregate report for triage; retained rows stay untouched.
+  the aggregate report for triage; retained rows stay untouched. Node staging
+  scans every identity/change marker, rebuilds only changed/new/overlap
+  payloads, and uses the complete identity scan for hard-delete reconciliation.
+  Cleanup/loaders proceed only after a second key-only scan has the same
+  ordered NID fingerprint and count, followed by a matching source count.
+  Light bundles run in bounded two-wide waves. The three dominant bundles stay
+  serial relative to one another and use two NID-range shards each; cleanup
+  occurs only after every shard succeeds.
 - `--mode final-freeze` — the cutover sync against frozen S1. EVERY
   unresolved report-only finding is stop-the-line (signed cardchecks pending
   a retention ruling, beneficiary lists whose source worker vanished,
   unresolved S1 deletes) — resolve in S1 + restage, or rule the mapping away;
   per-run acknowledgement does not unblock this mode.
+  The S1 write freeze must remain in force for the whole stage-and-load window;
+  exact counts cannot prove payload stability on an unfrozen source.
 
 **Controls.**
 - `--dry-run` — stage + dev seeds still run (staging is migration scratch);
@@ -810,6 +829,10 @@ Failed runs are safely re-runnable (§7): loaders are idempotent reconcilers and
 fingerprints only advance after each loader's verify pass.
 
 **Rehearsal proof** (throwaway DB; never the shared dev DB):
+`npx tsx scripts/s1-migration/dev/smoke-stage-optimization.ts` proves the
+daily/freeze evidence matrix, same-second refresh protection, deterministic
+two-shard aggregation, and all-shards-settle failure behavior without touching
+a database.
 `npx tsx scripts/s1-migration/dev/smoke-sync-fleet.ts` bootstraps a fresh
 target, then proves end to end: lock refusal; a full stage→fleet→parity PASS
 from the synthetic MariaDB; dry-run + force-reconcile forwarding (no runs
