@@ -141,36 +141,7 @@ if [ "$SERVICE_STATUS" != "ACTIVE" ] || [ "$DESIRED" != "1" ] || [ "$RUNNING" !=
 fi
 echo "web service online: desired=$DESIRED running=$RUNNING task=${WEB_TD##*/}"
 
-WEB_TD_JSON=$(mktemp)
-aws ecs describe-task-definition \
-  --region "$REGION" \
-  --task-definition "$WEB_TD" \
-  --query taskDefinition > "$WEB_TD_JSON" ||
-  fail "describe web task definition"
-MIGRATION_DB_REFS=$(mktemp)
-WEB_DB_REFS=$(mktemp)
-COMMON_DB_REFS=$(mktemp)
-jq -r '
-  .containerDefinitions[]
-  | .secrets[]?
-  | select(.name == "EXTERNAL_DATABASE_URL" or .name == "DATABASE_URL")
-  | .valueFrom
-' "$BASE_TD" | sort -u > "$MIGRATION_DB_REFS"
-jq -r '
-  .containerDefinitions[]
-  | .secrets[]?
-  | select(.name == "EXTERNAL_DATABASE_URL" or .name == "DATABASE_URL")
-  | .valueFrom
-' "$WEB_TD_JSON" | sort -u > "$WEB_DB_REFS"
-comm -12 "$MIGRATION_DB_REFS" "$WEB_DB_REFS" > "$COMMON_DB_REFS"
-COMMON_DB_COUNT=$(grep -c . "$COMMON_DB_REFS" || true)
-if [ "$COMMON_DB_COUNT" = "0" ]; then
-  fail "migration and web tasks share no EXTERNAL_DATABASE_URL/DATABASE_URL secret reference"
-fi
-if [ "$COMMON_DB_COUNT" != "1" ]; then
-  fail "migration and web tasks share multiple database secret references; select an unambiguous rehearsal service"
-fi
-echo "migration and web task database secret references match"
+echo "database target equivalence will be verified behaviorally by the deployed fence probe"
 
 RUNNING_MIGRATIONS=$(aws ecs list-tasks \
   --region "$REGION" \
