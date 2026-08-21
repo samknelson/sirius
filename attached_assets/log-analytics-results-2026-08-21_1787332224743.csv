@@ -1,0 +1,513 @@
+@timestamp,@message,@logStream,@logGroup
+2026-08-21T17:04:04.660Z,  progress t3t1-contacts-workers: done=97914/250937 (39.0%) elapsed=1860s rate=53 rows/s eta=48m27s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T17:03:04.660Z,  progress t3t1-contacts-workers: done=94779/250937 (37.8%) elapsed=1800s rate=53 rows/s eta=49m26s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T17:02:04.661Z,  progress t3t1-contacts-workers: done=91632/250937 (36.5%) elapsed=1740s rate=53 rows/s eta=50m25s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T17:01:04.660Z,  progress t3t1-contacts-workers: done=88473/250937 (35.3%) elapsed=1680s rate=53 rows/s eta=51m25s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T17:00:04.660Z,  progress t3t1-contacts-workers: done=85455/250937 (34.1%) elapsed=1620s rate=53 rows/s eta=52m17s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:59:04.659Z,  progress t3t1-contacts-workers: done=82219/250937 (32.8%) elapsed=1560s rate=53 rows/s eta=53m21s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:58:04.659Z,  progress t3t1-contacts-workers: done=79079/250937 (31.5%) elapsed=1500s rate=53 rows/s eta=54m20s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:57:04.658Z,  progress t3t1-contacts-workers: done=75983/250937 (30.3%) elapsed=1440s rate=53 rows/s eta=55m16s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:56:04.658Z,  progress t3t1-contacts-workers: done=72766/250937 (29.0%) elapsed=1380s rate=53 rows/s eta=56m19s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:55:04.658Z,  progress t3t1-contacts-workers: done=69717/250937 (27.8%) elapsed=1320s rate=53 rows/s eta=57m11s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:54:04.657Z,  progress t3t1-contacts-workers: done=66561/250937 (26.5%) elapsed=1260s rate=53 rows/s eta=58m10s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:53:04.658Z,  progress t3t1-contacts-workers: done=63431/250937 (25.3%) elapsed=1200s rate=53 rows/s eta=59m07s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:52:04.658Z,  progress t3t1-contacts-workers: done=60134/250937 (24.0%) elapsed=1140s rate=53 rows/s eta=1h00m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:51:04.658Z,  progress t3t1-contacts-workers: done=56919/250937 (22.7%) elapsed=1080s rate=53 rows/s eta=1h01m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:50:04.657Z,  progress t3t1-contacts-workers: done=53657/250937 (21.4%) elapsed=1020s rate=53 rows/s eta=1h03m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:49:04.646Z,  progress t3t1-contacts-workers: done=50340/250937 (20.1%) elapsed=960s rate=52 rows/s eta=1h04m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:48:04.645Z,  progress t3t1-contacts-workers: done=47061/250937 (18.8%) elapsed=900s rate=52 rows/s eta=1h05m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:47:04.646Z,  progress t3t1-contacts-workers: done=43663/250937 (17.4%) elapsed=840s rate=52 rows/s eta=1h06m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:46:04.646Z,  progress t3t1-contacts-workers: done=40397/250937 (16.1%) elapsed=780s rate=52 rows/s eta=1h08m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:45:04.646Z,  progress t3t1-contacts-workers: done=37085/250937 (14.8%) elapsed=720s rate=52 rows/s eta=1h09m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:44:04.645Z,  progress t3t1-contacts-workers: done=33832/250937 (13.5%) elapsed=660s rate=51 rows/s eta=1h11m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:43:04.645Z,  progress t3t1-contacts-workers: done=30485/250937 (12.1%) elapsed=600s rate=51 rows/s eta=1h12m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:42:04.645Z,  progress t3t1-contacts-workers: done=27265/250937 (10.9%) elapsed=540s rate=50 rows/s eta=1h14m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:41:04.645Z,  progress t3t1-contacts-workers: done=24081/250937 (9.6%) elapsed=480s rate=50 rows/s eta=1h15m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:40:04.645Z,  progress t3t1-contacts-workers: done=20886/250937 (8.3%) elapsed=420s rate=50 rows/s eta=1h17m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:39:04.644Z,  progress t3t1-contacts-workers: done=17625/250937 (7.0%) elapsed=360s rate=49 rows/s eta=1h19m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:38:04.644Z,  progress t3t1-contacts-workers: done=14479/250937 (5.8%) elapsed=300s rate=48 rows/s eta=1h22m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:37:04.645Z,  progress t3t1-contacts-workers: done=11266/250937 (4.5%) elapsed=240s rate=47 rows/s eta=1h25m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:36:04.645Z,  progress t3t1-contacts-workers: done=7926/250937 (3.2%) elapsed=180s rate=44 rows/s eta=1h32m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:35:04.628Z,  progress t3t1-contacts-workers: done=4513/250937 (1.8%) elapsed=120s rate=38 rows/s eta=1h49m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:34:04.629Z,  progress t3t1-contacts-workers: done=1472/250937 (0.6%) elapsed=60s rate=25 rows/s eta=2h49m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:33:04.627Z,storage-operation logging SUPPRESSED for this run (default) — winston_logs will not reflect this run; failures surface via the RejectLog/run report. Re-enable with S1_LOADER_LOG_SAMPLE=1 (full) or N>1 (sampled),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:33:02.645Z,"04:33:02 PM [app] INFO: Registered charge plugin: bao-er-report-to-ee-allocation {""service"":""charge-plugin-registry"",""triggers"":[""payment_saved""],""requiredComponent"":""sitespecific.bao""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:33:02.645Z,"04:33:02 PM [app] INFO: Registered charge plugin: bao-hourly {""service"":""charge-plugin-registry"",""triggers"":[""hours_saved""],""requiredComponent"":""sitespecific.bao""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:33:02.635Z,"04:33:02 PM [app] INFO: Registered charge plugin: sitespecific-bao-premium {""service"":""charge-plugin-registry"",""triggers"":[""wmb_saved""],""requiredComponent"":""sitespecific.bao""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:33:02.635Z,"04:33:02 PM [app] INFO: Registered charge plugin: sitespecific-bao-echp {""service"":""charge-plugin-registry"",""triggers"":[""hours_saved""],""requiredComponent"":""sitespecific.bao""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:33:02.629Z,"04:33:02 PM [app] INFO: Registered eligibility plugin: sitespecific-bao-buildup {""service"":""eligibility-plugin-registry""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:33:02.628Z,"04:33:02 PM [app] INFO: Registered charge plugin: sitespecific-bao-dp {""service"":""charge-plugin-registry"",""triggers"":[""cron""],""requiredComponent"":""sitespecific.bao""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:33:02.627Z,"04:33:02 PM [app] INFO: Registered charge plugin: sitespecific-bao-cobra {""service"":""charge-plugin-registry"",""triggers"":[""cron""],""requiredComponent"":""sitespecific.bao""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:33:02.627Z,"04:33:02 PM [app] INFO: Registered charge plugin: btu-dues-allocation {""service"":""charge-plugin-registry"",""triggers"":[""dues_import_saved""],""requiredComponent"":""sitespecific.btu""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:33:02.624Z,"04:33:02 PM [app] INFO: Registered charge plugin: btu-steward-attendance {""service"":""charge-plugin-registry"",""triggers"":[""participant_saved""],""requiredComponent"":""sitespecific.btu""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:33:02.623Z,"04:33:02 PM [app] INFO: Registered charge plugin: payment-simple-allocation {""service"":""charge-plugin-registry"",""triggers"":[""payment_saved""]}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:33:02.623Z,"04:33:02 PM [app] INFO: Registered charge plugin: gbhet-pension-sla-hourly {""service"":""charge-plugin-registry"",""triggers"":[""hours_saved""],""requiredComponent"":""sitespecific.gbhet.pension""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:33:02.622Z,"04:33:02 PM [app] INFO: Registered charge plugin: gbhe-hourly-charge {""service"":""charge-plugin-registry"",""triggers"":[""hours_saved""],""requiredComponent"":""sitespecific.gbhet""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:33:02.612Z,"04:33:02 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {""service"":""charge-plugin-registry"",""triggers"":[""wmb_saved""],""requiredComponent"":""sitespecific.gbhet.legal""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:33:00.860Z,[db] driver=neon (serverless/WebSocket),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:33:00.801Z,[db] Target database: ep-delicate-frog-aflo0zan.c-2.us-west-2.aws.neon.tech/neondb (from EXTERNAL_DATABASE_URL),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.859Z,"[sync] ── contacts-workers (load-contacts-workers.ts --allow-rejects worker_id_value_collision,duplicate_email,address_incomplete,phone_invalid,contact_no_name --allow-findings deleted_in_s1,source_worker_missing,pending_retention)",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.859Z,[sync] ✓ options 3.2s created=0 updated=1 unchanged=37 deleted=0 deactivated=0 reportOnly=0 rejected=0,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,},run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,  },run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,    },run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""alreadyHandled"": 0",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""candidates"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""sweep"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""fastPathSkips"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""unhandledVocabularies"": {},",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,      },run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 3",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""dispatch_out_of_scope"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_worker_dispatch_status"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 14",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""not_migrated_4_8a"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_work_status"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 4",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""consumed_by_T16_enrollment_type"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_trust_election_type"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 9",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""benefits_resolve_via_nodes_not_terms"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_trust_benefit_type"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 161",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""dispatch_skills_out_of_scope"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_skill"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 5",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""not_consumed_raw_ledger_verbatim"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_ledger_type"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 16",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""verify_only_employment_status"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_hour_type"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 3",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""events_empty_no_etl"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_event_type"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 15",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""events_empty_no_etl"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_event_participant_status"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 5",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""events_empty_no_etl"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_event_participant_role"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 6",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""dispatch_out_of_scope"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_dispatch_sib"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 10",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""dispatch_out_of_scope"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_dispatch_job_type"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 1",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""dispatch_out_of_scope"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_dispatch_job_tags"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 97",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""stage_only_except_T29_keep_tag"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_contact_tags"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 3",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""grievance_descoped_greenfield"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_work_status"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 47",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""grievance_descoped_greenfield"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_types"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 2",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""employer_tags_no_s2_equivalent_02_226"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_tags"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 23",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""grievance_descoped_greenfield"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_status"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 4",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""grievance_descoped_greenfield"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_shift"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 1",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""grievance_descoped_greenfield"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_settlement_tags"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 32",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""grievance_descoped_greenfield"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_remedies"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 3",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""grievance_descoped_greenfield"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_outcome"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 39",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""grievance_descoped_greenfield"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_log_types"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 4",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""grievance_descoped_greenfield"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_job_classification"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 37",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""grievance_descoped_greenfield"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_document_types"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 1",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""grievance_descoped_greenfield"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_department"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 6",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""grievance_descoped_greenfield"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_contract_section_tags"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 3",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""grievance_descoped_greenfield"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_contract_clause_tags"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 11",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""consumed_by_T24_contact_type_names"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_contact_types"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 16",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""grievance_descoped_greenfield"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_category"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 2",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""grievance_descoped_greenfield"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_broughtby"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 2",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""grievance_descoped_greenfield"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_assignee_notes"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""terms"": 13",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""reason"": ""grievance_descoped_greenfield"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""grievance_alert_types"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""skippedVocabs"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""workerMsFallbackIndustry"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""workerMsUnresolvedIndustry"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,      },run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""unchanged"": 0",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""updated"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""created"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""adoptedByCode"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""adoptedByName"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""matchedSiriusId"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""matchedIdMap"": 8,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_payment_type"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""unchanged"": 0",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""updated"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""created"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""adoptedByCode"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""adoptedByName"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""matchedSiriusId"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""matchedIdMap"": 7,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_member_status"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""unchanged"": 0",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""updated"": 1,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""created"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""adoptedByCode"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""adoptedByName"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""matchedSiriusId"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""matchedIdMap"": 9,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_gender"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""unchanged"": 0",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""updated"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""created"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""adoptedByCode"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""adoptedByName"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""matchedSiriusId"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""matchedIdMap"": 10,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_contact_relationship_types"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""unchanged"": 0",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""updated"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""created"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""adoptedByCode"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""adoptedByName"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""matchedSiriusId"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"        ""matchedIdMap"": 4,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"      ""sirius_industry"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""perVocab"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""hourTypeVerify"": ""ok"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""stagedTerms"": 636,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"  ""detail"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"  ""blockingFindings"": [],",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"  ""findings"": [],",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"  },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""failures"": 0",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""status"": ""pass"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"  ""verify"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"  },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""disallowed"": []",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""allowed"": [],",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""counts"": {},",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""status"": ""pass"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"  ""rejectGate"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"  },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""rejected"": 0",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""reportOnly"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""deactivated"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""deleted"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""unchanged"": 37,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""updated"": 1,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"    ""created"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"  ""summary"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"  ""forceReconcile"": false,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"  ""dryRun"": false,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"  ""logicVersion"": 1,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,"  ""loader"": ""t4-options"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.827Z,{,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.284Z,[db] driver=neon (serverless/WebSocket),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:54.274Z,[db] Target database: ep-delicate-frog-aflo0zan.c-2.us-west-2.aws.neon.tech/neondb (from EXTERNAL_DATABASE_URL),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.670Z,"[sync] ── options (load-options.ts --allow-findings deleted_in_s1,source_worker_missing,pending_retention)",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.670Z,[sync] ✓ seed-trust-config 9.6s created=1 updated=0 unchanged=31 deleted=0 deactivated=0 reportOnly=0 rejected=0,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,},run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,  },run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,    },run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"      ""titleMissingNids"": []",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"      ""createdNames"": [],",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"      ""created"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"      ""viaName"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"      ""viaProvenance"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"      ""viaSiriusId"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"      ""viaIdMap"": 19,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"      ""staged"": 19,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    ""benefits"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"      ""titleMissingNids"": []",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"      ],",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"        ""Omada Health""",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"      ""createdNames"": [",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"      ""created"": 1,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"      ""viaName"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"      ""viaProvenance"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"      ""viaSiriusId"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"      ""viaIdMap"": 12,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"      ""staged"": 13,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    ""providers"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    ""dryRun"": false,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    ""loader"": ""seed-trust-config"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"  ""detail"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"  ""blockingFindings"": [],",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"  ""findings"": [],",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"  },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    ""failures"": 0",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    ""status"": ""pass"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"  ""verify"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"  },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    ""disallowed"": []",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    ""allowed"": [],",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    ""counts"": {},",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    ""status"": ""pass"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"  ""rejectGate"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"  },",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    ""rejected"": 0",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    ""reportOnly"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    ""deactivated"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    ""deleted"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    ""unchanged"": 31,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    ""updated"": 0,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"    ""created"": 1,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"  ""summary"": {",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"  ""forceReconcile"": false,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"  ""dryRun"": false,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"  ""logicVersion"": 1,",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,"  ""loader"": ""seed-trust-config"",",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.631Z,{,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.583Z,"04:32:51 PM [storage] INFO: Storage operation: trust-providers.createTrustProvider {""service"":""sirius"",""module"":""trust-providers"",""operation"":""createTrustProvider"",""entity_id"":""915e973a-d690-471a-8101-9cccf406a896"",""host_entity_id"":""915e973a-d690-471a-8101-9cccf406a896"",""description"":""Created trust provider \""Omada Health\"""",""meta"":{""args"":[{""name"":""Omada Health"",""data"":{""source"":""s1-migration"",""s1Nid"":18178388}}],""after"":{""id"":""915e973a-d690-471a-8101-9cccf406a896"",""name"":""Omada Health"",""data"":{""s1Nid"":18178388,""source"":""s1-migration""}}}}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:51.368Z,[seed-trust-config] target: ep-delicate-frog-aflo0zan.c-2.us-west-2.aws.neon.tech/neondb (from EXTERNAL_DATABASE_URL),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:50.638Z,"04:32:50 PM [app] INFO: Registered charge plugin: bao-er-report-to-ee-allocation {""service"":""charge-plugin-registry"",""triggers"":[""payment_saved""],""requiredComponent"":""sitespecific.bao""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:50.638Z,"04:32:50 PM [app] INFO: Registered charge plugin: bao-hourly {""service"":""charge-plugin-registry"",""triggers"":[""hours_saved""],""requiredComponent"":""sitespecific.bao""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:50.637Z,"04:32:50 PM [app] INFO: Registered charge plugin: sitespecific-bao-premium {""service"":""charge-plugin-registry"",""triggers"":[""wmb_saved""],""requiredComponent"":""sitespecific.bao""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:50.637Z,"04:32:50 PM [app] INFO: Registered charge plugin: sitespecific-bao-echp {""service"":""charge-plugin-registry"",""triggers"":[""hours_saved""],""requiredComponent"":""sitespecific.bao""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:50.636Z,"04:32:50 PM [app] INFO: Registered eligibility plugin: sitespecific-bao-buildup {""service"":""eligibility-plugin-registry""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:50.635Z,"04:32:50 PM [app] INFO: Registered charge plugin: sitespecific-bao-dp {""service"":""charge-plugin-registry"",""triggers"":[""cron""],""requiredComponent"":""sitespecific.bao""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:50.635Z,"04:32:50 PM [app] INFO: Registered charge plugin: sitespecific-bao-cobra {""service"":""charge-plugin-registry"",""triggers"":[""cron""],""requiredComponent"":""sitespecific.bao""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:50.634Z,"04:32:50 PM [app] INFO: Registered charge plugin: btu-dues-allocation {""service"":""charge-plugin-registry"",""triggers"":[""dues_import_saved""],""requiredComponent"":""sitespecific.btu""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:50.633Z,"04:32:50 PM [app] INFO: Registered charge plugin: btu-steward-attendance {""service"":""charge-plugin-registry"",""triggers"":[""participant_saved""],""requiredComponent"":""sitespecific.btu""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:50.633Z,"04:32:50 PM [app] INFO: Registered charge plugin: payment-simple-allocation {""service"":""charge-plugin-registry"",""triggers"":[""payment_saved""]}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:50.633Z,"04:32:50 PM [app] INFO: Registered charge plugin: gbhet-pension-sla-hourly {""service"":""charge-plugin-registry"",""triggers"":[""hours_saved""],""requiredComponent"":""sitespecific.gbhet.pension""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:50.632Z,"04:32:50 PM [app] INFO: Registered charge plugin: gbhe-hourly-charge {""service"":""charge-plugin-registry"",""triggers"":[""hours_saved""],""requiredComponent"":""sitespecific.gbhet""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:50.631Z,"04:32:50 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {""service"":""charge-plugin-registry"",""triggers"":[""wmb_saved""],""requiredComponent"":""sitespecific.gbhet.legal""}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:49.852Z,[db] driver=neon (serverless/WebSocket),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:49.842Z,[db] Target database: ep-delicate-frog-aflo0zan.c-2.us-west-2.aws.neon.tech/neondb (from EXTERNAL_DATABASE_URL),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:42.033Z,[sync] ── seed-trust-config (seed-trust-config.ts),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:41.994Z,Done: 18 bundle(s) staged; evidence gate passed with 1 bounded live-source drift(s).,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:41.970Z,nul-sanitized: 3 string value(s) had \u0000 stripped (Postgres cannot store NUL in text/jsonb),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:41.970Z,raw field_data_field_sirius_contact (entity_type='user'): sourceBefore=62476 sourceAfter=62476 extracted=62476 staged=62476 OK (4095ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:41.970Z,raw authmap: sourceBefore=2821 sourceAfter=2821 extracted=2821 staged=2821 OK (319ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:41.970Z,raw role: sourceBefore=15 sourceAfter=15 extracted=15 staged=15 OK (24ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:41.970Z,raw users_roles: sourceBefore=6936 sourceAfter=6936 extracted=6936 staged=6936 OK (526ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:41.970Z,raw users: sourceBefore=3390 sourceAfter=3390 extracted=3390 staged=3390 OK (446ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:36.505Z,raw sirius_ledger_ar: sourceBefore=290898 sourceAfter=290898 extracted=290898 staged=290898 OK (33549ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:02.954Z,  field rows: field_sirius_attachments=5 field_sirius_category=885 field_sirius_domain=879 field_sirius_json=36 field_sirius_log_handler=918 field_sirius_message=885 field_sirius_notes=885 field_sirius_summary=885 field_sirius_type=885,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:02.954Z,  shards: 1[1-9118977]=247255/0 (18211ms) 2[9118978-9007199254740991]=1586763/885 (616571ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:02.954Z,  timings: identityRead=471213ms fieldRead=2362ms stagingCallbacks=158129ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:32:02.954Z,sirius_log: sourceBefore=1833831 sourceAfter=1834018 scanned=1834018 payloads=885 staged=1834018 LIVE-DRIFT-ACCEPTED (623666ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:29:20.044Z,  progress sirius_log shard 2/2: identity-scanned=1529000/1833831 (83.4%) elapsed=600s rate=2548 rows/s eta=2m00s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:28:20.044Z,  progress sirius_log shard 2/2: identity-scanned=1274000/1833831 (69.5%) elapsed=540s rate=2359 rows/s eta=3m57s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:27:20.045Z,  progress sirius_log shard 2/2: identity-scanned=1188000/1833831 (64.8%) elapsed=480s rate=2475 rows/s eta=4m21s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:26:20.044Z,  progress sirius_log shard 2/2: identity-scanned=1098000/1833831 (59.9%) elapsed=420s rate=2614 rows/s eta=4m41s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:25:20.045Z,  progress sirius_log shard 2/2: identity-scanned=1008000/1833831 (55.0%) elapsed=360s rate=2800 rows/s eta=4m55s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:24:20.044Z,  progress sirius_log shard 2/2: identity-scanned=894500/1833831 (48.8%) elapsed=300s rate=2982 rows/s eta=5m15s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:23:20.043Z,  progress sirius_log shard 2/2: identity-scanned=767500/1833831 (41.9%) elapsed=240s rate=3198 rows/s eta=5m33s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:22:20.043Z,  progress sirius_log shard 2/2: identity-scanned=627000/1833831 (34.2%) elapsed=180s rate=3483 rows/s eta=5m46s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:21:20.043Z,  progress sirius_log shard 2/2: identity-scanned=464000/1833831 (25.3%) elapsed=120s rate=3867 rows/s eta=5m54s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:20:20.043Z,  progress sirius_log shard 2/2: identity-scanned=271000/1833831 (14.8%) elapsed=60s rate=4517 rows/s eta=5m46s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:19:18.921Z,"daily heavy bundle: sirius_log (serial bundle, 2 identity-range shard(s))",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:19:18.921Z,  field rows: field_sirius_contact_tags=15 field_sirius_date_start=5 field_sirius_domain=5 field_sirius_json=5 field_sirius_worker=5,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:19:18.921Z,  shards: 1[1-12908430]=1765838/0 (768900ms) 2[12908431-9007199254740991]=786973/5 (647578ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:19:18.921Z,  timings: identityRead=1160877ms fieldRead=26ms stagingCallbacks=250910ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:19:18.921Z,smf_worker_month: sourceBefore=2552811 sourceAfter=2552811 scanned=2552811 payloads=5 staged=2552811 OK (779505ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:17:25.072Z,  progress smf_worker_month shard 1/2: identity-scanned=1552500/2552811 (60.8%) elapsed=720s rate=2156 rows/s eta=7m44s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:16:25.071Z,  progress smf_worker_month shard 1/2: identity-scanned=1478000/2552811 (57.9%) elapsed=660s rate=2239 rows/s eta=8m00s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:15:25.071Z,  progress smf_worker_month shard 1/2: identity-scanned=1401500/2552811 (54.9%) elapsed=600s rate=2336 rows/s eta=8m13s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:15:25.064Z,  progress smf_worker_month shard 2/2: identity-scanned=673500/2552811 (26.4%) elapsed=600s rate=1122 rows/s eta=27m54s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:14:25.071Z,  progress smf_worker_month shard 1/2: identity-scanned=1322000/2552811 (51.8%) elapsed=540s rate=2448 rows/s eta=8m23s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:14:25.064Z,  progress smf_worker_month shard 2/2: identity-scanned=600000/2552811 (23.5%) elapsed=540s rate=1111 rows/s eta=29m18s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:13:25.071Z,  progress smf_worker_month shard 1/2: identity-scanned=1238500/2552811 (48.5%) elapsed=480s rate=2580 rows/s eta=8m29s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:13:25.064Z,  progress smf_worker_month shard 2/2: identity-scanned=467000/2552811 (18.3%) elapsed=480s rate=973 rows/s eta=35m44s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:12:25.071Z,  progress smf_worker_month shard 1/2: identity-scanned=1148500/2552811 (45.0%) elapsed=420s rate=2735 rows/s eta=8m34s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:12:25.064Z,  progress smf_worker_month shard 2/2: identity-scanned=413500/2552811 (16.2%) elapsed=420s rate=985 rows/s eta=36m13s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:11:25.071Z,  progress smf_worker_month shard 1/2: identity-scanned=1059000/2552811 (41.5%) elapsed=360s rate=2942 rows/s eta=8m28s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:11:25.064Z,  progress smf_worker_month shard 2/2: identity-scanned=361500/2552811 (14.2%) elapsed=360s rate=1004 rows/s eta=36m22s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:10:25.070Z,  progress smf_worker_month shard 1/2: identity-scanned=958000/2552811 (37.5%) elapsed=300s rate=3193 rows/s eta=8m19s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:10:25.064Z,  progress smf_worker_month shard 2/2: identity-scanned=307000/2552811 (12.0%) elapsed=300s rate=1023 rows/s eta=36m35s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:09:25.071Z,  progress smf_worker_month shard 1/2: identity-scanned=841000/2552811 (32.9%) elapsed=240s rate=3504 rows/s eta=8m09s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:09:25.064Z,  progress smf_worker_month shard 2/2: identity-scanned=248500/2552811 (9.7%) elapsed=240s rate=1035 rows/s eta=37m06s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:08:25.070Z,  progress smf_worker_month shard 1/2: identity-scanned=704500/2552811 (27.6%) elapsed=180s rate=3914 rows/s eta=7m52s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:08:25.062Z,  progress smf_worker_month shard 2/2: identity-scanned=187500/2552811 (7.3%) elapsed=180s rate=1042 rows/s eta=37m51s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:07:25.071Z,  progress smf_worker_month shard 1/2: identity-scanned=538000/2552811 (21.1%) elapsed=120s rate=4483 rows/s eta=7m29s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:07:25.062Z,  progress smf_worker_month shard 2/2: identity-scanned=125500/2552811 (4.9%) elapsed=120s rate=1046 rows/s eta=38m41s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:06:25.071Z,  progress smf_worker_month shard 1/2: identity-scanned=320500/2552811 (12.6%) elapsed=60s rate=5342 rows/s eta=6m58s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:06:25.061Z,  progress smf_worker_month shard 2/2: identity-scanned=61000/2552811 (2.4%) elapsed=60s rate=1017 rows/s eta=40m51s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:05:23.302Z,"daily heavy bundle: smf_worker_month (serial bundle, 2 identity-range shard(s))",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:05:23.302Z,  field rows: field_grievance_shop=324 field_sirius_active=324 field_sirius_date_end=324 field_sirius_date_start=324 field_sirius_domain=324 field_sirius_json=324 field_sirius_worker=324,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:05:23.302Z,  shards: 1[1-10188430]=2757166/0 (1995394ms) 2[10188431-9007199254740991]=879888/324 (971203ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:05:23.302Z,  timings: identityRead=2474196ms fieldRead=95ms stagingCallbacks=485548ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T16:05:23.302Z,sirius_payperiod: sourceBefore=3637054 sourceAfter=3637054 scanned=3637054 payloads=324 staged=3637054 OK (2449816ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:54:42.636Z,  progress sirius_payperiod shard 1/2: identity-scanned=2639000/3637054 (72.6%) elapsed=1980s rate=1333 rows/s eta=12m29s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:53:42.636Z,  progress sirius_payperiod shard 1/2: identity-scanned=2590000/3637054 (71.2%) elapsed=1920s rate=1349 rows/s eta=12m56s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:52:42.636Z,  progress sirius_payperiod shard 1/2: identity-scanned=2543000/3637054 (69.9%) elapsed=1860s rate=1367 rows/s eta=13m20s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:51:42.635Z,  progress sirius_payperiod shard 1/2: identity-scanned=2502500/3637054 (68.8%) elapsed=1800s rate=1390 rows/s eta=13m36s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:50:42.634Z,  progress sirius_payperiod shard 1/2: identity-scanned=2471500/3637054 (68.0%) elapsed=1740s rate=1420 rows/s eta=13m41s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:49:42.634Z,  progress sirius_payperiod shard 1/2: identity-scanned=2425500/3637054 (66.7%) elapsed=1680s rate=1444 rows/s eta=13m59s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:48:42.633Z,  progress sirius_payperiod shard 1/2: identity-scanned=2378000/3637054 (65.4%) elapsed=1620s rate=1468 rows/s eta=14m18s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:47:42.633Z,  progress sirius_payperiod shard 1/2: identity-scanned=2332500/3637054 (64.1%) elapsed=1560s rate=1495 rows/s eta=14m33s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:46:42.633Z,  progress sirius_payperiod shard 1/2: identity-scanned=2287500/3637054 (62.9%) elapsed=1500s rate=1525 rows/s eta=14m45s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:45:42.633Z,  progress sirius_payperiod shard 1/2: identity-scanned=2242000/3637054 (61.6%) elapsed=1440s rate=1557 rows/s eta=14m56s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:44:42.632Z,  progress sirius_payperiod shard 1/2: identity-scanned=2188000/3637054 (60.2%) elapsed=1380s rate=1585 rows/s eta=15m14s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:43:42.632Z,  progress sirius_payperiod shard 1/2: identity-scanned=2133500/3637054 (58.7%) elapsed=1320s rate=1616 rows/s eta=15m30s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:42:42.632Z,  progress sirius_payperiod shard 1/2: identity-scanned=2077000/3637054 (57.1%) elapsed=1260s rate=1648 rows/s eta=15m46s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:41:42.632Z,  progress sirius_payperiod shard 1/2: identity-scanned=2021000/3637054 (55.6%) elapsed=1200s rate=1684 rows/s eta=16m00s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:40:42.632Z,  progress sirius_payperiod shard 1/2: identity-scanned=1963000/3637054 (54.0%) elapsed=1140s rate=1722 rows/s eta=16m12s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:39:42.632Z,  progress sirius_payperiod shard 1/2: identity-scanned=1904500/3637054 (52.4%) elapsed=1080s rate=1763 rows/s eta=16m23s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:38:42.632Z,  progress sirius_payperiod shard 1/2: identity-scanned=1843500/3637054 (50.7%) elapsed=1020s rate=1807 rows/s eta=16m32s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:37:42.736Z,  progress sirius_payperiod shard 2/2: identity-scanned=869500/3637054 (23.9%) elapsed=960s rate=906 rows/s eta=50m56s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:37:42.632Z,  progress sirius_payperiod shard 1/2: identity-scanned=1780500/3637054 (49.0%) elapsed=960s rate=1855 rows/s eta=16m41s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:36:42.735Z,  progress sirius_payperiod shard 2/2: identity-scanned=584500/3637054 (16.1%) elapsed=900s rate=649 rows/s eta=1h18m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:36:42.632Z,  progress sirius_payperiod shard 1/2: identity-scanned=1716500/3637054 (47.2%) elapsed=900s rate=1907 rows/s eta=16m47s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:35:42.735Z,  progress sirius_payperiod shard 2/2: identity-scanned=546000/3637054 (15.0%) elapsed=840s rate=650 rows/s eta=1h19m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:35:42.631Z,  progress sirius_payperiod shard 1/2: identity-scanned=1650000/3637054 (45.4%) elapsed=840s rate=1964 rows/s eta=16m52s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:34:42.735Z,  progress sirius_payperiod shard 2/2: identity-scanned=510000/3637054 (14.0%) elapsed=780s rate=654 rows/s eta=1h20m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:34:42.631Z,  progress sirius_payperiod shard 1/2: identity-scanned=1582000/3637054 (43.5%) elapsed=780s rate=2028 rows/s eta=16m53s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:33:42.735Z,  progress sirius_payperiod shard 2/2: identity-scanned=473000/3637054 (13.0%) elapsed=720s rate=657 rows/s eta=1h20m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:33:42.631Z,  progress sirius_payperiod shard 1/2: identity-scanned=1509000/3637054 (41.5%) elapsed=720s rate=2096 rows/s eta=16m55s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:32:42.734Z,  progress sirius_payperiod shard 2/2: identity-scanned=436000/3637054 (12.0%) elapsed=660s rate=661 rows/s eta=1h21m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:32:42.630Z,  progress sirius_payperiod shard 1/2: identity-scanned=1433000/3637054 (39.4%) elapsed=660s rate=2171 rows/s eta=16m55s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:31:42.733Z,  progress sirius_payperiod shard 2/2: identity-scanned=397500/3637054 (10.9%) elapsed=600s rate=662 rows/s eta=1h22m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:31:42.630Z,  progress sirius_payperiod shard 1/2: identity-scanned=1354000/3637054 (37.2%) elapsed=600s rate=2257 rows/s eta=16m52s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:30:42.733Z,  progress sirius_payperiod shard 2/2: identity-scanned=360000/3637054 (9.9%) elapsed=540s rate=667 rows/s eta=1h22m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:30:42.630Z,  progress sirius_payperiod shard 1/2: identity-scanned=1271000/3637054 (34.9%) elapsed=540s rate=2354 rows/s eta=16m45s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:29:42.734Z,  progress sirius_payperiod shard 2/2: identity-scanned=321500/3637054 (8.8%) elapsed=480s rate=670 rows/s eta=1h23m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:29:42.630Z,  progress sirius_payperiod shard 1/2: identity-scanned=1179500/3637054 (32.4%) elapsed=480s rate=2457 rows/s eta=16m40s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:28:42.734Z,  progress sirius_payperiod shard 2/2: identity-scanned=283000/3637054 (7.8%) elapsed=420s rate=674 rows/s eta=1h23m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:28:42.630Z,  progress sirius_payperiod shard 1/2: identity-scanned=1081500/3637054 (29.7%) elapsed=420s rate=2575 rows/s eta=16m33s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:27:42.733Z,  progress sirius_payperiod shard 2/2: identity-scanned=243000/3637054 (6.7%) elapsed=360s rate=675 rows/s eta=1h24m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:27:42.631Z,  progress sirius_payperiod shard 1/2: identity-scanned=976500/3637054 (26.8%) elapsed=360s rate=2712 rows/s eta=16m21s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:26:42.732Z,  progress sirius_payperiod shard 2/2: identity-scanned=202500/3637054 (5.6%) elapsed=300s rate=675 rows/s eta=1h25m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:26:42.630Z,  progress sirius_payperiod shard 1/2: identity-scanned=860500/3637054 (23.7%) elapsed=300s rate=2868 rows/s eta=16m08s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:25:42.732Z,  progress sirius_payperiod shard 2/2: identity-scanned=163000/3637054 (4.5%) elapsed=240s rate=679 rows/s eta=1h25m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:25:42.627Z,  progress sirius_payperiod shard 1/2: identity-scanned=731000/3637054 (20.1%) elapsed=240s rate=3046 rows/s eta=15m54s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:24:42.733Z,  progress sirius_payperiod shard 2/2: identity-scanned=122000/3637054 (3.4%) elapsed=180s rate=678 rows/s eta=1h26m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:24:42.626Z,  progress sirius_payperiod shard 1/2: identity-scanned=585500/3637054 (16.1%) elapsed=180s rate=3252 rows/s eta=15m38s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:23:42.732Z,  progress sirius_payperiod shard 2/2: identity-scanned=80000/3637054 (2.2%) elapsed=120s rate=667 rows/s eta=1h29m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:23:42.625Z,  progress sirius_payperiod shard 1/2: identity-scanned=405000/3637054 (11.1%) elapsed=120s rate=3374 rows/s eta=15m58s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:22:42.733Z,  progress sirius_payperiod shard 2/2: identity-scanned=39500/3637054 (1.1%) elapsed=60s rate=658 rows/s eta=1h31m,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:22:42.625Z,  progress sirius_payperiod shard 1/2: identity-scanned=213500/3637054 (5.9%) elapsed=60s rate=3557 rows/s eta=16m02s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:40.164Z,"daily heavy bundle: sirius_payperiod (serial bundle, 2 identity-range shard(s))",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:40.164Z,  timings: identityRead=2ms fieldRead=0ms stagingCallbacks=14ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:40.163Z,sirius_bulk: sourceBefore=45 sourceAfter=45 scanned=45 payloads=0 staged=45 OK (29ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:40.128Z,daily bundle wave: sirius_bulk (concurrency=1),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:40.128Z,  timings: identityRead=28ms fieldRead=0ms stagingCallbacks=1093ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:40.128Z,sirius_phonenumber: sourceBefore=4009 sourceAfter=4009 scanned=4009 payloads=0 staged=4009 OK (1160ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:38.985Z,  timings: identityRead=2ms fieldRead=0ms stagingCallbacks=11ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:38.985Z,sirius_ledger_account: sourceBefore=3 sourceAfter=3 scanned=3 payloads=0 staged=3 OK (27ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:38.950Z,"daily bundle wave: sirius_ledger_account, sirius_phonenumber (concurrency=2)",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:38.950Z,  field rows: field_sirius_datetime=1 field_sirius_datetime_created=1 field_sirius_dollar_amt=1 field_sirius_domain=1 field_sirius_id=1 field_sirius_json=1 field_sirius_ledger_account=1 field_sirius_ledger_allocated=1 field_sirius_merchant_name=1 field_sirius_notes=1 field_sirius_payer=1 field_sirius_payment_status=1 field_sirius_payment_type=1,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:38.950Z,  timings: identityRead=26ms fieldRead=21ms stagingCallbacks=643ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:38.950Z,sirius_payment: sourceBefore=3605 sourceAfter=3605 scanned=3605 payloads=1 staged=3605 OK (768ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:38.286Z,  timings: identityRead=13ms fieldRead=0ms stagingCallbacks=60ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:38.286Z,sirius_employee: sourceBefore=457 sourceAfter=457 scanned=457 payloads=0 staged=457 OK (112ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:38.167Z,"daily bundle wave: sirius_employee, sirius_payment (concurrency=2)",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:38.167Z,  field rows: field_grievance_shop=98 field_sirius_active=98 field_sirius_contact_relation=24 field_sirius_date_end=1 field_sirius_date_start=98 field_sirius_domain=98 field_sirius_json=85 field_sirius_notes=98 field_sirius_trust_benefit=98 field_sirius_trust_election=98 field_sirius_trust_subscriber=98 field_sirius_worker=98,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:38.167Z,  timings: identityRead=31864ms fieldRead=253ms stagingCallbacks=106114ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:38.167Z,sirius_trust_worker_benefit: sourceBefore=612929 sourceAfter=612929 scanned=612929 payloads=98 staged=612929 OK (141474ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:21:14.549Z,  progress sirius_trust_worker_benefit: identity-scanned=501000/612929 (81.7%) elapsed=120s rate=4175 rows/s eta=27s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:20:14.549Z,  progress sirius_trust_worker_benefit: identity-scanned=233000/612929 (38.0%) elapsed=60s rate=3883 rows/s eta=1m38s,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:19:15.159Z,  field rows: field_sirius_json=24 field_sirius_type=24,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:19:15.159Z,  timings: identityRead=6ms fieldRead=157ms stagingCallbacks=658ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:19:15.159Z,sirius_json_definition: sourceBefore=144 sourceAfter=144 scanned=144 payloads=24 staged=144 OK (885ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:19:14.257Z,"daily bundle wave: sirius_trust_worker_benefit, sirius_json_definition (concurrency=2)",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:19:14.257Z,  field rows: field_grievance_shop=32 field_sirius_active=32 field_sirius_contact_relations=4 field_sirius_date_end=9 field_sirius_date_start=32 field_sirius_domain=32 field_sirius_trust_benefits=262 field_sirius_trust_policy=32 field_sirius_worker=32,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:19:14.257Z,  timings: identityRead=1632ms fieldRead=153ms stagingCallbacks=40262ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:19:14.257Z,sirius_trust_worker_election: sourceBefore=244506 sourceAfter=244506 scanned=244506 payloads=32 staged=244506 OK (43335ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:30.565Z,  timings: identityRead=3ms fieldRead=0ms stagingCallbacks=16ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:30.565Z,sirius_trust_benefit: sourceBefore=19 sourceAfter=19 scanned=19 payloads=0 staged=19 OK (33ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:30.524Z,"daily bundle wave: sirius_trust_benefit, sirius_trust_worker_election (concurrency=2)",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:30.524Z,  timings: identityRead=8ms fieldRead=0ms stagingCallbacks=96ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:30.524Z,grievance_shop_contact: sourceBefore=570 sourceAfter=570 scanned=570 payloads=0 staged=570 OK (118ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:30.440Z,  timings: identityRead=3ms fieldRead=0ms stagingCallbacks=20ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:30.440Z,sirius_trust_provider: sourceBefore=13 sourceAfter=13 scanned=13 payloads=0 staged=13 OK (36ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:30.396Z,"daily bundle wave: grievance_shop_contact, sirius_trust_provider (concurrency=2)",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:30.396Z,  field rows: field_sirius_active=4 field_sirius_contact=4 field_sirius_contact_alt=4 field_sirius_contact_reltype=4 field_sirius_count=4 field_sirius_date_start=4 field_sirius_domain=4,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:30.396Z,  timings: identityRead=232ms fieldRead=15ms stagingCallbacks=6417ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:30.395Z,sirius_contact_relationship: sourceBefore=35819 sourceAfter=35819 scanned=35819 payloads=4 staged=35819 OK (6866ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:23.320Z,  field rows: field_grievance_attachments=8 field_grievance_contract=4 field_sirius_active=4 field_sirius_domain=4 field_sirius_id=3 field_sirius_industry=4 field_sirius_json=4,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:23.319Z,  timings: identityRead=5ms fieldRead=59ms stagingCallbacks=86ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:23.319Z,grievance_shop: sourceBefore=252 sourceAfter=252 scanned=252 payloads=4 staged=252 OK (164ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:23.142Z,"daily bundle wave: sirius_contact_relationship, grievance_shop (concurrency=2)",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:23.142Z,  field rows: field_sirius_address=83 field_sirius_address_accuracy=83 field_sirius_address_canon=88 field_sirius_address_county=83 field_sirius_address_geo=83 field_sirius_contact_tags=881 field_sirius_domain=88 field_sirius_email=59 field_sirius_json=88 field_sirius_lang=2 field_sirius_name=88 field_sirius_phone=85 field_sirius_phone_alt=3 field_sirius_source=46,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:23.142Z,  timings: identityRead=1117ms fieldRead=1391ms stagingCallbacks=32292ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:23.142Z,sirius_contact: sourceBefore=132211 sourceAfter=132211 scanned=132211 payloads=88 staged=132211 OK (35456ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:19.838Z,  field rows: field_sirius_aat=68 field_sirius_aat_required=68 field_sirius_address=64 field_sirius_contact=68 field_sirius_denorm_benefits=161 field_sirius_dispatch_asi=43 field_sirius_dispatch_eba=68 field_sirius_dispatch_medium=68 field_sirius_dob=68 field_sirius_domain=68 field_sirius_email=44 field_sirius_gender=43 field_sirius_gender_nota_calc=68 field_sirius_gender_nota_val=12 field_sirius_id=68 field_sirius_id2=2 field_sirius_id3=36 field_sirius_industry=70 field_sirius_json=64 field_sirius_member_status=70 field_sirius_name=68 field_sirius_phone=68 field_sirius_phone_alt=1 field_sirius_skills_availx=68 field_sirius_ssn=68,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:19.838Z,  timings: identityRead=850ms fieldRead=3650ms stagingCallbacks=26967ms,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:18:19.838Z,sirius_worker: sourceBefore=118726 sourceAfter=118726 scanned=118726 payloads=68 staged=118726 OK (32073ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:17:47.188Z,"daily bundle wave: sirius_contact, sirius_worker (concurrency=2)",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:17:47.188Z,"  vocabularies: {""grievance_types"":47,""grievance_log_types"":39,""grievance_document_types"":37,""grievance_shift"":4,""grievance_job_classification"":4,""grievance_work_status"":3,""grievance_alert_types"":13,""sirius_dispatch_job_type"":10,""sirius_worker_dispatch_status"":3,""sirius_work_status"":14,""sirius_skill"":161,""grievance_contract_clause_tags"":3,""sirius_dispatch_job_tags"":1,""grievance_contact_types"":11,""sirius_event_participant_role"":5,""sirius_event_participant_status"":15,""grievance_contract_section_tags"":6,""sirius_dispatch_sib"":6,""sirius_event_type"":3,""grievance_assignee_notes"":2,""grievance_broughtby"":2,""sirius_hour_type"":16,""grievance_category"":16,""grievance_status"":23,""sirius_ledger_type"":5,""grievance_settlement_tags"":1,""sirius_trust_benefit_type"":9,""sirius_industry"":4,""sirius_contact_relationship_types"":10,""sirius_gender"":9,""sirius_trust_election_type"":4,""grievance_department"":1,""sirius_contact_tags"":97,""grievance_remedies"":32,""grievance_outcome"":3,""sirius_payment_type"":8,""sirius_member_status"":7,""grievance_tags"":2}",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:17:47.188Z,terms: sourceBefore=636 sourceAfter=636 scanned=636 staged=636 OK (699ms),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:17:46.410Z,"field catalog: source=field_config, bundles with fields=56",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:17:45.955Z,sirius_employer_payperiod: DOCUMENTED SKIP reason=employer_payperiod_workflow_state s1=18493 (ruled DROP — see docs/n3-employer-payperiod-drop.md),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:17:43.257Z,[db] driver=neon (serverless/WebSocket),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:17:43.245Z,[db] Target database: ep-delicate-frog-aflo0zan.c-2.us-west-2.aws.neon.tech/neondb (from EXTERNAL_DATABASE_URL),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:17:40.317Z,[sync] stage: re-staging from S1 …,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:17:40.317Z,[sync] app write fence: ACQUIRED after 0s — reads stay online; writes and background work defer until release,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:17:40.284Z,[sync] app write fence: waiting for in-flight app mutations to finish …,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:17:40.093Z,"[sync] parity months: 2025-06, 2026-08 (open-span month = 2026-08)",run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:17:40.093Z,[sync] open-end horizon: 2026-08 (current LA month — advances per sync),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:17:40.092Z,[sync] mode=daily profile=production dryRun=false skipStage=false keepGoing=false,run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:17:40.092Z,[sync] target: ep-delicate-frog-aflo0zan.c-2.us-west-2.aws.neon.tech/neondb (from EXTERNAL_DATABASE_URL),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:17:40.069Z,[db] driver=neon (serverless/WebSocket),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:17:40.059Z,[db] Target database: ep-delicate-frog-aflo0zan.c-2.us-west-2.aws.neon.tech/neondb (from EXTERNAL_DATABASE_URL),run/migration/96caf5e4c66e42d3b3220447ccf7361d,142403088251:/sirius-migration
+2026-08-21T15:16:03.950Z,[fence-preflight] hold complete (timeout); releasing,run/migration/c2f6ed0d4f304e7594858fba350e82cf,142403088251:/sirius-migration
