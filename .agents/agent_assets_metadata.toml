@@ -27,3 +27,10 @@ uri = "file://attached_assets/s1-rebuild-and-daily-rehearsal-cloudshell-1f24ef08
 type = "unspecified"
 title = "S1 clean rebuild and daily rehearsal launcher"
 description = "CloudShell script that stops web traffic, atomically wipes and bootstraps the rehearsal target, launches the full daily sync, waits for its write fence, and safely restores read access."
+
+[[outputs]]
+id = "673RFgBy5pCLQ4REhDki6"
+uri = "file://attached_assets/s1-worker-duplicate-merge-preflight.sql"
+type = "unspecified"
+title = "S1 worker duplicate merge preflight"
+description = "Read-only SQL preflight for the 21 confirmed duplicate-worker merges plus the approved source-missing worker cascade check. Run the entire file in one database session."

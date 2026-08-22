@@ -138,3 +138,4 @@
 - [Live S1 count drift](live-s1-count-drift.md) — daily staging cannot require exact source counts while S1 is changing; final-freeze remains strict.
 - [S1 watchdog is not a deletion feed](s1-watchdog-not-deletion-feed.md) — dblog retention and missing source IDs rule it out for daily-sync deletes.
 - [ECS Fargate log-stream discovery](ecs-fargate-log-stream-discovery.md) — DescribeTasks may omit logStreamName; derive awslogs stream from prefix/container/task ID.
+- [Stale worker SID collisions can be duplicate rows](stale-worker-sid-duplicate-merge.md) — if the identified S1 NID already maps to a canonical worker, merge dependents; never rekey the stale row.
