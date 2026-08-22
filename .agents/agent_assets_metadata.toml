@@ -20,3 +20,10 @@ uri = "file://attached_assets/s1-daily-rehearsal-cloudshell-19c10b22.sh"
 type = "unspecified"
 title = "S1 rehearsal retry launcher — stack fix"
 description = "Pinned to hotfix SHA 1f24ef08. Rebuilds the migration image, re-runs safe daily staging, verifies the deployed fence, and retries the full loader fleet."
+
+[[outputs]]
+id = "4QY_r14le8jv-9J2wMYAz"
+uri = "file://attached_assets/s1-rebuild-and-daily-rehearsal-cloudshell-1f24ef08.sh"
+type = "unspecified"
+title = "S1 clean rebuild and daily rehearsal launcher"
+description = "CloudShell script that stops web traffic, atomically wipes and bootstraps the rehearsal target, launches the full daily sync, waits for its write fence, and safely restores read access."
