@@ -78,7 +78,7 @@ WHERE stale.id IS NULL
       );
 
 -- RESULT SET 1: WMB COLLISION CLASSIFICATION
-WITH overlaps AS (
+WITH wmb_key_matches AS (
   SELECT
     plan.stale_worker_id,
     plan.canonical_worker_id,
@@ -130,26 +130,26 @@ SELECT
   counts.stale_worker_id,
   counts.canonical_worker_id,
   counts.stale_rows,
-  count(overlaps.stale_wmb_id)::bigint AS unique_key_overlaps,
-  count(overlaps.stale_wmb_id) FILTER (
-    WHERE overlaps.relationship_payload_equivalent
+  count(wmb_key_matches.stale_wmb_id)::bigint AS unique_key_overlaps,
+  count(wmb_key_matches.stale_wmb_id) FILTER (
+    WHERE wmb_key_matches.relationship_payload_equivalent
   )::bigint AS equivalent_overlaps,
-  count(overlaps.stale_wmb_id) FILTER (
-    WHERE NOT overlaps.relationship_payload_equivalent
+  count(wmb_key_matches.stale_wmb_id) FILTER (
+    WHERE NOT wmb_key_matches.relationship_payload_equivalent
   )::bigint AS divergent_overlaps,
   (
-    counts.stale_rows - count(overlaps.stale_wmb_id)
+    counts.stale_rows - count(wmb_key_matches.stale_wmb_id)
   )::bigint AS nonoverlap_rows_to_reparent,
   CASE
-    WHEN count(overlaps.stale_wmb_id) FILTER (
-      WHERE NOT overlaps.relationship_payload_equivalent
+    WHEN count(wmb_key_matches.stale_wmb_id) FILTER (
+      WHERE NOT wmb_key_matches.relationship_payload_equivalent
     ) > 0
       THEN 'STOP: divergent WMB overlap'
     ELSE 'READY'
   END AS validation
 FROM stale_counts counts
-LEFT JOIN overlaps
-  ON overlaps.stale_worker_id = counts.stale_worker_id
+LEFT JOIN wmb_key_matches
+  ON wmb_key_matches.stale_worker_id = counts.stale_worker_id
 GROUP BY
   counts.stale_worker_id,
   counts.canonical_worker_id,
@@ -157,7 +157,7 @@ GROUP BY
 ORDER BY counts.stale_worker_id;
 
 -- RESULT SET 2: WMB EVENT COLLISION CLASSIFICATION
-WITH overlaps AS (
+WITH wmb_event_key_matches AS (
   SELECT
     plan.stale_worker_id,
     plan.canonical_worker_id,
@@ -189,26 +189,26 @@ SELECT
   counts.stale_worker_id,
   counts.canonical_worker_id,
   counts.stale_rows,
-  count(overlaps.stale_event_id)::bigint AS unique_key_overlaps,
-  count(overlaps.stale_event_id) FILTER (
-    WHERE overlaps.payload_equivalent
+  count(wmb_event_key_matches.stale_event_id)::bigint AS unique_key_overlaps,
+  count(wmb_event_key_matches.stale_event_id) FILTER (
+    WHERE wmb_event_key_matches.payload_equivalent
   )::bigint AS equivalent_overlaps,
-  count(overlaps.stale_event_id) FILTER (
-    WHERE NOT overlaps.payload_equivalent
+  count(wmb_event_key_matches.stale_event_id) FILTER (
+    WHERE NOT wmb_event_key_matches.payload_equivalent
   )::bigint AS divergent_overlaps,
   (
-    counts.stale_rows - count(overlaps.stale_event_id)
+    counts.stale_rows - count(wmb_event_key_matches.stale_event_id)
   )::bigint AS nonoverlap_rows_to_reparent,
   CASE
-    WHEN count(overlaps.stale_event_id) FILTER (
-      WHERE NOT overlaps.payload_equivalent
+    WHEN count(wmb_event_key_matches.stale_event_id) FILTER (
+      WHERE NOT wmb_event_key_matches.payload_equivalent
     ) > 0
       THEN 'STOP: divergent WMB event overlap'
     ELSE 'READY'
   END AS validation
 FROM stale_counts counts
-LEFT JOIN overlaps
-  ON overlaps.stale_worker_id = counts.stale_worker_id
+LEFT JOIN wmb_event_key_matches
+  ON wmb_event_key_matches.stale_worker_id = counts.stale_worker_id
 GROUP BY
   counts.stale_worker_id,
   counts.canonical_worker_id,

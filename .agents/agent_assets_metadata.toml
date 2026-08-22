@@ -39,5 +39,5 @@ description = "Read-only SQL preflight for the 21 confirmed duplicate-worker mer
 id = "IQVn0AM3OSnbv3l9-B_ae"
 uri = "file://attached_assets/s1-worker-duplicate-collision-preflight.sql"
 type = "unspecified"
-title = "S1 worker duplicate collision preflight"
-description = "Read-only SQL that classifies WMB, WMB-event, and worker-relation overlaps for the 21 confirmed duplicate-worker merges. Run the entire file in one database session."
+title = "Corrected S1 worker collision preflight"
+description = "Corrected read-only SQL with PostgreSQL-safe CTE names. First run ROLLBACK in the aborted console, then run this entire file in one database session."
