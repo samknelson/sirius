@@ -1,0 +1,169 @@
+[{
+  "stale_s2_worker_id": "bff73bed-4d72-4d43-9587-601532c5a52a",
+  "old_wrong_sid": 1007799,
+  "authoritative_s1_nid": 2901269,
+  "authoritative_current_s1_sid": 666854,
+  "existing_mapped_s2_worker_id": "1e03ee51-6f52-4ef7-bb9a-01311ed3a45a",
+  "current_target_sid_owner": "1e03ee51-6f52-4ef7-bb9a-01311ed3a45a",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "df866eda-7d9f-45eb-8234-6cb13b64590d",
+  "old_wrong_sid": 1007800,
+  "authoritative_s1_nid": 3152551,
+  "authoritative_current_s1_sid": 750228,
+  "existing_mapped_s2_worker_id": "96f1f067-f985-4fa8-b373-0ea10c3a11ad",
+  "current_target_sid_owner": "96f1f067-f985-4fa8-b373-0ea10c3a11ad",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "b4a8cd5a-ad9d-4e3d-9314-81ef19092f37",
+  "old_wrong_sid": 1007801,
+  "authoritative_s1_nid": 17065479,
+  "authoritative_current_s1_sid": 1003295,
+  "existing_mapped_s2_worker_id": "8b7a0b30-c61d-40e4-b194-c1c7a34040fa",
+  "current_target_sid_owner": "8b7a0b30-c61d-40e4-b194-c1c7a34040fa",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "c2d128f1-c76e-49f7-b051-daf527983d8d",
+  "old_wrong_sid": 1007802,
+  "authoritative_s1_nid": 2618587,
+  "authoritative_current_s1_sid": 726693,
+  "existing_mapped_s2_worker_id": "4440b2a6-b640-4587-ad9c-d612a8b88d40",
+  "current_target_sid_owner": "4440b2a6-b640-4587-ad9c-d612a8b88d40",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "0e2571bd-5b3f-4b30-80a3-03f00e7e74f1",
+  "old_wrong_sid": 1007804,
+  "authoritative_s1_nid": 17065843,
+  "authoritative_current_s1_sid": 1003306,
+  "existing_mapped_s2_worker_id": "93d9f467-ac01-4560-a594-d53c29ea219d",
+  "current_target_sid_owner": "93d9f467-ac01-4560-a594-d53c29ea219d",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "02064fe0-a235-43d7-9ca8-6c366ee3e059",
+  "old_wrong_sid": 1007805,
+  "authoritative_s1_nid": 3159428,
+  "authoritative_current_s1_sid": 675434,
+  "existing_mapped_s2_worker_id": "139f8de3-5a79-4950-baf6-9b864323fa17",
+  "current_target_sid_owner": "139f8de3-5a79-4950-baf6-9b864323fa17",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "5ef77055-0d67-42f4-9a13-8ee5194f1500",
+  "old_wrong_sid": 1007806,
+  "authoritative_s1_nid": 3035346,
+  "authoritative_current_s1_sid": 673335,
+  "existing_mapped_s2_worker_id": "95baf057-4960-4835-9641-e8bceff95372",
+  "current_target_sid_owner": "95baf057-4960-4835-9641-e8bceff95372",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "380b7e76-94df-4910-b4c7-6f88527c847f",
+  "old_wrong_sid": 1007807,
+  "authoritative_s1_nid": 17065497,
+  "authoritative_current_s1_sid": 1003296,
+  "existing_mapped_s2_worker_id": "4728e426-1d3f-4008-b550-277c58ab1be9",
+  "current_target_sid_owner": "4728e426-1d3f-4008-b550-277c58ab1be9",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "9d20e0c6-7d40-40af-be60-5dbbb3385e3b",
+  "old_wrong_sid": 1007808,
+  "authoritative_s1_nid": 16499181,
+  "authoritative_current_s1_sid": 1008523,
+  "existing_mapped_s2_worker_id": "ba9d2a43-a49c-44c8-875d-fb1d14932941",
+  "current_target_sid_owner": "ba9d2a43-a49c-44c8-875d-fb1d14932941",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "b41cc597-7da9-498e-b37a-45c6ec2fe973",
+  "old_wrong_sid": 1007809,
+  "authoritative_s1_nid": 16499183,
+  "authoritative_current_s1_sid": 1008524,
+  "existing_mapped_s2_worker_id": "a88013bc-ad6e-4c39-bf5b-1bed9893b090",
+  "current_target_sid_owner": "a88013bc-ad6e-4c39-bf5b-1bed9893b090",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "d5a7c8fd-9a23-44ca-a85c-4c967f7f28d3",
+  "old_wrong_sid": 1007810,
+  "authoritative_s1_nid": 16499190,
+  "authoritative_current_s1_sid": 1001896,
+  "existing_mapped_s2_worker_id": "551fec10-9dd8-4214-a89a-8589d01b4c23",
+  "current_target_sid_owner": "551fec10-9dd8-4214-a89a-8589d01b4c23",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "69414db0-7aca-47bc-a166-017c3880ca19",
+  "old_wrong_sid": 1007811,
+  "authoritative_s1_nid": 17065749,
+  "authoritative_current_s1_sid": 1003299,
+  "existing_mapped_s2_worker_id": "695a960c-8e8e-4b85-85ba-39e4dfcadc5c",
+  "current_target_sid_owner": "695a960c-8e8e-4b85-85ba-39e4dfcadc5c",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "b8f7044f-8abc-43f3-8f9c-3f30e41e2f89",
+  "old_wrong_sid": 1007812,
+  "authoritative_s1_nid": 17065751,
+  "authoritative_current_s1_sid": 1003300,
+  "existing_mapped_s2_worker_id": "9b23185d-831f-43d7-81e9-3f0324f74680",
+  "current_target_sid_owner": "9b23185d-831f-43d7-81e9-3f0324f74680",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "6f33dada-eeac-4eef-8214-bcbaa7a07b42",
+  "old_wrong_sid": 1007813,
+  "authoritative_s1_nid": 17065753,
+  "authoritative_current_s1_sid": 1003301,
+  "existing_mapped_s2_worker_id": "affab09c-bcf0-4e67-87ec-ba66ce9a7f50",
+  "current_target_sid_owner": "affab09c-bcf0-4e67-87ec-ba66ce9a7f50",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "920744de-fc63-4e69-8221-6375111d9fb2",
+  "old_wrong_sid": 1007814,
+  "authoritative_s1_nid": 17065755,
+  "authoritative_current_s1_sid": 1003302,
+  "existing_mapped_s2_worker_id": "fa9249c0-1d2e-435c-b9a7-6e9c9dbe4284",
+  "current_target_sid_owner": "fa9249c0-1d2e-435c-b9a7-6e9c9dbe4284",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "bb49c9b3-a2c1-4531-b16b-1e15c82cfb27",
+  "old_wrong_sid": 1007815,
+  "authoritative_s1_nid": 17065416,
+  "authoritative_current_s1_sid": 1003290,
+  "existing_mapped_s2_worker_id": "67a0b5f8-21a4-4bd2-a09e-d60fc615af4f",
+  "current_target_sid_owner": "67a0b5f8-21a4-4bd2-a09e-d60fc615af4f",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "0ce7767d-7dd7-4720-9190-97684872830c",
+  "old_wrong_sid": 1007816,
+  "authoritative_s1_nid": 17065379,
+  "authoritative_current_s1_sid": 1003287,
+  "existing_mapped_s2_worker_id": "62703dd1-3a26-4ce4-9feb-a68a885014a6",
+  "current_target_sid_owner": "62703dd1-3a26-4ce4-9feb-a68a885014a6",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "6506f9ec-79b8-4ea3-b9a5-80efdf3ef710",
+  "old_wrong_sid": 1007817,
+  "authoritative_s1_nid": 17065381,
+  "authoritative_current_s1_sid": 1003288,
+  "existing_mapped_s2_worker_id": "f8044871-27bf-45d6-83bc-4579284540c4",
+  "current_target_sid_owner": "f8044871-27bf-45d6-83bc-4579284540c4",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "9c1f821d-dbe7-4e5f-9221-cdf086078acc",
+  "old_wrong_sid": 1007818,
+  "authoritative_s1_nid": 17065383,
+  "authoritative_current_s1_sid": 1003289,
+  "existing_mapped_s2_worker_id": "e542bd18-cf45-449b-b3fe-b6d0100675db",
+  "current_target_sid_owner": "e542bd18-cf45-449b-b3fe-b6d0100675db",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "8ee36c3a-8f74-4563-9b41-0b647a3ce4af",
+  "old_wrong_sid": 1007819,
+  "authoritative_s1_nid": 17065800,
+  "authoritative_current_s1_sid": 1003303,
+  "existing_mapped_s2_worker_id": "0be59a23-163e-4071-8486-d63eb1d4bbf2",
+  "current_target_sid_owner": "0be59a23-163e-4071-8486-d63eb1d4bbf2",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}, {
+  "stale_s2_worker_id": "20d9774a-2047-4b49-8194-9e9e84a159de",
+  "old_wrong_sid": 1007820,
+  "authoritative_s1_nid": 17065619,
+  "authoritative_current_s1_sid": 1003298,
+  "existing_mapped_s2_worker_id": "05adec89-3e93-4d21-aa11-345481e381ca",
+  "current_target_sid_owner": "05adec89-3e93-4d21-aa11-345481e381ca",
+  "validation": "ERROR: S1 NID is already mapped to another S2 worker"
+}]
