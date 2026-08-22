@@ -1,0 +1,155 @@
+[{
+  "claimant_s1_nid": 18159201,
+  "expected_sid": 1007799,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "bff73bed-4d72-4d43-9587-601532c5a52a",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18159203,
+  "expected_sid": 1007800,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "df866eda-7d9f-45eb-8234-6cb13b64590d",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18160304,
+  "expected_sid": 1007801,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "b4a8cd5a-ad9d-4e3d-9314-81ef19092f37",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18160751,
+  "expected_sid": 1007802,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "c2d128f1-c76e-49f7-b051-daf527983d8d",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18160753,
+  "expected_sid": 1007803,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "95a40120-41bf-4f65-9a5c-4b2d3e79faf9",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18160755,
+  "expected_sid": 1007804,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "0e2571bd-5b3f-4b30-80a3-03f00e7e74f1",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18160807,
+  "expected_sid": 1007805,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "02064fe0-a235-43d7-9ca8-6c366ee3e059",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18161294,
+  "expected_sid": 1007806,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "5ef77055-0d67-42f4-9a13-8ee5194f1500",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18162132,
+  "expected_sid": 1007807,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "380b7e76-94df-4910-b4c7-6f88527c847f",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18162376,
+  "expected_sid": 1007808,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "9d20e0c6-7d40-40af-be60-5dbbb3385e3b",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18162378,
+  "expected_sid": 1007809,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "b41cc597-7da9-498e-b37a-45c6ec2fe973",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18162380,
+  "expected_sid": 1007810,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "d5a7c8fd-9a23-44ca-a85c-4c967f7f28d3",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18166981,
+  "expected_sid": 1007811,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "69414db0-7aca-47bc-a166-017c3880ca19",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18167006,
+  "expected_sid": 1007812,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "b8f7044f-8abc-43f3-8f9c-3f30e41e2f89",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18167090,
+  "expected_sid": 1007813,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "6f33dada-eeac-4eef-8214-bcbaa7a07b42",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18167101,
+  "expected_sid": 1007814,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "920744de-fc63-4e69-8221-6375111d9fb2",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18167128,
+  "expected_sid": 1007815,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "bb49c9b3-a2c1-4531-b16b-1e15c82cfb27",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18167229,
+  "expected_sid": 1007816,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "0ce7767d-7dd7-4720-9190-97684872830c",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18167259,
+  "expected_sid": 1007817,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "6506f9ec-79b8-4ea3-b9a5-80efdf3ef710",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18167272,
+  "expected_sid": 1007818,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "9c1f821d-dbe7-4e5f-9221-cdf086078acc",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18167283,
+  "expected_sid": 1007819,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "8ee36c3a-8f74-4563-9b41-0b647a3ce4af",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}, {
+  "claimant_s1_nid": 18167291,
+  "expected_sid": 1007820,
+  "claimant_s2_worker_id": null,
+  "current_s2_owner_id": "20d9774a-2047-4b49-8194-9e9e84a159de",
+  "current_owner_mapped_s1_nids": "{}",
+  "current_owner_legacy_nids": "{}"
+}]
