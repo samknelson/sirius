@@ -41,3 +41,10 @@ uri = "file://attached_assets/s1-worker-duplicate-collision-preflight.sql"
 type = "unspecified"
 title = "Corrected S1 worker collision preflight"
 description = "Corrected read-only SQL with PostgreSQL-safe CTE names. First run ROLLBACK in the aborted console, then run this entire file in one database session."
+
+[[outputs]]
+id = "j7k7eQ1wt8oP2LzCWP9nG"
+uri = "file://attached_assets/s1-worker-wmb-authority-preflight.sql"
+type = "unspecified"
+title = "S1 WMB authority preflight"
+description = "Read-only SQL for the 12 WMB collision groups. It checks current T17 source authority and counts wb-anchor and ledger references that the final merge must preserve."
