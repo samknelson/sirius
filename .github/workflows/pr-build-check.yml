@@ -1,0 +1,65 @@
+name: PR Build Check
+
+# Lightweight typecheck gate for PRs targeting freeman-dev or rel/* branches.
+# Runs `npm run check` (tsc) to catch TypeScript compile errors across the FLS
+# full-stack Node.js/TypeScript app (Express server + React/Vite client +
+# shared types) before they reach a deploy environment. It does NOT build or
+# bundle the app — the Vite/esbuild bundle is exercised in build-and-test.yml.
+#
+# This workflow is intentionally scaffolding — designed to be removed when the
+# full CI/CD pipeline (Seth's rewrite of build-and-test.yml) supersedes it.
+#
+# NOTE: this gate does NOT exercise the Dockerfile build. The actual Docker
+# image build and ECR push happen in build-and-test.yml on merge to freeman-dev.
+
+on:
+  pull_request:
+    branches:
+      - freeman-dev
+      - 'rel/*'
+
+jobs:
+  build:
+    name: Type check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Upgrade npm
+        # Node 20.20.x bundles npm 10.8.2, whose "Exit handler never
+        # called!" bug reproducibly crashes `npm ci` on this lockfile.
+        # npm 11 has the fix.
+        run: npm install -g npm@11
+
+      - name: Install dependencies
+        # `npm ci` enforces package-lock.json and fails on drift, which is
+        # what we want for a PR gate.
+        #
+        # The require.resolve sanity check guards against partial installs
+        # that exit 0 (the npm exit-handler bug above), which would
+        # otherwise let tsc run against a half-installed tree and report
+        # dozens of misleading "Cannot find module" errors.
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          node -e "['pg', 'typescript', '@neondatabase/serverless'].forEach(m => require.resolve(m))"
+
+      - name: Type check
+        # Runs the project's `check` script (`tsc`) — fails on TypeScript
+        # compile errors in client/, server/, or shared/. This is a
+        # typecheck-only gate; we intentionally do NOT run `npm run build`
+        # here because the project's `build` script invokes `npm run db:push`
+        # first, which requires DATABASE_URL (a Neon connection string not
+        # available in CI). The full Vite + esbuild bundle is verified inside
+        # the Docker build job in build-and-test.yml, where the Dockerfile
+        # invokes `npx vite build` and `npx esbuild ...` directly (bypassing
+        # db:push).
+        run: npm run check
