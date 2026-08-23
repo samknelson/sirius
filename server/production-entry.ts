@@ -15,6 +15,7 @@ import { createServer } from "http";
 import { existsSync, readdirSync, statSync } from "fs";
 import { resolve, join } from "path";
 import { bootStatus } from "./services/boot-status";
+import { getBootIdentity } from "./services/boot-identity";
 import { getEnvironmentVariable } from "./config/env-registry";
 // Leaf import on purpose: the shared HTML barrel reaches DOMPurify (jsdom
 // under Node) and this file runs before the application exists.
@@ -113,16 +114,21 @@ let initError: Error | null = null;
 const exposeBootErrors = () => getEnvironmentVariable("EXPOSE_BOOT_ERRORS") === "1";
 
 function initFailedJson() {
+  const { bootId, startedAt } = getBootIdentity();
   return exposeBootErrors()
     ? {
         status: 'init-failed',
         driftCheck: bootStatus.driftCheck,
+        bootId,
+        startedAt,
         error: initError!.message,
         stack: initError!.stack,
       }
     : {
         status: 'init-failed',
         driftCheck: bootStatus.driftCheck,
+        bootId,
+        startedAt,
         message: 'Application initialization failed. See server logs for details.',
       };
 }
@@ -132,9 +138,16 @@ app.get('/health', (_req, res) => {
     res.status(200).json(initFailedJson());
     return;
   }
+  // bootId / startedAt identify THIS process (Task #1258). The admin Restart
+  // page polls here after firing a restart and only reports success once a
+  // different bootId answers. Additive — the endpoint still always answers
+  // 200, whether starting, ready, or init-failed.
+  const { bootId, startedAt } = getBootIdentity();
   res.status(200).json({
     status: appReady ? 'ready' : 'starting',
     driftCheck: bootStatus.driftCheck,
+    bootId,
+    startedAt,
   });
 });
 

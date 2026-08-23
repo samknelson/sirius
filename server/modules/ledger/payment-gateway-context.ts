@@ -65,11 +65,14 @@ export async function resolveGateway(
 
   // Dynamically-named credential: register in the env registry at resolve
   // time (as a secret) so the environment contract stays complete.
+  // changeTakesEffect: "immediate" — the gateway is resolved afresh per
+  // request and the credential is read here each time, never cached.
   registerEnvironmentVariable({
     name: secretName,
     description: `Payment-gateway credential secret named by config '${config.siriusId ?? config.id}'.`,
     secret: true,
     category: "ledger",
+    changeTakesEffect: "immediate",
   });
   const apiKey = getEnvironmentVariable(secretName);
   if (!apiKey && plugin.requiresSecret !== false) {

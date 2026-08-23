@@ -1812,5 +1812,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerCompaniesRoutes(app, requireAuth);
 
   const httpServer = existingServer || createServer(app);
+
+  // Restart & Reload admin endpoints (Task #1258). Registered here because
+  // the restart handler needs the HTTP server handle in order to close it
+  // before the process exits.
+  {
+    const { registerRestartRoutes } = await import("./modules/system/restart");
+    registerRestartRoutes(app, httpServer);
+  }
+
   return httpServer;
 }

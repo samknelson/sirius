@@ -339,6 +339,7 @@ const FileBrowserDetailPage = lazy(() => import("@/pages/admin/file-browser-deta
 const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
 const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
 const EbsInspectionPage = lazy(() => import("@/pages/admin/ebs"));
+const RestartPage = lazy(() => import("@/pages/admin/restart"));
 const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
 const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
 const LedgerAccountView = lazy(() => import("@/pages/config/ledger/account-view"));
@@ -3565,6 +3566,17 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <DenormConfigDetailPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Restart the app / reload configuration in place (Task #1258). */}
+      <Route path="/admin/restart">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <RestartPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

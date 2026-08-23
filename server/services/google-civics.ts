@@ -2,9 +2,12 @@ import { lookupDistricts, type CensusDistrictInfo } from "./census-geocoder";
 import type { BtuPoliticalStorage } from "../storage/sitespecific/btu/political";
 import { getEnvironmentVariable, registerEnvironmentVariables } from "../config/env-registry";
 
+// changeTakesEffect: "immediate" for both. Each key is read through the
+// registry inside the function that makes the outbound call, once per lookup,
+// and neither is cached anywhere.
 registerEnvironmentVariables([
-  { name: "GOOGLE_CIVICS_API_KEY", description: "Google API key for geocoding in civic-official lookups.", secret: true, category: "sitespecific.btu.political" },
-  { name: "OPEN_STATES_API_KEY", description: "OpenStates API key for state-legislator lookups.", secret: true, category: "sitespecific.btu.political" },
+  { name: "GOOGLE_CIVICS_API_KEY", description: "Google API key for geocoding in civic-official lookups.", secret: true, category: "sitespecific.btu.political", changeTakesEffect: "immediate", },
+  { name: "OPEN_STATES_API_KEY", description: "OpenStates API key for state-legislator lookups.", secret: true, category: "sitespecific.btu.political", changeTakesEffect: "immediate", },
 ]);
 
 export interface CivicOfficial {

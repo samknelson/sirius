@@ -92,6 +92,16 @@ function resolveSecretSettings(
       }
       // Dynamically-named secret: register it in the env registry at
       // config-parse time so the environment contract stays complete.
+      //
+      // changeTakesEffect is deliberately left unstated. The value is resolved
+      // here, at parse time, and baked into the filesystem's settings, so it
+      // is not immediate; but a Filesystem-registry reload re-parses FILESYSTEMS
+      // and comes back through this function, so it is not restart-only either.
+      // The honest answer is "reload", and that classification may only be used
+      // by a variable a reloadable subsystem names by name — which a secret
+      // whose name is not known until parse time cannot be. Unstated shows
+      // nothing rather than making a claim that is wrong in one direction or
+      // the other.
       registerEnvironmentVariable({
         name: value,
         description: `Secret referenced by FILESYSTEMS filesystem "${fsId}" setting "${key}".`,

@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Pencil, Trash2, Info, Search } from "lucide-react";
+import { Lock, Pencil, Trash2, Info, Search, RotateCw, RefreshCw, Zap } from "lucide-react";
 
 interface EnvVarInfo {
   name: string;
@@ -29,6 +29,13 @@ interface EnvVarInfo {
   value: string | null;
   hasShadowedOverride: boolean;
   released: boolean;
+  /**
+   * When a change is picked up by the running app. null when the variable's
+   * declaration does not state it — show nothing rather than implying
+   * "immediate". "reload" means a subsystem on the Restart & Reload page can
+   * re-read it in place, so no restart is needed.
+   */
+  changeTakesEffect: "immediate" | "restart" | "reload" | null;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -112,10 +119,12 @@ export default function EnvPage() {
           Values set in the real environment are locked and always win over
           overrides. To release a stale deployment variable, set it to{" "}
           <code className="font-mono">__UNSET__</code> (or empty) in the
-          deployment settings — the app then treats it as not set. Overrides
-          take effect immediately for most features, but anything read only at
-          startup (e.g. authentication providers) requires an app restart to
-          pick up changes.
+          deployment settings — the app then treats it as not set. When a
+          variable says when its changes are picked up, that is shown on the
+          variable itself: <em>applies immediately</em> means the next use
+          reads the new value, <em>restart to apply</em> means the app reads it
+          only while starting. Variables that say neither have not been
+          classified.
         </AlertDescription>
       </Alert>
 
@@ -173,6 +182,36 @@ export default function EnvPage() {
                           {v.source === "override" && <Badge>override</Badge>}
                           {v.released && <Badge variant="outline">released</Badge>}
                           {!v.isSet && <Badge variant="destructive">unset</Badge>}
+                          {/* Advisory only, and only when the declaration
+                              states it — an unstated variable shows nothing
+                              rather than being presented as immediate. */}
+                          {v.changeTakesEffect === "restart" && (
+                            <Badge
+                              variant="outline"
+                              className="gap-1"
+                              data-testid={`env-effect-restart-${v.name}`}
+                            >
+                              <RotateCw className="h-3 w-3" /> restart to apply
+                            </Badge>
+                          )}
+                          {v.changeTakesEffect === "immediate" && (
+                            <Badge
+                              variant="outline"
+                              className="gap-1"
+                              data-testid={`env-effect-immediate-${v.name}`}
+                            >
+                              <Zap className="h-3 w-3" /> applies immediately
+                            </Badge>
+                          )}
+                          {v.changeTakesEffect === "reload" && (
+                            <Badge
+                              variant="outline"
+                              className="gap-1"
+                              data-testid={`env-effect-reload-${v.name}`}
+                            >
+                              <RefreshCw className="h-3 w-3" /> reload to apply
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">{v.description}</p>
                         {!v.secret && v.isSet && v.value !== null && (
@@ -184,6 +223,24 @@ export default function EnvPage() {
                           <p className="text-xs text-muted-foreground mt-1">
                             Released in deployment settings (empty or __UNSET__) — treated as
                             not set.
+                          </p>
+                        )}
+                        {/* About WHEN a change is picked up — separate from the
+                            deployment-lock notes below, which are about WHICH
+                            value wins. */}
+                        {v.changeTakesEffect === "restart" && (
+                          <p className="text-xs text-muted-foreground mt-1 flex items-start gap-1">
+                            <RotateCw className="h-3 w-3 mt-0.5 shrink-0" />
+                            Read once while the app starts — saving a new value here does not
+                            change the running app until it is restarted.
+                          </p>
+                        )}
+                        {v.changeTakesEffect === "reload" && (
+                          <p className="text-xs text-muted-foreground mt-1 flex items-start gap-1">
+                            <RefreshCw className="h-3 w-3 mt-0.5 shrink-0" />
+                            Read once while the app starts, but a subsystem can re-read it in
+                            place — apply a new value from Restart &amp; Reload, no restart
+                            needed.
                           </p>
                         )}
                         {envLocked && v.overridable && (

@@ -10,7 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -21,50 +20,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { Activity, List, RefreshCw } from "lucide-react";
 import {
-  Activity,
-  AlertTriangle,
-  CheckCircle2,
-  Info,
-  List,
-  RefreshCw,
-  XCircle,
-} from "lucide-react";
-
-type StatusPriority = "info" | "notice" | "warning" | "error";
-
-interface StatusMessage {
-  priority: StatusPriority;
-  title: string;
-  details?: string;
-}
-
-interface SystemStatusEntry {
-  id: string;
-  name: string;
-  description: string;
-  canRescan: boolean;
-  hasDetails: boolean;
-  worstPriority: StatusPriority;
-  result: {
-    pluginId: string;
-    messages: StatusMessage[];
-    scannedAt: string;
-    durationMs: number;
-  };
-}
-
-interface StatusDetailRow {
-  label: string;
-  description?: string;
-  value?: string;
-  badges?: string[];
-  priority?: StatusPriority;
-}
-
-interface StatusDetails {
-  groups: { title: string; rows: StatusDetailRow[] }[];
-}
+  CARD_PRIORITY_CLASSES,
+  PriorityIcon,
+  StatusDetailsView,
+  StatusMessageList,
+  type StatusDetails,
+  type SystemStatusEntry,
+} from "@/components/system-status/status-render";
 
 /**
  * Details drill-down dialog. Fetches fresh on every open (staleTime 0,
@@ -105,81 +69,11 @@ function DetailsDialog({
             {getApiErrorMessage(error, "Failed to load details")}
           </p>
         )}
-        {data?.groups.map((group) => (
-          <div key={group.title} data-testid={`group-details-${group.title}`}>
-            <h3 className="text-sm font-semibold mb-2">{group.title}</h3>
-            <div className="divide-y rounded-md border">
-              {group.rows.map((row) => (
-                <div
-                  key={row.label}
-                  className="p-2 text-sm"
-                  data-testid={`row-details-${row.label}`}
-                >
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {row.priority && row.priority !== "info" && (
-                      <PriorityIcon priority={row.priority} />
-                    )}
-                    <span className="font-mono font-medium">{row.label}</span>
-                    {row.badges?.map((badge) => (
-                      <Badge
-                        key={badge}
-                        variant={badge === "unset" ? "secondary" : "outline"}
-                        className="text-xs"
-                      >
-                        {badge}
-                      </Badge>
-                    ))}
-                  </div>
-                  {row.description && (
-                    <div className="text-muted-foreground">{row.description}</div>
-                  )}
-                  {row.value !== undefined && (
-                    <div className="font-mono text-xs break-all mt-1">{row.value}</div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
+        {data && <StatusDetailsView details={data} />}
       </DialogContent>
     </Dialog>
   );
 }
-
-function PriorityIcon({ priority }: { priority: StatusPriority }) {
-  switch (priority) {
-    case "error":
-      return <XCircle className="h-4 w-4 text-destructive" />;
-    case "warning":
-      return <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />;
-    case "notice":
-      return <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />;
-    default:
-      return <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />;
-  }
-}
-
-function PriorityBadge({ priority }: { priority: StatusPriority }) {
-  switch (priority) {
-    case "error":
-      return <Badge variant="destructive">Error</Badge>;
-    case "warning":
-      return (
-        <Badge className="bg-yellow-500 hover:bg-yellow-500/90 text-white">Warning</Badge>
-      );
-    case "notice":
-      return <Badge variant="secondary">Notice</Badge>;
-    default:
-      return <Badge variant="outline">Info</Badge>;
-  }
-}
-
-const CARD_PRIORITY_CLASSES: Record<StatusPriority, string> = {
-  info: "border-green-500/50 bg-green-50/50 dark:bg-green-950/20",
-  notice: "border-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20",
-  warning: "border-yellow-500/50 bg-yellow-50/50 dark:bg-yellow-950/20",
-  error: "border-red-500/50 bg-red-50/50 dark:bg-red-950/20",
-};
 
 export default function SystemStatusPage() {
   usePageTitle("System Status");
@@ -341,25 +235,10 @@ export default function SystemStatusPage() {
             <CardDescription>{entry.description}</CardDescription>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-2">
-              {entry.result.messages.map((message, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-2"
-                  data-testid={`row-status-message-${entry.id}-${i}`}
-                >
-                  <PriorityBadge priority={message.priority} />
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium">{message.title}</div>
-                    {message.details && (
-                      <div className="text-sm text-muted-foreground break-words">
-                        {message.details}
-                      </div>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <StatusMessageList
+              messages={entry.result.messages}
+              testIdPrefix={`row-status-message-${entry.id}`}
+            />
           </CardContent>
         </Card>
       ))}

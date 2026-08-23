@@ -78,6 +78,41 @@ function canonicalHttpsOrigin(raw: string, sourceLabel: string): string {
   return url.origin;
 }
 
+/**
+ * When a change to a variable's effective value is picked up by the RUNNING
+ * application (Task #1256). Documentation only — nothing in the app reads
+ * this to decide behaviour; it is advisory guidance for whoever edits the
+ * value on the Environment Variables page.
+ *
+ *  - "immediate": every consumer re-reads through {@link getEnvironmentVariable}
+ *    at the point of use, so a new value applies to the next use.
+ *  - "restart":   the running app captured the value at startup (module-level
+ *    constant, boot-time initialization, or a memoized config), so the change
+ *    only applies after the app is restarted.
+ *  - "reload":    the running app captured the value at startup, but a
+ *    reloadable subsystem can re-read it in place, so an operator can apply
+ *    the change from the Restart & Reload page without downtime (Task #1258).
+ *    A variable may only carry this when a reloadable subsystem actually
+ *    names it — `server/services/reload-registry.ts` asserts that at boot, so
+ *    the two surfaces cannot drift apart.
+ *
+ * Leaving it undeclared is a valid third state, meaning "not stated". Callers
+ * must NOT treat undeclared as "immediate": the page shows nothing rather
+ * than making a claim nobody made deliberately.
+ *
+ * The same rule applies to variables a component or service registers from
+ * its own module, classified from how that component consumes the value. Two
+ * cautions for those:
+ *  - Registration is last-one-wins (see {@link registerEnvironmentVariable}),
+ *    so when several modules register the same name, every copy must carry
+ *    the SAME classification — otherwise what the page states depends on
+ *    module load order.
+ *  - When a variable has both a re-reading consumer and a memoizing one, the
+ *    honest answer is "restart": a change is not in effect everywhere until
+ *    the process starts again.
+ */
+export type EnvironmentVariableChangeEffect = "immediate" | "restart" | "reload";
+
 export interface EnvironmentVariableDeclaration {
   /** Exact environment variable name, e.g. "DATABASE_URL". */
   name: string;
@@ -89,6 +124,12 @@ export interface EnvironmentVariableDeclaration {
   category: EnvironmentVariableCategory;
   /** Optional: throw from the getter when the value is unset/empty. */
   required?: boolean;
+  /**
+   * Optional: when a change to this variable is picked up by the running app.
+   * Advisory documentation only — see {@link EnvironmentVariableChangeEffect}.
+   * Omit when the answer is genuinely ambiguous; omitted means "not stated".
+   */
+  changeTakesEffect?: EnvironmentVariableChangeEffect;
   /**
    * Optional per-variable transform hook applied to the raw value on every
    * read (in-application filtering, normalization, defaulting).
@@ -306,6 +347,42 @@ export function getEnvironmentVariable(name: string): string | undefined {
 }
 
 /**
+ * Read a variable that is a claim the PLATFORM makes about the running
+ * process — an orchestrator marker such as a task-metadata endpoint address.
+ * Identical to {@link getEnvironmentVariable} except that the database
+ * override map is never consulted.
+ *
+ * WHY A SECOND READ PATH. Every registered variable is overridable in-app by
+ * design, and that stays true: this is not a denylist and it does not block
+ * anyone from setting a value. It is about what the value MEANS. An ordinary
+ * variable is configuration — the operator is entitled to choose it. A
+ * platform marker is evidence: code reads it to conclude "an orchestrator put
+ * this here, therefore I am running under that orchestrator", and then acts
+ * on the conclusion — deciding where to send a request, or telling an
+ * operator their app is supervised. A value an application user can write is
+ * not evidence about the environment, so honouring an override here would let
+ * an in-app setting forge a fact about the host and steer server-side
+ * behaviour (a request address being the sharp end of it).
+ *
+ * Use this ONLY for variables injected by the platform itself. Anything the
+ * deployer is meant to choose belongs on {@link getEnvironmentVariable}.
+ */
+export function getPlatformEnvironmentVariable(name: string): string | undefined {
+  const decl = registry.get(name);
+  if (!decl) {
+    throw new Error(
+      `Environment variable "${name}" is not registered. Declare it with ` +
+        `registerEnvironmentVariable() (see server/config/env-registry.ts) before reading it.`,
+    );
+  }
+  let value: string | undefined = readProcessEnv(name);
+  if (decl.transform) value = decl.transform(value);
+  const override = overrides.get(name);
+  if (override) value = override(value);
+  return value;
+}
+
+/**
  * Install (fn) or remove (null) a runtime override applied after the
  * declaration transform on every read of `name`. For in-application
  * filtering/overriding without touching the process environment.
@@ -351,6 +428,12 @@ export interface EnvironmentVariableInfo {
   overridable: boolean;
   /** Present in the process env but deliberately released (empty/sentinel). */
   released: boolean;
+  /**
+   * When a change is picked up by the running app, or null when the
+   * declaration does not state it. Advisory documentation only — null must
+   * never be presented as "immediate".
+   */
+  changeTakesEffect: EnvironmentVariableChangeEffect | null;
 }
 
 /**
@@ -381,6 +464,7 @@ export function listEnvironmentVariables(): EnvironmentVariableInfo[] {
         source,
         overridable,
         released: isEnvironmentVariableReleased(d.name),
+        changeTakesEffect: d.changeTakesEffect ?? null,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -411,31 +495,48 @@ export function getRawProcessEnv(): NodeJS.ProcessEnv {
 // ---------------------------------------------------------------------------
 // Core variables — application-level configuration, registered at module load
 // so they are available to the earliest boot code.
+//
+// `changeTakesEffect` is advisory documentation (Task #1256), classified from
+// how each value is actually consumed:
+//   - "restart"   the running app captures the value at startup — a
+//                 module-level constant, boot-time initialization, or a
+//                 memoized config (e.g. the auth config snapshot).
+//   - "immediate" every consumer re-reads it through getEnvironmentVariable
+//                 at the point of use.
+//   - "reload"    captured at startup, but a registered reloadable subsystem
+//                 (server/services/reload-registry.ts) can re-read it in
+//                 place from the admin Restart & Reload page.
+//   - omitted     genuinely ambiguous, or the running app never reads it
+//                 (a separate CLI process, or a cache that is filled once and
+//                 not refreshed). Omitted means "not stated", NOT "immediate".
 // ---------------------------------------------------------------------------
 registerEnvironmentVariables([
-  { name: "NODE_ENV", description: "Runtime mode: development | production.", secret: false, category: "core" },
-  { name: "PORT", description: "HTTP port the server listens on (default 5000).", secret: false, category: "core" },
-  { name: "DATABASE_URL", description: "PostgreSQL connection URL. Assembled from DB_* parts at boot when absent.", secret: true, category: "core" },
-  { name: "DATABASE_DRIVER", description: "Force the DB driver: neon | pg (auto-detected from the URL otherwise).", secret: false, category: "core" },
+  { name: "NODE_ENV", description: "Runtime mode: development | production.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "PORT", description: "HTTP port the server listens on (default 5000).", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "DATABASE_URL", description: "PostgreSQL connection URL. Assembled from DB_* parts at boot when absent.", secret: true, category: "core", changeTakesEffect: "restart", },
+  { name: "DATABASE_DRIVER", description: "Force the DB driver: neon | pg (auto-detected from the URL otherwise).", secret: false, category: "core", changeTakesEffect: "restart", },
   // DATABASE_URL assembly parts (ECS/Terraform task definition injects parts,
   // not a full URL — see server/config/assemble-database-url.ts).
-  { name: "DB_HOST", description: "Database host (URL assembly part).", secret: false, category: "core" },
-  { name: "DB_PORT", description: "Database port (URL assembly part).", secret: false, category: "core" },
-  { name: "DB_NAME", description: "Database name (URL assembly part).", secret: false, category: "core" },
-  { name: "DB_USER", description: "Database username (URL assembly part).", secret: false, category: "core" },
-  { name: "DB_USERNAME", description: "Database username, alternate spelling (URL assembly part).", secret: false, category: "core" },
-  { name: "DB_PASSWORD", description: "Database password (URL assembly part).", secret: true, category: "core" },
-  { name: "DB_SECRET", description: "AWS Secrets Manager DB secret: JSON blob or raw password (URL assembly part).", secret: true, category: "core" },
-  { name: "DB_SSLMODE", description: "sslmode for the assembled DATABASE_URL (default require).", secret: false, category: "core" },
-  { name: "SESSION_SECRET", description: "Express session signing secret.", secret: true, category: "core" },
-  { name: "SESSION_TTL", description: "Session time-to-live in milliseconds.", secret: false, category: "core" },
-  { name: "ALLOW_INSECURE_SESSION_SECRET", description: "Set to 1 to permit the fixed insecure session-secret fallback in non-prod deploys.", secret: false, category: "core" },
-  { name: "ALLOW_EMPTY_DB_BOOTSTRAP", description: "Set to 1 to let boot create the full schema on a completely empty database.", secret: false, category: "core" },
+  { name: "DB_HOST", description: "Database host (URL assembly part).", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "DB_PORT", description: "Database port (URL assembly part).", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "DB_NAME", description: "Database name (URL assembly part).", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "DB_USER", description: "Database username (URL assembly part).", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "DB_USERNAME", description: "Database username, alternate spelling (URL assembly part).", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "DB_PASSWORD", description: "Database password (URL assembly part).", secret: true, category: "core", changeTakesEffect: "restart", },
+  { name: "DB_SECRET", description: "AWS Secrets Manager DB secret: JSON blob or raw password (URL assembly part).", secret: true, category: "core", changeTakesEffect: "restart", },
+  { name: "DB_SSLMODE", description: "sslmode for the assembled DATABASE_URL (default require).", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "SESSION_SECRET", description: "Express session signing secret.", secret: true, category: "core", changeTakesEffect: "restart", },
+  { name: "SESSION_TTL", description: "Session time-to-live in milliseconds.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "ALLOW_INSECURE_SESSION_SECRET", description: "Set to 1 to permit the fixed insecure session-secret fallback in non-prod deploys.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "ALLOW_EMPTY_DB_BOOTSTRAP", description: "Set to 1 to let boot create the full schema on a completely empty database.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "ALLOW_DB_PUSH", description: "Set to 1 to permit scripts/db-push.ts to run (guarded: push is hazardous).", secret: false, category: "core" },
-  { name: "SKIP_SCHEMA_DRIFT_CHECK", description: "Set to 1 to skip the startup schema-drift boot gate (dev escape hatch).", secret: false, category: "core" },
-  { name: "SKIP_DIST_FRESHNESS_CHECK", description: "Set to 1 to skip the stale-dist build freshness guard in production entry.", secret: false, category: "core" },
-  { name: "EXPOSE_BOOT_ERRORS", description: "Set to 1 to render init-failure details (message + stack) on the boot failure page.", secret: false, category: "core" },
-  { name: "FILESYSTEMS", description: "JSON map of filesystem configs (see server/services/files/config.ts). *_secret settings name further env vars.", secret: false, category: "core" },
+  { name: "SKIP_SCHEMA_DRIFT_CHECK", description: "Set to 1 to skip the startup schema-drift boot gate (dev escape hatch).", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "SKIP_DIST_FRESHNESS_CHECK", description: "Set to 1 to skip the stale-dist build freshness guard in production entry.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "EXPOSE_BOOT_ERRORS", description: "Set to 1 to render init-failure details (message + stack) on the boot failure page.", secret: false, category: "core", changeTakesEffect: "restart", },
+  // "reload": the filesystem registry re-parses this and drops its cached
+  // providers when the "Filesystem registry" subsystem is reloaded from the
+  // admin Restart & Reload page (Task #1258) — no restart needed.
+  { name: "FILESYSTEMS", description: "JSON map of filesystem configs (see server/services/files/config.ts). *_secret settings name further env vars.", secret: false, category: "core", changeTakesEffect: "reload", },
   {
     name: "PUBLIC_URL",
     description:
@@ -444,50 +545,60 @@ registerEnvironmentVariables([
       "for local development. All base-URL consumers read this ONE variable.",
     secret: false,
     category: "core",
+    changeTakesEffect: "immediate",
     transform: resolvePublicUrl,
   },
   // Auth (multi-provider) configuration.
-  { name: "AUTH_PROVIDER", description: "Comma-separated list of enabled auth providers (replit,okta,saml,oauth,local,clerk).", secret: false, category: "core" },
-  { name: "AUTH_DEFAULT_PROVIDER", description: "Which configured auth provider is the default.", secret: false, category: "core" },
-  { name: "AUTH_LOCAL_ENABLED", description: "Set to false to disable the local auth provider without editing AUTH_PROVIDER.", secret: false, category: "core" },
-  { name: "AUTH_LOCAL_PEPPER", description: "Pepper concatenated to passwords before hashing for local auth.", secret: true, category: "core" },
-  { name: "LOCAL_AUTH_EMAIL", description: "Email of the local-auth credential to seed at boot.", secret: false, category: "core" },
-  { name: "LOCAL_AUTH_PASSWORD_HASH", description: "Password hash of the local-auth credential to seed at boot.", secret: true, category: "core" },
-  { name: "ISSUER_URL", description: "OIDC issuer URL for the Replit auth provider (legacy name).", secret: false, category: "core" },
-  { name: "REPLIT_ISSUER_URL", description: "OIDC issuer URL for the Replit auth provider.", secret: false, category: "core" },
-  { name: "REPLIT_CLIENT_ID", description: "OIDC client id for the Replit auth provider.", secret: false, category: "core" },
-  { name: "OKTA_ISSUER_URL", description: "Okta OIDC issuer URL.", secret: false, category: "core" },
-  { name: "OKTA_CLIENT_ID", description: "Okta OIDC client id.", secret: false, category: "core" },
-  { name: "OKTA_CLIENT_SECRET", description: "Okta OIDC client secret.", secret: true, category: "core" },
-  { name: "OKTA_CALLBACK_PATH", description: "Override for the Okta OIDC callback path.", secret: false, category: "core" },
-  { name: "SAML_ENTRY_POINT", description: "SAML IdP entry point URL.", secret: false, category: "core" },
-  { name: "SAML_ISSUER", description: "SAML issuer (SP entity id).", secret: false, category: "core" },
-  { name: "SAML_CERT", description: "SAML IdP signing certificate (PEM).", secret: true, category: "core" },
-  { name: "SAML_CALLBACK_PATH", description: "Override for the SAML callback path.", secret: false, category: "core" },
-  { name: "OAUTH_AUTHORIZATION_URL", description: "Generic OAuth2 authorization endpoint.", secret: false, category: "core" },
-  { name: "OAUTH_TOKEN_URL", description: "Generic OAuth2 token endpoint.", secret: false, category: "core" },
-  { name: "OAUTH_USERINFO_URL", description: "Generic OAuth2 userinfo endpoint.", secret: false, category: "core" },
-  { name: "OAUTH_CLIENT_ID", description: "Generic OAuth2 client id.", secret: false, category: "core" },
-  { name: "OAUTH_CLIENT_SECRET", description: "Generic OAuth2 client secret.", secret: true, category: "core" },
-  { name: "OAUTH_SCOPE", description: "Generic OAuth2 scope string.", secret: false, category: "core" },
-  { name: "OAUTH_CALLBACK_PATH", description: "Override for the generic OAuth2 callback path.", secret: false, category: "core" },
-  { name: "CLERK_PUBLISHABLE_KEY", description: "Clerk publishable key (dev/default).", secret: false, category: "core" },
-  { name: "CLERK_PUBLISHABLE_KEY_PROD", description: "Clerk publishable key used when NODE_ENV=production.", secret: false, category: "core" },
-  { name: "CLERK_SECRET_KEY", description: "Clerk secret key (dev/default).", secret: true, category: "core" },
-  { name: "CLERK_SECRET_KEY_PROD", description: "Clerk secret key used when NODE_ENV=production.", secret: true, category: "core" },
-  { name: "VITE_CLERK_PUBLISHABLE_KEY", description: "Clerk publishable key as exposed to the Vite client bundle (server fallback read).", secret: false, category: "core" },
+  { name: "AUTH_PROVIDER", description: "Comma-separated list of enabled auth providers (replit,okta,saml,oauth,local,clerk).", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "AUTH_DEFAULT_PROVIDER", description: "Which configured auth provider is the default.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "AUTH_LOCAL_ENABLED", description: "Set to false to disable the local auth provider without editing AUTH_PROVIDER.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "AUTH_LOCAL_PEPPER", description: "Pepper concatenated to passwords before hashing for local auth.", secret: true, category: "core", changeTakesEffect: "restart", },
+  { name: "LOCAL_AUTH_EMAIL", description: "Email of the local-auth credential to seed at boot.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "LOCAL_AUTH_PASSWORD_HASH", description: "Password hash of the local-auth credential to seed at boot.", secret: true, category: "core", changeTakesEffect: "restart", },
+  { name: "ISSUER_URL", description: "OIDC issuer URL for the Replit auth provider (legacy name).", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "REPLIT_ISSUER_URL", description: "OIDC issuer URL for the Replit auth provider.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "REPLIT_CLIENT_ID", description: "OIDC client id for the Replit auth provider.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "OKTA_ISSUER_URL", description: "Okta OIDC issuer URL.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "OKTA_CLIENT_ID", description: "Okta OIDC client id.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "OKTA_CLIENT_SECRET", description: "Okta OIDC client secret.", secret: true, category: "core", changeTakesEffect: "restart", },
+  { name: "OKTA_CALLBACK_PATH", description: "Override for the Okta OIDC callback path.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "SAML_ENTRY_POINT", description: "SAML IdP entry point URL.", secret: false, category: "core", changeTakesEffect: "immediate", },
+  { name: "SAML_ISSUER", description: "SAML issuer (SP entity id).", secret: false, category: "core", changeTakesEffect: "immediate", },
+  { name: "SAML_CERT", description: "SAML IdP signing certificate (PEM).", secret: true, category: "core", changeTakesEffect: "immediate", },
+  { name: "SAML_CALLBACK_PATH", description: "Override for the SAML callback path. Must be a local path starting with a slash, such as /api/auth/saml/callback, and never a fully-qualified URL with a domain name. The default is almost always correct; leave this unset unless you have a specific reason.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "OAUTH_AUTHORIZATION_URL", description: "Generic OAuth2 authorization endpoint.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "OAUTH_TOKEN_URL", description: "Generic OAuth2 token endpoint.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "OAUTH_USERINFO_URL", description: "Generic OAuth2 userinfo endpoint.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "OAUTH_CLIENT_ID", description: "Generic OAuth2 client id.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "OAUTH_CLIENT_SECRET", description: "Generic OAuth2 client secret.", secret: true, category: "core", changeTakesEffect: "restart", },
+  { name: "OAUTH_SCOPE", description: "Generic OAuth2 scope string.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "OAUTH_CALLBACK_PATH", description: "Override for the generic OAuth2 callback path.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "CLERK_PUBLISHABLE_KEY", description: "Clerk publishable key (dev/default).", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "CLERK_PUBLISHABLE_KEY_PROD", description: "Clerk publishable key used when NODE_ENV=production.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "CLERK_SECRET_KEY", description: "Clerk secret key (dev/default).", secret: true, category: "core", changeTakesEffect: "restart", },
+  { name: "CLERK_SECRET_KEY_PROD", description: "Clerk secret key used when NODE_ENV=production.", secret: true, category: "core", changeTakesEffect: "restart", },
+  { name: "VITE_CLERK_PUBLISHABLE_KEY", description: "Clerk publishable key as exposed to the Vite client bundle (server fallback read).", secret: false, category: "core", changeTakesEffect: "restart", },
 ]);
 
 // ---------------------------------------------------------------------------
 // Platform variables — injected by the hosting environment (Replit / deploys).
 // ---------------------------------------------------------------------------
 registerEnvironmentVariables([
-  { name: "REPL_ID", description: "Replit workspace id; doubles as the Replit OIDC client id.", secret: false, category: "platform" },
+  { name: "REPL_ID", description: "Replit workspace id; doubles as the Replit OIDC client id.", secret: false, category: "platform", changeTakesEffect: "restart", },
   { name: "REPL_IDENTITY", description: "Replit workspace identity token (connector auth).", secret: true, category: "platform" },
   { name: "WEB_REPL_RENEWAL", description: "Replit deployment identity token (connector auth).", secret: true, category: "platform" },
   { name: "REPLIT_CONNECTORS_HOSTNAME", description: "Hostname of the Replit connectors API.", secret: false, category: "platform" },
-  { name: "REPLIT_DEPLOYMENT", description: "Set to 1 inside a Replit deployment container.", secret: false, category: "platform" },
-  { name: "DEFAULT_OBJECT_STORAGE_BUCKET_ID", description: "Replit object storage default bucket id.", secret: false, category: "platform" },
-  { name: "PUBLIC_OBJECT_SEARCH_PATHS", description: "Comma-separated public search paths in object storage.", secret: false, category: "platform" },
-  { name: "PRIVATE_OBJECT_DIR", description: "Private directory prefix in object storage.", secret: false, category: "platform" },
+  { name: "REPLIT_DEPLOYMENT", description: "Set to 1 inside a Replit deployment container.", secret: false, category: "platform", changeTakesEffect: "restart", },
+  // Container-platform markers injected by the orchestrator, read by the
+  // container facts service (server/services/container-facts.ts) on every
+  // scan — hence "immediate". They are set by the platform, not by a
+  // deployer, and are listed here so the facts service can read them
+  // through the registry getter like every other variable (Task #1258).
+  { name: "ECS_CONTAINER_METADATA_URI_V4", description: "Amazon ECS task metadata endpoint (v4), injected into every ECS task.", secret: false, category: "platform", changeTakesEffect: "immediate", },
+  { name: "ECS_CONTAINER_METADATA_URI", description: "Amazon ECS task metadata endpoint (v3), the older spelling of the above.", secret: false, category: "platform", changeTakesEffect: "immediate", },
+  { name: "AWS_EXECUTION_ENV", description: "Name of the AWS runtime executing this process, e.g. AWS_ECS_FARGATE.", secret: false, category: "platform", changeTakesEffect: "immediate", },
+  { name: "KUBERNETES_SERVICE_HOST", description: "Kubernetes API service address, injected into every pod by the kubelet.", secret: false, category: "platform", changeTakesEffect: "immediate", },
+  { name: "DEFAULT_OBJECT_STORAGE_BUCKET_ID", description: "Replit object storage default bucket id.", secret: false, category: "platform", changeTakesEffect: "restart", },
+  { name: "PUBLIC_OBJECT_SEARCH_PATHS", description: "Comma-separated public search paths in object storage.", secret: false, category: "platform", changeTakesEffect: "restart", },
+  { name: "PRIVATE_OBJECT_DIR", description: "Private directory prefix in object storage.", secret: false, category: "platform", changeTakesEffect: "restart", },
 ]);

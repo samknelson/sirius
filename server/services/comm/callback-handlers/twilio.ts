@@ -3,8 +3,14 @@ import type { CommStatusHandler, CommStatusUpdate } from './index';
 import twilio from 'twilio';
 import { getEnvironmentVariable, registerEnvironmentVariables } from "../../../config/env-registry";
 
+// changeTakesEffect: "restart". This handler re-reads the token on every
+// callback, but the same token is memoized by the Twilio credentials cache in
+// server/lib/twilio-client.ts, which is what the sending path uses. A change
+// is therefore only fully in effect after a restart. Registration is
+// last-one-wins across modules, so this classification must match the one in
+// twilio-client.ts and service-registry.ts.
 registerEnvironmentVariables([
-  { name: "TWILIO_AUTH_TOKEN", description: "Twilio auth token for the SMS provider (also validates status callbacks).", secret: true, category: "core" },
+  { name: "TWILIO_AUTH_TOKEN", description: "Twilio auth token for the SMS provider (also validates status callbacks).", secret: true, category: "core", changeTakesEffect: "restart", },
 ]);
 
 export class TwilioStatusHandler implements CommStatusHandler {

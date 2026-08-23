@@ -5,12 +5,16 @@ import {
   registerEnvironmentVariables,
 } from "../../../../config/env-registry";
 
+// changeTakesEffect: "immediate" for all five — see the matching registration
+// in server/modules/sitespecific/t631/client/fetch.ts, whose getConfig()
+// re-reads them per request. This plugin re-reads them per status scan.
+// Registration is last-one-wins, so both copies must stay in step.
 registerEnvironmentVariables([
-  { name: "SITESPECIFIC_T631_CLIENT_URL", description: "Base URL of the remote T631 service.", secret: false, category: "sitespecific.t631.client" },
-  { name: "SITESPECIFIC_T631_CLIENT_ACCOUNT_ID", description: "Account id for the remote T631 service.", secret: false, category: "sitespecific.t631.client" },
-  { name: "SITESPECIFIC_T631_CLIENT_ACCESS_TOKEN", description: "Access token for the remote T631 service.", secret: true, category: "sitespecific.t631.client" },
-  { name: "SITESPECIFIC_T631_CLIENT_EMPLOYER_ID", description: "Employer id for the remote T631 service.", secret: false, category: "sitespecific.t631.client" },
-  { name: "SITESPECIFIC_T631_CLIENT_EMPLOYER_TOKEN", description: "Employer token for the remote T631 service.", secret: true, category: "sitespecific.t631.client" },
+  { name: "SITESPECIFIC_T631_CLIENT_URL", description: "Base URL of the remote T631 service.", secret: false, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+  { name: "SITESPECIFIC_T631_CLIENT_ACCOUNT_ID", description: "Account id for the remote T631 service.", secret: false, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+  { name: "SITESPECIFIC_T631_CLIENT_ACCESS_TOKEN", description: "Access token for the remote T631 service.", secret: true, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+  { name: "SITESPECIFIC_T631_CLIENT_EMPLOYER_ID", description: "Employer id for the remote T631 service.", secret: false, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+  { name: "SITESPECIFIC_T631_CLIENT_EMPLOYER_TOKEN", description: "Employer token for the remote T631 service.", secret: true, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
 ]);
 
 const REQUIRED_ENV_VARS = [

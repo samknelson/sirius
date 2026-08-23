@@ -45,6 +45,24 @@
 #   Provide whatever your enabled feature set requires — these are read from
 #   the environment at runtime and are NOT baked into the image.
 #
+# RESTART POLICY (required for the in-app Restart button)
+#   The admin page at /admin/restart lets an operator restart the app. A
+#   process can only ever end itself: "Restart" shuts down cleanly and exits
+#   with code 75. Something OUTSIDE the container must start the replacement.
+#
+#     docker run --restart unless-stopped ...   # recommended
+#     docker run --restart always ...           # also fine
+#     docker run --restart on-failure ...       # fine — exit 75 is non-zero
+#     docker run ...                            # NO restart policy: pressing
+#                                               # Restart takes the site down
+#                                               # and it STAYS down until
+#                                               # someone starts it again.
+#
+#   Under an ECS service or a Kubernetes deployment the replacement is started
+#   for you and no flag is needed. A container's restart policy cannot be read
+#   from inside the container, so when the app cannot establish that it is
+#   supervised, the page says so and demands a typed confirmation.
+#
 # CAVEAT: features that rely on `puppeteer-core` (e.g. some PDF generation)
 # need a Chromium binary in the container. This image does not install one.
 # If you use those features, install Chromium and set PUPPETEER_EXECUTABLE_PATH

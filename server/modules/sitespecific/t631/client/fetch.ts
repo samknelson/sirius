@@ -4,12 +4,18 @@ import { requireComponent } from "../../../components";
 import { z } from "zod";
 import { getEnvironmentVariable, registerEnvironmentVariables } from "../../../../config/env-registry";
 
+// changeTakesEffect: "immediate" for all five. getConfig() re-reads every one
+// of them through the registry on each t631Fetch call and keeps nothing
+// between calls. The same five are also registered by the T631 status plugin
+// (server/plugins/system/status/plugins/sitespecific-t631-client.ts), which
+// reads them per status scan — registration is last-one-wins, so both copies
+// must carry the same classification.
 registerEnvironmentVariables([
-  { name: "SITESPECIFIC_T631_CLIENT_URL", description: "Base URL of the remote T631 service.", secret: false, category: "sitespecific.t631.client" },
-  { name: "SITESPECIFIC_T631_CLIENT_ACCOUNT_ID", description: "Account id for the remote T631 service.", secret: false, category: "sitespecific.t631.client" },
-  { name: "SITESPECIFIC_T631_CLIENT_ACCESS_TOKEN", description: "Access token for the remote T631 service.", secret: true, category: "sitespecific.t631.client" },
-  { name: "SITESPECIFIC_T631_CLIENT_EMPLOYER_ID", description: "Employer id for the remote T631 service.", secret: false, category: "sitespecific.t631.client" },
-  { name: "SITESPECIFIC_T631_CLIENT_EMPLOYER_TOKEN", description: "Employer token for the remote T631 service.", secret: true, category: "sitespecific.t631.client" },
+  { name: "SITESPECIFIC_T631_CLIENT_URL", description: "Base URL of the remote T631 service.", secret: false, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+  { name: "SITESPECIFIC_T631_CLIENT_ACCOUNT_ID", description: "Account id for the remote T631 service.", secret: false, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+  { name: "SITESPECIFIC_T631_CLIENT_ACCESS_TOKEN", description: "Access token for the remote T631 service.", secret: true, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+  { name: "SITESPECIFIC_T631_CLIENT_EMPLOYER_ID", description: "Employer id for the remote T631 service.", secret: false, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+  { name: "SITESPECIFIC_T631_CLIENT_EMPLOYER_TOKEN", description: "Employer token for the remote T631 service.", secret: true, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
 ]);
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;

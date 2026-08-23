@@ -254,6 +254,23 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   {
     const { initEnvOverrides } = await import("./services/env-overrides");
     await initEnvOverrides();
+
+    // Task #1258. Refuse to boot when the reloadable-subsystem registry and
+    // the per-variable change-effect classification disagree — otherwise the
+    // Environment Variables page and the Restart & Reload page would tell an
+    // operator different things about the same variable.
+    const { assertReloadClassificationConsistency } = await import(
+      "./services/reload-registry"
+    );
+    assertReloadClassificationConsistency();
+
+    // Baseline the effective value of every restart-only variable, so the
+    // Restart & Reload page can report which ones are genuinely WAITING on a
+    // restart rather than merely capable of needing one. Must run after the
+    // overrides are installed: an override present at boot is part of what
+    // this process is already using.
+    const { captureRestartBaseline } = await import("./services/env-restart-pending");
+    captureRestartBaseline();
   }
 
   // Initialize environment-defined filesystems (FILESYSTEMS env var).

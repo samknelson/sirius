@@ -72,6 +72,28 @@ export function registerSystemStatusRoutes(app: Express, requireAuth: AuthMiddle
     }
   });
 
+  // Latest status for ONE visible plugin (Task #1258). Exists so a page that
+  // embeds a single status plugin — the admin Restart & Reload page renders
+  // Container Information — does not trigger a scan of every other plugin
+  // just to show it. Same scan-on-first-demand semantics as the collection.
+  app.get("/api/system-status/:id", requireAuth, async (req, res) => {
+    try {
+      if (!(await gate(req, res))) return;
+      const visible = await systemStatusPluginRegistry.listVisibleTo(req);
+      const plugin = visible.find((p) => p.id === req.params.id);
+      if (!plugin) {
+        res.status(404).json({ message: "Unknown system status plugin" });
+        return;
+      }
+      const [entry] = await collectStatus([plugin]);
+      res.setHeader("Cache-Control", "no-store");
+      res.json(entry);
+    } catch (error) {
+      console.error("Failed to collect system status entry:", error);
+      res.status(500).json({ message: "Failed to collect system status" });
+    }
+  });
+
   // On-demand details drill-down for one visible plugin. NEVER cached —
   // each request invokes the plugin's details() fresh — and the payload is
   // never logged (it may contain sensitive-adjacent data).
