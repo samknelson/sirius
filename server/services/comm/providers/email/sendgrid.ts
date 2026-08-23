@@ -11,10 +11,19 @@ import type { ConnectionTestResult } from '../base';
 import { logger } from '../../../../logger';
 import { getEnvironmentVariable, registerEnvironmentVariables } from "../../../../config/env-registry";
 
+// SENDGRID_API_KEY is "restart": initializeSendGrid() hands the key to the
+// SendGrid client once and then short-circuits on `this.initialized`, and the
+// provider instance itself is cached by the service registry, so a new key
+// does not reach the sending path in this process. It is also registered by
+// server/services/service-registry.ts — registration is last-one-wins, so both
+// copies must carry the same classification.
+//
+// The From address parts are "immediate": getDefaultFromAddress() re-reads
+// them through the registry on every send that does not carry its own From.
 registerEnvironmentVariables([
-  { name: "SENDGRID_API_KEY", description: "SendGrid API key for the sendgrid email provider.", secret: true, category: "core" },
-  { name: "SENDGRID_FROM_EMAIL", description: "Default From email address for SendGrid sends.", secret: false, category: "core" },
-  { name: "SENDGRID_FROM_NAME", description: "Default From display name for SendGrid sends.", secret: false, category: "core" },
+  { name: "SENDGRID_API_KEY", description: "SendGrid API key for the sendgrid email provider.", secret: true, category: "core", changeTakesEffect: "restart", },
+  { name: "SENDGRID_FROM_EMAIL", description: "Default From email address for SendGrid sends.", secret: false, category: "core", changeTakesEffect: "immediate", },
+  { name: "SENDGRID_FROM_NAME", description: "Default From display name for SendGrid sends.", secret: false, category: "core", changeTakesEffect: "immediate", },
 ]);
 
 const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;

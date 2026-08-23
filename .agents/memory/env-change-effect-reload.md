@@ -28,3 +28,13 @@ within a release.
 **Related invariant:** "waiting on a restart" is computed, not listed. Baseline
 a hash of each restart-classified variable's effective value at boot and diff
 against current values; never store the values themselves.
+
+**Two classification judgement calls** that the three definitions do not settle
+on their own:
+- Mixed consumers — one re-reads the value per use, another memoizes it —
+  classify as `restart`. The value is not in effect everywhere until the process
+  restarts, and the weaker claim is the honest one.
+- A variable whose name is not known until config-parse time cannot be
+  classified `reload` even when a reload genuinely makes it live, because the
+  boot gate requires a subsystem to name it statically. Leave it unstated rather
+  than picking a wrong neighbour.

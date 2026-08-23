@@ -14,8 +14,12 @@ import { storage } from '../../../../storage';
 import { getConfigKey } from '../base';
 import { getEnvironmentVariable, registerEnvironmentVariables } from "../../../../config/env-registry";
 
+// changeTakesEffect: "immediate". getApiKey() re-reads the variable through
+// the registry on every call, and nothing caches it — the only cached key is
+// one supplied explicitly through configure(), which is provider settings
+// rather than this environment variable.
 registerEnvironmentVariables([
-  { name: "LOB_API_KEY", description: "Lob API key for the postal mail provider.", secret: true, category: "core" },
+  { name: "LOB_API_KEY", description: "Lob API key for the postal mail provider.", secret: true, category: "core", changeTakesEffect: "immediate", },
 ]);
 
 interface LobVerificationResponse {

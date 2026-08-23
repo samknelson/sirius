@@ -16,11 +16,14 @@ import {
  */
 function resolveGoogleApiKey(apiKeyName: string): string | undefined {
   if (!apiKeyName) return undefined;
+  // changeTakesEffect: "immediate" — this runs at the point of each Google
+  // call and the value it returns is used straight away, never cached.
   registerEnvironmentVariable({
     name: apiKeyName,
     description: "Google Maps API key named by the address-validation config.",
     secret: true,
     category: "core",
+    changeTakesEffect: "immediate",
   });
   return getEnvironmentVariable(apiKeyName);
 }

@@ -9,9 +9,14 @@ import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { PDFDocument } from "pdf-lib";
 import { getEnvironmentVariable, registerEnvironmentVariables } from "../../../config/env-registry";
 
+// changeTakesEffect: "immediate" for both. loginToSite() reads them through
+// the registry at the start of each scrape run and nothing holds them between
+// runs. The same pair is registered by the cardcheck scrape-import wizard
+// plugin — registration is last-one-wins, so both copies must carry the same
+// classification.
 registerEnvironmentVariables([
-  { name: "BTU_SCRAPER_USERNAME", description: "Login username for the BTU cardcheck scraper.", secret: false, category: "sitespecific.btu" },
-  { name: "BTU_SCRAPER_PASSWORD", description: "Login password for the BTU cardcheck scraper.", secret: true, category: "sitespecific.btu" },
+  { name: "BTU_SCRAPER_USERNAME", description: "Login username for the BTU cardcheck scraper.", secret: false, category: "sitespecific.btu", changeTakesEffect: "immediate", },
+  { name: "BTU_SCRAPER_PASSWORD", description: "Login password for the BTU cardcheck scraper.", secret: true, category: "sitespecific.btu", changeTakesEffect: "immediate", },
 ]);
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;

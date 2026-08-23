@@ -99,6 +99,17 @@ function canonicalHttpsOrigin(raw: string, sourceLabel: string): string {
  * Leaving it undeclared is a valid third state, meaning "not stated". Callers
  * must NOT treat undeclared as "immediate": the page shows nothing rather
  * than making a claim nobody made deliberately.
+ *
+ * The same rule applies to variables a component or service registers from
+ * its own module, classified from how that component consumes the value. Two
+ * cautions for those:
+ *  - Registration is last-one-wins (see {@link registerEnvironmentVariable}),
+ *    so when several modules register the same name, every copy must carry
+ *    the SAME classification — otherwise what the page states depends on
+ *    module load order.
+ *  - When a variable has both a re-reading consumer and a memoizing one, the
+ *    honest answer is "restart": a change is not in effect everywhere until
+ *    the process starts again.
  */
 export type EnvironmentVariableChangeEffect = "immediate" | "restart" | "reload";
 

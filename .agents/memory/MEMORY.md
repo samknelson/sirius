@@ -109,3 +109,5 @@
 - [Optional unique blank→NULL](optional-unique-blank-to-null.md) — trim-to-null in the shared insert schema with an OUTER .optional() (else .partial() clears it); named UNIQUE constraint + constraint-name-checked 23505→409.
 - [Env change-effect "reload"](env-change-effect-reload.md) — third classification value; boot gate asserts reload-registry ↔ env-registry both ways; "waiting on restart" is a hashed baseline diff, not a list.
 - [Self-restart needs a supervisor](self-restart-supervision.md) — exit non-zero (75); a restart policy is unreadable from inside, so supervision is yes/no/unknown; prove a restart via a boot identity, not a 200.
+- [Branch-scoped CI/deploy dirs](branch-scoped-ci-files.md) — .github/deploy are per-branch, never on main; gitignore can't untrack, `git add` silently no-ops, use `git checkout <branch> -- paths` / `git rm --cached`.
+- [Platform history re-parenting](platform-history-reparenting.md) — main gets rewritten into content-identical commits with new parents; long-lived config branches re-conflict forever — rebuild them, don't merge.

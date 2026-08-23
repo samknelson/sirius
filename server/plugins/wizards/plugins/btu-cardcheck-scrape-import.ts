@@ -9,9 +9,14 @@ import { sendInapp } from "../../../services/comm/senders/inapp";
 import { sendEmail } from "../../../services/comm/senders/email";
 import { getEnvironmentVariable, registerEnvironmentVariables } from "../../../config/env-registry";
 
+// changeTakesEffect: "immediate" for both — loginToSite() reads them through
+// the registry at the start of each scrape run and nothing holds them between
+// runs. Matches the registration in server/modules/sitespecific/btu/
+// scraper-import.ts; registration is last-one-wins, so the two must stay in
+// step.
 registerEnvironmentVariables([
-  { name: "BTU_SCRAPER_USERNAME", description: "Login username for the BTU cardcheck scraper.", secret: false, category: "sitespecific.btu" },
-  { name: "BTU_SCRAPER_PASSWORD", description: "Login password for the BTU cardcheck scraper.", secret: true, category: "sitespecific.btu" },
+  { name: "BTU_SCRAPER_USERNAME", description: "Login username for the BTU cardcheck scraper.", secret: false, category: "sitespecific.btu", changeTakesEffect: "immediate", },
+  { name: "BTU_SCRAPER_PASSWORD", description: "Login password for the BTU cardcheck scraper.", secret: true, category: "sitespecific.btu", changeTakesEffect: "immediate", },
 ]);
 
 const SERVICE = "btu-cardcheck-scrape-import-plugin";
