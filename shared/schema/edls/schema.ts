@@ -1,4 +1,4 @@
-import { pgTable, varchar, date, integer, time, jsonb, unique, text, boolean } from "drizzle-orm/pg-core";
+import { pgTable, varchar, date, integer, time, jsonb, unique, text, boolean, timestamp } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -37,11 +37,29 @@ export const edlsSheets = pgTable("edls_sheets", {
   jobGroupId: varchar("job_group_id").references(() => dispatchJobGroups.id, { onDelete: 'set null' }),
   facilityId: varchar("facility_id").references(() => facilities.id, { onDelete: 'set null' }),
   showStatusId: varchar("show_status_id").references(() => optionsEdlsShowStatus.id, { onDelete: 'set null' }),
+  notes: text("notes"),
+  /**
+   * Stamped once by the storage layer from the acting user at create time and
+   * never rewritten afterwards. Null for sheets written without a request
+   * context (background jobs, scripts) and for rows that predate the column.
+   */
+  createdBy: varchar("created_by").references(() => users.id, { onDelete: 'set null' }),
+  /**
+   * Timestamp of the sheet's most recent save. Refreshed by the storage layer
+   * on every create and update, so no caller can forget to set it.
+   */
+  changed: timestamp("changed").notNull().default(sql`now()`),
   data: jsonb("data"),
 });
 
+/**
+ * `createdBy` / `changed` are storage-owned outputs: they are omitted here so
+ * a request body can never set them (zod strips unknown keys).
+ */
 export const insertEdlsSheetsSchema = createInsertSchema(edlsSheets).omit({
   id: true,
+  createdBy: true,
+  changed: true,
 }).extend({
   assignee: z.string().nullish(),
   jobGroupId: z.string().nullish(),

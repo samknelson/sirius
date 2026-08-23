@@ -32,11 +32,23 @@ export function registerEdlsSheetsRoutes(
         status,
         jobGroupId,
         facilityId,
-        showStatusId
+        showStatusId,
+        changedSince
       } = req.query;
       
       const page = parseInt(pageParam as string) || 0;
       const limit = Math.min(parseInt(limitParam as string) || 100, 100);
+      
+      // "Changed on or after" — an ISO timestamp. Reject an unparseable value
+      // rather than silently listing everything.
+      let changedSinceDate: Date | undefined;
+      if (typeof changedSince === 'string' && changedSince !== '') {
+        changedSinceDate = new Date(changedSince);
+        if (Number.isNaN(changedSinceDate.getTime())) {
+          res.status(400).json({ message: "changedSince must be a valid ISO timestamp" });
+          return;
+        }
+      }
       
       const result = await storage.edlsSheets.getPaginated(
         page, 
@@ -49,6 +61,7 @@ export function registerEdlsSheetsRoutes(
           jobGroupId: jobGroupId as string | undefined,
           facilityId: facilityId as string | undefined,
           showStatusId: showStatusId as string | undefined,
+          changedSince: changedSinceDate,
         }
       );
       res.json(result);
@@ -222,6 +235,7 @@ export function registerEdlsSheetsRoutes(
         jobGroupId: sheetData.jobGroupId || null,
         facilityId: sheetData.facilityId || null,
         showStatusId: sheetData.showStatusId || null,
+        notes: sheetData.notes || null,
       };
       
       const crewsTotalWorkerCount = crews.reduce((sum, crew) => sum + crew.workerCount, 0);
@@ -300,6 +314,7 @@ export function registerEdlsSheetsRoutes(
         jobGroupId: parsedSheetData.jobGroupId !== undefined ? (parsedSheetData.jobGroupId || null) : undefined,
         facilityId: parsedSheetData.facilityId !== undefined ? (parsedSheetData.facilityId || null) : undefined,
         showStatusId: parsedSheetData.showStatusId !== undefined ? (parsedSheetData.showStatusId || null) : undefined,
+        notes: parsedSheetData.notes !== undefined ? (parsedSheetData.notes || null) : undefined,
       };
       
       if (!sheetData.departmentId) {
