@@ -63,6 +63,11 @@ on:
         description: 'Target environment name (used for image tagging and per-env Vite build)'
         required: true
         type: string
+      ref:
+        description: 'Git ref to build (branch, tag, or full SHA). Blank = the ref that triggered the caller.'
+        required: false
+        default: ''
+        type: string
     outputs:
       ui-image-uri:
         description: 'Full ECR URI of the pushed image in the UI repo (with sha tag)'
@@ -94,6 +99,11 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+      with:
+        # Blank is actions/checkout's own default, meaning "the ref that
+        # triggered the workflow" — so the pull_request path (where `inputs`
+        # is empty) behaves exactly as it did before this input existed.
+        ref: ${{ inputs.ref }}
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -147,6 +157,11 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+      with:
+        # Blank is actions/checkout's own default, meaning "the ref that
+        # triggered the workflow" — so the pull_request path (where `inputs`
+        # is empty) behaves exactly as it did before this input existed.
+        ref: ${{ inputs.ref }}
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3

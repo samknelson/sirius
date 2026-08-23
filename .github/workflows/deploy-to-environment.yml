@@ -20,6 +20,17 @@ name: Deploy to Environment
 # workflow only registers a new revision per family pointed at the latest
 # image and updates each service to use it.
 #
+# Rollout safety (both opt-in via inputs, so existing callers are unaffected):
+#   rollback-on-failure        default false. On failure, every service that was
+#                              actually switched is returned to the revision it
+#                              was running before this run. The job still fails.
+#   stability-timeout-minutes  default 10. Enforced by a polling waiter rather
+#                              than `aws ecs wait services-stable`, which is
+#                              hard-capped at 10 minutes with no CLI override.
+#                              A rollout the deployment circuit breaker marks
+#                              FAILED aborts immediately instead of waiting out
+#                              the full deadline.
+#
 # Terraform-owned task definition is expected to provide:
 #   env:           DATABASE_URL, SESSION_SECRET, PORT=5000, NODE_ENV=production,
 #                  plus whichever auth-provider secrets the env uses
@@ -54,16 +65,17 @@ name: Deploy to Environment
 #
 # Environment → short code mapping:
 #   Development → dev
+#   UAT         → uat
 #   QA          → qa
 #   Production  → prod
-# (Dev and QA are wired up today; reusable workflow accepts any value via wildcard.)
+# (Dev, UAT and QA are wired up today; reusable workflow accepts any value via wildcard.)
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
   workflow_call:
     inputs:
       environment:
-        description: 'Target GitHub Environment name (Development, QA, Production)'
+        description: 'Target GitHub Environment name (Development, UAT, QA, Production)'
         required: true
         type: string
       ui-image-uri:
@@ -74,6 +86,16 @@ on:
         description: 'Full ECR URI for the API repo image (with tag)'
         required: true
         type: string
+      rollback-on-failure:
+        description: 'If the rollout fails, return each service that was updated to its previous task revision'
+        required: false
+        default: false
+        type: boolean
+      stability-timeout-minutes:
+        description: 'Maximum minutes to wait for the services to reach a stable state'
+        required: false
+        default: 10
+        type: number
 
 env:
   AWS_REGION: us-east-2
@@ -148,6 +170,71 @@ jobs:
         ' > app-env.json
         echo "App env var names: $(jq -r '[.[].name] | join(", ")' app-env.json)"
 
+    - name: Capture current task revisions
+      id: current
+      # Recorded BEFORE anything is changed so the rollback step has somewhere
+      # to return to. Read from the service (not the family) because the family's
+      # latest revision may already be ahead of what is actually running.
+      run: |
+        set -euo pipefail
+        CLUSTER="${{ vars.ECS_CLUSTER }}"
+        UI_PREV=$(aws ecs describe-services --cluster "$CLUSTER" \
+          --services "${{ steps.names.outputs.ui-service }}" \
+          --query 'services[0].taskDefinition' --output text)
+        API_PREV=$(aws ecs describe-services --cluster "$CLUSTER" \
+          --services "${{ steps.names.outputs.api-service }}" \
+          --query 'services[0].taskDefinition' --output text)
+        echo "ui-prev-task-arn=$UI_PREV" >> "$GITHUB_OUTPUT"
+        echo "api-prev-task-arn=$API_PREV" >> "$GITHUB_OUTPUT"
+        echo "Currently running — ui: $UI_PREV"
+        echo "Currently running — api: $API_PREV"
+
+    - name: Install stability waiter
+      # `aws ecs wait services-stable` is capped at 40 attempts x 15s = 10
+      # minutes and the CLI exposes no way to raise it, so stability-timeout-minutes
+      # could not be honoured with the built-in waiter. This polls the same
+      # condition with a caller-supplied deadline, and fails fast on a rollout
+      # the circuit breaker has already marked FAILED instead of waiting it out.
+      run: |
+        set -euo pipefail
+        cat > "$RUNNER_TEMP/wait-stable.sh" << 'SCRIPT'
+        #!/usr/bin/env bash
+        # usage: wait-stable.sh <cluster> <timeout-minutes> <service> [service...]
+        set -euo pipefail
+        CLUSTER="$1"; shift
+        TIMEOUT_MIN="$1"; shift
+        DEADLINE=$(( $(date +%s) + TIMEOUT_MIN * 60 ))
+
+        while :; do
+          SNAP=$(aws ecs describe-services --cluster "$CLUSTER" --services "$@" \
+            --query 'services[].{name:serviceName,deployments:length(deployments),running:runningCount,desired:desiredCount,rollout:deployments[?status==`PRIMARY`]|[0].rolloutState}' \
+            --output json)
+          REPORT=$(echo "$SNAP" | jq -r '.[] | "  \(.name): deployments=\(.deployments) running=\(.running)/\(.desired) rollout=\(.rollout // "n/a")"')
+
+          if echo "$SNAP" | jq -e 'any(.[]; .rollout == "FAILED")' > /dev/null; then
+            echo "::error::ECS reported a FAILED rollout."
+            echo "$REPORT"
+            exit 1
+          fi
+
+          if echo "$SNAP" | jq -e 'all(.[]; .deployments == 1 and .running == .desired)' > /dev/null; then
+            echo "$REPORT"
+            echo "All services stable."
+            exit 0
+          fi
+
+          if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+            echo "::error::Timed out after ${TIMEOUT_MIN}m waiting for services to stabilize."
+            echo "$REPORT"
+            exit 1
+          fi
+
+          echo "$REPORT"
+          sleep 15
+        done
+        SCRIPT
+        chmod +x "$RUNNER_TEMP/wait-stable.sh"
+
     - name: Register new task revision and deploy
       id: deploy
       run: |
@@ -207,6 +294,10 @@ jobs:
           --service "$UI_SERVICE" \
           --task-definition "$UI_NEW_ARN" \
           --force-new-deployment > /dev/null
+        # Marker for the rollback step. Written immediately after the service
+        # actually changed, so a failure earlier than this leaves it unset and
+        # nothing is rolled back needlessly.
+        echo "ui-updated=true" >> "$GITHUB_OUTPUT"
 
         # ── API ─────────────────────────────────────────────────────────────
         echo "Describing latest revision of task family '$API_SERVICE'..."
@@ -245,13 +336,53 @@ jobs:
           --service "$API_SERVICE" \
           --task-definition "$API_NEW_ARN" \
           --force-new-deployment > /dev/null
+        echo "api-updated=true" >> "$GITHUB_OUTPUT"
 
-        # ── Wait for both services to stabilize in a single call ────────────
-        echo "Waiting for services to stabilize..."
-        aws ecs wait services-stable \
-          --cluster "$CLUSTER" \
-          --services "$UI_SERVICE" "$API_SERVICE"
+        # ── Wait for both services to stabilize ─────────────────────────────
+        echo "Waiting up to ${{ inputs.stability-timeout-minutes }}m for services to stabilize..."
+        "$RUNNER_TEMP/wait-stable.sh" "$CLUSTER" "${{ inputs.stability-timeout-minutes }}" \
+          "$UI_SERVICE" "$API_SERVICE"
         echo "Deploy complete."
+
+    - name: Roll back on failure
+      if: failure() && inputs.rollback-on-failure
+      # Only services that were actually switched are rolled back; the job still
+      # fails afterwards, because rolling back is damage control, not success.
+      run: |
+        set -euo pipefail
+        CLUSTER="${{ vars.ECS_CLUSTER }}"
+        UI_SERVICE="${{ steps.names.outputs.ui-service }}"
+        API_SERVICE="${{ steps.names.outputs.api-service }}"
+
+        ROLLED=()
+        if [ "${{ steps.deploy.outputs.ui-updated }}" = "true" ]; then
+          echo "Rolling '$UI_SERVICE' back to ${{ steps.current.outputs.ui-prev-task-arn }}..."
+          aws ecs update-service \
+            --cluster "$CLUSTER" \
+            --service "$UI_SERVICE" \
+            --task-definition "${{ steps.current.outputs.ui-prev-task-arn }}" \
+            --force-new-deployment > /dev/null
+          ROLLED+=("$UI_SERVICE")
+        fi
+
+        if [ "${{ steps.deploy.outputs.api-updated }}" = "true" ]; then
+          echo "Rolling '$API_SERVICE' back to ${{ steps.current.outputs.api-prev-task-arn }}..."
+          aws ecs update-service \
+            --cluster "$CLUSTER" \
+            --service "$API_SERVICE" \
+            --task-definition "${{ steps.current.outputs.api-prev-task-arn }}" \
+            --force-new-deployment > /dev/null
+          ROLLED+=("$API_SERVICE")
+        fi
+
+        if [ ${#ROLLED[@]} -eq 0 ]; then
+          echo "Failure happened before any service was updated; nothing to roll back."
+          exit 0
+        fi
+
+        echo "Waiting for rolled-back services to stabilize..."
+        "$RUNNER_TEMP/wait-stable.sh" "$CLUSTER" "${{ inputs.stability-timeout-minutes }}" "${ROLLED[@]}"
+        echo "::warning::Rolled ${ROLLED[*]} back to the previous task revision."
 
     - name: Deployment summary
       if: always()
