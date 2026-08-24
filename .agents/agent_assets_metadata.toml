@@ -76,3 +76,31 @@ uri = "file://attached_assets/s1-worker-duplicate-merge-commit.sql"
 type = "unspecified"
 title = "DESTRUCTIVE — S1 duplicate-worker merge commit"
 description = "Permanently applies the transaction that passed the rollback rehearsal. The mutation and validation body is identical; only the outcome label and final ROLLBACK→COMMIT differ."
+
+[[outputs]]
+id = "JtFMfMO3h_KbWbFCthaTX"
+uri = "file://attached_assets/s1-ssn-owner-transfer-inventory.sql"
+type = "unspecified"
+title = "1. SSN Transfer Inventory"
+description = "Read-only identity, mapping, FK, and ownership preflight. Every plan status must be READY."
+
+[[outputs]]
+id = "omFPdb6Ev4JK13UfpPufI"
+uri = "file://attached_assets/s1-ssn-owner-transfer-rollback.sql"
+type = "unspecified"
+title = "2. SSN Transfer Rollback Rehearsal"
+description = "Executes the guarded SSN transfer and proves the post-state, then always rolls back. Must return READY_TO_COMMIT."
+
+[[outputs]]
+id = "65yX6P30GHjYnShb8x4Ly"
+uri = "file://attached_assets/s1-ssn-owner-transfer-commit.sql"
+type = "unspecified"
+title = "3. SSN Transfer Commit"
+description = "Guarded destructive variant with the same mutation body as the rollback rehearsal; transfers the SSN and commits."
+
+[[outputs]]
+id = "tIfgeVwSVW1TdY7jGhI0a"
+uri = "file://attached_assets/s1-ssn-owner-transfer-verify.sql"
+type = "unspecified"
+title = "4. SSN Transfer Verification"
+description = "Read-only post-commit verification. Expected final status: PASS."
