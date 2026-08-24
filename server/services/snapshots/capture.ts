@@ -25,7 +25,10 @@ interface SnapshotCaptureAdapter<E extends keyof EventPayloadMap> {
   shouldCapture: (payload: EventPayloadMap[E]) => boolean;
   getEntityId: (payload: EventPayloadMap[E]) => string;
   getLabel: (payload: EventPayloadMap[E]) => string;
-  /** Produce the self-contained export bundle (a SnapshotNode). */
+  /**
+   * Produce the self-contained export bundle (a SnapshotNode). Runs inside the
+   * saving transaction, so it reads the entity exactly as that save left it.
+   */
   exportEntity: (payload: EventPayloadMap[E]) => Promise<unknown | undefined>;
 }
 
@@ -45,7 +48,17 @@ const adapters: SnapshotCaptureAdapter<any>[] = [
   },
 ];
 
-async function isEventActive(event: string): Promise<boolean> {
+/**
+ * Whether capture is currently switched on for an event.
+ *
+ * Exported because capture being off is not only this service's business: a
+ * consumer reading snapshots back as history (e.g. the EDLS worker notifier
+ * diffing rosters) otherwise sees "no snapshot" and cannot tell an entity
+ * with no history from a switch someone turned off. A read error answers
+ * ACTIVE, matching the capture path: the setting exists to disable capture,
+ * so an unreadable setting must not read as disabled.
+ */
+export async function isSnapshotCaptureActive(event: string): Promise<boolean> {
   try {
     const variable = await storage.variables.getByName(SNAPSHOTS_SETTINGS_VARIABLE);
     if (!variable) return true;
@@ -80,12 +93,40 @@ async function resolveAuthor(): Promise<{ authorId: string | null; authorName: s
   }
 }
 
-async function handleEvent<E extends keyof EventPayloadMap>(
-  adapter: SnapshotCaptureAdapter<E>,
+/**
+ * Capture a snapshot for a save that is HAPPENING — call this from inside the
+ * saving transaction, immediately before the save's event is queued.
+ *
+ * Capture is deliberately part of the save rather than a reaction to it. An
+ * after-commit capture answers two questions wrongly, and both failures are
+ * silent:
+ *
+ *  - WHAT it records. It would have to re-read the entity, which by then is
+ *    "the entity now": a second save committing in between gets recorded under
+ *    the first save's label.
+ *  - WHETHER it is there yet. Capture and the notifiers that read history back
+ *    are sibling after-commit handlers of the same save, none of them awaited.
+ *    A save whose snapshot had not landed yet is indistinguishable, to the next
+ *    save's notifier, from a save that never had one — and for the EDLS worker
+ *    notifier that means a worker is never told they came off a crew, with no
+ *    later chance to recover: the next baseline no longer holds them.
+ *
+ * Committing the snapshot with the save settles both. History exists exactly
+ * when the save it describes exists, and anything running after a save's
+ * commit can see the history of every save that preceded it. The price is that
+ * a failure here fails the save; that is the intended trade, because a save
+ * with no history silently breaks the consumers that diff it.
+ */
+export async function captureEntitySnapshot<E extends keyof EventPayloadMap>(
+  event: E,
   payload: EventPayloadMap[E],
 ): Promise<void> {
+  const adapter = adapters.find((candidate) => candidate.event === event) as
+    | SnapshotCaptureAdapter<E>
+    | undefined;
+  if (!adapter) return;
   if (!adapter.shouldCapture(payload)) return;
-  if (!(await isEventActive(adapter.event as string))) return;
+  if (!(await isSnapshotCaptureActive(adapter.event as string))) return;
 
   const entityId = adapter.getEntityId(payload);
   const bundle = await adapter.exportEntity(payload);
@@ -110,31 +151,4 @@ async function handleEvent<E extends keyof EventPayloadMap>(
     `Captured snapshot ${snapshot.id} of ${adapter.entityType} ${entityId} [${snapshot.label}]`,
     { service: SERVICE_NAME },
   );
-}
-
-const handlerIds: string[] = [];
-
-export function initSnapshotCapture(): void {
-  if (handlerIds.length > 0) {
-    logger.warn(`Snapshot capture already initialized`, { service: SERVICE_NAME });
-    return;
-  }
-  for (const adapter of adapters) {
-    handlerIds.push(
-      eventBus.on({
-        name: `snapshot-capture-${adapter.entityType}`,
-        description: `Captures a point-in-time snapshot of a ${adapter.entityType} when its saved event qualifies.`,
-        event: adapter.event,
-        handler: (payload: any) => handleEvent(adapter, payload),
-      }),
-    );
-  }
-  logger.info(`Snapshot capture initialized (${adapters.length} adapter(s))`, { service: SERVICE_NAME });
-}
-
-export function shutdownSnapshotCapture(): void {
-  for (const id of handlerIds) {
-    eventBus.off(id);
-  }
-  handlerIds.length = 0;
 }

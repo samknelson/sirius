@@ -175,6 +175,7 @@ async function up(): Promise<void> {
 
 const migration: Migration = {
   version: BASELINE_VERSION,
+  baseline: true,
   name: "baseline_sirius_dev_20260704",
   description:
     "Re-applies idempotent DDL fix-ups for drift between the live database and " +

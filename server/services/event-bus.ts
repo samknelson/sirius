@@ -341,6 +341,11 @@ export interface GrievanceSettlementSavedPayload {
  * at its initial status), and equals the pre-update status on update. The
  * whole sheet row rides on the payload so consumers can describe it without
  * re-querying a row that may have changed since.
+ *
+ * The save's history entry is NOT carried here and is not a listener's job: it
+ * is written inside the save's own transaction, so a consumer of this event
+ * can rely on the history of every earlier save already being committed. See
+ * `captureEntitySnapshot`.
  */
 export interface EdlsSheetSavedPayload {
   sheetId: string;

@@ -476,6 +476,19 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "worker.aat",
+    name: "Worker Access Tokens",
+    description: "Per-worker access token (UUID) and access code",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/worker/aat/schema.ts",
+      tables: ["worker_aat"]
+    }
+  },
+  {
     id: "worker.relations",
     name: "Worker Relations",
     description: "Management of relationships between workers",
