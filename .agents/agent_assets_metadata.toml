@@ -81,8 +81,8 @@ description = "Permanently applies the transaction that passed the rollback rehe
 id = "JtFMfMO3h_KbWbFCthaTX"
 uri = "file://attached_assets/s1-ssn-owner-transfer-inventory.sql"
 type = "unspecified"
-title = "1. SSN Transfer Inventory"
-description = "Read-only identity, mapping, FK, and ownership preflight. Every plan status must be READY."
+title = "Corrected SSN Transfer Inventory"
+description = "Uses a normal transaction for its temporary FK inventory table, then rolls back all changes. No persistent writes and no SSN disclosure."
 
 [[outputs]]
 id = "omFPdb6Ev4JK13UfpPufI"

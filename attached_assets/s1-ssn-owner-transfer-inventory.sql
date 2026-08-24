@@ -1,12 +1,13 @@
 -- S1 rehearsal target: stale/canonical SSN ownership inventory
 --
--- READ ONLY. This script does not expose the SSN value.
+-- READ-ONLY OVERALL. This script creates only a temporary inventory table and
+-- ends with ROLLBACK; it does not persist changes or expose the SSN value.
 -- Run against the confirmed production-profile rehearsal S2 target.
 --
 -- Every status in RESULT SET 1 must be READY before using the rehearsal or
 -- commit scripts. RESULT SETS 2-4 document mappings and references only.
 
-BEGIN TRANSACTION READ ONLY;
+BEGIN;
 
 -- RESULT SET 1: STRICT IDENTITY AND SSN PLAN VALIDATION
 WITH params AS (
