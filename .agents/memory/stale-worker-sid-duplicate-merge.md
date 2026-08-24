@@ -20,3 +20,9 @@ A rollback-only execution against the real rehearsal target confirmed that this 
 **Why:** Static analysis alone cannot prove that the live target still matches the dependency inventory or that every uniqueness constraint survives the ordered merge.
 
 **How to apply:** Keep the rollback rehearsal as the final gate. Produce or run a commit variant only after it returns the explicit ready marker and every count matches the reviewed plan.
+
+The guarded repair was subsequently committed on the real rehearsal target with every reviewed count satisfied.
+
+**Why:** Future rehearsal work must not assume the stale duplicates or approved source-missing row still exist, or rerun the destructive repair.
+
+**How to apply:** Treat the duplicate consolidation as completed on that target and continue from the contacts/workers loader and remaining fleet gates.
