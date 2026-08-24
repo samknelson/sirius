@@ -18,8 +18,8 @@ description = "56 triage rows across 18 loaders — sorted largest-count-first, 
 id = "g36etJfs66BokrwqsQLtH"
 uri = "file://attached_assets/s1-daily-rehearsal-cloudshell-19c10b22.sh"
 type = "unspecified"
-title = "Updated S1 daily rehearsal CloudShell launcher"
-description = "Repinned to reviewed origin/bao-dev revision 3d637e6d938e4949a2920df8068eab2724a44e16. The exact-SHA safety guard remains enabled."
+title = "Latest S1 daily rehearsal CloudShell script"
+description = "Pinned to bao-dev d60d06dd and runs the production daily profile with fresh staging, --force-reconcile, and --keep-going."
 
 [[outputs]]
 id = "4QY_r14le8jv-9J2wMYAz"

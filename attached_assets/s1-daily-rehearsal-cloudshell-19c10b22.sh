@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# First real-S1 wet DAILY sync rehearsal launcher.
+# Real-S1 wet DAILY sync rehearsal launcher with full reconciliation and
+# independent-failure collection.
 # Run in the REGULAR AWS CloudShell tab (internet + AWS APIs), not the VPC tab.
 #
 # Intentionally does NOT use `set -euo pipefail`.
@@ -17,8 +18,8 @@
 #   export SKIP_IMAGE_BUILD=1
 
 REGION=us-west-2
-SHA=3d637e6d938e4949a2920df8068eab2724a44e16
-SHORT_SHA=3d637e6d
+SHA=d60d06dd619f2727e9a996f651f40270157c6e10
+SHORT_SHA=d60d06dd
 SUBNET=subnet-0dbb13264c6f67de8
 SECURITY_GROUP=sg-0706494f584922bae
 TASK_FAMILY=sirius-migration
@@ -282,7 +283,11 @@ if [ -n "$RUNNING_MIGRATIONS" ] && [ "$RUNNING_MIGRATIONS" != "None" ]; then
 fi
 
 SYNC_TASK=$(run_task \
-  npx tsx scripts/s1-migration/sync.ts --mode daily --profile production) ||
+  npx tsx scripts/s1-migration/sync.ts \
+    --mode daily \
+    --profile production \
+    --force-reconcile \
+    --keep-going) ||
   fail "launch wet daily sync"
 if [ -z "$SYNC_TASK" ] || [ "$SYNC_TASK" = "None" ]; then
   fail "wet sync did not return a task ARN"
