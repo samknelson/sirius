@@ -60,5 +60,5 @@ description = "Read-only fallback for targets without T17 desired-span scratch. 
 id = "43PTqOwHs1H2-0Frj7Jzo"
 uri = "file://attached_assets/s1-worker-wmb-staged-source-authority-preflight.sql"
 type = "unspecified"
-title = "S1 WMB staged-source authority preflight"
-description = "Read-only SQL that reconstructs T17 month-level relation provenance directly from current staged S1 benefit records and existing wb anchors."
+title = "Revised definitive S1 WMB authority preflight"
+description = "Read-only SQL revised to resolve every staged benefit span directly, including unanchored spans, and classify third-relation provenance as an explicit T17 repair target."

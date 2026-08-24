@@ -5,10 +5,10 @@
 --
 -- Why this exists:
 -- - t17_desired_spans is absent because T17 has never completed here.
--- - Existing entity='wb' id_map anchors still identify each staged S1 benefit
---   span and one live trust_wmb row from that span.
--- - The anchor supplies the resolved employer/benefit; the current staged
---   record supplies dates and relation target.
+-- - Current staged references resolve directly through worker/relation,
+--   employer/election, and benefit mappings, matching T17.
+-- - Existing entity='wb' id_map anchors are diagnostic-only; an unanchored
+--   staged span is still authoritative when its direct references resolve.
 -- - For each month key, T17 chooses source_relation_id from the LOWEST source
 --   nid among covering spans. This query reproduces that rule.
 --
@@ -149,10 +149,18 @@ WITH staged_refs AS (
     staged.fields,
     pg_temp.target_nid(staged.fields, 'field_sirius_contact_relation')
       AS relation_nid,
+    pg_temp.target_nid(staged.fields, 'field_sirius_trust_subscriber')
+      AS subscriber_worker_nid,
     COALESCE(
       pg_temp.target_nid(staged.fields, 'field_sirius_trust_subscriber'),
       pg_temp.target_nid(staged.fields, 'field_sirius_worker')
     ) AS owner_worker_nid,
+    pg_temp.target_nid(staged.fields, 'field_sirius_trust_benefit')
+      AS benefit_nid,
+    pg_temp.target_nid(staged.fields, 'field_grievance_shop')
+      AS employer_nid,
+    pg_temp.target_nid(staged.fields, 'field_sirius_trust_election')
+      AS election_nid,
     pg_temp.strict_ymd(
       pg_temp.field_text(staged.fields, 'field_sirius_date_start')
     ) AS start_ymd,
@@ -170,6 +178,15 @@ resolved AS (
     source.relation_nid,
     relation_map.s2_id AS source_relation_id,
     COALESCE(relation.worker_2, owner_map.s2_id) AS resolved_worker_id,
+    COALESCE(
+      employer_map.s2_id,
+      election.employer_id
+    ) AS resolved_employer_id,
+    COALESCE(
+      benefit_map.s2_id,
+      CASE WHEN benefit_by_sid.match_count = 1 THEN benefit_by_sid.benefit_id END,
+      CASE WHEN benefit_by_name.match_count = 1 THEN benefit_by_name.benefit_id END
+    ) AS resolved_benefit_id,
     source.start_ymd,
     CASE
       WHEN source.explicit_end_ymd IS NOT NULL THEN source.explicit_end_ymd
@@ -180,21 +197,33 @@ resolved AS (
     END AS end_ymd,
     wb_map.s2_id AS anchor_wmb_id,
     anchor_wmb.worker_id AS anchor_worker_id,
-    anchor_wmb.employer_id,
-    anchor_wmb.benefit_id,
+    anchor_wmb.employer_id AS anchor_employer_id,
+    anchor_wmb.benefit_id AS anchor_benefit_id,
     CASE
-      WHEN wb_map.s2_id IS NULL
-        THEN 'wb anchor missing'
-      WHEN anchor_wmb.id IS NULL
-        THEN 'wb anchor dangling'
       WHEN source.start_ymd IS NULL
         THEN 'start date missing or invalid'
       WHEN source.relation_nid IS NOT NULL AND relation_map.s2_id IS NULL
         THEN 'relation mapping missing'
       WHEN source.relation_nid IS NOT NULL AND relation.id IS NULL
         THEN 'relation mapping dangling'
+      WHEN source.subscriber_worker_nid IS NOT NULL
+       AND subscriber_map.s2_id IS NOT NULL
+       AND relation.id IS NOT NULL
+       AND relation.worker_1 <> subscriber_map.s2_id
+        THEN 'relation subscriber mismatch'
       WHEN source.relation_nid IS NULL AND owner_map.s2_id IS NULL
         THEN 'owner worker mapping missing'
+      WHEN COALESCE(employer_map.s2_id, election.employer_id) IS NULL
+        THEN 'employer unresolved'
+      WHEN COALESCE(
+        benefit_map.s2_id,
+        CASE WHEN benefit_by_sid.match_count = 1 THEN benefit_by_sid.benefit_id END,
+        CASE WHEN benefit_by_name.match_count = 1 THEN benefit_by_name.benefit_id END
+      ) IS NULL
+        THEN 'benefit unresolved'
+      WHEN source.explicit_end_ymd IS NOT NULL
+       AND source.explicit_end_ymd < source.start_ymd
+        THEN 'end date precedes start date'
       ELSE NULL
     END AS resolution_issue
   FROM staged_refs source
@@ -210,10 +239,46 @@ resolved AS (
    AND relation_map.stub = false
   LEFT JOIN worker_relations relation
     ON relation.id = relation_map.s2_id
+  LEFT JOIN s1_staging.id_map subscriber_map
+    ON subscriber_map.entity = 'worker'
+   AND subscriber_map.s1_id = source.subscriber_worker_nid
+   AND subscriber_map.stub = false
   LEFT JOIN s1_staging.id_map owner_map
     ON owner_map.entity = 'worker'
    AND owner_map.s1_id = source.owner_worker_nid
    AND owner_map.stub = false
+  LEFT JOIN s1_staging.id_map employer_map
+    ON employer_map.entity = 'employer'
+   AND employer_map.s1_id = source.employer_nid
+   AND employer_map.stub = false
+  LEFT JOIN s1_staging.id_map election_map
+    ON election_map.entity = 'election'
+   AND election_map.s1_id = source.election_nid
+   AND election_map.stub = false
+  LEFT JOIN worker_trust_elections election
+    ON election.id = election_map.s2_id
+  LEFT JOIN s1_staging.id_map benefit_map
+    ON benefit_map.entity = 'benefit'
+   AND benefit_map.s1_id = source.benefit_nid
+   AND benefit_map.stub = false
+  LEFT JOIN s1_staging.records staged_benefit
+    ON staged_benefit.bundle = 'sirius_trust_benefit'
+   AND staged_benefit.nid = source.benefit_nid
+  LEFT JOIN LATERAL (
+    SELECT
+      min(benefit.id) AS benefit_id,
+      count(*)::bigint AS match_count
+    FROM trust_benefits benefit
+    WHERE benefit.sirius_id = source.benefit_nid::text
+  ) benefit_by_sid ON true
+  LEFT JOIN LATERAL (
+    SELECT
+      min(benefit.id) AS benefit_id,
+      count(*)::bigint AS match_count
+    FROM trust_benefits benefit
+    WHERE lower(btrim(benefit.name)) =
+          lower(btrim(staged_benefit.title))
+  ) benefit_by_name ON true
 )
 SELECT
   plan.stale_worker_id,
@@ -223,8 +288,8 @@ SELECT
   source.start_ymd,
   source.end_ymd,
   source.anchor_wmb_id,
-  source.employer_id,
-  source.benefit_id,
+  source.resolved_employer_id AS employer_id,
+  source.resolved_benefit_id AS benefit_id,
   CASE
     WHEN source.resolution_issue IS NOT NULL
       THEN source.resolution_issue
@@ -236,6 +301,22 @@ SELECT
     ELSE NULL
   END AS resolution_issue,
   CASE
+    WHEN source.anchor_wmb_id IS NULL
+      THEN 'unanchored'
+    WHEN source.anchor_worker_id IS NULL
+      THEN 'dangling anchor'
+    WHEN source.anchor_worker_id NOT IN (
+      plan.stale_worker_id,
+      plan.canonical_worker_id
+    )
+      THEN 'anchor worker differs'
+    WHEN source.anchor_employer_id IS DISTINCT FROM source.resolved_employer_id
+      THEN 'anchor employer differs'
+    WHEN source.anchor_benefit_id IS DISTINCT FROM source.resolved_benefit_id
+      THEN 'anchor benefit differs'
+    ELSE 'anchor agrees'
+  END AS anchor_status,
+  CASE
     WHEN source.resolved_worker_id = plan.stale_worker_id
       THEN plan.canonical_worker_id
     ELSE source.resolved_worker_id
@@ -243,24 +324,38 @@ SELECT
 FROM resolved source
 JOIN wmb_collision_worker_plan plan
   ON source.resolved_worker_id IN (
-       plan.stale_worker_id,
-       plan.canonical_worker_id
-     )
+    plan.stale_worker_id,
+    plan.canonical_worker_id
+  )
   OR source.anchor_worker_id IN (
-       plan.stale_worker_id,
-       plan.canonical_worker_id
-     );
+    plan.stale_worker_id,
+    plan.canonical_worker_id
+  );
 
 CREATE TEMP TABLE staged_authority
 ON COMMIT DROP
 AS
+WITH worker_issues AS (
+  SELECT
+    plan.stale_worker_id,
+    plan.canonical_worker_id,
+    count(span.nid) FILTER (WHERE span.resolution_issue IS NOT NULL)::bigint
+      AS issue_count
+  FROM wmb_collision_worker_plan plan
+  LEFT JOIN staged_span_candidates span
+    ON span.stale_worker_id = plan.stale_worker_id
+  GROUP BY plan.stale_worker_id, plan.canonical_worker_id
+)
 SELECT
   collision.*,
+  issue.issue_count,
   desired.covering_span_count,
   desired.desired_source_relation_id,
   CASE
+    WHEN issue.issue_count > 0
+      THEN 'STOP: relevant staged S1 span failed direct resolution'
     WHEN desired.covering_span_count = 0
-      THEN 'STOP: no anchored staged S1 span covers this WMB key'
+      THEN 'STOP: no resolved staged S1 span covers this WMB key'
     WHEN desired.desired_source_relation_id
          IS NOT DISTINCT FROM collision.stale_source_relation_id
      AND desired.desired_source_relation_id
@@ -272,9 +367,11 @@ SELECT
     WHEN desired.desired_source_relation_id
          IS NOT DISTINCT FROM collision.canonical_source_relation_id
       THEN 'READY: keep canonical provenance'
-    ELSE 'STOP: neither WMB row matches staged S1 authority'
+    ELSE 'READY: replace with third staged-source provenance'
   END AS decision
 FROM collision_wmb collision
+JOIN worker_issues issue
+  ON issue.stale_worker_id = collision.stale_worker_id
 LEFT JOIN LATERAL (
   SELECT
     count(*)::bigint AS covering_span_count,
@@ -312,6 +409,9 @@ SELECT
   count(*) FILTER (
     WHERE decision = 'READY: both rows already match staged S1 authority'
   )::bigint AS both_match_authority,
+  count(*) FILTER (
+    WHERE decision = 'READY: replace with third staged-source provenance'
+  )::bigint AS use_third_provenance,
   count(*) FILTER (WHERE decision LIKE 'STOP:%')::bigint AS blocked_rows,
   CASE
     WHEN count(*) FILTER (WHERE decision LIKE 'STOP:%') = 0
@@ -333,45 +433,31 @@ GROUP BY decision
 ORDER BY decision;
 
 -- RESULT SET 3: SOURCE-SPAN RESOLUTION DIAGNOSTICS
--- Expected: resolution_issue is NULL for all candidates that are relevant to
--- these duplicate workers. Counts only; no PII/source field payloads.
+-- Expected: resolution_status READY only. Anchor status is diagnostic; an
+-- unanchored row is safe when its direct source references resolve.
 SELECT
   stale_worker_id,
   canonical_worker_id,
   COALESCE(resolution_issue, 'READY') AS resolution_status,
+  anchor_status,
   count(*)::bigint AS staged_span_count
 FROM staged_span_candidates
-GROUP BY stale_worker_id, canonical_worker_id, resolution_issue
-ORDER BY stale_worker_id, resolution_status;
+GROUP BY stale_worker_id, canonical_worker_id, resolution_issue, anchor_status
+ORDER BY stale_worker_id, resolution_status, anchor_status;
 
--- RESULT SET 4: UNANCHORED RECORDS NAMING A COLLISION RELATION
--- Expected result: zero rows. If nonzero, a relevant staged dependent span has
--- no wb anchor, so employer/benefit cannot be reconstructed safely here.
-WITH collision_relation_ids AS (
-  SELECT DISTINCT stale_source_relation_id AS relation_id
-  FROM collision_wmb
-  WHERE stale_source_relation_id IS NOT NULL
-  UNION
-  SELECT DISTINCT canonical_source_relation_id AS relation_id
-  FROM collision_wmb
-  WHERE canonical_source_relation_id IS NOT NULL
-)
+-- RESULT SET 4: THIRD-PROVENANCE SUMMARY
+-- Opaque IDs only. These are valid T17 repair targets when result sets 1-3
+-- contain no STOP/unresolved rows.
 SELECT
-  count(*)::bigint AS unanchored_relevant_records
-FROM s1_staging.records staged
-JOIN s1_staging.id_map relation_map
-  ON relation_map.entity = 'relation'
- AND relation_map.s1_id =
-     pg_temp.target_nid(staged.fields, 'field_sirius_contact_relation')
- AND relation_map.stub = false
-JOIN collision_relation_ids collision_relation
-  ON collision_relation.relation_id = relation_map.s2_id
-LEFT JOIN s1_staging.id_map wb_map
-  ON wb_map.entity = 'wb'
- AND wb_map.s1_id = staged.nid
- AND wb_map.stub = false
-WHERE staged.bundle = 'sirius_trust_worker_benefit'
-  AND wb_map.s1_id IS NULL
-HAVING count(*) > 0;
+  stale_worker_id,
+  canonical_worker_id,
+  desired_source_relation_id,
+  count(*)::bigint AS affected_month_rows,
+  min(year * 100 + month)::int AS first_yyyymm,
+  max(year * 100 + month)::int AS last_yyyymm
+FROM staged_authority
+WHERE decision = 'READY: replace with third staged-source provenance'
+GROUP BY stale_worker_id, canonical_worker_id, desired_source_relation_id
+ORDER BY stale_worker_id, first_yyyymm, desired_source_relation_id;
 
 ROLLBACK;
