@@ -145,6 +145,7 @@ import { type BaoDistanceCacheStorage, createBaoDistanceCacheStorage, baoDistanc
 import { type BaoBeneficiariesStorage, createBaoBeneficiariesStorage, baoBeneficiariesLoggingConfig } from "./sitespecific/bao/beneficiaries";
 import { type BaoCobraRatesStorage, createBaoCobraRatesStorage, baoCobraRatesLoggingConfig } from "./sitespecific/bao/cobra-rates";
 import { type BaoCobraCasesStorage, createBaoCobraCasesStorage, baoCobraCasesLoggingConfig } from "./sitespecific/bao/cobra-cases";
+import { type BaoNoteTagsStorage, createBaoNoteTagsStorage, baoNoteTagsLoggingConfig } from "./sitespecific/bao/note-tags";
 import { type BaoDpRatesStorage, createBaoDpRatesStorage, baoDpRatesLoggingConfig } from "./sitespecific/bao/dp-rates";
 import { type BaoPremiumRatesStorage, createBaoPremiumRatesStorage, baoPremiumRatesLoggingConfig } from "./sitespecific/bao/premium-rates";
 import { type BaoPremiumFilesStorage, createBaoPremiumFilesStorage, baoPremiumFilesLoggingConfig } from "./sitespecific/bao/premium-files";
@@ -275,6 +276,7 @@ export interface IStorage {
   baoBeneficiaries: BaoBeneficiariesStorage;
   baoCobraRates: BaoCobraRatesStorage;
   baoCobraCases: BaoCobraCasesStorage;
+  baoNoteTags: BaoNoteTagsStorage;
   baoDpRates: BaoDpRatesStorage;
   baoPremiumRates: BaoPremiumRatesStorage;
   baoPremiumFiles: BaoPremiumFilesStorage;
@@ -401,6 +403,7 @@ export class DatabaseStorage implements IStorage {
   baoBeneficiaries: BaoBeneficiariesStorage;
   baoCobraRates: BaoCobraRatesStorage;
   baoCobraCases: BaoCobraCasesStorage;
+  baoNoteTags: BaoNoteTagsStorage;
   baoDpRates: BaoDpRatesStorage;
   baoPremiumRates: BaoPremiumRatesStorage;
   baoPremiumFiles: BaoPremiumFilesStorage;
@@ -651,6 +654,10 @@ export class DatabaseStorage implements IStorage {
     this.baoCobraCases = withStorageLogging(
       createBaoCobraCasesStorage(),
       baoCobraCasesLoggingConfig,
+    );
+    this.baoNoteTags = withStorageLogging(
+      createBaoNoteTagsStorage(),
+      baoNoteTagsLoggingConfig,
     );
     this.baoDpRates = withStorageLogging(
       createBaoDpRatesStorage(),

@@ -19,9 +19,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
-import { NotebookPen, Pencil, Plus, Trash2 } from "lucide-react";
+import { NotebookPen, Pencil, Plus, Tag, Trash2 } from "lucide-react";
 import { format, parseISO, isValid } from "date-fns";
 
 interface NoteTypeOption {
@@ -29,6 +31,27 @@ interface NoteTypeOption {
   name: string;
   description: string | null;
   data: { entityTypes?: string[] } | null;
+}
+
+interface NoteTag {
+  id: string;
+  name: string;
+  tagTypeId: string;
+  tagTypeName: string | null;
+  tagTypeSequence: number | null;
+}
+
+interface NoteTagOption {
+  id: string;
+  name: string;
+  tagTypeId: string;
+  sequence: number;
+}
+
+interface NoteTagTypeOption {
+  id: string;
+  name: string;
+  sequence: number;
 }
 
 interface NoteRow {
@@ -42,6 +65,8 @@ interface NoteRow {
   userId: string | null;
   typeName: string | null;
   authorName: string | null;
+  /** Present only on BAO deployments (sitespecific.bao enabled). */
+  tags?: NoteTag[];
 }
 
 interface NotesPanelProps {
@@ -66,12 +91,16 @@ function formatTimestamp(value: string): string {
  */
 export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
   const { toast } = useToast();
+  const auth = useAuth();
+  // Note tagging is BAO-only: no tag UI (and no tag queries) elsewhere.
+  const tagsEnabled = auth?.hasComponent("sitespecific.bao") ?? false;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingNote, setEditingNote] = useState<NoteRow | null>(null);
   const [deletingNote, setDeletingNote] = useState<NoteRow | null>(null);
   const [formTypeId, setFormTypeId] = useState("");
   const [formSubject, setFormSubject] = useState("");
   const [formBody, setFormBody] = useState("");
+  const [formTagIds, setFormTagIds] = useState<string[]>([]);
 
   const notesQueryKey = ["/api/notes", entityType, entityId];
 
@@ -90,12 +119,46 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
     [allNoteTypes, entityType],
   );
 
+  const { data: tagOptions = [] } = useQuery<NoteTagOption[]>({
+    queryKey: ["/api/options/bao-notes-tag"],
+    enabled: tagsEnabled,
+  });
+  const { data: tagTypes = [] } = useQuery<NoteTagTypeOption[]>({
+    queryKey: ["/api/options/bao-notes-tag-type"],
+    enabled: tagsEnabled,
+  });
+
+  // The picker groups tags by tag type, ordered by tag type sequence then
+  // tag sequence/name.
+  const tagGroups = useMemo(() => {
+    if (!tagsEnabled || tagOptions.length === 0) return [];
+    const sortedTypes = [...tagTypes].sort(
+      (a, b) => a.sequence - b.sequence || a.name.localeCompare(b.name),
+    );
+    const byType = new Map<string, NoteTagOption[]>();
+    for (const tag of tagOptions) {
+      const list = byType.get(tag.tagTypeId) ?? [];
+      list.push(tag);
+      byType.set(tag.tagTypeId, list);
+    }
+    const groups: { id: string; name: string; tags: NoteTagOption[] }[] = [];
+    for (const type of sortedTypes) {
+      const tags = (byType.get(type.id) ?? []).sort(
+        (a, b) => a.sequence - b.sequence || a.name.localeCompare(b.name),
+      );
+      if (tags.length > 0) groups.push({ id: type.id, name: type.name, tags });
+      byType.delete(type.id);
+    }
+    return groups;
+  }, [tagsEnabled, tagOptions, tagTypes]);
+
   const closeDialog = () => {
     setIsDialogOpen(false);
     setEditingNote(null);
     setFormTypeId("");
     setFormSubject("");
     setFormBody("");
+    setFormTagIds([]);
   };
 
   const invalidate = () => {
@@ -103,8 +166,14 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
   };
 
   const createMutation = useMutation({
-    mutationFn: async (data: { typeId: string; subject: string; body: string | null }) =>
-      apiRequest("POST", "/api/notes", { entityType, entityId, ...data }),
+    mutationFn: async (data: { typeId: string; subject: string; body: string | null; tagIds: string[] }) => {
+      const { tagIds, ...note } = data;
+      const created = await apiRequest("POST", "/api/notes", { entityType, entityId, ...note });
+      if (tagsEnabled && tagIds.length > 0 && created?.id) {
+        await apiRequest("PUT", `/api/notes/${created.id}/tags`, { tagIds });
+      }
+      return created;
+    },
     onSuccess: () => {
       invalidate();
       toast({ title: "Note added" });
@@ -116,8 +185,14 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: { typeId: string; subject: string; body: string | null } }) =>
-      apiRequest("PUT", `/api/notes/${id}`, data),
+    mutationFn: async ({ id, data }: { id: string; data: { typeId: string; subject: string; body: string | null; tagIds: string[] } }) => {
+      const { tagIds, ...note } = data;
+      const updated = await apiRequest("PUT", `/api/notes/${id}`, note);
+      if (tagsEnabled) {
+        await apiRequest("PUT", `/api/notes/${id}/tags`, { tagIds });
+      }
+      return updated;
+    },
     onSuccess: () => {
       invalidate();
       toast({ title: "Note updated" });
@@ -146,6 +221,7 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
     setFormTypeId(noteTypes[0]?.id ?? "");
     setFormSubject("");
     setFormBody("");
+    setFormTagIds([]);
     setIsDialogOpen(true);
   };
 
@@ -154,7 +230,14 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
     setFormTypeId(note.typeId);
     setFormSubject(note.subject);
     setFormBody(note.body ?? "");
+    setFormTagIds((note.tags ?? []).map((t) => t.id));
     setIsDialogOpen(true);
+  };
+
+  const toggleFormTag = (tagId: string, checked: boolean) => {
+    setFormTagIds((prev) =>
+      checked ? Array.from(new Set([...prev, tagId])) : prev.filter((id) => id !== tagId),
+    );
   };
 
   const handleSave = () => {
@@ -170,6 +253,7 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
       typeId: formTypeId,
       subject: formSubject.trim(),
       body: formBody.trim() === "" ? null : formBody,
+      tagIds: formTagIds,
     };
     if (editingNote) {
       updateMutation.mutate({ id: editingNote.id, data: payload });
@@ -262,6 +346,16 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
                       {note.body}
                     </p>
                   )}
+                  {tagsEnabled && (note.tags?.length ?? 0) > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5" data-testid={`tags-note-${note.id}`}>
+                      <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+                      {note.tags!.map((tag) => (
+                        <Badge key={tag.id} variant="outline" data-testid={`badge-note-tag-${note.id}-${tag.id}`}>
+                          {tag.tagTypeName ? `${tag.tagTypeName}: ${tag.name}` : tag.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -303,6 +397,32 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
                 data-testid="input-note-subject"
               />
             </div>
+            {tagsEnabled && tagGroups.length > 0 && (
+              <div className="space-y-2">
+                <Label>Tags</Label>
+                <div className="rounded-md border p-3 space-y-3 max-h-56 overflow-y-auto" data-testid="picker-note-tags">
+                  {tagGroups.map((group) => (
+                    <div key={group.id} className="space-y-1.5">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        {group.name}
+                      </p>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                        {group.tags.map((tag) => (
+                          <label key={tag.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <Checkbox
+                              checked={formTagIds.includes(tag.id)}
+                              onCheckedChange={(checked) => toggleFormTag(tag.id, checked === true)}
+                              data-testid={`checkbox-note-tag-${tag.id}`}
+                            />
+                            {tag.name}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="note-body">Note (optional)</Label>
               <Textarea

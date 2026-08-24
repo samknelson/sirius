@@ -66,6 +66,28 @@ async function checkNoteType(
   return null;
 }
 
+const BAO_COMPONENT = "sitespecific.bao";
+
+const setNoteTagsApiSchema = z.object({
+  tagIds: z.array(z.string().min(1)).max(200),
+});
+
+function toTagPayload(row: {
+  tagId: string;
+  tagName: string;
+  tagTypeId: string;
+  tagTypeName: string | null;
+  tagTypeSequence: number | null;
+}) {
+  return {
+    id: row.tagId,
+    name: row.tagName,
+    tagTypeId: row.tagTypeId,
+    tagTypeName: row.tagTypeName,
+    tagTypeSequence: row.tagTypeSequence,
+  };
+}
+
 /**
  * Notes routes.
  *
@@ -87,6 +109,22 @@ export function registerNotesRoutes(
         return res.status(typeError.status).json({ message: typeError.message });
       }
       const notes = await storage.notes.listByEntity(entityType, entityId);
+
+      // BAO-only enrichment: attach each note's tags (grouped/ordered by tag
+      // type). For non-BAO deployments the response shape is unchanged.
+      if (await isComponentEnabled(BAO_COMPONENT)) {
+        const rows = await storage.baoNoteTags.listByNotes(notes.map((n) => n.id));
+        const byNote = new Map<string, typeof rows>();
+        for (const row of rows) {
+          const list = byNote.get(row.noteId) ?? [];
+          list.push(row);
+          byNote.set(row.noteId, list);
+        }
+        return res.json(
+          notes.map((n) => ({ ...n, tags: (byNote.get(n.id) ?? []).map(toTagPayload) })),
+        );
+      }
+
       res.json(notes);
     } catch (error) {
       console.error("Error fetching notes:", error);
@@ -171,6 +209,46 @@ export function registerNotesRoutes(
       }
       console.error("Error updating note:", error);
       res.status(500).json({ message: "Failed to update note" });
+    }
+  });
+
+  // Replace a note's tag set. BAO-only: 403 when the component is off (the
+  // join and tag tables belong to it and are absent then). Same staff gate and
+  // entity-type checks as the other note writes.
+  app.put("/api/notes/:id/tags", requireAuth, requireAccess('staff'), async (req: Request, res: Response) => {
+    try {
+      if (!(await isComponentEnabled(BAO_COMPONENT))) {
+        return res.status(403).json({ message: "Access denied: note tagging requires the BAO feature to be enabled" });
+      }
+      const validated = setNoteTagsApiSchema.parse(req.body);
+      const existing = await storage.notes.get(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Note not found" });
+      }
+      const typeError = await checkEntityType(existing.entityType);
+      if (typeError) {
+        return res.status(typeError.status).json({ message: typeError.message });
+      }
+
+      // Every id must be a real tag — a bad id must not vanish silently.
+      const tagIds = Array.from(new Set(validated.tagIds));
+      if (tagIds.length > 0) {
+        const optionsStorage = (await import("./options-registry")).getOptionsStorage();
+        const known = new Set((await optionsStorage.list("bao-notes-tag")).map((t: { id: string }) => t.id));
+        const unknown = tagIds.filter((id) => !known.has(id));
+        if (unknown.length > 0) {
+          return res.status(400).json({ message: `Unknown tag id(s): ${unknown.join(", ")}` });
+        }
+      }
+
+      const rows = await storage.baoNoteTags.setForNote(req.params.id, tagIds);
+      res.json(rows.map(toTagPayload));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", details: error.errors });
+      }
+      console.error("Error setting note tags:", error);
+      res.status(500).json({ message: "Failed to set note tags" });
     }
   });
 

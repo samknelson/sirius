@@ -35,6 +35,8 @@ import {
   optionsGrievanceSettlementType,
   optionsBaoCobraStatus,
   optionsBaoCobraQualifyingEvent,
+  optionsSitespecificBaoNotesTagTypes,
+  optionsSitespecificBaoNotesTags,
   optionsWorkerBanType,
   optionsNoteType,
   bulkMediumEnum,
@@ -82,7 +84,9 @@ export type OptionsTypeName =
   | "bao-cobra-status"
   | "worker-ban-type"
   | "bao-cobra-qualifying-event"
-  | "note-type";
+  | "note-type"
+  | "bao-notes-tag-type"
+  | "bao-notes-tag";
 
 /**
  * Field definition for dynamic form and table rendering
@@ -682,6 +686,41 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Low Hours, Age Out, Death, Divorce", showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this qualifying event", showInTable: true, columnHeader: "Description" },
+    ],
+  },
+  "bao-notes-tag-type": {
+    table: optionsSitespecificBaoNotesTagTypes,
+    displayName: "Note Tag Types",
+    description: "Categories that organize note tags. Each note tag belongs to one tag type.",
+    singularName: "Note Tag Type",
+    pluralName: "Note Tag Types",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.baoNotesTagTypes",
+    requiredFields: ["name"],
+    optionalFields: ["description", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "sitespecific.bao",
+    fields: [
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Department, Priority", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this tag type", showInTable: true, columnHeader: "Description" },
+    ],
+  },
+  "bao-notes-tag": {
+    table: optionsSitespecificBaoNotesTags,
+    displayName: "Note Tags",
+    description: "Tags staff can attach to notes, organized under tag types.",
+    singularName: "Note Tag",
+    pluralName: "Note Tags",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.baoNotesTags",
+    requiredFields: ["name", "tagTypeId"],
+    optionalFields: ["description", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "sitespecific.bao",
+    fields: [
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Urgent, Billing", showInTable: true, columnHeader: "Name" },
+      { name: "tagTypeId", label: "Tag Type", inputType: "select-options", required: true, selectOptionsType: "bao-notes-tag-type", helperText: "The tag type this tag is organized under", showInTable: true, columnHeader: "Tag Type" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this tag", showInTable: true, columnHeader: "Description" },
     ],
   },
   "worker-ban-type": {

@@ -59,10 +59,8 @@
 - [Wizard side-effect rows need reuse + ownership flag](wizard-side-effect-rows-ownership.md) — wizard-created persistent rows duplicate across drafts unless add reuses existing + tracks.
 - [BAO buildup forward impact unbounded](bao-buildup-forward-impact.md) — mixed above/below patterns make the buildup walk unbounded; report MAX_SAFE_INTEGER and cap at the consumer, never lag+break.
 - [Election policy is derived, not stored](election-policy-derived.md) — never read worker_trust_elections.policy_id; resolve via resolveEmployerPolicyAsOf (history→denorm→policy_default).
-- [S1 doc publication split](s1-doc-publication-split.md) — docs/s1-migration now TRACKED (sanitized 2026-08-06); the bar survives: no prod nids/amounts/hostnames in tracked files; raw pasted evidence never tracked.
-- [S1 docs blocked GitHub pushes](s1-docs-push-protection.md) — PUSH_REJECTED is opaque; cause was old history revs with S1 conn details (scrubbed). On reject, check pushed-range history for credential-bearing paths first.
-- [S1 worker sirius_id mapping](s1-worker-sirius-id-mapping.md) — workers.sirius_id = field_sirius_id, NOT nid; nid lives in "Legacy NID" worker_ids; resolve nids via id_map.
-- [S1 source of truth is MariaDB](s1-snapshot-profiling.md) — the Neon "S1" sample is retired; real S1 = Drupal 7 on MariaDB 10.6, shape lives in docs/s1-migration profile artifacts.
+- [S1 docs publication & push protection](s1-doc-publication-split.md) — docs/s1-migration tracked but sanitized (no prod nids/amounts/hostnames); push rejects mean credential-bearing history — see also [push protection](s1-docs-push-protection.md).
+- [S1 identity & source-of-truth](s1-worker-sirius-id-mapping.md) — sirius_id=field_sirius_id (nid via id_map); real S1 = [MariaDB Drupal 7](s1-snapshot-profiling.md); [shared-email ownership](s1-shared-email-ownership.md); [stale SID collisions = merge, never rekey](stale-worker-sid-duplicate-merge.md).
 - [EXTERNAL_DATABASE_URL resolution + Neon pooler rewrite](external-database-url.md) — one resolution rule everywhere; Neon `-pooler.` URL must be rewritten to direct endpoint for serverless driver.
 - [Shared policy → server hook injection](shared-policy-server-hook-injection.md) — shared access-policy files can't import server registries; use a boot-wired injectable resolver that fails closed.
 - [Trust-provider EDI scoping](trust-provider-edi-scoping.md) — EDI file membership scopes by benefitSiriusId, not config providerId (no provider↔benefit relation exists).
@@ -72,43 +70,26 @@
 - [BAO premium subscriber-only charges](bao-premium-subscriber-only.md) — premium charges key to subscribers; dependent WMB events retarget worker_1 + self-heal unswept legacy entries.
 - [Scanner taint is file-local](scanner-taint-file-local.md) — clear SSN/secret findings by isolating the sensitive step in its own no-logging module; IP audit logs are accepted mediums.
 - [HoundDog log-PII remediation](hounddog-log-pii-remediation.md) — masking never clears findings; log stable ids instead of emails/names, annotate accepted sites.
-- [S1 loader reject policy](s1-loader-reject-policy.md) — loaders fail unless every reject reason is per-run allowed (--allow-rejects); verify gates on FATAL reasons only; pre-validate storage contracts before satellite writes; sanitized error codes.
+- [S1 loader reject policy](s1-loader-reject-policy.md) — per-run --allow-rejects gate; also [FATAL_REASONS↔verify coupling](loader-fatal-reasons-verify-coupling.md), [writes precede the reject gate](loader-writes-before-reject-gate.md), [pre-checks use the storage contract's clock](loader-precheck-contract-clock.md).
 - [Employer-contacts multi-link](employer-contacts-multilink.md) — one link per (contact,employer,type); contact-scoped authz must any-of over ALL linked employers via checkAccessInline, never links[0].
 - [Charge-plugin migration suppression](charge-plugin-migration-suppression.md) — loaders wrap writes in withChargePluginsSuppressed; notification suppression alone doesn't stop charges; preflight aborts runnable-plugin loads.
 - [S1 relation-type letter-code sirius_ids](s1-reltype-letter-codes.md) — reltype options carry S1 letter codes not tids; ES→EX ruling; EX/RP must be handled in every EDI mapping.
 - [Managed secret provisioning](managed-secret-provisioning.md) — Replit Secrets reach managed workflows, not necessarily ordinary Shell commands; use short-lived, idempotent hooks and remove them.
-- [S1 loader keyset paging](s1-loader-keyset-paging.md) — loaders page staged rows + batch IN-query checks; jsonb_build_object params need explicit casts on Neon.
+- [S1 loader mechanics](s1-loader-run-order.md) — id_map-dependent run order; plus [keyset paging](s1-loader-keyset-paging.md), [heartbeats/log throttling](s1-loader-observability.md), [fund-config prereqs](s1-loader-fund-config-prereqs.md).
 - [S1 rehearsal target pattern](s1-rehearsal-pattern.md) — rehearsal DB is in-VPC only: ship operator-run SQL kits validated verbatim on dev; empty bootstrap skips seeds/components; S1 DSN whitespace.
 - [FC migration ECS ops](fc-migration-ecs-ops.md) — CloudShell regular tab = internet/AWS APIs, VPC tab = RDS only; silent stall = wrong tab; run-task per runbook step.
-- [Synthetic S1 regen invalidates id_map](s1-regen-idmap-staleness.md) — regen assigns new nids; restage + re-run contacts-workers before any id_map-resolving loader.
-- [S1 prod vocab renames](s1-prod-vocab-renames.md) — prod taxonomy vocab names differ from synthetic dev (election type etc.); terms-querying loaders must accept both.
-- [S1 staging NUL bytes](s1-staging-nul-bytes.md) — real S1 data has \u0000 in JSON; Postgres 22P05; staging strips at write boundary (only "verbatim" exception).
+- [S1 data quirks](s1-staging-nul-bytes.md) — NUL bytes stripped at staging; also [prod vocab renames](s1-prod-vocab-renames.md), [synthetic regen invalidates id_map](s1-regen-idmap-staleness.md), [live count drift](live-s1-count-drift.md), [watchdog ≠ deletion feed](s1-watchdog-not-deletion-feed.md).
 - [gitPush needs upstream tracking](gitpush-callback-upstream.md) — pushing to an existing remote branch requires `git branch -u origin/<b>` first, else opaque BRANCH_ALREADY_EXISTS.
-- [Loader FATAL_REASONS ↔ verify coupling](loader-fatal-reasons-verify-coupling.md) — every new reject reason must join FATAL_REASONS or verify inflates; reject smoke tests must diff against a baseline run.
-- [S1 loader heartbeats & log throttling](s1-loader-observability.md) — shared progress heartbeat + storage-op log sampling knobs; winston_logs no longer a loader progress proxy.
-- [Loader pre-checks must use the storage contract's clock](loader-precheck-contract-clock.md) — UTC "today" vs getTodayYmd() local lets tomorrow-dated rows die as opaque storage errors.
 - [S1 shop JSON is the employer config store](s1-shop-json-config.md) — policy history + charge-plugin rate histories live in field_sirius_json; hourly-uuid allow-list ruling inside; variable dumps carry live Stripe keys.
 - [Task-merge SHA rewrite vs deploy branches](task-merge-divergent-deploy-branch.md) — non-fast-forward on push-branch.sh = duplicate content, different SHAs; verify empty diff then `merge -s ours`.
 - [BAO hours upload performance](bao-hours-upload-performance.md) — bulk pre-fetch + charge config cache + skipHomeEmployerEvent; see file for the three-axis approach.
 - [.replit gitignored vs task review](dotreplit-gitignored-review.md) — .replit workflow changes never show in the task diff; completion review rejects unless drift_reason explains it.
 - [jsonb adopt-compare key order](jsonb-adopt-compare-key-order.md) — Postgres jsonb reorders keys; "unchanged, adopt" checks must canonical-stringify or reruns churn updates forever.
-- [S1 shared-email ownership](s1-shared-email-ownership.md) — raw_user_contact (user↔contact assoc) is THE ownership signal; no-owner shared addresses defer to email=null (737 pending fund ruling).
-- [Loader writes precede reject gate](loader-writes-before-reject-gate.md) — a run failing on disallowed rejects already wrote; smokes need --allow-rejects on run 1 (dry-run priming); FK crash = dangling id_map.
-- [S1 loader run order](s1-loader-run-order.md) — t18 references resolve via id_map; loading ledger before payments/WMB silently types everything s1-unknown; adopt never re-resolves.
 - [FK parent delete race](fk-parent-delete-race.md) — deleting an ON DELETE SET NULL parent needs FOR UPDATE + recheck in one tx, or concurrent child inserts get silently NULLed.
-- [S1 sync fingerprints & sweeps](s1-sync-fingerprints.md) — fps = content not resolution env; dep fps = identity; anchor-entity, owned-set, shared-child reconcile patterns; sweeps relabel; sidecar.
-- [S1 sync reconcile allowances](s1-sync-reconcile-allowances.md) — full reconcile re-validates everything; pre-existing rejects recur every run (fps never advance) and need vetted stable allow-lists.
+- [S1 sync fingerprints & reconcile](s1-sync-fingerprints.md) — fps = content not env; see [reconcile allowances](s1-sync-reconcile-allowances.md) and [span→month scratch-table pattern](span-month-sync-scratch-table.md).
 - [Soft-delete vs set-reconcile](soft-delete-vs-set-reconcile.md) — check delete semantics first; reconcile reads must filter is_active or the already-check matches dead rows and skips re-creates.
-- [S1 loader fund-config prereqs](s1-loader-fund-config-prereqs.md) — employer-rates needs the one enabled bao-hourly charge config; copy-fund-config doesn't provide it; dev smokes seed transiently.
-- [Span→month sync scratch table](span-month-sync-scratch-table.md) — derived-set loaders diff a persisted desired-set scratch (fps on scratch, not id_map); anchors repoint-don't-reject.
-- [S1 sync orchestrator](s1-sync-orchestrator.md) — envelope-contract gating, S1_SYNC_LOCK_HELD child escape, ruled step findings vs daily acknowledgements, mid-fleet dev seeds.
-- [Fleet-smoke rehearsal](s1-fleet-smoke-rehearsal.md) — throwaway-DB full-fleet smoke; mutation targets are cross-loader constrained; dev baseline findings ≠ zero.
-- [Rerun reject stability](s1-rerun-reject-stability.md) — fast-path skips must feed dedup registries/caches or reject classes flip across daily runs.
-- [Regression-smoke failure cleanup](regression-smoke-failure-cleanup.md) — tripwire fixtures must remove the bad output they intentionally detect, not just setup rows.
+- [S1 sync orchestrator & smokes](s1-sync-orchestrator.md) — envelope gating, lock escape, ruled findings; plus [fleet-smoke rehearsal](s1-fleet-smoke-rehearsal.md), [rerun reject stability](s1-rerun-reject-stability.md), [smoke failure cleanup](regression-smoke-failure-cleanup.md).
 - [Advisory write-fence lifecycle](advisory-write-fence-lifecycle.md) — isolate session-lock capacity and track handler settlement past client disconnects.
-- [Live S1 count drift](live-s1-count-drift.md) — daily staging cannot require exact source counts while S1 is changing; final-freeze remains strict.
-- [S1 watchdog is not a deletion feed](s1-watchdog-not-deletion-feed.md) — dblog retention and missing source IDs rule it out for daily-sync deletes.
-- [Stale worker SID collisions can be duplicate rows](stale-worker-sid-duplicate-merge.md) — if the identified S1 NID already maps to a canonical worker, merge dependents; never rekey the stale row.
 - [Worker-ban framework](worker-ban-framework.md) — soft-ref ban types + singleton behavior plugins; only unconditional behaviors get denorm facts; ban-type edits must re-emit WORKER_BAN_SAVED; guard ALL accept paths.
 - [Storage audit log args PII](storage-audit-log-args-pii.md) — logged storage methods persist raw args to winston_logs; redact payloads via logArgs, conditional-log via shouldLog; prune deletes must re-qualify atomically.
 - [Maintenance-mode write lock](maintenance-mode-write-lock.md) — system_mode=maintenance applies default_transaction_read_only per pool checkout (acquire hook, armed only in bootstrapApp); allowInMaintenanceMode is the ONLY escape.

@@ -142,6 +142,8 @@ export const configSections: NavSection[] = [
       { path: "/config/options/comm-tag", label: "Comm Tags", icon: Tag, testId: "nav-config-comm-tags", permission: "admin" },
       { path: "/config/options/call-reason", label: "Call Reasons", icon: List, testId: "nav-config-call-reasons", permission: "admin" },
       { path: "/config/options/note-type", label: "Note Types", icon: List, testId: "nav-config-note-types", permission: "admin" },
+      { path: "/config/options/bao-notes-tag-type", label: "Note Tag Types", icon: List, testId: "nav-config-bao-notes-tag-types", permission: "admin", requiresComponent: "sitespecific.bao" },
+      { path: "/config/options/bao-notes-tag", label: "Note Tags", icon: Tag, testId: "nav-config-bao-notes-tags", permission: "admin", requiresComponent: "sitespecific.bao" },
       { path: "/config/steward-settings", label: "Steward", icon: Users, testId: "nav-config-steward-settings", permission: "admin", requiresComponent: "worker.steward" },
       { path: "/config/workers/ban", label: "Ban Notifications", icon: Shield, testId: "nav-config-workers-ban", permission: "admin", requiresComponent: "worker.ban" },
       { path: "/config/workers/tos", label: "Time Off Sick", icon: Calendar, testId: "nav-config-workers-tos", permission: "admin", requiresComponent: "worker.tos" },

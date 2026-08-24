@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { parsePhoneNumber } from "libphonenumber-js";
-import { employers, ledgerAccounts, ledgerEa, ledgerPayments, workers, wizards, trustBenefits, trustProviders } from "../../../schema";
+import { employers, ledgerAccounts, ledgerEa, ledgerPayments, workers, wizards, trustBenefits, trustProviders, notes } from "../../../schema";
 import { validateSSN } from "../../../utils/ssn";
 import { toYmd } from "../../../utils/date";
 
@@ -1215,6 +1215,95 @@ export const insertBaoWithholdingAllocationSchema = createInsertSchema(
 export type InsertBaoWithholdingAllocation = z.infer<
   typeof insertBaoWithholdingAllocationSchema
 >;
+
+// ---------------------------------------------------------------------------
+// Note tags — a BAO-only tagging system for staff notes. Tags are organized
+// under tag types; both are options lists managed through the unified options
+// system. Assignments live in a join table so a note can carry many tags.
+//
+// Delete semantics: removing a TAG cascades its assignments away (the note
+// simply loses that tag); removing a TAG TYPE cascades its tags (and thus
+// their assignments) — the options delete route additionally guards a
+// tag-type delete behind a "no tags left" check so the cascade is never a
+// surprise. Deleting a NOTE cascades its assignments.
+// ---------------------------------------------------------------------------
+
+export const optionsSitespecificBaoNotesTagTypes = pgTable(
+  "options_sitespecific_bao_notes_tag_types",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    name: varchar("name", { length: 255 })
+      .notNull()
+      .unique("options_sitespecific_bao_notes_tag_types_name_unique"),
+    description: text("description"),
+    sequence: integer("sequence").notNull().default(0),
+    data: jsonb("data"),
+  },
+);
+
+export type OptionsBaoNotesTagType =
+  typeof optionsSitespecificBaoNotesTagTypes.$inferSelect;
+export type InsertOptionsBaoNotesTagType =
+  typeof optionsSitespecificBaoNotesTagTypes.$inferInsert;
+
+export const optionsSitespecificBaoNotesTags = pgTable(
+  "options_sitespecific_bao_notes_tags",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    name: varchar("name", { length: 255 }).notNull(),
+    tagTypeId: varchar("tag_type_id").notNull(),
+    description: text("description"),
+    sequence: integer("sequence").notNull().default(0),
+    data: jsonb("data"),
+  },
+  (table) => [
+    // Tag names are unique WITHIN a tag type, not globally.
+    unique("options_sitespecific_bao_notes_tags_type_name_uq").on(
+      table.tagTypeId,
+      table.name,
+    ),
+    foreignKey({
+      name: "options_sitespecific_bao_notes_tags_tag_type_id_fkey",
+      columns: [table.tagTypeId],
+      foreignColumns: [optionsSitespecificBaoNotesTagTypes.id],
+    }).onDelete("cascade"),
+  ],
+);
+
+export type OptionsBaoNotesTag =
+  typeof optionsSitespecificBaoNotesTags.$inferSelect;
+export type InsertOptionsBaoNotesTag =
+  typeof optionsSitespecificBaoNotesTags.$inferInsert;
+
+/** Note ↔ tag assignments. */
+export const sitespecificBaoNotesTags = pgTable(
+  "sitespecific_bao_notes_tags",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    tagId: varchar("tag_id").notNull(),
+    noteId: varchar("note_id").notNull(),
+  },
+  (table) => [
+    unique("sitespecific_bao_notes_tags_note_tag_uq").on(
+      table.noteId,
+      table.tagId,
+    ),
+    foreignKey({
+      name: "sitespecific_bao_notes_tags_tag_id_fkey",
+      columns: [table.tagId],
+      foreignColumns: [optionsSitespecificBaoNotesTags.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_notes_tags_note_id_fkey",
+      columns: [table.noteId],
+      foreignColumns: [notes.id],
+    }).onDelete("cascade"),
+  ],
+);
+
+export type BaoNoteTagAssignment = typeof sitespecificBaoNotesTags.$inferSelect;
+export type InsertBaoNoteTagAssignment =
+  typeof sitespecificBaoNotesTags.$inferInsert;
 
 /** One eligible upload as shown in the payment "Upload source" picker. */
 export type BaoWithholdingUploadSummary = {

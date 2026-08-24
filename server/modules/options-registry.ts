@@ -91,6 +91,14 @@ export const optionsTypeRegistry: Record<string, OptionsTypeConfig> = {
   "grievance-remedy": createTypeConfig("grievance-remedy"),
   "grievance-role": createTypeConfig("grievance-role"),
   "grievance-settlement-type": createTypeConfig("grievance-settlement-type"),
+  // BAO option types: these were historically missing from this explicit map
+  // even though their metadata existed, which left the generic /api/options
+  // routes returning 404 for them (the cobra pair) — every metadata entry
+  // must ALSO be registered here for the API to serve it.
+  "bao-cobra-status": createTypeConfig("bao-cobra-status"),
+  "bao-cobra-qualifying-event": createTypeConfig("bao-cobra-qualifying-event"),
+  "bao-notes-tag-type": createTypeConfig("bao-notes-tag-type"),
+  "bao-notes-tag": createTypeConfig("bao-notes-tag"),
   "worker-ban-type": createTypeConfig("worker-ban-type"),
   "note-type": createTypeConfig("note-type"),
 };

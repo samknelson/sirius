@@ -907,7 +907,7 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "site-specific",
     managesSchema: true,
     schemaManifest: {
-      version: 7,
+      version: 8,
       schemaPath: "./shared/schema/sitespecific/bao/schema.ts",
       tables: [
         "sitespecific_bao_employer_immediate_eligibility",
@@ -922,7 +922,10 @@ export const componentRegistry: ComponentDefinition[] = [
         "sitespecific_bao_dp_rates",
         "sitespecific_bao_premium_rates",
         "sitespecific_bao_premium_files",
-        "sitespecific_bao_premium_file_rows"
+        "sitespecific_bao_premium_file_rows",
+        "options_sitespecific_bao_notes_tag_types",
+        "options_sitespecific_bao_notes_tags",
+        "sitespecific_bao_notes_tags"
       ]
     }
   },

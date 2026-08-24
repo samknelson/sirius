@@ -579,6 +579,19 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
         }
       }
 
+      // A note tag type with tags under it cannot be deleted — the FK would
+      // cascade the tags (and their note assignments) away silently, so we
+      // guard here and tell the admin what to remove first.
+      if (type === "bao-notes-tag-type") {
+        const tags = await getOptionsStorage().list("bao-notes-tag");
+        const inUse = tags.filter((t: any) => t.tagTypeId === id).length;
+        if (inUse > 0) {
+          return res.status(409).json({
+            message: `This tag type has ${inUse} tag${inUse === 1 ? "" : "s"} under it and cannot be deleted. Delete or re-type those tags first.`,
+          });
+        }
+      }
+
       // A worker ban type referenced by any ban cannot be deleted —
       // `worker_bans.type` is a soft reference (no FK), so guard here to
       // avoid orphaning bans onto an unknown (unenforced) type.
