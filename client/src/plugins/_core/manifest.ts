@@ -17,7 +17,10 @@ export type PluginKind =
   // Worker-ban behaviors: manifest-only kind (no config adapter — plugins
   // are singletons; admin configuration lives on the Worker Ban Types
   // options page).
-  | "worker-ban";
+  | "worker-ban"
+  // Externally callable web services. Each config row is one addressable
+  // service; the plugin declares the operations it exposes.
+  | "web-service";
 
 /**
  * Kinds whose `/api/plugins/:kind/manifest` returns a flat array of
@@ -190,6 +193,7 @@ export interface PluginSearchParamsByKind {
   // reaches config search for it because /api/plugins/kinds omits
   // adapterless kinds.
   "worker-ban": BasePluginSearchParams;
+  "web-service": BasePluginSearchParams;
 }
 
 /**

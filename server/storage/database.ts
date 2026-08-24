@@ -161,7 +161,7 @@ import { type WorkerDispatchEligDenormStorage, createWorkerDispatchEligDenormSto
 import { type RawSqlStorage, createRawSqlStorage } from "./raw-sql";
 import { type ReadOnlyStorage, createReadOnlyStorage } from "./read-only";
 import { type BtuPoliticalStorage, createBtuPoliticalStorage, btuPoliticalLoggingConfig } from "./sitespecific/btu/political";
-import { type WsBundleStorage, type WsClientStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsBundleStorage, createWsClientStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
+import { type WsClientStorage, type WsClientGrantStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsClientStorage, createWsClientGrantStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
 import { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type EmployerCompanyStorage, createEmployerCompanyStorage, employerCompanyLoggingConfig } from "./employers/companies";
 import { type ContractStorage, createContractStorage, contractLoggingConfig } from "./contract";
 import { type ContactLinkStorage, createContactLinkStorage } from "./contact-links";
@@ -282,8 +282,8 @@ export interface IStorage {
   workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
   rawSql: RawSqlStorage;
   readOnly: ReadOnlyStorage;
-  wsBundles: WsBundleStorage;
   wsClients: WsClientStorage;
+  wsClientGrants: WsClientGrantStorage;
   wsClientCredentials: WsClientCredentialStorage;
   wsClientIpRules: WsClientIpRuleStorage;
   btuPolitical: BtuPoliticalStorage;
@@ -397,8 +397,8 @@ export class DatabaseStorage implements IStorage {
   workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
   rawSql: RawSqlStorage;
   readOnly: ReadOnlyStorage;
-  wsBundles: WsBundleStorage;
   wsClients: WsClientStorage;
+  wsClientGrants: WsClientGrantStorage;
   wsClientCredentials: WsClientCredentialStorage;
   wsClientIpRules: WsClientIpRuleStorage;
   btuPolitical: BtuPoliticalStorage;
@@ -631,8 +631,8 @@ export class DatabaseStorage implements IStorage {
     this.workerDispatchEligDenorm = createWorkerDispatchEligDenormStorage();
     this.rawSql = createRawSqlStorage();
     this.readOnly = createReadOnlyStorage();
-    this.wsBundles = createWsBundleStorage();
     this.wsClients = createWsClientStorage();
+    this.wsClientGrants = createWsClientGrantStorage();
     this.wsClientCredentials = createWsClientCredentialStorage();
     this.wsClientIpRules = createWsClientIpRuleStorage();
     this.btuPolitical = withStorageLogging(createBtuPoliticalStorage(), btuPoliticalLoggingConfig);

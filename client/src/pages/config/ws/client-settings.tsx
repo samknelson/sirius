@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,8 +12,16 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
-import { Loader2, Shield } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Loader2, Shield, Network } from "lucide-react";
 import { WsClientLayout, useWsClientLayout } from "@/components/layouts/WsClientLayout";
+import {
+  useWsServiceConfigs,
+  useWsClientGrants,
+  useWsServicePlugins,
+  wsServiceLabel,
+  wsServiceAddress,
+} from "./use-ws-services";
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "—";
@@ -37,11 +45,167 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+/**
+ * Which web services this client may call. A grant is independent of the
+ * client's credentials: adding or revoking one never rotates a key.
+ */
+function GrantsCard() {
+  const params = useParams<{ id: string }>();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: configs = [], isLoading: configsLoading } = useWsServiceConfigs();
+  const { data: plugins = [] } = useWsServicePlugins();
+  const { data: grants = [], isLoading: grantsLoading } = useWsClientGrants(params.id);
+
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+
+  const grantedIds = useMemo(() => new Set(grants.map((g) => g.configId)), [grants]);
+  const pluginName = (pluginId: string) =>
+    plugins.find((p) => p.id === pluginId)?.name || pluginId;
+
+  const saveMutation = useMutation({
+    mutationFn: (configIds: string[]) =>
+      apiRequest("PUT", `/api/admin/ws-clients/${params.id}/grants`, { configIds }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/ws-clients", params.id, "grants"] });
+      toast({ title: "Access updated", description: "This client's web service access has been saved." });
+      setIsEditOpen(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to update access",
+        description: getApiErrorMessage(error, "An error occurred"),
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Seed the dialog during the opening render, not in an effect: an effect on
+  // `open` lands after the portal body has already captured empty state.
+  const openEditDialog = () => {
+    setSelected(grants.map((g) => g.configId));
+    setIsEditOpen(true);
+  };
+
+  const toggle = (configId: string, checked: boolean) => {
+    setSelected((prev) =>
+      checked ? Array.from(new Set([...prev, configId])) : prev.filter((id) => id !== configId),
+    );
+  };
+
+  const granted = configs.filter((c) => grantedIds.has(c.id));
+
+  return (
+    <>
+      <Card data-testid="card-grants">
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Network className="h-5 w-5" />
+              Web Service Access
+            </CardTitle>
+            <CardDescription>
+              The individual web services this client is allowed to call
+            </CardDescription>
+          </div>
+          <Button onClick={openEditDialog} disabled={configsLoading} data-testid="button-edit-grants">
+            Edit Access
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {grantsLoading || configsLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" data-testid="loader-grants" />
+            </div>
+          ) : granted.length === 0 ? (
+            <p className="text-muted-foreground text-sm py-4" data-testid="text-no-grants">
+              This client cannot call any web service yet.
+            </p>
+          ) : (
+            <ul className="space-y-3" data-testid="list-grants">
+              {granted.map((config) => (
+                <li key={config.id} className="flex items-start justify-between gap-4" data-testid={`grant-${config.id}`}>
+                  <div>
+                    <div className="font-medium">{wsServiceLabel(config)}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {pluginName(config.pluginId)} &middot; <code>/api/ws/{wsServiceAddress(config)}/…</code>
+                    </div>
+                  </div>
+                  {!config.enabled && (
+                    <Badge variant="outline" data-testid={`badge-disabled-${config.id}`}>
+                      Disabled
+                    </Badge>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent data-testid="dialog-edit-grants">
+          <DialogHeader>
+            <DialogTitle>Web Service Access</DialogTitle>
+          </DialogHeader>
+          {configs.length === 0 ? (
+            <p className="text-muted-foreground text-sm" data-testid="text-no-services">
+              No web services are configured yet.
+            </p>
+          ) : (
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {configs.map((config) => (
+                <label
+                  key={config.id}
+                  className="flex items-start gap-3 cursor-pointer"
+                  data-testid={`option-service-${config.id}`}
+                >
+                  <Checkbox
+                    checked={selected.includes(config.id)}
+                    onCheckedChange={(checked) => toggle(config.id, checked === true)}
+                    data-testid={`checkbox-service-${config.id}`}
+                  />
+                  <span>
+                    <span className="font-medium">{wsServiceLabel(config)}</span>
+                    {!config.enabled && (
+                      <Badge variant="outline" className="ml-2">
+                        Disabled
+                      </Badge>
+                    )}
+                    <span className="block text-sm text-muted-foreground">
+                      {pluginName(config.pluginId)} &middot; <code>/api/ws/{wsServiceAddress(config)}/…</code>
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditOpen(false)} data-testid="button-cancel-grants">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => saveMutation.mutate(selected)}
+              disabled={saveMutation.isPending}
+              data-testid="button-save-grants"
+            >
+              {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function SettingsContent() {
   const params = useParams<{ id: string }>();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { client, bundle } = useWsClientLayout();
+  const { client } = useWsClientLayout();
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -88,12 +252,6 @@ function SettingsContent() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label className="text-muted-foreground">Bundle</Label>
-              <p className="font-medium" data-testid="text-bundle">
-                {bundle?.name || client.bundleId}
-              </p>
-            </div>
             <div>
               <Label className="text-muted-foreground">Status</Label>
               <p data-testid="text-status">
@@ -188,6 +346,8 @@ function SettingsContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <GrantsCard />
     </>
   );
 }

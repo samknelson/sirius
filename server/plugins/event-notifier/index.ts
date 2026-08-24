@@ -376,6 +376,7 @@ import "./plugins/grievance-status-notifier";
 import "./plugins/grievance-deadline-notifier";
 import "./plugins/tos-absence-notifier";
 import "./plugins/edls-sheet-status-notifier";
+import "./plugins/edls-sheet-worker-sms-notifier";
 import "./plugins/dispatch-status-notifier";
 import "./plugins/dispatch-fore-notifier";
 import "./plugins/sitespecific-t631-interview";

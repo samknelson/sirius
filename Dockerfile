@@ -110,8 +110,15 @@ ENV NODE_ENV=production
 # Build the client (-> dist/public) and the server bundle (-> dist/*.js).
 # Mirrors the second and third steps of the package.json "build" script,
 # deliberately skipping the leading `npm run db:push`.
-RUN npx vite build \
-    && npx esbuild server/production-entry.ts server/app-init.ts \
+#
+# The heap ceiling is pinned rather than inherited: Node's default is derived
+# from the machine's memory, so the same build succeeds on a laptop and dies
+# with "Reached heap limit" on a smaller CI runner. Pinning it means the
+# ceiling is a number in this file that we raise deliberately, not a property
+# of whoever's machine ran the build. (`npm run check` pins its own for the
+# same reason — see package.json.)
+RUN NODE_OPTIONS=--max-old-space-size=4096 npx vite build \
+    && NODE_OPTIONS=--max-old-space-size=4096 npx esbuild server/production-entry.ts server/app-init.ts \
         --platform=node --packages=external --bundle --format=esm \
         --splitting --outdir=dist
 

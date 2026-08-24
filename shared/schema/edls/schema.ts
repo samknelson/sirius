@@ -2,7 +2,7 @@ import { pgTable, varchar, date, integer, time, jsonb, unique, text, boolean, ti
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { employers, workers, users, optionsDepartment } from "../../schema";
+import { employers, workers, users, optionsDepartment, comm } from "../../schema";
 import { dispatchJobGroups } from "../dispatch/job-group-schema";
 import { facilities } from "../facility/schema";
 
@@ -96,13 +96,39 @@ export const edlsAssignments = pgTable("edls_assignments", {
   ymd: date("ymd").notNull(),
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
   crewId: varchar("crew_id").notNull().references(() => edlsCrews.id, { onDelete: 'cascade' }),
+  /**
+   * RECEIPT for the message telling this worker about their assignment: it
+   * means they have been told about the assignment AS IT STOOD when that
+   * message went out. Set by whatever sent the message (today the EDLS sheet
+   * worker SMS notifier), never from a request body.
+   *
+   * It is not merely provenance — it GATES SENDING. A worker holding one is
+   * not texted again; any change to the assignment's values voids it, so the
+   * sheet's next arrival at a trigger status texts exactly the workers whose
+   * rows changed. A failed or undelivered message still counts as told: the
+   * receipt records that the attempt was made, and a resend is forced by
+   * editing the row, not by retrying automatically.
+   *
+   * Deleting the comm row clears the link rather than removing the
+   * assignment, so purging the comm log never destroys scheduling data —
+   * though it does hand the worker back to the next send, since the receipt
+   * is gone with it.
+   */
+  commId: varchar("comm_id").references(() => comm.id, { onDelete: 'set null' }),
   data: jsonb("data"),
 }, (table) => [
   unique("edls_assignments_ymd_worker_id_unique").on(table.ymd, table.workerId),
 ]);
 
+/**
+ * `commId` is omitted: the link to a communication record is provenance owned
+ * by whatever sends the message, not assignment input a caller may set. A
+ * future writer gets a dedicated storage operation rather than accepting it
+ * from a request body.
+ */
 export const insertEdlsAssignmentsSchema = createInsertSchema(edlsAssignments).omit({
   id: true,
+  commId: true,
 });
 
 export type EdlsAssignment = typeof edlsAssignments.$inferSelect;

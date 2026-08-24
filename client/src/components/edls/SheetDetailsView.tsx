@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { AssignmentCommStatusIcon } from "@/components/edls/AssignmentCommStatusIcon";
 import type { EdlsSheetStatus, EdlsCrew, AssignmentExtra } from "@shared/schema";
 import type { FreemanCrewlead } from "@shared/schema/sitespecific/freeman/schema";
 
@@ -30,6 +31,10 @@ export interface AssignmentWithWorker {
   workerId: string;
   date: string;
   data: AssignmentExtra | null;
+  /** Communication the sheet notification was sent as, when there is one. */
+  commId?: string | null;
+  /** That communication's delivery status; absent in snapshot payloads. */
+  commStatus?: string | null;
   worker: {
     id: string;
     siriusId: number | null;
@@ -392,6 +397,14 @@ export function SheetDetailsView({
                                 : (assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—")}
                             </span>
                             <span className="flex items-center gap-1.5 min-w-0">
+                              {!snapshotMode && assignment.commId && assignment.commStatus && (
+                                <AssignmentCommStatusIcon
+                                  assignmentId={assignment.id}
+                                  commId={assignment.commId}
+                                  commStatus={assignment.commStatus}
+                                  workerName={formatWorkerName(assignment.worker)}
+                                />
+                              )}
                               {isOutOfPopulation && (
                                 <Tooltip>
                                   <TooltipTrigger asChild>

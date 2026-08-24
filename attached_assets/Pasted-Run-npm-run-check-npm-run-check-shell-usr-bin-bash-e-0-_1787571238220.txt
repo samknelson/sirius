@@ -1,0 +1,36 @@
+Run npm run check
+  npm run check
+  shell: /usr/bin/bash -e {0}
+  env:
+    AWS_REGION: us-east-2
+    SHORT_REGION: use2
+    PROJECT: fls
+
+> rest-express@1.0.0 check
+> tsc
+
+
+<--- Last few GCs --->
+
+[2754:0x33869050]    88324 ms: Scavenge 2031.1 (2079.6) -> 2024.8 (2080.1) MB, 3.66 / 0.00 ms  (average mu = 0.375, current mu = 0.105) allocation failure; 
+[2754:0x33869050]    88350 ms: Scavenge 2031.8 (2080.1) -> 2025.9 (2080.9) MB, 4.95 / 0.00 ms  (average mu = 0.375, current mu = 0.105) allocation failure; 
+[2754:0x33869050]    88552 ms: Scavenge 2032.6 (2080.9) -> 2026.7 (2097.6) MB, 180.42 / 0.00 ms  (average mu = 0.375, current mu = 0.105) allocation failure; 
+
+
+<--- JS stacktrace --->
+
+FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+----- Native stack trace -----
+
+ 1: 0xb78db3 node::OOMErrorHandler(char const*, v8::OOMDetails const&) [node]
+ 2: 0xee8300 v8::Utils::ReportOOMFailure(v8::internal::Isolate*, char const*, v8::OOMDetails const&) [node]
+ 3: 0xee85e7 v8::internal::V8::FatalProcessOutOfMemory(v8::internal::Isolate*, char const*, v8::OOMDetails const&) [node]
+ 4: 0x10fb205  [node]
+ 5: 0x1113088 v8::internal::Heap::CollectGarbage(v8::internal::AllocationSpace, v8::internal::GarbageCollectionReason, v8::GCCallbackFlags) [node]
+ 6: 0x10e91f1 v8::internal::HeapAllocator::AllocateRawWithLightRetrySlowPath(int, v8::internal::AllocationType, v8::internal::AllocationOrigin, v8::internal::AllocationAlignment) [node]
+ 7: 0x10ea385 v8::internal::HeapAllocator::AllocateRawWithRetryOrFailSlowPath(int, v8::internal::AllocationType, v8::internal::AllocationOrigin, v8::internal::AllocationAlignment) [node]
+ 8: 0x10c78d6 v8::internal::Factory::NewFillerObject(int, v8::internal::AllocationAlignment, v8::internal::AllocationType, v8::internal::AllocationOrigin) [node]
+ 9: 0x15247d6 v8::internal::Runtime_AllocateInYoungGeneration(int, unsigned long*, v8::internal::Isolate*) [node]
+10: 0x7f4579e9a476 
+Aborted (core dumped)
+Error: Process completed with exit code 134.
