@@ -100,7 +100,12 @@ WORKDIR /app
 # The sanity check makes an incomplete install fail the layer loudly instead
 # of being cached as DONE: the build toolchain binaries must exist.
 COPY package.json package-lock.json ./
-RUN npm ci \
+# Replit records its internal package-firewall mirror in package-lock.json.
+# That hostname is intentionally unavailable to external builders such as
+# Flight Control, so normalize only the copied lockfile before npm consumes it.
+# Integrity hashes still authenticate every downloaded tarball.
+RUN sed -i 's#http://package-firewall\.replit\.local/npm/#https://registry.npmjs.org/#g' package-lock.json \
+    && npm ci \
     && test -x node_modules/.bin/vite \
     && test -x node_modules/.bin/esbuild
 
