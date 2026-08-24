@@ -55,3 +55,10 @@ uri = "file://attached_assets/s1-worker-wmb-relation-authority-preflight.sql"
 type = "unspecified"
 title = "S1 WMB relation-authority fallback"
 description = "Read-only fallback for targets without T17 desired-span scratch. It validates direct relation id_map authority and inventories WMB anchor and ledger references."
+
+[[outputs]]
+id = "43PTqOwHs1H2-0Frj7Jzo"
+uri = "file://attached_assets/s1-worker-wmb-staged-source-authority-preflight.sql"
+type = "unspecified"
+title = "S1 WMB staged-source authority preflight"
+description = "Read-only SQL that reconstructs T17 month-level relation provenance directly from current staged S1 benefit records and existing wb anchors."

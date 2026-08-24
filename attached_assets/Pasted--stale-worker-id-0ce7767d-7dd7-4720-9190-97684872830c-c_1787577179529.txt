@@ -1,0 +1,85 @@
+[{
+  "stale_worker_id": "0ce7767d-7dd7-4720-9190-97684872830c",
+  "canonical_worker_id": "62703dd1-3a26-4ce4-9feb-a68a885014a6",
+  "stale_relation_id": "48ba476e-7ad0-4ea3-b359-be402bf5fdcc",
+  "stale_relation_count": 1,
+  "relation_id_map_count": 1,
+  "validation": "READY"
+}, {
+  "stale_worker_id": "0e2571bd-5b3f-4b30-80a3-03f00e7e74f1",
+  "canonical_worker_id": "93d9f467-ac01-4560-a594-d53c29ea219d",
+  "stale_relation_id": "43baa100-3bc9-4d8a-8d45-f76bccc5f6dc",
+  "stale_relation_count": 1,
+  "relation_id_map_count": 1,
+  "validation": "READY"
+}, {
+  "stale_worker_id": "20d9774a-2047-4b49-8194-9e9e84a159de",
+  "canonical_worker_id": "05adec89-3e93-4d21-aa11-345481e381ca",
+  "stale_relation_id": "7249bea6-f7ec-4fec-a6b2-0fb37738255c",
+  "stale_relation_count": 1,
+  "relation_id_map_count": 1,
+  "validation": "READY"
+}, {
+  "stale_worker_id": "6506f9ec-79b8-4ea3-b9a5-80efdf3ef710",
+  "canonical_worker_id": "f8044871-27bf-45d6-83bc-4579284540c4",
+  "stale_relation_id": "ee93767f-0bff-4bf3-b534-329348f56a8d",
+  "stale_relation_count": 1,
+  "relation_id_map_count": 1,
+  "validation": "READY"
+}, {
+  "stale_worker_id": "69414db0-7aca-47bc-a166-017c3880ca19",
+  "canonical_worker_id": "695a960c-8e8e-4b85-85ba-39e4dfcadc5c",
+  "stale_relation_id": "35bb16e6-e2cf-4648-ac75-9b4ca24a7945",
+  "stale_relation_count": 1,
+  "relation_id_map_count": 1,
+  "validation": "READY"
+}, {
+  "stale_worker_id": "6f33dada-eeac-4eef-8214-bcbaa7a07b42",
+  "canonical_worker_id": "affab09c-bcf0-4e67-87ec-ba66ce9a7f50",
+  "stale_relation_id": "81f5a079-e527-4f48-988c-2dafd01f2986",
+  "stale_relation_count": 1,
+  "relation_id_map_count": 1,
+  "validation": "READY"
+}, {
+  "stale_worker_id": "8ee36c3a-8f74-4563-9b41-0b647a3ce4af",
+  "canonical_worker_id": "0be59a23-163e-4071-8486-d63eb1d4bbf2",
+  "stale_relation_id": "23b42ff9-d2d2-4c6b-be3a-3fad21aab254",
+  "stale_relation_count": 1,
+  "relation_id_map_count": 1,
+  "validation": "READY"
+}, {
+  "stale_worker_id": "920744de-fc63-4e69-8221-6375111d9fb2",
+  "canonical_worker_id": "fa9249c0-1d2e-435c-b9a7-6e9c9dbe4284",
+  "stale_relation_id": "fcdc8811-76dc-46bf-a77b-7e212e6d5562",
+  "stale_relation_count": 1,
+  "relation_id_map_count": 1,
+  "validation": "READY"
+}, {
+  "stale_worker_id": "9c1f821d-dbe7-4e5f-9221-cdf086078acc",
+  "canonical_worker_id": "e542bd18-cf45-449b-b3fe-b6d0100675db",
+  "stale_relation_id": "d7bbbd93-fc5c-494d-ac77-a8527bf07adb",
+  "stale_relation_count": 1,
+  "relation_id_map_count": 1,
+  "validation": "READY"
+}, {
+  "stale_worker_id": "b8f7044f-8abc-43f3-8f9c-3f30e41e2f89",
+  "canonical_worker_id": "9b23185d-831f-43d7-81e9-3f0324f74680",
+  "stale_relation_id": "12bac042-0294-4b16-89e1-ba763db4aec6",
+  "stale_relation_count": 1,
+  "relation_id_map_count": 1,
+  "validation": "READY"
+}, {
+  "stale_worker_id": "bb49c9b3-a2c1-4531-b16b-1e15c82cfb27",
+  "canonical_worker_id": "67a0b5f8-21a4-4bd2-a09e-d60fc615af4f",
+  "stale_relation_id": "920c4e0b-34e4-493e-bfff-02e9a6dc6025",
+  "stale_relation_count": 1,
+  "relation_id_map_count": 1,
+  "validation": "READY"
+}, {
+  "stale_worker_id": "c2d128f1-c76e-49f7-b051-daf527983d8d",
+  "canonical_worker_id": "4440b2a6-b640-4587-ad9c-d612a8b88d40",
+  "stale_relation_id": "2b7ea05d-cc25-409c-a88d-7d311cebc2b0",
+  "stale_relation_count": 1,
+  "relation_id_map_count": 1,
+  "validation": "READY"
+}]
