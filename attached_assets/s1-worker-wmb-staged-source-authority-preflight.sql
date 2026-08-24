@@ -335,25 +335,11 @@ JOIN wmb_collision_worker_plan plan
 CREATE TEMP TABLE staged_authority
 ON COMMIT DROP
 AS
-WITH worker_issues AS (
-  SELECT
-    plan.stale_worker_id,
-    plan.canonical_worker_id,
-    count(span.nid) FILTER (WHERE span.resolution_issue IS NOT NULL)::bigint
-      AS issue_count
-  FROM wmb_collision_worker_plan plan
-  LEFT JOIN staged_span_candidates span
-    ON span.stale_worker_id = plan.stale_worker_id
-  GROUP BY plan.stale_worker_id, plan.canonical_worker_id
-)
 SELECT
   collision.*,
-  issue.issue_count,
   desired.covering_span_count,
   desired.desired_source_relation_id,
   CASE
-    WHEN issue.issue_count > 0
-      THEN 'STOP: relevant staged S1 span failed direct resolution'
     WHEN desired.covering_span_count = 0
       THEN 'STOP: no resolved staged S1 span covers this WMB key'
     WHEN desired.desired_source_relation_id
@@ -370,8 +356,6 @@ SELECT
     ELSE 'READY: replace with third staged-source provenance'
   END AS decision
 FROM collision_wmb collision
-JOIN worker_issues issue
-  ON issue.stale_worker_id = collision.stale_worker_id
 LEFT JOIN LATERAL (
   SELECT
     count(*)::bigint AS covering_span_count,
@@ -432,13 +416,28 @@ WHERE decision LIKE 'STOP:%'
 GROUP BY decision
 ORDER BY decision;
 
--- RESULT SET 3: SOURCE-SPAN RESOLUTION DIAGNOSTICS
--- Expected: resolution_status READY only. Anchor status is diagnostic; an
--- unanchored row is safe when its direct source references resolve.
+-- RESULT SET 3: SOURCE-SPAN RESOLUTION / T17 REJECT DIAGNOSTICS
+-- Rows with a non-READY resolution_status are excluded from desired months,
+-- exactly as T17 excludes rejected source records before expansion. They do
+-- not block WMB authority, but the later T17 run must report/allow/remediate
+-- the corresponding rejects.
 SELECT
   stale_worker_id,
   canonical_worker_id,
   COALESCE(resolution_issue, 'READY') AS resolution_status,
+  CASE resolution_issue
+    WHEN 'benefit unresolved' THEN 'benefit_unmapped'
+    WHEN 'relation mapping missing' THEN 'relation_unmapped'
+    WHEN 'relation mapping dangling' THEN 'relation_map_broken'
+    WHEN 'relation subscriber mismatch' THEN 'relation_subscriber_mismatch'
+    WHEN 'owner worker mapping missing' THEN 'worker_unmapped'
+    WHEN 'employer unresolved' THEN 'employer_unresolved'
+    WHEN 'start date missing or invalid' THEN 'start_missing_or_bad_start_date'
+    WHEN 'end date precedes start date' THEN 'end_before_start'
+    WHEN 'wb anchor and staged source resolve to different workers'
+      THEN 'preflight_only_anchor_worker_mismatch'
+    ELSE NULL
+  END AS expected_t17_reject,
   anchor_status,
   count(*)::bigint AS staged_span_count
 FROM staged_span_candidates
