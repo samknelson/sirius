@@ -62,3 +62,10 @@ uri = "file://attached_assets/s1-worker-wmb-staged-source-authority-preflight.sq
 type = "unspecified"
 title = "Final T17-equivalent WMB authority preflight"
 description = "Read-only SQL that excludes source records exactly as T17 rejects them, reports those rejects separately, and returns stale/canonical/third provenance for every valid overlap month."
+
+[[outputs]]
+id = "g7IbJBsvrFdKVYZCUzfV2"
+uri = "file://attached_assets/s1-worker-duplicate-merge-transaction-rehearsal.sql"
+type = "unspecified"
+title = "S1 duplicate-worker merge transaction rehearsal"
+description = "Guarded full write-path rehearsal for the 21 duplicate merges and one approved source-missing deletion. It verifies the post-state and then rolls back all changes."
