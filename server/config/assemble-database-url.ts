@@ -32,6 +32,21 @@ import {
   listPresentEnvironmentVariableNames,
 } from "./env-registry";
 
+/**
+ * How the DATABASE_URL this process is using came to be. Read by the
+ * bring-up report so "is this even the right database?" is answerable from
+ * the deploy log: an assembled URL means a wrong DB_* part is plausible.
+ *
+ * Starts as "explicit" because {@link assembleDatabaseUrl} is only called by
+ * the production entry point — when it never runs (Replit dev), the URL can
+ * only have come from the environment.
+ */
+let urlSource: "explicit" | "assembled-from-parts" = "explicit";
+
+export function getDatabaseUrlSource(): "explicit" | "assembled-from-parts" {
+  return urlSource;
+}
+
 function firstNonEmpty(...values: Array<string | undefined>): string | undefined {
   for (const v of values) {
     if (typeof v === "string" && v.length > 0) return v;
@@ -78,7 +93,10 @@ function parseDbSecret(raw: string | undefined): { json?: ParsedSecret; rawPassw
  * is diagnosable remotely without leaking secrets.
  */
 export function assembleDatabaseUrl(): void {
-  if (getEnvironmentVariable("DATABASE_URL")) return;
+  if (getEnvironmentVariable("DATABASE_URL")) {
+    urlSource = "explicit";
+    return;
+  }
 
   const { json, rawPassword } = parseDbSecret(getEnvironmentVariable("DB_SECRET"));
 
@@ -98,6 +116,10 @@ export function assembleDatabaseUrl(): void {
       password,
     )}@${host}:${port}/${dbname}?sslmode=${sslmode}`;
     setEnvironmentVariable("DATABASE_URL", url);
+    // Provenance for the bring-up report: "assembled from parts" is the case
+    // where a single wrong DB_* value silently points the deployment at the
+    // wrong database, so the report has to say which case this was.
+    urlSource = "assembled-from-parts";
     console.log(
       `[db-config] Assembled DATABASE_URL from parts (host=${host} port=${port} db=${dbname} sslmode=${sslmode}).`,
     );

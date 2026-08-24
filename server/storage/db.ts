@@ -24,6 +24,8 @@ import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres';
 import ws from "ws";
 import * as schema from "@shared/schema";
 import { getEnvironmentVariable } from "../config/env-registry";
+import { getDatabaseUrlSource } from "../config/assemble-database-url";
+import { recordDatabaseIdentity, type BringUpDatabaseIdentity } from "../services/bringup-report";
 
 const databaseUrl = getEnvironmentVariable("DATABASE_URL");
 if (!databaseUrl) {
@@ -134,11 +136,13 @@ export const driverKind: DriverKind = detectDriver(databaseUrl);
 // drizzle query-builder / transaction API).
 let poolInstance: NeonPool | pg.Pool;
 let dbInstance: NeonDatabase<typeof schema>;
+let tlsDescription: string;
 
 if (driverKind === "neon") {
   neonConfig.webSocketConstructor = ws;
   poolInstance = new NeonPool({ connectionString: databaseUrl });
   dbInstance = drizzleNeon({ client: poolInstance as NeonPool, schema });
+  tlsDescription = "TLS terminated by the Neon WebSocket proxy";
   console.log("[db] driver=neon (serverless/WebSocket)");
 } else {
   const ssl = sslConfigFromUrl(databaseUrl);
@@ -150,7 +154,13 @@ if (driverKind === "neon") {
     client: poolInstance as pg.Pool,
     schema,
   }) as unknown as NeonDatabase<typeof schema>;
-  const sslDesc = ssl === false ? "disabled" : ssl.rejectUnauthorized ? "verified" : "unverified";
+  const sslDesc =
+    ssl === false
+      ? "disabled (plaintext)"
+      : ssl.rejectUnauthorized
+        ? "encrypted, certificate verified"
+        : "encrypted, certificate NOT verified";
+  tlsDescription = sslDesc;
   console.log(`[db] driver=pg (node-postgres/TCP), tls=${sslDesc}`);
   if (ssl !== false && !ssl.rejectUnauthorized) {
     console.warn(
@@ -160,6 +170,53 @@ if (driverKind === "neon") {
     );
   }
 }
+
+/**
+ * Which database this process actually reached — host, database, user,
+ * driver, TLS mode, and whether the URL was handed to us or assembled from
+ * DB_HOST/DB_NAME/DB_SECRET parts.
+ *
+ * NEVER includes the password. On a target with no shell, a wrong DB_* part
+ * is a plausible cause of "the migrations didn't run" and was previously
+ * invisible: the log said only which driver was chosen.
+ */
+export function getDatabaseIdentity(): BringUpDatabaseIdentity {
+  let host = "(unparseable URL)";
+  let port = "";
+  let database = "";
+  let user = "";
+  try {
+    const parsed = new URL(databaseUrl!);
+    host = parsed.hostname;
+    port = parsed.port || "5432";
+    database = decodeURIComponent(parsed.pathname.replace(/^\//, "")) || "(default)";
+    user = parsed.username ? decodeURIComponent(parsed.username) : "(none in URL)";
+  } catch {
+    // Leave the placeholders; the driver will surface its own error.
+  }
+  return {
+    host,
+    port,
+    database,
+    user,
+    driver: driverKind === "neon" ? "neon (serverless/WebSocket)" : "pg (node-postgres/TCP)",
+    tls: tlsDescription,
+    urlSource:
+      getDatabaseUrlSource() === "assembled-from-parts"
+        ? "assembled from DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_SECRET parts"
+        : "DATABASE_URL supplied directly",
+  };
+}
+
+// Log it immediately, before anything queries the database, so the deploy
+// log answers "is this even the right database?" on its own.
+const identity = getDatabaseIdentity();
+recordDatabaseIdentity(identity);
+console.log(
+  `[db] connected target: host=${identity.host}:${identity.port} database=${identity.database} ` +
+    `user=${identity.user} driver=${identity.driver} tls=${identity.tls} ` +
+    `url=${getDatabaseUrlSource()}`,
+);
 
 // Postgres servers will drop idle pooled connections — e.g. when Neon's
 // compute autosuspends or an Aurora failover occurs, the server sends

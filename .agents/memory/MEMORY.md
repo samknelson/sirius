@@ -123,5 +123,6 @@
 - [Component migration/push parity](component-migration-push-parity.md) — the enable-path push leaves FKs UNNAMED (`<t>_<c>_fkey`) while keeping declared unique names; a creation migration must match, proven by snapshot-drop-migrate-compare.
 - [Send-path credential minting](send-path-credential-minting.md) — notifier links keyed by a per-entity credential need get-or-create (never set), `{record,issued}` for honest audit, and a throwing second-component check in shouldDispatch.
 - [Which logger reaches the log viewer](log-surface-console-vs-viewer.md) — app `logger` is console-only; only `storageLogger` writes winston_logs, so framework catch-and-log failures are NOT in the admin viewer.
+- [Remote schema bring-up](remote-schema-bringup.md) — shell-less target: env-var-only repairs, pure-leaf console report, fatal migration failures, drift↔migration match is textual + newest-first.
 - [Typecheck heap ceiling](typecheck-heap-ceiling.md) — tsc runs as two pinned processes; heap grows ~linearly with file count, and cutting drizzle out of the client half was measured at only −7%.
 - [EDLS schedule answer authority](edls-schedule-answer-authority.md) — an AAT bearer link intentionally authorizes its worker’s final EDLS accept/decline response; legacy schedule links remain read-only.

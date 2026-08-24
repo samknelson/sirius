@@ -99,7 +99,18 @@ server.listen({
   // sequence, routes, websocket, cron scheduler, error middleware). This is
   // the single source of truth shared with the production entry point
   // (`server/production-entry.ts` -> `startApp()` in `server/app-init.ts`).
-  await bootstrapApp(app, server);
+  try {
+    await bootstrapApp(app, server);
+  } catch (error) {
+    // BRINGUP_REPORT_ONLY=1 stops the boot on purpose after printing the
+    // bring-up report; that is not a crash and does not deserve an unhandled
+    // rejection. Anything else still fails loudly.
+    if (error instanceof Error && error.name === "BringUpReportOnlyStop") {
+      log(error.message);
+      return;
+    }
+    throw error;
+  }
 
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route

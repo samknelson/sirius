@@ -17,12 +17,8 @@ import { initializeDataRetentionPluginSystem } from "./plugins/system/data-reten
 import { initializeSystemStatusPluginSystem } from "./plugins/system/status";
 import { bootstrapSingletonPluginConfigs } from "./plugins/_core";
 import { initDispatchSeniorityReset } from "./services/dispatch/seniority-reset";
-import { loadComponentCache } from "./services/component-cache";
+import { runSchemaBringUp } from "./services/bringup";
 import { syncComponentPermissions } from "./services/component-permissions";
-import { runMigrations } from "../scripts/migrate";
-import { ensureEmptyDatabaseBootstrap } from "./services/empty-db-bootstrap";
-import { enforceStartupSchemaDrift } from "./services/schema-drift-check";
-import { runPendingComponentMigrationsAtStartup } from "./services/migration-runner";
 import { initializeWebSocket } from "./services/websocket";
 import { getSession } from "./auth";
 
@@ -198,49 +194,20 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   initDispatchSeniorityReset();
   logger.info("Dispatch seniority reset initialized", { source: "startup" });
 
-  // Detect a completely empty database BEFORE anything touches it. With
-  // ALLOW_EMPTY_DB_BOOTSTRAP=1 this creates the full schema from the Drizzle
-  // definitions and stamps migration bookkeeping; without it, an empty DB
-  // fails with a clear operator error. Non-empty databases: strict no-op.
-  await ensureEmptyDatabaseBootstrap();
+  // Schema bring-up, as ONE phase: classify the database, bootstrap it if it
+  // is empty and allowed, apply core migrations (a failure here is fatal —
+  // the app must never reach the drift gate half-migrated), load the
+  // component cache, apply per-component migrations, and enforce the drift
+  // gate. It prints the bring-up report exactly once, on success and on
+  // failure alike, and under BRINGUP_REPORT_ONLY=1 it reports and stops
+  // without writing anything. See `server/services/bringup.ts`.
+  await runSchemaBringUp();
 
-  // Initialize address validation service (loads or creates config)
+  // Initialize address validation service (loads or creates config). Runs
+  // after bring-up: it writes a config row, which report-only mode must not
+  // do, and it has nothing to say about the schema.
   await addressValidationService.getConfig();
   logger.info("Address validation service initialized", { source: "startup" });
-
-  // Run database migrations
-  const migrationResult = await runMigrations();
-  if (migrationResult.ran > 0) {
-    logger.info("Database migrations completed", {
-      source: "startup",
-      ran: migrationResult.ran,
-      skipped: migrationResult.skipped
-    });
-  } else {
-    logger.debug("No pending migrations", { source: "startup" });
-  }
-  if (migrationResult.errors.length > 0) {
-    logger.error("Migration errors occurred", {
-      source: "startup",
-      errors: migrationResult.errors
-    });
-  }
-
-  // Load component cache
-  await loadComponentCache();
-  logger.info("Component cache initialized", { source: "startup" });
-
-  // Run any pending per-component migrations for components that are already
-  // enabled. Without this, a new component migration would never run for
-  // already-enabled components, and the startup drift gate below would refuse
-  // to boot. New components still run migrations via the enable flow.
-  await runPendingComponentMigrationsAtStartup();
-
-  // Refuse to boot if the live database has drifted from the expected schema
-  // (core + every enabled schema-managing component). See
-  // `server/services/schema-drift-check.ts` for the rationale and the
-  // SKIP_SCHEMA_DRIFT_CHECK=1 dev escape hatch.
-  await enforceStartupSchemaDrift();
 
   // Arm maintenance-mode enforcement (connection-level read-only lock while
   // system_mode = "maintenance"). Armed ONLY here — standalone scripts that

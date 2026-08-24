@@ -15,6 +15,9 @@ import { createServer } from "http";
 import { existsSync, readdirSync, statSync } from "fs";
 import { resolve, join } from "path";
 import { bootStatus } from "./services/boot-status";
+// Pure leaf, like boot-status: safe to import before DATABASE_URL exists and
+// whether or not app-init ever loaded.
+import { formatBringUpReport } from "./services/bringup-report";
 import { getBootIdentity } from "./services/boot-identity";
 import { getEnvironmentVariable } from "./config/env-registry";
 // Leaf import on purpose: the shared HTML barrel reaches DOMPurify (jsdom
@@ -113,23 +116,42 @@ let initError: Error | null = null;
 
 const exposeBootErrors = () => getEnvironmentVariable("EXPOSE_BOOT_ERRORS") === "1";
 
+/**
+ * True when the boot stopped because BRINGUP_REPORT_ONLY=1 asked it to. Not a
+ * failure: the process did exactly what it was told, and the report is the
+ * deliverable.
+ */
+let reportOnlyStop = false;
+
 function initFailedJson() {
   const { bootId, startedAt } = getBootIdentity();
+  const status = reportOnlyStop ? 'report-only' : 'init-failed';
+  const common = {
+    status,
+    driftCheck: bootStatus.driftCheck,
+    // Distinguishes "the image is fine, the DATABASE is the problem" from an
+    // ordinary startup failure — the operator needs that before they can
+    // choose between redeploying, setting a recovery variable, or shipping a
+    // baseline.
+    blockedOn: bootStatus.blockedOn,
+    bootId,
+    startedAt,
+  };
   return exposeBootErrors()
     ? {
-        status: 'init-failed',
-        driftCheck: bootStatus.driftCheck,
-        bootId,
-        startedAt,
+        ...common,
         error: initError!.message,
         stack: initError!.stack,
+        // The whole point of the bring-up report is that the operator may not
+        // be able to reach the deploy log. Same exposure control as the error
+        // details above.
+        bringUpReport: formatBringUpReport(),
       }
     : {
-        status: 'init-failed',
-        driftCheck: bootStatus.driftCheck,
-        bootId,
-        startedAt,
-        message: 'Application initialization failed. See server logs for details.',
+        ...common,
+        message: reportOnlyStop
+          ? 'Bring-up report produced (BRINGUP_REPORT_ONLY=1). See server logs, or set EXPOSE_BOOT_ERRORS=1 to read it here.'
+          : 'Application initialization failed. See server logs for details.',
       };
 }
 
@@ -146,8 +168,10 @@ app.get('/health', (_req, res) => {
   res.status(200).json({
     status: appReady ? 'ready' : 'starting',
     driftCheck: bootStatus.driftCheck,
+    blockedOn: bootStatus.blockedOn,
     bootId,
     startedAt,
+    ...(appReady && exposeBootErrors() ? { bringUpReport: formatBringUpReport() } : {}),
   });
 });
 
@@ -166,15 +190,19 @@ app.use('/', (req, res, next) => {
         const detail = exposeBootErrors()
           ? `
               <p><strong>${escapeHtml(initError.message)}</strong></p>
-              <pre>${escapeHtml(initError.stack || '(no stack)')}</pre>`
+              <pre>${escapeHtml(initError.stack || '(no stack)')}</pre>
+              <h2>Schema bring-up report</h2>
+              <pre>${escapeHtml(formatBringUpReport())}</pre>`
           : `
-              <p>The server started but the application failed to initialize.</p>
+              <p>${reportOnlyStop
+                ? 'The server started in report-only mode and stopped before initializing the application.'
+                : 'The server started but the application failed to initialize.'}</p>
               <p>Details are in the server logs. (Set EXPOSE_BOOT_ERRORS=1 to show them here in non-production environments.)</p>`;
         res.status(200).set({ 'Content-Type': 'text/html' }).send(`
           <!DOCTYPE html>
           <html>
             <head>
-              <title>Init failed</title>
+              <title>${reportOnlyStop ? 'Bring-up report' : 'Init failed'}</title>
               <style>
                 body { font-family: system-ui, sans-serif; margin: 2rem; background: #fff; color: #111; }
                 h1 { color: #b00020; }
@@ -182,7 +210,7 @@ app.use('/', (req, res, next) => {
               </style>
             </head>
             <body>
-              <h1>Application initialization failed</h1>${detail}
+              <h1>${reportOnlyStop ? 'Report-only boot — application not started' : 'Application initialization failed'}</h1>${detail}
             </body>
           </html>
         `);
@@ -243,6 +271,15 @@ server.listen({
       console.log(`Application fully initialized and ready`);
     });
   } catch (error) {
+    // A report-only stop is a deliberate outcome, not a crash: keep serving
+    // the report over HTTP (this deployment exists to be read, and exiting
+    // would only crash-loop the container).
+    if (error instanceof Error && error.name === 'BringUpReportOnlyStop') {
+      reportOnlyStop = true;
+      initError = error;
+      console.log(error.message);
+      return;
+    }
     console.error('Failed to initialize application:', error);
     // Permanent init-failure mode (see comment above `initError`): capture
     // the error and keep serving /health and the root failure page instead

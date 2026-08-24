@@ -532,7 +532,14 @@ registerEnvironmentVariables([
   { name: "ALLOW_DB_PUSH", description: "Set to 1 to permit scripts/db-push.ts to run (guarded: push is hazardous).", secret: false, category: "core" },
   { name: "SKIP_SCHEMA_DRIFT_CHECK", description: "Set to 1 to skip the startup schema-drift boot gate (dev escape hatch).", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "SKIP_DIST_FRESHNESS_CHECK", description: "Set to 1 to skip the stale-dist build freshness guard in production entry.", secret: false, category: "core", changeTakesEffect: "restart", },
-  { name: "EXPOSE_BOOT_ERRORS", description: "Set to 1 to render init-failure details (message + stack) on the boot failure page.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "EXPOSE_BOOT_ERRORS", description: "Set to 1 to render init-failure details (message + stack) and the bring-up report on the boot failure page and /health.", secret: false, category: "core", changeTakesEffect: "restart", },
+  // Remote diagnosis and repair for a target the operator has no shell on
+  // (Task #1301): the only levers they have are environment variables and a
+  // redeploy. BRINGUP_REPORT_ONLY is a read-only dry run;
+  // MIGRATIONS_RESUME_FROM_VERSION is a one-shot recovery that must never be
+  // inferred or left set.
+  { name: "BRINGUP_REPORT_ONLY", description: "Set to 1 to boot only far enough to print the schema bring-up report, then stop without running a migration, bootstrapping a schema, or writing any variable.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "MIGRATIONS_RESUME_FROM_VERSION", description: "ONE-SHOT RECOVERY: set the stored core migrations_version to this number at boot, so every registered migration above it runs. Lowering replays them; raising declares them applied so a replay can resume past a migration that will not re-apply. Remove it after a successful boot.", secret: false, category: "core", changeTakesEffect: "restart", },
   // "reload": the filesystem registry re-parses this and drops its cached
   // providers when the "Filesystem registry" subsystem is reloaded from the
   // admin Restart & Reload page (Task #1258) — no restart needed.
