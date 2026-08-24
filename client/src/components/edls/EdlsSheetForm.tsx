@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -80,6 +81,7 @@ export interface SheetFormData {
   jobGroupId: string;
   facilityId: string;
   showStatusId: string;
+  notes: string;
   crews: CrewInput[];
 }
 
@@ -159,6 +161,7 @@ export function EdlsSheetForm({
         jobGroupId: initialData.sheet.jobGroupId || "",
         facilityId: initialData.sheet.facilityId || "",
         showStatusId: initialData.sheet.showStatusId || "",
+        notes: initialData.sheet.notes || "",
         crews: initialData.crews.map((c) => ({
           id: c.id,
           title: c.title,
@@ -182,6 +185,7 @@ export function EdlsSheetForm({
       jobGroupId: "",
       facilityId: "",
       showStatusId: "",
+      notes: "",
       crews: [],
     };
   });
@@ -288,6 +292,7 @@ export function EdlsSheetForm({
       jobGroupId: formData.jobGroupId || "",
       facilityId: formData.facilityId || "",
       showStatusId: formData.showStatusId || "",
+      notes: formData.notes || "",
     });
   };
 
@@ -580,6 +585,19 @@ export function EdlsSheetForm({
               </Command>
             </PopoverContent>
           </Popover>
+        </div>
+        <div className="space-y-2 md:col-span-2">
+          <Label htmlFor="notes">Notes</Label>
+          <Textarea
+            id="notes"
+            data-testid="input-notes"
+            value={formData.notes}
+            onChange={(e) =>
+              setFormData({ ...formData, notes: e.target.value })
+            }
+            rows={4}
+            placeholder="Optional notes about this sheet"
+          />
         </div>
       </div>
 

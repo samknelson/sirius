@@ -1,6 +1,6 @@
 import { snapshots, type Snapshot, type InsertSnapshot } from "@shared/schema";
 import type { SnapshotMeta } from "@shared/snapshots";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { getClient } from "../transaction-context";
 import { defineLoggingConfig } from "../middleware/logging";
 
@@ -8,6 +8,12 @@ export interface SnapshotsStorage {
   create(snapshot: InsertSnapshot): Promise<Snapshot>;
   /** Metadata only (no data payload), newest first. */
   listByEntity(entityType: string, entityId: string): Promise<SnapshotMeta[]>;
+  /**
+   * Bulk "most recent snapshot id" lookup, keyed by entity id. Entities with
+   * no snapshot at all are simply absent from the map — snapshots are only
+   * captured on qualifying events, so having none is normal.
+   */
+  getLatestIdsByEntity(entityType: string, entityIds: string[]): Promise<Map<string, string>>;
   get(id: string): Promise<Snapshot | undefined>;
   delete(id: string): Promise<boolean>;
 }
@@ -39,6 +45,20 @@ export function createSnapshotsStorage(): SnapshotsStorage {
         ...row,
         createdAt: row.createdAt.toISOString(),
       }));
+    },
+
+    async getLatestIdsByEntity(entityType: string, entityIds: string[]): Promise<Map<string, string>> {
+      if (entityIds.length === 0) return new Map();
+      const client = getClient();
+      const rows = await client
+        .selectDistinctOn([snapshots.entityId], {
+          entityId: snapshots.entityId,
+          id: snapshots.id,
+        })
+        .from(snapshots)
+        .where(and(eq(snapshots.entityType, entityType), inArray(snapshots.entityId, entityIds)))
+        .orderBy(snapshots.entityId, desc(snapshots.createdAt), desc(snapshots.id));
+      return new Map(rows.map((row) => [row.entityId, row.id]));
     },
 
     async get(id: string): Promise<Snapshot | undefined> {

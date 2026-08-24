@@ -239,6 +239,14 @@ export function SheetDetailsView({
               </p>
             </div>
           </div>
+          {typeof sheet.notes === "string" && sheet.notes.trim() !== "" && (
+            <div className="mt-6 print:mt-2">
+              <h3 className="text-sm font-medium text-muted-foreground mb-1 print:mb-0 print:after:content-[':']">Notes</h3>
+              <p className="text-foreground whitespace-pre-wrap" data-testid="text-notes">
+                {sheet.notes}
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
