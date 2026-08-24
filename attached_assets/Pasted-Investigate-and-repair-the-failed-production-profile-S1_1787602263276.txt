@@ -1,0 +1,92 @@
+Investigate and repair the failed production-profile S1 sync rehearsal. Do not blanket-allow the new failures.
+
+## Run failure
+
+The `t3t1-contacts-workers` loader failed with:
+
+- `ssn_collision_q36=1`
+- `verifyFailures=1`
+- The rest of the fleet and parity checks were skipped.
+
+## Stale merged-worker conflict
+
+The SSN reject is not a duplicate in current S1. One person had two S1 accounts that were merged.
+
+Authoritative identity:
+
+- Surviving S1 nid: `15933572`
+- Surviving S1 Sirius ID: `1001214`
+- Canonical S2 worker: `9d7fe027-ebc5-45fc-ae12-88d30b069179`
+- Canonical S2 worker currently has no SSN.
+
+Retired identity:
+
+- Retired S1 nid: `3166519`
+- Retired nid is absent from current `s1_staging.records`.
+- Stale S2 worker: `0eefcabf-1e8d-4980-a209-5d90cfccd981`
+- Stale S2 Sirius ID: `753404`
+- This stale S2 worker still owns the person’s SSN.
+
+The loader retains source-deleted workers to preserve history and does not know these nids are the same person. It therefore treats the stale S2 SSN owner as another person and rejects the SSN from the canonical worker.
+
+Do **not** add `ssn_collision_q36` to the production allowlist. That would leave the SSN on the stale worker and the canonical worker without it.
+
+## Required worker repair
+
+Create a guarded SQL repair package using the established stale-duplicate worker consolidation approach:
+
+1. Inventory every FK and soft reference to both S2 worker IDs, including component-owned data and migration anchors.
+2. Resolve uniqueness conflicts table by table; do not blindly rewrite `worker_id`.
+3. Reconcile stale-worker history onto the canonical worker while preserving authoritative/stable record IDs and provenance.
+4. Keep Sirius ID `1001214` on the canonical worker; never replace it with `753404`.
+5. Release the stale worker’s SSN so the canonical worker can receive it.
+6. Decide the retired-nid mapping/alias disposition based on downstream references.
+7. Remove the stale worker only after proving no references remain.
+8. Produce:
+   - read-only inventory SQL;
+   - rollback-only rehearsal SQL with strict assertions/count gates;
+   - commit variant with identical guards;
+   - post-repair verification SQL.
+9. Validate the rollback variant against the real rehearsal target before committing.
+
+Relevant durable guidance: `.agents/memory/stale-worker-sid-duplicate-merge.md`.
+
+## Separate shared-email verification failure
+
+The only raw verification error was:
+
+```text
+VERIFY: shared-address owner contact nid 18186295 does not carry its address
+```
+
+Likely loader defect:
+
+1. The pre-pass clears a shared address from a mapped non-owner.
+2. The declared owner’s ownership fingerprint is unchanged.
+3. The fast path skips that owner.
+4. Verification finds the owner still lacks the address.
+
+Fix the repair/fast-path interaction so clearing a wrong holder also forces the declared owner to reconcile, or completes the transfer atomically. Add regression coverage for an otherwise unchanged shared-email group requiring repair.
+
+Relevant implementation is in:
+
+- `scripts/s1-migration/load-contacts-workers.ts`
+- Shared-email planning and repair around the `sharedEmailPlan`, `emailOwner`, and pre-loop repair logic.
+- Verification emits the owner failure later in the same loader.
+
+## Rerun sequence
+
+After the guarded worker consolidation and shared-email fix:
+
+1. Run contacts/workers with forced reconciliation and the existing production-approved reject classes only.
+2. Require:
+   - `ssn_collision_q36=0`;
+   - `verifyFailures=0`;
+   - the canonical worker owns the SSN and Sirius ID `1001214`;
+   - the stale worker is fully resolved;
+   - contact `18186295` carries its authoritative shared address.
+3. Then rerun the full production daily sync with fresh staging—not `--skip-stage`—and require the normal non-forced contacts/workers pass before continuing through the fleet and parity gates.
+
+The attached aggregate run report is:
+
+`attached_assets/Pasted--id-contacts-workers-loader-t3t1-contacts-workers-statu_1787601344935.txt`
