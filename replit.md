@@ -152,6 +152,11 @@ landing on a deployment branch is what causes the recurring merge conflicts.
     contents matter because once the branches carry environment-specific
     config, restoring from the wrong one silently overwrites it. `git status`
     shows nothing here once the files are ignored-and-untracked.
+-   The `main-branch-files` architecture-lint rule enforces the first bullet:
+    on `main` it fails when any `.github/` or `deploy/` file is tracked
+    (`git ls-tree`, not `git status`) and tells you to run
+    `git rm -r --cached .github deploy`. On any other branch it passes, so
+    the Freeman branches keep their copies.
 -   Helper script for the one-time history split: `.local/split-branches.sh`.
 
 ## Gotchas

@@ -342,9 +342,11 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
     backfillPaymentGatewaySubsidiaries,
     backfillPaymentTypesFromGlobal,
   } = await import("./plugins/ledger/payment-gateway");
+  const { initializeWebServiceSystem } = await import("./plugins/web-service");
   registerChargePluginKind();
   registerTrustEligibilityKind();
   registerPaymentGatewayPluginKind();
+  initializeWebServiceSystem();
   // Every payment-gateway config needs a subsidiary row (the generic search
   // inner-joins it). Backfill pre-existing configs so they don't vanish.
   await backfillPaymentGatewaySubsidiaries();

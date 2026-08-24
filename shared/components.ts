@@ -837,6 +837,19 @@ export const componentRegistry: ComponentDefinition[] = [
       { key: "edls.supervisor", description: "EDLS supervisory access" },
       { key: "edls.reader", description: "Read-only access to EDLS data" },
       { key: "edls.worker.advisor", description: "Worker advisor access for EDLS" }
+    ],
+    // The Sheet Export v1 web service. Materialized on enable (and at boot for
+    // an already-enabled component), deactivated on disable. Configuration ids
+    // are minted per database, so the alias is the only address that is the
+    // same in every environment — it ships by default for that reason.
+    pluginConfigs: [
+      {
+        pluginKind: "web-service",
+        pluginId: "edls-sheet-export-v1",
+        siriusId: "auto.edls.sheet-export-v1",
+        name: "EDLS Sheet Export v1",
+        data: { alias: "edls-sheet-export-v1" },
+      },
     ]
   },
   {

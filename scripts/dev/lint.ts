@@ -71,6 +71,11 @@ const RULES: Rule[] = [
     script: "scripts/dev/check-lockfile-registry.ts",
     summary: "lockfile tarball URLs point at the public npm registry",
   },
+  {
+    id: "main-branch-files",
+    script: "scripts/dev/check-main-branch-files.ts",
+    summary: "no .github/ or deploy/ files are tracked on main",
+  },
 ];
 
 function usage(): void {

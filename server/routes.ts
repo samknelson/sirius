@@ -126,8 +126,8 @@ import { registerSnapshotsRoutes } from "./modules/snapshots";
 import { registerEdlsTosRoutes } from "./modules/edls/tos";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
 import { registerWorkerEdlsRoutes } from "./modules/edls/workers";
-import { registerWebServiceBundle } from "./modules/webservices";
-import { setupEdlsRoutes, EDLS_BUNDLE_CODE } from "./modules/webservices/edls";
+import { registerEdlsPublicScheduleRoutes } from "./modules/edls/public-schedule";
+import { registerWebServiceDispatcher } from "./modules/webservices";
 import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
 import { registerTerminologyRoutes } from "./modules/terminology";
 import { registerCompaniesRoutes } from "./modules/employers/companies";
@@ -1798,14 +1798,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerEdlsTosRoutes(app, requireAuth);
   registerEdlsTasksRoutes(app, requireAuth, requirePermission);
   registerWorkerEdlsRoutes(app, requireAuth);
+  // Public (unauthenticated) worker schedule page — still gated on the `edls`
+  // component like every other EDLS route.
+  registerEdlsPublicScheduleRoutes(app);
 
-  // Register Web Service bundles (API access via client credentials)
-  registerWebServiceBundle(app, {
-    bundleCode: EDLS_BUNDLE_CODE,
-    setupRoutes: setupEdlsRoutes,
-  });
+  // Register the single web service dispatcher (API access via client
+  // credentials); every configuration of every web-service plugin is served
+  // from here.
+  registerWebServiceDispatcher(app);
 
-  // Register Web Service admin routes (for managing bundles, clients, credentials)
+  // Register Web Service admin routes (clients, grants, credentials, IP rules)
   registerWebServiceAdminRoutes(app, requireAuth, requirePermission);
 
   // Register companies routes

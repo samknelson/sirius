@@ -36,6 +36,10 @@ OAuth App here does not have by default — pushes are rejected outright.
   swaps the whole tree and churns the running dev server for no reason.
 - Verify with `git ls-tree -r --name-only <branch> -- .github deploy` per branch rather than
   trusting `git status`, which shows nothing once the files are ignored-and-untracked.
+- An architecture-lint rule now enforces the `main` half of this automatically: it is
+  branch-conditional (fails only on `main`, passes elsewhere so carrying branches keep their
+  copies) and reads the commit with `git ls-tree`, not the working tree. It catches an
+  incoming merge at task-completion time, not the pushes carrying branches make.
 
 ## Merge direction is load-bearing: only main → branch, never branch → main
 

@@ -1,3 +1,4 @@
+import type { Comm } from "@shared/schema";
 import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
 import type { EventType } from "../../services/event-bus";
 import type { BasePluginMetadata } from "../_core";
@@ -275,6 +276,37 @@ export interface EventNotifierPlugin extends BasePluginMetadata {
     ctx: EventNotifierEventContext,
     configData?: unknown,
   ): Promise<NotifierMessageContent | null>;
+
+  /**
+   * Optional post-send hook, called once per (recipient, medium) with the comm
+   * record that send created. Notifiers never create comm records themselves —
+   * the send layer does — so this is the only point at which one can learn the
+   * id of the message it caused, and link it back to whatever the message was
+   * about (e.g. stamping it onto the row the recipient was contacted over).
+   *
+   * Fires whenever the send layer HANDS BACK a record, including for a send
+   * that failed: a recorded failure is worth linking too, and is more
+   * informative than a blank. Hence "comm created", not "delivered" — a call
+   * is not proof the message arrived, or even that a provider was reached
+   * (an unreachable recipient is recorded as a failure without one), and the
+   * record's own status remains the authority on that. Nothing is called when
+   * no record comes back: no address on file, flood-limited, the sender threw,
+   * or the sender created a record and then failed before returning it.
+   *
+   * Best-effort and strictly after the fact. The send layer's transaction has
+   * already committed and the message has already been handed off, so this
+   * hook can neither roll back nor retry the message, and must not try. The
+   * framework catches and logs whatever it throws and moves on to the next
+   * recipient, so one plugin's bookkeeping failure never costs another
+   * recipient their message.
+   */
+  onCommCreated?(
+    medium: NotificationMedium,
+    recipient: NotifierRecipient,
+    comm: Comm,
+    ctx: EventNotifierEventContext,
+    configData?: unknown,
+  ): Promise<void>;
 }
 
 export interface EventNotifierManifestEntry {

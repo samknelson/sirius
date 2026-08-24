@@ -221,7 +221,7 @@ export const configSections: NavSection[] = [
     description: "External API access and client management",
     icon: Network,
     items: [
-      { path: "/config/ws/bundles", label: "Bundles", icon: Package, testId: "nav-config-ws-bundles", permission: "admin" },
+      { path: "/config/ws/services", label: "Services", icon: Package, testId: "nav-config-ws-services", permission: "admin" },
       { path: "/config/ws/clients", label: "Clients", icon: Key, testId: "nav-config-ws-clients", permission: "admin" },
     ],
   },

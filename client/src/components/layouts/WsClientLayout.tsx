@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useWsClientTabAccess } from "@/hooks/useTabAccess";
-import type { WsClient, WsBundle } from "@shared/schema";
+import type { WsClient } from "@shared/schema";
 
 interface WsClientLayoutProps {
   activeTab: string;
@@ -16,7 +16,6 @@ interface WsClientLayoutProps {
 
 interface WsClientLayoutContextValue {
   client: WsClient;
-  bundle: WsBundle | undefined;
 }
 
 const WsClientLayoutContext = createContext<WsClientLayoutContextValue | null>(null);
@@ -49,12 +48,6 @@ export function WsClientLayout({ activeTab, children }: WsClientLayoutProps) {
     queryKey: ["/api/admin/ws-clients", id],
     enabled: !!id,
   });
-
-  const { data: bundles = [] } = useQuery<WsBundle[]>({
-    queryKey: ["/api/admin/ws-bundles"],
-  });
-
-  const bundle = bundles.find((b) => b.id === client?.bundleId);
 
   const { tabs: mainTabs } = useWsClientTabAccess(id);
 
@@ -122,11 +115,6 @@ export function WsClientLayout({ activeTab, children }: WsClientLayoutProps) {
               {client.description}
             </p>
           )}
-          {bundle && (
-            <p className="text-sm text-muted-foreground mt-1">
-              Bundle: <span className="font-medium">{bundle.name}</span>
-            </p>
-          )}
         </div>
       </div>
 
@@ -152,7 +140,7 @@ export function WsClientLayout({ activeTab, children }: WsClientLayoutProps) {
         </nav>
       </div>
 
-      <WsClientLayoutContext.Provider value={{ client, bundle }}>
+      <WsClientLayoutContext.Provider value={{ client }}>
         {children}
       </WsClientLayoutContext.Provider>
     </div>
