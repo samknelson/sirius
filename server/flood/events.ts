@@ -162,10 +162,46 @@ export const localPasswordChangeFloodEvent: FloodEventDefinition = {
   },
 };
 
+/**
+ * Public EDLS schedule answer throttle: the unauthenticated endpoint a worker
+ * uses to accept or decline an assignment from the link they were texted.
+ *
+ * Bucketed by `scheduleId|ip` — the id in the schedule URL, whether or not it
+ * resolves to anybody, plus the caller's address. Per-link bucketing is the
+ * point: one worker (or someone hammering one worker's link) must not be able
+ * to consume the budget of every other worker answering their own text at the
+ * same time, which a single global or per-IP-only bucket would allow behind a
+ * shared carrier NAT.
+ *
+ * EVERY attempt is recorded, not just refused ones: unlike a failed login, a
+ * successful answer is a one-shot act, so a caller making many of them is
+ * enumerating rather than working. Defaults: 30 attempts per link+IP per 15
+ * minutes — ample for a worker answering a week of assignments and retrying —
+ * tunable via the flood-config UI (`flood_edls-schedule-answer` variable).
+ */
+export const EDLS_SCHEDULE_ANSWER_FLOOD_EVENT = "edls-schedule-answer";
+
+export const edlsScheduleAnswerFloodEvent: FloodEventDefinition = {
+  name: EDLS_SCHEDULE_ANSWER_FLOOD_EVENT,
+  threshold: 30,
+  windowSeconds: 900,
+  getIdentifier: (context: FloodContext): string => {
+    if (!context.scheduleId || !context.ip) {
+      throw new Error("scheduleId and ip are required for edls-schedule-answer flood event");
+    }
+    return `${context.scheduleId}|${context.ip}`;
+  },
+  resolveIdentifierName: async (identifier: string): Promise<string | null> => {
+    const [scheduleId] = identifier.split("|");
+    return scheduleId || null;
+  },
+};
+
 export function registerFloodEvents(): void {
   registerFloodEvent(bookmarkFloodEvent);
   registerFloodEvent(localLoginFloodEvent);
   registerFloodEvent(localPasswordChangeFloodEvent);
+  registerFloodEvent(edlsScheduleAnswerFloodEvent);
   for (const event of notificationFloodEvents) {
     registerFloodEvent(event);
   }

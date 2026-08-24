@@ -120,7 +120,9 @@ import "./components/contract/001_create_contract_tables";
 import "./components/edls/001_add_show_status";
 import "./components/edls/002_add_sheet_notes_and_change_tracking";
 import "./components/edls/003_add_assignment_comm_id";
+import "./components/edls/004_add_assignment_accepted";
 import "./components/worker.ratings/001_add_sirius_id_to_options_worker_ratings";
+import "./components/worker.aat/001_create_worker_aat";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
 // into sync with the schema BEFORE the drift gate runs. Baseline scripts

@@ -104,6 +104,7 @@ import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
 import { registerWorkerTrustElectionsRoutes } from "./modules/trust/elections";
 import { registerTrustBenefitEligibilityExemptionsRoutes } from "./modules/trust/eligibility-exemptions";
 import { registerWorkerTosRoutes } from "./modules/workers/tos";
+import { registerWorkerAatRoutes } from "./modules/workers/aat";
 import { registerWorkerCertificationsRoutes } from "./modules/workers/certifications";
 import { registerWorkerRatingsRoutes } from "./modules/workers/ratings";
 import { requireComponent } from "./modules/components";
@@ -1758,6 +1759,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register worker time-off-sick (TOS) routes
   registerWorkerTosRoutes(app, requireAuth, requireAccess);
+
+  // Register worker access token (worker.aat) routes
+  registerWorkerAatRoutes(app, requireAuth, requireAccess);
 
   // Register worker certifications routes (handles all access control internally)
   registerWorkerCertificationsRoutes(app, requireAuth, requireAccess, requirePermission);

@@ -15,15 +15,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useState, useMemo } from "react";
-import pdfMake from "pdfmake/build/pdfmake";
-import pdfFonts from "pdfmake/build/vfs_fonts";
+import { downloadPdf } from "@/lib/pdf-export";
 import { useTerm } from "@/contexts/TerminologyContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useModalSeed } from "@/hooks/use-modal-seed";
-
-pdfMake.vfs = (pdfFonts as any).pdfMake?.vfs || pdfFonts.vfs;
 
 interface BargainingUnitStats {
   id: string;
@@ -176,7 +173,7 @@ async function fetchAllMissingCardchecks(employers: OrganizingEmployer[]): Promi
 
 type TermFn = (key: string, options?: { plural?: boolean; count?: number; capitalize?: boolean; lowercase?: boolean }) => string;
 
-function generateAggregatePdf(
+async function generateAggregatePdf(
   employers: OrganizingEmployer[],
   missingData: Map<string, FetchResult>,
   totalStats: { totalWorkers: number; signedWorkers: number; employerCount: number },
@@ -455,7 +452,7 @@ function generateAggregatePdf(
   };
 
   const fileName = `missing-cardchecks-all-schools-${new Date().toISOString().split('T')[0]}.pdf`;
-  pdfMake.createPdf(docDefinition as any).download(fileName);
+  await downloadPdf(docDefinition as any, fileName);
 }
 
 const iconMap: Record<string, typeof Building2> = {
@@ -1301,7 +1298,7 @@ export default function EmployersOrganizing() {
     setIsExporting(true);
     try {
       const missingData = await fetchAllMissingCardchecks(employers);
-      generateAggregatePdf(
+      await generateAggregatePdf(
         employers, missingData, totalStats, term, secondaryGroups,
         organizingData?.newMembers ?? [],
         organizingData?.newMemberDays ?? 30

@@ -174,6 +174,12 @@ export interface AssignmentForWorker {
   employer: { id: string; name: string } | null;
   showStatus: { id: string; name: string } | null;
   task: { id: string; name: string } | null;
+  /**
+   * The worker's own answer to this assignment: null unanswered, true
+   * accepted, false declined. Carried here because the public schedule page
+   * this read backs is where the worker gives it.
+   */
+  accepted: boolean | null;
   data: Record<string, unknown> | null;
 }
 
@@ -275,6 +281,31 @@ export interface EdlsAssignmentsStorage {
    * the send. All three are benign; the worker was texted either way.
    */
   setCommId(id: string, commId: string, dataWhenResolved: unknown): Promise<boolean>;
+  /**
+   * Record the WORKER'S OWN ANSWER to an assignment: true accepted, false
+   * declined. There is no third call — clearing the answer back to
+   * unanswered is not something anybody may ask for; it happens only as part
+   * of a real edit to the assignment's values (see `updateData`).
+   *
+   * Deliberately narrow for the same reason as `setCommId`: the answer is
+   * the worker's, not assignment input, so it is set here rather than
+   * through a general-purpose update a caller could reach with a request
+   * body. Staff have no route into it at all.
+   *
+   * ONE ANSWER ONLY. The "still unanswered" condition is part of the UPDATE
+   * rather than a read-then-write, so two simultaneous taps cannot both win:
+   * exactly one of them matches a null row.
+   *
+   * Leaves the receipt (`commId`) alone. Answering is not a change to the
+   * assignment — the worker was told about it as it stands and that stays
+   * true — so voiding the receipt here would re-text them at the sheet's
+   * next notifying transition.
+   *
+   * Returns false when nothing was recorded: no such assignment, or it has
+   * already been answered. The caller uses that to tell a first answer from
+   * a repeat.
+   */
+  setAccepted(id: string, accepted: boolean): Promise<boolean>;
   getAvailableWorkersForSheet(sheetYmd: string, industryId: string | null, ratingId?: string): Promise<AvailableWorkerForSheet[]>;
   /**
    * Report query: every assignment on a future (ymd >= fromYmd), non-trash
@@ -419,6 +450,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         crewId: string;
         commId: string | null;
         commStatus: string | null;
+        accepted: boolean | null;
         data: unknown;
         workerRowId: string;
         siriusId: number | null;
@@ -438,6 +470,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           ea.crew_id as "crewId",
           ea.comm_id as "commId",
           cm.status as "commStatus",
+          ea.accepted,
           ea.data,
           w.id as "workerRowId",
           w.sirius_id as "siriusId",
@@ -462,6 +495,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         crewId: row.crewId,
         commId: row.commId,
         commStatus: row.commStatus,
+        accepted: row.accepted,
         data: row.data,
         worker: {
           id: row.workerRowId,
@@ -557,15 +591,45 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       // Only a REAL change voids it. Re-saving the same values must leave the
       // receipt standing, or the note dialog becomes a resend button by
       // accident.
+      //
+      // The worker's answer rides on the same comparison, for the same
+      // reason: they have not agreed to the assignment it just became, so a
+      // real change puts them back to unanswered and they are asked again by
+      // the very notification the voided receipt earns them.
+      const unchanged = assignmentDataUnchanged(data);
       const [assignment] = await client
         .update(edlsAssignments)
         .set({
           data,
-          commId: sql`CASE WHEN ${assignmentDataUnchanged(data)} THEN ${edlsAssignments.commId} ELSE NULL END`,
+          commId: sql`CASE WHEN ${unchanged} THEN ${edlsAssignments.commId} ELSE NULL END`,
+          accepted: sql`CASE WHEN ${unchanged} THEN ${edlsAssignments.accepted} ELSE NULL END`,
         })
         .where(eq(edlsAssignments.id, id))
         .returning();
       return assignment || undefined;
+    },
+
+    async setAccepted(id: string, accepted: boolean): Promise<boolean> {
+      const client = getClient();
+      // `accepted IS NULL` is the whole of the one-answer rule, and it lives
+      // in the WHERE so the database decides the race: a double tap, a stale
+      // tab, or a replayed request finds the row already answered and
+      // matches nothing.
+      //
+      // Note what is NOT in the SET clause: `commId`. The worker has still
+      // been told about this assignment as it stands, so the receipt keeps
+      // standing and answering never puts them back into the next send.
+      const result = await client
+        .update(edlsAssignments)
+        .set({ accepted })
+        .where(
+          and(
+            eq(edlsAssignments.id, id),
+            sql`${edlsAssignments.accepted} IS NULL`,
+          ),
+        )
+        .returning({ id: edlsAssignments.id });
+      return result.length > 0;
     },
 
     async setCommId(id: string, commId: string, dataWhenResolved: unknown): Promise<boolean> {
@@ -752,6 +816,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         .select({
           assignmentId: edlsAssignments.id,
           assignmentData: edlsAssignments.data,
+          accepted: edlsAssignments.accepted,
           ymd: edlsSheets.ymd,
           sheetId: edlsSheets.id,
           sheetTitle: edlsSheets.title,
@@ -820,6 +885,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         employer: r.employerId ? { id: r.employerId, name: r.employerName! } : null,
         showStatus: r.showStatusId ? { id: r.showStatusId, name: r.showStatusName! } : null,
         task: r.taskId ? { id: r.taskId, name: r.taskName! } : null,
+        accepted: r.accepted,
         data: (r.assignmentData as Record<string, unknown> | null) ?? null,
       }));
     },
@@ -852,6 +918,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           workerId: edlsAssignments.workerId,
           assignmentId: edlsAssignments.id,
           assignmentData: edlsAssignments.data,
+          accepted: edlsAssignments.accepted,
           ymd: edlsSheets.ymd,
           sheetId: edlsSheets.id,
           sheetTitle: edlsSheets.title,
@@ -921,6 +988,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           employer: r.employerId ? { id: r.employerId, name: r.employerName! } : null,
           showStatus: r.showStatusId ? { id: r.showStatusId, name: r.showStatusName! } : null,
           task: r.taskId ? { id: r.taskId, name: r.taskName! } : null,
+          accepted: r.accepted,
           data: (r.assignmentData as Record<string, unknown> | null) ?? null,
         };
         const list = result.get(r.workerId);
@@ -1143,6 +1211,38 @@ export const edlsAssignmentsLoggingConfig = defineLoggingConfig<EdlsAssignmentsS
       getDescription: async (_args, _result, beforeState) => {
         const workerDesc = beforeState?.workerDesc || 'unknown worker';
         return `Updated assignment for ${workerDesc}`;
+      },
+    },
+    // `setAccepted` is not a create/update/delete name, so the middleware
+    // synthesizes no state hooks for it — they are spelled out here, in the
+    // same shape as `updateData` above.
+    //
+    // The request behind it is UNAUTHENTICATED (the worker answers from
+    // their public schedule link), so the entry carries no acting user. The
+    // description therefore has to say who answered as well as which way,
+    // or the sheet's history records an answer from nobody.
+    setAccepted: {
+      getEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        const assignment = await storage.get(args[0]);
+        if (!assignment) return undefined;
+        const workerDesc = await getWorkerDescription(assignment.workerId);
+        return { ...assignment, workerDesc };
+      },
+      after: async (_args, result) => ({ recorded: result === true }),
+      getHostEntityId: async (_args, _result, beforeState) => {
+        const crewId = beforeState?.crewId;
+        if (!crewId) return undefined;
+        return getSheetIdFromCrewId(crewId);
+      },
+      getDescription: async (args, result, beforeState) => {
+        const workerDesc = beforeState?.workerDesc || 'unknown worker';
+        const answer = args[1] === true ? 'accepted' : 'declined';
+        // A repeat answer changed nothing; say so rather than logging it as
+        // though the worker answered twice.
+        return result === true
+          ? `Worker ${workerDesc} ${answer} assignment`
+          : `Worker ${workerDesc} attempted to ${args[1] === true ? 'accept' : 'decline'} an already-answered assignment`;
       },
     },
   },

@@ -1324,6 +1324,13 @@ export {
 } from "./schema/worker/tos/schema";
 
 export {
+  workerAat,
+  insertWorkerAatSchema,
+  type WorkerAat,
+  type InsertWorkerAat,
+} from "./schema/worker/aat/schema";
+
+export {
   optionsWorkerRelationType,
   insertOptionsWorkerRelationTypeSchema,
   type OptionsWorkerRelationType,
