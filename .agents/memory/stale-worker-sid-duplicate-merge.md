@@ -26,3 +26,19 @@ The guarded repair was subsequently committed on the real rehearsal target with 
 **Why:** Future rehearsal work must not assume the stale duplicates or approved source-missing row still exist, or rerun the destructive repair.
 
 **How to apply:** Treat the duplicate consolidation as completed on that target and continue from the contacts/workers loader and remaining fleet gates.
+
+A guarded SSN-only ownership transfer is a valid narrower repair when the
+immediate blocker is a source-deleted merged account retaining the surviving
+person's SSN, and history consolidation is explicitly out of scope. Clear the
+stale row and assign the exact captured value to the canonical row in one
+locked transaction; preserve both Sirius IDs, mappings, workers, and dependent
+history.
+
+**Why:** This approach was rollback-rehearsed, committed, and post-verified on
+the real rehearsal target: canonical ownership became unique without changing
+identity mappings or reparenting references.
+
+**How to apply:** Guard current staged authority, canonical mapping, source
+deletion, unique SSN ownership, and both Sirius IDs. Treat the retired worker
+and its mapping as deliberately retained state, not as evidence that the SSN
+repair failed.
