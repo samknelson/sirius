@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
-import { htmlToPlainText } from "@shared/bulk-tokens";
+import { htmlToPlainText } from "@shared/utils/html";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { 
   Bell, 
@@ -18,6 +18,11 @@ import {
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { CommTagPicker } from "./CommTagPicker";
+import {
+  ComposeTemplateStudio,
+  refuseUnrenderedTokens,
+} from "./ComposeTemplateStudio";
+import type { ComposeTemplateTarget } from "@shared/comm-compose";
 import { useToast } from "@/hooks/use-toast";
 
 interface UserLookupResponse {
@@ -36,9 +41,11 @@ interface UserLookupResponse {
 interface CommInAppProps {
   contactId: string;
   onSendSuccess?: () => void;
+  /** The record this screen is about, for composing from a template. */
+  composeTarget?: ComposeTemplateTarget;
 }
 
-export function CommInApp({ contactId, onSendSuccess }: CommInAppProps) {
+export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInAppProps) {
   const { toast } = useToast();
   const [title, setTitle] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
@@ -94,6 +101,7 @@ export function CommInApp({ contactId, onSendSuccess }: CommInAppProps) {
 
   const handleSend = () => {
     if (!userLookup?.user?.id || !title.trim() || !derivedBody.trim()) return;
+    if (composeTarget && refuseUnrenderedTokens({ title, body: derivedBody }, toast)) return;
     sendInappMutation.mutate({
       userId: userLookup.user.id,
       title: title.trim(),
@@ -185,14 +193,38 @@ export function CommInApp({ contactId, onSendSuccess }: CommInAppProps) {
               />
             </div>
 
+            {composeTarget && (
+              <div className="flex justify-end">
+                <ComposeTemplateStudio
+                  target={composeTarget}
+                  channel="inapp"
+                  title="Compose In-App Message"
+                  fields={[
+                    { key: "title", label: "Title", mode: "line", maxLength: 100 },
+                    {
+                      key: "bodyHtml",
+                      label: "Message",
+                      mode: "html",
+                      hint: "Formatting is flattened to plain text on send.",
+                    },
+                  ]}
+                  values={{ title, bodyHtml }}
+                  onApply={(rendered) => {
+                    setTitle(rendered.title ?? "");
+                    setBodyHtml(rendered.bodyHtml ?? "");
+                  }}
+                  testId="button-compose-inapp-template"
+                />
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="inapp-body">Message</Label>
               <SimpleHtmlEditor
                 value={bodyHtml}
                 onChange={setBodyHtml}
-                enableTokens
                 minHeight={140}
-                placeholder="Type your notification message here — type / to insert a token"
+                placeholder="Type your notification message here"
                 data-testid="input-inapp-body"
               />
               <div className="flex items-center justify-between gap-2">

@@ -18,8 +18,25 @@ const settingsSchema = z.object({
 export type RetentionPolicy = z.infer<typeof retentionPolicySchema>;
 export type LogCleanupSettings = z.infer<typeof settingsSchema>;
 
+/**
+ * Pre-seeded retention policies shipped with the plugin.
+ * All policies start with `enabled: false` — an admin must explicitly enable
+ * each one after turning on the log-cleanup cron job (which is also disabled by
+ * default under Config → Cron Jobs).
+ *
+ * saml_debug: captures full SAML assertion payloads written when the "debug"
+ * component is enabled. Kept short (7 days) because entries include raw
+ * SAMLResponse XML and full IdP attribute payloads.
+ */
 const DEFAULT_SETTINGS: LogCleanupSettings = {
-  policies: [],
+  policies: [
+    {
+      module: "saml_debug",
+      operation: null,
+      retentionDays: 7,
+      enabled: false,
+    },
+  ],
 };
 
 /**

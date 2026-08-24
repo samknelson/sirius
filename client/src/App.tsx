@@ -18,6 +18,7 @@ import { ServerInjections } from "@/components/ServerInjections";
 
 // Essential pages loaded eagerly for fast initial render
 import LoginPage from "@/pages/login";
+import AuthErrorPage from "@/pages/auth-error";
 import UnauthorizedPage from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import VerifyWorkerPage from "@/pages/verify-worker";
@@ -26,6 +27,7 @@ import RegisterPage from "@/pages/register";
 // Lazy-loaded pages
 const Bootstrap = lazy(() => import("@/pages/bootstrap"));
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
+const EdlsSchedulePage = lazy(() => import("@/pages/edls-schedule"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const Bookmarks = lazy(() => import("@/pages/bookmarks"));
 const AccountPassword = lazy(() => import("@/pages/account-password"));
@@ -45,15 +47,23 @@ const WorkerGender = lazy(() => import("@/pages/worker-gender"));
 const WorkerWorkStatus = lazy(() => import("@/pages/worker-work-status"));
 const WorkerMemberStatus = lazy(() => import("@/pages/worker-member-status"));
 const WorkerUserPage = lazy(() => import("@/pages/worker-user"));
+const WorkerDashboardPage = lazy(() => import("@/pages/worker-dashboard"));
 const WorkerBargainingUnit = lazy(() => import("@/pages/worker-bargaining-unit"));
 const WorkerSteward = lazy(() => import("@/pages/worker-steward"));
 const WorkerDispatchStatus = lazy(() => import("@/pages/workers/dispatch-status"));
 const WorkerDispatchDoNotCall = lazy(() => import("@/pages/workers/dispatch-do-not-call"));
 const WorkerDispatchDepartments = lazy(() => import("@/pages/workers/dispatch-departments"));
 const WorkerDispatchHoldForEmployer = lazy(() => import("@/pages/workers/dispatch-hold-for-employer"));
+const WorkerDispatchT631Interviews = lazy(() => import("@/pages/workers/dispatch-t631-interviews"));
+const DispatchJobT631InterviewsPage = lazy(() => import("@/pages/dispatch/job-t631-interviews"));
+const DispatchJobT631InterviewOffersPage = lazy(() => import("@/pages/dispatch/job-t631-interview-offers"));
+const DispatchJobEmployerContactsPage = lazy(() => import("@/pages/dispatch/job-employer-contacts"));
 const WorkerDispatchEba = lazy(() => import("@/pages/workers/dispatch-eba"));
 const WorkerDispatchAsi = lazy(() => import("@/pages/workers/dispatch-asi"));
 const WorkerBans = lazy(() => import("@/pages/workers/bans"));
+const WorkerNotes = lazy(() => import("@/pages/workers/notes"));
+const EmployerNotes = lazy(() => import("@/pages/employers/notes"));
+const TrustProviderNotesPage = lazy(() => import("@/pages/trust-provider-notes"));
 const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
 const WorkerSecondShift = lazy(() => import("@/pages/worker-sitespecific-freeman-2shift"));
 const WorkerBaoBeneficiaries = lazy(() => import("@/pages/worker-sitespecific-bao-beneficiaries"));
@@ -70,6 +80,7 @@ const WorkerTos = lazy(() => import("@/pages/worker-tos"));
 const WorkerCertifications = lazy(() => import("@/pages/worker-certifications"));
 const WorkerCertificationView = lazy(() => import("@/pages/worker-certification-view"));
 const WorkerRatings = lazy(() => import("@/pages/worker-ratings"));
+const WorkerAat = lazy(() => import("@/pages/worker-aat"));
 const WorkerLedgerAccounts = lazy(() => import("@/pages/worker-ledger-accounts"));
 const WorkerSitespecificBaoEchp = lazy(() => import("@/pages/worker-sitespecific-bao-echp"));
 const Stewards = lazy(() => import("@/pages/stewards"));
@@ -105,6 +116,7 @@ const GrievanceView = lazy(() => import("@/pages/grievance-view"));
 const GrievanceEdit = lazy(() => import("@/pages/grievance-edit"));
 const GrievanceStatusHistory = lazy(() => import("@/pages/grievance-status-history"));
 const GrievanceLogs = lazy(() => import("@/pages/grievance-logs"));
+const GrievanceNotes = lazy(() => import("@/pages/grievance-notes"));
 const GrievanceTimeline = lazy(() => import("@/pages/grievance-timeline"));
 const GrievanceSettlements = lazy(() => import("@/pages/grievance-settlements"));
 const GrievanceFiles = lazy(() => import("@/pages/grievance-files"));
@@ -208,6 +220,8 @@ const BargainingUnitDeletePage = lazy(() => import("@/pages/bargaining-unit-dele
 const AdminUsersPage = lazy(() => import("@/pages/admin/users"));
 const UserAccountPage = lazy(() => import("@/pages/admin/user-account"));
 const UserLogs = lazy(() => import("@/pages/admin/user-logs"));
+
+const UserDashboardPage = lazy(() => import("@/pages/admin/user-dashboard"));
 const UserEmail = lazy(() => import("@/pages/admin/user-email"));
 const UserPhoneNumbers = lazy(() => import("@/pages/admin/user-phone-numbers"));
 const UserAddresses = lazy(() => import("@/pages/admin/user-addresses"));
@@ -275,7 +289,7 @@ const BaoCobraCases = lazy(() => import("@/pages/sitespecific/bao/cobra-cases"))
 const BaoCobraCaseAdd = lazy(() => import("@/pages/sitespecific/bao/cobra-case-add"));
 const BaoCobraCaseView = lazy(() => import("@/pages/sitespecific/bao/cobra-case-view"));
 const BaoCobraCaseEdit = lazy(() => import("@/pages/sitespecific/bao/cobra-case-edit"));
-const WsBundlesPage = lazy(() => import("@/pages/config/ws/bundles"));
+const WsServicesPage = lazy(() => import("@/pages/config/ws/services"));
 const WsClientsPage = lazy(() => import("@/pages/config/ws/clients"));
 const WsClientSettingsPage = lazy(() => import("@/pages/config/ws/client-settings"));
 const WsClientCredentialsPage = lazy(() => import("@/pages/config/ws/client-credentials"));
@@ -327,6 +341,8 @@ const DispatchEditPage = lazy(() => import("@/pages/dispatch/dispatch-edit"));
 const DispatchManagePage = lazy(() => import("@/pages/dispatch/dispatch-manage"));
 const MasqueradePage = lazy(() => import("@/pages/config/masquerade"));
 const SystemModePage = lazy(() => import("@/pages/config/system-mode"));
+const AuthSettingsPage = lazy(() => import("@/pages/config/auth-settings"));
+const EnvPage = lazy(() => import("@/pages/config/env"));
 const SystemStatusPage = lazy(() => import("@/pages/config/system-status"));
 const S1MigrationPage = lazy(() => import("@/pages/config/s1-migration"));
 const DefaultPolicyPage = lazy(() => import("@/pages/config/default-policy"));
@@ -348,6 +364,7 @@ const FileBrowserDetailPage = lazy(() => import("@/pages/admin/file-browser-deta
 const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
 const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
 const EbsInspectionPage = lazy(() => import("@/pages/admin/ebs"));
+const RestartPage = lazy(() => import("@/pages/admin/restart"));
 const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
 const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
 const LedgerAccountView = lazy(() => import("@/pages/config/ledger/account-view"));
@@ -450,10 +467,36 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       <Header />
       <HelpDisplay />
-      <main className="flex-1">{children}</main>
+      <main id="site-content" className="flex-1">{children}</main>
       <Footer />
     </div>
   );
+}
+
+/**
+ * The public EDLS worker schedule is the one route both audiences share: an
+ * anonymous visitor holding the link gets bare content (no header, menu or
+ * footer), while a signed-in staff member sees the same page inside the normal
+ * site chrome. The choice waits for the auth check to settle so the layout
+ * never flips on load. Deliberately local to this route — every other public
+ * route is unwrapped unconditionally.
+ */
+function EdlsScheduleRoute() {
+  const { isAuthenticated, authReady } = useAuth();
+
+  if (!authReady) {
+    return <PageLoader />;
+  }
+
+  if (isAuthenticated) {
+    return (
+      <AuthenticatedLayout>
+        <EdlsSchedulePage />
+      </AuthenticatedLayout>
+    );
+  }
+
+  return <EdlsSchedulePage />;
 }
 
 function Router() {
@@ -506,7 +549,9 @@ function Router() {
         <Route path="/verify-worker" component={VerifyWorkerPage} />
         <Route path="/register" component={RegisterPage} />
         <Route path="/unauthorized" component={UnauthorizedPage} />
+        <Route path="/auth-error" component={AuthErrorPage} />
         <Route path="/sms/optin/:token" component={SmsOptinPage} />
+        <Route path="/edls-sched/:id" component={EdlsScheduleRoute} />
 
       {/* Protected routes */}
       <Route path="/workers/add">
@@ -625,6 +670,14 @@ function Router() {
         <ProtectedRoute tabId="logs" entityType="grievance">
           <AuthenticatedLayout>
             <GrievanceLogs />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance/:id/notes">
+        <ProtectedRoute tabId="notes" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceNotes />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -857,10 +910,26 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/workers/:id/dashboard">
+        <ProtectedRoute tabId="dashboard" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerDashboardPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/:id/bans">
         <ProtectedRoute tabId="bans" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBans />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/notes">
+        <ProtectedRoute tabId="notes" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerNotes />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1001,6 +1070,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/workers/:id/aat">
+        <ProtectedRoute tabId="aat" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerAat />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/:id/union/bargaining-unit">
         <ProtectedRoute tabId="bargaining-unit" entityType="worker">
           <AuthenticatedLayout>
@@ -1101,6 +1178,14 @@ function Router() {
         <ProtectedRoute tabId="dispatch-eba" entityType="worker">
           <AuthenticatedLayout>
             <WorkerDispatchEba />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/dispatch/sitespecific_t631_interviews">
+        <ProtectedRoute tabId="dispatch-t631-interviews" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerDispatchT631Interviews />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1771,6 +1856,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/employers/:id/notes">
+        <ProtectedRoute tabId="notes" entityType="employer">
+          <AuthenticatedLayout>
+            <EmployerNotes />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/employers/:id/policy-history">
         <ProtectedRoute tabId="policy-history" entityType="employer">
           <AuthenticatedLayout>
@@ -2170,6 +2263,14 @@ function Router() {
         <ProtectedRoute tabId="premium-files" entityType="provider">
           <AuthenticatedLayout>
             <TrustProviderPremiumFilesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/provider/:id/notes">
+        <ProtectedRoute tabId="notes" entityType="provider">
+          <AuthenticatedLayout>
+            <TrustProviderNotesPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2921,11 +3022,11 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/bundles">
+      <Route path="/config/ws/services">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <WsBundlesPage />
+              <WsServicesPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -3199,6 +3300,51 @@ function Router() {
             <DispatchJobEligibleWorkersPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
+      </Route>
+
+      {/* entityId passed explicitly: URL extraction can't parse /dispatch/job/:id */}
+      <Route path="/dispatch/job/:id/sitespecific_t631_interviews">
+        {(params) => (
+          <ProtectedRoute
+            tabId="sitespecific-t631-interviews"
+            entityType="dispatch_job"
+            entityId={params.id}
+          >
+            <AuthenticatedLayout>
+              <DispatchJobT631InterviewsPage />
+            </AuthenticatedLayout>
+          </ProtectedRoute>
+        )}
+      </Route>
+
+      {/* entityId passed explicitly: URL extraction can't parse /dispatch/job/:id */}
+      <Route path="/dispatch/job/:id/sitespecific_t631_interviews/offers">
+        {(params) => (
+          <ProtectedRoute
+            tabId="sitespecific-t631-interviews-offers"
+            entityType="dispatch_job"
+            entityId={params.id}
+          >
+            <AuthenticatedLayout>
+              <DispatchJobT631InterviewOffersPage />
+            </AuthenticatedLayout>
+          </ProtectedRoute>
+        )}
+      </Route>
+
+      {/* entityId passed explicitly: URL extraction can't parse /dispatch/job/:id */}
+      <Route path="/dispatch/job/:id/employer_contacts">
+        {(params) => (
+          <ProtectedRoute
+            tabId="dispatch-job-employer-contacts"
+            entityType="dispatch_job"
+            entityId={params.id}
+          >
+            <AuthenticatedLayout>
+              <DispatchJobEmployerContactsPage />
+            </AuthenticatedLayout>
+          </ProtectedRoute>
+        )}
       </Route>
 
       <Route path="/dispatch/job/:id/foreperson">
@@ -3475,6 +3621,26 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/auth-settings">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <AuthSettingsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/env">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EnvPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/system-status">
         <ProtectedRoute policy="admin">
           <AuthenticatedLayout>
@@ -3674,6 +3840,17 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      {/* Restart the app / reload configuration in place (Task #1258). */}
+      <Route path="/admin/restart">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <RestartPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       {/* Read-only EBS (deferred event bus) inspection. */}
       <Route path="/admin/ebs">
         <ProtectedRoute permission="admin">
@@ -3796,6 +3973,15 @@ function Router() {
         <ProtectedRoute tabId="details" entityType="user">
           <AuthenticatedLayout>
             <UserAccountPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Staff view of another user's dashboard */}
+      <Route path="/users/:id/dashboard">
+        <ProtectedRoute tabId="dashboard" entityType="user">
+          <AuthenticatedLayout>
+            <UserDashboardPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

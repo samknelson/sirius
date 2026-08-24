@@ -5,10 +5,11 @@ description: How to add per-config filtering to an event-notifier plugin, and ho
 
 # Event-notifier per-config filtering
 
-An `EventNotifierPlugin`'s `getRecipients(ctx)` and `getMessage(medium, recipient, ctx)`
-only receive the fired event `ctx` (event + payload) — **not** the individual
-config's `data`. So any behavior that depends on the admin's per-config settings
-(e.g. "only notify for grievance roles X and Y") cannot live in those methods.
+An `EventNotifierPlugin`'s `getRecipients(ctx, configData)` and
+`getMessage(medium, recipient, ctx, configData)` now receive the config's
+`data` as a trailing optional arg (dispatcher passes it), so per-config
+recipient kinds and message text are possible. Per-config *gating* still
+belongs in `shouldDispatch`.
 
 **Rule:** for per-config gating, use the optional `shouldDispatch(ctx, configData)`
 hook on the plugin. The dispatcher calls it in `dispatchForConfig` (after the

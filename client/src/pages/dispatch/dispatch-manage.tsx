@@ -11,7 +11,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Save, Settings, AlertCircle, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { type DispatchStatus } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage, getEligibilityFailures, type EligibilityFailure } from "@/lib/queryClient";
+import { EligibilityFailureList } from "@/components/dispatch/EligibilityFailureList";
 import { useToast } from "@/hooks/use-toast";
 
 const statusLabels: Record<string, string> = {
@@ -34,6 +35,7 @@ function DispatchManageContent() {
   const { toast } = useToast();
   const [selectedStatus, setSelectedStatus] = useState<DispatchStatus>(dispatch.status as DispatchStatus);
   const [error, setError] = useState<string | null>(null);
+  const [eligibilityFailures, setEligibilityFailures] = useState<EligibilityFailure[]>([]);
 
   const { data: statusOptions, isLoading: isLoadingOptions } = useQuery<StatusOption[]>({
     queryKey: ["/api/dispatches", dispatch.id, "status-options"],
@@ -55,6 +57,7 @@ function DispatchManageContent() {
     },
     onSuccess: () => {
       setError(null);
+      setEligibilityFailures([]);
       toast({
         title: "Status updated",
         description: `Dispatch status changed to ${statusLabels[selectedStatus] || selectedStatus}`,
@@ -63,12 +66,19 @@ function DispatchManageContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/dispatches", dispatch.id, "status-options"] });
     },
     onError: async (err: any) => {
-      setError(getApiErrorMessage(err, "Failed to update status"));
+      const failures = getEligibilityFailures(err);
+      setEligibilityFailures(failures);
+      setError(
+        failures.length > 0
+          ? "This dispatch can't be accepted because the worker fails these eligibility criteria:"
+          : getApiErrorMessage(err, "Failed to update status"),
+      );
     },
   });
 
   const handleSave = () => {
     setError(null);
+    setEligibilityFailures([]);
     setStatusMutation.mutate(selectedStatus);
   };
 
@@ -88,7 +98,10 @@ function DispatchManageContent() {
           {error && (
             <Alert variant="destructive" data-testid="alert-error">
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription data-testid="text-error-message">{error}</AlertDescription>
+              <AlertDescription data-testid="text-error-message">
+                {error}
+                <EligibilityFailureList failures={eligibilityFailures} />
+              </AlertDescription>
             </Alert>
           )}
 

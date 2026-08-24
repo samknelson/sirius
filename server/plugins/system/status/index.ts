@@ -4,7 +4,7 @@ import { systemStatusPluginRegistry } from "./registry";
 
 export * from "./types";
 export { systemStatusPluginRegistry, registerSystemStatusPlugin } from "./registry";
-export { collectStatus, rescanPlugin, rescanAll } from "./collector";
+export { collectStatus, rescanPlugin, rescanAll, getPluginDetails } from "./collector";
 
 let kindRegistered = false;
 function registerSystemStatusKind(): void {
@@ -41,6 +41,7 @@ export function initializeSystemStatusPluginSystem(): void {
 import "./plugins/uptime";
 import "./plugins/user-activity";
 import "./plugins/instance";
+import "./plugins/container";
 import "./plugins/system-mode";
 import "./plugins/database-connection";
 import "./plugins/database-disk";

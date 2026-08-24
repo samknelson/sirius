@@ -81,6 +81,15 @@ function DispatchJobDetailsContent() {
     (c) => c.componentId === "dispatch.department" && c.enabled
   );
 
+  const facilityComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "dispatch.facility" && c.enabled
+  );
+
+  const { data: jobFacility } = useQuery<{ facilityId: string; facility?: { id: string; name: string } | null } | null>({
+    queryKey: ["/api/dispatch-jobs", job.id, "facility"],
+    enabled: facilityComponentEnabled,
+  });
+
   const { data: jobDepartment } = useQuery<{ departmentId: string; department?: { id: string; name: string } | null } | null>({
     queryKey: ["/api/dispatch-job-departments/job", job.id],
     enabled: departmentComponentEnabled,
@@ -147,6 +156,17 @@ function DispatchJobDetailsContent() {
               <p className="text-foreground" data-testid="text-department">
                 {jobDepartment?.department?.name || "No department"}
               </p>
+            </div>
+          )}
+          {facilityComponentEnabled && (
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Facility</h3>
+              <div className="flex items-center gap-2" data-testid="text-facility">
+                <MapPin className="h-4 w-4 text-muted-foreground" />
+                <span className="text-foreground">
+                  {jobFacility?.facility?.name || "No facility"}
+                </span>
+              </div>
             </div>
           )}
           <div>

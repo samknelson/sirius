@@ -32,6 +32,42 @@ export function getApiErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * Extract the per-problem detail lines an API rejection carries in
+ * `{ message, errors: string[] }` (e.g. the plugin config save routes, whose
+ * `errors` name the unsupported medium / bad template token / schema
+ * violation). Returns an empty array for any other error shape — callers fall
+ * back to the top-level message, which now summarizes the first problem.
+ */
+export function getApiErrorDetails(error: unknown): string[] {
+  if (!(error instanceof ApiError)) return [];
+  const errors = error.data?.errors;
+  if (!Array.isArray(errors)) return [];
+  return errors
+    .map((e: unknown) => (typeof e === "string" ? e.trim() : ""))
+    .filter((e): e is string => e.length > 0);
+}
+
+export interface EligibilityFailure {
+  pluginName: string;
+  explanation: string;
+}
+
+/**
+ * Extract structured eligibility failures from a 403 dispatch create/accept
+ * rejection (`{ message, eligibilityFailures: [{ pluginName, explanation }] }`).
+ * Returns an empty array for any other error shape.
+ */
+export function getEligibilityFailures(error: unknown): EligibilityFailure[] {
+  if (!(error instanceof ApiError)) return [];
+  const failures = error.data?.eligibilityFailures;
+  if (!Array.isArray(failures)) return [];
+  return failures.filter(
+    (f: any): f is EligibilityFailure =>
+      f && typeof f.pluginName === "string" && typeof f.explanation === "string",
+  );
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     let data: any = null;

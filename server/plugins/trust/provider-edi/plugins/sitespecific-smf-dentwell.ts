@@ -89,6 +89,8 @@ registerTrustProviderEdiPlugin({
     "monthly benefit record in the as-of month.",
   benefitSiriusIds: ["LADC"],
   outputFormat: "csv",
+  // CSV layouts have no fixed-width field metadata.
+  ediFields: [],
   configSchema: {
     type: "object",
     properties: {

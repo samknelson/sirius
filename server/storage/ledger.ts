@@ -235,6 +235,12 @@ export interface AccountParticipant {
 export interface LedgerAccountStorage {
   getAll(): Promise<LedgerAccount[]>;
   get(id: string): Promise<LedgerAccount | undefined>;
+  /**
+   * Look an account up by its optional external identifier. `sirius_id` is
+   * UNIQUE when present, so at most one row can match; a blank id is
+   * normalized to NULL on write and therefore never matches.
+   */
+  getBySiriusId(siriusId: string): Promise<LedgerAccount | undefined>;
   create(account: InsertLedgerAccount): Promise<LedgerAccount>;
   update(id: string, account: Partial<InsertLedgerAccount>): Promise<LedgerAccount | undefined>;
   delete(id: string): Promise<boolean>;
@@ -303,6 +309,15 @@ export function createLedgerAccountStorage(): LedgerAccountStorage {
     async get(id: string): Promise<LedgerAccount | undefined> {
       const client = getClient();
       const [account] = await client.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, id));
+      return account || undefined;
+    },
+
+    async getBySiriusId(siriusId: string): Promise<LedgerAccount | undefined> {
+      const client = getClient();
+      const [account] = await client
+        .select()
+        .from(ledgerAccounts)
+        .where(eq(ledgerAccounts.siriusId, siriusId));
       return account || undefined;
     },
 

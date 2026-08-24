@@ -122,10 +122,12 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'work-status', label: 'Work Status', hrefTemplate: '/workers/{id}/work-status', permission: 'staff' },
       { id: 'member-status', label: 'Member Status', hrefTemplate: '/workers/{id}/member-status', permission: 'staff' },
       { id: 'user', label: 'User', hrefTemplate: '/workers/{id}/user', permission: 'staff' },
+      { id: 'dashboard', label: 'Dashboard', hrefTemplate: '/workers/{id}/dashboard', permission: 'staff' },
       { id: 'skills', label: 'Skills', hrefTemplate: '/workers/{id}/skills', policyId: 'worker.view', component: 'worker.skills' },
       { id: 'certifications', label: 'Certifications', hrefTemplate: '/workers/{id}/certifications', policyId: 'worker.view', component: 'worker.certifications' },
       { id: 'ratings', label: 'Ratings', hrefTemplate: '/workers/{id}/ratings', permission: 'staff', component: 'worker.ratings' },
       { id: 'bans', label: 'Bans', hrefTemplate: '/workers/{id}/bans', policyId: 'worker.view', component: 'dispatch' },
+      { id: 'aat', label: 'Access Tokens', hrefTemplate: '/workers/{id}/aat', policyId: 'worker.mine', component: 'worker.aat' },
     ]
   },
   { 
@@ -193,6 +195,7 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'dispatch-hfe', label: 'Employer Priority', hrefTemplate: '/workers/{id}/dispatch/hold-for-employer', policyId: 'worker.view', component: 'dispatch.hfe' },
       { id: 'dispatch-eba', label: 'Availability Dates', hrefTemplate: '/workers/{id}/dispatch/eba', policyId: 'worker.mine', component: 'dispatch.eba' },
       { id: 'dispatch-asi', label: 'Auto Sign-In', hrefTemplate: '/workers/{id}/dispatch/asi', policyId: 'worker.dispatch.asi', component: 'dispatch.asi' },
+      { id: 'dispatch-t631-interviews', label: 'Interviews', hrefTemplate: '/workers/{id}/dispatch/sitespecific_t631_interviews', policyId: 'worker.view', component: 'sitespecific.t631.interviews' },
     ]
   },
   { id: 'political', label: 'Political', hrefTemplate: '/workers/{id}/political', permission: 'staff', component: 'sitespecific.btu.political' },
@@ -210,6 +213,7 @@ export const workerTabTree: HierarchicalTab[] = [
   },
   { id: 'vdb-pension', label: 'VDB Pension', hrefTemplate: '/workers/{id}/vdb-pension', permission: 'staff', component: 'sitespecific.gbhet.pension' },
   { id: 'grievances', label: 'Grievances', hrefTemplate: '/workers/{id}/grievances', permission: 'staff', component: 'grievance' },
+  { id: 'notes', label: 'Notes', hrefTemplate: '/workers/{id}/notes', permission: 'staff' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/workers/{id}/logs', permission: 'staff' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/workers/{id}/delete', permission: 'workers.delete' },
 ];
@@ -224,6 +228,7 @@ export const employerTabTree: HierarchicalTab[] = [
   { id: 'contacts', label: 'Contacts', hrefTemplate: '/employers/{id}/contacts', policyId: 'employer.steward.view' },
   { id: 'policy-history', label: 'Policy History', hrefTemplate: '/employers/{id}/policy-history', permission: 'staff' },
   { id: 'wizards', label: 'Wizards', hrefTemplate: '/employers/{id}/wizards', policyId: 'employer.mine' },
+  { id: 'notes', label: 'Notes', hrefTemplate: '/employers/{id}/notes', permission: 'staff' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/employers/{id}/logs', permission: 'staff' },
   { 
     id: 'accounting', label: 'Accounting', hrefTemplate: '/employers/{id}/ledger/accounts', policyId: 'employer.ledger', component: 'ledger',
@@ -263,6 +268,7 @@ export const providerTabTree: HierarchicalTab[] = [
   { id: 'contacts', label: 'Contacts', hrefTemplate: '/trust/provider/{id}/contacts', policyId: 'trust.provider.mine' },
   { id: 'edi', label: 'EDI', hrefTemplate: '/trust/provider/{id}/edi', permission: 'admin', component: 'trust.providers.edi' },
   { id: 'premium-files', label: 'Premium Files', hrefTemplate: '/trust/provider/{id}/premium-files', permission: 'staff', component: 'sitespecific.bao' },
+  { id: 'notes', label: 'Notes', hrefTemplate: '/trust/provider/{id}/notes', permission: 'staff', component: 'trust.providers' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/trust/provider/{id}/logs', permission: 'staff' },
 ];
 
@@ -363,6 +369,23 @@ export const dispatchJobTabTree: HierarchicalTab[] = [
     ]
   },
   { id: 'foreperson', label: 'Foreperson', hrefTemplate: '/dispatch/job/{id}/foreperson', permission: 'staff', component: 'dispatch.fore' },
+  {
+    id: 'sitespecific-t631-interviews',
+    label: 'Interviews',
+    hrefTemplate: '/dispatch/job/{id}/sitespecific_t631_interviews',
+    policyId: 'sitespecific.t631.job.interviews',
+    component: 'sitespecific.t631.interviews',
+    children: [
+      // List = the pre-existing interviews page; same relevance policy as the parent.
+      { id: 'sitespecific-t631-interviews-list', label: 'List', hrefTemplate: '/dispatch/job/{id}/sitespecific_t631_interviews', policyId: 'sitespecific.t631.job.interviews', component: 'sitespecific.t631.interviews' },
+      // Offers is staff-only (the parent policy also grants linked employers,
+      // so the child must gate on permission, not the policy).
+      { id: 'sitespecific-t631-interviews-offers', label: 'Offers', hrefTemplate: '/dispatch/job/{id}/sitespecific_t631_interviews/offers', permission: 'staff', component: 'sitespecific.t631.interviews' },
+    ]
+  },
+  // Staff AND employer users linked to the job's employer (policy, not a
+  // staff permission — the policy delegates to employer.mine).
+  { id: 'dispatch-job-employer-contacts', label: 'Employer Contacts', hrefTemplate: '/dispatch/job/{id}/employer_contacts', policyId: 'dispatch.job.employer.contacts', component: 'dispatch' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/dispatch/job/{id}/edit', permission: 'staff', component: 'dispatch' },
 ];
 
@@ -414,7 +437,7 @@ export const edlsSheetTabTree: HierarchicalTab[] = [
   ] },
   { id: 'edit', label: 'Edit', hrefTemplate: '/edls/sheet/{id}/edit', policyId: 'edls.sheet.edit', component: 'edls' },
   { id: 'manage', label: 'Manage', hrefTemplate: '/edls/sheet/{id}/manage', policyId: 'edls.sheet.manage', component: 'edls' },
-  { id: 'assignments', label: 'Assignments', hrefTemplate: '/edls/sheet/{id}/assignments', policyId: 'edls.sheet.edit', component: 'edls' },
+  { id: 'assignments', label: 'Assign Workers', hrefTemplate: '/edls/sheet/{id}/assignments', policyId: 'edls.sheet.edit', component: 'edls' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.coordinator', component: 'edls', children: [
     { id: 'activity', label: 'Activity', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.coordinator', component: 'edls' },
     { id: 'snapshots', label: 'Snapshots', hrefTemplate: '/edls/sheet/{id}/logs/snapshots', policyId: 'edls.sheet.view', component: 'edls' },
@@ -475,6 +498,7 @@ export const grievanceTabTree: HierarchicalTab[] = [
   },
   { id: 'settlements', label: 'Settlements', hrefTemplate: '/grievance/{id}/settlements', permission: 'staff', component: 'grievance.settlement' },
   { id: 'files', label: 'Files', hrefTemplate: '/grievance/{id}/files', permission: 'staff', component: 'grievance' },
+  { id: 'notes', label: 'Notes', hrefTemplate: '/grievance/{id}/notes', permission: 'staff', component: 'grievance' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/grievance/{id}/logs', permission: 'staff', component: 'grievance' },
 ];
 
@@ -613,6 +637,7 @@ export const userTabTree: HierarchicalTab[] = [
       { id: 'send-inapp', label: 'Send In-App', hrefTemplate: '/users/{id}/comm/send-inapp', permission: 'staff' },
     ],
   },
+  { id: 'dashboard', label: 'Dashboard', hrefTemplate: '/users/{id}/dashboard', permission: 'staff' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/users/{id}/logs', permission: 'admin' },
 ];
 

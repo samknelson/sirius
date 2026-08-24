@@ -27,7 +27,7 @@ registerSystemStatusPlugin({
         title: `URL: ${url ?? "not available"}`,
         details: url
           ? undefined
-          : "No public URL is configured (REPLIT_DEV_DOMAIN, REPLIT_DEPLOYMENT_DOMAIN, and PUBLIC_URL are all unset).",
+          : "No public URL is configured (set PUBLIC_URL; on Replit the platform domains are used automatically).",
       },
     ];
   },

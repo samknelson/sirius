@@ -16,8 +16,10 @@ import { ColorWidget } from "./widgets/ColorWidget";
 import { EnumSelectWidget } from "./widgets/EnumSelectWidget";
 import { HtmlEditorWidget } from "./widgets/HtmlEditorWidget";
 import { ArrayTableField } from "./fields/ArrayTableField";
+import { NotifierChannelTemplatesField } from "./fields/NotifierChannelTemplatesField";
 import { StaffRecipientsField } from "./fields/StaffRecipientsField";
 import { SystemRolesField } from "./fields/SystemRolesField";
+import { WorkerBanPluginsField } from "./fields/WorkerBanPluginsField";
 
 const validator = customizeValidator({
   ajvOptionsOverrides: { $data: true },
@@ -33,6 +35,18 @@ export interface SchemaFormContext {
   selfItems?: Array<{ id: string; name: string }>;
   /** Id of the row currently being edited (excluded from self-pickers). */
   editingId?: string | null;
+  /**
+   * The live form data of the config being edited (for widgets whose
+   * behavior depends on sibling fields, e.g. the notifier template
+   * card's recipient-kind-dependent defaults).
+   */
+  configData?: Record<string, unknown>;
+  /**
+   * Deep-set one dotted path (e.g. "templates.email.subject") into the
+   * live form data — lets a widget-hosted editor (Template Studio) edit
+   * sibling fields outside its own RJSF field.
+   */
+  updateConfigData?: (path: string, value: unknown) => void;
 }
 
 export interface SchemaFormProps<T = Record<string, unknown>>
@@ -80,6 +94,10 @@ function buildVendorUiSchema(
       field = "staffRecipients";
     } else if (subAny["x-widget"] === "system-roles") {
       field = "systemRoles";
+    } else if (subAny["x-widget"] === "worker-ban-plugins") {
+      field = "workerBanPlugins";
+    } else if (subAny["x-widget"] === "notifier-channel-templates") {
+      field = "notifierChannelTemplates";
     } else if (
       typeof subAny["x-options-resource"] === "string" ||
       typeof subAny["x-options-endpoint"] === "string"
@@ -98,7 +116,8 @@ function buildVendorUiSchema(
     } else if (widget && !existing["ui:widget"]) {
       out[name] = { ...existing, "ui:widget": widget };
     }
-    if ((sub as RJSFSchema).type === "object") {
+    // A custom field owns its whole subtree — don't map its children too.
+    if ((sub as RJSFSchema).type === "object" && !(out[name] as UiSchema)?.["ui:field"]) {
       out[name] = buildVendorUiSchema(sub, out[name] as UiSchema);
     }
   }
@@ -127,6 +146,8 @@ const baseFields = {
   arrayTable: ArrayTableField,
   staffRecipients: StaffRecipientsField,
   systemRoles: SystemRolesField,
+  workerBanPlugins: WorkerBanPluginsField,
+  notifierChannelTemplates: NotifierChannelTemplatesField,
 } as unknown as RegistryFieldsType;
 
 /**

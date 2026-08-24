@@ -10,6 +10,7 @@ import {
   type NotifierMessageContent,
   type NotifierRecipient,
 } from "../types";
+import { absoluteUrl } from "../../../lib/base-url";
 
 function payloadOf(ctx: EventNotifierEventContext): TosAbsenceReminderPayload {
   return ctx.payload as TosAbsenceReminderPayload;
@@ -21,11 +22,7 @@ function payloadOf(ctx: EventNotifierEventContext): TosAbsenceReminderPayload {
  * link. Mirrors the domain resolution used by the grievance notifiers.
  */
 function absoluteWorkerUrl(workerId: string): string {
-  const domain =
-    process.env.REPLIT_DEV_DOMAIN ||
-    process.env.REPLIT_DOMAINS?.split(",")[0] ||
-    "localhost:5000";
-  return `https://${domain}/workers/${workerId}`;
+  return absoluteUrl(`/workers/${workerId}`);
 }
 
 /**
@@ -65,7 +62,9 @@ export const tosAbsenceNotifier: EventNotifierPlugin = {
     const { workerId, offset, absenceStartDate } = payloadOf(ctx);
     const dayWord = offset === 1 ? "day" : "days";
     const body = `It has been ${offset} ${dayWord} since an absence beginning ${absenceStartDate}.`;
-    const title = "Absence Reminder";
+    // Two segments: the reminder is about the recipient's own absence,
+    // and the body already dates it.
+    const title = "TOS - absence reminder";
     const linkUrl = `/workers/${workerId}`;
     const absoluteUrl = absoluteWorkerUrl(workerId);
 

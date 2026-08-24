@@ -10,80 +10,76 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useToast } from "@/hooks/use-toast";
 import {
-  Activity,
-  AlertTriangle,
-  CheckCircle2,
-  Info,
-  RefreshCw,
-  XCircle,
-} from "lucide-react";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import { Activity, List, RefreshCw } from "lucide-react";
+import {
+  CARD_PRIORITY_CLASSES,
+  PriorityIcon,
+  StatusDetailsView,
+  StatusMessageList,
+  type StatusDetails,
+  type SystemStatusEntry,
+} from "@/components/system-status/status-render";
 
-type StatusPriority = "info" | "notice" | "warning" | "error";
+/**
+ * Details drill-down dialog. Fetches fresh on every open (staleTime 0,
+ * gcTime 0 — never served from cache, matching the server's no-store).
+ */
+function DetailsDialog({
+  entry,
+  onClose,
+}: {
+  entry: SystemStatusEntry;
+  onClose: () => void;
+}) {
+  const { data, isLoading, error } = useQuery<StatusDetails>({
+    queryKey: [`/api/system-status/${entry.id}/details`],
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: "always",
+  });
 
-interface StatusMessage {
-  priority: StatusPriority;
-  title: string;
-  details?: string;
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{entry.name} — Details</DialogTitle>
+          <DialogDescription>
+            Loaded fresh just now; this data is never cached.
+          </DialogDescription>
+        </DialogHeader>
+        {isLoading && (
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+          </div>
+        )}
+        {error != null && (
+          <p className="text-sm text-destructive">
+            {getApiErrorMessage(error, "Failed to load details")}
+          </p>
+        )}
+        {data && <StatusDetailsView details={data} />}
+      </DialogContent>
+    </Dialog>
+  );
 }
-
-interface SystemStatusEntry {
-  id: string;
-  name: string;
-  description: string;
-  canRescan: boolean;
-  worstPriority: StatusPriority;
-  result: {
-    pluginId: string;
-    messages: StatusMessage[];
-    scannedAt: string;
-    durationMs: number;
-  };
-}
-
-function PriorityIcon({ priority }: { priority: StatusPriority }) {
-  switch (priority) {
-    case "error":
-      return <XCircle className="h-4 w-4 text-destructive" />;
-    case "warning":
-      return <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />;
-    case "notice":
-      return <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />;
-    default:
-      return <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />;
-  }
-}
-
-function PriorityBadge({ priority }: { priority: StatusPriority }) {
-  switch (priority) {
-    case "error":
-      return <Badge variant="destructive">Error</Badge>;
-    case "warning":
-      return (
-        <Badge className="bg-yellow-500 hover:bg-yellow-500/90 text-white">Warning</Badge>
-      );
-    case "notice":
-      return <Badge variant="secondary">Notice</Badge>;
-    default:
-      return <Badge variant="outline">Info</Badge>;
-  }
-}
-
-const CARD_PRIORITY_CLASSES: Record<StatusPriority, string> = {
-  info: "border-green-500/50 bg-green-50/50 dark:bg-green-950/20",
-  notice: "border-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20",
-  warning: "border-yellow-500/50 bg-yellow-50/50 dark:bg-yellow-950/20",
-  error: "border-red-500/50 bg-red-50/50 dark:bg-red-950/20",
-};
 
 export default function SystemStatusPage() {
   usePageTitle("System Status");
   const { toast } = useToast();
   const [rescanningId, setRescanningId] = useState<string | null>(null);
+  const [detailsEntry, setDetailsEntry] = useState<SystemStatusEntry | null>(null);
 
   const { data: entries, isLoading } = useQuery<SystemStatusEntry[]>({
     queryKey: ["/api/system-status"],
@@ -209,6 +205,17 @@ export default function SystemStatusPage() {
                     {entry.result.durationMs}ms)
                   </span>
                 )}
+                {entry.hasDetails && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDetailsEntry(entry)}
+                    data-testid={`button-details-${entry.id}`}
+                  >
+                    <List className="h-3.5 w-3.5 mr-1.5" />
+                    Details
+                  </Button>
+                )}
                 {entry.canRescan && (
                   <Button
                     variant="outline"
@@ -228,28 +235,17 @@ export default function SystemStatusPage() {
             <CardDescription>{entry.description}</CardDescription>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-2">
-              {entry.result.messages.map((message, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-2"
-                  data-testid={`row-status-message-${entry.id}-${i}`}
-                >
-                  <PriorityBadge priority={message.priority} />
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium">{message.title}</div>
-                    {message.details && (
-                      <div className="text-sm text-muted-foreground break-words">
-                        {message.details}
-                      </div>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <StatusMessageList
+              messages={entry.result.messages}
+              testIdPrefix={`row-status-message-${entry.id}`}
+            />
           </CardContent>
         </Card>
       ))}
+
+      {detailsEntry && (
+        <DetailsDialog entry={detailsEntry} onClose={() => setDetailsEntry(null)} />
+      )}
 
       {entries && entries.length === 0 && (
         <Card>

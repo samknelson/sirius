@@ -96,15 +96,6 @@ const EDI_FIELDS: EdiField[] = [
   { name: "Record End Designator", width: 5, get: () => "HNPES" },
 ];
 
-/** Encode one persisted row as a fixed-width HealthNet record (exported for the format check script). */
-export function encodeHealthnetRow(row: Record<string, unknown>): string {
-  return encodeFixedWidthRow(EDI_FIELDS, row);
-}
-
-/** Exported for the format check script. */
-export const HEALTHNET_EDI_FIELDS: ReadonlyArray<{ name: string; width: number }> =
-  EDI_FIELDS.map((f) => ({ name: f.name, width: f.width }));
-
 /**
  * Relation-type sirius id → HealthNet member type. Legacy comment:
  * M = Self (subscriber), P = Domestic Partner, S = Spouse, Q = QMSCO,
@@ -150,6 +141,7 @@ registerTrustProviderEdiPlugin({
   // Default membership: wmb rows for these benefits in the as-of month
   // (config-level benefitSiriusId still overrides per config).
   benefitSiriusIds: ["H"],
+  ediFields: EDI_FIELDS,
   configSchema: {
     type: "object",
     properties: {
@@ -298,7 +290,7 @@ registerTrustProviderEdiPlugin({
   },
 
   encodeRow(row) {
-    return encodeHealthnetRow(row);
+    return encodeFixedWidthRow(EDI_FIELDS, row);
   },
 
   buildFilename() {

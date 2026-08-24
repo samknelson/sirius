@@ -1,10 +1,32 @@
 import { storage } from "../../../storage";
+import {
+  getEnvironmentVariable,
+  registerEnvironmentVariable,
+} from "../../../config/env-registry";
 import { 
   ParseAddressRequest, 
   ParseAddressResponse, 
   StructuredAddress,
   AddressParseValidation 
 } from "@shared/schema";
+
+/**
+ * Resolve the Google Maps API key from the dynamically-configured env var
+ * name, registering it in the env registry (as a secret) on the fly.
+ */
+function resolveGoogleApiKey(apiKeyName: string): string | undefined {
+  if (!apiKeyName) return undefined;
+  // changeTakesEffect: "immediate" — this runs at the point of each Google
+  // call and the value it returns is used straight away, never cached.
+  registerEnvironmentVariable({
+    name: apiKeyName,
+    description: "Google Maps API key named by the address-validation config.",
+    secret: true,
+    category: "core",
+    changeTakesEffect: "immediate",
+  });
+  return getEnvironmentVariable(apiKeyName);
+}
 
 // Address validation configuration interface
 export interface AddressValidationConfig {
@@ -234,7 +256,7 @@ class AddressValidationService {
 
   private async validateWithGoogle(address: AddressInput): Promise<AddressValidationResult> {
     const config = await this.getConfig();
-    const apiKey = process.env[config.google.apiKeyName];
+    const apiKey = resolveGoogleApiKey(config.google.apiKeyName);
     
     if (!apiKey) {
       throw new Error(`Google Maps API key not found in environment variable: ${config.google.apiKeyName}`);
@@ -437,7 +459,7 @@ class AddressValidationService {
     validation: AddressParseValidation;
   }> {
     const config = await this.getConfig();
-    const apiKey = process.env[config.google.apiKeyName];
+    const apiKey = resolveGoogleApiKey(config.google.apiKeyName);
     
     if (!apiKey) {
       throw new Error(`Google Maps API key not found in environment variable: ${config.google.apiKeyName}`);
@@ -835,7 +857,7 @@ class AddressValidationService {
     error?: string;
   }> {
     const config = await this.getConfig();
-    const apiKey = process.env[config.google.apiKeyName];
+    const apiKey = resolveGoogleApiKey(config.google.apiKeyName);
     
     if (!apiKey) {
       return {

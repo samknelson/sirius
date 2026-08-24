@@ -26,7 +26,13 @@ import { eventBus, EventType } from "../../services/event-bus";
 import { logger } from "../../logger";
 import { storage } from "../index";
 import { isComponentEnabledSync } from "../../services/component-cache";
+import { getRequestContext } from "../../middleware/request-context";
 import type { SnapshotNode } from "@shared/snapshots";
+import {
+  getEdlsPassportExportPage,
+  type EdlsPassportExportQuery,
+  type EdlsPassportExportPage,
+} from "./passport-export";
 
 /**
  * The dispatch_job_group table is owned by the `dispatch.job_group`
@@ -35,6 +41,16 @@ import type { SnapshotNode } from "@shared/snapshots";
  */
 function jobGroupsEnabled(): boolean {
   return isComponentEnabledSync("dispatch.job_group");
+}
+
+/**
+ * The effective acting user for the current request, or null when there is no
+ * request context at all (background jobs, scripts, tests). Masquerading is
+ * already resolved by the context middleware, so a masqueraded user is
+ * attributed as the actor — the house convention everywhere else.
+ */
+function getActingUserId(): string | null {
+  return getRequestContext()?.userId ?? null;
 }
 
 export interface EdlsSheetWithCrews extends EdlsSheet {
@@ -125,6 +141,11 @@ export interface EdlsSheetsFilterOptions {
   jobGroupId?: string;
   facilityId?: string;
   showStatusId?: string;
+  /**
+   * Only sheets whose `changed` timestamp is at or after this instant — i.e.
+   * sheets created or edited since that point in time.
+   */
+  changedSince?: Date;
 }
 
 export interface EdlsSheetsStorage {
@@ -152,25 +173,43 @@ export interface EdlsSheetsStorage {
    * does not exist. See `shared/snapshots.ts` for the bundle contract.
    */
   export(id: string): Promise<SnapshotNode | undefined>;
+  /**
+   * Freeman passport export: one page of "Scheduled" (`lock`) sheets with
+   * their crews and assignments, plus the total for paging. See
+   * `./passport-export.ts` for the shape and the absent-tolerance rules.
+   */
+  getPassportExportPage(query: EdlsPassportExportQuery): Promise<EdlsPassportExportPage>;
 }
 
 /**
- * Emit `EDLS_SHEET_SAVED` after the surrounding transaction commits.
- * `previousStatus` is null on create (the sheet "arrives" at its initial
- * status) and the pre-update status on update; consumers gate on the
- * transition themselves. Emitted after commit so a listener can never
- * observe (or notify about) a write that later rolled back.
+ * Record the save in the sheet's history and emit `EDLS_SHEET_SAVED` after the
+ * surrounding transaction commits. `previousStatus` is null on create (the
+ * sheet "arrives" at its initial status) and the pre-update status on update;
+ * consumers gate on the transition themselves. The event is emitted after
+ * commit so a listener can never observe (or notify about) a write that later
+ * rolled back.
+ *
+ * MUST be called from inside the save's transaction. The history entry is
+ * written there, with the save, rather than by a listener afterwards: see
+ * `captureEntitySnapshot`. Consumers that read that history back — the EDLS
+ * worker SMS notifier compares each save's roster against the previous one's —
+ * depend on every earlier save's entry already being committed by the time
+ * they run, which only holds if the entry commits with the save.
  */
-function emitSheetSaved(sheet: EdlsSheet, previousStatus: string | null): void {
+async function emitSheetSaved(sheet: EdlsSheet, previousStatus: string | null): Promise<void> {
+  const payload = {
+    sheetId: sheet.id,
+    previousStatus,
+    newStatus: sheet.status,
+    sheet,
+  };
+
+  const { captureEntitySnapshot } = await import("../../services/snapshots/capture");
+  await captureEntitySnapshot(EventType.EDLS_SHEET_SAVED, payload);
+
   onAfterCommit(() => {
     eventBus
-      .emit(EventType.EDLS_SHEET_SAVED, {
-        sheetId: sheet.id,
-        previousStatus,
-        newStatus: sheet.status,
-        title: sheet.title,
-        ymd: sheet.ymd,
-      })
+      .emit(EventType.EDLS_SHEET_SAVED, payload)
       .catch((err) => {
         logger.error(
           `Failed to emit EDLS_SHEET_SAVED for sheet ${sheet.id}: ${err instanceof Error ? err.message : String(err)}`,
@@ -216,6 +255,9 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       }
       if (filters?.showStatusId) {
         conditions.push(eq(edlsSheets.showStatusId, filters.showStatusId));
+      }
+      if (filters?.changedSince) {
+        conditions.push(gte(edlsSheets.changed, filters.changedSince));
       }
       
       const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
@@ -317,6 +359,10 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       const client = getClient();
       const [sheet] = await client.select().from(edlsSheets).where(eq(edlsSheets.id, id));
       return sheet || undefined;
+    },
+
+    async getPassportExportPage(query: EdlsPassportExportQuery): Promise<EdlsPassportExportPage> {
+      return getEdlsPassportExportPage(query);
     },
 
     async export(id: string): Promise<SnapshotNode | undefined> {
@@ -426,12 +472,24 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         .orderBy(desc(edlsSheets.ymd));
     },
 
+
     async create(insertSheet: InsertEdlsSheet, crews: CrewInput[]): Promise<EdlsSheetWithCrews> {
       await validate.validateOrThrow({ ...insertSheet, _crews: crews });
       
       return runInTransaction(async () => {
         const client = getClient();
-        const [sheet] = await client.insert(edlsSheets).values(insertSheet).returning();
+        // `createdBy` / `changed` are storage-owned: the creator is stamped
+        // once here from the acting user (null when there is no request
+        // context, e.g. a background job or script) and `changed` is
+        // refreshed on every save so no caller can forget it.
+        //
+        // `changed` is stamped by the DATABASE, not by `new Date()`. See the
+        // note on `update` below: consumers order it against timestamps the
+        // database wrote, and two clocks would order wrongly.
+        const [sheet] = await client
+          .insert(edlsSheets)
+          .values({ ...insertSheet, createdBy: getActingUserId(), changed: sql`now()` })
+          .returning();
         
         const crewsWithSheetId = crews.map((c, index) => {
           const { id: _, ...crewData } = c;
@@ -439,7 +497,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         });
         const createdCrews = await storage.edlsCrews.createMany(crewsWithSheetId);
         
-        emitSheetSaved(sheet, null);
+        await emitSheetSaved(sheet, null);
         
         return { ...sheet, crews: createdCrews };
       });
@@ -464,10 +522,23 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
           : safeSheetUpdate;
         await validate.validateOrThrow(validationInput, existingSheet);
         
-        // Update the sheet
-        const [updatedSheet] = Object.keys(safeSheetUpdate).length > 0
-          ? await client.update(edlsSheets).set(safeSheetUpdate).where(eq(edlsSheets.id, id)).returning()
-          : [existingSheet];
+        // Update the sheet. `changed` is refreshed on every save — including a
+        // crews-only save, where no sheet column changes — so no caller can
+        // forget it. The creator is stamped once at create and never rewritten.
+        //
+        // The stamp comes from the DATABASE (`now()`), deliberately not from
+        // `new Date()` on the app host. It is not just a display value: it is
+        // this save's IDENTITY, captured into the sheet's snapshot bundle and
+        // read back later to tell one save's history from another's (the EDLS
+        // worker SMS notifier compares rosters between saves that way). Every
+        // app host stamping from its own clock would order the same sheet's
+        // saves differently depending on which host handled them; one database
+        // clock has no skew to reason about.
+        const [updatedSheet] = await client
+          .update(edlsSheets)
+          .set({ ...safeSheetUpdate, changed: sql`now()` })
+          .where(eq(edlsSheets.id, id))
+          .returning();
         
         // If status changed to "trash", delete all assignments individually for audit logging
         if (safeSheetUpdate.status === 'trash' && existingSheet.status !== 'trash') {
@@ -517,7 +588,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         // Load final crews state
         const allCrews = await storage.edlsCrews.getBySheetId(id);
         
-        emitSheetSaved(updatedSheet, existingSheet.status);
+        await emitSheetSaved(updatedSheet, existingSheet.status);
         
         return { ...updatedSheet, crews: allCrews };
       });

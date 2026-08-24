@@ -1,172 +1,119 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { BulkMessageLayout, useBulkMessageLayout } from "@/components/layouts/BulkMessageLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
-import { Loader2, Save, Mail, MessageSquare, MapPin, Bell, Eye, AlertTriangle } from "lucide-react";
-import { TokenPicker } from "@/components/bulk/TokenPicker";
-import { SlashTokenField } from "@/components/bulk/SlashTokenField";
-import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
+import { Loader2, Save, Mail, MessageSquare, MapPin, Bell } from "lucide-react";
+import { TokenStudioButton, type StudioField } from "@/components/template-studio/TokenStudio";
+import { TokenText } from "@/components/template-studio/TokenText";
 import { cn } from "@/lib/utils";
-import { findUnknownTokenIds, extractTokenIds, htmlToPlainText } from "@shared/bulk-tokens";
+import { escapeHtml, htmlToPlainText } from "@shared/utils/html";
+import { BULK_CHANNEL_FIELDS } from "@shared/delivery-fields";
 
-type TokenInsertTarget = HTMLInputElement | HTMLTextAreaElement;
+/**
+ * Bulk message content, one medium at a time.
+ *
+ * The template text of every medium is edited in the Template Studio and
+ * nowhere else: this page shows what is saved (tokens as readable chips)
+ * and opens the studio to change it. There is no second, weaker editor
+ * with its own token picker, because two doors means two answers to
+ * "what does this token do here" — and only the studio can preview
+ * against a real record.
+ *
+ * Settings that are NOT template text — a postal template id, mail type,
+ * the colour switches — stay here, where they belong.
+ */
 
-function useTokenInserter() {
-  const lastFocusedRef = useRef<{ key: string; el: TokenInsertTarget } | null>(null);
-  const setValueRef = useRef<Record<string, (next: string) => void>>({});
+/** Bulk's token endpoints; the studio's own are gated differently. */
+const bulkTokenCatalogUrl = (messageId: string) => `/api/bulk-tokens/${messageId}`;
+const BULK_TOKEN_TREE_URL = "/api/bulk-tokens/tree";
 
-  const registerField = useCallback((key: string, setValue: (next: string) => void) => {
-    setValueRef.current[key] = setValue;
-  }, []);
+// Field declarations are shared between the summary rows and the studio
+// that edits them, so a field can never be editable but invisible (or
+// the reverse). Character limits are the storing column's.
+const EMAIL_FIELDS: StudioField[] = [
+  { key: "subject", label: "Subject", mode: "line" },
+  { key: "bodyHtml", label: "Body", mode: "html" },
+];
 
-  const handleFocus = useCallback((key: string) => (e: React.FocusEvent<TokenInsertTarget>) => {
-    lastFocusedRef.current = { key, el: e.currentTarget };
-  }, []);
+const SMS_FIELDS: StudioField[] = [
+  { key: "body", label: "Message body", mode: "multiline" },
+];
 
-  const insertToken = useCallback((snippet: string) => {
-    const focused = lastFocusedRef.current;
-    if (!focused) return;
-    const { key, el } = focused;
-    const setValue = setValueRef.current[key];
-    if (!setValue) return;
-    const start = el.selectionStart ?? el.value.length;
-    const end = el.selectionEnd ?? el.value.length;
-    const before = el.value.slice(0, start);
-    const after = el.value.slice(end);
-    const next = `${before}${snippet}${after}`;
-    setValue(next);
-    requestAnimationFrame(() => {
-      el.focus();
-      const caret = start + snippet.length;
-      try { el.setSelectionRange(caret, caret); } catch { /* noop */ }
-    });
-  }, []);
+const POSTAL_FIELDS: StudioField[] = [
+  { key: "description", label: "Description", mode: "multiline" },
+];
 
-  return { registerField, handleFocus, insertToken };
-}
+const INAPP_FIELDS: StudioField[] = [
+  { key: "title", label: "Title", mode: "line", maxLength: 100 },
+  {
+    key: "bodyHtml",
+    label: "Body",
+    mode: "html",
+    hint: "Displayed as plain text; formatting is flattened on send. The flattened text must stay under 500 characters.",
+  },
+  { key: "linkUrl", label: "Link URL", mode: "line", maxLength: 2048 },
+  { key: "linkLabel", label: "Link label", mode: "line", maxLength: 50 },
+];
 
-function TokenWarnings({ templates }: { templates: Array<string | null | undefined> }) {
-  const combined = templates.filter(Boolean).join("\n");
-  const unknown = findUnknownTokenIds(combined);
-  const known = extractTokenIds(combined).filter((t) => !unknown.includes(t));
-  if (unknown.length === 0 && known.length === 0) return null;
+/**
+ * What is saved for one medium, as a sentence rather than a wall of
+ * braces, with the single affordance that changes it.
+ */
+function TemplateCard({
+  fields,
+  values,
+  action,
+  counts,
+  footnote,
+  testId,
+}: {
+  fields: StudioField[];
+  values: Record<string, string>;
+  action: ReactNode;
+  counts?: Record<string, ReactNode>;
+  footnote?: string;
+  testId: string;
+}) {
   return (
-    <div className="rounded-md border bg-muted/40 p-3 text-xs space-y-1" data-testid="text-token-summary">
-      {known.length > 0 && (
-        <div>
-          <span className="font-medium">Tokens used:</span> {known.map((t) => `{{${t}}}`).join(", ")}
-        </div>
-      )}
-      {unknown.length > 0 && (
-        <div className="flex items-start gap-1.5 text-amber-700 dark:text-amber-400" data-testid="text-token-unknown">
-          <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          <span><span className="font-medium">Unknown tokens:</span> {unknown.map((t) => `{{${t}}}`).join(", ")} — these will be replaced with "[unknown token: ...]" when sent.</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface PreviewResponse {
-  sample: boolean;
-  rendered: Record<string, { output: string; unknownTokens: string[]; missingValues: string[] }>;
-}
-
-interface ParticipantRow {
-  id: string;
-  contactId: string;
-  contactDisplayName?: string | null;
-  contactGiven?: string | null;
-  contactFamily?: string | null;
-}
-
-function PreviewPanel({ messageId, fields, escapeHtmlFields = [] }: { messageId: string; fields: Record<string, string>; escapeHtmlFields?: string[] }) {
-  const [data, setData] = useState<PreviewResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [contactId, setContactId] = useState<string>("__sample__");
-
-  const { data: participantsData } = useQuery<ParticipantRow[]>({
-    queryKey: ["/api/bulk-messages", messageId, "participants"],
-  });
-  const seen = new Set<string>();
-  const participants = (participantsData || []).filter((p) => {
-    if (!p.contactId || seen.has(p.contactId)) return false;
-    seen.add(p.contactId);
-    return true;
-  });
-
-  const run = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const payload: Record<string, unknown> = { fields, escapeHtmlFields };
-      if (contactId !== "__sample__") payload.contactId = contactId;
-      const result = await apiRequest("POST", `/api/bulk-messages/${messageId}/preview`, payload);
-      setData(result as PreviewResponse);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Preview failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <select
-          className="h-9 rounded-md border bg-background px-2 text-sm"
-          value={contactId}
-          onChange={(e) => setContactId(e.target.value)}
-          data-testid="select-preview-recipient"
-        >
-          <option value="__sample__">Sample data</option>
-          {participants.map((p) => {
-            const label = p.contactDisplayName
-              || `${p.contactGiven || ""} ${p.contactFamily || ""}`.trim()
-              || p.contactId;
-            return (
-              <option key={p.id} value={p.contactId}>{label}</option>
-            );
-          })}
-        </select>
-        <Button type="button" size="sm" variant="outline" onClick={run} disabled={loading} data-testid="button-render-preview">
-          {loading ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Eye className="h-4 w-4 mr-1.5" />}
-          {contactId === "__sample__" ? "Preview with sample data" : "Preview as recipient"}
-        </Button>
+    <div className="rounded-md border" data-testid={testId}>
+      <div className="flex items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2">
+        <p className="text-sm font-medium">Message content</p>
+        {action}
       </div>
-      {error && <p className="text-xs text-destructive" data-testid="text-preview-error">{error}</p>}
-      {data && (
-        <div className="rounded-md border p-3 space-y-3 bg-background" data-testid="panel-preview">
-          {Object.entries(data.rendered).map(([field, r]) => {
-            const isHtml = escapeHtmlFields.includes(field);
-            return (
-              <div key={field}>
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">{field}</div>
-                {r.output ? (
-                  isHtml ? (
-                    <div
-                      className="text-sm break-words prose prose-sm max-w-none dark:prose-invert"
-                      data-testid={`text-preview-${field}`}
-                      dangerouslySetInnerHTML={{ __html: r.output }}
-                    />
-                  ) : (
-                    <pre className="text-sm whitespace-pre-wrap break-words font-sans" data-testid={`text-preview-${field}`}>{r.output}</pre>
-                  )
-                ) : (
-                  <pre className="text-sm whitespace-pre-wrap break-words font-sans" data-testid={`text-preview-${field}`}><span className="text-muted-foreground italic">(empty)</span></pre>
-                )}
-              </div>
-            );
-          })}
-        </div>
+      <div className="divide-y">
+        {fields.map((f) => {
+          const text = values[f.key] ?? "";
+          return (
+            <div key={f.key} className="flex items-baseline gap-3 px-3 py-2">
+              <span className="w-24 shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {f.label}
+              </span>
+              {text.trim() ? (
+                <TokenText
+                  text={text}
+                  html={f.mode === "html"}
+                  className="min-w-0 flex-1 truncate text-sm"
+                  data-testid={`text-summary-${f.key}`}
+                />
+              ) : (
+                <span className="min-w-0 flex-1 text-sm italic text-muted-foreground" data-testid={`text-summary-${f.key}`}>
+                  Not set
+                </span>
+              )}
+              {counts?.[f.key] && <span className="shrink-0 text-xs">{counts[f.key]}</span>}
+            </div>
+          );
+        })}
+      </div>
+      {footnote && (
+        <p className="border-t px-3 py-2 text-xs text-muted-foreground">{footnote}</p>
       )}
     </div>
   );
@@ -181,13 +128,38 @@ interface FormProps {
   record: Record<string, unknown> | null;
   onSave: (data: Record<string, unknown>) => void;
   isPending: boolean;
-  messageId: string;
+  /**
+   * This message's own token catalog — the studio previews against the
+   * recipients of THIS message, so the catalog is per message.
+   */
+  catalogUrl: string;
 }
 
-function EmailForm({ record, onSave, isPending, messageId }: FormProps) {
+function SaveButton({
+  onClick,
+  isPending,
+  disabled,
+  label,
+  testId,
+}: {
+  onClick: () => void;
+  isPending: boolean;
+  disabled?: boolean;
+  label: string;
+  testId: string;
+}) {
+  return (
+    <div className="flex justify-end pt-2">
+      <Button onClick={onClick} disabled={isPending || disabled} data-testid={testId}>
+        {isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+        {label}
+      </Button>
+    </div>
+  );
+}
+
+function EmailForm({ record, onSave, isPending, catalogUrl }: FormProps) {
   const [form, setForm] = useState({ subject: "", bodyHtml: "" });
-  const inserter = useTokenInserter();
-  inserter.registerField("subject", (next) => setForm((p) => ({ ...p, subject: next })));
 
   useEffect(() => {
     if (record) {
@@ -200,41 +172,38 @@ function EmailForm({ record, onSave, isPending, messageId }: FormProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <TokenPicker onInsert={inserter.insertToken} messageId={messageId} />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="subject">Subject</Label>
-        <SlashTokenField as="input" messageId={messageId} id="subject" value={form.subject} onFocus={inserter.handleFocus("subject")} onChange={(next) => setForm((p) => ({ ...p, subject: next }))} placeholder="Email subject — type / to insert a token" data-testid="input-email-subject" />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="bodyHtml">Body</Label>
-        <SimpleHtmlEditor
-          value={form.bodyHtml}
-          onChange={(next) => setForm((p) => ({ ...p, bodyHtml: next }))}
-          enableTokens
-          minHeight={200}
-          placeholder="Type your email — use the toolbar to format and / to insert a token"
-          data-testid="editor-email-body"
-        />
-        <p className="text-xs text-muted-foreground">A plain-text version is generated automatically for recipients whose mail client can't display HTML.</p>
-      </div>
-      <TokenWarnings templates={[form.subject, form.bodyHtml]} />
-      <PreviewPanel messageId={messageId} fields={{ subject: form.subject, bodyHtml: form.bodyHtml }} escapeHtmlFields={["bodyHtml"]} />
-      <div className="flex justify-end pt-2">
-        <Button onClick={() => onSave({ subject: form.subject, bodyHtml: form.bodyHtml })} disabled={isPending} data-testid="button-save-email-message">
-          {isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-          Save Email Content
-        </Button>
-      </div>
+      <TemplateCard
+        testId="card-email-template"
+        fields={EMAIL_FIELDS}
+        values={form}
+        footnote="A plain-text version is generated automatically for recipients whose mail client can't display HTML."
+        action={
+          <TokenStudioButton
+            label="Edit in Template Studio"
+            testId="button-open-studio-email"
+            title="Email message"
+            channel="email"
+            fieldSpecs={BULK_CHANNEL_FIELDS.email}
+            catalogUrl={catalogUrl}
+            treeBaseUrl={BULK_TOKEN_TREE_URL}
+            fields={EMAIL_FIELDS}
+            values={form}
+            onValueChange={(key, value) => setForm((p) => ({ ...p, [key]: value }))}
+          />
+        }
+      />
+      <SaveButton
+        onClick={() => onSave({ subject: form.subject, bodyHtml: form.bodyHtml })}
+        isPending={isPending}
+        label="Save Email Content"
+        testId="button-save-email-message"
+      />
     </div>
   );
 }
 
-function SmsForm({ record, onSave, isPending, messageId }: FormProps) {
+function SmsForm({ record, onSave, isPending, catalogUrl }: FormProps) {
   const [body, setBody] = useState("");
-  const inserter = useTokenInserter();
-  inserter.registerField("body", setBody);
 
   useEffect(() => {
     if (record) {
@@ -244,29 +213,43 @@ function SmsForm({ record, onSave, isPending, messageId }: FormProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <TokenPicker onInsert={inserter.insertToken} messageId={messageId} />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="smsBody">Message Body</Label>
-        <SlashTokenField as="textarea" messageId={messageId} id="smsBody" value={body} onFocus={inserter.handleFocus("body")} onChange={setBody} rows={6} placeholder="SMS message content — type / to insert a token" data-testid="textarea-sms-body" />
-        <div className="flex justify-end">
-          <span className="text-xs text-muted-foreground">{body.length} characters</span>
-        </div>
-      </div>
-      <TokenWarnings templates={[body]} />
-      <PreviewPanel messageId={messageId} fields={{ body }} />
-      <div className="flex justify-end pt-2">
-        <Button onClick={() => onSave({ body })} disabled={isPending} data-testid="button-save-sms-message">
-          {isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-          Save SMS Content
-        </Button>
-      </div>
+      <TemplateCard
+        testId="card-sms-template"
+        fields={SMS_FIELDS}
+        values={{ body }}
+        counts={{
+          body: (
+            <span className="text-muted-foreground" data-testid="text-sms-body-count">
+              {body.length} characters
+            </span>
+          ),
+        }}
+        action={
+          <TokenStudioButton
+            label="Edit in Template Studio"
+            testId="button-open-studio-sms"
+            title="SMS message"
+            channel="sms"
+            fieldSpecs={BULK_CHANNEL_FIELDS.sms}
+            catalogUrl={catalogUrl}
+            treeBaseUrl={BULK_TOKEN_TREE_URL}
+            fields={SMS_FIELDS}
+            values={{ body }}
+            onValueChange={(_key, value) => setBody(value)}
+          />
+        }
+      />
+      <SaveButton
+        onClick={() => onSave({ body })}
+        isPending={isPending}
+        label="Save SMS Content"
+        testId="button-save-sms-message"
+      />
     </div>
   );
 }
 
-function PostalForm({ record, onSave, isPending, messageId }: FormProps) {
+function PostalForm({ record, onSave, isPending, catalogUrl }: FormProps) {
   const [form, setForm] = useState({
     description: "",
     templateId: "",
@@ -274,8 +257,6 @@ function PostalForm({ record, onSave, isPending, messageId }: FormProps) {
     doubleSided: false,
     mailType: "usps_first_class",
   });
-  const inserter = useTokenInserter();
-  inserter.registerField("description", (next) => setForm((p) => ({ ...p, description: next })));
 
   useEffect(() => {
     if (record) {
@@ -291,27 +272,29 @@ function PostalForm({ record, onSave, isPending, messageId }: FormProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <TokenPicker onInsert={inserter.insertToken} messageId={messageId} />
-      </div>
+      <TemplateCard
+        testId="card-postal-template"
+        fields={POSTAL_FIELDS}
+        values={{ description: form.description }}
+        action={
+          <TokenStudioButton
+            label="Edit in Template Studio"
+            testId="button-open-studio-postal"
+            title="Postal letter"
+            channel="postal"
+            fieldSpecs={BULK_CHANNEL_FIELDS.postal}
+            catalogUrl={catalogUrl}
+            treeBaseUrl={BULK_TOKEN_TREE_URL}
+            fields={POSTAL_FIELDS}
+            values={{ description: form.description }}
+            onValueChange={(_key, value) => setForm((p) => ({ ...p, description: value }))}
+          />
+        }
+      />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="postalDescription">Description</Label>
-          <SlashTokenField as="textarea" messageId={messageId} id="postalDescription" value={form.description} onFocus={inserter.handleFocus("description")} onChange={(next) => setForm((p) => ({ ...p, description: next }))} rows={3} placeholder="Type / to insert a token" data-testid="textarea-postal-description" />
-        </div>
         <div className="space-y-2">
           <Label htmlFor="postalTemplateId">Template ID</Label>
           <Input id="postalTemplateId" value={form.templateId} onChange={(e) => setForm((p) => ({ ...p, templateId: e.target.value }))} placeholder="Optional template ID" data-testid="input-postal-template-id" />
-        </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="flex items-center space-x-2">
-          <Switch id="postalColor" checked={form.color} onCheckedChange={(checked) => setForm((p) => ({ ...p, color: checked }))} data-testid="switch-postal-color" />
-          <Label htmlFor="postalColor">Color</Label>
-        </div>
-        <div className="flex items-center space-x-2">
-          <Switch id="postalDoubleSided" checked={form.doubleSided} onCheckedChange={(checked) => setForm((p) => ({ ...p, doubleSided: checked }))} data-testid="switch-postal-double-sided" />
-          <Label htmlFor="postalDoubleSided">Double Sided</Label>
         </div>
         <div className="space-y-2">
           <Label htmlFor="postalMailType">Mail Type</Label>
@@ -326,28 +309,33 @@ function PostalForm({ record, onSave, isPending, messageId }: FormProps) {
           </Select>
         </div>
       </div>
-      <TokenWarnings templates={[form.description]} />
-      <PreviewPanel messageId={messageId} fields={{ description: form.description }} />
-      <div className="flex justify-end pt-2">
-        <Button onClick={() => onSave({ ...form })} disabled={isPending} data-testid="button-save-postal-message">
-          {isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-          Save Postal Content
-        </Button>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="flex items-center space-x-2">
+          <Switch id="postalColor" checked={form.color} onCheckedChange={(checked) => setForm((p) => ({ ...p, color: checked }))} data-testid="switch-postal-color" />
+          <Label htmlFor="postalColor">Color</Label>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Switch id="postalDoubleSided" checked={form.doubleSided} onCheckedChange={(checked) => setForm((p) => ({ ...p, doubleSided: checked }))} data-testid="switch-postal-double-sided" />
+          <Label htmlFor="postalDoubleSided">Double Sided</Label>
+        </div>
       </div>
+      <SaveButton
+        onClick={() => onSave({ ...form })}
+        isPending={isPending}
+        label="Save Postal Content"
+        testId="button-save-postal-message"
+      />
     </div>
   );
 }
 
-function InappForm({ record, onSave, isPending, messageId }: FormProps) {
+function InappForm({ record, onSave, isPending, catalogUrl }: FormProps) {
   const [form, setForm] = useState({
     title: "",
     bodyHtml: "",
     linkUrl: "",
     linkLabel: "",
   });
-  const inserter = useTokenInserter();
-  inserter.registerField("title", (next) => setForm((p) => ({ ...p, title: next })));
-  inserter.registerField("linkLabel", (next) => setForm((p) => ({ ...p, linkLabel: next })));
 
   useEffect(() => {
     if (record) {
@@ -355,11 +343,7 @@ function InappForm({ record, onSave, isPending, messageId }: FormProps) {
       // Treat already-stored plain text as plain text by escaping any HTML
       // metacharacters before turning newlines into <br>, so legacy bodies
       // containing "<" or "&" aren't reinterpreted as markup by the editor.
-      const escaped = existing
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/\n/g, "<br>");
+      const escaped = escapeHtml(existing).replace(/\n/g, "<br>");
       setForm({
         title: (record.title as string) || "",
         bodyHtml: escaped,
@@ -369,63 +353,71 @@ function InappForm({ record, onSave, isPending, messageId }: FormProps) {
     }
   }, [record]);
 
+  // Delivery sends the FLATTENED text, so that is what the 500-character
+  // column limit applies to — not the rich-text the editor holds.
   const derivedBody = htmlToPlainText(form.bodyHtml);
   const overLimit = derivedBody.length > 500;
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <TokenPicker onInsert={inserter.insertToken} messageId={messageId} />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="inappTitle">Title</Label>
-        <SlashTokenField as="input" messageId={messageId} id="inappTitle" value={form.title} onFocus={inserter.handleFocus("title")} onChange={(next) => setForm((p) => ({ ...p, title: next }))} maxLength={100} placeholder="Notification title — type / to insert a token" data-testid="input-inapp-title" />
-        <div className="flex justify-end"><span className="text-xs text-muted-foreground">{form.title.length} / 100</span></div>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="inappBody">Body</Label>
-        <SimpleHtmlEditor
-          value={form.bodyHtml}
-          onChange={(next) => setForm((p) => ({ ...p, bodyHtml: next }))}
-          enableTokens
-          minHeight={140}
-          placeholder="Notification body — use / to insert a token"
-          data-testid="editor-inapp-body"
-        />
-        <div className="flex justify-end">
-          <span className={cn("text-xs", overLimit ? "text-destructive" : "text-muted-foreground")} data-testid="text-inapp-body-count">
-            {derivedBody.length} / 500
-          </span>
-        </div>
-        <p className="text-xs text-muted-foreground">In-app notifications display as plain text; formatting will be flattened on send.</p>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="inappLinkUrl">Link URL</Label>
-          <Input id="inappLinkUrl" value={form.linkUrl} onChange={(e) => setForm((p) => ({ ...p, linkUrl: e.target.value }))} maxLength={2048} placeholder="https://..." data-testid="input-inapp-link-url" />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="inappLinkLabel">Link Label</Label>
-          <SlashTokenField as="input" messageId={messageId} id="inappLinkLabel" value={form.linkLabel} onFocus={inserter.handleFocus("linkLabel")} onChange={(next) => setForm((p) => ({ ...p, linkLabel: next }))} maxLength={50} placeholder="Click here — type / to insert a token" data-testid="input-inapp-link-label" />
-        </div>
-      </div>
-      <TokenWarnings templates={[form.title, form.bodyHtml, form.linkLabel]} />
-      <PreviewPanel messageId={messageId} fields={{ title: form.title, body: derivedBody, linkLabel: form.linkLabel }} />
-      <div className="flex justify-end pt-2">
-        <Button
-          onClick={() => onSave({
-            title: form.title,
-            body: derivedBody,
-            linkUrl: form.linkUrl,
-            linkLabel: form.linkLabel,
-          })}
-          disabled={isPending || overLimit}
-          data-testid="button-save-inapp-message"
-        >
-          {isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-          Save In-App Content
-        </Button>
-      </div>
+      <TemplateCard
+        testId="card-inapp-template"
+        fields={INAPP_FIELDS}
+        values={form}
+        counts={{
+          title: (
+            <span className={cn(form.title.length > 100 ? "text-destructive" : "text-muted-foreground")} data-testid="text-inapp-title-count">
+              {form.title.length} / 100
+            </span>
+          ),
+          bodyHtml: (
+            <span className={cn(overLimit ? "text-destructive" : "text-muted-foreground")} data-testid="text-inapp-body-count">
+              {derivedBody.length} / 500
+            </span>
+          ),
+          linkLabel: (
+            <span className={cn(form.linkLabel.length > 50 ? "text-destructive" : "text-muted-foreground")} data-testid="text-inapp-link-label-count">
+              {form.linkLabel.length} / 50
+            </span>
+          ),
+        }}
+        footnote="In-app notifications display as plain text; formatting will be flattened on send."
+        action={
+          <TokenStudioButton
+            label="Edit in Template Studio"
+            testId="button-open-studio-inapp"
+            title="In-app notification"
+            channel="inapp"
+            fieldSpecs={BULK_CHANNEL_FIELDS.inapp}
+            catalogUrl={catalogUrl}
+            treeBaseUrl={BULK_TOKEN_TREE_URL}
+            fields={INAPP_FIELDS}
+            values={form}
+            // Delivery sends a flattened plain-text `body`, not the
+            // rich-text `bodyHtml` the editor holds — flatten it here so
+            // the preview renders what is actually sent.
+            templateValues={{
+              title: form.title,
+              body: derivedBody,
+              linkUrl: form.linkUrl,
+              linkLabel: form.linkLabel,
+            }}
+            onValueChange={(key, value) => setForm((p) => ({ ...p, [key]: value }))}
+          />
+        }
+      />
+      <SaveButton
+        onClick={() => onSave({
+          title: form.title,
+          body: derivedBody,
+          linkUrl: form.linkUrl,
+          linkLabel: form.linkLabel,
+        })}
+        isPending={isPending}
+        disabled={overLimit}
+        label="Save In-App Content"
+        testId="button-save-inapp-message"
+      />
     </div>
   );
 }
@@ -535,7 +527,7 @@ function BulkMessageMessageContent() {
               record={record}
               onSave={(data) => saveMutation.mutate(data)}
               isPending={saveMutation.isPending}
-              messageId={bulkMessage.id}
+              catalogUrl={bulkTokenCatalogUrl(bulkMessage.id)}
             />
           )}
         </CardContent>

@@ -1,5 +1,6 @@
 import { storage } from "../storage";
 import { logger } from "../logger";
+import { getEnvironmentVariable } from "../config/env-registry";
 
 /**
  * Seed (or refresh) the local-auth credential from environment variables.
@@ -21,14 +22,14 @@ import { logger } from "../logger";
  * seeded credential works.
  */
 export async function seedLocalCredential(): Promise<void> {
-  const email = process.env.LOCAL_AUTH_EMAIL?.trim().toLowerCase();
-  const passwordHash = process.env.LOCAL_AUTH_PASSWORD_HASH?.trim();
+  const email = getEnvironmentVariable("LOCAL_AUTH_EMAIL")?.trim().toLowerCase();
+  const passwordHash = getEnvironmentVariable("LOCAL_AUTH_PASSWORD_HASH")?.trim();
 
   if (!email || !passwordHash) {
     return;
   }
 
-  const providers = (process.env.AUTH_PROVIDER || "replit")
+  const providers = (getEnvironmentVariable("AUTH_PROVIDER") || "replit")
     .split(",")
     .map((p) => p.trim());
   if (!providers.includes("local")) {

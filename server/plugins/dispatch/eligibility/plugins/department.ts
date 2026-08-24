@@ -1,6 +1,5 @@
 import { registerDispatchEligPlugin } from "../registry";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../registry";
-import { storage } from "../../../../storage";
 
 const DEPT_INCLUDE_CATEGORY = "dept_include";
 const DEPT_EXCLUDE_CATEGORY = "dept_exclude";
@@ -27,8 +26,8 @@ export const dispatchDepartmentPlugin: DispatchEligPlugin = {
   description: "Filters workers by their department include/exclude preferences against the job's department",
   requiredComponent: "dispatch.department",
 
-  async getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): Promise<EligibilityCondition[] | null> {
-    const jobDepartment = await storage.dispatchJobDepartments.getByJob(context.jobId);
+  getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): EligibilityCondition[] | null {
+    const jobDepartment = context.departmentLink;
 
     if (!jobDepartment) {
       return [

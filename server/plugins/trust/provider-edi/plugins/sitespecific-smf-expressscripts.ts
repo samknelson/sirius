@@ -249,6 +249,7 @@ registerTrustProviderEdiPlugin({
     "dependent, with the medical-plan-derived client group ID and a QMSCO " +
     "include/exclude feed split.",
   benefitSiriusIds: ["EXPRESSSCRIPTS"],
+  ediFields: DETAIL_FIELDS,
   configSchema: {
     type: "object",
     properties: {

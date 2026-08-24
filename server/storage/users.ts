@@ -18,6 +18,8 @@ import {
 } from "@shared/schema";
 import { permissionRegistry, type PermissionDefinition } from "@shared/permissions";
 import { eq, and, sql, inArray, ilike, exists, count, arrayContains } from "drizzle-orm";
+import { esigs } from "@shared/schema";
+import { runInTransaction } from './transaction-context';
 import { defineLoggingConfig } from "./middleware/logging";
 import type { ContactsStorage } from "./contacts";
 import { createUserContactSyncService } from "../services/user-contact-sync";
@@ -39,6 +41,18 @@ export class RoleInUseError extends Error {
   }
 }
 
+/**
+ * Thrown by `deleteUserAccount` when the user still owns records the FK graph
+ * refuses to cascade (esigs is `onDelete: 'restrict'` — signed documents are
+ * legal records and must never vanish with the account).
+ */
+export class UserInUseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UserInUseError";
+  }
+}
+
 export interface UserStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
@@ -48,6 +62,7 @@ export interface UserStorage {
   updateUser(id: string, user: Partial<InsertUser>): Promise<User | undefined>;
   updateUserLastLogin(id: string): Promise<User | undefined>;
   deleteUser(id: string): Promise<boolean>;
+  deleteUserAccount(id: string): Promise<boolean>;
   getAllUsers(): Promise<User[]>;
   getAllUsersWithRoles(): Promise<(User & { roles: Role[] })[]>;
   searchUsers(query: string, roleIds?: string[], limit?: number): Promise<(User & { roles: Role[] })[]>;
@@ -182,6 +197,43 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
       const client = getClient();
       const result = await client.delete(users).where(eq(users.id, id)).returning();
       return result.length > 0;
+    },
+
+    /**
+     * Hard-delete a user account and everything that references it, in one
+     * transaction. FK rules handle most tables (CASCADE for identities,
+     * bookmarks, in-app messages, grievance links, wizard feed mappings;
+     * SET NULL for opt-ins, EDLS supervisor/assignee, snapshot authors).
+     * user_roles has no FK, so it is cleaned up explicitly; active sessions
+     * for the user are revoked; winston audit logs keep the bare user id.
+     * Throws UserInUseError when e-signature records exist (FK RESTRICT).
+     */
+    async deleteUserAccount(id: string): Promise<boolean> {
+      return runInTransaction(async () => {
+        const client = getClient();
+        const [{ count: esigCount }] = await client
+          .select({ count: count() })
+          .from(esigs)
+          .where(eq(esigs.userId, id));
+        if (Number(esigCount) > 0) {
+          throw new UserInUseError(
+            `This user has ${esigCount} e-signature record(s), which are retained as signed documents and block deletion. The account can be deactivated instead.`,
+          );
+        }
+        await client.delete(userRoles).where(eq(userRoles.userId, id));
+        // Revoke every live session belonging to this user. Sessions cache the
+        // resolved internal account at passport.user.dbUser.id; claims.sub is
+        // the external provider subject and only coincidentally matches the
+        // internal id, so it is matched merely as a defensive fallback for
+        // legacy sessions that predate the cached dbUser.
+        await client.execute(
+          sql`DELETE FROM sessions
+              WHERE sess #>> '{passport,user,dbUser,id}' = ${id}
+                 OR sess #>> '{passport,user,claims,sub}' = ${id}`,
+        );
+        const result = await client.delete(users).where(eq(users.id, id)).returning();
+        return result.length > 0;
+      });
     },
 
     async getAllUsers(): Promise<User[]> {
@@ -735,6 +787,19 @@ export const userLoggingConfig = defineLoggingConfig<UserStorage>({
       },
       after: async (args, result, storage) => {
         return result; // New state (diff auto-calculated)
+      }
+    },
+    deleteUserAccount: {
+      enabled: true,
+      getEntityId: (args) => args[0], // User ID
+      getHostEntityId: (args) => args[0], // Show in the deleted user's log history
+      before: async (args, storage) => {
+        return await storage.getUser(args[0]); // Capture what's being deleted
+      },
+      getDescription: async (args, result, beforeState) => {
+        const u = beforeState as User | undefined;
+        const who = u ? (u.email || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.id) : args[0];
+        return `Permanently deleted user account ${who}`;
       }
     },
     deleteRole: {

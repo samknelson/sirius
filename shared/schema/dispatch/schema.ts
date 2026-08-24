@@ -2,7 +2,7 @@ import { foreignKey, pgTable, text, timestamp, varchar, jsonb, index, uniqueInde
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { employers, workers, pluginConfigs, denorm } from "../../schema";
+import { employers, workers, pluginConfigs, denorm, contacts } from "../../schema";
 
 export const optionsDispatchJobType = pgTable("options_dispatch_job_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -112,6 +112,29 @@ export const insertDispatchSchema = createInsertSchema(dispatches).omit({
 
 export type InsertDispatch = z.infer<typeof insertDispatchSchema>;
 export type Dispatch = typeof dispatches.$inferSelect;
+
+// Employer contacts associated with a dispatch job. The FK targets the
+// CONTACT (person), not the employer_contacts link row, deliberately:
+// removing a contact from the employer must NOT clear the job association
+// (by design, existing associations survive), while deleting the job or the
+// contact itself cascades the association away. The same-employer rule
+// ("contact must belong to the job's employer") is route-level business
+// logic only — no DB enforcement.
+export const dispatchJobEmployerContacts = pgTable("dispatch_job_employer_contacts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobId: varchar("job_id").notNull().references(() => dispatchJobs.id, { onDelete: 'cascade' }),
+  contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
+  data: jsonb("data"),
+}, (table) => [
+  uniqueIndex("dispatch_job_employer_contacts_job_contact_unique").on(table.jobId, table.contactId),
+]);
+
+export const insertDispatchJobEmployerContactSchema = createInsertSchema(dispatchJobEmployerContacts).omit({
+  id: true,
+});
+
+export type InsertDispatchJobEmployerContact = z.infer<typeof insertDispatchJobEmployerContactSchema>;
+export type DispatchJobEmployerContact = typeof dispatchJobEmployerContacts.$inferSelect;
 
 // Worker dispatch status (availability for dispatch)
 export const workerDispatchStatusEnum = ["available", "not_available"] as const;

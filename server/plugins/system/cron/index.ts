@@ -191,8 +191,6 @@ export function initializeCronPluginSystem(): void {
 import "./plugins/dataRetention";
 import "./plugins/processWmbBatch";
 import "./plugins/scheduledBenefitScan";
-import "./plugins/sweepExpiredBanElig";
-import "./plugins/workerBanActiveScan";
 import "./plugins/workerCertificationActiveScan";
 import "./plugins/logCleanup";
 import "./plugins/btuMemberStatusScan";
@@ -214,3 +212,5 @@ import "./plugins/denormBackfill";
 import "./plugins/denormStale";
 import "./plugins/ebsPump";
 import "./plugins/fileConsistencySweep";
+import "./plugins/sessionPrune";
+import "./plugins/notesOrphanSweep";

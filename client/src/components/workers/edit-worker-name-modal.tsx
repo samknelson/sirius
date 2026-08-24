@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +14,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Worker } from "@shared/schema";
+import { useModalSeed } from "@/hooks/use-modal-seed";
 
 interface EditWorkerNameModalProps {
   open: boolean;
@@ -53,12 +54,11 @@ export function EditWorkerNameModal({ open, onOpenChange, worker, contactName }:
     },
   });
 
-  // Initialize name when modal opens with contact display name
-  useEffect(() => {
-    if (contactName && open) {
-      setName(contactName);
-    }
-  }, [contactName, open]);
+  // Initialize name during the render that opens the modal, so the input is
+  // controlled by the contact's display name on its first render.
+  useModalSeed(open, contactName, () => {
+    if (contactName) setName(contactName);
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -23,8 +23,8 @@ export function registerEdlsSheetsRoutes(
 
   app.get("/api/edls/sheets", requireAuth, edlsComponent, requireAccess('edls.any'), async (req, res) => {
     try {
-      const { 
-        employerId, 
+      const {
+        employerId,
         page: pageParam,
         limit: limitParam,
         dateFrom,
@@ -32,15 +32,27 @@ export function registerEdlsSheetsRoutes(
         status,
         jobGroupId,
         facilityId,
-        showStatusId
+        showStatusId,
+        changedSince
       } = req.query;
-      
+
       const page = parseInt(pageParam as string) || 0;
       const limit = Math.min(parseInt(limitParam as string) || 100, 100);
-      
+
+      // "Changed on or after" — an ISO timestamp. Reject an unparseable value
+      // rather than silently listing everything.
+      let changedSinceDate: Date | undefined;
+      if (typeof changedSince === 'string' && changedSince !== '') {
+        changedSinceDate = new Date(changedSince);
+        if (Number.isNaN(changedSinceDate.getTime())) {
+          res.status(400).json({ message: "changedSince must be a valid ISO timestamp" });
+          return;
+        }
+      }
+
       const result = await storage.edlsSheets.getPaginated(
-        page, 
-        limit, 
+        page,
+        limit,
         {
           employerId: employerId as string | undefined,
           dateFrom: dateFrom as string | undefined,
@@ -49,6 +61,7 @@ export function registerEdlsSheetsRoutes(
           jobGroupId: jobGroupId as string | undefined,
           facilityId: facilityId as string | undefined,
           showStatusId: showStatusId as string | undefined,
+          changedSince: changedSinceDate,
         }
       );
       res.json(result);
@@ -62,14 +75,14 @@ export function registerEdlsSheetsRoutes(
     try {
       const { id } = req.params;
       const sheet = await storage.edlsSheets.getWithRelations(id);
-      
+
       if (!sheet) {
         res.status(404).json({ message: "Sheet not found" });
         return;
       }
-      
+
       const crews = await storage.edlsCrews.getBySheetId(id);
-      
+
       res.json({ ...sheet, crews });
     } catch (error) {
       console.error("Failed to fetch EDLS sheet:", error);
@@ -82,16 +95,16 @@ export function registerEdlsSheetsRoutes(
       const { id } = req.params;
       const { ratingId } = req.query;
       const sheet = await storage.edlsSheets.get(id);
-      
+
       if (!sheet) {
         res.status(404).json({ message: "Sheet not found" });
         return;
       }
-      
+
       // Get the employer to extract industryId for member status grouping
       const employer = await storage.employers.getEmployer(sheet.employerId);
       const industryId = employer?.industryId ?? null;
-      
+
       // Return all EDLS-active workers (worker_edls.active = true) with assignment status indicators
       // Workers are grouped by member status (for the sheet employer's industry) and optionally filtered/sorted by rating
       const workers = await storage.edlsAssignments.getAvailableWorkersForSheet(
@@ -110,19 +123,19 @@ export function registerEdlsSheetsRoutes(
     try {
       const { id, workerId } = req.params;
       const sheet = await storage.edlsSheets.get(id);
-      
+
       if (!sheet) {
         res.status(404).json({ message: "Sheet not found" });
         return;
       }
-      
+
       const details = await storage.edlsAssignments.getWorkerAssignmentDetails(workerId, sheet.ymd);
-      
+
       if (!details) {
         res.status(404).json({ message: "Worker not found" });
         return;
       }
-      
+
       res.json(details);
     } catch (error) {
       console.error("Failed to fetch worker assignment details:", error);
@@ -154,15 +167,15 @@ export function registerEdlsSheetsRoutes(
       const user = (req as any).user;
       const session = req.session as any;
       const { dbUser } = await getEffectiveUser(session, user);
-      
+
       if (!dbUser) {
         res.status(401).json({ message: "User not found" });
         return;
       }
-      
+
       const sheetId = req.query.sheetId as string | undefined;
       const context = await getSupervisorContext(dbUser.id, sheetId);
-      
+
       res.json(context);
     } catch (error) {
       console.error("Failed to fetch supervisor context:", error);
@@ -175,45 +188,45 @@ export function registerEdlsSheetsRoutes(
       const user = (req as any).user;
       const session = req.session as any;
       const { dbUser } = await getEffectiveUser(session, user);
-      
+
       if (!dbUser) {
         res.status(401).json({ message: "User not found" });
         return;
       }
-      
+
       const edlsSettings = await getEdlsSettings();
       if (!edlsSettings.employer) {
         res.status(400).json({ message: "No employer configured in EDLS settings. Please configure an employer in EDLS Settings before creating sheets." });
         return;
       }
-      
+
       const employer = await storage.employers.getEmployer(edlsSettings.employer);
       if (!employer) {
         res.status(400).json({ message: "Configured employer not found. Please update EDLS Settings with a valid employer." });
         return;
       }
-      
+
       const parsed = sheetWithCrewsSchema.safeParse(req.body);
-      
+
       if (!parsed.success) {
         res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
         return;
       }
-      
+
       const { crews, ...sheetData } = parsed.data;
-      
+
       const supervisorContext = await getSupervisorContext(dbUser.id);
       const supervisorValidation = validateSupervisorForSave(
         supervisorContext,
         sheetData.supervisor || null,
         dbUser.id
       );
-      
+
       if (!supervisorValidation.valid) {
         res.status(403).json({ message: supervisorValidation.error });
         return;
       }
-      
+
       const finalSheetData = {
         ...sheetData,
         employerId: edlsSettings.employer,
@@ -222,16 +235,17 @@ export function registerEdlsSheetsRoutes(
         jobGroupId: sheetData.jobGroupId || null,
         facilityId: sheetData.facilityId || null,
         showStatusId: sheetData.showStatusId || null,
+        notes: sheetData.notes || null,
       };
-      
+
       const crewsTotalWorkerCount = crews.reduce((sum, crew) => sum + crew.workerCount, 0);
       if (crewsTotalWorkerCount !== finalSheetData.workerCount) {
-        res.status(400).json({ 
-          message: `Crew worker counts (${crewsTotalWorkerCount}) must equal sheet worker count (${finalSheetData.workerCount})` 
+        res.status(400).json({
+          message: `Crew worker counts (${crewsTotalWorkerCount}) must equal sheet worker count (${finalSheetData.workerCount})`
         });
         return;
       }
-      
+
       const finalCrews = crews.map(crew => {
         if (supervisorContext.canManage) {
           const crewSupervisor = crew.supervisor && supervisorContext.options.some(opt => opt.id === crew.supervisor)
@@ -241,9 +255,9 @@ export function registerEdlsSheetsRoutes(
         }
         return { ...crew, supervisor: supervisorValidation.supervisorId };
       });
-      
+
       const result = await storage.edlsSheets.create(finalSheetData, finalCrews);
-      
+
       res.status(201).json(result);
     } catch (error) {
       console.error("Failed to create EDLS sheet:", error);
@@ -254,58 +268,59 @@ export function registerEdlsSheetsRoutes(
   app.put("/api/edls/sheets/:id", requireAuth, edlsComponent, requireAccess('edls.sheet.edit', req => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
-      
+
       const user = (req as any).user;
       const session = req.session as any;
       const { dbUser } = await getEffectiveUser(session, user);
-      
+
       if (!dbUser) {
         res.status(401).json({ message: "User not found" });
         return;
       }
-      
+
       const edlsSettings = await getEdlsSettings();
       if (!edlsSettings.employer) {
         res.status(400).json({ message: "No employer configured in EDLS settings. Please configure an employer in EDLS Settings before saving sheets." });
         return;
       }
-      
+
       const configuredEmployer = await storage.employers.getEmployer(edlsSettings.employer);
       if (!configuredEmployer) {
         res.status(400).json({ message: "Configured employer not found. Please update EDLS Settings with a valid employer." });
         return;
       }
-      
+
       const existingSheet = await storage.edlsSheets.get(id);
       if (!existingSheet) {
         res.status(404).json({ message: "Sheet not found" });
         return;
       }
-      
+
       const updateSchema = sheetWithCrewsSchema.partial().extend({
         crews: z.array(crewInputSchema.extend({ id: z.string().optional() })).optional(),
       });
       const parsed = updateSchema.safeParse(req.body);
-      
+
       if (!parsed.success) {
         res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
         return;
       }
-      
+
       const { crews, ...parsedSheetData } = parsed.data;
-      
+
       const sheetData = {
         ...parsedSheetData,
         employerId: edlsSettings.employer,
         jobGroupId: parsedSheetData.jobGroupId !== undefined ? (parsedSheetData.jobGroupId || null) : undefined,
         facilityId: parsedSheetData.facilityId !== undefined ? (parsedSheetData.facilityId || null) : undefined,
         showStatusId: parsedSheetData.showStatusId !== undefined ? (parsedSheetData.showStatusId || null) : undefined,
+        notes: parsedSheetData.notes !== undefined ? (parsedSheetData.notes || null) : undefined,
       };
-      
+
       if (!sheetData.departmentId) {
         sheetData.departmentId = existingSheet.departmentId;
       }
-      
+
       if (sheetData.supervisor !== undefined) {
         const supervisorContext = await getSupervisorContext(dbUser.id, id);
         const supervisorValidation = validateSupervisorForSave(
@@ -313,41 +328,41 @@ export function registerEdlsSheetsRoutes(
           sheetData.supervisor || null,
           dbUser.id
         );
-        
+
         if (!supervisorValidation.valid) {
           res.status(403).json({ message: supervisorValidation.error });
           return;
         }
-        
+
         sheetData.supervisor = supervisorValidation.supervisorId;
       }
-      
+
       if (sheetData.assignee === undefined || sheetData.assignee === null || sheetData.assignee === '') {
         const finalSupervisor = sheetData.supervisor ?? existingSheet.supervisor;
         if (finalSupervisor) {
           sheetData.assignee = finalSupervisor;
         }
       }
-      
+
       const finalWorkerCount = sheetData.workerCount ?? existingSheet.workerCount;
-      
+
       if (crews !== undefined) {
         if (crews.length === 0) {
           res.status(400).json({ message: "At least one crew is required" });
           return;
         }
-        
+
         const crewsTotalWorkerCount = crews.reduce((sum, crew) => sum + crew.workerCount, 0);
         if (crewsTotalWorkerCount !== finalWorkerCount) {
-          res.status(400).json({ 
-            message: `Crew worker counts (${crewsTotalWorkerCount}) must equal sheet worker count (${finalWorkerCount})` 
+          res.status(400).json({
+            message: `Crew worker counts (${crewsTotalWorkerCount}) must equal sheet worker count (${finalWorkerCount})`
           });
           return;
         }
-        
+
         const supervisorContext = await getSupervisorContext(dbUser.id, id);
         const finalSheetSupervisor = sheetData.supervisor ?? existingSheet.supervisor;
-        
+
         const finalCrews = crews.map(crew => {
           const { id: crewId, ...crewData } = crew as InsertEdlsCrew & { id?: string };
           if (supervisorContext.canManage) {
@@ -358,22 +373,22 @@ export function registerEdlsSheetsRoutes(
           }
           return { id: crewId, ...crewData, supervisor: finalSheetSupervisor };
         });
-        
+
         const result = await storage.edlsSheets.update(id, sheetData, finalCrews);
-        
+
         res.json(result);
       } else {
         const currentCrewsTotal = await storage.edlsCrews.getCrewsTotalWorkerCount(id);
         if (currentCrewsTotal !== finalWorkerCount) {
-          res.status(400).json({ 
-            message: `Cannot update worker count to ${finalWorkerCount}. Current crews total ${currentCrewsTotal}. Please update crews to match.` 
+          res.status(400).json({
+            message: `Cannot update worker count to ${finalWorkerCount}. Current crews total ${currentCrewsTotal}. Please update crews to match.`
           });
           return;
         }
-        
+
         const updatedSheet = await storage.edlsSheets.update(id, sheetData);
         const updatedCrews = await storage.edlsCrews.getBySheetId(id);
-        
+
         res.json({ ...updatedSheet, crews: updatedCrews });
       }
     } catch (error: any) {
@@ -390,13 +405,13 @@ export function registerEdlsSheetsRoutes(
   app.delete("/api/edls/sheets/:id", requireAuth, edlsComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
-      
+
       const existingSheet = await storage.edlsSheets.get(id);
       if (!existingSheet) {
         res.status(404).json({ message: "Sheet not found" });
         return;
       }
-      
+
       await storage.edlsSheets.delete(id);
       res.status(204).send();
     } catch (error: any) {
@@ -413,13 +428,13 @@ export function registerEdlsSheetsRoutes(
   app.get("/api/edls/sheets/:sheetId/crews", requireAuth, edlsComponent, requireAccess('edls.sheet.view', req => req.params.sheetId), async (req, res) => {
     try {
       const { sheetId } = req.params;
-      
+
       const sheet = await storage.edlsSheets.get(sheetId);
       if (!sheet) {
         res.status(404).json({ message: "Sheet not found" });
         return;
       }
-      
+
       const crews = await storage.edlsCrews.getBySheetIdWithRelations(sheetId);
       res.json(crews);
     } catch (error) {
@@ -431,7 +446,7 @@ export function registerEdlsSheetsRoutes(
   app.get("/api/edls/sheets/:sheetId/assignments", requireAuth, edlsComponent, requireAccess('edls.sheet.view', req => req.params.sheetId), async (req, res) => {
     try {
       const { sheetId } = req.params;
-      
+
       const sheet = await storage.edlsSheets.get(sheetId);
       if (!sheet) {
         res.status(404).json({ message: "Sheet not found" });
@@ -531,12 +546,12 @@ export function registerEdlsSheetsRoutes(
     try {
       const { sheetId, crewId } = req.params;
       const parsed = createAssignmentSchema.safeParse(req.body);
-      
+
       if (!parsed.success) {
         res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
         return;
       }
-      
+
       const crew = await storage.edlsCrews.get(crewId);
       if (!crew) {
         res.status(404).json({ message: "Crew not found" });
@@ -547,7 +562,7 @@ export function registerEdlsSheetsRoutes(
         res.status(400).json({ message: "Crew does not belong to this sheet" });
         return;
       }
-      
+
       const sheet = await storage.edlsSheets.get(sheetId);
       if (!sheet) {
         res.status(404).json({ message: "Sheet not found" });
@@ -565,13 +580,13 @@ export function registerEdlsSheetsRoutes(
         res.status(400).json({ message: "Worker is not active in EDLS" });
         return;
       }
-      
+
       const assignment = await storage.edlsAssignments.create({
         crewId,
         workerId: parsed.data.workerId,
         ymd: sheet.ymd as string,
       });
-      
+
       res.status(201).json(assignment);
     } catch (error: any) {
       if (error?.name === 'DomainValidationError') {
@@ -596,25 +611,25 @@ export function registerEdlsSheetsRoutes(
     async (req, res) => {
       try {
         const { sheetId, assignmentId } = req.params;
-        
+
         const sheet = await storage.edlsSheets.get(sheetId);
         if (!sheet) {
           res.status(404).json({ message: "Sheet not found" });
           return;
         }
-        
+
         const assignment = await storage.edlsAssignments.get(assignmentId);
         if (!assignment) {
           res.status(404).json({ message: "Assignment not found" });
           return;
         }
-        
+
         const crew = await storage.edlsCrews.get(assignment.crewId);
         if (!crew || crew.sheetId !== sheetId) {
           res.status(404).json({ message: "Assignment not found on this sheet" });
           return;
         }
-        
+
         await storage.edlsAssignments.delete(assignmentId);
         res.status(204).send();
       } catch (error) {
@@ -632,31 +647,31 @@ export function registerEdlsSheetsRoutes(
     async (req, res) => {
       try {
         const { sheetId, assignmentId } = req.params;
-        
+
         const sheet = await storage.edlsSheets.get(sheetId);
         if (!sheet) {
           res.status(404).json({ message: "Sheet not found" });
           return;
         }
-        
+
         const assignment = await storage.edlsAssignments.get(assignmentId);
         if (!assignment) {
           res.status(404).json({ message: "Assignment not found" });
           return;
         }
-        
+
         const crew = await storage.edlsCrews.get(assignment.crewId);
         if (!crew || crew.sheetId !== sheetId) {
           res.status(404).json({ message: "Assignment not found on this sheet" });
           return;
         }
-        
+
         const parsed = updateAssignmentExtraSchema.safeParse(req.body);
         if (!parsed.success) {
           res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
           return;
         }
-        
+
         const updated = await storage.edlsAssignments.updateData(assignmentId, parsed.data);
         res.json(updated);
       } catch (error) {
@@ -683,21 +698,21 @@ export function registerEdlsSheetsRoutes(
       try {
         const { id } = req.params;
         const parsed = trashLockSchema.safeParse(req.body);
-        
+
         if (!parsed.success) {
           res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
           return;
         }
-        
+
         const existingSheet = await storage.edlsSheets.get(id);
         if (!existingSheet) {
           res.status(404).json({ message: "Sheet not found" });
           return;
         }
-        
+
         const currentData = (existingSheet.data as Record<string, any>) || {};
         const updatedData = { ...currentData, trashLock: parsed.data.trashLock };
-        
+
         const updatedSheet = await storage.edlsSheets.update(id, { data: updatedData });
         res.json(updatedSheet);
       } catch (error) {
@@ -719,18 +734,18 @@ export function registerEdlsSheetsRoutes(
       try {
         const { id } = req.params;
         const parsed = setStatusSchema.safeParse(req.body);
-        
+
         if (!parsed.success) {
           res.status(400).json({ message: "Invalid status", errors: parsed.error.flatten() });
           return;
         }
-        
+
         const existingSheet = await storage.edlsSheets.get(id);
         if (!existingSheet) {
           res.status(404).json({ message: "Sheet not found" });
           return;
         }
-        
+
         const updatedSheet = await storage.edlsSheets.update(id, { status: parsed.data.status });
         res.json(updatedSheet);
       } catch (error) {
@@ -753,33 +768,33 @@ export function registerEdlsSheetsRoutes(
       try {
         const { id } = req.params;
         const parsed = copySheetSchema.safeParse(req.body);
-        
+
         if (!parsed.success) {
           res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
           return;
         }
-        
+
         const { targetDate } = parsed.data;
-        
+
         // Get the source sheet with crews
         const sourceSheet = await storage.edlsSheets.getWithRelations(id);
         if (!sourceSheet) {
           res.status(404).json({ message: "Sheet not found" });
           return;
         }
-        
+
         // Validate target date is different from source
         if (targetDate === sourceSheet.ymd) {
           res.status(400).json({ message: "Target date must be different from the source sheet date" });
           return;
         }
-        
+
         // Get source crews
         const sourceCrews = await storage.edlsCrews.getBySheetId(id);
-        
+
         // Get all assignments for the source sheet
         const sourceAssignments = await storage.edlsAssignments.getBySheetId(id);
-        
+
         // Prepare crew data for the new sheet (without IDs)
         const newCrewsData = sourceCrews.map(crew => ({
           title: crew.title,
@@ -791,12 +806,12 @@ export function registerEdlsSheetsRoutes(
           endTime: crew.endTime,
           taskId: crew.taskId,
         }));
-        
+
         // Create the new sheet with crews
         // Copy data but exclude trashLock (new sheet should start without protection)
         const sourceData = (sourceSheet.data as Record<string, any>) || {};
         const { trashLock: _, ...copiedData } = sourceData;
-        
+
         const newSheetData = {
           ymd: targetDate,
           title: sourceSheet.title,
@@ -808,12 +823,12 @@ export function registerEdlsSheetsRoutes(
           status: 'draft' as const,
           data: Object.keys(copiedData).length > 0 ? copiedData : undefined,
         };
-        
+
         const newSheet = await storage.edlsSheets.create(newSheetData, newCrewsData);
-        
+
         // Get the newly created crews to map old crew IDs to new ones
         const newCrews = await storage.edlsCrews.getBySheetId(newSheet.id);
-        
+
         // Build a mapping from old crew sequence to new crew ID
         const crewIdMap = new Map<string, string>();
         for (const sourceCrew of sourceCrews) {
@@ -822,18 +837,18 @@ export function registerEdlsSheetsRoutes(
             crewIdMap.set(sourceCrew.id, matchingNewCrew.id);
           }
         }
-        
+
         // Copy assignments, tracking failures
         const failedAssignments: Array<{ workerId: string; workerName: string; reason: string }> = [];
         let successCount = 0;
-        
+
         for (const assignment of sourceAssignments) {
           const newCrewId = crewIdMap.get(assignment.crewId);
           if (!newCrewId) {
             failedAssignments.push({
               workerId: assignment.workerId,
-              workerName: assignment.worker ? 
-                (assignment.worker.family && assignment.worker.given 
+              workerName: assignment.worker ?
+                (assignment.worker.family && assignment.worker.given
                   ? `${assignment.worker.family}, ${assignment.worker.given}`
                   : assignment.worker.displayName || `Worker ${assignment.worker.siriusId || assignment.workerId.slice(0, 8)}`)
                 : assignment.workerId,
@@ -841,7 +856,7 @@ export function registerEdlsSheetsRoutes(
             });
             continue;
           }
-          
+
           try {
             await storage.edlsAssignments.create({
               ymd: targetDate,
@@ -851,12 +866,12 @@ export function registerEdlsSheetsRoutes(
             });
             successCount++;
           } catch (error: any) {
-            const workerName = assignment.worker ? 
-              (assignment.worker.family && assignment.worker.given 
+            const workerName = assignment.worker ?
+              (assignment.worker.family && assignment.worker.given
                 ? `${assignment.worker.family}, ${assignment.worker.given}`
                 : assignment.worker.displayName || `Worker ${assignment.worker.siriusId || assignment.workerId.slice(0, 8)}`)
               : assignment.workerId;
-            
+
             failedAssignments.push({
               workerId: assignment.workerId,
               workerName,
@@ -864,7 +879,7 @@ export function registerEdlsSheetsRoutes(
             });
           }
         }
-        
+
         res.status(201).json({
           newSheetId: newSheet.id,
           successCount,

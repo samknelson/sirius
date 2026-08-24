@@ -1,8 +1,9 @@
+import { getEnvironmentVariable } from "../config/env-registry";
 const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
 
-const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
-const publicPaths = process.env.PUBLIC_OBJECT_SEARCH_PATHS?.split(',') || ['public'];
-const privateDir = process.env.PRIVATE_OBJECT_DIR || '.private';
+const bucketId = getEnvironmentVariable("DEFAULT_OBJECT_STORAGE_BUCKET_ID");
+const publicPaths = getEnvironmentVariable("PUBLIC_OBJECT_SEARCH_PATHS")?.split(',') || ['public'];
+const privateDir = getEnvironmentVariable("PRIVATE_OBJECT_DIR") || '.private';
 
 export class ObjectStorageNotConfiguredError extends Error {
   constructor(message: string) {

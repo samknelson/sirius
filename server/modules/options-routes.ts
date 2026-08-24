@@ -1,4 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import { isNoteEntityType } from "@shared/notes";
 import { getOptionsType, getAllOptionsTypes, getOptionsStorage } from "./options-registry";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { OptionsTypeName } from "../storage/unified-options";
@@ -70,6 +71,50 @@ function validateDispatchJobTypeBullpen(data: unknown): string | null {
     // Keep persisted JSON consistent: no dangling event-type reference
     // when bullpen is "none" or absent.
     delete d.bullpenEventTypeId;
+  }
+  return null;
+}
+
+/**
+ * Validation for `worker-ban-type` writes: `data.pluginIds` must be a
+ * non-empty array of registered worker-ban plugin ids. The UI already
+ * constrains this via the ban-plugins widget, but a direct API call must
+ * not persist unknown plugin ids. Returns an error message or null.
+ */
+async function validateWorkerBanTypePlugins(data: unknown): Promise<string | null> {
+  const pluginIds = (data as { pluginIds?: unknown } | null | undefined)?.pluginIds;
+  if (!Array.isArray(pluginIds) || pluginIds.length === 0) {
+    return "At least one ban behavior is required";
+  }
+  const { workerBanPluginRegistry } = await import("../plugins/worker-bans/registry");
+  const known = new Set(workerBanPluginRegistry.listIds());
+  const unknown = pluginIds.filter((p) => typeof p !== "string" || !known.has(p));
+  if (unknown.length > 0) {
+    return `Unknown ban behavior(s): ${unknown.join(", ")}`;
+  }
+  const defaultDurationDays = (data as { defaultDurationDays?: unknown } | null | undefined)?.defaultDurationDays;
+  if (defaultDurationDays !== undefined && defaultDurationDays !== null) {
+    if (typeof defaultDurationDays !== "number" || !Number.isInteger(defaultDurationDays) || defaultDurationDays < 1) {
+      return "Default duration (days) must be a positive integer";
+    }
+  }
+  return null;
+}
+
+/**
+ * Validation for `note-type` writes: `data.entityTypes` must be a non-empty
+ * array of record types registered in the shared note-entity registry. The
+ * form constrains this via a multi-select, but a direct API call must not be
+ * able to declare a type for a record kind that cannot hold notes.
+ */
+function validateNoteTypeEntityTypes(data: unknown): string | null {
+  const entityTypes = (data as { entityTypes?: unknown } | null | undefined)?.entityTypes;
+  if (!Array.isArray(entityTypes) || entityTypes.length === 0) {
+    return "At least one record type is required";
+  }
+  const unknown = entityTypes.filter((t) => typeof t !== "string" || !isNoteEntityType(t));
+  if (unknown.length > 0) {
+    return `Unknown record type(s): ${unknown.join(", ")}`;
   }
   return null;
 }
@@ -238,15 +283,21 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
   );
 
   // Special-case: facilities exposed as a remote-options source for the
-  // trust eligibility "BAO - Start Healthnet" plugin's site picker.
-  // Read-only; gated by the `sitespecific.bao` component. Register BEFORE
-  // the generic `/api/options/:type` so it matches first.
+  // trust eligibility "BAO - Start Healthnet" plugin's site picker and the
+  // worker-ban Facility behavior's picker. Read-only; available when either
+  // the `facility` or the `sitespecific.bao` component is enabled. Register
+  // BEFORE the generic `/api/options/:type` so it matches first.
   app.get(
     "/api/options/facility",
     requireAccess('authenticated'),
-    requireComponent("sitespecific.bao"),
     async (_req: Request, res: Response) => {
       try {
+        const enabled =
+          (await isComponentEnabled("facility")) ||
+          (await isComponentEnabled("sitespecific.bao"));
+        if (!enabled) {
+          return res.status(403).json({ message: "This feature is not enabled" });
+        }
         const facilities = await storage.facilities.getAll();
         res.json(facilities.map((f) => ({ id: f.id, name: f.name })));
       } catch (error) {
@@ -359,6 +410,20 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
           return res.status(400).json({ message: bullpenError });
         }
       }
+
+      if (type === "note-type") {
+        const entityTypeError = validateNoteTypeEntityTypes(data.data);
+        if (entityTypeError) {
+          return res.status(400).json({ message: entityTypeError });
+        }
+      }
+
+      if (type === "worker-ban-type") {
+        const pluginError = await validateWorkerBanTypePlugins(data.data);
+        if (pluginError) {
+          return res.status(400).json({ message: pluginError });
+        }
+      }
       
       const item = await config.create(data);
       res.status(201).json(item);
@@ -421,8 +486,44 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
           return res.status(400).json({ message: bullpenError });
         }
       }
+
+      if (type === "note-type" && updates.data !== undefined) {
+        const entityTypeError = validateNoteTypeEntityTypes(updates.data);
+        if (entityTypeError) {
+          return res.status(400).json({ message: entityTypeError });
+        }
+      }
+
+      if (type === "worker-ban-type" && updates.data !== undefined) {
+        const pluginError = await validateWorkerBanTypePlugins(updates.data);
+        if (pluginError) {
+          return res.status(400).json({ message: pluginError });
+        }
+      }
       
       const item = await config.update(id, updates);
+
+      // Editing a ban type's behaviors changes what every existing ban of
+      // that type enforces, so re-emit WORKER_BAN_SAVED for each affected
+      // ban. The dispatch_ban denorm plugin recomputes those workers'
+      // global eligibility facts (e.g. all-dispatch added/removed) instead
+      // of waiting for the daily sweep.
+      if (type === "worker-ban-type" && updates.data !== undefined) {
+        const affected = (await storage.workerBans.getAll()).filter(
+          (ban) => ban.type === id,
+        );
+        const { eventBus, EventType } = await import("../services/event-bus");
+        for (const ban of affected) {
+          eventBus.emit(EventType.WORKER_BAN_SAVED, {
+            banId: ban.id,
+            workerId: ban.workerId,
+            type: ban.type,
+            startDate: ban.startDate,
+            endDate: ban.endDate,
+            active: ban.denormActive ?? true,
+          });
+        }
+      }
       
       if (!item) {
         return res.status(404).json({ message: `${config.name} not found` });
@@ -462,6 +563,31 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
           return res.status(409).json({
             message:
               "This status is used by a grievance timeline template and cannot be deleted. Remove it from all timeline steps first.",
+          });
+        }
+      }
+
+      // A note type still used by any note cannot be deleted. The FK is ON
+      // DELETE RESTRICT so the database would refuse anyway; this pre-check
+      // turns that into a message that says what to do about it.
+      if (type === "note-type") {
+        const inUse = await storage.notes.countByTypeId(id);
+        if (inUse > 0) {
+          return res.status(409).json({
+            message: `This note type is used by ${inUse} note${inUse === 1 ? "" : "s"} and cannot be deleted. Retype or delete those notes first.`,
+          });
+        }
+      }
+
+      // A worker ban type referenced by any ban cannot be deleted —
+      // `worker_bans.type` is a soft reference (no FK), so guard here to
+      // avoid orphaning bans onto an unknown (unenforced) type.
+      if (type === "worker-ban-type") {
+        const allBans = await storage.workerBans.getAll();
+        if (allBans.some((ban) => ban.type === id)) {
+          return res.status(409).json({
+            message:
+              "This ban type is used by one or more worker bans and cannot be deleted. Remove or retype those bans first.",
           });
         }
       }

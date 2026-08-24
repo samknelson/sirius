@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage, getEligibilityFailures } from "@/lib/queryClient";
+import { EligibilityFailureList } from "@/components/dispatch/EligibilityFailureList";
 import {
   Table,
   TableBody,
@@ -65,9 +66,18 @@ function JobDispatchesCbnContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/dispatches/job", job.id] });
     },
     onError: (error) => {
+      const failures = getEligibilityFailures(error);
       toast({
-        title: "Error",
-        description: getApiErrorMessage(error, "Failed to create one or more dispatches"),
+        title: failures.length > 0 ? "Worker Not Eligible" : "Error",
+        description:
+          failures.length > 0 ? (
+            <EligibilityFailureList
+              intro="The dispatch was refused because the worker fails these eligibility criteria:"
+              failures={failures}
+            />
+          ) : (
+            getApiErrorMessage(error, "Failed to create one or more dispatches")
+          ),
         variant: "destructive",
       });
     },

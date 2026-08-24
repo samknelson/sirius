@@ -143,6 +143,8 @@ registerTrustProviderEdiPlugin({
     "month, including policy/plan/group constants and member/dependent SSNs.",
   benefitSiriusIds: ["M"],
   outputFormat: "csv",
+  // CSV layouts have no fixed-width field metadata.
+  ediFields: [],
   configSchema: {
     type: "object",
     properties: {

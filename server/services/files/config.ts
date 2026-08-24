@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { logger } from "../../logger";
+import {
+  getEnvironmentVariable,
+  registerEnvironmentVariable,
+} from "../../config/env-registry";
 import type { FileSystemAccess, FileSystemProviderKind } from "./base";
 
 const SERVICE = "filesystems";
@@ -21,7 +25,8 @@ const SERVICE = "filesystems";
  *
  * Secret values are NEVER inlined in the JSON. Settings whose key ends in
  * `_secret` hold the NAME of an environment variable; the value is resolved
- * from process.env at boot and exposed under the key without the suffix
+ * from the environment at boot (registered on the fly in the env registry as
+ * a secret) and exposed under the key without the suffix
  * (access_key_id_secret → access_key_id).
  */
 
@@ -85,7 +90,25 @@ function resolveSecretSettings(
           `FILESYSTEMS: filesystem "${fsId}" setting "${key}" must name an environment variable`,
         );
       }
-      const secretValue = process.env[value];
+      // Dynamically-named secret: register it in the env registry at
+      // config-parse time so the environment contract stays complete.
+      //
+      // changeTakesEffect is deliberately left unstated. The value is resolved
+      // here, at parse time, and baked into the filesystem's settings, so it
+      // is not immediate; but a Filesystem-registry reload re-parses FILESYSTEMS
+      // and comes back through this function, so it is not restart-only either.
+      // The honest answer is "reload", and that classification may only be used
+      // by a variable a reloadable subsystem names by name — which a secret
+      // whose name is not known until parse time cannot be. Unstated shows
+      // nothing rather than making a claim that is wrong in one direction or
+      // the other.
+      registerEnvironmentVariable({
+        name: value,
+        description: `Secret referenced by FILESYSTEMS filesystem "${fsId}" setting "${key}".`,
+        secret: true,
+        category: "core",
+      });
+      const secretValue = getEnvironmentVariable(value);
       if (secretValue === undefined || secretValue === "") {
         throw new Error(
           `FILESYSTEMS: filesystem "${fsId}" references secret "${value}" (via "${key}") but that environment variable is not set`,
@@ -111,7 +134,7 @@ const providerSettingsValidators: Record<FileSystemProviderKind, z.ZodTypeAny> =
  * malformed entry — boot must fail loudly rather than half-configure storage.
  */
 export function parseFileSystemsEnv(
-  raw: string | undefined = process.env.FILESYSTEMS,
+  raw: string | undefined = getEnvironmentVariable("FILESYSTEMS"),
 ): Map<string, FileSystemConfig> {
   const configs = new Map<string, FileSystemConfig>();
   if (raw === undefined || raw.trim() === "") return configs;

@@ -14,15 +14,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useState, useMemo, useEffect } from "react";
-import pdfMake from "pdfmake/build/pdfmake";
-import pdfFonts from "pdfmake/build/vfs_fonts";
+import { useState, useMemo } from "react";
+import { downloadPdf } from "@/lib/pdf-export";
 import { useTerm } from "@/contexts/TerminologyContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-
-pdfMake.vfs = (pdfFonts as any).pdfMake?.vfs || pdfFonts.vfs;
+import { useModalSeed } from "@/hooks/use-modal-seed";
 
 interface BargainingUnitStats {
   id: string;
@@ -175,7 +173,7 @@ async function fetchAllMissingCardchecks(employers: OrganizingEmployer[]): Promi
 
 type TermFn = (key: string, options?: { plural?: boolean; count?: number; capitalize?: boolean; lowercase?: boolean }) => string;
 
-function generateAggregatePdf(
+async function generateAggregatePdf(
   employers: OrganizingEmployer[],
   missingData: Map<string, FetchResult>,
   totalStats: { totalWorkers: number; signedWorkers: number; employerCount: number },
@@ -454,7 +452,7 @@ function generateAggregatePdf(
   };
 
   const fileName = `missing-cardchecks-all-schools-${new Date().toISOString().split('T')[0]}.pdf`;
-  pdfMake.createPdf(docDefinition as any).download(fileName);
+  await downloadPdf(docDefinition as any, fileName);
 }
 
 const iconMap: Record<string, typeof Building2> = {
@@ -795,26 +793,20 @@ function StatusGroupsDialog({ isAdmin }: { isAdmin: boolean }) {
     },
   });
 
-  useEffect(() => {
-    if (open && savedDays?.days !== undefined) {
-      setNewMemberDays(savedDays.days);
-    }
-  }, [open, savedDays]);
-
-  useEffect(() => {
-    if (open && savedDuesBuIds?.buIds) {
-      setDuesBuIds(savedDuesBuIds.buIds);
-    }
-  }, [open, savedDuesBuIds]);
-
-  const handleOpen = (isOpen: boolean) => {
-    if (isOpen) {
-      setGroups(savedGroups.length > 0 ? JSON.parse(JSON.stringify(savedGroups)) : []);
-      setNewMemberDays(savedDays?.days ?? 30);
-      setDuesBuIds(savedDuesBuIds?.buIds ?? []);
-    }
-    setOpen(isOpen);
-  };
+  // All three settings are seeded during the render that opens the dialog, so
+  // the editor never renders a blank/previous-session value first. The saved
+  // queries only run while the dialog is open, so each seed is keyed on its own
+  // saved value: the first open re-seeds that one setting as its data lands,
+  // without resetting the other two.
+  useModalSeed(open, JSON.stringify(savedGroups), () =>
+    setGroups(savedGroups.length > 0 ? JSON.parse(JSON.stringify(savedGroups)) : []),
+  );
+  useModalSeed(open, savedDays?.days ?? "", () =>
+    setNewMemberDays(savedDays?.days ?? 30),
+  );
+  useModalSeed(open, (savedDuesBuIds?.buIds ?? []).join(","), () =>
+    setDuesBuIds(savedDuesBuIds?.buIds ?? []),
+  );
 
   const addGroup = () => {
     setGroups([...groups, {
@@ -859,7 +851,7 @@ function StatusGroupsDialog({ isAdmin }: { isAdmin: boolean }) {
   if (!isAdmin) return null;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpen}>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" data-testid="button-status-groups-config">
           <Settings className="h-4 w-4 mr-2" />
@@ -1306,7 +1298,7 @@ export default function EmployersOrganizing() {
     setIsExporting(true);
     try {
       const missingData = await fetchAllMissingCardchecks(employers);
-      generateAggregatePdf(
+      await generateAggregatePdf(
         employers, missingData, totalStats, term, secondaryGroups,
         organizingData?.newMembers ?? [],
         organizingData?.newMemberDays ?? 30

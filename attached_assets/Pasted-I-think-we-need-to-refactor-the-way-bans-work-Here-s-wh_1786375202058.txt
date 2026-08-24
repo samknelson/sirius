@@ -1,0 +1,41 @@
+I think we need to refactor the way bans work. Here's what we need.
+
+Each deployment will define its own set of bans. For example: a site might have a "three-strikes ban", an "administrative ban", a "dispatch ban", an "EBA ban", a "self sign-in ban", a "facility ban"
+
+Each of these bans specific actions:
+
+- The "three-strikes ban" might prevent you from signing in to the out-of-work list, and also from using the grievance tool.
+- The "EBA ban" might prevent you from using the EBA system.
+- The "self sign-in ban" might prevent you from signing in to the out-of-work list.
+- The "facility ban" prevents you from accepting a dispatch to a specific facility.
+
+I'm trying to figure out the best extensible framework for something like this. 
+
+To start with, we need a list of "bannable actions". I think this would be defined in code, as a list that can be populated with callbacks. For instance:
+
+- "Banned from accepting dispatches"
+- "Banned from facility X"
+- "Banned from EBA use"
+- "Banned from filing a new grievance"
+
+We then need a per-deployment list of "Ban Types". Each of these needs a multi-select list, so that e.g. "Three Strikes" could include several bannable actions.
+
+We then need a way to represent this at the worker level, so that we can indicate e.g. "Worker 123 has a ban of type 456, which bans him from action A, action B, and action C at facility X". 
+
+We will want to be able to very quickly query, e.g., "can this worker work at this facility."
+
+At the database level, I'm thinking:
+
+1. There's a new plugin kind, "Bans". It doesn't have a lot of logic, but it does declare e.g. the set of arguments (so that you can ban a specific facility). So we'd start with types for "Facility" (specify a facility), "All Dispatch", "EBA", "Dispatch Job Type" (specify a job type), and so forth. Each would be a singleton type.
+
+2. There's a new options table, "options_worker_ban", which lets you define that e.g. a "Three Strikes" ban includes the specified ban plugin configurations.
+
+3. The "worker_bans" table changes to reference a ban type, rather than the current string ("dispatch"). The optional payload (job type, facility) will be stored in the data JSON.
+
+4. We'll implement denorm plugins as needed for efficiency. For example, the "facility ban" tool would denorm the worker and the facility to the dispatch eligibility denorm table. I'd like to postpone this step for later.
+
+5. The plugin framework would define a function like "is_banned(action, worker_id, context)". That would load all the active bans for the worker; for each, call the corresponding is_banned() function in the plugin. For most, the default behavior (implemented in the wrapper) is simple: you're banned from "all dispatch" if you have an active ban record of that type. But for some, the behavior is more complicated (you're banned from the facility if the record is active and the facility matches the one in the context). The "is_banned" can return both the result and the details, so you can inspect the response and find out which specific ban was applied and what comments were included.
+
+I would also like to migrate the employer-specific "do not call" list (worker_dispatch_dnc) into this framework, so "dnc" by an employer is a ban of type "employer_dnc_worker", and by a worker it's "worker_dnc_employer". Or something, the names are up for grabs. We'll also need each options_ value to indicate who can create it: the employer, the worker, staff only.
+
+This is very much a rough sketch, and I'd like your thoughts.

@@ -185,6 +185,18 @@ export interface WorkerSearchResult {
   total: number;
 }
 
+/**
+ * A worker resolved down to the single phone number an SMS to them would
+ * actually go to: their contact's ACTIVE PRIMARY number. Workers with no such
+ * number are simply absent, so a caller pre-filtering recipients never has to
+ * guess which of several numbers the send layer would pick.
+ */
+export interface WorkerSmsContact {
+  workerId: string;
+  contactId: string;
+  phoneNumber: string;
+}
+
 export interface WorkerStorage {
   getAllWorkers(): Promise<Worker[]>;
   /**
@@ -248,6 +260,13 @@ export interface WorkerStorage {
   getWorkerByContactEmail(email: string): Promise<Worker | undefined>;
   getWorkersByContactEmail(email: string): Promise<Worker[]>;
   getWorkerByContactId(contactId: string): Promise<Worker | undefined>;
+  /**
+   * Contact and textable number for many workers in one query, for callers
+   * assembling an SMS recipient list from worker ids alone. Workers with no
+   * contact or no active primary number are left out rather than coming back
+   * unreachable. Unordered; key off `workerId`.
+   */
+  getSmsContactsByWorkerIds(workerIdsList: string[]): Promise<WorkerSmsContact[]>;
   getWorkersByHomeEmployerId(employerId: string): Promise<Array<{
     id: string;
     siriusId: number | null;
@@ -1229,6 +1248,33 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .from(workers)
         .where(eq(workers.contactId, contactId));
       return worker ? stripWorkerData(worker) : undefined;
+    },
+
+    async getSmsContactsByWorkerIds(workerIdsList: string[]): Promise<WorkerSmsContact[]> {
+      if (workerIdsList.length === 0) return [];
+      const client = getClient();
+      // Same lateral pick as every other SMS pre-filter in the app: the
+      // active primary number, oldest first as the tiebreak, so this read and
+      // the send layer agree on the number the message goes to.
+      const result = await client.execute(sql`
+        SELECT
+          w.id as "workerId",
+          c.id as "contactId",
+          ph.phone_number as "phoneNumber"
+        FROM workers w
+        INNER JOIN contacts c ON w.contact_id = c.id
+        INNER JOIN LATERAL (
+          SELECT p.phone_number
+          FROM contact_phone p
+          WHERE p.contact_id = c.id
+            AND p.is_active = true
+            AND p.is_primary = true
+          ORDER BY p.created_at ASC, p.id ASC
+          LIMIT 1
+        ) ph ON true
+        WHERE w.id IN (${sql.join(workerIdsList.map((id) => sql`${id}`), sql`, `)})
+      `);
+      return result.rows as unknown as WorkerSmsContact[];
     },
 
     async getWorkersByHomeEmployerId(employerId: string): Promise<Array<{

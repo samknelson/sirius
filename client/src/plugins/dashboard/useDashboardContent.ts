@@ -13,9 +13,18 @@ export type DashboardContentParams = Record<
  * scopes its `/content` read to that specific config (sending `?configId=...`)
  * without each widget having to thread the id through itself. A `null` configId
  * means "unscoped" — the server then falls back to the canonical config.
+ *
+ * `targetUserId` supports the staff target-view mode (`/users/:id/dashboard`):
+ * when set, every `/content` read carries `?targetUserId=` so the server
+ * resolves the widget's identity/gating from that user instead of the viewer.
+ * `null` (the default) means the normal self-view; requests are unchanged.
  */
-export const DashboardConfigContext = createContext<{ configId: string | null }>({
+export const DashboardConfigContext = createContext<{
+  configId: string | null;
+  targetUserId?: string | null;
+}>({
   configId: null,
+  targetUserId: null,
 });
 
 export interface UseDashboardContentOptions<TParams extends DashboardContentParams = DashboardContentParams> {
@@ -41,12 +50,13 @@ export function useDashboardContent<
   TParams extends DashboardContentParams = DashboardContentParams,
 >(pluginId: string, options: UseDashboardContentOptions<TParams> = {}) {
   const { action, params, enabled = true, refetchIntervalMs } = options;
-  const { configId } = useContext(DashboardConfigContext);
+  const { configId, targetUserId } = useContext(DashboardConfigContext);
 
   const url = (() => {
     const base = `/api/dashboard-plugins/${pluginId}/content${action ? `/${action}` : ""}`;
     const qs = new URLSearchParams();
     if (configId) qs.append("configId", configId);
+    if (targetUserId) qs.append("targetUserId", targetUserId);
     if (params) {
       for (const [k, v] of Object.entries(params)) {
         if (v !== undefined && v !== null) qs.append(k, String(v));
@@ -63,6 +73,7 @@ export function useDashboardContent<
       "content",
       action ?? null,
       configId ?? null,
+      targetUserId ?? null,
       params ?? null,
     ],
     queryFn: async () => {

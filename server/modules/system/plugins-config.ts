@@ -124,6 +124,31 @@ async function findPhaseConflicts(
 }
 
 /**
+ * Turn a Zod failure into the readable, field-addressed lines the admin UI
+ * shows ("media — Expected string, received number"). The raw Zod issue
+ * objects used to be returned verbatim, which rendered as nothing useful in
+ * the save dialog's toast.
+ */
+function formatZodIssues(error: { issues: { path: (string | number)[]; message: string }[] }): string[] {
+  return error.issues.map((issue) => {
+    const path = issue.path.join(".");
+    return path ? `${path} — ${issue.message}` : issue.message;
+  });
+}
+
+/**
+ * Build the single-line `message` for a rejected save from its detail lines.
+ * The message is what generic error handling surfaces, so it must name the
+ * actual problem rather than a generic phrase; the full list still rides in
+ * `errors` for callers (and the admin dialog) that render every reason.
+ */
+function summarizeErrors(prefix: string, details: string[]): string {
+  if (details.length === 0) return prefix;
+  if (details.length === 1) return `${prefix}: ${details[0]}`;
+  return `${prefix}: ${details[0]} (+${details.length - 1} more)`;
+}
+
+/**
  * Kinds that still own dedicated, authoritative config routes + legacy
  * storage tables and have NOT been cut over to the unified plugin_configs
  * tables yet. The generic routes refuse to operate on these so there is
@@ -399,7 +424,11 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
     if (registration.validateConfig) {
       const result = await registration.validateConfig(plugin, data ?? {});
       if (!result.valid) {
-        res.status(400).json({ message: "Invalid plugin configuration", errors: result.errors ?? [] });
+        const details = result.errors ?? [];
+        res.status(400).json({
+          message: summarizeErrors("Invalid plugin configuration", details),
+          errors: details,
+        });
         return false;
       }
     }
@@ -465,6 +494,12 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       // renders these (in addition to the per-kind envelope fields) once a
       // plugin is selected. Values are stored inside the config's `data` json.
       const pluginFields: Record<string, PluginConfigEnvelopeField[]> = {};
+      // Per-plugin *envelope* field overrides (distinct from `pluginFields`,
+      // which are the plugin's own `data` fields). A kind uses these to narrow
+      // a shared envelope field to what the selected plugin actually accepts —
+      // e.g. an event notifier's media — so the dialog can't offer a value the
+      // save route is certain to reject.
+      const pluginEnvelopeFields: Record<string, PluginConfigEnvelopeField[]> = {};
       for (const plugin of registration.registry.list()) {
         const meta = registration.registry.getMetadata(plugin);
         // Skip field metadata for plugins whose component is disabled (or
@@ -474,8 +509,16 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         if (Array.isArray(fields) && fields.length > 0) {
           pluginFields[meta.id] = fields;
         }
+        const perPlugin = adapter.envelopeFieldsForPlugin?.(plugin);
+        if (Array.isArray(perPlugin) && perPlugin.length > 0) {
+          pluginEnvelopeFields[meta.id] = perPlugin;
+        }
       }
-      res.json({ envelopeFields: adapter.envelopeFields ?? [], pluginFields });
+      res.json({
+        envelopeFields: adapter.envelopeFields ?? [],
+        pluginFields,
+        pluginEnvelopeFields,
+      });
     } catch (error) {
       console.error("Failed to fetch plugin config meta:", error);
       res.status(500).json({ message: "Failed to fetch plugin config meta" });
@@ -489,7 +532,11 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       const { kind, adapter, registration } = resolved;
       const parsed = adapter.configSchema.safeParse(req.body ?? {});
       if (!parsed.success) {
-        res.status(400).json({ message: "Invalid configuration", errors: parsed.error.errors });
+        const details = formatZodIssues(parsed.error);
+        res.status(400).json({
+          message: summarizeErrors("Invalid configuration", details),
+          errors: details,
+        });
         return;
       }
       // Refuse to create a config for a plugin whose component is disabled
@@ -1004,7 +1051,11 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       const merged = { ...hydrate(adapter, existingEnvelope), ...(req.body ?? {}) };
       const parsed = adapter.configSchema.safeParse(merged);
       if (!parsed.success) {
-        res.status(400).json({ message: "Invalid configuration", errors: parsed.error.errors });
+        const details = formatZodIssues(parsed.error);
+        res.status(400).json({
+          message: summarizeErrors("Invalid configuration", details),
+          errors: details,
+        });
         return;
       }
       // Also refuse to retarget a config onto a disabled feature's plugin.

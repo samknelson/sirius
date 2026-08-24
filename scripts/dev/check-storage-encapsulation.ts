@@ -67,9 +67,11 @@ const READONLY_FLAG_EXEMPT_FILES = [
   // implementation, not a separate plugin carrying its own flag, so they are
   // exempt from the per-file flag requirement. Each entry corresponds to a
   // plugin wrapper that declares `needsReadOnlyDb: true`.
-  // Trust-provider EDI file-type plugins: their read queries live here while
-  // the `needsReadOnlyDb: true` flag is declared on the single
-  // trust_provider_edi wizard wrapper that drives them.
+  // Trust-provider EDI shared infrastructure and file-type plugins: their read
+  // queries live here while the `needsReadOnlyDb: true` flag is declared on
+  // the single trust_provider_edi wizard wrapper that drives them.
+  'server/plugins/trust/provider-edi/base.ts',
+  'server/plugins/trust/provider-edi/plugins/sitespecific-bao-healthnet.ts',
   'server/plugins/trust/provider-edi/plugins/sitespecific-bao-kaiser.ts',
   'server/plugins/wizards/engine/types/report_workers_missing_ssn.ts',
   'server/plugins/wizards/engine/types/report_workers_invalid_ssn.ts',

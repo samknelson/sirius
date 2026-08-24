@@ -283,7 +283,7 @@ export default function Header() {
   };
 
   return (
-    <header className="border-b bg-white dark:bg-gray-950 dark:border-gray-800">
+    <header id="site-header" className="border-b bg-white dark:bg-gray-950 dark:border-gray-800">
       {/* Masquerade indicator banner */}
       {masquerade.isMasquerading && masquerade.originalUser && (
         <div className="bg-orange-500 text-white px-6 py-2 flex items-center justify-between text-sm">
@@ -313,7 +313,7 @@ export default function Header() {
       )}
 
       {/* Row 1: Site name, system mode, and user menu */}
-      <div className="flex items-center justify-between h-12 px-4 md:px-6 border-b border-gray-100 dark:border-gray-800">
+      <div id="site-banner" className="flex items-center justify-between h-12 px-4 md:px-6 border-b border-gray-100 dark:border-gray-800">
         <div className="flex items-center gap-3">
           {/* Mobile hamburger menu */}
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -328,7 +328,7 @@ export default function Header() {
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-72 flex flex-col overflow-hidden p-0">
+            <SheetContent id="site-menu-mobile" side="left" className="w-72 flex flex-col overflow-hidden p-0">
               <SheetHeader className="px-6 pt-6 pb-2">
                 <SheetTitle>{settings?.siteName || "Sirius"}</SheetTitle>
               </SheetHeader>
@@ -359,7 +359,9 @@ export default function Header() {
               className={`text-xs uppercase font-medium ${
                 systemMode.mode === "dev"
                   ? "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
-                  : "bg-yellow-200 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200"
+                  : systemMode.mode === "maintenance"
+                    ? "bg-red-200 text-red-800 dark:bg-red-800 dark:text-red-200"
+                    : "bg-yellow-200 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200"
               }`}
               data-testid="badge-system-mode"
             >
@@ -419,7 +421,7 @@ export default function Header() {
       </div>
 
       {/* Row 2: Desktop Navigation Links - hidden on mobile */}
-      <nav className="hidden md:flex items-center space-x-4 h-10 px-4 md:px-6 overflow-x-auto">
+      <nav id="site-menu" className="hidden md:flex items-center space-x-4 h-10 px-4 md:px-6 overflow-x-auto">
         {menuItems.map((item) =>
           item.children && item.children.length > 0
             ? renderDesktopDropdown(item)

@@ -1,5 +1,5 @@
 import { logger } from "../../../logger";
-import { wmbPrimaryKeys } from "./base";
+import { wmbPrimaryKeys, type EdiField } from "./base";
 import { PluginRegistry, isPluginComponentEnabledSync } from "../../_core";
 import type { BasePluginMetadata } from "../../_core";
 import type { JsonSchema } from "@shared/json-schema-form";
@@ -55,6 +55,14 @@ export interface TrustProviderEdiPlugin extends BasePluginMetadata {
    * `benefitSiriusId` data value still overrides these defaults per config.
    */
   benefitSiriusIds?: readonly string[];
+  /**
+   * The plugin's fixed-width output layout, in output order — the same field
+   * table `encodeRow` serializes with. Declared on the plugin (rather than
+   * kept private to its module) so the conformance suite can hold every
+   * registered provider to the shared structural contract: record width,
+   * field placement, padding, truncation, and null/constant handling.
+   */
+  ediFields: readonly EdiField[];
   /** Columns for the wizard results preview table (and CSV export). */
   getColumns(): Array<{ id: string; header: string; type?: string; width?: number }>;
   /**

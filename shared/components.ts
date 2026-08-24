@@ -476,6 +476,19 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "worker.aat",
+    name: "Worker Access Tokens",
+    description: "Per-worker access token (UUID) and access code",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/worker/aat/schema.ts",
+      tables: ["worker_aat"]
+    }
+  },
+  {
     id: "worker.relations",
     name: "Worker Relations",
     description: "Management of relationships between workers",
@@ -598,9 +611,9 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "core",
     managesSchema: true,
     schemaManifest: {
-      version: 2,
+      version: 3,
       schemaPath: "./shared/schema/dispatch/schema.ts",
-      tables: ["options_dispatch_job_type", "dispatch_jobs", "dispatches", "worker_dispatch_status", "worker_dispatch_elig_denorm", "plugin_configs_dispatch"]
+      tables: ["options_dispatch_job_type", "dispatch_jobs", "dispatches", "worker_dispatch_status", "worker_dispatch_elig_denorm", "plugin_configs_dispatch", "dispatch_job_employer_contacts"]
     },
     permissions: [
       { key: "employer.dispatch", description: "Employer access to dispatch functionality" },
@@ -643,6 +656,20 @@ export const componentRegistry: ComponentDefinition[] = [
       schemaPath: "./shared/schema/dispatch/fore-schema.ts",
       tables: ["dispatch_job_fore"],
       dependsOnComponents: ["dispatch"]
+    }
+  },
+  {
+    id: "dispatch.facility",
+    name: "Dispatch Facilities",
+    description: "Link dispatch jobs to facilities",
+    enabledByDefault: false,
+    category: "dispatch",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/dispatch/facility-schema.ts",
+      tables: ["dispatch_job_facility"],
+      dependsOnComponents: ["dispatch", "facility"]
     }
   },
   {
@@ -823,6 +850,19 @@ export const componentRegistry: ComponentDefinition[] = [
       { key: "edls.supervisor", description: "EDLS supervisory access" },
       { key: "edls.reader", description: "Read-only access to EDLS data" },
       { key: "edls.worker.advisor", description: "Worker advisor access for EDLS" }
+    ],
+    // The Sheet Export v1 web service. Materialized on enable (and at boot for
+    // an already-enabled component), deactivated on disable. Configuration ids
+    // are minted per database, so the alias is the only address that is the
+    // same in every environment — it ships by default for that reason.
+    pluginConfigs: [
+      {
+        pluginKind: "web-service",
+        pluginId: "edls-sheet-export-v1",
+        siriusId: "auto.edls.sheet-export-v1",
+        name: "EDLS Sheet Export v1",
+        data: { alias: "edls-sheet-export-v1" },
+      },
     ]
   },
   {
@@ -844,6 +884,20 @@ export const componentRegistry: ComponentDefinition[] = [
     description: "Client connection to the Teamsters 631 site",
     enabledByDefault: false,
     category: "site-specific"
+  },
+  {
+    id: "sitespecific.t631.interviews",
+    name: "Teamsters 631 Interviews",
+    description: "Job interview tracking for Teamsters 631",
+    enabledByDefault: false,
+    category: "site-specific",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/sitespecific/t631/interviews-schema.ts",
+      tables: ["sitespecific_t631_job_interviews"],
+      dependsOnComponents: ["dispatch"]
+    }
   },
   {
     id: "sitespecific.bao",

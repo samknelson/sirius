@@ -8,7 +8,7 @@ function TrustProviderContactSendSmsContent() {
     email: trustProviderContact.contact.email,
     displayName: trustProviderContact.contact.displayName,
   } : null;
-  return <CommSendWrapper channel="sms" contact={contact} />;
+  return <CommSendWrapper channel="sms" contact={contact} composeTarget={{ scope: "provider_contact", recordId: trustProviderContact.id }} />;
 }
 
 export default function TrustProviderContactSendSms() {

@@ -1,4 +1,20 @@
 import twilio from 'twilio';
+import { getEnvironmentVariable, registerEnvironmentVariables } from "../config/env-registry";
+
+// changeTakesEffect: "restart". getCredentials() memoizes the resolved
+// credentials in `cachedCredentials` on first use and every send reads that
+// memo, so a new value does not reach the sending path in this process.
+// (Testing the connection from the provider page clears the memo as a side
+// effect, but that is not something an operator editing a value can rely on.)
+// TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are also registered by
+// server/services/service-registry.ts and
+// server/services/comm/callback-handlers/twilio.ts — registration is
+// last-one-wins, so all copies must carry the SAME classification.
+registerEnvironmentVariables([
+  { name: "TWILIO_ACCOUNT_SID", description: "Twilio account SID for the SMS provider.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "TWILIO_AUTH_TOKEN", description: "Twilio auth token for the SMS provider (also validates status callbacks).", secret: true, category: "core", changeTakesEffect: "restart", },
+  { name: "TWILIO_PHONE_NUMBER", description: "Twilio sending phone number.", secret: false, category: "core", changeTakesEffect: "restart", },
+]);
 
 let cachedCredentials: {
   accountSid: string;
@@ -12,15 +28,15 @@ async function getCredentialsFromConnector(): Promise<{
   phoneNumber: string;
 } | null> {
   try {
-    const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+    const hostname = getEnvironmentVariable("REPLIT_CONNECTORS_HOSTNAME");
     if (!hostname) {
       return null;
     }
 
-    const xReplitToken = process.env.REPL_IDENTITY 
-      ? 'repl ' + process.env.REPL_IDENTITY 
-      : process.env.WEB_REPL_RENEWAL 
-      ? 'depl ' + process.env.WEB_REPL_RENEWAL 
+    const xReplitToken = getEnvironmentVariable("REPL_IDENTITY")
+      ? 'repl ' + getEnvironmentVariable("REPL_IDENTITY")
+      : getEnvironmentVariable("WEB_REPL_RENEWAL")
+      ? 'depl ' + getEnvironmentVariable("WEB_REPL_RENEWAL")
       : null;
 
     if (!xReplitToken) {
@@ -60,9 +76,9 @@ function getCredentialsFromEnv(): {
   authToken: string;
   phoneNumber: string;
 } | null {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const phoneNumber = process.env.TWILIO_PHONE_NUMBER || '';
+  const accountSid = getEnvironmentVariable("TWILIO_ACCOUNT_SID");
+  const authToken = getEnvironmentVariable("TWILIO_AUTH_TOKEN");
+  const phoneNumber = getEnvironmentVariable("TWILIO_PHONE_NUMBER") || '';
 
   if (accountSid && authToken) {
     return { accountSid, authToken, phoneNumber };

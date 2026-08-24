@@ -68,8 +68,15 @@ export interface DispatchJobStorage {
   get(id: string): Promise<DispatchJob | undefined>;
   getWithRelations(id: string): Promise<DispatchJobWithRelations | undefined>;
   getByEmployer(employerId: string): Promise<DispatchJob[]>;
-  create(job: InsertDispatchJob): Promise<DispatchJob>;
-  update(id: string, job: Partial<InsertDispatchJob>): Promise<DispatchJob | undefined>;
+  /**
+   * `facilityId` (dispatch.facility component) is a first-class optional
+   * field delegated to the dispatchJobFacility child storage AFTER the job
+   * write: a string sets/replaces the link, `null` clears it, `undefined`
+   * leaves it untouched. The job storage contains no facility persistence
+   * logic; a facility failure propagates (the save is not silently partial).
+   */
+  create(job: InsertDispatchJob, facilityId?: string | null): Promise<DispatchJob>;
+  update(id: string, job: Partial<InsertDispatchJob>, facilityId?: string | null): Promise<DispatchJob | undefined>;
   delete(id: string): Promise<boolean>;
 }
 
@@ -154,6 +161,24 @@ export const dispatchJobLoggingConfig = defineLoggingConfig<DispatchJobStorage>(
     },
   },
 });
+
+/**
+ * Delegate a first-class facilityId to the dispatchJobFacility child storage
+ * (dispatch.facility component). `undefined` = untouched, `null` = clear,
+ * string = set/replace. Errors propagate — a job save must not silently drop
+ * a facility failure. Dynamic import of the storage index avoids the
+ * module-load cycle (index → database → jobs) and goes through the wrapped
+ * (audit-logged) child storage instance.
+ */
+async function applyFacility(jobId: string, facilityId: string | null | undefined): Promise<void> {
+  if (facilityId === undefined) return;
+  const { storage } = await import('../index');
+  if (facilityId === null) {
+    await storage.dispatchJobFacility.clearForJob(jobId);
+  } else {
+    await storage.dispatchJobFacility.setForJob(jobId, facilityId);
+  }
+}
 
 export function createDispatchJobStorage(): DispatchJobStorage {
   return {
@@ -315,15 +340,17 @@ export function createDispatchJobStorage(): DispatchJobStorage {
         .orderBy(desc(dispatchJobs.startYmd));
     },
 
-    async create(insertJob: InsertDispatchJob): Promise<DispatchJob> {
+
+    async create(insertJob: InsertDispatchJob, facilityId?: string | null): Promise<DispatchJob> {
       validate.validateOrThrow(insertJob);
       const client = getClient();
       const [job] = await client.insert(dispatchJobs).values(insertJob).returning();
+      await applyFacility(job.id, facilityId);
       emitJobSaved(job.id);
       return job;
     },
 
-    async update(id: string, jobUpdate: Partial<InsertDispatchJob & { running?: boolean }>): Promise<DispatchJob | undefined> {
+    async update(id: string, jobUpdate: Partial<InsertDispatchJob & { running?: boolean }>, facilityId?: string | null): Promise<DispatchJob | undefined> {
       const client = getClient();
       
       const [existingJob] = await client.select().from(dispatchJobs).where(eq(dispatchJobs.id, id));
@@ -347,6 +374,7 @@ export function createDispatchJobStorage(): DispatchJobStorage {
         .where(eq(dispatchJobs.id, id))
         .returning();
       if (job) {
+        await applyFacility(job.id, facilityId);
         emitJobSaved(job.id);
       }
       return job || undefined;

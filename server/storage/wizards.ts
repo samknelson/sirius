@@ -3,7 +3,6 @@ import { getClient } from './transaction-context';
 import { wizards, wizardReportData, wizardEmployerMonthly, type Wizard, type InsertWizard, type WizardReportData, type InsertWizardReportData } from "@shared/schema";
 import { eq, and, desc, or } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
-import { wizardPluginRegistry } from "../plugins/wizards";
 import { db } from './db';
 import { runInTransaction } from './transaction-context';
 
@@ -11,6 +10,20 @@ import { runInTransaction } from './transaction-context';
  * Stub validator - add validation logic here when needed
  */
 export const validate = createNoopValidator<InsertWizard, Wizard>();
+
+/**
+ * The wizard plugin registry, reached lazily. Importing it at the top of this
+ * file points storage back up at the plugin layer and closes a module-init
+ * cycle (`plugins/_core/registry` → gating → component cache → storage →
+ * here → `plugins/wizards` → `_core` barrel, whose registry is still
+ * initializing). Node's ESM loader survives it; Vite's SSR transform, used by
+ * the test runner, resolves the half-built barrel to `undefined`. The only
+ * uses are inside async log-description callbacks, so deferring costs nothing.
+ */
+async function wizardRegistry() {
+  const { wizardPluginRegistry } = await import("../plugins/wizards");
+  return wizardPluginRegistry;
+}
 
 export interface MonthlyWizardCreateParams {
   wizard: InsertWizard;
@@ -241,7 +254,7 @@ export const wizardLoggingConfig: StorageLoggingConfig<WizardStorage> = {
       },
       getDescription: async (args, result) => {
         const wizard = result;
-        const wizardType = wizardPluginRegistry.get(wizard?.type);
+        const wizardType = (await wizardRegistry()).get(wizard?.type);
         const displayName = wizardType?.name || wizard?.type || 'Unknown wizard';
         const date = wizard?.date ? new Date(wizard.date).toISOString() : 'unknown date';
         return `${displayName}, ${date}`;
@@ -258,7 +271,7 @@ export const wizardLoggingConfig: StorageLoggingConfig<WizardStorage> = {
       },
       getDescription: async (args, result, beforeState) => {
         const wizard = result ?? beforeState;
-        const wizardType = wizardPluginRegistry.get(wizard?.type);
+        const wizardType = (await wizardRegistry()).get(wizard?.type);
         const displayName = wizardType?.name || wizard?.type || 'Unknown wizard';
         const date = wizard?.date ? new Date(wizard.date).toISOString() : 'unknown date';
         return `${displayName}, ${date}`;
@@ -278,7 +291,7 @@ export const wizardLoggingConfig: StorageLoggingConfig<WizardStorage> = {
       },
       getDescription: async (args, result, beforeState) => {
         const wizard = beforeState;
-        const wizardType = wizardPluginRegistry.get(wizard?.type);
+        const wizardType = (await wizardRegistry()).get(wizard?.type);
         const displayName = wizardType?.name || wizard?.type || 'Unknown wizard';
         const date = wizard?.date ? new Date(wizard.date).toISOString() : 'unknown date';
         return `${displayName}, ${date}`;

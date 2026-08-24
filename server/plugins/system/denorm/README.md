@@ -39,8 +39,9 @@ them.
   `workerMshDenorm`).
 - `soleWriter: false` marks a **shared target** — several writers converge on
   it. Current examples: `ebs` (three reminder plugins + the `ebs_pump` cron +
-  the EBS admin module) and `workerDispatchEligDenorm` (ten dispatch plugins
-  via `_shared.ts` + the `sweep-expired-ban-elig` cron).
+  the EBS admin module), `workerDispatchEligDenorm` (ten dispatch plugins
+  via `_shared.ts`), and `workerBans` (the `worker_ban_active` plugin owns
+  only the cached `denorm_active` column; regular storage writes own the rest).
 
 ### Shared targets must be written convergently
 
@@ -60,9 +61,9 @@ Writes to a `soleWriter: false` target MUST be convergent:
 
 ## Enforcement
 
-`scripts/dev/check-denorm-declarations.ts` (registered as the
-`denorm-declarations` validation, alongside `typecheck`,
-`storage-encapsulation`, etc.) fails the build when:
+`scripts/dev/check-denorm-declarations.ts` (the `denorm-declarations` rule in
+the architecture-lint suite — `npm run lint`, registered as the `lint`
+validation alongside `typecheck` and `migrations`) fails the build when:
 
 1. A plugin uses a storage namespace not declared in `reads`/`writes`, or a
    mutating-looking call (`create`/`update`/`delete`/`replace`/`upsert`/

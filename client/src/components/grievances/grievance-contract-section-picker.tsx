@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
@@ -21,6 +21,7 @@ import {
   AccordionContent,
 } from "@/components/ui/accordion";
 import { Search, Layers, List } from "lucide-react";
+import { useModalSeed } from "@/hooks/use-modal-seed";
 
 interface CatalogSection {
   id: string;
@@ -74,13 +75,14 @@ export function GrievanceContractSectionPicker({
 
   const linkedSet = useMemo(() => new Set(linkedSectionIds), [linkedSectionIds]);
 
-  useEffect(() => {
-    if (open) {
-      setSearch("");
-      setSelected(new Set());
-      setView("search");
-    }
-  }, [open]);
+  // Reset during the render that opens the picker, so the list body's first
+  // render is already the fresh session rather than the previous one's search
+  // text and ticked rows.
+  useModalSeed(open, null, () => {
+    setSearch("");
+    setSelected(new Set());
+    setView("search");
+  });
 
   const { data, isLoading } = useQuery<{ articles: CatalogArticle[] }>({
     queryKey: ["/api/grievances", grievanceId, "contract", "catalog"],

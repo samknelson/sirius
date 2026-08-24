@@ -56,6 +56,7 @@ import {
   getAllComponentMigrations,
 } from "../../scripts/migrate";
 import { logger } from "../logger";
+import { getEnvironmentVariable } from "../config/env-registry";
 
 const NAME_SYM_DESC = "drizzle:Name";
 
@@ -195,7 +196,7 @@ export async function ensureEmptyDatabaseBootstrap(): Promise<void> {
     );
   }
 
-  if (process.env.ALLOW_EMPTY_DB_BOOTSTRAP !== "1") {
+  if (getEnvironmentVariable("ALLOW_EMPTY_DB_BOOTSTRAP") !== "1") {
     throw new Error(
       [
         "The configured database is EMPTY (no tables in the public schema).",

@@ -9,9 +9,13 @@ import {
   type EligibilityCondition, 
   type EligibilityQueryContext 
 } from "../../plugins/dispatch/eligibility/registry";
-import { createDispatchJobStorage } from "./jobs";
+import { createDispatchJobStorage, type DispatchJobWithRelations } from "./jobs";
+import { createDispatchJobFacilityStorage } from "./facility";
+import { createDispatchJobDepartmentStorage } from "./job-departments";
+import { createEmployerCompanyStorage } from "../employers/companies";
 import { createUnifiedOptionsStorage, type OptionsTypeName } from "../unified-options";
 import { createPluginConfigStorage } from "../system/plugin-configs";
+import { isComponentEnabled } from "../../modules/components";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -29,6 +33,14 @@ export interface EligibleWorkersFilters {
   siriusId?: number;
   name?: string;
   excludeWithDispatches?: boolean; // Exclude workers who already have a dispatch for this job
+  /**
+   * INTERNAL (server-only callers): eligibility plugin ids to skip when
+   * building conditions — e.g. the interview Offers view lists workers who
+   * would be eligible if they passed the interview. Never expose this as a
+   * request parameter on generic endpoints; dispatch create/accept
+   * (checkWorkerAcceptance) always applies the full plugin set.
+   */
+  excludePluginIds?: string[];
 }
 
 export interface EligibleWorkersResult {
@@ -67,10 +79,89 @@ export interface WorkerEligibilityCheckResult {
   pluginResults: PluginCheckResult[];
 }
 
+export interface AcceptanceFailure {
+  pluginId: string;
+  pluginName: string;
+  explanation: string;
+}
+
+export interface WorkerAcceptanceResult {
+  allowed: boolean;
+  failures: AcceptanceFailure[];
+}
+
 export interface DispatchEligibleWorkersStorage {
   getEligibleWorkersForJob(jobId: string, limit?: number, offset?: number, filters?: EligibleWorkersFilters): Promise<EligibleWorkersResult>;
   getEligibleWorkersForJobSql(jobId: string, limit?: number, offset?: number, filters?: EligibleWorkersFilters): Promise<EligibleWorkersSqlResult | null>;
   checkWorkerEligibility(jobId: string, workerId: string): Promise<WorkerEligibilityCheckResult | null>;
+  /**
+   * Point-in-time enforcement for dispatch create AND accept: evaluate the
+   * FULL set of eligibility plugins enabled for this job (the same
+   * per-job-type plugin-config set the eligible-worker listing query uses)
+   * for this worker+job. Criteria block everyone, staff included; staff must
+   * clear the underlying condition (e.g. lift a ban) instead of bypassing.
+   */
+  checkWorkerAcceptance(jobId: string, workerId: string): Promise<WorkerAcceptanceResult>;
+}
+
+/**
+ * Load the enabled per-job-type eligibility plugin configs for a job.
+ * Shared by all three invocation paths so they apply the same plugin set.
+ */
+async function loadEnabledPluginConfigs(jobTypeId: string | null): Promise<EligibilityPluginConfig[]> {
+  if (!jobTypeId) return [];
+  const pluginConfigStorage = createPluginConfigStorage();
+  const rows = await pluginConfigStorage.search("dispatch-eligibility", { jobType: jobTypeId });
+  return rows
+    .filter((r) => r.config.enabled)
+    .map((r) => ({
+      pluginId: r.config.pluginId,
+      enabled: true,
+      config: (r.config.data ?? {}) as Record<string, unknown>,
+    }));
+}
+
+/**
+ * Build the enriched EligibilityQueryContext from the already-loaded job.
+ * Prefetches job-scoped data the enabled plugins need (facility link,
+ * department link) so plugins don't issue their own storage queries, and
+ * exposes a memoized lazy loader for the employer-company relation.
+ */
+async function buildEligibilityContext(
+  job: DispatchJobWithRelations,
+  enabledPluginConfigs: EligibilityPluginConfig[],
+): Promise<EligibilityQueryContext> {
+  const enabledIds = new Set(enabledPluginConfigs.map((c) => c.pluginId));
+
+  const [facilityLink, departmentLink] = await Promise.all([
+    // Mirrors the facility-ban plugin's previous gate: only meaningful when
+    // the dispatch.facility component is on (the link table is component-owned).
+    enabledIds.has("dispatch_ban_facility")
+      ? isComponentEnabled("dispatch.facility").then((on) =>
+          on ? createDispatchJobFacilityStorage().getByJob(job.id) : undefined,
+        )
+      : Promise.resolve(undefined),
+    enabledIds.has("dispatch_department")
+      ? createDispatchJobDepartmentStorage().getByJob(job.id)
+      : Promise.resolve(undefined),
+  ]);
+
+  let employerCompanyPromise: ReturnType<ReturnType<typeof createEmployerCompanyStorage>["getByEmployerId"]> | null = null;
+
+  return {
+    jobId: job.id,
+    employerId: job.employerId,
+    jobTypeId: job.jobTypeId,
+    job,
+    facilityLink: facilityLink ?? null,
+    departmentLink: departmentLink ?? null,
+    getEmployerCompany() {
+      if (!employerCompanyPromise) {
+        employerCompanyPromise = createEmployerCompanyStorage().getByEmployerId(job.employerId);
+      }
+      return employerCompanyPromise;
+    },
+  };
 }
 
 type DynamicQuery = ReturnType<ReturnType<typeof db.select>["from"]>["$dynamic"] extends (...args: any) => infer R ? R : never;
@@ -94,28 +185,15 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
     return null;
   }
 
-  const context: EligibilityQueryContext = {
-    jobId: job.id,
-    employerId: job.employerId,
-    jobTypeId: job.jobTypeId,
-  };
-
-  let enabledPluginConfigs: EligibilityPluginConfig[] = [];
-  
-  if (job.jobTypeId) {
-    const rows = await pluginConfigStorage.search("dispatch-eligibility", { jobType: job.jobTypeId });
-    enabledPluginConfigs = rows
-      .filter((r) => r.config.enabled)
-      .map((r) => ({
-        pluginId: r.config.pluginId,
-        enabled: true,
-        config: (r.config.data ?? {}) as Record<string, unknown>,
-      }));
-  }
+  const enabledPluginConfigs = await loadEnabledPluginConfigs(job.jobTypeId);
+  const context = await buildEligibilityContext(job, enabledPluginConfigs);
 
   const appliedConditions: Array<{ pluginId: string; condition: EligibilityCondition }> = [];
 
+  const excludedPluginIds = new Set(filters?.excludePluginIds ?? []);
+
   for (const pluginConfig of enabledPluginConfigs) {
+    if (excludedPluginIds.has(pluginConfig.pluginId)) continue;
     const plugin = dispatchEligPluginRegistry.getPlugin(pluginConfig.pluginId);
     if (!plugin) {
       logger.warn(`Plugin not found: ${pluginConfig.pluginId}`, {
@@ -572,6 +650,56 @@ export function createDispatchEligibleWorkersStorage(): DispatchEligibleWorkersS
       };
     },
 
+    async checkWorkerAcceptance(jobId: string, workerId: string): Promise<WorkerAcceptanceResult> {
+      const client = getClient();
+      const jobStorage = createDispatchJobStorage();
+      const job = await jobStorage.getWithRelations(jobId);
+      if (!job) {
+        // No job → nothing to enforce; the caller has already 404'd or will.
+        return { allowed: true, failures: [] };
+      }
+
+      // Same plugin set the eligible-worker listing query applies: the
+      // per-job-type plugin configs that are enabled for this job.
+      const enabledPluginConfigs = await loadEnabledPluginConfigs(job.jobTypeId);
+      const context = await buildEligibilityContext(job, enabledPluginConfigs);
+
+      const failures: AcceptanceFailure[] = [];
+
+      for (const pluginConfig of enabledPluginConfigs) {
+        const plugin = dispatchEligPluginRegistry.getPlugin(pluginConfig.pluginId);
+        if (!plugin) {
+          logger.warn(`Plugin not found during acceptance check: ${pluginConfig.pluginId}`, {
+            service: "dispatch-eligible-workers",
+            jobId,
+            pluginId: pluginConfig.pluginId,
+          });
+          continue;
+        }
+
+        // Purely fact-based: every criterion — bans included — is evaluated
+        // against worker_dispatch_elig_denorm, the same facts the listing
+        // query uses. Facts propagate through the standard denorm cycle
+        // (after-commit event → listener → fact table), so verdicts are
+        // eventually consistent with source writes, like DNC/skills/HFE.
+        const conditionResult = await Promise.resolve(plugin.getEligibilityCondition(context, pluginConfig.config));
+        if (!conditionResult) continue;
+        const conditions = Array.isArray(conditionResult) ? conditionResult : [conditionResult];
+        for (const condition of conditions) {
+          const result = await checkConditionForWorker(client, workerId, condition);
+          if (!result.passed) {
+            failures.push({
+              pluginId: plugin.id,
+              pluginName: plugin.name,
+              explanation: result.explanation,
+            });
+          }
+        }
+      }
+
+      return { allowed: failures.length === 0, failures };
+    },
+
     async checkWorkerEligibility(jobId: string, workerId: string): Promise<WorkerEligibilityCheckResult | null> {
       const client = getClient();
       const jobStorage = createDispatchJobStorage();
@@ -608,24 +736,8 @@ export function createDispatchEligibleWorkersStorage(): DispatchEligibleWorkersS
 
       const worker = workerResult[0];
 
-      const context: EligibilityQueryContext = {
-        jobId: job.id,
-        employerId: job.employerId,
-        jobTypeId: job.jobTypeId,
-      };
-
-      let enabledPluginConfigs: EligibilityPluginConfig[] = [];
-      
-      if (job.jobTypeId) {
-        const rows = await pluginConfigStorage.search("dispatch-eligibility", { jobType: job.jobTypeId });
-        enabledPluginConfigs = rows
-          .filter((r) => r.config.enabled)
-          .map((r) => ({
-            pluginId: r.config.pluginId,
-            enabled: true,
-            config: (r.config.data ?? {}) as Record<string, unknown>,
-          }));
-      }
+      const enabledPluginConfigs = await loadEnabledPluginConfigs(job.jobTypeId);
+      const context = await buildEligibilityContext(job, enabledPluginConfigs);
 
       const pluginResults: PluginCheckResult[] = [];
 

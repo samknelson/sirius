@@ -699,7 +699,7 @@ export default function EdlsSheetsPage() {
                         </Link>
                         {sheet.status !== "lock" && sheet.status !== "trash" && (
                           <Link href={`/edls/sheet/${sheet.id}/assignments`}>
-                            <Button size="icon" variant="ghost" data-testid={`button-assignments-${sheet.id}`} title="Assignments">
+                            <Button size="icon" variant="ghost" data-testid={`button-assignments-${sheet.id}`} title="Assign Workers">
                               <UserCheck className="h-4 w-4" />
                             </Button>
                           </Link>

@@ -52,6 +52,19 @@ export interface PluginConfigRows {
 export interface PluginConfigEnvelopeFieldChoice {
   value: string;
   label: string;
+  /**
+   * When true, the generic admin UI renders this choice but refuses to let the
+   * operator turn it on — the selected plugin cannot accept it and the server
+   * would reject the save (e.g. an event-notifier medium outside the
+   * notifier's `supportedMedia`). Only produced by
+   * {@link PluginConfigAdapter.envelopeFieldsForPlugin}, which is the only
+   * place a kind knows which plugin the form is for. A choice that is already
+   * stored on the config stays togglable so an existing bad value can be
+   * cleared.
+   */
+  disabled?: boolean;
+  /** Short human explanation shown beside a {@link disabled} choice. */
+  disabledReason?: string;
 }
 
 /**
@@ -126,6 +139,21 @@ export interface PluginConfigAdapter<TConfig = any, TSearch = any> {
    * for kinds with no subsidiary.
    */
   envelopeFields?: PluginConfigEnvelopeField[];
+  /**
+   * Narrow {@link envelopeFields} for one specific plugin of this kind.
+   * `envelopeFields` is kind-level metadata (one list for the whole kind), but
+   * an individual plugin may only accept a subset of a field's fixed choices —
+   * an event notifier, for instance, declares its own `supportedMedia` and the
+   * save route rejects anything outside it. Returning a per-plugin list lets
+   * the shared admin dialog mark those choices unavailable up front instead of
+   * offering a selection that is certain to 400.
+   *
+   * Return `null` (or omit the hook) when the kind's fields need no narrowing.
+   * The route serves these alongside the kind-level list; the dialog prefers
+   * the per-plugin entry and the filter bar keeps using the kind-level one.
+   * This is presentation only — the server still validates authoritatively.
+   */
+  envelopeFieldsForPlugin?(plugin: unknown): PluginConfigEnvelopeField[] | null;
   /**
    * Optional uniqueness key. When present, the generic create/update routes
    * reject a config whose key collides with an existing row (excluding the row

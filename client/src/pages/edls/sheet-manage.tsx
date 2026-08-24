@@ -1,20 +1,19 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Settings, ChevronDown, Trash2, Lock, Unlock, Copy } from "lucide-react";
+import { Settings, Trash2, Lock, Unlock, Copy } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,6 +57,7 @@ function EdlsSheetManageContent() {
   const [, setLocation] = useLocation();
   const sheetId = sheet.id;
   const [showTrashConfirm, setShowTrashConfirm] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<EdlsSheetStatus | "">("");
   const [copyTargetDate, setCopyTargetDate] = useState("");
 
   const currentStatus = (sheet.status as EdlsSheetStatus) || "draft";
@@ -71,6 +71,7 @@ function EdlsSheetManageContent() {
     },
     onSuccess: (_data, newStatus) => {
       queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheetId] });
+      setPendingStatus("");
       const statusLabel = statusOptions.find(s => s.value === newStatus)?.label;
       toast({
         title: "Status Updated",
@@ -163,13 +164,13 @@ function EdlsSheetManageContent() {
     copySheetMutation.mutate(copyTargetDate);
   };
 
-  const handleStatusAction = (newStatus: EdlsSheetStatus) => {
-    if (newStatus === currentStatus) return;
-    
-    if (newStatus === "trash") {
+  const handleSubmitStatus = () => {
+    if (!pendingStatus || pendingStatus === currentStatus) return;
+
+    if (pendingStatus === "trash") {
       setShowTrashConfirm(true);
     } else {
-      setStatusMutation.mutate(newStatus);
+      setStatusMutation.mutate(pendingStatus);
     }
   };
 
@@ -222,71 +223,69 @@ function EdlsSheetManageContent() {
             </div>
           </div>
 
-          <div className="border-t pt-6">
-            <h3 className="text-sm font-medium mb-3">Actions</h3>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  disabled={isPending}
-                  data-testid="button-actions-menu"
+          <div className="border-t pt-6 space-y-2">
+            <Label htmlFor="select-new-status">Change status to</Label>
+            <div className="flex items-center gap-3">
+              <Select
+                value={pendingStatus}
+                onValueChange={(value) => setPendingStatus(value as EdlsSheetStatus)}
+                disabled={isPending || availableStatuses.length === 0}
+              >
+                <SelectTrigger
+                  id="select-new-status"
+                  className="w-64"
+                  data-testid="select-new-status"
                 >
-                  {isPending ? "Processing..." : "Select Action"}
-                  <ChevronDown className="ml-2 h-4 w-4" />
+                  <SelectValue placeholder="Select a status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableStatuses.map((status) => (
+                    <SelectItem
+                      key={status.value}
+                      value={status.value}
+                      data-testid={`action-status-${status.value}`}
+                    >
+                      {status.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                onClick={handleSubmitStatus}
+                disabled={isPending || !pendingStatus || pendingStatus === currentStatus}
+                data-testid="button-submit-status"
+              >
+                {setStatusMutation.isPending ? "Submitting..." : "Submit"}
+              </Button>
+            </div>
+            {availableStatuses.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No other statuses are available for this sheet.
+              </p>
+            )}
+
+            {canEdit && (
+              <div className="pt-4">
+                <Button
+                  variant="outline"
+                  onClick={handleTrashLockToggle}
+                  disabled={trashLockMutation.isPending}
+                  data-testid={hasTrashLock ? "action-clear-trash-lock" : "action-set-trash-lock"}
+                >
+                  {hasTrashLock ? (
+                    <>
+                      <Unlock className="mr-2 h-4 w-4" />
+                      Clear trash lock
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="mr-2 h-4 w-4" />
+                      Set trash lock
+                    </>
+                  )}
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-64">
-                <DropdownMenuLabel>Change Status</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {availableStatuses.map((status) => (
-                  <DropdownMenuItem
-                    key={status.value}
-                    onClick={() => handleStatusAction(status.value)}
-                    className={status.value === "trash" ? "text-destructive focus:text-destructive" : ""}
-                    data-testid={`action-status-${status.value}`}
-                  >
-                    {status.value === "trash" ? (
-                      <>
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Change status to: {status.label}
-                      </>
-                    ) : (
-                      <>
-                        <Badge className={`${statusColors[status.value]} mr-2`} variant="outline">
-                          {status.label}
-                        </Badge>
-                        Change status to: {status.label}
-                      </>
-                    )}
-                  </DropdownMenuItem>
-                ))}
-                
-                {canEdit && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuLabel>Trash Protection</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {hasTrashLock ? (
-                      <DropdownMenuItem
-                        onClick={handleTrashLockToggle}
-                        data-testid="action-clear-trash-lock"
-                      >
-                        <Unlock className="mr-2 h-4 w-4" />
-                        Clear trash lock
-                      </DropdownMenuItem>
-                    ) : (
-                      <DropdownMenuItem
-                        onClick={handleTrashLockToggle}
-                        data-testid="action-set-trash-lock"
-                      >
-                        <Lock className="mr-2 h-4 w-4" />
-                        Set trash lock
-                      </DropdownMenuItem>
-                    )}
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

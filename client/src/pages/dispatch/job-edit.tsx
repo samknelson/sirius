@@ -65,6 +65,8 @@ function DispatchJobEditContent() {
   const [selectedSkills, setSelectedSkills] = useState<string[]>(jobData?.requiredSkills || []);
   // Absent flag = allow EBA workers (default behavior).
   const [allowEbaWorkers, setAllowEbaWorkers] = useState<boolean>(jobData?.allowEbaWorkers !== false);
+  const [selectedFacilityId, setSelectedFacilityId] = useState<string>("");
+  const [facilityTouched, setFacilityTouched] = useState(false);
 
   const { data: employers = [] } = useQuery<Employer[]>({
     queryKey: ["/api/employers"],
@@ -89,6 +91,27 @@ function DispatchJobEditContent() {
   const departmentComponentEnabled = componentConfigs.some(
     (c) => c.componentId === "dispatch.department" && c.enabled
   );
+
+  const facilityComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "dispatch.facility" && c.enabled
+  );
+
+  const { data: facilities = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/options/facility"],
+    enabled: facilityComponentEnabled,
+  });
+
+  // Pre-select the facility from the dispatch_job_facility association.
+  const { data: jobFacility, isSuccess: jobFacilityLoaded } = useQuery<{ facilityId: string } | null>({
+    queryKey: ["/api/dispatch-jobs", job.id, "facility"],
+    enabled: facilityComponentEnabled,
+  });
+
+  useEffect(() => {
+    if (jobFacilityLoaded && !facilityTouched) {
+      setSelectedFacilityId(jobFacility?.facilityId ?? "");
+    }
+  }, [jobFacilityLoaded, jobFacility, facilityTouched]);
 
   const { data: availableDepartments = [] } = useQuery<AvailableDepartment[]>({
     queryKey: ["/api/dispatch-departments/available"],
@@ -170,6 +193,9 @@ function DispatchJobEditContent() {
         startTime: data.startTime?.trim() || null,
         endTime: data.endTime?.trim() || null,
         status: data.status,
+        ...(facilityComponentEnabled && facilityTouched
+          ? { facilityId: selectedFacilityId || null }
+          : {}),
         data: updatedJobData,
       });
     },
@@ -189,6 +215,7 @@ function DispatchJobEditContent() {
         }
       }
       queryClient.invalidateQueries({ queryKey: ["/api/dispatch-jobs", job.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dispatch-jobs", job.id, "facility"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dispatch-jobs"] });
       toast({
         title: "Success",
@@ -353,6 +380,31 @@ function DispatchJobEditContent() {
                       {availableDepartments.map((department) => (
                         <SelectItem key={department.id} value={department.id}>
                           {department.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormItem>
+              )}
+
+              {facilityComponentEnabled && (
+                <FormItem>
+                  <FormLabel>Facility</FormLabel>
+                  <Select
+                    value={selectedFacilityId || "__none__"}
+                    onValueChange={(v) => {
+                      setFacilityTouched(true);
+                      setSelectedFacilityId(v === "__none__" ? "" : v);
+                    }}
+                  >
+                    <SelectTrigger data-testid="select-facility">
+                      <SelectValue placeholder="No facility" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">No facility</SelectItem>
+                      {facilities.map((facility) => (
+                        <SelectItem key={facility.id} value={facility.id}>
+                          {facility.name}
                         </SelectItem>
                       ))}
                     </SelectContent>

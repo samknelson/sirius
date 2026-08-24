@@ -1,10 +1,8 @@
 import { storage } from "../../server/storage";
-import { initSnapshotCapture } from "../../server/services/snapshots/capture";
 import { loadComponentCache } from "../../server/services/component-cache";
 
 async function main() {
   await loadComponentCache();
-  initSnapshotCapture();
 
   const sheets = await storage.edlsSheets.getAll();
   const sheet = sheets[0];
@@ -21,7 +19,6 @@ async function main() {
   await storage.edlsSheets.update(sheet.id, { status: newStatus } as any);
   console.log(`Updated status -> ${newStatus}`);
 
-  await new Promise((r) => setTimeout(r, 2000));
 
   const after = await storage.snapshots.listByEntity("edls_sheet", sheet.id);
   console.log(`Snapshots after: ${after.length}`);
@@ -38,7 +35,6 @@ async function main() {
 
   // restore original status
   await storage.edlsSheets.update(sheet.id, { status: sheet.status } as any);
-  await new Promise((r) => setTimeout(r, 2000));
   const final = await storage.snapshots.listByEntity("edls_sheet", sheet.id);
   console.log(`Snapshots after restore: ${final.length} (restore also captured: ${final.length > after.length})`);
   process.exit(0);

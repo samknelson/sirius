@@ -1,44 +1,49 @@
 import { getClient } from './transaction-context';
 import { 
-  wsBundles,
   wsClients,
+  wsClientGrants,
   wsClientCredentials,
   wsClientIpRules,
-  type WsBundle, 
-  type InsertWsBundle,
   type WsClient,
   type InsertWsClient,
+  type WsClientGrant,
   type WsClientCredential,
   type InsertWsClientCredential,
   type WsClientIpRule,
   type InsertWsClientIpRule,
 } from "@shared/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, inArray, notInArray } from "drizzle-orm";
 import bcrypt from "bcrypt";
 import { generateRandomToken } from "../utils/random-token";
 
 const SALT_ROUNDS = 12;
 
-export interface WsBundleStorage {
-  getAll(): Promise<WsBundle[]>;
-  get(id: string): Promise<WsBundle | undefined>;
-  getByCode(code: string): Promise<WsBundle | undefined>;
-  create(bundle: InsertWsBundle): Promise<WsBundle>;
-  update(id: string, bundle: Partial<InsertWsBundle>): Promise<WsBundle | undefined>;
-  delete(id: string): Promise<boolean>;
-}
-
-export interface WsClientWithBundle extends WsClient {
-  bundle?: WsBundle | null;
-}
-
 export interface WsClientStorage {
-  getAll(): Promise<WsClientWithBundle[]>;
-  get(id: string): Promise<WsClientWithBundle | undefined>;
-  getByBundle(bundleId: string): Promise<WsClient[]>;
+  getAll(): Promise<WsClient[]>;
+  get(id: string): Promise<WsClient | undefined>;
   create(client: InsertWsClient): Promise<WsClient>;
   update(id: string, client: Partial<InsertWsClient>): Promise<WsClient | undefined>;
   delete(id: string): Promise<boolean>;
+}
+
+/**
+ * Grants of individual web service configurations to clients. Replaces the
+ * one-bundle-per-client assignment: a client holds any number of grants and
+ * they are added/revoked without touching credentials.
+ */
+export interface WsClientGrantStorage {
+  /** Every grant held by a client, oldest first. */
+  getByClient(clientId: string): Promise<WsClientGrant[]>;
+  /** Every client granted a given configuration. */
+  getByConfig(configId: string): Promise<WsClientGrant[]>;
+  /** True when this exact client/configuration pair is granted. */
+  has(clientId: string, configId: string): Promise<boolean>;
+  /**
+   * Replace a client's entire grant set with `configIds` in one transaction,
+   * so a partially applied edit can never leave the client holding a mix of
+   * old and new grants.
+   */
+  replaceForClient(clientId: string, configIds: string[]): Promise<WsClientGrant[]>;
 }
 
 export interface CredentialCreateResult {
@@ -68,107 +73,23 @@ export interface WsClientIpRuleStorage {
   isIpAllowed(clientId: string, ipAddress: string): Promise<boolean>;
 }
 
-export function createWsBundleStorage(): WsBundleStorage {
-  return {
-    async getAll(): Promise<WsBundle[]> {
-      const client = getClient();
-      return await client
-        .select()
-        .from(wsBundles)
-        .orderBy(wsBundles.name);
-    },
-
-    async get(id: string): Promise<WsBundle | undefined> {
-      const client = getClient();
-      const [bundle] = await client
-        .select()
-        .from(wsBundles)
-        .where(eq(wsBundles.id, id));
-      return bundle;
-    },
-
-    async getByCode(code: string): Promise<WsBundle | undefined> {
-      const client = getClient();
-      const [bundle] = await client
-        .select()
-        .from(wsBundles)
-        .where(eq(wsBundles.code, code));
-      return bundle;
-    },
-
-    async create(bundle: InsertWsBundle): Promise<WsBundle> {
-      const client = getClient();
-      const [created] = await client
-        .insert(wsBundles)
-        .values(bundle)
-        .returning();
-      return created;
-    },
-
-    async update(id: string, bundle: Partial<InsertWsBundle>): Promise<WsBundle | undefined> {
-      const client = getClient();
-      const [updated] = await client
-        .update(wsBundles)
-        .set({ ...bundle, updatedAt: new Date() })
-        .where(eq(wsBundles.id, id))
-        .returning();
-      return updated;
-    },
-
-    async delete(id: string): Promise<boolean> {
-      const client = getClient();
-      const result = await client
-        .delete(wsBundles)
-        .where(eq(wsBundles.id, id));
-      return (result.rowCount ?? 0) > 0;
-    },
-  };
-}
-
 export function createWsClientStorage(): WsClientStorage {
   return {
-    async getAll(): Promise<WsClientWithBundle[]> {
-      const client = getClient();
-      const results = await client
-        .select({
-          client: wsClients,
-          bundle: wsBundles,
-        })
-        .from(wsClients)
-        .leftJoin(wsBundles, eq(wsClients.bundleId, wsBundles.id))
-        .orderBy(wsClients.name);
-      
-      return results.map(r => ({
-        ...r.client,
-        bundle: r.bundle,
-      }));
-    },
-
-    async get(id: string): Promise<WsClientWithBundle | undefined> {
-      const client = getClient();
-      const [result] = await client
-        .select({
-          client: wsClients,
-          bundle: wsBundles,
-        })
-        .from(wsClients)
-        .leftJoin(wsBundles, eq(wsClients.bundleId, wsBundles.id))
-        .where(eq(wsClients.id, id));
-      
-      if (!result) return undefined;
-      return {
-        ...result.client,
-        bundle: result.bundle,
-      };
-    },
-
-    async getByBundle(bundleId: string): Promise<WsClient[]> {
+    async getAll(): Promise<WsClient[]> {
       const client = getClient();
       return await client
         .select()
         .from(wsClients)
-        .where(eq(wsClients.bundleId, bundleId))
         .orderBy(wsClients.name);
+    },
+
+    async get(id: string): Promise<WsClient | undefined> {
+      const client = getClient();
+      const [result] = await client
+        .select()
+        .from(wsClients)
+        .where(eq(wsClients.id, id));
+      return result;
     },
 
     async create(wsClient: InsertWsClient): Promise<WsClient> {
@@ -196,6 +117,86 @@ export function createWsClientStorage(): WsClientStorage {
         .delete(wsClients)
         .where(eq(wsClients.id, id));
       return (result.rowCount ?? 0) > 0;
+    },
+  };
+}
+
+export function createWsClientGrantStorage(): WsClientGrantStorage {
+  return {
+    async getByClient(clientId: string): Promise<WsClientGrant[]> {
+      const client = getClient();
+      return await client
+        .select()
+        .from(wsClientGrants)
+        .where(eq(wsClientGrants.clientId, clientId))
+        .orderBy(wsClientGrants.createdAt);
+    },
+
+    async getByConfig(configId: string): Promise<WsClientGrant[]> {
+      const client = getClient();
+      return await client
+        .select()
+        .from(wsClientGrants)
+        .where(eq(wsClientGrants.configId, configId))
+        .orderBy(wsClientGrants.createdAt);
+    },
+
+    async has(clientId: string, configId: string): Promise<boolean> {
+      const client = getClient();
+      const [row] = await client
+        .select({ id: wsClientGrants.id })
+        .from(wsClientGrants)
+        .where(and(
+          eq(wsClientGrants.clientId, clientId),
+          eq(wsClientGrants.configId, configId),
+        ));
+      return !!row;
+    },
+
+    async replaceForClient(clientId: string, configIds: string[]): Promise<WsClientGrant[]> {
+      const client = getClient();
+      const wanted = Array.from(new Set(configIds.filter((id) => id && id.trim() !== "")));
+
+      // Remove the grants that are no longer wanted, then add the missing
+      // ones. Both statements share the caller's transaction, so the client
+      // never observes a half-applied grant set.
+      if (wanted.length === 0) {
+        await client.delete(wsClientGrants).where(eq(wsClientGrants.clientId, clientId));
+      } else {
+        await client
+          .delete(wsClientGrants)
+          .where(and(
+            eq(wsClientGrants.clientId, clientId),
+            // Non-empty list guaranteed by the branch; the empty case above
+            // deletes everything instead.
+            notInArray(wsClientGrants.configId, wanted),
+          ));
+        const existing = await client
+          .select({ configId: wsClientGrants.configId })
+          .from(wsClientGrants)
+          .where(and(
+            eq(wsClientGrants.clientId, clientId),
+            inArray(wsClientGrants.configId, wanted),
+          ));
+        const have = new Set(existing.map((r) => r.configId));
+        const toAdd = wanted.filter((id) => !have.has(id));
+        if (toAdd.length > 0) {
+          await client
+            .insert(wsClientGrants)
+            .values(toAdd.map((configId) => ({ clientId, configId })))
+            // Two concurrent edits racing on the same pair must not abort the
+            // transaction; the named unique constraint decides the winner.
+            .onConflictDoNothing({
+              target: [wsClientGrants.clientId, wsClientGrants.configId],
+            });
+        }
+      }
+
+      return await client
+        .select()
+        .from(wsClientGrants)
+        .where(eq(wsClientGrants.clientId, clientId))
+        .orderBy(wsClientGrants.createdAt);
     },
   };
 }

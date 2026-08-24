@@ -3,6 +3,9 @@ import { logger } from "../../logger";
 import { storage } from "../../storage";
 import { runInTransaction } from "../../storage/transaction-context";
 import { getEffectiveUser } from "../../modules/masquerade";
+import { checkAccess } from "../../services/access-policy-evaluator";
+import { isComponentEnabled } from "../../modules/components";
+import type { User } from "@shared/schema";
 import { validateAgainstSchema } from "../../lib/json-schema-validator";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { PluginConfig } from "@shared/schema";
@@ -61,6 +64,88 @@ export interface DashboardConfigItem extends DashboardManifestEntry {
   configName: string | null;
   /** The config row's ordering (primary sort key for items). */
   ordering: number;
+}
+
+/**
+ * Resolve the optional `?targetUserId=` override for staff viewing another
+ * user's dashboard (Task: staff view of another user's dashboard).
+ *
+ * - No `targetUserId` in the query → `{ ok: true, target: null }` (normal
+ *   self-view; behavior unchanged).
+ * - With a target: the CALLER must pass the `staff` access policy (evaluated
+ *   against the effective session user — masquerade included), and the target
+ *   must exist. Otherwise a 403/404 result is returned for the route to relay.
+ */
+export async function resolveDashboardTargetUser(
+  req: Request,
+  sessionDbUser: User,
+): Promise<
+  | { ok: true; target: User | null }
+  | { ok: false; status: number; message: string }
+> {
+  const raw = req.query.targetUserId;
+  const targetUserId = typeof raw === "string" && raw ? raw : undefined;
+  if (!targetUserId) return { ok: true, target: null };
+  const staff = await checkAccess("staff", sessionDbUser);
+  if (!staff.granted) {
+    return {
+      ok: false,
+      status: 403,
+      message: "Staff access required to view another user's dashboard",
+    };
+  }
+  const target = await storage.users.getUser(targetUserId);
+  if (!target) {
+    return { ok: false, status: 404, message: "Target user not found" };
+  }
+  return { ok: true, target };
+}
+
+/**
+ * Target-mode gating: evaluate a dashboard plugin's component, access-policy,
+ * and client `requiredPermissions` (any-of) gates against the TARGET user, so
+ * a staff target view exposes exactly — and only — what the target could see.
+ * Shared by the items pre-filter and the `/content` front-door.
+ */
+export async function checkTargetPluginGating(
+  plugin: DashboardPlugin,
+  target: User,
+): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
+  if (plugin.requiredComponent && !(await isComponentEnabled(plugin.requiredComponent))) {
+    return {
+      ok: false,
+      status: 403,
+      message: `Component '${plugin.requiredComponent}' not enabled`,
+    };
+  }
+  if (plugin.requiredPolicy) {
+    const policyResult = await checkAccess(plugin.requiredPolicy, target);
+    if (!policyResult.granted) {
+      return {
+        ok: false,
+        status: 403,
+        message: policyResult.reason || "Access denied",
+      };
+    }
+  }
+  const requiredPermissions = plugin.client?.requiredPermissions ?? [];
+  if (requiredPermissions.length > 0) {
+    let holdsAny = false;
+    for (const perm of requiredPermissions) {
+      if (await storage.users.userHasPermission(target.id, perm)) {
+        holdsAny = true;
+        break;
+      }
+    }
+    if (!holdsAny) {
+      return {
+        ok: false,
+        status: 403,
+        message: "Target user is not permitted to view this dashboard widget",
+      };
+    }
+  }
+  return { ok: true };
 }
 
 function pluginToMetadata(p: DashboardPlugin): BasePluginMetadata {
@@ -410,20 +495,41 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
       }
     }
 
-    const gating = await enforcePluginGating(pluginToMetadata(plugin), req);
-    if (!gating.ok) {
-      res.status(gating.status).json({ message: gating.message });
-      return;
-    }
-
     const user = (req as any).user;
     const session = (req as any).session;
-    const { dbUser } = await getEffectiveUser(session, user);
-    if (!dbUser) {
+    const { dbUser: sessionDbUser } = await getEffectiveUser(session, user);
+    if (!sessionDbUser) {
       res.status(401).json({ message: "User not found" });
       return;
     }
 
+    // Optional staff target-view override: with `?targetUserId=` the caller
+    // must be staff, and gating + identity resolve from the TARGET user so
+    // the widget renders exactly what the target would see. Without it, the
+    // request-based gating path is unchanged.
+    const targetResult = await resolveDashboardTargetUser(req, sessionDbUser);
+    if (!targetResult.ok) {
+      res.status(targetResult.status).json({ message: targetResult.message });
+      return;
+    }
+    const target = targetResult.target;
+
+    const meta = pluginToMetadata(plugin);
+    if (target) {
+      const gate = await checkTargetPluginGating(plugin, target);
+      if (!gate.ok) {
+        res.status(gate.status).json({ message: gate.message });
+        return;
+      }
+    } else {
+      const gating = await enforcePluginGating(meta, req);
+      if (!gating.ok) {
+        res.status(gating.status).json({ message: gating.message });
+        return;
+      }
+    }
+
+    const dbUser = target ?? sessionDbUser;
     const userRoles = await storage.users.getUserRoles(dbUser.id);
     const configIdRaw = req.query.configId;
     const configId =

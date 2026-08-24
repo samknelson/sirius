@@ -2,7 +2,10 @@ import { registerDenormPlugin } from "../../registry";
 import type { DenormPlugin } from "../../types";
 import { EventType } from "../../../../../services/event-bus";
 import { createWorkerBanStorage } from "../../../../../storage/worker-bans";
-import type { WorkerBan } from "@shared/schema";
+import {
+  banGloballyDenies,
+  isBanCurrentlyActive,
+} from "../../../../worker-bans/service";
 import {
   type DispatchEligDenormPayload,
   dispatchEligBackfill,
@@ -11,21 +14,6 @@ import {
 } from "./_shared";
 
 const BAN_CATEGORY = "ban";
-
-function startOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function isBanCurrentlyActive(ban: WorkerBan): boolean {
-  const today = startOfDay(new Date());
-  const startDay = startOfDay(new Date(ban.startDate));
-  if (startDay > today) return false;
-  if (!ban.endDate) return true;
-  const endDay = startOfDay(new Date(ban.endDate));
-  return endDay >= today;
-}
 
 /**
  * `dispatch_ban` denorm plugin — maintains the `ban` facts (one per active
@@ -48,12 +36,27 @@ const dispatchBanDenormPlugin: DenormPlugin<DispatchEligDenormPayload> = {
       event: EventType.WORKER_BAN_SAVED,
       getEntityId: (payload) => (payload as { workerId: string }).workerId,
     },
+    {
+      // Date-rollover flips of the cached denorm_active flag (emitted after
+      // commit by worker_ban_active) must refresh the worker's ban facts.
+      event: EventType.WORKER_BAN_DENORM_FLIPPED,
+      getEntityId: (payload) => (payload as { workerId: string }).workerId,
+    },
   ],
 
   async compute(workerId: string): Promise<DispatchEligDenormPayload> {
     const banStorage = createWorkerBanStorage();
     const bans = await banStorage.getByWorker(workerId);
-    const activeBans = bans.filter((ban) => ban.type === "dispatch" && isBanCurrentlyActive(ban));
+    // Only bans whose type UNCONDITIONALLY denies dispatch acceptance (e.g.
+    // the all-dispatch plugin, including migrated legacy "dispatch" bans)
+    // become global eligibility facts; conditional bans (facility, job type)
+    // become per-target facts via the dispatch_ban_facility /
+    // dispatch_ban_jobtype denorm plugins instead.
+    const dateActive = bans.filter((ban) => isBanCurrentlyActive(ban));
+    const activeBans = [];
+    for (const ban of dateActive) {
+      if (await banGloballyDenies(ban, "dispatch.accept")) activeBans.push(ban);
+    }
 
     return {
       entries: activeBans.map((ban) => ({

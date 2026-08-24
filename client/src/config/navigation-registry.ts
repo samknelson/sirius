@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
-  CreditCard, Activity, Wallet, Settings, Shield, Key, FileText, 
-  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, CalendarClock, GraduationCap, Truck, Network, School, Tag, RefreshCw, Radio, HelpCircle, FolderOpen, type LucideIcon
+  CreditCard, Activity, Wallet, Settings, Shield, Key, KeyRound, FileText,
+  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, CalendarClock, GraduationCap, Truck, Network, School, Tag, RefreshCw, Radio, HelpCircle, FolderOpen, Terminal, Power, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -43,7 +43,9 @@ export const configSections: NavSection[] = [
     icon: Settings,
     items: [
       { path: "/config/system-mode", label: "System Mode", icon: Server, testId: "nav-config-system-mode", permission: "admin" },
+      { path: "/config/auth-settings", label: "Auth Settings", icon: KeyRound, testId: "nav-config-auth-settings", permission: "admin" },
       { path: "/config/system-status", label: "System Status", icon: Activity, testId: "nav-config-system-status", permission: "admin" },
+      { path: "/config/env", label: "Environment", icon: Terminal, testId: "nav-config-env", permission: "admin" },
       { path: "/config/twilio", label: "SMS Providers", icon: MessageSquare, testId: "nav-config-sms", permission: "admin" },
       { path: "/config/email", label: "Email Providers", icon: MessageSquare, testId: "nav-config-email", permission: "admin" },
       { path: "/config/postal", label: "Postal Providers", icon: MessageSquare, testId: "nav-config-postal", permission: "admin" },
@@ -60,6 +62,7 @@ export const configSections: NavSection[] = [
       { path: "/admin/debug/event-bus", label: "Event Bus", icon: Radio, testId: "nav-admin-debug-event-bus", permission: "admin", requiresComponent: "debug" },
       { path: "/config/s1-migration", label: "S1 Migration", icon: Database, testId: "nav-config-s1-migration", permission: "admin", requiresComponent: "sitespecific.bao.s1migration" },
       { path: "/admin/ebs", label: "Event Scheduler", icon: Calendar, testId: "nav-config-ebs", permission: "admin" },
+      { path: "/admin/restart", label: "Restart & Reload", icon: Power, testId: "nav-config-restart", permission: "admin" },
     ],
   },
   {
@@ -138,6 +141,7 @@ export const configSections: NavSection[] = [
       { path: "/config/options/employment-status", label: "Employment Statuses", icon: List, testId: "nav-config-employment-statuses", permission: "admin" },
       { path: "/config/options/comm-tag", label: "Comm Tags", icon: Tag, testId: "nav-config-comm-tags", permission: "admin" },
       { path: "/config/options/call-reason", label: "Call Reasons", icon: List, testId: "nav-config-call-reasons", permission: "admin" },
+      { path: "/config/options/note-type", label: "Note Types", icon: List, testId: "nav-config-note-types", permission: "admin" },
       { path: "/config/steward-settings", label: "Steward", icon: Users, testId: "nav-config-steward-settings", permission: "admin", requiresComponent: "worker.steward" },
       { path: "/config/workers/ban", label: "Ban Notifications", icon: Shield, testId: "nav-config-workers-ban", permission: "admin", requiresComponent: "worker.ban" },
       { path: "/config/workers/tos", label: "Time Off Sick", icon: Calendar, testId: "nav-config-workers-tos", permission: "admin", requiresComponent: "worker.tos" },
@@ -161,6 +165,7 @@ export const configSections: NavSection[] = [
     icon: Truck,
     items: [
       { path: "/config/dispatch-job-types", label: "Job Types", icon: List, testId: "nav-config-dispatch-job-types", permission: "admin", requiresComponent: "dispatch" },
+      { path: "/config/options/worker-ban-type", label: "Worker Ban Types", icon: List, testId: "nav-config-worker-ban-types", permission: "admin", requiresComponent: "dispatch" },
       { path: "/admin/plugin-configs/dispatch-eligibility", label: "Eligibility Plugins", icon: Zap, testId: "nav-config-dispatch-eligibility-plugins", permission: "admin" },
       { path: "/config/dispatch/backfill", label: "Eligibility Backfill", icon: RefreshCw, testId: "nav-config-dispatch-backfill", permission: "admin", requiresComponent: "dispatch" },
       { path: "/config/dispatch/dnc", label: "Do Not Call", icon: Phone, testId: "nav-config-dispatch-dnc", permission: "admin", requiresComponent: "dispatch.dnc" },
@@ -230,7 +235,7 @@ export const configSections: NavSection[] = [
     description: "External API access and client management",
     icon: Network,
     items: [
-      { path: "/config/ws/bundles", label: "Bundles", icon: Package, testId: "nav-config-ws-bundles", permission: "admin" },
+      { path: "/config/ws/services", label: "Services", icon: Package, testId: "nav-config-ws-services", permission: "admin" },
       { path: "/config/ws/clients", label: "Clients", icon: Key, testId: "nav-config-ws-clients", permission: "admin" },
     ],
   },

@@ -4,28 +4,73 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 
 ## Run & Operate
 
--   **Automated validations** (registered, run on every task completion —
-    no manual invocation needed): `constraint-names`
-    (`scripts/dev/check-constraint-names.ts`), `migrations`
-    (`scripts/dev/check-migrations-merge.sh` — runs
-    `scripts/check-migrations.ts` with `--base=origin/bao-dev` AND
-    `--base=origin/bao-prd`, so a new core migration must be numbered above
-    the max on BOTH deployment branches regardless of merge direction;
-    origin/main is a stale pre-split trunk and is deliberately not used as a
-    base),
-    `storage-encapsulation` (`scripts/dev/check-storage-encapsulation.ts`),
-    and `typecheck` (`NODE_OPTIONS=--max-old-space-size=8192 npm run check`
-    — tsc with the memory headroom it needs; incremental, so re-runs are
-    fast).
-    A violation blocks completion with the script's actionable error.
-    `check-migrations` now also sees untracked files (`git ls-files
-    --others`), so a freshly written migration counts before it is
-    committed.
--   **`scripts/` is OUTSIDE the app typecheck.** `npm run check` (the
-    `typecheck` validation) covers the app tsconfig only; migration loaders
-    and other scripts under `scripts/` compile under their own config. Run
-    `npx tsc -p tsconfig.scripts.json --noEmit` before first execution of a
-    new or changed script — a green app typecheck says nothing about them.
+-   **Starting the project runs the app, and nothing else.** No check runs
+    alongside it.
+
+-   **Automated gates — exactly three** (registered validations, run on
+    every task completion; no manual invocation needed):
+
+    | Gate | Command |
+    | --- | --- |
+    | `lint` | `npx tsx scripts/dev/lint.ts` |
+    | `typecheck` | `npm run check` |
+    | `migrations` | `npx tsx scripts/check-migrations.ts --base=origin/main` |
+
+    A violation blocks completion with the underlying check's own
+    actionable error. `check-migrations` also sees untracked files
+    (`git ls-files --others`), so a freshly written migration counts before
+    it is committed.
+
+-   **`npm run check` is tsc, run twice** — once for
+    `tsconfig.server.json` (server + shared + tests) and once for
+    `tsconfig.client.json` (client + shared), each in its own Node process
+    with an explicit `--max-old-space-size`. Those are entry roots rather
+    than an exclusive split — imports pull files across the line either way
+    — and between them the two halves resolve to exactly the file set the
+    root `tsconfig.json` does. The root config stays the one the editor,
+    vite and vitest read. Both halves are incremental (a build-info file
+    each), so re-runs are fast.
+
+    The split and the pinned ceiling are not cosmetic: one combined process
+    needs ~2.2 GB of heap, which is over the ~2.08 GB default a stock CI
+    runner gives Node, so the check died there with "Reached heap limit"
+    while passing locally. Heap by half, measured 2026-08-24: server
+    1.48 GB, client 1.86 GB (peak RSS 0.9 / 2.0 GB). The client half is the
+    expensive one because `@shared/schema` brings drizzle's inference in
+    with it. Growth is steady — roughly +0.6 GB per 1,000 files added over
+    the last year — so expect to raise the pin again rather than to hold
+    this line forever. Raise it deliberately; do not go back to inheriting
+    whatever the machine happens to allow.
+
+-   **`npm run lint` is the architecture-lint suite** — one entry point for
+    every repo-wide architecture rule (`scripts/dev/lint.ts`). It runs all
+    seven rules and reports **every** violation in one pass rather than
+    stopping at the first, each with its own fix instructions:
+    `env-registry`, `storage-encapsulation`, `denorm-declarations`,
+    `html-utils`, `constraint-names`, `component-table-order`,
+    `lockfile-registry`. Run one rule
+    with `npx tsx scripts/dev/lint.ts <rule-id>`, list them with `--list`.
+    A new repo-wide rule is added to the `RULES` table in that file — never
+    as its own workflow.
+
+-   **`npm test` is the test suite** (Vitest; `npm run test:watch` to
+    watch). Tests live in `tests/<subject>/*.test.ts`, grouped by subject
+    (`tests/html/`, `tests/auth/`, `tests/env/`, `tests/edi/`), and reuse the `@` /
+    `@shared` path aliases. A new test goes in the suite for its subject,
+    or a new subject directory — **not** in a new script under
+    `scripts/dev/`. Tests do not run as a completion gate; run them on
+    demand and before merging. *Whether* a test should be written at all
+    is settled by the non-negotiable rule "A regression test must earn
+    its place" below.
+
+-   **`scripts/dev/` holds developer checks only.** Operational tools and
+    data audits a human runs deliberately live in `scripts/tools/`;
+    one-time-use scripts live in `scripts/oneoffs/` (see below).
+
+-   **`scripts/` is outside the app typecheck.** `npm run check` covers the
+    app TypeScript entry points, not migration loaders and other scripts.
+    Run `npx tsc -p tsconfig.scripts.json --noEmit` before first execution of
+    a new or changed script.
 
 ## Stack
 
@@ -48,11 +93,32 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 -   **UI Components**: `client/src/components/`
 -   **Access Control Policies**: `server/modules/*/access.ts` (implied by entity-based policy architecture)
 -   **UI Theme**: `tailwind.config.ts` (implied by Tailwind CSS with "new-york" theme)
+-   **Plugin Framework**: shared base `server/plugins/_core/` (kind
+    registration `kinds.ts`, config adapters `config-adapter.ts`),
+    per-kind code `server/plugins/<area>/<kind>/`, config storage
+    `server/storage/system/plugin-configs*.ts`, admin UI
+    `client/src/pages/admin/plugin-configs*.tsx`. Adding a *kind* (as
+    opposed to a plugin) is gated by the non-negotiable rule
+    "A new plugin kind is a deliberate architectural decision" below.
 -   **Wizards**: `server/wizards/types/`, `client/src/components/wizards/steps/`
 -   **Wizard Plugin Framework (spike)**: `server/plugins/wizards/` (sixth plugin kind on `server/plugins/_core/`; fixed dispatcher routes so adding a wizard adds zero routes), pilot at `server/plugins/wizards/plugins/report-gbhet-legal-compliance.ts`; client generic renderers `client/src/components/wizards/framework/`, escape-hatch component registry `client/src/plugins/wizards/`
 -   **Dispatch System**: `server/modules/dispatch/`, `client/src/pages/dispatch/`
 -   **Ledger System**: `server/modules/ledger/`, `client/src/pages/ledger/`
 -   **SFTP Client Destinations**: `server/modules/sftp-client-destination/`, `client/src/pages/config/sftp-client-destinations/`
+
+## Stable layout CSS ids (public contract)
+
+These ids exist so deployment-specific "client injection" CSS can target
+layout regions reliably (e.g. `#site-banner { background: #3333cc; }`).
+Treat them as a public contract — do not rename casually:
+
+-   `#site-header` — whole `<header>` wrapper (banner + menu), in `Header.tsx`
+-   `#site-banner` — top header row (site name / user menu bar)
+-   `#site-menu` — desktop main navigation row
+-   `#site-menu-mobile` — mobile navigation sheet content
+-   `#site-title` — page title area (`PageHeader.tsx`, contains the h1)
+-   `#site-content` — main body/content area (`<main>` in `App.tsx`)
+-   `#site-footer` — footer (`Footer.tsx`)
 
 ## User preferences
 
@@ -62,19 +128,64 @@ Preferred communication style: Simple, everyday language.
 something needs to be pushed to either branch, stop and ask the user —
 they will do the push themselves.
 
+Diagnostic logging: do NOT redact or truncate diagnostic details in
+admin-gated log entries (e.g. SAML failure logs). The admin log viewer is the
+only debugging surface on external deployments — persist the full raw error
+and request payload so problems can be diagnosed without server-log access.
+
+Check the checked-out branch BEFORE editing any file. Application code is
+written on `main` only. If the workspace is on `freeman-dev` (or any other
+deployment branch) and the work touches anything outside `.github/` and
+`deploy/`, stop and say so instead of committing to the wrong branch — code
+landing on a deployment branch is what causes the recurring merge conflicts.
+
 ## Git remotes & branch policy
 
 -   **`main` → `origin` (github.com/samknelson/sirius) only.** `main` must
     never contain `.github/` or `deploy/` — both are gitignored on main and
     were stripped from its history (the Replit Git token lacks the
     `workflow` scope, and the deploy env files must not reach origin).
--   **`freeman-dev` → `freeman` remote only, never origin.** This branch
-    carries `.github/` (CI workflows) and `deploy/` on top of main. To
-    update freeman: merge `main` into `freeman-dev`, push `freeman-dev` to
-    the `freeman` remote.
--   Edits to `.github/` or `deploy/` are committed on `freeman-dev` only,
+-   **`freeman-dev` and `freeman-uat` → `freeman` remote only, never
+    origin.** Each carries `.github/` (CI workflows) and `deploy/` on top of
+    main, and nothing else of its own. To update either: merge `main` into
+    it, then push it to the `freeman` remote.
+-   **Merges only ever run `main` → `freeman-*`, never the reverse.** Both
+    Freeman branches carry commits that add the CI files and commits that
+    delete them. Merging either branch into `main` pulls that add/delete
+    history into `main`'s ancestry, which can move the merge base for the
+    *other* branch onto a commit where the CI files exist. When it does,
+    that branch's next `git merge main` sees "present in base, absent in
+    main" and takes the deletion — silently for untouched files, as a
+    modify/delete conflict for edited ones. Whether it bites in any given
+    case depends on the resulting graph, so treat it as a hazard to stay
+    away from rather than a rule to reason around: the CI files have
+    already been destroyed on `freeman-uat` twice. If real code is
+    stranded on a Freeman branch, cherry-pick it onto `main` instead of
+    merging the branch.
+-   **Never point a task agent at a Freeman branch.** Application work is
+    done on `main` only. A task agent branches from a tree that has no CI
+    files, and the "commit prior to merge" snapshot it writes records them
+    as deleted — which is exactly how `freeman-uat` lost them.
+-   Edits to `.github/` or `deploy/` are committed on a Freeman branch only,
     using `git add -f` (the paths are gitignored). The on-disk copies in the
     main working tree are untracked-and-ignored — do not `git add` them.
+-   **If the CI files vanish from a Freeman branch again**, restore them
+    from a known-good source *for that environment* — the branch's own last
+    good commit or a backup ref, and the other Freeman branch only while the
+    two are known to be identical:
+
+        git checkout <known-good-ref> -- .github deploy && git commit
+
+    Then verify both the count and the contents. Count with
+    `git ls-tree -r --name-only <branch> -- .github deploy` (8 files today);
+    contents matter because once the branches carry environment-specific
+    config, restoring from the wrong one silently overwrites it. `git status`
+    shows nothing here once the files are ignored-and-untracked.
+-   The `main-branch-files` architecture-lint rule enforces the first bullet:
+    on `main` it fails when any `.github/` or `deploy/` file is tracked
+    (`git ls-tree`, not `git status`) and tells you to run
+    `git rm -r --cached .github deploy`. On any other branch it passes, so
+    the Freeman branches keep their copies.
 -   Helper script for the one-time history split: `.local/split-branches.sh`.
 -   **`bao-dev` / `bao-prd` (deployment branches) are pushed only via the
     "Push to bao-dev" / "Push to bao-prd" workflows**
@@ -193,7 +304,7 @@ missing, extra, or mistyped.
     `foreignKey({ name, columns, foreignColumns })` builder, or use
     `unique("name").on(...)`. The name-length check is NOT skipped by
     `[skip-migration-check]`, and can be run standalone via
-    `npx tsx scripts/dev/check-constraint-names.ts`.
+    `npx tsx scripts/dev/lint.ts constraint-names`.
 
 **Dev-only escape hatch for the startup gate:** setting
 `SKIP_SCHEMA_DRIFT_CHECK=1` skips the check at boot. This exists so a
@@ -207,6 +318,137 @@ helpers, and ad-hoc smoke tests — must live under `scripts/oneoffs/`,
 never at the top level of `scripts/`. The top level of `scripts/` is
 reserved for the durable tooling that the app and its checks depend on
 (`migrate/`, `db-push.ts`, `check-migrations.ts`, etc.).
+
+The rest of `scripts/` is split by who runs it and when:
+
+-   `scripts/dev/` — checks. The lint entry point (`lint.ts`) and the
+    seven architecture-lint rules it registers — every file here is
+    reachable from `npm run lint`. Nothing here is a behavioral test;
+    those go in `tests/`. A new check is a rule in the `RULES` table of
+    `lint.ts` or a case under `tests/` — never a new script here with
+    its own workflow or registered validation.
+-   `scripts/tools/` — repeatable operational tools and data audits a
+    human runs deliberately, never automatically: the Freeman
+    auto-approve poller, the structure-change git review tool, and the
+    signed-document sanitize audit. Run via
+    `npx tsx scripts/tools/<name>.ts`.
+-   `scripts/oneoffs/` — one-time-use scripts, as above.
+
+## A regression test must earn its place
+
+**A test never ships as a follow-up task.** If a change is worth
+protecting, the protection is written inside the task that changes the
+behavior — same branch, same review. Do NOT propose "prevent a
+regression in X", "confirm X still works", or "catch Y before it ships"
+as a follow-up task, and do not accept one. Either the test belonged in
+the original task, or it should not be written at all. This is the
+default that must stop: a task ending with a proposed test task is a
+defect in the task, not thoroughness.
+
+**The bar.** Write the test only when **all six** hold:
+
+1.  **It has broken, or a concrete change would break it.** A real past
+    breakage, or a specific foreseeable change — not "someone might one
+    day touch this."
+2.  **The subsystem is finished.** Its design has settled and is not
+    still being actively built out.
+3.  **The breakage would be silent** — wrong-but-plausible output, a
+    missing notification, a permission that quietly stops being
+    enforced. If it would crash loudly or fail typecheck, the crash is
+    the test.
+4.  **Nothing already catches it** — not `typecheck`, not an existing
+    architecture-lint rule.
+5.  **It runs cheaply** — no live database record, no spawned server, no
+    network.
+6.  **It fits an existing subject suite**, or the subject is substantial
+    enough to justify a new one.
+
+**Do not write it** when any of these is true — these are
+disqualifying, not debatable:
+
+-   **The subsystem is still under active development.** Testing an
+    unfinished design pins decisions nobody has made yet, and the tests
+    fight the remaining work instead of protecting it. Wait until it
+    settles.
+-   It restates a guarantee the type system already provides.
+-   It guards a hypothetical future refactor nobody has planned — the
+    "in case someone adds a new channel someday" test.
+-   It is one-time verification that a migration or conversion worked.
+    Verify it once by hand, then throw the verification away; it has no
+    ongoing value.
+-   It needs a live DB row or a spawned server to assert anything, which
+    usually means it is testing plumbing rather than a rule.
+-   An existing suite already covers the same invariant from another
+    angle.
+
+**Lint rule or test?** Two mechanisms, and the choice is not taste:
+
+-   **A repo-wide architecture-lint rule** when the risk is
+    *structural* — "this kind of code must not appear in that kind of
+    place" (a raw `sql` template outside `server/storage/`, a
+    `process.env` read outside the registry). One rule covers the whole
+    class permanently, where a test only covers the instance in front of
+    you. It goes in the `RULES` table in `scripts/dev/lint.ts` and runs
+    under the existing `lint` gate.
+-   **A subject test suite** when the risk is *behavioral* — a specific
+    invariant about what the code computes or decides. It goes in
+    `tests/<subject>/*.test.ts` and runs under `npm test`.
+
+    The finished-subsystem rule applies to lint rules too: a structural
+    rule about a design still in flux constrains decisions that have not
+    been made yet. Do not write one for a subsystem you are still
+    building.
+
+**Where it goes.** Adding a test means adding a case to the suite for
+its subject, or a new `tests/<subject>/` directory when the subject is
+substantial. Adding a rule means adding a row to the `RULES` table.
+**The anti-pattern — do not do this — is a new top-level script under
+`scripts/dev/` with its own workflow / registered validation.** The
+automated gates are exactly the three listed in Run & Operate, and that
+list does not grow one check at a time.
+
+## Lockfile URLs MUST point at the public npm registry
+
+Every `resolved` tarball URL in `package-lock.json` must point at
+`https://registry.npmjs.org/`. Any `npm install` run **inside this Replit
+workspace** goes through Replit's internal npm proxy and rewrites the
+`resolved` URLs of the packages it touched to
+`http://package-firewall.replit.local/npm/…`. That host only resolves inside
+Replit, so GitHub Actions and the Docker build then die at `npm ci` with
+`EAI_AGAIN package-firewall.replit.local`. Versions and integrity hashes are
+untouched — only the URL host is wrong.
+
+So after any install here, check the lockfile before committing:
+
+    npx tsx scripts/dev/lint.ts lockfile-registry
+
+and if it fails, rewrite the host (nothing else changes):
+
+    sed -i 's#https\?://package-firewall\.replit\.local/npm/#https://registry.npmjs.org/#g' package-lock.json
+
+The `lockfile-registry` architecture-lint rule enforces this as part of the
+`lint` gate, naming every offending package. CI and the Dockerfile
+deliberately do **not** rewrite URLs at build time — the lockfile in the repo
+is expected to be correct.
+
+## Environment variables (registry required)
+
+All environment variables the app reads must be declared in the central
+registry (`server/config/env-registry.ts`) with a description, secret flag,
+and category (core, platform, or a component id), and read through
+`getEnvironmentVariable()`. Direct `process.env` access is only allowed
+inside the registry module. Component-owned modules register their own
+variables at module load; dynamically-named lookups (FILESYSTEMS `*_secret`
+settings, payment-gateway `secretName`, address-validation `apiKeyName`)
+register at parse/resolve time as secrets. Client-side
+`import.meta.env.VITE_*` reads are exempt (compile-time substitution).
+
+The `env-registry` architecture-lint rule enforces this (it covers untracked
+files), as part of the `lint` gate. To run just that rule:
+
+    npx tsx scripts/dev/lint.ts env-registry
+
+Registry + enforcement tests: `npm test -- tests/env`.
 
 Because files in `scripts/oneoffs/` are one level deeper, their
 relative imports use `../../` (e.g. `../../server/storage/database`,
@@ -254,8 +496,8 @@ metadata (`BasePluginMetadata` in `server/plugins/_core/types.ts`,
 surfaced by the dashboard, trust-eligibility, charge, and
 event-notifier registries). This keeps the escape hatch visible and
 auditable. **Mutations always stay in storage** — the opt-in covers
-reads only. The author-time guard
-`scripts/dev/check-storage-encapsulation.ts` fails any file under
+reads only. The `storage-encapsulation` architecture-lint rule
+(`npx tsx scripts/dev/lint.ts storage-encapsulation`) fails any file under
 `server/plugins/` that calls `readOnly.query(...)` without declaring
 `needsReadOnlyDb` (shared plugin-kind infrastructure such as
 `server/plugins/trust/eligibility/executor.ts` is allowlisted there).
@@ -356,6 +598,120 @@ nested `max-w-7xl` is harmless inside the layout's container). New config
 pages can simply render their content directly and rely on the layout for
 width.
 
+## A new plugin kind is a deliberate architectural decision
+
+A **plugin kind** is a category of pluggable implementation registered
+with `registerPluginKind()` (`server/plugins/_core/kinds.ts`) — e.g.
+`charge`, `dashboard`, `cron`. It is not a general-purpose branching or
+configuration mechanism, and it must never be the default place to hang
+new behaviour just because the code needs somewhere to put a branch.
+
+**The A + B + C test.** A plugin kind is justified only when **all
+three** of these are true:
+
+-   **A. Interchangeable implementations.** There are genuinely
+    extensible, interchangeable implementations of the *same* function,
+    all satisfying one domain interface (e.g. "evaluate eligibility for
+    this worker", "post charges for this event").
+-   **B. Multiple live instances.** More than one instance of an
+    implementation can exist in a running system — the same
+    implementation configured twice, for different scopes, employers,
+    schedules, or job types.
+-   **C. Independent persisted configuration.** Each instance needs its
+    own independent configuration, persisted in `plugin_configs` (plus
+    the kind's subsidiary table where it carries relational
+    dimensions), and administered through the generic admin UI.
+
+Charge plugins clear this bar: many charge implementations, several
+configured instances each, every instance carrying its own scope /
+employer / account row. A registry that names three hardcoded call
+sites does not clear it — it fails A and B outright, and C is
+meaningless without them.
+
+**If you fail the test, it is not a plugin kind.** Fail any one of A, B,
+or C and the answer is one of the ordinary tools:
+
+-   Configuration a site operator sets once → the **environment
+    variable registry** (`server/config/env-registry.ts`), or the
+    existing `variables` / component settings, per the rules above.
+-   One implementation with some conditional behaviour → an **ordinary
+    module or function**. Export it, import it, call it.
+-   A fixed, closed set of call sites that need to differ → a **plain
+    lookup table or callback map owned by the code that uses it**, kept
+    next to that code, with no kind string, no registry ceremony, and
+    no place in the admin UI. (`server/plugins/template-surfaces/` is
+    the worked example: it uses the shared registry helper for
+    duplicate detection but deliberately registers **no** kind and
+    **no** config adapter, because a surface has no persisted
+    configuration and is never administered.)
+
+**Explicitly, a plugin kind is NOT:**
+
+-   a substitute for the environment-variable registry;
+-   a place to park settings that have nowhere else to live;
+-   a way to branch behaviour between a fixed set of call sites;
+-   a way to get a nice admin screen for free.
+
+**Sign-off is required.** Adding a kind is an architectural decision a
+programmer makes deliberately and explicitly. Get sign-off from the
+project owner *before* writing the code, and say which of A, B, and C
+the new kind satisfies and how. Adding a *plugin* to an existing kind
+needs no such approval — that is the common, cheap case.
+
+**Current kinds.** Each is registered by a
+`registerPluginKind({ kind, registry, ... })` call in that kind's
+`server/plugins/<area>/<kind>/index.ts`, and all of them are served by
+the shared `GET /api/plugins/:kind/manifest` endpoint
+(`server/modules/system/plugins-manifest.ts`).
+
+*Config-backed — these are the kinds that clear A + B + C, and they are
+the bar a new kind has to reach.* Each also registers a
+`registerPluginConfigAdapter()` (`server/plugins/_core/config-adapter.ts`),
+so its per-instance configs live in `plugin_configs` via
+`server/storage/system/plugin-configs.ts`, it appears in the
+`GET /api/plugins/kinds` index, and it is administered at
+`/admin/plugin-configs/:kind`:
+
+    charge, dashboard, dispatch-eligibility, trust-eligibility,
+    trust-provider-edi, payment-gateway, event-notifier, cron, denorm,
+    data-retention, client-injection
+
+*Manifest-only — grandfathered exceptions that do NOT clear C.* These
+were registered as kinds before this rule existed. They have no config
+adapter, so they never appear on the plugin-configs index, and whatever
+operator state they have does not live in `plugin_configs`: worker-ban
+behaviours are configured from the Worker Ban Types options page, menus
+are selected in Site Configuration, and tokens, wizards, and
+system-status checks carry no operator configuration at all:
+
+    wizard, menu, worker-ban, token, system-status
+
+They are precedent for nothing. Do not cite them to argue that a new
+kind may skip C, and do not add a sixth. A case that looks like one of
+these is a case for a plain module or lookup table.
+
+**Files a new kind touches** (all of them, every time — if your change
+doesn't need most of this list, that is a signal you don't need a
+kind):
+
+1.  `server/plugins/<area>/<kind>/types.ts` — the domain interface.
+2.  `server/plugins/<area>/<kind>/registry.ts` — a `PluginRegistry`.
+3.  `server/plugins/<area>/<kind>/index.ts` — the `registerPluginKind()`
+    call plus side-effect imports of each plugin, wired into
+    `server/app-init.ts`.
+4.  `server/plugins/_core/types.ts` and
+    `client/src/plugins/_core/manifest.ts` — the `PluginKind` unions
+    (the client file also carries `PluginSearchParamsByKind`).
+5.  Config-backed kinds only: the `registerPluginConfigAdapter()` call,
+    a subsidiary table + storage namespace in
+    `server/storage/system/plugin-configs*.ts` if the kind carries
+    relational dimensions, and a migration for it (see the migration
+    rule above).
+
+The step-by-step procedure, once the decision has been made and signed
+off, is in `server/plugins/_core/README.md` ("Introducing a brand-new
+plugin kind").
+
 # Where to read more
 
 -   **Architecture decisions** (YMD date convention, charge plugin
@@ -371,7 +727,11 @@ width.
 -   **Aurora / plain-Postgres support** (automatic Neon-vs-pg driver
     selection, `DATABASE_DRIVER` override, `sslmode` handling, and the
     `ALLOW_EMPTY_DB_BOOTSTRAP=1` empty-database bootstrap) — `docs/aurora.md`
--   **Plugin Framework contract** — `server/plugins/_core/README.md`
+-   **Plugin Framework contract** (how to add a plugin, the shared URL
+    surface, and the procedure for a brand-new kind) —
+    `server/plugins/_core/README.md`. Whether a new kind is warranted at
+    all is settled first by the non-negotiable rule "A new plugin kind
+    is a deliberate architectural decision".
 
 ## External docs
 

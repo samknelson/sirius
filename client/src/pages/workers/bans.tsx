@@ -14,15 +14,114 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Ban, Plus, Trash2, Pencil } from "lucide-react";
 import type { WorkerBan } from "@shared/schema";
-import { workerBanTypeEnum } from "@shared/schema";
-import { format } from "date-fns";
+import { format, addDays, parseISO, isValid } from "date-fns";
 
-const BAN_TYPE_LABELS: Record<string, string> = {
-  dispatch: "Dispatch",
-};
+interface BanTypeOption {
+  id: string;
+  name: string;
+  description: string | null;
+  data: { pluginIds?: string[]; defaultDurationDays?: number } | null;
+}
+
+/**
+ * End date implied by a ban type's default duration: start date + N days,
+ * or "" when the type has no default duration (indefinite).
+ */
+function defaultEndDateFor(
+  type: BanTypeOption | undefined,
+  startDate: string,
+): string {
+  const days = type?.data?.defaultDurationDays;
+  if (!days || !Number.isInteger(days) || days < 1 || !startDate) return "";
+  const start = parseISO(startDate);
+  if (!isValid(start)) return "";
+  return format(addDays(start, days), "yyyy-MM-dd");
+}
+
+interface BanPluginManifestEntry {
+  id: string;
+  name: string;
+  description?: string;
+  componentEnabled: boolean;
+  actionNames: string[];
+  argumentSchema?: {
+    properties?: Record<string, { title?: string; ["x-options-resource"]?: string }>;
+    required?: string[];
+  };
+  unconditional: boolean;
+}
+
+interface ArgumentField {
+  name: string;
+  title: string;
+  optionsResource?: string;
+  required: boolean;
+  pluginName: string;
+}
+
+/** Union of argument fields declared by the given plugins (deduped by name). */
+function argumentFieldsFor(plugins: BanPluginManifestEntry[]): ArgumentField[] {
+  const fields = new Map<string, ArgumentField>();
+  for (const plugin of plugins) {
+    const props = plugin.argumentSchema?.properties ?? {};
+    const required = plugin.argumentSchema?.required ?? [];
+    for (const [name, prop] of Object.entries(props)) {
+      if (!fields.has(name)) {
+        fields.set(name, {
+          name,
+          title: prop.title ?? name,
+          optionsResource: prop["x-options-resource"],
+          required: required.includes(name),
+          pluginName: plugin.name,
+        });
+      }
+    }
+  }
+  return Array.from(fields.values());
+}
+
+function ArgumentFieldInput({
+  field,
+  value,
+  onChange,
+}: {
+  field: ArgumentField;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const { data: options = [], isLoading } = useQuery<{ id: string; name: string }[]>({
+    queryKey: [`/api/options/${field.optionsResource}`],
+    enabled: !!field.optionsResource,
+  });
+
+  if (field.optionsResource) {
+    return (
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger data-testid={`select-ban-arg-${field.name}`}>
+          <SelectValue placeholder={isLoading ? "Loading..." : `Select ${field.title.toLowerCase()}`} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((opt) => (
+            <SelectItem key={opt.id} value={opt.id} data-testid={`select-ban-arg-${field.name}-${opt.id}`}>
+              {opt.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  }
+
+  return (
+    <Input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      data-testid={`input-ban-arg-${field.name}`}
+    />
+  );
+}
 
 function BansContent() {
   const { worker } = useWorkerLayout();
@@ -31,17 +130,65 @@ function BansContent() {
   const canEdit = hasPermission('staff');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingBan, setEditingBan] = useState<WorkerBan | null>(null);
-  const [formType, setFormType] = useState<string>("dispatch");
+  const [formType, setFormType] = useState<string>("");
   const [formStartDate, setFormStartDate] = useState<string>("");
   const [formEndDate, setFormEndDate] = useState<string>("");
+  // Once the user manually edits the end date, type/start-date changes
+  // must never overwrite it with the type's default duration.
+  const [endDateTouched, setEndDateTouched] = useState(false);
   const [formMessage, setFormMessage] = useState<string>("");
+  const [formData, setFormData] = useState<Record<string, string>>({});
 
   const { data: bans = [], isLoading } = useQuery<WorkerBan[]>({
     queryKey: ["/api/worker-bans/worker", worker.id],
   });
 
+  const { data: banTypes = [] } = useQuery<BanTypeOption[]>({
+    queryKey: ["/api/options/worker-ban-type"],
+  });
+
+  const { data: banPlugins = [] } = useQuery<BanPluginManifestEntry[]>({
+    queryKey: ["/api/plugins/worker-ban/manifest"],
+  });
+
+  const typeById = useMemo(
+    () => new Map(banTypes.map((t) => [t.id, t])),
+    [banTypes],
+  );
+  const pluginById = useMemo(
+    () => new Map(banPlugins.map((p) => [p.id, p])),
+    [banPlugins],
+  );
+
+  const pluginsForType = (typeId: string): BanPluginManifestEntry[] => {
+    const pluginIds = typeById.get(typeId)?.data?.pluginIds ?? [];
+    return pluginIds
+      .map((id) => pluginById.get(id))
+      .filter((p): p is BanPluginManifestEntry => !!p);
+  };
+
+  const selectedTypePlugins = formType ? pluginsForType(formType) : [];
+  const argumentFields = argumentFieldsFor(selectedTypePlugins);
+
+  const banTypeName = (ban: WorkerBan): string | null => {
+    if (!ban.type) return null;
+    // Legacy literal from before configurable ban types (should be
+    // rewritten at boot, but render it sensibly regardless).
+    if (ban.type === "dispatch") return "Dispatch";
+    return typeById.get(ban.type)?.name ?? ban.type;
+  };
+
+  const banCoverage = (ban: WorkerBan): string | null => {
+    if (!ban.type || ban.type === "dispatch") return null;
+    const actions = new Set<string>();
+    for (const plugin of pluginsForType(ban.type)) {
+      for (const action of plugin.actionNames) actions.add(action);
+    }
+    return actions.size > 0 ? Array.from(actions).join(", ") : null;
+  };
+
   const createMutation = useMutation({
-    mutationFn: async (data: { workerId: string; type: string; startDate: string; endDate?: string | null; message?: string | null }) => {
+    mutationFn: async (data: { workerId: string; type: string; startDate: string; endDate?: string | null; message?: string | null; data?: Record<string, string> | null }) => {
       return apiRequest("POST", "/api/worker-bans", data);
     },
     onSuccess: () => {
@@ -62,7 +209,7 @@ function BansContent() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<{ type: string; startDate: string; endDate: string | null; message: string | null }> }) => {
+    mutationFn: async ({ id, data }: { id: string; data: Partial<{ type: string; startDate: string; endDate: string | null; message: string | null; data: Record<string, string> | null }> }) => {
       return apiRequest("PUT", `/api/worker-bans/${id}`, data);
     },
     onSuccess: () => {
@@ -104,32 +251,73 @@ function BansContent() {
 
   const openAddModal = () => {
     setEditingBan(null);
-    setFormType("dispatch");
-    setFormStartDate(format(new Date(), "yyyy-MM-dd"));
-    setFormEndDate("");
+    const initialType = banTypes[0]?.id ?? "";
+    const initialStart = format(new Date(), "yyyy-MM-dd");
+    setFormType(initialType);
+    setFormStartDate(initialStart);
+    setFormEndDate(defaultEndDateFor(typeById.get(initialType), initialStart));
+    setEndDateTouched(false);
     setFormMessage("");
+    setFormData({});
     setIsModalOpen(true);
   };
 
   const openEditModal = (ban: WorkerBan) => {
     setEditingBan(ban);
-    setFormType(ban.type || "dispatch");
+    setFormType(ban.type && typeById.has(ban.type) ? ban.type : "");
     setFormStartDate(ban.startDate ? format(new Date(ban.startDate), "yyyy-MM-dd") : "");
     setFormEndDate(ban.endDate ? format(new Date(ban.endDate), "yyyy-MM-dd") : "");
+    setEndDateTouched(true); // never auto-change an existing ban's end date
     setFormMessage(ban.message || "");
+    const existingData: Record<string, string> = {};
+    if (ban.data && typeof ban.data === "object") {
+      for (const [key, value] of Object.entries(ban.data as Record<string, unknown>)) {
+        if (typeof value === "string") existingData[key] = value;
+      }
+    }
+    setFormData(existingData);
     setIsModalOpen(true);
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingBan(null);
-    setFormType("dispatch");
+    setFormType("");
     setFormStartDate("");
     setFormEndDate("");
+    setEndDateTouched(false);
     setFormMessage("");
+    setFormData({});
+  };
+
+  const handleTypeChange = (typeId: string) => {
+    setFormType(typeId);
+    if (!editingBan && !endDateTouched) {
+      setFormEndDate(defaultEndDateFor(typeById.get(typeId), formStartDate));
+    }
+    // Drop argument values that the new type's plugins don't declare.
+    const keep = new Set(argumentFieldsFor(pluginsForType(typeId)).map((f) => f.name));
+    setFormData((prev) =>
+      Object.fromEntries(Object.entries(prev).filter(([k]) => keep.has(k))),
+    );
+  };
+
+  const handleStartDateChange = (value: string) => {
+    setFormStartDate(value);
+    if (!editingBan && !endDateTouched) {
+      setFormEndDate(defaultEndDateFor(typeById.get(formType), value));
+    }
   };
 
   const handleSave = () => {
+    if (!formType) {
+      toast({
+        title: "Validation Error",
+        description: "Ban type is required.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!formStartDate) {
       toast({
         title: "Validation Error",
@@ -138,6 +326,20 @@ function BansContent() {
       });
       return;
     }
+    for (const field of argumentFields) {
+      if (field.required && !formData[field.name]) {
+        toast({
+          title: "Validation Error",
+          description: `${field.title} is required for this ban type.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    const payloadData = Object.fromEntries(
+      Object.entries(formData).filter(([, v]) => v !== ""),
+    );
 
     if (editingBan) {
       updateMutation.mutate({
@@ -147,6 +349,7 @@ function BansContent() {
           startDate: formStartDate,
           endDate: formEndDate || null,
           message: formMessage || null,
+          data: Object.keys(payloadData).length > 0 ? payloadData : null,
         },
       });
     } else {
@@ -156,6 +359,7 @@ function BansContent() {
         startDate: formStartDate,
         endDate: formEndDate || null,
         message: formMessage || null,
+        data: Object.keys(payloadData).length > 0 ? payloadData : null,
       });
     }
   };
@@ -193,7 +397,7 @@ function BansContent() {
             )}
           </div>
           <CardDescription>
-            Manage bans that restrict this worker from dispatch activities.
+            Manage bans that restrict what this worker can do.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -207,6 +411,7 @@ function BansContent() {
                 <TableRow>
                   <TableHead>Status</TableHead>
                   <TableHead>Type</TableHead>
+                  <TableHead>Prohibits</TableHead>
                   <TableHead>Start Date</TableHead>
                   <TableHead>End Date</TableHead>
                   <TableHead>Reason</TableHead>
@@ -222,7 +427,10 @@ function BansContent() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {ban.type ? BAN_TYPE_LABELS[ban.type] || ban.type : <span className="text-muted-foreground">-</span>}
+                      {banTypeName(ban) ?? <span className="text-muted-foreground">-</span>}
+                    </TableCell>
+                    <TableCell className="max-w-xs truncate text-muted-foreground">
+                      {banCoverage(ban) ?? "-"}
                     </TableCell>
                     <TableCell>
                       {ban.startDate ? format(new Date(ban.startDate), "MMM d, yyyy") : "-"}
@@ -290,26 +498,44 @@ function BansContent() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="type">Type</Label>
-              <Select value={formType} onValueChange={setFormType}>
+              <Select value={formType} onValueChange={handleTypeChange}>
                 <SelectTrigger data-testid="select-ban-type">
                   <SelectValue placeholder="Select ban type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {workerBanTypeEnum.map((type) => (
-                    <SelectItem key={type} value={type} data-testid={`select-ban-type-${type}`}>
-                      {BAN_TYPE_LABELS[type] || type}
+                  {banTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.id} data-testid={`select-ban-type-${type.id}`}>
+                      {type.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {selectedTypePlugins.length > 0 && (
+                <p className="text-xs text-muted-foreground" data-testid="text-ban-type-coverage">
+                  Prohibits: {Array.from(new Set(selectedTypePlugins.flatMap((p) => p.actionNames))).join(", ")}
+                </p>
+              )}
             </div>
+            {argumentFields.map((field) => (
+              <div key={field.name} className="space-y-2">
+                <Label htmlFor={`ban-arg-${field.name}`}>
+                  {field.title}
+                  {field.required ? "" : " (optional)"}
+                </Label>
+                <ArgumentFieldInput
+                  field={field}
+                  value={formData[field.name] ?? ""}
+                  onChange={(value) => setFormData((prev) => ({ ...prev, [field.name]: value }))}
+                />
+              </div>
+            ))}
             <div className="space-y-2">
               <Label htmlFor="startDate">Start Date</Label>
               <Input
                 id="startDate"
                 type="date"
                 value={formStartDate}
-                onChange={(e) => setFormStartDate(e.target.value)}
+                onChange={(e) => handleStartDateChange(e.target.value)}
                 data-testid="input-ban-start-date"
               />
             </div>
@@ -319,7 +545,10 @@ function BansContent() {
                 id="endDate"
                 type="date"
                 value={formEndDate}
-                onChange={(e) => setFormEndDate(e.target.value)}
+                onChange={(e) => {
+                  setEndDateTouched(true);
+                  setFormEndDate(e.target.value);
+                }}
                 data-testid="input-ban-end-date"
               />
               <p className="text-xs text-muted-foreground">

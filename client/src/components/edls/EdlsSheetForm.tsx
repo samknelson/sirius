@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -36,6 +37,20 @@ interface SupervisorContext {
 }
 
 type CrewInput = Omit<InsertEdlsCrew, "sheetId"> & { id?: string };
+
+/**
+ * Radix's dialog scroll lock listens for wheel/touchmove on `document` and
+ * cancels anything that did not originate inside the dialog's own subtree.
+ * This picker's option list renders in a portal on `document.body`, so inside
+ * the create-sheet dialog the list is treated as "outside" and the wheel does
+ * nothing. Keeping the event off `document` lets the list scroll natively;
+ * outside a dialog no such listener exists, so other surfaces are unchanged.
+ */
+const keepScrollInsideList = (
+  event: React.WheelEvent<HTMLElement> | React.TouchEvent<HTMLElement>
+) => {
+  event.stopPropagation();
+};
 
 interface DepartmentOption {
   id: string;
@@ -80,6 +95,7 @@ export interface SheetFormData {
   jobGroupId: string;
   facilityId: string;
   showStatusId: string;
+  notes: string;
   crews: CrewInput[];
 }
 
@@ -159,6 +175,7 @@ export function EdlsSheetForm({
         jobGroupId: initialData.sheet.jobGroupId || "",
         facilityId: initialData.sheet.facilityId || "",
         showStatusId: initialData.sheet.showStatusId || "",
+        notes: initialData.sheet.notes || "",
         crews: initialData.crews.map((c) => ({
           id: c.id,
           title: c.title,
@@ -182,6 +199,7 @@ export function EdlsSheetForm({
       jobGroupId: "",
       facilityId: "",
       showStatusId: "",
+      notes: "",
       crews: [],
     };
   });
@@ -288,6 +306,7 @@ export function EdlsSheetForm({
       jobGroupId: formData.jobGroupId || "",
       facilityId: formData.facilityId || "",
       showStatusId: formData.showStatusId || "",
+      notes: formData.notes || "",
     });
   };
 
@@ -552,7 +571,10 @@ export function EdlsSheetForm({
                   onValueChange={setFacilitySearch}
                   data-testid="input-facility-search"
                 />
-                <CommandList>
+                <CommandList
+                  onWheel={keepScrollInsideList}
+                  onTouchMove={keepScrollInsideList}
+                >
                   <CommandEmpty>
                     {facilitiesLoading ? "Loading..." : "No facilities found."}
                   </CommandEmpty>
@@ -580,6 +602,19 @@ export function EdlsSheetForm({
               </Command>
             </PopoverContent>
           </Popover>
+        </div>
+        <div className="space-y-2 md:col-span-2">
+          <Label htmlFor="notes">Notes</Label>
+          <Textarea
+            id="notes"
+            data-testid="input-notes"
+            value={formData.notes}
+            onChange={(e) =>
+              setFormData({ ...formData, notes: e.target.value })
+            }
+            rows={4}
+            placeholder="Optional notes about this sheet"
+          />
         </div>
       </div>
 

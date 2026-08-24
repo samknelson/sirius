@@ -19,6 +19,38 @@ export interface StatusMessage {
   details?: string;
 }
 
+/** One row in a plugin's details drill-down. */
+export interface StatusDetailRow {
+  /** Primary identifier of the row (e.g. an env var name). */
+  label: string;
+  /** Human-readable purpose/explanation. */
+  description?: string;
+  /**
+   * Displayed value. For sensitive data the plugin MUST obfuscate before
+   * returning — the framework never sees raw secrets.
+   */
+  value?: string;
+  /** Optional short badge text (e.g. "unset", "secret", "required"). */
+  badges?: string[];
+  /** Optional severity for visual emphasis of this row. */
+  priority?: StatusPriority;
+}
+
+/** One group of detail rows (e.g. an env-var category). */
+export interface StatusDetailGroup {
+  title: string;
+  rows: StatusDetailRow[];
+}
+
+/**
+ * Structured content returned by a plugin's optional `details()` method.
+ * Rendered by the admin UI as grouped tables. NEVER cached and never
+ * written to logs or audit tables.
+ */
+export interface StatusDetails {
+  groups: StatusDetailGroup[];
+}
+
 /**
  * A system-status plugin. Each plugin scans one aspect of system health and
  * returns one or more messages. Scans are run by the collector (see
@@ -49,6 +81,14 @@ export interface SystemStatusPlugin extends BasePluginMetadata {
   timeoutMs?: number;
   /** Run the scan. Must not mutate any persistent state. */
   scan(): Promise<StatusMessage[]>;
+  /**
+   * Optional on-demand drill-down. Invoked ONLY by the details endpoint —
+   * never by the collector's scan cycle — and its result is NEVER cached
+   * (each request runs it fresh). Runs under the same per-plugin timeout
+   * as `scan()`. Payloads may contain sensitive-adjacent data (already
+   * obfuscated by the plugin) and must never be logged.
+   */
+  details?(): Promise<StatusDetails>;
 }
 
 /** Manifest entry shape for system-status plugins. */
@@ -81,6 +121,8 @@ export interface SystemStatusEntry {
    * button would be meaningless.
    */
   canRescan: boolean;
+  /** Whether the plugin offers a `details()` drill-down. */
+  hasDetails: boolean;
   /** Highest-severity priority among the plugin's messages. */
   worstPriority: StatusPriority;
   result: StatusScanResult;

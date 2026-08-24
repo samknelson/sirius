@@ -1,5 +1,16 @@
 import { useState } from 'react';
+import { useLocation } from 'wouter';
 import { getApiErrorMessage } from "@/lib/queryClient";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
@@ -9,7 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
-import { Loader2, UserCheck, UserX, Shield, KeyRound } from 'lucide-react';
+import { Loader2, UserCheck, UserX, Shield, KeyRound, Trash2 } from 'lucide-react';
 import { UserLayout, useUserLayout } from '@/components/layouts/UserLayout';
 import { Role } from '@/lib/entity-types';
 
@@ -32,6 +43,36 @@ function UserAccountContent() {
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [, setLocation] = useLocation();
+
+  // What the admin must type to confirm the delete (the email, or the user id
+  // when the account has no email).
+  const deleteConfirmTarget = user.email || user.id;
+
+  const deleteUserMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest('DELETE', `/api/admin/users/${user.id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
+      queryClient.removeQueries({ queryKey: ['/api/admin/users', user.id] });
+      toast({
+        title: 'User deleted',
+        description: 'The account was permanently deleted.',
+      });
+      setDeleteDialogOpen(false);
+      setLocation('/config/users');
+    },
+    onError: (error) => {
+      toast({
+        title: 'Failed to delete user',
+        description: getApiErrorMessage(error, 'The user could not be deleted.'),
+        variant: 'destructive',
+      });
+    },
+  });
 
   const setPasswordMutation = useMutation({
     mutationFn: async (password: string) => {
@@ -379,6 +420,84 @@ function UserAccountContent() {
           </CardContent>
         </Card>
       )}
+
+      {/* Danger Zone */}
+      <Card className="border-destructive/50">
+        <CardHeader>
+          <CardTitle className="text-destructive">Danger Zone</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium">Permanently delete this user</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Removes the account, its roles, sign-in identities, and active sessions.
+                This cannot be undone. Consider deactivating instead if you may need the account later.
+              </p>
+            </div>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setDeleteConfirmText('');
+                setDeleteDialogOpen(true);
+              }}
+              data-testid="button-delete-user"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete User
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Permanently delete this user?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  This permanently deletes the account
+                  {user.email ? <> for <span className="font-medium">{user.email}</span></> : null},
+                  including its roles, sign-in identities, and active sessions.
+                  Audit log history is kept. <span className="font-medium">This cannot be undone.</span>
+                </p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="delete-confirm-input">
+                    Type <span className="font-mono font-medium">{deleteConfirmTarget}</span> to confirm
+                  </Label>
+                  <Input
+                    id="delete-confirm-input"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    autoComplete="off"
+                    data-testid="input-delete-confirm"
+                  />
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-delete-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteConfirmText !== deleteConfirmTarget || deleteUserMutation.isPending}
+              onClick={(e) => {
+                e.preventDefault(); // keep dialog open until the request finishes
+                deleteUserMutation.mutate();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-delete-confirm"
+            >
+              {deleteUserMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete Permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

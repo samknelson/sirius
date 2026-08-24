@@ -10,6 +10,7 @@ import {
   type NotifierMessageContent,
   type NotifierRecipient,
 } from "../types";
+import { absoluteUrl } from "../../../lib/base-url";
 
 function payloadOf(ctx: EventNotifierEventContext): GrievanceDeadlineReminderPayload {
   return ctx.payload as GrievanceDeadlineReminderPayload;
@@ -51,11 +52,7 @@ function composeTitle(
  * link. Mirrors the domain resolution used by the other grievance notifiers.
  */
 function absoluteGrievanceUrl(grievanceId: string): string {
-  const domain =
-    process.env.REPLIT_DEV_DOMAIN ||
-    process.env.REPLIT_DOMAINS?.split(",")[0] ||
-    "localhost:5000";
-  return `https://${domain}/grievance/${grievanceId}`;
+  return absoluteUrl(`/grievance/${grievanceId}`);
 }
 
 /**
@@ -142,7 +139,7 @@ export const grievanceDeadlineNotifier: EventNotifierPlugin = {
     const body = `The grievance "${grievanceTitle}" has ${step} due on ${dueDate} — ${offset} ${dayWord} from now.`;
     const linkUrl = `/grievance/${grievanceId}`;
     const absoluteUrl = absoluteGrievanceUrl(grievanceId);
-    const title = "Grievance Deadline Reminder";
+    const title = `Grievance - deadline - ${grievanceTitle}`;
 
     switch (medium) {
       case "inapp":

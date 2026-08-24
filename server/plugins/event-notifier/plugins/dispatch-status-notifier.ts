@@ -3,11 +3,11 @@ import {
   type DispatchStatusSavedPayload,
 } from "../../../services/event-bus";
 import { registerEventNotifier } from "../registry";
+import { templatesSchemaBlock } from "../template-schema";
 import {
   type EventNotifierEventContext,
   type EventNotifierPlugin,
-  type NotificationMedium,
-  type NotifierMessageContent,
+  type NotifierChannelTemplates,
   type NotifierRecipient,
 } from "../types";
 
@@ -15,8 +15,14 @@ function payloadOf(ctx: EventNotifierEventContext): DispatchStatusSavedPayload {
   return ctx.payload as DispatchStatusSavedPayload;
 }
 
-/** Human label for a dispatch status value ("available" → "Available"). */
-function statusLabel(status: string): string {
+/** Root name: the entity kind of the record the notice is about. */
+const ROOT = "dispatch_worker_status";
+
+/** Display label for a dispatch status value ("available" → "Available").
+ * A derived field of the availability row itself, declared on the
+ * `dispatch_worker_status` descriptor so EVERY surface that builds one —
+ * this notifier, the preview provider, the personas — carries it. */
+export function dispatchStatusLabel(status: string): string {
   switch (status) {
     case "available":
       return "Available";
@@ -28,16 +34,38 @@ function statusLabel(status: string): string {
 }
 
 /**
- * Absolute URL to the worker's dispatch page. In-app messages navigate with a
- * relative path, but email/SMS leave the app so they need a fully-qualified
- * link. Mirrors the domain resolution used by the tos-absence notifier.
+ * Default per-channel templates, rendered against the worker's real
+ * availability row (the one the event names).
  */
-function absoluteDispatchUrl(workerId: string): string {
-  const domain =
-    process.env.REPLIT_DEV_DOMAIN ||
-    process.env.REPLIT_DOMAINS?.split(",")[0] ||
-    "localhost:5000";
-  return `https://${domain}/workers/${workerId}/dispatch/status`;
+const TITLE = `Dispatch - status change - {{${ROOT}}}`;
+const SENTENCE = `Your dispatch status is now {{${ROOT}}}.`;
+// The availability row has no page of its own, but it declares WHERE it
+// is shown — the worker's dispatch status tab, reached through the row's
+// own worker_id column, so there is still no relation to come up empty.
+const LINK_URL = `{{${ROOT}.url}}`;
+const LINK_PATH = `{{${ROOT}.path}}`;
+const LINK_LABEL = "View Dispatch";
+
+function defaultTemplates(): NotifierChannelTemplates {
+  return {
+    email: {
+      subject: TITLE,
+      bodyHtml:
+        `<p>${SENTENCE}<br><br>` +
+        `View your dispatch page: ` +
+        `<a href="${LINK_URL}">` +
+        `${LINK_URL}</a></p>`,
+    },
+    sms: {
+      message: `${SENTENCE} View: ${LINK_URL}`,
+    },
+    inapp: {
+      title: TITLE,
+      body: SENTENCE,
+      linkUrl: LINK_PATH,
+      linkLabel: LINK_LABEL,
+    },
+  };
 }
 
 /**
@@ -61,6 +89,49 @@ export const dispatchStatusNotifier: EventNotifierPlugin = {
   notifySelf: true,
   subscribedEvents: [EventType.DISPATCH_STATUS_SAVED],
   supportedMedia: ["inapp", "email", "sms"],
+  configSchema: {
+    type: "object",
+    properties: {
+      templates: templatesSchemaBlock({
+        exampleTokens: [
+          `{{${ROOT}.field(name="status")}}`,
+          `{{${ROOT}.worker.contact.field(name="display_name")}}`,
+        ],
+      }),
+    },
+  },
+
+  tokenTemplates: {
+    roots: [
+      {
+        name: ROOT,
+        kind: "dispatch_worker_status",
+        label: "Dispatch status",
+        description: "The worker's dispatch availability row this event changed",
+        async build(ctx) {
+          const { row } = payloadOf(ctx);
+          if (!row) return null;
+          const { workerDispatchStatus } = await import(
+            "../../../../shared/schema/dispatch/schema"
+          );
+          // The whole availability row as this write left it, carried on
+          // the event, so every column the editor offers is genuinely
+          // there. Not reloaded by id: the row is mutable, so a later
+          // write would rewrite the message this transition earned — and a
+          // deletion right after would swallow it.
+          return {
+            kind: "dispatch_worker_status",
+            row: {
+              ...(row as unknown as Record<string, unknown>),
+              statusLabel: dispatchStatusLabel(row.status),
+            },
+            table: workerDispatchStatus,
+          };
+        },
+      },
+    ],
+    defaultTemplates,
+  },
 
   shouldDispatch(ctx): boolean {
     const { status, previousStatus, isDeleted } = payloadOf(ctx);
@@ -80,40 +151,6 @@ export const dispatchStatusNotifier: EventNotifierPlugin = {
     const contactId = worker?.contactId;
     if (!contactId) return [];
     return [{ contactId }];
-  },
-
-  async getMessage(
-    medium: NotificationMedium,
-    _recipient: NotifierRecipient,
-    ctx: EventNotifierEventContext,
-  ): Promise<NotifierMessageContent | null> {
-    const { workerId, status } = payloadOf(ctx);
-    const label = statusLabel(status);
-    const title = "Dispatch Status Changed";
-    const body = `Your dispatch status is now ${label}.`;
-    const linkUrl = `/workers/${workerId}/dispatch/status`;
-    const absoluteUrl = absoluteDispatchUrl(workerId);
-
-    switch (medium) {
-      case "inapp":
-        return {
-          title,
-          body,
-          linkUrl,
-          linkLabel: "View Dispatch",
-        };
-      case "email":
-        return {
-          subject: title,
-          bodyText: `${body}\n\nView your dispatch page: ${absoluteUrl}`,
-        };
-      case "sms":
-        return {
-          message: `${body} View: ${absoluteUrl}`,
-        };
-      default:
-        return null;
-    }
   },
 };
 

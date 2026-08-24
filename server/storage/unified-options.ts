@@ -35,8 +35,11 @@ import {
   optionsGrievanceSettlementType,
   optionsBaoCobraStatus,
   optionsBaoCobraQualifyingEvent,
+  optionsWorkerBanType,
+  optionsNoteType,
   bulkMediumEnum,
 } from "@shared/schema";
+import { noteEntityTypeEnumOptions } from "@shared/notes";
 import { defineLoggingConfig } from "./middleware/logging";
 import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
 
@@ -77,7 +80,9 @@ export type OptionsTypeName =
   | "grievance-role"
   | "grievance-settlement-type"
   | "bao-cobra-status"
-  | "bao-cobra-qualifying-event";
+  | "worker-ban-type"
+  | "bao-cobra-qualifying-event"
+  | "note-type";
 
 /**
  * Field definition for dynamic form and table rendering
@@ -85,7 +90,7 @@ export type OptionsTypeName =
 export interface FieldDefinition {
   name: string;
   label: string;
-  inputType: 'text' | 'textarea' | 'number' | 'select-self' | 'icon' | 'checkbox' | 'select-options' | 'color' | 'multi-enum' | 'enum' | 'system-roles';
+  inputType: 'text' | 'textarea' | 'number' | 'select-self' | 'icon' | 'checkbox' | 'select-options' | 'color' | 'multi-enum' | 'enum' | 'system-roles' | 'worker-ban-plugins';
   required: boolean;
   placeholder?: string;
   helperText?: string;
@@ -215,6 +220,18 @@ export function fieldsToJsonSchema(
         prop.uniqueItems = true;
         prop.items = { type: "string" };
         (prop as Record<string, unknown>)["x-widget"] = "system-roles";
+        if (f.required) prop.minItems = 1;
+        break;
+      }
+      case "worker-ban-plugins": {
+        // Dynamic multi-select of registered worker-ban plugins. Like
+        // `system-roles`, the allowed values are live (the plugin registry,
+        // fetched by the client widget from the worker-ban manifest), so no
+        // enum is baked here; the write routes validate against the registry.
+        prop.type = "array";
+        prop.uniqueItems = true;
+        prop.items = { type: "string" };
+        (prop as Record<string, unknown>)["x-widget"] = "worker-ban-plugins";
         if (f.required) prop.minItems = 1;
         break;
       }
@@ -665,6 +682,46 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Low Hours, Age Out, Death, Divorce", showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this qualifying event", showInTable: true, columnHeader: "Description" },
+    ],
+  },
+  "worker-ban-type": {
+    table: optionsWorkerBanType,
+    displayName: "Worker Ban Types",
+    description: "Ban types available on the worker bans page. Each type applies one or more ban behaviors (what the ban prohibits).",
+    singularName: "Ban Type",
+    pluralName: "Ban Types",
+    orderByColumn: "name" as const,
+    loggingModule: "options.workerBanType",
+    requiredFields: ["name"],
+    optionalFields: ["description", "siriusId", "data"],
+    supportsSequencing: false,
+    requiredComponent: "dispatch",
+    fields: [
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Dispatch, Facility Ban", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this ban type", showInTable: true, columnHeader: "Description" },
+      { name: "pluginIds", label: "Ban Behaviors", inputType: "worker-ban-plugins", required: true, helperText: "What a ban of this type prohibits. Bans of this type apply every selected behavior.", showInTable: false, dataField: true },
+      { name: "defaultDurationDays", label: "Default duration (days)", inputType: "number", required: false, placeholder: "e.g., 7", helperText: "When set, new bans of this type pre-fill their end date to start date + this many days. Leave empty for no default (indefinite).", showInTable: true, columnHeader: "Default Duration", dataField: true },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+    ],
+  },
+  "note-type": {
+    table: optionsNoteType,
+    displayName: "Note Types",
+    description: "Types available when staff add a note to a record. Each type declares which record types it applies to.",
+    singularName: "Note Type",
+    pluralName: "Note Types",
+    orderByColumn: "name" as const,
+    loggingModule: "options.noteType",
+    requiredFields: ["name"],
+    optionalFields: ["description", "siriusId", "data"],
+    supportsSequencing: false,
+    fields: [
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Phone Call, Review", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this note type", showInTable: true, columnHeader: "Description" },
+      // Choices come from the shared note-entity registry so this list and the
+      // API's entity-type validation cannot drift.
+      { name: "entityTypes", label: "Applies To", inputType: "multi-enum", required: true, helperText: "Record types that can use this note type.", showInTable: true, columnHeader: "Applies To", dataField: true, enumOptions: noteEntityTypeEnumOptions() },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },
   "skill": {

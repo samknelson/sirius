@@ -1,3 +1,4 @@
+import type { Comm } from "@shared/schema";
 import { eventBus, EventType } from "../../services/event-bus";
 import { logger } from "../../logger";
 import { isPluginComponentEnabledSync } from "../_core";
@@ -16,8 +17,56 @@ import {
   getRequestContext,
 } from "../../middleware/request-context";
 import { recordSentNotification } from "./flash-summary";
+import { getEnvironmentVariable } from "../../config/env-registry";
 
 const SERVICE = "event-notifier-dispatcher";
+
+/** One complaint per (plugin, root) per process — see `warnOnUncoveredRoot`. */
+const reportedUncoveredRoots = new Set<string>();
+
+/**
+ * Development backstop for the gap author-time checks cannot see: a root whose
+ * built record does NOT carry every field the editor offers for its kind.
+ *
+ * Such a field validates at save time, renders a real value in a preview (the
+ * preview seeds a real row) and comes out blank in the delivered message — the
+ * one failure mode that leaves no trace anywhere. Complaining here, the first
+ * time the notifier actually fires, is what makes it visible.
+ *
+ * Development only and once per (plugin, root) per process: this is authoring
+ * feedback, not a production signal, and it must never slow a real send down or
+ * change what gets delivered. Gated on NODE_ENV being exactly "development" —
+ * a staging environment sends real messages and should behave like production.
+ */
+async function warnOnUncoveredRoot(
+  pluginId: string,
+  rootName: string,
+  entity: import("../tokens/types").TokenEntity,
+): Promise<void> {
+  if (getEnvironmentVariable("NODE_ENV") !== "development") return;
+  const key = `${pluginId}:${rootName}`;
+  if (reportedUncoveredRoots.has(key)) return;
+  reportedUncoveredRoots.add(key);
+  try {
+    // Dynamically imported: a static import would drag the token evaluator
+    // onto the dispatcher's module graph for a development-only check.
+    const { missingCatalogFields } = await import("../tokens/root-coverage");
+    const missing = missingCatalogFields(entity);
+    if (missing.length === 0) return;
+    logger.warn(
+      "Event-notifier root offers fields its record cannot supply; they render blank in delivered messages",
+      {
+        service: SERVICE,
+        pluginId,
+        root: rootName,
+        kind: entity.kind,
+        missingFields: missing,
+      },
+    );
+  } catch {
+    // A failed self-check never affects a send.
+  }
+}
 
 /**
  * Flood gate for a single (recipient, medium, plugin) send. Counts prior sends
@@ -74,22 +123,42 @@ async function passesNotificationFlood(
  * deliveries; every silent skip (no destination on file, throttled, missing
  * content) and every caught failure returns false.
  */
+/**
+ * What one (recipient, medium) send produced.
+ *
+ * `sent` keeps the meaning the old boolean return had — the send layer was
+ * reached without throwing — and is what the flash summary tallies. It is
+ * deliberately NOT a delivery confirmation: the senders record a failed comm
+ * for a rejected message rather than throwing, and that has always counted as
+ * sent here.
+ *
+ * `comm` is the record that send created, present whenever one was created
+ * (including for a recorded failure) and absent when the send never got that
+ * far. It is what a notifier's `onCommCreated` hook receives.
+ */
+interface DeliveryOutcome {
+  sent: boolean;
+  comm?: Comm;
+}
+
+const NOT_SENT: DeliveryOutcome = { sent: false };
+
 async function deliver(
   medium: NotificationMedium,
   recipient: NotifierRecipient,
   content: NotifierMessageContent,
   pluginId: string,
   tagIds: string[],
-): Promise<boolean> {
+): Promise<DeliveryOutcome> {
   const { storage } = await import("../../storage");
   try {
     if (medium === "email") {
-      if (!content.subject) return false;
+      if (!content.subject) return NOT_SENT;
       const contact = await storage.contacts.getContact(recipient.contactId);
-      if (!contact?.email) return false;
-      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return false;
+      if (!contact?.email) return NOT_SENT;
+      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return NOT_SENT;
       const { sendEmail } = await import("../../services/comm/senders/email");
-      await sendEmail({
+      const result = await sendEmail({
         contactId: recipient.contactId,
         toEmail: contact.email,
         subject: content.subject,
@@ -98,31 +167,31 @@ async function deliver(
         userId: recipient.userId ?? undefined,
         tagIds,
       });
-      return true;
+      return { sent: true, comm: result.comm };
     }
 
     if (medium === "sms") {
-      if (!content.message) return false;
+      if (!content.message) return NOT_SENT;
       const phones = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(
         recipient.contactId,
       );
       const active = phones.filter((p) => p.isActive);
       const chosen = active.find((p) => p.isPrimary) ?? active[0];
-      if (!chosen) return false;
-      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return false;
+      if (!chosen) return NOT_SENT;
+      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return NOT_SENT;
       const { sendSms } = await import("../../services/comm/senders/sms");
-      await sendSms({
+      const result = await sendSms({
         contactId: recipient.contactId,
         toPhoneNumber: chosen.phoneNumber,
         message: content.message,
         userId: recipient.userId ?? undefined,
         tagIds,
       });
-      return true;
+      return { sent: true, comm: result.comm };
     }
 
     if (medium === "inapp") {
-      if (!content.title || !content.body) return false;
+      if (!content.title || !content.body) return NOT_SENT;
       // In-app messages must target an authenticated user. Prefer the userId the
       // plugin resolved; otherwise resolve it from the contact's email.
       let userId = recipient.userId ?? undefined;
@@ -133,10 +202,10 @@ async function deliver(
           userId = user?.id;
         }
       }
-      if (!userId) return false;
-      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return false;
+      if (!userId) return NOT_SENT;
+      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return NOT_SENT;
       const { sendInapp } = await import("../../services/comm/senders/inapp");
-      await sendInapp({
+      const result = await sendInapp({
         contactId: recipient.contactId,
         userId,
         title: content.title,
@@ -146,20 +215,20 @@ async function deliver(
         initiatedBy: SERVICE,
         tagIds,
       });
-      return true;
+      return { sent: true, comm: result.comm };
     }
 
     if (medium === "postal") {
-      if (!content.file && !content.templateId) return false;
+      if (!content.file && !content.templateId) return NOT_SENT;
       const addresses = await storage.contacts.addresses.getContactPostalByContact(
         recipient.contactId,
       );
       const active = addresses.filter((a) => a.isActive);
       const chosen = active.find((a) => a.isPrimary) ?? active[0];
-      if (!chosen) return false;
-      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return false;
+      if (!chosen) return NOT_SENT;
+      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return NOT_SENT;
       const { sendPostal } = await import("../../services/comm/senders/postal");
-      await sendPostal({
+      const result = await sendPostal({
         contactId: recipient.contactId,
         toAddress: {
           addressLine1: chosen.street,
@@ -175,7 +244,7 @@ async function deliver(
         userId: recipient.userId ?? undefined,
         tagIds,
       });
-      return true;
+      return { sent: true, comm: result.comm };
     }
   } catch (error) {
     logger.warn(`Event-notifier send failed (${medium})`, {
@@ -186,7 +255,7 @@ async function deliver(
       error: error instanceof Error ? error.message : String(error),
     });
   }
-  return false;
+  return NOT_SENT;
 }
 
 /**
@@ -237,7 +306,7 @@ const tagIdCache = new Map<string, string>();
  * directly. Users that can't be reached (missing user, no email, or no
  * matching contact) are logged and skipped rather than aborting the fan-out.
  */
-async function resolveStaffRecipients(
+export async function resolveStaffRecipients(
   userIds: string[],
   pluginId: string,
 ): Promise<NotifierRecipient[]> {
@@ -358,17 +427,88 @@ async function dispatchForConfig(
 
   const tagIds = await resolveTagIds(plugin.id, plugin.name);
 
+  // Token-templated notifiers: the framework composes messages from the
+  // config's (or default) per-channel templates. The records the
+  // messages are about are built once per config-dispatch, each seeded
+  // as its own named root; a shared render cache memoizes entity
+  // lookups across recipients and media.
+  let seeds: import("../tokens/types").TokenRootSeed[] | null = null;
+  let templates: import("./types").NotifierChannelTemplates | null = null;
+  let renderCache: Map<string, unknown> | null = null;
+  if (plugin.tokenTemplates) {
+    const { resolveTemplates } = await import("./token-templates");
+    const built: import("../tokens/types").TokenRootSeed[] = [];
+    for (const root of plugin.tokenTemplates.roots) {
+      const entity = await root.build(ctx);
+      if (!entity) {
+        if (root.optional) continue;
+        logger.warn("Event-notifier could not load a template record; skipping", {
+          service: SERVICE,
+          pluginId: plugin.id,
+          event: ctx.event,
+          root: root.name,
+        });
+        return;
+      }
+      await warnOnUncoveredRoot(plugin.id, root.name, entity);
+      built.push({ name: root.name, entity });
+    }
+    // The envelope root: which event this was and when it fired. The
+    // event context carries no timestamp, so the dispatcher — the one
+    // place that knows the event is being handled right now — supplies
+    // it rather than each notifier inventing its own.
+    built.push({
+      name: "event",
+      entity: { kind: "event", row: { type: ctx.event, firedAt: new Date() } },
+    });
+    seeds = built;
+    templates = resolveTemplates(plugin, configData);
+    renderCache = new Map();
+  }
+
   for (const recipient of recipients) {
     for (const medium of active) {
-      const content = await plugin.getMessage(medium, recipient, ctx);
+      let content: NotifierMessageContent | null = null;
+      if (plugin.tokenTemplates && seeds && templates && renderCache) {
+        const { composeFromTemplates } = await import("./token-templates");
+        content = await composeFromTemplates(
+          plugin,
+          medium,
+          recipient,
+          seeds,
+          templates,
+          renderCache,
+        );
+      } else if (plugin.getMessage) {
+        content = await plugin.getMessage(medium, recipient, ctx, configData);
+      }
       if (!content) continue;
-      const sent = await deliver(medium, recipient, content, pluginId, tagIds);
+      const { sent, comm } = await deliver(medium, recipient, content, pluginId, tagIds);
       // Flash a summary of what went out back to the user who triggered the
       // event. Only successful sends are tallied; self-notifications are already
       // filtered out above, and system/cron-fired events have no acting user so
       // nothing is flashed.
       if (sent && actingUserId) {
         recordSentNotification(actingUserId, medium);
+      }
+      // Hand the comm record back to the notifier that caused it, so it can
+      // link the message to whatever it was about. Isolated on purpose: this
+      // is bookkeeping that happens after the message is already gone, so a
+      // plugin failing here must cost neither this send nor the remaining
+      // recipients theirs.
+      if (comm && plugin.onCommCreated) {
+        try {
+          await plugin.onCommCreated(medium, recipient, comm, ctx, configData);
+        } catch (error) {
+          logger.warn("Event-notifier onCommCreated hook failed", {
+            service: SERVICE,
+            pluginId,
+            medium,
+            commId: comm.id,
+            contactId: recipient.contactId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
     }
   }

@@ -1,7 +1,5 @@
 import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
-import { createDispatchJobStorage } from "../../../../storage/dispatch/jobs";
-import { createEmployerCompanyStorage } from "../../../../storage/employers/companies";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../registry";
 import { toYmd, isValidYmd, parseYmdParts } from "@shared/utils/date";
 
@@ -34,16 +32,7 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
   requiredComponent: "sitespecific.hta",
 
   async getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): Promise<EligibilityCondition | EligibilityCondition[] | null> {
-    const jobStorage = createDispatchJobStorage();
-    const job = await jobStorage.getWithRelations(context.jobId);
-
-    if (!job) {
-      logger.warn(`Job not found for HTA home employer eligibility check`, {
-        service: "dispatch-elig-hta-home-employer",
-        jobId: context.jobId,
-      });
-      return null;
-    }
+    const job = context.job;
 
     const startYmd = toYmd(String(job.startYmd)) ?? "";
     const { year, month } = isValidYmd(startYmd)
@@ -70,8 +59,7 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
       values: employerValues,
     });
 
-    const ecStorage = createEmployerCompanyStorage();
-    const ec = await ecStorage.getByEmployerId(job.employerId);
+    const ec = await context.getEmployerCompany();
     if (ec) {
       const companyValues = window.map(({ ym }) => `${ym}:${ec.companyId}`);
       conditions.push({

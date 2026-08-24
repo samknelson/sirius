@@ -95,6 +95,8 @@ registerTrustProviderEdiPlugin({
     "CSV export of worker hours by employer and month over a chosen " +
     "year/month range (legacy edi_local11): worker SSN and name, employer " +
     "name and code, year, month, hours, and hours type.",
+  // CSV layouts have no fixed-width field metadata.
+  ediFields: [],
 
   // inputSchema is a getter so the year/month defaults are computed when
   // the wizard's parameter form is rendered, not at boot.

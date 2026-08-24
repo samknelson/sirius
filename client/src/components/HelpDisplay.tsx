@@ -74,6 +74,10 @@ export function HelpDisplay() {
             <DialogDescription>{openHelp?.summary}</DialogDescription>
           </DialogHeader>
           {openHelp?.details && (
+            // Already sanitized server-side: `server/modules/helps.ts` runs
+            // sanitizeHtml(details, "rich-document") on write, and the
+            // built-in entries in `server/help/system/index.ts` go through the
+            // same policy on read. No second pass needed here.
             <div
               className="prose prose-sm dark:prose-invert max-w-none [&_a]:text-blue-600 dark:[&_a]:text-blue-400 [&_table]:border-collapse [&_th]:border [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:px-2 [&_td]:py-1"
               dangerouslySetInnerHTML={{ __html: openHelp.details }}

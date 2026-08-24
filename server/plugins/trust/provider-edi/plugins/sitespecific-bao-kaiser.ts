@@ -101,15 +101,6 @@ const EDI_FIELDS: EdiField[] = [
   { name: "FILLER22", width: 36 },
 ];
 
-/** Encode one persisted row as a fixed-width Kaiser record (exported for the format check script). */
-export function encodeKaiserRow(row: Record<string, unknown>): string {
-  return encodeFixedWidthRow(EDI_FIELDS, row);
-}
-
-/** Exported for the format check script. */
-export const KAISER_EDI_FIELDS: ReadonlyArray<{ name: string; width: number }> =
-  EDI_FIELDS.map((f) => ({ name: f.name, width: f.width }));
-
 /**
  * Legacy `kaiser_encode_number`: amount in dollars → cents with the last
  * digit replaced by a signed-overpunch character, zero-padded to 7 wide.
@@ -190,6 +181,7 @@ registerTrustProviderEdiPlugin({
   // Default membership: wmb rows for these benefits in the as-of month
   // (config-level benefitSiriusId still overrides per config).
   benefitSiriusIds: ["K"],
+  ediFields: EDI_FIELDS,
   configSchema: {
     type: "object",
     properties: {
@@ -325,7 +317,7 @@ registerTrustProviderEdiPlugin({
   },
 
   encodeRow(row) {
-    return encodeKaiserRow(row);
+    return encodeFixedWidthRow(EDI_FIELDS, row);
   },
 
   buildFilename() {

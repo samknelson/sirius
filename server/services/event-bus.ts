@@ -1,6 +1,14 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { logger } from "../logger";
-import type { EnrollmentType } from "@shared/schema";
+import type {
+  DispatchJob,
+  DispatchJobFore,
+  EdlsSheet,
+  EnrollmentType,
+  Grievance,
+  GrievanceSettlement,
+  WorkerDispatchStatus,
+} from "@shared/schema";
 
 export const EVENT_BUS_MAX_EMIT_DEPTH = 100;
 
@@ -32,8 +40,10 @@ export enum EventType {
   DISPATCH_SAVED = "dispatch.saved",
   DISPATCH_JOB_SAVED = "dispatch.job.saved",
   DISPATCH_FORE_SAVED = "dispatch.fore.saved",
+  SITESPECIFIC_T631_INTERVIEW_SAVED = "sitespecific.t631.interview.saved",
   DISPATCH_DEPARTMENT_SAVED = "dispatch.department.saved",
   WORKER_BAN_SAVED = "worker.ban.saved",
+  WORKER_BAN_DENORM_FLIPPED = "worker.ban.denorm-flipped",
   WORKER_SKILL_SAVED = "worker.skill.saved",
   WORKER_WS_CHANGED = "worker.ws.changed",
   WORKER_WSH_SAVED = "worker.wsh.saved",
@@ -151,6 +161,14 @@ export interface DispatchStatusSavedPayload {
   workerId: string;
   status: string;
   /**
+   * The availability row as this write left it (the pre-delete row on
+   * delete). Carried rather than re-read at consumption time: the row is
+   * mutable, so a consumer that loads it by id can describe a LATER write
+   * than the one it was handed — or find it gone and stay silent about a
+   * change that did happen.
+   */
+  row: WorkerDispatchStatus;
+  /**
    * The status value before this write, when known: null on create (no prior
    * row), the pre-write value on update/upsert. Lets consumers (e.g. the
    * dispatch-status notifier) skip saves that did not actually change the
@@ -186,15 +204,39 @@ export interface DispatchDepartmentSavedPayload {
   isDeleted?: boolean;
 }
 
+export interface SitespecificT631InterviewSavedPayload {
+  interviewId: string;
+  workerId: string;
+  jobId: string;
+  /** The interview's status after the save (or at deletion). */
+  status: string;
+  /**
+   * Status before the save: null on create (no prior row), the previous
+   * value on update/delete. Notifiers compare against `status` to detect
+   * real transitions. `undefined` only on legacy emits that predate the field.
+   */
+  previousStatus: string | null;
+  /** True when the save is a deletion (notifiers generally skip these). */
+  isDeleted: boolean;
+}
+
 export interface DispatchForeSavedPayload {
   foreId: string;
   jobId: string;
   workerId: string;
   /** Whether the worker was added to or removed from the job's forepersons. */
   action: "added" | "removed";
-  /** Job title + employer name, resolved at emit time so notifiers need no lookups. */
-  jobTitle: string;
-  employerName: string;
+  /**
+   * The membership row this event added or removed, and the job it is on,
+   * both as of the event. Whole rows rather than a couple of copied
+   * values: a consumer can then describe either record in full without a
+   * lookup that would race the next write — and a removal's membership row
+   * is already gone by the time anyone consumes this. The job is never
+   * missing: a membership only exists while its job does, and both are
+   * captured in the transaction that writes the membership.
+   */
+  fore: DispatchJobFore;
+  job: DispatchJob;
 }
 
 export interface WorkerBanSavedPayload {
@@ -205,6 +247,19 @@ export interface WorkerBanSavedPayload {
   endDate: Date | null;
   active: boolean;
   isDeleted?: boolean;
+}
+
+/**
+ * Emitted (after commit) by the worker_ban_active denorm plugin when a ban's
+ * cached denorm_active flag flips due to date rollover. Consumed ONLY by
+ * worker-level denorm plugins (dispatch_ban) to refresh worker facts — a
+ * distinct event so the flip cannot re-trigger worker_ban_active itself or
+ * ban-saved side effects like notifications.
+ */
+export interface WorkerBanDenormFlippedPayload {
+  banId: string;
+  workerId: string;
+  active: boolean;
 }
 
 export interface WorkerSkillSavedPayload {
@@ -264,6 +319,11 @@ export interface GrievanceSavedPayload {
  * that point in time (e.g. `previous*` on the very first entry, `new*` after
  * the last entry is deleted). Status names are resolved for rendering and may be
  * null if the referenced status option is missing.
+ *
+ * `newStatusHistoryId` identifies the status-history ROW that is current after
+ * the mutation. A consumer that has to render the transition loads that exact
+ * row rather than re-reading "the grievance's current status", which a later
+ * transition could have moved on by then.
  */
 export interface GrievanceStatusHistorySavedPayload {
   grievanceId: string;
@@ -271,6 +331,7 @@ export interface GrievanceStatusHistorySavedPayload {
   previousStatusName: string | null;
   newStatusId: string | null;
   newStatusName: string | null;
+  newStatusHistoryId: string | null;
 }
 
 /**
@@ -295,11 +356,20 @@ export interface GrievanceSettlementSavedPayload {
   settlementId: string;
   operation: "created" | "updated" | "deleted";
   /**
-   * The settlement's amount (numeric string, may be null). Carried on the
-   * payload so the message can render it even for deletes, where the row no
-   * longer exists by the time the notifier runs.
+   * The settlement row as of the event (the pre-delete row on delete).
+   * Carried in full so a consumer can describe the settlement even for a
+   * delete, where the row no longer exists by the time it runs.
    */
-  amount: string | null;
+  row: GrievanceSettlement;
+  /**
+   * The grievance the settlement is on, as of the event, with the parts its
+   * display title is composed from (both live outside the row: the name is
+   * denormalised, the category name is a join). A settlement notice names
+   * the grievance, so re-reading it at delivery time would let a later
+   * rename change the wording — or a later deletion drop the notice.
+   */
+  grievance: Grievance | null;
+  grievanceTitleParts: { name: string | null; categoryName: string | null } | null;
 }
 
 export interface TrustElectionSavedPayload {
@@ -445,15 +515,19 @@ export interface EmployerIndustrySavedPayload {
  * status before and after the write so a notifier can detect a genuine
  * arrival at a status: `previousStatus` is null on create (the sheet "arrives"
  * at its initial status), and equals the pre-update status on update. The
- * title and ymd ride on the payload so consumers can render a message without
+ * whole sheet row rides on the payload so consumers can describe it without
  * re-querying a row that may have changed since.
+ *
+ * The save's history entry is NOT carried here and is not a listener's job: it
+ * is written inside the save's own transaction, so a consumer of this event
+ * can rely on the history of every earlier save already being committed. See
+ * `captureEntitySnapshot`.
  */
 export interface EdlsSheetSavedPayload {
   sheetId: string;
   previousStatus: string | null;
   newStatus: string;
-  title: string;
-  ymd: string;
+  sheet: EdlsSheet;
 }
 
 /**
@@ -579,8 +653,10 @@ export interface EventPayloadMap {
   [EventType.DISPATCH_SAVED]: DispatchSavedPayload;
   [EventType.DISPATCH_JOB_SAVED]: DispatchJobSavedPayload;
   [EventType.DISPATCH_FORE_SAVED]: DispatchForeSavedPayload;
+  [EventType.SITESPECIFIC_T631_INTERVIEW_SAVED]: SitespecificT631InterviewSavedPayload;
   [EventType.DISPATCH_DEPARTMENT_SAVED]: DispatchDepartmentSavedPayload;
   [EventType.WORKER_BAN_SAVED]: WorkerBanSavedPayload;
+  [EventType.WORKER_BAN_DENORM_FLIPPED]: WorkerBanDenormFlippedPayload;
   [EventType.WORKER_SKILL_SAVED]: WorkerSkillSavedPayload;
   [EventType.WORKER_WS_CHANGED]: WorkerWsChangedPayload;
   [EventType.WORKER_WSH_SAVED]: WorkerWshSavedPayload;

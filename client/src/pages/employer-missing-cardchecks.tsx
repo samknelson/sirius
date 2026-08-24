@@ -8,8 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { useState, useMemo } from "react";
-import pdfMake from "pdfmake/build/pdfmake";
-import pdfFonts from "pdfmake/build/vfs_fonts";
+import { downloadPdf } from "@/lib/pdf-export";
 import {
   Table,
   TableBody,
@@ -18,8 +17,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-pdfMake.vfs = (pdfFonts as any).pdfMake?.vfs || pdfFonts.vfs;
 
 interface MissingCardcheckWorker {
   workerId: string;
@@ -41,7 +38,7 @@ interface MissingCardchecksResponse {
   totalCount: number;
 }
 
-function generatePdf(employer: { name: string }, workers: MissingCardcheckWorker[], missingCount: number) {
+async function generatePdf(employer: { name: string }, workers: MissingCardcheckWorker[], missingCount: number) {
   const tableBody = [
     [
       { text: 'Name', style: 'tableHeader' },
@@ -144,7 +141,7 @@ function generatePdf(employer: { name: string }, workers: MissingCardcheckWorker
   };
 
   const fileName = `missing-cardchecks-${employer.name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}.pdf`;
-  pdfMake.createPdf(docDefinition as any).download(fileName);
+  await downloadPdf(docDefinition as any, fileName);
 }
 
 function LoadingSkeleton() {
@@ -198,7 +195,11 @@ export default function EmployerMissingCardchecks() {
               <Button 
                 variant="default" 
                 size="sm" 
-                onClick={() => generatePdf(data.employer, data.workers, data.totalCount)}
+                onClick={() => {
+                  void generatePdf(data.employer, data.workers, data.totalCount).catch((err) => {
+                    console.error("Failed to generate PDF:", err);
+                  });
+                }}
                 data-testid="button-download-pdf"
               >
                 <Download className="h-4 w-4 mr-2" />

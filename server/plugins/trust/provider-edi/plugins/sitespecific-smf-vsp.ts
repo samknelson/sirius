@@ -145,6 +145,7 @@ registerTrustProviderEdiPlugin({
     "and subscriber/dependent records.",
   // Multi-benefit membership: standard + enhanced vision in one file.
   benefitSiriusIds: [STANDARD_SIRIUS_ID, ENHANCED_SIRIUS_ID],
+  ediFields: EDI_FIELDS,
   configSchema: {
     type: "object",
     properties: {

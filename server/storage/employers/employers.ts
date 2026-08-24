@@ -1,7 +1,7 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { employers, type Employer, type InsertEmployer } from "@shared/schema";
-import { eq, sql, inArray } from "drizzle-orm";
+import { eq, sql, inArray, or, ilike, asc } from "drizzle-orm";
 import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 import { eventBus, EventType } from "../../services/event-bus";
 import { storageLogger as logger } from "../../logger";
@@ -28,6 +28,11 @@ export interface EmployerStorage {
   /** Every employer whose `is_active` flag is true. */
   listActive(): Promise<Employer[]>;
   getEmployer(id: string): Promise<Employer | undefined>;
+  /**
+   * Employers whose name or Sirius id matches `query` (empty matches
+   * everything), name-ordered and capped at `limit`. A picker read.
+   */
+  searchByName(query: string, limit: number): Promise<Employer[]>;
   getBySiriusId(siriusId: string): Promise<Employer | undefined>;
   getByIds(ids: string[]): Promise<Employer[]>;
   getEmployerWorkers(employerId: string): Promise<EmployerWorker[]>;
@@ -53,6 +58,19 @@ export function createEmployerStorage(): EmployerStorage {
       const client = getClient();
       const [employer] = await client.select().from(employers).where(eq(employers.id, id));
       return employer || undefined;
+    },
+
+    async searchByName(query: string, limit: number): Promise<Employer[]> {
+      const client = getClient();
+      const term = `%${query.trim()}%`;
+      return await client
+        .select()
+        .from(employers)
+        .where(
+          or(ilike(employers.name, term), ilike(employers.siriusId, term)),
+        )
+        .orderBy(asc(employers.name))
+        .limit(limit);
     },
 
     async getBySiriusId(siriusId: string): Promise<Employer | undefined> {

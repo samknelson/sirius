@@ -19,6 +19,16 @@ interface ResolvedInjectionManifest {
   bodyEnd: ResolvedInjection[];
 }
 
+// Stable layout-region CSS ids (public contract for deployment-specific
+// client-injection CSS — do not rename casually):
+//   #site-header      — the whole <header> wrapper (banner + menu)
+//   #site-banner      — top header row (site name / user menu bar)
+//   #site-menu        — desktop main navigation row
+//   #site-menu-mobile — mobile navigation sheet content
+//   #site-title       — page title area (PageHeader region with the h1)
+//   #site-content     — main body/content area (<main>)
+//   #site-footer      — footer
+// Example injected CSS: #site-banner { background-color: #3333cc; }
 const DATA_ATTR = "data-client-injection-id";
 
 function applyAttrs(el: HTMLElement, attrs?: Record<string, string | boolean>) {

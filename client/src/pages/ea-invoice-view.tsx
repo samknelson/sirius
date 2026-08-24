@@ -1,3 +1,4 @@
+import { sanitizeHtml } from "@shared/utils/html";
 import { EALayout } from "@/components/layouts/EALayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -214,10 +215,16 @@ function EAInvoiceViewContent() {
       </div>
 
       {invoiceDetails.invoiceHeader && (
+        // Per-account invoice header, authored through SimpleHtmlEditor on
+        // the ledger account settings page and stored unsanitized on the
+        // account's `data` blob. Sanitized at render under
+        // `authored-document`, which is exactly what that editor can emit.
         <div
           className="mb-2"
           data-testid="invoice-header"
-          dangerouslySetInnerHTML={{ __html: invoiceDetails.invoiceHeader }}
+          dangerouslySetInnerHTML={{
+            __html: sanitizeHtml(invoiceDetails.invoiceHeader, "authored-document"),
+          }}
         />
       )}
 
@@ -336,10 +343,13 @@ function EAInvoiceViewContent() {
       </div>
 
       {invoiceDetails.invoiceFooter && (
+        // Same provenance and same policy as the invoice header above.
         <div
           className="mt-2"
           data-testid="invoice-footer"
-          dangerouslySetInnerHTML={{ __html: invoiceDetails.invoiceFooter }}
+          dangerouslySetInnerHTML={{
+            __html: sanitizeHtml(invoiceDetails.invoiceFooter, "authored-document"),
+          }}
         />
       )}
     </div>

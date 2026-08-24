@@ -1,5 +1,21 @@
 import { registerSystemStatusPlugin } from "../registry";
 import type { StatusMessage } from "../types";
+import {
+  getEnvironmentVariable,
+  registerEnvironmentVariables,
+} from "../../../../config/env-registry";
+
+// changeTakesEffect: "immediate" for all five — see the matching registration
+// in server/modules/sitespecific/t631/client/fetch.ts, whose getConfig()
+// re-reads them per request. This plugin re-reads them per status scan.
+// Registration is last-one-wins, so both copies must stay in step.
+registerEnvironmentVariables([
+  { name: "SITESPECIFIC_T631_CLIENT_URL", description: "Base URL of the remote T631 service.", secret: false, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+  { name: "SITESPECIFIC_T631_CLIENT_ACCOUNT_ID", description: "Account id for the remote T631 service.", secret: false, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+  { name: "SITESPECIFIC_T631_CLIENT_ACCESS_TOKEN", description: "Access token for the remote T631 service.", secret: true, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+  { name: "SITESPECIFIC_T631_CLIENT_EMPLOYER_ID", description: "Employer id for the remote T631 service.", secret: false, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+  { name: "SITESPECIFIC_T631_CLIENT_EMPLOYER_TOKEN", description: "Employer token for the remote T631 service.", secret: true, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+]);
 
 const REQUIRED_ENV_VARS = [
   "SITESPECIFIC_T631_CLIENT_URL",
@@ -21,7 +37,7 @@ registerSystemStatusPlugin({
   description: "Connection status of the remote T631 service.",
   requiredComponent: "sitespecific.t631.client",
   async scan(): Promise<StatusMessage[]> {
-    const missing = REQUIRED_ENV_VARS.filter((name) => !process.env[name]);
+    const missing = REQUIRED_ENV_VARS.filter((name) => !getEnvironmentVariable(name));
     if (missing.length > 0) {
       return [
         {
@@ -33,7 +49,7 @@ registerSystemStatusPlugin({
     }
     const host = (() => {
       try {
-        return new URL(process.env.SITESPECIFIC_T631_CLIENT_URL!).hostname;
+        return new URL(getEnvironmentVariable("SITESPECIFIC_T631_CLIENT_URL")!).hostname;
       } catch {
         return "(invalid URL)";
       }

@@ -5,12 +5,43 @@ import { resolveEmailAddress, deliverEmail } from "./deliver-email";
 import { resolvePhoneNumber, deliverSms } from "./deliver-sms";
 import { resolvePostalAddress, deliverPostal } from "./deliver-postal";
 import { resolveUserId, deliverInapp } from "./deliver-inapp";
+import type { TokenRootSeed } from "../../plugins/tokens/types";
+import {
+  BULK_PARTICIPANT_ROOT_NAME,
+  composeBulkParticipantEntity,
+  type BulkParticipantEntitySource,
+} from "../../plugins/tokens/plugins/bulk-participant";
 
 export interface DeliverContactRequest {
   messageId: string;
   contactId: string;
   medium: string;
   userId?: string;
+  /**
+   * The participant row this send belongs to, when there is one. A test
+   * send has no row — it is still a send to this contact by this
+   * medium, which is all the participant root renders.
+   */
+  participantId?: string;
+}
+
+/**
+ * Seed the participant root with the send being made.
+ *
+ * Delivery has always known which send it was performing and passed
+ * only the contact down to the renderers, so a `{{bulk_participant…}}`
+ * token previewed fine and arrived blank. This is the one place the
+ * send becomes a render seed, and it builds the entity through the same
+ * composer the studio's preview loads, so the two cannot describe the
+ * participant differently.
+ */
+function bulkSendSeeds(send: BulkParticipantEntitySource): TokenRootSeed[] {
+  return [
+    {
+      name: BULK_PARTICIPANT_ROOT_NAME,
+      entity: composeBulkParticipantEntity(send),
+    },
+  ];
 }
 
 export interface DeliverContactResult {
@@ -98,7 +129,7 @@ export async function deliverToContact(
   storage: IStorage,
   request: DeliverContactRequest
 ): Promise<DeliverContactResult> {
-  const { messageId, contactId, medium, userId } = request;
+  const { messageId, contactId, medium, userId, participantId } = request;
 
   const bulkMessage = await storage.bulkMessages.getById(messageId);
   if (!bulkMessage) {
@@ -108,16 +139,17 @@ export async function deliverToContact(
   const tagIds = await resolveTagIdsForMedium(storage, bulkMessage.data, medium);
   const bulkData = (bulkMessage.data ?? {}) as Record<string, unknown>;
   const offline = bulkData.offline === true;
+  const seeds = bulkSendSeeds({ id: participantId, contactId, medium });
 
   switch (medium) {
     case "email":
-      return deliverEmail(storage, messageId, contactId, userId, tagIds, offline);
+      return deliverEmail(storage, messageId, contactId, seeds, userId, tagIds, offline);
     case "sms":
-      return deliverSms(storage, messageId, contactId, userId, tagIds, offline);
+      return deliverSms(storage, messageId, contactId, seeds, userId, tagIds, offline);
     case "postal":
-      return deliverPostal(storage, messageId, contactId, userId, tagIds, offline);
+      return deliverPostal(storage, messageId, contactId, seeds, userId, tagIds, offline);
     case "inapp":
-      return deliverInapp(storage, messageId, contactId, userId, tagIds);
+      return deliverInapp(storage, messageId, contactId, seeds, userId, tagIds);
     default:
       return { success: false, error: `Unsupported medium: ${medium}`, errorCode: "UNSUPPORTED_MEDIUM" };
   }
@@ -145,6 +177,7 @@ export async function deliverToParticipant(
     contactId: participant.contactId,
     medium: participant.medium,
     userId,
+    participantId,
   });
 
   if (result.commId) {

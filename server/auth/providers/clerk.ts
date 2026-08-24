@@ -16,6 +16,7 @@ import {
   resolveLinkedWorkerId,
   reconcileMigrationIdentityLink,
 } from "../worker-link";
+import { maybeProvisionUser } from "../provisioning";
 
 function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
   // PII triage: audit login events carry userId + provider externalId only;
@@ -136,9 +137,23 @@ export async function resolveClerkUser(
   const user = await storage.users.getUserByEmail(email);
 
   if (!user) {
-    // PII triage: identify the attempt by provider externalId, not email.
-    logger.info("No provisioned account found for email", { clerkUserId });
-    return { allowed: false };
+    const provisioned = await maybeProvisionUser("clerk", {
+      externalId: clerkUserId,
+      email,
+      firstName,
+      lastName,
+      displayName: `${firstName || ""} ${lastName || ""}`.trim() || undefined,
+      profileImageUrl,
+    });
+    if (!provisioned) {
+      // PII triage: identify the failed attempt by provider externalId, not email.
+      logger.info("No provisioned account found for email", { clerkUserId });
+      return { allowed: false };
+    }
+
+    await storage.users.updateUserLastLogin(provisioned.user.id);
+    logLoginEvent(provisioned.user, clerkUserId, true);
+    return { allowed: true, user: provisioned.user };
   }
 
   if (!user.isActive) {

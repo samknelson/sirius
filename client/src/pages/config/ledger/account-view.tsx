@@ -83,6 +83,14 @@ function AccountDetailsContent() {
               </p>
             </div>
             <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Sirius ID</label>
+              <p className="text-foreground" data-testid="text-account-sirius-id">
+                {account.siriusId ?? (
+                  <span className="italic text-muted-foreground">No Sirius ID</span>
+                )}
+              </p>
+            </div>
+            <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Currency</label>
               <div>
                 <Badge variant="outline" data-testid="badge-account-currency">

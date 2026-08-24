@@ -26,6 +26,11 @@ import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CommTagPicker } from "./CommTagPicker";
+import {
+  ComposeTemplateStudio,
+  refuseUnrenderedTokens,
+} from "./ComposeTemplateStudio";
+import type { ComposeTemplateTarget } from "@shared/comm-compose";
 import { PhoneNumber } from "@/lib/entity-types";
 import { useSystemMode } from "@/lib/use-variable";
 
@@ -46,9 +51,11 @@ interface CommSmsProps {
   contactId: string;
   phoneNumbers: PhoneNumber[];
   onSendSuccess?: () => void;
+  /** The record this screen is about, for composing from a template. */
+  composeTarget?: ComposeTemplateTarget;
 }
 
-export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps) {
+export function CommSms({ contactId, phoneNumbers, onSendSuccess, composeTarget }: CommSmsProps) {
   const { toast } = useToast();
   const [selectedPhoneId, setSelectedPhoneId] = useState<string>("");
   const [message, setMessage] = useState("");
@@ -104,6 +111,7 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps
 
   const handleSend = () => {
     if (!selectedPhone || !message.trim()) return;
+    if (composeTarget && refuseUnrenderedTokens({ message }, toast)) return;
     sendSmsMutation.mutate({
       phoneNumber: selectedPhone.phoneNumber,
       message: message.trim(),
@@ -113,6 +121,7 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps
 
   const handleSendOffline = () => {
     if (!selectedPhone || !message.trim()) return;
+    if (composeTarget && refuseUnrenderedTokens({ message }, toast)) return;
     sendSmsMutation.mutate({
       phoneNumber: selectedPhone.phoneNumber,
       message: message.trim(),
@@ -281,9 +290,24 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="message">Message</Label>
-                <span className="text-xs text-muted-foreground">
-                  {characterCount} / 1600 characters ({segmentCount} segment{segmentCount !== 1 ? "s" : ""})
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground">
+                    {characterCount} / 1600 characters ({segmentCount} segment{segmentCount !== 1 ? "s" : ""})
+                  </span>
+                  {composeTarget && (
+                    <ComposeTemplateStudio
+                      target={composeTarget}
+                      channel="sms"
+                      title="Compose SMS"
+                      fields={[
+                        { key: "message", label: "Message", mode: "multiline", maxLength: 1600 },
+                      ]}
+                      values={{ message }}
+                      onApply={(rendered) => setMessage(rendered.message ?? "")}
+                      testId="button-compose-sms-template"
+                    />
+                  )}
+                </div>
               </div>
               <Textarea
                 id="message"

@@ -21,6 +21,7 @@
  */
 import bcrypt from "bcrypt";
 import * as readline from "node:readline";
+import { getEnvironmentVariable } from "../../server/config/env-registry";
 
 const COST = 12;
 
@@ -43,7 +44,7 @@ async function main() {
   }
   // Match the provider: it verifies bcrypt(password + pepper) when
   // AUTH_LOCAL_PEPPER is configured, so hash the same concatenation.
-  const pepper = process.env.AUTH_LOCAL_PEPPER || "";
+  const pepper = getEnvironmentVariable("AUTH_LOCAL_PEPPER") || "";
   const material = password + pepper;
 
   if (Buffer.byteLength(material, "utf8") > 72) {

@@ -45,6 +45,7 @@ import { resolve } from "node:path";
 import * as fullSchema from "../shared/schema";
 import { getSchemaManagingComponents } from "../shared/components";
 import { resolveDatabaseUrl, describeDatabaseTarget } from "../shared/database-url";
+import { getEnvironmentVariable, getRawProcessEnv } from "../server/config/env-registry";
 
 const RUNTIME_SCHEMA_FILE = resolve(process.cwd(), ".drizzle-runtime-schema.ts");
 const RUNTIME_CONFIG_FILE = resolve(process.cwd(), ".drizzle-runtime.json");
@@ -293,7 +294,7 @@ function runDrizzleKit(extraArgs: string[]): Promise<number> {
   return new Promise((res, rej) => {
     const child = spawn("drizzle-kit", ["push", ...extraArgs], {
       stdio: "inherit",
-      env: process.env,
+      env: getRawProcessEnv(), // sanctioned child-process env passthrough
     });
     child.on("error", rej);
     child.on("exit", (code) => res(code ?? 0));
@@ -301,7 +302,7 @@ function runDrizzleKit(extraArgs: string[]): Promise<number> {
 }
 
 async function main() {
-  if (process.env.ALLOW_DB_PUSH !== "1") {
+  if (getEnvironmentVariable("ALLOW_DB_PUSH") !== "1") {
     console.error(
       [
         "",
@@ -327,8 +328,12 @@ async function main() {
   }
 
   // Same resolution rule as server/storage/db.ts and drizzle.config.ts: the
-  // shared resolver in shared/database-url.ts is the single source of truth.
-  const resolved = resolveDatabaseUrl();
+  // shared resolver in shared/database-url.ts is the single source of truth;
+  // values come through the env registry so this script follows its policy.
+  const resolved = resolveDatabaseUrl({
+    EXTERNAL_DATABASE_URL: getEnvironmentVariable("EXTERNAL_DATABASE_URL"),
+    DATABASE_URL: getEnvironmentVariable("DATABASE_URL"),
+  });
 
   // Guardrail banner: this tool can run DDL — show which database it resolved
   // (hostname + path + source variable only; never the full URL/credentials).

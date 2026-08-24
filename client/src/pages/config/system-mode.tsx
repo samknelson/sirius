@@ -131,6 +131,12 @@ const modeDescriptions: Record<SystemMode, { label: string; description: string;
     description: "Live mode - production environment with real transactions and data",
     color: "bg-green-50 border-green-300 dark:bg-green-900/20 dark:border-green-600",
   },
+  maintenance: {
+    label: "Maintenance",
+    description:
+      "Maintenance mode - the database is locked read-only for the whole site. Browsing and reads work normally, but any action that saves data will fail until maintenance mode is turned off. Use while running major imports or migrations.",
+    color: "bg-red-50 border-red-300 dark:bg-red-900/20 dark:border-red-600",
+  },
 };
 
 export default function SystemModePage() {

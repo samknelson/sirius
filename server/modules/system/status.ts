@@ -6,6 +6,7 @@ import {
   collectStatus,
   rescanPlugin,
   rescanAll,
+  getPluginDetails,
 } from "../../plugins/system/status";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -68,6 +69,57 @@ export function registerSystemStatusRoutes(app: Express, requireAuth: AuthMiddle
     } catch (error) {
       console.error("Failed to rescan system status:", error);
       res.status(500).json({ message: "Failed to rescan system status" });
+    }
+  });
+
+  // Latest status for ONE visible plugin (Task #1258). Exists so a page that
+  // embeds a single status plugin — the admin Restart & Reload page renders
+  // Container Information — does not trigger a scan of every other plugin
+  // just to show it. Same scan-on-first-demand semantics as the collection.
+  app.get("/api/system-status/:id", requireAuth, async (req, res) => {
+    try {
+      if (!(await gate(req, res))) return;
+      const visible = await systemStatusPluginRegistry.listVisibleTo(req);
+      const plugin = visible.find((p) => p.id === req.params.id);
+      if (!plugin) {
+        res.status(404).json({ message: "Unknown system status plugin" });
+        return;
+      }
+      const [entry] = await collectStatus([plugin]);
+      res.setHeader("Cache-Control", "no-store");
+      res.json(entry);
+    } catch (error) {
+      console.error("Failed to collect system status entry:", error);
+      res.status(500).json({ message: "Failed to collect system status" });
+    }
+  });
+
+  // On-demand details drill-down for one visible plugin. NEVER cached —
+  // each request invokes the plugin's details() fresh — and the payload is
+  // never logged (it may contain sensitive-adjacent data).
+  app.get("/api/system-status/:id/details", requireAuth, async (req, res) => {
+    try {
+      if (!(await gate(req, res))) return;
+      const visible = await systemStatusPluginRegistry.listVisibleTo(req);
+      const plugin = visible.find((p) => p.id === req.params.id);
+      if (!plugin) {
+        res.status(404).json({ message: "Unknown system status plugin" });
+        return;
+      }
+      if (typeof plugin.details !== "function") {
+        res.status(404).json({ message: "This plugin does not provide details" });
+        return;
+      }
+      const details = await getPluginDetails(plugin);
+      res.setHeader("Cache-Control", "no-store");
+      res.json(details);
+    } catch (error) {
+      // Deliberately do NOT log the payload; only the failure itself.
+      console.error(
+        "Failed to load system status details:",
+        error instanceof Error ? error.message : "unknown error",
+      );
+      res.status(500).json({ message: "Failed to load details" });
     }
   });
 

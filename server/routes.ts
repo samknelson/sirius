@@ -9,6 +9,8 @@ import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
 import { resolveLinkedWorkerId } from "./auth/worker-link";
 import { registerVariableRoutes } from "./modules/system/variables";
+import { registerAuthSettingsRoutes } from "./modules/auth-settings";
+import { registerEnvRoutes } from "./modules/system/env";
 import { registerDenormRoutes } from "./modules/system/denorm";
 import { registerContactPostalRoutes } from "./modules/contact-postal";
 import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
@@ -76,6 +78,8 @@ import { registerEmployerPolicyHistoryRoutes } from "./modules/employers/policy-
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
 import { registerEventNotifierMetaRoutes } from "./modules/event-notifier-meta";
+import { registerTokenStudioRoutes } from "./modules/token-studio";
+import { registerCommComposeRoutes } from "./modules/comm-compose";
 import { registerCardcheckDefinitionsRoutes } from "./modules/cardcheck-definitions";
 import { registerCardchecksRoutes } from "./modules/cardchecks";
 import { registerEsigsRoutes } from "./modules/esigs";
@@ -83,6 +87,7 @@ import { registerSessionRoutes } from "./modules/system/sessions";
 import { registerFloodEventRoutes } from "./modules/system/flood";
 import { registerEventsRoutes } from "./modules/events";
 import { registerDispatchJobsRoutes } from "./modules/dispatch/jobs";
+import { registerDispatchJobEmployerContactsRoutes } from "./modules/dispatch/job-employer-contacts";
 import { registerDispatchJobGroupsRoutes } from "./modules/dispatch/job-groups";
 import { registerFacilityRoutes } from "./modules/facility/facilities";
 import { registerContractRoutes } from "./modules/contract/contract";
@@ -95,6 +100,7 @@ import { registerWorkerDispatchHfeRoutes } from "./modules/dispatch/worker-hfe";
 import { registerWorkerDispatchEbaRoutes } from "./modules/dispatch/worker-eba";
 import { registerWorkerDispatchAsiRoutes } from "./modules/dispatch/worker-asi";
 import { registerWorkerBansRoutes } from "./modules/worker-bans";
+import { registerNotesRoutes } from "./modules/notes";
 import { registerWorkerSkillsRoutes } from "./modules/workers/skills";
 import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
 import { registerWorkerTrustElectionsRoutes } from "./modules/trust/elections";
@@ -102,6 +108,7 @@ import { registerOpenEnrollmentWindowsRoutes } from "./modules/trust/open-enroll
 import { getWorkerCurrentBenefits } from "./modules/trust/current-benefits";
 import { registerTrustBenefitEligibilityExemptionsRoutes } from "./modules/trust/eligibility-exemptions";
 import { registerWorkerTosRoutes } from "./modules/workers/tos";
+import { registerWorkerAatRoutes } from "./modules/workers/aat";
 import { registerWorkerCertificationsRoutes } from "./modules/workers/certifications";
 import { registerWorkerRatingsRoutes } from "./modules/workers/ratings";
 import { requireComponent } from "./modules/components";
@@ -127,13 +134,14 @@ import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
 import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
 import { registerFreemanCrewleadsRoutes } from "./modules/sitespecific/freeman/crewleads";
+import { registerT631InterviewsRoutes } from "./modules/sitespecific/t631/interviews";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
 import { registerSnapshotsRoutes } from "./modules/snapshots";
 import { registerEdlsTosRoutes } from "./modules/edls/tos";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
 import { registerWorkerEdlsRoutes } from "./modules/edls/workers";
-import { registerWebServiceBundle } from "./modules/webservices";
-import { setupEdlsRoutes, EDLS_BUNDLE_CODE } from "./modules/webservices/edls";
+import { registerEdlsPublicScheduleRoutes } from "./modules/edls/public-schedule";
+import { registerWebServiceDispatcher } from "./modules/webservices";
 import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
 import { registerTerminologyRoutes } from "./modules/terminology";
 import { registerCompaniesRoutes } from "./modules/employers/companies";
@@ -501,6 +509,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   
   // Register event-notifier admin metadata routes (staff user picker source)
   registerEventNotifierMetaRoutes(app, requireAuth, requireAccess, storage);
+
+  // Register generic Template Studio token endpoints (catalog, record
+  // pickers, preview) shared by every token-editing surface
+  registerTokenStudioRoutes(app, requireAuth, requireAccess, storage);
+
+  // Register manual-compose token endpoints: the Template Studio on the
+  // Communications tabs, bound to the record the page is about
+  registerCommComposeRoutes(app, requireAuth, requireAccess);
   
   // Register cardcheck definitions routes
   registerCardcheckDefinitionsRoutes(
@@ -1878,6 +1894,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register generic variable management routes (MUST come after specific routes)
   registerVariableRoutes(app, requireAuth, requirePermission);
+  registerAuthSettingsRoutes(app);
+  registerEnvRoutes(app);
   registerDenormRoutes(app, requireAuth, requirePermission);
 
   // Register events routes
@@ -1885,6 +1903,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register dispatch jobs routes
   registerDispatchJobsRoutes(app, requireAuth, requirePermission);
+  registerDispatchJobEmployerContactsRoutes(app, requireAuth, requireAccess);
 
   // Register dispatch job groups routes
   registerDispatchJobGroupsRoutes(app, requireAuth, requirePermission);
@@ -1914,6 +1933,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register worker bans routes (handles all access control internally)
   registerWorkerBansRoutes(app, requireAuth, requireAccess);
 
+  // Register notes routes (staff-only, all record types)
+  registerNotesRoutes(app, requireAuth, requireAccess);
+
   // Register worker skills routes (handles all access control internally)
   registerWorkerSkillsRoutes(app, requireAuth, requireAccess);
 
@@ -1931,6 +1953,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register worker time-off-sick (TOS) routes
   registerWorkerTosRoutes(app, requireAuth, requireAccess);
+
+  // Register worker access token (worker.aat) routes
+  registerWorkerAatRoutes(app, requireAuth, requireAccess);
 
   // Register worker certifications routes (handles all access control internally)
   registerWorkerCertificationsRoutes(app, requireAuth, requireAccess, requirePermission);
@@ -1966,6 +1991,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register Freeman Crew Leads routes
   registerFreemanCrewleadsRoutes(app, requireAuth, requirePermission, requireAccess);
+  registerT631InterviewsRoutes(app, requireAuth, requirePermission, requireAccess);
 
   // Register HTA routes
   registerHtaRoutes(app, requireAuth, requirePermission);
@@ -1979,19 +2005,30 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerEdlsTosRoutes(app, requireAuth);
   registerEdlsTasksRoutes(app, requireAuth, requirePermission);
   registerWorkerEdlsRoutes(app, requireAuth);
+  // Public (unauthenticated) worker schedule page — still gated on the `edls`
+  // component like every other EDLS route.
+  registerEdlsPublicScheduleRoutes(app);
 
-  // Register Web Service bundles (API access via client credentials)
-  registerWebServiceBundle(app, {
-    bundleCode: EDLS_BUNDLE_CODE,
-    setupRoutes: setupEdlsRoutes,
-  });
+  // Register the single web service dispatcher (API access via client
+  // credentials); every configuration of every web-service plugin is served
+  // from here.
+  registerWebServiceDispatcher(app);
 
-  // Register Web Service admin routes (for managing bundles, clients, credentials)
+  // Register Web Service admin routes (clients, grants, credentials, IP rules)
   registerWebServiceAdminRoutes(app, requireAuth, requirePermission);
 
   // Register companies routes
   registerCompaniesRoutes(app, requireAuth);
 
   const httpServer = existingServer || createServer(app);
+
+  // Restart & Reload admin endpoints (Task #1258). Registered here because
+  // the restart handler needs the HTTP server handle in order to close it
+  // before the process exits.
+  {
+    const { registerRestartRoutes } = await import("./modules/system/restart");
+    registerRestartRoutes(app, httpServer);
+  }
+
   return httpServer;
 }

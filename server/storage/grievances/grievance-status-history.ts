@@ -1,13 +1,15 @@
 import { getClient, runInTransaction, onAfterCommit } from "../transaction-context";
 import {
   grievances,
+  grievanceNameDenorm,
   grievanceStatusHistory,
+  optionsGrievanceCategory,
   optionsGrievanceStatus,
   TIMELINE_ADJUSTMENT_DATA_KEY,
   type GrievanceStatusHistory,
   type GrievanceTimelineAdjustment,
 } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
 import { eventBus, EventType } from "../../services/event-bus";
 
@@ -24,6 +26,12 @@ import { eventBus, EventType } from "../../services/event-bus";
  * describe a genuine status transition.
  */
 interface CurrentStatusRef {
+  /**
+   * The status-history ROW that is current at this point in time. A consumer
+   * that renders the transition (the status notifier) loads this exact row, so
+   * a later transition can't make it describe a status the entry never had.
+   */
+  entryId: string | null;
   statusId: string | null;
   statusName: string | null;
 }
@@ -37,6 +45,7 @@ async function getCurrentStatus(grievanceId: string): Promise<CurrentStatusRef> 
   const client = getClient();
   const [row] = await client
     .select({
+      entryId: grievanceStatusHistory.id,
       statusId: grievanceStatusHistory.statusId,
       statusName: optionsGrievanceStatus.name,
     })
@@ -53,6 +62,7 @@ async function getCurrentStatus(grievanceId: string): Promise<CurrentStatusRef> 
     )
     .limit(1);
   return {
+    entryId: row?.entryId ?? null,
     statusId: row?.statusId ?? null,
     statusName: row?.statusName ?? null,
   };
@@ -70,6 +80,7 @@ function emitStatusHistorySaved(
       previousStatusName: previous.statusName,
       newStatusId: next.statusId,
       newStatusName: next.statusName,
+      newStatusHistoryId: next.entryId,
     });
   });
 }
@@ -101,6 +112,12 @@ export interface GrievanceStatusHistoryStorage {
     grievanceId: string,
     entryId: string,
   ): Promise<GrievanceStatusHistory | undefined>;
+  /**
+   * One entry by its own id, without knowing which grievance it is on —
+   * the grievance id comes back ON the row. For callers holding only an
+   * entry id (the preview picker hands back what it listed).
+   */
+  getById(entryId: string): Promise<GrievanceStatusHistory | undefined>;
   create(
     grievanceId: string,
     data: { statusId: string; date: Date; data?: unknown },
@@ -196,6 +213,16 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
         .where(eq(grievanceStatusHistory.grievanceId, grievanceId))
         .orderBy(desc(grievanceStatusHistory.date));
       return rows;
+    },
+
+
+    async getById(entryId: string): Promise<GrievanceStatusHistory | undefined> {
+      const client = getClient();
+      const [row] = await client
+        .select()
+        .from(grievanceStatusHistory)
+        .where(eq(grievanceStatusHistory.id, entryId));
+      return row || undefined;
     },
 
     async get(

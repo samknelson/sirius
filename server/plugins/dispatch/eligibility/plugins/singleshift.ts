@@ -1,6 +1,4 @@
 import { registerDispatchEligPlugin } from "../registry";
-import { logger } from "../../../../logger";
-import { createDispatchJobStorage } from "../../../../storage/dispatch/jobs";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../registry";
 
 const SINGLESHIFT_CATEGORY = "singleshift";
@@ -18,17 +16,8 @@ export const dispatchSingleshiftPlugin: DispatchEligPlugin = {
   description: "Prevents a worker from accepting two dispatches that start on the same date",
   requiredComponent: "dispatch.singleshift",
 
-  async getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): Promise<EligibilityCondition | null> {
-    const jobStorage = createDispatchJobStorage();
-    const job = await jobStorage.getWithRelations(context.jobId);
-
-    if (!job) {
-      logger.warn(`Job not found for singleshift eligibility check`, {
-        service: "dispatch-elig-singleshift",
-        jobId: context.jobId,
-      });
-      return null;
-    }
+  getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): EligibilityCondition | null {
+    const job = context.job;
 
     return {
       category: SINGLESHIFT_CATEGORY,

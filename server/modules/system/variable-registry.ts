@@ -9,7 +9,13 @@ import { dispatchSeniorityResetSettingsSchema } from "../dispatch/seniority-rese
 import { dispatchDncNotificationConfigSchema } from "../dispatch/dnc-config";
 import { workerBanNotificationConfigSchema } from "../worker-ban-config";
 import { entityFilesConfigSchema } from "../../services/entity-files/config";
+import { authSettingsSchema } from "../../auth/auth-settings";
+import {
+  isEnvironmentVariableSecret,
+  ENV_RELEASE_SENTINEL,
+} from "../../config/env-registry";
 import { invalidateTerminologyCache, loadTerminology } from "../terminology";
+import { sanitizeHtml } from "@shared/utils/html";
 
 /**
  * Unified per-variable registry.
@@ -38,6 +44,12 @@ export interface VariableRegistryEntry {
   component?: string;
   schema?: z.ZodTypeAny;
   onWrite?: () => void | Promise<void>;
+  /**
+   * Optional server-side redaction applied to the variable's VALUE on every
+   * generic read (list, by-id, by-name) before it leaves the server. Use for
+   * variables whose value can embed secrets (e.g. env_overrides).
+   */
+  redactRead?: (value: unknown) => unknown;
 }
 
 /** Terminology value: only registered term keys, both forms trimmed+required. */
@@ -86,6 +98,11 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
   // Worker ban notification settings (admin read/write)
   worker_ban_notifications: { schema: workerBanNotificationConfigSchema },
 
+  // Auth settings: provisioning modes + SAML role mappings (admin read/write).
+  // Role existence is additionally validated by PUT /api/admin/auth-settings.
+  auth_settings: { schema: authSettingsSchema },
+
+
   // Entity file attachments framework: per-context {file_system, directory,
   // allowed?} map (admin read/write). Validated against the registered
   // contexts (unknown ids / unknown directory tokens are rejected).
@@ -101,10 +118,29 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
   },
 
   // Fully public — needed by logged-out pages (login screen, header badge)
-  system_mode: { readTier: "public", schema: z.enum(["dev", "test", "live"]) },
+  system_mode: {
+    readTier: "public",
+    schema: z.enum(["dev", "test", "live", "maintenance"]),
+    // Refresh the in-memory maintenance flag (and recycle idle pool
+    // connections) after a system_mode write commits. Dynamic import to
+    // avoid a module cycle with the storage layer.
+    onWrite: async () => {
+      const { refreshMaintenanceFlag } = await import("../../services/maintenance-mode");
+      await refreshMaintenanceFlag();
+    },
+  },
   site_name: { readTier: "public", schema: z.string() },
   site_title: { readTier: "public", schema: z.string().max(50) },
   site_footer: { readTier: "public", schema: z.string() },
+  login_page_title: { readTier: "public", schema: z.string() },
+  // Defense in depth: sanitize at write time so raw API submissions can't
+  // persist unsafe markup; the client also sanitizes before rendering.
+  login_page_intro: {
+    readTier: "public",
+    schema: z
+      .string()
+      .transform((html) => (html ? sanitizeHtml(html, "rich-document") : html)),
+  },
   [TERMINOLOGY_VARIABLE_NAME]: {
     readTier: "public",
     schema: terminologyValueSchema,
@@ -120,8 +156,48 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
   site_menu_plugin: { readTier: "authenticated", schema: z.string() },
 };
 
+/**
+ * Per-variable environment overrides: any variables row named `ENV_{NAME}`
+ * stores the in-app override for env variable NAME (owner design, Task
+ * #1096). Admin read/write. The value must be a non-empty string that is
+ * not the release sentinel; there is NO restriction on WHICH names may be
+ * overridden — precedence rules alone decide whether the override applies
+ * (a real, non-empty, non-__UNSET__ process-env value always wins).
+ */
+const ENV_OVERRIDE_ROW_PREFIX = "ENV_";
+
+function buildEnvOverrideEntry(rowName: string): VariableRegistryEntry {
+  const envName = rowName.slice(ENV_OVERRIDE_ROW_PREFIX.length);
+  return {
+    // Values may hold secrets (e.g. ENV_SENDGRID_API_KEY): redact generic
+    // reads when the underlying env declaration is marked secret. Unknown
+    // (unregistered) names are redacted defensively.
+    redactRead: (value) =>
+      isEnvironmentVariableSecret(envName) ? "[redacted]" : value,
+    schema: z
+      .string()
+      .min(1, "An override value must be a non-empty string")
+      .refine((v) => v !== ENV_RELEASE_SENTINEL, {
+        message: "The release sentinel cannot be stored as an override",
+      }),
+    onWrite: async () => {
+      const { refreshEnvOverrides } = await import("../../services/env-overrides");
+      await refreshEnvOverrides();
+    },
+  };
+}
+
+function resolveEntry(name: string): VariableRegistryEntry | undefined {
+  const entry = VARIABLE_REGISTRY[name];
+  if (entry) return entry;
+  if (name.startsWith(ENV_OVERRIDE_ROW_PREFIX) && name.length > ENV_OVERRIDE_ROW_PREFIX.length) {
+    return buildEnvOverrideEntry(name);
+  }
+  return undefined;
+}
+
 export function getVariableRegistryEntry(name: string): VariableRegistryEntry | undefined {
-  return VARIABLE_REGISTRY[name];
+  return resolveEntry(name);
 }
 
 export type VariableAccessDecision =
@@ -168,7 +244,7 @@ export async function checkVariableReadAccess(
   req: Request,
   name: string,
 ): Promise<VariableAccessDecision> {
-  const entry = VARIABLE_REGISTRY[name];
+  const entry = resolveEntry(name);
   return checkTier(req, entry?.readTier ?? "admin", entry?.component);
 }
 
@@ -181,7 +257,7 @@ export async function checkVariableWriteAccess(
   req: Request,
   name: string,
 ): Promise<VariableAccessDecision> {
-  const entry = VARIABLE_REGISTRY[name];
+  const entry = resolveEntry(name);
   const tier = entry?.writeTier ?? "admin";
   return checkTier(req, tier === "public" ? "admin" : tier, entry?.component);
 }
@@ -198,7 +274,7 @@ export type VariableValueValidation =
  * name. Variables without a registered schema accept any value.
  */
 export function validateVariableValue(name: string, value: unknown): VariableValueValidation {
-  const entry = VARIABLE_REGISTRY[name];
+  const entry = resolveEntry(name);
   if (!entry?.schema) {
     return { ok: true, value: value as VariableJsonValue };
   }
@@ -210,6 +286,16 @@ export function validateVariableValue(name: string, value: unknown): VariableVal
 }
 
 /** Run the variable's onWrite hook (if any) after a successful write/delete. */
+/**
+ * Apply the registry's per-variable read redaction (if any) to a variable
+ * record before returning it from any generic read endpoint.
+ */
+export function redactVariableForRead<T extends { name: string; value: unknown }>(variable: T): T {
+  const entry = resolveEntry(variable.name);
+  if (!entry?.redactRead) return variable;
+  return { ...variable, value: entry.redactRead(variable.value) };
+}
+
 export async function runVariableOnWrite(name: string): Promise<void> {
-  await VARIABLE_REGISTRY[name]?.onWrite?.();
+  await resolveEntry(name)?.onWrite?.();
 }

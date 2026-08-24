@@ -1,30 +1,81 @@
-import { getClient, onAfterCommit } from "../transaction-context";
+import { getClient, onAfterCommit, runInTransaction } from "../transaction-context";
 import {
+  grievanceNameDenorm,
+  grievances,
   grievanceSettlements,
+  optionsGrievanceCategory,
+  type Grievance,
   type GrievanceSettlement,
 } from "@shared/schema";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, sql } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
 import { eventBus, EventType } from "../../services/event-bus";
 
 /**
- * Emit `GRIEVANCE_SETTLEMENT_SAVED` after the current transaction commits so a
- * concurrent read never observes the change before it is durable. The amount is
- * captured on the payload — for deletes the row is already gone by the time the
- * notifier runs, so it must be read before removal and carried here.
+ * The grievance a settlement is on, with the two parts its display title is
+ * composed from: the denormalised name and the category name. Read inside
+ * the writing transaction so the snapshot is the grievance as that write saw
+ * it — read outside one and a concurrent rename or deletion lands between
+ * the change and the notice that describes it.
+ *
+ * Under READ COMMITTED this statement still sees a rename that commits
+ * mid-transaction. That is deliberate: the settlement is pinned (it is what
+ * the notice is ABOUT), while the grievance is only named, so its current
+ * title is the right one to print. Locking the parent grievance on every
+ * settlement write would trade that nuance for contention on a hot row.
  */
-function emitGrievanceSettlementSaved(
+async function readGrievanceSnapshot(grievanceId: string): Promise<{
+  grievance: Grievance | null;
+  grievanceTitleParts: { name: string | null; categoryName: string | null } | null;
+}> {
+  const client = getClient();
+  const [found] = await client
+    .select({
+      grievance: grievances,
+      name: grievanceNameDenorm.name,
+      categoryName: optionsGrievanceCategory.name,
+    })
+    .from(grievances)
+    .leftJoin(
+      optionsGrievanceCategory,
+      eq(grievances.categoryId, optionsGrievanceCategory.id),
+    )
+    .leftJoin(
+      grievanceNameDenorm,
+      eq(grievanceNameDenorm.grievanceId, grievances.id),
+    )
+    .where(eq(grievances.id, grievanceId));
+  if (!found) return { grievance: null, grievanceTitleParts: null };
+  return {
+    grievance: found.grievance,
+    grievanceTitleParts: {
+      name: found.name ?? null,
+      categoryName: found.categoryName ?? null,
+    },
+  };
+}
+
+/**
+ * Emit `GRIEVANCE_SETTLEMENT_SAVED` after the current transaction commits so a
+ * concurrent read never observes the change before it is durable. The whole
+ * settlement row is captured on the payload — for deletes it is already gone
+ * by the time the notifier runs, so it must be read before removal and
+ * carried here — and so is the grievance it names, which can be renamed or
+ * deleted in the same window.
+ */
+async function emitGrievanceSettlementSaved(
   grievanceId: string,
-  settlementId: string,
   operation: "created" | "updated" | "deleted",
-  amount: string | null,
-): void {
+  row: GrievanceSettlement,
+): Promise<void> {
+  const snapshot = await readGrievanceSnapshot(grievanceId);
   onAfterCommit(() => {
     void eventBus.emit(EventType.GRIEVANCE_SETTLEMENT_SAVED, {
       grievanceId,
-      settlementId,
+      settlementId: row.id,
       operation,
-      amount,
+      row,
+      ...snapshot,
     });
   });
 }
@@ -46,6 +97,12 @@ export interface GrievanceSettlementStorage {
     grievanceId: string,
     settlementId: string,
   ): Promise<GrievanceSettlement | undefined>;
+  /**
+   * One settlement by its own id, without knowing which grievance it is
+   * on — the grievance id comes back ON the row. For callers holding
+   * only a settlement id (the preview picker hands back what it listed).
+   */
+  getById(settlementId: string): Promise<GrievanceSettlement | undefined>;
   create(
     grievanceId: string,
     data: {
@@ -77,6 +134,16 @@ export function createGrievanceSettlementStorage(): GrievanceSettlementStorage {
         .orderBy(asc(grievanceSettlements.id));
     },
 
+
+    async getById(settlementId: string): Promise<GrievanceSettlement | undefined> {
+      const client = getClient();
+      const [row] = await client
+        .select()
+        .from(grievanceSettlements)
+        .where(eq(grievanceSettlements.id, settlementId));
+      return row || undefined;
+    },
+
     async get(
       grievanceId: string,
       settlementId: string,
@@ -102,18 +169,21 @@ export function createGrievanceSettlementStorage(): GrievanceSettlementStorage {
         typeIds?: string[] | null;
       },
     ): Promise<GrievanceSettlement> {
-      const client = getClient();
-      const [row] = await client
-        .insert(grievanceSettlements)
-        .values({
-          grievanceId,
-          description: data.description ?? null,
-          amount: data.amount ?? null,
-          typeIds: data.typeIds ?? null,
-        })
-        .returning();
-      emitGrievanceSettlementSaved(grievanceId, row.id, "created", row.amount);
-      return row;
+      // One transaction for the write and the snapshots its event carries.
+      return runInTransaction(async () => {
+        const client = getClient();
+        const [row] = await client
+          .insert(grievanceSettlements)
+          .values({
+            grievanceId,
+            description: data.description ?? null,
+            amount: data.amount ?? null,
+            typeIds: data.typeIds ?? null,
+          })
+          .returning();
+        await emitGrievanceSettlementSaved(grievanceId, "created", row);
+        return row;
+      });
     },
 
     async update(
@@ -125,48 +195,47 @@ export function createGrievanceSettlementStorage(): GrievanceSettlementStorage {
         typeIds?: string[] | null;
       },
     ): Promise<GrievanceSettlement | undefined> {
-      const client = getClient();
-      const set: Partial<typeof grievanceSettlements.$inferInsert> = {};
-      if (data.description !== undefined) set.description = data.description ?? null;
-      if (data.amount !== undefined) set.amount = data.amount ?? null;
-      if (data.typeIds !== undefined) set.typeIds = data.typeIds ?? null;
-      const [row] = await client
-        .update(grievanceSettlements)
-        .set(set)
-        .where(
-          and(
-            eq(grievanceSettlements.id, settlementId),
-            eq(grievanceSettlements.grievanceId, grievanceId),
-          ),
-        )
-        .returning();
-      if (row) {
-        emitGrievanceSettlementSaved(grievanceId, row.id, "updated", row.amount);
-      }
-      return row || undefined;
+      return runInTransaction(async () => {
+        const client = getClient();
+        const set: Partial<typeof grievanceSettlements.$inferInsert> = {};
+        if (data.description !== undefined) set.description = data.description ?? null;
+        if (data.amount !== undefined) set.amount = data.amount ?? null;
+        if (data.typeIds !== undefined) set.typeIds = data.typeIds ?? null;
+        const [row] = await client
+          .update(grievanceSettlements)
+          .set(set)
+          .where(
+            and(
+              eq(grievanceSettlements.id, settlementId),
+              eq(grievanceSettlements.grievanceId, grievanceId),
+            ),
+          )
+          .returning();
+        if (row) {
+          await emitGrievanceSettlementSaved(grievanceId, "updated", row);
+        }
+        return row || undefined;
+      });
     },
 
     async delete(grievanceId: string, settlementId: string): Promise<boolean> {
-      const client = getClient();
-      const result = await client
-        .delete(grievanceSettlements)
-        .where(
-          and(
-            eq(grievanceSettlements.id, settlementId),
-            eq(grievanceSettlements.grievanceId, grievanceId),
-          ),
-        )
-        .returning();
-      const [deleted] = result;
-      if (deleted) {
-        emitGrievanceSettlementSaved(
-          grievanceId,
-          deleted.id,
-          "deleted",
-          deleted.amount,
-        );
-      }
-      return result.length > 0;
+      return runInTransaction(async () => {
+        const client = getClient();
+        const result = await client
+          .delete(grievanceSettlements)
+          .where(
+            and(
+              eq(grievanceSettlements.id, settlementId),
+              eq(grievanceSettlements.grievanceId, grievanceId),
+            ),
+          )
+          .returning();
+        const [deleted] = result;
+        if (deleted) {
+          await emitGrievanceSettlementSaved(grievanceId, "deleted", deleted);
+        }
+        return result.length > 0;
+      });
     },
   };
 }

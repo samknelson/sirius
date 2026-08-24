@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Link } from "wouter";
@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
-import { Loader2, Plus, Eye, Layers, ArrowLeftRight, CreditCard } from "lucide-react";
+import { Loader2, Plus, Eye, Layers, ArrowLeftRight, CreditCard, Search } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -43,11 +43,13 @@ export default function LedgerAccountsPage() {
   usePageTitle("Accounts");
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [filterText, setFilterText] = useState("");
   
   // Form state
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formCurrencyCode, setFormCurrencyCode] = useState("USD");
+  const [formSiriusId, setFormSiriusId] = useState("");
   const [formIsActive, setFormIsActive] = useState(true);
   
   const { data: accounts = [], isLoading } = useQuery<LedgerAccount[]>({
@@ -58,8 +60,25 @@ export default function LedgerAccountsPage() {
     queryKey: ["/api/ledger/currencies"],
   });
 
+  // Someone holding an ID from Sirius needs to work backwards to the account,
+  // so the filter matches the Sirius ID as well as the name.
+  const filteredAccounts = useMemo(() => {
+    const needle = filterText.trim().toLowerCase();
+    if (!needle) return accounts;
+    return accounts.filter((account) =>
+      account.name.toLowerCase().includes(needle) ||
+      (account.siriusId ?? "").toLowerCase().includes(needle)
+    );
+  }, [accounts, filterText]);
+
   const createMutation = useMutation({
-    mutationFn: async (data: { name: string; description?: string; currencyCode: string; isActive: boolean }) => {
+    mutationFn: async (data: {
+      name: string;
+      description?: string;
+      currencyCode: string;
+      siriusId: string | null;
+      isActive: boolean;
+    }) => {
       return apiRequest("POST", "/api/ledger/accounts", data);
     },
     onSuccess: () => {
@@ -84,6 +103,7 @@ export default function LedgerAccountsPage() {
     setFormName("");
     setFormDescription("");
     setFormCurrencyCode("USD");
+    setFormSiriusId("");
     setFormIsActive(true);
   };
 
@@ -100,6 +120,7 @@ export default function LedgerAccountsPage() {
       name: formName.trim(),
       description: formDescription.trim() || undefined,
       currencyCode: formCurrencyCode,
+      siriusId: formSiriusId.trim() || null,
       isActive: formIsActive,
     });
   };
@@ -140,10 +161,26 @@ export default function LedgerAccountsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4">
+            <div className="relative max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Filter by name or Sirius ID..."
+                value={filterText}
+                onChange={(e) => setFilterText(e.target.value)}
+                className="pl-9"
+                data-testid="input-filter-accounts"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-2" data-testid="text-account-count">
+              Showing {filteredAccounts.length} of {accounts.length} accounts
+            </p>
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
+                <TableHead>Sirius ID</TableHead>
                 <TableHead>Currency</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead>Status</TableHead>
@@ -151,18 +188,25 @@ export default function LedgerAccountsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {accounts.length === 0 ? (
+              {filteredAccounts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
-                    No ledger accounts found. Click "Add Account" to create one.
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                    {accounts.length === 0
+                      ? 'No ledger accounts found. Click "Add Account" to create one.'
+                      : "No ledger accounts match that name or Sirius ID."}
                   </TableCell>
                 </TableRow>
               ) : (
-                accounts.map((account) => {
+                filteredAccounts.map((account) => {
                   const currency = currencies.find(c => c.code === account.currencyCode);
                   return (
                     <TableRow key={account.id} data-testid={`row-account-${account.id}`}>
                       <TableCell className="font-medium">{account.name}</TableCell>
+                      <TableCell data-testid={`text-account-sirius-id-${account.id}`}>
+                        {account.siriusId ?? (
+                          <span className="italic text-muted-foreground">No Sirius ID</span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Badge variant="outline" data-testid={`badge-account-currency-${account.id}`}>
                           {currency?.label || account.currencyCode}
@@ -265,6 +309,16 @@ export default function LedgerAccountsPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label htmlFor="siriusId">Sirius ID</Label>
+              <Input
+                id="siriusId"
+                value={formSiriusId}
+                onChange={(e) => setFormSiriusId(e.target.value)}
+                placeholder="Optional external identifier"
+                data-testid="input-sirius-id"
+              />
             </div>
             <div>
               <Label htmlFor="description">Description</Label>

@@ -12,8 +12,38 @@ import { createBulkParticipantStorage } from "../../storage/bulk/participants";
 import { deliverToContact, deliverToParticipant, resolveAddressForMedium } from "./deliver";
 import { storageLogger } from "../../logger";
 import { resolveContactLinks, resolveContactLinksForMany } from "../contact-links";
-import { TOKEN_REGISTRY, TOKEN_REGISTRY_MAP, renderTemplate, extractTokenIds, findUnknownTokenIds, isKnownToken, buildSampleContext, buildContextFromSources, htmlToPlainText, type TokenSourceData } from "../../../shared/bulk-tokens";
-import { buildRecipientContext, detectAudienceScopes } from "./token-context";
+import { htmlToPlainText } from "../../../shared/utils/html/to-text";
+import { extractTokenExpressions, parseTokenChain } from "@shared/tokens";
+import {
+  createTokenEvalContext,
+  evaluateChain,
+  buildSegmentSpecsForRoots,
+  buildFieldCatalog,
+  buildTokenCatalogForRoots,
+  validateTokenExpressionForRoots,
+  describeChain,
+  listTokenTreeRoots,
+  expandTokenType,
+  searchTokenTree,
+} from "../../plugins/tokens";
+import type { TokenPreviewRecordRef } from "../../plugins/tokens/types";
+import {
+  BULK_PARTICIPANT_ENTITY_KIND,
+  BULK_PARTICIPANT_ROOT_NAME,
+  composeBulkParticipantEntity,
+} from "../../plugins/tokens/plugins/bulk-participant";
+import { BULK_TOKEN_ROOT_NAMES } from "./token-roots";
+
+/**
+ * How many of a message's sends the studio previews against.
+ *
+ * Enough to check a template against more than one person — a recipient
+ * with a worker record and one without, an email and a letter — and few
+ * enough that the seed panel stays a list an author reads rather than a
+ * directory they search. A message with two thousand recipients is not
+ * previewed two thousand ways.
+ */
+const BULK_STUDIO_SEED_LIMIT = 5;
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
@@ -632,29 +662,139 @@ export function registerBulkMessageRoutes(
     }
   });
 
-  app.get("/api/bulk-tokens", requireAuth, requireAccess('bulk.edit'), (_req, res) => {
-    res.json({ tokens: TOKEN_REGISTRY });
-  });
-
-  // Returns the registry filtered to scopes that apply to this
-  // message's actual participants. `contact` and `system` are always
-  // included; `worker`/`employer` only when at least one participant
-  // matches.
-  app.get("/api/bulk-messages/:id/tokens", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+  // Token catalog (picker entries) plus the segment graph the client
+  // uses for static chain validation. Both are derived live from the
+  // token plugin registry.
+  //
+  // The catalog belongs to ONE message, because the studio it feeds
+  // previews against that message's OWN recipients: a bulk author is
+  // writing to a list they have already chosen, so the seeds it supplies
+  // are people who will actually receive this message rather than
+  // whoever the author could look up. The recipients are still filtered
+  // by the contact/worker read gates, like every other preview seed.
+  app.get("/api/bulk-tokens/:id", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
     try {
       const bulk = await storage.bulkMessages.getById(req.params.id);
       if (!bulk) {
         return res.status(404).json({ message: "Bulk message not found" });
       }
-      const participants = await storage.bulkParticipants.getByMessageId(req.params.id);
-      const contactIds = Array.from(new Set(participants.map((p) => p.contactId).filter(Boolean) as string[]));
-      const scopes = await detectAudienceScopes(storage, contactIds);
-      const tokens = TOKEN_REGISTRY.filter((t) => scopes.has(t.scope));
-      res.json({ tokens, scopes: Array.from(scopes) });
+
+      const { listTokenPreviewRoots } = await import(
+        "../../plugins/tokens/preview-roots"
+      );
+      const { buildTokenStudioContext } = await import(
+        "../../plugins/tokens/studio-context"
+      );
+
+      const allParticipants = await storage.bulkParticipants.listForMessageWithRelations(
+        req.params.id,
+      );
+      // A handful, and the SAME handful for every root: the three seed
+      // panels are three views of one short list of sends, not three
+      // independent pickers. Ordered by name so reopening the studio
+      // shows the same sends in the same places.
+      const participants = [...allParticipants]
+        .sort(
+          (a, b) =>
+            (a.contactDisplayName || "").localeCompare(b.contactDisplayName || "") ||
+            a.medium.localeCompare(b.medium) ||
+            a.id.localeCompare(b.id),
+        )
+        .slice(0, BULK_STUDIO_SEED_LIMIT);
+
+      const participantRecords: TokenPreviewRecordRef[] = participants.map((p) => ({
+        id: p.id,
+        label: p.contactDisplayName || "Unnamed contact",
+        hint: p.medium,
+        // Reading a participant is reading its recipient — the gate the
+        // participant kind declares runs against the contact, not the
+        // participant row.
+        gateEntityId: p.contactId,
+      }));
+      // The same people, one entry each: a recipient written to on three
+      // media is three sends but still one person to preview as.
+      const contactRecords = new Map<string, TokenPreviewRecordRef>();
+      const workerRecords = new Map<string, TokenPreviewRecordRef>();
+      for (const p of participants) {
+        const label = p.contactDisplayName || "Unnamed contact";
+        if (p.contactId && !contactRecords.has(p.contactId)) {
+          contactRecords.set(p.contactId, { id: p.contactId, label });
+        }
+        if (p.workerId && !workerRecords.has(p.workerId)) {
+          workerRecords.set(p.workerId, {
+            id: p.workerId,
+            label,
+            ...(p.workerSiriusId ? { hint: `#${p.workerSiriusId}` } : {}),
+          });
+        }
+      }
+
+      // A bulk message is ABOUT the sends it is going to make, so it
+      // states exactly the roots it has records for (see
+      // BULK_TOKEN_ROOT_NAMES) — the same list its tree, its validation
+      // and its coverage check use. `system` is in that list and
+      // seedless, so it is browsable but never appears in the seed panel.
+      const rootNames = BULK_TOKEN_ROOT_NAMES;
+      const recordsByRoot: Record<string, TokenPreviewRecordRef[]> = {};
+      // Why a supplied list is empty is something only this message
+      // knows, and "there is nobody to preview against" is the honest
+      // answer an author needs where the picker would be.
+      const emptyRecordsNotes: Record<string, string> = {};
+      const noRecipients = allParticipants.length === 0;
+      const noRecipientsNote =
+        "This message has no recipients yet — add some on the Recipients tab to preview against a real one.";
+      for (const root of listTokenPreviewRoots(rootNames)) {
+        if (root.kind === BULK_PARTICIPANT_ENTITY_KIND) {
+          recordsByRoot[root.name] = participantRecords;
+          if (noRecipients) emptyRecordsNotes[root.name] = noRecipientsNote;
+        } else if (root.kind === "contact") {
+          recordsByRoot[root.name] = [...contactRecords.values()];
+          if (noRecipients) emptyRecordsNotes[root.name] = noRecipientsNote;
+        } else if (root.kind === "worker") {
+          recordsByRoot[root.name] = [...workerRecords.values()];
+          emptyRecordsNotes[root.name] = noRecipients
+            ? noRecipientsNote
+            : "None of the recipients shown here is linked to a worker record.";
+        }
+      }
+
+      res.json({
+        tokens: buildTokenCatalogForRoots(rootNames),
+        segments: buildSegmentSpecsForRoots(rootNames),
+        fields: buildFieldCatalog(),
+        studioContext: await buildTokenStudioContext(
+          { storage, req },
+          {
+            rootNames,
+            recordsByRoot,
+            emptyRecordsNotes,
+            // The panels show the sends this message will make, not a
+            // page of them: a short list an author reads at a glance.
+            limit: BULK_STUDIO_SEED_LIMIT,
+          },
+        ),
+      });
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Failed to load tokens";
+      const message = error instanceof Error ? error.message : "Failed to load token catalog";
       res.status(500).json({ message });
     }
+  });
+
+  // Browsable token tree for bulk messaging — the same lazy tree the
+  // Template Studio walks, gated for bulk authors instead of admins.
+  // The roots are bulk's own declared list, fixed server-side: the
+  // caller cannot ask for a root bulk has not declared.
+  app.get("/api/bulk-tokens/tree/roots", requireAuth, requireAccess('bulk.edit'), (_req, res) => {
+    res.json({ roots: listTokenTreeRoots(BULK_TOKEN_ROOT_NAMES) });
+  });
+
+  app.get("/api/bulk-tokens/tree/type/:type", requireAuth, requireAccess('bulk.edit'), (req, res) => {
+    res.json(expandTokenType(req.params.type));
+  });
+
+  app.get("/api/bulk-tokens/tree/search", requireAuth, requireAccess('bulk.edit'), (req, res) => {
+    const q = typeof req.query.q === "string" ? req.query.q : "";
+    res.json({ hits: searchTokenTree(BULK_TOKEN_ROOT_NAMES, q) });
   });
 
   // Returns per-token coverage across this message's participants:
@@ -678,124 +818,89 @@ export function registerBulkMessageRoutes(
       const postal = await storage.bulkMessagesPostal.getByBulkId(bulk.id);
       if (postal) templates.push(postal.description || "");
 
+      // Only cover expressions that parse + validate against the roots
+      // bulk declares; invalid ones are surfaced by the editor's warnings.
       const tokenIds = Array.from(new Set(
-        templates.flatMap((t) => extractTokenIds(t)).filter((id) => isKnownToken(id))
+        templates.flatMap((t) => extractTokenExpressions(t))
+          .filter((expr) => validateTokenExpressionForRoots(expr, BULK_TOKEN_ROOT_NAMES).ok)
       ));
 
-      const participants = await storage.bulkParticipants.getByMessageId(req.params.id);
-      const contactIds = Array.from(new Set(
-        participants.map((p) => p.contactId).filter(Boolean) as string[]
-      ));
+      // Coverage is measured per SEND, because that is what delivery
+      // renders: the same person written to by two media is two renders,
+      // and a token about the send itself ({{bulk_participant.medium}})
+      // has a different value in each. Recipients are still counted as
+      // people — a recipient is short of a value if ANY of their sends
+      // comes out blank.
+      const sends = (await storage.bulkParticipants.getByMessageId(req.params.id))
+        .filter((p) => Boolean(p.contactId));
+      const contactIds = Array.from(new Set(sends.map((p) => p.contactId)));
+
+      const describe = (expr: string) => describeChain(expr) || { label: expr, defaultValue: "", example: "", scope: "system" };
 
       if (tokenIds.length === 0 || contactIds.length === 0) {
         return res.json({
           totalRecipients: contactIds.length,
-          perToken: tokenIds.map((id) => {
-            const def = TOKEN_REGISTRY_MAP[id];
-            return {
-              tokenId: id,
-              label: def?.label || id,
-              defaultValue: def?.defaultValue || "",
-              missingCount: 0,
-              missingSample: [] as { contactId: string; name: string }[],
-            };
-          }),
+          perToken: tokenIds.map((id) => ({
+            tokenId: id,
+            label: describe(id).label,
+            defaultValue: describe(id).defaultValue,
+            missingCount: 0,
+            missingSample: [] as { contactId: string; name: string }[],
+          })),
         });
       }
 
-      // Batch-load every data source once instead of per-recipient.
       const contactRows = await storage.bulkTokens.getContactsBasicByIds(contactIds);
-      const contactById = new Map(contactRows.map((c) => [c.id, c]));
       const nameById = new Map(
         contactRows.map((c) => [c.id, c.displayName || `${c.given || ''} ${c.family || ''}`.trim() || c.id]),
       );
 
-      const workerRows = await storage.bulkTokens.getWorkersByContactIds(contactIds);
-      const workerByContactId = new Map(workerRows.map((w) => [w.contactId, w]));
+      const parsedChains = tokenIds
+        .map((id) => ({ id, parsed: parseTokenChain(id) }))
+        .filter((c): c is { id: string; parsed: { ok: true; segments: import("@shared/tokens").TokenSegment[] } } => c.parsed.ok);
 
-      // Collect all employer ids the workers reference, then batch-load.
-      const workerEmployerIds = Array.from(new Set(
-        workerRows
-          .map((w) => w.homeEmployerId || (w.employerIds && w.employerIds[0]) || null)
-          .filter((id): id is string => !!id),
-      ));
+      // One recipient per token at most, however many sends they get.
+      const missing: Record<string, Map<string, { contactId: string; name: string }>> = {};
+      for (const id of tokenIds) missing[id] = new Map();
 
-      // Fallback employer-contact links for contacts without a worker employer.
-      const contactsNeedingEmployerLink = contactIds.filter((cid) => {
-        const w = workerByContactId.get(cid);
-        if (!w) return true;
-        return !(w.homeEmployerId || (w.employerIds && w.employerIds[0]));
-      });
-      const ecRows = await storage.bulkTokens.getFirstEmployerLinksByContactIds(contactsNeedingEmployerLink);
-      const employerLinkByContactId = new Map<string, string>();
-      for (const r of ecRows) {
-        if (!employerLinkByContactId.has(r.contactId)) {
-          employerLinkByContactId.set(r.contactId, r.employerId);
-        }
-      }
-
-      const allEmployerIds = Array.from(new Set([
-        ...workerEmployerIds,
-        ...employerLinkByContactId.values(),
-      ]));
-      const employerRows = await storage.bulkTokens.getEmployersByIds(allEmployerIds);
-      const employerById = new Map(employerRows.map((e) => [e.id, e]));
-
-      const now = new Date();
-      const missing: Record<string, { contactId: string; name: string }[]> = {};
-      for (const id of tokenIds) missing[id] = [];
-
-      for (const cid of contactIds) {
-        const data: TokenSourceData = { now };
-        const c = contactById.get(cid);
-        if (c) {
-          data.contact = {
-            id: c.id,
-            given: c.given ?? null,
-            family: c.family ?? null,
-            displayName: c.displayName ?? null,
-            email: c.email ?? null,
-          };
-        }
-        const w = workerByContactId.get(cid);
-        let employerId: string | null = null;
-        if (w) {
-          data.worker = {
-            id: w.id,
-            given: c?.given ?? null,
-            family: c?.family ?? null,
-            jobTitle: w.jobTitle ?? null,
-            siriusId: w.siriusId ?? null,
-          };
-          employerId = w.homeEmployerId || (w.employerIds && w.employerIds[0]) || null;
-        }
-        if (!employerId) {
-          employerId = employerLinkByContactId.get(cid) || null;
-        }
-        if (employerId) {
-          const emp = employerById.get(employerId);
-          if (emp) data.employer = { id: emp.id, name: emp.name };
-        }
-
-        const ctx = buildContextFromSources(data);
-        for (const tid of tokenIds) {
-          const v = ctx[tid];
-          if (v == null || v === "") {
-            missing[tid].push({ contactId: cid, name: nameById.get(cid) || cid });
+      // Evaluate every used chain per send through the plugin
+      // evaluator, seeded with that send exactly as delivery seeds it —
+      // so a participant token is measured against the real thing
+      // rather than counted missing for everybody. A shared memo cache
+      // dedupes cross-recipient lookups (option names, employers) —
+      // memo keys are fully qualified. Bounded parallelism keeps big
+      // recipient lists from turning the authoring endpoint into
+      // thousands of serial round-trips.
+      const sharedCache = new Map<string, unknown>();
+      const CONCURRENCY = 8;
+      for (let i = 0; i < sends.length; i += CONCURRENCY) {
+        await Promise.all(sends.slice(i, i + CONCURRENCY).map(async (send) => {
+          const cid = send.contactId;
+          const ctx = createTokenEvalContext(storage, cid, {
+            cache: sharedCache,
+            seeds: [
+              {
+                name: BULK_PARTICIPANT_ROOT_NAME,
+                entity: composeBulkParticipantEntity(send),
+              },
+            ],
+          });
+          for (const { id, parsed } of parsedChains) {
+            const result = await evaluateChain(parsed.segments, ctx);
+            if (result.status !== "ok" || result.value === "") {
+              missing[id].set(cid, { contactId: cid, name: nameById.get(cid) || cid });
+            }
           }
-        }
+        }));
       }
 
-      const perToken = tokenIds.map((tid) => {
-        const def = TOKEN_REGISTRY_MAP[tid];
-        return {
-          tokenId: tid,
-          label: def?.label || tid,
-          defaultValue: def?.defaultValue || "",
-          missingCount: missing[tid].length,
-          missingSample: missing[tid].slice(0, 10),
-        };
-      });
+      const perToken = tokenIds.map((tid) => ({
+        tokenId: tid,
+        label: describe(tid).label,
+        defaultValue: describe(tid).defaultValue,
+        missingCount: missing[tid].size,
+        missingSample: [...missing[tid].values()].slice(0, 10),
+      }));
 
       res.json({ totalRecipients: contactIds.length, perToken });
     } catch (error: unknown) {
@@ -804,51 +909,7 @@ export function registerBulkMessageRoutes(
     }
   });
 
-  app.post("/api/bulk-messages/:id/preview", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
-    try {
-      const bulk = await storage.bulkMessages.getById(req.params.id);
-      if (!bulk) {
-        return res.status(404).json({ message: "Bulk message not found" });
-      }
-      const body = req.body ?? {};
-      const fields: Record<string, string> = (body.fields && typeof body.fields === 'object') ? body.fields : {};
-      const contactId: string | undefined = typeof body.contactId === 'string' ? body.contactId : undefined;
-      const escapeHtmlFields: string[] = Array.isArray(body.escapeHtmlFields) ? body.escapeHtmlFields.filter((s: unknown) => typeof s === 'string') : [];
-
-      // Enforce that any contactId used for preview is actually a
-      // participant of this bulk message — prevents leaking arbitrary
-      // contact PII through the preview endpoint.
-      if (contactId) {
-        const isMember = await storage.bulkParticipants.existsForMessageAndContact(req.params.id, contactId);
-        if (!isMember) {
-          return res.status(403).json({ message: "Contact is not a participant of this message" });
-        }
-      }
-
-      const ctx = contactId ? await buildRecipientContext(storage, contactId) : buildSampleContext();
-
-      const rendered: Record<string, { output: string; unknownTokens: string[]; missingValues: string[]; tokens: string[] }> = {};
-      for (const [field, template] of Object.entries(fields)) {
-        if (typeof template !== 'string') continue;
-        const result = renderTemplate(template, ctx, { escapeHtml: escapeHtmlFields.includes(field), strictUnknown: true });
-        rendered[field] = {
-          output: result.output,
-          unknownTokens: result.unknownTokens,
-          missingValues: result.missingValues,
-          tokens: extractTokenIds(template),
-        };
-      }
-
-      res.json({
-        contactId: contactId || null,
-        sample: !contactId,
-        rendered,
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Failed to render preview";
-      res.status(500).json({ message });
-    }
-  });
+  // Bulk message content previews go through the single Template Studio
+  // preview route (POST /api/template-studio/preview, surface
+  // "bulk-message"); there is no bulk-specific preview endpoint.
 }
-
-export { extractTokenIds, findUnknownTokenIds };

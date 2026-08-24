@@ -24,6 +24,7 @@ import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres';
 import ws from "ws";
 import * as schema from "@shared/schema";
 import { resolveDatabaseUrl, describeDatabaseTarget } from "@shared/database-url";
+import { getEnvironmentVariable } from "../config/env-registry";
 
 // Resolution order (BAO external-database pattern): EXTERNAL_DATABASE_URL is
 // authoritative for EVERY DB consumer — the shared resolver in
@@ -72,7 +73,7 @@ function rewriteNeonPoolerUrl(url: string): string {
 }
 
 function detectDriver(url: string): DriverKind {
-  const override = process.env.DATABASE_DRIVER;
+  const override = getEnvironmentVariable("DATABASE_DRIVER");
   if (override === "neon" || override === "pg") return override;
   if (override) {
     throw new Error(
@@ -217,9 +218,9 @@ poolInstance.on("error", (err: Error) => {
   console.error("PG Pool error (idle client terminated, recovering):", err.message);
 });
 
-// Exported as pg.Pool: the only consumer of the pool outside this file is
-// connect-pg-simple (session store), whose types expect node-postgres. The
-// Neon Pool is a runtime drop-in for every API surface used there.
+// Exported as pg.Pool for the rare infrastructure consumer that needs the
+// raw pool (application code goes through the drizzle `db` / storage layer).
+// The Neon Pool is a runtime drop-in for the node-postgres API surface.
 export const pool = poolInstance as pg.Pool;
 export const db = dbInstance;
 

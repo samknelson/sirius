@@ -3,7 +3,7 @@ import { User, ArrowLeft, CalendarOff } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Worker, Contact, WorkerTos } from "@shared/schema";
-import { sanitizeContractHtml } from "@/components/ui/simple-html-editor";
+import { sanitizeHtml } from "@shared/utils/html";
 import { useVariableValue } from "@/lib/use-variable";
 import { TOS_BANNER_VARIABLE_NAME, TOS_BANNER_DEFAULT_HTML } from "@/lib/worker-tos-banner";
 import { Button } from "@/components/ui/button";
@@ -89,7 +89,7 @@ function WorkerTosBannerInner({ workerId }: { workerId: string }) {
   const html = useMemo(() => {
     const raw =
       typeof bannerValue === "string" && bannerValue ? bannerValue : TOS_BANNER_DEFAULT_HTML;
-    return sanitizeContractHtml(raw);
+    return sanitizeHtml(raw, "authored-document");
   }, [bannerValue]);
 
   if (isError || !openAbsence) return null;
@@ -152,6 +152,33 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     retry: false,
   });
 
+  // The Identity > Dashboard tab should only appear when the worker actually
+  // has a linked user account. The tab registry has no data-driven predicates,
+  // so hide it client-side. Only fetch the (staff-gated) linkage lookup when
+  // access already granted the tab, so non-staff worker pages pay no extra query.
+  const dashboardTabGranted = useMemo(
+    () => tabs.some((t) => t.children?.some((c) => c.id === "dashboard")),
+    [tabs],
+  );
+  const { data: dashboardUser } = useQuery<{ hasUser: boolean }>({
+    queryKey: [`/api/workers/${id}/dashboard-user`],
+    enabled: !!id && dashboardTabGranted,
+    retry: false,
+  });
+
+  // Same pattern for Dispatch > Interviews: only show the tab when the
+  // worker actually has at least one interview row. Fetch only when access
+  // already granted the tab.
+  const interviewsTabGranted = useMemo(
+    () => tabs.some((t) => t.children?.some((c) => c.id === "dispatch-t631-interviews")),
+    [tabs],
+  );
+  const { data: interviewsExist } = useQuery<{ exists: boolean }>({
+    queryKey: [`/api/sitespecific/t631/interviews/views/worker/${id}/exists`],
+    enabled: !!id && interviewsTabGranted,
+    retry: false,
+  });
+
   const isLoading = workerLoading || tabsLoading;
   const isError = !!workerError;
 
@@ -168,7 +195,19 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     return getActiveRoot(activeTab);
   }, [activeTab, getActiveRoot]);
 
-  const subTabs = activeRoot?.children;
+  const subTabs = useMemo(() => {
+    let children = activeRoot?.children;
+    if (!children) return children;
+    // Hide the Dashboard tab until the linkage lookup confirms a linked user.
+    if (!dashboardUser?.hasUser) {
+      children = children.filter((t) => t.id !== "dashboard");
+    }
+    // Hide the Interviews tab until the lookup confirms interview rows exist.
+    if (!interviewsExist?.exists) {
+      children = children.filter((t) => t.id !== "dispatch-t631-interviews");
+    }
+    return children;
+  }, [activeRoot, dashboardUser, interviewsExist]);
 
   if (workerError) {
     return (

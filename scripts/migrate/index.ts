@@ -116,18 +116,23 @@ import "./components/grievance.contract/001_create_grievance_contract_sections";
 import "./components/grievance.contract/002_create_grievance_contracts";
 import "./components/dispatch/001_backfill_dispatch_eligibility_configs";
 import "./components/dispatch.fore/001_create_dispatch_job_fore";
+import "./components/sitespecific.t631.interviews/001_create_job_interviews";
 import "./components/dispatch.bullpen/001_create_dispatch_job_event";
 import "./components/dispatch.department/001_create_department_tables";
 import "./components/dispatch/002_worker_dispatch_elig_denorm_denorm_id";
+import "./components/dispatch/003_create_dispatch_job_employer_contacts";
 import "./components/trust.benefits/001_backfill_trust_eligibility_configs";
 import "./components/trust.benefits/002_create_trust_wmb_events";
 import "./components/contract/001_create_contract_tables";
 import "./components/edls/001_add_show_status";
+import "./components/edls/002_add_sheet_notes_and_change_tracking";
+import "./components/edls/003_add_assignment_comm_id";
 import "./components/worker.ratings/001_add_sirius_id_to_options_worker_ratings";
 import "./components/trust.providers.edi/001_add_sftp_client_fk";
 import "./components/trust.elections/001_add_enrollment_type";
 import "./components/trust.elections/002_create_open_enrollment_windows";
 import "./components/trust.elections/003_policy_id_nullable";
+import "./components/worker.aat/001_create_worker_aat";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
 // into sync with the schema BEFORE the drift gate runs. Baseline scripts
@@ -157,6 +162,8 @@ import "./core/1123_add_letter_interaction_channel";
 import "./core/1124_add_provider_call_interaction_channel";
 import "./core/1125_contacts_email_ci_unique";
 import "./core/1126_add_contact_position";
+import "./core/1127_reapply_merged_1056_1060";
+import "./core/1128_delete_obsolete_worker_ban_cron_configs";
 
 export {
   runMigrations,

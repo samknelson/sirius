@@ -6,6 +6,20 @@ import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { respondWithTransactions } from "./transaction-query";
 
+const SIRIUS_ID_UNIQUE_CONSTRAINT = "ledger_accounts_sirius_id_unique";
+
+/**
+ * A duplicate Sirius ID is an author mistake, not a server fault. Without this
+ * the generic 500 handler reports "Failed to save" and never names the field.
+ */
+function isDuplicateSiriusId(error: unknown): boolean {
+  const e = error as { code?: string; constraint?: string } | null;
+  return e?.code === "23505" && e?.constraint === SIRIUS_ID_UNIQUE_CONSTRAINT;
+}
+
+const DUPLICATE_SIRIUS_ID_MESSAGE =
+  "That Sirius ID is already used by another ledger account. Sirius IDs must be unique.";
+
 export function registerLedgerAccountRoutes(app: Express) {
   // GET /api/ledger/currencies - Get all available currencies
   app.get("/api/ledger/currencies", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
@@ -70,6 +84,8 @@ export function registerLedgerAccountRoutes(app: Express) {
     } catch (error) {
       if (error instanceof Error && error.name === "ZodError") {
         res.status(400).json({ message: "Invalid ledger account data" });
+      } else if (isDuplicateSiriusId(error)) {
+        res.status(409).json({ message: DUPLICATE_SIRIUS_ID_MESSAGE });
       } else {
         res.status(500).json({ message: "Failed to create ledger account" });
       }
@@ -96,6 +112,8 @@ export function registerLedgerAccountRoutes(app: Express) {
     } catch (error) {
       if (error instanceof Error && error.name === "ZodError") {
         res.status(400).json({ message: "Invalid ledger account data" });
+      } else if (isDuplicateSiriusId(error)) {
+        res.status(409).json({ message: DUPLICATE_SIRIUS_ID_MESSAGE });
       } else {
         res.status(500).json({ message: "Failed to update ledger account" });
       }

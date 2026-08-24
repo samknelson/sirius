@@ -10,10 +10,20 @@ import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Info, Database, AlertTriangle, Loader2, Archive, Trash2, Shield, ChevronRight, ChevronDown, Plug } from "lucide-react";
+import { Info, Database, AlertTriangle, Loader2, Archive, Trash2, Shield, ChevronRight, ChevronDown, Plug, KeyRound } from "lucide-react";
 import { apiRequest , getApiErrorMessage } from "@/lib/queryClient";
 import { getAllComponents, ComponentDefinition, ComponentConfig } from "@shared/components";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+
+interface EnvVarInfo {
+  name: string;
+  description: string;
+  secret: boolean;
+  category: string;
+  required: boolean;
+  /** Whether the variable currently has a non-empty value. Never the value. */
+  isSet: boolean;
+}
 
 interface SchemaInfo {
   componentId: string;
@@ -40,6 +50,20 @@ export default function ComponentsConfigPage() {
   const { data: componentConfigs = [], isLoading, isFetching } = useQuery<ComponentConfig[]>({
     queryKey: ["/api/components/config"],
   });
+
+  // Declared env vars, linked to components by declaration.category ===
+  // component.id (a convention — "core"/"platform" and any category that
+  // isn't a component id simply never match a row here).
+  const { data: envVars = [] } = useQuery<EnvVarInfo[]>({
+    queryKey: ["/api/components/env-vars"],
+  });
+  const envVarsByComponent = useMemo(() => {
+    const map: Record<string, EnvVarInfo[]> = {};
+    for (const v of envVars) {
+      (map[v.category] ??= []).push(v);
+    }
+    return map;
+  }, [envVars]);
 
   const [localStates, setLocalStates] = useState<Record<string, boolean>>({});
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
@@ -355,6 +379,8 @@ export default function ComponentsConfigPage() {
                 const tables = component.schemaManifest?.tables ?? [];
                 const permissions = component.permissions ?? [];
                 const pluginConfigs = component.pluginConfigs ?? [];
+                const componentEnvVars = envVarsByComponent[component.id] ?? [];
+                const unsetEnvVars = componentEnvVars.filter((v) => !v.isSet);
                 const rows = [
                   <TableRow key={`${component.id}-main`} data-testid={`row-component-${component.id}`}>
                       <TableCell className="w-10">
@@ -390,6 +416,21 @@ export default function ComponentsConfigPage() {
                               Plugin Config
                             </Badge>
                           )}
+                          {componentEnvVars.length > 0 && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs"
+                              data-testid={`badge-env-vars-${component.id}`}
+                            >
+                              <KeyRound className="h-3 w-3 mr-1" />
+                              Env Vars ({componentEnvVars.length})
+                              {unsetEnvVars.length > 0 && (
+                                <span className="ml-1 text-amber-700 dark:text-amber-400">
+                                  {unsetEnvVars.length} unset
+                                </span>
+                              )}
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="font-medium">{component.name}</TableCell>
@@ -413,7 +454,7 @@ export default function ComponentsConfigPage() {
                       className="bg-muted/30 hover:bg-muted/30"
                     >
                         <TableCell colSpan={5} className="p-0">
-                          <div className="p-4 grid gap-4 md:grid-cols-3">
+                          <div className="p-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                             <div className="space-y-2">
                               <div className="flex items-center gap-2 text-sm font-semibold">
                                 <Database className="h-4 w-4 text-muted-foreground" />
@@ -503,6 +544,50 @@ export default function ComponentsConfigPage() {
                               ) : (
                                 <p className="text-sm text-muted-foreground">
                                   This component does not declare any plugin configs.
+                                </p>
+                              )}
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2 text-sm font-semibold">
+                                <KeyRound className="h-4 w-4 text-muted-foreground" />
+                                Environment Variables
+                              </div>
+                              {componentEnvVars.length > 0 ? (
+                                <ul className="space-y-2">
+                                  {componentEnvVars.map((v) => (
+                                    <li
+                                      key={v.name}
+                                      className="text-sm"
+                                      data-testid={`row-env-var-${component.id}-${v.name}`}
+                                    >
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-mono text-xs">{v.name}</span>
+                                        {v.secret && (
+                                          <Badge variant="outline" className="text-xs">
+                                            Secret
+                                          </Badge>
+                                        )}
+                                        <Badge
+                                          variant={v.isSet ? "secondary" : "outline"}
+                                          className={
+                                            v.isSet
+                                              ? "text-xs"
+                                              : "text-xs text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700"
+                                          }
+                                          data-testid={`badge-env-var-set-${component.id}-${v.name}`}
+                                        >
+                                          {v.isSet ? "Set" : "Not set"}
+                                        </Badge>
+                                      </div>
+                                      <div className="text-muted-foreground">
+                                        {v.description}
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-sm text-muted-foreground">
+                                  This component does not declare any environment variables.
                                 </p>
                               )}
                             </div>

@@ -57,9 +57,14 @@ export interface OktaProviderConfig extends AuthProviderConfig {
 
 export interface SamlProviderConfig extends AuthProviderConfig {
   type: "saml";
-  entryPoint: string;
-  issuer: string;
-  cert: string;
+  // SAML core config is resolved at REQUEST time via getEnvironmentVariable
+  // (so Variables-table overrides take effect without a restart). These
+  // fields hold the boot-time snapshot only for logging/diagnostics and may
+  // be absent — the provider registers "dormant" when saml is listed in
+  // AUTH_PROVIDER but the variables are not yet resolvable.
+  entryPoint?: string;
+  issuer?: string;
+  cert?: string;
   callbackPath?: string;
 }
 

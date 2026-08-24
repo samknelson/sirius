@@ -1,6 +1,8 @@
+import type { Comm } from "@shared/schema";
 import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
 import type { EventType } from "../../services/event-bus";
 import type { BasePluginMetadata } from "../_core";
+import type { TokenEntity } from "../tokens/types";
 
 /**
  * The communication media an event-notifier can fan out to. Each maps to one
@@ -65,6 +67,124 @@ export interface EventNotifierEventContext {
 }
 
 /**
+ * Per-channel message templates for a token-templated notifier. Every
+ * value is a token template string rendered per recipient (recipient
+ * roots like `contact.`/`worker.` mean the recipient; the notifier's
+ * own {@link NotifierRecordRoot}s name the records the event is about;
+ * `event.` is the event envelope — which event, when it fired;
+ * `{{system.base_url}}` is the absolute origin on email/SMS and empty
+ * in-app).
+ *
+ * Links are not spelled out here: a record that has a page offers
+ * `{{x.url}}` (absolute, for email/SMS) and `{{x.path}}` (relative, for
+ * the in-app link), with an optional `tab` for a sub-page.
+ */
+export interface NotifierChannelTemplates {
+  email?: {
+    subject: string;
+    /** HTML body; token values are HTML-escaped on render. */
+    bodyHtml: string;
+  };
+  sms?: { message: string };
+  inapp?: {
+    title: string;
+    body: string;
+    /** Relative link (in-app navigation); rendered as a template too. */
+    linkUrl?: string;
+    linkLabel?: string;
+  };
+}
+
+/**
+ * ONE RECORD this notifier's messages are about, seeded as a token root
+ * of its own and written as itself:
+ * `{{dispatch.field(name="status_label")}}`,
+ * `{{grievance_settlement.grievance.field(name="number")}}`.
+ *
+ * A notifier declares one root per record it has to talk about. There
+ * is no `{{event.<record>}}` spelling — `event` is the envelope (which
+ * event, when) and nothing more.
+ */
+export interface NotifierRecordRoot {
+  /**
+   * Root name as written in templates. It IS the token entity kind, which
+   * is the table, which is the code: a template author reading
+   * `{{grievance_status_history.…}}` can look the record up and find out
+   * exactly what it holds. A shortened or prettified name (`grievance_status`
+   * for a `grievance_status_history` row) reads like a different record than
+   * the one it carries. Nothing enforces this — it is on the author.
+   *
+   * The name is global across notifiers: two notifiers may share one, but
+   * only for the same entity kind.
+   */
+  name: string;
+  /** Token entity kind of the seeded record. */
+  kind: string;
+  /** Human label for the picker ("Dispatch status"). */
+  label: string;
+  description?: string;
+  /**
+   * Values `build` MERGES onto the row beyond the table's own columns
+   * (`status_label`, `action_label`). Declaring them is what makes
+   * `{{dispatch.field(name="status_label")}}` valid instead of an
+   * `[unknown token: …]` in a delivered message.
+   *
+   * Use sparingly, and never for a value that belongs to a RELATED record:
+   * a flattened `grievance_title` reads like a column of the record it is
+   * merged onto, so the template says something the schema does not, and it
+   * only resolves for as long as whoever seeds the record remembers to merge
+   * it. Reach the related record instead.
+   */
+  fields?: string[];
+  /**
+   * Component the ROOT is gated on, when that is not the notifier's own.
+   * A root inherits `requiredComponent` from its notifier, which is right
+   * for the record the notifier is about and wrong for a related record it
+   * seeds: the settlement notifier is gated on `grievance.settlement`, but
+   * the grievance it seeds alongside is a `grievance` record and another
+   * notifier declaring the same root says so. Two surfaces sharing a root
+   * name must gate it identically, so gate a root on the component that
+   * OWNS its entity kind.
+   */
+  requiredComponent?: string;
+  /**
+   * Build the record for a fired event. Returning null normally ABORTS
+   * composition for this config (an already-deleted row means there is
+   * nothing truthful to say); mark the root `optional` when a missing
+   * record should instead just leave its tokens at their defaults.
+   */
+  build(ctx: EventNotifierEventContext): Promise<TokenEntity | null>;
+  /** Null from `build` leaves this root unseeded instead of aborting. */
+  optional?: boolean;
+}
+
+/**
+ * Opt-in declaration that a notifier's messages are composed by the
+ * FRAMEWORK from token templates instead of the plugin's `getMessage`.
+ * Custom per-channel templates live in the config's `data.templates`
+ * (same shape as {@link NotifierChannelTemplates}); a blank/absent
+ * custom field falls back to the default from `defaultTemplates`.
+ */
+export interface NotifierTokenTemplates {
+  /**
+   * The records this notifier's messages are about, each a named root.
+   * The framework seeds them per fired event and registers them with
+   * the token registry so the editor offers exactly these roots.
+   */
+  roots: NotifierRecordRoot[];
+  /**
+   * The default per-channel templates. Receives the config's `data` so
+   * defaults can vary with config choices (e.g. link target per
+   * recipient kind).
+   */
+  defaultTemplates(configData?: unknown): NotifierChannelTemplates;
+  // Preview contexts are not declared here. Named sample data comes
+  // from the token plugins' `sampleSets`; a real record is named by the
+  // caller and gated by the entity kind's own `previewEntity`
+  // declaration (server/plugins/tokens/preview-entities.ts).
+}
+
+/**
  * An event-notifier plugin. It subscribes to one or more event-bus events and
  * fans each fired event out to the comm send functions for every active
  * medium. The framework (the event-notifier "send wrapper") owns subscription,
@@ -104,6 +224,15 @@ export interface EventNotifierPlugin extends BasePluginMetadata {
   /** Optional RJSF UI hints paired with {@link configSchema}. */
   uiSchema?: UiSchema;
 
+  /**
+   * Opt-in token-template message composition. When declared, the
+   * dispatcher renders the per-channel templates (custom from
+   * `data.templates`, else the declared defaults) and the plugin's
+   * {@link getMessage} is not called. Notifiers without this
+   * declaration are untouched.
+   */
+  tokenTemplates?: NotifierTokenTemplates;
+
   /** Event-bus events this notifier subscribes to. */
   subscribedEvents: EventType[];
   /** The media this notifier is capable of producing a message for. */
@@ -135,13 +264,49 @@ export interface EventNotifierPlugin extends BasePluginMetadata {
   /**
    * Compose the message for one recipient on one medium. Return `null` to skip
    * that medium for that recipient (e.g. the recipient has no address on file,
-   * or the content does not apply).
+   * or the content does not apply). `configData` is the individual config's
+   * `data` payload, for notifiers whose message text is admin-configurable
+   * (e.g. a per-config subject/intro); plugins that don't need it ignore it.
+   * Optional for notifiers that declare {@link tokenTemplates} — the
+   * framework composes their messages instead.
    */
-  getMessage(
+  getMessage?(
     medium: NotificationMedium,
     recipient: NotifierRecipient,
     ctx: EventNotifierEventContext,
+    configData?: unknown,
   ): Promise<NotifierMessageContent | null>;
+
+  /**
+   * Optional post-send hook, called once per (recipient, medium) with the comm
+   * record that send created. Notifiers never create comm records themselves —
+   * the send layer does — so this is the only point at which one can learn the
+   * id of the message it caused, and link it back to whatever the message was
+   * about (e.g. stamping it onto the row the recipient was contacted over).
+   *
+   * Fires whenever the send layer HANDS BACK a record, including for a send
+   * that failed: a recorded failure is worth linking too, and is more
+   * informative than a blank. Hence "comm created", not "delivered" — a call
+   * is not proof the message arrived, or even that a provider was reached
+   * (an unreachable recipient is recorded as a failure without one), and the
+   * record's own status remains the authority on that. Nothing is called when
+   * no record comes back: no address on file, flood-limited, the sender threw,
+   * or the sender created a record and then failed before returning it.
+   *
+   * Best-effort and strictly after the fact. The send layer's transaction has
+   * already committed and the message has already been handed off, so this
+   * hook can neither roll back nor retry the message, and must not try. The
+   * framework catches and logs whatever it throws and moves on to the next
+   * recipient, so one plugin's bookkeeping failure never costs another
+   * recipient their message.
+   */
+  onCommCreated?(
+    medium: NotificationMedium,
+    recipient: NotifierRecipient,
+    comm: Comm,
+    ctx: EventNotifierEventContext,
+    configData?: unknown,
+  ): Promise<void>;
 }
 
 export interface EventNotifierManifestEntry {

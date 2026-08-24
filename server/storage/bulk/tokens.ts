@@ -4,7 +4,6 @@ import {
   employers,
   employerContacts,
   contacts,
-  optionsGender,
   optionsWorkerWs,
   optionsWorkerMs,
   bargainingUnits,
@@ -14,41 +13,28 @@ import {
 } from "@shared/schema";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 
-export interface BulkTokenContactRow {
-  id: string;
-  given: string | null;
-  family: string | null;
-  displayName: string | null;
-  email: string | null;
-  birthDate: string | null;
-  genderName: string | null;
-}
-
-export interface BulkTokenWorkerRow {
-  contactId: string;
-  id: string;
-  jobTitle: string | null;
-  siriusId: number | null;
-  homeEmployerId: string | null;
-  employerIds: string[] | null;
-  wsId: string | null;
-  msIds: string[] | null;
-  bargainingUnitId: string | null;
-}
+type Row = Record<string, unknown>;
 
 export interface BulkTokenCardcheckRow {
+  /**
+   * The worker the card check belongs to. A card check has no page of
+   * its own — the worker's cardchecks tab is where it is shown — so the
+   * row has to carry the id that page is reached by, or a message about
+   * a card check can link nowhere.
+   */
+  workerId: string;
   type: string | null;
   status: string | null;
   signedDate: Date | null;
 }
 
-export interface BulkTokenEmployerRow {
-  id: string;
-  name: string;
-}
-
+/**
+ * Token-entity storage. Entity getters return FULL rows (select *) so
+ * the generic field(name=…) token can read any column, including ones
+ * added in the future, without storage changes.
+ */
 export interface BulkTokensStorage {
-  getContactWithGender(contactId: string): Promise<BulkTokenContactRow | undefined>;
+  getContactRow(contactId: string): Promise<Row | undefined>;
   getContactsBasicByIds(contactIds: string[]): Promise<Array<{
     id: string;
     given: string | null;
@@ -56,52 +42,84 @@ export interface BulkTokensStorage {
     displayName: string | null;
     email: string | null;
   }>>;
-  getWorkerByContactId(contactId: string): Promise<BulkTokenWorkerRow | undefined>;
-  getWorkersByContactIds(contactIds: string[]): Promise<BulkTokenWorkerRow[]>;
-  getWorkStatusName(wsId: string): Promise<string | null>;
+  /** Full workers row plus employment/status denorm extras. */
+  getWorkerRowByContactId(contactId: string): Promise<Row | undefined>;
+  /** Same shape as getWorkerRowByContactId, keyed by worker id. */
+  getWorkerRowById(workerId: string): Promise<Row | undefined>;
+  getEmployerRow(employerId: string): Promise<Row | undefined>;
+  getFirstEmployerLinkRowForContact(contactId: string): Promise<Row | undefined>;
+  getBargainingUnitRow(buId: string): Promise<Row | undefined>;
+  getWorkStatusRow(wsId: string): Promise<Row | undefined>;
   getMemberStatusNames(msIds: string[]): Promise<string[]>;
-  getBargainingUnitName(buId: string): Promise<string | null>;
   getLatestCardcheckForWorker(workerId: string): Promise<BulkTokenCardcheckRow | undefined>;
-  getBuildingRepName(employerId: string, bargainingUnitId: string, excludeWorkerId: string | null): Promise<string | null>;
-  getEmployerById(employerId: string): Promise<BulkTokenEmployerRow | undefined>;
-  getEmployersByIds(employerIds: string[]): Promise<BulkTokenEmployerRow[]>;
-  getFirstEmployerLinkForContact(contactId: string): Promise<BulkTokenEmployerRow | undefined>;
-  getFirstEmployerLinksByContactIds(contactIds: string[]): Promise<Array<{ contactId: string; employerId: string }>>;
-  countWorkerContacts(contactIds: string[]): Promise<Array<{ homeEmployerId: string | null; employerIds: string[] | null }>>;
-  hasAnyEmployerContact(contactIds: string[]): Promise<boolean>;
+  /** Full contacts row of the steward assigned to (employer, BU). */
+  getBuildingRepContactRow(
+    employerId: string,
+    bargainingUnitId: string,
+    excludeWorkerId: string | null,
+  ): Promise<Row | undefined>;
+  /**
+   * Display name of a referenced row, used by the field token to
+   * render FK values (options tables etc.) as their `name` column.
+   * Table/column names come from the Drizzle schema config, never
+   * from user input.
+   */
+  getNameByReference(
+    tableName: string,
+    keyColumn: string,
+    id: string,
+  ): Promise<string | null>;
+  /**
+   * FULL referenced row, used by the generated entity relations to walk
+   * a foreign key to the record it points at. Same contract as the
+   * entity getters above — every column, so `field(name=…)` can read
+   * any of them — and the same trust boundary as
+   * {@link getNameByReference}: table and column names come from the
+   * Drizzle schema config, never from user input.
+   *
+   * Only used for kinds whose whole field catalog IS their table. A
+   * kind that advertises derived fields loads itself through its own
+   * loader instead, so a relation never lands on a row that is missing
+   * fields the catalog promises.
+   */
+  getRowByReference(
+    tableName: string,
+    keyColumn: string,
+    id: string,
+  ): Promise<Row | null>;
 }
+
+// NOTE: the correlation must be spelled as a literal qualified
+// identifier — interpolating ${workers.id} inside a selection sql``
+// fragment renders the bare `"id"`, which silently mis-correlates to
+// the subquery's own table and returns NULL.
+const workerExtras = {
+  jobTitle: sql<string | null>`(SELECT wed.job_title FROM worker_employment_denorm wed WHERE wed.worker_id = "workers"."id" AND wed.home = true LIMIT 1)`,
+  homeEmployerId: sql<string | null>`(SELECT wed.employer_id FROM worker_employment_denorm wed WHERE wed.worker_id = "workers"."id" AND wed.home = true LIMIT 1)`,
+  employerIds: sql<string[] | null>`(SELECT array_agg(wed.employer_id) FROM worker_employment_denorm wed WHERE wed.worker_id = "workers"."id")`,
+  wsId: sql<string | null>`(SELECT wwd.ws_id FROM worker_wsh_denorm wwd WHERE wwd.worker_id = "workers"."id")`,
+  msIds: sql<string[] | null>`(SELECT array_agg(wmd.ms_id) FROM worker_msh_denorm wmd WHERE wmd.worker_id = "workers"."id")`,
+};
+
+/** Field names of the denorm extras merged onto the workers row. */
+export const WORKER_EXTRA_FIELDS = [
+  "job_title",
+  "home_employer_id",
+  "employer_ids",
+  "ws_id",
+  "ms_ids",
+];
 
 export function createBulkTokensStorage(): BulkTokensStorage {
   return {
-    async getContactWithGender(contactId) {
+    async getContactRow(contactId) {
       const client = getClient();
       const rows = await client
-        .select({
-          id: contacts.id,
-          given: contacts.given,
-          family: contacts.family,
-          displayName: contacts.displayName,
-          email: contacts.email,
-          birthDate: contacts.birthDate,
-          genderId: contacts.gender,
-          genderNota: contacts.genderNota,
-          genderName: optionsGender.name,
-        })
+        .select()
         .from(contacts)
-        .leftJoin(optionsGender, eq(optionsGender.id, contacts.gender))
         .where(eq(contacts.id, contactId))
         .limit(1);
-      const row = rows[0];
-      if (!row) return undefined;
-      return {
-        id: row.id,
-        given: row.given ?? null,
-        family: row.family ?? null,
-        displayName: row.displayName ?? null,
-        email: row.email ?? null,
-        birthDate: row.birthDate ?? null,
-        genderName: row.genderName ?? row.genderNota ?? null,
-      };
+      return rows[0] || undefined;
     },
 
     async getContactsBasicByIds(contactIds) {
@@ -119,53 +137,79 @@ export function createBulkTokensStorage(): BulkTokensStorage {
         .where(inArray(contacts.id, contactIds));
     },
 
-    async getWorkerByContactId(contactId) {
+    async getWorkerRowByContactId(contactId) {
       const client = getClient();
       const rows = await client
-        .select({
-          contactId: workers.contactId,
-          id: workers.id,
-          jobTitle: sql<string | null>`(SELECT wed.job_title FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id} AND wed.home = true LIMIT 1)`,
-          siriusId: workers.siriusId,
-          homeEmployerId: sql<string | null>`(SELECT wed.employer_id FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id} AND wed.home = true LIMIT 1)`,
-          employerIds: sql<string[] | null>`(SELECT array_agg(wed.employer_id) FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id})`,
-          wsId: sql<string | null>`(SELECT wwd.ws_id FROM worker_wsh_denorm wwd WHERE wwd.worker_id = ${workers.id})`,
-          msIds: sql<string[] | null>`(SELECT array_agg(wmd.ms_id) FROM worker_msh_denorm wmd WHERE wmd.worker_id = ${workers.id})`,
-          bargainingUnitId: workers.bargainingUnitId,
-        })
+        .select()
         .from(workers)
         .where(eq(workers.contactId, contactId))
+        .limit(1);
+      const worker = rows[0];
+      if (!worker) return undefined;
+      const extraRows = await client
+        .select(workerExtras)
+        .from(workers)
+        .where(eq(workers.id, worker.id))
+        .limit(1);
+      return { ...worker, ...(extraRows[0] || {}) };
+    },
+
+    async getWorkerRowById(workerId) {
+      const client = getClient();
+      const rows = await client
+        .select()
+        .from(workers)
+        .where(eq(workers.id, workerId))
+        .limit(1);
+      const worker = rows[0];
+      if (!worker) return undefined;
+      const extraRows = await client
+        .select(workerExtras)
+        .from(workers)
+        .where(eq(workers.id, worker.id))
+        .limit(1);
+      return { ...worker, ...(extraRows[0] || {}) };
+    },
+
+    async getEmployerRow(employerId) {
+      const client = getClient();
+      const rows = await client
+        .select()
+        .from(employers)
+        .where(eq(employers.id, employerId))
         .limit(1);
       return rows[0] || undefined;
     },
 
-    async getWorkersByContactIds(contactIds) {
-      if (contactIds.length === 0) return [];
-      const client = getClient();
-      return await client
-        .select({
-          contactId: workers.contactId,
-          id: workers.id,
-          jobTitle: sql<string | null>`(SELECT wed.job_title FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id} AND wed.home = true LIMIT 1)`,
-          siriusId: workers.siriusId,
-          homeEmployerId: sql<string | null>`(SELECT wed.employer_id FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id} AND wed.home = true LIMIT 1)`,
-          employerIds: sql<string[] | null>`(SELECT array_agg(wed.employer_id) FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id})`,
-          wsId: sql<string | null>`(SELECT wwd.ws_id FROM worker_wsh_denorm wwd WHERE wwd.worker_id = ${workers.id})`,
-          msIds: sql<string[] | null>`(SELECT array_agg(wmd.ms_id) FROM worker_msh_denorm wmd WHERE wmd.worker_id = ${workers.id})`,
-          bargainingUnitId: workers.bargainingUnitId,
-        })
-        .from(workers)
-        .where(inArray(workers.contactId, contactIds));
-    },
-
-    async getWorkStatusName(wsId) {
+    async getFirstEmployerLinkRowForContact(contactId) {
       const client = getClient();
       const rows = await client
-        .select({ name: optionsWorkerWs.name })
+        .select({ employer: employers })
+        .from(employerContacts)
+        .innerJoin(employers, eq(employers.id, employerContacts.employerId))
+        .where(eq(employerContacts.contactId, contactId))
+        .limit(1);
+      return rows[0]?.employer || undefined;
+    },
+
+    async getBargainingUnitRow(buId) {
+      const client = getClient();
+      const rows = await client
+        .select()
+        .from(bargainingUnits)
+        .where(eq(bargainingUnits.id, buId))
+        .limit(1);
+      return rows[0] || undefined;
+    },
+
+    async getWorkStatusRow(wsId) {
+      const client = getClient();
+      const rows = await client
+        .select()
         .from(optionsWorkerWs)
         .where(eq(optionsWorkerWs.id, wsId))
         .limit(1);
-      return rows[0]?.name ?? null;
+      return rows[0] || undefined;
     },
 
     async getMemberStatusNames(msIds) {
@@ -179,20 +223,11 @@ export function createBulkTokensStorage(): BulkTokensStorage {
       return rows.map((r) => r.name);
     },
 
-    async getBargainingUnitName(buId) {
-      const client = getClient();
-      const rows = await client
-        .select({ name: bargainingUnits.name })
-        .from(bargainingUnits)
-        .where(eq(bargainingUnits.id, buId))
-        .limit(1);
-      return rows[0]?.name ?? null;
-    },
-
     async getLatestCardcheckForWorker(workerId) {
       const client = getClient();
       const rows = await client
         .select({
+          workerId: cardchecks.workerId,
           type: cardcheckDefinitions.name,
           status: cardchecks.status,
           signedDate: cardchecks.signedDate,
@@ -208,13 +243,14 @@ export function createBulkTokensStorage(): BulkTokensStorage {
       const row = rows[0];
       if (!row) return undefined;
       return {
+        workerId: row.workerId,
         type: row.type ?? null,
         status: row.status ?? null,
         signedDate: row.signedDate ?? null,
       };
     },
 
-    async getBuildingRepName(employerId, bargainingUnitId, excludeWorkerId) {
+    async getBuildingRepContactRow(employerId, bargainingUnitId, excludeWorkerId) {
       const client = getClient();
       const conditions = [
         eq(workerStewardAssignments.employerId, employerId),
@@ -224,79 +260,32 @@ export function createBulkTokensStorage(): BulkTokensStorage {
         conditions.push(ne(workerStewardAssignments.workerId, excludeWorkerId));
       }
       const rows = await client
-        .select({ displayName: contacts.displayName })
+        .select({ contact: contacts })
         .from(workerStewardAssignments)
         .innerJoin(workers, eq(workers.id, workerStewardAssignments.workerId))
         .innerJoin(contacts, eq(contacts.id, workers.contactId))
         .where(and(...conditions))
         .orderBy(contacts.displayName)
         .limit(1);
-      return rows[0]?.displayName ?? null;
+      return rows[0]?.contact || undefined;
     },
 
-    async getEmployerById(employerId) {
+    async getNameByReference(tableName, keyColumn, id) {
       const client = getClient();
-      const rows = await client
-        .select({ id: employers.id, name: employers.name })
-        .from(employers)
-        .where(eq(employers.id, employerId))
-        .limit(1);
-      return rows[0] || undefined;
+      const result = await client.execute(
+        sql`SELECT name FROM ${sql.identifier(tableName)} WHERE ${sql.identifier(keyColumn)} = ${id} LIMIT 1`,
+      );
+      const row = (result.rows?.[0] ?? undefined) as { name?: unknown } | undefined;
+      return row?.name == null ? null : String(row.name);
     },
 
-    async getEmployersByIds(employerIds) {
-      if (employerIds.length === 0) return [];
+    async getRowByReference(tableName, keyColumn, id) {
       const client = getClient();
-      return await client
-        .select({ id: employers.id, name: employers.name })
-        .from(employers)
-        .where(inArray(employers.id, employerIds));
-    },
-
-    async getFirstEmployerLinkForContact(contactId) {
-      const client = getClient();
-      const rows = await client
-        .select({ id: employers.id, name: employers.name })
-        .from(employerContacts)
-        .innerJoin(employers, eq(employers.id, employerContacts.employerId))
-        .where(eq(employerContacts.contactId, contactId))
-        .limit(1);
-      return rows[0] || undefined;
-    },
-
-    async getFirstEmployerLinksByContactIds(contactIds) {
-      if (contactIds.length === 0) return [];
-      const client = getClient();
-      return await client
-        .select({
-          contactId: employerContacts.contactId,
-          employerId: employerContacts.employerId,
-        })
-        .from(employerContacts)
-        .where(inArray(employerContacts.contactId, contactIds));
-    },
-
-    async countWorkerContacts(contactIds) {
-      if (contactIds.length === 0) return [];
-      const client = getClient();
-      return await client
-        .select({
-          homeEmployerId: sql<string | null>`(SELECT wed.employer_id FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id} AND wed.home = true LIMIT 1)`,
-          employerIds: sql<string[] | null>`(SELECT array_agg(wed.employer_id) FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id})`,
-        })
-        .from(workers)
-        .where(inArray(workers.contactId, contactIds));
-    },
-
-    async hasAnyEmployerContact(contactIds) {
-      if (contactIds.length === 0) return false;
-      const client = getClient();
-      const rows = await client
-        .select({ id: employerContacts.id })
-        .from(employerContacts)
-        .where(inArray(employerContacts.contactId, contactIds))
-        .limit(1);
-      return rows.length > 0;
+      const result = await client.execute(
+        sql`SELECT * FROM ${sql.identifier(tableName)} WHERE ${sql.identifier(keyColumn)} = ${id} LIMIT 1`,
+      );
+      const row = (result.rows?.[0] ?? undefined) as Row | undefined;
+      return row ?? null;
     },
   };
 }

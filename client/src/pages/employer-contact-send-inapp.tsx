@@ -8,7 +8,7 @@ function EmployerContactSendInAppContent() {
     email: employerContact.contact.email,
     displayName: employerContact.contact.displayName,
   } : null;
-  return <CommSendWrapper channel="inapp" contact={contact} />;
+  return <CommSendWrapper channel="inapp" contact={contact} composeTarget={{ scope: "employer_contact", recordId: employerContact.id }} />;
 }
 
 export default function EmployerContactSendInApp() {

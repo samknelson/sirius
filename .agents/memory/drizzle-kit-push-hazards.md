@@ -12,9 +12,10 @@ constraint names like `<table>_<cols>_<ftable>_<fcols>_fk` that often exceed
 every run drops and re-adds the same constraint forever ("Changes applied"
 never converges to "No changes").
 
-Now enforced at author-time: `scripts/dev/check-constraint-names.ts` (run
-standalone or automatically by `scripts/check-migrations.ts` when schema
-files are touched) fails on any FK/unique/index/PK name >63 chars.
+Now enforced at author-time by the `constraint-names` architecture-lint rule
+(`npx tsx scripts/dev/lint.ts constraint-names`, also run automatically by
+`scripts/check-migrations.ts` when schema files are touched): it fails on any
+FK/unique/index/PK name >63 chars.
 
 **Rule:** any composite unique or FK whose auto-name would exceed 63 chars
 must pin an explicit name (≤63, matching the live DB conname exactly):

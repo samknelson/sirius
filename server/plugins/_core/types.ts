@@ -55,4 +55,7 @@ export type PluginKind =
   | "data-retention"
   | "menu"
   | "system-status"
-  | "trust-provider-edi";
+  | "trust-provider-edi"
+  | "worker-ban"
+  | "token"
+  | "web-service";

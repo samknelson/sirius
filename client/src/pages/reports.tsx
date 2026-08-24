@@ -137,6 +137,15 @@ export default function Reports({ activeCategory }: ReportsProps = {}) {
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <CardTitle className="text-lg">{type.displayName}</CardTitle>
+                    {/* The report type's id, shown so it can be copied into
+                        places that address a wizard type by id (token
+                        arguments, URLs) rather than by display name. */}
+                    <code
+                      className="mt-1 block font-mono text-xs text-muted-foreground"
+                      data-testid={`text-report-type-id-${type.name}`}
+                    >
+                      {type.name}
+                    </code>
                     {type.description && (
                       <CardDescription className="mt-1">
                         {type.description}

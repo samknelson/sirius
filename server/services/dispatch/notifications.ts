@@ -13,6 +13,7 @@ import type {
   NotificationMedia,
 } from "@shared/schema/dispatch/eligibility-config";
 import type { Comm } from "@shared/schema";
+import { absoluteUrl } from "../../lib/base-url";
 
 const SERVICE_NAME = "dispatch-notifications";
 const COMPONENT_ID = "dispatch";
@@ -106,11 +107,7 @@ async function getJobNotificationConfig(
     }
   }
 
-  const domain =
-    process.env.REPLIT_DEV_DOMAIN ||
-    process.env.REPLIT_DOMAINS?.split(",")[0] ||
-    "localhost:5000";
-  const dispatchUrl = `https://${domain}/dispatch/${dispatchId}`;
+  const dispatchUrl = absoluteUrl(`/dispatch/${dispatchId}`);
 
   return {
     employerName,

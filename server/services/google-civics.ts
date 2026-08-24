@@ -1,5 +1,14 @@
 import { lookupDistricts, type CensusDistrictInfo } from "./census-geocoder";
 import type { BtuPoliticalStorage } from "../storage/sitespecific/btu/political";
+import { getEnvironmentVariable, registerEnvironmentVariables } from "../config/env-registry";
+
+// changeTakesEffect: "immediate" for both. Each key is read through the
+// registry inside the function that makes the outbound call, once per lookup,
+// and neither is cached anywhere.
+registerEnvironmentVariables([
+  { name: "GOOGLE_CIVICS_API_KEY", description: "Google API key for geocoding in civic-official lookups.", secret: true, category: "sitespecific.btu.political", changeTakesEffect: "immediate", },
+  { name: "OPEN_STATES_API_KEY", description: "OpenStates API key for state-legislator lookups.", secret: true, category: "sitespecific.btu.political", changeTakesEffect: "immediate", },
+]);
 
 export interface CivicOfficial {
   name: string;
@@ -98,7 +107,7 @@ interface OpenStatesResponse {
 }
 
 async function geocodeAddress(address: string): Promise<GeocodingResult> {
-  const apiKey = process.env.GOOGLE_CIVICS_API_KEY;
+  const apiKey = getEnvironmentVariable("GOOGLE_CIVICS_API_KEY");
   if (!apiKey) {
     throw new Error("GOOGLE_CIVICS_API_KEY environment variable is not set");
   }
@@ -233,7 +242,7 @@ function parseOpenStatesResponse(data: OpenStatesResponse): CivicOfficial[] {
 }
 
 async function callOpenStates(lat: number, lng: number): Promise<CivicOfficial[]> {
-  const openStatesKey = process.env.OPEN_STATES_API_KEY;
+  const openStatesKey = getEnvironmentVariable("OPEN_STATES_API_KEY");
   if (!openStatesKey) {
     throw new Error("OPEN_STATES_API_KEY environment variable is not set");
   }

@@ -1,5 +1,5 @@
 import type { Help } from "@shared/schema";
-import { sanitizeHelpHtml } from "../sanitize";
+import { sanitizeHtml } from "@shared/utils/html";
 import { likePatternMatches } from "../path-match";
 import { trustProvidersHelp } from "./trust-providers";
 
@@ -29,7 +29,9 @@ function toHelp(entry: SystemHelpEntry): HelpWithSource {
     paths: entry.paths,
     summary: entry.summary,
     details:
-      typeof entry.details === "string" ? sanitizeHelpHtml(entry.details) : null,
+      typeof entry.details === "string"
+        ? sanitizeHtml(entry.details, "rich-document")
+        : null,
     data: null,
     source: "system",
   };

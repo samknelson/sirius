@@ -8,9 +8,7 @@ import {
   getSystemHelp,
   isSystemHelpId,
 } from "../help/system";
-import { sanitizeHelpHtml } from "../help/sanitize";
-
-export { sanitizeHelpHtml };
+import { sanitizeHtml } from "@shared/utils/html";
 
 type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
@@ -19,7 +17,7 @@ const updateHelpSchema = insertHelpSchema.partial();
 
 function sanitizeDetails<T extends { details?: string | null }>(data: T): T {
   if (typeof data.details === "string") {
-    return { ...data, details: sanitizeHelpHtml(data.details) };
+    return { ...data, details: sanitizeHtml(data.details, "rich-document") };
   }
   return data;
 }

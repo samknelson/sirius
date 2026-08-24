@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { Esig, File as FileRecord } from "@shared/schema";
+import { sanitizeHtmlReportingChange } from "@shared/utils/html";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -96,6 +97,22 @@ export function EsigView({ esigId }: EsigViewProps) {
 
   const esigData = esig.esig as EsigData | null;
 
+  // Render-time defence on a document that was signed in the past. Two rules
+  // apply here that do not apply to ordinary stored HTML:
+  //
+  //  1. The integrity hash above is computed over the RAW stored bytes, never
+  //     over this sanitized copy. Hashing the sanitized string would make the
+  //     check verify the sanitizer instead of the record, and a tampered
+  //     document would sail through.
+  //  2. If sanitizing actually removes markup, the viewer is no longer looking
+  //     at the document that was signed, and is told so rather than being
+  //     quietly shown the rewrite. `sanitizeHtmlReportingChange` ignores mere
+  //     entity re-spelling (`&#10003;` → `✓`), which renders identically, so
+  //     this advisory only fires on a real strip.
+  const { clean: safeDocRender, contentChanged: docRenderAltered } = esig.docRender
+    ? sanitizeHtmlReportingChange(esig.docRender, "signed-document")
+    : { clean: "", contentChanged: false };
+
   return (
     <div className="space-y-6">
       {hashVerification !== null && !hashVerification.verified && (
@@ -104,6 +121,20 @@ export function EsigView({ esigId }: EsigViewProps) {
           <AlertTitle>Document Integrity Warning</AlertTitle>
           <AlertDescription>
             The document hash does not match the stored hash. This document may have been modified after signing.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {docRenderAltered && (
+        <Alert data-testid="alert-doc-render-sanitized">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Document Display Modified</AlertTitle>
+          <AlertDescription>
+            This signed document contains markup that is not safe to display, and
+            that markup has been removed from the version shown below. The stored
+            record and its integrity hash are unchanged — what you are reading is
+            not a complete rendering of what was signed. Review the stored record
+            directly before relying on this display.
           </AlertDescription>
         </Alert>
       )}
@@ -119,7 +150,7 @@ export function EsigView({ esigId }: EsigViewProps) {
           {esig.docRender ? (
             <div 
               className="prose prose-sm max-w-none dark:prose-invert"
-              dangerouslySetInnerHTML={{ __html: esig.docRender }}
+              dangerouslySetInnerHTML={{ __html: safeDocRender }}
               data-testid="text-signed-document"
             />
           ) : (

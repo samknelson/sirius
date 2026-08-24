@@ -15,6 +15,7 @@ import { systemStatusPluginRegistry } from "./registry";
 import {
   DEFAULT_SCAN_TIMEOUT_MS,
   STATUS_PRIORITIES,
+  type StatusDetails,
   type StatusMessage,
   type StatusPriority,
   type StatusScanResult,
@@ -127,6 +128,7 @@ function toEntry(
     name: plugin.name,
     description: plugin.description,
     canRescan: !isImmediate(plugin),
+    hasDetails: typeof plugin.details === "function",
     worstPriority: worstPriority(result.messages),
     result,
   };
@@ -174,6 +176,34 @@ export async function rescanAll(
     }),
   );
   return entries;
+}
+
+/**
+ * Run a plugin's optional `details()` drill-down. NEVER cached — every call
+ * invokes the plugin fresh — and never shares state with the scan cache.
+ * Enforces the same per-plugin timeout as scans. Throws when the plugin has
+ * no details method or when the call fails/times out; the payload is never
+ * logged (it may contain sensitive-adjacent data).
+ */
+export async function getPluginDetails(
+  plugin: SystemStatusPlugin,
+): Promise<StatusDetails> {
+  if (typeof plugin.details !== "function") {
+    throw new Error(`Plugin '${plugin.id}' does not support details`);
+  }
+  const timeoutMs = plugin.timeoutMs ?? DEFAULT_SCAN_TIMEOUT_MS;
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`Details timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+  });
+  try {
+    return await Promise.race([plugin.details(), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /** Test-only helper: wipe the in-memory result cache. */

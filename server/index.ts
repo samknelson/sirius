@@ -5,6 +5,8 @@ import { resolve } from "path";
 import { setupVite, serveStatic, log } from "./vite";
 import { logger } from "./logger";
 import { bootstrapApp } from "./app-init";
+import { getEnvironmentVariable } from "./config/env-registry";
+import { getBootIdentity } from "./services/boot-identity";
 
 // Dev-only guardrail: remove any stale `dist/` build before booting.
 // `npm run dev` (tsx server/index.ts) loads source directly and never
@@ -16,7 +18,7 @@ import { bootstrapApp } from "./app-init";
 // months-old bundle). Removing it here ensures dev never coexists
 // with stale compiled artifacts. Production deploys run `npm run build`
 // before `npm run start`, so this has no effect on production.
-if (process.env.NODE_ENV !== "production") {
+if (getEnvironmentVariable("NODE_ENV") !== "production") {
   const distDir = resolve(import.meta.dirname, "..", "dist");
   if (existsSync(distDir)) {
     try {
@@ -34,7 +36,12 @@ const app = express();
 // This allows deployment health checks to pass while the app is still starting
 let appReady = false;
 app.get('/health', (_req, res) => {
-  res.status(200).json({ status: appReady ? 'ready' : 'starting' });
+  // bootId / startedAt identify THIS process (Task #1258). The admin Restart
+  // page polls here after firing a restart and only reports success once a
+  // different bootId answers. Additive — the endpoint still always answers
+  // 200, whether starting or ready.
+  const { bootId, startedAt } = getBootIdentity();
+  res.status(200).json({ status: appReady ? 'ready' : 'starting', bootId, startedAt });
 });
 
 // Root path handler for health checks during startup
@@ -78,7 +85,7 @@ app.get('/', (req, res, next) => {
 const server = createServer(app);
 
 // Start listening IMMEDIATELY so health checks pass during initialization
-const port = parseInt(process.env.PORT || '5000', 10);
+const port = parseInt(getEnvironmentVariable("PORT") || '5000', 10);
 server.listen({
   port,
   host: "0.0.0.0",

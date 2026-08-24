@@ -204,6 +204,8 @@ registerTrustProviderEdiPlugin({
     "month; premium tier is mlk/other from the member's medical coverage.",
   benefitSiriusIds: ["CARELONEAP"],
   outputFormat: "csv",
+  // CSV layouts have no fixed-width field metadata.
+  ediFields: [],
   // Legacy `edi_csv_hide_header`: the delivered file has no header row.
   csvIncludeHeaderRow: false,
   configSchema: {

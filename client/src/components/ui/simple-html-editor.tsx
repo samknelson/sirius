@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Bold, Italic, List, ListOrdered, Link, Type, Code, Clock } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +10,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import type { TokenDefinition } from "@shared/bulk-tokens";
+import { type TokenCatalogEntry as TokenDefinition } from "@shared/tokens";
+import { escapeHtml, sanitizeHtml } from "@shared/utils/html";
 
 const SPECIAL_CHARACTERS = [
   { name: 'Copyright', symbol: '©' },
@@ -30,149 +30,216 @@ const SPECIAL_CHARACTERS = [
   { name: 'Degree', symbol: '°' },
 ];
 
+/**
+ * Imperative surface for hosts (e.g. the Template Studio token browser)
+ * that need to insert a snippet at the editor's caret from outside.
+ */
+export interface SimpleHtmlEditorApi {
+  insertText: (snippet: string) => void;
+}
+
 interface SimpleHtmlEditorProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  /**
+   * Turn on token support: the `/` menu, and keeping `{{...}}` runs
+   * parseable as the author formats and pastes around them.
+   *
+   * Only the Template Studio should pass this: the studio is the one place
+   * a tokenized string is edited. Nothing enforces that — it is a
+   * convention. Everywhere else this is a plain rich-text editor.
+   */
   enableTokens?: boolean;
+  /** The catalog for the slash menu; the host owns it. */
+  tokens?: TokenDefinition[];
   minHeight?: number;
   disabled?: boolean;
+  /** Receives the imperative insert API (insert snippet at last caret). */
+  editorApiRef?: React.MutableRefObject<SimpleHtmlEditorApi | null>;
   "data-testid"?: string;
 }
 
-const ALLOWED_TAGS = [
-  'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'br', 'p', 'a',
-  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-  'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
-];
-const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
-  'a': ['href', 'target', 'rel'],
-  'th': ['colspan', 'rowspan', 'scope'],
-  'td': ['colspan', 'rowspan'],
-};
+/**
+ * What this editor lets an author write and what a reader is later shown
+ * are two halves of one contract, so both are the SAME named policy:
+ * `authored-document` in `shared/utils/html/policies.ts`. Change the
+ * toolbar and that policy together, or an author gets a formatting
+ * button whose output is stripped back out on render.
+ *
+ * (This used to be a hand-rolled DOM-walking sanitizer with its own
+ * allowlist and href checks. It is DOMPurify now, under that policy.)
+ */
+const EDITOR_POLICY = "authored-document" as const;
 
-export function sanitizeContractHtml(html: string): string {
-  return sanitizeHtml(html);
+function sanitizeEditorHtml(html: string): string {
+  return sanitizeHtml(html, EDITOR_POLICY);
 }
 
-function sanitizeHtml(html: string): string {
-  const temp = document.createElement('div');
-  temp.innerHTML = html;
-
-  function cleanNode(node: Node): void {
-    if (node.nodeType === Node.ELEMENT_NODE) {
-      const element = node as Element;
-      const tagName = element.tagName.toLowerCase();
-
-      if (!ALLOWED_TAGS.includes(tagName)) {
-        while (element.firstChild) {
-          element.parentNode?.insertBefore(element.firstChild, element);
-        }
-        element.remove();
-        return;
-      }
-
-      const allowedAttrs = ALLOWED_ATTRIBUTES[tagName] || [];
-      Array.from(element.attributes).forEach(attr => {
-        if (!allowedAttrs.includes(attr.name)) {
-          element.removeAttribute(attr.name);
-        }
-      });
-
-      // Neutralize dangerous URI schemes on anchors (javascript:, data:, etc.).
-      if (tagName === 'a' && element.hasAttribute('href')) {
-        if (!isSafeHref(element.getAttribute('href'))) {
-          element.removeAttribute('href');
-        } else if (element.getAttribute('target') === '_blank') {
-          element.setAttribute('rel', 'noopener noreferrer');
-        }
-      }
-    }
-
-    Array.from(node.childNodes).forEach(child => cleanNode(child));
-  }
-
-  Array.from(temp.childNodes).forEach(child => cleanNode(child));
-  return temp.innerHTML;
-}
-
-function isSafeHref(href: string | null): boolean {
-  if (!href) return false;
-  const value = href.trim();
-  if (value === '') return false;
-  // Allow relative URLs, anchors, and query/path-only links.
-  if (/^(?:[/#?]|[^:]*$)/.test(value)) return true;
-  // Otherwise require an explicit safe scheme.
-  return /^(?:https?:|mailto:|tel:)/i.test(value);
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-const TOKEN_PATTERN = /\{\{([a-zA-Z0-9_.-]+)\}\}/g;
-
-function buildChipHtml(id: string, tokens: TokenDefinition[]): string {
-  const t = tokens.find((x) => x.id === id);
-  const label = t?.label ?? id;
-  const safeId = escapeHtml(id);
-  return `<span data-token="${safeId}" contenteditable="false" class="token-chip" title="{{${safeId}}}"><span class="token-chip-label">${escapeHtml(label)}</span><span class="token-chip-remove" data-token-remove="true" role="button" aria-label="Remove ${escapeHtml(label)} token" title="Remove token">\u00D7</span></span>`;
-}
-
-function renderTokensAsChips(html: string, tokens: TokenDefinition[]): string {
-  const temp = document.createElement('div');
-  temp.innerHTML = html;
-  const walker = document.createTreeWalker(temp, NodeFilter.SHOW_TEXT);
-  const targets: Text[] = [];
-  let n: Node | null = walker.nextNode();
-  while (n) {
-    if ((n.textContent || '').includes('{{')) targets.push(n as Text);
-    n = walker.nextNode();
-  }
-  for (const textNode of targets) {
-    const text = textNode.textContent || '';
-    TOKEN_PATTERN.lastIndex = 0;
-    if (!TOKEN_PATTERN.test(text)) continue;
-    TOKEN_PATTERN.lastIndex = 0;
-    const wrapper = document.createElement('span');
-    let last = 0;
-    let m: RegExpExecArray | null;
-    while ((m = TOKEN_PATTERN.exec(text)) !== null) {
-      if (m.index > last) {
-        wrapper.appendChild(document.createTextNode(text.slice(last, m.index)));
-      }
-      const tmp = document.createElement('div');
-      tmp.innerHTML = buildChipHtml(m[1], tokens);
-      const chip = tmp.firstChild;
-      if (chip) wrapper.appendChild(chip);
-      last = m.index + m[0].length;
-    }
-    if (last < text.length) {
-      wrapper.appendChild(document.createTextNode(text.slice(last)));
-    }
-    const parent = textNode.parentNode;
-    if (!parent) continue;
-    while (wrapper.firstChild) {
-      parent.insertBefore(wrapper.firstChild, textNode);
-    }
-    parent.removeChild(textNode);
-  }
-  return temp.innerHTML;
-}
-
-function serializeChipsToTokens(root: HTMLElement): string {
-  const clone = root.cloneNode(true) as HTMLElement;
-  clone.querySelectorAll('span[data-token]').forEach((el) => {
+/**
+ * A token is plain `{{...}}` text here, exactly as it is in raw-HTML
+ * mode, so the author can edit one in place and copy one out. It used
+ * to be an uneditable "chip", which is why old values may still carry
+ * chip markup: read those back as their token text.
+ */
+function replaceLegacyChips(root: HTMLElement): void {
+  root.querySelectorAll('span[data-token]').forEach((el) => {
     const id = el.getAttribute('data-token') || '';
     el.replaceWith(document.createTextNode(`{{${id}}}`));
   });
-  return clone.innerHTML;
+}
+
+function legacyChipsToText(html: string): string {
+  if (!html.includes('data-token')) return html;
+  const temp = document.createElement('div');
+  temp.innerHTML = html;
+  replaceLegacyChips(temp);
+  return temp.innerHTML;
+}
+
+/**
+ * The price of tokens being ordinary text is that ordinary text can be
+ * formatted, pasted over, and autocorrected. Bolding a paragraph turns
+ * `{{worker.field(name="id")}}` into `{{worker.<b>field</b>(...)}}`, and
+ * a word processor turns its quotes curly — neither of which the token
+ * grammar accepts, so the token would quietly deliver as literal text
+ * rather than as anything the studio could flag. Flatten every token
+ * run back to plain, straight-quoted text on the way out.
+ *
+ * A run never crosses a block boundary: `{{` on one line and `}}` on
+ * the next is two pieces of the author's prose, not a token.
+ */
+const BLOCK_TAGS = new Set([
+  'ADDRESS', 'ARTICLE', 'ASIDE', 'BLOCKQUOTE', 'BR', 'DD', 'DIV', 'DL', 'DT',
+  'FIGURE', 'FOOTER', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'HEADER', 'HR', 'LI',
+  'MAIN', 'NAV', 'OL', 'P', 'PRE', 'SECTION', 'TABLE', 'TBODY', 'TD', 'TFOOT',
+  'TH', 'THEAD', 'TR', 'UL',
+]);
+
+/** A `{{...}}` run in the text, stopping at block boundaries (\u0000). */
+const LOOSE_TOKEN_RUN = /\{\{([^{}\u0000]*)\}\}/g;
+
+interface TextPiece {
+  node: Text | null;
+  text: string;
+  start: number;
+}
+
+/** Text of the subtree in document order, block boundaries marked. */
+function collectTextPieces(root: HTMLElement): TextPiece[] {
+  const pieces: TextPiece[] = [];
+  let offset = 0;
+  const push = (node: Text | null, text: string) => {
+    if (!text) return;
+    pieces.push({ node, text, start: offset });
+    offset += text.length;
+  };
+  const walk = (parent: Node) => {
+    parent.childNodes.forEach((child) => {
+      if (child.nodeType === Node.TEXT_NODE) {
+        push(child as Text, child.textContent || '');
+        return;
+      }
+      if (child.nodeType !== Node.ELEMENT_NODE) return;
+      const isBlock = BLOCK_TAGS.has((child as Element).tagName);
+      if (isBlock) push(null, '\u0000');
+      walk(child);
+      if (isBlock) push(null, '\u0000');
+    });
+  };
+  walk(root);
+  return pieces;
+}
+
+function normalizeTokenText(inner: string): string {
+  return inner
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u00A0\u2007\u202F]/g, ' ');
+}
+
+/** The piece holding a global text index, found by binary search. */
+function locate(pieces: TextPiece[], index: number): { node: Text; offset: number } | null {
+  let lo = 0;
+  let hi = pieces.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const piece = pieces[mid];
+    if (index < piece.start) {
+      hi = mid - 1;
+    } else if (index >= piece.start + piece.text.length) {
+      lo = mid + 1;
+    } else {
+      return piece.node ? { node: piece.node, offset: index - piece.start } : null;
+    }
+  }
+  return null;
+}
+
+function ancestorsWithin(node: Node, root: HTMLElement): HTMLElement[] {
+  const out: HTMLElement[] = [];
+  let el = node.parentNode;
+  while (el && el !== root && el.nodeType === Node.ELEMENT_NODE) {
+    out.push(el as HTMLElement);
+    el = el.parentNode;
+  }
+  return out;
+}
+
+/** Markup the run was split across, left behind empty. */
+function pruneEmptyInline(elements: HTMLElement[], root: HTMLElement): void {
+  // An emptied text node still counts as a child, so test the text.
+  const isEmptyInline = (el: HTMLElement) =>
+    !BLOCK_TAGS.has(el.tagName) &&
+    el.textContent === '' &&
+    el.querySelector('br, img, hr, input, svg') === null;
+  for (const el of elements) {
+    let current: HTMLElement | null = el;
+    while (current && current !== root && isEmptyInline(current)) {
+      const parent = current.parentNode as HTMLElement | null;
+      current.remove();
+      current = parent;
+    }
+  }
+}
+
+/** Rewrite one run as plain, straight-quoted text. */
+function flattenRun(root: HTMLElement, pieces: TextPiece[], run: RegExpExecArray): void {
+  const start = locate(pieces, run.index);
+  const end = locate(pieces, run.index + run[0].length - 1);
+  if (!start || !end) return;
+  const replacement = `{{${normalizeTokenText(run[1])}}}`;
+  // Already one clean piece of text: leave the author's node alone.
+  if (start.node === end.node && replacement === run[0]) return;
+  const range = document.createRange();
+  try {
+    range.setStart(start.node, start.offset);
+    range.setEnd(end.node, end.offset + 1);
+  } catch {
+    return;
+  }
+  const touched = [
+    ...ancestorsWithin(start.node, root),
+    ...ancestorsWithin(end.node, root),
+  ];
+  range.deleteContents();
+  range.insertNode(document.createTextNode(replacement));
+  pruneEmptyInline(touched, root);
+}
+
+function flattenTokenRuns(root: HTMLElement): void {
+  const pieces = collectTextPieces(root);
+  const text = pieces.map((p) => p.text).join('');
+  if (!text.includes('{{')) return;
+  LOOSE_TOKEN_RUN.lastIndex = 0;
+  const runs: RegExpExecArray[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = LOOSE_TOKEN_RUN.exec(text)) !== null) runs.push(m);
+  // Repair back to front: rewriting a run only touches nodes at or after
+  // its own start, so every earlier run's node and offset stay valid and
+  // one pass fixes the whole document, however many runs it holds.
+  for (let i = runs.length - 1; i >= 0; i--) flattenRun(root, pieces, runs[i]);
 }
 
 const RECENT_KEY = "token-picker-recent";
@@ -204,8 +271,10 @@ export function SimpleHtmlEditor({
   placeholder,
   className,
   enableTokens = false,
+  tokens: tokensProp,
   minHeight = 120,
   disabled = false,
+  editorApiRef,
   "data-testid": testId,
 }: SimpleHtmlEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
@@ -229,11 +298,10 @@ export function SimpleHtmlEditor({
     rawIndex?: number;
   } | null>(null);
 
-  const { data: tokenData } = useQuery<{ tokens: TokenDefinition[] }>({
-    queryKey: ["/api/bulk-tokens"],
-    enabled: enableTokens,
-  });
-  const tokens = tokenData?.tokens || [];
+  // The catalog is the host's to supply. This editor never fetches one:
+  // a token catalog is scoped to the thing being templated, and a
+  // general-purpose editor has no way to know which scope it is in.
+  const tokens = tokensProp ?? [];
 
   const filteredTokens = useMemo<TokenDefinition[]>(() => {
     if (!slashOpen) return [];
@@ -267,13 +335,16 @@ export function SimpleHtmlEditor({
 
   useEffect(() => {
     if (editorRef.current && !isFocused && !rawMode) {
-      const sanitized = sanitizeHtml(value);
-      const rendered = enableTokens ? renderTokensAsChips(sanitized, tokens) : sanitized;
+      // Tokens are shown as the text they are; only stale chip markup
+      // from the old editor needs converting on the way in.
+      const rendered = sanitizeEditorHtml(
+        enableTokens ? legacyChipsToText(value) : value,
+      );
       if (editorRef.current.innerHTML !== rendered) {
         editorRef.current.innerHTML = rendered;
       }
     }
-  }, [value, isFocused, rawMode, enableTokens, tokens]);
+  }, [value, isFocused, rawMode, enableTokens]);
 
   useEffect(() => {
     if (!rawMode) {
@@ -281,14 +352,76 @@ export function SimpleHtmlEditor({
     }
   }, [value, rawMode]);
 
-  const handleInput = () => {
-    if (editorRef.current) {
-      const serialized = enableTokens
-        ? serializeChipsToTokens(editorRef.current)
-        : editorRef.current.innerHTML;
-      const sanitized = sanitizeHtml(serialized);
-      onChange(sanitized);
+  // ── Imperative insert-at-cursor API (Template Studio token browser) ──
+  // Track the last caret position in the rich editor so an external
+  // insert (which happens after the editor loses focus to the browser
+  // panel) still lands where the author was typing.
+  const lastRichRangeRef = useRef<Range | null>(null);
+  const saveRichSelection = useCallback(() => {
+    const sel = window.getSelection();
+    if (
+      sel &&
+      sel.rangeCount > 0 &&
+      editorRef.current &&
+      editorRef.current.contains(sel.getRangeAt(0).startContainer)
+    ) {
+      lastRichRangeRef.current = sel.getRangeAt(0).cloneRange();
     }
+  }, []);
+
+  useEffect(() => {
+    if (!editorApiRef) return;
+    editorApiRef.current = {
+      insertText: (snippet: string) => {
+        if (disabled) return;
+        if (rawMode) {
+          const el = rawTextareaRef.current;
+          const start = el?.selectionStart ?? rawHtml.length;
+          const end = el?.selectionEnd ?? rawHtml.length;
+          const next = rawHtml.slice(0, start) + snippet + rawHtml.slice(end);
+          setRawHtml(next);
+          onChange(next);
+          requestAnimationFrame(() => {
+            if (!el) return;
+            el.focus();
+            const caret = start + snippet.length;
+            try { el.setSelectionRange(caret, caret); } catch { /* noop */ }
+          });
+          return;
+        }
+        const editor = editorRef.current;
+        if (!editor) return;
+        editor.focus();
+        const sel = window.getSelection();
+        const saved = lastRichRangeRef.current;
+        if (sel && saved && editor.contains(saved.startContainer)) {
+          sel.removeAllRanges();
+          sel.addRange(saved);
+        }
+        // A token is text like any other snippet.
+        document.execCommand("insertHTML", false, escapeHtml(snippet));
+        saveRichSelection();
+        handleInput();
+      },
+    };
+    return () => {
+      editorApiRef.current = null;
+    };
+  });
+
+  const handleInput = () => {
+    if (!editorRef.current) return;
+    let serialized: string;
+    if (enableTokens) {
+      const clone = editorRef.current.cloneNode(true) as HTMLElement;
+      replaceLegacyChips(clone);
+      flattenTokenRuns(clone);
+      clone.normalize();
+      serialized = clone.innerHTML;
+    } else {
+      serialized = editorRef.current.innerHTML;
+    }
+    onChange(sanitizeEditorHtml(serialized));
   };
 
   const execCommand = (command: string, value?: string) => {
@@ -437,7 +570,7 @@ export function SimpleHtmlEditor({
   const insertTokenAtSlash = (t: TokenDefinition) => {
     const ctx = slashContext.current;
     if (!ctx) return;
-    const snippet = `{{${t.id}}}`;
+    const snippet = t.insertText || `{{${t.id}}}`;
 
     if (ctx.mode === "rich" && ctx.node && typeof ctx.slashOffset === "number") {
       const sel = window.getSelection();
@@ -453,19 +586,10 @@ export function SimpleHtmlEditor({
         return;
       }
       replace.deleteContents();
-      const tmp = document.createElement('div');
-      tmp.innerHTML = buildChipHtml(t.id, tokens);
-      const chip = tmp.firstChild as HTMLElement | null;
-      if (!chip) return;
-      replace.insertNode(chip);
+      const inserted = document.createTextNode(snippet);
+      replace.insertNode(inserted);
       const after = document.createRange();
-      const next = chip.nextSibling;
-      const nextText = next && next.nodeType === Node.TEXT_NODE ? (next.textContent || '') : '';
-      if (next && nextText.length > 0 && /^[\s\u00A0]/.test(nextText)) {
-        after.setStart(next, 1);
-      } else {
-        after.setStartAfter(chip);
-      }
+      after.setStartAfter(inserted);
       after.collapse(true);
       sel.removeAllRanges();
       sel.addRange(after);
@@ -489,47 +613,8 @@ export function SimpleHtmlEditor({
     closeSlash();
   };
 
-  const removeChip = (chip: HTMLElement) => {
-    if (!editorRef.current) return;
-    const parent = chip.parentNode;
-    const nextSibling = chip.nextSibling;
-    chip.remove();
-    const sel = window.getSelection();
-    if (sel && parent) {
-      const range = document.createRange();
-      try {
-        if (nextSibling) {
-          range.setStartBefore(nextSibling);
-        } else {
-          range.selectNodeContents(parent);
-          range.collapse(false);
-        }
-        range.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(range);
-      } catch {
-        /* noop */
-      }
-    }
-    handleInput();
-    editorRef.current.focus();
-  };
-
-  const handleEditorClick = (e: React.MouseEvent) => {
-    if (enableTokens) {
-      const target = e.target as HTMLElement | null;
-      const removeBtn = target?.closest('[data-token-remove]') as HTMLElement | null;
-      if (removeBtn && editorRef.current?.contains(removeBtn)) {
-        const chip = removeBtn.closest('[data-token]') as HTMLElement | null;
-        if (chip && editorRef.current.contains(chip)) {
-          e.preventDefault();
-          e.stopPropagation();
-          removeChip(chip);
-          return;
-        }
-      }
-      detectSlashRich();
-    }
+  const handleEditorClick = () => {
+    if (enableTokens) detectSlashRich();
   };
 
   const handleEditorInput = () => {
@@ -659,7 +744,7 @@ export function SimpleHtmlEditor({
           onClick={(e) => enableTokens && detectSlashRaw(e.currentTarget)}
           onBlur={() => enableTokens && window.setTimeout(closeSlash, 150)}
           placeholder="Enter raw HTML here..."
-          className="p-3 font-mono text-sm border-0 rounded-none focus-visible:ring-0 resize-none"
+          className="p-3 font-mono text-sm border-0 rounded-none focus-visible:ring-0 resize-y"
           style={{ minHeight }}
           disabled={disabled}
           data-testid={testId ? `${testId}-raw` : undefined}
@@ -673,16 +758,25 @@ export function SimpleHtmlEditor({
             "focus:ring-2 focus:ring-ring focus:ring-offset-0",
             !value && !isFocused && "text-muted-foreground"
           )}
-          style={{ minHeight }}
+          // resize: vertical makes the visual editor grow with the author's
+          // content preference — same affordance as the raw-HTML textarea.
+          style={{ minHeight, resize: "vertical", overflow: "auto" }}
           onInput={handleEditorInput}
           onFocus={() => setIsFocused(true)}
           onBlur={() => {
+            saveRichSelection();
             setIsFocused(false);
             if (enableTokens) window.setTimeout(closeSlash, 150);
           }}
           onKeyDown={handleEditorKeyDown}
-          onKeyUp={() => enableTokens && detectSlashRich()}
-          onClick={handleEditorClick}
+          onKeyUp={() => {
+            saveRichSelection();
+            if (enableTokens) detectSlashRich();
+          }}
+          onClick={(e) => {
+            saveRichSelection();
+            handleEditorClick();
+          }}
           data-placeholder={placeholder}
           data-testid={testId}
           suppressContentEditableWarning
@@ -773,61 +867,6 @@ export function SimpleHtmlEditor({
         }
         [contenteditable] a:hover {
           opacity: 0.8;
-        }
-        .token-chip {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.125rem;
-          padding: 1px 0.375rem;
-          margin: 0 2px;
-          border-radius: 0.25rem;
-          background: #e5e7eb;
-          color: #1f2937;
-          border: 1px solid #9ca3af;
-          font-size: 0.8125rem;
-          font-weight: 500;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-          line-height: 1.3;
-          vertical-align: baseline;
-          white-space: nowrap;
-          user-select: all;
-          cursor: default;
-        }
-        .dark .token-chip {
-          background: #374151;
-          color: #f3f4f6;
-          border-color: #6b7280;
-        }
-        .token-chip-label {
-          user-select: all;
-        }
-        .token-chip-remove {
-          display: none;
-          align-items: center;
-          justify-content: center;
-          width: 1rem;
-          height: 1rem;
-          margin-left: 0.125rem;
-          margin-right: -0.125rem;
-          border-radius: 9999px;
-          font-size: 0.875rem;
-          line-height: 1;
-          color: hsl(var(--muted-foreground));
-          cursor: pointer;
-          user-select: none;
-        }
-        .token-chip:hover .token-chip-remove,
-        .token-chip:focus-within .token-chip-remove {
-          display: inline-flex;
-        }
-        .token-chip-remove:hover {
-          background: hsl(var(--destructive));
-          color: hsl(var(--destructive-foreground));
-        }
-        @media (hover: none) {
-          .token-chip-remove {
-            display: inline-flex;
-          }
         }
       `}</style>
     </div>

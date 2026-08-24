@@ -12,6 +12,7 @@ import {
 } from "../types";
 import { optionsGrievanceRoles } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { absoluteUrl } from "../../../lib/base-url";
 
 function payloadOf(ctx: EventNotifierEventContext): GrievanceAssignmentSavedPayload {
   return ctx.payload as GrievanceAssignmentSavedPayload;
@@ -73,11 +74,7 @@ function bodyFor(
  * link. Mirrors the domain resolution used by the dispatch notifier.
  */
 function absoluteGrievanceUrl(grievanceId: string): string {
-  const domain =
-    process.env.REPLIT_DEV_DOMAIN ||
-    process.env.REPLIT_DOMAINS?.split(",")[0] ||
-    "localhost:5000";
-  return `https://${domain}/grievance/${grievanceId}`;
+  return absoluteUrl(`/grievance/${grievanceId}`);
 }
 
 /**
@@ -152,9 +149,10 @@ export const grievanceAssignmentNotifier: EventNotifierPlugin = {
     const hasLink = operation !== "deleted";
     const linkUrl = hasLink ? `/grievance/${grievanceId}` : undefined;
     const absoluteUrl = hasLink ? absoluteGrievanceUrl(grievanceId) : undefined;
-    // The notification is titled with the grievance's display title; the body
-    // carries the assignment detail (role + operation).
-    const title = grievanceTitle;
+    // Area, what happened, which record — the shape every notifier's
+    // subject uses. The body carries the assignment detail (role +
+    // operation), including whether it was an unassignment.
+    const title = `Grievance - assignment - ${grievanceTitle}`;
 
     switch (medium) {
       case "inapp":

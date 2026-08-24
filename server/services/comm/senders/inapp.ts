@@ -1,9 +1,31 @@
 import { createCommStorage, createCommInappStorage } from '../../../storage/comm';
 import { storage } from '../../../storage';
 import { runInTransaction } from '../../../storage/transaction-context';
-import { notifyAlertCountChange } from '../../../modules/comm';
 import type { Comm, CommInapp } from '@shared/schema';
 import { storageLogger } from '../../../logger';
+
+/**
+ * Broadcast the user's new unread count, after the current turn.
+ *
+ * `server/modules/comm` imports this sender, so importing it back statically
+ * closes a module-initialization cycle: under a transform that does not hoist
+ * function exports across the cycle (Vite's SSR transform, which the test
+ * runner uses), `modules/comm` evaluates before the storage barrel it calls
+ * into and dies with "createCommStorage is not a function". The work is
+ * already deferred to the next tick, so importing it there costs nothing.
+ *
+ * `notifyAlertCountChange` handles its own errors; the catch here only covers
+ * a failure to load the module at all.
+ */
+function scheduleAlertCountNotification(userId: string): void {
+  setImmediate(() => {
+    void import('../../../modules/comm')
+      .then((m) => m.notifyAlertCountChange(userId))
+      .catch((error) => {
+        storageLogger.error('Failed to broadcast alert update', { error });
+      });
+  });
+}
 
 export interface SendInappRequest {
   contactId: string;
@@ -131,7 +153,7 @@ export async function sendInapp(request: SendInappRequest): Promise<SendInappRes
       };
     }
 
-    setImmediate(() => notifyAlertCountChange(userId));
+    scheduleAlertCountNotification(userId);
 
     return {
       success: true,
@@ -202,7 +224,7 @@ export async function markInappAsRead(alertId: string, userId: string): Promise<
       },
     });
 
-    setImmediate(() => notifyAlertCountChange(userId));
+    scheduleAlertCountNotification(userId);
 
     return {
       success: true,

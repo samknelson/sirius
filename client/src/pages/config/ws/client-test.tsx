@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,13 @@ import { Loader2, Play, CheckCircle, XCircle, Clock, FlaskConical, Copy, Check, 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { WsClientLayout, useWsClientLayout } from "@/components/layouts/WsClientLayout";
+import {
+  useWsServiceConfigs,
+  useWsServicePlugins,
+  useWsClientGrants,
+  wsServiceLabel,
+  wsServiceAddress,
+} from "./use-ws-services";
 
 function generateCurlCommand(options: {
   baseUrl: string;
@@ -65,20 +72,6 @@ function generateCurlCommand(options: {
   return parts.join(" \\\n  ");
 }
 
-interface BundleEndpoint {
-  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  path: string;
-  description: string;
-  sampleParams?: Record<string, string>;
-  sampleBody?: Record<string, unknown>;
-}
-
-interface BundleEndpointsResponse {
-  bundleCode: string;
-  basePath: string;
-  endpoints: BundleEndpoint[];
-}
-
 interface TestResponse {
   success: boolean;
   status: number;
@@ -97,20 +90,34 @@ interface TestResponse {
 function TestContent() {
   const params = useParams<{ id: string }>();
   const { toast } = useToast();
-  const { client, bundle } = useWsClientLayout();
 
   const [clientKey, setClientKey] = useState("");
   const [clientSecret, setClientSecret] = useState("");
-  const [method, setMethod] = useState<"GET" | "POST" | "PUT" | "PATCH" | "DELETE">("GET");
-  const [path, setPath] = useState("/sheets");
+  const [method, setMethod] = useState<"GET" | "POST" | "PUT" | "PATCH" | "DELETE">("POST");
+  const [configId, setConfigId] = useState("");
+  const [operation, setOperation] = useState("");
   const [queryParams, setQueryParams] = useState("");
   const [requestBody, setRequestBody] = useState("");
   const [testResult, setTestResult] = useState<TestResponse | null>(null);
 
-  const { data: endpointsData } = useQuery<BundleEndpointsResponse>({
-    queryKey: ["/api/admin/ws-bundles", client.bundleId, "endpoints"],
-    enabled: !!client.bundleId,
-  });
+  // The operation list is driven by what this client is ACTUALLY granted, not
+  // by everything that exists: an operation the test screen offers but the
+  // dispatcher refuses would be indistinguishable from a broken service.
+  const { data: allConfigs = [] } = useWsServiceConfigs();
+  const { data: plugins = [] } = useWsServicePlugins();
+  const { data: grants = [] } = useWsClientGrants(params.id);
+
+  const grantedConfigs = useMemo(() => {
+    const grantedIds = new Set(grants.map((g) => g.configId));
+    return allConfigs.filter((c) => grantedIds.has(c.id));
+  }, [allConfigs, grants]);
+
+  const selectedConfig = grantedConfigs.find((c) => c.id === configId);
+  const selectedPlugin = selectedConfig
+    ? plugins.find((p) => p.id === selectedConfig.pluginId)
+    : undefined;
+  const operations = selectedPlugin?.operations ?? [];
+  const selectedOperation = operations.find((op) => op.name === operation);
 
   const testMutation = useMutation({
     mutationFn: async () => {
@@ -136,7 +143,8 @@ function TestContent() {
         clientKey,
         clientSecret,
         method,
-        path,
+        configRef: configId,
+        operation,
         queryParams: parsedQueryParams,
         body: parsedBody,
       });
@@ -153,30 +161,32 @@ function TestContent() {
     },
   });
 
-  const handleEndpointSelect = (value: string) => {
-    const endpoint = endpointsData?.endpoints.find((e) => `${e.method}:${e.path}` === value);
-    if (endpoint) {
-      setMethod(endpoint.method);
-      setPath(endpoint.path);
-      if (endpoint.sampleParams) {
-        setQueryParams(JSON.stringify(endpoint.sampleParams, null, 2));
-      } else {
-        setQueryParams("");
-      }
-      if (endpoint.sampleBody) {
-        setRequestBody(JSON.stringify(endpoint.sampleBody, null, 2));
-      } else {
-        setRequestBody("");
-      }
+  const handleServiceSelect = (value: string) => {
+    setConfigId(value);
+    setOperation("");
+  };
+
+  const handleOperationSelect = (value: string) => {
+    setOperation(value);
+    const op = operations.find((o) => o.name === value);
+    // Default to the operation's first declared verb; anything else is
+    // refused by the dispatcher with a 405.
+    if (op?.methods.length) {
+      setMethod(op.methods[0] as typeof method);
     }
   };
 
-  const canExecute = clientKey.trim() && clientSecret.trim() && path.trim();
+  const canExecute = clientKey.trim() && clientSecret.trim() && configId && operation;
   const [copied, setCopied] = useState(false);
 
-  const baseUrl = typeof window !== "undefined" 
-    ? `${window.location.protocol}//${window.location.host}/api/ws/${bundle?.code || "..."}`
-    : `/api/ws/${bundle?.code || "..."}`;
+  // The public address. Prefer the alias: configuration ids are minted per
+  // database, so a copied cURL built on an id only works here.
+  const address = selectedConfig ? wsServiceAddress(selectedConfig) : "<service>";
+  const origin = typeof window !== "undefined"
+    ? `${window.location.protocol}//${window.location.host}`
+    : "";
+  const baseUrl = `${origin}/api/ws/${address}`;
+  const path = `/${operation || "<operation>"}`;
 
   const curlCommand = useMemo(() => {
     return generateCurlCommand({
@@ -246,26 +256,35 @@ function TestContent() {
           <CardHeader>
             <CardTitle>Request</CardTitle>
             <CardDescription>
-              Base path: {endpointsData?.basePath || `/api/ws/${bundle?.code || "..."}`}
+              {selectedConfig
+                ? `${baseUrl}${path}`
+                : "Choose one of the web services this client has been granted"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {endpointsData && endpointsData.endpoints.length > 0 && (
+            {grantedConfigs.length === 0 ? (
+              <Alert data-testid="alert-no-grants">
+                <AlertDescription>
+                  This client has not been granted access to any web service. Grant one from
+                  the Settings tab first.
+                </AlertDescription>
+              </Alert>
+            ) : (
               <div className="space-y-2">
-                <Label>Quick Select Endpoint</Label>
-                <Select onValueChange={handleEndpointSelect}>
-                  <SelectTrigger data-testid="select-endpoint">
-                    <SelectValue placeholder="Choose an endpoint..." />
+                <Label>Service</Label>
+                <Select value={configId} onValueChange={handleServiceSelect}>
+                  <SelectTrigger data-testid="select-service">
+                    <SelectValue placeholder="Choose a service..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {endpointsData.endpoints.map((ep) => (
+                    {grantedConfigs.map((config) => (
                       <SelectItem
-                        key={`${ep.method}:${ep.path}`}
-                        value={`${ep.method}:${ep.path}`}
-                        data-testid={`option-endpoint-${ep.method}-${ep.path.replace(/[/:]/g, "-")}`}
+                        key={config.id}
+                        value={config.id}
+                        data-testid={`option-service-${config.id}`}
                       >
-                        <span className="font-mono text-xs">{ep.method}</span>{" "}
-                        <span>{ep.path}</span> - {ep.description}
+                        {wsServiceLabel(config)}
+                        {!config.enabled ? " (disabled)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -273,7 +292,35 @@ function TestContent() {
               </div>
             )}
 
-            <div className="grid grid-cols-[100px_1fr] gap-4">
+            {selectedConfig && (
+              <div className="space-y-2">
+                <Label>Operation</Label>
+                <Select value={operation} onValueChange={handleOperationSelect}>
+                  <SelectTrigger data-testid="select-operation">
+                    <SelectValue placeholder="Choose an operation..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {operations.map((op) => (
+                      <SelectItem
+                        key={op.name}
+                        value={op.name}
+                        data-testid={`option-operation-${op.name}`}
+                      >
+                        <span className="font-mono text-xs">{op.methods.join("/")}</span>{" "}
+                        <span>{op.name}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedOperation && (
+                  <p className="text-sm text-muted-foreground" data-testid="text-operation-description">
+                    {selectedOperation.description}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {selectedOperation && selectedOperation.methods.length > 1 && (
               <div className="space-y-2">
                 <Label htmlFor="method">Method</Label>
                 <Select value={method} onValueChange={(v) => setMethod(v as typeof method)}>
@@ -281,25 +328,15 @@ function TestContent() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="GET">GET</SelectItem>
-                    <SelectItem value="POST">POST</SelectItem>
-                    <SelectItem value="PUT">PUT</SelectItem>
-                    <SelectItem value="PATCH">PATCH</SelectItem>
-                    <SelectItem value="DELETE">DELETE</SelectItem>
+                    {selectedOperation.methods.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {m}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="path">Path</Label>
-                <Input
-                  id="path"
-                  value={path}
-                  onChange={(e) => setPath(e.target.value)}
-                  placeholder="/sheets"
-                  data-testid="input-path"
-                />
-              </div>
-            </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="query-params">Query Parameters (JSON)</Label>

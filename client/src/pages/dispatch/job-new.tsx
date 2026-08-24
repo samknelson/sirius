@@ -68,6 +68,7 @@ export default function DispatchJobNewPage() {
   const { toast } = useToast();
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("");
+  const [selectedFacilityId, setSelectedFacilityId] = useState<string>("");
 
   const { data: employers = [] } = useQuery<Employer[]>({
     queryKey: ["/api/employers"],
@@ -88,6 +89,15 @@ export default function DispatchJobNewPage() {
   const departmentComponentEnabled = componentConfigs.some(
     (c) => c.componentId === "dispatch.department" && c.enabled,
   );
+
+  const facilityComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "dispatch.facility" && c.enabled,
+  );
+
+  const { data: facilities = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/options/facility"],
+    enabled: facilityComponentEnabled,
+  });
 
   const { data: availableDepartments = [] } = useQuery<AvailableDepartment[]>({
     queryKey: ["/api/dispatch-departments/available"],
@@ -136,6 +146,7 @@ export default function DispatchJobNewPage() {
         payRate: payRateVal,
         startTime: data.startTime?.trim() || null,
         endTime: data.endTime?.trim() || null,
+        facilityId: selectedFacilityId || undefined,
         data:
           selectedSkills.length > 0
             ? { requiredSkills: selectedSkills }
@@ -303,6 +314,28 @@ export default function DispatchJobNewPage() {
                         {availableDepartments.map((department) => (
                           <SelectItem key={department.id} value={department.id}>
                             {department.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
+
+                {facilityComponentEnabled && (
+                  <FormItem>
+                    <FormLabel>Facility</FormLabel>
+                    <Select
+                      value={selectedFacilityId || "__none__"}
+                      onValueChange={(v) => setSelectedFacilityId(v === "__none__" ? "" : v)}
+                    >
+                      <SelectTrigger data-testid="select-facility">
+                        <SelectValue placeholder="No facility" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">No facility</SelectItem>
+                        {facilities.map((facility) => (
+                          <SelectItem key={facility.id} value={facility.id}>
+                            {facility.name}
                           </SelectItem>
                         ))}
                       </SelectContent>

@@ -78,6 +78,10 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
 
   return (
     <style
+      // Not stored content: this builds a CSS custom-property block from the
+      // chart's own `config` object, which is developer-authored in source at
+      // each chart's call site. No user- or admin-supplied HTML reaches here,
+      // and it is a <style> element, so an HTML sanitizer is the wrong tool.
       dangerouslySetInnerHTML={{
         __html: Object.entries(THEMES)
           .map(

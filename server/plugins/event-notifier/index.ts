@@ -39,6 +39,13 @@ function registerEventNotifierKind(): void {
     // (ordering, id) — matching client-injection / dashboard.
     decorateEntries: async (entries) => {
       const { storage } = await import("../../storage");
+      const {
+        getSiteEnabledTemplateChannels,
+        hideUndeliverableTemplateChannels,
+      } = await import("./template-schema");
+      // Which template channels the site can deliver on right now — used
+      // below to hide medium cards a notifier will never send over.
+      const siteChannels = await getSiteEnabledTemplateChannels();
       const configs =
         await storage.pluginConfigs.getByKind("event-notifier");
       const firstByPlugin = new Map<string, (typeof configs)[number]>();
@@ -58,7 +65,15 @@ function registerEventNotifierKind(): void {
         return {
           ...entry,
           enabled: row ? row.enabled : false,
-          configSchema: impl?.configSchema,
+          // Serve a schema where template channel groups this notifier
+          // can't deliver to (not in its supportedMedia, or the site has
+          // the channel off) are marked hidden. The groups stay declared
+          // so RJSF preserves any stored override for a hidden medium.
+          configSchema: hideUndeliverableTemplateChannels(
+            impl?.configSchema as Record<string, unknown> | undefined,
+            impl?.supportedMedia ?? [],
+            siteChannels,
+          ) as import("./types").EventNotifierManifestEntry["configSchema"],
           uiSchema: impl?.uiSchema,
         };
       });
@@ -87,12 +102,13 @@ function registerEventNotifierKind(): void {
           ],
         };
       }
-      // Staff-mode notifiers may only target staff/admin users. The recipients
-      // are operator-supplied (`data.staffRecipientUserIds`) and a direct API
+      // Staff recipients may only be staff/admin users. The recipients are
+      // operator-supplied (`data.staffRecipientUserIds`) and a direct API
       // write could otherwise smuggle in arbitrary user ids, so re-check
       // membership here at save time (the legacy staff-alert framework enforced
-      // the same constraint).
-      if (plugin.staffNotification) {
+      // the same constraint). Applies to staff-mode notifiers AND any config
+      // that carries a staff recipient list (e.g. per-config recipient kinds).
+      if (plugin.staffNotification || Array.isArray(cfg.staffRecipientUserIds)) {
         const ids = Array.isArray(cfg.staffRecipientUserIds)
           ? (cfg.staffRecipientUserIds as unknown[]).filter(
               (v): v is string => typeof v === "string",
@@ -113,6 +129,62 @@ function registerEventNotifierKind(): void {
                 `Recipients for "${plugin.name}" must be staff or admin users. ` +
                   `${invalid.length} selected user(s) are not eligible.`,
               ],
+            };
+          }
+        }
+      }
+      // Token-templated notifiers: validate every custom template's tokens at
+      // save time against the notifier's event entity kind, so an invalid
+      // token surfaces to the author instead of rendering as "[unknown
+      // token: …]" in an outgoing message. Applies to direct API writes too.
+      if (plugin.tokenTemplates) {
+        const templates = cfg.templates;
+        if (templates && typeof templates === "object") {
+          const { extractTokenExpressions } = await import("@shared/tokens");
+          const { validateTokenExpressionForRoots } = await import("../tokens");
+          const { notifierTokenRootNames } = await import("./token-roots");
+          // The SAME list the editor is built from, so a token the token
+          // browser offered can never be rejected here — and one it never
+          // offered (an employer picked out of thin air) is refused.
+          const rootNames = notifierTokenRootNames(plugin.tokenTemplates.roots);
+          const errors: string[] = [];
+          for (const [channel, fields] of Object.entries(
+            templates as Record<string, unknown>,
+          )) {
+            if (!fields || typeof fields !== "object") continue;
+            for (const [field, value] of Object.entries(
+              fields as Record<string, unknown>,
+            )) {
+              if (typeof value !== "string") continue;
+              for (const expr of extractTokenExpressions(value)) {
+                const v = validateTokenExpressionForRoots(expr, rootNames);
+                if (!v.ok) {
+                  errors.push(`${channel}.${field}: {{${expr}}} — ${v.error}`);
+                }
+              }
+            }
+          }
+          // The in-app link template must itself start as a relative
+          // path — it may not begin with a token or an absolute/scheme
+          // URL. (Render-time enforcement in composeFromTemplates is
+          // the backstop for token-substituted values.)
+          const inapp = (templates as Record<string, unknown>).inapp;
+          const linkUrl =
+            inapp && typeof inapp === "object"
+              ? (inapp as Record<string, unknown>).linkUrl
+              : undefined;
+          if (typeof linkUrl === "string" && linkUrl.trim() !== "") {
+            const { isSafeRelativePath } = await import("./token-templates");
+            if (!isSafeRelativePath(linkUrl.trim())) {
+              errors.push(
+                'inapp.linkUrl: must be a relative path starting with "/" (not "//" or an absolute URL)',
+              );
+            }
+          }
+          if (errors.length > 0) {
+            return {
+              valid: false,
+              errors: errors.map((e) => `Invalid template token (${e})`),
             };
           }
         }
@@ -201,6 +273,36 @@ function registerEventNotifierKind(): void {
         options: { choices: MEDIA_CHOICES },
       },
     ],
+    // Every notifier shares the Media checkbox group, but each declares its
+    // own `supportedMedia` and `validateConfig` rejects anything outside it.
+    // Mark the rest unavailable for the selected notifier so the admin form
+    // stops offering a selection that always 400s (the server check above
+    // stays authoritative — this only shapes the form).
+    envelopeFieldsForPlugin: (plugin) => {
+      const supported = new Set(
+        (plugin as { supportedMedia?: NotificationMedium[] }).supportedMedia ?? [],
+      );
+      return [
+        {
+          name: "media",
+          label: "Media",
+          type: "string",
+          multiple: true,
+          filterable: true,
+          options: {
+            choices: MEDIA_CHOICES.map((choice) =>
+              supported.has(choice.value)
+                ? choice
+                : {
+                    ...choice,
+                    disabled: true,
+                    disabledReason: "This notifier has no message for it",
+                  },
+            ),
+          },
+        },
+      ];
+    },
   });
   kindRegistered = true;
 }
@@ -275,5 +377,7 @@ import "./plugins/grievance-status-notifier";
 import "./plugins/grievance-deadline-notifier";
 import "./plugins/tos-absence-notifier";
 import "./plugins/edls-sheet-status-notifier";
+import "./plugins/edls-sheet-worker-sms-notifier";
 import "./plugins/dispatch-status-notifier";
 import "./plugins/dispatch-fore-notifier";
+import "./plugins/sitespecific-t631-interview";

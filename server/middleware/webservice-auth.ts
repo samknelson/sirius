@@ -2,15 +2,27 @@ import { AsyncLocalStorage } from 'async_hooks';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { storage } from '../storage';
 import { logger, logWsRequest } from '../logger';
-import type { WsClient, WsBundle, WsClientCredential } from '@shared/schema';
+import type { WsClient, WsClientCredential } from '@shared/schema';
 
+/**
+ * Per-request identity of a web service call. The client/credential half is
+ * filled by the auth middleware; the service half (configuration, plugin,
+ * operation) is filled by the dispatcher once it has resolved the address, so
+ * request logs name the service that actually served the call.
+ */
 export interface WebServiceContext {
   clientId: string;
   clientName: string;
-  bundleId: string;
-  bundleCode: string;
   credentialId: string;
   ipAddress: string;
+  /** Resolved `plugin_configs.id`. Absent when the address never resolved. */
+  configId?: string;
+  /** Configuration's alias, when it has one. */
+  configAlias?: string | null;
+  /** Registered web-service plugin id backing the configuration. */
+  pluginId?: string;
+  /** Declared operation name from the path. */
+  operation?: string;
 }
 
 export const webServiceContext = new AsyncLocalStorage<WebServiceContext>();
@@ -19,7 +31,7 @@ export function getWebServiceContext(): WebServiceContext | undefined {
   return webServiceContext.getStore();
 }
 
-function getClientIp(req: Request): string {
+export function getClientIp(req: Request): string {
   const forwardedFor = req.headers['x-forwarded-for'];
   if (forwardedFor) {
     const ips = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
@@ -38,11 +50,11 @@ interface AuthResult {
   success: boolean;
   error?: string;
   errorCode?: string;
-  client?: WsClient & { bundle?: WsBundle | null };
+  client?: WsClient;
   credential?: WsClientCredential;
 }
 
-async function authenticateRequest(req: Request, bundleCode?: string): Promise<AuthResult> {
+async function authenticateRequest(req: Request): Promise<AuthResult> {
   const clientKey = req.headers['x-ws-client-key'] as string | undefined;
   const clientSecret = req.headers['x-ws-client-secret'] as string | undefined;
 
@@ -54,23 +66,22 @@ async function authenticateRequest(req: Request, bundleCode?: string): Promise<A
       if (colonIndex > 0) {
         const basicKey = decoded.slice(0, colonIndex);
         const basicSecret = decoded.slice(colonIndex + 1);
-        return authenticateWithCredentials(basicKey, basicSecret, req, bundleCode);
+        return authenticateWithCredentials(basicKey, basicSecret, req);
       }
     }
     return { success: false, error: 'Missing credentials', errorCode: 'MISSING_CREDENTIALS' };
   }
 
-  return authenticateWithCredentials(clientKey, clientSecret, req, bundleCode);
+  return authenticateWithCredentials(clientKey, clientSecret, req);
 }
 
 async function authenticateWithCredentials(
   clientKey: string,
   clientSecret: string,
   req: Request,
-  bundleCode?: string
 ): Promise<AuthResult> {
   const validation = await storage.wsClientCredentials.validateSecret(clientKey, clientSecret);
-  
+
   if (!validation.valid || !validation.credential) {
     return { success: false, error: 'Invalid credentials', errorCode: 'INVALID_CREDENTIALS' };
   }
@@ -86,18 +97,6 @@ async function authenticateWithCredentials(
     return { success: false, error: 'Client is not active', errorCode: 'CLIENT_INACTIVE', client, credential };
   }
 
-  if (!client.bundle) {
-    return { success: false, error: 'Bundle not found', errorCode: 'BUNDLE_NOT_FOUND', client, credential };
-  }
-
-  if (client.bundle.status !== 'active') {
-    return { success: false, error: 'Bundle is not active', errorCode: 'BUNDLE_INACTIVE', client, credential };
-  }
-
-  if (bundleCode && client.bundle.code !== bundleCode) {
-    return { success: false, error: 'Client not authorized for this bundle', errorCode: 'BUNDLE_MISMATCH', client, credential };
-  }
-
   if (client.ipAllowlistEnabled) {
     const clientIp = getClientIp(req);
     const isAllowed = await storage.wsClientIpRules.isIpAllowed(client.id, clientIp);
@@ -111,27 +110,28 @@ async function authenticateWithCredentials(
   return { success: true, client, credential };
 }
 
-export interface WebServiceAuthOptions {
-  bundleCode?: string;
-}
-
-export function createWebServiceAuthMiddleware(options: WebServiceAuthOptions = {}): RequestHandler {
+/**
+ * Authenticate the caller's credential and establish the request context.
+ * Authorization (which services this client may call) is NOT decided here —
+ * that is the dispatcher's job, because it depends on the resolved
+ * configuration.
+ */
+export function createWebServiceAuthMiddleware(): RequestHandler {
   return async (req: Request, res: Response, next: NextFunction) => {
     const ipAddress = getClientIp(req);
     const startTime = Date.now();
-    
+
     try {
-      const result = await authenticateRequest(req, options.bundleCode);
+      const result = await authenticateRequest(req);
 
       if (!result.success) {
         const duration = Date.now() - startTime;
-        
+
         // Log auth failure to database with client ID if available
         logWsRequest({
           clientId: result.client?.id || null,
           clientName: result.client?.name || null,
           credentialId: result.credential?.id || null,
-          bundleCode: options.bundleCode || null,
           method: req.method,
           path: req.originalUrl,
           status: 401,
@@ -153,8 +153,6 @@ export function createWebServiceAuthMiddleware(options: WebServiceAuthOptions = 
       const context: WebServiceContext = {
         clientId: client.id,
         clientName: client.name,
-        bundleId: client.bundleId,
-        bundleCode: client.bundle!.code,
         credentialId: credential.id,
         ipAddress,
       };
@@ -171,12 +169,11 @@ export function createWebServiceAuthMiddleware(options: WebServiceAuthOptions = 
       // PII triage (accepted): caller IP is required to investigate
       // web-service auth failures and abuse; no other PII is logged here.
       logger.error('Web service authentication error', { error, ipAddress, path: req.path });
-      
+
       logWsRequest({
         clientId: null,
         clientName: null,
         credentialId: null,
-        bundleCode: options.bundleCode || null,
         method: req.method,
         path: req.originalUrl,
         status: 500,
@@ -185,7 +182,7 @@ export function createWebServiceAuthMiddleware(options: WebServiceAuthOptions = 
         errorCode: 'AUTH_ERROR',
         errorMessage: 'Authentication error',
       });
-      
+
       return res.status(500).json({
         error: 'Authentication error',
         code: 'AUTH_ERROR',
@@ -194,6 +191,6 @@ export function createWebServiceAuthMiddleware(options: WebServiceAuthOptions = 
   };
 }
 
-export function requireWebServiceAuth(bundleCode?: string): RequestHandler {
-  return createWebServiceAuthMiddleware({ bundleCode });
+export function requireWebServiceAuth(): RequestHandler {
+  return createWebServiceAuthMiddleware();
 }

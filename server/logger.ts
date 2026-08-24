@@ -1,8 +1,9 @@
 import winston from "winston";
 import { LogsTransport } from "./services/logs-transport";
 import { resolveDatabaseUrlOptional } from "@shared/database-url";
+import { getEnvironmentVariable } from "./config/env-registry";
 
-const isDevelopment = process.env.NODE_ENV === "development";
+const isDevelopment = getEnvironmentVariable("NODE_ENV") === "development";
 
 // Custom format for console output
 const consoleFormat = winston.format.combine(
@@ -94,7 +95,14 @@ export interface WsRequestLogData {
   clientId?: string | null;
   clientName?: string | null;
   credentialId?: string | null;
-  bundleCode?: string | null;
+  /** Resolved web service configuration (`plugin_configs.id`) that served it. */
+  configId?: string | null;
+  /** The configuration's alias, when it has one. */
+  configAlias?: string | null;
+  /** Registered web-service plugin backing that configuration. */
+  pluginId?: string | null;
+  /** Declared operation name from the request path. */
+  wsOperation?: string | null;
   method: string;
   path: string;
   status: number;
@@ -124,7 +132,10 @@ export function logWsRequest(data: WsRequestLogData): void {
     duration: data.duration,
     client_name: data.clientName,
     credential_id: data.credentialId,
-    bundle_code: data.bundleCode,
+    config_id: data.configId ?? null,
+    config_alias: data.configAlias ?? null,
+    plugin_id: data.pluginId ?? null,
+    ws_operation: data.wsOperation ?? null,
     error_code: data.errorCode,
   });
 }

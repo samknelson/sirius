@@ -3,11 +3,11 @@ import {
   type GrievanceStatusHistorySavedPayload,
 } from "../../../services/event-bus";
 import { registerEventNotifier } from "../registry";
+import { templatesSchemaBlock } from "../template-schema";
 import {
   type EventNotifierEventContext,
   type EventNotifierPlugin,
-  type NotificationMedium,
-  type NotifierMessageContent,
+  type NotifierChannelTemplates,
   type NotifierRecipient,
 } from "../types";
 
@@ -35,30 +35,48 @@ function configuredIds(configData: unknown, key: string): string[] {
 }
 
 /**
- * Compose the grievance's display title, mirroring the client's
- * `grievanceTitle`: denorm name, else "<Category> Grievance", else
- * "Grievance <id-prefix>".
+ * Default per-channel templates.
+ *
+ * `grievance_status_history` is the status-history ROW the event is about,
+ * loaded by its own id (so a later transition can't make the message
+ * describe a status this entry never had). `grievance` is the linked
+ * grievance, seeded as its own root.
+ *
+ * Both are written as the bare record: a record token renders the kind's
+ * default leaf, which is the grievance's `display_title` (the same title
+ * the grievance pages show) and the entry's status name.
  */
-function composeTitle(
-  grievanceId: string,
-  info: { name: string | null; categoryName: string | null } | undefined,
-): string {
-  if (info?.name && info.name.trim()) return info.name;
-  if (info?.categoryName) return `${info.categoryName} Grievance`;
-  return `Grievance ${grievanceId.slice(0, 8)}`;
-}
+const TITLE = "Grievance - status change - {{grievance}}";
+const SENTENCE =
+  'The grievance "{{grievance}}" ' +
+  'has reached the status "{{grievance_status_history}}".';
+// The grievance says where its own page is (see the kind's declared
+// entity location), so nothing here re-spells the route: `url` for the
+// channels that leave the app, `path` for the in-app link.
+const LINK_URL = "{{grievance.url}}";
+const LINK_PATH = "{{grievance.path}}";
+const LINK_LABEL = "View Grievance";
 
-/**
- * Absolute URL to the grievance detail page. In-app messages navigate with a
- * relative path, but email/SMS leave the app so they need a fully-qualified
- * link. Mirrors the domain resolution used by the other grievance notifiers.
- */
-function absoluteGrievanceUrl(grievanceId: string): string {
-  const domain =
-    process.env.REPLIT_DEV_DOMAIN ||
-    process.env.REPLIT_DOMAINS?.split(",")[0] ||
-    "localhost:5000";
-  return `https://${domain}/grievance/${grievanceId}`;
+function defaultTemplates(): NotifierChannelTemplates {
+  return {
+    email: {
+      subject: TITLE,
+      bodyHtml:
+        `<p>${SENTENCE}<br><br>` +
+        `View the grievance: ` +
+        `<a href="${LINK_URL}">` +
+        `${LINK_URL}</a></p>`,
+    },
+    sms: {
+      message: `${SENTENCE} View: ${LINK_URL}`,
+    },
+    inapp: {
+      title: TITLE,
+      body: SENTENCE,
+      linkUrl: LINK_PATH,
+      linkLabel: LINK_LABEL,
+    },
+  };
 }
 
 /**
@@ -107,7 +125,69 @@ export const grievanceStatusNotifier: EventNotifierPlugin = {
         items: { type: "string" },
         "x-options-resource": "grievance-role",
       },
+      templates: templatesSchemaBlock({
+        exampleTokens: [
+          '{{grievance.field(name="sirius_id")}}',
+          '{{grievance_status_history.field(name="status_id")}}',
+        ],
+      }),
     },
+  },
+
+  tokenTemplates: {
+    // Declaration order is what the editor shows: the message is about a
+    // grievance, so the grievance leads and the entry it just reached
+    // follows.
+    roots: [
+      {
+        name: "grievance",
+        kind: "grievance",
+        label: "Grievance",
+        description: "The grievance whose status changed",
+        async build(ctx) {
+          // Convenience root: the grievance is also reachable from the entry
+          // (`grievance_status_history.grievance`), but the message is about
+          // a grievance, so templates get to say so directly.
+          const { grievanceId } = payloadOf(ctx);
+          const { storage } = await import("../../../storage");
+          const { buildGrievanceEntity } = await import(
+            "../../tokens/plugins/grievance"
+          );
+          return buildGrievanceEntity(storage, grievanceId);
+        },
+      },
+      {
+        name: "grievance_status_history",
+        kind: "grievance_status_history",
+        label: "Grievance status entry",
+        description: "The status entry the grievance has just reached",
+        async build(ctx) {
+          const { grievanceId, newStatusHistoryId } = payloadOf(ctx);
+          // The event names the entry that is current after the mutation;
+          // load THAT row rather than re-reading "the grievance's current
+          // status", which a later transition could already have moved on
+          // from. Every column the editor offers is therefore a real value.
+          // A row deleted between the event and delivery leaves nothing
+          // truthful to say, so composition aborts (null, root not optional).
+          if (!newStatusHistoryId) return null;
+          const { grievanceStatusHistory } = await import(
+            "../../../../shared/schema/grievance/schema"
+          );
+          const { storage } = await import("../../../storage");
+          const row = await storage.grievanceStatusHistory.get(
+            grievanceId,
+            newStatusHistoryId,
+          );
+          if (!row) return null;
+          return {
+            kind: "grievance_status_history",
+            row: row as unknown as Record<string, unknown>,
+            table: grievanceStatusHistory,
+          };
+        },
+      },
+    ],
+    defaultTemplates,
   },
 
   shouldDispatch(ctx, configData): boolean {
@@ -149,46 +229,6 @@ export const grievanceStatusNotifier: EventNotifierPlugin = {
       if (r && !byContact.has(r.contactId)) byContact.set(r.contactId, r);
     }
     return Array.from(byContact.values());
-  },
-
-  async getMessage(
-    medium: NotificationMedium,
-    _recipient: NotifierRecipient,
-    ctx: EventNotifierEventContext,
-  ): Promise<NotifierMessageContent | null> {
-    const { grievanceId, newStatusName } = payloadOf(ctx);
-    const { storage } = await import("../../../storage");
-    const info = await storage.grievances.getAssignmentTitleInfo(grievanceId);
-    const grievanceTitle = composeTitle(grievanceId, info);
-    // The status name rides on the event payload; fall back to neutral phrasing
-    // if the status option can't be named (e.g. it was removed).
-    const status =
-      newStatusName && newStatusName.trim() ? newStatusName : "a new status";
-    const body = `The grievance "${grievanceTitle}" has reached the status "${status}".`;
-    const linkUrl = `/grievance/${grievanceId}`;
-    const absoluteUrl = absoluteGrievanceUrl(grievanceId);
-    const title = grievanceTitle;
-
-    switch (medium) {
-      case "inapp":
-        return {
-          title,
-          body,
-          linkUrl,
-          linkLabel: "View Grievance",
-        };
-      case "email":
-        return {
-          subject: title,
-          bodyText: `${body}\n\nView the grievance: ${absoluteUrl}`,
-        };
-      case "sms":
-        return {
-          message: `${body} View: ${absoluteUrl}`,
-        };
-      default:
-        return null;
-    }
   },
 };
 

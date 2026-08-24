@@ -1,7 +1,10 @@
+- [In-app env overrides](env-overrides-framework.md) — env wins unless "released" (empty/`__UNSET__`); NO denylist, ALL registered vars overridable (owner decision, don't re-block); one ENV_{NAME} row per override.
+- [PUBLIC_URL single base-URL source](public-url-registry.md) — Replit domain vars are UNREGISTERED; all public-origin reads go through PUBLIC_URL (transform holds the fallback chain); external callbacks use getPublicBaseUrl.
+- [Env-var registry](env-var-registry.md) — all env reads go through getEnvironmentVariable (server/config/env-registry.ts, pure leaf); check-env-registry flags process-env even in comments.
 - [Migration version-counter collision](migration-version-collision.md) — merged low-version migrations get skipped past the shared counter.
+- [Checkpointing during active merges](checkpoint-active-merge.md) — ordinary agent edits can checkpoint/reset an uncommitted merge; resolve and commit via Git before workspace edits.
 - [package-lock empty-version dedupe crash](lockfile-empty-version-dedupe.md) — fresh npm install dies with "Invalid Version:" when lockfile has nested optional platform entries lacking version.
 - [Vite HMR vs app WebSocket conflict](vite-hmr-ws-conflict.md) — app WS using `{ server, path }` aborts Vite HMR upgrades with 400 ("preview not loading").
-- [Eligibility plugin smoke tests](eligibility-plugin-smoke-tests.md) — standalone tsx tests in scripts/oneoffs; stub storage on the singleton.
 - [BAO buildup threemonthsprevElig quirk](bao-buildup-threemonthsprev-elig.md) — buildup's threemonthsprevElig short-circuits to false on its no-hours early return.
 - [Neon pool error handler](neon-pool-error-handler.md) — db.ts Pool must keep an 'error' listener or idle-connection drops crash the process (intermittent prod 500s).
 - [Employer compliance gating](employer-compliance-gating.md) — /employers/compliance is staff+ledger gated, never bulk.edit (bulk.edit is unsatisfiable: no staff.bulk perm, bulk component often off).
@@ -11,65 +14,44 @@
 - [SPA catch-all sendFile race](spa-sendfile-headers-race.md) — prod index.html fallback must guard headersSent + pass a sendFile callback.
 - [worker_hours upsert constraint](worker-hours-upsert-constraint.md) — upsertWorkerHours ON CONFLICT needs a UNIQUE constraint that can be absent from dev+prod even when schema.ts declares it.
 - [db:push rename hazard](db-push-interactive-rename-hazard.md) — db:push is interactive (dispatch_jobs.running vs start_date); never --force it.
-- [Sign-in Internal Server Error](signin-internal-server-error.md) — browser-specific white 500 at login = stale Clerk cookie + Set-Cookie/sendFile race; user clears cookies/incognito.
 - [Component gating on generic param routes](component-gating-generic-routes.md) — generic :type/:kind/:pluginId/:typeName routes must gate component-owned data at BOTH kind and per-plugin/type level.
 - [Event-notifier per-config filtering & link media](event-notifier-per-config-filter.md) — per-config filters need the dispatcher `shouldDispatch(ctx,configData)` hook (getRecipients/getMessage lack.
+- [T631 employer status visibility](t631-employer-status-visibility.md) — employer-facing surfaces (including notifications) must enforce EMPLOYER_VISIBLE_STATUSES at save time and runtime, or hidden interview statuses leak.
 - [Flood framework reuse for new caps](flood-framework-reuse.md) — new rate caps register a flood event (auto-tunable via flood_<name> var, auto-cleaned by cron, no migration).
 - [Ambient request context for cross-cutting event behavior](request-context-ambient-flags.md) — carry per-request behavior flags (e.g. suppressNotifications) in the request-context ALS + check in.
-- [Author-time migration check vs untracked files](migration-check-untracked.md) — fixed: check-migrations now includes `git ls-files --others`; failures are real even pre-commit.
 - [New jsonb column auto-leaks via storage reads](jsonb-column-pii-leak.md) — a new column on a core table leaks through every star-select/`.returning()` read.
 - [Charge plugin adjustment math (net-total reconcile)](charge-plugin-net-total-reconcile.md) — edit-driven charge deltas must reconcile against sum(base+adjustments), not the immutable base entry.
 - [ECHP quote/billing parity](echp-quote-billing-parity.md) — ECHP eligibility quote and charge reconciliation must price from the same aggregated rule source or worker is quoted one price.
-- [Plugin config route dormancy](plugin-config-route-dormancy.md) — a generic config router isn't dormant for a legacy kind if method names differ (legacy PUT vs generic PATCH).
-- [RJSF v6 formData prop sync](rjsf-v6-formdata-prop-sync.md) — custom ui:field ignores post-mount formData prop changes; remount the form (key bump) after seeding state, with stable effect deps.
-- [RJSF v6 widget formContext](rjsf-v6-widget-formcontext.md) — v6 widgets get registry, not a formContext prop; read registry.formContext or the widget silently renders empty.
-- [RJSF custom field onChange](rjsf-custom-field-onchange.md) — field onChange needs `(value, [])` (2nd arg required FieldPathList); widget onChange differs; field id is on `fieldPathId.$id`.
-- [Vite JSX generic transform](vite-jsx-generic-transform.md) — inline `<Component<Type>>` JSX crash-loops the dev server; standalone esbuild passes but Vite rejects it.
-- [Drizzle raw-sql ANY(array) fails in migrations](drizzle-raw-sql-any-array.md) — `= ANY(${jsArray})` in db.execute throws "requires array on right side"; use `IN (${sql.join(...)})`.
-- [queryFn undefined overrides default fetcher](queryfn-undefined-overrides-default.md) — `queryFn: cond ? fn : undefined` kills the default fetcher; the no-fn branch never fetches and silently.
 - [Plugin config validation runs on post-toRows data](plugin-config-validation-order.md) — validate `base.data` after `toRows`, not the raw body; RJSF strips fields not in the JSON Schema (e.g.
 - [Migration runner has no transaction](migration-runner-no-transaction.md) — up() isn't wrapped; copy-then-strip backfills must self-wrap in db.transaction or lose rows on rerun.
 - [Cross-table plugin_configs uniqueness](cross-table-uniqueness-denormalization.md) — tuple spanning base+subsidiary: denormalize base discriminator onto subsidiary + null-safe COALESCE unique index.
 - [Legacy-table drop needs full SQL sweep](legacy-table-drop-sql-sweep.md) — before DROPping a bespoke config table, grep the whole repo for raw SQL refs (service files bypass storage rule).
 - [plugin_configs legacy backfill is boot-time](plugin-configs-backfill-boot-time.md) — backfill legacy `variables`→plugin_configs at boot (knows enabledByDefault), not a SQL migration.
-- [Charge configs via generic search must re-apply legacy ordering](charge-config-generic-search-ordering.md) — generic pluginConfigs.search orders by (ordering,id); legacy charge single-row picks.
 - [Unified startup via bootstrapApp](dual-startup-entrypoints.md) — dev (index.ts) + prod (production-entry→startApp) now share ONE init sequence (bootstrapApp in app-init.ts).
-- [New plugin kind needs client ALLOWED_KINDS](new-plugin-kind-client-allowlist.md) — generic admin page has a hardcoded client allowlist; missing kind → "unknown kind" client-side even though server.
 - [Split authz/data config resolution is an IDOR](split-authz-data-idor.md) — auth-check config and data-read config must be the SAME resolved record.
 - [Payment-method token enforcement point](payment-method-token-enforcement.md) — create route stores methodToken verbatim; validate/reject sensitive data in plugin attachMethod (runs pre-persist).
 - [Cache-invalidating events must emit after commit](cache-invalidation-emit-after-commit.md) — storage emits that invalidate an in-memory cache must use onAfterCommit.
 - [Drift gate index predicate cast matching](drift-gate-index-predicate-casts.md) — drift gate doesn't strip `::text` casts; partial-index WHERE on varchar/text must be declared casted `(col)::text =.
 - [Nullable denorm scalar -> derived table](denorm-column-to-table-null-semantics.md) — replacing a nullable denorm column with a derived flagged table = "at most one" flag, not "exactly one".
-- [Drizzle .unique() = constraint not index](drizzle-unique-constraint-vs-index.md) — a migration creating a unique INDEX fails the drift gate when the schema uses column `.unique()`.
-- [Reorder via swap, not relative +/-1](reorder-swap-vs-relative-sequence.md) — GenericOptionsPage Move Up/Down ±1 math breaks on dense int sequences (negative up, collide down).
-- [ProtectedRoute vs nav-registry component prop](protectedroute-vs-navregistry-component-prop.md) — gate routes with `component=`; gate sidebar items with `requiresComponent:`.
 - [Derived "current" flag needs parent-row lock](derived-current-flag-row-lock.md) — clear-then-set is_current under a partial unique index races across txs.
 - [Denorm backfill is enqueue-then-recompute](denorm-backfill-enqueue-semantics.md) — backfillAllDenorm only enqueues stale rows + deletes widows; compute/write happens later in denorm_stale cron.
 - [Dual DB driver + empty-DB bootstrap](dual-db-driver-and-bootstrap.md) — app resolves EXTERNAL_DATABASE_URL (Neon) first; shell $DATABASE_URL is a stale helium PG — never verify app DB state via psql $DATABASE_URL.
 - [Core migrations vs optional components](core-migrations-optional-components.md) — core migrations must tolerate optional-component tables (enabledByDefault:false) being absent.
-- [Wizard plugin needsReadOnlyDb flag](wizard-plugin-readonly-db-flag.md) — wizard read lives in engine/types/*.ts but the needsReadOnlyDb flag lives on the plugins/*.ts wrapper.
-- [tsc not in dev loop](tsc-not-in-dev-loop.md) — dev runs under tsx (no type-check); tsc now runs automatically as the `typecheck` validation; treat red tsc as a possible real runtime bug.
-- [Drizzle .notNull() breaks null-autogen inserts](drizzle-notnull-breaks-autogen.md) — .notNull() (no default) makes $inferInsert required; keep zod field nullish + pass a definite string at the.
 - [EBS pump at-most-once delivery](ebs-claim-before-emit.md) — deferred event-bus pump must claim the terminal status row (unique ON CONFLICT RETURNING) BEFORE emit.
 - [EBS scheduled-reminder pattern](ebs-scheduled-reminder-pattern.md) — "N days before/after a moving date" = denorm scheduler + notifier; encode the anchor in the entity id.
-- [Event-notifier self-notification opt-out](event-notifier-notify-self.md) — EBS-pump reminders must set notifySelf:true (manual pump run leaks operator identity → self-suppresses to nobody).
-- [Denorm verify script circular import](denorm-verify-script-circular-import.md) — a standalone tsx script importing the denorm barrel crashes (PluginRegistry init).
 - [drizzle-kit push hazards](drizzle-kit-push-hazards.md) — >63-char auto FK/unique names churn forever (pin explicit DB-matching names); non-interactive push destroys constraints on failed runs.
 - [Vite devDep in prod bundle](vite-devdep-in-prod-bundle.md) — a top-level `import "vite"` on the boot path crashes the lean ECS image at module load.
 - [ECS DATABASE_URL/SESSION_SECRET gap](ecs-database-url-secrets-gap.md) — Terraform task def gives DB parts not DATABASE_URL/SESSION_SECRET.
 - [esbuild barrel init cycle](esbuild-barrel-init-cycle.md) — prod-only "Class extends value undefined" = barrel re-export cycle.
 - [pg connectionString ssl override](pg-connectionstring-ssl-override.md) — pg merges parsed connectionString OVER explicit ssl; sslmode=require→ssl={} (verify on) clobbers rejectUnauthorized:false →.
 - [Replit lockfile firewall URLs break external CI](replit-lockfile-firewall-urls.md) — npm installs here write package-firewall.replit.local resolved URLs.
-- [Wizard create preset vs run steps](wizard-create-run-step-preset.md) — create route must not preset progress "in_progress" for run-kind starting steps.
 - [Accepted-primary ⇒ not_available invariant](dispatch-accept-not-available-invariant.md) — enforced transactionally in dispatch+worker-status storage (409 on violation).
 - [FILESYSTEMS env registry](filesystems-env-registry.md) — env-only filesystem config, no code default fs, write-then-insert/row-then-object ordering.
 - [E2E route harness auth stub](route-harness-auth-stub.md) — standalone route tests need req.user={claims:{sub},dbUser:user} (resolveDbUser cache); multer must run AFTER authz.
 - [Masquerade effective-actor convention](masquerade-effective-actor.md) — masqueraded user is THE actor everywhere (context, notifications, audit user_id).
-- [Options sequence ties break cross-surface ordering](options-sequence-ties.md) — duplicate `sequence` values make config-page vs consumer order disagree (list() has no tiebreak).
 - [Benefits scan fixed-point](benefits-scan-fixed-point.md) — membership-checking eligibility rules (Linked benefits) must see same-run creates/deletes via presentBenefitIds, not pre-scan DB state.
 - [Advisory-lock check-then-write guard](advisory-lock-check-then-write.md) — token-list uniqueness ("start,continue") can't be a plain unique index.
 - [Google Routes API for driving distance](google-routes-driving-distance.md) — reuse the address-validation Google Maps key (getGoogleMapsApiKey), never a new secret.
-- [Wizard form-step enum schema](wizard-form-step-enum-schema.md) — form-step JsonSchema pickers use enum+enumNames, NOT oneOf/const (const is not on the JsonSchema type; tsc rejects it).
 - [Wizard benefit filtering choke point](wizard-benefit-filter-chokepoint.md) — evaluateEligibleBenefits is the ONE place that both offers and re-validates benefit selection (first-time + open.
 - [Event replay as-of resolution](event-replay-asof-resolution.md) — listeners fanning out per covered person must resolve people as-of the event date (getActiveByWorkerAsOf).
 - [Cron charge reversal sweep scope](cron-charge-reversal-sweep.md) — scheduled billing reversals must sweep previously-billed reference ids, not just the active entity list.
@@ -86,10 +68,8 @@
 - [Trust-provider EDI scoping](trust-provider-edi-scoping.md) — EDI file membership scopes by benefitSiriusId, not config providerId (no provider↔benefit relation exists).
 - [Tx race handling: ON CONFLICT, not catch](tx-race-onconflict-not-catch.md) — inside a Postgres transaction, catch-and-continue after a unique violation leaves the tx aborted.
 - [Cross-component nullable pointer](cross-component-nullable-fk.md) — core column pointing at an optional-component table: plain varchar in schema.ts (no .references(), avoids cycle).
-- [Wizard advance via navigate](wizard-advance-via-navigate.md) — advance programmatic wizard launches with dispatch/navigate, not a currentStep PATCH (else next step stays pending.
 - [BAO upload-source payment allocation](bao-upload-source-payments.md) — withholding uploads store allocations only; details.baoUploadSource on a cleared payment drives per-worker credits.
 - [BAO premium subscriber-only charges](bao-premium-subscriber-only.md) — premium charges key to subscribers; dependent WMB events retarget worker_1 + self-heal unswept legacy entries.
-- [EDI member-model new fields](edi-member-model-new-fields.md) — new EdiPerson fields must also be added to buildMemberUnits' explicit dependent literal or deps silently lack them.
 - [Scanner taint is file-local](scanner-taint-file-local.md) — clear SSN/secret findings by isolating the sensitive step in its own no-logging module; IP audit logs are accepted mediums.
 - [HoundDog log-PII remediation](hounddog-log-pii-remediation.md) — masking never clears findings; log stable ids instead of emails/names, annotate accepted sites.
 - [S1 loader reject policy](s1-loader-reject-policy.md) — loaders fail unless every reject reason is per-run allowed (--allow-rejects); verify gates on FATAL reasons only; pre-validate storage contracts before satellite writes; sanitized error codes.
@@ -98,25 +78,16 @@
 - [S1 relation-type letter-code sirius_ids](s1-reltype-letter-codes.md) — reltype options carry S1 letter codes not tids; ES→EX ruling; EX/RP must be handled in every EDI mapping.
 - [Managed secret provisioning](managed-secret-provisioning.md) — Replit Secrets reach managed workflows, not necessarily ordinary Shell commands; use short-lived, idempotent hooks and remove them.
 - [S1 loader keyset paging](s1-loader-keyset-paging.md) — loaders page staged rows + batch IN-query checks; jsonb_build_object params need explicit casts on Neon.
-- [Migration scripts outside app tsconfig](scripts-tsconfig-gap.md) — app tsc green says nothing about scripts/; run tsc -p tsconfig.scripts.json before first execution of new loaders.
-- [Synthetic S1 tag-data gap](s1-synthetic-tag-gap.md) — dev MariaDB predates sirius_contact_tags (NULL tids, no terms); tag consumers legitimately no-op in dev; cover via seeded staged fakes, don't regenerate.
-- [Dev curl auth shortcut](dev-local-auth-curl.md) — local login is dev default (seeded admin + INITIAL_ADMIN_PASSWORD); component enables via SQL need a restart (boot-time cache); tsx server has no hot reload.
 - [S1 rehearsal target pattern](s1-rehearsal-pattern.md) — rehearsal DB is in-VPC only: ship operator-run SQL kits validated verbatim on dev; empty bootstrap skips seeds/components; S1 DSN whitespace.
-- [ShellExec background process lifetime](shellexec-background-process-lifetime.md) — nohup jobs die when the call ends; use a temp console workflow for long one-shots.
 - [FC migration ECS ops](fc-migration-ecs-ops.md) — CloudShell regular tab = internet/AWS APIs, VPC tab = RDS only; silent stall = wrong tab; run-task per runbook step.
 - [Synthetic S1 regen invalidates id_map](s1-regen-idmap-staleness.md) — regen assigns new nids; restage + re-run contacts-workers before any id_map-resolving loader.
 - [S1 prod vocab renames](s1-prod-vocab-renames.md) — prod taxonomy vocab names differ from synthetic dev (election type etc.); terms-querying loaders must accept both.
 - [S1 staging NUL bytes](s1-staging-nul-bytes.md) — real S1 data has \u0000 in JSON; Postgres 22P05; staging strips at write boundary (only "verbatim" exception).
-- [Prod boot verification via DB](prod-boot-verification-via-db.md) — no AWS/URL access here; verify via migrations_version + winston liveness; SOURCE_CONFIG=John's bao-prd, EXTERNAL=shared dev DB.
 - [gitPush needs upstream tracking](gitpush-callback-upstream.md) — pushing to an existing remote branch requires `git branch -u origin/<b>` first, else opaque BRANCH_ALREADY_EXISTS.
-- [BAO member status scan codes](bao-member-status-codes.md) — scan resolves options by code (EC100/EC80/H60); dev DB options lack codes → scan fails explicitly until seeded.
-- [S1 load-options required-column gaps](s1-load-options-required-columns.md) — fresh-target create/adopt paths hit NOT NULL columns (gender.code) and empty-patch updates that id_map-matched runs never exercised.
 - [Loader FATAL_REASONS ↔ verify coupling](loader-fatal-reasons-verify-coupling.md) — every new reject reason must join FATAL_REASONS or verify inflates; reject smoke tests must diff against a baseline run.
 - [S1 loader heartbeats & log throttling](s1-loader-observability.md) — shared progress heartbeat + storage-op log sampling knobs; winston_logs no longer a loader progress proxy.
 - [Loader pre-checks must use the storage contract's clock](loader-precheck-contract-clock.md) — UTC "today" vs getTodayYmd() local lets tomorrow-dated rows die as opaque storage errors.
-- [S1 deleted-node dangling refs](s1-deleted-node-dangles.md) — *_unmapped rejects are usually refs to deleted S1 nodes; LEFT JOIN node before blaming a loader gap.
 - [S1 shop JSON is the employer config store](s1-shop-json-config.md) — policy history + charge-plugin rate histories live in field_sirius_json; hourly-uuid allow-list ruling inside; variable dumps carry live Stripe keys.
-- [S1 smoke vs regenerated staging](s1-smoke-regen-fallout.md) — staging regen typed all synthetic payments; smoke guard fingerprint + t16–t19 expectations stale (17 pre-existing failures, guard refuses).
 - [Task-merge SHA rewrite vs deploy branches](task-merge-divergent-deploy-branch.md) — non-fast-forward on push-branch.sh = duplicate content, different SHAs; verify empty diff then `merge -s ours`.
 - [BAO hours upload performance](bao-hours-upload-performance.md) — bulk pre-fetch + charge config cache + skipHomeEmployerEvent; see file for the three-axis approach.
 - [.replit gitignored vs task review](dotreplit-gitignored-review.md) — .replit workflow changes never show in the task diff; completion review rejects unless drift_reason explains it.
@@ -137,5 +108,53 @@
 - [Advisory write-fence lifecycle](advisory-write-fence-lifecycle.md) — isolate session-lock capacity and track handler settlement past client disconnects.
 - [Live S1 count drift](live-s1-count-drift.md) — daily staging cannot require exact source counts while S1 is changing; final-freeze remains strict.
 - [S1 watchdog is not a deletion feed](s1-watchdog-not-deletion-feed.md) — dblog retention and missing source IDs rule it out for daily-sync deletes.
-- [ECS Fargate log-stream discovery](ecs-fargate-log-stream-discovery.md) — DescribeTasks may omit logStreamName; derive awslogs stream from prefix/container/task ID.
 - [Stale worker SID collisions can be duplicate rows](stale-worker-sid-duplicate-merge.md) — if the identified S1 NID already maps to a canonical worker, merge dependents; never rekey the stale row.
+- [Worker-ban framework](worker-ban-framework.md) — soft-ref ban types + singleton behavior plugins; only unconditional behaviors get denorm facts; ban-type edits must re-emit WORKER_BAN_SAVED; guard ALL accept paths.
+- [Storage audit log args PII](storage-audit-log-args-pii.md) — logged storage methods persist raw args to winston_logs; redact payloads via logArgs, conditional-log via shouldLog; prune deletes must re-qualify atomically.
+- [Maintenance-mode write lock](maintenance-mode-write-lock.md) — system_mode=maintenance applies default_transaction_read_only per pool checkout (acquire hook, armed only in bootstrapApp); allowInMaintenanceMode is the ONLY escape.
+- [Denorm event ordering race](denorm-event-ordering-race.md) — registry runs compute() outside applyComputed's tx; stale snapshot can win last & be marked ok. Framework-wide, don't fix per-plugin.
+- [Dashboard target-view gating](dashboard-target-view-gating.md) — "view as user" overrides must enforce ALL gates (incl. client requiredPermissions hint) against the target on every endpoint via one shared helper.
+- [Policy delegation defeats skipCache](policy-delegation-cache-staleness.md) — ctx.checkPolicy sub-policy results are cached ~5min even when the outer policy sets skipCache; inline relationship checks for revocation-critical policies.
+- [Template Studio preview pattern](template-studio-host-pattern.md) — preview request is self-describing (specs+finished templates+context, no registry); callers compose their own templates; shared field tables keep preview==delivery.
+- [Token plugin framework](token-plugin-framework.md) — legacy ids must stay valid chains; audience gating fail-closed per channel; evaluator mirrors shared arg validation; test scripts import storage/database not barrel.
+- [Auth provisioning & role reconcile](auth-provisioning-reconcile.md) — auth_settings is one variables row; provider-managed roles tracked in authIdentities.metadata.managedRoleIds, never claim locally held roles.
+- [Template preview contexts](template-preview-subjects.md) — context is raw root JSON or an entity ref; entity refs gated per token KIND (fail closed, same id checked+loaded); persona keys belong to the kind owning the leaf.
+- [Derived registry cache versioning](derived-registry-cache-versioning.md) — caches over listEnabledSync must key on registry version + component-cache revision, else validation accepts what delivery renders as unknown.
+- [Per-plugin envelope narrowing](plugin-config-envelope-per-plugin-narrowing.md) — narrow kind-level config fields per plugin via the adapter hook served by /configs/meta; lock (don't hide) unavailable choices, keep selected ones clearable.
+- [Notifier hidden template channels](notifier-hidden-template-channels.md) — hide undeliverable medium cards via x-token-hidden marker on a schema clone; never prune the group or RJSF wipes stored overrides.
+- [Real-record preview gating](preview-record-gating.md) — kind declares record-scoped policy OR route gate; no declaration = not previewable; container-built studio context only OFFERS seeds, render re-gates every named id.
+- [Notifier token root truthfulness](notifier-token-root-truthfulness.md) — root name must BE the entity kind; advertised-but-unbuilt fields validate + preview fine and deliver blank; renames need a parsed-chain rewrite of stored templates.
+- [Shared HTML utils](shared-html-utils.md) — escape/sanitize/HTML→text live in ONE library split by dep weight (boot path imports the escape leaf, never the barrel); DOMPurify drops rel=noopener.
+- [Sanitizing signed documents](sanitizing-signed-documents.md) — hash the RAW bytes, sanitize once and submit that same string, and compare entity-decoded: byte-diff ≠ appearance-diff.
+- [Post-merge verification](post-merge-verification.md) — restart before diagnosing (lazy imports of deleted modules fail only at request time); registries throw on duplicate ids but a dropped registration boots clean.
+- [Token editing invariants](token-editing-invariants.md) — the studio is the ONLY place a tokenized string is edited; evaluation is medium-independent; cleaning is the container's job and never reads a token's surroundings.
+- [Regression-test bar](regression-test-bar.md) — never propose a follow-up test task (generic title templates push you to); bar + lint-vs-test split live in replit.md; gates fixed at lint/typecheck/migrations.
+- [Derived token segments](derived-token-segments.md) — generated segments (options relations from FK+options metadata) must regenerate on LATE plugin registration, name themselves after the target table, skip ambiguous pairs.
+- [Plugin id in client schema metadata](plugin-id-in-client-schema-metadata.md) — never hand-write a plugin's id into schema metadata addressing a by-id endpoint; stamp it at registration (drift 404s silently = empty editor).
+- [Generated relation segments](generated-relation-segments.md) — a relation's metadata describes the kind AS SEEN FROM ITS OWNER (wrong label/gate); rank producers, and derived segments must lose to hand-written ones in BOTH registration orders.
+- [Studio host data honesty](studio-host-source-state.md) — a studio host must pass its catalog request's loading/error state, not just data; roots always report WHOSE records they offer and why there are none.
+- [Studio roots are declared, never derived](studio-root-declaration.md) — each token surface states its complete root list; scoping the SEGMENT GRAPH (not just the picker) is what binds it; delivery + Lob merge keys stay unscoped.
+- [Studio records are supplied, never found](studio-record-supply.md) — no per-kind "first N records" hook; container hands over recordsByRoot, unsupplied roots are personas only; by-id load is the only record read.
+- [Send-scoped token roots](send-scoped-token-roots.md) — a root whose record IS a send must be seeded at delivery, declare its addressee for preview, and be counted per-send in coverage; gate on the recipient.
+- [Token default leaf per producer](token-default-leaf-per-producer.md) — declare a kind's defaultLeaf on EVERY plugin producing it; validation is root-scoped while tree/delivery lookup is not, so root-only = short form rejected on hop-only surfaces.
+- [Studio seeds from event replay](studio-seeds-from-event-replay.md) — a records-less container seeds previews by replaying the bus's recent-emit buffer through its OWN builders, handing over ids; a ref may omit its label and let the kind name + gate it.
+- [Editor catalog config contract](editor-catalog-config-contract.md) — an editor sends its WHOLE unsaved config (minus what it is editing) to catalog/preview endpoints, debounced; declared "dependent fields" lists go stale silently.
+- [Entity location declaration](entity-location-declaration.md) — a kind names its tab-registry page + id field + default tab, never a route; sub-entity = id from a FK; arg choices validated always, offered per component.
+- [Manual compose render step](manual-compose-render-step.md) — studio renders INTO the form (sample off, unknown tokens block apply); a screen offering the studio must refuse to send text still carrying `{{…}}`.
+- [Dead capability removal](dead-capability-removal.md) — no caller ⇒ delete it, never invent a user story to justify existing code; refuse a retired request shape by key PRESENCE, don't no-op it.
+- [Optional unique blank→NULL](optional-unique-blank-to-null.md) — trim-to-null in the shared insert schema with an OUTER .optional() (else .partial() clears it); named UNIQUE constraint + constraint-name-checked 23505→409.
+- [Env change-effect "reload"](env-change-effect-reload.md) — third classification value; boot gate asserts reload-registry ↔ env-registry both ways; "waiting on restart" is a hashed baseline diff, not a list.
+- [Self-restart needs a supervisor](self-restart-supervision.md) — exit non-zero (75); a restart policy is unreadable from inside, so supervision is yes/no/unknown; prove a restart via a boot identity, not a 200.
+- [Branch-scoped CI/deploy dirs](branch-scoped-ci-files.md) — .github/deploy are per-branch, never on main; task agents silently delete them; gitignore can't untrack, `git add` no-ops; use `git checkout <branch> -- paths` / `git rm --cached`.
+- [Deploy env var sources](deploy-env-var-sources.md) — ECS container env comes ONLY from GitHub `APP_*` vars/secrets; the repo `deploy/env.<env>.json` source is referenced as if it works but is unbuilt (silent no-op).
+- [Per-recipient notifier messages](notifier-per-recipient-message.md) — token roots build once per event, so a per-recipient link means composing in getMessage (carry it on a ctx-keyed WeakMap); pre-filter SMS opt-in or every opted-out person gets a failed comm row.
+- [Notifier comm writeback](notifier-comm-writeback.md) — senders own comm creation; onCommCreated is the only way a plugin learns its message id; fires on failures too; order single-link writes by sent-time, not write order.
+- [Plugin config public addressing](plugin-config-public-addressing.md) — config ids are per-database, so a public URL needs a manifest-declared alias; resolve id-then-alias, refuse ambiguity at call time in the ONE shared refusal.
+- [Notification receipt column](notification-receipt-column.md) — a comm-link column that gates resending must be voided in the entity's UPDATE (null-stripped value compare) and its write-back guarded by the sender's snapshot.
+- [After-commit sibling history boundary](after-commit-sibling-history-boundary.md) — write an entity's history row INSIDE the save's tx (a listener records the wrong save, or none yet); order by the captured save stamp; diff the unfiltered read.
+- [Platform history re-parenting](platform-history-reparenting.md) — main gets rewritten into content-identical commits with new parents; long-lived config branches re-conflict forever — rebuild them, don't merge.
+- [Credential redaction in logs](audit-log-credential-redaction.md) — bearer-like values leak via TWO paths (storage before/after payload AND the API responsePreview key allowlist); log identifiers + hasX booleans, prove with a canary scan.
+- [Component migration/push parity](component-migration-push-parity.md) — the enable-path push leaves FKs UNNAMED (`<t>_<c>_fkey`) while keeping declared unique names; a creation migration must match, proven by snapshot-drop-migrate-compare.
+- [Send-path credential minting](send-path-credential-minting.md) — notifier links keyed by a per-entity credential need get-or-create (never set), `{record,issued}` for honest audit, and a throwing second-component check in shouldDispatch.
+- [Which logger reaches the log viewer](log-surface-console-vs-viewer.md) — app `logger` is console-only; only `storageLogger` writes winston_logs, so framework catch-and-log failures are NOT in the admin viewer.
+- [Typecheck heap ceiling](typecheck-heap-ceiling.md) — tsc runs as two pinned processes; heap grows ~linearly with file count, and cutting drizzle out of the client half was measured at only −7%.

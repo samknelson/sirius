@@ -201,6 +201,17 @@ export interface GrievanceStorage {
     { id: string; name: string | null; categoryName: string | null } | undefined
   >;
   /**
+   * The same title parts for a batch of grievances, keyed by grievance id
+   * (ids with no surviving grievance are simply absent). One query, for
+   * callers holding a list of rows — a per-row `getAssignmentTitleInfo`
+   * loop is an N+1.
+   */
+  getAssignmentTitleInfoMany(
+    grievanceIds: string[],
+  ): Promise<
+    Map<string, { id: string; name: string | null; categoryName: string | null }>
+  >;
+  /**
    * The system role ids a user must hold (any one of) to be assignable to
    * the given grievance role. Empty array = no restriction.
    */
@@ -801,6 +812,7 @@ export function createGrievanceStorage(): GrievanceStorage {
       return !!row;
     },
 
+
     async getAssignmentTitleInfo(
       grievanceId: string,
     ): Promise<
@@ -824,6 +836,38 @@ export function createGrievanceStorage(): GrievanceStorage {
         )
         .where(eq(grievances.id, grievanceId));
       return row || undefined;
+    },
+
+    async getAssignmentTitleInfoMany(
+      grievanceIds: string[],
+    ): Promise<
+      Map<string, { id: string; name: string | null; categoryName: string | null }>
+    > {
+      const ids = Array.from(new Set(grievanceIds));
+      const out = new Map<
+        string,
+        { id: string; name: string | null; categoryName: string | null }
+      >();
+      if (ids.length === 0) return out;
+      const client = getClient();
+      const rows = await client
+        .select({
+          id: grievances.id,
+          name: grievanceNameDenorm.name,
+          categoryName: optionsGrievanceCategory.name,
+        })
+        .from(grievances)
+        .leftJoin(
+          optionsGrievanceCategory,
+          eq(grievances.categoryId, optionsGrievanceCategory.id),
+        )
+        .leftJoin(
+          grievanceNameDenorm,
+          eq(grievanceNameDenorm.grievanceId, grievances.id),
+        )
+        .where(inArray(grievances.id, ids));
+      for (const row of rows) out.set(row.id, row);
+      return out;
     },
 
     async rolePermittedSystemRoleIds(roleId: string): Promise<string[]> {

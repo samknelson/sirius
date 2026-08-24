@@ -3,11 +3,11 @@ import {
   type EdlsSheetSavedPayload,
 } from "../../../services/event-bus";
 import { registerEventNotifier } from "../registry";
+import { templatesSchemaBlock } from "../template-schema";
 import {
   type EventNotifierEventContext,
   type EventNotifierPlugin,
-  type NotificationMedium,
-  type NotifierMessageContent,
+  type NotifierChannelTemplates,
   type NotifierRecipient,
 } from "../types";
 
@@ -36,7 +36,10 @@ const RECIPIENT_SHEET_SUPERVISOR = "sheet_supervisor";
 const RECIPIENT_SHEET_ASSIGNEE = "sheet_assignee";
 const RECIPIENT_CREW_SUPERVISORS = "crew_supervisors";
 
-const STATUS_LABELS: Record<string, string> = {
+/** Display labels for sheet statuses, merged onto the event entity as
+ * `status_label` so the default wording matches the pre-token notifier
+ * ("Locked", not "lock"). Raw `status` stays available for templates. */
+export const EDLS_STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
   request: "Request",
   lock: "Locked",
@@ -44,21 +47,58 @@ const STATUS_LABELS: Record<string, string> = {
   reserved: "Reserved",
 };
 
-function statusLabel(status: string): string {
-  return STATUS_LABELS[status] ?? status;
+export function edlsStatusLabel(status: string): string {
+  return EDLS_STATUS_LABELS[status] ?? status;
+}
+
+/** Legacy display name for a sheet: the (non-blank) title, else
+ * `Sheet <id-prefix>` — merged onto the event entity as `display_title`. */
+export function edlsSheetDisplayTitle(sheetId: string, title: string): string {
+  return title && title.trim() ? title : `Sheet ${sheetId.slice(0, 8)}`;
 }
 
 /**
- * Absolute URL to the sheet detail page. In-app messages navigate with a
- * relative path, but email/SMS leave the app so they need a fully-qualified
- * link. Mirrors the domain resolution used by the other notifiers.
+ * The sheet's date exactly as stored ("2026-01-08"), merged on as
+ * `ymd_display`. `ymd` is a date-only column, and rendering it through
+ * `field()` runs it through a timezone-local formatter that can report the
+ * previous day; a sheet's date must not move with the reader's clock.
  */
-function absoluteSheetUrl(sheetId: string): string {
-  const domain =
-    process.env.REPLIT_DEV_DOMAIN ||
-    process.env.REPLIT_DOMAINS?.split(",")[0] ||
-    "localhost:5000";
-  return `https://${domain}/edls/sheet/${sheetId}`;
+export function edlsYmdDisplay(ymd: string): string {
+  return ymd;
+}
+
+/** Default per-channel templates, rendered against a payload snapshot of
+ * the transition (an intervening save must not change the message). */
+const TITLE = "EDLS - status change - {{edls_sheet}}";
+const SENTENCE =
+  'The EDLS sheet "{{edls_sheet}}" ' +
+  '({{edls_sheet.field(name="ymd_display")}}) has reached the status ' +
+  '"{{edls_sheet.field(name="status_label")}}".';
+// The sheet says where its own page is; nothing here re-spells the route.
+const LINK_URL = "{{edls_sheet.url}}";
+const LINK_PATH = "{{edls_sheet.path}}";
+const LINK_LABEL = "View Sheet";
+
+function defaultTemplates(): NotifierChannelTemplates {
+  return {
+    email: {
+      subject: TITLE,
+      bodyHtml:
+        `<p>${SENTENCE}<br><br>` +
+        `View the sheet: ` +
+        `<a href="${LINK_URL}">` +
+        `${LINK_URL}</a></p>`,
+    },
+    sms: {
+      message: `${SENTENCE} View: ${LINK_URL}`,
+    },
+    inapp: {
+      title: TITLE,
+      body: SENTENCE,
+      linkUrl: LINK_PATH,
+      linkLabel: LINK_LABEL,
+    },
+  };
 }
 
 /**
@@ -123,7 +163,46 @@ export const edlsSheetStatusNotifier: EventNotifierPlugin = {
           ],
         },
       },
+      templates: templatesSchemaBlock({
+        exampleTokens: [
+          '{{edls_sheet.field(name="title")}}',
+          '{{edls_sheet.field(name="status")}}',
+        ],
+      }),
     },
+  },
+
+  tokenTemplates: {
+    roots: [
+      {
+        name: "edls_sheet",
+        kind: "edls_sheet",
+        label: "EDLS sheet",
+        description: "The sheet whose status this event changed",
+        async build(ctx) {
+          const { sheet, newStatus } = payloadOf(ctx);
+          if (!sheet) return null;
+          const { edlsSheets } = await import(
+            "../../../../shared/schema/edls/schema"
+          );
+          // The sheet as of the transition this event describes, carried on
+          // the event rather than reloaded: an intervening save (or delete)
+          // must not change — or swallow — the notification.
+          return {
+            kind: "edls_sheet",
+            row: {
+              ...(sheet as unknown as Record<string, unknown>),
+              status: newStatus,
+              statusLabel: edlsStatusLabel(newStatus),
+              displayTitle: edlsSheetDisplayTitle(sheet.id, sheet.title),
+              ymdDisplay: edlsYmdDisplay(sheet.ymd),
+            },
+            table: edlsSheets,
+          };
+        },
+      },
+    ],
+    defaultTemplates,
   },
 
   shouldDispatch(ctx, configData): boolean {
@@ -188,42 +267,6 @@ export const edlsSheetStatusNotifier: EventNotifierPlugin = {
       if (r && !byContact.has(r.contactId)) byContact.set(r.contactId, r);
     }
     return Array.from(byContact.values());
-  },
-
-  async getMessage(
-    medium: NotificationMedium,
-    _recipient: NotifierRecipient,
-    ctx: EventNotifierEventContext,
-  ): Promise<NotifierMessageContent | null> {
-    const { sheetId, newStatus, title: sheetTitle, ymd } = payloadOf(ctx);
-    const name =
-      sheetTitle && sheetTitle.trim()
-        ? sheetTitle
-        : `Sheet ${sheetId.slice(0, 8)}`;
-    const body = `The EDLS sheet "${name}" (${ymd}) has reached the status "${statusLabel(newStatus)}".`;
-    const linkUrl = `/edls/sheet/${sheetId}`;
-    const absoluteUrl = absoluteSheetUrl(sheetId);
-
-    switch (medium) {
-      case "inapp":
-        return {
-          title: name,
-          body,
-          linkUrl,
-          linkLabel: "View Sheet",
-        };
-      case "email":
-        return {
-          subject: name,
-          bodyText: `${body}\n\nView the sheet: ${absoluteUrl}`,
-        };
-      case "sms":
-        return {
-          message: `${body} View: ${absoluteUrl}`,
-        };
-      default:
-        return null;
-    }
   },
 };
 

@@ -18,6 +18,7 @@
  */
 
 import { execFileSync } from "child_process";
+import { escapeHtml } from "../../shared/utils/html/escape";
 import { storage } from "../../server/storage/database";
 import { runInTransaction } from "../../server/storage/transaction-context";
 import { enableComponentSchema, reconcileComponentPluginConfigs } from "../../server/services/component-lifecycle";
@@ -63,13 +64,6 @@ interface ContractConfig {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function esc(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
 
 function cleanTitle(s: string): string {
   return s
@@ -142,7 +136,7 @@ function bodyToHtml(lines: string[]): string {
         listBuf
           .map(
             (i) =>
-              `<li><strong>${esc(i.marker)}</strong> ${esc(i.text)}</li>`,
+              `<li><strong>${escapeHtml(i.marker)}</strong> ${escapeHtml(i.text)}</li>`,
           )
           .join("") +
         "</ul>",
@@ -156,7 +150,7 @@ function bodyToHtml(lines: string[]): string {
         tableBuf
           .map(
             (r) =>
-              `<tr><td><strong>${esc(r.label)}</strong></td><td>${esc(r.text)}</td></tr>`,
+              `<tr><td><strong>${escapeHtml(r.label)}</strong></td><td>${escapeHtml(r.text)}</td></tr>`,
           )
           .join("") +
         "</tbody></table>",
@@ -180,7 +174,7 @@ function bodyToHtml(lines: string[]): string {
     }
     flushList();
     flushTable();
-    html.push(`<p>${esc(b)}</p>`);
+    html.push(`<p>${escapeHtml(b)}</p>`);
   }
   flushList();
   flushTable();

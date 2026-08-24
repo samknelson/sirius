@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
-import { RoleInUseError } from "../storage/users";
+import { RoleInUseError, UserInUseError } from "../storage/users";
+import { getEffectiveUser } from "./masquerade";
 import { 
   createUserSchema,
   insertRoleSchema,
@@ -282,6 +283,40 @@ export function registerUserRoutes(
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to update user status" });
+    }
+  });
+
+  // DELETE /api/admin/users/:id - Permanently delete a user account (admin only)
+  app.delete("/api/admin/users/:id", requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      // Neither the signed-in admin nor the user they are masquerading as may
+      // be deleted from this session.
+      const sessionUser = req.user as any;
+      const { dbUser, originalUser } = await getEffectiveUser((req as any).session ?? {}, sessionUser);
+      if (id === dbUser?.id || id === originalUser?.id) {
+        return res.status(400).json({ message: "You cannot delete the account you are currently signed in as." });
+      }
+
+      const user = await storage.users.getUser(id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const deleted = await storage.users.deleteUserAccount(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      clearAccessCache();
+      res.json({ success: true });
+    } catch (error) {
+      if (error instanceof UserInUseError) {
+        return res.status(409).json({ message: error.message });
+      }
+      console.error("Failed to delete user:", error);
+      res.status(500).json({ message: "Failed to delete user" });
     }
   });
 

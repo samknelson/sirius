@@ -1,6 +1,7 @@
-import { getClient } from './transaction-context';
+import { getClient, onAfterCommit } from './transaction-context';
 import { 
   workerBans,
+  denorm,
   type WorkerBan, 
   type InsertWorkerBan
 } from "@shared/schema";
@@ -11,7 +12,6 @@ import {
   type ValidationError,
   createStorageValidator
 } from "./utils/validation";
-import { calculateDenormActive } from "./utils/denorm-active";
 import { normalizeToDateOnly, getTodayDateOnly } from "@shared/utils";
 
 export interface WorkerBanWithRelations extends WorkerBan {
@@ -36,6 +36,16 @@ export interface WorkerBanStorage {
   delete(id: string): Promise<boolean>;
   findExpiredButActive(): Promise<WorkerBan[]>;
   findNotExpiredButInactive(): Promise<WorkerBan[]>;
+  /**
+   * Set ONLY the cached `denorm_active` flag. Owned by the `worker_ban_active`
+   * denorm plugin — nothing else may call this. Emits no event; the plugin
+   * emits WORKER_BAN_SAVED after commit when the flag actually flips.
+   */
+  setDenormActive(id: string, active: boolean): Promise<WorkerBan | undefined>;
+  /** Ban ids with no denorm status row for the given config (backfill source). */
+  findIdsMissingDenorm(configId: string, limit: number): Promise<string[]>;
+  /** Denorm entity ids for the config whose ban row no longer exists. */
+  findDenormWidowIds(configId: string, limit: number): Promise<string[]>;
 }
 
 
@@ -43,7 +53,7 @@ export interface WorkerBanStorage {
  * Validator for worker bans.
  * Use validate.validate() for ValidationResult or validate.validateOrThrow() for direct value.
  */
-export const validate = createStorageValidator<InsertWorkerBan, WorkerBan, { denormActive: boolean }>(
+export const validate = createStorageValidator<InsertWorkerBan, WorkerBan, Record<string, never>>(
   (data, existing) => {
     const errors: ValidationError[] = [];
     
@@ -77,9 +87,11 @@ export const validate = createStorageValidator<InsertWorkerBan, WorkerBan, { den
       return { ok: false, errors };
     }
     
-    const denormActive = calculateDenormActive({ endDate });
-    
-    return { ok: true, value: { denormActive } };
+    // NOTE: `denorm_active` is intentionally NOT computed here. The
+    // `worker_ban_active` denorm plugin is the sole writer of that flag; the
+    // WORKER_BAN_SAVED event emitted by create/update triggers its immediate
+    // recompute, and the hourly denorm backfill repairs date rollovers.
+    return { ok: true, value: {} };
   }
 );
 
@@ -138,23 +150,26 @@ export function createWorkerBanStorage(): WorkerBanStorage {
 
     async create(ban: InsertWorkerBan): Promise<WorkerBan> {
       const client = getClient();
-      const validated = validate.validateOrThrow(ban);
+      validate.validateOrThrow(ban);
       
+      // denorm_active starts at its column default; the worker_ban_active
+      // denorm plugin recomputes it via the WORKER_BAN_SAVED event below.
       const [created] = await client
         .insert(workerBans)
-        .values({
-          ...ban,
-          denormActive: validated.denormActive
-        })
+        .values(ban)
         .returning();
       
-      eventBus.emit(EventType.WORKER_BAN_SAVED, {
-        banId: created.id,
-        workerId: created.workerId,
-        type: created.type,
-        startDate: created.startDate,
-        endDate: created.endDate,
-        active: created.denormActive ?? true,
+      // After commit only: denorm plugins react to this event and must never
+      // observe uncommitted (or rolled-back) ban state.
+      onAfterCommit(() => {
+        eventBus.emit(EventType.WORKER_BAN_SAVED, {
+          banId: created.id,
+          workerId: created.workerId,
+          type: created.type,
+          startDate: created.startDate,
+          endDate: created.endDate,
+          active: created.denormActive ?? true,
+        });
       });
       
       return created;
@@ -165,25 +180,24 @@ export function createWorkerBanStorage(): WorkerBanStorage {
       const existing = await this.get(id);
       if (!existing) return undefined;
 
-      const validated = validate.validateOrThrow(ban, existing);
+      validate.validateOrThrow(ban, existing);
 
       const [updated] = await client
         .update(workerBans)
-        .set({
-          ...ban,
-          denormActive: validated.denormActive
-        })
+        .set(ban)
         .where(eq(workerBans.id, id))
         .returning();
       
       if (updated) {
-        eventBus.emit(EventType.WORKER_BAN_SAVED, {
-          banId: updated.id,
-          workerId: updated.workerId,
-          type: updated.type,
-          startDate: updated.startDate,
-          endDate: updated.endDate,
-          active: updated.denormActive ?? true,
+        onAfterCommit(() => {
+          eventBus.emit(EventType.WORKER_BAN_SAVED, {
+            banId: updated.id,
+            workerId: updated.workerId,
+            type: updated.type,
+            startDate: updated.startDate,
+            endDate: updated.endDate,
+            active: updated.denormActive ?? true,
+          });
         });
       }
       
@@ -197,14 +211,16 @@ export function createWorkerBanStorage(): WorkerBanStorage {
       const deleted = (result.rowCount ?? 0) > 0;
       
       if (deleted && existing) {
-        eventBus.emit(EventType.WORKER_BAN_SAVED, {
-          banId: existing.id,
-          workerId: existing.workerId,
-          type: existing.type,
-          startDate: existing.startDate,
-          endDate: existing.endDate,
-          active: existing.denormActive ?? true,
-          isDeleted: true,
+        onAfterCommit(() => {
+          eventBus.emit(EventType.WORKER_BAN_SAVED, {
+            banId: existing.id,
+            workerId: existing.workerId,
+            type: existing.type,
+            startDate: existing.startDate,
+            endDate: existing.endDate,
+            active: existing.denormActive ?? true,
+            isDeleted: true,
+          });
         });
       }
       
@@ -217,6 +233,41 @@ export function createWorkerBanStorage(): WorkerBanStorage {
 
     async findNotExpiredButInactive(): Promise<WorkerBan[]> {
       return composeQuery({ expired: false, active: false });
+    },
+
+    async setDenormActive(id: string, active: boolean): Promise<WorkerBan | undefined> {
+      const client = getClient();
+      const [updated] = await client
+        .update(workerBans)
+        .set({ denormActive: active })
+        .where(eq(workerBans.id, id))
+        .returning();
+      return updated;
+    },
+
+    async findIdsMissingDenorm(configId: string, limit: number): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .select({ id: workerBans.id })
+        .from(workerBans)
+        .leftJoin(
+          denorm,
+          and(eq(denorm.entityId, workerBans.id), eq(denorm.configId, configId)),
+        )
+        .where(isNull(denorm.id))
+        .limit(limit);
+      return rows.map((r) => r.id);
+    },
+
+    async findDenormWidowIds(configId: string, limit: number): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .select({ entityId: denorm.entityId })
+        .from(denorm)
+        .leftJoin(workerBans, eq(workerBans.id, denorm.entityId))
+        .where(and(eq(denorm.configId, configId), isNull(workerBans.id)))
+        .limit(limit);
+      return rows.map((r) => r.entityId);
     }
   };
 }

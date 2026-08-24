@@ -1,0 +1,67 @@
+name: Deploy to UAT
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Manual dispatch ONLY. There is no auto-deploy trigger for UAT: `main` holds
+# no application code today (the app lives on `freeman-dev`), so keying UAT off
+# a branch push would build an image with no app in it. Pick the ref to deploy
+# via the `ref` input (or the branch selector, which is what an empty `ref`
+# falls back to).
+#
+# Pipeline: build-and-test.yml (Docker build + push to the UAT ECR repos) →
+# deploy-to-environment.yml (register new task revisions, roll both ECS
+# services, wait for stability, roll back on failure).
+#
+# Topology matches Development — ONE image, pushed to BOTH ECR repos
+# (fm-fls-ui-ecr-uat-use2 / fm-fls-api-ecr-uat-use2) and rolled out to BOTH ECS
+# services (fm-fls-ui-uat-use2 / fm-fls-api-uat-use2) behind the ALB at
+# fls.uat.freeman.com.
+#
+# Environment name aligns with Terraform (fm-workloads-fls/envs/uat.tfvars): uat.
+#
+# Requires on the "UAT" GitHub Environment:
+#   Secrets:   AWS_ROLE_ARN     # OIDC role in the UAT account (605419152936)
+#   Variables: ECS_CLUSTER      = fm-fls-ecs-uat-use2
+#              ENVIRONMENT_URL  = https://fls.uat.freeman.com   (optional)
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to deploy (branch, tag, or full SHA). Blank = the branch selected above.'
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  # One UAT rollout at a time; queue rather than cancel, because cancelling
+  # mid-rollout would leave ECS half-updated.
+  group: deploy-uat
+  cancel-in-progress: false
+
+jobs:
+  build-uat:
+    name: Build for UAT
+    uses: ./.github/workflows/build-and-test.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      environment: 'UAT'
+      ref: ${{ inputs.ref }}
+    secrets: inherit
+
+  deploy-uat:
+    name: Deploy to UAT
+    needs: build-uat
+    uses: ./.github/workflows/deploy-to-environment.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      environment: 'UAT'
+      ui-image-uri: ${{ needs.build-uat.outputs.ui-image-uri }}
+      api-image-uri: ${{ needs.build-uat.outputs.api-image-uri }}
+      rollback-on-failure: true
+      stability-timeout-minutes: 20
+    secrets: inherit

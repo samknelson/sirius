@@ -21,6 +21,11 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CommTagPicker } from "./CommTagPicker";
+import {
+  ComposeTemplateStudio,
+  refuseUnrenderedTokens,
+} from "./ComposeTemplateStudio";
+import type { ComposeTemplateTarget } from "@shared/comm-compose";
 
 interface EmailOptinResponse {
   exists: boolean;
@@ -42,9 +47,11 @@ interface CommEmailProps {
   email?: string | null;
   contactName?: string;
   onSendSuccess?: () => void;
+  /** The record this screen is about, for composing from a template. */
+  composeTarget?: ComposeTemplateTarget;
 }
 
-export function CommEmail({ contactId, email, contactName, onSendSuccess }: CommEmailProps) {
+export function CommEmail({ contactId, email, contactName, onSendSuccess, composeTarget }: CommEmailProps) {
   const { toast } = useToast();
   const [subject, setSubject] = useState("");
   const [bodyText, setBodyText] = useState("");
@@ -121,6 +128,7 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
 
   const handleSend = (sendOffline = false) => {
     if (!hasEmail || !subject.trim() || !bodyText.trim()) return;
+    if (composeTarget && refuseUnrenderedTokens({ subject, bodyText }, toast)) return;
     sendEmailMutation.mutate({
       email: email!.trim(),
       name: contactName?.trim() || undefined,
@@ -316,6 +324,26 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
               />
             </div>
           </div>
+
+        {composeTarget && (
+          <div className="flex justify-end">
+            <ComposeTemplateStudio
+              target={composeTarget}
+              channel="email"
+              title="Compose Email"
+              fields={[
+                { key: "subject", label: "Subject", mode: "line", maxLength: 500 },
+                { key: "bodyText", label: "Message", mode: "multiline" },
+              ]}
+              values={{ subject, bodyText }}
+              onApply={(rendered) => {
+                setSubject(rendered.subject ?? "");
+                setBodyText(rendered.bodyText ?? "");
+              }}
+              testId="button-compose-email-template"
+            />
+          </div>
+        )}
 
         <div className="space-y-2">
           <Label htmlFor="subject">Subject</Label>

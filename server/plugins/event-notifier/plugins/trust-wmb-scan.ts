@@ -81,7 +81,7 @@ export const trustWmbScanNotifier: EventNotifierPlugin = {
         };
       case "email":
         return {
-          subject: `WMB Scan Completed: ${label}`,
+          subject: `WMB - scan completed - ${label}`,
           bodyText:
             `The Worker Monthly Benefits scan for ${label} has completed.\n\n` +
             `Summary:\n- Total workers processed: ${totalProcessed}\n` +
@@ -104,7 +104,7 @@ export const trustWmbScanNotifier: EventNotifierPlugin = {
         };
       case "inapp":
         return {
-          title: `WMB Scan Completed: ${label}`,
+          title: `WMB - scan completed - ${label}`,
           body:
             `Processed ${totalProcessed} workers (${successCount} success, ${failedCount} failed). ` +
             `Benefits: ${benefitsStarted} started, ${benefitsContinued} continued, ${benefitsTerminated} terminated.`,

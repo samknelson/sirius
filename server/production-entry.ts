@@ -15,6 +15,11 @@ import { createServer } from "http";
 import { existsSync, readdirSync, statSync } from "fs";
 import { resolve, join } from "path";
 import { bootStatus } from "./services/boot-status";
+import { getBootIdentity } from "./services/boot-identity";
+import { getEnvironmentVariable } from "./config/env-registry";
+// Leaf import on purpose: the shared HTML barrel reaches DOMPurify (jsdom
+// under Node) and this file runs before the application exists.
+import { escapeHtml } from "../shared/utils/html/escape";
 
 /**
  * Stale-build guardrail (see task #138).
@@ -38,8 +43,8 @@ import { bootStatus } from "./services/boot-status";
  * the deployed container at all.
  */
 function assertBuildIsFresh(): void {
-  if (process.env.REPLIT_DEPLOYMENT === "1") return;
-  if (process.env.SKIP_DIST_FRESHNESS_CHECK === "1") return;
+  if (getEnvironmentVariable("REPLIT_DEPLOYMENT") === "1") return;
+  if (getEnvironmentVariable("SKIP_DIST_FRESHNESS_CHECK") === "1") return;
 
   try {
     const projectRoot = resolve(import.meta.dirname, "..");
@@ -106,19 +111,24 @@ let appReady = false;
  */
 let initError: Error | null = null;
 
-const exposeBootErrors = () => process.env.EXPOSE_BOOT_ERRORS === "1";
+const exposeBootErrors = () => getEnvironmentVariable("EXPOSE_BOOT_ERRORS") === "1";
 
 function initFailedJson() {
+  const { bootId, startedAt } = getBootIdentity();
   return exposeBootErrors()
     ? {
         status: 'init-failed',
         driftCheck: bootStatus.driftCheck,
+        bootId,
+        startedAt,
         error: initError!.message,
         stack: initError!.stack,
       }
     : {
         status: 'init-failed',
         driftCheck: bootStatus.driftCheck,
+        bootId,
+        startedAt,
         message: 'Application initialization failed. See server logs for details.',
       };
 }
@@ -128,9 +138,16 @@ app.get('/health', (_req, res) => {
     res.status(200).json(initFailedJson());
     return;
   }
+  // bootId / startedAt identify THIS process (Task #1258). The admin Restart
+  // page polls here after firing a restart and only reports success once a
+  // different bootId answers. Additive — the endpoint still always answers
+  // 200, whether starting, ready, or init-failed.
+  const { bootId, startedAt } = getBootIdentity();
   res.status(200).json({
     status: appReady ? 'ready' : 'starting',
     driftCheck: bootStatus.driftCheck,
+    bootId,
+    startedAt,
   });
 });
 
@@ -146,8 +163,6 @@ app.use('/', (req, res, next) => {
     // response, making the JSON there unreachable).
     if (initError) {
       if (acceptHeader.includes('text/html')) {
-        const escapeHtml = (s: string) =>
-          s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const detail = exposeBootErrors()
           ? `
               <p><strong>${escapeHtml(initError.message)}</strong></p>
@@ -206,7 +221,7 @@ app.use('/', (req, res, next) => {
   res.status(503).json({ message: 'Application is starting, please wait...' });
 });
 
-const port = parseInt(process.env.PORT || '5000', 10);
+const port = parseInt(getEnvironmentVariable("PORT") || '5000', 10);
 
 server.listen({
   port,

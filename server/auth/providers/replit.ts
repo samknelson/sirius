@@ -7,6 +7,8 @@ import type { AuthProvider, ReplitProviderConfig, AuthenticatedUser, AuthIdentit
 import { storage } from "../../storage";
 import { storageLogger, logger } from "../../logger";
 import { getRequestContext } from "../../middleware/request-context";
+import { getEnvironmentVariable } from "../../config/env-registry";
+import { maybeProvisionUser } from "../provisioning";
 
 const getOidcConfig = memoize(
   async (issuerUrl: string, clientId: string) => {
@@ -76,9 +78,23 @@ async function checkUserAccess(
   const user = await storage.users.getUserByEmail(email);
 
   if (!user) {
-    // PII triage: identify the attempt by provider externalId, not email.
-    logger.info("No provisioned account found for email", { externalId });
-    return { allowed: false };
+    const provisioned = await maybeProvisionUser("replit", {
+      externalId,
+      email,
+      firstName: claims["first_name"],
+      lastName: claims["last_name"],
+      displayName: `${claims["first_name"] || ""} ${claims["last_name"] || ""}`.trim() || undefined,
+      profileImageUrl: claims["profile_image_url"],
+    });
+    if (!provisioned) {
+      // PII triage: identify the failed attempt by provider externalId, not email.
+      logger.info("No provisioned account found for email", { externalId });
+      return { allowed: false };
+    }
+
+    await storage.users.updateUserLastLogin(provisioned.user.id);
+    logLoginEvent(provisioned.user, externalId, true);
+    return { allowed: true, user: provisioned.user };
   }
 
   if (!user.isActive) {
@@ -136,8 +152,8 @@ function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
 }
 
 export function createProvider(config: ReplitProviderConfig): AuthProvider {
-  const issuerUrl = config.issuerUrl || process.env.ISSUER_URL || "https://replit.com/oidc";
-  const clientId = config.clientId || process.env.REPL_ID!;
+  const issuerUrl = config.issuerUrl || getEnvironmentVariable("ISSUER_URL") || "https://replit.com/oidc";
+  const clientId = config.clientId || getEnvironmentVariable("REPL_ID")!;
   const registeredStrategies = new Set<string>();
 
   let oidcConfig: Awaited<ReturnType<typeof getOidcConfig>> | null = null;

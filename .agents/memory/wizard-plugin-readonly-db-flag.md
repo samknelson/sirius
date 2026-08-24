@@ -11,7 +11,8 @@ file). The flag is surfaced through the wizard registry's `pluginToMetadata`
 AND `pluginToManifestEntry` for audit parity with the other plugin-kind
 registries.
 
-**Why:** `scripts/dev/check-storage-encapsulation.ts` enforces the opt-in
+**Why:** the `storage-encapsulation` architecture-lint rule
+(`npx tsx scripts/dev/lint.ts storage-encapsulation`) enforces the opt-in
 per-FILE: a file under `server/plugins/` that calls `readOnly.query(` must
 contain the literal `needsReadOnlyDb` OR be listed in
 `READONLY_FLAG_EXEMPT_FILES`. Because the query is in the engine file (which

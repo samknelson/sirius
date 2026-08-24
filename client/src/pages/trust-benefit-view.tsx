@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { sanitizeHtml } from "@shared/utils/html";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -64,9 +65,17 @@ function TrustBenefitDetailsContent() {
         {benefit.description && (
           <div>
             <h3 className="text-lg font-semibold text-foreground mb-3">Description</h3>
+            {/*
+              Stored description, authored through SimpleHtmlEditor on
+              trust-benefit-edit and never sanitized server-side. Rendered
+              under `authored-document` — the same policy that bounds what
+              that editor can produce.
+            */}
             <div 
               className="prose prose-sm max-w-none text-foreground"
-              dangerouslySetInnerHTML={{ __html: benefit.description }}
+              dangerouslySetInnerHTML={{
+                __html: sanitizeHtml(benefit.description, "authored-document"),
+              }}
               data-testid="text-benefit-description"
             />
           </div>

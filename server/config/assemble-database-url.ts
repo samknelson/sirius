@@ -21,7 +21,17 @@
  * If `DB_SECRET` parses as JSON we pull credentials (and host/port/dbname as
  * fallbacks) from it; otherwise we treat the raw value as the password and
  * take the username from `DB_USER` / `DB_USERNAME`.
+ *
+ * All env access goes through the env registry (a pure leaf module, safe on
+ * this pre-init boot path); the DB_* part names are registered there as core
+ * variables, credentials flagged secret.
  */
+import {
+  getEnvironmentVariable,
+  setEnvironmentVariable,
+  listPresentEnvironmentVariableNames,
+} from "./env-registry";
+import { resolveDatabaseUrlOptional } from "@shared/database-url";
 
 function firstNonEmpty(...values: Array<string | undefined>): string | undefined {
   for (const v of values) {
@@ -63,37 +73,42 @@ function parseDbSecret(raw: string | undefined): { json?: ParsedSecret; rawPassw
 }
 
 /**
- * Assemble and set `process.env.DATABASE_URL` from component parts if it is
- * not already set. Throws a descriptive error (listing only the env var
- * NAMES that are present, never their values) when assembly is impossible,
- * so the failure is diagnosable remotely without leaking secrets.
+ * Assemble and set `DATABASE_URL` from component parts if it is not already
+ * set. Throws a descriptive error (listing only the env var NAMES that are
+ * present, never their values) when assembly is impossible, so the failure
+ * is diagnosable remotely without leaking secrets.
  */
 export function assembleDatabaseUrl(): void {
   // An explicit EXTERNAL_DATABASE_URL is authoritative for every DB consumer
   // (see server/storage/db.ts). When it is set, assembly is unnecessary — an
   // assembled DATABASE_URL must never win over the explicit external URL.
-  if (process.env.EXTERNAL_DATABASE_URL) {
+  const existing = resolveDatabaseUrlOptional();
+  if (existing?.source === "EXTERNAL_DATABASE_URL") {
     console.log(
       "[db-config] EXTERNAL_DATABASE_URL is set — skipping DATABASE_URL assembly (external URL is authoritative).",
     );
     return;
   }
-  if (process.env.DATABASE_URL) return;
+  if (existing || getEnvironmentVariable("DATABASE_URL")) return;
 
-  const { json, rawPassword } = parseDbSecret(process.env.DB_SECRET);
+  const { json, rawPassword } = parseDbSecret(getEnvironmentVariable("DB_SECRET"));
 
-  const host = firstNonEmpty(process.env.DB_HOST, json?.host);
-  const port = firstNonEmpty(process.env.DB_PORT, json?.port) ?? "5432";
-  const dbname = firstNonEmpty(process.env.DB_NAME, json?.dbname);
-  const user = firstNonEmpty(process.env.DB_USER, process.env.DB_USERNAME, json?.username);
-  const password = firstNonEmpty(process.env.DB_PASSWORD, json?.password, rawPassword);
-  const sslmode = firstNonEmpty(process.env.DB_SSLMODE) ?? "require";
+  const host = firstNonEmpty(getEnvironmentVariable("DB_HOST"), json?.host);
+  const port = firstNonEmpty(getEnvironmentVariable("DB_PORT"), json?.port) ?? "5432";
+  const dbname = firstNonEmpty(getEnvironmentVariable("DB_NAME"), json?.dbname);
+  const user = firstNonEmpty(
+    getEnvironmentVariable("DB_USER"),
+    getEnvironmentVariable("DB_USERNAME"),
+    json?.username,
+  );
+  const password = firstNonEmpty(getEnvironmentVariable("DB_PASSWORD"), json?.password, rawPassword);
+  const sslmode = firstNonEmpty(getEnvironmentVariable("DB_SSLMODE")) ?? "require";
 
   if (host && dbname && user && password) {
     const url = `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(
       password,
     )}@${host}:${port}/${dbname}?sslmode=${sslmode}`;
-    process.env.DATABASE_URL = url;
+    setEnvironmentVariable("DATABASE_URL", url);
     console.log(
       `[db-config] Assembled DATABASE_URL from parts (host=${host} port=${port} db=${dbname} sslmode=${sslmode}).`,
     );
@@ -102,9 +117,9 @@ export function assembleDatabaseUrl(): void {
 
   // Could not assemble. Report only the NAMES of DB-related env vars that are
   // present so the shape can be diagnosed remotely without exposing values.
-  const dbEnvNames = Object.keys(process.env)
-    .filter((k) => k === "DATABASE_URL" || k.startsWith("DB_"))
-    .sort();
+  const dbEnvNames = listPresentEnvironmentVariableNames(
+    (k) => k === "DATABASE_URL" || k.startsWith("DB_"),
+  );
   const missing = [
     !host && "host (DB_HOST or DB_SECRET.host)",
     !dbname && "dbname (DB_NAME or DB_SECRET.dbname)",

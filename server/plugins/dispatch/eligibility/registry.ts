@@ -2,6 +2,10 @@ import { logger } from "../../../logger";
 import { PluginRegistry, isPluginComponentEnabledSync } from "../../_core";
 import type { BasePluginMetadata } from "../../_core";
 import type { EligibilityPluginMetadata, EligibilityPluginConfig } from "@shared/schema";
+import type { DispatchJobWithRelations } from "../../../storage/dispatch/jobs";
+import type { DispatchJobFacilityWithFacility } from "../../../storage/dispatch/facility";
+import type { DispatchJobDepartmentWithName } from "../../../storage/dispatch/job-departments";
+import type { EmployerCompany } from "@shared/schema/employer/company-schema";
 import type { JsonSchema } from "@shared/json-schema-form";
 
 /**
@@ -30,6 +34,24 @@ export interface EligibilityQueryContext {
   jobId: string;
   employerId: string;
   jobTypeId: string | null;
+  /** The full job (with relations), prefetched once by the wrapper. */
+  job: DispatchJobWithRelations;
+  /**
+   * The job's facility link, prefetched by the wrapper when the facility-ban
+   * plugin is enabled AND the dispatch.facility component is on; null when
+   * absent or not prefetched.
+   */
+  facilityLink: DispatchJobFacilityWithFacility | null;
+  /**
+   * The job's department link, prefetched by the wrapper when the department
+   * plugin is enabled; null when the job has no department or not prefetched.
+   */
+  departmentLink: DispatchJobDepartmentWithName | null;
+  /**
+   * Lazy, memoized loader for the job employer's company relation. Fetched at
+   * most once per context regardless of how many plugins call it.
+   */
+  getEmployerCompany(): Promise<EmployerCompany | undefined>;
 }
 
 /**

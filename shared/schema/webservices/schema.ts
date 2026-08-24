@@ -1,39 +1,8 @@
 import { sql } from "drizzle-orm";
-import { pgTable, pgEnum, text, varchar, boolean, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, pgEnum, text, varchar, boolean, timestamp, index, uniqueIndex, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-
-export const wsBundleStatusEnum = pgEnum("ws_bundle_status", [
-  "active",
-  "inactive",
-  "deprecated",
-]);
-
-export const wsBundles = pgTable("ws_bundles", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  code: varchar("code", { length: 50 }).notNull().unique(),
-  name: varchar("name", { length: 100 }).notNull(),
-  description: text("description"),
-  version: varchar("version", { length: 20 }).default("1.0.0").notNull(),
-  status: wsBundleStatusEnum("status").default("active").notNull(),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
-  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
-});
-
-export const insertWsBundleSchema = createInsertSchema(wsBundles, {
-  code: z.string().min(1).max(50).regex(/^[a-z][a-z0-9-]*$/, "Code must start with letter and contain only lowercase letters, numbers, and hyphens"),
-  name: z.string().min(1).max(100),
-  description: z.string().optional().nullable(),
-  version: z.string().max(20).optional(),
-}).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export type WsBundleStatus = (typeof wsBundleStatusEnum.enumValues)[number];
-export type InsertWsBundle = z.infer<typeof insertWsBundleSchema>;
-export type WsBundle = typeof wsBundles.$inferSelect;
+import { pluginConfigs } from "../../schema";
 
 export const wsClientStatusEnum = pgEnum("ws_client_status", [
   "active",
@@ -45,20 +14,17 @@ export const wsClients = pgTable("ws_clients", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: varchar("name", { length: 100 }).notNull(),
   description: text("description"),
-  bundleId: varchar("bundle_id").notNull().references(() => wsBundles.id, { onDelete: "cascade" }),
   status: wsClientStatusEnum("status").default("active").notNull(),
   ipAllowlistEnabled: boolean("ip_allowlist_enabled").default(false).notNull(),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
 }, (table) => ({
-  bundleIdIdx: index("ws_clients_bundle_id_idx").on(table.bundleId),
   statusIdx: index("ws_clients_status_idx").on(table.status),
 }));
 
 export const insertWsClientSchema = createInsertSchema(wsClients, {
   name: z.string().min(1).max(100),
   description: z.string().optional().nullable(),
-  bundleId: z.string().min(1),
 }).omit({
   id: true,
   createdAt: true,
@@ -68,6 +34,39 @@ export const insertWsClientSchema = createInsertSchema(wsClients, {
 export type WsClientStatus = (typeof wsClientStatusEnum.enumValues)[number];
 export type InsertWsClient = z.infer<typeof insertWsClientSchema>;
 export type WsClient = typeof wsClients.$inferSelect;
+
+/**
+ * A client's grant to one web service configuration (`plugin_configs` row of
+ * kind `web-service`). A client holds any number of grants; a configuration is
+ * granted to any number of clients. Granting and revoking never touches the
+ * client's credentials.
+ *
+ * Both sides cascade: deleting the client or the configuration removes the
+ * grant, so a revoked service can never leave a dangling authorization behind.
+ */
+export const wsClientGrants = pgTable("ws_client_grants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clientId: varchar("client_id").notNull().references(() => wsClients.id, { onDelete: "cascade" }),
+  configId: varchar("config_id").notNull().references(() => pluginConfigs.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+}, (table) => ({
+  clientIdIdx: index("ws_client_grants_client_id_idx").on(table.clientId),
+  configIdIdx: index("ws_client_grants_config_id_idx").on(table.configId),
+  // Named UNIQUE CONSTRAINT (not a unique index) so the startup drift gate
+  // sees the same object the migration creates.
+  clientConfigUnique: unique("ws_client_grants_client_config_unique").on(table.clientId, table.configId),
+}));
+
+export const insertWsClientGrantSchema = createInsertSchema(wsClientGrants, {
+  clientId: z.string().min(1),
+  configId: z.string().min(1),
+}).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertWsClientGrant = z.infer<typeof insertWsClientGrantSchema>;
+export type WsClientGrant = typeof wsClientGrants.$inferSelect;
 
 export const wsClientCredentials = pgTable("ws_client_credentials", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

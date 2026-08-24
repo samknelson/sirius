@@ -14,7 +14,14 @@ export type PluginKind =
   | "payment-gateway"
   | "event-notifier"
   | "denorm"
-  | "worker-list";
+  | "worker-list"
+  // Worker-ban behaviors: manifest-only kind (no config adapter — plugins
+  // are singletons; admin configuration lives on the Worker Ban Types
+  // options page).
+  | "worker-ban"
+  // Externally callable web services. Each config row is one addressable
+  // service; the plugin declares the operations it exposes.
+  | "web-service";
 
 /**
  * Kinds whose `/api/plugins/:kind/manifest` returns a flat array of
@@ -100,6 +107,15 @@ export function pluginConfigsQueryKey(
 export interface PluginConfigEnvelopeFieldChoice {
   value: string;
   label: string;
+  /**
+   * The selected plugin cannot accept this choice (the save route would
+   * reject it), so the admin form shows it but won't let it be switched on.
+   * Only appears on the per-plugin envelope fields served by the meta
+   * endpoint's `pluginEnvelopeFields`.
+   */
+  disabled?: boolean;
+  /** Short human explanation shown beside a disabled choice. */
+  disabledReason?: string;
 }
 
 export interface PluginConfigEnvelopeFieldOptions {
@@ -174,6 +190,12 @@ export interface PluginSearchParamsByKind {
   "event-notifier": BasePluginSearchParams;
   denorm: BasePluginSearchParams;
   "worker-list": BasePluginSearchParams;
+  // No config adapter on the server (manifest-only kind); listed so the
+  // PluginKind union stays a valid key set. The generic admin page never
+  // reaches config search for it because /api/plugins/kinds omits
+  // adapterless kinds.
+  "worker-ban": BasePluginSearchParams;
+  "web-service": BasePluginSearchParams;
 }
 
 /**

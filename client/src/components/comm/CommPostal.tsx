@@ -32,6 +32,11 @@ import {
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { CommTagPicker } from "./CommTagPicker";
+import {
+  ComposeTemplateStudio,
+  refuseUnrenderedTokens,
+} from "./ComposeTemplateStudio";
+import type { ComposeTemplateTarget } from "@shared/comm-compose";
 import { useToast } from "@/hooks/use-toast";
 import { Address } from "@/lib/entity-types";
 import { useSystemMode } from "@/lib/use-variable";
@@ -125,9 +130,11 @@ interface CommPostalProps {
   addresses: Address[];
   contactName?: string;
   onSendSuccess?: () => void;
+  /** The record this screen is about, for composing from a template. */
+  composeTarget?: ComposeTemplateTarget;
 }
 
-export function CommPostal({ contactId, addresses, contactName, onSendSuccess }: CommPostalProps) {
+export function CommPostal({ contactId, addresses, contactName, onSendSuccess, composeTarget }: CommPostalProps) {
   const { toast } = useToast();
   const [selectedAddressId, setSelectedAddressId] = useState<string>("");
   const [description, setDescription] = useState("");
@@ -299,6 +306,15 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
 
   const handleSend = (sendOffline = false) => {
     if (!selectedAddress) return;
+    // Only the composed body is studio-written; a Lob template id and
+    // hand-authored raw HTML are not token surfaces.
+    if (
+      composeTarget &&
+      contentMode === "compose" &&
+      refuseUnrenderedTokens({ composeBody, description }, toast)
+    ) {
+      return;
+    }
     
     const toAddress = {
       name: contactName,
@@ -746,7 +762,44 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
 
                 {contentMode === "compose" && (
                   <div className="space-y-2">
-                    <Label htmlFor="compose-body">Letter Body</Label>
+                    <div className="flex items-center justify-between gap-2">
+                      <Label htmlFor="compose-body">Letter Body</Label>
+                      {/*
+                        Compose mode only. The other two modes are not
+                        text this screen composes: a Lob template is
+                        written and rendered at the print vendor, and
+                        raw HTML is a whole document the author supplies
+                        — offering to overwrite either from a token
+                        template would be offering to destroy it.
+                      */}
+                      {composeTarget && (
+                        <ComposeTemplateStudio
+                          target={composeTarget}
+                          channel="postal"
+                          title="Compose Letter"
+                          fields={[
+                            {
+                              key: "composeBody",
+                              label: "Letter Body",
+                              mode: "html",
+                              hint: "Wrapped in the standard letter page on send.",
+                            },
+                            {
+                              key: "description",
+                              label: "Description",
+                              mode: "line",
+                              hint: "Internal description of the mailing; not printed.",
+                            },
+                          ]}
+                          values={{ composeBody, description }}
+                          onApply={(rendered) => {
+                            setComposeBody(rendered.composeBody ?? "");
+                            setDescription(rendered.description ?? "");
+                          }}
+                          testId="button-compose-postal-template"
+                        />
+                      )}
+                    </div>
                     <Textarea
                       id="compose-body"
                       placeholder="Enter the body of your letter here. You can use HTML tags like <p>, <strong>, <em>, etc."

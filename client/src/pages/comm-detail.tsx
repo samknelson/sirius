@@ -15,8 +15,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+/*
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,19 +49,17 @@ import { format } from "date-fns";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
 import { CommWithDetails, interactionChannelLabel } from "@/lib/comm-types";
 import { WinstonLog } from "@/lib/system-types";
+*/
+import { ArrowLeft, AlertCircle, WifiOff } from "lucide-react";
+import { CommWithDetails } from "@/lib/comm-types";
+import { CommDetailContent } from "@/components/comm/CommDetailContent";
 
 export default function CommDetail() {
   const { commId } = useParams<{ commId: string }>();
   const { toast } = useToast();
-  const [moduleFilter, setModuleFilter] = useState<string>("");
-  const [operationFilter, setOperationFilter] = useState<string>("");
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
-  const [selectedLog, setSelectedLog] = useState<WinstonLog | null>(null);
-  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isOfflineConfirmOpen, setIsOfflineConfirmOpen] = useState(false);
 
-  const { data: comm, isLoading: commLoading, error: commError } = useQuery<CommWithDetails>({
+  const { data: comm } = useQuery<CommWithDetails>({
     queryKey: ["/api/comm", commId],
     enabled: !!commId,
   });
@@ -94,157 +93,24 @@ export default function CommDetail() {
     },
   });
 
-  const params = new URLSearchParams();
-  if (moduleFilter) params.append("module", moduleFilter);
-  if (operationFilter) params.append("operation", operationFilter);
-  if (startDate) params.append("startDate", startDate);
-  if (endDate) params.append("endDate", endDate);
-
-  const { data: logs = [], isLoading: logsLoading } = useQuery<WinstonLog[]>({
-    queryKey: ["/api/comm", commId, "logs", moduleFilter, operationFilter, startDate, endDate],
-    queryFn: async () => {
-      const queryString = params.toString();
-      const url = `/api/comm/${commId}/logs${queryString ? `?${queryString}` : ''}`;
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error("Failed to fetch logs");
-      }
-      return response.json();
-    },
-    enabled: !!commId,
-  });
-
-  const uniqueModules = Array.from(new Set(logs.map(log => log.module).filter(Boolean)));
-  const uniqueOperations = Array.from(new Set(logs.map(log => log.operation).filter(Boolean)));
-
-  const handleShowDetails = (log: WinstonLog) => {
-    setSelectedLog(log);
-    setIsDetailsOpen(true);
-  };
-
-  const handleClearFilters = () => {
-    setModuleFilter("");
-    setOperationFilter("");
-    setStartDate("");
-    setEndDate("");
-  };
-
-  const getLevelColor = (level: string | null) => {
-    if (!level) return "default";
-    const lowerLevel = level.toLowerCase();
-    if (lowerLevel === "error") return "destructive";
-    if (lowerLevel === "warn" || lowerLevel === "warning") return "warning";
-    if (lowerLevel === "info") return "default";
-    return "secondary";
-  };
-
-  const getStatusBadge = (status: string) => {
-    const statusLower = status.toLowerCase();
-    
-    switch (statusLower) {
-      case "delivered":
-        return (
-          <Badge variant="default" className="bg-green-600 dark:bg-green-700" data-testid="badge-status-delivered">
-            <CheckCircle2 className="w-3 h-3 mr-1" />
-            Delivered
-          </Badge>
-        );
-      case "sent":
-        return (
-          <Badge variant="default" className="bg-blue-600 dark:bg-blue-700" data-testid="badge-status-sent">
-            <Send className="w-3 h-3 mr-1" />
-            Sent
-          </Badge>
-        );
-      case "queued":
-        return (
-          <Badge variant="secondary" data-testid="badge-status-queued">
-            <Clock className="w-3 h-3 mr-1" />
-            Queued
-          </Badge>
-        );
-      case "sending":
-        return (
-          <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-700 dark:text-yellow-400" data-testid="badge-status-sending">
-            <Clock className="w-3 h-3 mr-1" />
-            Sending
-          </Badge>
-        );
-      case "received":
-        return (
-          <Badge variant="default" data-testid="badge-status-received">
-            <Inbox className="w-3 h-3 mr-1" />
-            Received
-          </Badge>
-        );
-      case "undelivered":
-        return (
-          <Badge variant="destructive" className="bg-orange-600 dark:bg-orange-700" data-testid="badge-status-undelivered">
-            <AlertCircle className="w-3 h-3 mr-1" />
-            Undelivered
-          </Badge>
-        );
-      case "failed":
-        return (
-          <Badge variant="destructive" data-testid="badge-status-failed">
-            <AlertCircle className="w-3 h-3 mr-1" />
-            Failed
-          </Badge>
-        );
-      case "offline":
-        return (
-          <Badge
-            variant="secondary"
-            title="Delivered out-of-band; delivery state is unverifiable"
-            data-testid="badge-status-offline"
-          >
-            <WifiOff className="w-3 h-3 mr-1" />
-            Offline
-          </Badge>
-        );
-      default:
-        return (
-          <Badge variant="secondary" data-testid="badge-status-default">
-            {status}
-          </Badge>
-        );
-    }
-  };
-
-  const formatDate = (dateStr: string | null): string => {
-    if (!dateStr) return "-";
-    return format(new Date(dateStr), "MMM dd, yyyy HH:mm");
-  };
-
-  if (commLoading || commError || !comm) {
-    return (
-      <CommLayout activeTab="details">
-        {commLoading ? (
-          <div className="text-center py-8 text-muted-foreground">
-            Loading communication details...
-          </div>
-        ) : (
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center py-8">
-                <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
-                <p className="text-muted-foreground">Communication record not found.</p>
-                <Button variant="outline" className="mt-4" asChild>
-                  <Link href="/">
-                    <ArrowLeft className="w-4 h-4 mr-2" />
-                    Go Back
-                  </Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </CommLayout>
-    );
-  }
+  const statusAction =
+    canEdit &&
+    comm?.medium === "postal" &&
+    (comm.status === "queued" || comm.status === "sending") ? (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setIsOfflineConfirmOpen(true)}
+        data-testid="button-mark-offline-mailed"
+      >
+        <WifiOff className="w-3 h-3 mr-1" />
+        Mark as offline mailed
+      </Button>
+    ) : null;
 
   return (
     <CommLayout activeTab="details">
+      {/*
       <div className="space-y-6">
       <Card>
         <CardHeader>
@@ -589,131 +455,33 @@ export default function CommDetail() {
           {logsLoading ? (
             <div className="text-center py-8 text-muted-foreground">Loading logs...</div>
           ) : logs.length === 0 ? (
+      */}
+      <CommDetailContent
+        commId={commId}
+        statusAction={statusAction}
+        renderFallback={({ isLoading }) =>
+          isLoading ? (
             <div className="text-center py-8 text-muted-foreground">
-              No log entries found for this communication.
+              Loading communication details...
             </div>
           ) : (
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Timestamp</TableHead>
-                    <TableHead>Level</TableHead>
-                    <TableHead>Module</TableHead>
-                    <TableHead>Operation</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {logs.map((log) => (
-                    <TableRow key={log.id} data-testid={`row-log-${log.id}`}>
-                      <TableCell className="font-mono text-sm">
-                        {log.timestamp ? format(new Date(log.timestamp), "MMM dd, yyyy HH:mm:ss") : "N/A"}
-                      </TableCell>
-                      <TableCell>
-                        {log.level && (
-                          <Badge variant={getLevelColor(log.level) as "default" | "secondary" | "destructive"}>
-                            {log.level.toUpperCase()}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="font-medium">{log.module || "—"}</TableCell>
-                      <TableCell className="text-muted-foreground">{log.operation || "—"}</TableCell>
-                      <TableCell className="max-w-md truncate">{log.description || log.message || "—"}</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleShowDetails(log)}
-                          data-testid={`button-details-${log.id}`}
-                        >
-                          Details
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Log Entry Details</DialogTitle>
-          </DialogHeader>
-          {selectedLog && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-muted-foreground">ID</Label>
-                  <div className="font-mono" data-testid="text-log-id">{selectedLog.id}</div>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center py-8">
+                  <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+                  <p className="text-muted-foreground">Communication record not found.</p>
+                  <Button variant="outline" className="mt-4" asChild>
+                    <Link href="/">
+                      <ArrowLeft className="w-4 h-4 mr-2" />
+                      Go Back
+                    </Link>
+                  </Button>
                 </div>
-                <div>
-                  <Label className="text-muted-foreground">Level</Label>
-                  <div>
-                    {selectedLog.level && (
-                      <Badge variant={getLevelColor(selectedLog.level) as "default" | "secondary" | "destructive"} data-testid="badge-log-level">
-                        {selectedLog.level.toUpperCase()}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Timestamp</Label>
-                  <div className="font-mono" data-testid="text-log-timestamp">
-                    {selectedLog.timestamp ? format(new Date(selectedLog.timestamp), "PPpp") : "N/A"}
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Source</Label>
-                  <div data-testid="text-log-source">{selectedLog.source || "—"}</div>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Module</Label>
-                  <div className="font-medium" data-testid="text-log-module">{selectedLog.module || "—"}</div>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Operation</Label>
-                  <div data-testid="text-log-operation">{selectedLog.operation || "—"}</div>
-                </div>
-                <div className="col-span-2">
-                  <Label className="text-muted-foreground">Entity ID</Label>
-                  <div className="font-mono text-sm" data-testid="text-log-entity-id">{selectedLog.entityId || "—"}</div>
-                </div>
-              </div>
-
-              <div>
-                <Label className="text-muted-foreground">Message</Label>
-                <div className="mt-1 p-3 bg-muted rounded-md text-sm" data-testid="text-log-message">
-                  {selectedLog.message || "—"}
-                </div>
-              </div>
-
-              {selectedLog.description && (
-                <div>
-                  <Label className="text-muted-foreground">Description</Label>
-                  <div className="mt-1 p-3 bg-muted rounded-md text-sm" data-testid="text-log-description">
-                    {selectedLog.description}
-                  </div>
-                </div>
-              )}
-
-              {selectedLog.meta && (
-                <div>
-                  <Label className="text-muted-foreground">Metadata</Label>
-                  <pre className="mt-1 p-3 bg-muted rounded-md text-xs overflow-x-auto" data-testid="text-log-meta">
-                    {JSON.stringify(selectedLog.meta, null, 2)}
-                  </pre>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+              </CardContent>
+            </Card>
+          )
+        }
+      />
 
       <AlertDialog open={isOfflineConfirmOpen} onOpenChange={setIsOfflineConfirmOpen}>
         <AlertDialogContent data-testid="dialog-confirm-offline-mailed">
@@ -742,7 +510,6 @@ export default function CommDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      </div>
     </CommLayout>
   );
 }

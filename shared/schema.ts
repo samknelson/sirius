@@ -22,6 +22,10 @@ export {
   insertWorkerDispatchStatusSchema,
   workerDispatchEligDenorm,
   insertWorkerDispatchEligDenormSchema,
+  dispatchJobEmployerContacts,
+  insertDispatchJobEmployerContactSchema,
+  type InsertDispatchJobEmployerContact,
+  type DispatchJobEmployerContact,
   type DispatchJobStatus,
   type InsertDispatchJobType,
   type DispatchJobType,
@@ -43,6 +47,13 @@ export {
   type DispatchJobFore,
   type InsertDispatchJobFore,
 } from "./schema/dispatch/fore-schema";
+
+export {
+  dispatchJobFacility,
+  insertDispatchJobFacilitySchema,
+  type DispatchJobFacility,
+  type InsertDispatchJobFacility,
+} from "./schema/dispatch/facility-schema";
 
 export {
   dispatchJobEvent,
@@ -127,22 +138,20 @@ export {
 } from "./schema/dispatch/eligibility-config";
 
 export {
-  wsBundles,
-  wsBundleStatusEnum,
-  insertWsBundleSchema,
   wsClients,
   wsClientStatusEnum,
   insertWsClientSchema,
+  wsClientGrants,
+  insertWsClientGrantSchema,
   wsClientCredentials,
   insertWsClientCredentialSchema,
   wsClientIpRules,
   insertWsClientIpRuleSchema,
-  type WsBundleStatus,
-  type InsertWsBundle,
-  type WsBundle,
   type WsClientStatus,
   type InsertWsClient,
   type WsClient,
+  type InsertWsClientGrant,
+  type WsClientGrant,
   type InsertWsClientCredential,
   type WsClientCredential,
   type InsertWsClientIpRule,
@@ -274,6 +283,55 @@ export const workers = pgTable("workers", {
   bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
   data: jsonb("data"),
 });
+
+// Worker ban types — admin-configurable options rows. Each row names a ban
+// type and selects (in data.pluginIds) which registered worker-ban plugins
+// the type applies. `worker_bans.type` stores the id of one of these rows
+// (soft reference — validated at the API layer, no FK).
+export const optionsWorkerBanType = pgTable("options_worker_ban_type", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  siriusId: text("sirius_id").unique(),
+  data: jsonb("data"),
+});
+
+/**
+ * Note types (unified options kind `note-type`). `data.entityTypes` holds the
+ * record types a type applies to, validated against the shared note-entity
+ * registry (`shared/notes.ts`) on save.
+ */
+export const optionsNoteType = pgTable("options_note_type", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  siriusId: text("sirius_id").unique(),
+  data: jsonb("data"),
+});
+
+/**
+ * Staff notes attached to a record.
+ *
+ * `entity_type` / `entity_id` are a polymorphic pair (the house convention —
+ * see `files`), so there is no FK to the parent: existence is checked at the
+ * API layer against the shared note-entity registry and orphans are swept by
+ * the `notes_orphan_sweep` cron. `type_id` DOES have a real FK, on delete
+ * restrict, so a note type in use cannot be deleted out from under its notes.
+ */
+export const notes = pgTable("notes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  entityType: varchar("entity_type").notNull(),
+  entityId: varchar("entity_id").notNull(),
+  typeId: varchar("type_id").notNull().references(() => optionsNoteType.id, { onDelete: 'restrict' }),
+  subject: text("subject").notNull(),
+  body: text("body"),
+  data: jsonb("data"),
+  timestamp: timestamp("timestamp").default(sql`now()`).notNull(),
+  userId: varchar("user_id").references(() => users.id, { onDelete: 'set null' }),
+}, (table) => [
+  index("idx_notes_entity").on(table.entityType, table.entityId),
+  index("idx_notes_type_id").on(table.typeId),
+]);
 
 export const workerBans = pgTable("worker_bans", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -818,6 +876,9 @@ export const ledgerAccounts = pgTable("ledger_accounts", {
   currencyCode: text("currency_code").default('USD').notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   data: jsonb("data"),
+  // Optional external identifier, unique when present. NULLs don't collide
+  // under Postgres UNIQUE semantics, so any number of accounts may have none.
+  siriusId: varchar("sirius_id").unique(),
   // Optional link to the payment-gateway plugin config this account uses. The
   // FK targets the payment-gateway subsidiary (a type-safe FK target) rather
   // than the polymorphic plugin_configs base, and is ON DELETE SET NULL so
@@ -1310,6 +1371,13 @@ export {
 } from "./schema/worker/tos/schema";
 
 export {
+  workerAat,
+  insertWorkerAatSchema,
+  type WorkerAat,
+  type InsertWorkerAat,
+} from "./schema/worker/aat/schema";
+
+export {
   optionsWorkerRelationType,
   insertOptionsWorkerRelationTypeSchema,
   type OptionsWorkerRelationType,
@@ -1423,16 +1491,24 @@ export const insertWorkerSchema = createInsertSchema(workers).omit({
   data: true, // Generic JSON blob; written only through dedicated storage methods
 });
 
-export const workerBanTypeEnum = ["dispatch"] as const;
-export type WorkerBanType = typeof workerBanTypeEnum[number];
-
 export const insertWorkerBanSchema = createInsertSchema(workerBans).omit({
   id: true,
   denormActive: true, // Auto-calculated based on end_date
 }).extend({
   startDate: z.coerce.date(),
   endDate: z.coerce.date().optional().nullable(),
-  type: z.enum(workerBanTypeEnum).optional().nullable(),
+  // Stores the id of an options_worker_ban_type row (soft reference,
+  // validated at the API layer against the configured ban types).
+  type: z.string().optional().nullable(),
+});
+
+export const insertNoteSchema = createInsertSchema(notes).omit({
+  id: true,
+  timestamp: true,
+}).extend({
+  body: z.string().optional().nullable(),
+  data: z.record(z.unknown()).optional().nullable(),
+  userId: z.string().optional().nullable(),
 });
 
 export const insertEmployerSchema = createInsertSchema(employers).omit({
@@ -1529,6 +1605,10 @@ export const insertLedgerAccountSchema = createInsertSchema(ledgerAccounts).omit
   id: true,
 }).extend({
   data: ledgerAccountDataSchema.optional().nullable(),
+  // Blank means absent. An empty string is a real value to Postgres, so
+  // without this the SECOND account saved with an empty Sirius ID box would
+  // collide with the first under the unique constraint.
+  siriusId: z.string().trim().nullish().transform((v) => (v ? v : null)).optional(),
 });
 
 export const insertLedgerPaymentSchema = createInsertSchema(ledgerPayments).omit({
@@ -1738,6 +1818,10 @@ export type Worker = Omit<typeof workers.$inferSelect, "data"> & {
 
 export type InsertWorkerBan = z.infer<typeof insertWorkerBanSchema>;
 export type WorkerBan = typeof workerBans.$inferSelect;
+
+export type InsertNote = z.infer<typeof insertNoteSchema>;
+export type Note = typeof notes.$inferSelect;
+export type OptionsNoteType = typeof optionsNoteType.$inferSelect;
 
 export type InsertEmployer = z.infer<typeof insertEmployerSchema>;
 export type Employer = typeof employers.$inferSelect;

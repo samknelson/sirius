@@ -1,6 +1,4 @@
 import { registerDispatchEligPlugin } from "../registry";
-import { logger } from "../../../../logger";
-import { createDispatchJobStorage } from "../../../../storage/dispatch/jobs";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../registry";
 import type { DispatchJobData } from "@shared/schema";
 
@@ -20,17 +18,8 @@ export const dispatchEbaPlugin: DispatchEligPlugin = {
   description: "Requires workers to have dispatch status Available or to have marked themselves available for the job's start date",
   requiredComponent: "dispatch.eba",
 
-  async getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): Promise<EligibilityCondition | null> {
-    const jobStorage = createDispatchJobStorage();
-    const job = await jobStorage.getWithRelations(context.jobId);
-
-    if (!job) {
-      logger.warn(`Job not found for EBA eligibility check`, {
-        service: "dispatch-elig-eba",
-        jobId: context.jobId,
-      });
-      return null;
-    }
+  getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): EligibilityCondition | null {
+    const job = context.job;
 
     // Per-job override: when the job explicitly disallows EBA workers,
     // require dispatch status "Available" only (drop the EBA alternative).

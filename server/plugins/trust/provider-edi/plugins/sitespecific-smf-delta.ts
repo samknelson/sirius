@@ -218,6 +218,7 @@ registerTrustProviderEdiPlugin({
     "the dental benefit in the as-of month, with the medical-plan-derived " +
     "client group ID.",
   benefitSiriusIds: ["D"],
+  ediFields: DETAIL_FIELDS,
   configSchema: {
     type: "object",
     properties: {

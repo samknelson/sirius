@@ -1,7 +1,7 @@
 import type { Express, RequestHandler, Request } from "express";
 import passport from "passport";
 import session from "express-session";
-import connectPg from "connect-pg-simple";
+import { StorageSessionStore } from "./session-store";
 import { loadAuthConfig, getProviderConfig } from "./config";
 import type {
   AuthConfig,
@@ -14,7 +14,7 @@ import type { AuthProviderType } from "@shared/schema";
 import { logger } from "../logger";
 import { loadProvider } from "./provider-loader";
 import { isWorkerSelfRegistrationEnabled } from "./worker-provisioning";
-import { pool } from "../storage/db";
+import { getEnvironmentVariable } from "../config/env-registry";
 
 const getStorage = () => require("../storage").storage;
 
@@ -67,26 +67,12 @@ export function getSession(): RequestHandler {
   const config = getAuthConfig();
   const sessionTtl = config.sessionTtl || 7 * 24 * 60 * 60 * 1000; // Default: 1 week
 
-  const pgStore = connectPg(session);
-  // Reuse the single, already-hardened Postgres pool from server/storage/db.ts
-  // instead of letting connect-pg-simple spin up its own second pool from a
-  // connection string. That second pool was the one source of unhandled
-  // "PG Pool error: terminating connection due to administrator command" events
-  // when Neon dropped an idle connection: it had only connect-pg-simple's bare
-  // console.error listener and was a separate, uncoordinated pool. By passing
-  // the shared pool here, every Postgres pool in the process is the same
-  // db.ts pool, which logs and transparently recovers from dropped idle
-  // connections (see the pool.on("error", ...) handler there). This is the one
-  // sanctioned use of the db pool outside the storage layer because the session
-  // store is owned by connect-pg-simple.
-  const sessionStore = new pgStore({
-    pool,
-    createTableIfMissing: false,
-    ttl: sessionTtl,
-    tableName: "sessions",
-  });
+  // Session persistence goes through the storage layer (storage.sessions.*)
+  // like every other table, on the single shared db.ts pool. Expired rows are
+  // pruned by the `session-prune` cron plugin.
+  const sessionStore = new StorageSessionStore({ ttlMs: sessionTtl });
 
-  const isProduction = process.env.NODE_ENV === "production";
+  const isProduction = getEnvironmentVariable("NODE_ENV") === "production";
 
   return session({
     secret: config.sessionSecret,
@@ -165,6 +151,31 @@ export async function setupAuth(app: Express): Promise<void> {
     } else {
       throw new Error("No auth providers registered. At least one provider must be enabled.");
     }
+  }
+
+  // Fallback for the SAML callback path when the SAML provider is NOT
+  // registered — i.e. "saml" is not listed in AUTH_PROVIDER at all. (A listed
+  // provider now registers even with unresolved vars and owns its routes,
+  // redirecting to saml_not_configured itself when config is incomplete.)
+  // Registered after provider setup, so a registered SAML provider's own
+  // routes win. Without this, hits fell through to the SPA catch-all as a
+  // confusing 404 page.
+  if (!providerRegistry.get("saml")) {
+    // Honor a custom SAML_CALLBACK_PATH so a configured-but-uninitializable
+    // SAML setup (e.g. missing cert) still lands here, not the SPA 404.
+    // Guard against non-local values: only a local absolute path is routable.
+    const { getEnvironmentVariable } = await import("../config/env-registry");
+    const custom = getEnvironmentVariable("SAML_CALLBACK_PATH");
+    const samlCallbackPath =
+      custom && custom.startsWith("/") && !custom.startsWith("//")
+        ? custom
+        : "/api/auth/saml/callback";
+    app.all(samlCallbackPath, (_req, res) => {
+      logger.warn("SAML callback hit but no SAML provider is configured", {
+        service: "saml-auth",
+      });
+      res.redirect("/auth-error?error=saml_not_configured");
+    });
   }
 
   app.get("/api/login", (req, res, next) => {

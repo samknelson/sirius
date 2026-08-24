@@ -419,6 +419,14 @@ export function createCommSmsStorage(): CommSmsStorage {
 
 export interface CommSmsOptinStorage {
   getSmsOptinByPhoneNumber(phoneNumber: string): Promise<CommSmsOptin | undefined>;
+  /**
+   * Opt-in rows for many numbers in one query, keyed by the phone number AS
+   * PASSED IN (callers hold un-normalized contact numbers and need to map the
+   * answer back to them). Numbers with no row are absent from the map.
+   * Normalization matches {@link CommSmsOptinStorage.getSmsOptinByPhoneNumber}
+   * so a bulk pre-check and a single send agree on the same row.
+   */
+  getSmsOptinsByPhoneNumbers(phoneNumbers: string[]): Promise<Map<string, CommSmsOptin>>;
   getSmsOptinByPublicToken(token: string): Promise<CommSmsOptin | undefined>;
   getSmsOptin(id: string): Promise<CommSmsOptin | undefined>;
   createSmsOptin(data: InsertCommSmsOptin): Promise<CommSmsOptin>;
@@ -438,6 +446,34 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
       
       const [result] = await client.select().from(commSmsOptin).where(eq(commSmsOptin.phoneNumber, normalizedPhone));
       return result || undefined;
+    },
+
+    async getSmsOptinsByPhoneNumbers(phoneNumbers: string[]): Promise<Map<string, CommSmsOptin>> {
+      const byInput = new Map<string, CommSmsOptin>();
+      const unique = Array.from(new Set(phoneNumbers.filter((p) => !!p)));
+      if (unique.length === 0) return byInput;
+
+      const client = getClient();
+      // Normalize each distinct number once, then read every matching row in a
+      // single query — the same normalization a single lookup does, so both
+      // resolve to the same opt-in row.
+      const normalizedByInput = new Map<string, string>();
+      for (const phoneNumber of unique) {
+        const validationResult = await phoneValidationService.validateAndFormat(phoneNumber);
+        normalizedByInput.set(phoneNumber, validationResult.e164Format || phoneNumber);
+      }
+
+      const rows = await client
+        .select()
+        .from(commSmsOptin)
+        .where(inArray(commSmsOptin.phoneNumber, Array.from(new Set(normalizedByInput.values()))));
+
+      const byNormalized = new Map(rows.map((row) => [row.phoneNumber, row]));
+      for (const [input, normalized] of normalizedByInput) {
+        const row = byNormalized.get(normalized);
+        if (row) byInput.set(input, row);
+      }
+      return byInput;
     },
 
     async getSmsOptinByPublicToken(token: string): Promise<CommSmsOptin | undefined> {

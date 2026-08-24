@@ -3,6 +3,7 @@ import type { Server } from "http";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./vite";
 import { initializePermissions } from "@shared/permissions";
+import { assertNoteEntityTablesComplete } from "./storage/notes-entity-types";
 import { addressValidationService } from "./services/comm/validators/address";
 import { logger } from "./logger";
 import { setupAuth } from "./auth";
@@ -40,8 +41,8 @@ import { initializeEventNotifierPluginSystem } from "./plugins/event-notifier";
 import { initializeWizardPluginSystem } from "./plugins/wizards";
 import { initializeTrustProviderEdiSystem } from "./plugins/trust/provider-edi";
 import { initializeMenuPluginSystem } from "./plugins/menu";
+import { initializeTokenPluginSystem } from "./plugins/tokens";
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
-import { initSnapshotCapture } from "./services/snapshots/capture";
 import { initDispatchNotifications } from "./services/dispatch/notifications";
 import { initWmbAutoRescan } from "./services/wmb-auto-rescan";
 import { initBaoCobraAutoCase } from "./services/bao-cobra-auto-case";
@@ -54,11 +55,16 @@ import {
   installS1WriteFenceHandlerTracking,
 } from "./middleware/s1-write-fence";
 
-// Helper function to redact sensitive data from responses before logging
-function redactSensitiveData(data: any): any {
+// Helper function to redact sensitive data from responses before logging.
+// Exported so the redaction list can be asserted directly — the fields it
+// covers are a security boundary, not an implementation detail.
+export function redactSensitiveData(data: any): any {
   if (!data || typeof data !== 'object') return data;
 
-  const sensitiveFields = ['ssn', 'password', 'token', 'secret'];
+  // `accesscode` / `accessuuid` are the worker.aat access-token pair: they are
+  // bearer-like credentials (a future link is authorized by the UUID alone),
+  // so they must never reach a response preview in the admin log viewer.
+  const sensitiveFields = ['ssn', 'password', 'token', 'secret', 'accesscode', 'accessuuid'];
   const redacted = Array.isArray(data) ? [...data] : { ...data };
 
   for (const key in redacted) {
@@ -164,6 +170,10 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // promises so an aborted mutation retains its fence until handler work ends.
   installS1WriteFenceHandlerTracking(app);
 
+  // Fail fast when a note-able record type declared in shared/notes.ts has no
+  // table binding: without one the orphan sweep would silently skip its notes.
+  assertNoteEntityTablesComplete();
+
   // Initialize the permission system
   initializePermissions();
   logger.info("Permission system initialized with core permissions", { source: "startup" });
@@ -249,6 +259,41 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // SKIP_SCHEMA_DRIFT_CHECK=1 dev escape hatch.
   await enforceStartupSchemaDrift();
 
+  // Arm maintenance-mode enforcement (connection-level read-only lock while
+  // system_mode = "maintenance"). Armed ONLY here — standalone scripts that
+  // import the db module directly stay writable by design. Must run after
+  // migrations/drift (needs the variables table) and before routes/crons.
+  {
+    const { armMaintenanceEnforcement } = await import("./services/maintenance-mode");
+    await armMaintenanceEnforcement();
+  }
+
+  // Load DB-backed environment-variable overrides and install the sync
+  // fallback into the env registry (real env values always win). Must run
+  // after migrations (needs the variables table) and before any init step
+  // that reads overridable variables (e.g. FILESYSTEMS, auth setup).
+  {
+    const { initEnvOverrides } = await import("./services/env-overrides");
+    await initEnvOverrides();
+
+    // Task #1258. Refuse to boot when the reloadable-subsystem registry and
+    // the per-variable change-effect classification disagree — otherwise the
+    // Environment Variables page and the Restart & Reload page would tell an
+    // operator different things about the same variable.
+    const { assertReloadClassificationConsistency } = await import(
+      "./services/reload-registry"
+    );
+    assertReloadClassificationConsistency();
+
+    // Baseline the effective value of every restart-only variable, so the
+    // Restart & Reload page can report which ones are genuinely WAITING on a
+    // restart rather than merely capable of needing one. Must run after the
+    // overrides are installed: an override present at boot is part of what
+    // this process is already using.
+    const { captureRestartBaseline } = await import("./services/env-restart-pending");
+    captureRestartBaseline();
+  }
+
   // Initialize environment-defined filesystems (FILESYSTEMS env var).
   // Throws on malformed config; warns for any file_system_id referenced by
   // files rows but absent from the environment.
@@ -266,6 +311,17 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Initialize dispatch eligibility plugin system
   await initializeDispatchEligSystem();
   logger.info("Dispatch eligibility system initialized", { source: "startup" });
+
+  // Initialize the worker-ban plugin framework (kind + built-in plugins),
+  // seed the default "Dispatch" ban type and migrate legacy dispatch bans.
+  {
+    const { initializeWorkerBanSystem, seedWorkerBanTypes } = await import(
+      "./plugins/worker-bans"
+    );
+    initializeWorkerBanSystem();
+    await seedWorkerBanTypes();
+  }
+  logger.info("Worker-ban system initialized", { source: "startup" });
 
   // Initialize dashboard plugin system (registration + legacy migrations)
   await initializeDashboardPluginSystem();
@@ -307,9 +363,11 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
     backfillPaymentGatewaySubsidiaries,
     backfillPaymentTypesFromGlobal,
   } = await import("./plugins/ledger/payment-gateway");
+  const { initializeWebServiceSystem } = await import("./plugins/web-service");
   registerChargePluginKind();
   registerTrustEligibilityKind();
   registerPaymentGatewayPluginKind();
+  initializeWebServiceSystem();
   // Every payment-gateway config needs a subsidiary row (the generic search
   // inner-joins it). Backfill pre-existing configs so they don't vanish.
   await backfillPaymentGatewaySubsidiaries();
@@ -336,7 +394,13 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
     const { initializeEventNotifierDispatcher } = await import(
       "./plugins/event-notifier/dispatcher"
     );
+    const { migrateNotifierTemplateTokens } = await import(
+      "./plugins/event-notifier/template-token-migrations"
+    );
     await backfillEventNotifierSubsidiaries();
+    // Custom templates are stored verbatim and rendered verbatim, so a
+    // renamed token root has to be rewritten in the stored data too.
+    await migrateNotifierTemplateTokens();
     initializeEventNotifierDispatcher();
   }
   logger.info("Event-notifier dispatcher initialized", { source: "startup" });
@@ -347,7 +411,6 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
 
   // Initialize worker ban notifications
   initWorkerBanNotifications();
-  initSnapshotCapture();
   logger.info("Worker ban notifications initialized", { source: "startup" });
 
   // Initialize dispatch notifications
@@ -413,6 +476,11 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Register menu plugins (pluggable main navigation)
   initializeMenuPluginSystem();
   logger.info("Menu plugins registered", { source: "startup" });
+
+  // Register token plugins (chained template tokens; kind + self-registering
+  // plugin imports, no config adapter)
+  initializeTokenPluginSystem();
+  logger.info("Token plugins registered", { source: "startup" });
 
   // Register flood events
   registerFloodEvents();
