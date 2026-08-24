@@ -212,25 +212,47 @@ export interface SheetAssignmentSmsTarget {
   workerId: string;
   contactId: string;
   phoneNumber: string;
+  /**
+   * The assignment's values as they stood when this target was resolved.
+   * Hand it back to `setCommId` so a message that goes out just before the
+   * row is edited is not recorded as a receipt for the superseded version.
+   */
+  data: unknown;
 }
 export interface EdlsAssignmentsStorage {
   getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]>;
   getBySheetId(sheetId: string, industryId?: string | null): Promise<EdlsAssignmentWithWorker[]>;
   /**
-   * Every assignment on a sheet whose worker has an active primary phone
-   * number, as one query (notifiers fan out per sheet, so a per-assignment
-   * worker → contact → phone walk would be N round-trips). Ordered by
-   * assignment id so a worker appearing twice on a sheet resolves to the same
-   * assignment every time.
+   * Every assignment on a sheet that is still WAITING TO BE TEXTED: the
+   * worker has an active primary phone number, and the assignment carries no
+   * receipt (`commId`) for the values it currently holds. One query, because
+   * notifiers fan out per sheet and a per-assignment worker → contact → phone
+   * walk would be N round-trips. Ordered by assignment id so a worker
+   * appearing twice on a sheet resolves to the same assignment every time.
+   *
+   * The receipt condition lives here rather than in the notifier because this
+   * read is the single place that decides who is texted, which assignment
+   * their link names, and which row the send is recorded against. An
+   * unchanged sheet arriving at a trigger status again therefore resolves to
+   * nobody, and the dispatcher stops on its own.
    */
   getSmsTargetsBySheetId(sheetId: string): Promise<SheetAssignmentSmsTarget[]>;
   get(id: string): Promise<EdlsAssignment | undefined>;
   create(assignment: InsertEdlsAssignment): Promise<EdlsAssignment>;
   delete(id: string): Promise<boolean>;
   deleteByCrewId(crewId: string): Promise<number>;
+  /**
+   * Replace an assignment's extra values.
+   *
+   * Voids the assignment's receipt (`commId`) whenever the values genuinely
+   * change, because the worker has then not been told about the assignment as
+   * it now stands. A save that changes nothing leaves the receipt alone.
+   */
   updateData(id: string, data: Record<string, unknown>): Promise<EdlsAssignment | undefined>;
   /**
-   * Record the communication a worker was sent about this assignment.
+   * Record the communication a worker was sent about this assignment — the
+   * receipt saying they have been told about it as it stood when the message
+   * went out. Holding one is what keeps the worker out of the next send.
    *
    * Deliberately narrow: the link is provenance owned by whatever sent the
    * message (which is why the insert schema omits the field), so it is set
@@ -241,11 +263,18 @@ export interface EdlsAssignmentsStorage {
    * means later SENT, not later written: a message that overtook an earlier
    * one in flight does not get demoted by it.
    *
-   * Returns false when nothing was recorded — either no such assignment (it
-   * can be deleted between the message going out and this write landing), or
-   * a more recent message is already on record. Both are benign.
+   * `dataWhenResolved` is the assignment's values as the sender saw them
+   * (`SheetAssignmentSmsTarget.data`). A row edited since then is a different
+   * assignment than the one that was messaged about, and stamping the receipt
+   * on it would quietly cost that worker the re-notification the edit earned
+   * them, so the write is refused.
+   *
+   * Returns false when nothing was recorded — no such assignment (it can be
+   * deleted between the message going out and this write landing), a more
+   * recent message already on record, or the assignment changed underneath
+   * the send. All three are benign; the worker was texted either way.
    */
-  setCommId(id: string, commId: string): Promise<boolean>;
+  setCommId(id: string, commId: string, dataWhenResolved: unknown): Promise<boolean>;
   getAvailableWorkersForSheet(sheetYmd: string, industryId: string | null, ratingId?: string): Promise<AvailableWorkerForSheet[]>;
   /**
    * Report query: every assignment on a future (ymd >= fromYmd), non-trash
@@ -304,6 +333,21 @@ async function sortAssignmentsByClassification(
     const bGiven = (b.worker.given || '').toLowerCase();
     return aGiven.localeCompare(bGiven);
   });
+}
+
+/**
+ * SQL predicate: the assignment row's stored `data` still means what `data`
+ * means.
+ *
+ * Nulls are stripped from both sides, so a key that is absent and the same
+ * key explicitly set to null are the same value. That is what makes a no-op
+ * save a no-op: the edit dialog posts all three extras every time, while an
+ * assignment nobody has edited stores no `data` at all, and the two must not
+ * read as a change.
+ */
+function assignmentDataUnchanged(data: unknown) {
+  const json = JSON.stringify(data ?? {});
+  return sql`jsonb_strip_nulls(COALESCE(${edlsAssignments.data}, '{}'::jsonb)) = jsonb_strip_nulls(${json}::jsonb)`;
 }
 
 export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
@@ -442,12 +486,18 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       // contact, so a caller filtering on it filters on the number the
       // message would really go to. A worker with no active primary number
       // drops out of the result rather than coming back phone-less.
+      //
+      // `comm_id IS NULL` is the receipt condition: a worker already told
+      // about the assignment as it currently stands is not a target. Editing
+      // the assignment voids that receipt, which is what puts them back in
+      // this result for the next send.
       const result = await client.execute(sql`
         SELECT
           ea.id as "assignmentId",
           ea.worker_id as "workerId",
           c.id as "contactId",
-          ph.phone_number as "phoneNumber"
+          ph.phone_number as "phoneNumber",
+          ea.data as "data"
         FROM edls_assignments ea
         INNER JOIN edls_crews ec ON ea.crew_id = ec.id
         INNER JOIN workers w ON ea.worker_id = w.id
@@ -462,6 +512,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           LIMIT 1
         ) ph ON true
         WHERE ec.sheet_id = ${sheetId}
+          AND ea.comm_id IS NULL
         ORDER BY ea.id ASC
       `);
 
@@ -497,15 +548,27 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
 
     async updateData(id: string, data: Record<string, unknown>): Promise<EdlsAssignment | undefined> {
       const client = getClient();
+      // Voiding the receipt is part of the assignment write itself, not
+      // something every future writer has to remember: a worker told about an
+      // assignment has not been told about the one it just became. Expressed
+      // in the UPDATE rather than as a read-then-write, so the comparison is
+      // against the row actually being overwritten.
+      //
+      // Only a REAL change voids it. Re-saving the same values must leave the
+      // receipt standing, or the note dialog becomes a resend button by
+      // accident.
       const [assignment] = await client
         .update(edlsAssignments)
-        .set({ data })
+        .set({
+          data,
+          commId: sql`CASE WHEN ${assignmentDataUnchanged(data)} THEN ${edlsAssignments.commId} ELSE NULL END`,
+        })
         .where(eq(edlsAssignments.id, id))
         .returning();
       return assignment || undefined;
     },
 
-    async setCommId(id: string, commId: string): Promise<boolean> {
+    async setCommId(id: string, commId: string, dataWhenResolved: unknown): Promise<boolean> {
       const client = getClient();
       // Order by WHEN THE MESSAGES WERE SENT, not by which bookkeeping write
       // arrives first. Two sends racing (a sheet saved twice in quick
@@ -518,6 +581,12 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         .where(
           and(
             eq(edlsAssignments.id, id),
+            // The row must still be the assignment the message was about. A
+            // coordinator can edit it in the moment between the text going
+            // out and this write landing; that edit voided the receipt on
+            // purpose, and stamping the superseded message back on would
+            // silently cost the worker their re-notification.
+            assignmentDataUnchanged(dataWhenResolved),
             sql`(
               ${edlsAssignments.commId} IS NULL
               OR EXISTS (

@@ -26,6 +26,7 @@ import { loadComponentCache } from "../../server/services/component-cache";
 import { getSystemMode } from "../../server/services/system-mode";
 import { eventBus, EventType } from "../../server/services/event-bus";
 import { storage, createCommSmsOptinStorage, createCommStorage } from "../../server/storage";
+import type { SheetAssignmentSmsTarget } from "../../server/storage/edls/assignments";
 
 let failures = 0;
 function check(label: string, ok: boolean, detail?: string) {
@@ -131,30 +132,40 @@ async function main() {
   const sheets = await storage.edlsSheets.getAll();
   let chosen: { sheetId: string; title: string } | null = null;
   let expectedAssignmentIds: string[] = [];
+  // The targets as they were BEFORE the send. Re-reading them afterwards
+  // answers differently on purpose: a recorded message is a receipt, and the
+  // read leaves out anyone holding one.
+  let expectedTargets: SheetAssignmentSmsTarget[] = [];
 
   for (const sheet of sheets) {
     const targets = await storage.edlsAssignments.getSmsTargetsBySheetId(sheet.id);
     if (targets.length === 0) continue;
 
-    // Mirror the notifier's own recipient rule: first assignment per contact,
-    // opted-in numbers only.
-    const firstByContact = new Map<string, (typeof targets)[number]>();
+    // Mirror the notifier's own recipient rule: one text per contact, about
+    // their first assignment on the sheet, opted-in numbers only — and that
+    // one text is recorded on EVERY assignment of theirs it spoke for.
+    const byContact = new Map<string, (typeof targets)[number][]>();
     for (const t of targets) {
-      if (!firstByContact.has(t.contactId)) firstByContact.set(t.contactId, t);
+      const group = byContact.get(t.contactId);
+      if (group) group.push(t);
+      else byContact.set(t.contactId, [t]);
     }
     const optins = await optinStorage.getSmsOptinsByPhoneNumbers(
-      Array.from(firstByContact.values()).map((t) => t.phoneNumber),
+      Array.from(byContact.values()).map((group) => group[0].phoneNumber),
     );
-    const willText = Array.from(firstByContact.values()).filter(
-      (t) => optins.get(t.phoneNumber)?.optin,
+    const willText = Array.from(byContact.values()).filter(
+      (group) => optins.get(group[0].phoneNumber)?.optin,
     );
     if (willText.length < 2) continue;
     // The safety condition: an allowlisted number in a non-live mode WOULD be
     // handed to the provider.
-    if (willText.some((t) => optins.get(t.phoneNumber)?.allowlist)) continue;
+    if (willText.some((group) => optins.get(group[0].phoneNumber)?.allowlist)) {
+      continue;
+    }
 
     chosen = { sheetId: sheet.id, title: sheet.title };
-    expectedAssignmentIds = willText.map((t) => t.assignmentId);
+    expectedTargets = willText.flat();
+    expectedAssignmentIds = expectedTargets.map((t) => t.assignmentId);
     break;
   }
 
@@ -235,8 +246,7 @@ async function main() {
   check(
     "it belongs to the worker who was texted",
     !!sampleComm &&
-      sampleComm.contactId ===
-        (await contactIdForAssignment(chosen.sheetId, sampleId)),
+      sampleComm.contactId === contactIdForAssignment(expectedTargets, sampleId),
     sampleComm?.contactId,
   );
   check(
@@ -267,7 +277,7 @@ async function main() {
       data: { verifyScript: true },
     });
 
-    const olderWrote = await storage.edlsAssignments.setCommId(sampleId, older.id);
+    const olderWrote = await storage.edlsAssignments.setCommId(sampleId, older.id, sample.data);
     const afterOlder = await linkOf(chosen.sheetId, sampleId);
     check(
       "an earlier-sent message does not displace a later one",
@@ -275,7 +285,7 @@ async function main() {
       `wrote=${olderWrote}, link ${afterOlder === sample.commId ? "unchanged" : "CHANGED"}`,
     );
 
-    const newerWrote = await storage.edlsAssignments.setCommId(sampleId, newer.id);
+    const newerWrote = await storage.edlsAssignments.setCommId(sampleId, newer.id, sample.data);
     const afterNewer = await linkOf(chosen.sheetId, sampleId);
     check(
       "a later-sent message does displace the recorded one",
@@ -287,7 +297,7 @@ async function main() {
     // comm clears the column, which lets the original be recorded again.
     await commStorage.deleteComm(newer.id);
     await commStorage.deleteComm(older.id);
-    await storage.edlsAssignments.setCommId(sampleId, sample.commId);
+    await storage.edlsAssignments.setCommId(sampleId, sample.commId, sample.data);
     check(
       "the sheet is back to what the event produced",
       (await linkOf(chosen.sheetId, sampleId)) === sample.commId,
@@ -339,12 +349,11 @@ async function linkOf(
   return rows.find((a) => a.id === assignmentId)?.commId;
 }
 
-/** The contact an assignment's worker belongs to, via the notifier's own read. */
-async function contactIdForAssignment(
-  sheetId: string,
+/** The contact an assignment's worker belongs to, from the notifier's own read. */
+function contactIdForAssignment(
+  targets: SheetAssignmentSmsTarget[],
   assignmentId: string,
-): Promise<string | undefined> {
-  const targets = await storage.edlsAssignments.getSmsTargetsBySheetId(sheetId);
+): string | undefined {
   return targets.find((t) => t.assignmentId === assignmentId)?.contactId;
 }
 

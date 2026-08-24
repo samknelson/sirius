@@ -13,14 +13,34 @@ Sirius is a full-stack web application designed for comprehensive worker managem
     | Gate | Command |
     | --- | --- |
     | `lint` | `npx tsx scripts/dev/lint.ts` |
-    | `typecheck` | `NODE_OPTIONS=--max-old-space-size=8192 npm run check` |
+    | `typecheck` | `npm run check` |
     | `migrations` | `npx tsx scripts/check-migrations.ts --base=origin/main` |
 
     A violation blocks completion with the underlying check's own
-    actionable error. `typecheck` is tsc with the memory headroom it needs
-    (incremental, so re-runs are fast) and covers `tests/` too.
-    `check-migrations` also sees untracked files (`git ls-files --others`),
-    so a freshly written migration counts before it is committed.
+    actionable error. `check-migrations` also sees untracked files
+    (`git ls-files --others`), so a freshly written migration counts before
+    it is committed.
+
+-   **`npm run check` is tsc, run twice** — once for
+    `tsconfig.server.json` (server + shared + tests) and once for
+    `tsconfig.client.json` (client + shared), each in its own Node process
+    with an explicit `--max-old-space-size`. Those are entry roots rather
+    than an exclusive split — imports pull files across the line either way
+    — and between them the two halves resolve to exactly the file set the
+    root `tsconfig.json` does. The root config stays the one the editor,
+    vite and vitest read. Both halves are incremental (a build-info file
+    each), so re-runs are fast.
+
+    The split and the pinned ceiling are not cosmetic: one combined process
+    needs ~2.2 GB of heap, which is over the ~2.08 GB default a stock CI
+    runner gives Node, so the check died there with "Reached heap limit"
+    while passing locally. Heap by half, measured 2026-08-24: server
+    1.48 GB, client 1.86 GB (peak RSS 0.9 / 2.0 GB). The client half is the
+    expensive one because `@shared/schema` brings drizzle's inference in
+    with it. Growth is steady — roughly +0.6 GB per 1,000 files added over
+    the last year — so expect to raise the pin again rather than to hold
+    this line forever. Raise it deliberately; do not go back to inheriting
+    whatever the machine happens to allow.
 
 -   **`npm run lint` is the architecture-lint suite** — one entry point for
     every repo-wide architecture rule (`scripts/dev/lint.ts`). It runs all

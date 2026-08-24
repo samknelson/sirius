@@ -79,16 +79,31 @@ function assignmentScheduleUrl(assignmentId: string): string {
 }
 
 /**
- * Which assignment each recipient contact was resolved from, remembered for
- * the span of one dispatched event. `getRecipients` already reads the sheet's
- * assignments to decide who to text; `getMessage` needs the same answer to
- * build that recipient's link, and re-reading it per message would both cost a
- * query per worker and risk answering differently than the recipient list did.
- * Keyed weakly by the event context, so it is dropped with the event.
+ * What each recipient contact was resolved from, remembered for the span of
+ * one dispatched event. `getRecipients` already reads the sheet's assignments
+ * to decide who to text; `getMessage` needs the same answer to build that
+ * recipient's link, and re-reading it per message would both cost a query per
+ * worker and risk answering differently than the recipient list did. Keyed
+ * weakly by the event context, so it is dropped with the event.
+ *
+ * `linked` is the one assignment the text points at. `covered` is EVERY
+ * assignment the text speaks for — the same list, because a worker assigned
+ * twice on a sheet gets one text about both rows. All of them are receipted,
+ * or the row the link skipped would still be waiting to be texted and would
+ * text the worker again at the next status arrival with nothing changed.
+ *
+ * Each carries the values it held when it was resolved, because the receipt
+ * written after the send has to prove it is recording the message against the
+ * same assignment the message was about.
  */
+interface ResolvedAssignment {
+  assignmentId: string;
+  data: unknown;
+}
+
 const assignmentByContact = new WeakMap<
   EventNotifierEventContext,
-  Map<string, string>
+  Map<string, { linked: ResolvedAssignment; covered: ResolvedAssignment[] }>
 >();
 
 /**
@@ -170,37 +185,48 @@ export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
       "../../../storage"
     );
 
-    // Assignments already narrowed to workers with an active primary phone,
+    // Assignments already narrowed to workers with an active primary phone
+    // who do NOT hold a receipt for the assignment as it currently stands,
     // ordered by assignment id so a repeated worker always resolves to the
-    // same assignment.
+    // same assignment. Re-locking a sheet nobody edited therefore leaves
+    // nothing here, and the dispatcher stops on the empty recipient list.
     const targets =
       await storage.edlsAssignments.getSmsTargetsBySheetId(sheetId);
     if (targets.length === 0) return [];
 
-    // One entry per contact: a worker assigned twice on the same sheet is
-    // texted once, about their first assignment on it.
-    const firstByContact = new Map<string, (typeof targets)[number]>();
+    // Grouped per contact, keeping the id order: a worker assigned twice on
+    // the same sheet is texted ONCE, about their first assignment on it — and
+    // that one text speaks for every assignment of theirs in the group, which
+    // is why they are all kept rather than only the first.
+    const byContact = new Map<string, (typeof targets)[number][]>();
     for (const target of targets) {
-      if (!firstByContact.has(target.contactId)) {
-        firstByContact.set(target.contactId, target);
-      }
+      const group = byContact.get(target.contactId);
+      if (group) group.push(target);
+      else byContact.set(target.contactId, [target]);
     }
 
     // Drop anyone whose number has not recorded an SMS opt-in before the
     // sender turns them into a failed communication record.
     const optins = await createCommSmsOptinStorage().getSmsOptinsByPhoneNumbers(
-      Array.from(firstByContact.values()).map((t) => t.phoneNumber),
+      Array.from(byContact.values()).map((group) => group[0].phoneNumber),
     );
 
-    const links = new Map<string, string>();
+    const resolved = new Map<
+      string,
+      { linked: ResolvedAssignment; covered: ResolvedAssignment[] }
+    >();
     const recipients: NotifierRecipient[] = [];
-    for (const [contactId, target] of firstByContact) {
-      if (!optins.get(target.phoneNumber)?.optin) continue;
-      links.set(contactId, target.assignmentId);
+    for (const [contactId, group] of byContact) {
+      if (!optins.get(group[0].phoneNumber)?.optin) continue;
+      const covered = group.map((t) => ({
+        assignmentId: t.assignmentId,
+        data: t.data,
+      }));
+      resolved.set(contactId, { linked: covered[0], covered });
       recipients.push({ contactId });
     }
 
-    assignmentByContact.set(ctx, links);
+    assignmentByContact.set(ctx, resolved);
     return recipients;
   },
 
@@ -210,12 +236,12 @@ export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
     ctx: EventNotifierEventContext,
   ): Promise<NotifierMessageContent | null> {
     if (medium !== "sms") return null;
-    const assignmentId = assignmentByContact.get(ctx)?.get(recipient.contactId);
+    const resolved = assignmentByContact.get(ctx)?.get(recipient.contactId);
     // No assignment resolved means this recipient did not come from the sheet
     // read above; there is no honest link to send them.
-    if (!assignmentId) return null;
+    if (!resolved) return null;
     return {
-      message: `${SENTENCE} ${assignmentScheduleUrl(assignmentId)}`,
+      message: `${SENTENCE} ${assignmentScheduleUrl(resolved.linked.assignmentId)}`,
     };
   },
 
@@ -223,16 +249,34 @@ export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
    * Record the text on the assignment it was about, so a sheet can show who
    * was contacted and what they were sent.
    *
+   * The recorded communication is a RECEIPT, not just a link: it means this
+   * worker has been told about the assignment AS IT STOOD when the message
+   * went out, and holding one is what keeps them out of the next send. Any
+   * change to the assignment voids it (see `updateData`), so the next arrival
+   * at a trigger status texts the workers whose rows changed and nobody else.
+   *
    * Reuses the same per-event contact → assignment map the message was built
    * from, which is what makes the recorded link and the link inside the text
-   * necessarily the same assignment.
+   * necessarily the same assignment. The assignment's values are handed back
+   * with it so a row edited while the text was in flight keeps its voided
+   * receipt instead of being handed one for the version it no longer holds.
+   *
+   * EVERY assignment the text spoke for is receipted, not just the one it
+   * linked to. A worker assigned twice on a sheet is deliberately texted once;
+   * receipting only the linked row would leave the other still waiting to be
+   * texted, and the next status arrival would text that worker again with
+   * nothing changed. Each row is guarded by its own values, so a row edited
+   * mid-send keeps the resend it earned while its siblings are still
+   * receipted.
    *
    * Deliberately records failures too: the framework calls this whenever a
-   * comm record exists, and a worker whose text bounced is a more useful thing
-   * to see on a sheet than one indistinguishable from a worker nobody tried to
-   * reach. Workers with no active primary number and workers who never opted
-   * in are filtered out before sending, so they are never recorded — they were
-   * genuinely not contacted.
+   * comm record exists, and a failed or undelivered text still counts as
+   * told — there is no automatic retry, and a coordinator forces a resend by
+   * editing the row like any other change. A worker whose text bounced is
+   * also a more useful thing to see on a sheet than one indistinguishable
+   * from a worker nobody tried to reach. Workers with no active primary
+   * number and workers who never opted in are filtered out before sending, so
+   * they are never recorded — they were genuinely not contacted.
    */
   async onCommCreated(
     medium: NotificationMedium,
@@ -241,14 +285,21 @@ export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
     ctx: EventNotifierEventContext,
   ): Promise<void> {
     if (medium !== "sms") return;
-    const assignmentId = assignmentByContact.get(ctx)?.get(recipient.contactId);
-    if (!assignmentId) return;
+    const resolved = assignmentByContact.get(ctx)?.get(recipient.contactId);
+    if (!resolved) return;
     const { storage } = await import("../../../storage");
     // A false return means there was nothing to record onto: the assignment
-    // was deleted between the text going out and this write, or a later text
-    // already claimed the slot. The worker was still texted either way, and
-    // neither case is repairable here.
-    await storage.edlsAssignments.setCommId(assignmentId, comm.id);
+    // was deleted between the text going out and this write, it was edited in
+    // that window (so it is owed a fresh text, not this receipt), or a later
+    // text already claimed the slot. The worker was still texted either way,
+    // and none of the three is repairable here.
+    for (const assignment of resolved.covered) {
+      await storage.edlsAssignments.setCommId(
+        assignment.assignmentId,
+        comm.id,
+        assignment.data,
+      );
+    }
   },
 };
 
