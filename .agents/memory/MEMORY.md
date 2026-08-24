@@ -126,3 +126,5 @@
 - [Remote schema bring-up](remote-schema-bringup.md) — shell-less target: env-var-only repairs, pure-leaf console report, fatal migration failures, drift↔migration match is textual + newest-first.
 - [Typecheck heap ceiling](typecheck-heap-ceiling.md) — tsc runs as two pinned processes; heap grows ~linearly with file count, and cutting drizzle out of the client half was measured at only −7%.
 - [EDLS schedule answer authority](edls-schedule-answer-authority.md) — an AAT bearer link intentionally authorizes its worker’s final EDLS accept/decline response; legacy schedule links remain read-only.
+- [Permission registry vs role tables](permission-registry-vs-role-tables.md) — getRolePermissions drops keys an uninitialized registry doesn't know (empty pre-app-init); ask getRolesWithPermission for authority questions.
+- [Break-glass admin from env](break-glass-admin-from-env.md) — LOCAL_AUTH_* is a per-boot reconciler (exists/active/admin/password); refusals must be decided BEFORE the first write, and env overrides mean in-app admins can set it too.

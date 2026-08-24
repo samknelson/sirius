@@ -187,6 +187,12 @@ vi.mock("../../server/lib/base-url", () => ({
   absoluteUrl: (relative: string) => `https://example.test${relative}`,
 }));
 
+// The Worker Access Tokens component is present throughout: the flag gate
+// below has to be the reason a send is refused, not a missing component.
+vi.mock("../../server/modules/components", () => ({
+  isComponentEnabled: async () => true,
+}));
+
 const { edlsSheetWorkerSmsNotifier } = await import(
   "../../server/plugins/event-notifier/plugins/edls-sheet-worker-sms-notifier"
 );
@@ -477,5 +483,41 @@ describe("EDLS worker SMS notifier — workers taken off the sheet", () => {
       reachable: [ASSIGNED, RECEIPTED],
     });
     expect(contactIds).toEqual([contactOf(ASSIGNED)]);
+  });
+});
+
+describe("EDLS worker SMS notifier — the sheet's own notifications flag", () => {
+  /** A sheet arriving at a configured trigger status, flag as given. */
+  function arrivalAt(notificationsEnabled: boolean) {
+    return {
+      payload: {
+        sheetId: SHEET_ID,
+        sheet: {
+          id: SHEET_ID,
+          ymd: YMD,
+          status: "lock",
+          changed: CHANGED,
+          notificationsEnabled,
+        } as unknown as EdlsSheet,
+        previousStatus: "draft",
+        newStatus: "lock",
+      },
+    } as never;
+  }
+
+  it("refuses to send for a sheet whose flag is off, and sends when it is on", async () => {
+    // A flag-off non-send looks exactly like a sheet that correctly notified
+    // nobody: no error, no comm rows, nothing in any log. The flag-on control
+    // is what makes the refusal mean something — without it this passes for a
+    // sheet that stopped notifying for any other reason.
+    await expect(
+      edlsSheetWorkerSmsNotifier.shouldDispatch!(arrivalAt(false), { statuses: ["lock"] }),
+      "flag off: a status arrival texts nobody",
+    ).resolves.toBe(false);
+
+    await expect(
+      edlsSheetWorkerSmsNotifier.shouldDispatch!(arrivalAt(true), { statuses: ["lock"] }),
+      "flag on: the same arrival sends as it always did",
+    ).resolves.toBe(true);
   });
 });

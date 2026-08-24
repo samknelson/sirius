@@ -420,12 +420,13 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   await bootstrapSingletonPluginConfigs();
   logger.info("Singleton plugin configs bootstrapped", { source: "startup" });
 
-  // Seed the local-auth credential from LOCAL_AUTH_EMAIL /
-  // LOCAL_AUTH_PASSWORD_HASH (no-op when unset). Must run after migrations
-  // and before auth setup so the credential is usable on first login.
+  // Guarantee the admin account described by LOCAL_AUTH_EMAIL /
+  // LOCAL_AUTH_PASSWORD_HASH exists, is active, can administer and carries
+  // that password (no-op when either is unset). Must run after migrations and
+  // before auth setup so the credential is usable on the very first login.
   {
-    const { seedLocalCredential } = await import("./auth/local-seed");
-    await seedLocalCredential();
+    const { ensureLocalAdminAccount } = await import("./auth/local-seed");
+    await ensureLocalAdminAccount();
   }
 
   // Setup multi-provider auth

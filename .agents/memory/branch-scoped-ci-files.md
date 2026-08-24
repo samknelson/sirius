@@ -82,3 +82,24 @@ environment that did not explicitly check them out.
 
 **How to apply:** keep application work on `main` and treat carrying branches as
 merge-target-only. After any agent work lands on one, re-check the file count before pushing.
+
+## A carrying branch can swallow a whole feature merge
+
+Work that an agent "merged" can be reachable from the carrying branch only, never from
+`main`. Nothing surfaces it: the task reads complete, the merge commit exists, and the
+feature is simply absent from the running app.
+
+**Why:** the merge target is the branch that was checked out, and these branches are
+long-lived, so the commit sits on a line `main` never sees.
+
+**How to apply:** before believing a feature is on `main`, test reachability, not existence
+— `git merge-base --is-ancestor <merge-commit> main`. To recover, diff the tree
+(`git diff --stat main <merge-commit>`); if the differing paths are only the feature's, copy
+them across with `git checkout <merge-commit> -- <paths>` and confirm
+`git diff main <merge-commit>` is empty. Never merge the carrying branch into `main` to
+recover work (see above).
+
+**Working-tree consequence:** once the directories are tracked on the carrying branch again,
+`git checkout main` DELETES the on-disk copies — correct, and better than the alternative:
+an untracked copy sitting on `main` blocks `git checkout <carrying-branch>` with "untracked
+working tree files would be overwritten".
