@@ -35,8 +35,12 @@ import { ensureIdMap, putMapping } from "../s1-migration/lib/idmap";
 const N = {
   ct1: 99901001, // primary contact (update-path subject)
   ct2: 99901002, // alt contact (report-only deletion subject)
+  ct3: 99901003, // stale SSN owner's contact
+  ct4: 99901004, // incoming SSN claimant's contact
   wk1: 99901011, // worker of ct1
   wk2: 99901012, // worker of ct2 (report-only deletion subject)
+  wk3: 99901013, // source-missing stale SSN owner
+  wk4: 99901014, // incoming SSN claimant
   rel1: 99901021, // relationship ct1↔ct2 (hard-delete sweep subject)
   emp1: 99901031, // employee id on wk1 (hard-delete sweep subject)
   reltypeTid: 99901090, // fake term tid → real relation type option
@@ -106,8 +110,8 @@ const allowArgs = (rejects: string[], findings: string[] = []) => [
   ...(findings.length > 0 ? ["--allow-findings", findings.join(",")] : []),
 ];
 
-const runT3 = (extraFindings: string[] = []) =>
-  runLoader("load-contacts-workers.ts", allowArgs(T3_ALLOW_REJECTS, ["deleted_in_s1", ...extraFindings]));
+const runT3 = (extraFindings: string[] = [], extraArgs: string[] = []) =>
+  runLoader("load-contacts-workers.ts", [...allowArgs(T3_ALLOW_REJECTS, ["deleted_in_s1", ...extraFindings]), ...extraArgs]);
 const runT15 = () => runLoader("load-relationships.ts", allowArgs(T15_ALLOW_REJECTS), 600_000);
 const runN4 = () => runLoader("load-employee-ids.ts", allowArgs(N4_ALLOW_REJECTS), 600_000);
 
@@ -162,7 +166,7 @@ const contactRec = (nid: number, s: ContactSeed) => ({
   },
 });
 
-const workerRec = (nid: number, contactNid: number, siriusId: string, dob?: string) => ({
+const workerRec = (nid: number, contactNid: number, siriusId: string, dob?: string, ssn?: string) => ({
   bundle: "sirius_worker",
   nid,
   vid: nid,
@@ -175,6 +179,7 @@ const workerRec = (nid: number, contactNid: number, siriusId: string, dob?: stri
     field_sirius_contact: { target_id: contactNid },
     field_sirius_id: { value: siriusId },
     ...(dob ? { field_sirius_dob: { value: `${dob} 00:00:00` } } : {}),
+    ...(ssn ? { field_sirius_ssn: { value: ssn } } : {}),
   },
 });
 
@@ -276,8 +281,12 @@ async function main() {
     await upsertRecords([
       contactRec(N.ct1, { given: "Sync", family: "Doe", email: "sync-doe-999@example.com", phone: "617-555-0101", phoneAlt: "617-555-0102", city: "Boston" }),
       contactRec(N.ct2, { given: "Alt", family: "Person", email: null }),
+      contactRec(N.ct3, { given: "Stale", family: "Owner", email: null }),
+      contactRec(N.ct4, { given: "Incoming", family: "Claimant", email: null }),
       workerRec(N.wk1, N.ct1, "99901011", "1980-01-01"),
       workerRec(N.wk2, N.ct2, "99901012"),
+      workerRec(N.wk3, N.ct3, "99901013", undefined, "111-22-3333"),
+      workerRec(N.wk4, N.ct4, "99901014", undefined, "111223333"),
       relRec(N.rel1, N.ct1, N.ct2, 1),
       empRec(N.emp1, N.wk1, shopNid, "EMP-999010"),
     ]);
@@ -288,8 +297,61 @@ async function main() {
     const c2 = await mappingOf("contact", N.ct2);
     const w1 = await mappingOf("worker", N.wk1);
     const w2 = await mappingOf("worker", N.wk2);
-    check("contacts + workers mapped", !!c1 && !!c2 && !!w1 && !!w2 && [c1, c2, w1, w2].every((m) => !m!.stub));
+    const w3 = await mappingOf("worker", N.wk3);
+    const w4 = await mappingOf("worker", N.wk4);
+    check("contacts + workers mapped", !!c1 && !!c2 && !!w1 && !!w2 && !!w3 && !!w4 && [c1, c2, w1, w2, w3, w4].every((m) => !m!.stub));
     if (!c1 || !c2 || !w1 || !w2) throw new Error("cannot continue without phase-1 mappings");
+    if (!w3 || !w4) throw new Error("cannot continue without SSN fixture mappings");
+    const initialSsnRows = await rows<{ id: string; ssn: string | null }>(
+      sql`SELECT id, ssn FROM workers WHERE id IN (${w3.s2Id}, ${w4.s2Id})`,
+    );
+    check(
+      "live owner collision is refused",
+      initialSsnRows.find((r) => r.id === w3.s2Id)?.ssn === "111223333" &&
+        initialSsnRows.find((r) => r.id === w4.s2Id)?.ssn == null,
+    );
+
+    // Simulate an already-consumed unchanged incoming fingerprint, then make
+    // the current owner source-missing. The repair dependency must bypass the
+    // normal fast path even though wk4's staged content did not change.
+    await db.execute(sql`
+      UPDATE s1_staging.id_map
+         SET consumed_fingerprint = (SELECT content_hash FROM s1_staging.records WHERE bundle = 'sirius_worker' AND nid = ${N.wk4}),
+             logic_version = 2
+       WHERE entity = 'worker' AND s1_id = ${N.wk4}
+    `);
+    await db.execute(sql`DELETE FROM s1_staging.records WHERE bundle = 'sirius_worker' AND nid = ${N.wk3}`);
+
+    const ssnDry = runT3([], ["--dry-run"]);
+    check("SSN transfer dry-run exits 0", ssnDry.status === 0, ssnDry.result?.rejectGate);
+    check("SSN transfer dry-run reports one plan", ssnDry.result?.detail?.ssnOwnershipRepairs?.dryRunPlanned === 1, ssnDry.result?.detail?.ssnOwnershipRepairs);
+    const afterDry = await rows<{ id: string; ssn: string | null }>(
+      sql`SELECT id, ssn FROM workers WHERE id IN (${w3.s2Id}, ${w4.s2Id})`,
+    );
+    check(
+      "SSN transfer dry-run does not mutate",
+      afterDry.find((r) => r.id === w3.s2Id)?.ssn === "111223333" &&
+        afterDry.find((r) => r.id === w4.s2Id)?.ssn == null,
+    );
+
+    const ssnRepair = runT3();
+    check("source-missing stale SSN owner repair exits 0", ssnRepair.status === 0, ssnRepair.result?.rejectGate);
+    check("SSN repair applied once", ssnRepair.result?.detail?.ssnOwnershipRepairs?.applied === 1, ssnRepair.result?.detail?.ssnOwnershipRepairs);
+    const afterRepair = await rows<{ id: string; sirius_id: number; ssn: string | null }>(
+      sql`SELECT id, sirius_id, ssn FROM workers WHERE id IN (${w3.s2Id}, ${w4.s2Id})`,
+    );
+    check(
+      "unchanged incoming fingerprint still repairs unique SSN ownership",
+      afterRepair.find((r) => r.id === w3.s2Id)?.ssn == null &&
+        afterRepair.find((r) => r.id === w4.s2Id)?.ssn === "111223333",
+    );
+    check(
+      "SSN-only transfer preserves both workers and Sirius IDs",
+      afterRepair.length === 2 &&
+        Number(afterRepair.find((r) => r.id === w3.s2Id)?.sirius_id) === 99901013 &&
+        Number(afterRepair.find((r) => r.id === w4.s2Id)?.sirius_id) === 99901014,
+      afterRepair.map((r) => ({ id: r.id, siriusId: r.sirius_id, hasSsn: r.ssn != null })),
+    );
 
     const contact1 = (await rows<any>(sql`SELECT display_name, email, birth_date FROM contacts WHERE id = ${c1.s2Id}`))[0];
     check("ct1 display name", !!contact1 && String(contact1.display_name).includes("Sync") && String(contact1.display_name).includes("Doe"), contact1?.display_name);

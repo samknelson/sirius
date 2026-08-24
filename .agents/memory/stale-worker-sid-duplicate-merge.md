@@ -42,3 +42,17 @@ identity mappings or reparenting references.
 deletion, unique SSN ownership, and both Sirius IDs. Treat the retired worker
 and its mapping as deliberately retained state, not as evidence that the SSN
 repair failed.
+
+The contacts/workers loader now applies this SSN-only transfer automatically:
+the unique incoming staged claimant wins only when the current owner has
+exactly one non-stub worker mapping and that mapped S1 nid is absent from
+current worker staging. Live, unmapped, stub, ambiguous, or multiply claimed
+ownership remains a blocking collision.
+
+**Why:** Production-profile rehearsals repeatedly surfaced stale merged-account
+SSNs only after long staging runs; the authority proof is strong enough to
+repair safely without weakening genuine two-person collision handling.
+
+**How to apply:** Keep stale release plus incoming assignment atomic, preserve
+workers/Sirius IDs/mappings/history, bypass fingerprints for eligible repairs,
+and expose only aggregate repair counts.

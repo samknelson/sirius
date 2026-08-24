@@ -62,10 +62,12 @@
  *     updated in place, its old "Sirius ID" worker_ids row (value == staged
  *     field_sirius_id) is removed, and a "Legacy NID" row is added.
  *   - contact_id via id_map (contact nid → contacts.id); missing → reject
- *   - ssn (T3): digits-only, must be 9 digits; uniqueness pre-checked — the
- *     first worker keeps a colliding SSN, later ones load ssn=null + reject
- *     (Q36 review queue). Masked snapshot values fail the 9-digit rule and
- *     are counted (expected in dev, must be ~0 in production).
+ *   - ssn (T3): digits-only, must be 9 digits; collisions load ssn=null +
+ *     reject (Q36 review queue), except a uniquely claimed incoming SSN may
+ *     transfer from an exactly/unambiguously mapped non-stub S1 owner whose
+ *     nid is absent from current staging. The transfer is SSN-only and atomic:
+ *     both workers, Sirius IDs, mappings, and history remain intact. Masked
+ *     snapshot values fail the 9-digit rule and are counted.
  *   - dob/gender → the worker's CONTACT (updateBirthDate/updateGender);
  *     gender tid resolves via id_map term else options_gender name match.
  *     SYNC: dob/gender removal in S1 clears the contact fields (only when a
@@ -116,6 +118,7 @@ import { db, pool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { storage } from "../../server/storage/database";
 import { withNotificationsSuppressed } from "../../server/middleware/request-context";
+import { runInTransaction } from "../../server/storage/transaction-context";
 import {
   ensureStagingSchema,
   recordRun,
@@ -168,7 +171,7 @@ const ALLOWED_REJECTS: string[] = (() => {
 const LOADER = "t3t1-contacts-workers";
 /** Loader logic version — BUMP whenever transform logic changes so unchanged
  * S1 rows reprocess into the corrected S2 shape on their next run. */
-const LOGIC_VERSION = 1;
+const LOGIC_VERSION = 2;
 const FORCE_RECONCILE = parseForceReconcile();
 const ALLOWED_FINDINGS = parseAllowedFindings();
 
@@ -179,11 +182,17 @@ const PLACEHOLDER_EMAILS = new Set(["fastload@nodomain.com", "no_email@avolta.ne
 /** Every address at these domains is non-routable and must be suppressed. */
 const PLACEHOLDER_DOMAINS = new Set(["nodomain.com"]);
 
+/** Canonical contacts.email value and ownership-map key. */
+function normalizeEmailKey(raw: string | null | undefined): string | null {
+  const normalized = raw?.trim().toLowerCase() ?? "";
+  return normalized.length > 0 ? normalized : null;
+}
+
 /** Returns true when an email address is a non-routable placeholder that must
  * be suppressed before the duplicate-email dedupe check.  Matching is
  * case-insensitive and trim-safe, consistent with the existing dedupe logic. */
 function isPlaceholderEmail(email: string): boolean {
-  const norm = email.trim().toLowerCase();
+  const norm = normalizeEmailKey(email)!;
   if (PLACEHOLDER_EMAILS.has(norm)) return true;
   const atIdx = norm.lastIndexOf("@");
   if (atIdx >= 0 && PLACEHOLDER_DOMAINS.has(norm.slice(atIdx + 1))) return true;
@@ -307,9 +316,8 @@ async function main() {
   {
     const groups = new Map<string, number[]>(); // normalized address → staged contact nids
     for (const c of stagedContacts) {
-      const raw = strOf(c.fields, "field_sirius_email");
-      if (!raw) continue;
-      const norm = raw.trim().toLowerCase();
+      const norm = normalizeEmailKey(strOf(c.fields, "field_sirius_email"));
+      if (!norm) continue;
       if (isPlaceholderEmail(norm)) continue; // suppressed separately (T12)
       groups.set(norm, [...(groups.get(norm) ?? []), c.nid]);
     }
@@ -322,7 +330,7 @@ async function main() {
       }
       const uidsByMail = new Map<string, number[]>();
       for (const u of await loadRawUserMails()) {
-        const m = (u.mail ?? "").trim().toLowerCase();
+        const m = normalizeEmailKey(u.mail);
         if (!m) continue;
         uidsByMail.set(m, [...(uidsByMail.get(m) ?? []), u.uid]);
       }
@@ -376,9 +384,10 @@ async function main() {
    * when another contact owns the address, or ownership is deferred).
    * Placeholders never enter the plan, so ordering vs suppression is moot. */
   const applySharedOwnership = (nid: number, email: string | null): string | null => {
-    if (!email) return email;
-    const plan = sharedEmailPlan.get(email);
-    if (!plan || plan.winnerNid === nid) return email;
+    const normalized = normalizeEmailKey(email);
+    if (!normalized) return null;
+    const plan = sharedEmailPlan.get(normalized);
+    if (!plan || plan.winnerNid === nid) return normalized;
     plan.nulled++;
     return null;
   };
@@ -411,8 +420,8 @@ async function main() {
   const contactFpOf = (c: StagedNode): string => {
     const wnid = workerNidByContactNid.get(c.nid);
     const w = wnid != null ? stagedWorkerByNid.get(wnid) : undefined;
-    const rawEmail = strOf(c.fields, "field_sirius_email");
-    const plan = rawEmail ? sharedEmailPlan.get(rawEmail.toLowerCase()) : undefined;
+    const rawEmail = normalizeEmailKey(strOf(c.fields, "field_sirius_email"));
+    const plan = rawEmail ? sharedEmailPlan.get(rawEmail) : undefined;
     return combineFingerprints([
       ["node", c.contentHash],
       ["workerNode", w?.contentHash ?? null],
@@ -436,10 +445,12 @@ async function main() {
   // paging is a documented production TODO (README).
   // email → owning contact id, so re-runs don't count a contact's own
   // already-loaded email as a duplicate
-  const emailRes = await db.execute(sql`SELECT id, lower(email) AS email FROM contacts WHERE email IS NOT NULL`);
-  const emailOwner = new Map(
-    (emailRes as unknown as { rows: Array<{ id: string; email: string }> }).rows.map((r) => [r.email, r.id]),
-  );
+  const emailRes = await db.execute(sql`SELECT id, email FROM contacts WHERE email IS NOT NULL`);
+  const emailOwner = new Map<string, string>();
+  for (const r of (emailRes as unknown as { rows: Array<{ id: string; email: string }> }).rows) {
+    const key = normalizeEmailKey(r.email);
+    if (key) emailOwner.set(key, r.id);
+  }
 
   // ---- rerun repair: clear shared addresses held by non-owners ----
   // A prior run's first-wins rule may have written a shared address onto a
@@ -450,37 +461,87 @@ async function main() {
   // outside the group (operator-created) keeps its email and the staged side
   // rejects duplicate_email as before.
   let sharedEmailsCleared = 0;
-  if (!DRY_RUN) {
-    for (const [addr, plan] of sharedEmailPlan) {
-      const holderId = emailOwner.get(addr);
-      if (!holderId) continue;
-      const winnerId = plan.winnerNid != null ? contactMap.get(plan.winnerNid)?.s2Id : undefined;
-      if (winnerId != null && holderId === winnerId) continue; // correctly owned — never reassigned
-      const memberIds = new Set(
-        plan.memberNids.map((n) => contactMap.get(n)?.s2Id).filter((id): id is string => id != null),
-      );
-      if (!memberIds.has(holderId)) continue; // outside the staged group
+  let sharedEmailsClearPlanned = 0;
+  const sharedEmailRepairNids = new Set<number>();
+  for (const [addr, plan] of sharedEmailPlan) {
+    const holderId = emailOwner.get(addr);
+    if (!holderId) continue;
+    const winnerId = plan.winnerNid != null ? contactMap.get(plan.winnerNid)?.s2Id : undefined;
+    if (winnerId != null && holderId === winnerId) continue; // correctly owned — never reassigned
+    const memberIds = new Set(
+      plan.memberNids.map((n) => contactMap.get(n)?.s2Id).filter((id): id is string => id != null),
+    );
+    if (!memberIds.has(holderId)) continue; // outside the staged group
+    sharedEmailsClearPlanned++;
+    if (plan.winnerNid != null) sharedEmailRepairNids.add(plan.winnerNid);
+    if (!DRY_RUN) {
       await withNotificationsSuppressed(() => storage.contacts.updateEmail(holderId, null));
-      emailOwner.delete(addr);
       sharedEmailsCleared++;
     }
+    // Exact planning state in both modes lets dry-run report the downstream
+    // ownership result without mutating either contact.
+    emailOwner.delete(addr);
   }
-  // ssn → owning S1 nid via id_map (NULL for pre-migration rows) so a re-run
-  // doesn't count a worker's own already-loaded SSN as a collision. Keyed on
-  // nid through id_map — workers.sirius_id is NOT the nid anymore (T1 ruling
-  // 2026-08-06), so sirius_id can no longer identify the owner.
+  // SSN ownership is keyed by the actual S2 worker row. Identity is derived
+  // only from id_map; workers.sirius_id is never interpreted as an S1 nid.
   const ssnRes = await db.execute(sql`
-    SELECT w.ssn, m.s1_id
+    SELECT w.id AS worker_id, w.ssn, m.s1_id, m.stub
       FROM workers w
       LEFT JOIN s1_staging.id_map m ON m.entity = 'worker' AND m.s2_id = w.id
      WHERE w.ssn IS NOT NULL
   `);
-  const ssnOwner = new Map(
-    (ssnRes as unknown as { rows: Array<{ ssn: string; s1_id: number | string | null }> }).rows.map((r) => [
-      r.ssn,
-      r.s1_id == null ? null : Number(r.s1_id),
-    ]),
-  );
+  interface SsnOwner {
+    workerId: string;
+    mappings: Array<{ nid: number; stub: boolean }>;
+  }
+  const ssnOwner = new Map<string, SsnOwner>();
+  const workerSsn = new Map<string, string>();
+  for (const r of (ssnRes as unknown as {
+    rows: Array<{ worker_id: string; ssn: string; s1_id: number | string | null; stub: boolean | null }>;
+  }).rows) {
+    let owner = ssnOwner.get(r.ssn);
+    if (!owner) {
+      owner = { workerId: r.worker_id, mappings: [] };
+      ssnOwner.set(r.ssn, owner);
+      workerSsn.set(r.worker_id, r.ssn);
+    }
+    if (r.s1_id != null) owner.mappings.push({ nid: Number(r.s1_id), stub: r.stub === true });
+  }
+
+  // A uniquely claimed staged SSN may displace a source-missing stale S1
+  // duplicate, but only under the exact guarded ruling below.
+  const stagedWorkerNids = new Set(stagedWorkers.map((w) => w.nid));
+  const incomingNidsBySsn = new Map<string, number[]>();
+  for (const w of stagedWorkers) {
+    const raw = strOf(w.fields, "field_sirius_ssn");
+    const normalized = raw ? normalizeSsn(raw) : null;
+    if (normalized) incomingNidsBySsn.set(normalized, [...(incomingNidsBySsn.get(normalized) ?? []), w.nid]);
+  }
+  interface SsnTransferPlan {
+    ssn: string;
+    incomingNid: number;
+    staleWorkerId: string;
+    staleNid: number;
+  }
+  const ssnTransferByIncomingNid = new Map<number, SsnTransferPlan>();
+  for (const [ssn, incomingNids] of incomingNidsBySsn) {
+    if (incomingNids.length !== 1) continue;
+    const owner = ssnOwner.get(ssn);
+    if (!owner) continue;
+    const nonStub = owner.mappings.filter((m) => !m.stub);
+    // Any absent, stub, or multiple mapping is ambiguous and stays Q36.
+    if (owner.mappings.length !== 1 || nonStub.length !== 1) continue;
+    const staleNid = nonStub[0].nid;
+    if (staleNid === incomingNids[0] || stagedWorkerNids.has(staleNid)) continue;
+    ssnTransferByIncomingNid.set(incomingNids[0], {
+      ssn,
+      incomingNid: incomingNids[0],
+      staleWorkerId: owner.workerId,
+      staleNid,
+    });
+  }
+  let ssnTransfersPlanned = ssnTransferByIncomingNid.size;
+  let ssnTransfersApplied = 0;
   // sirius_id → owning S2 worker id (collision pre-check + assign base), plus
   // the reverse (row → current sirius_id) so rekeys keep both in sync
   const siriusRes = await db.execute(sql`SELECT id, sirius_id FROM workers`);
@@ -631,11 +692,14 @@ async function main() {
     // If the existing row carries a stale placeholder value written by a prior
     // run (before suppression existed), treat it as null so the rerun clears it
     // rather than leaving the fake address in place.
-    const existingEmailNorm = existing.email ? existing.email.trim().toLowerCase() : null;
+    const existingEmailNorm = normalizeEmailKey(existing.email);
     const existingIsPlaceholder = existingEmailNorm != null && isPlaceholderEmail(existingEmailNorm);
-    const effectiveExistingEmail = existingIsPlaceholder ? null : (existing.email?.toLowerCase() ?? null);
-    if (email != null && effectiveExistingEmail !== email) {
+    const effectiveExistingEmail = existingIsPlaceholder ? null : existingEmailNorm;
+    if (email != null && (effectiveExistingEmail !== email || existing.email !== email)) {
       await withNotificationsSuppressed(() => storage.contacts.updateEmail(contactId, email));
+      if (effectiveExistingEmail != null && emailOwner.get(effectiveExistingEmail) === contactId) {
+        emailOwner.delete(effectiveExistingEmail);
+      }
       writes++;
     } else if (
       email == null &&
@@ -645,7 +709,9 @@ async function main() {
       // stale placeholders are cleared even when the desired value is kept
       // elsewhere (never leave a fake address in place).
       await withNotificationsSuppressed(() => storage.contacts.updateEmail(contactId, null));
-      if (!keepExistingEmail && effectiveExistingEmail != null) emailOwner.delete(effectiveExistingEmail);
+      if (!keepExistingEmail && effectiveExistingEmail != null && emailOwner.get(effectiveExistingEmail) === contactId) {
+        emailOwner.delete(effectiveExistingEmail);
+      }
       writes++;
     }
     if (email) emailOwner.set(email, contactId);
@@ -674,7 +740,10 @@ async function main() {
     const fp = contactFpOf(c);
     // Consumed-fingerprint fast path (Task 292): unchanged rows skip ALL
     // storage reads (contact, phones, addresses).
-    if (classifyRow(mapped, fp, LOGIC_VERSION, FORCE_RECONCILE) === "unchanged") {
+    if (
+      !sharedEmailRepairNids.has(c.nid) &&
+      classifyRow(mapped, fp, LOGIC_VERSION, FORCE_RECONCILE) === "unchanged"
+    ) {
       summary.unchanged++;
       fastPathSkips++;
       continue;
@@ -694,7 +763,7 @@ async function main() {
     /** fresh row created this run (already counted summary.created) */
     let isFreshCreate = false;
 
-    let email = strOf(c.fields, "field_sirius_email")?.toLowerCase() ?? null;
+    let email = normalizeEmailKey(strOf(c.fields, "field_sirius_email"));
     // shared-address ownership (S1 user association) — non-owners and
     // deferred addresses load with email=null
     email = applySharedOwnership(c.nid, email);
@@ -969,9 +1038,12 @@ async function main() {
     finishRow();
   }
   report.contacts = cStats;
-  // Per-address suppression counts (omit entirely when nothing was suppressed)
+  // Aggregate only: email values never enter output.
   if (suppressions.size > 0) {
-    report.placeholderEmailsSuppressed = Object.fromEntries(suppressions);
+    report.placeholderEmailsSuppressed = {
+      addresses: suppressions.size,
+      contacts: [...suppressions.values()].reduce((sum, count) => sum + count, 0),
+    };
   }
   // Shared-address ownership report — one entry per shared address, keyed by
   // contact nids only (addresses are PII and never printed; any member nid
@@ -993,6 +1065,7 @@ async function main() {
       deferredMultipleOwners: countBy("deferredMultipleOwners"),
       contactsNulled: entries.reduce((n, e) => n + e.nulled, 0),
       clearedOnRerun: sharedEmailsCleared,
+      clearPlanned: sharedEmailsClearPlanned,
       entries,
     };
   }
@@ -1108,7 +1181,10 @@ async function main() {
     const fp = w.contentHash;
     // Consumed-fingerprint fast path — unchanged workers skip all storage
     // reads (worker row, worker_ids). Stub mappings always classify changed.
-    if (classifyRow(mapped, fp, LOGIC_VERSION, FORCE_RECONCILE) === "unchanged") {
+    // An unchanged source fingerprint must not hide a newly-safe SSN repair:
+    // ownership depends on another row disappearing from current staging.
+    const ssnTransferPlan = ssnTransferByIncomingNid.get(w.nid);
+    if (!ssnTransferPlan && classifyRow(mapped, fp, LOGIC_VERSION, FORCE_RECONCILE) === "unchanged") {
       summary.unchanged++;
       fastPathSkips++;
       continue;
@@ -1125,12 +1201,22 @@ async function main() {
     // ssn (T3)
     const ssnRaw = strOf(w.fields, "field_sirius_ssn");
     let ssn: string | null = null;
+    let approvedSsnTransfer: SsnTransferPlan | undefined;
     if (ssnRaw) {
       ssn = normalizeSsn(ssnRaw);
       if (!ssn) rejects.add("ssn_not_9_digits", { workerNid: w.nid });
-      else if (ssnOwner.has(ssn) && ssnOwner.get(ssn) !== w.nid) {
-        rejects.add("ssn_collision_q36", { workerNid: w.nid }, w.nid);
-        ssn = null;
+      else {
+        const owner = ssnOwner.get(ssn);
+        const ownerIsIncoming = mapped != null && owner?.workerId === mapped.s2Id;
+        if (owner && !ownerIsIncoming) {
+          const transfer = ssnTransferByIncomingNid.get(w.nid);
+          if (!transfer || transfer.ssn !== ssn || transfer.staleWorkerId !== owner.workerId) {
+            rejects.add("ssn_collision_q36", { workerNid: w.nid }, w.nid);
+            ssn = null;
+          } else {
+            approvedSsnTransfer = transfer;
+          }
+        }
       }
     }
 
@@ -1211,22 +1297,41 @@ async function main() {
           worker.contactId !== contactMapping.s2Id ||
           dataPlan.drift;
         if (drift) {
-          await withNotificationsSuppressed(() =>
-            storage.workers.updateWorkerForMigration(mapped.s2Id, {
-              siriusId: expectedSirius,
-              contactId: contactMapping.s2Id,
-              ssn,
-              data: dataPlan.value,
-            }),
-          );
+          await runInTransaction(async () => {
+            if (approvedSsnTransfer) {
+              await withNotificationsSuppressed(() =>
+                storage.workers.updateWorkerForMigration(approvedSsnTransfer!.staleWorkerId, { ssn: null }),
+              );
+            }
+            await withNotificationsSuppressed(() =>
+              storage.workers.updateWorkerForMigration(mapped.s2Id, {
+                siriusId: expectedSirius,
+                contactId: contactMapping.s2Id,
+                ssn,
+                data: dataPlan.value,
+              }),
+            );
+          });
+          if (approvedSsnTransfer) {
+            workerSsn.delete(approvedSsnTransfer.staleWorkerId);
+            ssnTransfersApplied++;
+          }
           rekeyOwnerMaps(mapped.s2Id, expectedSirius);
+          const oldSsn = workerSsn.get(mapped.s2Id);
+          if (oldSsn && oldSsn !== ssn && ssnOwner.get(oldSsn)?.workerId === mapped.s2Id) ssnOwner.delete(oldSsn);
+          if (ssn) {
+            ssnOwner.set(ssn, { workerId: mapped.s2Id, mappings: [{ nid: w.nid, stub: false }] });
+            workerSsn.set(mapped.s2Id, ssn);
+          } else {
+            workerSsn.delete(mapped.s2Id);
+          }
           if (dataPlan.value == null) workerDataById.delete(mapped.s2Id);
           else workerDataById.set(mapped.s2Id, dataPlan.value);
           wStats.updated++;
           rowWrites++;
         }
       }
-      if (ssn) ssnOwner.set(ssn, w.nid);
+      if (ssn && !DRY_RUN) ssnOwner.set(ssn, { workerId: mapped.s2Id, mappings: [{ nid: w.nid, stub: false }] });
     } else if (mapped?.stub) {
       wStats.absorbedStubs++;
       if (!DRY_RUN) {
@@ -1241,18 +1346,32 @@ async function main() {
           rejects.add("stub_contact_repointed", { workerNid: w.nid });
         }
         const dataPlan = desiredDataOf(mapped.s2Id);
-        await withNotificationsSuppressed(() =>
-          storage.workers.updateWorkerForMigration(mapped.s2Id, {
-            siriusId: expectedSirius,
-            contactId: contactMapping.s2Id,
-            ssn,
-            data: dataPlan.value,
-          }),
-        );
+        await runInTransaction(async () => {
+          if (approvedSsnTransfer) {
+            await withNotificationsSuppressed(() =>
+              storage.workers.updateWorkerForMigration(approvedSsnTransfer!.staleWorkerId, { ssn: null }),
+            );
+          }
+          await withNotificationsSuppressed(() =>
+            storage.workers.updateWorkerForMigration(mapped.s2Id, {
+              siriusId: expectedSirius,
+              contactId: contactMapping.s2Id,
+              ssn,
+              data: dataPlan.value,
+            }),
+          );
+        });
+        if (approvedSsnTransfer) {
+          workerSsn.delete(approvedSsnTransfer.staleWorkerId);
+          ssnTransfersApplied++;
+        }
         rekeyOwnerMaps(mapped.s2Id, expectedSirius);
         if (dataPlan.value == null) workerDataById.delete(mapped.s2Id);
         else workerDataById.set(mapped.s2Id, dataPlan.value);
-        if (ssn) ssnOwner.set(ssn, w.nid);
+        if (ssn) {
+          ssnOwner.set(ssn, { workerId: mapped.s2Id, mappings: [{ nid: w.nid, stub: false }] });
+          workerSsn.set(mapped.s2Id, ssn);
+        }
         await markAbsorbed("worker", w.nid, LOADER);
         rowWrites++;
       }
@@ -1261,18 +1380,32 @@ async function main() {
       summary.created++;
       if (!DRY_RUN) {
         const data = aatRequired == null ? null : { aatRequired };
-        const created = await withNotificationsSuppressed(() =>
-          storage.workers.createWorkerForMigration({
-            siriusId: expectedSirius,
-            contactId: contactMapping.s2Id,
-            ssn,
-            data,
-          }),
-        );
+        const created = await runInTransaction(async () => {
+          if (approvedSsnTransfer) {
+            await withNotificationsSuppressed(() =>
+              storage.workers.updateWorkerForMigration(approvedSsnTransfer!.staleWorkerId, { ssn: null }),
+            );
+          }
+          return withNotificationsSuppressed(() =>
+            storage.workers.createWorkerForMigration({
+              siriusId: expectedSirius,
+              contactId: contactMapping.s2Id,
+              ssn,
+              data,
+            }),
+          );
+        });
+        if (approvedSsnTransfer) {
+          workerSsn.delete(approvedSsnTransfer.staleWorkerId);
+          ssnTransfersApplied++;
+        }
         workerId = created.id;
         rekeyOwnerMaps(created.id, expectedSirius);
         if (data) workerDataById.set(created.id, data);
-        if (ssn) ssnOwner.set(ssn, w.nid);
+        if (ssn) {
+          ssnOwner.set(ssn, { workerId: created.id, mappings: [{ nid: w.nid, stub: false }] });
+          workerSsn.set(created.id, ssn);
+        }
         const winner = await putMapping("worker", w.nid, created.id, {
           stub: false,
           loader: LOADER,
@@ -1417,21 +1550,23 @@ async function main() {
     {
       const phList = [...PLACEHOLDER_EMAILS];
       const phCheck = await db.execute(sql`
-        SELECT lower(email) AS email, count(*)::int AS cnt
+        SELECT lower(trim(email)) AS email, count(*)::int AS cnt
           FROM contacts
-         WHERE lower(email) IN (${sql.join(phList.map((e) => sql`${e}`), sql`, `)})
-         GROUP BY lower(email)
+         WHERE lower(trim(email)) IN (${sql.join(phList.map((e) => sql`${e}`), sql`, `)})
+         GROUP BY lower(trim(email))
       `);
       const leaks = (phCheck as unknown as { rows: Array<{ email: string; cnt: number }> }).rows;
       if (leaks.length > 0) {
-        for (const r of leaks) {
-          console.error(`VERIFY: ${r.cnt} contact(s) still carry placeholder email "${r.email}" — must be null`);
-          verifyFailures++;
-        }
+        console.error(
+          `VERIFY: ${leaks.reduce((sum, r) => sum + Number(r.cnt), 0)} contact(s) still carry placeholder emails across ${leaks.length} address(es)`,
+        );
+        verifyFailures += leaks.length;
       }
-      // Log per-address suppression counts prominently so rehearsal runs show the split
+      // Log safe aggregates only.
       if (suppressions.size > 0) {
-        console.log("placeholder emails suppressed:", Object.fromEntries(suppressions));
+        console.log(
+          `placeholder emails suppressed: ${[...suppressions.values()].reduce((sum, count) => sum + count, 0)} contact(s) across ${suppressions.size} address(es)`,
+        );
       }
     }
 
@@ -1445,7 +1580,7 @@ async function main() {
         if (!m) continue;
         const row = await storage.contacts.getContact(m.s2Id);
         if (!row) continue;
-        const rowEmail = row.email ? row.email.trim().toLowerCase() : null;
+        const rowEmail = normalizeEmailKey(row.email);
         if (nid === plan.winnerNid) {
           if (rowEmail !== addr && !rejects.has("duplicate_email", nid)) {
             console.error(`VERIFY: shared-address owner contact nid ${nid} does not carry its address`);
@@ -1515,6 +1650,23 @@ async function main() {
         verifyFailures++;
         verifyFailedWorkerNids.add(w.nid);
       }
+      const stagedSsnRaw = strOf(w.fields, "field_sirius_ssn");
+      const expectedSsn = stagedSsnRaw ? normalizeSsn(stagedSsnRaw) : null;
+      if (expectedSsn && !rejects.has("ssn_collision_q36", w.nid) && (row.ssn ?? null) !== expectedSsn) {
+        console.error(`VERIFY: worker nid ${w.nid} does not own its normalized staged SSN`);
+        verifyFailures++;
+        verifyFailedWorkerNids.add(w.nid);
+      }
+    }
+    for (const transfer of ssnTransferByIncomingNid.values()) {
+      const ownerRows = await db.execute(sql`SELECT id FROM workers WHERE ssn = ${transfer.ssn}`);
+      const owners = (ownerRows as unknown as { rows: Array<{ id: string }> }).rows;
+      const incoming = vWorkerMap.get(transfer.incomingNid);
+      if (!incoming || owners.length !== 1 || owners[0].id !== incoming.s2Id) {
+        console.error(`VERIFY: planned SSN transfer for worker nid ${transfer.incomingNid} did not produce unique ownership`);
+        verifyFailures++;
+        verifyFailedWorkerNids.add(transfer.incomingNid);
+      }
     }
   }
 
@@ -1564,6 +1716,11 @@ async function main() {
   }
 
   report.fastPathSkips = fastPathSkips;
+  report.ssnOwnershipRepairs = {
+    eligible: ssnTransfersPlanned,
+    applied: ssnTransfersApplied,
+    dryRunPlanned: DRY_RUN ? ssnTransfersPlanned : 0,
+  };
   report.rejectSamples = rejects.samples;
 
   const result = buildLoaderResult({

@@ -14,4 +14,5 @@ description: How shared email addresses are owned across the contacts and users 
 - Shared address with >1 owning account → fatal reject `shared_email_multiple_owners` (guard only; doesn't occur in prod data); `--allow-rejects` defers it (all null).
 - `contacts.email` is case-insensitively unique in the DB (`contacts_email_lower_unique` on `lower(email)`); any future email writer must respect it.
 - Reruns repair old first-wins assignments: the loader clears a shared address from mapped non-owner holders before reassigning, and never touches rows outside the sharing group.
+- Every shared-email identity path uses one trim+lowercase key. If a rerun clears a stale holder, the declared winner must bypass its fingerprint fast path even when the ownership plan itself is unchanged.
 - Dev staging has zero shared emails and zero association rows (synthetic gap) — coverage lives in the seeded smokes (`s1-t3-shared-email-smoke.ts`, `s1-t27-users-smoke.ts`); reports print nids/uids only, never addresses.

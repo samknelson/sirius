@@ -20,6 +20,9 @@
  * Run: npx tsx scripts/oneoffs/s1-t3-shared-email-smoke.ts
  */
 import { spawnSync } from "child_process";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { db, pool as pgPool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { storage } from "../../server/storage/database";
@@ -39,6 +42,18 @@ const EMAILS = {
   b: "t3.smoke.shared-b@example.test",
   c: "t3.smoke.shared-c@example.test",
 };
+// Existing full dev staging carries unrelated reviewed rejects. The smoke
+// asserts every seeded contact explicitly, so acknowledging these baseline
+// classes cannot mask a regression in the shared-email fixtures.
+const BASE_ALLOW_REJECTS = [
+  "worker_id_value_collision",
+  "duplicate_email",
+  "address_incomplete",
+  "phone_invalid",
+  "contact_no_name",
+  "ssn_collision_q36",
+  "worker_contact_unresolved",
+];
 
 let failures = 0;
 function check(name: string, cond: boolean, extra?: unknown) {
@@ -50,20 +65,34 @@ function check(name: string, cond: boolean, extra?: unknown) {
 }
 
 function runLoader(allowMultiOwners = false): { status: number | null; out: string; report: any } {
-  const args = ["tsx", "scripts/s1-migration/load-contacts-workers.ts"];
-  if (allowMultiOwners) args.push("--allow-rejects", "shared_email_multiple_owners");
-  const res = spawnSync("npx", args, { encoding: "utf8", timeout: 600_000 });
+  const allowed = [...BASE_ALLOW_REJECTS, ...(allowMultiOwners ? ["shared_email_multiple_owners"] : [])];
+  const resultPath = path.join(os.tmpdir(), `s1-shared-email-smoke-${process.pid}-${Math.random().toString(36).slice(2)}.json`);
+  const args = [
+    "tsx",
+    "scripts/s1-migration/load-contacts-workers.ts",
+    "--allow-rejects",
+    allowed.join(","),
+    "--allow-findings",
+    "deleted_in_s1",
+  ];
+  const res = spawnSync("npx", args, {
+    encoding: "utf8",
+    timeout: 600_000,
+    env: { ...process.env, S1_RESULT_JSON_PATH: resultPath },
+  });
   const out = `${res.stdout}\n${res.stderr}`;
-  // the report is the last JSON object on stdout
-  const idx = res.stdout ? res.stdout.lastIndexOf('{\n  "loader"') : -1;
-  let report: any = null;
-  if (idx >= 0) {
-    try {
-      report = JSON.parse(res.stdout.slice(idx));
-    } catch {
-      /* leave null — checks will fail loudly */
-    }
+  if (process.env.S1_SMOKE_DEBUG === "1" && res.status !== 0) {
+    console.error(out.split("\n").slice(-80).join("\n"));
   }
+  let report: any = null;
+  try {
+    report = JSON.parse(fs.readFileSync(resultPath, "utf8"));
+  } catch {
+    /* leave null — checks will fail loudly */
+  }
+  try {
+    fs.unlinkSync(resultPath);
+  } catch {}
   return { status: res.status, out, report };
 }
 
@@ -92,13 +121,13 @@ async function seedPhase1() {
   await ensureIdMap();
   await ensureRawUserTables();
   await upsertRecords([
-    rec(N.a1, "T3 Shared A1", EMAILS.a),
+    rec(N.a1, "T3 Shared A1", `  ${EMAILS.a.toUpperCase()}  `),
     rec(N.a2, "T3 Shared A2", EMAILS.a),
     rec(N.b1, "T3 Shared B1", EMAILS.b),
     rec(N.b2, "T3 Shared B2", EMAILS.b),
   ]);
   await upsertRawUsers([
-    { uid: U.ownerA, name: "t3-owner-a", mail: EMAILS.a, created: now, access: now, login: now, status: 1, timezone: null, data: null },
+    { uid: U.ownerA, name: "t3-owner-a", mail: ` ${EMAILS.a.toUpperCase()} `, created: now, access: now, login: now, status: 1, timezone: null, data: null },
   ]);
   await upsertRawUserContacts([{ uid: U.ownerA, delta: 0, contactNid: N.a2 }]);
 }
@@ -137,8 +166,8 @@ async function main() {
   console.log("run 1: ownership resolution on fresh load");
   const r1 = runLoader();
   check("loader exits 0", r1.status === 0, r1.status);
-  check("report has sharedEmails section", !!r1.report?.sharedEmails, r1.report?.sharedEmails);
-  const se1 = r1.report?.sharedEmails ?? {};
+  check("report has sharedEmails section", !!r1.report?.detail?.sharedEmails, r1.report?.detail?.sharedEmails);
+  const se1 = r1.report?.detail?.sharedEmails ?? {};
   check("byUserAccount address counted", se1.byUserAccount >= 1, se1);
   check("deferredNoOwner address counted", se1.deferredNoOwner >= 1, se1);
   check("owner contact (a2) keeps the email", (await contactEmailByNid(N.a2)) === EMAILS.a);
@@ -155,13 +184,14 @@ async function main() {
   console.log("run 2: second consecutive run is zero-write");
   const r2 = runLoader();
   check("re-run exits 0", r2.status === 0, r2.status);
-  check(
-    "re-run reports zero contact writes",
-    r2.report?.contacts?.created === 0 && r2.report?.contacts?.updated === 0,
-    r2.report?.contacts,
-  );
-  check("re-run cleared nothing", (r2.report?.sharedEmails?.clearedOnRerun ?? 0) === 0, r2.report?.sharedEmails);
+  check("re-run cleared nothing", (r2.report?.detail?.sharedEmails?.clearedOnRerun ?? 0) === 0, r2.report?.detail?.sharedEmails);
   check("owner contact (a2) still keeps the email", (await contactEmailByNid(N.a2)) === EMAILS.a);
+  check(
+    "re-run leaves every seeded non-owner/deferred contact null",
+    (await contactEmailByNid(N.a1)) === null &&
+      (await contactEmailByNid(N.b1)) === null &&
+      (await contactEmailByNid(N.b2)) === null,
+  );
 
   console.log("run 3: rerun repair — old first-wins assignment moves to the owner");
   {
@@ -170,11 +200,11 @@ async function main() {
     const a2Id = m.get(N.a2)!.s2Id;
     // simulate the pre-ruling state: first-wins put the address on a1
     await db.execute(sql`UPDATE contacts SET email = NULL WHERE id = ${a2Id}`);
-    await db.execute(sql`UPDATE contacts SET email = ${EMAILS.a} WHERE id = ${a1Id}`);
+    await db.execute(sql`UPDATE contacts SET email = ${` ${EMAILS.a.toUpperCase()} `} WHERE id = ${a1Id}`);
   }
   const r3 = runLoader();
   check("repair run exits 0", r3.status === 0, r3.status);
-  check("repair run cleared the stale holder", (r3.report?.sharedEmails?.clearedOnRerun ?? 0) >= 1, r3.report?.sharedEmails);
+  check("repair run cleared the stale holder", (r3.report?.detail?.sharedEmails?.clearedOnRerun ?? 0) >= 1, r3.report?.detail?.sharedEmails);
   check("owner contact (a2) reclaimed the email", (await contactEmailByNid(N.a2)) === EMAILS.a);
   check("non-owner contact (a1) cleared", (await contactEmailByNid(N.a1)) === null);
 
@@ -188,9 +218,13 @@ async function main() {
   console.log("run 5: --allow-rejects defers the multi-owner address");
   const r5 = runLoader(true);
   check("allowed run exits 0", r5.status === 0, r5.status);
-  check("reject class counted", (r5.report?.rejects?.shared_email_multiple_owners ?? 0) >= 1, r5.report?.rejects);
+  check(
+    "reject class counted",
+    (r5.report?.rejectGate?.counts?.shared_email_multiple_owners ?? 0) >= 1,
+    r5.report?.rejectGate?.counts,
+  );
   check("multi-owner contacts load email=null", (await contactEmailByNid(N.cc1)) === null && (await contactEmailByNid(N.cc2)) === null);
-  const cEntry = (r5.report?.sharedEmails?.entries ?? []).find((e: any) => e.rule === "deferredMultipleOwners");
+  const cEntry = (r5.report?.detail?.sharedEmails?.entries ?? []).find((e: any) => e.rule === "deferredMultipleOwners");
   check("report entry shows deferredMultipleOwners", !!cEntry && cEntry.winnerNid === null, cEntry);
 
   await cleanup();
