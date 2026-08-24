@@ -69,3 +69,10 @@ uri = "file://attached_assets/s1-worker-duplicate-merge-transaction-rehearsal.sq
 type = "unspecified"
 title = "Corrected S1 duplicate-worker merge rehearsal"
 description = "Rollback-only transaction rehearsal with the integer/text SID postcheck mismatch corrected."
+
+[[outputs]]
+id = "Yqm-h4mmtqA8HDIC6rZmv"
+uri = "file://attached_assets/s1-worker-duplicate-merge-commit.sql"
+type = "unspecified"
+title = "DESTRUCTIVE — S1 duplicate-worker merge commit"
+description = "Permanently applies the transaction that passed the rollback rehearsal. The mutation and validation body is identical; only the outcome label and final ROLLBACK→COMMIT differ."
