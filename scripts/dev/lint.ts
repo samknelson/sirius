@@ -67,6 +67,11 @@ const RULES: Rule[] = [
     summary: "component manifest tables sort into a valid FK creation order",
   },
   {
+    id: "core-migration-component-tables",
+    script: "scripts/dev/check-core-migration-component-tables.ts",
+    summary: "core migrations guard every component-owned table they touch",
+  },
+  {
     id: "lockfile-registry",
     script: "scripts/dev/check-lockfile-registry.ts",
     summary: "lockfile tarball URLs point at the public npm registry",

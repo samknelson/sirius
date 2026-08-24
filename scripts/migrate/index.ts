@@ -121,6 +121,7 @@ import "./components/edls/001_add_show_status";
 import "./components/edls/002_add_sheet_notes_and_change_tracking";
 import "./components/edls/003_add_assignment_comm_id";
 import "./components/edls/004_add_assignment_accepted";
+import "./components/edls/005_add_sheet_notifications_enabled";
 import "./components/worker.ratings/001_add_sirius_id_to_options_worker_ratings";
 import "./components/worker.aat/001_create_worker_aat";
 

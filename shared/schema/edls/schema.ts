@@ -49,6 +49,14 @@ export const edlsSheets = pgTable("edls_sheets", {
    * on every create and update, so no caller can forget to set it.
    */
   changed: timestamp("changed").notNull().default(sql`now()`),
+  /**
+   * Per-sheet opt-in for the worker-facing EDLS notifications. Off unless
+   * somebody turns it on for this sheet — including every sheet that already
+   * existed when the column was added — so a sheet reaching a notifier's
+   * trigger status texts nobody by default. Written only by the dedicated
+   * toggle endpoint, never by the general sheet create/update routes.
+   */
+  notificationsEnabled: boolean("notifications_enabled").notNull().default(false),
   data: jsonb("data"),
 });
 
