@@ -726,7 +726,7 @@ BEGIN
     SELECT 1
     FROM workers worker
     JOIN locked_merge_plan plan
-      ON worker.sirius_id = plan.stale_wrong_sid::text
+      ON worker.sirius_id::bigint = plan.stale_wrong_sid
   ) THEN
     RAISE EXCEPTION 'postcheck: blocked stale SID remains owned';
   END IF;

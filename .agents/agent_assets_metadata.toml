@@ -67,5 +67,5 @@ description = "Read-only SQL that excludes source records exactly as T17 rejects
 id = "g7IbJBsvrFdKVYZCUzfV2"
 uri = "file://attached_assets/s1-worker-duplicate-merge-transaction-rehearsal.sql"
 type = "unspecified"
-title = "S1 duplicate-worker merge transaction rehearsal"
-description = "Guarded full write-path rehearsal for the 21 duplicate merges and one approved source-missing deletion. It verifies the post-state and then rolls back all changes."
+title = "Corrected S1 duplicate-worker merge rehearsal"
+description = "Rollback-only transaction rehearsal with the integer/text SID postcheck mismatch corrected."
