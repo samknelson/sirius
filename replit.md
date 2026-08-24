@@ -120,16 +120,18 @@ landing on a deployment branch is what causes the recurring merge conflicts.
     origin.** Each carries `.github/` (CI workflows) and `deploy/` on top of
     main, and nothing else of its own. To update either: merge `main` into
     it, then push it to the `freeman` remote.
--   **Merges only ever run `main` → `freeman-*`, never the reverse.** This
-    direction is not a preference, it is what keeps the branches working.
-    Both Freeman branches contain commits that add the CI files and commits
-    that delete them. Merging either branch into `main` makes those commits
-    ancestors of `main`, which moves the merge base for the *other* branch
-    onto a commit where the CI files exist — its next `git merge main` then
-    sees "present in base, absent in main" and deletes them, silently for
-    untouched files and as a modify/delete conflict for edited ones. This
-    has already destroyed the CI files on `freeman-uat` twice. If real code
-    is stranded on a Freeman branch, cherry-pick it onto `main` instead of
+-   **Merges only ever run `main` → `freeman-*`, never the reverse.** Both
+    Freeman branches carry commits that add the CI files and commits that
+    delete them. Merging either branch into `main` pulls that add/delete
+    history into `main`'s ancestry, which can move the merge base for the
+    *other* branch onto a commit where the CI files exist. When it does,
+    that branch's next `git merge main` sees "present in base, absent in
+    main" and takes the deletion — silently for untouched files, as a
+    modify/delete conflict for edited ones. Whether it bites in any given
+    case depends on the resulting graph, so treat it as a hazard to stay
+    away from rather than a rule to reason around: the CI files have
+    already been destroyed on `freeman-uat` twice. If real code is
+    stranded on a Freeman branch, cherry-pick it onto `main` instead of
     merging the branch.
 -   **Never point a task agent at a Freeman branch.** Application work is
     done on `main` only. A task agent branches from a tree that has no CI
@@ -139,13 +141,17 @@ landing on a deployment branch is what causes the recurring merge conflicts.
     using `git add -f` (the paths are gitignored). The on-disk copies in the
     main working tree are untracked-and-ignored — do not `git add` them.
 -   **If the CI files vanish from a Freeman branch again**, restore them
-    from the branch that still has them and commit:
+    from a known-good source *for that environment* — the branch's own last
+    good commit or a backup ref, and the other Freeman branch only while the
+    two are known to be identical:
 
-        git checkout freeman-dev -- .github deploy && git commit
+        git checkout <known-good-ref> -- .github deploy && git commit
 
-    Verify per branch with
-    `git ls-tree -r --name-only <branch> -- .github deploy` (expect 8
-    files); `git status` shows nothing once they are ignored-and-untracked.
+    Then verify both the count and the contents. Count with
+    `git ls-tree -r --name-only <branch> -- .github deploy` (8 files today);
+    contents matter because once the branches carry environment-specific
+    config, restoring from the wrong one silently overwrites it. `git status`
+    shows nothing here once the files are ignored-and-untracked.
 -   Helper script for the one-time history split: `.local/split-branches.sh`.
 
 ## Gotchas
