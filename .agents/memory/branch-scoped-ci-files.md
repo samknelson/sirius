@@ -27,5 +27,12 @@ OAuth App here does not have by default — pushes are rejected outright.
 - To **remove** them from a branch while keeping the working copies:
   `git rm -r --cached .github deploy` then commit. Index-only; disk copies survive and go
   back to being ignored.
+- A **new** file under these directories is untracked, so it is ignored even on a branch that
+  already tracks its siblings — `git add -f <path>` is mandatory, and staging must be
+  confirmed (`git diff --cached --name-only`) before committing.
+- To land the same file on a **second branch** without switching the working tree, use a
+  throwaway worktree: `git worktree add /tmp/wt <branch>`, copy the file in, `git add -f`,
+  commit there, `git worktree remove --force`. An in-place `git checkout <other-branch>`
+  swaps the whole tree and churns the running dev server for no reason.
 - Verify with `git ls-tree -r --name-only <branch> -- .github deploy` per branch rather than
   trusting `git status`, which shows nothing once the files are ignored-and-untracked.
