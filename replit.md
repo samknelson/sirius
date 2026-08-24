@@ -116,13 +116,36 @@ landing on a deployment branch is what causes the recurring merge conflicts.
     never contain `.github/` or `deploy/` — both are gitignored on main and
     were stripped from its history (the Replit Git token lacks the
     `workflow` scope, and the deploy env files must not reach origin).
--   **`freeman-dev` → `freeman` remote only, never origin.** This branch
-    carries `.github/` (CI workflows) and `deploy/` on top of main. To
-    update freeman: merge `main` into `freeman-dev`, push `freeman-dev` to
-    the `freeman` remote.
--   Edits to `.github/` or `deploy/` are committed on `freeman-dev` only,
+-   **`freeman-dev` and `freeman-uat` → `freeman` remote only, never
+    origin.** Each carries `.github/` (CI workflows) and `deploy/` on top of
+    main, and nothing else of its own. To update either: merge `main` into
+    it, then push it to the `freeman` remote.
+-   **Merges only ever run `main` → `freeman-*`, never the reverse.** This
+    direction is not a preference, it is what keeps the branches working.
+    Both Freeman branches contain commits that add the CI files and commits
+    that delete them. Merging either branch into `main` makes those commits
+    ancestors of `main`, which moves the merge base for the *other* branch
+    onto a commit where the CI files exist — its next `git merge main` then
+    sees "present in base, absent in main" and deletes them, silently for
+    untouched files and as a modify/delete conflict for edited ones. This
+    has already destroyed the CI files on `freeman-uat` twice. If real code
+    is stranded on a Freeman branch, cherry-pick it onto `main` instead of
+    merging the branch.
+-   **Never point a task agent at a Freeman branch.** Application work is
+    done on `main` only. A task agent branches from a tree that has no CI
+    files, and the "commit prior to merge" snapshot it writes records them
+    as deleted — which is exactly how `freeman-uat` lost them.
+-   Edits to `.github/` or `deploy/` are committed on a Freeman branch only,
     using `git add -f` (the paths are gitignored). The on-disk copies in the
     main working tree are untracked-and-ignored — do not `git add` them.
+-   **If the CI files vanish from a Freeman branch again**, restore them
+    from the branch that still has them and commit:
+
+        git checkout freeman-dev -- .github deploy && git commit
+
+    Verify per branch with
+    `git ls-tree -r --name-only <branch> -- .github deploy` (expect 8
+    files); `git status` shows nothing once they are ignored-and-untracked.
 -   Helper script for the one-time history split: `.local/split-branches.sh`.
 
 ## Gotchas
