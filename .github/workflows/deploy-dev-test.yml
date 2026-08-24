@@ -1,0 +1,67 @@
+name: Deploy to Dev
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Push to `freeman-dev` that touches deployable code → auto-deploy to Development.
+# Manual dispatch → always deploys to Development (used to deploy a non-code
+# change, e.g. a workflow/infra edit, or to redeploy on demand).
+#
+# Single-image topology: build-and-test produces ONE Docker image (Node 20,
+# Express on PORT=5000 serving /api/* plus the built SPA from dist/public).
+# That single image is built and pushed to BOTH ECR repos
+# (fm-fls-ui-ecr-dev-use2 and fm-fls-api-ecr-dev-use2), then rolled out to
+# BOTH ECS services (fm-fls-ui-dev-use2 and fm-fls-api-dev-use2) behind the
+# ALB at fls.dev.freeman.com. This is a transitional state — same image,
+# two services — and may collapse to a single service in the future.
+#
+# The `paths` filter scopes auto-deploys to deployable inputs only, so
+# docs/spec/CI-config-only changes do NOT trigger a build + ECS swap.
+# To validate a workflow change itself, use the manual dispatch below
+# (workflow edits intentionally do not auto-deploy).
+#
+# QA/Prod deploys are not wired up yet (no separate workflow exists). When
+# added they will reuse the same build-and-test.yml + deploy-to-environment.yml
+# pattern, targeting the QA/Production GitHub Environments.
+#
+# Environment name aligns with Terraform (fm-workloads-fls): dev.
+# Requires a GitHub Environment named "Development" with the secrets and
+# variables listed in build-and-test.yml and deploy-to-environment.yml.
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    branches: [ freeman-dev ]
+    paths:
+      - 'client/**'   # React UI (Vite)
+      - 'server/**'   # Express API
+      - 'shared/**'   # Shared TypeScript types
+      - 'scripts/**'  # Migrations and utilities
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'deploy/**'  # Repo-managed env vars merged into ECS task definitions
+  workflow_dispatch:
+
+jobs:
+  build-development:
+    name: Build for Development
+    uses: ./.github/workflows/build-and-test.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      environment: 'Development'
+    secrets: inherit
+
+  deploy-development:
+    name: Deploy to Development
+    needs: build-development
+    uses: ./.github/workflows/deploy-to-environment.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      environment: 'Development'
+      ui-image-uri: ${{ needs.build-development.outputs.ui-image-uri }}
+      api-image-uri: ${{ needs.build-development.outputs.api-image-uri }}
+    secrets: inherit
