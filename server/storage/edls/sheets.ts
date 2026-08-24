@@ -28,6 +28,11 @@ import { storage } from "../index";
 import { isComponentEnabledSync } from "../../services/component-cache";
 import { getRequestContext } from "../../middleware/request-context";
 import type { SnapshotNode } from "@shared/snapshots";
+import {
+  getEdlsPassportExportPage,
+  type EdlsPassportExportQuery,
+  type EdlsPassportExportPage,
+} from "./passport-export";
 
 /**
  * The dispatch_job_group table is owned by the `dispatch.job_group`
@@ -168,6 +173,12 @@ export interface EdlsSheetsStorage {
    * does not exist. See `shared/snapshots.ts` for the bundle contract.
    */
   export(id: string): Promise<SnapshotNode | undefined>;
+  /**
+   * Freeman passport export: one page of "Scheduled" (`lock`) sheets with
+   * their crews and assignments, plus the total for paging. See
+   * `./passport-export.ts` for the shape and the absent-tolerance rules.
+   */
+  getPassportExportPage(query: EdlsPassportExportQuery): Promise<EdlsPassportExportPage>;
 }
 
 /**
@@ -335,6 +346,10 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       const client = getClient();
       const [sheet] = await client.select().from(edlsSheets).where(eq(edlsSheets.id, id));
       return sheet || undefined;
+    },
+
+    async getPassportExportPage(query: EdlsPassportExportQuery): Promise<EdlsPassportExportPage> {
+      return getEdlsPassportExportPage(query);
     },
 
     async export(id: string): Promise<SnapshotNode | undefined> {

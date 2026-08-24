@@ -1,6 +1,36 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { storage } from '../../storage';
+import { buildPassportExportEnvelope } from './edls-passport-export-mapper';
+
+/**
+ * The only operation the legacy generic endpoint accepts. The Freeman client
+ * posts the legacy Sirius positional-argument body:
+ * `[<operation>, <ignored>, <ignored>, <JSON-encoded filter>]`.
+ */
+const PASSPORT_EXPORT_OPERATION = 'sirius_freeman_edls_passport_export';
+
+/** Page size used when the filter does not name one, matching the legacy service. */
+const DEFAULT_EXPORT_LIMIT = 100;
+
+/** Hard ceiling on the page size, whatever the caller asks for. */
+const MAX_EXPORT_LIMIT = 500;
+
+const genericBodySchema = z.tuple([z.string(), z.string(), z.string(), z.string()]);
+
+/** Every supported filter value arrives as a string, legacy-style. */
+const passportExportFilterSchema = z.object({
+  start_date: z.string().optional(),
+  page: z.string().optional(),
+  limit: z.string().optional(),
+});
+
+/** Parse a legacy string-valued integer; null when it is not one. */
+function parseNonNegativeInt(value: string | undefined, fallback: number): number | null {
+  if (value === undefined || value.trim() === '') return fallback;
+  if (!/^\d+$/.test(value.trim())) return null;
+  return Number(value.trim());
+}
 
 const sheetsQuerySchema = z.object({
   status: z.enum(['draft', 'active', 'closed', 'cancelled']).optional(),
@@ -12,6 +42,94 @@ const sheetsQuerySchema = z.object({
 });
 
 export function setupEdlsRoutes(router: Router): void {
+  /**
+   * Legacy Freeman passport export. Mounted under the bundle's base path so
+   * it resolves at `/api/ws/edls/generic.json` and inherits the bundle's
+   * credential auth and request logging.
+   */
+  router.post('/generic.json', async (req, res) => {
+    const bodyResult = genericBodySchema.safeParse(req.body);
+    if (!bodyResult.success) {
+      return res.status(400).json({
+        error: 'Invalid request body: expected a JSON array of four strings',
+        code: 'INVALID_BODY',
+      });
+    }
+
+    // Elements 1 and 2 are legacy identifiers and are ignored entirely.
+    const [operation, , , filterJson] = bodyResult.data;
+
+    if (operation !== PASSPORT_EXPORT_OPERATION) {
+      return res.status(400).json({
+        error: `Unsupported operation '${operation}'. Only '${PASSPORT_EXPORT_OPERATION}' is supported.`,
+        code: 'UNKNOWN_OPERATION',
+      });
+    }
+
+    let filterRaw: unknown;
+    try {
+      filterRaw = JSON.parse(filterJson);
+    } catch {
+      return res.status(400).json({
+        error: 'Invalid filter: element 4 must be a JSON-encoded object',
+        code: 'INVALID_FILTER',
+      });
+    }
+
+    const filterResult = passportExportFilterSchema.safeParse(filterRaw);
+    if (!filterResult.success) {
+      return res.status(400).json({
+        error: 'Invalid filter: start_date, page and limit must be strings',
+        code: 'INVALID_FILTER',
+        details: filterResult.error.issues.map(i => ({
+          field: i.path.join('.'),
+          message: i.message,
+        })),
+      });
+    }
+
+    const filter = filterResult.data;
+
+    let changedSince: Date | null = null;
+    if (filter.start_date !== undefined && filter.start_date.trim() !== '') {
+      const parsed = new Date(filter.start_date.trim());
+      if (Number.isNaN(parsed.getTime())) {
+        return res.status(400).json({
+          error: `Invalid start_date '${filter.start_date}'`,
+          code: 'INVALID_START_DATE',
+        });
+      }
+      changedSince = parsed;
+    }
+
+    const page = parseNonNegativeInt(filter.page, 0);
+    if (page === null) {
+      return res.status(400).json({
+        error: `Invalid page '${filter.page}': expected a non-negative integer`,
+        code: 'INVALID_PAGE',
+      });
+    }
+
+    const requestedLimit = parseNonNegativeInt(filter.limit, DEFAULT_EXPORT_LIMIT);
+    if (requestedLimit === null || requestedLimit === 0) {
+      return res.status(400).json({
+        error: `Invalid limit '${filter.limit}': expected a positive integer`,
+        code: 'INVALID_LIMIT',
+      });
+    }
+    const limit = Math.min(requestedLimit, MAX_EXPORT_LIMIT);
+
+    try {
+      const result = await storage.edlsSheets.getPassportExportPage({ changedSince, page, limit });
+      return res.json(buildPassportExportEnvelope(result, { page, limit }));
+    } catch (error) {
+      return res.status(500).json({
+        error: 'Failed to build passport export',
+        code: 'EXPORT_ERROR',
+      });
+    }
+  });
+
   router.get('/sheets', async (req, res) => {
     try {
       const parseResult = sheetsQuerySchema.safeParse(req.query);
