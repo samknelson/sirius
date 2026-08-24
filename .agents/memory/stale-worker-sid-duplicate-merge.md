@@ -14,3 +14,9 @@ For colliding benefit-month rows, derive the surviving `source_relation_id` from
 **Why:** Duplicate workers can each carry plausible relationship provenance, and some months may correctly resolve to a third relation or subscriber (`NULL`) provenance. Choosing stale or canonical metadata wholesale silently corrupts benefit history; treating rejected spans as authority blocks valid repairs.
 
 **How to apply:** Reconstruct authority from staged fields and mappings, classify every collision month, separately inventory rejected/unresolved spans, and gate the transaction on complete coverage plus explicit counts for stale/canonical/third provenance.
+
+A rollback-only execution against the real rehearsal target confirmed that this guarded consolidation path reaches its complete post-state with all reviewed dependency and provenance counts satisfied.
+
+**Why:** Static analysis alone cannot prove that the live target still matches the dependency inventory or that every uniqueness constraint survives the ordered merge.
+
+**How to apply:** Keep the rollback rehearsal as the final gate. Produce or run a commit variant only after it returns the explicit ready marker and every count matches the reviewed plan.
