@@ -26,6 +26,7 @@ import {
   Zap,
   Copy,
   Check,
+  EyeOff,
 } from "lucide-react";
 
 interface EnvVarInfo {
@@ -38,6 +39,13 @@ interface EnvVarInfo {
   source: "environment" | "override" | null;
   overridable: boolean;
   value: string | null;
+  /**
+   * Short digest of a secret's effective value — sent instead of the value,
+   * and only for a secret that is set. Two installations holding the same
+   * secret show the same fingerprint; it is not a value and cannot be used
+   * as one.
+   */
+  valueFingerprint?: string;
   hasShadowedOverride: boolean;
   released: boolean;
   /**
@@ -155,7 +163,10 @@ export default function EnvPage() {
           variable itself: <em>applies immediately</em> means the next use
           reads the new value, <em>restart to apply</em> means the app reads it
           only while starting. Variables that say neither have not been
-          classified.
+          classified. A secret's value is never shown; instead it carries a
+          fingerprint of that value, so two installations showing the same
+          fingerprint hold the same secret. A fingerprint is not a value and
+          cannot be used as one.
         </AlertDescription>
       </Alert>
 
@@ -265,6 +276,23 @@ export default function EnvPage() {
                               )}
                             </Button>
                           </div>
+                        )}
+                        {v.secret && v.isSet && (
+                          <p
+                            className="text-xs text-muted-foreground mt-1 flex items-start gap-1"
+                            data-testid={`env-fingerprint-${v.name}`}
+                          >
+                            <EyeOff className="h-3 w-3 mt-0.5 shrink-0" />
+                            <span>
+                              Value concealed
+                              {v.valueFingerprint && (
+                                <>
+                                  {" — fingerprint "}
+                                  <code className="font-mono">{v.valueFingerprint}</code>
+                                </>
+                              )}
+                            </span>
+                          </p>
                         )}
                         {v.released && (
                           <p className="text-xs text-muted-foreground mt-1">
