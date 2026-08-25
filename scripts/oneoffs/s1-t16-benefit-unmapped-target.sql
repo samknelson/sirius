@@ -36,7 +36,7 @@ SELECT sample->>'nid' AS election_nid,
        jsonb_array_elements(
          COALESCE(report->'detail'->'rejectSamples'->'benefit_unmapped', '[]'::jsonb)
        ) AS samples(sample)
- ORDER BY election_nid::bigint;
+ ORDER BY (sample->>'nid')::bigint;
 
 \echo '2) Current target staging status for benefit nid 2457521'
 SELECT
