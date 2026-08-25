@@ -125,3 +125,10 @@ uri = "file://scripts/oneoffs/s1-t16-benefit-unmapped-source-context.sql"
 type = "unspecified"
 title = "T16 benefit cleanup safety preflight"
 description = "Read-only S1 query confirming every affected election retains another valid benefit before any orphan-reference cleanup."
+
+[[outputs]]
+id = "tVVva96NiXhB0YlPfpXYO"
+uri = "file://scripts/oneoffs/s1-remove-stale-election-benefit-2457521.sql"
+type = "unspecified"
+title = "Remove stale election benefit 2457521 references"
+description = "Single guarded, idempotent MariaDB cleanup script. Deletes only remaining current election references and matching current-revision rows; commits only after exact post-checks."

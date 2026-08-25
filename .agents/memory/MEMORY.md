@@ -79,6 +79,7 @@
 - [S1 rehearsal target pattern](s1-rehearsal-pattern.md) — rehearsal DB is in-VPC only: ship operator-run SQL kits validated verbatim on dev; empty bootstrap skips seeds/components; S1 DSN whitespace.
 - [FC migration ECS ops](fc-migration-ecs-ops.md) — CloudShell regular tab = internet/AWS APIs, VPC tab = RDS only; silent stall = wrong tab; run-task per runbook step.
 - [S1 data quirks](s1-staging-nul-bytes.md) — NUL bytes stripped at staging; also [prod vocab renames](s1-prod-vocab-renames.md), [synthetic regen invalidates id_map](s1-regen-idmap-staleness.md), [live count drift](live-s1-count-drift.md), [watchdog ≠ deletion feed](s1-watchdog-not-deletion-feed.md).
+- [S1 dangling entity references](s1-dangling-entity-references.md) — deleting a Drupal node can leave live field_data refs; clean current data + matching current revision, preserve history.
 - [gitPush needs upstream tracking](gitpush-callback-upstream.md) — pushing to an existing remote branch requires `git branch -u origin/<b>` first, else opaque BRANCH_ALREADY_EXISTS.
 - [S1 shop JSON is the employer config store](s1-shop-json-config.md) — policy history + charge-plugin rate histories live in field_sirius_json; hourly-uuid allow-list ruling inside; variable dumps carry live Stripe keys.
 - [Task-merge SHA rewrite vs deploy branches](task-merge-divergent-deploy-branch.md) — non-fast-forward on push-branch.sh = duplicate content, different SHAs; verify empty diff then `merge -s ours`.
