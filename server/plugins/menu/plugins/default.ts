@@ -382,6 +382,15 @@ export function buildDefaultMenuTree(): MenuItemDef[] {
       gate: { allOf: [{ component: "grievance" }, { policy: "staff" }] },
     },
     {
+      id: "bao-cases",
+      label: "Cases",
+      icon: "Briefcase",
+      href: "/bao/cases",
+      active: { type: "prefix", value: "/bao/cases" },
+      testId: "nav-bao-cases",
+      gate: { allOf: [{ component: "sitespecific.bao" }, { policy: "staff" }] },
+    },
+    {
       id: "bao-cobra-cases",
       label: "COBRA",
       icon: "Shield",

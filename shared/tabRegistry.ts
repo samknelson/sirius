@@ -214,6 +214,7 @@ export const workerTabTree: HierarchicalTab[] = [
   { id: 'vdb-pension', label: 'VDB Pension', hrefTemplate: '/workers/{id}/vdb-pension', permission: 'staff', component: 'sitespecific.gbhet.pension' },
   { id: 'grievances', label: 'Grievances', hrefTemplate: '/workers/{id}/grievances', permission: 'staff', component: 'grievance' },
   { id: 'notes', label: 'Notes', hrefTemplate: '/workers/{id}/notes', permission: 'staff' },
+  { id: 'cases', label: 'Cases', hrefTemplate: '/workers/{id}/cases', permission: 'staff', component: 'sitespecific.bao' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/workers/{id}/logs', permission: 'staff' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/workers/{id}/delete', permission: 'workers.delete' },
 ];
@@ -229,6 +230,7 @@ export const employerTabTree: HierarchicalTab[] = [
   { id: 'policy-history', label: 'Policy History', hrefTemplate: '/employers/{id}/policy-history', permission: 'staff' },
   { id: 'wizards', label: 'Wizards', hrefTemplate: '/employers/{id}/wizards', policyId: 'employer.mine' },
   { id: 'notes', label: 'Notes', hrefTemplate: '/employers/{id}/notes', permission: 'staff' },
+  { id: 'cases', label: 'Cases', hrefTemplate: '/employers/{id}/cases', permission: 'staff', component: 'sitespecific.bao' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/employers/{id}/logs', permission: 'staff' },
   { 
     id: 'accounting', label: 'Accounting', hrefTemplate: '/employers/{id}/ledger/accounts', policyId: 'employer.ledger', component: 'ledger',
@@ -269,6 +271,7 @@ export const providerTabTree: HierarchicalTab[] = [
   { id: 'edi', label: 'EDI', hrefTemplate: '/trust/provider/{id}/edi', permission: 'admin', component: 'trust.providers.edi' },
   { id: 'premium-files', label: 'Premium Files', hrefTemplate: '/trust/provider/{id}/premium-files', permission: 'staff', component: 'sitespecific.bao' },
   { id: 'notes', label: 'Notes', hrefTemplate: '/trust/provider/{id}/notes', permission: 'staff', component: 'trust.providers' },
+  { id: 'cases', label: 'Cases', hrefTemplate: '/trust/provider/{id}/cases', permission: 'staff', component: 'sitespecific.bao' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/trust/provider/{id}/logs', permission: 'staff' },
 ];
 

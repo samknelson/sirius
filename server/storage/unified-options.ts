@@ -35,6 +35,8 @@ import {
   optionsGrievanceSettlementType,
   optionsBaoCobraStatus,
   optionsBaoCobraQualifyingEvent,
+  optionsBaoCaseStatus,
+  optionsBaoCaseResolution,
   optionsSitespecificBaoNotesTagTypes,
   optionsSitespecificBaoNotesTags,
   optionsWorkerBanType,
@@ -84,6 +86,8 @@ export type OptionsTypeName =
   | "bao-cobra-status"
   | "worker-ban-type"
   | "bao-cobra-qualifying-event"
+  | "bao-case-status"
+  | "bao-case-resolution"
   | "note-type"
   | "bao-notes-tag-type"
   | "bao-notes-tag";
@@ -686,6 +690,41 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Low Hours, Age Out, Death, Divorce", showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this qualifying event", showInTable: true, columnHeader: "Description" },
+    ],
+  },
+  "bao-case-status": {
+    table: optionsBaoCaseStatus,
+    displayName: "BAO Case Statuses",
+    description: "Statuses for BAO cases. Closed statuses move cases to history.",
+    singularName: "Case Status",
+    pluralName: "Case Statuses",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.baoCaseStatus",
+    requiredFields: ["name"],
+    optionalFields: ["description", "closed", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "sitespecific.bao",
+    fields: [
+      { name: "name", label: "Name", inputType: "text", required: true, showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, showInTable: true, columnHeader: "Description" },
+      { name: "closed", label: "Closed", inputType: "checkbox", required: false, helperText: "Closed cases appear in Historical views and require resolution details", showInTable: true, columnHeader: "Closed" },
+    ],
+  },
+  "bao-case-resolution": {
+    table: optionsBaoCaseResolution,
+    displayName: "BAO Case Resolutions",
+    description: "Resolution outcomes required when BAO cases are closed.",
+    singularName: "Case Resolution",
+    pluralName: "Case Resolutions",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.baoCaseResolution",
+    requiredFields: ["name"],
+    optionalFields: ["description", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "sitespecific.bao",
+    fields: [
+      { name: "name", label: "Name", inputType: "text", required: true, showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, showInTable: true, columnHeader: "Description" },
     ],
   },
   "bao-notes-tag-type": {

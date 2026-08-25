@@ -25,6 +25,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { NotebookPen, Pencil, Plus, Tag, Trash2 } from "lucide-react";
 import { format, parseISO, isValid } from "date-fns";
+import { Link } from "wouter";
 
 interface NoteTypeOption {
   id: string;
@@ -67,6 +68,7 @@ interface NoteRow {
   authorName: string | null;
   /** Present only on BAO deployments (sitespecific.bao enabled). */
   tags?: NoteTag[];
+  caseId?: string | null;
 }
 
 interface NotesPanelProps {
@@ -323,6 +325,17 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
                       </p>
                     </div>
                     <div className="flex gap-1">
+                      {tagsEnabled && (
+                        note.caseId ? (
+                          <Link href={`/bao/cases/${note.caseId}`}>
+                            <Button variant="outline" size="sm" data-testid={`button-view-case-note-${note.id}`}>View Case</Button>
+                          </Link>
+                        ) : (
+                          <Link href={`/bao/cases/new?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}&noteId=${encodeURIComponent(note.id)}`}>
+                            <Button variant="outline" size="sm" data-testid={`button-create-case-note-${note.id}`}>Create Case</Button>
+                          </Link>
+                        )
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"

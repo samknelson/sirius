@@ -64,6 +64,9 @@ const WorkerBans = lazy(() => import("@/pages/workers/bans"));
 const WorkerNotes = lazy(() => import("@/pages/workers/notes"));
 const EmployerNotes = lazy(() => import("@/pages/employers/notes"));
 const TrustProviderNotesPage = lazy(() => import("@/pages/trust-provider-notes"));
+const WorkerCases = lazy(() => import("@/pages/workers/cases"));
+const EmployerCases = lazy(() => import("@/pages/employers/cases"));
+const TrustProviderCases = lazy(() => import("@/pages/trust-provider-cases"));
 const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
 const WorkerSecondShift = lazy(() => import("@/pages/worker-sitespecific-freeman-2shift"));
 const WorkerBaoBeneficiaries = lazy(() => import("@/pages/worker-sitespecific-bao-beneficiaries"));
@@ -289,6 +292,9 @@ const BaoCobraCases = lazy(() => import("@/pages/sitespecific/bao/cobra-cases"))
 const BaoCobraCaseAdd = lazy(() => import("@/pages/sitespecific/bao/cobra-case-add"));
 const BaoCobraCaseView = lazy(() => import("@/pages/sitespecific/bao/cobra-case-view"));
 const BaoCobraCaseEdit = lazy(() => import("@/pages/sitespecific/bao/cobra-case-edit"));
+const BaoCases = lazy(() => import("@/pages/sitespecific/bao/cases"));
+const BaoCaseNew = lazy(() => import("@/pages/sitespecific/bao/case-new"));
+const BaoCaseDetail = lazy(() => import("@/pages/sitespecific/bao/case-detail"));
 const WsServicesPage = lazy(() => import("@/pages/config/ws/services"));
 const WsClientsPage = lazy(() => import("@/pages/config/ws/clients"));
 const WsClientSettingsPage = lazy(() => import("@/pages/config/ws/client-settings"));
@@ -931,6 +937,11 @@ function Router() {
           <AuthenticatedLayout>
             <WorkerNotes />
           </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/workers/:id/cases">
+        <ProtectedRoute tabId="cases" entityType="worker">
+          <AuthenticatedLayout><WorkerCases /></AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
@@ -1863,6 +1874,11 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
+      <Route path="/employers/:id/cases">
+        <ProtectedRoute tabId="cases" entityType="employer">
+          <AuthenticatedLayout><EmployerCases /></AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
 
       <Route path="/employers/:id/policy-history">
         <ProtectedRoute tabId="policy-history" entityType="employer">
@@ -2272,6 +2288,11 @@ function Router() {
           <AuthenticatedLayout>
             <TrustProviderNotesPage />
           </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/trust/provider/:id/cases">
+        <ProtectedRoute tabId="cases" entityType="provider">
+          <AuthenticatedLayout><TrustProviderCases /></AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
@@ -2987,6 +3008,22 @@ function Router() {
               <BaoCobraTriggersPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bao/cases/new">
+        <ProtectedRoute permission="staff" component="sitespecific.bao">
+          <AuthenticatedLayout><BaoCaseNew /></AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/bao/cases/:id">
+        <ProtectedRoute permission="staff" component="sitespecific.bao">
+          <AuthenticatedLayout><BaoCaseDetail /></AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/bao/cases">
+        <ProtectedRoute permission="staff" component="sitespecific.bao">
+          <AuthenticatedLayout><BaoCases /></AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 

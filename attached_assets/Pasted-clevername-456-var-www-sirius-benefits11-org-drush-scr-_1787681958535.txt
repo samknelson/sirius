@@ -1,0 +1,37 @@
+clevername@456:/var/www/sirius.benefits11.org$ drush scr s1-drush-remove-stale-election-benefit-2457521.php --apply
+T16 stale-benefit cleanup: APPLY mode
+Source benefit nid: 2457521
+Remaining live stale rows: 52
+Affected elections: 52
+Guard: target benefit absent
+Guard: one delta-1 stale row per election
+Guard: every election has another valid benefit
+WD node: PDOException: SQLSTATE[HY000]: General error: 1205 Lock wait timeout exceeded; try restarting transaction: DELETE FROM {field_data_field_sirius_trust_benefits}     [error]
+WHERE  (entity_type = :db_condition_placeholder_0) AND (entity_id = :db_condition_placeholder_1) AND (language IN  (:db_condition_placeholder_2)) ; Array
+(
+    [:db_condition_placeholder_0] => node
+    [:db_condition_placeholder_1] => 2504452
+    [:db_condition_placeholder_2] => und
+)
+ in field_sql_storage_field_storage_write() (line 573 of /var/www/sirius.benefits11.org/modules/field/modules/field_sql_storage/field_sql_storage.module).
+ROLLBACK: SQLSTATE[HY000]: General error: 1205 Lock wait timeout exceeded; try restarting transaction                                                                        [error]
+PDOException: SQLSTATE[HY000]: General error: 1205 Lock wait timeout exceeded; try restarting transaction in                                                                 [error]
+/var/www/sirius.benefits11.org/includes/database/database.inc:2284
+Stack trace:
+#0 /var/www/sirius.benefits11.org/includes/database/database.inc(2284): PDOStatement->execute()
+#1 /var/www/sirius.benefits11.org/includes/database/database.inc(744): DatabaseStatementBase->execute()
+#2 /var/www/sirius.benefits11.org/includes/database/query.inc(858): DatabaseConnection->query()
+#3 /var/www/sirius.benefits11.org/modules/field/modules/field_sql_storage/field_sql_storage.module(573): DeleteQuery->execute()
+#4 /var/www/sirius.benefits11.org/includes/module.inc(935): field_sql_storage_field_storage_write()
+#5 /var/www/sirius.benefits11.org/modules/field/field.attach.inc(1024): module_invoke()
+#6 /var/www/sirius.benefits11.org/modules/node/node.module(1178): field_attach_update()
+#7 /var/www/sirius.benefits11.org/s1-drush-remove-stale-election-benefit-2457521.php(203): node_save()
+#8 /usr/share/drush/commands/core/core.drush.inc(1172): include('...')
+#9 /usr/share/drush/includes/command.inc(422): drush_core_php_script()
+#10 /usr/share/drush/includes/command.inc(231): _drush_invoke_hooks()
+#11 /usr/share/drush/includes/command.inc(199): drush_command()
+#12 /usr/share/drush/lib/Drush/Boot/BaseBoot.php(67): drush_dispatch()
+#13 /usr/share/drush/includes/preflight.inc(67): Drush\Boot\BaseBoot->bootstrap_and_dispatch()
+#14 /usr/share/drush/drush.php(12): drush_main()
+#15 {main}
+clevername@456:/var/www/sirius.benefits11.org

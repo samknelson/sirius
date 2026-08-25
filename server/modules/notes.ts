@@ -120,9 +120,12 @@ export function registerNotesRoutes(
           list.push(row);
           byNote.set(row.noteId, list);
         }
-        return res.json(
-          notes.map((n) => ({ ...n, tags: (byNote.get(n.id) ?? []).map(toTagPayload) })),
-        );
+        const caseLinks = await storage.baoCases.getByNoteIds(notes.map((n) => n.id));
+        return res.json(notes.map((n) => ({
+          ...n,
+          tags: (byNote.get(n.id) ?? []).map(toTagPayload),
+          caseId: caseLinks.get(n.id) ?? null,
+        })));
       }
 
       res.json(notes);
@@ -261,6 +264,14 @@ export function registerNotesRoutes(
       const typeError = await checkEntityType(existing.entityType);
       if (typeError) {
         return res.status(typeError.status).json({ message: typeError.message });
+      }
+      if (await isComponentEnabled(BAO_COMPONENT)) {
+        const linked = await storage.baoCases.getByNoteId(existing.id);
+        if (linked) {
+          return res.status(409).json({
+            message: "This note is part of a BAO case and cannot be deleted.",
+          });
+        }
       }
       const deleted = await storage.notes.delete(req.params.id);
       if (!deleted) {

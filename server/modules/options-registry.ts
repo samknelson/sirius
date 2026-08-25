@@ -97,6 +97,8 @@ export const optionsTypeRegistry: Record<string, OptionsTypeConfig> = {
   // must ALSO be registered here for the API to serve it.
   "bao-cobra-status": createTypeConfig("bao-cobra-status"),
   "bao-cobra-qualifying-event": createTypeConfig("bao-cobra-qualifying-event"),
+  "bao-case-status": createTypeConfig("bao-case-status"),
+  "bao-case-resolution": createTypeConfig("bao-case-resolution"),
   "bao-notes-tag-type": createTypeConfig("bao-notes-tag-type"),
   "bao-notes-tag": createTypeConfig("bao-notes-tag"),
   "worker-ban-type": createTypeConfig("worker-ban-type"),

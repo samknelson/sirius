@@ -1,9 +1,9 @@
-import { pgTable, varchar, jsonb, date, numeric, text, timestamp, unique, foreignKey, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, varchar, jsonb, date, numeric, text, timestamp, unique, foreignKey, boolean, integer, index, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { parsePhoneNumber } from "libphonenumber-js";
-import { employers, ledgerAccounts, ledgerEa, ledgerPayments, workers, wizards, trustBenefits, trustProviders, notes } from "../../../schema";
+import { employers, ledgerAccounts, ledgerEa, ledgerPayments, workers, wizards, trustBenefits, trustProviders, notes, users } from "../../../schema";
 import { validateSSN } from "../../../utils/ssn";
 import { toYmd } from "../../../utils/date";
 
@@ -1304,6 +1304,150 @@ export const sitespecificBaoNotesTags = pgTable(
 export type BaoNoteTagAssignment = typeof sitespecificBaoNotesTags.$inferSelect;
 export type InsertBaoNoteTagAssignment =
   typeof sitespecificBaoNotesTags.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// BAO case management. This is deliberately separate from the COBRA workflow.
+// Cases use the same polymorphic identity convention as notes and every linked
+// note remains an ordinary note on the case's original entity.
+// ---------------------------------------------------------------------------
+
+export const BAO_CASE_ENTITY_TYPES = ["worker", "employer", "trust_provider"] as const;
+export type BaoCaseEntityType = (typeof BAO_CASE_ENTITY_TYPES)[number];
+
+export const optionsBaoCaseStatus = pgTable("options_bao_case_status", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull().unique(),
+  description: text("description"),
+  closed: boolean("closed").notNull().default(false),
+  sequence: integer("sequence").notNull().default(0),
+  data: jsonb("data"),
+});
+
+export const optionsBaoCaseResolution = pgTable("options_bao_case_resolution", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull().unique(),
+  description: text("description"),
+  sequence: integer("sequence").notNull().default(0),
+  data: jsonb("data"),
+});
+
+export const sitespecificBaoCases = pgTable(
+  "sitespecific_bao_cases",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    entityType: varchar("entity_type").notNull().$type<BaoCaseEntityType>(),
+    entityId: varchar("entity_id").notNull(),
+    assigneeUserId: varchar("assignee_user_id").notNull(),
+    statusId: varchar("status_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    deadlineYmd: date("deadline_ymd").notNull(),
+    resolutionId: varchar("resolution_id"),
+    resolutionYmd: date("resolution_ymd"),
+    data: jsonb("data"),
+  },
+  (table) => [
+    check(
+      "sitespecific_bao_cases_entity_type_check",
+      sql`${table.entityType} IN ('worker', 'employer', 'trust_provider')`,
+    ),
+    check(
+      "sitespecific_bao_cases_resolution_pair_check",
+      sql`(${table.resolutionId} IS NULL) = (${table.resolutionYmd} IS NULL)`,
+    ),
+    index("sitespecific_bao_cases_entity_idx").on(table.entityType, table.entityId),
+    index("sitespecific_bao_cases_assignee_idx").on(table.assigneeUserId),
+    index("sitespecific_bao_cases_status_idx").on(table.statusId),
+    index("sitespecific_bao_cases_deadline_idx").on(table.deadlineYmd),
+    foreignKey({
+      name: "sitespecific_bao_cases_assignee_user_id_fkey",
+      columns: [table.assigneeUserId],
+      foreignColumns: [users.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "sitespecific_bao_cases_status_id_fkey",
+      columns: [table.statusId],
+      foreignColumns: [optionsBaoCaseStatus.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "sitespecific_bao_cases_resolution_id_fkey",
+      columns: [table.resolutionId],
+      foreignColumns: [optionsBaoCaseResolution.id],
+    }).onDelete("restrict"),
+  ],
+);
+
+export const sitespecificBaoCaseNotes = pgTable(
+  "sitespecific_bao_case_notes",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    caseId: varchar("case_id").notNull(),
+    noteId: varchar("note_id").notNull(),
+  },
+  (table) => [
+    unique("sitespecific_bao_case_notes_note_uq").on(table.noteId),
+    unique("sitespecific_bao_case_notes_case_note_uq").on(table.caseId, table.noteId),
+    index("sitespecific_bao_case_notes_case_idx").on(table.caseId),
+    foreignKey({
+      name: "sitespecific_bao_case_notes_case_id_fkey",
+      columns: [table.caseId],
+      foreignColumns: [sitespecificBaoCases.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_case_notes_note_id_fkey",
+      columns: [table.noteId],
+      foreignColumns: [notes.id],
+    }).onDelete("restrict"),
+  ],
+);
+
+export type OptionsBaoCaseStatus = typeof optionsBaoCaseStatus.$inferSelect;
+export type OptionsBaoCaseResolution = typeof optionsBaoCaseResolution.$inferSelect;
+export type BaoCase = typeof sitespecificBaoCases.$inferSelect;
+export type InsertBaoCase = typeof sitespecificBaoCases.$inferInsert;
+export type BaoCaseNote = typeof sitespecificBaoCaseNotes.$inferSelect;
+
+const baoCaseEntityTypeSchema = z.enum(BAO_CASE_ENTITY_TYPES);
+const baoCaseNoteInputSchema = z.object({
+  typeId: z.string().min(1),
+  subject: z.string().trim().min(1),
+  body: z.string().nullable().optional(),
+  data: z.record(z.unknown()).nullable().optional(),
+  tagIds: z.array(z.string().min(1)).max(200).optional(),
+});
+
+export const createBaoCaseRequestSchema = z.object({
+  entityType: baoCaseEntityTypeSchema,
+  entityId: z.string().min(1),
+  deadlineYmd: ymdString,
+  statusId: z.string().min(1),
+  assigneeUserId: z.string().min(1).optional(),
+  noteId: z.string().min(1).optional(),
+  initialNote: baoCaseNoteInputSchema.optional(),
+}).strict().superRefine((value, ctx) => {
+  if ((value.noteId ? 1 : 0) + (value.initialNote ? 1 : 0) !== 1) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Provide exactly one of noteId or initialNote" });
+  }
+});
+
+export const updateBaoCaseRequestSchema = z.object({
+  deadlineYmd: ymdString.optional(),
+  statusId: z.string().min(1).optional(),
+  assigneeUserId: z.string().min(1).optional(),
+  resolutionId: z.string().min(1).nullable().optional(),
+  resolutionYmd: ymdString.nullable().optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, "Provide at least one field");
+
+export const addBaoCaseNoteRequestSchema = baoCaseNoteInputSchema.strict();
+export const listBaoCasesQuerySchema = z.object({
+  entityType: baoCaseEntityTypeSchema.optional(),
+  entityId: z.string().min(1).optional(),
+  scope: z.enum(["my", "all"]).default("my"),
+  view: z.enum(["active", "historical"]).default("active"),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  sort: z.enum(["created", "deadline"]).default("deadline"),
+  direction: z.enum(["asc", "desc"]).default("asc"),
+});
 
 /** One eligible upload as shown in the payment "Upload source" picker. */
 export type BaoWithholdingUploadSummary = {

@@ -424,6 +424,9 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
           return res.status(400).json({ message: pluginError });
         }
       }
+      if (type === "bao-case-status" && data.closed !== undefined && typeof data.closed !== "boolean") {
+        return res.status(400).json({ message: "closed must be a boolean" });
+      }
       
       const item = await config.create(data);
       res.status(201).json(item);
@@ -500,8 +503,22 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
           return res.status(400).json({ message: pluginError });
         }
       }
+
+      // Status classification is live case state, not presentation metadata.
+      // Refuse a flip that would leave an existing case with the wrong
+      // resolution shape (closing without one, or opening while retaining it).
+      if (type === "bao-case-status" && updates.closed !== undefined) {
+        if (typeof updates.closed !== "boolean") {
+          return res.status(400).json({ message: "closed must be a boolean" });
+        }
+      }
       
-      const item = await config.update(id, updates);
+      // BAO status classification is synchronized with case writes using the
+      // status-row lock in baoCases. Do not split its conflict check from the
+      // update: a case create/update otherwise could race the classification.
+      const item = type === "bao-case-status" && updates.closed !== undefined
+        ? await storage.baoCases.updateStatusClassificationAtomically(id, updates)
+        : await config.update(id, updates);
 
       // Editing a ban type's behaviors changes what every existing ban of
       // that type enforces, so re-emit WORKER_BAN_SAVED for each affected
@@ -531,6 +548,11 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       
       res.json(item);
     } catch (error: any) {
+      if (error?.message === "STATUS_CLASSIFICATION_CONFLICT") {
+        return res.status(409).json({
+          message: "This classification change would invalidate existing BAO cases. Transition those cases first.",
+        });
+      }
       const mapped = optionDbErrorMessage(error);
       if (mapped) {
         return res.status(mapped.status).json({ message: mapped.message });
@@ -602,6 +624,19 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
             message:
               "This ban type is used by one or more worker bans and cannot be deleted. Remove or retype those bans first.",
           });
+        }
+      }
+
+      if (type === "bao-case-status") {
+        const inUse = await storage.baoCases.countByStatus(id);
+        if (inUse > 0) {
+          return res.status(409).json({ message: "This BAO case status is in use and cannot be deleted." });
+        }
+      }
+      if (type === "bao-case-resolution") {
+        const inUse = await storage.baoCases.countByResolution(id);
+        if (inUse > 0) {
+          return res.status(409).json({ message: "This BAO case resolution is in use and cannot be deleted." });
         }
       }
 

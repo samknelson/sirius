@@ -13,6 +13,7 @@ export { type GrievanceContractStorage, type GrievanceContractLink, type Grievan
 export { type LogsStorage, type LogsQueryParams, type LogsResult, type LogFilters, type HostEntityLogsParams, createLogsStorage } from "./system/logs";
 export { type WorkerBanStorage, createWorkerBanStorage } from "./worker-bans";
 export { type NotesStorage, type NoteWithDetails, createNotesStorage, notesLoggingConfig } from "./notes";
+export { type BaoCasesStorage, type BaoCaseDetails, createBaoCasesStorage } from "./sitespecific/bao/cases";
 export { type WsClientStorage, type WsClientGrantStorage, type WsClientCredentialStorage, type CredentialCreateResult, type WsClientIpRuleStorage, createWsClientStorage, createWsClientGrantStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
 export { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type EmployerCompanyStorage, createEmployerCompanyStorage, employerCompanyLoggingConfig } from "./employers/companies";
 export { type ContractStorage, createContractStorage } from "./contract";

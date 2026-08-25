@@ -1,0 +1,372 @@
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import {
+  notes,
+  optionsBaoCaseResolution,
+  optionsBaoCaseStatus,
+  optionsNoteType,
+  rolePermissions,
+  roles,
+  sitespecificBaoCaseNotes,
+  sitespecificBaoCases,
+  userRoles,
+  users,
+  type BaoCase,
+  type BaoCaseEntityType,
+  type InsertBaoCase,
+} from "@shared/schema";
+import { getClient, runInTransaction } from "../../transaction-context";
+import { createNotesStorage, type NoteWithDetails } from "../../notes";
+import { createBaoNoteTagsStorage } from "./note-tags";
+import { tableExists } from "../../utils";
+
+export interface BaoCaseDetails extends BaoCase {
+  entityName: string | null;
+  assigneeName: string;
+  statusName: string;
+  statusClosed: boolean;
+  resolutionName: string | null;
+  notes?: NoteWithDetails[];
+}
+
+export interface BaoCaseListResult {
+  items: BaoCaseDetails[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export interface CreateBaoCaseInput {
+  entityType: BaoCaseEntityType;
+  entityId: string;
+  deadlineYmd: string;
+  statusId: string;
+  assigneeUserId: string;
+  noteId?: string;
+  initialNote?: {
+    typeId: string;
+    subject: string;
+    body?: string | null;
+    data?: Record<string, unknown> | null;
+    tagIds?: string[];
+  };
+  actorUserId: string;
+}
+
+export interface BaoCasesStorage {
+  tableExists(): Promise<boolean>;
+  isAssignableUser(id: string): Promise<boolean>;
+  create(input: CreateBaoCaseInput): Promise<BaoCase>;
+  get(id: string, includeNotes?: boolean): Promise<BaoCaseDetails | undefined>;
+  updateLifecycle(id: string, updates: Partial<InsertBaoCase>): Promise<BaoCase>;
+  addNote(caseId: string, input: CreateBaoCaseInput["initialNote"], actorUserId: string): Promise<NoteWithDetails>;
+  list(input: {
+    entityType?: BaoCaseEntityType;
+    entityId?: string;
+    assigneeUserId?: string;
+    closed: boolean;
+    page: number;
+    pageSize: number;
+    sort: "created" | "deadline";
+    direction: "asc" | "desc";
+  }): Promise<BaoCaseListResult>;
+  getByNoteId(noteId: string): Promise<{ caseId: string } | undefined>;
+  getByNoteIds(noteIds: string[]): Promise<Map<string, string>>;
+  countByStatus(statusId: string): Promise<number>;
+  countByResolution(resolutionId: string): Promise<number>;
+  countStatusClassificationConflicts(statusId: string, nextClosed: boolean): Promise<number>;
+  updateStatusClassificationAtomically(
+    statusId: string,
+    updates: Partial<typeof optionsBaoCaseStatus.$inferInsert>,
+  ): Promise<typeof optionsBaoCaseStatus.$inferSelect | undefined>;
+}
+
+const cases = sitespecificBaoCases;
+const noteStorage = createNotesStorage();
+const tagStorage = createBaoNoteTagsStorage();
+
+const entityName = sql<string | null>`CASE
+  WHEN ${cases.entityType} = 'worker' THEN (
+    SELECT c.display_name FROM workers w JOIN contacts c ON c.id = w.contact_id
+    WHERE w.id = ${cases.entityId}
+  )
+  WHEN ${cases.entityType} = 'employer' THEN (
+    SELECT e.name FROM employers e WHERE e.id = ${cases.entityId}
+  )
+  WHEN ${cases.entityType} = 'trust_provider' THEN (
+    SELECT p.name FROM trust_providers p WHERE p.id = ${cases.entityId}
+  )
+  ELSE NULL END`;
+
+const detailSelection = {
+  theCase: cases,
+  entityName,
+  assigneeFirstName: users.firstName,
+  assigneeLastName: users.lastName,
+  assigneeEmail: users.email,
+  statusName: optionsBaoCaseStatus.name,
+  statusClosed: optionsBaoCaseStatus.closed,
+  resolutionName: optionsBaoCaseResolution.name,
+};
+
+function detailQuery() {
+  return getClient()
+    .select(detailSelection)
+    .from(cases)
+    .innerJoin(users, eq(users.id, cases.assigneeUserId))
+    .innerJoin(optionsBaoCaseStatus, eq(optionsBaoCaseStatus.id, cases.statusId))
+    .leftJoin(optionsBaoCaseResolution, eq(optionsBaoCaseResolution.id, cases.resolutionId));
+}
+
+function mapDetail(row: any): BaoCaseDetails {
+  const full = [row.assigneeFirstName, row.assigneeLastName].filter(Boolean).join(" ");
+  return {
+    ...row.theCase,
+    entityName: row.entityName ?? null,
+    assigneeName: full || row.assigneeEmail,
+    statusName: row.statusName,
+    statusClosed: Boolean(row.statusClosed),
+    resolutionName: row.resolutionName ?? null,
+  };
+}
+
+async function getStatus(statusId: string) {
+  const [status] = await getClient()
+    .select()
+    .from(optionsBaoCaseStatus)
+    .where(eq(optionsBaoCaseStatus.id, statusId))
+    .limit(1);
+  return status;
+}
+
+/** Shared/exclusive row locks serialize case writes with status reclassification. */
+async function lockStatuses(statusIds: string[], mode: "SHARE" | "UPDATE"): Promise<void> {
+  const ids = [...new Set(statusIds)].sort();
+  for (const id of ids) {
+    await getClient().execute(
+      sql`SELECT id FROM options_bao_case_status WHERE id = ${id} FOR ${sql.raw(mode)}`,
+    );
+  }
+}
+
+async function assertNoteType(typeId: string, entityType: string): Promise<void> {
+  const [type] = await getClient().select().from(optionsNoteType).where(eq(optionsNoteType.id, typeId));
+  if (!type || !Array.isArray((type.data as any)?.entityTypes) || !(type.data as any).entityTypes.includes(entityType)) {
+    throw new Error("INVALID_NOTE_TYPE");
+  }
+}
+
+export function createBaoCasesStorage(): BaoCasesStorage {
+  return {
+    async tableExists() {
+      return tableExists("sitespecific_bao_cases");
+    },
+
+    async isAssignableUser(id) {
+      const rows = await getClient()
+        .select({ id: users.id })
+        .from(users)
+        .innerJoin(userRoles, eq(userRoles.userId, users.id))
+        .innerJoin(roles, eq(roles.id, userRoles.roleId))
+        .innerJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
+        .where(and(eq(users.id, id), eq(users.isActive, true), sql`${rolePermissions.permissionKey} IN ('staff', 'admin')`))
+        .limit(1);
+      return rows.length > 0;
+    },
+
+    async create(input) {
+      return runInTransaction(async () => {
+        if (!(await noteStorage.entityExists(input.entityType, input.entityId))) {
+          throw new Error("ENTITY_NOT_FOUND");
+        }
+        if (!(await this.isAssignableUser(input.assigneeUserId))) {
+          throw new Error("INVALID_ASSIGNEE");
+        }
+        await lockStatuses([input.statusId], "SHARE");
+        const status = await getStatus(input.statusId);
+        if (!status) throw new Error("INVALID_STATUS");
+        if (status.closed) throw new Error("INITIAL_STATUS_CLOSED");
+
+        let noteId = input.noteId;
+        if (noteId) {
+          const note = await noteStorage.get(noteId);
+          if (!note) throw new Error("NOTE_NOT_FOUND");
+          if (note.entityType !== input.entityType || note.entityId !== input.entityId) {
+            throw new Error("NOTE_ENTITY_MISMATCH");
+          }
+        } else if (input.initialNote) {
+          await assertNoteType(input.initialNote.typeId, input.entityType);
+          const note = await noteStorage.create({
+            entityType: input.entityType,
+            entityId: input.entityId,
+            typeId: input.initialNote.typeId,
+            subject: input.initialNote.subject,
+            body: input.initialNote.body ?? null,
+            data: input.initialNote.data ?? null,
+            userId: input.actorUserId,
+          });
+          noteId = note.id;
+          if (input.initialNote.tagIds?.length) {
+            await tagStorage.setForNote(note.id, Array.from(new Set(input.initialNote.tagIds)));
+          }
+        }
+        if (!noteId) throw new Error("INITIAL_NOTE_REQUIRED");
+
+        const [created] = await getClient().insert(cases).values({
+          entityType: input.entityType,
+          entityId: input.entityId,
+          deadlineYmd: input.deadlineYmd,
+          statusId: input.statusId,
+          assigneeUserId: input.assigneeUserId,
+          resolutionId: null,
+          resolutionYmd: null,
+        }).returning();
+        await getClient().insert(sitespecificBaoCaseNotes).values({ caseId: created.id, noteId });
+        return created;
+      });
+    },
+
+    async get(id, includeNotes = false) {
+      const [row] = await detailQuery().where(eq(cases.id, id)).limit(1);
+      if (!row) return undefined;
+      const result = mapDetail(row);
+      if (includeNotes) {
+        const linked = await getClient()
+          .select({ note: notes, typeName: optionsNoteType.name, firstName: users.firstName, lastName: users.lastName, email: users.email })
+          .from(sitespecificBaoCaseNotes)
+          .innerJoin(notes, eq(notes.id, sitespecificBaoCaseNotes.noteId))
+          .leftJoin(optionsNoteType, eq(optionsNoteType.id, notes.typeId))
+          .leftJoin(users, eq(users.id, notes.userId))
+          .where(eq(sitespecificBaoCaseNotes.caseId, id))
+          .orderBy(asc(notes.timestamp), asc(notes.id));
+        result.notes = linked.map((row) => ({
+          ...row.note,
+          typeName: row.typeName ?? null,
+          authorName: [row.firstName, row.lastName].filter(Boolean).join(" ") || row.email || null,
+        }));
+      }
+      return result;
+    },
+
+    async updateLifecycle(id, updates) {
+      return runInTransaction(async () => {
+        // Serialize every mutation of this case before deriving merged state.
+        // Status-row locks alone only coordinate status classification; without
+        // this row lock two lifecycle writers can both derive from stale state.
+        const [existing] = await getClient()
+          .select()
+          .from(cases)
+          .where(eq(cases.id, id))
+          .for("update");
+        if (!existing) throw new Error("CASE_NOT_FOUND");
+        const nextStatusId = updates.statusId ?? existing.statusId;
+        await lockStatuses([existing.statusId, nextStatusId], "SHARE");
+        const status = await getStatus(nextStatusId);
+        if (!status) throw new Error("INVALID_STATUS");
+        const previousStatus = await getStatus(existing.statusId);
+        const assignee = updates.assigneeUserId ?? existing.assigneeUserId;
+        if (!(await this.isAssignableUser(assignee))) throw new Error("INVALID_ASSIGNEE");
+
+        const nextResolutionId = updates.resolutionId !== undefined ? updates.resolutionId : existing.resolutionId;
+        const nextResolutionYmd = updates.resolutionYmd !== undefined ? updates.resolutionYmd : existing.resolutionYmd;
+        if (status.closed) {
+          if (!nextResolutionId || !nextResolutionYmd) throw new Error("RESOLUTION_REQUIRED");
+          const [resolution] = await getClient().select({ id: optionsBaoCaseResolution.id })
+            .from(optionsBaoCaseResolution).where(eq(optionsBaoCaseResolution.id, nextResolutionId));
+          if (!resolution) throw new Error("INVALID_RESOLUTION");
+        } else if (!previousStatus?.closed && (nextResolutionId || nextResolutionYmd)) {
+          throw new Error("OPEN_CASE_RESOLUTION");
+        }
+        const normalized = status.closed
+          ? updates
+          : { ...updates, resolutionId: null, resolutionYmd: null };
+        const [updated] = await getClient().update(cases).set(normalized).where(eq(cases.id, id)).returning();
+        return updated;
+      });
+    },
+
+    async addNote(caseId, input, actorUserId) {
+      if (!input) throw new Error("NOTE_REQUIRED");
+      return runInTransaction(async () => {
+        const theCase = await this.get(caseId);
+        if (!theCase) throw new Error("CASE_NOT_FOUND");
+        await assertNoteType(input.typeId, theCase.entityType);
+        const note = await noteStorage.create({
+          entityType: theCase.entityType,
+          entityId: theCase.entityId,
+          typeId: input.typeId,
+          subject: input.subject,
+          body: input.body ?? null,
+          data: input.data ?? null,
+          userId: actorUserId,
+        });
+        await getClient().insert(sitespecificBaoCaseNotes).values({ caseId, noteId: note.id });
+        if (input.tagIds?.length) await tagStorage.setForNote(note.id, Array.from(new Set(input.tagIds)));
+        return { ...note, typeName: null, authorName: null };
+      });
+    },
+
+    async list(input) {
+      const conditions: any[] = [eq(optionsBaoCaseStatus.closed, input.closed)];
+      if (input.entityType) conditions.push(eq(cases.entityType, input.entityType));
+      if (input.entityId) conditions.push(eq(cases.entityId, input.entityId));
+      if (input.assigneeUserId) conditions.push(eq(cases.assigneeUserId, input.assigneeUserId));
+      const where = and(...conditions);
+      const [{ count }] = await getClient().select({ count: sql<number>`count(*)::int` })
+        .from(cases).innerJoin(optionsBaoCaseStatus, eq(optionsBaoCaseStatus.id, cases.statusId)).where(where);
+      const column = input.sort === "created" ? cases.createdAt : cases.deadlineYmd;
+      const order = input.direction === "desc" ? desc : asc;
+      const rows = await detailQuery().where(where)
+        .orderBy(order(column), order(cases.createdAt), order(cases.id))
+        .limit(input.pageSize).offset((input.page - 1) * input.pageSize);
+      return { items: rows.map(mapDetail), page: input.page, pageSize: input.pageSize, total: Number(count ?? 0) };
+    },
+
+    async getByNoteId(noteId) {
+      const [row] = await getClient().select({ caseId: sitespecificBaoCaseNotes.caseId })
+        .from(sitespecificBaoCaseNotes).where(eq(sitespecificBaoCaseNotes.noteId, noteId));
+      return row;
+    },
+    async getByNoteIds(noteIds) {
+      if (noteIds.length === 0) return new Map();
+      const rows = await getClient()
+        .select({ noteId: sitespecificBaoCaseNotes.noteId, caseId: sitespecificBaoCaseNotes.caseId })
+        .from(sitespecificBaoCaseNotes)
+        .where(inArray(sitespecificBaoCaseNotes.noteId, noteIds));
+      return new Map(rows.map((row) => [row.noteId, row.caseId]));
+    },
+    async countByStatus(statusId) {
+      const [row] = await getClient().select({ count: sql<number>`count(*)::int` }).from(cases).where(eq(cases.statusId, statusId));
+      return Number(row?.count ?? 0);
+    },
+    async countByResolution(resolutionId) {
+      const [row] = await getClient().select({ count: sql<number>`count(*)::int` }).from(cases).where(eq(cases.resolutionId, resolutionId));
+      return Number(row?.count ?? 0);
+    },
+    async countStatusClassificationConflicts(statusId, nextClosed) {
+      const condition = nextClosed
+        ? and(eq(cases.statusId, statusId), sql`(${cases.resolutionId} IS NULL OR ${cases.resolutionYmd} IS NULL)`)
+        : and(eq(cases.statusId, statusId), sql`(${cases.resolutionId} IS NOT NULL OR ${cases.resolutionYmd} IS NOT NULL)`);
+      const [row] = await getClient().select({ count: sql<number>`count(*)::int` }).from(cases).where(condition);
+      return Number(row?.count ?? 0);
+    },
+    async updateStatusClassificationAtomically(statusId, updates) {
+      return runInTransaction(async () => {
+        // UPDATE lock blocks all case create/lifecycle writes which take SHARE.
+        await lockStatuses([statusId], "UPDATE");
+        const [existing] = await getClient().select().from(optionsBaoCaseStatus)
+          .where(eq(optionsBaoCaseStatus.id, statusId));
+        if (!existing) return undefined;
+        const nextClosed = updates.closed ?? existing.closed;
+        if (nextClosed !== existing.closed) {
+          const conflicts = await this.countStatusClassificationConflicts(statusId, nextClosed);
+          if (conflicts > 0) throw new Error("STATUS_CLASSIFICATION_CONFLICT");
+        }
+        const [updated] = await getClient().update(optionsBaoCaseStatus)
+          .set(updates)
+          .where(eq(optionsBaoCaseStatus.id, statusId))
+          .returning();
+        return updated;
+      });
+    },
+  };
+}
