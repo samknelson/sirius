@@ -104,3 +104,17 @@ uri = "file://attached_assets/s1-ssn-owner-transfer-verify.sql"
 type = "unspecified"
 title = "4. SSN Transfer Verification"
 description = "Read-only post-commit verification. Expected final status: PASS."
+
+[[outputs]]
+id = "af_bkA7JypKt8qSujO6et"
+uri = "file://scripts/oneoffs/s1-t16-benefit-unmapped-target.sql"
+type = "unspecified"
+title = "T16 benefit-unmapped target investigation"
+description = "Read-only PostgreSQL investigation for the rehearsal target: latest T16 report, current staging presence, all missing benefit references, and compact counts."
+
+[[outputs]]
+id = "sDnMm1hBc2RUYFPVFUJo2"
+uri = "file://scripts/oneoffs/s1-t16-benefit-unmapped-source.sql"
+type = "unspecified"
+title = "T16 benefit-unmapped source investigation"
+description = "Read-only MariaDB investigation for S1: benefit node presence and all live election field references to benefit nid 2457521."
