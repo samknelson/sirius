@@ -35,6 +35,8 @@ export const webServiceRegistry = new PluginRegistry<
       name: op.name,
       methods: op.methods,
       description: op.description,
+      requestSchema: op.requestSchema,
+      responseSchema: op.responseSchema,
     })),
   }),
 });

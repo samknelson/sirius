@@ -83,7 +83,9 @@ export type TabEntityType =
   | 'grievance'
   | 'grievanceTimelineTemplate'
   | 'contract'
-  | 'business_calendar';
+  | 'business_calendar'
+  /** A unified-options type; the entity id is the type slug (e.g. `department`). */
+  | 'options';
 
 /**
  * Tab check request for batch access evaluation
@@ -196,7 +198,15 @@ export const workerTabTree: HierarchicalTab[] = [
     ]
   },
   { id: 'political', label: 'Political', hrefTemplate: '/workers/{id}/political', permission: 'staff', component: 'sitespecific.btu.political' },
-  { id: 'edls', label: 'EDLS', hrefTemplate: '/workers/{id}/edls', policyId: 'edls.coordinator', component: 'edls' },
+  {
+    id: 'edls', label: 'EDLS', hrefTemplate: '/workers/{id}/edls', policyId: 'edls.coordinator', component: 'edls',
+    children: [
+      // Keeps the pre-split URL, so existing links and bookmarks still land on
+      // the switch rather than on the new list.
+      { id: 'edls-status', label: 'Status', hrefTemplate: '/workers/{id}/edls', policyId: 'edls.coordinator', component: 'edls' },
+      { id: 'edls-assignments', label: 'Assignments', hrefTemplate: '/workers/{id}/edls/assignments', policyId: 'edls.coordinator', component: 'edls' },
+    ]
+  },
   { id: 'sitespecific-freeman-2shift', label: 'Second Shift', hrefTemplate: '/workers/{id}/sitespecific-freeman-2shift', policyId: 'edls.any', component: 'sitespecific.freeman' },
   { id: 'sitespecific-bao-beneficiaries', label: 'Beneficiaries', hrefTemplate: '/workers/{id}/sitespecific/bao/beneficiaries', policyId: 'worker.view', component: 'sitespecific.bao' },
   {
@@ -632,6 +642,7 @@ export const wsClientTabTree: HierarchicalTab[] = [
   { id: 'credentials', label: 'Credentials', hrefTemplate: '/config/ws/clients/{id}/credentials', permission: 'admin' },
   { id: 'ip-rules', label: 'IP Rules', hrefTemplate: '/config/ws/clients/{id}/ip-rules', permission: 'admin' },
   { id: 'test', label: 'Test', hrefTemplate: '/config/ws/clients/{id}/test', permission: 'admin' },
+  { id: 'swagger', label: 'Swagger', hrefTemplate: '/config/ws/clients/{id}/swagger', permission: 'admin' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/config/ws/clients/{id}/logs', permission: 'admin' },
 ];
 
@@ -682,6 +693,18 @@ export const businessCalendarTabTree: HierarchicalTab[] = [
 ];
 
 /**
+ * Options-type tab tree
+ *
+ * The "entity" here is an options type slug, not a row: `/config/options/
+ * department/list`. All three tabs are admin-only, matching the page's
+ * existing gate.
+ */
+export const optionsTabTree: HierarchicalTab[] = [
+  { id: 'list', label: 'List', hrefTemplate: '/config/options/{id}/list', permission: 'admin' },
+  { id: 'export', label: 'Export', hrefTemplate: '/config/options/{id}/export', permission: 'admin' },
+  { id: 'import', label: 'Import', hrefTemplate: '/config/options/{id}/import', permission: 'admin' },
+];
+/**
  * Entity tab trees by type
  */
 export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
@@ -717,6 +740,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   grievanceTimelineTemplate: grievanceTimelineTemplateTabTree,
   contract: contractTabTree,
   business_calendar: businessCalendarTabTree,
+  options: optionsTabTree,
 };
 
 /**

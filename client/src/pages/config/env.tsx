@@ -15,7 +15,18 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Pencil, Trash2, Info, Search, RotateCw, RefreshCw, Zap } from "lucide-react";
+import {
+  Lock,
+  Pencil,
+  Trash2,
+  Info,
+  Search,
+  RotateCw,
+  RefreshCw,
+  Zap,
+  Copy,
+  Check,
+} from "lucide-react";
 
 interface EnvVarInfo {
   name: string;
@@ -52,6 +63,26 @@ export default function EnvPage() {
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [filter, setFilter] = useState("");
+  /** Name of the variable whose value was just copied — drives the brief
+      icon swap, so copying one row never lights up another. */
+  const [copiedName, setCopiedName] = useState<string | null>(null);
+
+  const copyValue = async (name: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedName(name);
+      setTimeout(
+        () => setCopiedName((current) => (current === name ? null : current)),
+        2000,
+      );
+    } catch {
+      toast({
+        title: "Copy failed",
+        description: "Failed to copy to clipboard",
+        variant: "destructive",
+      });
+    }
+  };
 
   const { data: vars, isLoading } = useQuery<EnvVarInfo[]>({
     queryKey: ["/api/admin/env"],
@@ -215,9 +246,25 @@ export default function EnvPage() {
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">{v.description}</p>
                         {!v.secret && v.isSet && v.value !== null && (
-                          <p className="font-mono text-xs mt-1 break-all text-muted-foreground">
-                            {v.value}
-                          </p>
+                          <div className="flex items-start gap-1 mt-1">
+                            <p className="font-mono text-xs break-all text-muted-foreground">
+                              {v.value}
+                            </p>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-5 w-5 shrink-0 text-muted-foreground"
+                              onClick={() => copyValue(v.name, v.value as string)}
+                              aria-label={`Copy value of ${v.name}`}
+                              data-testid={`env-copy-${v.name}`}
+                            >
+                              {copiedName === v.name ? (
+                                <Check className="h-3 w-3" />
+                              ) : (
+                                <Copy className="h-3 w-3" />
+                              )}
+                            </Button>
+                          </div>
                         )}
                         {v.released && (
                           <p className="text-xs text-muted-foreground mt-1">

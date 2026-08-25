@@ -458,6 +458,15 @@ export function useLedgerPaymentBatchTabAccess(batchId: string | undefined, enab
   });
 }
 
+/** Tab access for an options page; the "entity id" is the options type slug. */
+export function useOptionsTabAccess(optionsType: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'options',
+    entityId: optionsType,
+    enabled,
+  });
+}
+
 export function useBusinessCalendarTabAccess(calendarId: string | undefined, enabled = true) {
   return useTabAccess({
     entityType: 'business_calendar',
