@@ -9,6 +9,10 @@
  * variable (paired with LOCAL_AUTH_EMAIL). The plaintext password is never
  * stored anywhere.
  *
+ * The account does NOT have to exist first: while both variables are set,
+ * every boot creates it when missing, reactivates it, grants it the admin
+ * permission and applies this hash (server/auth/local-seed.ts).
+ *
  * PEPPER: if the target deployment sets AUTH_LOCAL_PEPPER, the provider
  * verifies bcrypt(password + pepper), so the hash MUST be generated the
  * same way. Set AUTH_LOCAL_PEPPER in the environment when running this

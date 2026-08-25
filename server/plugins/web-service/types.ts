@@ -38,6 +38,20 @@ export interface WebServiceOperation {
   methods: WebServiceMethod[];
   /** Human description shown on the admin configuration + client test screens. */
   description: string;
+  /**
+   * JSON Schema for the JSON request body this operation accepts, for the
+   * generated API document.
+   *
+   * Optional, and deliberately so: it is documentation, never enforcement —
+   * the handler remains the only thing that validates a request. An operation
+   * that declares nothing is published as "payload not described" rather than
+   * with a guessed shape, because a wrong schema is worse than an absent one.
+   * Only meaningful for the body-bearing verbs; a GET's query string is
+   * described in {@link description}.
+   */
+  requestSchema?: Record<string, unknown>;
+  /** JSON Schema for the success response body. Same optional-documentation rules as {@link requestSchema}. */
+  responseSchema?: Record<string, unknown>;
   /** Runs the operation and writes the response. */
   handler: (ctx: WebServiceOperationContext) => Promise<void> | void;
 }
@@ -75,5 +89,7 @@ export interface WebServiceManifestEntry {
     name: string;
     methods: WebServiceMethod[];
     description: string;
+    requestSchema?: Record<string, unknown>;
+    responseSchema?: Record<string, unknown>;
   }[];
 }

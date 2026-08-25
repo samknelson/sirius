@@ -271,6 +271,7 @@ export function registerAccessPolicyRoutes(app: Express) {
         contract: 'staff',
         edls_sheet: 'edls.sheet.view',
         business_calendar: 'admin',
+        options: 'admin',
       };
       const basePolicy = entityPolicyMap[entityType] || 'authenticated';
       const baseAccessResult = await checkAccess(basePolicy, context.user, resolvedEntityId);

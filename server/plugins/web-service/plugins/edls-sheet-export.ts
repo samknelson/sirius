@@ -145,6 +145,133 @@ registerWebServicePlugin({
         "Passport export. POST the legacy positional body " +
         "[operation, ignored, ignored, JSON filter] where the filter may carry " +
         "start_date, page and limit as strings.",
+      // The legacy shape is the contract, quirks and all: a four-string array
+      // whose last element is itself JSON, a string-valued total_records, and
+      // a double-wrapped payload. Documented as it IS, not as it should be.
+      requestSchema: {
+        type: "array",
+        title: "Legacy positional arguments",
+        description:
+          "Four strings. Elements 1-3 are legacy identifiers and are ignored; element 4 is a JSON-encoded filter object.",
+        minItems: 4,
+        maxItems: 4,
+        items: [
+          { type: "string", description: "Legacy operation name. Accepted and ignored — the URL names the operation." },
+          { type: "string", description: "Legacy identifier. Accepted and ignored." },
+          { type: "string", description: "Legacy identifier. Accepted and ignored." },
+          {
+            type: "string",
+            description:
+              'JSON-encoded filter object. Every value is a string. Supported keys: start_date (any parseable date; only sheets changed since then), page (zero-based, default "0"), limit (default "100", capped at 500). Example: {"start_date":"2026-01-01","page":"0","limit":"100"}',
+          },
+        ],
+      },
+      responseSchema: {
+        type: "object",
+        title: "Legacy passport export envelope",
+        required: ["success", "ts", "is_remote", "data"],
+        properties: {
+          success: { type: "boolean", const: true },
+          ts: { type: "integer", description: "Unix timestamp, in seconds, of this response." },
+          is_remote: { type: "boolean", const: true },
+          data: {
+            type: "object",
+            description: "Legacy double wrapper: the payload sits at data.data.",
+            required: ["success", "data"],
+            properties: {
+              success: { type: "boolean", const: true },
+              data: {
+                type: "object",
+                required: ["paging", "sheets"],
+                properties: {
+                  paging: {
+                    type: "object",
+                    required: ["total_records", "page", "limit", "offset"],
+                    properties: {
+                      total_records: {
+                        type: "string",
+                        description: "Total matching sheets, as a STRING — a legacy quirk.",
+                      },
+                      page: { type: "integer", description: "Zero-based page number echoed back." },
+                      limit: { type: "integer", description: "Page size actually applied, capped at 500." },
+                      offset: { type: "integer" },
+                    },
+                  },
+                  sheets: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        uuid: { type: "string" },
+                        nid: { type: "string", description: "Same value as uuid." },
+                        title: { type: "string" },
+                        version: {
+                          type: "string",
+                          description:
+                            "'<sheet id>::<latest snapshot id>'; the second half is empty when the sheet has never been snapshotted.",
+                        },
+                        status: { type: "string", const: "Scheduled", description: "Only locked sheets are exported." },
+                        employer: { type: ["string", "null"] },
+                        supervisor: { type: ["string", "null"] },
+                        creator: { type: ["string", "null"] },
+                        changed_date: { type: "string", description: "RFC-2822 style, in the server's local zone." },
+                        date: { type: "string", description: "Long form, e.g. 'Tuesday, May 19, 2026'." },
+                        event: { type: ["string", "null"] },
+                        event_status: { type: ["string", "null"] },
+                        dept: { type: ["string", "null"] },
+                        job_number: { type: "string" },
+                        facility: { type: ["string", "null"] },
+                        hall: { type: "null", description: "Always null." },
+                        count: { type: "string", description: "'<assigned> / <planned>'." },
+                        notes: { type: "string" },
+                        crews: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            properties: {
+                              uuid: { type: "string" },
+                              name: { type: "string" },
+                              task: { type: "string" },
+                              start_time: { type: ["string", "null"], description: "HH:MM." },
+                              end_time: { type: ["string", "null"], description: "HH:MM." },
+                              checkin_location: { type: ["string", "null"] },
+                              count: { type: "integer", description: "Planned worker count." },
+                              crewlead: { type: "string" },
+                              supervisor: { type: ["string", "null"] },
+                              assignments: {
+                                type: "array",
+                                items: {
+                                  type: "object",
+                                  properties: {
+                                    worker_name: { type: "string", description: "'Family, Given'." },
+                                    worker_ms: { type: ["string", "null"], description: "Member status code." },
+                                    worker_id: { type: ["integer", "null"] },
+                                    worker_empid: { type: ["string", "null"] },
+                                    assignment_extra: {
+                                      type: "object",
+                                      properties: {
+                                        time: { type: ["string", "null"] },
+                                        classification: { type: ["string", "null"] },
+                                        note: { type: ["string", "null"] },
+                                      },
+                                    },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          minilog: { type: "string", description: "Always empty." },
+          drupal_messages: { type: "array", description: "Always empty." },
+        },
+      },
       handler: runPassportExport,
     },
   ],

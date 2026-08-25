@@ -241,6 +241,27 @@ export function registerWebServiceAdminRoutes(
     }
   });
 
+  // === API document ===
+
+  /**
+   * The generated OpenAPI document for one client. Built by the SAME builder
+   * the swagger web service uses, so what an administrator downloads here is
+   * exactly what an integrator granted that service fetches for themselves.
+   */
+  app.get("/api/admin/ws-clients/:clientId/openapi", requireAuth, requirePermission("admin"), async (req, res) => {
+    try {
+      const client = await storage.wsClients.get(req.params.clientId);
+      if (!client) {
+        return res.status(404).json({ message: "Client not found" });
+      }
+      const { buildClientOpenApiDocument } = await import("./openapi");
+      res.json(await buildClientOpenApiDocument(client));
+    } catch (error) {
+      console.error("Failed to build WS client API document:", error);
+      res.status(500).json({ message: "Failed to build API document" });
+    }
+  });
+
   // === IP Rules ===
 
   app.get("/api/admin/ws-clients/:clientId/ip-rules", requireAuth, requirePermission("admin"), async (req, res) => {

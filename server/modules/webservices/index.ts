@@ -9,8 +9,11 @@ import { isPluginComponentEnabledAsync } from '../../plugins/_core';
 import { webServiceRegistry, findWebServiceOperation } from '../../plugins/web-service';
 import type { PluginConfig } from '@shared/schema';
 
-/** Public mount point for every web service. */
-export const WEB_SERVICE_BASE_PATH = '/api/ws';
+export { WEB_SERVICE_BASE_PATH } from './base-path';
+import { WEB_SERVICE_BASE_PATH } from './base-path';
+// Resolution lives beside its inverse (the address the API document
+// publishes), so the two can never drift apart.
+import { resolveConfiguration } from './addressing';
 
 /**
  * The single refusal returned for every reason a caller may not reach a
@@ -67,37 +70,6 @@ function createWsLoggingMiddleware(): RequestHandler {
 
     next();
   };
-}
-
-/**
- * Resolve the configuration a request is addressed to, EXACTLY ONCE.
- *
- * Resolution is by `plugin_configs.id` first, then by alias. Id wins so an
- * alias that happens to look like a configuration id can never shadow the real
- * record. An alias matching more than one configuration is refused rather than
- * silently picking one: the grant check still runs on whichever record won, so
- * there is no privilege escalation, but a client granted both services would
- * quietly reach the wrong one.
- */
-async function resolveConfiguration(
-  configRef: string,
-): Promise<
-  | { ok: true; config: PluginConfig }
-  | { ok: false; reason: 'UNKNOWN_CONFIG' | 'AMBIGUOUS_ALIAS' }
-> {
-  const byId = await storage.pluginConfigs.get(configRef);
-  if (byId && byId.pluginKind === 'web-service') {
-    return { ok: true, config: byId };
-  }
-
-  const all = await storage.pluginConfigs.getByKind('web-service');
-  const byAlias = all.filter((c) => {
-    const data = (c.data ?? {}) as Record<string, unknown>;
-    return typeof data.alias === 'string' && data.alias === configRef;
-  });
-  if (byAlias.length === 1) return { ok: true, config: byAlias[0] };
-  if (byAlias.length > 1) return { ok: false, reason: 'AMBIGUOUS_ALIAS' };
-  return { ok: false, reason: 'UNKNOWN_CONFIG' };
 }
 
 /**

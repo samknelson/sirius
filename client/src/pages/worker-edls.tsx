@@ -95,7 +95,7 @@ function WorkerEdlsContent() {
 
 export default function WorkerEdls() {
   return (
-    <WorkerLayout activeTab="edls">
+    <WorkerLayout activeTab="edls-status">
       <WorkerEdlsContent />
     </WorkerLayout>
   );

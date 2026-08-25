@@ -65,6 +65,7 @@ const WorkerNotes = lazy(() => import("@/pages/workers/notes"));
 const EmployerNotes = lazy(() => import("@/pages/employers/notes"));
 const TrustProviderNotesPage = lazy(() => import("@/pages/trust-provider-notes"));
 const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
+const WorkerEdlsAssignments = lazy(() => import("@/pages/worker-edls-assignments"));
 const WorkerSecondShift = lazy(() => import("@/pages/worker-sitespecific-freeman-2shift"));
 const WorkerBaoBeneficiaries = lazy(() => import("@/pages/worker-sitespecific-bao-beneficiaries"));
 const WorkerSkills = lazy(() => import("@/pages/worker-skills"));
@@ -248,6 +249,8 @@ const FloodEventsConfigPage = lazy(() => import("@/pages/flood-events-config"));
 const PostalAddressesConfigPage = lazy(() => import("@/pages/config/addresses"));
 const PhoneNumbersConfigPage = lazy(() => import("@/pages/config/phone-numbers"));
 const DynamicOptionsPage = lazy(() => import("@/pages/config/options"));
+
+const OptionsExportPage = lazy(() => import("@/pages/config/options-export"));
 const StewardSettingsPage = lazy(() => import("@/pages/config/steward-settings"));
 const EventTypesPage = lazy(() => import("@/pages/config/event-types"));
 const DispatchJobTypesPage = lazy(() => import("@/pages/config/dispatch-job-types"));
@@ -274,6 +277,7 @@ const WsClientCredentialsPage = lazy(() => import("@/pages/config/ws/client-cred
 const WsClientIpRulesPage = lazy(() => import("@/pages/config/ws/client-ip-rules"));
 const WsClientTestPage = lazy(() => import("@/pages/config/ws/client-test"));
 const WsClientLogsPage = lazy(() => import("@/pages/config/ws/client-logs"));
+const WsClientSwaggerPage = lazy(() => import("@/pages/config/ws/client-swagger"));
 const SftpClientsPage = lazy(() => import("@/pages/config/sftp/clients"));
 const HelpsConfigPage = lazy(() => import("@/pages/config/helps"));
 const BusinessCalendarsPage = lazy(() => import("@/pages/config/business-calendars/index"));
@@ -911,9 +915,17 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/edls">
-        <ProtectedRoute tabId="edls" entityType="worker">
+        <ProtectedRoute tabId="edls-status" entityType="worker">
           <AuthenticatedLayout>
             <WorkerEdls />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/edls/assignments">
+        <ProtectedRoute tabId="edls-assignments" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerEdlsAssignments />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2610,7 +2622,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/options/:type">
+      <Route path="/config/options/:type/list">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -2618,6 +2630,31 @@ function Router() {
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/options/:type/export">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <OptionsExportPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/options/:type/import">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <OptionsImportPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Existing links and bookmarks to the plain options URL land on the list */}
+      <Route path="/config/options/:type">
+        {(params) => <Redirect to={`/config/options/${params.type}/list`} />}
       </Route>
 
       <Route path="/config/steward-settings">
@@ -2822,6 +2859,14 @@ function Router() {
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientTestPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ws/clients/:id/swagger">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <WsClientSwaggerPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -4009,3 +4054,5 @@ function App() {
 }
 
 export default App;
+
+const OptionsImportPage = lazy(() => import("@/pages/config/options-import"));
