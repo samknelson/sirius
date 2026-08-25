@@ -18,8 +18,8 @@
 #   export SKIP_IMAGE_BUILD=1
 
 REGION=us-west-2
-SHA=680a2495809de3e7c679be7853aa4f22fb7b84d0
-SHORT_SHA=680a2495
+SHA=a8ef937ba04d9cd7a0a46536046ed6b7d2fcd220
+SHORT_SHA=a8ef937b
 SUBNET=subnet-0dbb13264c6f67de8
 SECURITY_GROUP=sg-0706494f584922bae
 TASK_FAMILY=sirius-migration
@@ -42,11 +42,11 @@ if [ ! -d "$REPO_DIR/.git" ]; then
   fail "$REPO_DIR is not a git clone; clone samknelson/sirius with access to origin/bao-dev first"
 fi
 
-echo "== 1. Verify exact reviewed source =="
+echo "== 1. Verify pinned reviewed source =="
 git -C "$REPO_DIR" fetch origin bao-dev || fail "git fetch origin bao-dev"
 REMOTE_SHA=$(git -C "$REPO_DIR" rev-parse origin/bao-dev) || fail "resolve origin/bao-dev"
-if [ "$REMOTE_SHA" != "$SHA" ]; then
-  fail "origin/bao-dev is $REMOTE_SHA, expected $SHA; do not build a different revision"
+if ! git -C "$REPO_DIR" merge-base --is-ancestor "$SHA" "$REMOTE_SHA"; then
+  fail "origin/bao-dev ($REMOTE_SHA) does not contain pinned source $SHA"
 fi
 git -C "$REPO_DIR" checkout --detach "$SHA" || fail "checkout $SHA"
 if ! git -C "$REPO_DIR" diff --quiet || ! git -C "$REPO_DIR" diff --cached --quiet; then
