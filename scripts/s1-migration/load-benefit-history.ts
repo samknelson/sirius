@@ -933,13 +933,14 @@ async function main() {
   let anchorsRetired = 0;
   let anchorsCreated = 0;
   if (!DRY_RUN) {
-    progress.phase("anchors");
+    progress.phase("anchors-find-dangling");
     const dangling = rowsOf<{ nid: string | number }>(await db.execute(sql`
       SELECT m.s1_id AS nid FROM s1_staging.id_map m
        WHERE m.entity = 'wb' AND m.stub = false
          AND NOT EXISTS (SELECT 1 FROM trust_wmb w WHERE w.id = m.s2_id)
        ORDER BY m.s1_id
     `));
+    progress.phase("anchors-repair", dangling.length);
     for (const batch of chunk(dangling.map((d) => Number(d.nid)), 500)) {
       const replacements = rowsOf<{ nid: string | number; id: string }>(await db.execute(sql`
         SELECT s.nid, a.id FROM ${SPANS()} s
@@ -963,11 +964,21 @@ async function main() {
           await deleteMapping("wb", nid);
           anchorsRetired++;
         }
+        progress.add(1);
       }
     }
     // new anchors: scratch spans with surviving months but no wb mapping yet
+    progress.phase("anchors-create-scan", report.scratchSpans as number);
     let cursor = 0;
     for (;;) {
+      // Bound the anti-join to this scratch page. Searching every remaining
+      // span and then discarding rows beyond the page makes an all-anchored
+      // target quadratic (~N/2 full-tail scans).
+      const scanned = rowsOf<{ nid: string | number }>(await db.execute(sql`
+        SELECT nid FROM ${SPANS()} WHERE nid > ${cursor} ORDER BY nid LIMIT ${PAGE}
+      `));
+      if (scanned.length === 0) break;
+      const scannedNids = scanned.map((r) => Number(r.nid));
       const rows = rowsOf<{ nid: string | number; id: string }>(await db.execute(sql`
         SELECT s.nid, a.id FROM ${SPANS()} s
         CROSS JOIN LATERAL (
@@ -976,23 +987,16 @@ async function main() {
              AND (w.year * 12 + w.month - 1) BETWEEN s.start_idx AND COALESCE(s.end_idx, ${H_IDX}::int)
            ORDER BY w.year, w.month LIMIT 1
         ) a
-        WHERE s.nid > ${cursor}
+        WHERE s.nid IN (${sql.join(scannedNids.map((n) => sql`${n}`), sql`, `)})
           AND NOT EXISTS (SELECT 1 FROM s1_staging.id_map m WHERE m.entity = 'wb' AND m.s1_id = s.nid)
-        ORDER BY s.nid LIMIT ${PAGE}
+        ORDER BY s.nid
       `));
-      // cursor must advance over ALL scanned spans, not just matches — page on
-      // the scratch table itself to avoid stalling when a stretch has no rows
-      const scanned = rowsOf<{ nid: string | number }>(await db.execute(sql`
-        SELECT nid FROM ${SPANS()} WHERE nid > ${cursor} ORDER BY nid LIMIT ${PAGE}
-      `));
-      if (scanned.length === 0) break;
       cursor = Number(scanned[scanned.length - 1].nid);
-      const scannedSet = new Set(scanned.map((r) => Number(r.nid)));
       for (const r of rows) {
-        if (!scannedSet.has(Number(r.nid))) continue; // belongs to a later page
         await putMapping("wb", Number(r.nid), r.id, { stub: false, loader: LOADER });
         anchorsCreated++;
       }
+      progress.add(scanned.length);
       if (scanned.length < PAGE) break;
     }
   }
