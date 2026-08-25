@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Real-S1 wet DAILY sync rehearsal launcher with full reconciliation and
-# independent-failure collection.
+# Real-S1 wet DAILY sync rehearsal launcher with fingerprint-based incremental
+# reconciliation and independent-failure collection.
 # Run in the REGULAR AWS CloudShell tab (internet + AWS APIs), not the VPC tab.
 #
 # Intentionally does NOT use `set -euo pipefail`.
@@ -18,8 +18,8 @@
 #   export SKIP_IMAGE_BUILD=1
 
 REGION=us-west-2
-SHA=b00bab60f49a664a5329ebafb9c708a79da9f229
-SHORT_SHA=b00bab60
+SHA=680a2495809de3e7c679be7853aa4f22fb7b84d0
+SHORT_SHA=680a2495
 SUBNET=subnet-0dbb13264c6f67de8
 SECURITY_GROUP=sg-0706494f584922bae
 TASK_FAMILY=sirius-migration
@@ -270,7 +270,7 @@ fi
 echo "preflight released cleanly: exit=0"
 
 echo
-echo "== 6. Launch the WET daily full-fleet rehearsal =="
+echo "== 6. Launch the WET incremental daily full-fleet rehearsal =="
 RUNNING_MIGRATIONS=$(aws ecs list-tasks \
   --region "$REGION" \
   --cluster "$CLUSTER" \
@@ -286,7 +286,6 @@ SYNC_TASK=$(run_task \
   npx tsx scripts/s1-migration/sync.ts \
     --mode daily \
     --profile production \
-    --force-reconcile \
     --keep-going) ||
   fail "launch wet daily sync"
 if [ -z "$SYNC_TASK" ] || [ "$SYNC_TASK" = "None" ]; then

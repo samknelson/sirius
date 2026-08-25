@@ -18,8 +18,8 @@ description = "56 triage rows across 18 loaders — sorted largest-count-first, 
 id = "g36etJfs66BokrwqsQLtH"
 uri = "file://attached_assets/s1-daily-rehearsal-cloudshell-19c10b22.sh"
 type = "unspecified"
-title = "Updated S1 daily rehearsal CloudShell script"
-description = "Pinned to bao-dev b00bab60, including the Flight Control/npm build fix plus --force-reconcile and --keep-going."
+title = "Corrected incremental S1 daily rehearsal launcher"
+description = "Pinned to 680a2495 with the bounded T17 anchor scan; keeps independent-failure collection and removes fleet-wide --force-reconcile."
 
 [[outputs]]
 id = "4QY_r14le8jv-9J2wMYAz"

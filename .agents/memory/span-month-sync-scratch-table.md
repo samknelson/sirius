@@ -25,3 +25,10 @@ scratch-upsert time (instead of post-verify) safe.
 - Scratch resolutions go stale after id_map repairs and fingerprints won't
   budge — that's what `--force-reconcile` is for; a resolved field tracking a
   live dependency must instead be re-checked explicitly every run.
+- Page every liveness/anchor query over the current bounded scratch-page ids.
+  Never search the entire remaining tail for missing mappings and then discard
+  matches outside the current page: with mostly-complete mappings that repeats
+  the same anti-join hundreds of times and becomes effectively quadratic.
+- Give maintenance phases their own counted progress. Reusing a completed
+  upstream counter makes a live but stalled phase report fake throughput and
+  hides which page is actually advancing.
