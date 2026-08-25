@@ -1,3 +1,6 @@
+-- SUPERSEDED FOR THIS REPAIR: use the Drupal/Drush script instead.
+-- Do not run this through Beekeeper or against the S2 PostgreSQL target.
+--
 -- Remove stale S1 election references to deleted benefit nid 2457521.
 --
 -- MUTATING, GUARDED, IDEMPOTENT. Run once against the Drupal 7 MariaDB source.

@@ -132,3 +132,10 @@ uri = "file://scripts/oneoffs/s1-remove-stale-election-benefit-2457521.sql"
 type = "unspecified"
 title = "Remove stale election benefit 2457521 references"
 description = "Single guarded, idempotent MariaDB cleanup script. Deletes only remaining current election references and matching current-revision rows; commits only after exact post-checks."
+
+[[outputs]]
+id = "I3bDCMfBhDxf-HkqZ-j91"
+uri = "file://scripts/oneoffs/s1-drush-remove-stale-election-benefit-2457521.php"
+type = "unspecified"
+title = "S1 Drush cleanup for stale benefit references"
+description = "Drupal 7 Drush script; dry-run by default, explicit --apply required. Uses node_save, preserves historical revisions, and rolls back on guard or post-check failure."
