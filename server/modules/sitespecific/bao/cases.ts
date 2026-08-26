@@ -8,7 +8,10 @@ import {
 import { storage } from "../../../storage";
 import { requireComponent } from "../../components";
 import { getEffectiveUser } from "../../masquerade";
-import { assignmentForbidden, BAO_CASE_ASSIGN_PERMISSION } from "./case-assignment";
+import {
+  assignmentForbidden,
+  BAO_CASE_ASSIGN_PERMISSION,
+} from "../../../storage/sitespecific/bao/case-assignment";
 
 type Middleware = (req: Request, res: Response, next: NextFunction) => any;
 type AccessMiddleware = (policy: string) => Middleware;
@@ -155,22 +158,19 @@ export function registerBaoCaseRoutes(
   app.patch("/api/sitespecific/bao/cases/:id", ...gate, async (req, res) => {
     try {
       const parsed = updateBaoCaseRequestSchema.parse(req.body);
+      // The self-vs-other assignment rule is enforced by storage INSIDE the
+      // row-locked lifecycle transaction (a pre-read here would race with a
+      // concurrent reassignment); the route only resolves the actor context.
+      let assignment: { actorUserId: string; canAssignOthers: boolean } | undefined;
       if (parsed.assigneeUserId) {
         const actor = await effectiveUserId(req);
         if (!actor) return res.status(401).json({ message: "Effective user not found" });
-        const existing = await storage.baoCases.get(req.params.id);
-        if (!existing) return res.status(404).json({ message: "BAO case not found" });
-        const canAssignOthers = await storage.users.userHasPermission(actor, BAO_CASE_ASSIGN_PERMISSION);
-        if (assignmentForbidden({
-          requestedAssigneeId: parsed.assigneeUserId,
+        assignment = {
           actorUserId: actor,
-          existingAssigneeId: existing.assigneeUserId,
-          canAssignOthers,
-        })) {
-          throw new Error("ASSIGN_OTHERS_FORBIDDEN");
-        }
+          canAssignOthers: await storage.users.userHasPermission(actor, BAO_CASE_ASSIGN_PERMISSION),
+        };
       }
-      const updated = await storage.baoCases.updateLifecycle(req.params.id, parsed);
+      const updated = await storage.baoCases.updateLifecycle(req.params.id, parsed, assignment);
       res.json(updated);
     } catch (error) {
       caseError(res, error);
