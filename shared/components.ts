@@ -907,7 +907,7 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "site-specific",
     managesSchema: true,
     schemaManifest: {
-      version: 10,
+      version: 11,
       schemaPath: "./shared/schema/sitespecific/bao/schema.ts",
       tables: [
         "sitespecific_bao_employer_immediate_eligibility",
@@ -929,7 +929,13 @@ export const componentRegistry: ComponentDefinition[] = [
         "options_bao_case_status",
         "options_bao_case_resolution",
         "sitespecific_bao_cases",
-        "sitespecific_bao_case_notes"
+        "sitespecific_bao_case_notes",
+        "sitespecific_bao_dc_cases",
+        "sitespecific_bao_dc_case_months",
+        "sitespecific_bao_dc_denial_letters",
+        "sitespecific_bao_dc_documents",
+        "sitespecific_bao_dc_case_notes",
+        "sitespecific_bao_dc_events"
       ]
     }
   },

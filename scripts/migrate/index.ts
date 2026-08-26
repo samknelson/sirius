@@ -83,6 +83,7 @@ import "./components/sitespecific.bao/007_create_premium_tables";
 import "./components/sitespecific.bao/008_create_withholding_allocations";
 import "./components/sitespecific.bao/009_create_notes_tags";
 import "./components/sitespecific.bao/010_create_case_management";
+import "./components/sitespecific.bao/011_create_disability_credit";
 import "./components/sitespecific.freeman/001_create_crewleads";
 import "./components/grievance/001_create_options_grievance_status";
 import "./components/grievance/002_create_options_grievance_category";

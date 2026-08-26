@@ -56,6 +56,8 @@ export enum EventType {
   CONTACT_ELIGIBILITY_SAVED = "contact.eligibility.saved",
   CARDCHECK_SAVED = "cardcheck.saved",
   BAO_COBRA_CASE_SAVED = "bao.cobra.case.saved",
+  BAO_DC_CASE_SAVED = "bao.dc.case.saved",
+  BAO_DC_DENIAL_LETTER_SAVED = "bao.dc.denial-letter.saved",
   LEDGER_ENTRY_SAVED = "ledger.entry.saved",
   WORKER_EMPLOYMENT_SAVED = "worker.employment.saved",
   EMPLOYER_INDUSTRY_SAVED = "employer.industry.saved",
@@ -459,6 +461,37 @@ export interface BaoCobraCaseSavedPayload {
 }
 
 /**
+ * Emitted after a Disability Credit case lifecycle change commits: case
+ * opened/closed/voided, or a case month added/voided. Storage is the single
+ * emission point; every emission is backed by a claimed row in the
+ * append-only `sitespecific_bao_dc_events` table (unique dedupe key), so a
+ * repeated operation NEVER emits twice.
+ */
+export interface BaoDcCaseSavedPayload {
+  caseId: string;
+  workerId: string;
+  dcEventType:
+    | "case_opened"
+    | "case_closed"
+    | "case_voided"
+    | "case_month_added"
+    | "case_month_voided";
+  /** First-of-month Ymd for month events, null for case-level events. */
+  workMonthYmd: string | null;
+}
+
+/**
+ * Emitted after a Disability Credit denial letter is recorded or voided.
+ * Same idempotent claim-before-emit contract as BAO_DC_CASE_SAVED.
+ */
+export interface BaoDcDenialLetterSavedPayload {
+  denialLetterId: string;
+  workerId: string;
+  dcEventType: "denial_letter_recorded" | "denial_letter_voided";
+  letterYmd: string;
+}
+
+/**
  * Emitted after a ledger entry (charge, adjustment, or payment-allocation
  * row) create, update, or delete commits on a WORKER-owned ledger account.
  * Storage is the single emission point, so every code path that mutates
@@ -669,6 +702,8 @@ export interface EventPayloadMap {
   [EventType.CONTACT_ELIGIBILITY_SAVED]: ContactEligibilitySavedPayload;
   [EventType.CARDCHECK_SAVED]: CardcheckSavedPayload;
   [EventType.BAO_COBRA_CASE_SAVED]: BaoCobraCaseSavedPayload;
+  [EventType.BAO_DC_CASE_SAVED]: BaoDcCaseSavedPayload;
+  [EventType.BAO_DC_DENIAL_LETTER_SAVED]: BaoDcDenialLetterSavedPayload;
   [EventType.LEDGER_ENTRY_SAVED]: LedgerEntrySavedPayload;
   [EventType.WORKER_EMPLOYMENT_SAVED]: WorkerEmploymentSavedPayload;
   [EventType.EMPLOYER_INDUSTRY_SAVED]: EmployerIndustrySavedPayload;

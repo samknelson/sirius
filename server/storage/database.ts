@@ -145,6 +145,7 @@ import { type BaoDistanceCacheStorage, createBaoDistanceCacheStorage, baoDistanc
 import { type BaoBeneficiariesStorage, createBaoBeneficiariesStorage, baoBeneficiariesLoggingConfig } from "./sitespecific/bao/beneficiaries";
 import { type BaoCobraRatesStorage, createBaoCobraRatesStorage, baoCobraRatesLoggingConfig } from "./sitespecific/bao/cobra-rates";
 import { type BaoCobraCasesStorage, createBaoCobraCasesStorage, baoCobraCasesLoggingConfig } from "./sitespecific/bao/cobra-cases";
+import { type BaoDisabilityCreditStorage, createBaoDisabilityCreditStorage } from "./sitespecific/bao/disability-credit";
 import { type BaoNoteTagsStorage, createBaoNoteTagsStorage, baoNoteTagsLoggingConfig } from "./sitespecific/bao/note-tags";
 import { type BaoCasesStorage, createBaoCasesStorage } from "./sitespecific/bao/cases";
 import { type BaoDpRatesStorage, createBaoDpRatesStorage, baoDpRatesLoggingConfig } from "./sitespecific/bao/dp-rates";
@@ -279,6 +280,7 @@ export interface IStorage {
   baoCobraCases: BaoCobraCasesStorage;
   baoNoteTags: BaoNoteTagsStorage;
   baoCases: BaoCasesStorage;
+  baoDisabilityCredit: BaoDisabilityCreditStorage;
   baoDpRates: BaoDpRatesStorage;
   baoPremiumRates: BaoPremiumRatesStorage;
   baoPremiumFiles: BaoPremiumFilesStorage;
@@ -407,6 +409,7 @@ export class DatabaseStorage implements IStorage {
   baoCobraCases: BaoCobraCasesStorage;
   baoNoteTags: BaoNoteTagsStorage;
   baoCases: BaoCasesStorage;
+  baoDisabilityCredit: BaoDisabilityCreditStorage;
   baoDpRates: BaoDpRatesStorage;
   baoPremiumRates: BaoPremiumRatesStorage;
   baoPremiumFiles: BaoPremiumFilesStorage;
@@ -663,6 +666,7 @@ export class DatabaseStorage implements IStorage {
       baoNoteTagsLoggingConfig,
     );
     this.baoCases = createBaoCasesStorage();
+    this.baoDisabilityCredit = createBaoDisabilityCreditStorage();
     this.baoDpRates = withStorageLogging(
       createBaoDpRatesStorage(),
       baoDpRatesLoggingConfig,

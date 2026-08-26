@@ -1,4 +1,4 @@
-import { pgTable, varchar, jsonb, date, numeric, text, timestamp, unique, foreignKey, boolean, integer, index, check } from "drizzle-orm/pg-core";
+import { pgTable, varchar, jsonb, date, numeric, text, timestamp, unique, uniqueIndex, foreignKey, boolean, integer, index, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -1458,3 +1458,291 @@ export type BaoWithholdingUploadSummary = {
   allocationCount: number;
   consumedByPaymentId: string | null;
 };
+
+// ---------------------------------------------------------------------------
+// Disability Credit (DC) foundation. Component-owned data for DC cases opened
+// from trustworthy FMLA history or an active denial letter.
+//
+// Design invariants (enforced here and in storage):
+// - At most one LIVE (non-terminal) DC case per worker (partial unique index).
+// - At most one LIVE DC case month per worker per work month (partial unique
+//   index; voided months keep history without blocking a corrected re-issue).
+// - Terminal states ALWAYS carry a reason (CHECK constraints).
+// - Case notes are append-only; a correction is a NEW note linking the note
+//   it corrects (self-FK). Storage exposes no update/delete for notes.
+// - Denial-letter expiration is DERIVED (letter date + configured validity
+//   months) — never persisted, so a validity-config change is honored
+//   everywhere immediately.
+// - The qualifying basis is SNAPSHOTTED on the case at open; later hour
+//   corrections never retroactively invalidate an existing case.
+// - DC lifecycle events are recorded in an append-only event table keyed by a
+//   caller-supplied dedupe key, making transactional emission idempotent.
+// ---------------------------------------------------------------------------
+
+export const BAO_DC_CASE_STATUSES = ["open", "closed", "void"] as const;
+export type BaoDcCaseStatus = (typeof BAO_DC_CASE_STATUSES)[number];
+/** Statuses that end a case; they require a terminal reason. */
+export const BAO_DC_TERMINAL_CASE_STATUSES = ["closed", "void"] as const;
+
+export const BAO_DC_MONTH_STATUSES = ["live", "void"] as const;
+export type BaoDcMonthStatus = (typeof BAO_DC_MONTH_STATUSES)[number];
+
+/** The two ways a worker can qualify to open a DC case. */
+export const BAO_DC_QUALIFYING_CONDITIONS = ["fmla_months", "denial_letter"] as const;
+export type BaoDcQualifyingCondition = (typeof BAO_DC_QUALIFYING_CONDITIONS)[number];
+
+/** FMLA months (intermittent or consecutive) required in the rolling window. */
+export const BAO_DC_FMLA_REQUIRED_MONTHS = 3;
+/** Rolling window (in months, ending with the as-of month) for FMLA counting. */
+export const BAO_DC_ROLLING_WINDOW_MONTHS = 12;
+
+/**
+ * Qualifying-basis snapshot stored on the case at open. Records WHICH
+ * condition(s) qualified the worker and the underlying facts, so later data
+ * corrections cannot retroactively invalidate the case.
+ */
+export type BaoDcQualifyingBasis = {
+  asOfYmd: string;
+  conditions: BaoDcQualifyingCondition[];
+  /** First-of-month Ymds of the FMLA months counted (when fmla_months). */
+  fmlaMonths?: string[];
+  /** Active denial-letter ids at open (when denial_letter). */
+  denialLetterIds?: string[];
+};
+
+export const sitespecificBaoDcCases = pgTable(
+  "sitespecific_bao_dc_cases",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    workerId: varchar("worker_id").notNull(),
+    status: varchar("status").notNull().default("open").$type<BaoDcCaseStatus>(),
+    openedYmd: date("opened_ymd").notNull(),
+    /** Snapshot of the qualifying condition(s) at open — never recomputed. */
+    qualifyingBasis: jsonb("qualifying_basis").notNull().$type<BaoDcQualifyingBasis>(),
+    /** Required exactly when the case is in a terminal status. */
+    terminalReason: text("terminal_reason"),
+    terminalYmd: date("terminal_ymd"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    data: jsonb("data"),
+  },
+  (table) => [
+    check(
+      "sitespecific_bao_dc_cases_status_check",
+      sql`${table.status} IN ('open', 'closed', 'void')`,
+    ),
+    // Terminal states require a reason AND a date; open cases carry neither.
+    check(
+      "sitespecific_bao_dc_cases_terminal_reason_check",
+      sql`((${table.status})::text = 'open') = (${table.terminalReason} IS NULL AND ${table.terminalYmd} IS NULL)`,
+    ),
+    // One live case per worker. The cast matches what Postgres stores for a
+    // varchar predicate so schema-drift comparison stays clean.
+    uniqueIndex("sitespecific_bao_dc_cases_worker_live_uq")
+      .on(table.workerId)
+      .where(sql`(status)::text = 'open'`),
+    index("sitespecific_bao_dc_cases_worker_idx").on(table.workerId),
+    foreignKey({
+      name: "sitespecific_bao_dc_cases_worker_id_fkey",
+      columns: [table.workerId],
+      foreignColumns: [workers.id],
+    }).onDelete("cascade"),
+  ],
+);
+
+export const sitespecificBaoDcCaseMonths = pgTable(
+  "sitespecific_bao_dc_case_months",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    caseId: varchar("case_id").notNull(),
+    workerId: varchar("worker_id").notNull(),
+    /** First day of the credited work month (always day 1). */
+    workMonthYmd: date("work_month_ymd").notNull(),
+    status: varchar("status").notNull().default("live").$type<BaoDcMonthStatus>(),
+    /** Required exactly when the month is voided. */
+    voidReason: text("void_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    data: jsonb("data"),
+  },
+  (table) => [
+    check(
+      "sitespecific_bao_dc_case_months_status_check",
+      sql`${table.status} IN ('live', 'void')`,
+    ),
+    check(
+      "sitespecific_bao_dc_case_months_void_reason_check",
+      sql`((${table.status})::text = 'void') = (${table.voidReason} IS NOT NULL)`,
+    ),
+    check(
+      "sitespecific_bao_dc_case_months_first_day_check",
+      sql`EXTRACT(DAY FROM ${table.workMonthYmd}) = 1`,
+    ),
+    // One LIVE DC month per worker per work month — across ALL cases.
+    uniqueIndex("sitespecific_bao_dc_case_months_worker_month_live_uq")
+      .on(table.workerId, table.workMonthYmd)
+      .where(sql`(status)::text = 'live'`),
+    index("sitespecific_bao_dc_case_months_case_idx").on(table.caseId),
+    foreignKey({
+      name: "sitespecific_bao_dc_case_months_case_id_fkey",
+      columns: [table.caseId],
+      foreignColumns: [sitespecificBaoDcCases.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_dc_case_months_worker_id_fkey",
+      columns: [table.workerId],
+      foreignColumns: [workers.id],
+    }).onDelete("cascade"),
+  ],
+);
+
+export const sitespecificBaoDcDenialLetters = pgTable(
+  "sitespecific_bao_dc_denial_letters",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    workerId: varchar("worker_id").notNull(),
+    /** Date on the denial letter — the anchor for DERIVED expiration. */
+    letterYmd: date("letter_ymd").notNull(),
+    receivedYmd: date("received_ymd"),
+    /** Voiding requires a reason (pair check). Expiration is never stored. */
+    voidedYmd: date("voided_ymd"),
+    voidReason: text("void_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    data: jsonb("data"),
+  },
+  (table) => [
+    check(
+      "sitespecific_bao_dc_denial_letters_void_pair_check",
+      sql`(${table.voidedYmd} IS NULL) = (${table.voidReason} IS NULL)`,
+    ),
+    index("sitespecific_bao_dc_denial_letters_worker_idx").on(table.workerId),
+    foreignKey({
+      name: "sitespecific_bao_dc_denial_letters_worker_id_fkey",
+      columns: [table.workerId],
+      foreignColumns: [workers.id],
+    }).onDelete("cascade"),
+  ],
+);
+
+/** Kinds of DC records a document can attach to (exactly one per row). */
+export const BAO_DC_DOCUMENT_PARENTS = ["case", "denial_letter"] as const;
+export type BaoDcDocumentParent = (typeof BAO_DC_DOCUMENT_PARENTS)[number];
+
+export const sitespecificBaoDcDocuments = pgTable(
+  "sitespecific_bao_dc_documents",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    parentKind: varchar("parent_kind").notNull().$type<BaoDcDocumentParent>(),
+    caseId: varchar("case_id"),
+    denialLetterId: varchar("denial_letter_id"),
+    /** Reference into the shared files framework (metadata only here). */
+    fileId: varchar("file_id"),
+    name: varchar("name", { length: 512 }).notNull(),
+    contentType: varchar("content_type", { length: 255 }),
+    uploadedByUserId: varchar("uploaded_by_user_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    data: jsonb("data"),
+  },
+  (table) => [
+    check(
+      "sitespecific_bao_dc_documents_parent_check",
+      sql`((${table.parentKind})::text = 'case' AND ${table.caseId} IS NOT NULL AND ${table.denialLetterId} IS NULL) OR ((${table.parentKind})::text = 'denial_letter' AND ${table.denialLetterId} IS NOT NULL AND ${table.caseId} IS NULL)`,
+    ),
+    index("sitespecific_bao_dc_documents_case_idx").on(table.caseId),
+    index("sitespecific_bao_dc_documents_denial_letter_idx").on(table.denialLetterId),
+    foreignKey({
+      name: "sitespecific_bao_dc_documents_case_id_fkey",
+      columns: [table.caseId],
+      foreignColumns: [sitespecificBaoDcCases.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_dc_documents_denial_letter_id_fkey",
+      columns: [table.denialLetterId],
+      foreignColumns: [sitespecificBaoDcDenialLetters.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_dc_documents_uploaded_by_user_id_fkey",
+      columns: [table.uploadedByUserId],
+      foreignColumns: [users.id],
+    }).onDelete("restrict"),
+  ],
+);
+
+export const sitespecificBaoDcCaseNotes = pgTable(
+  "sitespecific_bao_dc_case_notes",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    caseId: varchar("case_id").notNull(),
+    authorUserId: varchar("author_user_id").notNull(),
+    body: text("body").notNull(),
+    /** A correction is a NEW note pointing at the note it corrects. */
+    correctsNoteId: varchar("corrects_note_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (table) => [
+    index("sitespecific_bao_dc_case_notes_case_idx").on(table.caseId),
+    foreignKey({
+      name: "sitespecific_bao_dc_case_notes_case_id_fkey",
+      columns: [table.caseId],
+      foreignColumns: [sitespecificBaoDcCases.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_dc_case_notes_author_user_id_fkey",
+      columns: [table.authorUserId],
+      foreignColumns: [users.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "sitespecific_bao_dc_case_notes_corrects_note_id_fkey",
+      columns: [table.correctsNoteId],
+      foreignColumns: [table.id],
+    }).onDelete("restrict"),
+  ],
+);
+
+/** Typed DC lifecycle event kinds recorded durably per emission. */
+export const BAO_DC_EVENT_TYPES = [
+  "case_opened",
+  "case_closed",
+  "case_voided",
+  "case_month_added",
+  "case_month_voided",
+  "denial_letter_recorded",
+  "denial_letter_voided",
+] as const;
+export type BaoDcEventType = (typeof BAO_DC_EVENT_TYPES)[number];
+
+export const sitespecificBaoDcEvents = pgTable(
+  "sitespecific_bao_dc_events",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    eventType: varchar("event_type").notNull().$type<BaoDcEventType>(),
+    workerId: varchar("worker_id").notNull(),
+    caseId: varchar("case_id"),
+    /**
+     * Caller-supplied idempotency key. The unique constraint makes repeat
+     * operations claim-once: only the INSERT that wins emits on the bus.
+     */
+    dedupeKey: varchar("dedupe_key", { length: 512 })
+      .notNull()
+      .unique("sitespecific_bao_dc_events_dedupe_key_unique"),
+    payload: jsonb("payload").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (table) => [
+    index("sitespecific_bao_dc_events_worker_idx").on(table.workerId),
+    check(
+      "sitespecific_bao_dc_events_event_type_check",
+      sql`${table.eventType} IN ('case_opened', 'case_closed', 'case_voided', 'case_month_added', 'case_month_voided', 'denial_letter_recorded', 'denial_letter_voided')`,
+    ),
+  ],
+);
+
+export type BaoDcCase = typeof sitespecificBaoDcCases.$inferSelect;
+export type InsertBaoDcCase = typeof sitespecificBaoDcCases.$inferInsert;
+export type BaoDcCaseMonth = typeof sitespecificBaoDcCaseMonths.$inferSelect;
+export type InsertBaoDcCaseMonth = typeof sitespecificBaoDcCaseMonths.$inferInsert;
+export type BaoDcDenialLetter = typeof sitespecificBaoDcDenialLetters.$inferSelect;
+export type InsertBaoDcDenialLetter = typeof sitespecificBaoDcDenialLetters.$inferInsert;
+export type BaoDcDocument = typeof sitespecificBaoDcDocuments.$inferSelect;
+export type InsertBaoDcDocument = typeof sitespecificBaoDcDocuments.$inferInsert;
+export type BaoDcCaseNote = typeof sitespecificBaoDcCaseNotes.$inferSelect;
+export type InsertBaoDcCaseNote = typeof sitespecificBaoDcCaseNotes.$inferInsert;
+export type BaoDcEvent = typeof sitespecificBaoDcEvents.$inferSelect;

@@ -212,6 +212,25 @@ export function addBusinessDaysYmd(
   return dateToYmd(d);
 }
 
+/**
+ * Add `months` calendar months to a Ymd, returning a Ymd. The day-of-month is
+ * CLAMPED to the target month's last day (Jan 31 + 1 month → Feb 28/29), so
+ * the result never rolls into the following month. Pure string/number math —
+ * no `new Date(ymd)` parsing, per this module's no-timezone-drift rule.
+ * Negative `months` subtracts.
+ */
+export function addMonthsYmd(ymd: Ymd, months: number): Ymd {
+  const [year, month, day] = ymd.split('-').map(Number);
+  const zeroBased = year * 12 + (month - 1) + months;
+  const targetYear = Math.floor(zeroBased / 12);
+  const targetMonth = (zeroBased % 12 + 12) % 12; // 0-based
+  // Day 0 of month N+1 is the last day of month N (local Date arithmetic on
+  // numeric components only).
+  const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+  const clampedDay = Math.min(day, lastDay);
+  return `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(clampedDay).padStart(2, '0')}`;
+}
+
 export function dateToYmd(date: Date): Ymd {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }

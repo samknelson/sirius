@@ -8,6 +8,12 @@ import { resolveBaoThreshold, lastDayOfMonthYmd } from '../../../trust/eligibili
 import { isStatusBilled } from '../../../ledger/charge/plugins/sitespecific-bao-hourly.js';
 import { withChargeConfigCache } from '../../../../middleware/request-context.js';
 import { withChargeBatchCollector } from '../../../ledger/charge/charge-batch.js';
+import { getDcRetiredDisabilityRowMode } from '../../../../services/sitespecific/bao/dc-settings.js';
+import {
+  findUnreportedGapsBetweenFmlaMonths,
+  isRetiredDisabilityStatusOption,
+  monthYmd,
+} from '../../../../services/sitespecific/bao/dc-eligibility.js';
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
@@ -264,7 +270,75 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
       }
     }
 
+    // Retired employer-reported Disability rows: per fund configuration the
+    // upload either REJECTS the row (validation error — nothing is written)
+    // or FLAGS it for review (surfaced in Preview; the row is otherwise
+    // recorded exactly as reported — employer data is never rewritten, and
+    // LOA is never translated).
+    if (row.employmentStatus) {
+      try {
+        const option = await this.resolveEmploymentStatusOption(row.employmentStatus);
+        if (option && isRetiredDisabilityStatusOption(option)) {
+          const mode = await getDcRetiredDisabilityRowMode();
+          if (mode === 'reject') {
+            errors.push({
+              rowIndex,
+              field: 'employmentStatus',
+              message:
+                'The employer-reported "Disability" status is retired and this fund is configured to reject it — Disability Credit is handled through DC cases, not employer hours uploads',
+              value: row.employmentStatus,
+            });
+          }
+        }
+      } catch {
+        // Unresolvable status is reported by the parent's own validation.
+      }
+    }
+
     return errors;
+  }
+
+  /**
+   * Upload-review gap check for one worker: months strictly between the
+   * worker's FMLA months (existing canonical hours plus the month being
+   * uploaded) that have NO reported hours rows at all. Read-only; memoized
+   * per preview run in `_fmlaGapMemo` (cleared per computePreview call via
+   * fresh Map created lazily keyed by worker).
+   */
+  private readonly _fmlaGapMemo = new Map<string, Promise<string[]>>();
+
+  protected async findFmlaGapMonths(workerId: string, uploadYear: number, uploadMonth: number): Promise<string[]> {
+    const memoKey = `${workerId}|${uploadYear}-${uploadMonth}`;
+    const memoized = this._fmlaGapMemo.get(memoKey);
+    if (memoized) return memoized;
+    const promise = (async () => {
+      const allHours = await storage.workerHours.getWorkerHours(workerId);
+      const options = await this.getEmploymentStatusOptions();
+      const fmlaIds = new Set(options.filter((o) => this.isFmlaOption(o)).map((o) => o.id));
+      const fmlaMonths = new Set<string>();
+      const reportedMonths = new Set<string>();
+      for (const h of allHours as Array<{ year: number; month: number; employmentStatusId: string; hours: number | null }>) {
+        const ym = monthYmd(h.year, h.month);
+        reportedMonths.add(ym);
+        if (fmlaIds.has(h.employmentStatusId) && (h.hours ?? 0) > 0) {
+          fmlaMonths.add(ym);
+        }
+      }
+      // The month being uploaded is an FMLA month too (this is called from an
+      // FMLA row) and is by definition reported.
+      const uploadYm = monthYmd(uploadYear, uploadMonth);
+      fmlaMonths.add(uploadYm);
+      reportedMonths.add(uploadYm);
+      return findUnreportedGapsBetweenFmlaMonths(
+        Array.from(fmlaMonths),
+        Array.from(reportedMonths),
+      );
+    })();
+    promise.catch(() => {});
+    this._fmlaGapMemo.set(memoKey, promise);
+    // Bound the memo: preview runs are per-request; avoid unbounded growth.
+    if (this._fmlaGapMemo.size > 5000) this._fmlaGapMemo.clear();
+    return promise;
   }
 
   /** True when this employment-status option is the FMLA status. */
@@ -607,6 +681,25 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
         const workerId = worker?.id ?? null;
         if (!worker) {
           notes.push('New worker (will be created during processing)');
+        }
+
+        // Retired Disability rows in FLAG mode surface here for review (in
+        // reject mode the Validate step already blocked them). The row's
+        // data is still recorded exactly as reported.
+        if (option && isRetiredDisabilityStatusOption(option)) {
+          notes.push(
+            'Retired "Disability" status — flagged for Disability Credit review (data recorded as reported)',
+          );
+        }
+
+        // Upload review: after an FMLA row, call out unreported gap months —
+        // months between this worker's FMLA months (including this upload's
+        // month) with no reported hours at all.
+        if (option && this.isFmlaOption(option) && worker) {
+          const gaps = await this.findFmlaGapMonths(worker.id, year, month);
+          if (gaps.length > 0) {
+            notes.push(`Unreported gap month(s) between FMLA months: ${gaps.join(', ')}`);
+          }
         }
 
         // FMLA split (mirrors processing exactly).
