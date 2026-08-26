@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 #
-# Real-S1 wet DAILY sync rehearsal launcher with fingerprint-based incremental
-# reconciliation and independent-failure collection.
+# Stable Real-S1 wet DAILY sync rehearsal launcher with fingerprint-based
+# incremental reconciliation and independent-failure collection.
 # Run in the REGULAR AWS CloudShell tab (internet + AWS APIs), not the VPC tab.
+#
+# This file is a bootstrap: every invocation refreshes the launcher body from
+# origin/$SOURCE_BRANCH, resolves that branch's current commit, and builds that
+# exact immutable commit. Upload this version once; later source/launcher
+# commits do not require downloading or uploading another copy.
 #
 # Intentionally does NOT use `set -euo pipefail`.
 # It never prints secret values. Existing task-definition secrets must already
@@ -14,17 +19,21 @@
 #   export APP_URL='https://...'
 #   export REPO_DIR='/tmp/sirius'   # clone with origin/bao-dev already available
 #   export CONFIRM_REHEARSAL_TARGET='migration-rehearsal-2026-08-06'
-# Optional only after verifying the pinned image tag exists in ECR:
+# Optional:
+#   export SOURCE_BRANCH='bao-dev'  # default; launcher and source branch
+#   export SOURCE_SHA='...'         # deliberately run an older commit contained in the branch
+# Only after verifying the resolved image tag exists in ECR:
 #   export SKIP_IMAGE_BUILD=1
 
 REGION=us-west-2
-SHA=fdc47bfd66e0a5bf1be59796a6d33fe4a242b462
-SHORT_SHA=fdc47bfd
 SUBNET=subnet-0dbb13264c6f67de8
 SECURITY_GROUP=sg-0706494f584922bae
 TASK_FAMILY=sirius-migration
 LOG_GROUP=/sirius-migration
 REPO_DIR="${REPO_DIR:-/tmp/sirius}"
+SOURCE_BRANCH="${SOURCE_BRANCH:-bao-dev}"
+SOURCE_SHA="${SOURCE_SHA:-}"
+LAUNCHER_PATH=attached_assets/s1-daily-rehearsal-cloudshell-19c10b22.sh
 AWS_PAGER=""
 
 fail() {
@@ -39,20 +48,45 @@ if [ "${CONFIRM_REHEARSAL_TARGET:-}" != "migration-rehearsal-2026-08-06" ]; then
   fail "export CONFIRM_REHEARSAL_TARGET=migration-rehearsal-2026-08-06 after verifying the selected service/task target"
 fi
 if [ ! -d "$REPO_DIR/.git" ]; then
-  fail "$REPO_DIR is not a git clone; clone samknelson/sirius with access to origin/bao-dev first"
+  fail "$REPO_DIR is not a git clone; clone samknelson/sirius with access to origin/$SOURCE_BRANCH first"
 fi
 
-echo "== 1. Verify pinned reviewed source =="
-git -C "$REPO_DIR" fetch origin bao-dev || fail "git fetch origin bao-dev"
-REMOTE_SHA=$(git -C "$REPO_DIR" rev-parse origin/bao-dev) || fail "resolve origin/bao-dev"
-if ! git -C "$REPO_DIR" merge-base --is-ancestor "$SHA" "$REMOTE_SHA"; then
-  fail "origin/bao-dev ($REMOTE_SHA) does not contain pinned source $SHA"
+echo "== 1. Refresh launcher and resolve immutable source =="
+git -C "$REPO_DIR" fetch origin "$SOURCE_BRANCH" ||
+  fail "git fetch origin $SOURCE_BRANCH"
+REMOTE_REF="origin/$SOURCE_BRANCH"
+REMOTE_SHA=$(git -C "$REPO_DIR" rev-parse "$REMOTE_REF^{commit}") ||
+  fail "resolve $REMOTE_REF"
+
+# The uploaded copy never goes stale: after fetching, execute the launcher's
+# current branch version once. The guard prevents recursive re-exec.
+if [ "${S1_LAUNCHER_BOOTSTRAPPED:-0}" != "1" ]; then
+  CURRENT_LAUNCHER=$(mktemp) || fail "create refreshed launcher temp file"
+  git -C "$REPO_DIR" show "$REMOTE_REF:$LAUNCHER_PATH" > "$CURRENT_LAUNCHER" ||
+    fail "read current launcher from $REMOTE_REF"
+  chmod 700 "$CURRENT_LAUNCHER" || fail "make refreshed launcher executable"
+  echo "launcher refreshed from $REMOTE_REF at $REMOTE_SHA"
+  S1_LAUNCHER_BOOTSTRAPPED=1 exec "$CURRENT_LAUNCHER" "$@"
+  fail "exec refreshed launcher"
 fi
+
+if [ -n "$SOURCE_SHA" ]; then
+  SHA=$(git -C "$REPO_DIR" rev-parse "$SOURCE_SHA^{commit}") ||
+    fail "resolve SOURCE_SHA=$SOURCE_SHA"
+  if ! git -C "$REPO_DIR" merge-base --is-ancestor "$SHA" "$REMOTE_SHA"; then
+    fail "$REMOTE_REF ($REMOTE_SHA) does not contain requested SOURCE_SHA $SHA"
+  fi
+  echo "using explicit source override: $SHA"
+else
+  SHA="$REMOTE_SHA"
+fi
+SHORT_SHA=$(printf '%.8s' "$SHA")
+
 git -C "$REPO_DIR" checkout --detach "$SHA" || fail "checkout $SHA"
 if ! git -C "$REPO_DIR" diff --quiet || ! git -C "$REPO_DIR" diff --cached --quiet; then
-  fail "working tree is dirty; build only the reviewed commit"
+  fail "working tree has tracked changes; build only the resolved commit"
 fi
-echo "source SHA verified: $SHA"
+echo "source resolved: branch=$SOURCE_BRANCH SHA=$SHA"
 
 echo
 echo "== 2. Build and push immutable migration image =="
@@ -67,7 +101,7 @@ if [ "${SKIP_IMAGE_BUILD:-0}" = "1" ]; then
     --image-ids "imageTag=$SHA" \
     --query 'imageDetails[0].imageDigest' \
     --output text >/dev/null ||
-    fail "SKIP_IMAGE_BUILD=1 was set, but the pinned ECR image tag does not exist"
+    fail "SKIP_IMAGE_BUILD=1 was set, but the resolved ECR image tag does not exist"
   echo "reusing verified ECR image: sirius-migration:$SHA"
 else
   aws ecr get-login-password --region "$REGION" |
@@ -82,7 +116,7 @@ else
 fi
 
 echo
-echo "== 3. Register task-definition revision pinned to immutable image =="
+echo "== 3. Register task-definition revision using immutable image =="
 BASE_TD=$(mktemp)
 NEXT_TD=$(mktemp)
 aws ecs describe-task-definition \
@@ -294,13 +328,14 @@ fi
 SYNC_STREAM=$(task_log_stream "$SYNC_TASK") ||
   fail "wet sync CloudWatch stream did not appear"
 
-STATE_FILE="$HOME/s1-daily-$SHORT_SHA.env"
+STATE_FILE="$HOME/s1-daily-current.env"
 cat > "$STATE_FILE" <<EOF
 REGION=$REGION
 CLUSTER=$CLUSTER
 SYNC_TASK=$SYNC_TASK
 SYNC_STREAM=$SYNC_STREAM
 LOG_GROUP=$LOG_GROUP
+SOURCE_BRANCH=$SOURCE_BRANCH
 SHA=$SHA
 EOF
 

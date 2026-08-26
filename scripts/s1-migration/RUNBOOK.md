@@ -50,6 +50,17 @@ attributing behavior to a fix, confirm the task's image SHA includes it
 ≥ `a000e65b`; the long t20 hours run started on an image predating the
 heartbeat-ETA and WARN-throttle commits, so neither shows in its logs).
 
+The daily CloudShell launcher at
+`attached_assets/s1-daily-rehearsal-cloudshell-19c10b22.sh` is stable and is
+uploaded only once. On every invocation it fetches `origin/bao-dev`, re-executes
+the launcher version from that branch, resolves the branch's current full SHA,
+and builds/checks out that exact immutable commit. Do not edit `SHA` or
+`SHORT_SHA` in the uploaded file; they are derived at runtime. Set
+`SOURCE_BRANCH` only to intentionally follow another branch, or set
+`SOURCE_SHA` to intentionally rerun an older commit that is still contained in
+the selected branch. The current task/log identifiers are always written to
+`$HOME/s1-daily-current.env`.
+
 It contains the full source tree + all node_modules (incl. `tsx`) and starts
 no server. Execute it as an **ECS one-off task** (`run-task`) in the same VPC
 as the target DB — never through the web app or any HTTP path. One task per
