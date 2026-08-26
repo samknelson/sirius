@@ -5,10 +5,14 @@ import { storage } from "../../server/storage";
 import { getComponentById } from "@shared/components";
 import {
   sitespecificBaoDcCases,
+  sitespecificBaoDcCaseMonths,
   sitespecificBaoDcDenialLetters,
   sitespecificBaoDcEvents,
   BAO_DC_FMLA_REQUIRED_MONTHS,
 } from "@shared/schema";
+import { registerBaoDcEntityFileContext } from "../../server/modules/sitespecific/bao/dc-files-context";
+import { getEntityFileContext } from "../../server/services/entity-files/registry";
+import { recomputeReadinessAndMaybeBounce } from "../../server/services/sitespecific/bao/dc-workflow";
 import { addMonthsYmd } from "@shared/utils/date";
 import dcMigration from "../../scripts/migrate/components/sitespecific.bao/011_create_disability_credit";
 import dcWorkflowMigration from "../../scripts/migrate/components/sitespecific.bao/012_dc_case_workflow";
@@ -414,6 +418,71 @@ describe("DC case integrity", () => {
         parentKind: "case", caseId: null, name: "bad.pdf", uploadedByUserId: userId,
       } as any),
     ).rejects.toThrow();
+    await storage.baoDisabilityCredit.transitionCase(c.id, {
+      to: "void", reason: "test cleanup", actorUserId: userId,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Document classification boundary + evidence-change auto-bounce
+// ---------------------------------------------------------------------------
+
+describe("DC document classification boundary", () => {
+  it("refuses ALL updates through the generic entity-files adapter (member PATCH path)", async () => {
+    registerBaoDcEntityFileContext();
+    const context = getEntityFileContext("bao-dc-case");
+    expect(context).toBeDefined();
+    // The generic PATCH route calls adapter.update after a manage check that
+    // a member who owns the case passes — so the adapter itself must refuse.
+    await expect(
+      context!.adapter.update("any-case", "any-doc", { data: { docType: "dc_form" } }),
+    ).rejects.toThrow("DC_DOCUMENT_UPDATE_VIA_DC_ROUTES");
+    // Deletion is likewise impossible through the generic route.
+    await expect(context!.adapter.remove("any-case", "any-doc")).rejects.toThrow(
+      "DC_DOCUMENTS_CANNOT_BE_DELETED",
+    );
+  });
+
+  it("auto-bounces a queued case when its only DC form is reclassified away", async () => {
+    const c = await storage.baoDisabilityCredit.openCase({
+      workerId: otherWorkerId, openedYmd: "2027-06-01",
+      qualifyingBasis: { asOfYmd: "2027-06-01", conditions: ["denial_letter"], denialLetterIds: ["x"] },
+      allowDuplicate: true,
+    });
+    caseIds.push(c.id);
+    const form = await storage.baoDisabilityCredit.addDocument({
+      parentKind: "case", caseId: c.id, name: "form.pdf", uploadedByUserId: userId, docType: "dc_form",
+    });
+    await storage.baoDisabilityCredit.updateCaseAttestations(
+      c.id,
+      { signed: true, fields: { doctorAddress: true, doctorPhone: true, dates: true } },
+      userId,
+    );
+    // Give it a month directly (bypassing coverage continuity for the test).
+    await db.insert(sitespecificBaoDcCaseMonths).values({
+      caseId: c.id, workerId: otherWorkerId, workMonthYmd: "2098-01-01", status: "selected",
+    });
+    await storage.baoDisabilityCredit.transitionCase(c.id, {
+      to: "ready_for_review", actorUserId: userId,
+    });
+    await storage.baoDisabilityCredit.transitionCase(c.id, {
+      to: "in_queue", actorUserId: userId,
+    });
+
+    // Staff reclassify the only DC form to "other" → checklist stops passing
+    // → the queued case must bounce back to draft with a system note.
+    await storage.baoDisabilityCredit.updateCaseDocument(c.id, form.id, { docType: "other" });
+    const { readiness, bounced } = await recomputeReadinessAndMaybeBounce(c.id, userId);
+    expect(readiness.ready).toBe(false);
+    expect(readiness.missing).toContain("DC form on file");
+    expect(bounced).toBe(true);
+    const after = await storage.baoDisabilityCredit.getCase(c.id);
+    expect(after?.status).toBe("draft");
+    const notes = await storage.baoDisabilityCredit.listCaseNotes(c.id);
+    expect(notes.some((n) => n.body.toLowerCase().includes("no longer passes"))).toBe(true);
+
+    await db.delete(sitespecificBaoDcCaseMonths).where(eq(sitespecificBaoDcCaseMonths.caseId, c.id));
     await storage.baoDisabilityCredit.transitionCase(c.id, {
       to: "void", reason: "test cleanup", actorUserId: userId,
     });
