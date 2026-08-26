@@ -316,9 +316,18 @@ const missingWhere = () => sql`
   )`;
 const staleWhere = (hIdx: number) => sql`
   (w.year * 12 + w.month - 1) <= ${hIdx}
-  AND EXISTS (
-    SELECT 1 FROM s1_staging.id_map m
-     WHERE m.entity = 'worker' AND m.stub = false AND m.s2_id = w.worker_id
+  AND (
+    EXISTS (
+      SELECT 1 FROM s1_staging.id_map m
+       WHERE m.entity = 'worker' AND m.stub = false AND m.s2_id = w.worker_id
+    )
+    OR (
+      w.source_relation_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM s1_staging.id_map m
+         WHERE m.entity = 'relation' AND m.stub = false AND m.s2_id = w.source_relation_id
+      )
+    )
   )
   AND NOT EXISTS (
     SELECT 1 FROM s1_staging.t17_diff_months d
@@ -738,6 +747,31 @@ async function main() {
     }
   }
 
+  // ---- relationship-worker refresh. A relationship loader may retarget
+  // worker_2 in place (preserving the relationship UUID) after replacing a
+  // shell worker with the real worker. The benefit-span source fingerprint is
+  // unchanged, so its fast path cannot refresh this derived worker id. Always
+  // project dependent spans from the live relation before materializing the
+  // month diff. Joining workers prevents copying a broken dangling endpoint.
+  progress.phase("relation-worker-refresh");
+  let relationWorkersRefreshed = 0;
+  const dependentScratchSpans = await countOf(sql`
+    SELECT count(*)::bigint AS c FROM ${SPANS()} WHERE source_relation_id IS NOT NULL
+  `);
+  if (dependentScratchSpans > 0) {
+    const refreshed = rowsOf<{ nid: string | number }>(await db.execute(sql`
+      UPDATE ${SPANS()} s
+         SET worker_id = rel.worker_2,
+             last_synced_at = now()
+        FROM worker_relations rel
+        JOIN workers live_worker ON live_worker.id = rel.worker_2
+       WHERE s.source_relation_id = rel.id
+         AND s.worker_id IS DISTINCT FROM rel.worker_2
+      RETURNING s.nid
+    `));
+    relationWorkersRefreshed = refreshed.length;
+  }
+
   // ---- S1-deletion sweep: scratch rows + wb anchor mappings ----
   progress.phase("sweep");
   let spansDeleted = 0;
@@ -1082,6 +1116,7 @@ async function main() {
   report.dependentSpans = dependentSpans;
   report.employerFromElection = employerFromElection;
   report.employerRefreshedFromElection = employerRefreshed;
+  report.relationWorkersRefreshed = relationWorkersRefreshed;
   report.inactiveEndDated = inactiveEndDated;
   report.monthsExpanded = monthsExpanded;
   report.maxSpanMonths = maxSpanMonths;

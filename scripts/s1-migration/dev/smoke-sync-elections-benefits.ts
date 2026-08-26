@@ -495,6 +495,72 @@ async function phaseBenefits(): Promise<void> {
   const b11 = runLoader("load-benefit-history.ts", T17_FLAGS);
   check("t17 run11 (post-repair): zero churn", Number(b11.result!.detail.relRepaired) === 0 && Number(b11.result!.detail.monthsCreated) === 0 && Number(b11.result!.detail.monthsDeleted) === 0);
 
+  // --- b11a/b: relationship endpoint retarget with unchanged span source.
+  // T15 preserves the relation UUID when replacing a shell worker with a real
+  // worker. T17 must refresh its cached dependent worker despite fast-skipping
+  // the unchanged S1 benefit span, move the months, then converge back. ---
+  const liveRelation = rowsOf(await db.execute(sql`
+    SELECT worker_1, worker_2 FROM worker_relations WHERE id = ${relSpan.source_relation_id}
+  `))[0];
+  const alternateWorker = liveRelation
+    ? rowsOf(await db.execute(sql`
+        SELECT w.id
+          FROM workers w
+         WHERE w.id <> ${String(liveRelation.worker_1)}
+           AND w.id <> ${String(liveRelation.worker_2)}
+           AND NOT EXISTS (SELECT 1 FROM trust_wmb existing WHERE existing.worker_id = w.id)
+         ORDER BY w.id
+         LIMIT 1
+      `))[0]
+    : null;
+  check("t17 relation-worker refresh: alternate worker found", alternateWorker != null);
+  if (liveRelation && alternateWorker) {
+    const oldWorkerId = String(liveRelation.worker_2);
+    const newWorkerId = String(alternateWorker.id);
+    const expectedMovedMonths = await oneNum(sql`
+      SELECT COUNT(*)::int AS c
+        FROM trust_wmb
+       WHERE source_relation_id = ${relSpan.source_relation_id}
+         AND worker_id = ${oldWorkerId}
+    `);
+    await db.execute(sql`
+      UPDATE worker_relations SET worker_2 = ${newWorkerId}
+       WHERE id = ${relSpan.source_relation_id}
+    `);
+    const b11a = runLoader("load-benefit-history.ts", T17_FLAGS);
+    const d11a = b11a.result!.detail;
+    check(
+      "t17 run11a (relation worker retarget): cached span workers refreshed",
+      Number(d11a.relationWorkersRefreshed) > 0,
+      `refreshed=${d11a.relationWorkersRefreshed}`,
+    );
+    check(
+      `t17 run11a: ${expectedMovedMonths} dependent months moved`,
+      Number(d11a.monthsCreated) === expectedMovedMonths &&
+        Number(d11a.monthsDeleted) === expectedMovedMonths &&
+        Number(d11a.verifyFailures) === 0,
+      `created=${d11a.monthsCreated} deleted=${d11a.monthsDeleted} verify=${JSON.stringify(d11a.verify)}`,
+    );
+    check("t17 run11a: no old-worker rows remain for relation", (await oneNum(sql`
+      SELECT COUNT(*)::int AS c FROM trust_wmb
+       WHERE source_relation_id = ${relSpan.source_relation_id} AND worker_id = ${oldWorkerId}
+    `)) === 0);
+    await db.execute(sql`
+      UPDATE worker_relations SET worker_2 = ${oldWorkerId}
+       WHERE id = ${relSpan.source_relation_id}
+    `);
+    const b11b = runLoader("load-benefit-history.ts", T17_FLAGS);
+    const d11b = b11b.result!.detail;
+    check(
+      "t17 run11b (relation worker restored): converged back",
+      Number(d11b.relationWorkersRefreshed) > 0 &&
+        Number(d11b.monthsCreated) === expectedMovedMonths &&
+        Number(d11b.monthsDeleted) === expectedMovedMonths &&
+        Number(d11b.verifyFailures) === 0,
+      `refreshed=${d11b.relationWorkersRefreshed} created=${d11b.monthsCreated} deleted=${d11b.monthsDeleted} verify=${JSON.stringify(d11b.verify)}`,
+    );
+  }
+
   // --- b12: horizon advance to 2027-01 → delta creates only ---
   const pre2027Ids = new Set(
     rowsOf(await db.execute(sql`SELECT id FROM trust_wmb WHERE year = 2027 AND month = 1`)).map((r) => String(r.id)),

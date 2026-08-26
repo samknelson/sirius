@@ -748,8 +748,14 @@ findings. Reports stay aggregates-only (no names/PII), and say when
   anchor pass repoints/retires/creates accordingly every run. Dropping the
   scratch table is safe: the next run re-resolves all spans (freeze-scale
   wall time) and converges to the same state.
-- Stale-month deletion is scoped to migrated workers (non-stub id_map worker
-  mappings) at months ≤ the horizon; everything else is untouchable.
+- Dependent span `worker_id` is refreshed from live
+  `worker_relations.worker_2` before every month diff. This makes an in-place
+  T15 shell→real endpoint retarget converge without `--force-reconcile`;
+  `detail.relationWorkersRefreshed` reports the affected span count.
+- Stale-month deletion is scoped to migrated workers, plus rows sourced by a
+  migrated relationship, at months ≤ the horizon; everything else is
+  untouchable. The relationship scope is required to sweep old shell-worker
+  rows after an endpoint retarget.
   Corollary: **the S2 benefits scan must stay OFF for migrated workers during
   the dual-run** — rows it writes in covered months would be swept as stale
   on the next sync (see `detail.staleBeyondHorizon` for the beyond-horizon
