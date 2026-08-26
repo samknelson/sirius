@@ -83,6 +83,7 @@
 - [gitPush needs upstream tracking](gitpush-callback-upstream.md) — pushing to an existing remote branch requires `git branch -u origin/<b>` first, else opaque BRANCH_ALREADY_EXISTS.
 - [Stable branch-driven launchers](tracked-launcher-source-pin.md) — bootstrap from the selected remote branch, resolve its SHA at run time, then build that exact detached commit.
 - [S1 shop JSON is the employer config store](s1-shop-json-config.md) — policy history + charge-plugin rate histories live in field_sirius_json; hourly-uuid allow-list ruling inside; variable dumps carry live Stripe keys.
+- [S1 policy catalogue repair](s1-policy-catalogue-repair.md) — legacy R→UH is an explicit guarded one-off; load-policies stays adopt-only and never mutates S2 policy rows.
 - [Task-merge SHA rewrite vs deploy branches](task-merge-divergent-deploy-branch.md) — non-fast-forward on push-branch.sh = duplicate content, different SHAs; verify empty diff then `merge -s ours`.
 - [BAO hours upload performance](bao-hours-upload-performance.md) — bulk pre-fetch + charge config cache + skipHomeEmployerEvent; see file for the three-axis approach.
 - [.replit gitignored vs task review](dotreplit-gitignored-review.md) — .replit workflow changes never show in the task diff; completion review rejects unless drift_reason explains it.

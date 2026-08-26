@@ -124,6 +124,18 @@ to the exact state the loaders expect:
    genders, and call reasons. Every registered singleton cron config is
    materialized and every cron config is disabled.
 
+For an already-populated rehearsal target where the legacy `R` row remains,
+use the separate guarded one-off before running the loader:
+
+```bash
+npx tsx scripts/oneoffs/s1-rename-policy-r-to-uh.ts
+npx tsx scripts/oneoffs/s1-rename-policy-r-to-uh.ts --apply
+```
+
+The first command is report-only. The second renames the existing row in one
+transaction, preserving its UUID and all references. It refuses to change a
+target containing both `R` and `UH`; that state requires manual reconciliation.
+
 `trust_providers` / `trust_benefits` are **not** seeded here — they derive from
 the staged S1 nodes (§4.0b), so no hand-maintained benefit list exists anywhere.
 
