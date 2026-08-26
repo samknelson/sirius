@@ -381,3 +381,4 @@ import "./plugins/edls-sheet-worker-sms-notifier";
 import "./plugins/dispatch-status-notifier";
 import "./plugins/dispatch-fore-notifier";
 import "./plugins/sitespecific-t631-interview";
+import "./plugins/bao-case-status-notifier";

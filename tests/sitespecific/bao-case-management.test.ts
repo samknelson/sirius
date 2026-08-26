@@ -1,10 +1,12 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { eventBus, EventType } from "../../server/services/event-bus";
+import { assignmentForbidden } from "../../server/storage/sitespecific/bao/case-assignment";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../server/db";
 import { storage } from "../../server/storage";
 import { getOptionsStorage, getOptionsType } from "../../server/modules/options-registry";
 import { getComponentById } from "@shared/components";
-import { notes, sitespecificBaoCases } from "@shared/schema";
+import { notes, rolePermissions, roles, sitespecificBaoCases, userRoles, users } from "@shared/schema";
 import caseManagementMigration from "../../scripts/migrate/components/sitespecific.bao/010_create_case_management";
 
 const run = `bao-case-test-${Date.now()}`;
@@ -12,6 +14,8 @@ let available = false;
 let workerId = "";
 let otherWorkerId = "";
 let userId = "";
+let secondUserId = "";
+let secondRoleId = "";
 let noteTypeId = "";
 let openStatusId = "";
 let closedStatusId = "";
@@ -40,6 +44,22 @@ beforeAll(async () => {
   openStatusId = (await options.create("bao-case-status", { name: `${run}-open`, closed: false })).id;
   closedStatusId = (await options.create("bao-case-status", { name: `${run}-closed`, closed: true })).id;
   resolutionId = (await options.create("bao-case-resolution", { name: `${run}-resolved` })).id;
+  // A second assignable staff user, created for the assignment-race coverage.
+  const secondUser = await storage.users.createUser({
+    email: `${run}@example.test`,
+    firstName: "Race",
+    lastName: "Tester",
+  } as any);
+  secondUserId = secondUser.id;
+  const role = await storage.users.createRole({
+    name: `${run}-staff`,
+    description: "BAO case test staff role",
+  } as any);
+  secondRoleId = role.id;
+  // Insert the role permission directly: the in-process permission registry
+  // is not initialized in this test harness, only the DB rows matter here.
+  await db.insert(rolePermissions).values({ roleId: role.id, permissionKey: "staff" });
+  await storage.users.assignRoleToUser({ userId: secondUser.id, roleId: role.id } as any);
 });
 
 afterAll(async () => {
@@ -50,12 +70,23 @@ afterAll(async () => {
   await options.delete("bao-case-status", openStatusId).catch(() => {});
   await options.delete("bao-case-status", closedStatusId).catch(() => {});
   await options.delete("bao-case-resolution", resolutionId).catch(() => {});
+  if (secondRoleId) {
+    await db.delete(userRoles).where(eq(userRoles.roleId, secondRoleId)).catch(() => {});
+    await db.delete(rolePermissions).where(eq(rolePermissions.roleId, secondRoleId)).catch(() => {});
+    await db.delete(roles).where(eq(roles.id, secondRoleId)).catch(() => {});
+  }
+  if (secondUserId) await db.delete(users).where(eq(users.id, secondUserId)).catch(() => {});
 });
 
 describe("BAO case registration and component ownership", () => {
   it("registers component-gated status and resolution lists", () => {
     expect(getOptionsType("bao-case-status")?.requiredComponent).toBe("sitespecific.bao");
     expect(getOptionsType("bao-case-resolution")?.requiredComponent).toBe("sitespecific.bao");
+  });
+
+  it("declares the assign-to-others permission on the BAO component", () => {
+    const permissions = getComponentById("sitespecific.bao")?.permissions ?? [];
+    expect(permissions.map((p) => p.key)).toContain("bao.case.assign");
   });
 
   it("declares all case tables in the component manifest", () => {
@@ -66,6 +97,160 @@ describe("BAO case registration and component ownership", () => {
       "sitespecific_bao_cases",
       "sitespecific_bao_case_notes",
     ]));
+  });
+});
+
+describe("BAO case assignment authority rule", () => {
+  const actor = "actor-1";
+  it("allows omitting an assignee and self-assignment without the permission", () => {
+    expect(assignmentForbidden({ requestedAssigneeId: undefined, actorUserId: actor, existingAssigneeId: null, canAssignOthers: false })).toBe(false);
+    expect(assignmentForbidden({ requestedAssigneeId: actor, actorUserId: actor, existingAssigneeId: null, canAssignOthers: false })).toBe(false);
+    // Taking a case assigned to somebody else is always self-assignment.
+    expect(assignmentForbidden({ requestedAssigneeId: actor, actorUserId: actor, existingAssigneeId: "other-1", canAssignOthers: false })).toBe(false);
+  });
+
+  it("allows a lifecycle edit that echoes the unchanged assignee", () => {
+    expect(assignmentForbidden({ requestedAssigneeId: "other-1", actorUserId: actor, existingAssigneeId: "other-1", canAssignOthers: false })).toBe(false);
+  });
+
+  it("forbids assigning to another user without the permission, on create and update", () => {
+    expect(assignmentForbidden({ requestedAssigneeId: "other-1", actorUserId: actor, existingAssigneeId: null, canAssignOthers: false })).toBe(true);
+    expect(assignmentForbidden({ requestedAssigneeId: "other-2", actorUserId: actor, existingAssigneeId: "other-1", canAssignOthers: false })).toBe(true);
+  });
+
+  it("allows any assignee with the permission", () => {
+    expect(assignmentForbidden({ requestedAssigneeId: "other-2", actorUserId: actor, existingAssigneeId: "other-1", canAssignOthers: true })).toBe(false);
+  });
+
+  it("enforces the rule inside the lifecycle transaction", async () => {
+    const created = await storage.baoCases.create({
+      entityType: "worker", entityId: workerId, deadlineYmd: "2099-08-01",
+      statusId: openStatusId, assigneeUserId: secondUserId, actorUserId: userId,
+      initialNote: { typeId: noteTypeId, subject: `${run} in-tx enforcement` },
+    });
+    caseIds.push(created.id);
+    noteIds.push((await storage.baoCases.get(created.id, true))!.notes![0].id);
+    // Unprivileged reassignment to another user is rejected by storage itself.
+    await expect(storage.baoCases.updateLifecycle(
+      created.id,
+      { assigneeUserId: userId, deadlineYmd: "2099-08-02" },
+      { actorUserId: secondUserId === userId ? "someone-else" : "third-user", canAssignOthers: false },
+    )).rejects.toThrow("ASSIGN_OTHERS_FORBIDDEN");
+    // Taking the case (assigning to the actor) needs no permission.
+    await storage.baoCases.updateLifecycle(
+      created.id,
+      { assigneeUserId: userId },
+      { actorUserId: userId, canAssignOthers: false },
+    );
+    expect((await storage.baoCases.get(created.id))?.assigneeUserId).toBe(userId);
+  });
+
+  it("re-checks authority against the row-locked assignee, so a stale unchanged-assignee echo cannot reassign", async () => {
+    // Case assigned to the second user. An unprivileged actor echoes that
+    // assignee (allowed: unchanged). Concurrently, a permitted user
+    // reassigns the case to the actor while holding the row lock. When the
+    // echo's transaction finally locks the row, its requested assignee is no
+    // longer the current one — it must now be treated as a reassignment and
+    // rejected, not written back.
+    const created = await storage.baoCases.create({
+      entityType: "worker", entityId: workerId, deadlineYmd: "2099-09-01",
+      statusId: openStatusId, assigneeUserId: secondUserId, actorUserId: userId,
+      initialNote: { typeId: noteTypeId, subject: `${run} stale echo race` },
+    });
+    caseIds.push(created.id);
+    noteIds.push((await storage.baoCases.get(created.id, true))!.notes![0].id);
+
+    let release!: () => void;
+    let locked!: () => void;
+    const releaseGate = new Promise<void>((resolve) => { release = resolve; });
+    const lockedGate = new Promise<void>((resolve) => { locked = resolve; });
+    const reassigner = db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM sitespecific_bao_cases WHERE id = ${created.id} FOR UPDATE`);
+      locked();
+      await releaseGate;
+      await tx.execute(sql`UPDATE sitespecific_bao_cases SET assignee_user_id = ${userId} WHERE id = ${created.id}`);
+    });
+    await lockedGate;
+    const staleEcho = storage.baoCases.updateLifecycle(
+      created.id,
+      { assigneeUserId: secondUserId, deadlineYmd: "2099-09-02" },
+      { actorUserId: userId, canAssignOthers: false },
+    );
+    release();
+    await reassigner;
+    await expect(staleEcho).rejects.toThrow("ASSIGN_OTHERS_FORBIDDEN");
+    expect((await storage.baoCases.get(created.id))?.assigneeUserId).toBe(userId);
+  });
+});
+
+describe("BAO case status events", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function statusEmits(spy: ReturnType<typeof vi.spyOn>) {
+    return spy.mock.calls.filter(([type]: [unknown, ...unknown[]]) => type === EventType.BAO_CASE_STATUS_SAVED);
+  }
+
+  it("emits a committed snapshot on creation and on lifecycle updates", async () => {
+    const spy = vi.spyOn(eventBus, "emit").mockResolvedValue(undefined as any);
+    const created = await storage.baoCases.create({
+      entityType: "worker", entityId: workerId, deadlineYmd: "2099-06-01",
+      statusId: openStatusId, assigneeUserId: userId, actorUserId: userId,
+      initialNote: { typeId: noteTypeId, subject: `${run} status events` },
+    });
+    caseIds.push(created.id);
+    noteIds.push((await storage.baoCases.get(created.id, true))!.notes![0].id);
+    let emits = statusEmits(spy);
+    expect(emits).toHaveLength(1);
+    expect(emits[0][1]).toMatchObject({
+      caseId: created.id,
+      operation: "created",
+      previousStatusId: null,
+      statusId: openStatusId,
+      statusName: `${run}-open`,
+      row: expect.objectContaining({ id: created.id, statusId: openStatusId }),
+    });
+
+    spy.mockClear();
+    await storage.baoCases.updateLifecycle(created.id, {
+      statusId: closedStatusId, resolutionId, resolutionYmd: "2099-06-02",
+    });
+    emits = statusEmits(spy);
+    expect(emits).toHaveLength(1);
+    expect(emits[0][1]).toMatchObject({
+      operation: "updated",
+      previousStatusId: openStatusId,
+      statusId: closedStatusId,
+      statusName: `${run}-closed`,
+    });
+
+    // An unchanged-status edit still emits (the notifier filters it), but
+    // must carry previous === current so a listener can tell no transition
+    // happened.
+    spy.mockClear();
+    await storage.baoCases.updateLifecycle(created.id, {
+      statusId: openStatusId, deadlineYmd: "2099-06-03",
+    });
+    await storage.baoCases.updateLifecycle(created.id, { deadlineYmd: "2099-06-04" });
+    emits = statusEmits(spy);
+    expect(emits).toHaveLength(2);
+    expect(emits[1][1]).toMatchObject({
+      previousStatusId: openStatusId,
+      statusId: openStatusId,
+    });
+  });
+
+  it("does not emit for a rolled-back lifecycle write", async () => {
+    const created = await storage.baoCases.create({
+      entityType: "worker", entityId: workerId, deadlineYmd: "2099-07-01",
+      statusId: openStatusId, assigneeUserId: userId, actorUserId: userId,
+      initialNote: { typeId: noteTypeId, subject: `${run} rollback` },
+    });
+    caseIds.push(created.id);
+    noteIds.push((await storage.baoCases.get(created.id, true))!.notes![0].id);
+    const spy = vi.spyOn(eventBus, "emit").mockResolvedValue(undefined as any);
+    await expect(storage.baoCases.updateLifecycle(created.id, { statusId: closedStatusId }))
+      .rejects.toThrow("RESOLUTION_REQUIRED");
+    expect(statusEmits(spy)).toHaveLength(0);
   });
 });
 

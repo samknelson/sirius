@@ -129,6 +129,7 @@ import "./plugins/address";
 import "./plugins/bulk-participant";
 import "./plugins/event";
 import "./plugins/sitespecific-t631-interview";
+import "./plugins/sitespecific-bao-case";
 import "./plugins/dispatch";
 import "./plugins/edls";
 import "./plugins/grievance";

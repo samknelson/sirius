@@ -84,6 +84,7 @@ export type TabEntityType =
   | 'grievanceTimelineTemplate'
   | 'contract'
   | 'bao_cobra_case'
+  | 'bao_case'
   | 'business_calendar';
 
 /**
@@ -522,6 +523,13 @@ export const baoCobraCaseTabTree: HierarchicalTab[] = [
 ];
 
 /**
+ * Generic BAO case entity tab tree
+ */
+export const baoCaseTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/bao/cases/{id}', permission: 'staff', component: 'sitespecific.bao' },
+];
+
+/**
  * Contract entity tab tree
  */
 export const contractTabTree: HierarchicalTab[] = [
@@ -738,6 +746,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   grievanceTimelineTemplate: grievanceTimelineTemplateTabTree,
   contract: contractTabTree,
   bao_cobra_case: baoCobraCaseTabTree,
+  bao_case: baoCaseTabTree,
   business_calendar: businessCalendarTabTree,
 };
 

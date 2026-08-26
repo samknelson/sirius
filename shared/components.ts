@@ -905,6 +905,12 @@ export const componentRegistry: ComponentDefinition[] = [
     description: "Custom functionality for Unite Here Local 11 Health Benefits Administration",
     enabledByDefault: false,
     category: "site-specific",
+    permissions: [
+      {
+        key: "bao.case.assign",
+        description: "Assign BAO cases to other staff users (self-assignment never requires this)",
+      },
+    ],
     managesSchema: true,
     schemaManifest: {
       version: 11,
