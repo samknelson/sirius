@@ -123,6 +123,14 @@ export interface WmbScanQueueStorage {
   
   // Invalidation
   invalidateWorkerScans(workerId: string): Promise<number>;
+  /**
+   * Bulk form of `invalidateWorkerScans` for migration loaders: one chunked
+   * UPDATE per 500 workers instead of one round trip per worker. Identical
+   * semantics — pending/success rows for current+future months reset to
+   * pending/worker_update, then the affected months' completed statuses flip
+   * to stale. Returns the number of queue rows reset.
+   */
+  invalidateWorkerScansBulk(workerIds: string[]): Promise<number>;
   
   // Reporting
   getPendingSummary(): Promise<{ month: number; year: number; pending: number; processing: number; success: number; failed: number; canceled: number }[]>;
@@ -843,6 +851,65 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
       }
 
       return result.length;
+    },
+
+    async invalidateWorkerScansBulk(workerIds: string[]): Promise<number> {
+      if (workerIds.length === 0) return 0;
+      const client = getClient();
+      const now = new Date();
+      const currentMonth = now.getMonth() + 1;
+      const currentYear = now.getFullYear();
+
+      let reset = 0;
+      const statusIds = new Set<string>();
+      for (let i = 0; i < workerIds.length; i += 500) {
+        const slice = workerIds.slice(i, i + 500);
+        const result = await client
+          .update(trustWmbScanQueue)
+          .set({
+            status: "pending",
+            triggerSource: "worker_update",
+            attempts: 0,
+            lastError: null,
+            pickedAt: null,
+            completedAt: null,
+            resultSummary: null,
+          })
+          .where(
+            and(
+              inArray(trustWmbScanQueue.workerId, slice),
+              or(
+                sql`${trustWmbScanQueue.year} > ${currentYear}`,
+                and(
+                  sql`${trustWmbScanQueue.year} = ${currentYear}`,
+                  sql`${trustWmbScanQueue.month} >= ${currentMonth}`
+                )
+              ),
+              or(
+                eq(trustWmbScanQueue.status, "success"),
+                eq(trustWmbScanQueue.status, "pending")
+              )
+            )
+          )
+          .returning({ statusId: trustWmbScanQueue.statusId });
+        reset += result.length;
+        for (const r of result) statusIds.add(r.statusId);
+      }
+
+      // Mark affected months as stale (same semantics as the single form).
+      if (statusIds.size > 0) {
+        await client
+          .update(trustWmbScanStatus)
+          .set({ status: "stale" })
+          .where(
+            and(
+              inArray(trustWmbScanStatus.id, Array.from(statusIds)),
+              eq(trustWmbScanStatus.status, "completed")
+            )
+          );
+      }
+
+      return reset;
     },
 
     async getPendingSummary(): Promise<{ month: number; year: number; pending: number; processing: number; success: number; failed: number; canceled: number }[]> {

@@ -12,6 +12,10 @@ import { type StorageLoggingConfig } from "./middleware/logging";
 import { storageLogger as logger } from "../logger";
 import type { LedgerNotification } from "../plugins/ledger/charge/types";
 import { eventBus, EventType } from "../services/event-bus";
+import {
+  areChargePluginsSuppressed,
+  areNotificationsSuppressed,
+} from "../middleware/request-context";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -26,6 +30,29 @@ export interface WorkerHoursResult {
 export interface WorkerHoursDeleteResult {
   success: boolean;
   notifications: LedgerNotification[];
+}
+
+/** One monthly (day=1) aggregate row for the migration bulk upsert. */
+export interface BulkMigrationHoursRow {
+  workerId: string;
+  employerId: string;
+  year: number;
+  month: number;
+  employmentStatusId: string;
+  hours: number;
+}
+
+/** What the migration bulk upsert persisted, per row. `inserted` is the
+ * xmax=0 insert-vs-conflict-update discriminator (operational evidence). */
+export interface BulkMigrationHoursPersistedRow {
+  id: string;
+  workerId: string;
+  employerId: string;
+  year: number;
+  month: number;
+  hours: number | null;
+  employmentStatusId: string;
+  inserted: boolean;
 }
 
 export interface EmployerWorkerCount {
@@ -66,6 +93,25 @@ export interface WorkerHoursStorage {
    * trips per row with identical ledger/event semantics.
    */
   upsertWorkerHours(data: { workerId: string; month: number; year: number; day?: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }, options?: { skipHomeEmployerEvent?: boolean }): Promise<WorkerHoursResult>;
+  /**
+   * MIGRATION-ONLY bounded batch upsert of monthly (day=1) aggregate rows,
+   * keyed by the (worker, employer, year, month, day) unique constraint.
+   *
+   * Fail-closed: throws unless the caller runs inside BOTH the charge-plugin
+   * AND notification suppression scopes — this method deliberately skips
+   * every per-row side effect of `upsertWorkerHours` (per-row audit
+   * snapshots, HOURS_SAVED events, direct charge-plugin execution,
+   * home-employer derivation/eventing, per-worker scan invalidation), which
+   * is only safe under a migration loader that reinstates the required
+   * downstream effects in bulk (see scripts/s1-migration/load-hours.ts).
+   *
+   * Conflict updates touch ONLY the migration-owned fields
+   * (`employment_status_id`, `hours`): existing row ids and staff-owned
+   * `home` / `job_title` values survive by construction. Returns every
+   * persisted row (throws if the database returns fewer rows than sent —
+   * nothing is silently dropped).
+   */
+  bulkUpsertWorkerHoursMigration(rows: BulkMigrationHoursRow[]): Promise<BulkMigrationHoursPersistedRow[]>;
   /**
    * Lightweight targeted read: return just the (id, day) pairs for a specific
    * (worker, employer, year, month). Used by `reconcileMonthRows` as a fast
@@ -742,6 +788,88 @@ export function createWorkerHoursStorage(
       return { data: savedHours, notifications };
     },
 
+    async bulkUpsertWorkerHoursMigration(rows: BulkMigrationHoursRow[]): Promise<BulkMigrationHoursPersistedRow[]> {
+      // FAIL-CLOSED GUARD (checked before anything else, even empty input):
+      // this method exists solely for migration-mode loaders. Refuse to run
+      // outside both suppression scopes so the side-effect-free fast path
+      // can never leak into interactive code.
+      if (!areChargePluginsSuppressed() || !areNotificationsSuppressed()) {
+        throw new Error(
+          "bulkUpsertWorkerHoursMigration requires charge-plugin AND notification suppression scopes (migration-mode loaders only)",
+        );
+      }
+      if (rows.length === 0) return [];
+      // Duplicate composite keys inside one statement would make
+      // ON CONFLICT DO UPDATE touch the same row twice (a Postgres error) —
+      // and would mean the caller's month aggregation is broken. Fail loudly.
+      const seen = new Set<string>();
+      for (const r of rows) {
+        const key = `${r.workerId}|${r.employerId}|${r.year}|${r.month}`;
+        if (seen.has(key)) {
+          throw new Error(
+            `bulkUpsertWorkerHoursMigration: duplicate month key in batch (${r.year}-${r.month}) — caller aggregation bug`,
+          );
+        }
+        seen.add(key);
+      }
+      const client = getClient();
+      const persisted: BulkMigrationHoursPersistedRow[] = [];
+      // Bounded statements: 500 rows × 7 bind params stays far below
+      // driver/statement limits while keeping lock spans small. Each chunk
+      // is one atomic statement; a crash between chunks leaves earlier
+      // chunks persisted — idempotent by the upsert key, so a re-run
+      // converges.
+      for (let i = 0; i < rows.length; i += 500) {
+        const slice = rows.slice(i, i + 500);
+        const saved = await client
+          .insert(workerHours)
+          .values(
+            slice.map((r) => ({
+              workerId: r.workerId,
+              employerId: r.employerId,
+              year: r.year,
+              month: r.month,
+              day: 1,
+              employmentStatusId: r.employmentStatusId,
+              hours: r.hours,
+            })),
+          )
+          .onConflictDoUpdate({
+            target: [workerHours.workerId, workerHours.employerId, workerHours.year, workerHours.month, workerHours.day],
+            // MIGRATION-OWNED fields only — id, home, and job_title are
+            // staff/system-owned and MUST survive conflict updates.
+            set: {
+              employmentStatusId: sql`excluded.employment_status_id`,
+              hours: sql`excluded.hours`,
+            },
+          })
+          .returning({
+            id: workerHours.id,
+            workerId: workerHours.workerId,
+            employerId: workerHours.employerId,
+            year: workerHours.year,
+            month: workerHours.month,
+            hours: workerHours.hours,
+            employmentStatusId: workerHours.employmentStatusId,
+            inserted: sql<boolean>`(xmax = 0)`,
+          });
+        if (saved.length !== slice.length) {
+          throw new Error(
+            `bulkUpsertWorkerHoursMigration: chunk persisted ${saved.length}/${slice.length} rows — aborting (nothing is silently dropped)`,
+          );
+        }
+        persisted.push(...saved);
+      }
+      // Aggregate-only operational evidence — deliberately NO per-row audit
+      // snapshots (the migration run report + s1_staging.runs carry the
+      // evidence; see workerHoursLoggingConfig note).
+      logger.info(`Bulk migration hours upsert persisted ${persisted.length} monthly rows`, {
+        service: "worker-hours-storage",
+        rows: persisted.length,
+      });
+      return persisted;
+    },
+
     async getWorkerHoursForMonth(workerId: string, employerId: string, year: number, month: number): Promise<Array<{ id: string; day: number }>> {
       const client = getClient();
       const result = await client.execute(sql`
@@ -830,6 +958,11 @@ export function createWorkerHoursStorage(
 
 export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> = {
   module: 'worker-hours',
+  // NOTE: bulkUpsertWorkerHoursMigration is intentionally ABSENT here — the
+  // migration bulk path records aggregate-safe operational evidence (loader
+  // run report + s1_staging.runs) instead of one audit snapshot per migrated
+  // monthly row. Unconfigured methods pass through withStorageLogging
+  // unlogged.
   methods: {
     createWorkerHours: {
       enabled: true,

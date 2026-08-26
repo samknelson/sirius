@@ -14,7 +14,7 @@
  *    slow.
  *  - Row-loop form:   `  progress <label>: done=N/M (P%) elapsed=Es rate=R rows/s eta=E`
  *    (the verb is `staged=` for the extractor, for output compatibility).
- *  - Named phases come in two forms:
+ *  - Named phases come in three forms:
  *      phase(name)         — silent phase (single set-based query, unknown
  *                            span): ticks emit a liveness line
  *                            `  progress <label>: phase=<name> done=N/M elapsed=Es rate=R rows/s eta=E (liveness)`
@@ -29,6 +29,14 @@
  *                            IT, and ticks emit real progress
  *                            `  progress <label>: phase=<name> done=N/M (P%) elapsed=Es rate=R rows/s eta=E`
  *                            with rate computed from the phase's own start.
+ *      phase(name, total, { cumulative: true })
+ *                          — cumulative counted phase: re-entering the same
+ *                            name ACCUMULATES done/total and in-phase active
+ *                            time across stints, so rate/ETA report true
+ *                            phase-local throughput even when the phase is
+ *                            interleaved with others (e.g. a write flush
+ *                            every N scanned rows). `stats(name)` exposes
+ *                            the accumulated counters for run reports.
  *  - `eta=` is remaining/rate formatted `2h05m` / `12m30s` / `45s`; omitted
  *    when the rate is 0 or the total is unknown.
  *    `phase(null)` returns to the row-loop form and the main counter.
@@ -61,17 +69,19 @@ const PROGRESS_INTERVAL_MS = (() => {
 
 export interface ProgressLogger {
   /** Record the latest successfully completed count (absolute). Applies to the
-   * current counted phase when one is active, else the main counter. */
+   * current counted/cumulative phase when one is active, else the main counter. */
   update(done: number): void;
   /** Increment the completed count (per-row convenience). Applies to the
-   * current counted phase when one is active, else the main counter. */
+   * current counted/cumulative phase when one is active, else the main counter. */
   add(n?: number): void;
   /**
    * Enter a named phase. With `total`, the phase gets its own counter and
    * ticks report real progress; without, ticks are liveness-only and
-   * add()/update() keep mutating the main counter. `null` returns to rows.
+   * add()/update() keep mutating the main counter. With
+   * `{ cumulative: true }`, re-entering the same name accumulates
+   * done/total/active-time across stints. `null` returns to rows.
    */
-  phase(name: string | null, total?: number): void;
+  phase(name: string | null, total?: number, opts?: { cumulative?: boolean }): void;
   /**
    * Set/replace the MAIN counter's total. Lets a loader start the heartbeat
    * BEFORE the staged load (when the total is still unknown, pass 0 at
@@ -79,6 +89,13 @@ export interface ProgressLogger {
    * still emits liveness ticks instead of silence.
    */
   setTotal(total: number): void;
+  /**
+   * Accumulated counters for a cumulative phase (in-phase active seconds
+   * include the current stint when the phase is active). Undefined for names
+   * never entered cumulatively — callers use this for run-report phase
+   * stats (throughput per phase, not per wall clock).
+   */
+  stats(name: string): { done: number; total: number; activeSeconds: number } | undefined;
   /** Stop the heartbeat timer — call when the loop is done. */
   stop(): void;
 }
@@ -95,11 +112,36 @@ export function makeProgressLogger(
   let phaseTotal: number | null = null;
   let phaseDone = 0;
   let phaseStart = start;
+  // Cumulative phases: per-name accumulators surviving re-entry.
+  interface CumulRec {
+    done: number;
+    total: number;
+    activeMs: number;
+  }
+  const cumul = new Map<string, CumulRec>();
+  let activeCumul: CumulRec | null = null;
+  let cumulEnteredAt = start;
+  const leaveCumul = () => {
+    if (activeCumul) {
+      activeCumul.activeMs += Date.now() - cumulEnteredAt;
+      activeCumul = null;
+    }
+  };
   const timer = setInterval(() => {
     const now = Date.now();
     const elapsed = Math.round((now - start) / 1000);
     if (currentPhase) {
-      if (phaseTotal != null) {
+      if (activeCumul) {
+        const rec = activeCumul;
+        const activeS = (rec.activeMs + (now - cumulEnteredAt)) / 1000;
+        const exactRate = activeS > 0 ? rec.done / activeS : 0;
+        const rate = Math.round(exactRate);
+        const pct = rec.total > 0 ? ` (${((rec.done / rec.total) * 100).toFixed(1)}%)` : "";
+        const eta = etaSuffix(rec.total - rec.done, exactRate);
+        console.log(
+          `  progress ${label}: phase=${currentPhase} ${verb}=${rec.done}/${rec.total}${pct} elapsed=${elapsed}s rate=${rate} rows/s${eta}`,
+        );
+      } else if (phaseTotal != null) {
         const phaseElapsedS = (now - phaseStart) / 1000;
         const exactRate = phaseElapsedS > 0 ? phaseDone / phaseElapsedS : 0;
         const rate = Math.round(exactRate);
@@ -135,15 +177,32 @@ export function makeProgressLogger(
   timer.unref();
   return {
     update(n: number) {
-      if (currentPhase && phaseTotal != null) phaseDone = n;
+      if (activeCumul) activeCumul.done = n;
+      else if (currentPhase && phaseTotal != null) phaseDone = n;
       else done = n;
     },
     add(n = 1) {
-      if (currentPhase && phaseTotal != null) phaseDone += n;
+      if (activeCumul) activeCumul.done += n;
+      else if (currentPhase && phaseTotal != null) phaseDone += n;
       else done += n;
     },
-    phase(name: string | null, phaseTotalArg?: number) {
+    phase(name: string | null, phaseTotalArg?: number, phaseOpts?: { cumulative?: boolean }) {
+      leaveCumul();
       currentPhase = name;
+      if (name != null && phaseOpts?.cumulative) {
+        let rec = cumul.get(name);
+        if (!rec) {
+          rec = { done: 0, total: 0, activeMs: 0 };
+          cumul.set(name, rec);
+        }
+        if (phaseTotalArg != null) rec.total += phaseTotalArg;
+        activeCumul = rec;
+        cumulEnteredAt = Date.now();
+        phaseTotal = null;
+        phaseDone = 0;
+        phaseStart = cumulEnteredAt;
+        return;
+      }
       phaseTotal = name != null && phaseTotalArg != null ? phaseTotalArg : null;
       phaseDone = 0;
       phaseStart = Date.now();
@@ -151,7 +210,14 @@ export function makeProgressLogger(
     setTotal(n: number) {
       total = n;
     },
+    stats(name: string) {
+      const rec = cumul.get(name);
+      if (!rec) return undefined;
+      const activeMs = rec.activeMs + (activeCumul === rec ? Date.now() - cumulEnteredAt : 0);
+      return { done: rec.done, total: rec.total, activeSeconds: activeMs / 1000 };
+    },
     stop() {
+      leaveCumul();
       clearInterval(timer);
     },
   };

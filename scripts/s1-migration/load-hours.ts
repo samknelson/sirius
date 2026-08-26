@@ -42,6 +42,40 @@
  * The stale-key cleanup below is a write path too — it runs after the same
  * preflight and inside the same loaderScope suppression.
  *
+ * MIGRATION BULK WRITE PATH (Task 356): with --migration-mode (wet), monthly
+ * aggregates are written in bounded multi-row upsert batches
+ * (storage.workerHours.bulkUpsertWorkerHoursMigration) instead of the
+ * per-row audited/eventful upsertWorkerHours round trip — the rehearsal
+ * measured that path at ~45 groups/s (~22 h for 3.6M staged rows). The batch
+ * statement updates ONLY migration-owned fields (hours,
+ * employment_status_id): row ids and staff-owned home/job_title survive
+ * conflict updates by construction. Skipped per-row side effects, and why
+ * each is safe here:
+ *   - per-row audit snapshots: bulk S1-derived aggregates; the evidence is
+ *     the run report + s1_staging.runs (aggregates only), not one
+ *     winston_logs row per migrated month;
+ *   - HOURS_SAVED events: the only in-process subscriber (worker_employment
+ *     denorm) no-ops in the loader process (component cache never
+ *     initialized) — replaced by an explicit bulk denorm stale-mark per
+ *     flush, so the app's denorm cron recomputes every touched worker;
+ *   - charge plugins: suppressed by --migration-mode; the storage method is
+ *     fail-closed (throws outside BOTH suppression scopes) and boot-time
+ *     charge listeners are never registered in the loader process;
+ *   - notifications: suppressed by loaderScope (same fail-closed guard);
+ *   - per-worker WMB scan invalidation: replaced by a per-flush
+ *     invalidateWorkerScansBulk over the flush's distinct workers — the
+ *     stream is worker-ordered, so each worker flushes exactly once per run
+ *     and the bulk reset is at-most-once per worker;
+ *   - WMB auto-rescan listeners: registered only at app boot
+ *     (initWmbAutoRescan), never in the loader process.
+ * Non-migration runs keep the legacy per-row path with full side effects.
+ * Interruption/resume: a killed run leaves persisted+stamped flushes behind;
+ * re-running the same command converges (idempotent upserts + restamps) and
+ * only a fully-verified run reaches stale cleanup — never reset or wipe the
+ * target to recover. TEST-ONLY knobs for the interruption smoke:
+ * S1_T20_FLUSH_AT (flush threshold), S1_T20_CRASH_AFTER_FLUSH (hard-exit
+ * after N completed flushes).
+ *
  * SYNC (Task 295 — S1-wins dual-run reconciliation, RUNBOOK §10):
  *   Upsert re-aggregation already converges changed payperiods; what it
  *   cannot see is a month whose staged payperiods VANISHED (deleted in S1)
@@ -102,6 +136,24 @@ const DRY_RUN = process.argv.includes("--dry-run");
 const STUB_MISSING = process.argv.includes("--stub-missing");
 const MIGRATION_MODE = process.argv.includes("--migration-mode");
 const ADOPT_HOURS_KEYS = process.argv.includes("--adopt-hours-keys");
+
+/** Groups buffered across finished workers before a write flush.
+ * S1_T20_FLUSH_AT is a TEST-ONLY override so the interruption smoke can
+ * force multiple flushes out of a small fixture. */
+const FLUSH_AT = (() => {
+  const n = Number(process.env.S1_T20_FLUSH_AT ?? "");
+  return Number.isInteger(n) && n > 0 ? n : 1000;
+})();
+/** TEST-ONLY crash injection: hard-exit (75) after the Nth completed flush,
+ * before any later flush, the stale cleanup, and the final report — models
+ * an operator interruption for the resume-safety smoke. */
+const CRASH_AFTER_FLUSH = (() => {
+  const n = Number(process.env.S1_T20_CRASH_AFTER_FLUSH ?? "");
+  return Number.isInteger(n) && n > 0 ? n : 0;
+})();
+/** Rows per bulk upsert statement (migration mode): 500 × 7 bind params
+ * stays far below driver/statement limits while keeping statements bounded. */
+const BULK_WRITE_CHUNK = 500;
 
 /**
  * Run `fn` in a notification-suppressed scope, additionally suppressing
@@ -315,6 +367,30 @@ async function main() {
   const employerMap = new Map<number, { s2Id: string; stub: boolean }>();
   const employerSeen = new Set<number>();
 
+  // ---- migration-mode bulk-path bookkeeping (see header) ----
+  let flushCount = 0;
+  let flushActiveMs = 0; // wall time spent inside flush() — scan time = loop time minus this
+  let createdRows = 0; // xmax=0 inserts (vs conflict updates) on the bulk path
+  let workersInvalidated = 0;
+  let scanQueueRowsReset = 0;
+  let denormMarkedStale = 0;
+  let denormConfigMissing = false;
+  let denormConfigId: string | null | undefined; // undefined = not yet resolved
+  const resolveDenormConfigId = async (): Promise<string | null> => {
+    if (denormConfigId === undefined) {
+      const configs = await storage.pluginConfigs.getByKindAndPlugin("denorm", "worker_employment");
+      denormConfigId = configs[0]?.id ?? null;
+      if (denormConfigId === null) {
+        denormConfigMissing = true;
+        console.error(
+          "NOTE: no worker_employment denorm config on this target — touched workers cannot be marked stale here; " +
+            "the app's boot-time denorm backfill seeds and recomputes them instead (reported as denormConfigMissing).",
+        );
+      }
+    }
+    return denormConfigId;
+  };
+
   const stagedTitle = async (bundle: string, nid: number): Promise<string | null> => {
     const res = await db.execute(sql`
       SELECT title FROM s1_staging.records WHERE bundle = ${bundle} AND nid = ${nid}
@@ -324,7 +400,8 @@ async function main() {
 
   const flush = async (batch: Group[]): Promise<void> => {
     if (batch.length === 0) return;
-    progress.phase("flush"); // liveness during the write+verify stretch
+    const flushT0 = Date.now();
+    progress.phase("flush"); // liveness during reference resolution
     monthGroups += batch.length;
     for (const g of batch) if (g.tids.size > 1) multiStatusMonths++;
 
@@ -362,8 +439,18 @@ async function main() {
       }
     }
 
-    // write through storage, notifications suppressed
-    const writtenKeys: Array<{ workerId: string; employerId: string; year: number; month: number; hours: number }> = [];
+    // resolve every group to a write row first (unresolved refs are counted
+    // skips, exactly as before; DRY_RUN counts resolvable groups as written)
+    interface WriteRow {
+      workerNid: number; // error messages only — never written
+      workerId: string;
+      employerId: string;
+      year: number;
+      month: number;
+      employmentStatusId: string;
+      hours: number;
+    }
+    const rowsToWrite: WriteRow[] = [];
     for (const g of batch) {
       const worker = workerMap.get(g.workerNid);
       const employer = employerMap.get(g.employerNid);
@@ -387,23 +474,80 @@ async function main() {
         written++;
         continue;
       }
-      const result = await loaderScope(() =>
-        storage.workerHours.upsertWorkerHours({
-          workerId: worker.s2Id,
-          employerId: employer.s2Id,
-          year: g.year,
-          month: g.month,
-          employmentStatusId: tidToStatusId.get(g.latest.hourTypeTid)!,
-          hours: g.hours,
-        }),
-      );
-      if (!result.data) {
-        throw new Error(
-          `upsertWorkerHours returned no row for S1 worker nid ${g.workerNid} ${g.year}-${g.month} — aborting (nothing is silently dropped)`,
-        );
+      rowsToWrite.push({
+        workerNid: g.workerNid,
+        workerId: worker.s2Id,
+        employerId: employer.s2Id,
+        year: g.year,
+        month: g.month,
+        employmentStatusId: tidToStatusId.get(g.latest.hourTypeTid)!,
+        hours: g.hours,
+      });
+    }
+
+    // write through storage, notifications suppressed
+    const writtenKeys: Array<{ workerId: string; employerId: string; year: number; month: number; hours: number }> = [];
+    if (rowsToWrite.length > 0) {
+      progress.phase("write", rowsToWrite.length, { cumulative: true });
+      if (MIGRATION_MODE) {
+        // Migration bulk path (header): bounded multi-row upserts. The
+        // storage method fail-closed-guards on both suppression scopes,
+        // throws when the DB persists fewer rows than sent, and updates
+        // ONLY migration-owned fields on conflict.
+        for (const rows of chunk(rowsToWrite, BULK_WRITE_CHUNK)) {
+          const persisted = await loaderScope(() =>
+            storage.workerHours.bulkUpsertWorkerHoursMigration(
+              rows.map((r) => ({
+                workerId: r.workerId,
+                employerId: r.employerId,
+                year: r.year,
+                month: r.month,
+                employmentStatusId: r.employmentStatusId,
+                hours: r.hours,
+              })),
+            ),
+          );
+          // Set parity: every key sent must come back persisted (guards key
+          // drift, not just the row-count loss the storage method catches).
+          const returned = new Set(persisted.map((p) => `${p.workerId}|${p.employerId}|${p.year}|${p.month}`));
+          for (const r of rows) {
+            if (!returned.has(`${r.workerId}|${r.employerId}|${r.year}|${r.month}`)) {
+              throw new Error(
+                `bulk upsert did not return key for S1 worker nid ${r.workerNid} ${r.year}-${r.month} — aborting (nothing is silently dropped)`,
+              );
+            }
+          }
+          for (const p of persisted) if (p.inserted) createdRows++;
+          for (const r of rows) {
+            writtenKeys.push({ workerId: r.workerId, employerId: r.employerId, year: r.year, month: r.month, hours: r.hours });
+          }
+          written += rows.length;
+          progress.add(rows.length);
+        }
+      } else {
+        // Non-migration path (dev/backstop): the full per-row audited +
+        // eventful storage round trip, unchanged.
+        for (const r of rowsToWrite) {
+          const result = await loaderScope(() =>
+            storage.workerHours.upsertWorkerHours({
+              workerId: r.workerId,
+              employerId: r.employerId,
+              year: r.year,
+              month: r.month,
+              employmentStatusId: r.employmentStatusId,
+              hours: r.hours,
+            }),
+          );
+          if (!result.data) {
+            throw new Error(
+              `upsertWorkerHours returned no row for S1 worker nid ${r.workerNid} ${r.year}-${r.month} — aborting (nothing is silently dropped)`,
+            );
+          }
+          writtenKeys.push({ workerId: r.workerId, employerId: r.employerId, year: r.year, month: r.month, hours: r.hours });
+          written++;
+          progress.add(1);
+        }
       }
-      writtenKeys.push({ workerId: worker.s2Id, employerId: employer.s2Id, year: g.year, month: g.month, hours: g.hours });
-      written++;
     }
 
     // stamp the sidecar for every key this run wrote — right after the
@@ -413,11 +557,36 @@ async function main() {
       await upsertHoursKeys(writtenKeys.map((k) => ({ workerId: k.workerId, employerId: k.employerId, year: k.year, month: k.month })));
     }
 
+    // Downstream correctness (migration bulk path only — the per-row path
+    // runs these side effects row-by-row inside upsertWorkerHours): once per
+    // flush, over the flush's DISTINCT workers. The staged stream is
+    // worker-ordered, so a worker's groups flush exactly once per run and
+    // both bulk mechanisms are at-most-once per worker per run.
+    if (MIGRATION_MODE && !DRY_RUN && writtenKeys.length > 0) {
+      const flushWorkerIds = [...new Set(writtenKeys.map((k) => k.workerId))];
+      workersInvalidated += flushWorkerIds.length;
+      // (a) WMB scan-queue invalidation — replaces per-row
+      // onWorkerDataChanged → invalidateWorkerScans.
+      scanQueueRowsReset += await storage.wmbScanQueue.invalidateWorkerScansBulk(flushWorkerIds);
+      // (b) worker_employment denorm — replaces the HOURS_SAVED-driven
+      // recompute (a no-op in this process anyway): mark every touched
+      // worker stale; the app's denorm cron recomputes from current rows.
+      const configId = await resolveDenormConfigId();
+      if (configId) {
+        for (const ids of chunk(flushWorkerIds, 500)) {
+          denormMarkedStale += await storage.denorm.insertStaleBatch(
+            ids.map((entityId) => ({ entityId, entityType: "worker", configId })),
+          );
+        }
+      }
+    }
+
     // verify: re-read every written key and compare hours exactly
-    if (!DRY_RUN) {
+    if (!DRY_RUN && writtenKeys.length > 0) {
+      progress.phase("verify", writtenKeys.length, { cumulative: true });
       for (let i = 0; i < writtenKeys.length; i += 200) {
-        const chunk = writtenKeys.slice(i, i + 200);
-        const conditions = chunk.map(
+        const keySlice = writtenKeys.slice(i, i + 200);
+        const conditions = keySlice.map(
           (k) =>
             sql`(worker_id = ${k.workerId} AND employer_id = ${k.employerId} AND year = ${k.year} AND month = ${k.month} AND day = 1)`,
         );
@@ -430,7 +599,7 @@ async function main() {
             (r) => [`${r.worker_id}|${r.employer_id}|${r.year}|${r.month}`, r.hours],
           ),
         );
-        for (const k of chunk) {
+        for (const k of keySlice) {
           const hours = found.get(`${k.workerId}|${k.employerId}|${k.year}|${k.month}`);
           if (hours != null && Math.abs(hours - k.hours) < 1e-9) verified++;
           else {
@@ -439,9 +608,23 @@ async function main() {
               verifyMismatchSamples.push(`${k.year}-${String(k.month).padStart(2, "0")}`);
           }
         }
+        progress.add(keySlice.length);
       }
     }
     progress.phase(null);
+    flushActiveMs += Date.now() - flushT0;
+
+    flushCount++;
+    if (CRASH_AFTER_FLUSH > 0 && flushCount >= CRASH_AFTER_FLUSH) {
+      // TEST-ONLY (see const): simulate an operator interruption right after
+      // a completed flush — the process dies before any later flush, the
+      // stale cleanup, and the final report. Everything this run already
+      // flushed is persisted + stamped; a plain re-run converges.
+      console.error(
+        `CRASH INJECTION: S1_T20_CRASH_AFTER_FLUSH=${CRASH_AFTER_FLUSH} — exiting after flush #${flushCount}`,
+      );
+      process.exit(75);
+    }
   };
 
   // ---- worker-ordered keyset paging over staged payperiods ----
@@ -465,7 +648,7 @@ async function main() {
   `);
   progress.phase(null);
 
-  const FLUSH_AT = 1000; // groups buffered across finished workers before a write flush
+  const scanStartMs = Date.now();
   let pending: Group[] = [];
   let currentWorkerKey: number | null = null;
   let lastKey = Number.MIN_SAFE_INTEGER;
@@ -593,6 +776,10 @@ async function main() {
   groups.clear();
   await flush(pending);
   pending = [];
+  // Phase-local accounting: scanning is the loop's wall time minus the time
+  // spent inside flush() (write+stamp+verify); write/verify granularity
+  // comes from the cumulative progress phases.
+  const scanSeconds = Math.max(0, (Date.now() - scanStartMs - flushActiveMs) / 1000);
 
   // ---- stale-key cleanup (SYNC, header): keys not stamped this run lost
   // their staged payperiods (deleted or retargeted in S1) — delete the
@@ -686,6 +873,32 @@ async function main() {
     provenanceCounts,
     hourTypeCounts,
     adoptedKeys,
+    // Migration bulk-path evidence (header): write mechanics + bulk downstream
+    // invalidation counters. Only meaningful on wet migration-mode runs.
+    bulkWritePath: MIGRATION_MODE && !DRY_RUN,
+    ...(MIGRATION_MODE && !DRY_RUN
+      ? {
+          createdRows,
+          downstream: { workersInvalidated, scanQueueRowsReset, denormMarkedStale, denormConfigMissing },
+        }
+      : {}),
+    // Phase-local throughput: staged-row scanning vs month-group writes vs
+    // verification, each over its own active time (not shared wall clock).
+    phaseStats: (() => {
+      const writeStats = progress.stats("write");
+      const verifyStats = progress.stats("verify");
+      const r1 = (x: number) => Math.round(x * 10) / 10;
+      const rate = (s?: { done: number; activeSeconds: number }) =>
+        s && s.activeSeconds > 0 ? Math.round(s.done / s.activeSeconds) : null;
+      return {
+        scanSeconds: r1(scanSeconds),
+        scanRowsPerSec: scanSeconds > 0 ? Math.round(stagedCount / scanSeconds) : null,
+        writeSeconds: r1(writeStats?.activeSeconds ?? 0),
+        writeGroupsPerSec: rate(writeStats),
+        verifySeconds: r1(verifyStats?.activeSeconds ?? 0),
+        verifyKeysPerSec: rate(verifyStats),
+      };
+    })(),
     staleHoursCleanup: cleanupSkipped
       ? { skipped: cleanupSkipped }
       : { staleKeys, deletedRows: staleDeleted, alreadyGone: staleAlreadyGone, deleteFailed: staleDeleteFailed },
