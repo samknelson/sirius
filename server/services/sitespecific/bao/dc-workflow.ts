@@ -22,6 +22,7 @@ import {
 } from "@shared/sitespecific/bao/dc-workflow";
 import { getDcDenialLetterValidityMonths } from "./dc-settings";
 import { denialLetterExpiryYmd } from "@shared/sitespecific/bao/dc-eligibility";
+import { runDcGrantCascadeForCase } from "./dc-grant";
 
 export interface DcCaseReadiness {
   checklist: DcChecklistResult;
@@ -186,7 +187,12 @@ export async function performDcCaseAction(
     reason?: string;
     expectedStatus?: BaoDcCaseStatus;
   },
-): Promise<{ case: BaoDcCase; readiness: DcCaseReadiness }> {
+): Promise<{
+  case: BaoDcCase;
+  readiness: DcCaseReadiness;
+  /** Present on approve: per-month grant/queue/remove outcomes. */
+  grant?: Awaited<ReturnType<typeof runDcGrantCascadeForCase>>;
+}> {
   const dc = storage.baoDisabilityCredit;
   // Serialized on the case's worker: readiness is computed while HOLDING the
   // lock, immediately before the transition, in the same transaction — a
@@ -219,6 +225,14 @@ export async function performDcCaseAction(
         authorUserId: opts.actorUserId,
         body: `Returned to draft: ${opts.reason.trim()}`,
       });
+    }
+    if (action === "approve") {
+      // Grant cascade — same transaction and worker lock as the transition,
+      // so approval and its hours writes commit (or fail) atomically. Runs
+      // on every approve call, so a retry after a partial failure resumes
+      // the remaining `selected` months (already-granted ones are skipped).
+      const grant = await runDcGrantCascadeForCase(caseId, opts.actorUserId);
+      return { case: updated, readiness, grant };
     }
     return { case: updated, readiness };
   });

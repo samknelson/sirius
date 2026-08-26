@@ -9,6 +9,7 @@ import { isStatusBilled } from '../../../ledger/charge/plugins/sitespecific-bao-
 import { withChargeConfigCache } from '../../../../middleware/request-context.js';
 import { withChargeBatchCollector } from '../../../ledger/charge/charge-batch.js';
 import { getDcRetiredDisabilityRowMode } from '../../../../services/sitespecific/bao/dc-settings.js';
+import { isDcFundEmployer } from '../../../../services/sitespecific/bao/dc-grant.js';
 import {
   findUnreportedGapsBetweenFmlaMonths,
   isRetiredDisabilityStatusOption,
@@ -589,6 +590,11 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
     if (!employerId) {
       throw new Error('Wizard is not linked to an employer');
     }
+    if (await isDcFundEmployer(employerId)) {
+      throw new Error(
+        'This employer is the Disability Credit fund attribution record — employer hours uploads are not allowed for it',
+      );
+    }
     const launchArguments = (wizardData || {}).launchArguments || {};
     const year = typeof launchArguments.year === 'number' ? launchArguments.year : parseInt(String(launchArguments.year), 10);
     const month = typeof launchArguments.month === 'number' ? launchArguments.month : parseInt(String(launchArguments.month), 10);
@@ -857,6 +863,13 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
     // Pull enough wizard state to pre-fetch.
     const wizard = await storage.wizards.getById(wizardId);
     const employerId = wizard?.entityId;
+    // The Fund/DC pseudo-employer never receives employer hours uploads —
+    // its hours are written exclusively by the DC grant workflow.
+    if (employerId && (await isDcFundEmployer(employerId))) {
+      throw new Error(
+        'This employer is the Disability Credit fund attribution record — employer hours uploads are not allowed for it',
+      );
+    }
     if (employerId) {
       const launchArguments = ((wizard?.data as any) || {}).launchArguments || {};
       const year =

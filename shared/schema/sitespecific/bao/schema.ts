@@ -1506,6 +1506,21 @@ export const BAO_DC_APPLICABLE_MONTH_STATUSES = ["selected", "queued", "granted"
 /** Annual Disability Credit capacity, in credited work months per calendar year. */
 export const BAO_DC_ANNUAL_MONTH_LIMIT = 6;
 
+/**
+ * Fund/DC pseudo-employer identity. DC grant hours are attributed to this
+ * dedicated employer row (get-or-created by sirius id) so they flow through
+ * the canonical worker-hours + benefit-scan path while every employer
+ * financial / employer-facing boundary can exclude them by employer id.
+ * The row is created with isActive=false so it never appears in active
+ * employer pickers or employer-facing surfaces.
+ */
+export const BAO_DC_FUND_EMPLOYER_SIRIUS_ID = "BAO-DC-FUND";
+export const BAO_DC_FUND_EMPLOYER_NAME = "Fund — Disability Credit";
+/** Employment-status option used for DC grant hours (employed=false so DC
+ * hours never count as qualifying employer hours in shortfall math). */
+export const BAO_DC_EMPLOYMENT_STATUS_CODE = "DC";
+export const BAO_DC_EMPLOYMENT_STATUS_NAME = "Disability Credit";
+
 export const BAO_DC_INTAKE_CHANNELS = ["member_portal", "msr"] as const;
 export type BaoDcIntakeChannel = (typeof BAO_DC_INTAKE_CHANNELS)[number];
 
@@ -1802,6 +1817,11 @@ export const BAO_DC_EVENT_TYPES = [
   "document_uploaded",
   "document_superseded",
   "attestations_updated",
+  // Grant/reconcile lifecycle (013_dc_grant_events)
+  "case_month_granted",
+  "case_month_queued",
+  "case_month_released",
+  "case_month_reconciled",
 ] as const;
 export type BaoDcEventType = (typeof BAO_DC_EVENT_TYPES)[number];
 
@@ -1826,7 +1846,7 @@ export const sitespecificBaoDcEvents = pgTable(
     index("sitespecific_bao_dc_events_worker_idx").on(table.workerId),
     check(
       "sitespecific_bao_dc_events_event_type_check",
-      sql`${table.eventType} IN ('case_opened', 'case_closed', 'case_voided', 'case_month_added', 'case_month_voided', 'denial_letter_recorded', 'denial_letter_voided', 'case_status_changed', 'document_uploaded', 'document_superseded', 'attestations_updated')`,
+      sql`${table.eventType} IN ('case_opened', 'case_closed', 'case_voided', 'case_month_added', 'case_month_voided', 'denial_letter_recorded', 'denial_letter_voided', 'case_status_changed', 'document_uploaded', 'document_superseded', 'attestations_updated', 'case_month_granted', 'case_month_queued', 'case_month_released', 'case_month_reconciled')`,
     ),
   ],
 );

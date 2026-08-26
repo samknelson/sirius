@@ -45,6 +45,11 @@ import {
   workerHours,
   trustWmb,
   files,
+  employers,
+  BAO_DC_FUND_EMPLOYER_SIRIUS_ID,
+  BAO_DC_FUND_EMPLOYER_NAME,
+  BAO_DC_EMPLOYMENT_STATUS_CODE,
+  BAO_DC_EMPLOYMENT_STATUS_NAME,
   sitespecificBaoDcCases,
   sitespecificBaoDcCaseMonths,
   sitespecificBaoDcDenialLetters,
@@ -58,6 +63,7 @@ import {
   type BaoDcCaseMonth,
   type BaoDcCaseNote,
   type BaoDcCaseStatus,
+  type BaoDcMonthStatus,
   type BaoDcDenialLetter,
   type BaoDcDocument,
   type BaoDcDocumentType,
@@ -229,6 +235,67 @@ export interface BaoDisabilityCreditStorage {
   // Event log ----------------------------------------------------------------
   listEventsForWorker(workerId: string): Promise<BaoDcEvent[]>;
   listEventsForCase(caseId: string): Promise<BaoDcEvent[]>;
+
+  // Grant / reconcile primitives (used by the DC grant service) -------------
+  /**
+   * Run `fn` inside a transaction holding the worker's DC advisory lock —
+   * the same lock withCaseSerialization takes, for callers that start from a
+   * worker (reconciliation, queued release) instead of a case.
+   */
+  withWorkerSerialization<T>(workerId: string, fn: () => Promise<T>): Promise<T>;
+  /**
+   * Get-or-create the Fund/DC pseudo-employer (by reserved sirius id,
+   * isActive=false) and the Disability Credit employment-status option
+   * (employed=false). Serialized by a global advisory lock so concurrent
+   * first grants cannot create duplicates.
+   */
+  ensureDcFundIdentities(): Promise<{ employerId: string; employmentStatusId: string }>;
+  /**
+   * Sum of the worker's qualifying hours for a work month: hours > 0 whose
+   * employment status is employed OR FMLA, excluding the given employer
+   * (the DC pseudo-employer — DC hours never count toward their own
+   * shortfall). The DC status itself is employed=false and non-FMLA, so DC
+   * rows are excluded twice over.
+   */
+  getQualifyingHoursForWorkerMonth(
+    workerId: string,
+    year: number,
+    month: number,
+    excludeEmployerId: string,
+  ): Promise<number>;
+  /** Single (worker, employer, month) hours row — id + hours (day 1 rows). */
+  getHoursRowsForWorkerEmployerMonth(
+    workerId: string,
+    employerId: string,
+    year: number,
+    month: number,
+  ): Promise<Array<{ id: string; day: number; hours: number | null }>>;
+  getMonthById(monthId: string): Promise<BaoDcCaseMonth | undefined>;
+  /** The single non-removed month row for worker + work month, if any. */
+  getApplicableMonthForWorkerMonth(
+    workerId: string,
+    workMonthYmd: string,
+  ): Promise<BaoDcCaseMonth | undefined>;
+  /** All queued months across workers, oldest work month first. */
+  listQueuedMonths(): Promise<BaoDcCaseMonth[]>;
+  /**
+   * Apply a grant-lifecycle month transition (status/void-reason/data merge)
+   * and durably record its typed event under the given dedupe key — one
+   * transactional write, at-most-once emission per key.
+   */
+  applyMonthGrantTransition(
+    monthId: string,
+    input: {
+      status?: BaoDcMonthStatus;
+      voidReason?: string | null;
+      data?: Record<string, unknown>;
+      event: {
+        type: BaoDcEventType;
+        dedupeKey: string;
+        payload: Record<string, unknown>;
+      };
+    },
+  ): Promise<BaoDcCaseMonth>;
 
   // Eligibility inputs (canonical reads used by the DC eligibility service) --
   getFmlaMonthsForWorker(
@@ -1022,6 +1089,233 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
         .from(eventsTable)
         .where(eq(eventsTable.caseId, caseId))
         .orderBy(asc(eventsTable.createdAt), asc(eventsTable.id));
+    },
+
+    async withWorkerSerialization<T>(workerId: string, fn: () => Promise<T>): Promise<T> {
+      await requireTables(this);
+      return runInTransaction(async () => {
+        await lockWorker(workerId);
+        return fn();
+      });
+    },
+
+    async ensureDcFundIdentities(): Promise<{ employerId: string; employmentStatusId: string }> {
+      const client = getClient();
+      const findEmployer = async () => {
+        const rows = await client
+          .select({ id: employers.id })
+          .from(employers)
+          .where(eq(employers.siriusId, BAO_DC_FUND_EMPLOYER_SIRIUS_ID));
+        return rows[0]?.id;
+      };
+      const isDcStatusRow = (o: { name: string; code: string | null }) =>
+        normalizeStatusText(o.code || "") === normalizeStatusText(BAO_DC_EMPLOYMENT_STATUS_CODE) ||
+        normalizeStatusText(o.name) === normalizeStatusText(BAO_DC_EMPLOYMENT_STATUS_NAME);
+      const findStatus = async () => {
+        const rows = await client
+          .select({
+            id: optionsEmploymentStatus.id,
+            name: optionsEmploymentStatus.name,
+            code: optionsEmploymentStatus.code,
+          })
+          .from(optionsEmploymentStatus);
+        return rows.find(isDcStatusRow)?.id;
+      };
+
+      let employerId = await findEmployer();
+      let employmentStatusId = await findStatus();
+      if (employerId && employmentStatusId) return { employerId, employmentStatusId };
+
+      // Create missing identities under a global advisory lock so concurrent
+      // first grants (different workers → different worker locks) cannot
+      // race duplicate rows; the options table has no unique code index.
+      return runInTransaction(async () => {
+        await client.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended('bao-dc-fund-identities', 0))`,
+        );
+        employerId = await findEmployer();
+        if (!employerId) {
+          const [created] = await client
+            .insert(employers)
+            .values({
+              name: BAO_DC_FUND_EMPLOYER_NAME,
+              siriusId: BAO_DC_FUND_EMPLOYER_SIRIUS_ID,
+              // Never an active employer: keeps the pseudo-employer out of
+              // active-employer pickers and employer-facing surfaces.
+              isActive: false,
+            })
+            .onConflictDoNothing({ target: employers.siriusId })
+            .returning({ id: employers.id });
+          employerId = created?.id ?? (await findEmployer());
+        }
+        employmentStatusId = await findStatus();
+        if (!employmentStatusId) {
+          const [created] = await client
+            .insert(optionsEmploymentStatus)
+            .values({
+              name: BAO_DC_EMPLOYMENT_STATUS_NAME,
+              code: BAO_DC_EMPLOYMENT_STATUS_CODE,
+              // employed=false: DC hours must never count as qualifying
+              // employer hours (and never make the pseudo-employer look
+              // like an "active employer" to threshold resolution).
+              employed: false,
+              description:
+                "System status for Fund-attributed Disability Credit grant hours",
+            })
+            .returning({ id: optionsEmploymentStatus.id });
+          employmentStatusId = created.id;
+        }
+        if (!employerId || !employmentStatusId) {
+          throw new Error("DC_FUND_IDENTITY_PROVISIONING_FAILED");
+        }
+        return { employerId, employmentStatusId };
+      });
+    },
+
+    async getQualifyingHoursForWorkerMonth(
+      workerId: string,
+      year: number,
+      month: number,
+      excludeEmployerId: string,
+    ): Promise<number> {
+      const client = getClient();
+      const statuses = await client
+        .select({
+          id: optionsEmploymentStatus.id,
+          name: optionsEmploymentStatus.name,
+          code: optionsEmploymentStatus.code,
+          employed: optionsEmploymentStatus.employed,
+        })
+        .from(optionsEmploymentStatus);
+      const qualifyingIds = statuses
+        .filter((s) => s.employed || isFmlaStatusRow(s))
+        .map((s) => s.id);
+      if (qualifyingIds.length === 0) return 0;
+      const rows = await client
+        .select({ total: sql<string>`COALESCE(SUM(${workerHours.hours}), 0)` })
+        .from(workerHours)
+        .where(
+          and(
+            eq(workerHours.workerId, workerId),
+            eq(workerHours.year, year),
+            eq(workerHours.month, month),
+            ne(workerHours.employerId, excludeEmployerId),
+            inArray(workerHours.employmentStatusId, qualifyingIds),
+            sql`${workerHours.hours} > 0`,
+          ),
+        );
+      return Number(rows[0]?.total ?? 0);
+    },
+
+    async getHoursRowsForWorkerEmployerMonth(
+      workerId: string,
+      employerId: string,
+      year: number,
+      month: number,
+    ): Promise<Array<{ id: string; day: number; hours: number | null }>> {
+      return getClient()
+        .select({ id: workerHours.id, day: workerHours.day, hours: workerHours.hours })
+        .from(workerHours)
+        .where(
+          and(
+            eq(workerHours.workerId, workerId),
+            eq(workerHours.employerId, employerId),
+            eq(workerHours.year, year),
+            eq(workerHours.month, month),
+          ),
+        )
+        .orderBy(asc(workerHours.day));
+    },
+
+    async getMonthById(monthId: string): Promise<BaoDcCaseMonth | undefined> {
+      await requireTables(this);
+      const rows = await getClient()
+        .select()
+        .from(monthsTable)
+        .where(eq(monthsTable.id, monthId));
+      return rows[0];
+    },
+
+    async getApplicableMonthForWorkerMonth(
+      workerId: string,
+      workMonthYmd: string,
+    ): Promise<BaoDcCaseMonth | undefined> {
+      await requireTables(this);
+      const rows = await getClient()
+        .select()
+        .from(monthsTable)
+        .where(
+          and(
+            eq(monthsTable.workerId, workerId),
+            eq(monthsTable.workMonthYmd, workMonthYmd),
+            ne(monthsTable.status, "removed"),
+          ),
+        );
+      return rows[0];
+    },
+
+    async listQueuedMonths(): Promise<BaoDcCaseMonth[]> {
+      await requireTables(this);
+      return getClient()
+        .select()
+        .from(monthsTable)
+        .where(eq(monthsTable.status, "queued"))
+        .orderBy(asc(monthsTable.workMonthYmd), asc(monthsTable.createdAt), asc(monthsTable.id));
+    },
+
+    async applyMonthGrantTransition(
+      monthId: string,
+      input: {
+        status?: BaoDcMonthStatus;
+        voidReason?: string | null;
+        data?: Record<string, unknown>;
+        event: {
+          type: BaoDcEventType;
+          dedupeKey: string;
+          payload: Record<string, unknown>;
+        };
+      },
+    ): Promise<BaoDcCaseMonth> {
+      await requireTables(this);
+      return runInTransaction(async () => {
+        const [existing] = await getClient()
+          .select()
+          .from(monthsTable)
+          .where(eq(monthsTable.id, monthId));
+        if (!existing) throw new Error("MONTH_NOT_FOUND");
+        await lockWorker(existing.workerId);
+        const updates: Record<string, unknown> = {};
+        if (input.status !== undefined) updates.status = input.status;
+        if (input.voidReason !== undefined) updates.voidReason = input.voidReason;
+        if (input.data !== undefined) {
+          const prior =
+            existing.data && typeof existing.data === "object" && !Array.isArray(existing.data)
+              ? (existing.data as Record<string, unknown>)
+              : {};
+          updates.data = { ...prior, ...input.data };
+        }
+        let updated = existing;
+        if (Object.keys(updates).length > 0) {
+          const rows = await getClient()
+            .update(monthsTable)
+            .set(updates)
+            .where(eq(monthsTable.id, monthId))
+            .returning();
+          updated = rows[0];
+        }
+        await recordAndEmitDcEvent({
+          eventType: input.event.type,
+          workerId: existing.workerId,
+          caseId: existing.caseId,
+          dedupeKey: input.event.dedupeKey,
+          payload: {
+            workMonthYmd: existing.workMonthYmd,
+            monthId: existing.id,
+            ...input.event.payload,
+          },
+        });
+        return updated;
+      });
     },
 
     async getFmlaMonthsForWorker(

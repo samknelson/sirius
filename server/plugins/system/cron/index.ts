@@ -200,6 +200,7 @@ import "./plugins/baoDpBilling";
 import "./plugins/baoCobraStatusScan";
 import "./plugins/baoMemberStatusScan";
 import "./plugins/baoCobraCaseReconcile";
+import "./plugins/baoDcReleaseQueued";
 import "./plugins/dispatchJobPoll";
 import "./plugins/bulkDeliver";
 import "./plugins/t631DispatchJobGroupFetch";

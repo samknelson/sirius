@@ -142,6 +142,17 @@ class BaoHourlyChargePlugin extends ChargePlugin {
       return null;
     }
 
+    // Fund-attributed Disability Credit hours are NEVER employer financial
+    // liability: the DC pseudo-employer can hold no rate row, but the guard
+    // is explicit so no future rate/config mistake can create a charge (and
+    // therefore no delinquency or damages) from DC grant hours.
+    const { isDcFundEmployer } = await import(
+      "../../../../services/sitespecific/bao/dc-grant"
+    );
+    if (await isDcFundEmployer(hoursContext.employerId)) {
+      return null;
+    }
+
     if (!isStatusBilled(settings, hoursContext.employmentStatusId)) {
       return null;
     }

@@ -471,6 +471,10 @@ export interface BaoDcCaseSavedPayload {
   caseId: string;
   workerId: string;
   dcEventType:
+    | "case_month_granted"
+    | "case_month_queued"
+    | "case_month_released"
+    | "case_month_reconciled"
     | "case_opened"
     | "case_closed"
     | "case_voided"
