@@ -276,7 +276,10 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       policies: { allowRejects: ["policy_unmatched_unreferenced"] },
       "employer-policies": {},
       "employer-rates": {},
-      relationships: {},
+      // Fund ruling 2026-08-26 (mmcdermott4): future-dated relationship
+      // starts are valid source data and may load; keep the reject visible in
+      // the report while allowing the fleet to complete.
+      relationships: { allowRejects: ["future_start_date"] },
       "employee-ids": {},
       elections: { allowRejects: ["end_not_after_start", "worker_unmapped"] },
       "benefit-history": {

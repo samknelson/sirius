@@ -23,9 +23,11 @@
  *     end >= start. N26 ruling (2026-08-05): rows with NO start date load
  *     with defaults (start 2000-01-01; end keeps a real S1 end, else
  *     2000-01-02; data.datesDefaulted=true) — prod measured 115 such rows.
- *     The 2 future-start rows were fixed in S1 by the fund; future_start_date
- *     stays a fatal tripwire (expect 0 in prod), as do bad_start_date
- *     (present but unparseable), bad_end_date, and end_before_start.
+ *     Future-start rows are allowed when the production profile has the fund's
+ *     explicit `future_start_date` ruling; the loader still reports them and
+ *     does not write them because the S2 storage contract rejects future
+ *     starts. `bad_start_date` (present but unparseable), `bad_end_date`, and
+ *     `end_before_start` remain fatal.
  *     Active=No with no end date end-dates from node.changed (documented
  *     convention; defaulted rows always carry an end already).
  *   - field_sirius_count → data.sequence (ordering, not a quantity — Q14).
