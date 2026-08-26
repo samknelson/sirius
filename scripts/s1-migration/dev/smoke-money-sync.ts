@@ -165,7 +165,7 @@ function assertNoOrdinaryBilling(loader: string, before: MoneySnapshot, after: M
 // S1_RESULT_JSON_PATH, same pattern as smoke-sync-foundation.
 // ---------------------------------------------------------------------------
 let runSeq = 0;
-async function runLoader(script: string, args: string[]): Promise<{ code: number; result: LoaderResult | null; stdout: string; stderr: string }> {
+async function runLoader(script: string, args: string[], extraEnv?: Record<string, string>): Promise<{ code: number; result: LoaderResult | null; stdout: string; stderr: string }> {
   // The parent smoke owns the snapshot because each loader is a child process.
   // Every run, including edit/sweep cases, must leave ordinary billing untouched.
   const before = await moneySnapshot();
@@ -173,7 +173,7 @@ async function runLoader(script: string, args: string[]): Promise<{ code: number
   const t0 = Date.now();
   const proc = spawnSync("npx", ["tsx", `scripts/s1-migration/${script}`, ...args], {
     cwd: process.cwd(),
-    env: { ...process.env, S1_RESULT_JSON_PATH: resultPath },
+    env: { ...process.env, ...(extraEnv ?? {}), S1_RESULT_JSON_PATH: resultPath },
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,
   });
@@ -779,6 +779,29 @@ async function phaseHours(): Promise<void> {
   check("hrs run1: cleanup ran (not skipped)", d1.staleHoursCleanup?.skipped == null, JSON.stringify(d1.staleHoursCleanup));
   const keyCount = rowsOf(await db.execute(sql`SELECT count(*)::int AS n FROM s1_staging.hours_keys`))[0];
   check("hrs run1: sidecar populated", Number(keyCount.n) > 0 && Number(keyCount.n) === Number(d1.written), `keys=${keyCount.n} written=${d1.written}`);
+  // Task 356 bulk write path: evidence + bulk downstream invalidation.
+  // Zero migration-generated charges is enforced by assertNoOrdinaryBilling
+  // inside runLoader (the runnable bao-hourly fixture is installed for the
+  // whole hours phase) — written>0 makes that assertion meaningful.
+  check("hrs run1: bulk write path used", d1.bulkWritePath === true, JSON.stringify({ bulkWritePath: d1.bulkWritePath }));
+  check("hrs run1: wrote groups with runnable charge fixture active (zero billing asserted per run)", Number(d1.written) > 0, `written=${d1.written}`);
+  check(
+    "hrs run1: bulk downstream invalidation counters",
+    d1.downstream != null &&
+      Number(d1.downstream.workersInvalidated) > 0 &&
+      Number(d1.downstream.scanQueueRowsReset) >= 0 &&
+      Number(d1.downstream.denormMarkedStale) >= 0 &&
+      typeof d1.downstream.denormConfigMissing === "boolean",
+    JSON.stringify(d1.downstream),
+  );
+  check(
+    "hrs run1: phase-local stats reported (scan vs write vs verify)",
+    d1.phaseStats != null &&
+      typeof d1.phaseStats.scanSeconds === "number" &&
+      typeof d1.phaseStats.writeSeconds === "number" &&
+      typeof d1.phaseStats.verifySeconds === "number",
+    JSON.stringify(d1.phaseStats),
+  );
 
   // pick a single-payperiod group whose worker+employer resolve
   const groups = await payperiodGroups();
@@ -840,6 +863,103 @@ async function phaseHours(): Promise<void> {
   check("hrs run5 (restore): exit 0", r5.code === 0);
   check("hrs run5: old month row back", (await s2HoursRow(target.workerId, target.employerId, target.year, target.month)) !== null);
   check("hrs run5: moved month row cleaned", (await s2HoursRow(target.workerId, target.employerId, mv.year, mv.month)) === null);
+
+  // ---- bulk conflict semantics: row identity + staff-owned fields survive,
+  // migration-owned hours reasserted (task 356) ----
+  console.log("== phase: hours (bulk conflict preservation) ==");
+  const rowBefore = rowsOf(await db.execute(sql`
+    SELECT id, hours, home, job_title FROM worker_hours
+     WHERE worker_id = ${target.workerId} AND employer_id = ${target.employerId}
+       AND year = ${target.year} AND month = ${target.month} AND day = 1
+  `))[0];
+  check("hrs preserve: baseline row present", rowBefore != null);
+  if (!rowBefore) return;
+  const rowId = String(rowBefore.id);
+  const trueHours = Number(rowBefore.hours);
+  const prevHome = Boolean(rowBefore.home);
+  const prevTitle = rowBefore.job_title == null ? null : String(rowBefore.job_title);
+  try {
+    // flip staff-owned fields + corrupt the migration-owned aggregate
+    await db.execute(sql`
+      UPDATE worker_hours SET home = ${!prevHome}, job_title = '__t356-preserve', hours = ${trueHours + 7.25}
+       WHERE id = ${rowId}
+    `);
+    const r6 = await runLoader(T20, T20_FLAGS);
+    check("hrs run6 (conflict update): exit 0", r6.code === 0);
+    check("hrs run6: verify pass", r6.result?.verify.status === "pass", JSON.stringify(r6.result?.verify));
+    const rowAfter = rowsOf(await db.execute(sql`
+      SELECT id, hours, home, job_title FROM worker_hours
+       WHERE worker_id = ${target.workerId} AND employer_id = ${target.employerId}
+         AND year = ${target.year} AND month = ${target.month} AND day = 1
+    `))[0];
+    check("hrs run6: row identity preserved (same id)", rowAfter != null && String(rowAfter.id) === rowId);
+    check("hrs run6: migration-owned hours reasserted", rowAfter != null && Math.abs(Number(rowAfter.hours) - trueHours) < 1e-9, `hours=${rowAfter?.hours} want=${trueHours}`);
+    check("hrs run6: staff-owned home preserved", rowAfter != null && Boolean(rowAfter.home) === !prevHome, `home=${rowAfter?.home} want=${!prevHome}`);
+    check("hrs run6: staff-owned job_title preserved", rowAfter != null && String(rowAfter.job_title) === "__t356-preserve", `jobTitle=${rowAfter?.job_title}`);
+  } finally {
+    await db.execute(sql`UPDATE worker_hours SET home = ${prevHome}, job_title = ${prevTitle} WHERE id = ${rowId}`);
+  }
+
+  // ---- interruption recovery: a crash right after a completed flush leaves
+  // stale cleanup unreachable; a plain re-run (same command, no reset)
+  // resumes, converges, and only then cleans up (task 356) ----
+  console.log("== phase: hours (interruption recovery) ==");
+  try {
+    await db.execute(sql`DELETE FROM s1_staging.records WHERE bundle = 'sirius_payperiod' AND nid = ${ppNid}`);
+    const rc = await runLoader(T20, T20_FLAGS, { S1_T20_FLUSH_AT: "5", S1_T20_CRASH_AFTER_FLUSH: "1" });
+    check("hrs crash: injected crash exits non-zero", rc.code !== 0, `code=${rc.code}`);
+    check("hrs crash: stale S2 row survives interruption (cleanup unreachable)",
+      (await s2HoursRow(target.workerId, target.employerId, target.year, target.month)) !== null);
+    check("hrs crash: sidecar key survives interruption",
+      await hoursKeyExists(target.workerId, target.employerId, target.year, target.month));
+    const rr = await runLoader(T20, T20_FLAGS);
+    check("hrs resume: exit 0 (no reset needed)", rr.code === 0);
+    check("hrs resume: deleted=1 (cleanup ran only after the full verified run)", rr.result!.summary.deleted === 1, JSON.stringify(rr.result!.summary));
+    check("hrs resume: stale S2 row gone", (await s2HoursRow(target.workerId, target.employerId, target.year, target.month)) === null);
+    check("hrs resume: sidecar key gone", !(await hoursKeyExists(target.workerId, target.employerId, target.year, target.month)));
+  } finally {
+    await upsertRecords([saved]);
+  }
+  const rHeal = await runLoader(T20, T20_FLAGS);
+  check("hrs heal after interruption phase: exit 0", rHeal.code === 0);
+  check("hrs heal: S2 row back", (await s2HoursRow(target.workerId, target.employerId, target.year, target.month)) !== null);
+
+  // ---- verify-failure gate: a BEFORE trigger perturbs ONE key's stored
+  // hours so persisted != expected — run must fail verify, skip cleanup,
+  // delete nothing (task 356) ----
+  console.log("== phase: hours (verify-failure gate) ==");
+  try {
+    // UUID/int literals from our own DB — utility statements cannot take
+    // bind params, so the trigger body is built with sql.raw.
+    await db.execute(sql.raw(`
+      CREATE OR REPLACE FUNCTION __t356_perturb_hours() RETURNS trigger AS $t356$
+      BEGIN
+        IF NEW.worker_id = '${target.workerId}' AND NEW.employer_id = '${target.employerId}'
+           AND NEW.year = ${target.year} AND NEW.month = ${target.month} AND NEW.day = 1 THEN
+          NEW.hours := COALESCE(NEW.hours, 0) + 1234.5;
+        END IF;
+        RETURN NEW;
+      END $t356$ LANGUAGE plpgsql
+    `));
+    await db.execute(sql.raw(`
+      CREATE TRIGGER __t356_perturb_hours_trg BEFORE INSERT OR UPDATE ON worker_hours
+      FOR EACH ROW EXECUTE FUNCTION __t356_perturb_hours()
+    `));
+    const rv = await runLoader(T20, T20_FLAGS);
+    const dv = rv.result?.detail as Record<string, any> | undefined;
+    check("hrs verify-fail: exit non-zero", rv.code !== 0, `code=${rv.code}`);
+    check("hrs verify-fail: verify status fail", rv.result?.verify.status === "fail", JSON.stringify(rv.result?.verify));
+    check("hrs verify-fail: exactly one mismatch", dv?.verifyMismatchCount === 1, `n=${dv?.verifyMismatchCount}`);
+    check("hrs verify-fail: cleanup skipped (verify_failed)", dv?.staleHoursCleanup?.skipped === "verify_failed", JSON.stringify(dv?.staleHoursCleanup));
+    check("hrs verify-fail: no rows deleted", rv.result?.summary.deleted === 0, JSON.stringify(rv.result?.summary));
+  } finally {
+    await db.execute(sql.raw(`DROP TRIGGER IF EXISTS __t356_perturb_hours_trg ON worker_hours`));
+    await db.execute(sql.raw(`DROP FUNCTION IF EXISTS __t356_perturb_hours()`));
+  }
+  const rFix = await runLoader(T20, T20_FLAGS);
+  check("hrs verify-fail heal: exit 0", rFix.code === 0);
+  const healed = await s2HoursRow(target.workerId, target.employerId, target.year, target.month);
+  check("hrs verify-fail heal: perturbed hours reasserted", healed != null && Math.abs(healed.hours - trueHours) < 1e-9, JSON.stringify(healed));
 }
 
 // ---------------------------------------------------------------------------
