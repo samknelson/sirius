@@ -399,8 +399,8 @@ async function main() {
         canonicalJson(desiredData) !== canonicalJson(rowData);
       if (drift) {
         try {
-          await withNotificationsSuppressed(() =>
-            storage.workerRelations.update(mapped.s2Id, {
+          const updated = await withNotificationsSuppressed(() =>
+            storage.workerRelations.reconcileFromMigration(mapped.s2Id, {
               worker1: w1.s2Id,
               worker2: w2Id!,
               startYmd,
@@ -409,12 +409,22 @@ async function main() {
               data: desiredData,
             }),
           );
+          if (!updated) {
+            console.error(`VERIFY: relation nid ${r.nid} maps to missing row ${mapped.s2Id}`);
+            verifyFailedNids.add(r.nid);
+            continue;
+          }
           if (endpointDrift) stats.endpointsRetargeted++;
           if (endDatedFromChanged) stats.endDatedFromChanged++;
           stats.updated++;
           summary.updated++;
         } catch (err) {
-          rejects.add("relation_update_failed", { nid: r.nid, code: sanitizeStorageError(err) }, r.nid);
+          const code = sanitizeStorageError(err);
+          rejects.add(
+            code === "duplicate_overlapping_relation" ? "duplicate_overlapping_relation" : "relation_update_failed",
+            { nid: r.nid, code },
+            r.nid,
+          );
           continue; // no fingerprint advance — retries next run
         }
       } else {

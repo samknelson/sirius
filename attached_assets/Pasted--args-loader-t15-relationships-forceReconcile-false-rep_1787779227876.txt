@@ -1,0 +1,177 @@
+{
+  "args": {
+    "loader": "t15-relationships",
+    "forceReconcile": false
+  },
+  "report": {
+    "detail": {
+      "sweep": {
+        "deleted": 0,
+        "candidates": 0,
+        "alreadyHandled": 0
+      },
+      "relations": {
+        "created": 2,
+        "matched": 18,
+        "updated": 0,
+        "datesDefaulted": 0,
+        "shellWorkersReused": 18,
+        "endDatedFromChanged": 0,
+        "endpointsRetargeted": 0,
+        "shellWorkersCreated": 0,
+        "datesDefaultedActiveYes": 0
+      },
+      "fastPathSkips": 35806,
+      "rejectSamples": {
+        "future_start_date": [
+          {
+            "nid": 18214627,
+            "startYmd": "2026-09-01"
+          },
+          {
+            "nid": 18246837,
+            "startYmd": "2026-09-01"
+          },
+          {
+            "nid": 18246839,
+            "startYmd": "2026-09-01"
+          }
+        ],
+        "alt_contact_unmapped": [
+          {
+            "nid": 17042386,
+            "altContactNid": 17042384
+          }
+        ],
+        "relation_update_failed": [
+          {
+            "nid": 7089216,
+            "code": "validation_worker2"
+          },
+          {
+            "nid": 7099800,
+            "code": "validation_worker2"
+          },
+          {
+            "nid": 7100925,
+            "code": "validation_worker2"
+          },
+          {
+            "nid": 7160462,
+            "code": "validation_worker2"
+          },
+          {
+            "nid": 7164464,
+            "code": "validation_worker2"
+          },
+          {
+            "nid": 7166118,
+            "code": "validation_worker2"
+          },
+          {
+            "nid": 12777792,
+            "code": "validation_worker2"
+          },
+          {
+            "nid": 13109831,
+            "code": "validation_worker2"
+          },
+          {
+            "nid": 16832663,
+            "code": "validation_worker2"
+          },
+          {
+            "nid": 16832665,
+            "code": "validation_worker2"
+          },
+          {
+            "nid": 16832667,
+            "code": "validation_worker2"
+          },
+          {
+            "nid": 16832669,
+            "code": "validation_worker2"
+          },
+          {
+            "nid": 16838912,
+            "code": "validation_worker2"
+          },
+          {
+            "nid": 16927157,
+            "code": "validation_worker2"
+          },
+          {
+            "nid": 16927159,
+            "code": "validation_worker2"
+          },
+          {
+            "nid": 16927161,
+            "code": "validation_worker2"
+          },
+          {
+            "nid": 17057888,
+            "code": "validation_worker2"
+          },
+          {
+            "nid": 17059572,
+            "code": "validation_worker2"
+          }
+        ],
+        "duplicate_overlapping_relation": [
+          {
+            "nid": 13413292,
+            "code": "duplicate_overlapping_relation"
+          }
+        ]
+      },
+      "stagedRelationships": 35831
+    },
+    "dryRun": false,
+    "loader": "t15-relationships",
+    "verify": {
+      "status": "pass",
+      "failures": 0
+    },
+    "summary": {
+      "created": 2,
+      "deleted": 0,
+      "updated": 0,
+      "rejected": 23,
+      "unchanged": 35806,
+      "reportOnly": 0,
+      "deactivated": 0
+    },
+    "findings": [],
+    "rejectGate": {
+      "counts": {
+        "future_start_date": 3,
+        "alt_contact_unmapped": 1,
+        "relation_update_failed": 18,
+        "duplicate_overlapping_relation": 1
+      },
+      "status": "fail",
+      "allowed": [],
+      "disallowed": [
+        {
+          "count": 18,
+          "reason": "relation_update_failed"
+        },
+        {
+          "count": 1,
+          "reason": "duplicate_overlapping_relation"
+        },
+        {
+          "count": 1,
+          "reason": "alt_contact_unmapped"
+        },
+        {
+          "count": 3,
+          "reason": "future_start_date"
+        }
+      ]
+    },
+    "logicVersion": 1,
+    "forceReconcile": false,
+    "blockingFindings": []
+  }
+}

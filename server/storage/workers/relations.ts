@@ -80,6 +80,13 @@ export interface WorkerRelationsStorage {
   listByIdsWithType(ids: string[]): Promise<WorkerRelationWithTypeName[]>;
   create(data: InsertWorkerRelation): Promise<WorkerRelation>;
   update(id: string, data: Partial<InsertWorkerRelation>): Promise<WorkerRelation | undefined>;
+  /**
+   * Migration-only reconciliation path. Unlike the normal staff-facing
+   * update contract, this may retarget worker endpoints when S1 identity
+   * resolution changes (for example, replacing a migration shell with the
+   * real worker). The HTTP routes never expose this method.
+   */
+  reconcileFromMigration(id: string, data: Partial<InsertWorkerRelation>): Promise<WorkerRelation | undefined>;
   delete(id: string): Promise<boolean>;
 }
 
@@ -457,6 +464,45 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
         const rangeChanged =
           existing.startYmd !== updated.startYmd || existing.endYmd !== updated.endYmd;
         if (rangeChanged) emitWorkerRelationSaved(existing, 'updated');
+        emitWorkerRelationSaved(updated, 'updated');
+      }
+      return updated;
+    },
+
+    async reconcileFromMigration(id: string, data: Partial<InsertWorkerRelation>): Promise<WorkerRelation | undefined> {
+      const client = getClient();
+      const [existing] = await client.select().from(workerRelations).where(eq(workerRelations.id, id));
+      if (!existing) return undefined;
+
+      // Reuse every normal relation invariant (endpoint existence/distinctness,
+      // relation type, dates, and overlap). The only difference from update()
+      // is that migration reconciliation may replace worker_1/worker_2.
+      const validated = await validateRelation(data, existing);
+      await assertNoDuplicateRelation(validated, id);
+
+      const updateValues: Partial<InsertWorkerRelation> = {
+        worker1: validated.worker1,
+        worker2: validated.worker2,
+        relationType: validated.relationType,
+        startYmd: validated.startYmd,
+        endYmd: validated.endYmd,
+      };
+      if (data.data !== undefined) updateValues.data = data.data;
+
+      const [updated] = await client
+        .update(workerRelations)
+        .set(updateValues)
+        .where(eq(workerRelations.id, id))
+        .returning();
+      if (updated) {
+        // Retargeting must rescan both the old and new endpoint scopes, just as
+        // moving the date range must rescan both the old and new periods.
+        const scopeChanged =
+          existing.worker1 !== updated.worker1 ||
+          existing.worker2 !== updated.worker2 ||
+          existing.startYmd !== updated.startYmd ||
+          existing.endYmd !== updated.endYmd;
+        if (scopeChanged) emitWorkerRelationSaved(existing, 'updated');
         emitWorkerRelationSaved(updated, 'updated');
       }
       return updated;
