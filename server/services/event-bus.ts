@@ -58,6 +58,7 @@ export enum EventType {
   BAO_COBRA_CASE_SAVED = "bao.cobra.case.saved",
   BAO_DC_CASE_SAVED = "bao.dc.case.saved",
   BAO_DC_DENIAL_LETTER_SAVED = "bao.dc.denial-letter.saved",
+  BAO_CASE_STATUS_SAVED = "bao.case.status.saved",
   LEDGER_ENTRY_SAVED = "ledger.entry.saved",
   WORKER_EMPLOYMENT_SAVED = "worker.employment.saved",
   EMPLOYER_INDUSTRY_SAVED = "employer.industry.saved",
@@ -485,6 +486,29 @@ export interface BaoDcCaseSavedPayload {
 }
 
 /**
+ * Emitted after a generic BAO case is created or a lifecycle update
+ * commits. Carries the committed case row plus the previous/current
+ * status identity and event-time display names, so listeners (the
+ * `bao_case_status` notifier) can filter genuine transitions and render
+ * a message that later case edits cannot rewrite. Emitted via
+ * onAfterCommit — never for rolled-back writes.
+ */
+export interface BaoCaseStatusSavedPayload {
+  caseId: string;
+  entityType: string;
+  entityId: string;
+  /** The committed case row as this write left it. */
+  row: import("@shared/schema").BaoCase;
+  /** null on creation; the pre-write status id on updates. */
+  previousStatusId: string | null;
+  statusId: string;
+  /** Event-time display names, captured inside the writing transaction. */
+  statusName: string;
+  entityName: string | null;
+  operation: "created" | "updated";
+}
+
+/**
  * Emitted after a Disability Credit denial letter is recorded or voided.
  * Same idempotent claim-before-emit contract as BAO_DC_CASE_SAVED.
  */
@@ -708,6 +732,7 @@ export interface EventPayloadMap {
   [EventType.BAO_COBRA_CASE_SAVED]: BaoCobraCaseSavedPayload;
   [EventType.BAO_DC_CASE_SAVED]: BaoDcCaseSavedPayload;
   [EventType.BAO_DC_DENIAL_LETTER_SAVED]: BaoDcDenialLetterSavedPayload;
+  [EventType.BAO_CASE_STATUS_SAVED]: BaoCaseStatusSavedPayload;
   [EventType.LEDGER_ENTRY_SAVED]: LedgerEntrySavedPayload;
   [EventType.WORKER_EMPLOYMENT_SAVED]: WorkerEmploymentSavedPayload;
   [EventType.EMPLOYER_INDUSTRY_SAVED]: EmployerIndustrySavedPayload;

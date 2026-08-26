@@ -14,7 +14,8 @@ import {
   type BaoCaseEntityType,
   type InsertBaoCase,
 } from "@shared/schema";
-import { getClient, runInTransaction } from "../../transaction-context";
+import { getClient, onAfterCommit, runInTransaction } from "../../transaction-context";
+import { eventBus, EventType } from "../../../services/event-bus";
 import { createNotesStorage, type NoteWithDetails } from "../../notes";
 import { createBaoNoteTagsStorage } from "./note-tags";
 import { tableExists } from "../../utils";
@@ -148,6 +149,39 @@ async function lockStatuses(statusIds: string[], mode: "SHARE" | "UPDATE"): Prom
   }
 }
 
+/**
+ * Defer a BAO_CASE_STATUS_SAVED emit until the surrounding transaction
+ * commits, so listeners never see uncommitted (or rolled-back) state. The
+ * display names are captured HERE, inside the writing transaction: a later
+ * edit or status rename must not rewrite what this write's notification says.
+ */
+async function emitCaseStatusSaved(
+  row: BaoCase,
+  previousStatusId: string | null,
+  statusName: string,
+  operation: "created" | "updated",
+): Promise<void> {
+  const [named] = await getClient()
+    .select({ entityName })
+    .from(cases)
+    .where(eq(cases.id, row.id))
+    .limit(1);
+  const payload = {
+    caseId: row.id,
+    entityType: row.entityType,
+    entityId: row.entityId,
+    row,
+    previousStatusId,
+    statusId: row.statusId,
+    statusName,
+    entityName: named?.entityName ?? null,
+    operation,
+  };
+  onAfterCommit(() => {
+    void eventBus.emit(EventType.BAO_CASE_STATUS_SAVED, payload);
+  });
+}
+
 async function assertNoteType(typeId: string, entityType: string): Promise<void> {
   const [type] = await getClient().select().from(optionsNoteType).where(eq(optionsNoteType.id, typeId));
   if (!type || !Array.isArray((type.data as any)?.entityTypes) || !(type.data as any).entityTypes.includes(entityType)) {
@@ -221,6 +255,7 @@ export function createBaoCasesStorage(): BaoCasesStorage {
           resolutionYmd: null,
         }).returning();
         await getClient().insert(sitespecificBaoCaseNotes).values({ caseId: created.id, noteId });
+        await emitCaseStatusSaved(created, null, status.name, "created");
         return created;
       });
     },
@@ -280,6 +315,7 @@ export function createBaoCasesStorage(): BaoCasesStorage {
           ? updates
           : { ...updates, resolutionId: null, resolutionYmd: null };
         const [updated] = await getClient().update(cases).set(normalized).where(eq(cases.id, id)).returning();
+        await emitCaseStatusSaved(updated, existing.statusId, status.name, "updated");
         return updated;
       });
     },

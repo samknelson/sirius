@@ -1,4 +1,6 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { eventBus, EventType } from "../../server/services/event-bus";
+import { assignmentForbidden } from "../../server/modules/sitespecific/bao/case-assignment";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../server/db";
 import { storage } from "../../server/storage";
@@ -58,6 +60,11 @@ describe("BAO case registration and component ownership", () => {
     expect(getOptionsType("bao-case-resolution")?.requiredComponent).toBe("sitespecific.bao");
   });
 
+  it("declares the assign-to-others permission on the BAO component", () => {
+    const permissions = getComponentById("sitespecific.bao")?.permissions ?? [];
+    expect(permissions.map((p) => p.key)).toContain("bao.case.assign");
+  });
+
   it("declares all case tables in the component manifest", () => {
     const tables = getComponentById("sitespecific.bao")?.schemaManifest?.tables ?? [];
     expect(tables).toEqual(expect.arrayContaining([
@@ -66,6 +73,100 @@ describe("BAO case registration and component ownership", () => {
       "sitespecific_bao_cases",
       "sitespecific_bao_case_notes",
     ]));
+  });
+});
+
+describe("BAO case assignment authority rule", () => {
+  const actor = "actor-1";
+  it("allows omitting an assignee and self-assignment without the permission", () => {
+    expect(assignmentForbidden({ requestedAssigneeId: undefined, actorUserId: actor, existingAssigneeId: null, canAssignOthers: false })).toBe(false);
+    expect(assignmentForbidden({ requestedAssigneeId: actor, actorUserId: actor, existingAssigneeId: null, canAssignOthers: false })).toBe(false);
+    // Taking a case assigned to somebody else is always self-assignment.
+    expect(assignmentForbidden({ requestedAssigneeId: actor, actorUserId: actor, existingAssigneeId: "other-1", canAssignOthers: false })).toBe(false);
+  });
+
+  it("allows a lifecycle edit that echoes the unchanged assignee", () => {
+    expect(assignmentForbidden({ requestedAssigneeId: "other-1", actorUserId: actor, existingAssigneeId: "other-1", canAssignOthers: false })).toBe(false);
+  });
+
+  it("forbids assigning to another user without the permission, on create and update", () => {
+    expect(assignmentForbidden({ requestedAssigneeId: "other-1", actorUserId: actor, existingAssigneeId: null, canAssignOthers: false })).toBe(true);
+    expect(assignmentForbidden({ requestedAssigneeId: "other-2", actorUserId: actor, existingAssigneeId: "other-1", canAssignOthers: false })).toBe(true);
+  });
+
+  it("allows any assignee with the permission", () => {
+    expect(assignmentForbidden({ requestedAssigneeId: "other-2", actorUserId: actor, existingAssigneeId: "other-1", canAssignOthers: true })).toBe(false);
+  });
+});
+
+describe("BAO case status events", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function statusEmits(spy: ReturnType<typeof vi.spyOn>) {
+    return spy.mock.calls.filter(([type]: [unknown, ...unknown[]]) => type === EventType.BAO_CASE_STATUS_SAVED);
+  }
+
+  it("emits a committed snapshot on creation and on lifecycle updates", async () => {
+    const spy = vi.spyOn(eventBus, "emit").mockResolvedValue(undefined as any);
+    const created = await storage.baoCases.create({
+      entityType: "worker", entityId: workerId, deadlineYmd: "2099-06-01",
+      statusId: openStatusId, assigneeUserId: userId, actorUserId: userId,
+      initialNote: { typeId: noteTypeId, subject: `${run} status events` },
+    });
+    caseIds.push(created.id);
+    noteIds.push((await storage.baoCases.get(created.id, true))!.notes![0].id);
+    let emits = statusEmits(spy);
+    expect(emits).toHaveLength(1);
+    expect(emits[0][1]).toMatchObject({
+      caseId: created.id,
+      operation: "created",
+      previousStatusId: null,
+      statusId: openStatusId,
+      statusName: `${run}-open`,
+      row: expect.objectContaining({ id: created.id, statusId: openStatusId }),
+    });
+
+    spy.mockClear();
+    await storage.baoCases.updateLifecycle(created.id, {
+      statusId: closedStatusId, resolutionId, resolutionYmd: "2099-06-02",
+    });
+    emits = statusEmits(spy);
+    expect(emits).toHaveLength(1);
+    expect(emits[0][1]).toMatchObject({
+      operation: "updated",
+      previousStatusId: openStatusId,
+      statusId: closedStatusId,
+      statusName: `${run}-closed`,
+    });
+
+    // An unchanged-status edit still emits (the notifier filters it), but
+    // must carry previous === current so a listener can tell no transition
+    // happened.
+    spy.mockClear();
+    await storage.baoCases.updateLifecycle(created.id, {
+      statusId: openStatusId, deadlineYmd: "2099-06-03",
+    });
+    await storage.baoCases.updateLifecycle(created.id, { deadlineYmd: "2099-06-04" });
+    emits = statusEmits(spy);
+    expect(emits).toHaveLength(2);
+    expect(emits[1][1]).toMatchObject({
+      previousStatusId: openStatusId,
+      statusId: openStatusId,
+    });
+  });
+
+  it("does not emit for a rolled-back lifecycle write", async () => {
+    const created = await storage.baoCases.create({
+      entityType: "worker", entityId: workerId, deadlineYmd: "2099-07-01",
+      statusId: openStatusId, assigneeUserId: userId, actorUserId: userId,
+      initialNote: { typeId: noteTypeId, subject: `${run} rollback` },
+    });
+    caseIds.push(created.id);
+    noteIds.push((await storage.baoCases.get(created.id, true))!.notes![0].id);
+    const spy = vi.spyOn(eventBus, "emit").mockResolvedValue(undefined as any);
+    await expect(storage.baoCases.updateLifecycle(created.id, { statusId: closedStatusId }))
+      .rejects.toThrow("RESOLUTION_REQUIRED");
+    expect(statusEmits(spy)).toHaveLength(0);
   });
 });
 

@@ -13,7 +13,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 
 type Option = { id: string; name: string; closed?: boolean; data?: { entityTypes?: string[] } };
-type Assignee = { id: string; name: string };
+type AssigneeContext = {
+  selfId: string;
+  canAssignOthers: boolean;
+  users: Array<{ id: string; name: string }>;
+};
 
 export default function BaoCaseNewPage() {
   const [, navigate] = useLocation();
@@ -30,14 +34,18 @@ export default function BaoCaseNewPage() {
   const [body, setBody] = useState("");
   const [tagIds, setTagIds] = useState<string[]>([]);
   const { data: statuses = [] } = useQuery<Option[]>({ queryKey: ["/api/options/bao-case-status"] });
-  const { data: assignees = [] } = useQuery<Assignee[]>({ queryKey: ["/api/sitespecific/bao/cases/assignees"] });
+  const { data: assigneeCtx } = useQuery<AssigneeContext>({ queryKey: ["/api/sitespecific/bao/cases/assignees"] });
+  const canAssignOthers = assigneeCtx?.canAssignOthers ?? false;
+  const assignees = assigneeCtx?.users ?? [];
   const { data: noteTypes = [] } = useQuery<Option[]>({ queryKey: ["/api/options/note-type"] });
   const { data: tags = [] } = useQuery<Option[]>({ queryKey: ["/api/options/bao-notes-tag"] });
   const applicableTypes = noteTypes.filter((o) => o.data?.entityTypes?.includes(entityType));
   const mutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/sitespecific/bao/cases", {
       entityType, entityId, deadlineYmd, statusId,
-      ...(assigneeUserId ? { assigneeUserId } : {}),
+      // Without the assign permission the case is always created assigned to
+      // the actor (the server enforces this either way — omit the field).
+      ...(canAssignOthers && assigneeUserId ? { assigneeUserId } : {}),
       ...(fixedNoteId ? { noteId: fixedNoteId } : {
         initialNote: { typeId, subject, body: body || null, tagIds },
       }),
@@ -54,7 +62,9 @@ export default function BaoCaseNewPage() {
           <div><Label>Entity ID</Label><Input value={entityId} onChange={(e) => setEntityId(e.target.value)} disabled={Boolean(query.get("entityId"))} /></div>
           <div><Label>Deadline</Label><Input type="date" value={deadlineYmd} onChange={(e) => setDeadline(e.target.value)} /></div>
           <div><Label>Status</Label><Select value={statusId} onValueChange={setStatus}><SelectTrigger><SelectValue placeholder="Select open status" /></SelectTrigger><SelectContent>{statuses.filter((s) => !s.closed).map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
-          <div><Label>Assignee (defaults to you)</Label><Select value={assigneeUserId} onValueChange={setAssignee}><SelectTrigger><SelectValue placeholder="Current effective user" /></SelectTrigger><SelectContent>{assignees.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select></div>
+          {canAssignOthers
+            ? <div><Label>Assignee (defaults to you)</Label><Select value={assigneeUserId} onValueChange={setAssignee}><SelectTrigger><SelectValue placeholder="Current effective user" /></SelectTrigger><SelectContent>{assignees.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select></div>
+            : <div><Label>Assignee</Label><p className="text-sm text-muted-foreground" data-testid="text-assignee-self">Assigned to you</p></div>}
           {!fixedNoteId && <>
             <div><Label>Initial note type</Label><Select value={typeId} onValueChange={setTypeId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{applicableTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent></Select></div>
             <div><Label>Subject</Label><Input value={subject} onChange={(e) => setSubject(e.target.value)} /></div>

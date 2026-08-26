@@ -31,7 +31,10 @@ export default function BaoCaseDetailPage() {
   const { data: resolutions = [] } = useQuery<Option[]>({ queryKey: ["/api/options/bao-case-resolution"] });
   const { data: noteTypes = [] } = useQuery<Option[]>({ queryKey: ["/api/options/note-type"] });
   const { data: tags = [] } = useQuery<Option[]>({ queryKey: ["/api/options/bao-notes-tag"] });
-  const { data: assignees = [] } = useQuery<Array<{ id: string; name: string }>>({ queryKey: ["/api/sitespecific/bao/cases/assignees"] });
+  const { data: assigneeCtx } = useQuery<{ selfId: string; canAssignOthers: boolean; users: Array<{ id: string; name: string }> }>({ queryKey: ["/api/sitespecific/bao/cases/assignees"] });
+  const canAssignOthers = assigneeCtx?.canAssignOthers ?? false;
+  const selfId = assigneeCtx?.selfId ?? "";
+  const assignees = assigneeCtx?.users ?? [];
   const [statusId, setStatusId] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [deadline, setDeadline] = useState("");
@@ -50,8 +53,12 @@ export default function BaoCaseDetailPage() {
   const save = useMutation({
     mutationFn: () => {
       const closed = statuses.find((s) => s.id === statusId)?.closed;
+      // Reassignment is explicit: only send assigneeUserId when it actually
+      // changed, so lifecycle edits never carry a hidden reassignment.
+      const reassigning = assigneeId && assigneeId !== record?.assigneeUserId;
       return apiRequest("PATCH", `/api/sitespecific/bao/cases/${id}`, {
-        statusId, assigneeUserId: assigneeId, deadlineYmd: deadline,
+        statusId, deadlineYmd: deadline,
+        ...(reassigning ? { assigneeUserId: assigneeId } : {}),
         resolutionId: closed ? resolutionId : null,
         resolutionYmd: closed ? resolutionYmd : null,
       });
@@ -75,7 +82,9 @@ export default function BaoCaseDetailPage() {
           <CardContent className="grid gap-4 md:grid-cols-2">
             <div><Label>Created</Label><p>{record.createdAt.slice(0, 10)}</p></div>
             <div><Label>Deadline</Label><Input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} /></div>
-            <div><Label>Assignee</Label><Select value={assigneeId} onValueChange={setAssigneeId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{assignees.map((a) => <SelectItem value={a.id} key={a.id}>{a.name}</SelectItem>)}</SelectContent></Select></div>
+            {canAssignOthers
+              ? <div><Label>Assignee</Label><Select value={assigneeId} onValueChange={setAssigneeId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{assignees.map((a) => <SelectItem value={a.id} key={a.id}>{a.name}</SelectItem>)}</SelectContent></Select></div>
+              : <div><Label>Assignee</Label><div className="flex items-center gap-2"><p className="text-sm" data-testid="text-assignee-name">{assigneeId === selfId ? "You" : record.assigneeName}</p>{selfId && assigneeId !== selfId && <Button variant="outline" size="sm" data-testid="button-take-case" onClick={() => setAssigneeId(selfId)}>Take this case</Button>}</div></div>}
             <div><Label>Status</Label><Select value={statusId} onValueChange={setStatusId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{statuses.map((s) => <SelectItem value={s.id} key={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
             {nextClosed && <><div><Label>Resolution</Label><Select value={resolutionId} onValueChange={setResolutionId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{resolutions.map((r) => <SelectItem value={r.id} key={r.id}>{r.name}</SelectItem>)}</SelectContent></Select></div><div><Label>Resolution date</Label><Input type="date" value={resolutionYmd} onChange={(e) => setResolutionYmd(e.target.value)} /></div></>}
             <Button onClick={() => save.mutate()} disabled={save.isPending || (nextClosed && (!resolutionId || !resolutionYmd))}>Save</Button>

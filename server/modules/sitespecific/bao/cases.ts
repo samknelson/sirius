@@ -8,6 +8,7 @@ import {
 import { storage } from "../../../storage";
 import { requireComponent } from "../../components";
 import { getEffectiveUser } from "../../masquerade";
+import { assignmentForbidden, BAO_CASE_ASSIGN_PERMISSION } from "./case-assignment";
 
 type Middleware = (req: Request, res: Response, next: NextFunction) => any;
 type AccessMiddleware = (policy: string) => Middleware;
@@ -30,6 +31,7 @@ function caseError(res: Response, error: any) {
     NOTE_ENTITY_MISMATCH: [409, "The note belongs to a different entity"],
     RESOLUTION_REQUIRED: [409, "Closing a case requires a resolution and resolution date"],
     OPEN_CASE_RESOLUTION: [409, "An open case cannot retain resolution information"],
+    ASSIGN_OTHERS_FORBIDDEN: [403, "You can only assign BAO cases to yourself"],
   };
   if (error?.code === "23505" || error?.cause?.code === "23505") {
     return res.status(409).json({ message: "This note already belongs to a BAO case" });
@@ -50,14 +52,25 @@ export function registerBaoCaseRoutes(
 ) {
   const gate = [requireAuth, requireComponent("sitespecific.bao"), requireAccess("staff")];
 
-  app.get("/api/sitespecific/bao/cases/assignees", ...gate, async (_req, res) => {
+  // Assignee context: the pickable staff users PLUS the caller's assignment
+  // capability, so the forms offer exactly what the server will accept.
+  app.get("/api/sitespecific/bao/cases/assignees", ...gate, async (req, res) => {
     try {
-      const users = await storage.users.getUsersWithAnyPermission(["staff", "admin"]);
-      res.json(users.filter((u) => u.isActive).map((u) => ({
-        id: u.id,
-        name: [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email,
-        email: u.email,
-      })));
+      const actor = await effectiveUserId(req);
+      if (!actor) return res.status(401).json({ message: "Effective user not found" });
+      const [users, canAssignOthers] = await Promise.all([
+        storage.users.getUsersWithAnyPermission(["staff", "admin"]),
+        storage.users.userHasPermission(actor, BAO_CASE_ASSIGN_PERMISSION),
+      ]);
+      res.json({
+        selfId: actor,
+        canAssignOthers,
+        users: users.filter((u) => u.isActive).map((u) => ({
+          id: u.id,
+          name: [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email,
+          email: u.email,
+        })),
+      });
     } catch (error) {
       caseError(res, error);
     }
@@ -117,6 +130,17 @@ export function registerBaoCaseRoutes(
       const parsed = createBaoCaseRequestSchema.parse(req.body);
       const actor = await effectiveUserId(req);
       if (!actor) return res.status(401).json({ message: "Effective user not found" });
+      if (parsed.assigneeUserId && parsed.assigneeUserId !== actor) {
+        const canAssignOthers = await storage.users.userHasPermission(actor, BAO_CASE_ASSIGN_PERMISSION);
+        if (assignmentForbidden({
+          requestedAssigneeId: parsed.assigneeUserId,
+          actorUserId: actor,
+          existingAssigneeId: null,
+          canAssignOthers,
+        })) {
+          throw new Error("ASSIGN_OTHERS_FORBIDDEN");
+        }
+      }
       const created = await storage.baoCases.create({
         ...parsed,
         assigneeUserId: parsed.assigneeUserId ?? actor,
@@ -131,6 +155,21 @@ export function registerBaoCaseRoutes(
   app.patch("/api/sitespecific/bao/cases/:id", ...gate, async (req, res) => {
     try {
       const parsed = updateBaoCaseRequestSchema.parse(req.body);
+      if (parsed.assigneeUserId) {
+        const actor = await effectiveUserId(req);
+        if (!actor) return res.status(401).json({ message: "Effective user not found" });
+        const existing = await storage.baoCases.get(req.params.id);
+        if (!existing) return res.status(404).json({ message: "BAO case not found" });
+        const canAssignOthers = await storage.users.userHasPermission(actor, BAO_CASE_ASSIGN_PERMISSION);
+        if (assignmentForbidden({
+          requestedAssigneeId: parsed.assigneeUserId,
+          actorUserId: actor,
+          existingAssigneeId: existing.assigneeUserId,
+          canAssignOthers,
+        })) {
+          throw new Error("ASSIGN_OTHERS_FORBIDDEN");
+        }
+      }
       const updated = await storage.baoCases.updateLifecycle(req.params.id, parsed);
       res.json(updated);
     } catch (error) {
