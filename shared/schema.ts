@@ -1290,6 +1290,14 @@ export {
   type GrievanceTimelineAdjustment,
   TIMELINE_ADJUSTMENT_DATA_KEY,
   readTimelineAdjustment,
+  optionsGrievanceDenialReason,
+  insertOptionsGrievanceDenialReasonSchema,
+  type OptionsGrievanceDenialReason,
+  type InsertOptionsGrievanceDenialReason,
+  appealMetaSchema,
+  type AppealMeta,
+  APPEAL_META_KEY,
+  readAppealMeta,
 } from "./schema/grievance/schema";
 
 export {

@@ -4,6 +4,61 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { workers, employers, users, denorm, bargainingUnits, contacts, files } from "../../schema";
 
+/**
+ * Configurable denial reasons for appeal grievances. Stored in
+ * `options_grievance_denial_reason`; referenced as `denialReasonId` inside the
+ * `data.appealMeta` jsonb payload on a grievance row. Owned by the `grievance`
+ * component — the appeal intake flow will surface a configuration warning when
+ * no denial reasons have been created yet.
+ */
+export const optionsGrievanceDenialReason = pgTable("options_grievance_denial_reason", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull().unique(),
+  description: text("description"),
+  siriusId: varchar("sirius_id").unique(),
+  sequence: integer("sequence").notNull().default(0),
+  data: jsonb("data"),
+});
+
+export const insertOptionsGrievanceDenialReasonSchema = createInsertSchema(
+  optionsGrievanceDenialReason,
+).omit({ id: true });
+
+export type OptionsGrievanceDenialReason = typeof optionsGrievanceDenialReason.$inferSelect;
+export type InsertOptionsGrievanceDenialReason = z.infer<
+  typeof insertOptionsGrievanceDenialReasonSchema
+>;
+
+/**
+ * Appeal-specific metadata stored in `grievances.data.appealMeta`.
+ * The `kind: "appeal"` discriminant distinguishes appeal grievances from
+ * ordinary ones in the list and detail views without an extra DB column.
+ */
+export const appealMetaSchema = z.object({
+  kind: z.literal("appeal"),
+  /** The trust benefit that was denied (references `trust_benefits.id`). */
+  benefitId: z.string().uuid(),
+  /**
+   * The configured denial reason (references
+   * `options_grievance_denial_reason.id`).
+   */
+  denialReasonId: z.string().uuid(),
+});
+
+export type AppealMeta = z.infer<typeof appealMetaSchema>;
+
+/** Key used to store appeal metadata inside `grievances.data`. */
+export const APPEAL_META_KEY = "appealMeta" as const;
+
+/** Read and validate appeal metadata from a raw `data` jsonb value. */
+export function readAppealMeta(data: unknown): AppealMeta | null {
+  if (!data || typeof data !== "object") return null;
+  const raw = (data as Record<string, unknown>)[APPEAL_META_KEY];
+  if (raw === undefined || raw === null) return null;
+  const parsed = appealMetaSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
+
 export const optionsGrievanceStatus = pgTable("options_grievance_status", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: varchar("name", { length: 255 }).notNull().unique(),

@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { Gavel } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,6 +15,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+interface AppealMeta {
+  kind: "appeal";
+}
+
 interface GrievanceListItem {
   id: string;
   statusId: string | null;
@@ -22,6 +27,7 @@ interface GrievanceListItem {
   categoryName: string | null;
   workerCount: number;
   employerCount: number;
+  data?: { appealMeta?: AppealMeta } | null;
 }
 
 function WorkerGrievancesContent() {
@@ -59,7 +65,15 @@ function WorkerGrievancesContent() {
               {grievances.map((g) => (
                 <TableRow key={g.id} data-testid={`row-grievance-${g.id}`}>
                   <TableCell className="font-medium" data-testid={`text-grievance-category-${g.id}`}>
-                    {g.categoryName || "—"}
+                    <div className="flex items-center gap-2">
+                      {g.categoryName || "—"}
+                      {g.data?.appealMeta?.kind === "appeal" && (
+                        <Badge variant="outline" className="text-xs" data-testid={`badge-appeal-${g.id}`}>
+                          <Gavel size={10} className="mr-1" />
+                          Appeal
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary" data-testid={`badge-grievance-status-${g.id}`}>

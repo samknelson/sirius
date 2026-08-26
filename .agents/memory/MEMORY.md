@@ -111,6 +111,7 @@
 - [Shared HTML utils](shared-html-utils.md) — escape/sanitize/HTML→text live in ONE library split by dep weight (boot path imports the escape leaf, never the barrel); DOMPurify drops rel=noopener.
 - [Sanitizing signed documents](sanitizing-signed-documents.md) — hash the RAW bytes, sanitize once and submit that same string, and compare entity-decoded: byte-diff ≠ appearance-diff.
 - [Post-merge verification](post-merge-verification.md) — restart before diagnosing (lazy imports of deleted modules fail only at request time); registries throw on duplicate ids but a dropped registration boots clean.
+- [Appeal grievance pattern](appeal-grievance-pattern.md) — appeals live as kind=appeal in data.appealMeta jsonb; carrier derived at read time; test DB needs all component migrations run in beforeAll.
 - [Token editing invariants](token-editing-invariants.md) — the studio is the ONLY place a tokenized string is edited; evaluation is medium-independent; cleaning is the container's job and never reads a token's surroundings.
 - [Regression-test bar](regression-test-bar.md) — never propose a follow-up test task (generic title templates push you to); bar + lint-vs-test split live in replit.md; gates fixed at lint/typecheck/migrations.
 - [Derived token segments](derived-token-segments.md) — generated segments (options relations from FK+options metadata) must regenerate on LATE plugin registration, name themselves after the target table, skip ambiguous pairs.

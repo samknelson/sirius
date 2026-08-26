@@ -1,9 +1,20 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
+import { eq, asc } from "drizzle-orm";
 import { storage } from "../../storage";
 import { requireComponent } from "../components";
 import { buildContext, getAccessStorage } from "../../services/access-policy-evaluator";
-import { GRIEVANCE_CARDINALITIES, grievanceTimelineAdjustmentSchema } from "@shared/schema";
+import {
+  GRIEVANCE_CARDINALITIES,
+  grievanceTimelineAdjustmentSchema,
+  APPEAL_META_KEY,
+  trustBenefits,
+  trustProviders,
+  workers,
+  optionsGrievanceDenialReason,
+  optionsGrievanceStatus,
+} from "@shared/schema";
+import { getClient } from "../../storage/transaction-context";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PolicyMiddleware = (
@@ -50,6 +61,16 @@ const emptyToUndefined = (v: unknown) => (v === "" ? undefined : v);
 const searchGrievancesSchema = z.object({
   workerId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
   employerId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
+  kind: z.preprocess(emptyToUndefined, z.enum(["appeal"]).optional()),
+});
+
+/** Schema for the appeal intake POST body. */
+const createAppealSchema = z.object({
+  categoryId: z.string().uuid("A valid category is required"),
+  statusId: z.string().uuid("A valid status is required"),
+  workerId: z.string().uuid("A valid worker is required"),
+  benefitId: z.string().uuid("A valid benefit is required"),
+  denialReasonId: z.string().uuid("A valid denial reason is required"),
 });
 
 const linkWorkerSchema = z.object({ workerId: z.string().uuid("A valid worker is required") });
@@ -226,6 +247,131 @@ export function registerGrievanceRoutes(
       }
       console.error("Failed to create grievance:", error);
       res.status(500).json({ message: "Failed to create grievance" });
+    }
+  });
+
+  // ---- Appeal routes (must precede /:id to avoid capture) -----------------
+
+  /**
+   * List active trust benefits with their provider name for the appeal intake
+   * form. The carrier is derived from the benefit's provider relationship; this
+   * endpoint exposes only the fields the intake form needs.
+   */
+  app.get("/api/grievances/appeal/benefits", ...gate, async (req, res) => {
+    try {
+      const client = getClient();
+      const rows = await client
+        .select({
+          id: trustBenefits.id,
+          name: trustBenefits.name,
+          providerId: trustBenefits.providerId,
+          providerName: trustProviders.name,
+        })
+        .from(trustBenefits)
+        .leftJoin(trustProviders, eq(trustBenefits.providerId, trustProviders.id))
+        .where(eq(trustBenefits.isActive, true))
+        .orderBy(asc(trustBenefits.name));
+      res.json(rows);
+    } catch (error) {
+      console.error("Failed to fetch appeal benefits:", error);
+      res.status(500).json({ message: "Failed to fetch benefits" });
+    }
+  });
+
+  /**
+   * Create an appeal grievance:
+   *  - Validates category, status, worker, benefit, and denial reason all exist.
+   *  - Derives the carrier from the benefit's provider relationship (no
+   *    separate carrier entry required).
+   *  - Creates an individual grievance with `data.appealMeta` set, links the
+   *    worker, and adds the initial status history entry.
+   *  - Returns the created grievance (including appeal metadata) so the client
+   *    can redirect straight to the detail page for letter upload.
+   */
+  app.post("/api/grievances/appeal", ...gate, async (req, res) => {
+    try {
+      const parsed = createAppealSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      const { categoryId, statusId, workerId, benefitId, denialReasonId } = parsed.data;
+
+      const client = getClient();
+
+      // Validate worker exists.
+      const [workerRow] = await client
+        .select({ id: workers.id })
+        .from(workers)
+        .where(eq(workers.id, workerId))
+        .limit(1);
+      if (!workerRow) {
+        return res.status(400).json({ message: "Worker not found" });
+      }
+
+      const [benefit] = await client
+        .select({ id: trustBenefits.id, name: trustBenefits.name, providerId: trustBenefits.providerId })
+        .from(trustBenefits)
+        .where(eq(trustBenefits.id, benefitId))
+        .limit(1);
+      if (!benefit) {
+        return res.status(400).json({ message: "Benefit not found" });
+      }
+
+      // Validate denial reason exists.
+      const [denialReason] = await client
+        .select({ id: optionsGrievanceDenialReason.id })
+        .from(optionsGrievanceDenialReason)
+        .where(eq(optionsGrievanceDenialReason.id, denialReasonId))
+        .limit(1);
+      if (!denialReason) {
+        return res.status(400).json({ message: "Denial reason not found" });
+      }
+
+      // Validate status exists.
+      const [statusRow] = await client
+        .select({ id: optionsGrievanceStatus.id })
+        .from(optionsGrievanceStatus)
+        .where(eq(optionsGrievanceStatus.id, statusId))
+        .limit(1);
+      if (!statusRow) {
+        return res.status(400).json({ message: "Status not found" });
+      }
+
+      // Create the appeal grievance. The appeal metadata lives in `data` so no
+      // new table is required; the carrier (provider) is always derived at read
+      // time from `benefit.providerId`.
+      const appealMeta = {
+        kind: "appeal" as const,
+        benefitId,
+        denialReasonId,
+      };
+
+      const created = await storage.grievances.create({
+        categoryId,
+        cardinality: "individual",
+        data: { [APPEAL_META_KEY]: appealMeta } as unknown as null,
+      });
+
+      // Link the worker (individual grievance — storage enforces single-worker
+      // constraint transactionally).
+      const workerResult = await storage.grievances.addWorkerForGrievance(created.id, workerId);
+      if ("error" in workerResult) {
+        // The grievance was created; surface the partial-failure gracefully so
+        // the caller can navigate to the grievance and fix the worker link.
+        console.error("Failed to link worker to new appeal grievance:", workerResult.error);
+        const fresh = await storage.grievances.getWithDetails(created.id);
+        return res.status(201).json({ ...fresh, _warnings: ["Worker could not be linked — add from the grievance page"] });
+      }
+
+      // Add the initial status history entry.
+      const statusDate = new Date();
+      await storage.grievanceStatusHistory.create(created.id, { statusId, date: statusDate });
+
+      const fresh = await storage.grievances.getWithDetails(created.id);
+      res.status(201).json(fresh);
+    } catch (error: any) {
+      console.error("Failed to create appeal grievance:", error);
+      res.status(500).json({ message: "Failed to create appeal" });
     }
   });
 

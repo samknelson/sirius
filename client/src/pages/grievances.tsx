@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, Plus, Trash2 } from "lucide-react";
+import { FileText, Plus, Trash2, Gavel } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,12 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
+interface AppealMeta {
+  kind: "appeal";
+  benefitId: string;
+  denialReasonId: string;
+}
+
 interface GrievanceListItem {
   id: string;
   siriusId: string | null;
@@ -35,6 +41,11 @@ interface GrievanceListItem {
   statusName: string | null;
   grievantSummary: string;
   employerName: string | null;
+  data?: { appealMeta?: AppealMeta } | null;
+}
+
+function isAppeal(g: GrievanceListItem): boolean {
+  return g.data?.appealMeta?.kind === "appeal";
 }
 
 export default function Grievances() {
@@ -42,14 +53,21 @@ export default function Grievances() {
   const { toast } = useToast();
   const [deleteTarget, setDeleteTarget] = useState<GrievanceListItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [kindFilter, setKindFilter] = useState<"all" | "appeal">("all");
+
+  const queryKey =
+    kindFilter === "appeal"
+      ? ["/api/grievances", { kind: "appeal" }]
+      : ["/api/grievances"];
 
   const { data: grievances = [], isLoading } = useQuery<GrievanceListItem[]>({
-    queryKey: ["/api/grievances"],
+    queryKey,
   });
 
   const tabs = [
     { id: "list", label: "List", href: "/grievances" },
     { id: "add", label: "Add", href: "/grievances/add" },
+    { id: "appeal", label: "Add Appeal", href: "/grievances/appeal" },
   ];
 
   const handleDelete = async () => {
@@ -97,13 +115,40 @@ export default function Grievances() {
       </div>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex justify-end mb-4">
-          <Link href="/grievances/add">
-            <Button data-testid="button-add-grievance">
-              <Plus size={16} className="mr-2" />
-              Add Grievance
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Button
+              variant={kindFilter === "all" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setKindFilter("all")}
+              data-testid="button-filter-all"
+            >
+              All
             </Button>
-          </Link>
+            <Button
+              variant={kindFilter === "appeal" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setKindFilter("appeal")}
+              data-testid="button-filter-appeals"
+            >
+              <Gavel size={14} className="mr-1" />
+              Appeals
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href="/grievances/appeal">
+              <Button variant="outline" data-testid="button-add-appeal">
+                <Gavel size={16} className="mr-2" />
+                Add Appeal
+              </Button>
+            </Link>
+            <Link href="/grievances/add">
+              <Button data-testid="button-add-grievance">
+                <Plus size={16} className="mr-2" />
+                Add Grievance
+              </Button>
+            </Link>
+          </div>
         </div>
 
         <Card>
@@ -133,7 +178,15 @@ export default function Grievances() {
                   {grievances.map((g) => (
                     <TableRow key={g.id} data-testid={`row-grievance-${g.id}`}>
                       <TableCell className="font-medium" data-testid={`text-grievance-id-${g.id}`}>
-                        {g.siriusId || "—"}
+                        <div className="flex items-center gap-2">
+                          {g.siriusId || "—"}
+                          {isAppeal(g) && (
+                            <Badge variant="outline" className="text-xs" data-testid={`badge-appeal-${g.id}`}>
+                              <Gavel size={10} className="mr-1" />
+                              Appeal
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell data-testid={`text-grievance-grievant-${g.id}`}>
                         {g.grievantSummary || "—"}
