@@ -46,6 +46,8 @@ import {
   trustWmb,
   files,
   employers,
+  workers,
+  contacts,
   BAO_DC_FUND_EMPLOYER_SIRIUS_ID,
   BAO_DC_FUND_EMPLOYER_NAME,
   BAO_DC_EMPLOYMENT_STATUS_CODE,
@@ -81,6 +83,7 @@ import {
   validateDcMonthSelection,
   type DcSelectionValidation,
 } from "@shared/sitespecific/bao/dc-workflow";
+import { isRetiredDisabilityStatusOption } from "@shared/sitespecific/bao/dc-eligibility";
 
 const casesTable = sitespecificBaoDcCases;
 const monthsTable = sitespecificBaoDcCaseMonths;
@@ -296,6 +299,51 @@ export interface BaoDisabilityCreditStorage {
       };
     },
   ): Promise<BaoDcCaseMonth>;
+
+  // Reporting reads (live dashboards + exports — never persisted counters) --
+  /** All non-removed month rows in the given statuses, oldest first. */
+  listMonthsByStatuses(statuses: BaoDcMonthStatus[]): Promise<BaoDcCaseMonth[]>;
+  /** Derived usage per (worker, calendar year) over non-removed months. */
+  listApplicableMonthCountsByWorkerYear(): Promise<
+    Array<{ workerId: string; year: number; used: number }>
+  >;
+  /** Distinct (worker, month) FMLA rows fund-wide in the ordinal window. */
+  listFmlaMonthRows(
+    fromMonthYmd: string,
+    toMonthYmd: string,
+  ): Promise<Array<{ workerId: string; monthYmd: string }>>;
+  /** Every non-voided denial letter, fund-wide. */
+  listAllNonVoidedDenialLetters(): Promise<BaoDcDenialLetter[]>;
+  /** Hours rows reported under the RETIRED Disability employer status. */
+  listRetiredDisabilityHoursRows(fromMonthYmd: string): Promise<
+    Array<{
+      workerId: string;
+      employerId: string;
+      employerName: string;
+      year: number;
+      month: number;
+      hours: number | null;
+      statusName: string;
+    }>
+  >;
+  /** Grant-lifecycle events (granted/released/reconciled), oldest first. */
+  listGrantActivityEvents(): Promise<BaoDcEvent[]>;
+  /** Currently-granted month rows counted per work month. */
+  listGrantedMonthCountsByWorkMonth(): Promise<
+    Array<{ workMonthYmd: string; count: number }>
+  >;
+  /** Distinct months with ANY reported hours rows, per listed worker. */
+  listReportedHoursMonthsForWorkers(
+    workerIds: string[],
+  ): Promise<Array<{ workerId: string; monthYmd: string }>>;
+  /** Display references (sirius id + name) for the given workers. */
+  getWorkerRefs(
+    workerIds: string[],
+  ): Promise<Array<{ workerId: string; siriusId: number; name: string }>>;
+  /** Most recent DC event per listed worker (latest-activity context). */
+  getLatestEventPerWorker(
+    workerIds: string[],
+  ): Promise<Array<{ workerId: string; eventType: BaoDcEventType; createdAt: Date }>>;
 
   // Eligibility inputs (canonical reads used by the DC eligibility service) --
   getFmlaMonthsForWorker(
@@ -1316,6 +1364,228 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
         });
         return updated;
       });
+    },
+
+    async listMonthsByStatuses(statuses: BaoDcMonthStatus[]): Promise<BaoDcCaseMonth[]> {
+      await requireTables(this);
+      if (statuses.length === 0) return [];
+      return getClient()
+        .select()
+        .from(monthsTable)
+        .where(inArray(monthsTable.status, statuses))
+        .orderBy(asc(monthsTable.workMonthYmd), asc(monthsTable.id));
+    },
+
+    async listApplicableMonthCountsByWorkerYear(): Promise<
+      Array<{ workerId: string; year: number; used: number }>
+    > {
+      await requireTables(this);
+      return getClient()
+        .select({
+          workerId: monthsTable.workerId,
+          year: sql<number>`EXTRACT(YEAR FROM ${monthsTable.workMonthYmd})::int`,
+          used: sql<number>`count(*)::int`,
+        })
+        .from(monthsTable)
+        .where(ne(monthsTable.status, "removed"))
+        .groupBy(
+          monthsTable.workerId,
+          sql`EXTRACT(YEAR FROM ${monthsTable.workMonthYmd})`,
+        );
+    },
+
+    async listFmlaMonthRows(
+      fromMonthYmd: string,
+      toMonthYmd: string,
+    ): Promise<Array<{ workerId: string; monthYmd: string }>> {
+      const client = getClient();
+      const statuses = await client
+        .select({
+          id: optionsEmploymentStatus.id,
+          name: optionsEmploymentStatus.name,
+          code: optionsEmploymentStatus.code,
+        })
+        .from(optionsEmploymentStatus);
+      const fmlaStatusIds = statuses.filter(isFmlaStatusRow).map((s) => s.id);
+      if (fmlaStatusIds.length === 0) return [];
+
+      const [fromYear, fromMonth] = fromMonthYmd.split("-").map(Number);
+      const [toYear, toMonth] = toMonthYmd.split("-").map(Number);
+      const fromOrdinal = fromYear * 12 + (fromMonth - 1);
+      const toOrdinal = toYear * 12 + (toMonth - 1);
+
+      const rows = await client
+        .selectDistinct({
+          workerId: workerHours.workerId,
+          year: workerHours.year,
+          month: workerHours.month,
+        })
+        .from(workerHours)
+        .where(
+          and(
+            inArray(workerHours.employmentStatusId, fmlaStatusIds),
+            sql`${workerHours.hours} > 0`,
+            gte(sql`${workerHours.year} * 12 + (${workerHours.month} - 1)`, fromOrdinal),
+            lte(sql`${workerHours.year} * 12 + (${workerHours.month} - 1)`, toOrdinal),
+          ),
+        );
+      return rows.map((r) => ({
+        workerId: r.workerId,
+        monthYmd: `${r.year}-${String(r.month).padStart(2, "0")}-01`,
+      }));
+    },
+
+    async listAllNonVoidedDenialLetters(): Promise<BaoDcDenialLetter[]> {
+      await requireTables(this);
+      return getClient()
+        .select()
+        .from(lettersTable)
+        .where(isNull(lettersTable.voidedYmd))
+        .orderBy(asc(lettersTable.letterYmd), asc(lettersTable.id));
+    },
+
+    async listRetiredDisabilityHoursRows(fromMonthYmd: string): Promise<
+      Array<{
+        workerId: string;
+        employerId: string;
+        employerName: string;
+        year: number;
+        month: number;
+        hours: number | null;
+        statusName: string;
+      }>
+    > {
+      const client = getClient();
+      const statuses = await client
+        .select({
+          id: optionsEmploymentStatus.id,
+          name: optionsEmploymentStatus.name,
+          code: optionsEmploymentStatus.code,
+        })
+        .from(optionsEmploymentStatus);
+      const retired = statuses.filter((s) =>
+        isRetiredDisabilityStatusOption({ name: s.name, code: s.code }),
+      );
+      if (retired.length === 0) return [];
+      const nameById = new Map(retired.map((s) => [s.id, s.name]));
+      const [fromYear, fromMonth] = fromMonthYmd.split("-").map(Number);
+      const fromOrdinal = fromYear * 12 + (fromMonth - 1);
+      const rows = await client
+        .select({
+          workerId: workerHours.workerId,
+          employerId: workerHours.employerId,
+          employerName: employers.name,
+          year: workerHours.year,
+          month: workerHours.month,
+          hours: workerHours.hours,
+          employmentStatusId: workerHours.employmentStatusId,
+        })
+        .from(workerHours)
+        .innerJoin(employers, eq(workerHours.employerId, employers.id))
+        .where(
+          and(
+            inArray(
+              workerHours.employmentStatusId,
+              retired.map((s) => s.id),
+            ),
+            gte(sql`${workerHours.year} * 12 + (${workerHours.month} - 1)`, fromOrdinal),
+          ),
+        )
+        .orderBy(asc(workerHours.year), asc(workerHours.month));
+      return rows.map((r) => ({
+        workerId: r.workerId,
+        employerId: r.employerId,
+        employerName: r.employerName,
+        year: r.year,
+        month: r.month,
+        hours: r.hours,
+        statusName: nameById.get(r.employmentStatusId ?? "") ?? "Disability",
+      }));
+    },
+
+    async listGrantActivityEvents(): Promise<BaoDcEvent[]> {
+      await requireTables(this);
+      return getClient()
+        .select()
+        .from(eventsTable)
+        .where(
+          inArray(eventsTable.eventType, [
+            "case_month_granted",
+            "case_month_released",
+            "case_month_reconciled",
+          ]),
+        )
+        .orderBy(asc(eventsTable.createdAt), asc(eventsTable.id));
+    },
+
+    async listGrantedMonthCountsByWorkMonth(): Promise<
+      Array<{ workMonthYmd: string; count: number }>
+    > {
+      await requireTables(this);
+      return getClient()
+        .select({
+          workMonthYmd: monthsTable.workMonthYmd,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(monthsTable)
+        .where(eq(monthsTable.status, "granted"))
+        .groupBy(monthsTable.workMonthYmd)
+        .orderBy(asc(monthsTable.workMonthYmd));
+    },
+
+    async listReportedHoursMonthsForWorkers(
+      workerIds: string[],
+    ): Promise<Array<{ workerId: string; monthYmd: string }>> {
+      if (workerIds.length === 0) return [];
+      const rows = await getClient()
+        .selectDistinct({
+          workerId: workerHours.workerId,
+          year: workerHours.year,
+          month: workerHours.month,
+        })
+        .from(workerHours)
+        .where(inArray(workerHours.workerId, workerIds));
+      return rows.map((r) => ({
+        workerId: r.workerId,
+        monthYmd: `${r.year}-${String(r.month).padStart(2, "0")}-01`,
+      }));
+    },
+
+    async getWorkerRefs(
+      workerIds: string[],
+    ): Promise<Array<{ workerId: string; siriusId: number; name: string }>> {
+      if (workerIds.length === 0) return [];
+      const rows = await getClient()
+        .select({
+          workerId: workers.id,
+          siriusId: workers.siriusId,
+          name: contacts.displayName,
+        })
+        .from(workers)
+        .innerJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(inArray(workers.id, Array.from(new Set(workerIds))));
+      return rows;
+    },
+
+    async getLatestEventPerWorker(
+      workerIds: string[],
+    ): Promise<Array<{ workerId: string; eventType: BaoDcEventType; createdAt: Date }>> {
+      await requireTables(this);
+      if (workerIds.length === 0) return [];
+      const rows = await getClient()
+        .selectDistinctOn([eventsTable.workerId], {
+          workerId: eventsTable.workerId,
+          eventType: eventsTable.eventType,
+          createdAt: eventsTable.createdAt,
+        })
+        .from(eventsTable)
+        .where(inArray(eventsTable.workerId, Array.from(new Set(workerIds))))
+        .orderBy(
+          eventsTable.workerId,
+          desc(eventsTable.createdAt),
+          desc(eventsTable.id),
+        );
+      return rows;
     },
 
     async getFmlaMonthsForWorker(

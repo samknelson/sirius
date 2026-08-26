@@ -36,6 +36,8 @@ import "./plugins/btu-cardcheck-scrape-import";
 import "./plugins/hta-union-import";
 import "./plugins/gbhet-legal-workers";
 import "./plugins/bao-monthly-hours";
+import "./plugins/report-bao-dc-net-grants";
+import "./plugins/report-bao-dc-upload-review";
 import "./plugins/employer-onboarding";
 import "./plugins/benefit-election-enrollment";
 import "./plugins/open-enrollment-enrollment";

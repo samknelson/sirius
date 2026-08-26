@@ -21,6 +21,8 @@ import {
   mutateEvidenceAndRecompute,
   type DcCaseAction,
 } from "../../../services/sitespecific/bao/dc-workflow";
+import { listDcApprovalQueue } from "../../../services/sitespecific/bao/dc-reporting";
+import { buildDcYearUsage } from "@shared/sitespecific/bao/dc-reporting";
 import { DcSelectionInvalidError } from "../../../storage/sitespecific/bao/disability-credit";
 import { logger } from "../../../logger";
 
@@ -155,12 +157,7 @@ export function registerBaoDisabilityCreditRoutes(
           dc.listCasesForWorker(workerId),
           dc.listApplicableMonthsForWorker(workerId),
         ]);
-        const yearUsage: Record<string, { used: number; limit: number }> = {};
-        for (const m of applicable) {
-          const year = m.workMonthYmd.slice(0, 4);
-          yearUsage[year] = yearUsage[year] ?? { used: 0, limit: BAO_DC_ANNUAL_MONTH_LIMIT };
-          yearUsage[year].used += 1;
-        }
+        const yearUsage = buildDcYearUsage(applicable);
         const openCases = cases.filter((c) =>
           ["draft", "ready_for_review", "in_queue"].includes(c.status),
         );
@@ -427,29 +424,8 @@ export function registerBaoDisabilityCreditRoutes(
     requireAccess("staff"),
     async (_req: Request, res: Response) => {
       try {
-        const cases = await dc.listCasesByStatus("in_queue");
-        const rows = await Promise.all(
-          cases.map(async (c) => {
-            const [bundle, events] = await Promise.all([
-              getDcCaseBundle(c.id),
-              dc.listEventsForCase(c.id),
-            ]);
-            const queuedEvent = [...events]
-              .reverse()
-              .find(
-                (e) =>
-                  e.eventType === "case_status_changed" &&
-                  (e.payload as Record<string, unknown>)?.to === "in_queue",
-              );
-            return {
-              case: c,
-              queuedAt: queuedEvent?.createdAt ?? c.createdAt,
-              readiness: bundle?.readiness,
-              monthCount: bundle?.months.filter((m) => m.status !== "removed").length ?? 0,
-            };
-          }),
-        );
-        res.json(rows);
+        // Shared live-query service — the SAME rows the dashboard shows.
+        res.json(await listDcApprovalQueue());
       } catch (error) {
         handleDcError(res, error);
       }

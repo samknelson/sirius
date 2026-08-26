@@ -22,6 +22,7 @@ import {
 } from "@shared/sitespecific/bao/dc-workflow";
 import { getDcDenialLetterValidityMonths } from "./dc-settings";
 import { denialLetterExpiryYmd } from "@shared/sitespecific/bao/dc-eligibility";
+import { buildDcYearUsage } from "@shared/sitespecific/bao/dc-reporting";
 import { runDcGrantCascadeForCase } from "./dc-grant";
 
 export interface DcCaseReadiness {
@@ -77,12 +78,7 @@ export async function getDcCaseBundle(caseId: string): Promise<DcCaseBundle | un
       getDcDenialLetterValidityMonths(),
     ]);
   const readiness = computeCaseReadiness(theCase, documents, months);
-  const yearUsage: Record<string, { used: number; limit: number }> = {};
-  for (const m of applicable) {
-    const year = m.workMonthYmd.slice(0, 4);
-    yearUsage[year] = yearUsage[year] ?? { used: 0, limit: BAO_DC_ANNUAL_MONTH_LIMIT };
-    yearUsage[year].used += 1;
-  }
+  const yearUsage = buildDcYearUsage(applicable);
   return {
     case: theCase,
     months,

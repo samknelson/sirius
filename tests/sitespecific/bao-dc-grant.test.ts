@@ -456,6 +456,39 @@ describe("employer-hours reconciliation", () => {
     expect(again.action).toBe("not_granted");
     expect(await dcHoursTotal(monthA)).toBe(0);
   });
+
+  it("persisted grant events reconcile exactly against live granted month rows", async () => {
+    // Uses the REAL persisted event payloads (storage stamps workMonthYmd +
+    // monthId on every month transition) — the same aggregation the trustee
+    // export uses must net grants − removals to the live granted-row count.
+    const { summarizeDcGrantActivity, isDcGrantEvent, isDcRemovalEvent } = await import(
+      "@shared/sitespecific/bao/dc-reporting"
+    );
+    const events = await storage.baoDisabilityCredit.listEventsForWorker(workerId);
+    const grantEvents = events.filter((e) => isDcGrantEvent(e) || isDcRemovalEvent(e));
+    // The production writers stamp the work month into every payload.
+    for (const e of grantEvents) {
+      expect((e.payload as Record<string, unknown>).workMonthYmd).toMatch(/^\d{4}-\d{2}-01$/);
+    }
+    const activity = summarizeDcGrantActivity(grantEvents);
+
+    const liveMonths = await db
+      .select()
+      .from(sitespecificBaoDcCaseMonths)
+      .where(eq(sitespecificBaoDcCaseMonths.workerId, workerId));
+    for (const row of activity) {
+      const granted = liveMonths.filter(
+        (m) => m.workMonthYmd === row.workMonthYmd && m.status === "granted",
+      ).length;
+      expect(row.net).toBe(granted);
+    }
+    // monthA was granted then reconciled away — same-period pair nets to zero.
+    const monthARow = activity.find((r) => r.workMonthYmd === ymd(monthA));
+    expect(monthARow).toBeDefined();
+    expect(monthARow!.grants).toBe(1);
+    expect(monthARow!.removals).toBe(1);
+    expect(monthARow!.net).toBe(0);
+  });
 });
 
 describe("financial exclusion boundaries", () => {
