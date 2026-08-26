@@ -1,0 +1,205 @@
+# Disability Credit (DC) Management — S2 Specification
+
+Single build spec. Audience: Replit agent, no fund knowledge assumed. Fund rulings incorporated through 2026-08. One section remains blocked (§6) — everything else is buildable now.
+
+---
+
+## 1. Context
+
+The BAO is an hours-based benefits fund. Employers upload worker hours monthly; a benefit scan grants or denies coverage per worker per month based on those hours. A **Disability Credit (DC)** grants a worker credited hours for months they could not work due to disability, so coverage continues. Volume ~40–42/month, currently fully manual and tracked in a staff spreadsheet. This build moves DC into S2 as a case-based workflow on the worker record.
+
+**Domain terms:** FMLA hours = employer-reported hours typed FMLA (Family and Medical Leave Act). LOA = leave of absence, a distinct type, never equivalent to FMLA. WMB = worker-month-benefit record, the benefit scan's per-month output. MSR = member service representative (fund staff). DC form = the fund's doctor-signed disability form. FMLA denial letter = employer letter denying FMLA.
+
+## 2. System invariants (apply to every section)
+
+1. **Computed over stored** — balance, eligibility, checklist state derived at read time; no persisted counters or flags.
+2. **Event logs over flags** — DC emits typed events; keep the WMB table untouched.
+3. **Scan cap** — the benefit scan grants at most 1 month into the future; DC respects it (future months queue).
+4. **Removal review** — any automated change that would remove an active benefit routes to the standing review queue; never auto-executes.
+5. **Append-only notes** — log notes immutable; corrections are new entries referencing the original.
+6. **Idempotency** — rerunning any DC operation writes nothing unless values changed.
+
+## 3. Data model & events
+
+1. **disability_case** on a worker: status (`draft` / `ready_for_review` / `in_queue` / `approved` / `denied` / `withdrawn`), intake channel (`member_portal` / `msr` / `employer`), created-by, approved-by, reason required on terminal states, timestamps.
+2. **dc_case_month** per credited month: work month, status (`selected` / `queued` / `granted` / `removed`), granted hours, grant/removal timestamps, removal reason. A work month holds at most one non-removed dc_case_month per worker.
+3. **fmla_denial_letter** on a worker: effective date, expiration date (computed = effective + configured validity; staff may not extend), linked document.
+4. **Documents** attach to a case: uploader identity (always visible per document), type (DC form / doctor note / WSR / employer accommodation letter / denial letter / other), timestamp. Documents are never deleted — superseded docs are marked superseded. Multiple uploads consolidate under one case.
+5. **Log notes**: append-only; corrections reference the corrected note's ID. No edit/delete operation exists in UI or API.
+6. **Events**: `dc_case_opened`, `dc_case_queued`, `dc_month_granted`, `dc_month_removed`, `dc_doc_uploaded`, `dc_case_closed` — each carrying worker, case, month where applicable.
+7. **Balance is computed:** balance for calendar year Y = 6 − count(`granted` dc_case_months with work month in Y). January 1 reset falls out of the calculation; nothing is stored or reset.
+8. **Config values** (fund-level settings, not code): denial-letter validity months (default **12**); "Disability" hours-type handling (`flag` / `reject`, default `flag`).
+
+## 4. Eligibility detection & employer reporting
+
+### Detection
+
+1. The **"Start Disability Case"** button appears on a worker page when either holds; otherwise absent:
+   - a. ≥ 3 months of FMLA-type hours within the **rolling 12 months preceding the first month to be credited**. Consecutive not required — intermittent FMLA counts. Rolling window, never calendar year.
+   - b. An active FMLA denial letter: effective ≤ current month ≤ expiration.
+2. Denial letter validity: **12 months from effective date** (config §3.8). Rationale: a mid-year denial carries into the next benefit year without a new letter. Expired letters never qualify. Entry requires the effective date; expiration is computed.
+3. Detection uses only FMLA-type hours. LOA never counts. No mapping, translation, or per-employer toggle exists.
+
+### Reporting data quality
+
+4. **Gap-after-FMLA flag:** an unreported month following FMLA-reported months (e.g., FMLA in Jan, Feb, nothing in Mar, FMLA in Apr) is treated as a likely employer reporting **error**. The system flags such months in an upload-review report for staff follow-up. The gap does **not** affect eligibility — the 3-month test counts paid FMLA months regardless of gaps.
+5. **"Disability" hours type is retired.** DC is owned entirely by the fund/member. Uploads containing type "Disability" are handled per config: `flag` (accepted, surfaced in upload-review report, excluded from eligibility detection) during a transition window, then `reject`.
+6. Employers are required to report FMLA vs LOA accurately; the system never corrects types on their behalf — misreports are fixed by corrected uploads.
+
+### Edge cases
+
+| # | Case | Expected |
+|---|---|---|
+| 4.1 | Exactly 3 FMLA months in window | Eligible (inclusive) |
+| 4.2 | 3 FMLA months with gaps between them, all in window | Eligible; gap months flagged per §4.4 |
+| 4.3 | Earliest FMLA month just outside rolling 12 | Not eligible via 1a |
+| 4.4 | Denial letter expires after case opened, before approval | Case proceeds — eligibility checked at case open; expiry noted on case detail |
+| 4.5 | Both conditions true | One button; case records which triggered |
+| 4.6 | FMLA hours corrected away, dropping below 3 | Button disappears prospectively; existing cases unaffected |
+| 4.7 | Denial letter effective in the future | Inactive until effective date |
+
+## 5. Case workflow & documentation
+
+### Lifecycle
+
+| Status | Meaning | Who acts |
+|---|---|---|
+| `draft` | Open; checklist incomplete or months unselected | Member uploads; MSR gathers, selects months |
+| `ready_for_review` | Checklist passes + months selected | MSR marks ready (open Q7.4) |
+| `in_queue` | In approval queue | Approver |
+| `approved` | Grant cascade fires (§6) | System |
+| `denied` / `withdrawn` | Terminal; reason required | Approver / MSR |
+
+1. MSR or member (portal) may open a case; channel recorded. Employers may submit documents that staff attach — employers never open or own cases.
+2. Cases may open **without documents** (shell for uploads) but cannot leave `draft` until the checklist passes and ≥ 1 month is selected.
+3. **Members can:** open a case on themselves, upload to their own case. **Cannot:** select months, mark ready, see other workers. **MSRs can:** all of that plus select months, mark ready, withdraw. Nothing a non-staff party does advances status.
+4. **Month selection is multi-month in a single action** (required). Multi-worker bulk is explicitly not built.
+
+### Month-selection constraints
+
+5. Selectable months are limited by remaining balance (§8).
+6. **Coverage continuity (fund rule):** selected months + existing coverage must form a continuous run. The first credited month must immediately follow the worker's last covered month, or the selection must backfill every gap month back to it. Selections leaving a gap are blocked with the gap months named. Rationale: prevents adverse selection — a member cannot go uncovered and retroactively invoke DC around a large claim.
+7. Continuity tests **coverage**, not FMLA usage or employment — returning to work between FMLA and the DC period is fine if coverage stayed continuous.
+8. Gap larger than remaining balance → DC unavailable for that period; no partial-gap grants. Reason surfaced to staff. (Absolute vs staff-overridable: open Q7.5.)
+
+### Documentation checklist (gates `draft` → `ready_for_review`)
+
+9. **Base:** DC form present, doctor-signed. Unsigned form requires an accompanying WSR or doctor's note.
+10. **Required form fields:** doctor address, phone, dates — missing fields fail the checklist with the specific gap named.
+11. **Restrictions branch:** if a doctor's note lists work restrictions (staff sets a "restrictions noted" attribute), an employer inability-to-accommodate letter is additionally required.
+12. Checklist state is computed from attached documents + staff-attested attributes (signed?, restrictions?, fields complete?). The system does not read document contents.
+13. Extensions: later doctor notes upload into the same case — never a new case per note.
+
+### Queue
+
+14. `ready_for_review` → `in_queue`; queue is a dashboard view (§9), not email. Approver actions: approve (→ §6), deny with reason, bounce to `draft` with a note.
+
+### Edge cases
+
+| # | Case | Expected |
+|---|---|---|
+| 5.1 | Member with no eligibility opens portal case | Creation not offered unless §4 conditions hold |
+| 5.2 | Required doc superseded after checklist passed | Checklist recomputes off current docs |
+| 5.3 | Bounced case | Prior attestations persist; MSR fixes and re-marks |
+| 5.4 | Second case while one is open | Warn + link; allow only with explicit confirmation |
+| 5.5 | Restrictions attribute set while in queue | Checklist fails; case auto-bounces to `draft` with log entry |
+| 5.6 | Last covered month 3 back; balance 2 | Blocked per rule 8 |
+| 5.7 | Worked 2 covered months between FMLA and disability | Fine — coverage continuous |
+| 5.8 | Backfill months are retro | Allowed; retro effects follow §6 review rules |
+
+## 6. Approval cascade — ⚠ BLOCKED on hours attribution (Q7.1)
+
+Design principle: DC never grants coverage directly. Approval writes DC-type hours; the existing trigger-based rescan and benefit scan grant coverage exactly as with employer hours. One grant path.
+
+1. On approval, each selected month gets a DC-type hours record equal to the **worker's eligibility hours threshold for that work month, per their member status** — derived at grant time, never hard-coded. (Amount derivation pending final confirmation, Q7.2.)
+2. **Attribution (the blocker):** DC hours are fund-granted. They must be excluded from **every** employer-facing financial derivation — contribution charges, delinquency/liquidated-damages assessment, employer reporting totals. Open: whether the record carries an employer reference at all (default design: none) and how DC hours appear in trustee/financial reporting vs employer-paid hours.
+3. Hours writes trigger the standard rescan; the benefit scan owns all coverage logic. For the scan, DC hours count identically to worked hours (confirmed).
+4. dc_case_month `selected` → `granted` on write; `dc_month_granted` emitted per month.
+5. **Scan cap:** months whose coverage effect lands beyond current month + 1 take `queued`, not `granted`. A scheduled check releases them as they enter the window. Approving future months never errors.
+6. **Retro months:** rescans that would remove an active benefit route to the review queue (invariant 2.4).
+7. Approval re-validates balance (§8) **and** continuity (§5.6) at approval time; blocks with a clear error naming conflicts if state changed since selection.
+8. Idempotent: re-approval writes nothing. Denial/withdrawal write no hours.
+
+### Edge cases
+
+| # | Case | Expected |
+|---|---|---|
+| 6.1 | Months span past / in-window / beyond cap | Grant + grant + queue respectively |
+| 6.2 | Case withdrawn with queued months | Queued months cancel; no hours written |
+| 6.3 | Worker has partial employer hours in a granted month | Both coexist (§7 governs later arrivals) |
+| 6.4 | Release-check rerun | Idempotent |
+| 6.5 | Balance consumed between selection and approval | Approval blocks, names conflicting months |
+
+## 7. Auto-reconciliation (late employer reporting)
+
+Trigger: an hours upload writes **FMLA-type or active/worked-type** hours to a month holding a `granted` dc_case_month.
+
+1. **Reported hours ≥ threshold:** revoke the DC — active hours take precedence. Remove the DC hours record, dc_case_month → `removed` (reason: employer-reported), emit `dc_month_removed`, auto log entry stating what/why. The member **retains the DC month** (balance restores automatically, computed). Coverage unaffected — real hours carry it, so revocation never removes a benefit.
+2. **Reported hours < threshold:** **keep both.** DC still applies as long as the 3-FMLA-month basis was met; no removal, no balance change; informational log entry for audit. Also applies at grant time — partial reported hours never block granting DC for that month. Confirmed final; no config switch.
+3. **Downward correction after revocation:** if hours that triggered revocation are later corrected below threshold, the DC is **not** auto-restored (prevents flapping). Surface in a review report; staff restores manually via a new/reopened grant if warranted. Confirmed.
+4. LOA-type or other non-qualifying hours on a DC month trigger nothing.
+5. Idempotent: reprocessing an upload removes nothing twice; multiple same-day uploads evaluate against final state.
+6. Hours arriving for a `queued` month: ≥ threshold cancels the queued month before it grants; < threshold leaves it queued.
+7. Revocation in a later calendar year restores balance to the **work month's** year (automatic under computed balance — verify).
+
+## 8. Balance enforcement & display
+
+1. **6 DC months per calendar year** by work month; computed per §3.7, never stored.
+2. Enforced at selection (unselectable when granted + selected in-year would exceed 6, across all the worker's cases) and re-validated at approval.
+3. `queued` months count against balance from selection — queued ≠ free. `removed` months do not count.
+4. Display "X of 6 used (year)" on worker record and all case views; selections spanning two years show both counts.
+5. No override path for exceeding 6 exists.
+
+| # | Case | Expected |
+|---|---|---|
+| 8.1 | 5 granted in 2025 ending Dec; Jan 2026 requested | 2026 shows 6/6 available; selectable |
+| 8.2 | One case selecting Nov–Dec 2025 + Jan–Feb 2026 | Validated per year independently |
+| 8.3 | 6/6 with one `removed` | 5/6 used; replacement selectable |
+| 8.4 | Two open cases, same year | Combined count enforced |
+
+## 9. Dashboards & views
+
+All views compute live from case/event records; none cache counts.
+
+1. **Active cases** — `approved` cases with a `granted` month current or future: worker, months, balance, latest activity.
+2. **Eligible / upcoming** — three populations, distinguishable: (a) FMLA-hours-eligible, no open case; (b) active denial letter, no open case — show expiration date, highlight when < 30 days out; (c) active cases with upcoming eligible months.
+3. **Approval queue** — `in_queue`, oldest first: worker, months requested, checklist summary, days in queue; approver acts here.
+4. **Maxed out** — 6/6 for current year.
+5. **Trustee counts** — DC months granted per calendar month (by work month), trailing 12+, exportable; must reconcile exactly to `dc_month_granted` − `dc_month_removed` per month (grant+remove in same period nets to zero).
+6. **Upload-review report** — flagged "Disability" rows (§4.5) and gap-after-FMLA flags (§4.4).
+
+## 10. Out of scope
+
+- Automated notifications, permissions/approval-hierarchy wiring, spreadsheet migration — deferred; do not build.
+- Multi-worker bulk processing.
+- Any LOA→FMLA translation.
+- Auto-approval of anything member- or employer-submitted.
+- Coverage/tier logic — the benefit scan owns it.
+- "Disability zero" reporting — dead under the retired hours type.
+
+## 11. Open questions
+
+| # | Question | Owner | Blocks |
+|---|---|---|---|
+| 7.1 | **DC hours attribution** — employer-referenced but billing-excluded, vs no employer reference; and trustee/financial reporting treatment | Kristin / Laura | §6 build |
+| 7.2 | Confirm grant amount = status-based eligibility threshold; flag any status with multiple thresholds | Kristin | §6 final |
+| 7.3 | Transition window length for `flag` → `reject` on "Disability" rows | Kristin | config only |
+| 7.4 | `draft` → `ready_for_review`: explicit MSR action (recommended) or auto on checklist pass | Rocío | §5 detail |
+| 7.5 | Continuity rule §5.8 (gap > balance): absolute block (as specced) or staff-overridable | Kristin | §5 detail |
+| 7.6 | Workflow confirmations: member/staff action split (§5.3); employer intake-only (§5.1) | Kristin / Luis | none |
+| 7.7 | Queued-month release: silent or notify | Rocío | none |
+
+## 12. Build order
+
+§3 → §4 → §5 → §8 → §9 (all buildable now) → §6 when Q7.1 resolves → §7 after §6.
+
+## 13. Validation (staging, before any production writes)
+
+1. Eligibility: 2 FMLA months → no button; 3rd (with a gap month) → button + gap flag. Expired vs active vs future-dated letter.
+2. Upload: "Disability" row under `flag` and `reject` configs.
+3. Workflow: one case through every status incl. queue bounce; portal account cannot select months or advance; restrictions branch blocks readiness until employer letter.
+4. Continuity: gap selection blocked with gap months named; gap > balance blocked; worked-months-between scenario passes.
+5. Approval: 3-month case across the cap boundary → grant/queue split; window advance releases; retro flip → review queue; re-approval → zero writes.
+6. Reconciliation: ≥-threshold upload revokes (balance up, coverage unchanged); sub-threshold keeps both; downward correction after revocation → report, no auto-restore; upload rerun → zero writes.
+7. Balance: Dec/Jan boundary (8.1) exact; 7th in-year selection blocked; removal frees balance.
+8. Views: one seeded worker per population appears in exactly the intended views; trustee counts net a same-period grant+remove to zero.
