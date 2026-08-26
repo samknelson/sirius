@@ -126,17 +126,6 @@ export interface BaoDcDocumentWithFile extends BaoDcDocument {
 export interface BaoDisabilityCreditStorage {
   tableExists(): Promise<boolean>;
 
-  /**
-   * Run `fn` inside a transaction holding the case's per-worker DC advisory
-   * lock. ALL readiness-affecting sequences (read evidence → decide →
-   * transition, or mutate evidence → recompute → maybe bounce) MUST run under
-   * this serialization so a concurrent supersede/reclassify cannot land
-   * between an approval's readiness read and its status transition. Nested
-   * storage calls join the same transaction (transaction-context ALS); the
-   * advisory lock is re-entrant within the session.
-   */
-  withCaseSerialization<T>(caseId: string, fn: () => Promise<T>): Promise<T>;
-
   // Cases -----------------------------------------------------------------
   getCase(id: string): Promise<BaoDcCase | undefined>;
   listOpenCasesForWorker(workerId: string): Promise<BaoDcCase[]>;
@@ -426,19 +415,6 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
         .from(casesTable)
         .where(eq(casesTable.status, status))
         .orderBy(asc(casesTable.createdAt), asc(casesTable.id));
-    },
-
-    async withCaseSerialization<T>(caseId: string, fn: () => Promise<T>): Promise<T> {
-      await requireTables(this);
-      return runInTransaction(async () => {
-        const [theCase] = await getClient()
-          .select({ workerId: casesTable.workerId })
-          .from(casesTable)
-          .where(eq(casesTable.id, caseId));
-        if (!theCase) throw new Error("CASE_NOT_FOUND");
-        await lockWorker(theCase.workerId);
-        return fn();
-      });
     },
 
     async openCase(input: OpenDcCaseInput): Promise<BaoDcCase> {

@@ -9,7 +9,6 @@ import {
 import {
   BAO_DC_ANNUAL_MONTH_LIMIT,
   BAO_DC_CASE_STATUSES,
-  BAO_DC_DOCUMENT_TYPES,
   type BaoDcAttestations,
 } from "@shared/schema";
 import {
@@ -18,7 +17,7 @@ import {
 import {
   getDcCaseBundle,
   performDcCaseAction,
-  mutateEvidenceAndRecompute,
+  recomputeReadinessAndMaybeBounce,
   type DcCaseAction,
 } from "../../../services/sitespecific/bao/dc-workflow";
 import { DcSelectionInvalidError } from "../../../storage/sitespecific/bao/disability-credit";
@@ -53,11 +52,6 @@ const attestationsSchema = z.object({
       dates: z.boolean().optional(),
     })
     .optional(),
-});
-
-const documentUpdateSchema = z.object({
-  name: z.string().trim().min(1).optional(),
-  docType: z.enum(BAO_DC_DOCUMENT_TYPES).optional(),
 });
 
 const actionSchema = z.object({
@@ -316,48 +310,12 @@ export function registerBaoDisabilityCreditRoutes(
       try {
         const body = attestationsSchema.parse(req.body ?? {}) as BaoDcAttestations;
         const actor = await actorId(req);
-        const { result: updated, readiness, bounced } = await mutateEvidenceAndRecompute(
+        const updated = await dc.updateCaseAttestations(req.params.caseId, body, actor);
+        const { readiness, bounced } = await recomputeReadinessAndMaybeBounce(
           req.params.caseId,
           actor,
-          () => dc.updateCaseAttestations(req.params.caseId, body, actor),
         );
         res.json({ case: bounced ? await dc.getCase(updated.id) : updated, readiness, bounced });
-      } catch (error) {
-        if (error instanceof z.ZodError) {
-          res.status(400).json({ message: "Invalid request", errors: error.errors });
-          return;
-        }
-        handleDcError(res, error);
-      }
-    },
-  );
-
-  // Reclassify/rename a document — STAFF only; recompute readiness (may
-  // auto-bounce a ready/in-queue case whose evidence stops passing). The
-  // generic entity-files PATCH refuses DC updates so this is the ONLY path.
-  app.patch(
-    "/api/sitespecific/bao/dc/cases/:caseId/documents/:documentId",
-    requireAuth,
-    componentMiddleware,
-    requireAccess("staff"),
-    async (req: Request, res: Response) => {
-      try {
-        const body = documentUpdateSchema.parse(req.body ?? {});
-        const doc = await dc.getCaseDocument(req.params.caseId, req.params.documentId);
-        if (!doc) {
-          res.status(404).json({ message: "Document not found" });
-          return;
-        }
-        const { result: updated, readiness, bounced } = await mutateEvidenceAndRecompute(
-          req.params.caseId,
-          await actorId(req),
-          () =>
-            dc.updateCaseDocument(req.params.caseId, req.params.documentId, {
-              name: body.name,
-              docType: body.docType,
-            }),
-        );
-        res.json({ document: updated, readiness, bounced });
       } catch (error) {
         if (error instanceof z.ZodError) {
           res.status(400).json({ message: "Invalid request", errors: error.errors });
@@ -382,10 +340,10 @@ export function registerBaoDisabilityCreditRoutes(
           return;
         }
         const actor = await actorId(req);
-        const { result: updated, readiness, bounced } = await mutateEvidenceAndRecompute(
+        const updated = await dc.supersedeDocument(req.params.documentId, actor);
+        const { readiness, bounced } = await recomputeReadinessAndMaybeBounce(
           req.params.caseId,
           actor,
-          () => dc.supersedeDocument(req.params.documentId, actor),
         );
         res.json({ document: updated, readiness, bounced });
       } catch (error) {
