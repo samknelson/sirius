@@ -138,6 +138,35 @@ const ALLOWED_REJECTS: string[] = (() => {
   const i = process.argv.indexOf("--allow-rejects");
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1].split(",").map((s) => s.trim()).filter(Boolean) : [];
 })();
+
+/** Database/storage failures are reportable only as non-sensitive classes.
+ * Never include raw messages: driver errors can embed row values. Neon/pg may
+ * expose SQLSTATE on the outer error or on a nested cause. */
+function classifyWmbWriteError(error: unknown): string {
+  let current: unknown = error;
+  for (let depth = 0; depth < 4 && current && typeof current === "object"; depth++) {
+    const meta = current as { code?: unknown; constraint?: unknown; cause?: unknown };
+    const code = typeof meta.code === "string" ? meta.code : null;
+    const constraint = typeof meta.constraint === "string" ? meta.constraint : null;
+    if (code) {
+      if (code === "23503") {
+        if (constraint === "trust_wmb_source_relation_id_worker_relations_id_fk") {
+          return "foreign_key_source_relation";
+        }
+        if (constraint?.includes("worker_id")) return "foreign_key_worker";
+        if (constraint?.includes("employer_id")) return "foreign_key_employer";
+        if (constraint?.includes("benefit_id")) return "foreign_key_benefit";
+        return "foreign_key";
+      }
+      if (code === "23505") return "unique_conflict";
+      if (code === "23502") return "not_null";
+      if (code === "23514") return "check_constraint";
+      return `postgres_${code}`;
+    }
+    current = meta.cause;
+  }
+  return error instanceof Error ? error.constructor.name : "unknown";
+}
 /** Open-end horizon: explicit flag, else the current month in fund-local
  * (LA) time — each daily dual-run sync advances open spans to "now". The
  * final cutover run and verify-month-parity must pass the SAME ruled month
@@ -853,8 +882,16 @@ async function main() {
             ),
           );
           monthsCreated++;
-        } catch {
-          rejects.add("wmb_create_failed", { nid: Number(r.nid), ym: `${r.year}-${String(r.month).padStart(2, "0")}` }, Number(r.nid));
+        } catch (error) {
+          rejects.add(
+            "wmb_create_failed",
+            {
+              nid: Number(r.nid),
+              ym: `${r.year}-${String(r.month).padStart(2, "0")}`,
+              code: classifyWmbWriteError(error),
+            },
+            Number(r.nid),
+          );
         }
       }
       if (rows.length < PAGE) break;
@@ -880,8 +917,11 @@ async function main() {
             }),
           );
           monthsDeleted++;
-        } catch {
-          rejects.add("wmb_delete_failed", { ym: `${r.year}-${String(r.month).padStart(2, "0")}` });
+        } catch (error) {
+          rejects.add("wmb_delete_failed", {
+            ym: `${r.year}-${String(r.month).padStart(2, "0")}`,
+            code: classifyWmbWriteError(error),
+          });
         }
       }
       if (rows.length < PAGE) break;
@@ -915,8 +955,16 @@ async function main() {
             }),
           );
           relRepaired++;
-        } catch {
-          rejects.add("wmb_rel_repair_failed", { nid: Number(r.nid), ym: `${r.year}-${String(r.month).padStart(2, "0")}` }, Number(r.nid));
+        } catch (error) {
+          rejects.add(
+            "wmb_rel_repair_failed",
+            {
+              nid: Number(r.nid),
+              ym: `${r.year}-${String(r.month).padStart(2, "0")}`,
+              code: classifyWmbWriteError(error),
+            },
+            Number(r.nid),
+          );
         }
       }
       if (rows.length < PAGE) break;
