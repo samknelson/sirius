@@ -116,14 +116,11 @@ export function DcDocumentsCard({
   });
 
   const setType = useMutation({
-    mutationFn: async ({ id, docType }: { id: string; docType: string }) => {
-      const res = await apiRequest(
-        "PATCH",
-        `/api/sitespecific/bao/dc/cases/${caseId}/documents/${id}`,
-        { docType },
-      );
-      return res.json() as Promise<{ bounced?: boolean }>;
-    },
+    mutationFn: ({ id, docType }: { id: string; docType: string }) =>
+      // apiRequest already parses and returns the JSON body.
+      apiRequest("PATCH", `/api/sitespecific/bao/dc/cases/${caseId}/documents/${id}`, {
+        docType,
+      }) as Promise<{ bounced?: boolean }>,
     onSuccess: (result) => {
       if (result?.bounced) {
         toast({
