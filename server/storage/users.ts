@@ -60,6 +60,7 @@ export interface UserStorage {
   upsertUser(user: UpsertUser): Promise<User>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, user: Partial<InsertUser>): Promise<User | undefined>;
+  retireMigratedUserEmail(id: string, expectedEmail: string, retiredEmail: string): Promise<boolean>;
   updateUserLastLogin(id: string): Promise<User | undefined>;
   deleteUser(id: string): Promise<boolean>;
   deleteUserAccount(id: string): Promise<boolean>;
@@ -181,6 +182,30 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
       }
       
       return user || undefined;
+    },
+
+    /**
+     * Release a unique login address from an already-inactive migrated
+     * account without propagating the account-only tombstone to contacts.
+     * The expected-email predicate makes the migration's collision check and
+     * write fail closed if the row changed in between.
+     */
+    async retireMigratedUserEmail(
+      id: string,
+      expectedEmail: string,
+      retiredEmail: string,
+    ): Promise<boolean> {
+      const client = getClient();
+      const result = await client
+        .update(users)
+        .set({ email: retiredEmail, updatedAt: new Date() })
+        .where(and(
+          eq(users.id, id),
+          eq(users.isActive, false),
+          sql`lower(${users.email}) = lower(${expectedEmail})`,
+        ))
+        .returning({ id: users.id });
+      return result.length === 1;
     },
 
     async updateUserLastLogin(id: string): Promise<User | undefined> {
@@ -759,6 +784,14 @@ export const userLoggingConfig = defineLoggingConfig<UserStorage>({
         
         return `Updated user "${userName}" (changed: ${changes.join(', ')})`;
       }
+    },
+    retireMigratedUserEmail: {
+      logArgs: (args) => [args[0], "<expected email redacted>", "<retired email redacted>"],
+      getHostEntityId: (args) => args[0],
+      getDescription: (args, result) =>
+        result
+          ? `Retired migration-owned login email for inactive user ${args[0]}`
+          : `Did not retire migration-owned login email for inactive user ${args[0]}`,
     },
     deleteUser: {
       getHostEntityId: (args, _result, beforeState) => beforeState?.id || args[0],

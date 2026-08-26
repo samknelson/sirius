@@ -82,7 +82,7 @@ const LOADER = "t27-users";
 /** §10 result contract version — bump with sync-config.ts in the same commit.
  * (t27 reconciles by FULL SCAN each run — no fingerprint fast path — so this
  * version only labels the envelope; bumping it does not change reprocessing.) */
-const LOGIC_VERSION = 1;
+const LOGIC_VERSION = 2;
 const PAGE = 500;
 
 /** Row-skipping reasons — the verify pass skips exactly these. */
@@ -269,6 +269,7 @@ async function main() {
     workerLinksRemoved: 0,
     deactivatedBlocked: 0,
     deactivatedDeleted: 0,
+    staleEmailsReleased: 0,
     roleAssignments: 0,
     s2ExtraRolesKept: 0,
   };
@@ -277,6 +278,7 @@ async function main() {
     ambiguousWorkerEmail: [] as Array<{ uid: number; workerNids: number[] }>,
     duplicateEmails: [] as Array<{ uid: number; firstUid: number }>,
     blockedSkipped: [] as number[],
+    staleEmailReleases: [] as Array<{ incomingUid: number; retiredUid: number }>,
   };
   const seenEmailByUid = new Map<string, number>(); // lower(mail) → first uid this run
   /** uid → expected shape for verify. */
@@ -307,6 +309,10 @@ async function main() {
   }
 
   const idMap = await getMappings("user", activeStaged.map((u) => u.uid));
+  const activeUids = new Set(activeStaged.map((u) => u.uid));
+  const allUserMappings = await getAllMappings("user");
+  const { toRevoke, reservedUidRemediated } = await reconcileInactiveUsers();
+  stats.reservedUidRemediated = reservedUidRemediated;
 
   progress.setTotal(activeStaged.length);
   progress.phase(null);
@@ -439,15 +445,40 @@ async function main() {
 
       // email may already be taken (admin-created account, or crash-repair):
       // adopt only if it's not owned by another migrated uid.
-      const clash = await storage.users.getUserByEmail(email);
+      let clash = await storage.users.getUserByEmail(email);
       let s2Id: string;
       if (clash) {
         const clashData = (clash.data as Record<string, unknown> | null) ?? {};
         const clashUid = (clashData.s1 as Record<string, unknown> | undefined)?.uid;
         if (typeof clashUid === "number" && clashUid !== u.uid) {
-          rejects.add("email_owned_by_other_s1_user", { uid: u.uid, otherUid: clashUid }, u.uid);
-          continue;
+          const ownerMapping = allUserMappings.get(clashUid);
+          const retiredCanonicalOwner =
+            !activeUids.has(clashUid) &&
+            clash.isActive === false &&
+            ownerMapping?.stub === false &&
+            ownerMapping.s2Id === clash.id;
+          if (retiredCanonicalOwner) {
+            // users.email is NOT NULL + unique. Preserve the retired account,
+            // UUID, mapping, and history, but move its login address to a
+            // deterministic non-deliverable value so the current S1 owner can
+            // claim the real address. Deliberately bypass updateUser here:
+            // contact-sync must not copy this account-only tombstone onto a
+            // worker/contact record.
+            const retiredEmail = `s1-retired-${clashUid}-${clash.id}@s1-retired.invalid`;
+            const released = await storage.users.retireMigratedUserEmail(clash.id, email, retiredEmail);
+            if (released) {
+              stats.staleEmailsReleased++;
+              reconciliation.staleEmailReleases.push({ incomingUid: u.uid, retiredUid: clashUid });
+              clash = undefined;
+            }
+          }
+          if (clash) {
+            rejects.add("email_owned_by_other_s1_user", { uid: u.uid, otherUid: clashUid }, u.uid);
+            continue;
+          }
         }
+      }
+      if (clash) {
         // adopt (pre-existing admin account or prior crash) — enrich in place
         await withNotificationsSuppressed(async () => {
           await storage.users.updateUser(clash.id, {
@@ -522,70 +553,72 @@ async function main() {
     }
   }
 
-  // ---- lifecycle reconciliation: previously migrated accounts whose S1
-  // account is now BLOCKED (status != 1) or DELETED (gone from staging) must
-  // stop granting access: deactivate, remove the migration-owned worker link
-  // and the worker role. Never touches accounts this migration didn't map.
-  const stagedUids = new Set<number>();
-  for (const u of activeStaged) stagedUids.add(u.uid);
-  for (const u of blockedStaged) stagedUids.add(u.uid);
-  const allUserMappings = await getAllMappings("user");
-  // Reserved Drupal uids (0 anonymous, 1 superuser) must never be mapped —
-  // remediate any historical mapping: deactivate the S2 row + drop the map.
-  let reservedUidRemediated = 0;
-  for (const uid of [0, 1]) {
-    const m = allUserMappings.get(uid);
-    if (!m) continue;
-    if (!DRY_RUN) {
-      const row = await storage.users.getUser(m.s2Id);
-      if (row?.isActive) {
-        await withNotificationsSuppressed(() => storage.users.updateUser(m.s2Id, { isActive: false }));
-      }
-      await deleteMapping("user", uid);
-    }
-    allUserMappings.delete(uid);
-    reservedUidRemediated++;
-    console.error(`LIFECYCLE: reserved Drupal uid ${uid} was mapped — deactivated + unmapped`);
-  }
-  stats.reservedUidRemediated = reservedUidRemediated;
-  const toRevoke: Array<{ uid: number; s2Id: string; why: "blocked" | "deleted" }> = [];
-  for (const u of blockedStaged) {
-    const m = allUserMappings.get(u.uid);
-    if (m && !m.stub) toRevoke.push({ uid: u.uid, s2Id: m.s2Id, why: "blocked" });
-  }
-  for (const [uid, m] of allUserMappings) {
-    if (!m.stub && !stagedUids.has(uid)) toRevoke.push({ uid, s2Id: m.s2Id, why: "deleted" });
-  }
-  for (const r of toRevoke) {
-    try {
-      const row = DRY_RUN ? null : await storage.users.getUser(r.s2Id);
-      if (DRY_RUN) {
-        // report-only: dry-run must not read-modify-write
-        continue;
-      }
-      if (!row) continue;
-      const prevData = (row.data as Record<string, unknown> | null) ?? {};
-      const migrationOwnedLink =
-        prevData.workerLinkSource === "s1-user-migration" && prevData.migratedWorkerId != null;
-      if (!row.isActive && !migrationOwnedLink) continue; // already reconciled
-      await withNotificationsSuppressed(async () => {
-        if (row.isActive) await storage.users.updateUser(r.s2Id, { isActive: false });
-        if (migrationOwnedLink) {
-          const nextData = { ...prevData };
-          delete nextData.migratedWorkerId;
-          delete nextData.workerLinkSource;
-          await storage.users.updateUserData(r.s2Id, nextData);
-          stats.workerLinksRemoved++;
+  /**
+   * Reconcile lifecycle BEFORE active users so an email transferred in S1
+   * does not wait for a second run merely because its former migrated owner
+   * still needed to be deactivated at the start of this run.
+   */
+  async function reconcileInactiveUsers(): Promise<{
+    toRevoke: Array<{ uid: number; s2Id: string; why: "blocked" | "deleted" }>;
+    reservedUidRemediated: number;
+  }> {
+    const stagedUids = new Set<number>();
+    for (const u of activeStaged) stagedUids.add(u.uid);
+    for (const u of blockedStaged) stagedUids.add(u.uid);
+
+    let reservedUidRemediated = 0;
+    for (const uid of [0, 1]) {
+      const m = allUserMappings.get(uid);
+      if (!m) continue;
+      if (!DRY_RUN) {
+        const row = await storage.users.getUser(m.s2Id);
+        if (row?.isActive) {
+          await withNotificationsSuppressed(() => storage.users.updateUser(m.s2Id, { isActive: false }));
         }
-        await clearMigrationIdentityLinks(r.s2Id);
-        const workerRole = await storage.users.getRoleByName("worker");
-        if (workerRole) await storage.users.unassignRoleFromUser(r.s2Id, workerRole.id);
-      });
-      if (r.why === "blocked") stats.deactivatedBlocked++;
-      else stats.deactivatedDeleted++;
-    } catch {
-      rejects.add("user_update_failed", { uid: r.uid, code: "storage_error" }, r.uid);
+        await deleteMapping("user", uid);
+      }
+      allUserMappings.delete(uid);
+      reservedUidRemediated++;
+      console.error(`LIFECYCLE: reserved Drupal uid ${uid} was mapped — deactivated + unmapped`);
     }
+
+    const toRevoke: Array<{ uid: number; s2Id: string; why: "blocked" | "deleted" }> = [];
+    for (const u of blockedStaged) {
+      const m = allUserMappings.get(u.uid);
+      if (m && !m.stub) toRevoke.push({ uid: u.uid, s2Id: m.s2Id, why: "blocked" });
+    }
+    for (const [uid, m] of allUserMappings) {
+      if (!m.stub && !stagedUids.has(uid)) toRevoke.push({ uid, s2Id: m.s2Id, why: "deleted" });
+    }
+    for (const r of toRevoke) {
+      try {
+        const row = DRY_RUN ? null : await storage.users.getUser(r.s2Id);
+        if (DRY_RUN) continue;
+        if (!row) continue;
+        const prevData = (row.data as Record<string, unknown> | null) ?? {};
+        const migrationOwnedLink =
+          prevData.workerLinkSource === "s1-user-migration" && prevData.migratedWorkerId != null;
+        if (!row.isActive && !migrationOwnedLink) continue;
+        await withNotificationsSuppressed(async () => {
+          if (row.isActive) await storage.users.updateUser(r.s2Id, { isActive: false });
+          if (migrationOwnedLink) {
+            const nextData = { ...prevData };
+            delete nextData.migratedWorkerId;
+            delete nextData.workerLinkSource;
+            await storage.users.updateUserData(r.s2Id, nextData);
+            stats.workerLinksRemoved++;
+          }
+          await clearMigrationIdentityLinks(r.s2Id);
+          const workerRole = await storage.users.getRoleByName("worker");
+          if (workerRole) await storage.users.unassignRoleFromUser(r.s2Id, workerRole.id);
+        });
+        if (r.why === "blocked") stats.deactivatedBlocked++;
+        else stats.deactivatedDeleted++;
+      } catch {
+        rejects.add("user_update_failed", { uid: r.uid, code: "storage_error" }, r.uid);
+      }
+    }
+    return { toRevoke, reservedUidRemediated };
   }
 
   report.users = stats;
@@ -594,6 +627,10 @@ async function main() {
     ambiguousWorkerEmail: { count: reconciliation.ambiguousWorkerEmail.length, samples: reconciliation.ambiguousWorkerEmail.slice(0, 50) },
     duplicateEmails: { count: reconciliation.duplicateEmails.length, samples: reconciliation.duplicateEmails.slice(0, 50) },
     blockedSkipped: { count: reconciliation.blockedSkipped.length, uids: reconciliation.blockedSkipped.slice(0, 50) },
+    staleEmailReleases: {
+      count: reconciliation.staleEmailReleases.length,
+      samples: reconciliation.staleEmailReleases.slice(0, 50),
+    },
     lifecycleRevoked: {
       count: toRevoke.length,
       samples: toRevoke.slice(0, 50).map((r) => ({ uid: r.uid, why: r.why })),

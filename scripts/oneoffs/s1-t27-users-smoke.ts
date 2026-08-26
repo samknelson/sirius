@@ -12,6 +12,8 @@
  *     TWO worker records) → still ambiguous_worker_email, no link
  *   - mail matching nothing → no_resolvable_worker annotation
  *   - duplicate mails (higher uid rejects duplicate_user_email)
+ *   - email transferred from a deleted/inactive migrated uid to a current uid
+ *     retires the old account email and loads the new owner in one run
  *   - blocked account (never created)
  *   - role upsert + assignment (custom role, built-ins skipped)
  *   - idempotent re-run (no duplicates, drift-reconciled)
@@ -34,7 +36,18 @@ import {
 } from "../s1-migration/lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "../s1-migration/lib/idmap";
 
-const U = { linked: 999001, ambiguous: 999002, unmatched: 999003, dupA: 999004, dupB: 999005, blocked: 999006, assoc: 999007, assocAmb: 999008 };
+const U = {
+  linked: 999001,
+  ambiguous: 999002,
+  unmatched: 999003,
+  dupA: 999004,
+  dupB: 999005,
+  blocked: 999006,
+  assoc: 999007,
+  assocAmb: 999008,
+  retiredOwner: 999009,
+  replacementOwner: 999010,
+};
 const N = {
   c1: 99900801, w1: 99900802, c2: 99900803, w2: 99900804, c3: 99900805, w3: 99900806,
   c4: 99900807, w4: 99900808, c5: 99900809, w5: 99900810, c6: 99900811, w6a: 99900812, w6b: 99900813,
@@ -50,6 +63,7 @@ const EMAILS = {
   blocked: "t27.smoke.blocked@example.test",
   assoc: "t27.smoke.assoc@example.test",
   assocAmb: "t27.smoke.assocamb@example.test",
+  transfer: "t27.smoke.transfer@example.test",
 };
 const ROLE_NAME = "T27 Smoke Role";
 
@@ -142,6 +156,7 @@ async function seed() {
     { uid: U.blocked, name: "t27-blocked", mail: EMAILS.blocked, created: now, access: now, login: now, status: 0, timezone: null, data: null },
     { uid: U.assoc, name: "t27-assoc", mail: EMAILS.assoc, created: now, access: now, login: now, status: 1, timezone: null, data: null },
     { uid: U.assocAmb, name: "t27-assocamb", mail: EMAILS.assocAmb, created: now, access: now, login: now, status: 1, timezone: null, data: null },
+    { uid: U.retiredOwner, name: "t27-retired-owner", mail: EMAILS.transfer, created: now, access: now, login: now, status: 1, timezone: null, data: null },
   ]);
   // S1 user↔contact association (the shared-email ownership signal)
   await upsertRawUserContacts([
@@ -216,6 +231,8 @@ async function main() {
   check("dupA mapped", map.has(U.dupA));
   check("dupB NOT mapped (duplicate_user_email)", !map.has(U.dupB));
   check("blocked NOT mapped", !map.has(U.blocked));
+  check("eventual retired owner initially mapped", map.has(U.retiredOwner));
+  check("replacement owner not staged yet", !map.has(U.replacementOwner));
 
   const linked = map.get(U.linked) ? await storage.users.getUser(map.get(U.linked)!.s2Id) : null;
   const linkedData = (linked?.data as Record<string, unknown> | null) ?? {};
@@ -282,6 +299,23 @@ async function main() {
       fields: { field_sirius_email: { value: "t27.smoke.changed@example.test" } },
     },
   ]);
+  // In the same staged generation, the former S1 account disappears and a
+  // new active uid receives its email. One loader run must deactivate the old
+  // mapped account, retire only its users.email value, and load the new uid.
+  await db.execute(sql`DELETE FROM s1_staging.raw_users WHERE uid = ${U.retiredOwner}`);
+  await upsertRawUsers([
+    {
+      uid: U.replacementOwner,
+      name: "t27-replacement-owner",
+      mail: EMAILS.transfer,
+      created: now3,
+      access: now3,
+      login: now3,
+      status: 1,
+      timezone: null,
+      data: null,
+    },
+  ]);
   const r3 = runLoader();
   check("stale-link re-run exits 0", r3.status === 0, r3.status);
   const linked3 = map.get(U.linked) ? await storage.users.getUser(map.get(U.linked)!.s2Id) : null;
@@ -305,6 +339,25 @@ async function main() {
     "resolveLinkedWorkerId null right after loader unlink",
     linked3 ? (await resolveLinkedWorkerId(linked3)) === null : false,
   );
+  const transferMap3 = await getMappings("user", [U.retiredOwner, U.replacementOwner]);
+  const retired3 = transferMap3.get(U.retiredOwner)
+    ? await storage.users.getUser(transferMap3.get(U.retiredOwner)!.s2Id)
+    : null;
+  const replacement3 = transferMap3.get(U.replacementOwner)
+    ? await storage.users.getUser(transferMap3.get(U.replacementOwner)!.s2Id)
+    : null;
+  check("deleted former owner mapping preserved", transferMap3.has(U.retiredOwner));
+  check("deleted former owner deactivated", retired3?.isActive === false, retired3?.isActive);
+  check(
+    "deleted former owner email retired without retaining real address",
+    !!retired3 &&
+      retired3.email.startsWith(`s1-retired-${U.retiredOwner}-`) &&
+      retired3.email.endsWith("@s1-retired.invalid"),
+    retired3?.email,
+  );
+  check("replacement owner mapped in same run", transferMap3.has(U.replacementOwner));
+  check("replacement owner owns transferred email", replacement3?.email === EMAILS.transfer, replacement3?.email);
+  check("replacement owner active", replacement3?.isActive === true, replacement3?.isActive);
 
   console.log("run 4: blocked-after-migration lifecycle (deactivate + revoke)");
   // The linked user (migrated in run 1, worker role granted) is now BLOCKED

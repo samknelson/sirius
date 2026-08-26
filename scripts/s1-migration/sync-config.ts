@@ -88,7 +88,7 @@ export const FLEET: FleetStep[] = [
   { id: "call-logs", script: "load-call-logs.ts", loader: "n21-call-logs", logicVersion: 2, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true, extraArgs: ["--migration-mode"] },
   { id: "cardchecks", script: "load-cardchecks.ts", loader: "cardchecks", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true, extraArgs: ["--migration-mode"] },
   { id: "enrollment-packet-tags", script: "load-enrollment-packet-tags.ts", loader: "t29-enrollment-packet-tags", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true, extraArgs: ["--migration-mode"] },
-  { id: "users", script: "load-users.ts", loader: "t27-users", logicVersion: 1, supportsForceReconcile: false, supportsAllowFindings: false, supportsAllowRejects: true },
+  { id: "users", script: "load-users.ts", loader: "t27-users", logicVersion: 2, supportsForceReconcile: false, supportsAllowFindings: false, supportsAllowRejects: true },
 ];
 
 export interface StepPolicy {

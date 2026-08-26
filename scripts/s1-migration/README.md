@@ -535,8 +535,12 @@ DB rows, idempotent re-runs and the T19 fail-closed guard, then cleans up.
   on the reconciliation report — the account still migrates unlinked and the
   person self-verifies via SSN+DOB at first login. Roles upsert by name (D7
   built-ins skipped, created roles flagged for manual permission review);
-  linked workers get the `worker` role. Duplicate mails: lowest uid wins,
-  later reject `duplicate_user_email`. Idempotent via id_map `user`; re-runs
+  linked workers get the `worker` role. Duplicate mails: lowest current uid
+  wins, later reject `duplicate_user_email`. If an inactive, canonically
+  mapped account deleted/blocked in S1 still holds an address now assigned to
+  an active uid, its S2 account keeps its UUID/history/mapping but receives a
+  deterministic non-deliverable login address; the active owner loads in the
+  same run (`staleEmailsReleased`). Idempotent via id_map `user`; re-runs
   drift-reconcile while keeping operator-added roles. Companion:
   `provision-okta-users.ts` — idempotent bulk Okta pre-provisioning, dry-run
   by default, `--execute --only email` for the canary; records
