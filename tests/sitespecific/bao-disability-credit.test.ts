@@ -12,7 +12,10 @@ import {
 } from "@shared/schema";
 import { registerBaoDcEntityFileContext } from "../../server/modules/sitespecific/bao/dc-files-context";
 import { getEntityFileContext } from "../../server/services/entity-files/registry";
-import { recomputeReadinessAndMaybeBounce } from "../../server/services/sitespecific/bao/dc-workflow";
+import {
+  performDcCaseAction,
+  recomputeReadinessAndMaybeBounce,
+} from "../../server/services/sitespecific/bao/dc-workflow";
 import { addMonthsYmd } from "@shared/utils/date";
 import dcMigration from "../../scripts/migrate/components/sitespecific.bao/011_create_disability_credit";
 import dcWorkflowMigration from "../../scripts/migrate/components/sitespecific.bao/012_dc_case_workflow";
@@ -487,4 +490,64 @@ describe("DC document classification boundary", () => {
       to: "void", reason: "test cleanup", actorUserId: userId,
     });
   });
+});
+
+describe("DC approval vs evidence-mutation race", () => {
+  it("an approval racing a supersede recomputes readiness under the case lock", async () => {
+    const c = await storage.baoDisabilityCredit.openCase({
+      workerId: otherWorkerId, openedYmd: "2027-08-01",
+      qualifyingBasis: { asOfYmd: "2027-08-01", conditions: ["denial_letter"], denialLetterIds: ["x"] },
+      allowDuplicate: true,
+    });
+    caseIds.push(c.id);
+    const form = await storage.baoDisabilityCredit.addDocument({
+      parentKind: "case", caseId: c.id, name: "form.pdf", uploadedByUserId: userId, docType: "dc_form",
+    });
+    await storage.baoDisabilityCredit.updateCaseAttestations(
+      c.id,
+      { signed: true, fields: { doctorAddress: true, doctorPhone: true, dates: true } },
+      userId,
+    );
+    await db.insert(sitespecificBaoDcCaseMonths).values({
+      caseId: c.id, workerId: otherWorkerId, workMonthYmd: "2099-01-01", status: "selected",
+    });
+    await storage.baoDisabilityCredit.transitionCase(c.id, { to: "ready_for_review", actorUserId: userId });
+    await storage.baoDisabilityCredit.transitionCase(c.id, { to: "in_queue", actorUserId: userId });
+
+    // Hold the case's serialization lock, supersede the only DC form inside
+    // it, and keep the transaction open while an approval is attempted.
+    let approvalError: unknown;
+    const supersedeTx = storage.baoDisabilityCredit.withCaseSerialization(c.id, async () => {
+      await storage.baoDisabilityCredit.supersedeDocument(form.id, userId);
+      await new Promise((r) => setTimeout(r, 500));
+    });
+    await new Promise((r) => setTimeout(r, 150));
+    const approval = performDcCaseAction(c.id, "approve", { actorUserId: userId }).catch(
+      (err) => {
+        approvalError = err;
+        return undefined;
+      },
+    );
+    await Promise.all([supersedeTx, approval]);
+
+    // The approval blocked on the lock, then rechecked readiness AGAINST the
+    // committed supersede — so it must have refused, naming the missing form.
+    expect(approvalError).toBeDefined();
+    expect((approvalError as Error).message).toBe("CASE_NOT_READY");
+    expect((approvalError as Error & { details?: string[] }).details).toContain(
+      "DC form on file",
+    );
+    const after = await storage.baoDisabilityCredit.getCase(c.id);
+    expect(after?.status).toBe("in_queue"); // never approved on stale evidence
+
+    // The (unwrapped-in-test) supersede is then healed by the same atomic
+    // recompute helper staff routes use.
+    const { bounced } = await recomputeReadinessAndMaybeBounce(c.id, userId);
+    expect(bounced).toBe(true);
+
+    await db.delete(sitespecificBaoDcCaseMonths).where(eq(sitespecificBaoDcCaseMonths.caseId, c.id));
+    await storage.baoDisabilityCredit.transitionCase(c.id, {
+      to: "void", reason: "test cleanup", actorUserId: userId,
+    });
+  }, 20000);
 });
