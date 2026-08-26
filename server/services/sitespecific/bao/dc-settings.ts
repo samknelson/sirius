@@ -24,23 +24,17 @@ export const BAO_DC_DENIAL_LETTER_VALIDITY_VARIABLE =
 export const BAO_DC_RETIRED_DISABILITY_ROW_MODE_VARIABLE =
   "bao_dc_retired_disability_row_mode";
 
-export const BAO_DC_DENIAL_LETTER_VALIDITY_MONTHS_DEFAULT = 12;
+export {
+  BAO_DC_DENIAL_LETTER_VALIDITY_MONTHS_DEFAULT,
+  parseDenialLetterValidityMonths,
+} from "@shared/sitespecific/bao/dc-eligibility";
+import { parseDenialLetterValidityMonths } from "@shared/sitespecific/bao/dc-eligibility";
 
 export const BAO_DC_RETIRED_DISABILITY_ROW_MODES = ["flag", "reject"] as const;
 export type BaoDcRetiredDisabilityRowMode =
   (typeof BAO_DC_RETIRED_DISABILITY_ROW_MODES)[number];
 export const BAO_DC_RETIRED_DISABILITY_ROW_MODE_DEFAULT: BaoDcRetiredDisabilityRowMode =
   "flag";
-
-/** Pure parser — exported for tests. Invalid/absent values fall back to the default. */
-export function parseDenialLetterValidityMonths(raw: unknown): number {
-  const value =
-    typeof raw === "number" ? raw : parseInt(String(raw ?? "").trim(), 10);
-  if (!Number.isFinite(value) || !Number.isInteger(value) || value < 1 || value > 120) {
-    return BAO_DC_DENIAL_LETTER_VALIDITY_MONTHS_DEFAULT;
-  }
-  return value;
-}
 
 /** Pure parser — exported for tests. Invalid/absent values fall back to the default. */
 export function parseRetiredDisabilityRowMode(raw: unknown): BaoDcRetiredDisabilityRowMode {

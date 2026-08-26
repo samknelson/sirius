@@ -475,7 +475,11 @@ export interface BaoDcCaseSavedPayload {
     | "case_closed"
     | "case_voided"
     | "case_month_added"
-    | "case_month_voided";
+    | "case_month_voided"
+    | "case_status_changed"
+    | "document_uploaded"
+    | "document_superseded"
+    | "attestations_updated";
   /** First-of-month Ymd for month events, null for case-level events. */
   workMonthYmd: string | null;
 }

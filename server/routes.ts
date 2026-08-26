@@ -122,6 +122,8 @@ import { registerBaoImmediateEligibilityRoutes } from "./modules/sitespecific/ba
 import { registerBaoEmployerRatesRoutes } from "./modules/sitespecific/bao/employer-rates";
 import { registerBaoRateSourcesRoutes } from "./modules/sitespecific/bao/rate-sources";
 import { registerBaoCobraRoutes } from "./modules/sitespecific/bao/cobra";
+import { registerBaoDisabilityCreditRoutes } from "./modules/sitespecific/bao/disability-credit";
+import { registerBaoDcEntityFileContext } from "./modules/sitespecific/bao/dc-files-context";
 import { registerBaoCaseRoutes } from "./modules/sitespecific/bao/cases";
 import { registerBaoDpRatesRoutes } from "./modules/sitespecific/bao/dp-rates";
 import { registerBaoDistanceCacheRoutes } from "./modules/sitespecific/bao/distance-cache";
@@ -322,6 +324,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Entity file attachments framework: register contexts, then the generic routes
   registerGrievanceEntityFileContext();
+  registerBaoDcEntityFileContext();
   wireEntityFilesFileReadAccess();
   registerEntityFileRoutes(app, requireAuth);
 
@@ -1972,6 +1975,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerBaoEmployerRatesRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoRateSourcesRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoCobraRoutes(app, requireAuth, requirePermission, requireAccess);
+  registerBaoDisabilityCreditRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoCaseRoutes(app, requireAuth, requireAccess);
   registerBaoDpRatesRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoDistanceCacheRoutes(app, requireAuth, requirePermission, requireAccess);
