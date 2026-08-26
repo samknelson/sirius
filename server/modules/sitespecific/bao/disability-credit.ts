@@ -18,7 +18,7 @@ import {
 import {
   getDcCaseBundle,
   performDcCaseAction,
-  recomputeReadinessAndMaybeBounce,
+  mutateEvidenceAndRecompute,
   type DcCaseAction,
 } from "../../../services/sitespecific/bao/dc-workflow";
 import { DcSelectionInvalidError } from "../../../storage/sitespecific/bao/disability-credit";
@@ -316,10 +316,10 @@ export function registerBaoDisabilityCreditRoutes(
       try {
         const body = attestationsSchema.parse(req.body ?? {}) as BaoDcAttestations;
         const actor = await actorId(req);
-        const updated = await dc.updateCaseAttestations(req.params.caseId, body, actor);
-        const { readiness, bounced } = await recomputeReadinessAndMaybeBounce(
+        const { result: updated, readiness, bounced } = await mutateEvidenceAndRecompute(
           req.params.caseId,
           actor,
+          () => dc.updateCaseAttestations(req.params.caseId, body, actor),
         );
         res.json({ case: bounced ? await dc.getCase(updated.id) : updated, readiness, bounced });
       } catch (error) {
@@ -348,14 +348,14 @@ export function registerBaoDisabilityCreditRoutes(
           res.status(404).json({ message: "Document not found" });
           return;
         }
-        const updated = await dc.updateCaseDocument(
-          req.params.caseId,
-          req.params.documentId,
-          { name: body.name, docType: body.docType },
-        );
-        const { readiness, bounced } = await recomputeReadinessAndMaybeBounce(
+        const { result: updated, readiness, bounced } = await mutateEvidenceAndRecompute(
           req.params.caseId,
           await actorId(req),
+          () =>
+            dc.updateCaseDocument(req.params.caseId, req.params.documentId, {
+              name: body.name,
+              docType: body.docType,
+            }),
         );
         res.json({ document: updated, readiness, bounced });
       } catch (error) {
@@ -382,10 +382,10 @@ export function registerBaoDisabilityCreditRoutes(
           return;
         }
         const actor = await actorId(req);
-        const updated = await dc.supersedeDocument(req.params.documentId, actor);
-        const { readiness, bounced } = await recomputeReadinessAndMaybeBounce(
+        const { result: updated, readiness, bounced } = await mutateEvidenceAndRecompute(
           req.params.caseId,
           actor,
+          () => dc.supersedeDocument(req.params.documentId, actor),
         );
         res.json({ document: updated, readiness, bounced });
       } catch (error) {
