@@ -6,7 +6,6 @@ import {
   type EntityFileRecord,
 } from "../../../services/entity-files/registry";
 import type { InsertFile } from "@shared/schema";
-import { BAO_DC_DOCUMENT_TYPES, type BaoDcDocumentType } from "@shared/schema";
 import type { BaoDcDocumentWithFile } from "../../../storage/sitespecific/bao/disability-credit";
 import type { PolicyContext } from "@shared/access-policies";
 
@@ -25,12 +24,6 @@ function toRecord(row: BaoDcDocumentWithFile): EntityFileRecord {
     },
     file: row.file!,
   };
-}
-
-function parseDocType(value: unknown): BaoDcDocumentType | undefined {
-  return (BAO_DC_DOCUMENT_TYPES as readonly string[]).includes(String(value))
-    ? (value as BaoDcDocumentType)
-    : undefined;
 }
 
 /**
@@ -107,17 +100,12 @@ export function registerBaoDcEntityFileContext(): void {
         );
         return toRecord(row);
       },
-      async update(entityId: string, attachmentId: string, updates) {
-        const docType =
-          updates.data && typeof updates.data === "object"
-            ? parseDocType((updates.data as Record<string, unknown>).docType)
-            : undefined;
-        const row = await storage.baoDisabilityCredit.updateCaseDocument(
-          entityId,
-          attachmentId,
-          { name: updates.name, docType },
-        );
-        return row && row.fileId && row.file ? toRecord(row) : undefined;
+      async update() {
+        // Classification/rename is checklist-affecting evidence mutation:
+        // STAFF-ONLY via the dedicated DC route, which recomputes readiness
+        // and may auto-bounce. The generic PATCH would let a member who can
+        // upload also reclassify — never allowed.
+        throw new Error("DC_DOCUMENT_UPDATE_VIA_DC_ROUTES");
       },
       async remove() {
         // DC documents are auditable evidence: superseded, never deleted.

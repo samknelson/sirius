@@ -92,11 +92,14 @@ export function DcDocumentsCard({
         throw new Error(body.message || "Upload failed");
       }
       const record: EntityFileRecord = await res.json();
-      // Classify right after upload (server default is "other").
-      if (uploadDocType !== "other") {
-        await apiRequest("PATCH", `/api/entity-files/bao-dc-case/${caseId}/${record.id}`, {
-          data: { docType: uploadDocType },
-        });
+      // Staff classify right after upload (server default is "other").
+      // Members cannot classify — an MSR reviews and sets the type.
+      if (canSetType && uploadDocType !== "other") {
+        await apiRequest(
+          "PATCH",
+          `/api/sitespecific/bao/dc/cases/${caseId}/documents/${record.id}`,
+          { docType: uploadDocType },
+        );
       }
       return record;
     },
@@ -113,11 +116,23 @@ export function DcDocumentsCard({
   });
 
   const setType = useMutation({
-    mutationFn: ({ id, docType }: { id: string; docType: string }) =>
-      apiRequest("PATCH", `/api/entity-files/bao-dc-case/${caseId}/${id}`, {
-        data: { docType },
-      }),
-    onSuccess: refresh,
+    mutationFn: async ({ id, docType }: { id: string; docType: string }) => {
+      const res = await apiRequest(
+        "PATCH",
+        `/api/sitespecific/bao/dc/cases/${caseId}/documents/${id}`,
+        { docType },
+      );
+      return res.json() as Promise<{ bounced?: boolean }>;
+    },
+    onSuccess: (result) => {
+      if (result?.bounced) {
+        toast({
+          title: "Document type updated",
+          description: "The case no longer passes readiness and was returned to draft.",
+        });
+      }
+      refresh();
+    },
     onError: (err) =>
       toast({
         title: "Could not update document type",
@@ -161,18 +176,20 @@ export function DcDocumentsCard({
           </CardDescription>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={uploadDocType} onValueChange={setUploadDocType}>
-            <SelectTrigger className="w-[220px]" data-testid="select-dc-upload-type">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {BAO_DC_DOCUMENT_TYPES.map((t) => (
-                <SelectItem key={t} value={t}>
-                  {DC_DOC_TYPE_LABELS[t] ?? t}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {canSetType && (
+            <Select value={uploadDocType} onValueChange={setUploadDocType}>
+              <SelectTrigger className="w-[220px]" data-testid="select-dc-upload-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {BAO_DC_DOCUMENT_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {DC_DOC_TYPE_LABELS[t] ?? t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <input
             ref={fileInput}
             type="file"
