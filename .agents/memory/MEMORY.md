@@ -141,3 +141,4 @@
 - [Send-path credential minting](send-path-credential-minting.md) — notifier links keyed by a per-entity credential need get-or-create (never set), `{record,issued}` for honest audit, and a throwing second-component check in shouldDispatch.
 - [Which logger reaches the log viewer](log-surface-console-vs-viewer.md) — app `logger` is console-only; only `storageLogger` writes winston_logs, so framework catch-and-log failures are NOT in the admin viewer.
 - [Typecheck heap ceiling](typecheck-heap-ceiling.md) — tsc runs as two pinned processes; heap grows ~linearly with file count, and cutting drizzle out of the client half was measured at only −7%.
+- [Detached shell processes are reaped](detached-shell-process-reaping.md) — nohup/setsid dies with the shell session; long benches/smokes run as temp managed workflows; staged-fixture crash repair via S2+sidecar orphan.
