@@ -1479,13 +1479,56 @@ export type BaoWithholdingUploadSummary = {
 //   caller-supplied dedupe key, making transactional emission idempotent.
 // ---------------------------------------------------------------------------
 
-export const BAO_DC_CASE_STATUSES = ["open", "closed", "void"] as const;
+export const BAO_DC_CASE_STATUSES = [
+  "draft",
+  "ready_for_review",
+  "in_queue",
+  "approved",
+  "denied",
+  "withdrawn",
+  "void",
+] as const;
 export type BaoDcCaseStatus = (typeof BAO_DC_CASE_STATUSES)[number];
 /** Statuses that end a case; they require a terminal reason. */
-export const BAO_DC_TERMINAL_CASE_STATUSES = ["closed", "void"] as const;
+export const BAO_DC_TERMINAL_CASE_STATUSES = ["denied", "withdrawn", "void"] as const;
+/** Non-terminal statuses — a case in one of these is "open" for warnings/limits. */
+export const BAO_DC_OPEN_CASE_STATUSES = [
+  "draft",
+  "ready_for_review",
+  "in_queue",
+] as const;
 
-export const BAO_DC_MONTH_STATUSES = ["live", "void"] as const;
+export const BAO_DC_MONTH_STATUSES = ["selected", "queued", "granted", "removed"] as const;
 export type BaoDcMonthStatus = (typeof BAO_DC_MONTH_STATUSES)[number];
+/** Non-removed month statuses count toward annual usage ("applicable"). */
+export const BAO_DC_APPLICABLE_MONTH_STATUSES = ["selected", "queued", "granted"] as const;
+
+/** Annual Disability Credit capacity, in credited work months per calendar year. */
+export const BAO_DC_ANNUAL_MONTH_LIMIT = 6;
+
+export const BAO_DC_INTAKE_CHANNELS = ["member_portal", "msr"] as const;
+export type BaoDcIntakeChannel = (typeof BAO_DC_INTAKE_CHANNELS)[number];
+
+/**
+ * Staff attestations about the case documentation — facts the system cannot
+ * read from document contents. Persisted on the case so they survive a
+ * bounce back to draft; the checklist is COMPUTED from current documents +
+ * these attestations at read time.
+ */
+export type BaoDcAttestations = {
+  /** The DC form on file is doctor-signed. */
+  signed?: boolean;
+  /** A doctor's note lists work restrictions (requires the employer letter). */
+  restrictionsNoted?: boolean;
+  /** Per-field confirmation that the required DC-form fields are present. */
+  fields?: {
+    doctorAddress?: boolean;
+    doctorPhone?: boolean;
+    dates?: boolean;
+  };
+  updatedByUserId?: string;
+  updatedAt?: string;
+};
 
 /** The two ways a worker can qualify to open a DC case. */
 export const BAO_DC_QUALIFYING_CONDITIONS = ["fmla_months", "denial_letter"] as const;
@@ -1515,10 +1558,22 @@ export const sitespecificBaoDcCases = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     workerId: varchar("worker_id").notNull(),
-    status: varchar("status").notNull().default("open").$type<BaoDcCaseStatus>(),
+    status: varchar("status").notNull().default("draft").$type<BaoDcCaseStatus>(),
     openedYmd: date("opened_ymd").notNull(),
     /** Snapshot of the qualifying condition(s) at open — never recomputed. */
     qualifyingBasis: jsonb("qualifying_basis").notNull().$type<BaoDcQualifyingBasis>(),
+    /** How the case entered the system. Employers never open cases. */
+    intakeChannel: varchar("intake_channel")
+      .notNull()
+      .default("msr")
+      .$type<BaoDcIntakeChannel>(),
+    createdByUserId: varchar("created_by_user_id"),
+    approvedByUserId: varchar("approved_by_user_id"),
+    /** Staff attestations about the documentation (survive a bounce). */
+    attestations: jsonb("attestations")
+      .notNull()
+      .default(sql`'{}'::jsonb`)
+      .$type<BaoDcAttestations>(),
     /** Required exactly when the case is in a terminal status. */
     terminalReason: text("terminal_reason"),
     terminalYmd: date("terminal_ymd"),
@@ -1528,24 +1583,37 @@ export const sitespecificBaoDcCases = pgTable(
   (table) => [
     check(
       "sitespecific_bao_dc_cases_status_check",
-      sql`${table.status} IN ('open', 'closed', 'void')`,
+      sql`${table.status} IN ('draft', 'ready_for_review', 'in_queue', 'approved', 'denied', 'withdrawn', 'void')`,
     ),
-    // Terminal states require a reason AND a date; open cases carry neither.
+    // Terminal states require a reason AND a date; non-terminal carry neither.
     check(
       "sitespecific_bao_dc_cases_terminal_reason_check",
-      sql`((${table.status})::text = 'open') = (${table.terminalReason} IS NULL AND ${table.terminalYmd} IS NULL)`,
+      sql`((${table.status})::text IN ('denied', 'withdrawn', 'void')) = (${table.terminalReason} IS NOT NULL AND ${table.terminalYmd} IS NOT NULL)`,
     ),
-    // One live case per worker. The cast matches what Postgres stores for a
-    // varchar predicate so schema-drift comparison stays clean.
-    uniqueIndex("sitespecific_bao_dc_cases_worker_live_uq")
-      .on(table.workerId)
-      .where(sql`(status)::text = 'open'`),
+    check(
+      "sitespecific_bao_dc_cases_intake_channel_check",
+      sql`${table.intakeChannel} IN ('member_portal', 'msr')`,
+    ),
+    // NOTE: a second open case per worker is allowed after an explicit
+    // duplicate confirmation — there is deliberately no unique index here;
+    // the storage layer enforces the confirm-first rule under the per-worker
+    // advisory lock.
     index("sitespecific_bao_dc_cases_worker_idx").on(table.workerId),
     foreignKey({
       name: "sitespecific_bao_dc_cases_worker_id_fkey",
       columns: [table.workerId],
       foreignColumns: [workers.id],
     }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_dc_cases_created_by_user_id_fkey",
+      columns: [table.createdByUserId],
+      foreignColumns: [users.id],
+    }).onDelete("set null"),
+    foreignKey({
+      name: "sitespecific_bao_dc_cases_approved_by_user_id_fkey",
+      columns: [table.approvedByUserId],
+      foreignColumns: [users.id],
+    }).onDelete("set null"),
   ],
 );
 
@@ -1557,8 +1625,8 @@ export const sitespecificBaoDcCaseMonths = pgTable(
     workerId: varchar("worker_id").notNull(),
     /** First day of the credited work month (always day 1). */
     workMonthYmd: date("work_month_ymd").notNull(),
-    status: varchar("status").notNull().default("live").$type<BaoDcMonthStatus>(),
-    /** Required exactly when the month is voided. */
+    status: varchar("status").notNull().default("selected").$type<BaoDcMonthStatus>(),
+    /** Required exactly when the month is removed. */
     voidReason: text("void_reason"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     data: jsonb("data"),
@@ -1566,20 +1634,20 @@ export const sitespecificBaoDcCaseMonths = pgTable(
   (table) => [
     check(
       "sitespecific_bao_dc_case_months_status_check",
-      sql`${table.status} IN ('live', 'void')`,
+      sql`${table.status} IN ('selected', 'queued', 'granted', 'removed')`,
     ),
     check(
       "sitespecific_bao_dc_case_months_void_reason_check",
-      sql`((${table.status})::text = 'void') = (${table.voidReason} IS NOT NULL)`,
+      sql`((${table.status})::text = 'removed') = (${table.voidReason} IS NOT NULL)`,
     ),
     check(
       "sitespecific_bao_dc_case_months_first_day_check",
       sql`EXTRACT(DAY FROM ${table.workMonthYmd}) = 1`,
     ),
-    // One LIVE DC month per worker per work month — across ALL cases.
+    // One non-removed DC month per worker per work month — across ALL cases.
     uniqueIndex("sitespecific_bao_dc_case_months_worker_month_live_uq")
       .on(table.workerId, table.workMonthYmd)
-      .where(sql`(status)::text = 'live'`),
+      .where(sql`(status)::text <> 'removed'::text`),
     index("sitespecific_bao_dc_case_months_case_idx").on(table.caseId),
     foreignKey({
       name: "sitespecific_bao_dc_case_months_case_id_fkey",
@@ -1626,6 +1694,17 @@ export const sitespecificBaoDcDenialLetters = pgTable(
 export const BAO_DC_DOCUMENT_PARENTS = ["case", "denial_letter"] as const;
 export type BaoDcDocumentParent = (typeof BAO_DC_DOCUMENT_PARENTS)[number];
 
+/** Document types staff/members classify uploads as (never content-derived). */
+export const BAO_DC_DOCUMENT_TYPES = [
+  "dc_form",
+  "doctor_note",
+  "wsr",
+  "employer_accommodation_letter",
+  "denial_letter",
+  "other",
+] as const;
+export type BaoDcDocumentType = (typeof BAO_DC_DOCUMENT_TYPES)[number];
+
 export const sitespecificBaoDcDocuments = pgTable(
   "sitespecific_bao_dc_documents",
   {
@@ -1638,10 +1717,18 @@ export const sitespecificBaoDcDocuments = pgTable(
     name: varchar("name", { length: 512 }).notNull(),
     contentType: varchar("content_type", { length: 255 }),
     uploadedByUserId: varchar("uploaded_by_user_id").notNull(),
+    docType: varchar("doc_type").notNull().default("other").$type<BaoDcDocumentType>(),
+    /** Documents are never deleted — superseding marks, never removes. */
+    supersededAt: timestamp("superseded_at", { withTimezone: true }),
+    supersededByUserId: varchar("superseded_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     data: jsonb("data"),
   },
   (table) => [
+    check(
+      "sitespecific_bao_dc_documents_doc_type_check",
+      sql`${table.docType} IN ('dc_form', 'doctor_note', 'wsr', 'employer_accommodation_letter', 'denial_letter', 'other')`,
+    ),
     check(
       "sitespecific_bao_dc_documents_parent_check",
       sql`((${table.parentKind})::text = 'case' AND ${table.caseId} IS NOT NULL AND ${table.denialLetterId} IS NULL) OR ((${table.parentKind})::text = 'denial_letter' AND ${table.denialLetterId} IS NOT NULL AND ${table.caseId} IS NULL)`,
@@ -1663,6 +1750,11 @@ export const sitespecificBaoDcDocuments = pgTable(
       columns: [table.uploadedByUserId],
       foreignColumns: [users.id],
     }).onDelete("restrict"),
+    foreignKey({
+      name: "sitespecific_bao_dc_documents_superseded_by_user_id_fkey",
+      columns: [table.supersededByUserId],
+      foreignColumns: [users.id],
+    }).onDelete("set null"),
   ],
 );
 
@@ -1706,6 +1798,10 @@ export const BAO_DC_EVENT_TYPES = [
   "case_month_voided",
   "denial_letter_recorded",
   "denial_letter_voided",
+  "case_status_changed",
+  "document_uploaded",
+  "document_superseded",
+  "attestations_updated",
 ] as const;
 export type BaoDcEventType = (typeof BAO_DC_EVENT_TYPES)[number];
 
@@ -1730,7 +1826,7 @@ export const sitespecificBaoDcEvents = pgTable(
     index("sitespecific_bao_dc_events_worker_idx").on(table.workerId),
     check(
       "sitespecific_bao_dc_events_event_type_check",
-      sql`${table.eventType} IN ('case_opened', 'case_closed', 'case_voided', 'case_month_added', 'case_month_voided', 'denial_letter_recorded', 'denial_letter_voided')`,
+      sql`${table.eventType} IN ('case_opened', 'case_closed', 'case_voided', 'case_month_added', 'case_month_voided', 'denial_letter_recorded', 'denial_letter_voided', 'case_status_changed', 'document_uploaded', 'document_superseded', 'attestations_updated')`,
     ),
   ],
 );

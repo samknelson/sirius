@@ -293,6 +293,9 @@ const BaoCobraCaseAdd = lazy(() => import("@/pages/sitespecific/bao/cobra-case-a
 const BaoCobraCaseView = lazy(() => import("@/pages/sitespecific/bao/cobra-case-view"));
 const BaoCobraCaseEdit = lazy(() => import("@/pages/sitespecific/bao/cobra-case-edit"));
 const BaoCases = lazy(() => import("@/pages/sitespecific/bao/cases"));
+const BaoDcCaseDetailPage = lazy(() => import("@/pages/sitespecific/bao/dc-case-detail"));
+const BaoDcQueuePage = lazy(() => import("@/pages/sitespecific/bao/dc-queue"));
+const WorkerBaoDc = lazy(() => import("@/pages/worker-sitespecific-bao-dc"));
 const BaoCaseNew = lazy(() => import("@/pages/sitespecific/bao/case-new"));
 const BaoCaseDetail = lazy(() => import("@/pages/sitespecific/bao/case-detail"));
 const WsServicesPage = lazy(() => import("@/pages/config/ws/services"));
@@ -973,6 +976,14 @@ function Router() {
         <ProtectedRoute tabId="sitespecific-bao-cobra" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBaoCobra />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/sitespecific/bao/disability-credit">
+        <ProtectedRoute tabId="sitespecific-bao-dc" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerBaoDc />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -3008,6 +3019,17 @@ function Router() {
               <BaoCobraTriggersPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bao/dc/queue">
+        <ProtectedRoute permission="staff" component="sitespecific.bao">
+          <AuthenticatedLayout><BaoDcQueuePage /></AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/bao/dc/cases/:id">
+        <ProtectedRoute permission="staff" component="sitespecific.bao">
+          <AuthenticatedLayout><BaoDcCaseDetailPage /></AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
