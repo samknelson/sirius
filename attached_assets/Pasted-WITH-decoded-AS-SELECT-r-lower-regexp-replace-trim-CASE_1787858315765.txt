@@ -1,0 +1,63 @@
+WITH decoded AS (
+    SELECT
+        r.*,
+        lower(regexp_replace(trim(
+            CASE
+                WHEN jsonb_typeof(COALESCE(
+                    r.fields->'field_sirius_log_category',
+                    r.fields->'field_sirius_category'
+                )) = 'array'
+                THEN COALESCE(
+                    r.fields->'field_sirius_log_category',
+                    r.fields->'field_sirius_category'
+                )->0 #>> '{}'
+                ELSE COALESCE(
+                    r.fields->'field_sirius_log_category',
+                    r.fields->'field_sirius_category'
+                ) #>> '{}'
+            END
+        ), '\s+', ' ', 'g')) AS category,
+        lower(regexp_replace(trim(
+            CASE
+                WHEN jsonb_typeof(COALESCE(
+                    r.fields->'field_sirius_log_type',
+                    r.fields->'field_sirius_type'
+                )) = 'array'
+                THEN COALESCE(
+                    r.fields->'field_sirius_log_type',
+                    r.fields->'field_sirius_type'
+                )->0 #>> '{}'
+                ELSE COALESCE(
+                    r.fields->'field_sirius_log_type',
+                    r.fields->'field_sirius_type'
+                ) #>> '{}'
+            END
+        ), '\s+', ' ', 'g')) AS log_type
+    FROM s1_staging.records r
+    WHERE r.bundle = 'sirius_log'
+),
+approved_pairs AS (
+    SELECT DISTINCT d.category, d.log_type
+    FROM decoded d
+    JOIN s1_staging.id_map m
+      ON m.entity = 's1_log_note'
+     AND m.s1_id = d.nid
+),
+unmapped_approved AS (
+    SELECT d.*
+    FROM decoded d
+    JOIN approved_pairs p
+      ON p.category IS NOT DISTINCT FROM d.category
+     AND p.log_type IS NOT DISTINCT FROM d.log_type
+    LEFT JOIN s1_staging.id_map m
+      ON m.entity = 's1_log_note'
+     AND m.s1_id = d.nid
+    WHERE m.s1_id IS NULL
+)
+SELECT
+    category,
+    log_type,
+    COUNT(*) AS row_count
+FROM unmapped_approved
+GROUP BY category, log_type
+ORDER BY row_count DESC, category, log_type;
