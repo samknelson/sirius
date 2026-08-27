@@ -1,0 +1,579 @@
+{
+  "args": {
+    "month": "2025-06",
+    "harness": "verify-month-parity",
+    "openEndThrough": "2026-08",
+    "allowedUnresolved": [
+      "start_missing",
+      "end_before_start",
+      "benefit_unmapped",
+      "worker_unmapped",
+      "relation_unmapped",
+      "employer_unresolved",
+      "open_end_through_required"
+    ],
+    "maxDisagreementPct": 0
+  },
+  "report": {
+    "month": "2025-06",
+    "result": "FAIL",
+    "harness": "verify-month-parity",
+    "sources": [
+      {
+        "source": "staged-benefit-spans",
+        "overall": {
+          "matched": 132105,
+          "extraInS2": 0,
+          "actualRows": 132105,
+          "disagreeing": 0,
+          "missingInS2": 0,
+          "expectedTuples": 132105,
+          "disagreementPct": 0,
+          "duplicateActual": 0,
+          "workersOnlyInS1": 0,
+          "workersOnlyInS2": 0,
+          "wrongBenefitPairs": 0,
+          "comparedTupleSides": 132105,
+          "employerMismatchPairs": 0
+        },
+        "counters": {
+          "openSpans": 163201,
+          "stagedSpans": 613451,
+          "dependentSpans": 57572,
+          "inactiveEndDated": 0,
+          "benefitResolution": {
+            "viaName": 0,
+            "viaIdMap": 19,
+            "unresolved": 0,
+            "viaSiriusId": 0,
+            "ambiguousNames": 0,
+            "stagedBenefits": 19
+          },
+          "spansCoveringMonth": 133465,
+          "employerFromElection": 47,
+          "overlappingSpanTuples": 996,
+          "spansNotCoveringMonth": 476863
+        },
+        "perBenefit": [
+          {
+            "name": "MLK",
+            "actual": 3021,
+            "matched": 3021,
+            "expected": 3021,
+            "siriusId": "2457506",
+            "benefitId": "02b1e2d1-8c6f-430d-8c20-5faacb5cec90",
+            "actualUnmatched": 0,
+            "expectedUnmatched": 0
+          },
+          {
+            "name": "VSP MLK",
+            "actual": 3023,
+            "matched": 3023,
+            "expected": 3023,
+            "siriusId": "13226808",
+            "benefitId": "0877bc20-9fe6-4447-8acb-e66208780888",
+            "actualUnmatched": 0,
+            "expectedUnmatched": 0
+          },
+          {
+            "name": "AD&D",
+            "actual": 10022,
+            "matched": 10022,
+            "expected": 10022,
+            "siriusId": "13226276",
+            "benefitId": "08ce7f22-e014-462a-a708-300be4d9ceec",
+            "actualUnmatched": 0,
+            "expectedUnmatched": 0
+          },
+          {
+            "name": "Health Net",
+            "actual": 2317,
+            "matched": 2317,
+            "expected": 2317,
+            "siriusId": "2457510",
+            "benefitId": "220961d7-af0e-4f13-85ac-9dc5bcb1c459",
+            "actualUnmatched": 0,
+            "expectedUnmatched": 0
+          },
+          {
+            "name": "Hinge PT",
+            "actual": 5305,
+            "matched": 5305,
+            "expected": 5305,
+            "siriusId": "13226280",
+            "benefitId": "344c96b7-7ee0-4d62-a3f0-c0dfd374222e",
+            "actualUnmatched": 0,
+            "expectedUnmatched": 0
+          },
+          {
+            "name": "Express Scripts",
+            "actual": 20405,
+            "matched": 20405,
+            "expected": 20405,
+            "siriusId": "16632966",
+            "benefitId": "5d25f08b-0f0a-4266-9709-9b8d1a609d87",
+            "actualUnmatched": 0,
+            "expectedUnmatched": 0
+          },
+          {
+            "name": "Life Insurance",
+            "actual": 10024,
+            "matched": 10024,
+            "expected": 10024,
+            "siriusId": "2457517",
+            "benefitId": "61ad83bd-aeca-4f0b-966b-1f21f2bc75a4",
+            "actualUnmatched": 0,
+            "expectedUnmatched": 0
+          },
+          {
+            "name": "Carelon MLK",
+            "actual": 4992,
+            "matched": 4992,
+            "expected": 4992,
+            "siriusId": "13226279",
+            "benefitId": "9802b266-0b95-4f6c-bb0d-d05937d8ba1a",
+            "actualUnmatched": 0,
+            "expectedUnmatched": 0
+          },
+          {
+            "name": "Kaiser",
+            "actual": 14938,
+            "matched": 14938,
+            "expected": 14938,
+            "siriusId": "2457502",
+            "benefitId": "af44f5cb-7655-4a36-b0bc-18295d716b6d",
+            "actualUnmatched": 0,
+            "expectedUnmatched": 0
+          },
+          {
+            "name": "Delta",
+            "actual": 14469,
+            "matched": 14469,
+            "expected": 14469,
+            "siriusId": "2457515",
+            "benefitId": "d1eb8138-177c-47de-bf0a-a9fc749a495a",
+            "actualUnmatched": 0,
+            "expectedUnmatched": 0
+          },
+          {
+            "name": "Unite Here Dental Office",
+            "actual": 1,
+            "matched": 1,
+            "expected": 1,
+            "siriusId": "13226275",
+            "benefitId": "e513b1bc-6967-4f53-b517-21d48a3b10ae",
+            "actualUnmatched": 0,
+            "expectedUnmatched": 0
+          },
+          {
+            "name": "Carelon EAP",
+            "actual": 20402,
+            "matched": 20402,
+            "expected": 20402,
+            "siriusId": "13226278",
+            "benefitId": "f6901020-9f3b-4b78-ab6d-9fb8f352ca70",
+            "actualUnmatched": 0,
+            "expectedUnmatched": 0
+          },
+          {
+            "name": "Liberty",
+            "actual": 5793,
+            "matched": 5793,
+            "expected": 5793,
+            "siriusId": "3113314",
+            "benefitId": "f9f567c6-fef6-425d-bf85-5c6f51dd7f74",
+            "actualUnmatched": 0,
+            "expectedUnmatched": 0
+          },
+          {
+            "name": "VSP",
+            "actual": 17393,
+            "matched": 17393,
+            "expected": 17393,
+            "siriusId": "2457519",
+            "benefitId": "fd20defe-dfef-425d-ad0e-162333f6cb1e",
+            "actualUnmatched": 0,
+            "expectedUnmatched": 0
+          }
+        ],
+        "unresolved": {
+          "start_missing": 15,
+          "worker_unmapped": 67,
+          "end_before_start": 3108,
+          "relation_unmapped": 293,
+          "employer_unresolved": 3,
+          "relation_map_broken": 1
+        },
+        "mismatchSamples": {
+          "extraInS2": [],
+          "missingInS2": [],
+          "wrongBenefit": [],
+          "employerMismatch": []
+        },
+        "unresolvedSamples": {
+          "start_missing": [
+            {
+              "nid": 16403125
+            },
+            {
+              "nid": 16403126
+            },
+            {
+              "nid": 16403127
+            },
+            {
+              "nid": 16403128
+            },
+            {
+              "nid": 16403129
+            },
+            {
+              "nid": 16403130
+            },
+            {
+              "nid": 16403131
+            },
+            {
+              "nid": 16495175
+            },
+            {
+              "nid": 16909540
+            },
+            {
+              "nid": 17148350
+            },
+            {
+              "nid": 17148368
+            },
+            {
+              "nid": 17148392
+            },
+            {
+              "nid": 17148410
+            },
+            {
+              "nid": 17148447
+            },
+            {
+              "nid": 17153172
+            }
+          ],
+          "worker_unmapped": [
+            {
+              "nid": 2960051,
+              "workerNid": 2587221
+            },
+            {
+              "nid": 2960052,
+              "workerNid": 2587221
+            },
+            {
+              "nid": 2986169,
+              "workerNid": 14808477
+            },
+            {
+              "nid": 3431059,
+              "workerNid": 14808477
+            },
+            {
+              "nid": 7025336,
+              "workerNid": 3033747
+            },
+            {
+              "nid": 7025337,
+              "workerNid": 3033747
+            },
+            {
+              "nid": 7772233,
+              "workerNid": 5975129
+            },
+            {
+              "nid": 7772234,
+              "workerNid": 5975129
+            },
+            {
+              "nid": 8874238,
+              "workerNid": 6282108
+            },
+            {
+              "nid": 12125220,
+              "workerNid": 8153535
+            },
+            {
+              "nid": 12125221,
+              "workerNid": 8153535
+            },
+            {
+              "nid": 12388497,
+              "workerNid": 6493099
+            },
+            {
+              "nid": 13381766,
+              "workerNid": 2658017
+            },
+            {
+              "nid": 13381768,
+              "workerNid": 2658017
+            },
+            {
+              "nid": 14907667,
+              "workerNid": 2587221
+            },
+            {
+              "nid": 14907668,
+              "workerNid": 2587221
+            },
+            {
+              "nid": 14907670,
+              "workerNid": 2587221
+            },
+            {
+              "nid": 14907671,
+              "workerNid": 2587221
+            },
+            {
+              "nid": 14907673,
+              "workerNid": 2587221
+            },
+            {
+              "nid": 14935424,
+              "workerNid": 6493099
+            },
+            {
+              "nid": 14935425,
+              "workerNid": 6493099
+            },
+            {
+              "nid": 14935426,
+              "workerNid": 6493099
+            },
+            {
+              "nid": 14935427,
+              "workerNid": 6493099
+            },
+            {
+              "nid": 14935428,
+              "workerNid": 6493099
+            },
+            {
+              "nid": 14935429,
+              "workerNid": 6493099
+            }
+          ],
+          "end_before_start": [
+            {
+              "nid": 3039589
+            },
+            {
+              "nid": 3039599
+            },
+            {
+              "nid": 3043819
+            },
+            {
+              "nid": 3043820
+            },
+            {
+              "nid": 3044430
+            },
+            {
+              "nid": 3044432
+            },
+            {
+              "nid": 3044545
+            },
+            {
+              "nid": 3045031
+            },
+            {
+              "nid": 3045033
+            },
+            {
+              "nid": 3045170
+            },
+            {
+              "nid": 3046737
+            },
+            {
+              "nid": 3053469
+            },
+            {
+              "nid": 3053966
+            },
+            {
+              "nid": 3053968
+            },
+            {
+              "nid": 3054107
+            },
+            {
+              "nid": 3056065
+            },
+            {
+              "nid": 3057828
+            },
+            {
+              "nid": 3057830
+            },
+            {
+              "nid": 3061618
+            },
+            {
+              "nid": 3061621
+            },
+            {
+              "nid": 3063428
+            },
+            {
+              "nid": 3063429
+            },
+            {
+              "nid": 3066739
+            },
+            {
+              "nid": 3066741
+            },
+            {
+              "nid": 3067841
+            }
+          ],
+          "relation_unmapped": [
+            {
+              "nid": 3700142,
+              "relationNid": 3216849
+            },
+            {
+              "nid": 3702599,
+              "relationNid": 3217509
+            },
+            {
+              "nid": 3704609,
+              "relationNid": 3218312
+            },
+            {
+              "nid": 3704610,
+              "relationNid": 3218312
+            },
+            {
+              "nid": 3705342,
+              "relationNid": 3218690
+            },
+            {
+              "nid": 3707881,
+              "relationNid": 3220002
+            },
+            {
+              "nid": 3709597,
+              "relationNid": 3220920
+            },
+            {
+              "nid": 3709824,
+              "relationNid": 3221089
+            },
+            {
+              "nid": 3709826,
+              "relationNid": 3221089
+            },
+            {
+              "nid": 3710157,
+              "relationNid": 3221297
+            },
+            {
+              "nid": 3711036,
+              "relationNid": 3221791
+            },
+            {
+              "nid": 3711293,
+              "relationNid": 3221903
+            },
+            {
+              "nid": 3711294,
+              "relationNid": 3221903
+            },
+            {
+              "nid": 3713029,
+              "relationNid": 3222740
+            },
+            {
+              "nid": 3713196,
+              "relationNid": 3222847
+            },
+            {
+              "nid": 3714930,
+              "relationNid": 3223669
+            },
+            {
+              "nid": 3714932,
+              "relationNid": 3223669
+            },
+            {
+              "nid": 3714945,
+              "relationNid": 3223675
+            },
+            {
+              "nid": 3715690,
+              "relationNid": 3224131
+            },
+            {
+              "nid": 3718784,
+              "relationNid": 3225606
+            },
+            {
+              "nid": 3718947,
+              "relationNid": 3225686
+            },
+            {
+              "nid": 3719617,
+              "relationNid": 3225984
+            },
+            {
+              "nid": 3722866,
+              "relationNid": 3227062
+            },
+            {
+              "nid": 3726134,
+              "relationNid": 3228045
+            },
+            {
+              "nid": 3726135,
+              "relationNid": 3228045
+            }
+          ],
+          "employer_unresolved": [
+            {
+              "nid": 15027599
+            },
+            {
+              "nid": 15027607
+            },
+            {
+              "nid": 15484501
+            }
+          ],
+          "relation_map_broken": [
+            {
+              "nid": 15727363,
+              "relationNid": 7162101
+            }
+          ]
+        }
+      }
+    ],
+    "failures": [
+      "staged-benefit-spans: unresolved reason not allowed: relation_map_broken=1"
+    ],
+    "s2MonthRows": 132105,
+    "stagedSpans": 613451,
+    "openEndThrough": "2026-08",
+    "allowedUnresolved": [
+      "start_missing",
+      "end_before_start",
+      "benefit_unmapped",
+      "worker_unmapped",
+      "relation_unmapped",
+      "employer_unresolved",
+      "open_end_through_required"
+    ],
+    "maxDisagreementPct": 0
+  }
+}
