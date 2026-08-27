@@ -39,6 +39,7 @@ import {
   TAG_DEFINITIONS,
   TAG_TYPE_DEFINITIONS,
   classifyS1Log,
+  deriveS1LogNoteSubject,
   type LogNoteClassification,
 } from "./lib/log-notes";
 import { contentHashOf, type DeletionCandidate } from "./lib/sync";
@@ -53,7 +54,7 @@ const ALLOWED_REJECTS = (() => {
 })();
 const LOADER = "s1-log-notes";
 const ID_MAP_ENTITY = "s1_log_note";
-const LOGIC_VERSION = 1;
+const LOGIC_VERSION = 2;
 const FATAL_REASONS = ["timestamp_missing", "create_failed", "update_failed"] as const;
 
 function targetNidsOf(fields: Record<string, unknown>, key: string): number[] {
@@ -329,9 +330,8 @@ function rawSourceValue(fields: Record<string, unknown>, ...keys: string[]): str
 function noteText(row: StagedLog): { subject: string; body: string | null } {
   const summary = rawSourceValue(row.fields, "field_sirius_log_summary", "field_sirius_summary");
   const notes = rawSourceValue(row.fields, "field_sirius_log_notes", "field_sirius_notes", "field_sirius_log_message", "field_sirius_message");
-  const candidate = summary ?? row.title;
   return {
-    subject: candidate && candidate.trim() ? candidate : `S1 log ${row.nid}`,
+    subject: deriveS1LogNoteSubject({ summary, title: row.title, nid: row.nid }),
     body: notes ?? summary,
   };
 }

@@ -20,6 +20,17 @@ export interface LogNoteClassification {
   type: string;
 }
 
+export const S1_LOG_NOTE_SUBJECT_MAX_LENGTH = 50;
+
+export function deriveS1LogNoteSubject(input: {
+  summary: string | null;
+  title: string | null;
+  nid: number;
+}): string {
+  const candidate = [input.summary, input.title].find((value) => value?.trim()) ?? `S1 log ${input.nid}`;
+  return candidate.slice(0, S1_LOG_NOTE_SUBJECT_MAX_LENGTH);
+}
+
 const norm = (value: unknown): string | null => {
   if (value == null) return null;
   const normalized = String(value).trim().toLowerCase().replace(/\s+/g, " ");

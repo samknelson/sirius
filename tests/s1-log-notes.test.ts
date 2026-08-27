@@ -1,7 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { classifyS1Log } from "../scripts/s1-migration/lib/log-notes";
+import {
+  classifyS1Log,
+  deriveS1LogNoteSubject,
+  S1_LOG_NOTE_SUBJECT_MAX_LENGTH,
+} from "../scripts/s1-migration/lib/log-notes";
 
 describe("S1 log-to-note classification", () => {
+  it("selects and truncates the summary, title, or fallback subject", () => {
+    const longSummary = "Summary ".repeat(20);
+    expect(deriveS1LogNoteSubject({ summary: longSummary, title: "Title", nid: 1 }))
+      .toBe(longSummary.slice(0, S1_LOG_NOTE_SUBJECT_MAX_LENGTH));
+    expect(deriveS1LogNoteSubject({ summary: "  ", title: "Title ".repeat(20), nid: 2 }))
+      .toBe(("Title ".repeat(20)).slice(0, S1_LOG_NOTE_SUBJECT_MAX_LENGTH));
+    expect(deriveS1LogNoteSubject({ summary: null, title: null, nid: 3 }))
+      .toBe("S1 log 3");
+  });
+
   it("maps approved inbound, outbound, no-medium, and multi-issue rows", () => {
     expect(classifyS1Log("Call from Member", "Enrrolment")).toMatchObject({
       noteType: "Member Inbound",
