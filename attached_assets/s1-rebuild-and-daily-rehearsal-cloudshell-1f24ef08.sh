@@ -367,11 +367,24 @@ aws ecs wait services-stable \
   fail "wait for web service to become stable; sync remains running with its fence"
 
 HEALTH_OK=0
+HEALTH_BODY=$(mktemp)
 for _ in $(seq 1 60); do
-  GET_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' "$APP_URL/health" 2>/dev/null)
+  GET_STATUS=$(curl -sS -o "$HEALTH_BODY" -w '%{http_code}' "$APP_URL/health" 2>/dev/null)
+  HEALTH_STATE=""
   if [ "$GET_STATUS" = "200" ]; then
-    HEALTH_OK=1
-    break
+    HEALTH_STATE=$(jq -r '.status // empty' "$HEALTH_BODY" 2>/dev/null)
+    if [ "$HEALTH_STATE" = "ready" ]; then
+      HEALTH_OK=1
+      break
+    fi
+    if [ "$HEALTH_STATE" = "init-failed" ]; then
+      aws ecs update-service \
+        --region "$REGION" \
+        --cluster "$CLUSTER" \
+        --service "$WEB_SERVICE" \
+        --desired-count 0 >/dev/null 2>&1
+      fail "restored web application initialization failed; scaled it back to 0; sync remains running"
+    fi
   fi
   sleep 2
 done
@@ -381,7 +394,7 @@ if [ "$HEALTH_OK" != "1" ]; then
     --cluster "$CLUSTER" \
     --service "$WEB_SERVICE" \
     --desired-count 0 >/dev/null 2>&1
-  fail "restored web did not return GET /health=200; scaled it back to 0; sync remains running"
+  fail "restored web did not report /health status=ready (last HTTP=${GET_STATUS:-none} status=${HEALTH_STATE:-none}); scaled it back to 0; sync remains running"
 fi
 
 PROBE_BODY=$(mktemp)
@@ -391,14 +404,15 @@ POST_STATUS=$(curl -sS -X POST \
   -o "$PROBE_BODY" \
   -w '%{http_code}' \
   "$APP_URL/api/__s1-write-fence-probe")
+PROBE_CODE=$(jq -r '.code // empty' "$PROBE_BODY" 2>/dev/null)
 if [ "$POST_STATUS" != "503" ] ||
-   ! grep -q '"code":"S1_SYNC_WRITE_FENCE"' "$PROBE_BODY"; then
+   [ "$PROBE_CODE" != "S1_SYNC_WRITE_FENCE" ]; then
   aws ecs update-service \
     --region "$REGION" \
     --cluster "$CLUSTER" \
     --service "$WEB_SERVICE" \
     --desired-count 0 >/dev/null 2>&1
-  fail "restored web did not honor the held fence; scaled it back to 0; sync remains running"
+  fail "restored web did not honor the held fence (HTTP=${POST_STATUS:-none} code=${PROBE_CODE:-none}); scaled it back to 0; sync remains running"
 fi
 echo "web restored safely: GET /health=200; mutation probe=503/S1_SYNC_WRITE_FENCE"
 cat >> "$STATE_FILE" <<EOF

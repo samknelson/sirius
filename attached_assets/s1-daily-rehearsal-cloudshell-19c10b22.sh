@@ -176,6 +176,28 @@ if [ "$SERVICE_STATUS" != "ACTIVE" ] || [ "$DESIRED" != "1" ] || [ "$RUNNING" !=
 fi
 echo "web service online: desired=$DESIRED running=$RUNNING task=${WEB_TD##*/}"
 
+WEB_READY=0
+HEALTH_BODY=$(mktemp)
+for _ in $(seq 1 120); do
+  HEALTH_STATUS=$(curl -sS -o "$HEALTH_BODY" -w '%{http_code}' "$APP_URL/health" 2>/dev/null)
+  HEALTH_STATE=""
+  if [ "$HEALTH_STATUS" = "200" ]; then
+    HEALTH_STATE=$(jq -r '.status // empty' "$HEALTH_BODY" 2>/dev/null)
+    if [ "$HEALTH_STATE" = "ready" ]; then
+      WEB_READY=1
+      break
+    fi
+    if [ "$HEALTH_STATE" = "init-failed" ]; then
+      fail "web application initialization failed; inspect web task logs"
+    fi
+  fi
+  sleep 2
+done
+if [ "$WEB_READY" != "1" ]; then
+  fail "web task is running but application did not report /health status=ready (last HTTP=${HEALTH_STATUS:-none} status=${HEALTH_STATE:-none})"
+fi
+echo "web application initialized: /health status=ready"
+
 echo "database target equivalence will be verified behaviorally by the deployed fence probe"
 
 RUNNING_MIGRATIONS=$(aws ecs list-tasks \
@@ -287,8 +309,9 @@ fi
 if [ "$POST_STATUS" != "503" ]; then
   fail "POST fence probe must return 503 (got $POST_STATUS)"
 fi
-if ! grep -q '"code":"S1_SYNC_WRITE_FENCE"' "$PROBE_BODY"; then
-  fail "POST 503 lacks stable S1_SYNC_WRITE_FENCE code"
+PROBE_CODE=$(jq -r '.code // empty' "$PROBE_BODY" 2>/dev/null)
+if [ "$PROBE_CODE" != "S1_SYNC_WRITE_FENCE" ]; then
+  fail "POST 503 lacks stable S1_SYNC_WRITE_FENCE code (parsed code=${PROBE_CODE:-none})"
 fi
 echo "deployed fence verified: GET /health=200, POST probe=503 with stable code"
 
