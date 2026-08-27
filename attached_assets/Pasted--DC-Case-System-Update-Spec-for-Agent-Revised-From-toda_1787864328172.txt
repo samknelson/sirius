@@ -1,0 +1,24 @@
+# DC Case System — Update Spec for Agent (Revised)
+
+From today's session. Excludes the effective month picker and the approve bug (already handed over).
+
+## 1. Case creation & layout
+- **Upload should move to the top of the case page.** The first real step is "DC form on file," so the document upload belongs at the top, not below the checkoffs.
+- **Uploading the form should trigger/enable the checkoff state** — after upload, the "DC form on file" checkbox should surface.
+- **Render the uploaded form inline, gated behind a dropdown** — hidden by default, click to expand. This lets the MSR view the document while performing the checkoffs (verify DC form on file, doctor sign-off). Checkoffs are a manual "I looked at the document and verified it" attestation.
+
+## 2. Worker-facing flow
+- Workers should **only** be able to **submit the DC form/upload a document** — nothing else. Strong preference: **submitting the form itself starts the case** (rather than a separate "start a case" action).
+
+## 3. Notes
+- **Remove note functionality from DC cases for now.** If separate notes are wanted later, they should tie into the existing Notes table — never a separate/parallel notes table.
+
+## 4. Document handling
+- Worker uploads currently don't let them specify document type. Intended flow: **MSR reviews the upload, categorizes it** (e.g. "this is a DC form") and does the checkoff. Optionally a lightweight prompt at upload ("I'm uploading this: ___"), but categorization authority sits with the MSR.
+
+## 5. Review/approval workflow (queue model)
+- Target flow: **worker or MSR submits/starts the case → MSR verifies steps and checks off → case lands in a queue for Rosio → she sees the MSR checked it, double-checks, and approves or denies.** Approval shouldn't be expected in-the-moment during case entry.
+- **Queue navigation improvement (possibly general-purpose):** when an MSR finishes working a case, provide a "next open case" action to jump straight to the next queued item instead of returning to the list.
+
+## 6. Extensions
+- **"Extend disability" should be a dedicated action** on an existing case — not re-entering draft state and adding a month. The extend action should capture a reason (or MSR note), and/or route to the queue for extension approval. Backfill limit assumption: credits can go back up to a year (build to ~13 months preceding the first month; tweak if the rule is wrong).
