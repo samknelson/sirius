@@ -214,6 +214,26 @@ beforeAll(async () => {
     { caseId, workerId, workMonthYmd: ymd(monthA), status: "selected" },
     { caseId, workerId, workMonthYmd: ymd(monthB), status: "selected" },
   ]);
+  await storage.baoDisabilityCredit.addDocument({
+    parentKind: "case",
+    caseId,
+    name: "form.pdf",
+    uploadedByUserId: userId,
+    docType: "dc_form",
+  });
+  await storage.baoDisabilityCredit.updateCaseAttestations(
+    caseId,
+    { signed: true, fields: { doctorAddress: true, doctorPhone: true, dates: true } },
+    userId,
+  );
+  await storage.baoDisabilityCredit.transitionCase(caseId, {
+    to: "ready_for_review",
+    actorUserId: userId,
+  });
+  await storage.baoDisabilityCredit.transitionCase(caseId, {
+    to: "in_queue",
+    actorUserId: userId,
+  });
 });
 
 let worker2Id = "";
@@ -342,8 +362,12 @@ describe("threshold + shortfall resolution", () => {
 });
 
 describe("approval cascade", () => {
-  it("grants the due month's shortfall to the fund employer and queues the future month", async () => {
-    const outcomes = await runDcGrantCascadeForCase(caseId, userId);
+  it("approves a queued case, grants the due month, and queues the future month", async () => {
+    const result = await performDcCaseAction(caseId, "approve", { actorUserId: userId });
+    expect(result.case.status).toBe("approved");
+    expect((await storage.baoDisabilityCredit.getCase(caseId))?.status).toBe("approved");
+
+    const outcomes = result.grant!;
     const byMonth = new Map(outcomes.map((o) => [o.workMonthYmd, o]));
     expect(byMonth.get(ymd(monthA))?.action).toBe("granted");
     expect(byMonth.get(ymd(monthA))?.grantedHours).toBe(40); // 120 − 80
