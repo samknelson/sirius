@@ -258,6 +258,13 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
           "address_incomplete",
           "phone_invalid",
           "contact_no_name",
+          // §5 RULED annotation family (row still loads; gate needs the
+          // explicit allowance): ssn Q36 collisions, unresolved worker
+          // contacts/genders, sequence-assigned sirius_ids (T1 rule).
+          "ssn_collision_q36",
+          "worker_contact_unresolved",
+          "worker_gender_unresolved",
+          "sirius_id_assigned",
         ],
       },
       beneficiaries: {},
@@ -272,22 +279,33 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       },
       policies: { allowRejects: ["policy_unmatched_unreferenced"] },
       "employer-policies": {},
-      "employer-rates": {},
+      // §4 row 5c: bad_rate=2 known colon typos (`6:00`/`6:75`), cleanly
+      // re-entered under another uuid — ruled allow. rate_conflict is NEVER
+      // allowed (dropping it loses the whole shop's rate history).
+      "employer-rates": { allowRejects: ["bad_rate"] },
       // Fund ruling 2026-08-26 (mmcdermott4): future-dated relationship
       // starts are valid source data and may load; keep the reject visible in
       // the report while allowing the fleet to complete.
       relationships: { allowRejects: ["future_start_date"] },
       "employee-ids": {},
-      elections: { allowRejects: ["end_not_after_start", "worker_unmapped"] },
+      // §5 RULED 2026-08-09: benefit_unmapped (deleted benefit nid 2457521)
+      // applies to elections as well as benefit-history.
+      elections: { allowRejects: ["end_not_after_start", "worker_unmapped", "benefit_unmapped"] },
       "benefit-history": {
         allowRejects: [
           "start_missing",
           "end_before_start",
           "benefit_unmapped",
+          "benefit_ref_missing", // §5 RULED 2026-08-09: allow (no benefit field row at all)
+          "subscriber_worker_mismatch", // §5 RULED 2026-08-09: allow (worker side deleted from S1)
           "worker_unmapped",
           "relation_unmapped",
-          "employer_unresolved",
-          "open_end_through_required",
+          // employer_unresolved is NOT a standing allowance: the rehearsal
+          // allowed the 1,462 residue, but its production disposition (drop
+          // vs designated employer) is a PENDING fund ruling (§5 /
+          // 05-open-questions). Add it per-run only once the fund rules.
+          // open_end_through_required RETIRED (§5): horizon now defaults —
+          // removed from the allow-list rather than carrying a dead class.
         ],
       },
       payments: { allowRejects: ["amount_missing", "account_unensured"] },

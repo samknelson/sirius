@@ -348,6 +348,37 @@ canary and §4.17 cutover sections.)*
 
 ## 5. Allow-rejects policy table
 
+**Final production allow-lists (verified 2026-08-27, closes the triage loop
+before the production run).** The per-loader `--allow-rejects` arguments the
+orchestrator passes come from `sync-config.ts` (`PROFILES.production.steps`)
+— that table is the executable source of truth and was reconciled against
+every ruling below (each class ruled "allow" for production is present; each
+"run clean / triage first" class is deliberately absent so it fails loud):
+
+| Loader | Production `--allow-rejects` |
+|---|---|
+| contacts-workers | `worker_id_value_collision,duplicate_email,address_incomplete,phone_invalid,contact_no_name,ssn_collision_q36,worker_contact_unresolved,worker_gender_unresolved,sirius_id_assigned` |
+| employers | `duplicate_email,shopcontact_no_name,phone_invalid,shopcontact_employer_unresolved` |
+| policies | `policy_unmatched_unreferenced` (after inspecting reported titles) |
+| employer-rates | `bad_rate` (§4 row 5c: the 2 known colon typos; `rate_conflict` NEVER — allowing it drops the shop's whole rate history) |
+| relationships | `future_start_date` |
+| elections | `end_not_after_start,worker_unmapped,benefit_unmapped` |
+| benefit-history | `start_missing,end_before_start,benefit_unmapped,benefit_ref_missing,subscriber_worker_mismatch,worker_unmapped,relation_unmapped` (`open_end_through_required` retired — removed) |
+| payments | `amount_missing,account_unensured` |
+| users | `no_resolvable_worker` |
+| all other loaders | none — run clean; any reject is a per-run triage + explicit ruling (this table) before an allowance is added |
+
+`employer_unresolved` (benefit-history) is deliberately NOT a standing
+allowance: the rehearsal allowed the 1,462 residue, but its production
+disposition (drop vs designated employer) remains a pending fund ruling
+(05-open-questions "Unresolved") — the class fails loud until the fund rules,
+then the ruling is added to this table and `sync-config.ts` together.
+
+Per-run conditional allowances (`non_cleared_status` on ledger after the AR
+count check, observed-count allowances like beneficiaries `bad_json`, users
+`missing_mail`) stay OUT of the standing config by design — the operator adds
+them for a specific run only after the verification the row below requires.
+
 | Reject class | Loader | Dev rehearsal | Production |
 |---|---|---|---|
 | `policy_unmatched_unreferenced` | policies | ALLOWED (1 — synthetic `workers_v1`) | Allow ONLY after inspecting reported titles (non-policy JSON definitions) |

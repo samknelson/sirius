@@ -70,6 +70,7 @@
 - [BAO premium subscriber-only charges](bao-premium-subscriber-only.md) — premium charges key to subscribers; dependent WMB events retarget worker_1 + self-heal unswept legacy entries.
 - [Scanner taint is file-local](scanner-taint-file-local.md) — clear SSN/secret findings by isolating the sensitive step in its own no-logging module; IP audit logs are accepted mediums.
 - [HoundDog log-PII remediation](hounddog-log-pii-remediation.md) — masking never clears findings; log stable ids instead of emails/names, annotate accepted sites.
+- [S1 allow-rejects source of truth](s1-allow-rejects-source-of-truth.md) — triage workbook is unfilled; rulings live in RUNBOOK §5 + sync-config production profile, updated together.
 - [S1 loader reject policy](s1-loader-reject-policy.md) — per-run --allow-rejects gate; also [FATAL_REASONS↔verify coupling](loader-fatal-reasons-verify-coupling.md), [writes precede the reject gate](loader-writes-before-reject-gate.md), [pre-checks use the storage contract's clock](loader-precheck-contract-clock.md).
 - [Employer-contacts multi-link](employer-contacts-multilink.md) — one link per (contact,employer,type); contact-scoped authz must any-of over ALL linked employers via checkAccessInline, never links[0].
 - [Charge-plugin migration suppression](charge-plugin-migration-suppression.md) — loaders wrap writes in withChargePluginsSuppressed; notification suppression alone doesn't stop charges; preflight aborts runnable-plugin loads.
