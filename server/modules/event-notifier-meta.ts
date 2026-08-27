@@ -19,9 +19,27 @@ export function registerEventNotifierMetaRoutes(
     "/api/event-notifier/staff-users",
     requireAuth,
     requireAccess("admin"),
-    async (_req, res) => {
+    async (req, res) => {
       try {
-        const users = await storage.users.getUsersWithAnyPermission(["staff", "admin"]);
+        const roleId = typeof req.query.roleId === "string" ? req.query.roleId.trim() : "";
+        const idsParam = typeof req.query.ids === "string" ? req.query.ids.trim() : "";
+        let users;
+        if (idsParam) {
+          // Resolve already-saved selections for display: returned regardless
+          // of current role membership or active status so a stale selection
+          // stays visible and removable. Save-time validation (staff/admin
+          // membership) still gates what can be ADDED.
+          const ids = idsParam.split(",").map((s) => s.trim()).filter(Boolean);
+          users = await storage.users.getUsersByIds(ids);
+        } else if (roleId) {
+          // Role-first candidate list: active staff/admin holders of the role.
+          users = await storage.users.getUsersWithAnyPermissionInRole(roleId, [
+            "staff",
+            "admin",
+          ]);
+        } else {
+          users = await storage.users.getUsersWithAnyPermission(["staff", "admin"]);
+        }
         const formatted = users.map((user) => ({
           id: user.id,
           email: user.email,

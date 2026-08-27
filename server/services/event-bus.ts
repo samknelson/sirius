@@ -509,6 +509,23 @@ export interface BaoCaseStatusSavedPayload {
   /** Event-time display names, captured inside the writing transaction. */
   statusName: string;
   entityName: string | null;
+  /**
+   * Assignee identity across the write: null previous on creation, the
+   * pre-write assignee on updates. Lets listeners detect a genuine
+   * assignment change (including assignment-only saves where the status
+   * did not move). `assigneeName` is the event-time display name,
+   * captured inside the writing transaction like `statusName`.
+   * `undefined` only on legacy emits that predate these fields.
+   */
+  previousAssigneeUserId?: string | null;
+  assigneeUserId?: string;
+  assigneeName?: string | null;
+  /**
+   * The effective acting user who performed this write (masquerade-aware:
+   * the masqueraded identity, matching every other actor surface). Null
+   * when the write had no resolvable actor (e.g. system/batch paths).
+   */
+  actorUserId?: string | null;
   operation: "created" | "updated";
 }
 

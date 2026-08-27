@@ -106,6 +106,8 @@ export interface UserStorage {
   getUserPermissions(userId: string): Promise<PermissionDefinition[]>;
   userHasPermission(userId: string, permissionKey: string): Promise<boolean>;
   getUsersWithAnyPermission(permissionKeys: string[]): Promise<User[]>;
+  getUsersWithAnyPermissionInRole(roleId: string, permissionKeys: string[]): Promise<User[]>;
+  getUsersByIds(ids: string[]): Promise<User[]>;
 }
 
 export function createUserStorage(contactsStorage?: ContactsStorage): UserStorage {
@@ -741,6 +743,55 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
         ))
         .orderBy(users.lastName, users.firstName);
       return result;
+    },
+
+    /**
+     * Active users who BOTH hold the given role AND carry one of the given
+     * permissions (through any of their roles). Backs role-first recipient
+     * pickers: the role is a candidate filter only, eligibility (staff/admin)
+     * stays enforced by the permission join.
+     */
+    async getUsersWithAnyPermissionInRole(roleId: string, permissionKeys: string[]): Promise<User[]> {
+      const client = getClient();
+      if (permissionKeys.length === 0) return [];
+      // Users holding one of the permissions through ANY of their roles —
+      // the permission need not come from the filtering role itself.
+      const permittedUserIds = client
+        .select({ userId: userRoles.userId })
+        .from(userRoles)
+        .innerJoin(rolePermissions, eq(userRoles.roleId, rolePermissions.roleId))
+        .where(inArray(rolePermissions.permissionKey, permissionKeys));
+      const result = await client
+        .selectDistinct({
+          id: users.id,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          profileImageUrl: users.profileImageUrl,
+          accountStatus: users.accountStatus,
+          isActive: users.isActive,
+          createdAt: users.createdAt,
+          updatedAt: users.updatedAt,
+          lastLogin: users.lastLogin,
+          data: users.data,
+        })
+        .from(users)
+        .innerJoin(userRoles, eq(users.id, userRoles.userId))
+        .where(and(
+          eq(users.isActive, true),
+          eq(userRoles.roleId, roleId),
+          inArray(users.id, permittedUserIds),
+        ))
+        .orderBy(users.lastName, users.firstName);
+      return result;
+    },
+
+    /** Users by exact ids (any status): resolving saved selections for display. */
+    async getUsersByIds(ids: string[]): Promise<User[]> {
+      const client = getClient();
+      const unique = Array.from(new Set(ids)).filter(Boolean);
+      if (unique.length === 0) return [];
+      return client.select().from(users).where(inArray(users.id, unique));
     },
   };
 }
