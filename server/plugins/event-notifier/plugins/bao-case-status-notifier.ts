@@ -18,8 +18,16 @@ function payloadOf(ctx: EventNotifierEventContext): BaoCaseStatusSavedPayload {
 /** Root name: the entity kind of the record the notice is about. */
 const ROOT = BAO_CASE_ENTITY_KIND;
 
+interface BaoCaseNotifierConfig {
+  statusIds: string[];
+  staffRecipientUserIds: string[];
+  notifyCurrentAssignee: boolean;
+  /** Absent field defaults to true: existing configs keep self-suppression. */
+  suppressActorNotification: boolean;
+}
+
 /** Read + normalize the admin's per-config settings off `data`. */
-function configOf(configData: unknown): { statusIds: string[] } {
+function configOf(configData: unknown): BaoCaseNotifierConfig {
   const data =
     configData && typeof configData === "object"
       ? (configData as Record<string, unknown>)
@@ -28,14 +36,44 @@ function configOf(configData: unknown): { statusIds: string[] } {
     statusIds: Array.isArray(data.statusIds)
       ? (data.statusIds as unknown[]).filter((v): v is string => typeof v === "string")
       : [],
+    staffRecipientUserIds: Array.isArray(data.staffRecipientUserIds)
+      ? (data.staffRecipientUserIds as unknown[]).filter(
+          (v): v is string => typeof v === "string",
+        )
+      : [],
+    notifyCurrentAssignee: data.notifyCurrentAssignee === true,
+    suppressActorNotification: data.suppressActorNotification !== false,
   };
 }
 
-const TITLE = `BAO case - {{${ROOT}.field(name="status_name")}} - {{${ROOT}}}`;
+/**
+ * Did this committed write ARRIVE at one of the configured statuses?
+ * Creation into it counts; a save that leaves the status unchanged does not.
+ */
+function statusEntry(payload: BaoCaseStatusSavedPayload, cfg: BaoCaseNotifierConfig): boolean {
+  if (!payload.statusId || payload.previousStatusId === undefined) return false;
+  if (!cfg.statusIds.includes(payload.statusId)) return false;
+  return payload.previousStatusId !== payload.statusId;
+}
+
+/**
+ * Did this committed write genuinely change the assignee? Creation counts
+ * (null → assignee), so being handed a brand-new case notifies too; the
+ * self-take/self-create cases are handled by actor suppression, not here.
+ * Legacy emits without the assignee identity never count.
+ */
+function assignmentChange(payload: BaoCaseStatusSavedPayload): boolean {
+  if (typeof payload.assigneeUserId !== "string" || !payload.assigneeUserId) return false;
+  if (payload.previousAssigneeUserId === undefined) return false;
+  return payload.previousAssigneeUserId !== payload.assigneeUserId;
+}
+
+const TITLE = `BAO case {{${ROOT}.field(name="change_summary")}} - {{${ROOT}}}`;
 const SENTENCE =
   `The BAO case for {{${ROOT}}} ` +
-  `is now {{${ROOT}.field(name="status_name")}} ` +
-  `(deadline {{${ROOT}.field(name="deadline_ymd")}}).`;
+  `{{${ROOT}.field(name="change_summary")}} ` +
+  `(status {{${ROOT}.field(name="status_name")}}, ` +
+  `deadline {{${ROOT}.field(name="deadline_ymd")}}).`;
 const LINK_URL = `{{${ROOT}.url}}`;
 const LINK_PATH = `{{${ROOT}.path}}`;
 const LINK_LABEL = "View Case";
@@ -62,58 +100,105 @@ function defaultTemplates(): NotifierChannelTemplates {
 }
 
 /**
- * Notifies selected staff when a generic BAO case is created in — or
- * genuinely transitions into — one of the config's chosen statuses.
+ * Notifies staff about committed BAO case writes. Two triggers, each gated
+ * by the config:
+ *   - STATUS ENTRY: the case was created in — or genuinely transitioned
+ *     into — one of the config's chosen statuses. Recipients: the explicit
+ *     staff list, plus the current assignee when that mode is enabled.
+ *   - ASSIGNMENT CHANGE: `notifyCurrentAssignee` is enabled and the write
+ *     genuinely changed the assignee (creation counts), even when the
+ *     status did not move. Recipient: the committed NEW assignee only —
+ *     the explicit list is not spammed for reassignments.
  *
- * `shouldDispatch` fires only when the committed status is one of the
- * configured statuses AND the write actually arrived there (creation
- * counts; a lifecycle save that leaves the status unchanged never fires;
- * legacy/incomplete emits without the snapshot fields are skipped).
- * The event payload carries the committed case row and event-time
- * display names, so later case edits cannot rewrite an earned message.
+ * Recipient decisions read only the committed event payload (case row,
+ * previous/current assignee, effective actor captured by the write), so a
+ * rolled-back write sends nothing and later edits cannot rewrite a message.
+ * Per-config `suppressActorNotification` (default ON, preserving historic
+ * behavior) drops the payload's effective actor from the recipients:
+ * creating or taking your own case stays silent, while being assigned by
+ * somebody else always notifies.
  */
 export const baoCaseStatusNotifier: EventNotifierPlugin = {
   id: "bao_case_status",
   name: "BAO Case Status Notifier",
   description:
-    "Notifies selected staff when a generic BAO case is created in or transitions into a chosen status.",
+    "Notifies selected staff and/or the current assignee when a generic BAO case enters a chosen status or is reassigned.",
   order: 100,
   requiredComponent: "sitespecific.bao",
-  // Staff-mode: recipients are the config's picked staff users, resolved by
-  // the framework. Self-suppression stays on: the staff member who made the
-  // change does not need to be told about it.
+  // Staff-mode: the framework resolves recipients from user ids; the hook
+  // below merges the committed current assignee into (or substitutes it for)
+  // the config's explicit list depending on which trigger fired.
   staffNotification: true,
   subscribedEvents: [EventType.BAO_CASE_STATUS_SAVED],
   supportedMedia: ["inapp", "email", "sms"],
   configSchema: {
     type: "object",
-    required: ["statusIds", "staffRecipientUserIds"],
     properties: {
       statusIds: {
         type: "array",
         title: "Case statuses",
         description:
-          "Send a notification when a case is created in or transitions into one of these statuses.",
+          "Send a notification when a case is created in or transitions into one of these statuses. " +
+          "May be left empty for an assignment-only notifier (requires Current Assignee below).",
         items: { type: "string" },
-        minItems: 1,
         uniqueItems: true,
         "x-options-resource": "bao-case-status",
+      },
+      notifyCurrentAssignee: {
+        type: "boolean",
+        title: "Notify the current assignee",
+        description:
+          "Dynamically notify the case's committed assignee: on entry into a chosen status, and whenever the case is genuinely reassigned (even without a status change).",
+        default: false,
       },
       staffRecipientUserIds: {
         type: "array",
         title: "Staff recipients",
-        description: "Staff or admin users to notify.",
+        description:
+          "Explicit staff or admin users to notify on status entry. Saved as specific users — the role filter in the picker only narrows the candidate list.",
         items: { type: "string" },
-        minItems: 1,
         "x-widget": "staff-recipients",
+      },
+      suppressActorNotification: {
+        type: "boolean",
+        title: "Don't notify the user who made the change",
+        description:
+          "Skip delivery to the effective user who performed the update (e.g. taking one's own case). Being assigned by another user still notifies.",
+        default: true,
       },
       templates: templatesSchemaBlock({
         exampleTokens: [
           `{{${ROOT}.field(name="status_name")}}`,
           `{{${ROOT}.field(name="entity_name")}}`,
+          `{{${ROOT}.field(name="assignee_name")}}`,
+          `{{${ROOT}.field(name="change_summary")}}`,
         ],
       }),
     },
+  },
+
+  // Cross-field rules the JSON schema cannot express without an RJSF-hostile
+  // root anyOf: every config must have a usable recipient mode, and a config
+  // that can never fire is refused rather than saved dead.
+  validateConfigData(configData) {
+    const cfg = configOf(configData);
+    const errors: string[] = [];
+    if (cfg.staffRecipientUserIds.length === 0 && !cfg.notifyCurrentAssignee) {
+      errors.push(
+        "Choose at least one recipient mode: select explicit staff recipients and/or enable “Notify the current assignee”.",
+      );
+    }
+    if (cfg.statusIds.length === 0 && !cfg.notifyCurrentAssignee) {
+      errors.push(
+        "This configuration would never send: choose at least one case status, or enable “Notify the current assignee” for assignment notifications.",
+      );
+    }
+    if (cfg.statusIds.length === 0 && cfg.staffRecipientUserIds.length > 0 && cfg.notifyCurrentAssignee) {
+      errors.push(
+        "Explicit staff recipients are only notified on status entry — choose at least one case status, or remove the explicit recipients for an assignment-only notifier.",
+      );
+    }
+    return errors.length > 0 ? { valid: false, errors } : { valid: true };
   },
 
   tokenTemplates: {
@@ -132,13 +217,22 @@ export const baoCaseStatusNotifier: EventNotifierPlugin = {
           // The committed case row carried on the event, plus the
           // event-time display names captured in the writing transaction.
           // Not reloaded by id: a later edit (or delete) must not rewrite
-          // the message this transition earned.
+          // the message this transition earned. `change_summary` states
+          // what THIS write did — an assignment-only save must not imply a
+          // status transition that never happened.
+          const statusMoved = payload.previousStatusId !== payload.statusId;
+          const changeSummary =
+            !statusMoved && assignmentChange(payload)
+              ? `was assigned to ${payload.assigneeName ?? "a new assignee"}`
+              : `is now ${payload.statusName}`;
           return {
             kind: BAO_CASE_ENTITY_KIND,
             row: {
               ...(payload.row as unknown as Record<string, unknown>),
               statusName: payload.statusName,
               entityName: payload.entityName,
+              assigneeName: payload.assigneeName ?? null,
+              changeSummary,
             },
             table: sitespecificBaoCases,
           };
@@ -155,13 +249,39 @@ export const baoCaseStatusNotifier: EventNotifierPlugin = {
     if (!payload.row || !payload.statusId || payload.previousStatusId === undefined) {
       return false;
     }
-    const { statusIds } = configOf(configData);
-    if (statusIds.length === 0) return false;
-    if (!statusIds.includes(payload.statusId)) return false;
-    // Fire only when the write actually ARRIVED at the status: creation into
-    // it (previousStatusId is null) or a genuine transition. Unrelated edits
-    // that leave the status unchanged never fire.
-    return payload.previousStatusId !== payload.statusId;
+    const cfg = configOf(configData);
+    if (statusEntry(payload, cfg)) return true;
+    return cfg.notifyCurrentAssignee && assignmentChange(payload);
+  },
+
+  // Final recipient list for one dispatch: which trigger(s) fired decides
+  // who is included; the dispatcher deduplicates, so an assignee who is also
+  // explicitly selected gets exactly one delivery.
+  resolveStaffRecipientUserIds(ctx, configData, configuredUserIds): string[] {
+    const payload = payloadOf(ctx);
+    const cfg = configOf(configData);
+    const ids = new Set<string>();
+    if (statusEntry(payload, cfg)) {
+      for (const id of configuredUserIds) ids.add(id);
+      if (cfg.notifyCurrentAssignee && payload.assigneeUserId) {
+        ids.add(payload.assigneeUserId);
+      }
+    }
+    if (cfg.notifyCurrentAssignee && assignmentChange(payload) && payload.assigneeUserId) {
+      ids.add(payload.assigneeUserId);
+    }
+    return Array.from(ids);
+  },
+
+  // Per-config self-suppression, matched against the effective actor the
+  // committed write captured (masquerade-aware; independent of the ambient
+  // request context, which deferred deliveries lack).
+  actorSuppression(ctx, configData) {
+    const cfg = configOf(configData);
+    return {
+      suppress: cfg.suppressActorNotification,
+      actorUserId: payloadOf(ctx).actorUserId ?? null,
+    };
   },
 };
 

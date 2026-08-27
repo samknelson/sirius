@@ -189,13 +189,22 @@ function registerEventNotifierKind(): void {
           }
         }
       }
-      if (!plugin.configSchema) return { valid: true };
-      const { validateAgainstSchema } = await import(
-        "../../lib/json-schema-validator"
-      );
-      const { media: _media, ...rest } = cfg;
-      const result = validateAgainstSchema(plugin.configSchema, rest);
-      return { valid: result.valid, errors: result.errors };
+      if (plugin.configSchema) {
+        const { validateAgainstSchema } = await import(
+          "../../lib/json-schema-validator"
+        );
+        const { media: _media, ...rest } = cfg;
+        const result = validateAgainstSchema(plugin.configSchema, rest);
+        if (!result.valid) return { valid: false, errors: result.errors };
+      }
+      // Plugin-specific cross-field rules the JSON schema cannot express
+      // (e.g. "at least one recipient mode enabled"). Runs after the schema
+      // so the hook sees a shape-valid payload.
+      if (plugin.validateConfigData) {
+        const { media: _m, ...rest } = cfg;
+        return plugin.validateConfigData(rest);
+      }
+      return { valid: true };
     },
   });
   // Event-notifier configs hoist the admin's active-media selection into a real

@@ -161,15 +161,16 @@ export function registerBaoCaseRoutes(
       // The self-vs-other assignment rule is enforced by storage INSIDE the
       // row-locked lifecycle transaction (a pre-read here would race with a
       // concurrent reassignment); the route only resolves the actor context.
-      let assignment: { actorUserId: string; canAssignOthers: boolean } | undefined;
-      if (parsed.assigneeUserId) {
-        const actor = await effectiveUserId(req);
-        if (!actor) return res.status(401).json({ message: "Effective user not found" });
-        assignment = {
-          actorUserId: actor,
-          canAssignOthers: await storage.users.userHasPermission(actor, BAO_CASE_ASSIGN_PERMISSION),
-        };
-      }
+      // The actor is resolved for EVERY update (not just reassignments) so
+      // the committed event can carry the effective acting user.
+      const actor = await effectiveUserId(req);
+      if (!actor) return res.status(401).json({ message: "Effective user not found" });
+      const assignment = {
+        actorUserId: actor,
+        canAssignOthers: parsed.assigneeUserId
+          ? await storage.users.userHasPermission(actor, BAO_CASE_ASSIGN_PERMISSION)
+          : false,
+      };
       const updated = await storage.baoCases.updateLifecycle(req.params.id, parsed, assignment);
       res.json(updated);
     } catch (error) {

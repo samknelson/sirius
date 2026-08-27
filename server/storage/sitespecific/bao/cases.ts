@@ -176,12 +176,23 @@ async function emitCaseStatusSaved(
   previousStatusId: string | null,
   statusName: string,
   operation: "created" | "updated",
+  change: { previousAssigneeUserId: string | null; actorUserId: string | null },
 ): Promise<void> {
   const [named] = await getClient()
     .select({ entityName })
     .from(cases)
     .where(eq(cases.id, row.id))
     .limit(1);
+  // Assignee display name, captured inside the writing transaction like the
+  // status name: a later rename must not rewrite what this write says.
+  const [assignee] = await getClient()
+    .select({ firstName: users.firstName, lastName: users.lastName, email: users.email })
+    .from(users)
+    .where(eq(users.id, row.assigneeUserId))
+    .limit(1);
+  const assigneeName = assignee
+    ? [assignee.firstName, assignee.lastName].filter(Boolean).join(" ") || assignee.email
+    : null;
   const payload = {
     caseId: row.id,
     entityType: row.entityType,
@@ -191,6 +202,10 @@ async function emitCaseStatusSaved(
     statusId: row.statusId,
     statusName,
     entityName: named?.entityName ?? null,
+    previousAssigneeUserId: change.previousAssigneeUserId,
+    assigneeUserId: row.assigneeUserId,
+    assigneeName,
+    actorUserId: change.actorUserId,
     operation,
   };
   onAfterCommit(() => {
@@ -271,7 +286,10 @@ export function createBaoCasesStorage(): BaoCasesStorage {
           resolutionYmd: null,
         }).returning();
         await getClient().insert(sitespecificBaoCaseNotes).values({ caseId: created.id, noteId });
-        await emitCaseStatusSaved(created, null, status.name, "created");
+        await emitCaseStatusSaved(created, null, status.name, "created", {
+          previousAssigneeUserId: null,
+          actorUserId: input.actorUserId ?? null,
+        });
         return created;
       });
     },
@@ -342,7 +360,10 @@ export function createBaoCasesStorage(): BaoCasesStorage {
           ? updates
           : { ...updates, resolutionId: null, resolutionYmd: null };
         const [updated] = await getClient().update(cases).set(normalized).where(eq(cases.id, id)).returning();
-        await emitCaseStatusSaved(updated, existing.statusId, status.name, "updated");
+        await emitCaseStatusSaved(updated, existing.statusId, status.name, "updated", {
+          previousAssigneeUserId: existing.assigneeUserId,
+          actorUserId: assignment?.actorUserId ?? null,
+        });
         return updated;
       });
     },

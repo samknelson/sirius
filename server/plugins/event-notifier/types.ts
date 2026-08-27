@@ -262,6 +262,45 @@ export interface EventNotifierPlugin extends BasePluginMetadata {
   ): boolean | Promise<boolean>;
 
   /**
+   * Staff-mode only: resolve the FINAL staff recipient user-id list for one
+   * dispatch, given the config's explicitly selected ids. Lets a plugin merge
+   * event-derived users (e.g. a case's committed current assignee) with — or
+   * substitute them for — the configured list, deduplicating as it sees fit.
+   * The dispatcher still enforces staff/admin eligibility when resolving the
+   * returned ids to contacts. Omitted: the configured list is used as-is.
+   */
+  resolveStaffRecipientUserIds?(
+    ctx: EventNotifierEventContext,
+    configData: unknown,
+    configuredUserIds: string[],
+  ): string[] | Promise<string[]>;
+
+  /**
+   * Per-config actor-suppression choice. When declared, this REPLACES the
+   * plugin-level `notifySelf` default for the config being dispatched:
+   * `suppress: false` keeps the acting user as a recipient, `suppress: true`
+   * drops them. `actorUserId`, when a non-null string, identifies the
+   * effective actor of the underlying committed write and takes precedence
+   * over the ambient request-context user for the suppression match (deferred
+   * or replayed deliveries have no ambient request). Returning a null
+   * `actorUserId` falls back to the ambient request-context user.
+   */
+  actorSuppression?(
+    ctx: EventNotifierEventContext,
+    configData: unknown,
+  ): { suppress: boolean; actorUserId?: string | null };
+
+  /**
+   * Plugin-specific config validation for cross-field rules a JSON schema
+   * cannot express (e.g. "at least one recipient mode must be enabled").
+   * Runs at save time AFTER `configSchema` validation, on the same
+   * media-stripped `data` payload.
+   */
+  validateConfigData?(
+    configData: Record<string, unknown>,
+  ): { valid: boolean; errors?: string[] } | Promise<{ valid: boolean; errors?: string[] }>;
+
+  /**
    * Compose the message for one recipient on one medium. Return `null` to skip
    * that medium for that recipient (e.g. the recipient has no address on file,
    * or the content does not apply). `configData` is the individual config's

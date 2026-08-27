@@ -390,11 +390,19 @@ async function dispatchForConfig(
   const active = mediaSelection.filter((m) => supported.has(m));
   if (active.length === 0) return;
 
-  const resolved = plugin.staffNotification
-    ? await resolveStaffRecipients(staffRecipientUserIds(configData), plugin.id)
-    : plugin.getRecipients
-      ? await plugin.getRecipients(ctx, configData)
-      : [];
+  let resolved: NotifierRecipient[];
+  if (plugin.staffNotification) {
+    // Configured ids, optionally reshaped by the plugin (merging event-derived
+    // users such as a committed current assignee, deduplicated). Staff/admin
+    // eligibility is still enforced inside resolveStaffRecipients either way.
+    const configuredIds = staffRecipientUserIds(configData);
+    const finalIds = plugin.resolveStaffRecipientUserIds
+      ? await plugin.resolveStaffRecipientUserIds(ctx, configData, configuredIds)
+      : configuredIds;
+    resolved = await resolveStaffRecipients(Array.from(new Set(finalIds)), plugin.id);
+  } else {
+    resolved = plugin.getRecipients ? await plugin.getRecipients(ctx, configData) : [];
+  }
   if (resolved.length === 0) return;
 
   // Self-notification suppression: when the user who triggered this event is
@@ -408,7 +416,21 @@ async function dispatchForConfig(
   // operator. `actingUserId` still drives the flash summary below either way;
   // only `suppressionUserId` (nulled for opted-in plugins) drops self-recipients.
   const actingUserId = getRequestContext()?.userId;
-  const suppressionUserId = plugin.notifySelf ? undefined : actingUserId;
+  // Per-config suppression choice, when the plugin declares one: it replaces
+  // the plugin-level `notifySelf` default and may carry the committed write's
+  // effective actor (more reliable than the ambient request context for
+  // deferred deliveries; masquerade-aware because the write captured the
+  // effective user).
+  let suppress = !plugin.notifySelf;
+  let suppressionMatchId = actingUserId;
+  if (plugin.actorSuppression) {
+    const choice = plugin.actorSuppression(ctx, configData);
+    suppress = choice.suppress;
+    if (typeof choice.actorUserId === "string" && choice.actorUserId) {
+      suppressionMatchId = choice.actorUserId;
+    }
+  }
+  const suppressionUserId = suppress ? suppressionMatchId : undefined;
   const recipients = suppressionUserId
     ? resolved.filter((r) => {
         const isSelf = r.userId === suppressionUserId;

@@ -208,7 +208,13 @@ describe("BAO case status events", () => {
       statusId: openStatusId,
       statusName: `${run}-open`,
       row: expect.objectContaining({ id: created.id, statusId: openStatusId }),
+      // Assignment + actor identity, captured by the committed write: null
+      // previous assignee on creation, and the creating actor.
+      previousAssigneeUserId: null,
+      assigneeUserId: userId,
+      actorUserId: userId,
     });
+    expect(typeof (emits[0][1] as any).assigneeName).toBe("string");
 
     spy.mockClear();
     await storage.baoCases.updateLifecycle(created.id, {
@@ -239,6 +245,34 @@ describe("BAO case status events", () => {
     });
   });
 
+  it("carries previous/current assignee and the acting user on a reassignment", async () => {
+    const created = await storage.baoCases.create({
+      entityType: "worker", entityId: workerId, deadlineYmd: "2099-08-01",
+      statusId: openStatusId, assigneeUserId: userId, actorUserId: userId,
+      initialNote: { typeId: noteTypeId, subject: `${run} reassignment event` },
+    });
+    caseIds.push(created.id);
+    noteIds.push((await storage.baoCases.get(created.id, true))!.notes![0].id);
+    const spy = vi.spyOn(eventBus, "emit").mockResolvedValue(undefined as any);
+    // Assignment-only change: status untouched, assignee moves to secondUser.
+    await storage.baoCases.updateLifecycle(
+      created.id,
+      { assigneeUserId: secondUserId },
+      { actorUserId: userId, canAssignOthers: true },
+    );
+    const emits = statusEmits(spy);
+    expect(emits).toHaveLength(1);
+    expect(emits[0][1]).toMatchObject({
+      operation: "updated",
+      previousStatusId: openStatusId,
+      statusId: openStatusId,
+      previousAssigneeUserId: userId,
+      assigneeUserId: secondUserId,
+      assigneeName: "Race Tester",
+      actorUserId: userId,
+    });
+  });
+
   it("does not emit for a rolled-back lifecycle write", async () => {
     const created = await storage.baoCases.create({
       entityType: "worker", entityId: workerId, deadlineYmd: "2099-07-01",
@@ -251,6 +285,46 @@ describe("BAO case status events", () => {
     await expect(storage.baoCases.updateLifecycle(created.id, { statusId: closedStatusId }))
       .rejects.toThrow("RESOLUTION_REQUIRED");
     expect(statusEmits(spy)).toHaveLength(0);
+  });
+});
+
+describe("role-filtered staff recipient candidates", () => {
+  it("returns only active staff/admin holders of the given role", async () => {
+    const inRole = await storage.users.getUsersWithAnyPermissionInRole(secondRoleId, ["staff", "admin"]);
+    expect(inRole.map((u) => u.id)).toEqual([secondUserId]);
+    // Every returned candidate is active; users outside the role are excluded
+    // even when they are staff (userId is staff but not in the test role).
+    expect(inRole.every((u) => u.isActive)).toBe(true);
+    expect(inRole.map((u) => u.id)).not.toContain(userId);
+  });
+
+  it("returns nobody for a role whose members lack staff/admin permissions", async () => {
+    const bareRole = await storage.users.createRole({
+      name: `${run}-bare`,
+      description: "no permissions",
+    } as any);
+    try {
+      await storage.users.assignRoleToUser({ userId: secondUserId, roleId: bareRole.id } as any);
+      // secondUser holds staff through their OTHER role, so they still qualify
+      // when filtered by the bare role (permission comes from any role)...
+      const viaBare = await storage.users.getUsersWithAnyPermissionInRole(bareRole.id, ["staff", "admin"]);
+      expect(viaBare.map((u) => u.id)).toEqual([secondUserId]);
+      // ...but with the staff role membership removed, the bare role alone
+      // does not make them eligible.
+      await storage.users.unassignRoleFromUser(secondUserId, secondRoleId);
+      const withoutStaff = await storage.users.getUsersWithAnyPermissionInRole(bareRole.id, ["staff", "admin"]);
+      expect(withoutStaff).toEqual([]);
+    } finally {
+      await storage.users.assignRoleToUser({ userId: secondUserId, roleId: secondRoleId } as any).catch(() => {});
+      await db.delete(userRoles).where(eq(userRoles.roleId, bareRole.id)).catch(() => {});
+      await db.delete(roles).where(eq(roles.id, bareRole.id)).catch(() => {});
+    }
+  });
+
+  it("resolves saved selections by id regardless of status or role", async () => {
+    const found = await storage.users.getUsersByIds([secondUserId, "missing-user-id"]);
+    expect(found.map((u) => u.id)).toEqual([secondUserId]);
+    expect(await storage.users.getUsersByIds([])).toEqual([]);
   });
 });
 

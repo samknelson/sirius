@@ -26,6 +26,8 @@ const BAO_CASE_SAMPLE_SETS = [
       entity_name: "Zephyr Colonist",
       status_name: "Open",
       deadline_ymd: "2031-03-04",
+      assignee_name: "Astra Navigator",
+      change_summary: "was assigned to Astra Navigator",
     },
   },
   {
@@ -37,6 +39,8 @@ const BAO_CASE_SAMPLE_SETS = [
       entity_name: "Analytical Engine Works",
       status_name: "In Progress",
       deadline_ymd: "1843-11-20",
+      assignee_name: "Ada Lovelace",
+      change_summary: "is now In Progress",
     },
   },
   {
@@ -48,6 +52,8 @@ const BAO_CASE_SAMPLE_SETS = [
       entity_name: "Argonaut Provident Trust",
       status_name: "Closed",
       deadline_ymd: "1200-06-15",
+      assignee_name: "Jason of Iolcus",
+      change_summary: "is now Closed",
     },
   },
 ];
@@ -69,7 +75,7 @@ registerTokenPlugin({
     inputTypes: [],
     outputType: BAO_CASE_ENTITY_KIND,
     entityTable: sitespecificBaoCases,
-    entityFields: ["status_name", "entity_name"],
+    entityFields: ["status_name", "entity_name", "assignee_name", "change_summary"],
     // `{{sitespecific_bao_case}}` on its own means who the case is about —
     // the one fact that identifies a case to a staff reader.
     defaultLeaf: "entity_name",
@@ -97,6 +103,9 @@ registerTokenPlugin({
               ...(row as unknown as Record<string, unknown>),
               statusName: detail.statusName,
               entityName: detail.entityName,
+              // Preview has no event to summarize; describe the current state
+              // the same way a status-entry notification would.
+              changeSummary: `is now ${detail.statusName}`,
             },
             table: sitespecificBaoCases,
           },
