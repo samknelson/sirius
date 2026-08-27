@@ -1,0 +1,233 @@
+FAIL: 3 parity failure(s) — see report.failures
+}
+  "result": "FAIL"
+  ],
+    "mismatch class not allowed: payment_account_unmapped=3"
+    "mismatch class not allowed: payment_bad_amount=99",
+    "aggregate: drift beyond tolerance (0c) — ar=0.00 payments=1720.00",
+  "failures": [
+  },
+    ]
+      }
+        "accountNid": 11694615
+        "nid": 16300372,
+      {
+      },
+        "accountNid": 12315269
+        "nid": 16300340,
+      {
+      },
+        "accountNid": 11694615
+        "nid": 16296411,
+      {
+    "payment_account_unmapped": [
+    ],
+      }
+        "nid": 16496279
+      {
+      },
+        "nid": 16456049
+      {
+      },
+        "nid": 16450666
+      {
+      },
+        "nid": 16360374
+      {
+      },
+        "nid": 16357270
+      {
+      },
+        "nid": 16357268
+      {
+      },
+        "nid": 16336026
+      {
+      },
+        "nid": 16335981
+      {
+      },
+        "nid": 16300341
+      {
+      },
+        "nid": 16296413
+      {
+      },
+        "nid": 16296395
+      {
+      },
+        "nid": 16296391
+      {
+      },
+        "nid": 16296326
+      {
+      },
+        "nid": 16296325
+      {
+      },
+        "nid": 16296323
+      {
+      },
+        "nid": 16295993
+      {
+      },
+        "nid": 16295804
+      {
+      },
+        "nid": 16291264
+      {
+      },
+        "nid": 16283114
+      {
+      },
+        "nid": 16274954
+      {
+      },
+        "nid": 16088895
+      {
+      },
+        "nid": 13669147
+      {
+      },
+        "nid": 13669146
+      {
+      },
+        "nid": 13669145
+      {
+      },
+        "nid": 13669141
+      {
+    "payment_bad_amount": [
+  "mismatchSamples": {
+  },
+    "payment_account_unmapped": 3
+    "payment_bad_amount": 99,
+  "mismatches": {
+  },
+    "netS2": "206893294.10"
+    "netS1": "206895014.10",
+    },
+      "driftCents": 172000
+      "s2Sum": "-195352924.22",
+      "s1Sum": "-195354644.22",
+      "s2Count": 3427,
+      "s1Count": 3428,
+    "payments": {
+    },
+      "driftCents": 0
+      "s2Sum": "11540369.88",
+      "s1Sum": "11540369.88",
+      "s2Count": 291270,
+      "s1Count": 291270,
+    "ar": {
+  "aggregate": {
+  ],
+    }
+      "ok": true
+      "netS2": "189942.06",
+      "netS1": "189942.06",
+      },
+        "driftCents": 0
+        "s2Sum": "-171768.24",
+        "s1Sum": "-171768.24",
+        "s2Count": 1020,
+        "s1Count": 1020,
+      "payments": {
+      },
+        "driftCents": 0
+        "s2Sum": "18173.82",
+        "s1Sum": "18173.82",
+        "s2Count": 3228,
+        "s1Count": 3228,
+      "ar": {
+      "accountName": "Health Fund - Employee Contributions",
+      "accountId": "bcb05aea-6f36-4939-8cb6-543a85f37127",
+    {
+    },
+      "ok": true
+      "netS2": "3384171.01",
+      "netS1": "3384171.01",
+      },
+        "driftCents": 0
+        "s2Sum": "-1204152.37",
+        "s1Sum": "-1204152.37",
+        "s2Count": 75,
+        "s1Count": 75,
+      "payments": {
+      },
+        "driftCents": 0
+        "s2Sum": "2180018.64",
+        "s1Sum": "2180018.64",
+        "s2Count": 40033,
+        "s1Count": 40033,
+      "ar": {
+      "accountName": "Hospitality Workforce Partnership",
+      "accountId": "3ef232b2-22bb-4b32-93f0-1f5c9249fc19",
+    {
+    },
+      "ok": true
+      "netS2": "203319181.03",
+      "netS1": "203319181.03",
+      },
+        "driftCents": 0
+        "s2Sum": "-193977003.61",
+        "s1Sum": "-193977003.61",
+        "s2Count": 2332,
+        "s1Count": 2332,
+      "payments": {
+      },
+        "driftCents": 0
+        "s2Sum": "9342177.42",
+        "s1Sum": "9342177.42",
+        "s2Count": 248009,
+        "s1Count": 248009,
+      "ar": {
+      "accountName": "Health Fund - Employer Contributions",
+      "accountId": "1a641150-f84b-4875-bc13-d5c308ed7d18",
+    {
+  "perAccount": [
+  },
+    }
+      "driftCents": 172000
+      "s2Sum": "0.00",
+      "s1Sum": "-1720.00",
+      "s2Count": 0,
+      "s1Count": 1,
+    "payments": {
+    },
+      "driftCents": 0
+      "s2Sum": "0.00",
+      "s1Sum": "0.00",
+      "s2Count": 0,
+      "s1Count": 0,
+    "ar": {
+  "unattributed": {
+  "paymentsMatched": 3580,
+  },
+    "Failed": 3
+    "Received": 23,
+    "Cleared": 3430,
+    "Canceled": 123,
+    "Pending": 103,
+  "stagedPaymentsByStatus": {
+  },
+    "error": 3
+    "draft": 38,
+    "cleared": 3427,
+    "canceled": 112,
+  "loadedPaymentsByStatus": {
+  "loadedPayments": 3580,
+  "stagedPayments": 3682,
+  "s2ArEntries": 291270,
+  },
+    "Cleared": 291270
+  "stagedArByStatus": {
+  "arPages": 146,
+  "stagedAr": 291270,
+  "allowedMismatches": [],
+  "toleranceCents": 0,
+  "harness": "verify-balance-parity",
+{
+[db] driver=neon (serverless/WebSocket)
+[db] Target database: ep-delicate-frog-aflo0zan.c-2.us-west-2.aws.neon.tech/neondb (from EXTERNAL_DATABASE_URL)
+[sync] ── balance parity (--tolerance-cents 0)
