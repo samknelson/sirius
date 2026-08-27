@@ -8,6 +8,7 @@
  * Gated: admin + component `sitespecific.bao.s1migration`.
  */
 import { useState } from "react";
+import { rejectCountsOf } from "@/lib/s1-run-rejects";
 import { useQuery } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import {
@@ -120,11 +121,7 @@ function runOutcome(run: RunRow): { label: string; ok: boolean | null } {
 }
 
 function rejectsOf(run: RunRow): Record<string, number> {
-  const rej = (run.report as { rejects?: unknown }).rejects;
-  if (rej && typeof rej === "object" && !Array.isArray(rej)) {
-    return rej as Record<string, number>;
-  }
-  return {};
+  return rejectCountsOf(run.report);
 }
 
 function fmtTs(ts: string): string {
