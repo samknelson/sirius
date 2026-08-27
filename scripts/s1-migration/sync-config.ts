@@ -72,6 +72,7 @@ export const FLEET: FleetStep[] = [
   { id: "seed-trust-config", script: "seed-trust-config.ts", loader: "seed-trust-config", logicVersion: 1, supportsForceReconcile: false, supportsAllowFindings: false, supportsAllowRejects: false },
   { id: "options", script: "load-options.ts", loader: "t4-options", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: false },
   { id: "contacts-workers", script: "load-contacts-workers.ts", loader: "t3t1-contacts-workers", logicVersion: 2, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
+  { id: "log-notes", script: "load-log-notes.ts", loader: "s1-log-notes", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true, extraArgs: ["--migration-mode"] },
   { id: "beneficiaries", script: "load-beneficiaries.ts", loader: "t-bao-beneficiaries", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
   { id: "member-statuses", script: "load-member-statuses.ts", loader: "t6-member-statuses", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
   { id: "employers", script: "load-employers.ts", loader: "t7t24-employers", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
@@ -85,7 +86,6 @@ export const FLEET: FleetStep[] = [
   { id: "payments", script: "load-payments.ts", loader: "t19-payments", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: false, supportsAllowRejects: true },
   { id: "ledger", script: "load-ledger.ts", loader: "t18-ledger", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: false, supportsAllowRejects: true },
   { id: "hours", script: "load-hours.ts", loader: "t20-hours", logicVersion: 1, supportsForceReconcile: false, supportsAllowFindings: false, supportsAllowRejects: false, extraArgs: ["--migration-mode"] },
-  { id: "call-logs", script: "load-call-logs.ts", loader: "n21-call-logs", logicVersion: 2, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true, extraArgs: ["--migration-mode"] },
   { id: "cardchecks", script: "load-cardchecks.ts", loader: "cardchecks", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true, extraArgs: ["--migration-mode"] },
   { id: "enrollment-packet-tags", script: "load-enrollment-packet-tags.ts", loader: "t29-enrollment-packet-tags", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true, extraArgs: ["--migration-mode"] },
   { id: "users", script: "load-users.ts", loader: "t27-users", logicVersion: 2, supportsForceReconcile: false, supportsAllowFindings: false, supportsAllowRejects: true },
@@ -113,7 +113,7 @@ export interface SyncProfile {
    * declares the fleet step it depends on (all three read s1_staging.id_map
    * rows that only exist once contacts-workers has run on a fresh target), so
    * the orchestrator runs it right AFTER that step succeeds — before the
-   * seeded fakes' consumers (beneficiaries, call-logs, cardchecks) run. */
+   * seeded fakes' consumers (beneficiaries, log-notes, cardchecks) run. */
   postStageSeeds: Array<{ script: string; afterStep: string }>;
   /** T17 open-end horizon (§4 row 9). "current-la-month" = omit the flag and
    * let the loader default to the current America/Los_Angeles month — the
@@ -156,7 +156,7 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
     stageArgs: [],
     postStageSeeds: [
       { script: "dev/seed-beneficiary-fakes.ts", afterStep: "contacts-workers" },
-      { script: "dev/seed-call-log-traps.ts", afterStep: "contacts-workers" },
+      { script: "dev/seed-log-note-fixtures.ts", afterStep: "contacts-workers" },
       { script: "dev/seed-cardcheck-fakes.ts", afterStep: "contacts-workers" },
     ],
     openEndThrough: "2026-12", // dev synthetic convention (§4 row 9)
@@ -212,10 +212,7 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       payments: {},
       ledger: { allowRejects: ["non_cleared_status"] }, // 2 synthetic Pending
       hours: {},
-      "call-logs": {
-        // §4 row 13: 5 synthetic traps, one each.
-        allowRejects: ["category_missing", "category_unmapped", "handler_missing", "handler_unresolved", "handler_dangling"],
-      },
+      "log-notes": {},
       cardchecks: {
         // §4 row 13b seeded traps. disclaimer_missing only re-fires when its
         // definition reprocesses (composite fingerprints) — harmless to keep allowed.
@@ -296,7 +293,7 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       payments: { allowRejects: ["amount_missing", "account_unensured"] },
       ledger: {},
       hours: {},
-      "call-logs": {},
+      "log-notes": {},
       cardchecks: {},
       "enrollment-packet-tags": {},
       users: { allowRejects: ["no_resolvable_worker"] },

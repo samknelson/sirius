@@ -3,12 +3,15 @@ import {
   notes,
   users,
   optionsNoteType,
+  sitespecificBaoNotesTags,
+  optionsSitespecificBaoNotesTags,
   type Note,
   type InsertNote,
 } from "@shared/schema";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { defineLoggingConfig } from "./middleware/logging";
 import { noteEntityTables, isNoteEntityTypeAvailable } from "./notes-entity-types";
+import { runInTransaction } from "./transaction-context";
 
 /** A note plus the display fields the notes tab renders alongside it. */
 export interface NoteWithDetails extends Note {
@@ -41,6 +44,15 @@ export interface NotesStorage {
   findOrphanIds(entityType: string, limit: number): Promise<string[]>;
   /** Hard-delete notes by id (orphan sweep). Returns the number removed. */
   deleteByIds(ids: string[]): Promise<number>;
+  /** Migration-only atomic note + complete BAO tag-set reconciliation. */
+  reconcileForMigration(input: {
+    noteId?: string;
+    note: InsertNote & { timestamp: Date };
+    tagIds: string[];
+    loader: string;
+  }): Promise<{ note: Note; created: boolean } | null>;
+  /** Delete only when the note provenance belongs to the named loader. */
+  deleteForMigration(id: string, loader: string): Promise<"deleted" | "missing">;
 }
 
 /**
@@ -212,6 +224,61 @@ export function createNotesStorage(): NotesStorage {
       const client = getClient();
       const deleted = await client.delete(notes).where(inArray(notes.id, ids)).returning({ id: notes.id });
       return deleted.length;
+    },
+
+    async reconcileForMigration(input): Promise<{ note: Note; created: boolean } | null> {
+      return runInTransaction(async () => {
+        const client = getClient();
+        let current: Note | undefined;
+        if (input.noteId) {
+          [current] = await client.select().from(notes).where(eq(notes.id, input.noteId));
+          if (!current) return null;
+          const owner = (current.data as Record<string, unknown> | null)?.s1Loader;
+          if (owner !== input.loader) throw new Error("migration note provenance owner mismatch");
+        } else {
+          const sourceNid = (input.note.data as Record<string, any> | null)?.s1?.nid;
+          if (sourceNid != null) {
+            const adopted = await client
+              .select()
+              .from(notes)
+              .where(and(
+                eq(notes.entityType, "worker"),
+                sql`data->>'s1Loader' = ${input.loader}`,
+                sql`data->'s1'->>'nid' = ${String(sourceNid)}`,
+              ))
+              .limit(2);
+            if (adopted.length > 1) throw new Error("duplicate migration note provenance");
+            current = adopted[0];
+          }
+        }
+        const [saved] = current
+          ? await client.update(notes).set(input.note as any).where(eq(notes.id, current.id)).returning()
+          : await client.insert(notes).values(input.note as any).returning();
+        const uniqueTagIds = [...new Set(input.tagIds)];
+        if (uniqueTagIds.length === 0) {
+          await client.delete(sitespecificBaoNotesTags).where(eq(sitespecificBaoNotesTags.noteId, saved.id));
+        } else {
+          await client
+            .delete(sitespecificBaoNotesTags)
+            .where(and(eq(sitespecificBaoNotesTags.noteId, saved.id), notInArray(sitespecificBaoNotesTags.tagId, uniqueTagIds)));
+          await client
+            .insert(sitespecificBaoNotesTags)
+            .values(uniqueTagIds.map((tagId) => ({ noteId: saved.id, tagId })))
+            .onConflictDoNothing();
+        }
+        return { note: saved, created: !current };
+      });
+    },
+
+    async deleteForMigration(id: string, loader: string): Promise<"deleted" | "missing"> {
+      const client = getClient();
+      const [row] = await client.select({ id: notes.id, data: notes.data }).from(notes).where(eq(notes.id, id));
+      if (!row) return "missing";
+      if ((row.data as Record<string, unknown> | null)?.s1Loader !== loader) {
+        throw new Error("migration note ownership verification failed");
+      }
+      const deleted = await client.delete(notes).where(eq(notes.id, id)).returning({ id: notes.id });
+      return deleted.length > 0 ? "deleted" : "missing";
     },
   };
 }
