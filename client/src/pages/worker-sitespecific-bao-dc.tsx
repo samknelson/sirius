@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { CalendarClock, FilePlus2, ShieldCheck } from "lucide-react";
@@ -79,6 +79,44 @@ function WorkerDcContent() {
       }),
   });
 
+  // Member document-first intake: one submission uploads the form and, when
+  // needed, opens the case atomically (or adds to the existing open case).
+  const intakeInput = useRef<HTMLInputElement>(null);
+  const intake = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/workers/${worker.id}/sitespecific/bao/dc/intake`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || "Submission failed");
+      }
+      return res.json() as Promise<{ created: boolean }>;
+    },
+    onSuccess: (result) => {
+      toast({
+        title: result.created
+          ? "Case started — your document was submitted"
+          : "Document added to your open case",
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/workers", worker.id, "sitespecific/bao/dc"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/entity-files"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sitespecific/bao/dc/cases"] });
+    },
+    onError: (err) =>
+      toast({
+        title: "Could not submit document",
+        description: getApiErrorMessage(err, "Please try again."),
+        variant: "destructive",
+      }),
+  });
+
   if (isLoading) {
     return <Skeleton className="h-64 w-full" data-testid="skeleton-dc" />;
   }
@@ -117,7 +155,7 @@ function WorkerDcContent() {
                 : "Not currently eligible to open a new case."}
             </CardDescription>
           </div>
-          {data.eligibility.eligible && (
+          {data.isStaff && data.eligibility.eligible && (
             <Button
               onClick={startCase}
               disabled={openCase.isPending}
@@ -125,6 +163,29 @@ function WorkerDcContent() {
             >
               <FilePlus2 className="h-4 w-4 mr-2" /> Start case
             </Button>
+          )}
+          {!data.isStaff && (data.eligibility.eligible || data.hasOpenCase) && (
+            <>
+              <input
+                ref={intakeInput}
+                type="file"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) intake.mutate(file);
+                  e.target.value = "";
+                }}
+                data-testid="input-dc-intake-file"
+              />
+              <Button
+                onClick={() => intakeInput.current?.click()}
+                disabled={intake.isPending}
+                data-testid="button-dc-intake-submit"
+              >
+                <FilePlus2 className="h-4 w-4 mr-2" />
+                {data.hasOpenCase ? "Add a document" : "Submit disability form"}
+              </Button>
+            </>
           )}
         </CardHeader>
         <CardContent className="space-y-3">
@@ -253,8 +314,9 @@ function WorkerDcContent() {
   );
 }
 
-// Member view: the case panel lives inline on this tab (uploads + notes),
-// since members do not have access to the staff case screens.
+// Member view: the case panel lives inline on this tab (document submission
+// + read-only status), since members do not have access to the staff case
+// screens.
 function MemberCasePanelToggle({ caseId }: { caseId: string }) {
   return (
     <a href={`#dc-case-${caseId}`} className="text-sm underline text-muted-foreground">

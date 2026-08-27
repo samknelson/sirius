@@ -61,6 +61,9 @@ const doc = (docType: DcChecklistDocLike["docType"], superseded = false): DcChec
 });
 
 const fullFields = { doctorAddress: true, doctorPhone: true, dates: true };
+// A current dc_form doc alone never satisfies "DC form on file" — a reviewer
+// must ALSO manually attest (dcFormOnFile) that they checked it.
+const formAttested = { dcFormOnFile: true };
 
 describe("DC checklist", () => {
   it("names every missing item on an empty case", () => {
@@ -77,26 +80,46 @@ describe("DC checklist", () => {
     );
   });
 
-  it("passes with a signed form and all attested fields", () => {
-    const result = computeDcChecklist([doc("dc_form")], { signed: true, fields: fullFields });
+  it("passes with a signed, manually attested form and all attested fields", () => {
+    const result = computeDcChecklist([doc("dc_form")], {
+      ...formAttested, signed: true, fields: fullFields,
+    });
     expect(result.passing).toBe(true);
     expect(result.missing).toEqual([]);
   });
 
+  it("a classified dc_form WITHOUT the manual attestation does not satisfy the checklist", () => {
+    const uploadOnly = computeDcChecklist([doc("dc_form")], { signed: true, fields: fullFields });
+    expect(uploadOnly.passing).toBe(false);
+    expect(uploadOnly.missing).toContain("DC form on file");
+  });
+
+  it("the manual attestation WITHOUT a current dc_form does not satisfy the checklist", () => {
+    const attestOnly = computeDcChecklist([], {
+      ...formAttested, signed: true, fields: fullFields,
+    });
+    expect(attestOnly.passing).toBe(false);
+    expect(attestOnly.missing).toContain("DC form on file");
+  });
+
   it("accepts the unsigned branch only WITH a WSR or doctor's note", () => {
-    const unsignedAlone = computeDcChecklist([doc("dc_form")], { fields: fullFields });
+    const unsignedAlone = computeDcChecklist([doc("dc_form")], {
+      ...formAttested, fields: fullFields,
+    });
     expect(unsignedAlone.passing).toBe(false);
-    const withWsr = computeDcChecklist([doc("dc_form"), doc("wsr")], { fields: fullFields });
+    const withWsr = computeDcChecklist([doc("dc_form"), doc("wsr")], {
+      ...formAttested, fields: fullFields,
+    });
     expect(withWsr.passing).toBe(true);
     const withNote = computeDcChecklist([doc("dc_form"), doc("doctor_note")], {
-      fields: fullFields,
+      ...formAttested, fields: fullFields,
     });
     expect(withNote.passing).toBe(true);
   });
 
   it("stops counting superseded documents", () => {
     const result = computeDcChecklist([doc("dc_form", true), doc("wsr")], {
-      fields: fullFields,
+      ...formAttested, fields: fullFields,
     });
     expect(result.passing).toBe(false);
     expect(result.missing).toContain("DC form on file");
@@ -104,7 +127,7 @@ describe("DC checklist", () => {
 
   it("requires the employer accommodation letter when restrictions are noted", () => {
     const base = [doc("dc_form")];
-    const att = { signed: true, restrictionsNoted: true, fields: fullFields };
+    const att = { ...formAttested, signed: true, restrictionsNoted: true, fields: fullFields };
     const withoutLetter = computeDcChecklist(base, att);
     expect(withoutLetter.passing).toBe(false);
     expect(withoutLetter.missing.join(" ")).toMatch(/accommodate/i);
