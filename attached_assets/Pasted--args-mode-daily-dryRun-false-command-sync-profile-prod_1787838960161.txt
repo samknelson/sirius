@@ -1,0 +1,1265 @@
+{
+  "args": {
+    "mode": "daily",
+    "dryRun": false,
+    "command": "sync",
+    "profile": "production",
+    "keepGoing": true,
+    "skipStage": false,
+    "forceReconcile": false
+  },
+  "report": {
+    "mode": "daily",
+    "fleet": [
+      {
+        "id": "seed-trust-config",
+        "loader": "seed-trust-config",
+        "status": "pass",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 0,
+          "deleted": 0,
+          "updated": 0,
+          "rejected": 0,
+          "unchanged": 32,
+          "reportOnly": 0,
+          "deactivated": 0
+        },
+        "exitCode": 0,
+        "failures": [],
+        "rejectGate": {
+          "counts": {},
+          "status": "pass",
+          "allowed": [],
+          "disallowed": []
+        },
+        "durationSec": 5.8,
+        "logicVersion": 1,
+        "findingsByKind": {},
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "options",
+        "loader": "t4-options",
+        "status": "pass",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 0,
+          "deleted": 0,
+          "updated": 0,
+          "rejected": 0,
+          "unchanged": 38,
+          "reportOnly": 0,
+          "deactivated": 0
+        },
+        "exitCode": 0,
+        "failures": [],
+        "rejectGate": {
+          "counts": {},
+          "status": "pass",
+          "allowed": [],
+          "disallowed": []
+        },
+        "durationSec": 3.9,
+        "logicVersion": 1,
+        "findingsByKind": {},
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "contacts-workers",
+        "loader": "t3t1-contacts-workers",
+        "status": "pass",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 31,
+          "deleted": 0,
+          "updated": 67,
+          "rejected": 17424,
+          "unchanged": 250891,
+          "reportOnly": 555,
+          "deactivated": 0
+        },
+        "exitCode": 0,
+        "failures": [],
+        "rejectGate": {
+          "counts": {
+            "contact_no_name": 5,
+            "duplicate_email": 39,
+            "address_incomplete": 15,
+            "worker_id_value_collision": 17365
+          },
+          "status": "pass",
+          "allowed": [
+            "worker_id_value_collision",
+            "duplicate_email",
+            "address_incomplete",
+            "phone_invalid",
+            "contact_no_name"
+          ],
+          "disallowed": []
+        },
+        "durationSec": 1319.9,
+        "logicVersion": 2,
+        "findingsByKind": {
+          "deleted_in_s1": 555
+        },
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "beneficiaries",
+        "loader": "t-bao-beneficiaries",
+        "status": "pass",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 9,
+          "deleted": 0,
+          "updated": 0,
+          "rejected": 0,
+          "unchanged": 3142,
+          "reportOnly": 1,
+          "deactivated": 0
+        },
+        "exitCode": 0,
+        "failures": [],
+        "rejectGate": {
+          "counts": {},
+          "status": "pass",
+          "allowed": [],
+          "disallowed": []
+        },
+        "durationSec": 12.8,
+        "logicVersion": 1,
+        "findingsByKind": {
+          "source_worker_missing": 1
+        },
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "member-statuses",
+        "loader": "t6-member-statuses",
+        "status": "pass",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 8,
+          "deleted": 0,
+          "updated": 2,
+          "rejected": 0,
+          "unchanged": 68141,
+          "reportOnly": 0,
+          "deactivated": 0
+        },
+        "exitCode": 0,
+        "failures": [],
+        "rejectGate": {
+          "counts": {},
+          "status": "pass",
+          "allowed": [],
+          "disallowed": []
+        },
+        "durationSec": 15.5,
+        "logicVersion": 1,
+        "findingsByKind": {},
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "employers",
+        "loader": "t7t24-employers",
+        "status": "fail",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 0,
+          "deleted": 0,
+          "updated": 0,
+          "rejected": 526,
+          "unchanged": 743,
+          "reportOnly": 4,
+          "deactivated": 0
+        },
+        "exitCode": 1,
+        "failures": [
+          "process exit 1",
+          "disallowed rejects: mapped_contact_missing=1"
+        ],
+        "rejectGate": {
+          "counts": {
+            "phone_invalid": 7,
+            "duplicate_email": 440,
+            "shopcontact_no_name": 73,
+            "mapped_contact_missing": 1,
+            "shopcontact_employer_unresolved": 5
+          },
+          "status": "fail",
+          "allowed": [
+            "duplicate_email",
+            "shopcontact_no_name",
+            "phone_invalid",
+            "shopcontact_employer_unresolved"
+          ],
+          "disallowed": [
+            {
+              "count": 1,
+              "reason": "mapped_contact_missing"
+            }
+          ]
+        },
+        "durationSec": 16.6,
+        "logicVersion": 1,
+        "findingsByKind": {
+          "deleted_in_s1": 4
+        },
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "policies",
+        "loader": "t-policies",
+        "status": "pass",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 0,
+          "deleted": 0,
+          "updated": 0,
+          "rejected": 129,
+          "unchanged": 15,
+          "reportOnly": 0,
+          "deactivated": 0
+        },
+        "exitCode": 0,
+        "failures": [],
+        "rejectGate": {
+          "counts": {
+            "policy_unmatched_unreferenced": 129
+          },
+          "status": "pass",
+          "allowed": [
+            "policy_unmatched_unreferenced"
+          ],
+          "disallowed": []
+        },
+        "durationSec": 76.9,
+        "logicVersion": 1,
+        "findingsByKind": {},
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "employer-policies",
+        "loader": "t-employer-policies",
+        "status": "pass",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 0,
+          "deleted": 0,
+          "updated": 0,
+          "rejected": 0,
+          "unchanged": 244,
+          "reportOnly": 0,
+          "deactivated": 0
+        },
+        "exitCode": 0,
+        "failures": [],
+        "rejectGate": {
+          "counts": {},
+          "status": "pass",
+          "allowed": [],
+          "disallowed": []
+        },
+        "durationSec": 4.5,
+        "logicVersion": 1,
+        "findingsByKind": {},
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "employer-rates",
+        "loader": "t-employer-rates",
+        "status": "fail",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 1,
+          "deleted": 0,
+          "updated": 0,
+          "rejected": 2,
+          "unchanged": 142,
+          "reportOnly": 0,
+          "deactivated": 0
+        },
+        "exitCode": 1,
+        "failures": [
+          "process exit 1",
+          "disallowed rejects: bad_rate=2"
+        ],
+        "rejectGate": {
+          "counts": {
+            "bad_rate": 2
+          },
+          "status": "fail",
+          "allowed": [],
+          "disallowed": [
+            {
+              "count": 2,
+              "reason": "bad_rate"
+            }
+          ]
+        },
+        "durationSec": 4.7,
+        "logicVersion": 1,
+        "findingsByKind": {},
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "relationships",
+        "loader": "t15-relationships",
+        "status": "fail",
+        "verify": {
+          "status": "fail",
+          "failures": 1
+        },
+        "summary": {
+          "created": 5,
+          "deleted": 0,
+          "updated": 0,
+          "rejected": 23,
+          "unchanged": 35807,
+          "reportOnly": 0,
+          "deactivated": 0
+        },
+        "exitCode": 1,
+        "failures": [
+          "process exit 1",
+          "disallowed rejects: relation_update_failed=18, duplicate_overlapping_relation=1",
+          "verifyFailures=1"
+        ],
+        "rejectGate": {
+          "counts": {
+            "future_start_date": 4,
+            "relation_update_failed": 18,
+            "duplicate_overlapping_relation": 1
+          },
+          "status": "fail",
+          "allowed": [
+            "future_start_date"
+          ],
+          "disallowed": [
+            {
+              "count": 18,
+              "reason": "relation_update_failed"
+            },
+            {
+              "count": 1,
+              "reason": "duplicate_overlapping_relation"
+            }
+          ]
+        },
+        "durationSec": 23.6,
+        "logicVersion": 1,
+        "findingsByKind": {},
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "employee-ids",
+        "loader": "n4-employee-ids",
+        "status": "pass",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 0,
+          "deleted": 0,
+          "updated": 0,
+          "rejected": 0,
+          "unchanged": 457,
+          "reportOnly": 0,
+          "deactivated": 0
+        },
+        "exitCode": 0,
+        "failures": [],
+        "rejectGate": {
+          "counts": {},
+          "status": "pass",
+          "allowed": [],
+          "disallowed": []
+        },
+        "durationSec": 4.6,
+        "logicVersion": 1,
+        "findingsByKind": {},
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "elections",
+        "loader": "t16-elections",
+        "status": "fail",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 23,
+          "deleted": 0,
+          "updated": 9,
+          "rejected": 774,
+          "unchanged": 243743,
+          "reportOnly": 0,
+          "deactivated": 0
+        },
+        "exitCode": 1,
+        "failures": [
+          "process exit 1",
+          "disallowed rejects: relation_unmapped=2"
+        ],
+        "rejectGate": {
+          "counts": {
+            "worker_unmapped": 98,
+            "relation_unmapped": 2,
+            "end_not_after_start": 674
+          },
+          "status": "fail",
+          "allowed": [
+            "end_not_after_start",
+            "worker_unmapped"
+          ],
+          "disallowed": [
+            {
+              "count": 2,
+              "reason": "relation_unmapped"
+            }
+          ]
+        },
+        "durationSec": 56.2,
+        "logicVersion": 1,
+        "findingsByKind": {},
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "benefit-history",
+        "loader": "t17-benefit-history",
+        "status": "fail",
+        "verify": {
+          "status": "fail",
+          "failures": 85
+        },
+        "summary": {
+          "created": 75,
+          "deleted": 0,
+          "updated": 0,
+          "rejected": 83762,
+          "unchanged": 529650,
+          "reportOnly": 0,
+          "deactivated": 0
+        },
+        "exitCode": 1,
+        "failures": [
+          "process exit 1",
+          "disallowed rejects: relation_map_broken=17, wmb_create_failed=85",
+          "verifyFailures=85"
+        ],
+        "rejectGate": {
+          "counts": {
+            "start_missing": 15,
+            "worker_unmapped": 276,
+            "benefit_unmapped": 6863,
+            "end_before_start": 3145,
+            "relation_unmapped": 71911,
+            "wmb_create_failed": 85,
+            "employer_unresolved": 1450,
+            "relation_map_broken": 17
+          },
+          "status": "fail",
+          "allowed": [
+            "start_missing",
+            "end_before_start",
+            "benefit_unmapped",
+            "worker_unmapped",
+            "relation_unmapped",
+            "employer_unresolved",
+            "open_end_through_required"
+          ],
+          "disallowed": [
+            {
+              "count": 17,
+              "reason": "relation_map_broken"
+            },
+            {
+              "count": 85,
+              "reason": "wmb_create_failed"
+            }
+          ]
+        },
+        "durationSec": 381.7,
+        "logicVersion": 1,
+        "findingsByKind": {},
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "payments",
+        "loader": "t19-payments",
+        "status": "pass",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 11,
+          "deleted": 0,
+          "updated": 5,
+          "rejected": 101,
+          "unchanged": 3575,
+          "reportOnly": 0,
+          "deactivated": 0
+        },
+        "exitCode": 0,
+        "failures": [],
+        "rejectGate": {
+          "counts": {
+            "amount_missing": 100,
+            "account_unensured": 1
+          },
+          "status": "pass",
+          "allowed": [
+            "amount_missing",
+            "account_unensured"
+          ],
+          "disallowed": []
+        },
+        "durationSec": 6,
+        "logicVersion": 1,
+        "findingsByKind": {},
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "ledger",
+        "loader": "t18-ledger",
+        "status": "pass",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 895,
+          "deleted": 4,
+          "updated": 0,
+          "rejected": 0,
+          "unchanged": 291266,
+          "reportOnly": 0,
+          "deactivated": 0
+        },
+        "exitCode": 0,
+        "failures": [],
+        "rejectGate": {
+          "counts": {},
+          "status": "pass",
+          "allowed": [],
+          "disallowed": []
+        },
+        "durationSec": 84,
+        "logicVersion": 1,
+        "findingsByKind": {},
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "hours",
+        "loader": "t20-hours",
+        "status": "pass",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 0,
+          "deleted": 0,
+          "updated": 3633310,
+          "rejected": 0,
+          "unchanged": 0,
+          "reportOnly": 0,
+          "deactivated": 0
+        },
+        "exitCode": 0,
+        "failures": [],
+        "rejectGate": {
+          "counts": {},
+          "status": "pass",
+          "allowed": [],
+          "disallowed": []
+        },
+        "durationSec": 1672.7,
+        "logicVersion": 1,
+        "findingsByKind": {},
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "call-logs",
+        "loader": "n21-call-logs",
+        "status": "pass",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 50,
+          "deleted": 0,
+          "updated": 0,
+          "rejected": 0,
+          "unchanged": 10735,
+          "reportOnly": 0,
+          "deactivated": 0
+        },
+        "exitCode": 0,
+        "failures": [],
+        "rejectGate": {
+          "counts": {},
+          "status": "pass",
+          "allowed": [],
+          "disallowed": []
+        },
+        "durationSec": 122.7,
+        "logicVersion": 2,
+        "findingsByKind": {},
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "cardchecks",
+        "loader": "cardchecks",
+        "status": "pass",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 2,
+          "deleted": 0,
+          "updated": 0,
+          "rejected": 0,
+          "unchanged": 1127,
+          "reportOnly": 0,
+          "deactivated": 0
+        },
+        "exitCode": 0,
+        "failures": [],
+        "rejectGate": {
+          "counts": {},
+          "status": "pass",
+          "allowed": [],
+          "disallowed": []
+        },
+        "durationSec": 178.9,
+        "logicVersion": 1,
+        "findingsByKind": {},
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "enrollment-packet-tags",
+        "loader": "t29-enrollment-packet-tags",
+        "status": "pass",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 0,
+          "deleted": 0,
+          "updated": 0,
+          "rejected": 0,
+          "unchanged": 14792,
+          "reportOnly": 0,
+          "deactivated": 0
+        },
+        "exitCode": 0,
+        "failures": [],
+        "rejectGate": {
+          "counts": {},
+          "status": "pass",
+          "allowed": [],
+          "disallowed": []
+        },
+        "durationSec": 15.1,
+        "logicVersion": 1,
+        "findingsByKind": {},
+        "forceReconcile": false,
+        "blockingFindings": 0
+      },
+      {
+        "id": "users",
+        "loader": "t27-users",
+        "status": "pass",
+        "verify": {
+          "status": "pass",
+          "failures": 0
+        },
+        "summary": {
+          "created": 1,
+          "deleted": 0,
+          "updated": 0,
+          "rejected": 340,
+          "unchanged": 3373,
+          "reportOnly": 0,
+          "deactivated": 0
+        },
+        "exitCode": 0,
+        "failures": [],
+        "rejectGate": {
+          "counts": {
+            "no_resolvable_worker": 340
+          },
+          "status": "pass",
+          "allowed": [
+            "no_resolvable_worker",
+            "no_resolvable_worker",
+            "ambiguous_worker_email"
+          ],
+          "disallowed": []
+        },
+        "durationSec": 97.7,
+        "logicVersion": 2,
+        "findingsByKind": {},
+        "forceReconcile": false,
+        "blockingFindings": 0
+      }
+    ],
+    "gates": {
+      "fleet": "fail",
+      "stage": "pass",
+      "parity": "fail",
+      "findingsMode": "pass (daily: ruled findings surface for triage)"
+    },
+    "stage": {
+      "status": "pass",
+      "exitCode": 0,
+      "mismatches": 0,
+      "durationSec": 4553.5,
+      "resultError": null,
+      "countEvidence": [
+        {
+          "source": "terms",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 636,
+          "staleRemoved": 0,
+          "payloadExtracted": 636,
+          "sourceCountAfter": 636,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 636,
+          "sourceCountBefore": 636,
+          "extractionStartedAt": "2026-08-27T01:44:06.329Z",
+          "extractionFinishedAt": "2026-08-27T01:44:06.948Z"
+        },
+        {
+          "source": "sirius_contact",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 132241,
+          "staleRemoved": 0,
+          "identityVerified": true,
+          "payloadExtracted": 82,
+          "sourceCountAfter": 132241,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 132241,
+          "sourceCountBefore": 132241,
+          "extractionStartedAt": "2026-08-27T01:44:06.950Z",
+          "extractionFinishedAt": "2026-08-27T01:44:47.002Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "sirius_worker",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 118753,
+          "staleRemoved": 0,
+          "identityVerified": true,
+          "payloadExtracted": 61,
+          "sourceCountAfter": 118753,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 118753,
+          "sourceCountBefore": 118753,
+          "extractionStartedAt": "2026-08-27T01:44:06.950Z",
+          "extractionFinishedAt": "2026-08-27T01:44:47.127Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "sirius_contact_relationship",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 35836,
+          "staleRemoved": 1,
+          "identityVerified": true,
+          "payloadExtracted": 8,
+          "sourceCountAfter": 35836,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 35836,
+          "sourceCountBefore": 35836,
+          "extractionStartedAt": "2026-08-27T01:44:47.128Z",
+          "extractionFinishedAt": "2026-08-27T01:44:52.482Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "grievance_shop",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 252,
+          "staleRemoved": 0,
+          "identityVerified": true,
+          "payloadExtracted": 1,
+          "sourceCountAfter": 252,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 252,
+          "sourceCountBefore": 252,
+          "extractionStartedAt": "2026-08-27T01:44:47.128Z",
+          "extractionFinishedAt": "2026-08-27T01:44:47.246Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "grievance_shop_contact",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 570,
+          "staleRemoved": 0,
+          "identityVerified": true,
+          "payloadExtracted": 0,
+          "sourceCountAfter": 570,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 570,
+          "sourceCountBefore": 570,
+          "extractionStartedAt": "2026-08-27T01:44:52.483Z",
+          "extractionFinishedAt": "2026-08-27T01:44:52.584Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "sirius_trust_provider",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 13,
+          "staleRemoved": 0,
+          "identityVerified": true,
+          "payloadExtracted": 0,
+          "sourceCountAfter": 13,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 13,
+          "sourceCountBefore": 13,
+          "extractionStartedAt": "2026-08-27T01:44:52.483Z",
+          "extractionFinishedAt": "2026-08-27T01:44:52.525Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "sirius_trust_benefit",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 19,
+          "staleRemoved": 0,
+          "identityVerified": true,
+          "payloadExtracted": 0,
+          "sourceCountAfter": 19,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 19,
+          "sourceCountBefore": 19,
+          "extractionStartedAt": "2026-08-27T01:44:52.584Z",
+          "extractionFinishedAt": "2026-08-27T01:44:52.627Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "sirius_trust_worker_election",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 244549,
+          "staleRemoved": 7,
+          "identityVerified": true,
+          "payloadExtracted": 39,
+          "sourceCountAfter": 244549,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 244549,
+          "sourceCountBefore": 244549,
+          "extractionStartedAt": "2026-08-27T01:44:52.584Z",
+          "extractionFinishedAt": "2026-08-27T01:45:32.033Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "sirius_trust_worker_benefit",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 613593,
+          "staleRemoved": 0,
+          "identityVerified": true,
+          "payloadExtracted": 353,
+          "sourceCountAfter": 613593,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 613593,
+          "sourceCountBefore": 613593,
+          "extractionStartedAt": "2026-08-27T01:45:32.034Z",
+          "extractionFinishedAt": "2026-08-27T01:48:05.313Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "sirius_json_definition",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 144,
+          "staleRemoved": 0,
+          "identityVerified": true,
+          "payloadExtracted": 24,
+          "sourceCountAfter": 144,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 144,
+          "sourceCountBefore": 144,
+          "extractionStartedAt": "2026-08-27T01:45:32.034Z",
+          "extractionFinishedAt": "2026-08-27T01:45:32.648Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "sirius_payperiod",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 3637704,
+          "staleRemoved": 0,
+          "identityVerified": true,
+          "payloadExtracted": 493,
+          "sourceCountAfter": 3637704,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 3637704,
+          "sourceCountBefore": 3637704,
+          "extractionStartedAt": "2026-08-27T01:48:07.839Z",
+          "extractionFinishedAt": "2026-08-27T02:32:27.589Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "smf_worker_month",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 2553315,
+          "staleRemoved": 0,
+          "identityVerified": true,
+          "payloadExtracted": 355,
+          "sourceCountAfter": 2553315,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 2553315,
+          "sourceCountBefore": 2553315,
+          "extractionStartedAt": "2026-08-27T02:32:27.590Z",
+          "extractionFinishedAt": "2026-08-27T02:45:20.168Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "sirius_employee",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 457,
+          "staleRemoved": 0,
+          "identityVerified": true,
+          "payloadExtracted": 0,
+          "sourceCountAfter": 457,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 457,
+          "sourceCountBefore": 457,
+          "extractionStartedAt": "2026-08-27T01:48:05.314Z",
+          "extractionFinishedAt": "2026-08-27T01:48:05.468Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "sirius_payment",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 3692,
+          "staleRemoved": 0,
+          "identityVerified": true,
+          "payloadExtracted": 17,
+          "sourceCountAfter": 3692,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 3692,
+          "sourceCountBefore": 3692,
+          "extractionStartedAt": "2026-08-27T01:48:05.314Z",
+          "extractionFinishedAt": "2026-08-27T01:48:06.342Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "sirius_ledger_account",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 3,
+          "staleRemoved": 0,
+          "identityVerified": true,
+          "payloadExtracted": 0,
+          "sourceCountAfter": 3,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 3,
+          "sourceCountBefore": 3,
+          "extractionStartedAt": "2026-08-27T01:48:06.342Z",
+          "extractionFinishedAt": "2026-08-27T01:48:06.380Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "sirius_phonenumber",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 4015,
+          "staleRemoved": 0,
+          "identityVerified": true,
+          "payloadExtracted": 41,
+          "sourceCountAfter": 4015,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 4015,
+          "sourceCountBefore": 4015,
+          "extractionStartedAt": "2026-08-27T01:48:06.342Z",
+          "extractionFinishedAt": "2026-08-27T01:48:07.795Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "sirius_log",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 1866886,
+          "staleRemoved": 0,
+          "identityVerified": true,
+          "payloadExtracted": 662,
+          "sourceCountAfter": 1866886,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 1866886,
+          "sourceCountBefore": 1866886,
+          "extractionStartedAt": "2026-08-27T02:45:20.169Z",
+          "extractionFinishedAt": "2026-08-27T02:59:17.481Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "sirius_bulk",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 45,
+          "staleRemoved": 0,
+          "identityVerified": true,
+          "payloadExtracted": 0,
+          "sourceCountAfter": 45,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 45,
+          "sourceCountBefore": 45,
+          "extractionStartedAt": "2026-08-27T01:48:07.796Z",
+          "extractionFinishedAt": "2026-08-27T01:48:07.839Z",
+          "identityVerificationAttempts": 1
+        },
+        {
+          "source": "raw:sirius_ledger_ar",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 292161,
+          "staleRemoved": 4,
+          "payloadExtracted": 292161,
+          "sourceCountAfter": 292161,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 292161,
+          "sourceCountBefore": 292161,
+          "extractionStartedAt": "2026-08-27T02:59:17.482Z",
+          "extractionFinishedAt": "2026-08-27T02:59:47.993Z"
+        },
+        {
+          "source": "raw:users",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 3406,
+          "staleRemoved": 0,
+          "payloadExtracted": 3406,
+          "sourceCountAfter": 3406,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 3406,
+          "sourceCountBefore": 3406,
+          "extractionStartedAt": "2026-08-27T02:59:47.993Z",
+          "extractionFinishedAt": "2026-08-27T02:59:53.811Z"
+        },
+        {
+          "source": "raw:users_roles",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 6968,
+          "staleRemoved": 0,
+          "payloadExtracted": 6968,
+          "sourceCountAfter": 6968,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 6968,
+          "sourceCountBefore": 6968,
+          "extractionStartedAt": "2026-08-27T02:59:47.993Z",
+          "extractionFinishedAt": "2026-08-27T02:59:53.811Z"
+        },
+        {
+          "source": "raw:role",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 15,
+          "staleRemoved": 0,
+          "payloadExtracted": 15,
+          "sourceCountAfter": 15,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 15,
+          "sourceCountBefore": 15,
+          "extractionStartedAt": "2026-08-27T02:59:47.993Z",
+          "extractionFinishedAt": "2026-08-27T02:59:53.811Z"
+        },
+        {
+          "source": "raw:authmap",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 2834,
+          "staleRemoved": 0,
+          "payloadExtracted": 2834,
+          "sourceCountAfter": 2834,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 2834,
+          "sourceCountBefore": 2834,
+          "extractionStartedAt": "2026-08-27T02:59:47.993Z",
+          "extractionFinishedAt": "2026-08-27T02:59:53.811Z"
+        },
+        {
+          "source": "raw:field_data_field_sirius_contact (entity_type='user')",
+          "status": "pass",
+          "integrity": "pass",
+          "sourceDrift": false,
+          "stagedCount": 62492,
+          "staleRemoved": 0,
+          "payloadExtracted": 62492,
+          "sourceCountAfter": 62492,
+          "acceptedLiveDrift": false,
+          "identitiesScanned": 62492,
+          "sourceCountBefore": 62492,
+          "extractionStartedAt": "2026-08-27T02:59:47.993Z",
+          "extractionFinishedAt": "2026-08-27T02:59:53.811Z"
+        }
+      ],
+      "contractErrors": [],
+      "acceptedLiveDrifts": 0
+    },
+    "dryRun": false,
+    "parity": {
+      "months": [
+        {
+          "month": "2025-06",
+          "status": "fail",
+          "exitCode": 1,
+          "durationSec": 32.9
+        },
+        {
+          "month": "2026-08",
+          "status": "pass",
+          "exitCode": 0,
+          "durationSec": 31.8
+        }
+      ],
+      "status": "fail",
+      "balance": {
+        "status": "fail",
+        "exitCode": 1,
+        "durationSec": 31,
+        "toleranceCents": 0
+      },
+      "allowUnresolved": [
+        "start_missing",
+        "end_before_start",
+        "benefit_unmapped",
+        "worker_unmapped",
+        "relation_unmapped",
+        "employer_unresolved",
+        "open_end_through_required"
+      ]
+    },
+    "result": "FAIL",
+    "command": "sync",
+    "profile": "production",
+    "failures": [
+      "employers: process exit 1; disallowed rejects: mapped_contact_missing=1",
+      "employer-rates: process exit 1; disallowed rejects: bad_rate=2",
+      "relationships: process exit 1; disallowed rejects: relation_update_failed=18, duplicate_overlapping_relation=1; verifyFailures=1",
+      "elections: process exit 1; disallowed rejects: relation_unmapped=2",
+      "benefit-history: process exit 1; disallowed rejects: relation_map_broken=17, wmb_create_failed=85; verifyFailures=85",
+      "balance parity FAILED (exit 1)",
+      "month parity 2025-06 FAILED (exit 1)"
+    ],
+    "keepGoing": true,
+    "skipStage": false,
+    "writeFence": {
+      "status": "acquired",
+      "waitSec": 0,
+      "released": true,
+      "releaseStatus": "released",
+      "heldThroughAggregateRecord": true
+    },
+    "durationSec": 8753.2,
+    "fleetTotals": {
+      "created": 1111,
+      "deleted": 4,
+      "updated": 3633393,
+      "rejected": 103081,
+      "unchanged": 1457913,
+      "reportOnly": 560,
+      "deactivated": 0
+    },
+    "parityMonths": [
+      "2025-06",
+      "2026-08"
+    ],
+    "findingsByKind": {
+      "deleted_in_s1": 559,
+      "source_worker_missing": 1
+    },
+    "forceReconcile": false,
+    "openEndThrough": "2026-08"
+  }
+}
+	
