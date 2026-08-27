@@ -2,18 +2,88 @@ import { describe, expect, it } from "vitest";
 import {
   classifyS1Log,
   deriveS1LogNoteSubject,
-  S1_LOG_NOTE_SUBJECT_MAX_LENGTH,
+  extractS1LogNoteBody,
+  resolveS1LogCreator,
 } from "../scripts/s1-migration/lib/log-notes";
+import { classifyRow, combineFingerprints, contentHashOf } from "../scripts/s1-migration/lib/sync";
 
 describe("S1 log-to-note classification", () => {
-  it("selects and truncates the summary, title, or fallback subject", () => {
-    const longSummary = "Summary ".repeat(20);
-    expect(deriveS1LogNoteSubject({ summary: longSummary, title: "Title", nid: 1 }))
-      .toBe(longSummary.slice(0, S1_LOG_NOTE_SUBJECT_MAX_LENGTH));
-    expect(deriveS1LogNoteSubject({ summary: "  ", title: "Title ".repeat(20), nid: 2 }))
-      .toBe(("Title ".repeat(20)).slice(0, S1_LOG_NOTE_SUBJECT_MAX_LENGTH));
-    expect(deriveS1LogNoteSubject({ summary: null, title: null, nid: 3 }))
-      .toBe("S1 log 3");
+  it("uses the creator display name in every imported subject", () => {
+    expect(deriveS1LogNoteSubject({ displayName: "Maria Garcia", s1Uid: 7 }))
+      .toBe("Imported Note [user: Maria Garcia]");
+    expect(deriveS1LogNoteSubject({ displayName: null, s1Uid: 7 }))
+      .toBe("Imported Note [user: S1 user 7]");
+    expect(deriveS1LogNoteSubject({ displayName: null, s1Uid: null }))
+      .toBe("Imported Note [user: Unknown S1 user]");
+  });
+
+  it("uses mapped authors while retaining unmapped S1 creator provenance", () => {
+    expect(resolveS1LogCreator({
+      s1Uid: 17,
+      mappedS2UserId: "s2-user-17",
+      displayName: "  Maria Garcia  ",
+    })).toEqual({
+      s1Uid: 17,
+      s2UserId: "s2-user-17",
+      displayName: "Maria Garcia",
+    });
+    const unmatched = resolveS1LogCreator({
+      s1Uid: 18,
+      displayName: "  Unknown Staff  ",
+    });
+    expect(unmatched).toEqual({
+      s1Uid: 18,
+      s2UserId: null,
+      displayName: "Unknown Staff",
+    });
+    expect(deriveS1LogNoteSubject(unmatched)).toBe("Imported Note [user: Unknown Staff]");
+  });
+
+  it("preserves long and multi-part Drupal note content", () => {
+    const first = "A".repeat(500);
+    const second = "second delta";
+    const result = extractS1LogNoteBody({
+      field_sirius_summary: { value: "Summary", format: "plain_text" },
+      field_sirius_notes: [
+        { value: first, format: "full_html" },
+        { value: second, format: "full_html" },
+      ],
+    }, "Original log title");
+    expect(result.title).toBe("Original log title");
+    expect(result.summary).toBe("Summary");
+    expect(result.notes).toBe(`${first}\n\n${second}`);
+    expect(result.body).toBe(`Original log title\n\nSummary\n\n${first}\n\n${second}`);
+  });
+
+  it("preserves title-only and title-plus-content logs", () => {
+    expect(extractS1LogNoteBody({}, "Title-only source").body).toBe("Title-only source");
+    expect(extractS1LogNoteBody({
+      field_sirius_notes: { value: "Note body", format: "plain_text" },
+    }, "Substantive title").body).toBe("Substantive title\n\nNote body");
+  });
+
+  it("reconciles when creator mapping or display name changes", () => {
+    const sourceHash = contentHashOf({ nid: 99, body: "same source" });
+    const unmapped = resolveS1LogCreator({ s1Uid: 20, displayName: "Former Staff" });
+    const mapped = resolveS1LogCreator({
+      s1Uid: 20,
+      mappedS2UserId: "s2-user-20",
+      displayName: "Former Staff",
+    });
+    const before = combineFingerprints([
+      ["source", sourceHash],
+      ["creator", contentHashOf(unmapped)],
+    ]);
+    const after = combineFingerprints([
+      ["source", sourceHash],
+      ["creator", contentHashOf(mapped)],
+    ]);
+    expect(after).not.toBe(before);
+    expect(classifyRow({
+      stub: false,
+      consumedFingerprint: before,
+      logicVersion: 3,
+    }, after, 3, false)).toBe("changed");
   });
 
   it("maps approved inbound, outbound, no-medium, and multi-issue rows", () => {

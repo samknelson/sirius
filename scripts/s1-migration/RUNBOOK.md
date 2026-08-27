@@ -152,8 +152,8 @@ Remaining manual preconditions:
 ```
 bootstrap-target → stage → seed-trust-config → seed-policy-benefits
 → options → contacts/workers
-→ beneficiaries → member-statuses → employers → policies → relationships
-→ employee-ids → users → elections → benefit-history → payments → ledger
+→ users → beneficiaries → member-statuses → employers → policies → relationships
+→ employee-ids → elections → benefit-history → payments → ledger
 → hours → log-notes → cardchecks → enrollment-packet-tags → parity gates
 → okta pre-provisioning (dry-run; real bulk run is a CUTOVER step)
 ```
@@ -164,7 +164,8 @@ Key ordering facts:
   worker-number sequence initialization (setval ordering).
 - **policies after employers**, **elections after policies + benefit config**.
 - log-notes needs contacts AND workers (handler refs resolve to a real worker
-  through either a mapped worker or mapped contact); dev also needs
+  through either a mapped worker or mapped contact), and users must run before
+  log-notes so imported notes can resolve their S1 creator accounts; dev also needs
   `dev/seed-log-note-fixtures.ts` after staging (restage sweeps the fakes).
   It provisions the six worker-applicable note types and BAO Medium, Issue,
   and Resolution tag types before reconciling notes. Unresolved handlers are

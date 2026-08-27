@@ -20,15 +20,85 @@ export interface LogNoteClassification {
   type: string;
 }
 
-export const S1_LOG_NOTE_SUBJECT_MAX_LENGTH = 50;
+export interface S1LogCreator {
+  s1Uid: number | null;
+  s2UserId: string | null;
+  displayName: string | null;
+}
+
+/** Keep the source identity even when no migrated S2 account exists. */
+export function resolveS1LogCreator(input: {
+  s1Uid: number | null;
+  mappedS2UserId?: string | null;
+  displayName?: string | null;
+}): S1LogCreator {
+  return {
+    s1Uid: input.s1Uid,
+    s2UserId: input.mappedS2UserId ?? null,
+    displayName: input.displayName?.trim() || null,
+  };
+}
 
 export function deriveS1LogNoteSubject(input: {
-  summary: string | null;
-  title: string | null;
-  nid: number;
+  displayName: string | null;
+  s1Uid: number | null;
 }): string {
-  const candidate = [input.summary, input.title].find((value) => value?.trim()) ?? `S1 log ${input.nid}`;
-  return candidate.slice(0, S1_LOG_NOTE_SUBJECT_MAX_LENGTH);
+  const displayName = input.displayName?.trim() ||
+    (input.s1Uid == null ? "Unknown S1 user" : `S1 user ${input.s1Uid}`);
+  return `Imported Note [user: ${displayName}]`;
+}
+
+/**
+ * Read text fields after the generic S1 extractor has represented Drupal
+ * cardinality and data columns as scalars, arrays, or `{ value, format }`
+ * objects. Only the content value is text; format metadata must never become
+ * note body content.
+ */
+function textParts(value: unknown): string[] {
+  if (value == null) return [];
+  if (typeof value === "string" || typeof value === "number") {
+    return [String(value)];
+  }
+  if (Array.isArray(value)) return value.flatMap(textParts);
+  if (typeof value === "object") {
+    const object = value as Record<string, unknown>;
+    for (const key of ["value", "text", "message", "body", "content"]) {
+      if (key in object) return textParts(object[key]);
+    }
+    return Object.values(object).flatMap(textParts);
+  }
+  return [];
+}
+
+function firstTextField(fields: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const parts = textParts(fields[key]);
+    if (parts.length > 0) return parts.join("\n\n");
+  }
+  return null;
+}
+
+/** Preserve every summary and notes delta in the imported note body. */
+export function extractS1LogNoteBody(fields: Record<string, unknown>, title: string | null = null): {
+  title: string | null;
+  summary: string | null;
+  notes: string | null;
+  body: string | null;
+} {
+  const sourceTitle = title?.trim() || null;
+  const summary = firstTextField(fields, ["field_sirius_log_summary", "field_sirius_summary"]);
+  const notes = firstTextField(fields, [
+    "field_sirius_log_notes",
+    "field_sirius_notes",
+    "field_sirius_log_message",
+    "field_sirius_message",
+  ]);
+  return {
+    title: sourceTitle,
+    summary,
+    notes,
+    body: [sourceTitle, summary, notes].filter((part): part is string => part != null).join("\n\n") || null,
+  };
 }
 
 const norm = (value: unknown): string | null => {

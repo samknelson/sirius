@@ -17,9 +17,11 @@ import {
   advanceFingerprints,
   deleteMapping,
   ensureIdMap,
+  getAllMappings,
   getMappings,
   putMapping,
 } from "./lib/idmap";
+import { ensureRawUserTables } from "./lib/staging";
 import { RejectLog, strOf, throttleStorageOpLogs, LOADER_PAGE_SIZE } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
 import {
@@ -40,6 +42,9 @@ import {
   TAG_TYPE_DEFINITIONS,
   classifyS1Log,
   deriveS1LogNoteSubject,
+  extractS1LogNoteBody,
+  resolveS1LogCreator,
+  type S1LogCreator,
   type LogNoteClassification,
 } from "./lib/log-notes";
 import { contentHashOf, type DeletionCandidate } from "./lib/sync";
@@ -54,7 +59,7 @@ const ALLOWED_REJECTS = (() => {
 })();
 const LOADER = "s1-log-notes";
 const ID_MAP_ENTITY = "s1_log_note";
-const LOGIC_VERSION = 2;
+const LOGIC_VERSION = 3;
 const FATAL_REASONS = ["timestamp_missing", "create_failed", "update_failed"] as const;
 
 function targetNidsOf(fields: Record<string, unknown>, key: string): number[] {
@@ -229,17 +234,25 @@ async function ensureNoteOptions(): Promise<{
 interface StagedLog {
   nid: number;
   title: string | null;
+  uid: number | null;
   created: number | null;
   fields: Record<string, unknown>;
   contentHash: string | null;
 }
-type RawLog = { nid: string | number; title: string | null; created: string | number | null; fields: unknown; content_hash: string | null };
+type RawLog = {
+  nid: string | number;
+  title: string | null;
+  uid: string | number | null;
+  created: string | number | null;
+  fields: unknown;
+  content_hash: string | null;
+};
 
 async function* pagedStagedLogs(): AsyncGenerator<StagedLog[]> {
   let lastNid = -1;
   for (;;) {
     const result = await db.execute(sql`
-      SELECT nid, title, created, fields, content_hash
+      SELECT nid, title, uid, created, fields, content_hash
         FROM s1_staging.records
        WHERE bundle = 'sirius_log' AND nid > ${lastNid}
        ORDER BY nid LIMIT ${LOADER_PAGE_SIZE}
@@ -247,6 +260,7 @@ async function* pagedStagedLogs(): AsyncGenerator<StagedLog[]> {
     const rows = (result as unknown as { rows: RawLog[] }).rows.map((row) => ({
       nid: Number(row.nid),
       title: row.title ?? null,
+      uid: row.uid == null ? null : Number(row.uid),
       created: row.created == null ? null : Number(row.created),
       fields: (typeof row.fields === "string" ? JSON.parse(row.fields) : row.fields ?? {}) as Record<string, unknown>,
       contentHash: row.content_hash ?? null,
@@ -265,6 +279,43 @@ interface Resolution {
   sourceId: number | null;
   outcome: string;
   candidateWorkerIds?: string[];
+}
+
+async function loadCreatorContext(): Promise<Map<number, S1LogCreator>> {
+  const mappings = await getAllMappings("user");
+  const mappedUserIds = [...new Set([...mappings.values()]
+    .filter((mapping) => !mapping.stub)
+    .map((mapping) => mapping.s2Id))];
+  const existingUserIds = new Set<string>();
+  if (mappedUserIds.length > 0) {
+    const users = await db.execute(sql`
+      SELECT id
+        FROM users
+       WHERE id IN (${sql.join(mappedUserIds.map((id) => sql`${id}`), sql`, `)})
+    `);
+    for (const row of (users as unknown as { rows: Array<{ id: string }> }).rows) {
+      existingUserIds.add(row.id);
+    }
+  }
+  const result = await db.execute(sql`
+    SELECT uid, name
+      FROM s1_staging.raw_users
+     ORDER BY uid
+  `);
+  const displayNames = new Map<number, string | null>();
+  for (const row of (result as unknown as { rows: Array<{ uid: string | number; name: string | null }> }).rows) {
+    displayNames.set(Number(row.uid), row.name?.trim() || null);
+  }
+  return new Map([...new Set([...mappings.keys(), ...displayNames.keys()])].map((uid) => {
+    const mapping = mappings.get(uid);
+    return [uid, {
+      ...resolveS1LogCreator({
+        s1Uid: uid,
+        mappedS2UserId: mapping && !mapping.stub && existingUserIds.has(mapping.s2Id) ? mapping.s2Id : null,
+        displayName: displayNames.get(uid) ?? null,
+      }),
+    }];
+  }));
 }
 
 async function resolveHandlers(handlerNids: number[]): Promise<Map<number, Resolution>> {
@@ -327,12 +378,11 @@ function rawSourceValue(fields: Record<string, unknown>, ...keys: string[]): str
   return null;
 }
 
-function noteText(row: StagedLog): { subject: string; body: string | null } {
-  const summary = rawSourceValue(row.fields, "field_sirius_log_summary", "field_sirius_summary");
-  const notes = rawSourceValue(row.fields, "field_sirius_log_notes", "field_sirius_notes", "field_sirius_log_message", "field_sirius_message");
+function noteText(row: StagedLog, creator: S1LogCreator): { subject: string; body: string | null } {
+  const { body } = extractS1LogNoteBody(row.fields, row.title);
   return {
-    subject: deriveS1LogNoteSubject({ summary, title: row.title, nid: row.nid }),
-    body: notes ?? summary,
+    subject: deriveS1LogNoteSubject(creator),
+    body,
   };
 }
 
@@ -354,6 +404,7 @@ async function main() {
   const startedAt = new Date();
   await ensureStagingSchema();
   await ensureIdMap();
+  await ensureRawUserTables();
   void storage;
   if (MIGRATION_MODE) console.error("MIGRATION MODE: charge-plugin execution is suppressed for all writes in this run.");
   throttleStorageOpLogs();
@@ -371,6 +422,7 @@ async function main() {
   let inScope = 0;
   let orphaned = 0;
   let fastPathSkips = 0;
+  const creators = await loadCreatorContext();
 
   for await (const page of pagedStagedLogs()) {
     stagedLogs += page.length;
@@ -393,15 +445,19 @@ async function main() {
         outcome: handlerNids.length === 0 ? "handler-missing" : distinctWorkerIds.length > 1 ? "handler-ambiguous" : "handler-unresolved",
         candidateWorkerIds: distinctWorkerIds.length > 1 ? distinctWorkerIds : undefined,
       };
+      const creator: S1LogCreator = row.uid == null
+        ? resolveS1LogCreator({ s1Uid: null })
+        : creators.get(row.uid) ?? resolveS1LogCreator({ s1Uid: row.uid });
       const fingerprint = combineFingerprints([
         ["source", row.contentHash],
         ["classification", contentHashOf(classification)],
         ["resolution", contentHashOf({ handlerNids, resolution })],
+        ["creator", contentHashOf(creator)],
       ]);
-      return { row, classification, handlerNids, resolution, fingerprint };
+      return { row, classification, handlerNids, resolution, creator, fingerprint };
     });
     for (const item of classificationRows) {
-      const { row, classification, handlerNids, resolution, fingerprint } = item;
+      const { row, classification, handlerNids, resolution, creator, fingerprint } = item;
       inScope++;
       inScopeNids.add(row.nid);
       const typeKey = `${classification.noteType}:${classification.medium ?? "none"}`;
@@ -438,7 +494,7 @@ async function main() {
         summary[disposition === "new" ? "created" : "updated"]++;
         continue;
       }
-      const text = noteText(row);
+      const text = noteText(row, creator);
       const data = {
         s1Loader: LOADER,
         s1: {
@@ -446,9 +502,12 @@ async function main() {
           originalCategory: rawSourceValue(row.fields, "field_sirius_log_category", "field_sirius_category"),
           originalType: rawSourceValue(row.fields, "field_sirius_log_type", "field_sirius_type"),
           sourceTimestampEpoch: row.created,
+           sourceTitle: row.title,
           normalizedCategory: classification.category,
           normalizedType: classification.type,
           handlerNids,
+           creatorUid: creator.s1Uid,
+           creatorDisplayName: creator.displayName,
         },
         resolution: {
           sourceKind: resolution.sourceKind,
@@ -472,7 +531,7 @@ async function main() {
             body: text.body,
             data,
             timestamp: new Date(row.created! * 1000),
-            userId: null,
+            userId: creator.s2UserId,
           },
           tagIds: tagIdsFor(classification, options.tagIds),
         }));
