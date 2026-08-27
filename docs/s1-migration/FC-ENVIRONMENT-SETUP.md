@@ -183,7 +183,7 @@ Step sequence and flags: follow `scripts/s1-migration/RUNBOOK.md` §3–§5
 exactly (bootstrap-target [--wipe if target has data] → stage.ts →
 seed-trust-config.ts → loaders in order → parity gates). No
 `--allow-rejects` on first runs; `--migration-mode` is mandatory on
-hours/call-logs/packet-tags.
+hours/log-notes/packet-tags.
 
 ## Values to save (private worksheet — NOT in the repo)
 

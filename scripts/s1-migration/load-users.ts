@@ -446,9 +446,11 @@ async function main() {
       // email may already be taken (admin-created account, or crash-repair):
       // adopt only if it's not owned by another migrated uid.
       let clash = await storage.users.getUserByEmail(email);
+      const clashData = clash
+        ? (clash.data as Record<string, unknown> | null) ?? {}
+        : {};
       let s2Id: string;
       if (clash) {
-        const clashData = (clash.data as Record<string, unknown> | null) ?? {};
         const clashUid = (clashData.s1 as Record<string, unknown> | undefined)?.uid;
         if (typeof clashUid === "number" && clashUid !== u.uid) {
           const ownerMapping = allUserMappings.get(clashUid);
