@@ -4,7 +4,9 @@
  *
  * Verifies:
  *   - one charge per (DP, covered month), priced from the DP rate sheet at
- *     the tier transition derived from non-DP covered lives
+ *     the tier transition derived from non-DP covered lives; the rate sheet
+ *     decides WHICH benefit is billable (ancillary benefits without DP
+ *     rates are ignored; multiple rated benefits = ambiguous, refused)
  *   - statementYmd anchored to the coverage month (first of month)
  *   - months without subscriber benefit presence are skipped, not billed
  *   - months with missing or PROVISIONAL rates are skipped, not guessed
@@ -223,16 +225,15 @@ async function main() {
       endYmd: null,
     },
   ];
+  // Only the medical benefit is rated; dental is an ancillary WMB benefit
+  // with NO DP rates and must be ignored, never a reason to skip the month.
   rates = {
     "ben-med": {
       single_to_2party: [{ effectiveYmd: "2020-01-01", rate: "400.00" }],
     },
-    "ben-dental": {
-      single_to_2party: [{ effectiveYmd: "2020-01-01", rate: "35.00" }],
-    },
   };
   setPresence([startYm, midYm, currentYm], ["ben-med", "ben-dental"]);
-  const expectedMonthly = "435.00";
+  const expectedMonthly = "400.00";
 
   // Test mode first: nothing posted.
   const testResult = await run("test");
@@ -244,7 +245,7 @@ async function main() {
   const r1 = await run();
   check("first run bills 3 covered months", r1.transactions.length === 3);
   check(
-    `each charge is the summed DP rate ${expectedMonthly}`,
+    `each charge is the medical benefit DP rate ${expectedMonthly} (ancillary dental ignored)`,
     r1.transactions.every((t) => t.amount === expectedMonthly),
   );
   check(
@@ -280,7 +281,7 @@ async function main() {
   // provisional for one benefit -> month skipped, not guessed.
   const nextYm = addMonths(currentYm, 1);
   setPresence([startYm, midYm, currentYm, nextYm], ["ben-med", "ben-dental"]);
-  rates["ben-dental"].single_to_2party.push({
+  rates["ben-med"].single_to_2party.push({
     effectiveYmd: `${nextYm}-01`,
     rate: "0.00",
     provisional: true,
@@ -290,9 +291,21 @@ async function main() {
     "provisional rate month is skipped, not billed",
     r3.transactions.length === 0 && (r3.message ?? "").includes("missing/provisional"),
   );
-  rates["ben-dental"].single_to_2party = rates["ben-dental"].single_to_2party.filter(
+  rates["ben-med"].single_to_2party = rates["ben-med"].single_to_2party.filter(
     (r) => !r.provisional,
   );
+
+  // Ambiguous: a second present benefit gains an applicable rate -> the
+  // month must be refused (never summed or double-billed).
+  rates["ben-dental"] = {
+    single_to_2party: [{ effectiveYmd: "2020-01-01", rate: "35.00" }],
+  };
+  const rAmb = await run();
+  check(
+    "two rated present benefits -> month skipped as ambiguous",
+    rAmb.transactions.length === 0 && (rAmb.message ?? "").includes("ambiguous"),
+  );
+  delete rates["ben-dental"];
 
   // One month in advance: with a real rate, next month bills.
   const r3b = await run();
@@ -368,13 +381,12 @@ async function main() {
   });
   elections[0].relationshipIds = [DP_REL, "rel-child"];
   rates["ben-med"]["2party_to_family"] = [{ effectiveYmd: "2020-01-01", rate: "600.00" }];
-  rates["ben-dental"]["2party_to_family"] = [{ effectiveYmd: "2020-01-01", rate: "50.00" }];
   const r9 = await run();
   check(
     "2 non-DP lives -> 2party_to_family transition, reinstated at new tier price",
     r9.transactions.length === 4 &&
       r9.transactions.every(
-        (t) => t.amount === "650.00" && t.metadata?.dpTierTransition === "2party_to_family",
+        (t) => t.amount === "600.00" && t.metadata?.dpTierTransition === "2party_to_family",
       ),
   );
 

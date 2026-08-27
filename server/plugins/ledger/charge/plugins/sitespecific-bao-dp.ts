@@ -36,12 +36,21 @@ import type { WorkerRelationWithTypeName } from "../../../../storage/workers/rel
  * skipped and surfaced, never guessed.
  *
  * Pricing comes from the DP rate sheet (sitespecific_bao_dp_rates) at
- * billing time: for each elected benefit the subscriber has that month, the
- * effective (non-provisional) rate for the applicable coverage-tier
- * transition as of the first of the month, summed. Months with a missing or
- * provisional rate are skipped (billed on a later run once real rates
- * exist) and surfaced in the run summary rather than billed at a guessed
- * price.
+ * billing time: the rate sheet is the source of WHICH present election
+ * benefit is billable. Elections commonly bundle one rated medical benefit
+ * (Kaiser, Health Net, MLK, …) with ancillary benefits (dental, vision,
+ * life, prescription, EAP, AD&D) that intentionally have no DP rates —
+ * ancillary benefits are ignored, never a reason to skip the month. The
+ * month prices at the single rated benefit's effective (non-provisional)
+ * rate for the applicable coverage-tier transition as of the first of the
+ * month. Fail-closed cases, all skipped and surfaced in the run summary
+ * rather than billed at a guessed price:
+ *   - no present benefit has a rate row (billed on a later run once real
+ *     rates exist)
+ *   - the only applicable rate is provisional or zero/negative
+ *   - MORE THAN ONE present benefit has an applicable rate row (ambiguous —
+ *     never summed or picked arbitrarily, so the subscriber is never
+ *     double-billed)
  *
  * Tier transition: derived from the election's covered lives EXCLUDING all
  * DP dependents — 1 non-DP life (subscriber only) → single_to_2party,
@@ -90,7 +99,7 @@ class BaoDpChargePlugin extends ChargePlugin {
     id: "sitespecific-bao-dp",
     name: "BAO - Domestic Partner Monthly Premium",
     description:
-      "Bills the monthly Domestic Partner premium for every active election that covers a DP dependent, to the subscriber's DP ledger account. One entry per DP dependent per coverage month (statement-dated to that month), priced from the DP rate sheet by coverage-tier transition, at most one month in advance, and only for months the subscriber has a benefit. Months with missing/provisional rates or no subscriber coverage are skipped and surfaced. (DP, month)s no longer covered receive offsetting adjustments that zero the month out.",
+      "Bills the monthly Domestic Partner premium for every active election that covers a DP dependent, to the subscriber's DP ledger account. One entry per DP dependent per coverage month (statement-dated to that month), priced from the DP rate sheet by coverage-tier transition, at most one month in advance, and only for months the subscriber has a benefit. The rate sheet decides which election benefit is billable: ancillary benefits without DP rates are ignored, and the month prices at the single rated (medical) benefit's rate. Months with missing/provisional/ambiguous rates or no subscriber coverage are skipped and surfaced. (DP, month)s no longer covered receive offsetting adjustments that zero the month out.",
     triggers: [TriggerType.CRON],
     defaultScope: "global" as const,
     configSchema: {
@@ -178,32 +187,69 @@ class BaoDpChargePlugin extends ChargePlugin {
   }
 
   /**
-   * Price a coverage month from the DP rate sheet: the effective,
-   * NON-PROVISIONAL rate for each present benefit at the tier transition as
-   * of the first of the month, summed. Null when any present benefit is
-   * missing a usable rate (missing row, provisional placeholder, or
-   * zero/negative total).
+   * Price a coverage month from the DP rate sheet. The rate sheet decides
+   * which present benefit is billable: present benefits WITHOUT an
+   * applicable rate row (ancillary dental/vision/life/prescription/EAP/AD&D)
+   * are ignored, and the month prices at the single rated (medical)
+   * benefit's effective rate. Fail-closed results:
+   *   - "missing_rate": no present benefit has an applicable rate row, or
+   *     the single applicable rate is provisional or zero/negative
+   *   - "ambiguous_rates": more than one present benefit has an applicable
+   *     rate row — never summed or picked arbitrarily
    */
   private async priceMonth(
     presentBenefitIds: string[],
     transition: BaoDpTierTransition,
     ym: string,
-  ): Promise<{ amount: string; lineRates: Record<string, string> } | null> {
+  ): Promise<
+    | {
+        ok: true;
+        amount: string;
+        benefitId: string;
+        lineRates: Record<string, string>;
+      }
+    | { ok: false; reason: "missing_rate" | "ambiguous_rates"; ratedBenefitIds: string[] }
+  > {
     const asOfYmd = `${ym}-01`;
-    let total = 0;
-    const lineRates: Record<string, string> = {};
+    const rated: Array<{ benefitId: string; rate: string; provisional: boolean }> =
+      [];
     for (const benefitId of presentBenefitIds) {
       const rate = await storage.baoDpRates.getEffectiveRate(
         benefitId,
         transition,
         asOfYmd,
       );
-      if (!rate || rate.provisional) return null;
-      lineRates[benefitId] = rate.rate;
-      total += Number(rate.rate);
+      if (!rate) continue; // no DP rate for this benefit (ancillary) — ignore
+      rated.push({
+        benefitId,
+        rate: rate.rate,
+        provisional: !!rate.provisional,
+      });
     }
-    if (total <= 0) return null;
-    return { amount: total.toFixed(2), lineRates };
+    if (rated.length === 0) {
+      return { ok: false, reason: "missing_rate", ratedBenefitIds: [] };
+    }
+    if (rated.length > 1) {
+      return {
+        ok: false,
+        reason: "ambiguous_rates",
+        ratedBenefitIds: rated.map((r) => r.benefitId),
+      };
+    }
+    const [only] = rated;
+    if (only.provisional || Number(only.rate) <= 0) {
+      return {
+        ok: false,
+        reason: "missing_rate",
+        ratedBenefitIds: [only.benefitId],
+      };
+    }
+    return {
+      ok: true,
+      amount: Number(only.rate).toFixed(2),
+      benefitId: only.benefitId,
+      lineRates: { [only.benefitId]: only.rate },
+    };
   }
 
   async execute(
@@ -363,6 +409,7 @@ class BaoDpChargePlugin extends ChargePlugin {
       let charged = 0;
       let reversed = 0;
       let skippedMissingRate = 0;
+      let skippedAmbiguousRate = 0;
       let skippedNoCoverage = 0;
 
       for (const target of targets.values()) {
@@ -442,19 +489,35 @@ class BaoDpChargePlugin extends ChargePlugin {
               transition,
               ym,
             );
-            if (!price) {
+            if (!price.ok) {
               if (!hasEntries) {
-                skippedMissingRate++;
-                logger.warn(
-                  "Skipping DP billing month - missing/provisional rate",
-                  {
-                    service: "charge-plugin-bao-dp",
-                    electionId: election.id,
-                    dpRelationshipId: dpRelId,
-                    month: ym,
-                    transition,
-                  },
-                );
+                if (price.reason === "ambiguous_rates") {
+                  skippedAmbiguousRate++;
+                  logger.warn(
+                    "Skipping DP billing month - multiple rated benefits (ambiguous)",
+                    {
+                      service: "charge-plugin-bao-dp",
+                      electionId: election.id,
+                      dpRelationshipId: dpRelId,
+                      month: ym,
+                      transition,
+                      ratedBenefitIds: price.ratedBenefitIds,
+                    },
+                  );
+                } else {
+                  skippedMissingRate++;
+                  logger.warn(
+                    "Skipping DP billing month - missing/provisional rate",
+                    {
+                      service: "charge-plugin-bao-dp",
+                      electionId: election.id,
+                      dpRelationshipId: dpRelId,
+                      month: ym,
+                      transition,
+                      ratedBenefitIds: price.ratedBenefitIds,
+                    },
+                  );
+                }
               }
               continue;
             }
@@ -561,6 +624,9 @@ class BaoDpChargePlugin extends ChargePlugin {
       const skippedBits = [
         skippedMissingRate
           ? `${skippedMissingRate} month(s) skipped for missing/provisional rates`
+          : null,
+        skippedAmbiguousRate
+          ? `${skippedAmbiguousRate} month(s) skipped for ambiguous rates (multiple rated benefits)`
           : null,
         skippedNoCoverage
           ? `${skippedNoCoverage} month(s) skipped for missing subscriber coverage`
@@ -682,7 +748,8 @@ class BaoDpChargePlugin extends ChargePlugin {
         };
       }
 
-      // Re-price the billed month from the DP rate sheet.
+      // Re-price the billed month from the DP rate sheet under the same
+      // rule the cron bills with: exactly ONE rated (medical) benefit.
       const asOfYmd = `${data.billingMonth}-01`;
       const benefitIds = Object.keys(data.benefitRates ?? {});
       if (benefitIds.length === 0) {
@@ -694,6 +761,11 @@ class BaoDpChargePlugin extends ChargePlugin {
       }
       let expected = 0;
       const discrepancies: string[] = [];
+      if (benefitIds.length > 1) {
+        discrepancies.push(
+          `Entry records ${benefitIds.length} rated benefits; DP premiums price from exactly one rated medical benefit`,
+        );
+      }
       for (const benefitId of benefitIds) {
         const rate = await storage.baoDpRates.getEffectiveRate(
           benefitId,
