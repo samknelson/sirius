@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, getApiErrorMessage, queryClient } from "@/lib/queryClient";
@@ -26,12 +25,25 @@ import type {
   BaoDcCaseMonth,
   BaoDcCaseNote,
 } from "@shared/schema";
+import type { DcMonthOption } from "@shared/sitespecific/bao/dc-workflow";
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** "2026-03-01" → "March 2026" (deterministic, no timezone parsing). */
+function formatMonthLabel(monthYmd: string): string {
+  const [y, m] = monthYmd.split("-").map(Number);
+  return `${MONTH_NAMES[(m ?? 1) - 1] ?? "?"} ${y}`;
+}
 
 type ChecklistItem = { key: string; label: string; satisfied: boolean; detail?: string };
 
 type Bundle = {
   case: BaoDcCase;
   months: BaoDcCaseMonth[];
+  monthOptions: DcMonthOption[];
   notes: BaoDcCaseNote[];
   readiness: {
     checklist: { items: ChecklistItem[]; passing: boolean };
@@ -58,38 +70,46 @@ export default function BaoDcCaseDetailPage() {
 
   const { data, isLoading, error } = useQuery<Bundle>({ queryKey: caseKey });
 
-  const [monthsDraft, setMonthsDraft] = useState<string | null>(null);
+  const [monthsDraft, setMonthsDraft] = useState<string[] | null>(null);
   const [actionReason, setActionReason] = useState("");
 
   const activeMonths = useMemo(
     () => (data?.months ?? []).filter((m) => m.status !== "removed"),
     [data],
   );
-  const monthsValue =
-    monthsDraft ?? activeMonths.map((m) => m.workMonthYmd.slice(0, 7)).join(", ");
+  const selectedMonths = useMemo(
+    () =>
+      monthsDraft ?? activeMonths.map((m) => m.workMonthYmd).slice().sort(),
+    [monthsDraft, activeMonths],
+  );
 
-  const parseMonths = (value: string): string[] =>
-    value
-      .split(/[,\s]+/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((s) => (/^\d{4}-\d{2}$/.test(s) ? `${s}-01` : s));
+  const toggleMonth = (monthYmd: string, checked: boolean) => {
+    const next = new Set(selectedMonths);
+    if (checked) next.add(monthYmd);
+    else next.delete(monthYmd);
+    setMonthsDraft(Array.from(next).sort());
+  };
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: caseKey });
 
   const preview = useQuery<SelectionValidation>({
-    queryKey: ["/api/sitespecific/bao/dc/cases", caseId, "months-preview", monthsValue],
+    queryKey: [
+      "/api/sitespecific/bao/dc/cases",
+      caseId,
+      "months-preview",
+      selectedMonths.join(","),
+    ],
     queryFn: async () =>
       apiRequest("POST", `/api/sitespecific/bao/dc/cases/${caseId}/months/validate`, {
-        months: parseMonths(monthsValue),
+        months: selectedMonths,
       }),
-    enabled: Boolean(data && data.case.status === "draft" && parseMonths(monthsValue).length > 0),
+    enabled: Boolean(data && data.case.status === "draft" && selectedMonths.length > 0),
   });
 
   const saveMonths = useMutation({
     mutationFn: () =>
       apiRequest("PUT", `/api/sitespecific/bao/dc/cases/${caseId}/months`, {
-        months: parseMonths(monthsValue),
+        months: selectedMonths,
       }),
     onSuccess: () => {
       setMonthsDraft(null);
@@ -284,27 +304,51 @@ export default function BaoDcCaseDetailPage() {
           <CardTitle className="text-base">Months</CardTitle>
           <CardDescription>
             {isDraft
-              ? "Comma-separated months (YYYY-MM). Continuity gaps and annual capacity are checked before save."
+              ? "Check the months to credit. Continuity gaps and annual capacity are checked before save; unavailable months explain why."
               : "Months can only be changed while the case is in draft."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex gap-2">
-            <Input
-              value={monthsValue}
-              onChange={(e) => setMonthsDraft(e.target.value)}
-              disabled={!isDraft}
-              placeholder="2026-03, 2026-04"
-              data-testid="input-dc-months"
-            />
-            <Button
-              onClick={() => saveMonths.mutate()}
-              disabled={!isDraft || saveMonths.isPending}
-              data-testid="button-dc-save-months"
-            >
-              Save months
-            </Button>
+          <div
+            role="group"
+            aria-label="Disability Credit months"
+            className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3"
+          >
+            {(data.monthOptions ?? []).map((opt) => {
+              const checked = selectedMonths.includes(opt.monthYmd);
+              const disabled = !isDraft || (!opt.selectable && !checked);
+              return (
+                <label
+                  key={opt.monthYmd}
+                  className={`flex items-start gap-2 rounded-md border p-2 text-sm ${
+                    disabled ? "opacity-60" : "hover-elevate cursor-pointer"
+                  }`}
+                  data-testid={`option-dc-month-${opt.monthYmd.slice(0, 7)}`}
+                >
+                  <Checkbox
+                    checked={checked}
+                    disabled={disabled}
+                    onCheckedChange={(v) => toggleMonth(opt.monthYmd, v === true)}
+                    aria-label={formatMonthLabel(opt.monthYmd)}
+                    data-testid={`checkbox-dc-month-${opt.monthYmd.slice(0, 7)}`}
+                  />
+                  <span className="space-y-0.5">
+                    <span className="block leading-none">{formatMonthLabel(opt.monthYmd)}</span>
+                    {opt.reason && (
+                      <span className="block text-xs text-muted-foreground">{opt.reason}</span>
+                    )}
+                  </span>
+                </label>
+              );
+            })}
           </div>
+          <Button
+            onClick={() => saveMonths.mutate()}
+            disabled={!isDraft || saveMonths.isPending || monthsDraft === null}
+            data-testid="button-dc-save-months"
+          >
+            Save months
+          </Button>
           {isDraft && preview.data && (
             <div className="text-sm space-y-1" data-testid="text-dc-months-preview">
               {preview.data.ok ? (

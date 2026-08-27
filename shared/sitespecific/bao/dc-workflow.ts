@@ -147,7 +147,9 @@ export type DcSelectionErrorCode =
   | "ALREADY_COVERED"
   | "CONFLICTING_CASE_MONTH"
   | "CONTINUITY_GAP"
-  | "CAPACITY_EXCEEDED";
+  | "CAPACITY_EXCEEDED"
+  | "NO_PRIOR_COVERAGE"
+  | "BEFORE_FIRST_COVERAGE";
 
 export interface DcSelectionError {
   code: DcSelectionErrorCode;
@@ -227,6 +229,33 @@ export function validateDcMonthSelection(inputs: DcSelectionInputs): DcSelection
     });
   }
 
+  // Extension-only: Disability Credit continues existing coverage — it can
+  // never establish the worker's FIRST covered month. A worker with no
+  // coverage history has nothing to extend; and no credited month may fall
+  // at or before the first established coverage month.
+  const firstCovered =
+    inputs.coveredMonths.length > 0
+      ? inputs.coveredMonths.reduce((a, b) => (a < b ? a : b))
+      : null;
+  if (!firstCovered) {
+    errors.push({
+      code: "NO_PRIOR_COVERAGE",
+      message:
+        "Disability Credit can only extend existing coverage — this worker has no established coverage month.",
+    });
+  } else {
+    const tooEarly = selected.filter(
+      (m) => monthOrdinal(m) <= monthOrdinal(firstCovered) && !covered.has(m),
+    );
+    if (tooEarly.length > 0) {
+      errors.push({
+        code: "BEFORE_FIRST_COVERAGE",
+        message: `Disability Credit cannot precede the worker's first established coverage month (${firstCovered.slice(0, 7)}): ${tooEarly.join(", ")}`,
+        months: tooEarly,
+      });
+    }
+  }
+
   const conflicting = selected.filter((m) => other.has(m));
   if (conflicting.length > 0) {
     errors.push({
@@ -291,4 +320,130 @@ export function validateDcMonthSelection(inputs: DcSelectionInputs): DcSelection
   }
 
   return { ok: errors.length === 0, errors, gapMonths, perYear };
+}
+
+// ---------------------------------------------------------------------------
+// Month options (guided picker)
+// ---------------------------------------------------------------------------
+
+/** Rolling option window: the current month plus this many prior months. */
+export const BAO_DC_OPTION_LOOKBACK_MONTHS = 12;
+/** Months offered beyond the current month. */
+export const BAO_DC_OPTION_FUTURE_MONTHS = 8;
+
+export type DcMonthOptionStatus =
+  | "available"
+  | "selected"
+  | "covered"
+  | "conflicting"
+  | "unavailable";
+
+export interface DcMonthOption {
+  /** First-of-month Ymd. */
+  monthYmd: Ymd;
+  status: DcMonthOptionStatus;
+  /** Whether the interface should let staff toggle this month. */
+  selectable: boolean;
+  /** Human-readable explanation for non-selectable months. */
+  reason?: string;
+}
+
+export interface DcMonthOptionInputs {
+  /** The current month (any day of it; normalized to first-of-month). */
+  nowMonthYmd: Ymd;
+  /** Months the worker already has established coverage for. */
+  coveredMonths: Ymd[];
+  /** Non-removed DC months on the worker's OTHER cases. */
+  otherCaseMonths: Ymd[];
+  /** This case's ACTIVE (non-removed) selected months. */
+  activeCaseMonths: Ymd[];
+}
+
+function firstOfMonth(ymd: Ymd): Ymd {
+  return `${ymd.slice(0, 7)}-01`;
+}
+
+/**
+ * Deterministic month choices for the guided Disability Credit picker.
+ *
+ * Window: the current month, the prior 12 months (13-month lookback) and
+ * the next 8 months. Existing ACTIVE selections are always included — even
+ * outside the window — so they appear checked and can be unchecked while
+ * the case is a draft. Within the window, months already covered or held by
+ * another case are shown but not selectable, and Disability Credit is
+ * extension-only: no month at or before the worker's first established
+ * coverage month is offered, and a worker with no coverage at all gets no
+ * selectable months (DC can never create the first covered month).
+ *
+ * This is WORK-month selection only — the grant's lagged coverage-month
+ * calculation stays entirely in the grant service.
+ */
+export function computeDcMonthOptions(inputs: DcMonthOptionInputs): DcMonthOption[] {
+  const now = firstOfMonth(inputs.nowMonthYmd);
+  const covered = new Set(inputs.coveredMonths);
+  const other = new Set(inputs.otherCaseMonths);
+  const active = new Set(inputs.activeCaseMonths);
+  const firstCovered =
+    inputs.coveredMonths.length > 0
+      ? inputs.coveredMonths.reduce((a, b) => (a < b ? a : b))
+      : null;
+
+  const months = new Set<Ymd>();
+  const start = addMonthsYmd(now, -BAO_DC_OPTION_LOOKBACK_MONTHS);
+  const end = addMonthsYmd(now, BAO_DC_OPTION_FUTURE_MONTHS);
+  for (
+    let cursor = start;
+    monthOrdinal(cursor) <= monthOrdinal(end);
+    cursor = addMonthsYmd(cursor, 1)
+  ) {
+    months.add(cursor);
+  }
+  for (const m of active) months.add(firstOfMonth(m));
+
+  const options: DcMonthOption[] = [];
+  for (const monthYmd of Array.from(months).sort()) {
+    if (active.has(monthYmd)) {
+      options.push({ monthYmd, status: "selected", selectable: true });
+      continue;
+    }
+    if (covered.has(monthYmd)) {
+      options.push({
+        monthYmd,
+        status: "covered",
+        selectable: false,
+        reason: "Already covered — no Disability Credit needed",
+      });
+      continue;
+    }
+    if (other.has(monthYmd)) {
+      options.push({
+        monthYmd,
+        status: "conflicting",
+        selectable: false,
+        reason: "Held by another Disability Credit case for this worker",
+      });
+      continue;
+    }
+    if (!firstCovered) {
+      options.push({
+        monthYmd,
+        status: "unavailable",
+        selectable: false,
+        reason:
+          "Disability Credit can only extend existing coverage — this worker has no established coverage month",
+      });
+      continue;
+    }
+    if (monthOrdinal(monthYmd) <= monthOrdinal(firstCovered)) {
+      options.push({
+        monthYmd,
+        status: "unavailable",
+        selectable: false,
+        reason: `At or before the worker's first established coverage month (${firstCovered.slice(0, 7)})`,
+      });
+      continue;
+    }
+    options.push({ monthYmd, status: "available", selectable: true });
+  }
+  return options;
 }

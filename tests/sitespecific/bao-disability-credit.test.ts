@@ -315,6 +315,22 @@ describe("DC case integrity", () => {
     ).rejects.toThrow();
 
     const covered = await storage.baoDisabilityCredit.getCoveredMonthsForWorker(workerId);
+    if (covered.length === 0) {
+      // Extension-only enforcement lives server-side: a worker with no
+      // established coverage can never receive DC months, even when a
+      // client bypasses the guided picker with a well-formed payload.
+      await expect(
+        storage.baoDisabilityCredit.replaceCaseMonths(c1.id, ["2098-01-01"], {
+          actorUserId: userId,
+        }),
+      ).rejects.toMatchObject({
+        validation: {
+          errors: expect.arrayContaining([
+            expect.objectContaining({ code: "NO_PRIOR_COVERAGE" }),
+          ]),
+        },
+      });
+    }
     const pick = covered.filter((m) => m >= "2026-01-01").slice(0, 2);
     // Without coverage data on this worker we can still exercise the removed-month
     // semantics using validation-passing months when available.

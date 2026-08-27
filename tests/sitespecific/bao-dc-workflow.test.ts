@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   BAO_DC_CASE_TRANSITIONS,
+  BAO_DC_OPTION_FUTURE_MONTHS,
+  BAO_DC_OPTION_LOOKBACK_MONTHS,
   computeDcChecklist,
+  computeDcMonthOptions,
   isDcTransitionAllowed,
   validateDcMonthSelection,
   type DcChecklistDocLike,
@@ -254,5 +257,144 @@ describe("DC month selection", () => {
     expect(
       backfilled.errors.some((e) => e.code === "CAPACITY_EXCEEDED" && e.year === 2026),
     ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Month selection: extension-only (DC never establishes first coverage)
+// ---------------------------------------------------------------------------
+
+describe("DC extension-only selection", () => {
+  it("rejects any selection for a worker with NO established coverage", () => {
+    const result = validateDcMonthSelection({
+      selectedMonths: ["2026-03-01"],
+      coveredMonths: [],
+      otherCaseMonths: [],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.code === "NO_PRIOR_COVERAGE")).toBe(true);
+    // Other-case DC months are NOT established coverage — still rejected.
+    const dcOnly = validateDcMonthSelection({
+      selectedMonths: ["2026-04-01"],
+      coveredMonths: [],
+      otherCaseMonths: ["2026-03-01"],
+    });
+    expect(dcOnly.errors.some((e) => e.code === "NO_PRIOR_COVERAGE")).toBe(true);
+  });
+
+  it("rejects months before the worker's first established coverage month", () => {
+    const result = validateDcMonthSelection({
+      selectedMonths: ["2026-01-01", "2026-04-01"],
+      coveredMonths: ["2026-03-01"],
+      otherCaseMonths: [],
+    });
+    expect(result.ok).toBe(false);
+    const err = result.errors.find((e) => e.code === "BEFORE_FIRST_COVERAGE");
+    expect(err?.months).toEqual(["2026-01-01"]);
+    // A month EQUAL to the first coverage month is already-covered, not
+    // double-reported as before-first-coverage.
+    const equal = validateDcMonthSelection({
+      selectedMonths: ["2026-03-01"],
+      coveredMonths: ["2026-03-01"],
+      otherCaseMonths: [],
+    });
+    expect(equal.errors.some((e) => e.code === "ALREADY_COVERED")).toBe(true);
+    expect(equal.errors.some((e) => e.code === "BEFORE_FIRST_COVERAGE")).toBe(false);
+  });
+
+  it("accepts a valid extension after the first coverage month", () => {
+    const result = validateDcMonthSelection({
+      selectedMonths: ["2026-04-01"],
+      coveredMonths: ["2026-02-01", "2026-03-01"],
+      otherCaseMonths: [],
+    });
+    expect(result.ok).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Month options (guided picker)
+// ---------------------------------------------------------------------------
+
+describe("DC month options", () => {
+  const now = "2026-08-01";
+  const base = {
+    nowMonthYmd: now,
+    coveredMonths: [] as string[],
+    otherCaseMonths: [] as string[],
+    activeCaseMonths: [] as string[],
+  };
+
+  it("spans exactly the 13-month lookback plus eight future months", () => {
+    expect(BAO_DC_OPTION_LOOKBACK_MONTHS).toBe(12);
+    expect(BAO_DC_OPTION_FUTURE_MONTHS).toBe(8);
+    const options = computeDcMonthOptions({ ...base, coveredMonths: ["2020-01-01"] });
+    expect(options).toHaveLength(21);
+    expect(options[0].monthYmd).toBe("2025-08-01");
+    expect(options[options.length - 1].monthYmd).toBe("2027-04-01");
+    // Deterministic: same inputs, same output.
+    expect(computeDcMonthOptions({ ...base, coveredMonths: ["2020-01-01"] })).toEqual(options);
+  });
+
+  it("normalizes a mid-month 'now' to its first-of-month window", () => {
+    const options = computeDcMonthOptions({
+      ...base,
+      nowMonthYmd: "2026-08-15",
+      coveredMonths: ["2020-01-01"],
+    });
+    expect(options[0].monthYmd).toBe("2025-08-01");
+    expect(options[options.length - 1].monthYmd).toBe("2027-04-01");
+  });
+
+  it("offers NOTHING selectable when the worker has no established coverage", () => {
+    const options = computeDcMonthOptions(base);
+    expect(options.every((o) => o.status === "unavailable" && !o.selectable)).toBe(true);
+    expect(options[0].reason).toMatch(/no established coverage/i);
+  });
+
+  it("never offers a month at or before the first established coverage month", () => {
+    const options = computeDcMonthOptions({ ...base, coveredMonths: ["2026-03-01"] });
+    const byMonth = Object.fromEntries(options.map((o) => [o.monthYmd, o]));
+    expect(byMonth["2026-02-01"].status).toBe("unavailable");
+    expect(byMonth["2026-02-01"].selectable).toBe(false);
+    expect(byMonth["2026-03-01"].status).toBe("covered"); // equal → covered wins
+    expect(byMonth["2026-04-01"].status).toBe("available");
+    expect(byMonth["2026-04-01"].selectable).toBe(true);
+  });
+
+  it("marks covered and other-case months non-selectable with reasons", () => {
+    const options = computeDcMonthOptions({
+      ...base,
+      coveredMonths: ["2026-05-01", "2026-06-01"],
+      otherCaseMonths: ["2026-07-01"],
+    });
+    const byMonth = Object.fromEntries(options.map((o) => [o.monthYmd, o]));
+    expect(byMonth["2026-06-01"]).toMatchObject({ status: "covered", selectable: false });
+    expect(byMonth["2026-06-01"].reason).toMatch(/already covered/i);
+    expect(byMonth["2026-07-01"]).toMatchObject({ status: "conflicting", selectable: false });
+    expect(byMonth["2026-07-01"].reason).toMatch(/another/i);
+    expect(byMonth["2026-08-01"].status).toBe("available");
+  });
+
+  it("keeps existing ACTIVE selections checked and toggleable — even outside the window", () => {
+    const options = computeDcMonthOptions({
+      ...base,
+      coveredMonths: ["2024-01-01"],
+      activeCaseMonths: ["2024-06-01", "2026-09-01"],
+    });
+    const byMonth = Object.fromEntries(options.map((o) => [o.monthYmd, o]));
+    // Outside the window, still present as selected + toggleable.
+    expect(byMonth["2024-06-01"]).toMatchObject({ status: "selected", selectable: true });
+    // Inside the window too.
+    expect(byMonth["2026-09-01"]).toMatchObject({ status: "selected", selectable: true });
+    // Selected wins over conflicting/covered classification.
+    const overlapping = computeDcMonthOptions({
+      ...base,
+      coveredMonths: ["2026-05-01"],
+      otherCaseMonths: ["2026-06-01"],
+      activeCaseMonths: ["2026-06-01"],
+    });
+    const byM = Object.fromEntries(overlapping.map((o) => [o.monthYmd, o]));
+    expect(byM["2026-06-01"].status).toBe("selected");
   });
 });

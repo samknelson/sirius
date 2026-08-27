@@ -18,7 +18,9 @@ import {
 } from "@shared/schema";
 import {
   computeDcChecklist,
+  computeDcMonthOptions,
   type DcChecklistResult,
+  type DcMonthOption,
 } from "@shared/sitespecific/bao/dc-workflow";
 import { getDcDenialLetterValidityMonths } from "./dc-settings";
 import { denialLetterExpiryYmd } from "@shared/sitespecific/bao/dc-eligibility";
@@ -52,6 +54,12 @@ export interface DcCaseBundle {
   notes: Awaited<ReturnType<typeof storage.baoDisabilityCredit.listCaseNotes>>;
   events: Awaited<ReturnType<typeof storage.baoDisabilityCredit.listEventsForCase>>;
   readiness: DcCaseReadiness;
+  /**
+   * Guided-picker choices: the rolling option window with per-month
+   * status/reason so the interface can distinguish selectable, selected,
+   * covered, conflicting, and otherwise unavailable months.
+   */
+  monthOptions: DcMonthOption[];
   /** Per-year usage across ALL of the worker's cases (non-removed months). */
   yearUsage: Record<string, { used: number; limit: number }>;
   denialLetters: Array<{
@@ -67,7 +75,7 @@ export async function getDcCaseBundle(caseId: string): Promise<DcCaseBundle | un
   const dc = storage.baoDisabilityCredit;
   const theCase = await dc.getCase(caseId);
   if (!theCase) return undefined;
-  const [months, documents, notes, events, applicable, letters, validityMonths] =
+  const [months, documents, notes, events, applicable, letters, validityMonths, covered] =
     await Promise.all([
       dc.listCaseMonths(caseId),
       dc.listCaseDocumentsWithFiles(caseId),
@@ -76,12 +84,24 @@ export async function getDcCaseBundle(caseId: string): Promise<DcCaseBundle | un
       dc.listApplicableMonthsForWorker(theCase.workerId),
       dc.listNonVoidedDenialLettersForWorker(theCase.workerId),
       getDcDenialLetterValidityMonths(),
+      dc.getCoveredMonthsForWorker(theCase.workerId),
     ]);
   const readiness = computeCaseReadiness(theCase, documents, months);
   const yearUsage = buildDcYearUsage(applicable);
+  const monthOptions = computeDcMonthOptions({
+    nowMonthYmd: `${new Date().toISOString().slice(0, 7)}-01`,
+    coveredMonths: covered,
+    otherCaseMonths: applicable
+      .filter((m) => m.caseId !== caseId)
+      .map((m) => m.workMonthYmd),
+    activeCaseMonths: months
+      .filter((m) => m.status !== "removed")
+      .map((m) => m.workMonthYmd),
+  });
   return {
     case: theCase,
     months,
+    monthOptions,
     documents,
     notes,
     events,
