@@ -381,9 +381,12 @@ export function createNotesStorage(): NotesStorage {
           .filter((r) => saved.has(r.ref))
           .map((r) => ({ noteId: saved.get(r.ref)!.noteId, tagIds: [...new Set(r.tagIds)] }));
         if (tagTargets.length > 0) {
-          const desired = tagTargets.map((t) => sql`(
-            ${t.noteId}, ARRAY[${t.tagIds.length > 0 ? sql.join(t.tagIds.map((id) => sql`${id}`), sql`, `) : sql`NULL`}]::varchar[]
-          )`);
+          // Empty desired sets MUST be a true empty typed array: with
+          // ARRAY[NULL], `NOT (tag_id = ANY(...))` evaluates to NULL (not
+          // true) and the delete would silently keep stale tags.
+          const desired = tagTargets.map((t) => t.tagIds.length > 0
+            ? sql`(${t.noteId}, ARRAY[${sql.join(t.tagIds.map((id) => sql`${id}`), sql`, `)}]::varchar[])`
+            : sql`(${t.noteId}, ARRAY[]::varchar[])`);
           await client.execute(sql`
             DELETE FROM sitespecific_bao_notes_tags t
              USING (VALUES ${sql.join(desired, sql`, `)}) AS v(note_id, tag_ids)
