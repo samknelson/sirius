@@ -23,6 +23,20 @@ import {
   clearVerifiedWorkerAndSave,
 } from "../worker-provisioning";
 import { createOktaUserAndSendActivation } from "../okta-admin";
+import {
+  getEnvironmentVariable,
+  registerEnvironmentVariable,
+} from "../../config/env-registry";
+import { getPublicBaseUrl } from "../../services/comm/callback-handlers/url-builder";
+
+registerEnvironmentVariable({
+  name: "OKTA_CALLBACK_URL",
+  description:
+    "Explicit fully-qualified Okta OIDC callback URL; overrides the PUBLIC_URL-derived origin.",
+  secret: false,
+  category: "core",
+  changeTakesEffect: "restart",
+});
 
 const STRATEGY_NAME = "okta";
 
@@ -38,7 +52,7 @@ const getOidcConfig = memoize(
 );
 
 function getCanonicalOrigin(): string {
-  const explicit = process.env.OKTA_CALLBACK_URL;
+  const explicit = getEnvironmentVariable("OKTA_CALLBACK_URL");
   if (explicit) {
     try {
       const u = new URL(explicit);
@@ -47,22 +61,21 @@ function getCanonicalOrigin(): string {
       // fall through
     }
   }
-  const host =
-    process.env.REPLIT_DEV_DOMAIN ||
-    (process.env.REPLIT_DOMAINS
-      ? process.env.REPLIT_DOMAINS.split(",")[0].trim()
-      : undefined);
-
-  if (!host) {
+  // PUBLIC_URL is the single base-URL source; its transform already knows the
+  // platform-domain fallback chain. getPublicBaseUrl() withholds the localhost
+  // development fallback, matching the previous "no host available" throw.
+  const base = getPublicBaseUrl();
+  if (!base) {
     throw new Error(
-      "Okta provider: cannot determine canonical origin. Set OKTA_CALLBACK_URL or run in a Replit environment with REPLIT_DEV_DOMAIN/REPLIT_DOMAINS."
+      "Okta provider: cannot determine canonical origin. Set OKTA_CALLBACK_URL or PUBLIC_URL (or run on a platform that provides a public domain)."
     );
   }
-  return `https://${host}`;
+  const u = new URL(base);
+  return `${u.protocol}//${u.host}`;
 }
 
 function getCallbackUrl(callbackPath: string): string {
-  const explicit = process.env.OKTA_CALLBACK_URL;
+  const explicit = getEnvironmentVariable("OKTA_CALLBACK_URL");
   if (explicit) {
     try {
       const u = new URL(explicit);

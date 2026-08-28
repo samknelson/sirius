@@ -96,17 +96,18 @@
  */
 
 import mysql from 'mysql2/promise';
+import { getEnvironmentVariable } from './lib/script-env.ts';
 
 // ----------------------------------------------------------------- config
-const DSN = process.env.S1_DATABASE_URL;
+const DSN = getEnvironmentVariable("S1_DATABASE_URL");
 if (!DSN) { console.error('Set S1_DATABASE_URL'); process.exit(1); }
 if (/rds\.amazonaws\.com/i.test(DSN)) {
   console.error('REFUSING: DSN looks like an AWS RDS endpoint. This tool is for the synthetic dev DB only.');
   process.exit(1);
 }
 
-const SEED = Number(process.env.GEN_SEED || 20260803);
-const N_WORKERS = Number(process.env.GEN_WORKERS || 50);
+const SEED = Number(getEnvironmentVariable("GEN_SEED") || 20260803);
+const N_WORKERS = Number(getEnvironmentVariable("GEN_WORKERS") || 50);
 const TZ_NOTE = 'America/Los_Angeles';
 
 // Deterministic PRNG (mulberry32)
@@ -659,7 +660,7 @@ for (let i = 0; i < N_WORKERS; i++) {
   // T27 canary: worker index 1's contact carries the designated canary email
   // (the ONE real Okta test account) — override via S1_CANARY_EMAIL.
   const contactEmail = i === 1
-    ? (process.env.S1_CANARY_EMAIL || 'sirius.canary@example.test').toLowerCase()
+  ? (getEnvironmentVariable("S1_CANARY_EMAIL") || 'sirius.canary@example.test').toLowerCase()
     : `${first}.${last}.${i}@example.test`.toLowerCase();
   if (i === 1) trap('canary_contact_email');
   await fd('field_data_field_sirius_email', [{bundle:'sirius_contact', entity_id:cnid, values:{field_sirius_email_value:contactEmail}}]);

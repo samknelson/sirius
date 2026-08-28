@@ -8,7 +8,7 @@ import { databaseSourceInfo } from "../../../../storage/db";
  * credentials. Derived from the boot-time resolved target in
  * server/storage/db.ts (single source of truth: EXTERNAL_DATABASE_URL wins
  * over DATABASE_URL, Neon pooler rewrite applied) — never from a direct
- * process.env read, which previously reported the Replit-injected
+ * environment read, which previously reported the Replit-injected
  * DATABASE_URL even when the app was connected elsewhere.
  */
 function describeConnection(): string {

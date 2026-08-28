@@ -30,6 +30,7 @@ import {
   tryImmediateScan,
 } from "../../server/services/wmb-scan-queue";
 import { finalizeWriteFenceReport } from "../s1-migration/lib/write-fence-report";
+import { getRawProcessEnv } from "../../server/config/env-registry";
 
 let passed = 0;
 
@@ -509,7 +510,7 @@ async function signalSessionCleanupScenario(): Promise<void> {
   console.log("\n8. Signal-driven process loss releases the PostgreSQL session lock");
   const scriptPath = fileURLToPath(import.meta.url);
   const child = spawn(process.execPath, ["--import", "tsx", scriptPath, "--signal-holder"], {
-    env: process.env,
+    env: getRawProcessEnv(),
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";

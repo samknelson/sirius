@@ -62,6 +62,7 @@
  * values or names.
  */
 import { spawnSync } from "child_process";
+import { getEnvironmentVariable, getRawProcessEnv } from "./lib/script-env";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -133,7 +134,7 @@ function runChild(script: string, args: string[], resultFile: string): ChildRun 
   }
   const res = spawnSync("npx", ["tsx", path.join(BASE, script), ...args], {
     stdio: "inherit",
-    env: { ...process.env, S1_RESULT_JSON_PATH: resultFile, S1_SYNC_LOCK_HELD: "1" },
+    env: { ...getRawProcessEnv(), S1_RESULT_JSON_PATH: resultFile, S1_SYNC_LOCK_HELD: "1" },
   });
   const durationSec = Math.round((Date.now() - t0) / 100) / 10;
   const exitCode = res.status ?? (res.signal ? 1 : 1);
@@ -497,7 +498,7 @@ async function main() {
     if (FORCE_RECONCILE) console.log("[sync] ⚠ this was a FORCE-RECONCILE run");
     console.log(`[sync] RESULT: ${String(report.result)} (${durationSec}s)${failures.length ? `\n[sync] failures:\n${failures.map((f) => `  - ${f}`).join("\n")}` : ""}`);
 
-    const resultPath = process.env.S1_RESULT_JSON_PATH;
+  const resultPath = getEnvironmentVariable("S1_RESULT_JSON_PATH");
     if (resultPath) {
       try {
         fs.writeFileSync(resultPath, JSON.stringify(report));
@@ -554,7 +555,7 @@ async function main() {
 }
 
 main().catch((e) => {
-  const dbg = process.env.S1_MIGRATION_DEBUG === "1";
+  const dbg = getEnvironmentVariable("S1_MIGRATION_DEBUG") === "1";
   console.error(dbg ? e : `FATAL ${(e as Error).name}: ${String((e as Error).message ?? e).split("\n")[0]}`);
   process.exit(1);
 });

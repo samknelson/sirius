@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { type Server } from "http";
 import { nanoid } from "nanoid";
+import { getPlatformEnvironmentVariable } from "./config/env-registry";
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -38,7 +39,7 @@ export async function setupVite(app: Express, server: Server) {
     // broken even though the app itself is fine.
     hmr: {
       server,
-      ...(process.env.REPL_ID
+      ...(getPlatformEnvironmentVariable("REPL_ID")
         ? { clientPort: 443, protocol: "wss" as const }
         : {}),
     },

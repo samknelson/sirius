@@ -1,4 +1,16 @@
 import { logger } from "../logger";
+import {
+  getEnvironmentVariable,
+  registerEnvironmentVariable,
+} from "../config/env-registry";
+
+registerEnvironmentVariable({
+  name: "OKTA_API_TOKEN",
+  description: "Okta management API token (SSWS) for creating/linking Okta users.",
+  secret: true,
+  category: "core",
+  changeTakesEffect: "immediate",
+});
 
 export type OktaPersona = "member" | "employer" | "staff";
 
@@ -13,7 +25,7 @@ interface PersonaConfig {
 }
 
 function getOktaApiConfig(issuerUrl: string): OktaApiConfig {
-  const apiToken = process.env.OKTA_API_TOKEN;
+  const apiToken = getEnvironmentVariable("OKTA_API_TOKEN");
   if (!apiToken) {
     throw new Error(
       "OKTA_API_TOKEN is not configured. It is required to create or link Okta users from Sirius."
@@ -27,7 +39,7 @@ function getOktaApiConfig(issuerUrl: string): OktaApiConfig {
 }
 
 export function isOktaProviderActive(): boolean {
-  const v = process.env.AUTH_PROVIDER || "replit";
+  const v = getEnvironmentVariable("AUTH_PROVIDER") || "replit";
   return v
     .split(",")
     .map((p) => p.trim().toLowerCase())
@@ -35,7 +47,7 @@ export function isOktaProviderActive(): boolean {
 }
 
 export function getActiveOktaIssuerUrl(): string {
-  const issuerUrl = process.env.OKTA_ISSUER_URL;
+  const issuerUrl = getEnvironmentVariable("OKTA_ISSUER_URL");
   if (!issuerUrl) {
     throw new Error(
       "OKTA_ISSUER_URL is not configured. Okta admin operations require it."
@@ -45,7 +57,16 @@ export function getActiveOktaIssuerUrl(): string {
 }
 
 function readEnvTrim(name: string): string | undefined {
-  const v = process.env[name];
+  // Dynamically-named persona lookup — register on the fly (as a secret,
+  // defensively) so the read goes through the registry's sanctioned path.
+  registerEnvironmentVariable({
+    name,
+    description: "Okta persona provisioning setting (group id or user type).",
+    secret: true,
+    category: "core",
+    changeTakesEffect: "immediate",
+  });
+  const v = getEnvironmentVariable(name);
   if (!v) return undefined;
   const t = v.trim();
   return t || undefined;

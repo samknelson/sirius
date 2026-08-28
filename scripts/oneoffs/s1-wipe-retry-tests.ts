@@ -20,6 +20,10 @@
  */
 import { spawnSync } from "child_process";
 import pg from "pg";
+import {
+  getEnvironmentVariable,
+  getRawProcessEnv,
+} from "../../server/config/env-registry";
 
 const KEEP_DB = process.argv.includes("--keep-db");
 const BOOTSTRAP = "scripts/s1-migration/bootstrap-target.ts";
@@ -31,7 +35,7 @@ const LOCK_KEY = 727001;
 // ---------------------------------------------------------------------------
 // throwaway DB plumbing
 // ---------------------------------------------------------------------------
-const baseUrl = process.env.DATABASE_URL;
+const baseUrl = getEnvironmentVariable("DATABASE_URL");
 if (!baseUrl) {
   console.error("FAIL: DATABASE_URL must point at the dev Postgres host (CREATEDB role).");
   process.exit(1);
@@ -75,7 +79,7 @@ interface RunResult {
 function run(script: string, args: string[] = [], env: Record<string, string> = {}): RunResult {
   const res = spawnSync("npx", ["tsx", script, ...args], {
     env: {
-      ...process.env,
+      ...getRawProcessEnv(),
       EXTERNAL_DATABASE_URL: throwawayUrl,
       DATABASE_URL: throwawayUrl,
       ...env,

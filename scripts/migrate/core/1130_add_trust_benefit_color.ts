@@ -13,16 +13,20 @@ import { logger } from "../../../server/logger";
  *
  * Idempotent via ADD COLUMN IF NOT EXISTS (migrations are not wrapped in a
  * single transaction, so this self-heals on a partial re-run).
+ *
+ * Renumbered 1102 → 1130 (above the max existing core version) so the runner
+ * actually replays it — a version <= the stored counter would be silently
+ * skipped.
  */
 async function up(): Promise<void> {
   await db.execute(sql`ALTER TABLE trust_benefits ADD COLUMN IF NOT EXISTS color varchar`);
   logger.info("Ensured trust_benefits.color column", {
-    service: "migration-1041",
+    service: "migration-1130",
   });
 }
 
 const migration: Migration = {
-  version: 1041,
+  version: 1130,
   name: "add_trust_benefit_color",
   description:
     "Add a nullable per-benefit `color` varchar column to trust_benefits so each benefit can carry its own icon tint (distinct from its benefit type).",

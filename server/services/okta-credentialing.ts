@@ -8,6 +8,7 @@ import {
   type OktaPersona,
   type OktaProvisionOutcome,
 } from "../auth/okta-admin";
+import { getEnvironmentVariable } from "../config/env-registry";
 
 export type CredentialOktaOutcome =
   | OktaProvisionOutcome
@@ -120,7 +121,7 @@ export async function credentialUserInOkta(
         "Okta is not configured. Set OKTA_ISSUER_URL before credentialing users."
     );
   }
-  if (!process.env.OKTA_API_TOKEN) {
+  if (!getEnvironmentVariable("OKTA_API_TOKEN")) {
     throw new OktaCredentialingError(
       400,
       "OKTA_API_TOKEN is not configured. It is required to create or link Okta users from Sirius."

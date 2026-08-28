@@ -44,7 +44,6 @@ import "./core/1037_create_denorm";
 import "./core/1038_worker_msh_denorm";
 import "./core/1039_worker_wsh_denorm";
 import "./core/1040_worker_employment_denorm";
-import "./core/1041_add_trust_benefit_color";
 import "./core/1043_ledger_payments_date_received_nullable";
 import "./core/1044_create_ebs";
 import "./core/1045_ebs_subject_and_purge";
@@ -154,13 +153,6 @@ import "./baseline/sirius-dev-20260618b";
 import "./baseline/sirius-dev-20260704";
 import "./baseline/sirius-dev-20260706";
 
-// Core migration numbered above the baseline-advanced counter (1101) so it
-// actually runs. See scripts/migrate/core/1102_add_trust_benefit_color.ts.
-import "./core/1102_add_trust_benefit_color";
-import "./core/1103_add_trust_benefit_show_on_worker_list";
-import "./core/1104_wmb_scan_scope";
-import "./core/1105_reapply_ebs";
-import "./core/1106_add_trust_benefit_provider";
 // Re-apply of 1117, skipped on prod by the version-counter collision.
 import "./core/1120_reapply_comm_interaction";
 import "./core/1121_worker_hours_worker_id_index";
@@ -171,6 +163,16 @@ import "./core/1125_contacts_email_ci_unique";
 import "./core/1126_add_contact_position";
 import "./core/1127_reapply_merged_1056_1060";
 import "./core/1128_delete_obsolete_worker_ban_cron_configs";
+// Renumbered from 1041/1102-1106: their original versions were <= the shared
+// migrations_version counter on databases that had already passed them, so
+// the runner would silently skip them (see the 1117/1120 incident). All are
+// idempotent, so re-running on databases that already applied them is safe.
+import "./core/1129_add_trust_benefit_color";
+import "./core/1130_add_trust_benefit_color";
+import "./core/1131_add_trust_benefit_show_on_worker_list";
+import "./core/1132_wmb_scan_scope";
+import "./core/1133_reapply_ebs";
+import "./core/1134_add_trust_benefit_provider";
 
 export {
   runMigrations,

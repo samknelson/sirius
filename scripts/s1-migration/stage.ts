@@ -17,6 +17,7 @@
  * Final-freeze exits 1 unless all source/scanned/staged counts are exact.
  */
 import { createS1Pool, listNodeBundles, buildFieldCatalog, type S1FieldInstance } from "./lib/s1";
+import { getEnvironmentVariable } from "./lib/script-env";
 import {
   extractBundle,
   extractBundleIncremental,
@@ -736,7 +737,7 @@ async function main() {
   });
 
   // Machine-readable handoff for the sync orchestrator (§11): aggregates only.
-  const resultPath = process.env.S1_RESULT_JSON_PATH;
+  const resultPath = getEnvironmentVariable("S1_RESULT_JSON_PATH");
   if (resultPath) {
     const { writeFileSync } = await import("fs");
     writeFileSync(

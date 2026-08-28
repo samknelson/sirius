@@ -14,21 +14,21 @@ import { logger } from "../../../server/logger";
  * Idempotent via ADD COLUMN IF NOT EXISTS (migrations are not wrapped in a
  * single transaction, so this self-heals on a partial re-run).
  *
- * Numbered 1103 (above the current `migrations_version` counter of 1102) so
- * the runner actually replays it — a version <= the stored counter would be
- * silently skipped.
+ * Renumbered 1103 → 1131 (above the max existing core version) so the runner
+ * actually replays it — a version <= the stored counter would be silently
+ * skipped.
  */
 async function up(): Promise<void> {
   await db.execute(
     sql`ALTER TABLE trust_benefits ADD COLUMN IF NOT EXISTS show_on_worker_list boolean NOT NULL DEFAULT true`,
   );
   logger.info("Ensured trust_benefits.show_on_worker_list column", {
-    service: "migration-1103",
+    service: "migration-1131",
   });
 }
 
 const migration: Migration = {
-  version: 1103,
+  version: 1131,
   name: "add_trust_benefit_show_on_worker_list",
   description:
     "Add a per-benefit `show_on_worker_list` boolean column to trust_benefits (default true) so admins can hide individual benefits from the worker list benefit column.",

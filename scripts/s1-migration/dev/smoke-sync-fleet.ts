@@ -33,6 +33,7 @@
  * every child gets EXTERNAL_DATABASE_URL overridden to the throwaway DB.
  */
 import { spawnSync } from "child_process";
+import { getEnvironmentVariable, getRawProcessEnv } from "../lib/script-env";
 import * as fs from "fs";
 import * as path from "path";
 import { Client } from "pg";
@@ -46,7 +47,7 @@ const phaseIdx = process.argv.indexOf("--phase");
 const PHASE = phaseIdx >= 0 ? String(process.argv[phaseIdx + 1] ?? "all") : "all";
 const KEEP_DB = process.argv.includes("--keep-db");
 
-const baseUrl = process.env.DATABASE_URL;
+  const baseUrl = getEnvironmentVariable("DATABASE_URL");
 if (!baseUrl) {
   console.error("FAIL: DATABASE_URL required (local PG host for the throwaway DB)");
   process.exit(1);
@@ -58,7 +59,7 @@ const throwawayUrl = (() => {
 })();
 
 const childEnv: NodeJS.ProcessEnv = {
-  ...process.env,
+      ...getRawProcessEnv(),
   EXTERNAL_DATABASE_URL: throwawayUrl,
   DATABASE_URL: throwawayUrl,
   S1_FLEET_SMOKE: "1",

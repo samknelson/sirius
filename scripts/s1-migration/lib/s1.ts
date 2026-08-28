@@ -9,10 +9,11 @@
  * - Multi-value fields must never be flat-joined; callers aggregate by delta.
  */
 import mysql from "mysql2/promise";
+import { getEnvironmentVariable } from "./script-env";
 import type { Pool, RowDataPacket } from "mysql2/promise";
 
 export function getS1Url(): string {
-  const url = process.env.S1_DATABASE_URL;
+  const url = getEnvironmentVariable("S1_DATABASE_URL");
   if (!url) {
     throw new Error(
       "S1_DATABASE_URL is not set. It must point at the synthetic S1 MariaDB (never production from this workspace).",

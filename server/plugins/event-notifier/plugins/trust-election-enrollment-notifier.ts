@@ -11,6 +11,7 @@ import {
   type NotifierMessageContent,
   type NotifierRecipient,
 } from "../types";
+import { getEnvironmentVariable } from "../../../config/env-registry";
 
 function payloadOf(ctx: EventNotifierEventContext): TrustElectionSavedPayload {
   return ctx.payload as TrustElectionSavedPayload;
@@ -70,11 +71,11 @@ function operationVerb(operation: TrustElectionSavedPayload["operation"]): strin
  * fully-qualified link.
  */
 function absoluteQueueUrl(type: EnrollmentType): string {
-  const domain =
-    process.env.REPLIT_DEV_DOMAIN ||
-    process.env.REPLIT_DOMAINS?.split(",")[0] ||
-    "localhost:5000";
-  return `https://${domain}/trust/enrollment-queue?type=${type}`;
+  // PUBLIC_URL is the single base-URL source; its transform resolves the
+  // platform-domain fallback chain and ends at the localhost dev fallback,
+  // matching the previous inline chain.
+  const base = getEnvironmentVariable("PUBLIC_URL") ?? "https://localhost:5000";
+  return `${base}/trust/enrollment-queue?type=${type}`;
 }
 
 /**

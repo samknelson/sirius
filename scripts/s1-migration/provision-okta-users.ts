@@ -14,6 +14,7 @@
  * activation email). Output is aggregates + opaque ids only (HIPAA-safe).
  */
 import { pool as pgPool } from "../../server/storage/db";
+import { getEnvironmentVariable } from "./lib/script-env";
 import { recordRun, ensureStagingSchema } from "./lib/staging";
 import { provisionMigratedUsers, type OktaAdminClient } from "./lib/okta-provision";
 import {
@@ -40,7 +41,7 @@ async function main() {
 
   const dryRun = !EXECUTE;
   let client: OktaAdminClient;
-  if (dryRun && !process.env.OKTA_API_TOKEN) {
+  if (dryRun && !getEnvironmentVariable("OKTA_API_TOKEN")) {
     // dry-run without a token: report from DB state alone, treating Okta
     // lookup as "unknown/not found" — flagged in the report header.
     console.warn("OKTA_API_TOKEN not set: dry-run reports DB state only (oktaExists always false).");

@@ -25,6 +25,25 @@ import { db } from "../../server/storage/db";
 import { optionsWorkerIdType } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { loadComponentCache } from "../../server/services/component-cache";
+import {
+  getEnvironmentVariable,
+  registerEnvironmentVariables,
+} from "../../server/config/env-registry";
+
+registerEnvironmentVariables([
+  {
+    name: "SKIP_ROUTES",
+    description: "Set to 1 to skip route-level worker search checks.",
+    secret: false,
+    category: "core",
+  },
+  {
+    name: "INITIAL_ADMIN_PASSWORD",
+    description: "Initial admin password used to seed/log in the bootstrap admin.",
+    secret: true,
+    category: "core",
+  },
+]);
 
 // Unique marker so seeded rows can never collide with real data and search
 // terms can never match pre-existing rows.
@@ -170,7 +189,7 @@ async function main() {
     }
 
     // ---- Route-level parity --------------------------------------------
-    if (process.env.SKIP_ROUTES === "1") {
+    if (getEnvironmentVariable("SKIP_ROUTES") === "1") {
       console.log("SKIP route-level checks (SKIP_ROUTES=1)");
     } else {
       await routeChecks(ids, siriusA);
@@ -200,7 +219,7 @@ async function main() {
 async function routeChecks(ids: Ids, siriusA: string) {
   const base = "http://127.0.0.1:5000";
   // Login via the dev-default local provider as the seeded admin.
-  const adminPassword = process.env.INITIAL_ADMIN_PASSWORD;
+  const adminPassword = getEnvironmentVariable("INITIAL_ADMIN_PASSWORD");
   if (!adminPassword) {
     check("routes: INITIAL_ADMIN_PASSWORD available", false);
     return;

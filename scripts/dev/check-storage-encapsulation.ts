@@ -73,6 +73,11 @@ const READONLY_FLAG_EXEMPT_FILES = [
   'server/plugins/trust/provider-edi/base.ts',
   'server/plugins/trust/provider-edi/plugins/sitespecific-bao-healthnet.ts',
   'server/plugins/trust/provider-edi/plugins/sitespecific-bao-kaiser.ts',
+  // Shared SMF helper module (medical-plan group lookup) used by the SMF
+  // provider plugins; not itself a plugin. The plugins that call it
+  // (sitespecific-smf-carelon.ts, sitespecific-smf-local11.ts) declare
+  // `needsReadOnlyDb: true` in their own metadata.
+  'server/plugins/trust/provider-edi/plugins/sitespecific-smf-shared.ts',
   'server/plugins/wizards/engine/types/report_workers_missing_ssn.ts',
   'server/plugins/wizards/engine/types/report_workers_invalid_ssn.ts',
   'server/plugins/wizards/engine/types/report_workers_duplicate_ssn.ts',

@@ -1,3 +1,5 @@
+import { getEnvironmentVariable } from "./script-env";
+
 /**
  * Shared timer-backed progress heartbeat for the S1 migration — used by the
  * staging extractor AND the long-running loaders.
@@ -63,7 +65,7 @@ function etaSuffix(remaining: number, ratePerSec: number): string {
 }
 
 const PROGRESS_INTERVAL_MS = (() => {
-  const n = Number(process.env.S1_PROGRESS_INTERVAL_MS ?? "");
+  const n = Number(getEnvironmentVariable("S1_PROGRESS_INTERVAL_MS") ?? "");
   return Number.isInteger(n) && n > 0 ? n : 60_000;
 })();
 

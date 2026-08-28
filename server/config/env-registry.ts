@@ -514,6 +514,7 @@ registerEnvironmentVariables([
   { name: "NODE_ENV", description: "Runtime mode: development | production.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "PORT", description: "HTTP port the server listens on (default 5000).", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "DATABASE_URL", description: "PostgreSQL connection URL. Assembled from DB_* parts at boot when absent.", secret: true, category: "core", changeTakesEffect: "restart", },
+  { name: "EXTERNAL_DATABASE_URL", description: "External PostgreSQL connection URL; wins over DATABASE_URL everywhere (split-brain guard, see shared/database-url.ts).", secret: true, category: "core", changeTakesEffect: "restart", },
   { name: "DATABASE_DRIVER", description: "Force the DB driver: neon | pg (auto-detected from the URL otherwise).", secret: false, category: "core", changeTakesEffect: "restart", },
   // DATABASE_URL assembly parts (ECS/Terraform task definition injects parts,
   // not a full URL — see server/config/assemble-database-url.ts).

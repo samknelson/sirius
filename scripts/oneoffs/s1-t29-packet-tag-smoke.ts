@@ -49,6 +49,7 @@ import { db, pool as pgPool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { ensureStagingSchema, upsertRecords, upsertTerms } from "../s1-migration/lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "../s1-migration/lib/idmap";
+import { getRawProcessEnv } from "../../server/config/env-registry";
 
 const LOADER_NAME = "t29-enrollment-packet-tags";
 const ENTITY = "contact-packet";
@@ -87,7 +88,7 @@ function runLoader(args: string[]): { status: number; result: Record<string, any
     encoding: "utf8",
     timeout: 240_000,
     maxBuffer: 64 * 1024 * 1024,
-    env: { ...process.env, S1_RESULT_JSON_PATH: tmp },
+    env: { ...getRawProcessEnv(), S1_RESULT_JSON_PATH: tmp },
   });
   let result: Record<string, any> = {};
   try {

@@ -14,6 +14,19 @@
  * Generate a bcrypt hash with scripts/oneoffs/generate-password-hash.ts.
  */
 import { storage } from "../../server/storage";
+import {
+  getEnvironmentVariable,
+  registerEnvironmentVariables,
+} from "../../server/config/env-registry";
+
+registerEnvironmentVariables([
+  {
+    name: "SEED_LOCAL_CREDENTIALS",
+    description: "Local development credentials to seed.",
+    secret: true,
+    category: "core",
+  },
+]);
 
 interface SeedCredential {
   email: string;
@@ -21,7 +34,7 @@ interface SeedCredential {
 }
 
 function loadCredentials(): SeedCredential[] {
-  const raw = process.env.SEED_LOCAL_CREDENTIALS?.trim();
+  const raw = getEnvironmentVariable("SEED_LOCAL_CREDENTIALS")?.trim();
   if (!raw) {
     throw new Error(
       "SEED_LOCAL_CREDENTIALS is not set. Provide a JSON array of {email, passwordHash} objects (see file header)."

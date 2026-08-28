@@ -22,6 +22,19 @@
  */
 import { db, pool as pgPool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
+import {
+  getEnvironmentVariable,
+  registerEnvironmentVariables,
+} from "../../server/config/env-registry";
+
+registerEnvironmentVariables([
+  {
+    name: "S1_MIGRATION_DEBUG",
+    description: "Set to 1 for verbose S1 migration debug output.",
+    secret: false,
+    category: "core",
+  },
+]);
 
 const CHARGE_PLUGIN = "s1-import";
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -98,7 +111,7 @@ async function main() {
 
 main().catch((err) => {
   // Never echo raw driver errors (they can embed row values).
-  if (process.env.S1_MIGRATION_DEBUG === "1") console.error(err);
+  if (getEnvironmentVariable("S1_MIGRATION_DEBUG") === "1") console.error(err);
   else if (err instanceof Error) console.error(`FATAL ${err.constructor.name}: ${String(err.message).split("\n")[0]}`);
   else console.error("FATAL: unknown_error");
   process.exit(1);

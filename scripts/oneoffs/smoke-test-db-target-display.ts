@@ -2,7 +2,7 @@
 /**
  * Regression test: the System Status "Database Connection" card must derive
  * its reported target from the boot-resolved `databaseSourceInfo` singleton
- * (server/storage/db.ts) — never from a direct process.env read.
+ * (server/storage/db.ts) — never from a direct environment read.
  *
  * Historical regression: the card reported the raw Replit-injected
  * DATABASE_URL even when the app was actually connected to the database
@@ -26,6 +26,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { getRawProcessEnv } from "../../server/config/env-registry";
 
 const SELF = fileURLToPath(import.meta.url);
 
@@ -94,7 +95,7 @@ function check(label: string, ok: boolean, detail?: unknown) {
 }
 
 function runChild(childMode: string, envOverrides: Record<string, string | undefined>): any {
-  const env: Record<string, string | undefined> = { ...process.env };
+  const env: Record<string, string | undefined> = { ...getRawProcessEnv() };
   // Never inherit real DB targeting from the workspace env.
   delete env.EXTERNAL_DATABASE_URL;
   delete env.DATABASE_URL;

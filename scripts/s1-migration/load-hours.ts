@@ -103,6 +103,7 @@
  * the HIPAA boundary.
  */
 import { db } from "../../server/storage/db";
+import { getEnvironmentVariable } from "./lib/script-env";
 import { sql } from "drizzle-orm";
 import { storage } from "../../server/storage/database";
 import {
@@ -147,14 +148,14 @@ const ADOPT_HOURS_KEYS = process.argv.includes("--adopt-hours-keys");
  * S1_T20_FLUSH_AT is a TEST-ONLY override so the interruption smoke can
  * force multiple flushes out of a small fixture. */
 const FLUSH_AT = (() => {
-  const n = Number(process.env.S1_T20_FLUSH_AT ?? "");
+  const n = Number(getEnvironmentVariable("S1_T20_FLUSH_AT") ?? "");
   return Number.isInteger(n) && n > 0 ? n : 1000;
 })();
 /** TEST-ONLY crash injection: hard-exit (75) after the Nth completed flush,
  * before any later flush, the stale cleanup, and the final report — models
  * an operator interruption for the resume-safety smoke. */
 const CRASH_AFTER_FLUSH = (() => {
-  const n = Number(process.env.S1_T20_CRASH_AFTER_FLUSH ?? "");
+  const n = Number(getEnvironmentVariable("S1_T20_CRASH_AFTER_FLUSH") ?? "");
   return Number.isInteger(n) && n > 0 ? n : 0;
 })();
 /** Rows per bulk upsert statement (migration mode): 500 × 7 bind params

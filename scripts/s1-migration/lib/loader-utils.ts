@@ -9,6 +9,7 @@
 import { db } from "../../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { setStorageLogSampling } from "../../../server/storage/middleware/logging";
+import { getEnvironmentVariable } from "./script-env";
 
 export const REJECT_SAMPLE_CAP = 25;
 
@@ -25,7 +26,7 @@ export const REJECT_SAMPLE_CAP = 25;
  * server never calls this — normal audit logging there is unchanged.
  */
 export const LOADER_LOG_SAMPLE_EVERY = (() => {
-  const raw = process.env.S1_LOADER_LOG_SAMPLE;
+  const raw = getEnvironmentVariable("S1_LOADER_LOG_SAMPLE");
   if (raw == null || raw.trim() === "") return 0; // Number("") is 0 anyway — keep intent explicit
   const n = Number(raw);
   return Number.isInteger(n) && n >= 0 ? n : 0;
@@ -163,7 +164,7 @@ export async function loadStaged(bundle: string): Promise<StagedNode[]> {
 /** Loader page size for keyset-paged staged reads (Track C production
  * hardening). Overridable per run via S1_LOADER_PAGE_SIZE. */
 export const LOADER_PAGE_SIZE = (() => {
-  const n = Number(process.env.S1_LOADER_PAGE_SIZE ?? "");
+  const n = Number(getEnvironmentVariable("S1_LOADER_PAGE_SIZE") ?? "");
   return Number.isInteger(n) && n > 0 ? n : 2000;
 })();
 

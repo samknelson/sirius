@@ -10,6 +10,10 @@
 import { readFileSync } from "fs";
 import { spawn, spawnSync } from "child_process";
 import pg from "pg";
+import {
+  getEnvironmentVariable,
+  getRawProcessEnv,
+} from "../../server/config/env-registry";
 import { componentRegistry } from "../../shared/components";
 import {
   BAO_HOURLY_CONFIG,
@@ -25,7 +29,7 @@ import {
 } from "../../server/plugins/system/cron";
 
 const KEEP_DB = process.argv.includes("--keep-db");
-const baseUrl = process.env.DATABASE_URL;
+const baseUrl = getEnvironmentVariable("DATABASE_URL");
 if (!baseUrl) {
   console.error("FAIL: DATABASE_URL must point at a development Postgres host with CREATEDB.");
   process.exit(1);
@@ -60,7 +64,7 @@ function run(
 ): RunResult {
   const result = spawnSync("npx", ["tsx", script, ...args], {
     env: {
-      ...process.env,
+      ...getRawProcessEnv(),
       EXTERNAL_DATABASE_URL: throwawayUrl,
       DATABASE_URL: throwawayUrl,
       ...env,
@@ -79,7 +83,7 @@ async function runBootstrapRace(): Promise<{ first: RunResult; second: RunResult
   return new Promise((resolve, reject) => {
     const child = spawn("npx", ["tsx", BOOTSTRAP, "--wipe"], {
       env: {
-        ...process.env,
+        ...getRawProcessEnv(),
         EXTERNAL_DATABASE_URL: throwawayUrl,
         DATABASE_URL: throwawayUrl,
         S1_BOOTSTRAP_TEST_PAUSE_BEFORE_CHILDREN_MS: "4000",

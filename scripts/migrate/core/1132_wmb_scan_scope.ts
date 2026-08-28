@@ -45,12 +45,12 @@ async function up(): Promise<void> {
     END $$;
   `);
   logger.info("Applied WMB scan scope schema changes", {
-    service: "migration-1104",
+    service: "migration-1132",
   });
 }
 
 const migration: Migration = {
-  version: 1104,
+  version: 1132,
   name: "wmb_scan_scope",
   description:
     "Add scope (scope_type + scope_employer_id) to trust_wmb_scan_status, drop the one-run-per-month unique, and move trust_wmb_scan_queue uniqueness to (status_id, worker_id) so employer-scoped runs can coexist with full runs.",

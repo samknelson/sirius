@@ -203,6 +203,9 @@ registerTrustProviderEdiPlugin({
     "covered dependent with a Carelon monthly benefit record in the as-of " +
     "month; premium tier is mlk/other from the member's medical coverage.",
   benefitSiriusIds: ["CARELONEAP"],
+  // Bespoke wmb → medical-coverage join for premium tiers runs its own
+  // read-only queries.
+  needsReadOnlyDb: true,
   outputFormat: "csv",
   // CSV layouts have no fixed-width field metadata.
   ediFields: [],

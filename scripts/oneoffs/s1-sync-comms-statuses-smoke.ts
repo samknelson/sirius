@@ -46,6 +46,7 @@ import { createCommInteractionStorage } from "../../server/storage/comm";
 import { sql } from "drizzle-orm";
 import { ensureStagingSchema, upsertRecords } from "../s1-migration/lib/staging";
 import { ensureIdMap, putMapping } from "../s1-migration/lib/idmap";
+import { getRawProcessEnv } from "../../server/config/env-registry";
 
 const N = {
   smw: 99901201, // staged sirius_worker carrying member-status tids
@@ -88,7 +89,7 @@ function runLoader(script: string, args: string[] = [], timeoutMs = 900_000): { 
     encoding: "utf8",
     timeout: timeoutMs,
     maxBuffer: 64 * 1024 * 1024,
-    env: { ...process.env, S1_RESULT_JSON_PATH: tmp },
+    env: { ...getRawProcessEnv(), S1_RESULT_JSON_PATH: tmp },
   });
   let result: any = {};
   try {

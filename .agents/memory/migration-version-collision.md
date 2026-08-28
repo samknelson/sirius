@@ -48,6 +48,11 @@ re-run after you edit it, lower `migrations_version` back below its version
 (via a storage/SQL update) — there is no per-migration "applied" ledger for core
 migrations, only the single counter.
 
+**Renumbering existing migrations:** renumbered idempotent migrations simply
+re-run on databases whose counter already passed the old numbers — that's the
+point. The check compares against the base ref's committed tree, so renames
+must be committed before the check reports clean.
+
 **Hard rule reminder:** this project REFUSES `drizzle-kit push` / `npm run
 db:push` (gated behind `ALLOW_DB_PUSH=1`). Schema sync happens ONLY through the
 startup migration framework. Never reach for db:push to resolve drift.

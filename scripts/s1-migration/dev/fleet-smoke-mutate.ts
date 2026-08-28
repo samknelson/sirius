@@ -34,6 +34,7 @@
  *   npx tsx scripts/s1-migration/dev/fleet-smoke-mutate.ts --restore [--snapshot-file <p>]
  */
 import * as fs from "fs";
+import { getEnvironmentVariable } from "../lib/script-env";
 import { db, pool } from "../../../server/storage/db";
 import { sql } from "drizzle-orm";
 import {
@@ -56,7 +57,7 @@ if (APPLY === RESTORE) {
   console.error("Usage: fleet-smoke-mutate.ts --apply|--restore [--snapshot-file <path>]");
   process.exit(1);
 }
-if (process.env.S1_FLEET_SMOKE !== "1") {
+  if (getEnvironmentVariable("S1_FLEET_SMOKE") !== "1") {
   console.error("FAIL: refusing to mutate staging without S1_FLEET_SMOKE=1 (dev fleet-rehearsal only)");
   process.exit(1);
 }

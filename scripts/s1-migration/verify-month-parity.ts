@@ -70,6 +70,7 @@
  * loaded.
  */
 import { writeFileSync } from "node:fs";
+import { getEnvironmentVariable } from "./lib/script-env";
 import { db, pool as pgPool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
@@ -607,7 +608,8 @@ async function main() {
 
   console.log(JSON.stringify(report, null, 2));
   // Machine-readable handoff for the sync orchestrator (§11).
-  if (process.env.S1_RESULT_JSON_PATH) writeFileSync(process.env.S1_RESULT_JSON_PATH, JSON.stringify(report));
+  const resultPath = getEnvironmentVariable("S1_RESULT_JSON_PATH");
+  if (resultPath) writeFileSync(resultPath, JSON.stringify(report));
   await recordRun(
     startedAt,
     {
@@ -630,7 +632,7 @@ async function main() {
 main().catch((err) => {
   // HIPAA: never echo raw driver/storage errors (they can embed row values).
   // S1_MIGRATION_DEBUG=1 restores full errors for local debugging.
-  if (process.env.S1_MIGRATION_DEBUG === "1") console.error(err);
+  if (getEnvironmentVariable("S1_MIGRATION_DEBUG") === "1") console.error(err);
   else if (err instanceof Error) console.error(`FATAL ${err.constructor.name}: ${String(err.message).split("\n")[0]}`);
   else console.error("FATAL: unknown_error");
   process.exit(1);

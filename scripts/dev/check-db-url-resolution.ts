@@ -14,8 +14,8 @@
  *      EXTERNAL_DATABASE_URL wins, DATABASE_URL is the fallback, neither set
  *      throws.
  *
- *   2. STATIC SWEEP — no file outside a small allowlist may read
- *      process.env.EXTERNAL_DATABASE_URL / process.env.DATABASE_URL directly.
+ *   2. STATIC SWEEP — no file outside a small allowlist may read the raw
+ *      EXTERNAL_DATABASE_URL / DATABASE_URL environment values directly.
  *      Every consumer must go through the shared resolver, so a new consumer
  *      that hand-rolls its own (possibly wrong) resolution fails CI.
  *
@@ -37,6 +37,7 @@ import {
   resolveDatabaseUrlOptional,
   describeDatabaseTarget,
 } from "../../shared/database-url";
+import { getRawProcessEnv } from "../../server/config/env-registry";
 
 const ROOT = process.cwd();
 let failures = 0;
@@ -51,7 +52,7 @@ function check(ok: boolean, msg: string, detail?: string) {
 }
 
 // ---------------------------------------------------------------------------
-// 1. Resolver unit checks (injected env; process.env untouched).
+// 1. Resolver unit checks (injected env; the real process environment untouched).
 // ---------------------------------------------------------------------------
 console.log("[1/3] Resolver precedence");
 {
@@ -140,7 +141,7 @@ console.log("[2/3] Static sweep for direct env reads");
   walk(ROOT);
   check(
     offenders.length === 0,
-    "no direct process.env.(EXTERNAL_)DATABASE_URL reads outside the allowlist",
+    "no direct environment reads of (EXTERNAL_)DATABASE_URL outside the allowlist",
     offenders.length
       ? `Use resolveDatabaseUrl() from shared/database-url.ts instead:\n       ${offenders.join("\n       ")}`
       : undefined,
@@ -174,7 +175,7 @@ function runBanner(
   const res = spawnSync("npx", ["tsx", ...args], {
     cwd: ROOT,
     env: {
-      ...process.env,
+      ...getRawProcessEnv(),
       DATABASE_URL: undefined,
       EXTERNAL_DATABASE_URL: undefined,
       ...env,

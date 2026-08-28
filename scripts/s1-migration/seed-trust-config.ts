@@ -24,6 +24,7 @@
  * Usage: npx tsx scripts/s1-migration/seed-trust-config.ts [--dry-run]
  */
 import { pool } from "../../server/storage/db";
+import { getEnvironmentVariable } from "./lib/script-env";
 import { storage } from "../../server/storage/database";
 import { withNotificationsSuppressed } from "../../server/middleware/request-context";
 import { resolveDatabaseUrl, describeDatabaseTarget } from "../../shared/database-url";
@@ -154,7 +155,7 @@ async function main() {
   // exit. Under the sync orchestrator (S1_SYNC_LOCK_HELD=1) the PARENT already
   // holds the key in its own session — trying to take it here would
   // self-starve, so the child trusts the parent's exclusion.
-  const lockHeldByParent = process.env.S1_SYNC_LOCK_HELD === "1";
+  const lockHeldByParent = getEnvironmentVariable("S1_SYNC_LOCK_HELD") === "1";
   const lockClient = lockHeldByParent ? null : await pool.connect();
   if (lockClient) {
     const [{ got }] = (await lockClient.query(`SELECT pg_try_advisory_lock(727001) AS got`)).rows;
@@ -211,7 +212,7 @@ async function main() {
 }
 
 main().catch((e) => {
-  const dbg = process.env.S1_MIGRATION_DEBUG === "1";
+  const dbg = getEnvironmentVariable("S1_MIGRATION_DEBUG") === "1";
   console.error(dbg ? e : `FATAL ${(e as Error).name}: ${String((e as Error).message ?? e).split("\n")[0]}`);
   process.exit(1);
 });

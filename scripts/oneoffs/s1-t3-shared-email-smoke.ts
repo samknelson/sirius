@@ -34,6 +34,20 @@ import {
   upsertRawUserContacts,
 } from "../s1-migration/lib/staging";
 import { ensureIdMap, getMappings } from "../s1-migration/lib/idmap";
+import {
+  getEnvironmentVariable,
+  getRawProcessEnv,
+  registerEnvironmentVariables,
+} from "../../server/config/env-registry";
+
+registerEnvironmentVariables([
+  {
+    name: "S1_SMOKE_DEBUG",
+    description: "Set to 1 for verbose S1 smoke test debug output.",
+    secret: false,
+    category: "core",
+  },
+]);
 
 const N = { a1: 99901001, a2: 99901002, b1: 99901003, b2: 99901004, cc1: 99901005, cc2: 99901006 };
 const U = { ownerA: 999201, multi1: 999202, multi2: 999203 };
@@ -78,10 +92,10 @@ function runLoader(allowMultiOwners = false): { status: number | null; out: stri
   const res = spawnSync("npx", args, {
     encoding: "utf8",
     timeout: 600_000,
-    env: { ...process.env, S1_RESULT_JSON_PATH: resultPath },
+    env: { ...getRawProcessEnv(), S1_RESULT_JSON_PATH: resultPath },
   });
   const out = `${res.stdout}\n${res.stderr}`;
-  if (process.env.S1_SMOKE_DEBUG === "1" && res.status !== 0) {
+  if (getEnvironmentVariable("S1_SMOKE_DEBUG") === "1" && res.status !== 0) {
     console.error(out.split("\n").slice(-80).join("\n"));
   }
   let report: any = null;

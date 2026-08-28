@@ -3,6 +3,19 @@ import type { AuthProviderType } from "@shared/schema";
 import { storage } from "../storage";
 import { logger } from "../logger";
 import { verifyWorkerIdentity } from "./identity-verification";
+import {
+  getEnvironmentVariable,
+  registerEnvironmentVariable,
+} from "../config/env-registry";
+
+registerEnvironmentVariable({
+  name: "AUTH_WORKER_SELF_REGISTRATION",
+  description:
+    "Set to false/0/no/off to disable worker self-registration (enabled by default).",
+  secret: false,
+  category: "core",
+  changeTakesEffect: "immediate",
+});
 
 export interface VerifiedWorkerSession {
   workerId: string;
@@ -13,7 +26,7 @@ export interface VerifiedWorkerSession {
 const VERIFIED_WORKER_TTL_MS = 30 * 60 * 1000;
 
 export function isWorkerSelfRegistrationEnabled(): boolean {
-  const v = process.env.AUTH_WORKER_SELF_REGISTRATION;
+  const v = getEnvironmentVariable("AUTH_WORKER_SELF_REGISTRATION");
   if (v === undefined || v === "") return true;
   const lower = v.toLowerCase();
   return lower === "true" || lower === "1" || lower === "yes" || lower === "on";

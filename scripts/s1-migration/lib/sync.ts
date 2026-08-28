@@ -32,6 +32,7 @@
  * Import direction (no cycles): staging.ts → sync.ts → idmap.ts/loader-utils.
  */
 import { createHash } from "node:crypto";
+import { getEnvironmentVariable } from "./script-env";
 import { writeFileSync } from "node:fs";
 import { db } from "../../../server/storage/db";
 import { sql, type SQL } from "drizzle-orm";
@@ -394,7 +395,7 @@ export function buildLoaderResult(args: {
  */
 export function emitLoaderResult(result: LoaderResult): void {
   console.log(JSON.stringify(result, null, 2));
-  const p = process.env.S1_RESULT_JSON_PATH;
+  const p = getEnvironmentVariable("S1_RESULT_JSON_PATH");
   if (p) writeFileSync(p, JSON.stringify(result));
 }
 

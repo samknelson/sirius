@@ -18,7 +18,7 @@ async function up(): Promise<void> {
 }
 
 const migration: Migration = {
-  version: 1105,
+  version: 1133,
   name: "reapply_ebs",
   description:
     "Idempotently re-apply skipped EBS migrations 1044 (create ebs_denorm/ebs_status + enum) and 1045 (subject_id/purge_after) for deployments whose migration counter was already past those versions at merge time.",

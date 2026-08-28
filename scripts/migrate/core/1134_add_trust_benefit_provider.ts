@@ -32,12 +32,12 @@ async function up(): Promise<void> {
     `);
   }
   logger.info("Ensured trust_benefits.provider_id column + FK", {
-    service: "migration-1106",
+    service: "migration-1134",
   });
 }
 
 const migration: Migration = {
-  version: 1106,
+  version: 1134,
   name: "add_trust_benefit_provider",
   description:
     "Add nullable trust_benefits.provider_id (FK trust_providers ON DELETE SET NULL) linking a benefit to the trust provider that underwrites it, for provider premium accounting.",

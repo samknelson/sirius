@@ -34,6 +34,7 @@
  *       [--admin-email a@example.com,b@example.com]
  */
 import { spawnSync } from "child_process";
+import { getEnvironmentVariable, getRawProcessEnv, setEnvironmentVariable } from "./lib/script-env";
 import path from "path";
 import { resolveDatabaseUrl, describeDatabaseTarget } from "../../shared/database-url";
 
@@ -69,7 +70,7 @@ const MIGRATION_LOCK_KEY = 727001;
  * Never set in production; unset = zero behavior change.
  */
 function injectTestFault(point: "after_truncate" | "before_commit") {
-  const fault = process.env.S1_BOOTSTRAP_TEST_FAULT;
+  const fault = getEnvironmentVariable("S1_BOOTSTRAP_TEST_FAULT");
   if (!fault) return;
   if (fault === `${point}:kill`) {
     console.error(`TEST FAULT: hard-killing process at ${point}`);
@@ -82,7 +83,7 @@ function injectTestFault(point: "after_truncate" | "before_commit") {
 
 function runStep(label: string, script: string) {
   console.log(`\n=== ${label}: npx tsx ${script} ===`);
-  const res = spawnSync("npx", ["tsx", script], { stdio: "inherit", env: process.env });
+  const res = spawnSync("npx", ["tsx", script], { stdio: "inherit", env: getRawProcessEnv() });
   if (res.status !== 0) {
     throw new Error(`step "${label}" exited ${res.status}`);
   }
@@ -90,7 +91,7 @@ function runStep(label: string, script: string) {
 
 async function main() {
   console.log(`[bootstrap-target] target: ${describeDatabaseTarget(resolveDatabaseUrl())}`);
-  process.env.ALLOW_EMPTY_DB_BOOTSTRAP = "1";
+  setEnvironmentVariable("ALLOW_EMPTY_DB_BOOTSTRAP", "1");
 
   // Imports AFTER env setup; these mirror server/app-init.ts boot order.
   const { ensureEmptyDatabaseBootstrap } = await import("../../server/services/empty-db-bootstrap");
@@ -281,9 +282,9 @@ async function main() {
 
   // --- 4/5. Components + seeds (child processes: fresh caches per step) ---
   const base = path.dirname(new URL(import.meta.url).pathname);
-  process.env.S1_BOOTSTRAP_LOCK_HELD = "1";
+    setEnvironmentVariable("S1_BOOTSTRAP_LOCK_HELD", "1");
   try {
-    const pauseBeforeChildrenMs = Number(process.env.S1_BOOTSTRAP_TEST_PAUSE_BEFORE_CHILDREN_MS ?? "0");
+    const pauseBeforeChildrenMs = Number(getEnvironmentVariable("S1_BOOTSTRAP_TEST_PAUSE_BEFORE_CHILDREN_MS") ?? "0");
     if (Number.isFinite(pauseBeforeChildrenMs) && pauseBeforeChildrenMs > 0) {
       console.log(`TEST PAUSE: retaining advisory lock before child seeds for ${pauseBeforeChildrenMs}ms`);
       await new Promise((resolve) => setTimeout(resolve, pauseBeforeChildrenMs));
@@ -296,7 +297,8 @@ async function main() {
     runStep("genders", path.join(base, "dev/seed-genders.ts"));
     runStep("call reasons", path.join(base, "dev/seed-call-reasons.ts"));
   } finally {
-    delete process.env.S1_BOOTSTRAP_LOCK_HELD;
+    // Clear the marker this process set for its children.
+    delete getRawProcessEnv().S1_BOOTSTRAP_LOCK_HELD;
     lockClient.release(); // parent lock spans every synchronous child seed
     await pool.end();
   }
@@ -312,7 +314,7 @@ async function main() {
 }
 
 main().catch((e) => {
-  const dbg = process.env.S1_MIGRATION_DEBUG === "1";
+  const dbg = getEnvironmentVariable("S1_MIGRATION_DEBUG") === "1";
   console.error(dbg ? e : `FATAL ${(e as Error).name}: ${String((e as Error).message ?? e).split("\n")[0]}`);
   process.exit(1);
 });

@@ -26,6 +26,7 @@
  * Usage: npx tsx scripts/s1-migration/dev/smoke-sync-beneficiaries.ts
  */
 import { spawnSync } from "node:child_process";
+import { getRawProcessEnv } from "../lib/script-env";
 import { readFileSync, unlinkSync, existsSync } from "node:fs";
 import { db } from "../../../server/storage/db";
 import { sql } from "drizzle-orm";
@@ -53,7 +54,7 @@ function runLoader(args: string[]): { code: number; result: LoaderResult | null 
   const t0 = Date.now();
   const proc = spawnSync("npx", ["tsx", "scripts/s1-migration/load-beneficiaries.ts", ...args], {
     cwd: process.cwd(),
-    env: { ...process.env, S1_RESULT_JSON_PATH: resultPath },
+    env: { ...getRawProcessEnv(), S1_RESULT_JSON_PATH: resultPath },
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,
   });

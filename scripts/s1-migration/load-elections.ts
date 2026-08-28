@@ -55,6 +55,7 @@
  * Output is aggregate counts only (no PII).
  */
 import { storage } from "../../server/storage/database";
+import { getEnvironmentVariable } from "./lib/script-env";
 import {
   withNotificationsSuppressed,
   withChargePluginsSuppressed,
@@ -719,7 +720,7 @@ async function main() {
 main().catch((err) => {
   // HIPAA: never echo raw driver/storage errors (they can embed row values).
   // S1_MIGRATION_DEBUG=1 restores full errors for local debugging.
-  if (process.env.S1_MIGRATION_DEBUG === "1") console.error(err);
+    if (getEnvironmentVariable("S1_MIGRATION_DEBUG") === "1") console.error(err);
   else if (err instanceof Error) console.error(`FATAL ${err.constructor.name}: ${String(err.message).split("\n")[0]}`);
   else console.error("FATAL: unknown_error");
   process.exit(1);

@@ -36,9 +36,23 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { db, pool as pgPool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
+import {
+  getEnvironmentVariable,
+  getRawProcessEnv,
+  registerEnvironmentVariables,
+} from "../../server/config/env-registry";
+
+registerEnvironmentVariables([
+  {
+    name: "BENCH_N",
+    description: "Number of records to use for the S1 write benchmark.",
+    secret: false,
+    category: "core",
+  },
+]);
 
 const N_HOURS = (() => {
-  const n = Number(process.env.BENCH_N ?? "");
+  const n = Number(getEnvironmentVariable("BENCH_N") ?? "");
   return Number.isInteger(n) && n > 0 ? n : 100_000;
 })();
 const EMPLOYERS = 50;
@@ -78,7 +92,7 @@ function runLoader(): { code: number; seconds: number; result: LoaderEnvelope | 
     cwd: process.cwd(),
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...getRawProcessEnv(),
       S1_RESULT_JSON_PATH: resultPath,
       NODE_OPTIONS: "--max-old-space-size=512", // completing under the cap proves bounded memory
       S1_PROGRESS_INTERVAL_MS: "20000",

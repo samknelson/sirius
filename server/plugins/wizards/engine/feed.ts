@@ -7,6 +7,18 @@ import * as XLSX from 'xlsx';
 import { fileSystemService } from '../../../services/files/index.js';
 import { parseSSN, validateSSN } from '@shared/utils/ssn';
 import { logger } from '../../../logger.js';
+import {
+  getEnvironmentVariable,
+  registerEnvironmentVariable,
+} from '../../../config/env-registry';
+
+registerEnvironmentVariable({
+  name: 'FEED_PROFILE',
+  description: 'Set to any non-empty value to log coarse feed-wizard step timings.',
+  secret: false,
+  category: 'core',
+  changeTakesEffect: 'immediate',
+});
 
 /**
  * Cache of parsed upload rows keyed by file id. File contents are immutable
@@ -40,7 +52,7 @@ function setCachedParsedRows(fileId: string, rows: any[][]): void {
 
 /** Coarse step timing, logged only when FEED_PROFILE is set. */
 function feedProfile(label: string, startedAtMs: number, extra?: Record<string, unknown>): void {
-  if (!process.env.FEED_PROFILE) return;
+  if (!getEnvironmentVariable('FEED_PROFILE')) return;
   logger.info(`feed-profile ${label}`, {
     service: 'feed-wizard-profile',
     durationMs: Date.now() - startedAtMs,

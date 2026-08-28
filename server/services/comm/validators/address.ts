@@ -923,7 +923,7 @@ class AddressValidationService {
    */
   async getGoogleMapsApiKey(): Promise<string | null> {
     const config = await this.getConfig();
-    return process.env[config.google.apiKeyName] ?? null;
+    return resolveGoogleApiKey(config.google.apiKeyName) ?? null;
   }
 }
 

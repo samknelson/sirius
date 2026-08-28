@@ -16,9 +16,23 @@
 import { spawnSync } from "node:child_process";
 import { db, pool as pgPool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
+import {
+  getEnvironmentVariable,
+  getRawProcessEnv,
+  registerEnvironmentVariables,
+} from "../../server/config/env-registry";
+
+registerEnvironmentVariables([
+  {
+    name: "BENCH_N",
+    description: "Number of records to use for the Track C benchmark.",
+    secret: false,
+    category: "core",
+  },
+]);
 
 const N = (() => {
-  const n = Number(process.env.BENCH_N ?? "");
+  const n = Number(getEnvironmentVariable("BENCH_N") ?? "");
   return Number.isInteger(n) && n > 0 ? n : 0;
 })();
 const N_ELECTIONS = N || 220_000;
@@ -41,7 +55,7 @@ function runLoader(script: string, args: string[]): { seconds: number; exit: num
   const t0 = Date.now();
   const res = spawnSync("npx", ["tsx", `scripts/s1-migration/${script}`, "--dry-run", ...args], {
     encoding: "utf8",
-    env: { ...process.env, NODE_OPTIONS: "--max-old-space-size=512" },
+    env: { ...getRawProcessEnv(), NODE_OPTIONS: "--max-old-space-size=512" },
     maxBuffer: 64 * 1024 * 1024,
     timeout: 30 * 60 * 1000,
   });

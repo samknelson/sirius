@@ -27,6 +27,7 @@ import { baoMonthlyHoursPlugin } from "../../server/plugins/wizards/plugins/bao-
 import { initFileSystems, fileSystemService } from "../../server/services/files";
 import { stringify as stringifyCSV } from "csv-stringify/sync";
 import * as fs from "fs";
+import { setEnvironmentVariable } from "../../server/config/env-registry";
 
 const argv = process.argv.slice(2);
 function argValue(name: string): string | undefined {
@@ -146,14 +147,14 @@ async function main() {
   }
 
   // Local filesystem so the pipeline exercises real download+parse.
-  process.env.FILESYSTEMS = JSON.stringify({
+  setEnvironmentVariable("FILESYSTEMS", JSON.stringify({
     [FS_ID]: {
       name: "Hours profile scratch",
       access: "private",
       provider: "local",
       provider_settings: { base_path: FS_BASE },
     },
-  });
+  }));
   fs.mkdirSync(FS_BASE, { recursive: true });
   initFileSystems([]);
 

@@ -20,6 +20,7 @@
  * Usage: npx tsx scripts/s1-migration/copy-fund-config.ts [--dry-run]
  */
 import { Pool as NeonPool, neonConfig } from "@neondatabase/serverless";
+import { getEnvironmentVariable } from "./lib/script-env";
 import ws from "ws";
 import { resolveDatabaseUrl, describeDatabaseTarget } from "../../shared/database-url";
 
@@ -53,7 +54,7 @@ function rewriteNeonPooler(url: string): string {
 }
 
 async function main() {
-  const sourceUrl = process.env.SOURCE_CONFIG_DATABASE_URL;
+  const sourceUrl = getEnvironmentVariable("SOURCE_CONFIG_DATABASE_URL");
   if (!sourceUrl) throw new Error("SOURCE_CONFIG_DATABASE_URL is not set");
   const resolvedTarget = resolveDatabaseUrl();
   console.log(`[copy-fund-config] target: ${describeDatabaseTarget(resolvedTarget)}`);

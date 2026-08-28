@@ -38,6 +38,15 @@ const EXEMPT_FILES = new Set<string>([
   "scripts/post-merge-db-push.cjs",
   // This check script itself: needs the literal pattern to search for.
   "scripts/dev/check-env-registry.ts",
+  // The ONE sanctioned resolver for (EXTERNAL_)DATABASE_URL. It lives in
+  // shared/ (imported by drizzle.config.ts and client-adjacent tooling) so it
+  // cannot import the server-side registry; its env parameter defaults to the
+  // real process environment. Its exclusivity is separately enforced by
+  // scripts/dev/check-db-url-resolution.ts.
+  "shared/database-url.ts",
+  // Plain-node .mjs profiler run outside tsx: cannot import the TypeScript
+  // registry. Reads only its own S1URL / S1_PROFILE_OUT operator inputs.
+  "scripts/oneoffs/s1-profile.mjs",
 ]);
 
 const SCANNED_PREFIXES = ["server/", "shared/", "scripts/"];
