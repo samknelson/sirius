@@ -147,4 +147,5 @@
 - [Readiness-gate serialization](readiness-gate-serialization.md) — read-evidence→decide→transition must run inside a storage withCaseSerialization (ALS tx + worker advisory lock); entity-files adapters can't gate reclassify vs upload — throw and use dedicated routes.
 - [Detached shell processes are reaped](detached-shell-process-reaping.md) — nohup/setsid dies with the shell session; long benches/smokes run as temp managed workflows; staged-fixture crash repair via S2+sidecar orphan.
 - [Notifier staff-recipient hooks](notifier-staff-recipient-hooks.md) — event-derived staff recipients + per-config actor suppression via plugin hooks; cross-field config rules via validateConfigData, never a root JSON-Schema anyOf (RJSF).
+- [S1 log-notes immutable skip](s1-log-notes-immutable-skip.md) — completed smf:notes/raw rows excluded at the page-query boundary; mappings insert with NULL fingerprint until batch verify; sweep needs the immutable sourceSql leg.
 - [T17 dependent-worker refresh](t17-dependent-worker-refresh.md) — benefit-span fingerprints do not change when a relationship endpoint retargets; refresh worker_2 before diff and sweep relation-owned stale rows.

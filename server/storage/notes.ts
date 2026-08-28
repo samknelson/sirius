@@ -53,6 +53,28 @@ export interface NotesStorage {
   }): Promise<{ note: Note; created: boolean } | null>;
   /** Delete only when the note provenance belongs to the named loader. */
   deleteForMigration(id: string, loader: string): Promise<"deleted" | "missing">;
+  /**
+   * Migration-only BULK note + BAO tag-set reconciliation (one bounded
+   * transaction per call — callers chunk). Preserves `reconcileForMigration`
+   * semantics set-based: loader-ownership check on updates, adoption by
+   * `data->'s1'->>'nid'` provenance on creates (duplicate provenance is a
+   * per-row failure, never a write), full-field overwrite, and exact tag-set
+   * replacement. Per-row failures are returned (caller rejects/retries them);
+   * an exception aborts the whole chunk, leaving every row retryable.
+   */
+  bulkReconcileForMigration(input: {
+    loader: string;
+    rows: Array<{ ref: number; noteId?: string; note: InsertNote & { timestamp: Date }; tagIds: string[] }>;
+  }): Promise<{
+    saved: Map<number, { noteId: string; created: boolean }>;
+    failed: Map<number, "missing" | "owner_mismatch" | "duplicate_provenance">;
+  }>;
+  /**
+   * Migration-only bulk delete (batched orphan cleanup / deletion sweep).
+   * Fail-closed like `deleteForMigration`: any candidate whose provenance is
+   * NOT owned by the named loader throws before anything is deleted.
+   */
+  bulkDeleteForMigration(ids: string[], loader: string): Promise<{ deleted: number; missing: number }>;
 }
 
 /**
@@ -268,6 +290,134 @@ export function createNotesStorage(): NotesStorage {
         }
         return { note: saved, created: !current };
       });
+    },
+
+    async bulkReconcileForMigration(input) {
+      return runInTransaction(async () => {
+        const client = getClient();
+        const saved = new Map<number, { noteId: string; created: boolean }>();
+        const failed = new Map<number, "missing" | "owner_mismatch" | "duplicate_provenance">();
+        type Row = (typeof input.rows)[number];
+        const updates: Array<{ row: Row; noteId: string }> = [];
+        const inserts: Row[] = [];
+
+        // Updates: verify existence + loader ownership set-based.
+        const updateRows = input.rows.filter((r) => r.noteId);
+        const owners = new Map<string, string | null>();
+        if (updateRows.length > 0) {
+          const existing = await client
+            .select({ id: notes.id, owner: sql<string | null>`data->>'s1Loader'` })
+            .from(notes)
+            .where(inArray(notes.id, updateRows.map((r) => r.noteId!)));
+          for (const row of existing) owners.set(row.id, row.owner);
+        }
+        for (const row of updateRows) {
+          const owner = owners.get(row.noteId!);
+          if (owner === undefined) failed.set(row.ref, "missing");
+          else if (owner !== input.loader) failed.set(row.ref, "owner_mismatch");
+          else updates.push({ row, noteId: row.noteId! });
+        }
+
+        // Creates: adopt by s1 nid provenance (duplicate provenance fails the row).
+        const createRows = input.rows.filter((r) => !r.noteId);
+        if (createRows.length > 0) {
+          const nids = createRows
+            .map((r) => (r.note.data as Record<string, any> | null)?.s1?.nid)
+            .filter((n) => n != null)
+            .map((n) => String(n));
+          const adoptable = new Map<string, string[]>();
+          if (nids.length > 0) {
+            const candidates = await client
+              .select({ id: notes.id, nid: sql<string | null>`data->'s1'->>'nid'` })
+              .from(notes)
+              .where(and(
+                eq(notes.entityType, "worker"),
+                sql`data->>'s1Loader' = ${input.loader}`,
+                sql`data->'s1'->>'nid' IN (${sql.join(nids.map((n) => sql`${n}`), sql`, `)})`,
+              ));
+            for (const c of candidates) {
+              if (c.nid == null) continue;
+              (adoptable.get(c.nid) ?? (adoptable.set(c.nid, []), adoptable.get(c.nid)!)).push(c.id);
+            }
+          }
+          for (const row of createRows) {
+            const sourceNid = (row.note.data as Record<string, any> | null)?.s1?.nid;
+            const matches = sourceNid == null ? [] : adoptable.get(String(sourceNid)) ?? [];
+            if (matches.length > 1) failed.set(row.ref, "duplicate_provenance");
+            else if (matches.length === 1) updates.push({ row, noteId: matches[0] });
+            else inserts.push(row);
+          }
+        }
+
+        // Bulk UPDATE via a VALUES join (full-field overwrite, reconcile parity).
+        if (updates.length > 0) {
+          const values = updates.map(({ row, noteId }) => sql`(
+            ${noteId}, ${row.note.entityType}, ${row.note.entityId}, ${row.note.typeId},
+            ${row.note.subject}, ${row.note.body ?? null},
+            ${JSON.stringify(row.note.data ?? null)}::jsonb,
+            ${row.note.timestamp.toISOString()}::timestamptz, ${row.note.userId ?? null}
+          )`);
+          await client.execute(sql`
+            UPDATE notes n SET
+              entity_type = v.entity_type, entity_id = v.entity_id, type_id = v.type_id,
+              subject = v.subject, body = v.body, data = v.data,
+              timestamp = v.ts, user_id = v.user_id
+            FROM (VALUES ${sql.join(values, sql`, `)})
+              AS v(id, entity_type, entity_id, type_id, subject, body, data, ts, user_id)
+            WHERE n.id = v.id
+          `);
+          for (const { row, noteId } of updates) saved.set(row.ref, { noteId, created: false });
+        }
+
+        // Bulk INSERT with client-generated ids (deterministic ref → id mapping).
+        if (inserts.length > 0) {
+          const withIds = inserts.map((row) => ({ row, id: crypto.randomUUID() }));
+          await client.insert(notes).values(withIds.map(({ row, id }) => ({ ...(row.note as any), id })));
+          for (const { row, id } of withIds) saved.set(row.ref, { noteId: id, created: true });
+        }
+
+        // Exact tag-set replacement for every saved note, set-based.
+        const tagTargets = input.rows
+          .filter((r) => saved.has(r.ref))
+          .map((r) => ({ noteId: saved.get(r.ref)!.noteId, tagIds: [...new Set(r.tagIds)] }));
+        if (tagTargets.length > 0) {
+          // Empty desired sets MUST be a true empty typed array: with
+          // ARRAY[NULL], `NOT (tag_id = ANY(...))` evaluates to NULL (not
+          // true) and the delete would silently keep stale tags.
+          const desired = tagTargets.map((t) => t.tagIds.length > 0
+            ? sql`(${t.noteId}, ARRAY[${sql.join(t.tagIds.map((id) => sql`${id}`), sql`, `)}]::varchar[])`
+            : sql`(${t.noteId}, ARRAY[]::varchar[])`);
+          await client.execute(sql`
+            DELETE FROM sitespecific_bao_notes_tags t
+             USING (VALUES ${sql.join(desired, sql`, `)}) AS v(note_id, tag_ids)
+             WHERE t.note_id = v.note_id
+               AND NOT (t.tag_id = ANY(v.tag_ids))
+          `);
+          const pairs = tagTargets.flatMap((t) => t.tagIds.map((tagId) => ({ noteId: t.noteId, tagId })));
+          if (pairs.length > 0) {
+            await client.insert(sitespecificBaoNotesTags).values(pairs).onConflictDoNothing();
+          }
+        }
+        return { saved, failed };
+      });
+    },
+
+    async bulkDeleteForMigration(ids: string[], loader: string): Promise<{ deleted: number; missing: number }> {
+      if (ids.length === 0) return { deleted: 0, missing: 0 };
+      const client = getClient();
+      const existing = await client
+        .select({ id: notes.id, owner: sql<string | null>`data->>'s1Loader'` })
+        .from(notes)
+        .where(inArray(notes.id, ids));
+      const mismatched = existing.filter((row) => row.owner !== loader);
+      if (mismatched.length > 0) {
+        throw new Error(`migration note ownership verification failed for ${mismatched.length} row(s)`);
+      }
+      const missing = new Set(ids).size - existing.length;
+      const owned = existing.map((row) => row.id);
+      if (owned.length === 0) return { deleted: 0, missing };
+      const deleted = await client.delete(notes).where(inArray(notes.id, owned)).returning({ id: notes.id });
+      return { deleted: deleted.length, missing };
     },
 
     async deleteForMigration(id: string, loader: string): Promise<"deleted" | "missing"> {
