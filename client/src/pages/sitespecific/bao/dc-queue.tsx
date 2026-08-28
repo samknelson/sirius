@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Inbox } from "lucide-react";
+import { AlertTriangle, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -28,6 +28,7 @@ type QueueRow = {
   queuedAt: string;
   readiness?: { ready: boolean; missing: string[] };
   monthCount: number;
+  grantConfigWarnings?: Array<{ workMonthYmd: string; code: string; message: string }>;
 };
 
 function daysSince(iso: string): number {
@@ -77,15 +78,26 @@ export default function BaoDcQueuePage() {
                     <TableCell>{daysSince(row.queuedAt)} day(s)</TableCell>
                     <TableCell>{row.monthCount}</TableCell>
                     <TableCell>
-                      {row.readiness?.ready ? (
-                        <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-transparent">
-                          Ready
-                        </Badge>
-                      ) : (
-                        <Badge variant="destructive">
-                          Missing: {(row.readiness?.missing ?? []).join("; ")}
-                        </Badge>
-                      )}
+                      <span className="flex flex-wrap items-center gap-1">
+                        {row.readiness?.ready ? (
+                          <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-transparent">
+                            Ready
+                          </Badge>
+                        ) : (
+                          <Badge variant="destructive">
+                            Missing: {(row.readiness?.missing ?? []).join("; ")}
+                          </Badge>
+                        )}
+                        {(row.grantConfigWarnings ?? []).length > 0 && (
+                          <Badge
+                            className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 border-transparent"
+                            data-testid={`badge-dc-queue-config-warning-${row.case.id}`}
+                          >
+                            <AlertTriangle className="h-3 w-3 mr-1" />
+                            Configuration problem — approval would fail
+                          </Badge>
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button asChild variant="outline" size="sm" data-testid={`link-dc-queue-${row.case.id}`}>

@@ -88,6 +88,59 @@ export class DcGrantError extends Error {
   }
 }
 
+/** Short, forward-looking description of each grant configuration failure. */
+export const DC_GRANT_ERROR_DESCRIPTIONS: Record<DcGrantErrorCode, string> = {
+  NO_POLICY:
+    "No benefits policy could be resolved for the worker's employer",
+  NO_THRESHOLD_RULE:
+    "No continuation-threshold eligibility rule (buildup/threshold) covers the worker's continued benefits",
+  CONFLICTING_THRESHOLDS:
+    "The worker's continued benefits carry conflicting continuation thresholds or coverage lags",
+};
+
+export interface DcGrantConfigWarning {
+  workMonthYmd: string;
+  code: DcGrantErrorCode;
+  message: string;
+}
+
+/**
+ * ADVISORY preview of the grant cascade's configuration checks: runs the
+ * exact same resolveContinuationRequirement the approval path uses for each
+ * given work month and reports the months that would fail (missing policy,
+ * missing threshold rule, conflicting thresholds) — so approvers can see the
+ * problem BEFORE clicking Approve. Never throws for expected configuration
+ * errors and never blocks readiness/queueing; unexpected failures are logged
+ * and skipped so a broken preview can't take down the case view.
+ */
+export async function previewDcGrantConfigWarnings(
+  workerId: string,
+  workMonthYmds: string[],
+): Promise<DcGrantConfigWarning[]> {
+  const warnings: DcGrantConfigWarning[] = [];
+  for (const workMonthYmd of [...workMonthYmds].sort()) {
+    try {
+      await resolveContinuationRequirement(workerId, workMonthYmd);
+    } catch (error) {
+      if (error instanceof DcGrantError) {
+        warnings.push({
+          workMonthYmd,
+          code: error.code,
+          message: DC_GRANT_ERROR_DESCRIPTIONS[error.code],
+        });
+      } else {
+        logger.warn("DC grant config preview failed unexpectedly", {
+          service: SERVICE_NAME,
+          workerId,
+          workMonthYmd,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+  return warnings;
+}
+
 export interface DcContinuationRequirement {
   threshold: number;
   lagMonths: number;

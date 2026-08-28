@@ -256,6 +256,8 @@ export interface DcQueueRow {
   readiness?: { ready: boolean; missing: string[] };
   monthCount: number;
   yearUsage: Record<string, { used: number; limit: number }>;
+  /** Advisory: selected months whose approval-time grant check would fail. */
+  grantConfigWarnings: Array<{ workMonthYmd: string; code: string; message: string }>;
 }
 
 /** In-queue cases, oldest first, with queue age + live readiness + balance. */
@@ -289,6 +291,7 @@ export async function listDcApprovalQueue(): Promise<DcQueueRow[]> {
         readiness: bundle?.readiness,
         monthCount: bundle?.months.filter((m) => m.status !== "removed").length ?? 0,
         yearUsage: bundle?.yearUsage ?? {},
+        grantConfigWarnings: bundle?.grantConfigWarnings ?? [],
       };
     }),
   );

@@ -41,6 +41,7 @@ import {
   isDcFundEmployer,
   __clearDcFundEmployerCache,
   __setDcFundEmployerCache,
+  previewDcGrantConfigWarnings,
   resolveContinuationRequirement,
   runDcGrantCascadeForCase,
   releaseDueQueuedMonthsForWorker,
@@ -348,6 +349,12 @@ describe("threshold + shortfall resolution", () => {
       name: "DcGrantError",
       code: "CONFLICTING_THRESHOLDS",
     });
+    // The ADVISORY preview reports the exact same failure (never throws),
+    // and clears once the conflicting rule is removed — preview and
+    // approval behavior can never disagree.
+    expect(await previewDcGrantConfigWarnings(workerId, [ymd(monthA)])).toMatchObject([
+      { workMonthYmd: ymd(monthA), code: "CONFLICTING_THRESHOLDS" },
+    ]);
     await db.delete(pluginConfigsBenefitEligibility).where(eq(pluginConfigsBenefitEligibility.id, conflictId));
     await db.delete(pluginConfigs).where(eq(pluginConfigs.id, conflictId));
     configIds.splice(configIds.indexOf(conflictId), 1);
@@ -578,6 +585,12 @@ describe("approval fails closed without continued benefits", () => {
     });
     await storage.baoDisabilityCredit.transitionCase(c.id, { to: "ready_for_review", actorUserId: userId });
     await storage.baoDisabilityCredit.transitionCase(c.id, { to: "in_queue", actorUserId: userId });
+
+    // The advisory preview surfaces the failure BEFORE approve is clicked,
+    // with the same code the approval below throws.
+    expect(await previewDcGrantConfigWarnings(worker2Id, [ymd(monthA)])).toMatchObject([
+      { workMonthYmd: ymd(monthA), code: "NO_THRESHOLD_RULE" },
+    ]);
 
     await expect(
       performDcCaseAction(c.id, "approve", { actorUserId: userId }),

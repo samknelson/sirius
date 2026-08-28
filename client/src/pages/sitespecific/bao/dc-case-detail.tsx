@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, CalendarPlus, CheckCircle2, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, CalendarPlus, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -66,6 +66,8 @@ type Bundle = {
   attestationAuthor: { id: string; name: string } | null;
   yearUsage: Record<string, { used: number; limit: number }>;
   denialLetters: Array<{ id: string; letterYmd: string; expiresYmd: string }>;
+  /** Advisory approval-time configuration preview for the selected months. */
+  grantConfigWarnings: Array<{ workMonthYmd: string; code: string; message: string }>;
   isStaff: boolean;
 };
 
@@ -306,6 +308,37 @@ export default function BaoDcCaseDetailPage() {
             >
               Go to next case <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {data.isStaff && (data.grantConfigWarnings ?? []).length > 0 && (
+        <Card
+          className="border-amber-500/60 dark:border-amber-500/40"
+          data-testid="card-dc-grant-config-warnings"
+        >
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2 text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="h-4 w-4" />
+              Benefit-rule configuration problem
+            </CardTitle>
+            <CardDescription>
+              Approving this case would fail for the months below until the
+              eligibility configuration is fixed. This does not affect the
+              readiness checklist or queueing.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            {data.grantConfigWarnings.map((w) => (
+              <p
+                key={w.workMonthYmd}
+                className="text-sm"
+                data-testid={`text-dc-grant-warning-${w.workMonthYmd.slice(0, 7)}`}
+              >
+                <span className="font-medium">{formatMonthLabel(w.workMonthYmd)}:</span>{" "}
+                {w.message}.
+              </p>
+            ))}
           </CardContent>
         </Card>
       )}

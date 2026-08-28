@@ -25,7 +25,11 @@ import {
 import { getDcDenialLetterValidityMonths } from "./dc-settings";
 import { denialLetterExpiryYmd } from "@shared/sitespecific/bao/dc-eligibility";
 import { buildDcYearUsage } from "@shared/sitespecific/bao/dc-reporting";
-import { runDcGrantCascadeForCase } from "./dc-grant";
+import {
+  previewDcGrantConfigWarnings,
+  runDcGrantCascadeForCase,
+  type DcGrantConfigWarning,
+} from "./dc-grant";
 
 export interface DcCaseReadiness {
   checklist: DcChecklistResult;
@@ -70,6 +74,12 @@ export interface DcCaseBundle {
     /** Derived end-exclusive expiry under the CURRENT configured validity. */
     expiresYmd: string;
   }>;
+  /**
+   * ADVISORY grant-configuration preview for open cases: the selected months
+   * whose approval-time continuation check (resolveContinuationRequirement)
+   * would fail, with the reason. Never affects readiness or queueing.
+   */
+  grantConfigWarnings: DcGrantConfigWarning[];
 }
 
 export async function getDcCaseBundle(caseId: string): Promise<DcCaseBundle | undefined> {
@@ -98,6 +108,17 @@ export async function getDcCaseBundle(caseId: string): Promise<DcCaseBundle | un
       : attestedById;
     attestationAuthor = { id: attestedById, name };
   }
+  // Advisory grant-configuration preview: for OPEN cases, run the exact
+  // approval-time configuration check on each still-selected month so
+  // approvers see missing/conflicting benefit-rule configuration before
+  // clicking Approve. Advisory only — readiness above never consults it.
+  const openStatuses: BaoDcCaseStatus[] = ["draft", "ready_for_review", "in_queue"];
+  const grantConfigWarnings = openStatuses.includes(theCase.status)
+    ? await previewDcGrantConfigWarnings(
+        theCase.workerId,
+        months.filter((m) => m.status === "selected").map((m) => m.workMonthYmd),
+      )
+    : [];
   const yearUsage = buildDcYearUsage(applicable);
   const monthOptions = computeDcMonthOptions({
     nowMonthYmd: `${new Date().toISOString().slice(0, 7)}-01`,
@@ -122,6 +143,7 @@ export async function getDcCaseBundle(caseId: string): Promise<DcCaseBundle | un
       ...l,
       expiresYmd: denialLetterExpiryYmd(l.letterYmd, validityMonths),
     })),
+    grantConfigWarnings,
   };
 }
 
