@@ -940,7 +940,6 @@ export const componentRegistry: ComponentDefinition[] = [
         "sitespecific_bao_dc_case_months",
         "sitespecific_bao_dc_denial_letters",
         "sitespecific_bao_dc_documents",
-        "sitespecific_bao_dc_case_notes",
         "sitespecific_bao_dc_events"
       ]
     }

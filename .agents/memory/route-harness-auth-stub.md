@@ -18,3 +18,5 @@ Pattern for oneoff scripts that mount a route module on a bare express app and h
 **How to apply:** any time a task needs authenticated e2e coverage of routes without a browser session.
 
 Also: multer (`upload.single`) must come AFTER auth/authz middleware on upload routes, or unauthenticated callers can force 100MB in-memory buffering pre-rejection.
+
+Shortcut for vitest route harnesses: setting `req.session = { masqueradeUserId: id }` plus `req.user = { claims: { sub: id }, dbUser: user }` makes `buildContext` take the masquerade path (`storage.getUser`), which needs only `initAccessControl(...)` — no policy loader import — as long as requireAccess itself is stubbed (see tests/sitespecific/bao-dc-routes.test.ts).

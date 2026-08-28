@@ -1,5 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
+import multer from "multer";
+import crypto from "crypto";
 import { requireComponent } from "../../components";
 import { storage } from "../../../storage";
 import {
@@ -17,10 +19,18 @@ import {
 } from "../../../services/sitespecific/bao/dc-eligibility";
 import {
   getDcCaseBundle,
+  getNextQueuedDcCaseId,
   performDcCaseAction,
   mutateEvidenceAndRecompute,
   type DcCaseAction,
 } from "../../../services/sitespecific/bao/dc-workflow";
+import { fileSystemService, FileSystemNotConfiguredError } from "../../../services/files";
+import {
+  resolveUsableContextConfig,
+  expandDirectoryTemplate,
+  isExtensionAllowed,
+} from "../../../services/entity-files/config";
+import { insertFileSchema } from "@shared/schema";
 import { listDcApprovalQueue } from "../../../services/sitespecific/bao/dc-reporting";
 import { buildDcYearUsage } from "@shared/sitespecific/bao/dc-reporting";
 import { DcSelectionInvalidError } from "../../../storage/sitespecific/bao/disability-credit";
@@ -45,7 +55,13 @@ const monthsSchema = z.object({
   months: z.array(z.string().regex(/^\d{4}-\d{2}-01$/)).max(60),
 });
 
+const intakeUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+});
+
 const attestationsSchema = z.object({
+  dcFormOnFile: z.boolean().optional(),
   signed: z.boolean().optional(),
   restrictionsNoted: z.boolean().optional(),
   fields: z
@@ -68,9 +84,11 @@ const actionSchema = z.object({
   expectedStatus: z.enum(BAO_DC_CASE_STATUSES).optional(),
 });
 
-const noteSchema = z.object({
-  body: z.string().min(1).max(10000),
-  correctsNoteId: z.string().optional(),
+const extendSchema = z.object({
+  reason: z.string().trim().min(1).max(2000),
+  confirmDuplicate: z.boolean().optional(),
+  /** Optional initial eligible additional months (first-of-month Ymds). */
+  months: z.array(z.string().regex(/^\d{4}-\d{2}-01$/)).max(60).optional(),
 });
 
 /** Map coded storage errors onto HTTP responses. */
@@ -95,8 +113,12 @@ function handleDcError(res: Response, error: unknown): void {
     CASE_NOT_EDITABLE: [409, "The case can no longer be edited"],
     MONTHS_ONLY_IN_DRAFT: [409, "Months can only be changed while the case is in draft"],
     MONTH_NOT_EDITABLE: [409, "A queued or granted month cannot be changed here"],
-    NOTE_BODY_REQUIRED: [400, "Note text is required"],
-    CORRECTED_NOTE_NOT_ON_CASE: [400, "The corrected note is not on this case"],
+    DC_FORM_ATTESTATION_REQUIRES_FORM: [
+      422,
+      "A current document must be classified as a DC form before it can be attested as on file",
+    ],
+    EXTENSION_PARENT_NOT_APPROVED: [409, "Only an approved case can be extended"],
+    EXTENSION_REASON_REQUIRED: [400, "An extension reason is required"],
     DOCUMENT_NOT_FOUND: [404, "Document not found"],
     QUALIFYING_BASIS_REQUIRED: [422, "Worker is not eligible for Disability Credit"],
     COMPONENT_TABLE_NOT_FOUND: [503, "Disability Credit tables are not installed"],
@@ -234,22 +256,171 @@ export function registerBaoDisabilityCreditRoutes(
     },
   );
 
-  // Notes: append-only; members may add notes to their own case too.
+  // -------------------------------------------------------------------------
+  // Document-first member intake: one multipart submission either OPENS an
+  // eligible case with its first document attached, or ADDS the document to
+  // the worker's existing open case — atomically (bytes first, then the case
+  // + files + document rows in ONE transaction under the worker lock, so a
+  // failed insert leaves only a sweepable orphan object and NO case).
+  // Member uploads stay docType "other" until an MSR classifies them.
+  // -------------------------------------------------------------------------
   app.post(
-    "/api/sitespecific/bao/dc/cases/:caseId/notes",
+    "/api/workers/:workerId/sitespecific/bao/dc/intake",
     requireAuth,
     componentMiddleware,
-    requireAccess("worker.dc", workerFromCase),
+    requireAccess("worker.dc", (req) => req.params.workerId),
+    intakeUpload.single("file"),
     async (req: Request, res: Response) => {
       try {
-        const body = noteSchema.parse(req.body ?? {});
-        const note = await dc.addCaseNote({
-          caseId: req.params.caseId,
-          authorUserId: await actorId(req),
-          body: body.body,
-          correctsNoteId: body.correctsNoteId ?? null,
+        const workerId = req.params.workerId;
+        if (!req.file) {
+          res.status(400).json({ message: "No file provided" });
+          return;
+        }
+        const usable = await resolveUsableContextConfig("bao-dc-case");
+        if (!usable.config) {
+          res.status(503).json({ message: usable.reason });
+          return;
+        }
+        if (!isExtensionAllowed(req.file.originalname, usable.config.allowed)) {
+          res.status(400).json({
+            message: `File type not allowed. Allowed extensions: ${usable.config.allowed!.join(", ")}`,
+          });
+          return;
+        }
+        const actor = await actorId(req);
+
+        // Pick the target case OUTSIDE the tx only to resolve the storage
+        // path; the authoritative re-check happens under the worker lock.
+        const openCases = await dc.listOpenCasesForWorker(workerId);
+        let eligibilityBasis: Awaited<
+          ReturnType<typeof computeDcEligibilityForWorker>
+        >["basis"] | null = null;
+        if (openCases.length === 0) {
+          const eligibility = await computeDcEligibilityForWorker(workerId, todayYmd());
+          if (!eligibility.eligible) {
+            res.status(422).json({
+              message: "Worker is not currently eligible for Disability Credit",
+              code: "NOT_ELIGIBLE",
+            });
+            return;
+          }
+          eligibilityBasis = eligibility.basis;
+        }
+        const targetCaseId =
+          openCases.length > 0
+            ? openCases[openCases.length - 1].id
+            : crypto.randomUUID();
+
+        const directory = expandDirectoryTemplate(usable.config.directory, {
+          ":worker-id": workerId,
+          ":case-id": targetCaseId,
         });
-        res.status(201).json(note);
+        const safeName = req.file.originalname.split(/[/\\]/).pop() || "file";
+        const customPath = `${directory ? directory + "/" : ""}${Date.now()}-${safeName.replace(/[^\w.\-]+/g, "_").slice(0, 200)}`;
+
+        // Bytes first — a failure below leaves a sweepable orphan object.
+        const uploadResult = await fileSystemService.upload({
+          fileSystemId: usable.config.file_system,
+          fileName: req.file.originalname,
+          fileContent: req.file.buffer,
+          mimeType: req.file.mimetype,
+          customPath,
+        });
+
+        const fileData = insertFileSchema.parse({
+          fileName: req.file.originalname,
+          storagePath: uploadResult.storagePath,
+          mimeType: req.file.mimetype,
+          size: uploadResult.size,
+          uploadedBy: actor,
+          entityType: "entity-files:bao-dc-case",
+          entityId: targetCaseId,
+          fileSystemId: usable.config.file_system,
+          metadata: null,
+        });
+        const displayName = req.file.originalname.slice(0, 255);
+
+        const result = await dc.withWorkerSerialization(workerId, async () => {
+          // Authoritative in-tx re-check: attach to the newest open case if
+          // one exists (even if it appeared concurrently), else open the
+          // pre-identified case id.
+          const openNow = await dc.listOpenCasesForWorker(workerId);
+          if (openNow.length > 0) {
+            const caseId = openNow[openNow.length - 1].id;
+            const document = await dc.attachCaseDocumentWithFile(
+              caseId,
+              { ...fileData, entityId: caseId },
+              displayName,
+              { uploadedByUserId: actor },
+            );
+            return { theCase: openNow[openNow.length - 1], document, created: false };
+          }
+          if (!eligibilityBasis) {
+            // The open case this submission was going to extend closed
+            // concurrently — refuse rather than open an unvetted case.
+            throw new Error("QUALIFYING_BASIS_REQUIRED");
+          }
+          const staff = await isStaff(req);
+          const theCase = await dc.openCase({
+            id: targetCaseId,
+            workerId,
+            openedYmd: todayYmd(),
+            qualifyingBasis: eligibilityBasis,
+            intakeChannel: staff ? "msr" : "member_portal",
+            createdByUserId: actor,
+          });
+          const document = await dc.attachCaseDocumentWithFile(
+            theCase.id,
+            fileData,
+            displayName,
+            { uploadedByUserId: actor },
+          );
+          return { theCase, document, created: true };
+        });
+        res.status(201).json({
+          case: result.theCase,
+          document: result.document,
+          created: result.created,
+        });
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          res.status(400).json({ message: "Invalid request", errors: error.errors });
+          return;
+        }
+        if (error instanceof FileSystemNotConfiguredError) {
+          res.status(503).json({ message: error.message });
+          return;
+        }
+        handleDcError(res, error);
+      }
+    },
+  );
+
+  // Extend an approved case — STAFF only. Records an auditable extension
+  // request (required reason) as a NEW linked draft case routed through the
+  // normal review/approval flow; the original case stays approved.
+  app.post(
+    "/api/sitespecific/bao/dc/cases/:caseId/extend",
+    requireAuth,
+    componentMiddleware,
+    requireAccess("staff"),
+    async (req: Request, res: Response) => {
+      try {
+        const body = extendSchema.parse(req.body ?? {});
+        const actor = await actorId(req);
+        const extension = await dc.openCaseExtension(req.params.caseId, {
+          reason: body.reason,
+          actorUserId: actor,
+          allowDuplicate: body.confirmDuplicate === true,
+        });
+        let months = undefined;
+        if (body.months && body.months.length > 0) {
+          months = await dc.replaceCaseMonths(extension.id, body.months, {
+            actorUserId: actor,
+          });
+        }
+        res.status(201).json({ case: extension, ...(months ? { months } : {}) });
       } catch (error) {
         if (error instanceof z.ZodError) {
           res.status(400).json({ message: "Invalid request", errors: error.errors });
@@ -405,7 +576,10 @@ export function registerBaoDisabilityCreditRoutes(
           reason: body.reason,
           expectedStatus: body.expectedStatus,
         });
-        res.json(result);
+        // Queue continuation: after finishing this case, offer the oldest
+        // still-open queued case so MSRs/approvers can keep working.
+        const nextCaseId = await getNextQueuedDcCaseId([req.params.caseId]);
+        res.json({ ...result, nextCaseId });
       } catch (error) {
         if (error instanceof z.ZodError) {
           res.status(400).json({ message: "Invalid request", errors: error.errors });
@@ -426,6 +600,23 @@ export function registerBaoDisabilityCreditRoutes(
       try {
         // Shared live-query service — the SAME rows the dashboard shows.
         res.json(await listDcApprovalQueue());
+      } catch (error) {
+        handleDcError(res, error);
+      }
+    },
+  );
+
+  // Next still-open queued case (oldest first), excluding ?after=<caseId>.
+  // Resolves null cleanly when the queue is empty or drained concurrently.
+  app.get(
+    "/api/sitespecific/bao/dc/queue/next",
+    requireAuth,
+    componentMiddleware,
+    requireAccess("staff"),
+    async (req: Request, res: Response) => {
+      try {
+        const after = typeof req.query.after === "string" ? [req.query.after] : [];
+        res.json({ nextCaseId: await getNextQueuedDcCaseId(after) });
       } catch (error) {
         handleDcError(res, error);
       }

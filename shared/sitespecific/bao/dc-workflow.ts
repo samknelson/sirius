@@ -83,10 +83,18 @@ export function computeDcChecklist(
 
   const items: DcChecklistItem[] = [];
 
+  // Upload/classification alone never satisfies this item — a reviewer must
+  // manually attest they checked the classified DC form (dcFormOnFile).
+  const formAttested = att.dcFormOnFile === true;
   items.push({
     key: "dc_form_present",
     label: "DC form on file",
-    satisfied: hasForm,
+    satisfied: hasForm && formAttested,
+    detail: hasForm
+      ? formAttested
+        ? "Staff verified the classified DC form"
+        : "A DC form is classified but staff have not verified it"
+      : undefined,
   });
 
   const signed = att.signed === true;

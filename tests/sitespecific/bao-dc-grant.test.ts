@@ -223,7 +223,7 @@ beforeAll(async () => {
   });
   await storage.baoDisabilityCredit.updateCaseAttestations(
     caseId,
-    { signed: true, fields: { doctorAddress: true, doctorPhone: true, dates: true } },
+    { dcFormOnFile: true, signed: true, fields: { doctorAddress: true, doctorPhone: true, dates: true } },
     userId,
   );
   await storage.baoDisabilityCredit.transitionCase(caseId, {
@@ -567,7 +567,7 @@ describe("approval fails closed without continued benefits", () => {
     });
     await storage.baoDisabilityCredit.updateCaseAttestations(
       c.id,
-      { signed: true, fields: { doctorAddress: true, doctorPhone: true, dates: true } },
+      { dcFormOnFile: true, signed: true, fields: { doctorAddress: true, doctorPhone: true, dates: true } },
       userId,
     );
     await db.insert(sitespecificBaoDcCaseMonths).values({

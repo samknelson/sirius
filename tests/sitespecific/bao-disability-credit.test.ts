@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../../server/db";
 import { storage } from "../../server/storage";
 import { getComponentById } from "@shared/components";
@@ -13,12 +13,15 @@ import {
 import { registerBaoDcEntityFileContext } from "../../server/modules/sitespecific/bao/dc-files-context";
 import { getEntityFileContext } from "../../server/services/entity-files/registry";
 import {
+  getNextQueuedDcCaseId,
   performDcCaseAction,
   recomputeReadinessAndMaybeBounce,
 } from "../../server/services/sitespecific/bao/dc-workflow";
 import { addMonthsYmd } from "@shared/utils/date";
 import dcMigration from "../../scripts/migrate/components/sitespecific.bao/011_create_disability_credit";
 import dcWorkflowMigration from "../../scripts/migrate/components/sitespecific.bao/012_dc_case_workflow";
+import dcGrantMigration from "../../scripts/migrate/components/sitespecific.bao/013_dc_grant_events";
+import dcExtensionsMigration from "../../scripts/migrate/components/sitespecific.bao/014_dc_extensions_and_notes_retirement";
 import {
   evaluateDcEligibility,
   findUnreportedGapsBetweenFmlaMonths,
@@ -196,6 +199,8 @@ const letterIds: string[] = [];
 beforeAll(async () => {
   await dcMigration.up();
   await dcWorkflowMigration.up();
+  await dcGrantMigration.up();
+  await dcExtensionsMigration.up();
   if (!(await storage.baoDisabilityCredit.tableExists())) {
     throw new Error("DC migration did not create its tables");
   }
@@ -229,9 +234,13 @@ describe("DC component ownership", () => {
       "sitespecific_bao_dc_case_months",
       "sitespecific_bao_dc_denial_letters",
       "sitespecific_bao_dc_documents",
-      "sitespecific_bao_dc_case_notes",
       "sitespecific_bao_dc_events",
     ]));
+  });
+
+  it("no longer declares the retired DC case-notes table", () => {
+    const tables = getComponentById("sitespecific.bao")?.schemaManifest?.tables ?? [];
+    expect(tables).not.toContain("sitespecific_bao_dc_case_notes");
   });
 });
 
@@ -360,40 +369,34 @@ describe("DC case integrity", () => {
     });
   });
 
-  it("keeps case notes append-only with same-case correction links", async () => {
+  it("has retired the parallel DC notes system entirely", async () => {
+    // No note surface exists on the storage layer at all.
+    expect((storage.baoDisabilityCredit as any).addCaseNote).toBeUndefined();
+    expect((storage.baoDisabilityCredit as any).listCaseNotes).toBeUndefined();
+    expect((storage.baoDisabilityCredit as any).updateCaseNote).toBeUndefined();
+    expect((storage.baoDisabilityCredit as any).deleteCaseNote).toBeUndefined();
+    // The bespoke table is gone from the live database (migration 014).
+    const exists = await db.execute(sql`
+      SELECT to_regclass('public.sitespecific_bao_dc_case_notes') AS reg
+    `);
+    expect((exists.rows[0] as { reg: string | null }).reg).toBeNull();
+  });
+
+  it("carries bounce/transition reasons on the case_status_changed event payload", async () => {
     const c = await storage.baoDisabilityCredit.openCase({
       workerId: otherWorkerId, openedYmd: "2026-08-15",
       qualifyingBasis: { asOfYmd: "2026-08-15", conditions: ["denial_letter"], denialLetterIds: ["x"] },
     });
     caseIds.push(c.id);
-    const n1 = await storage.baoDisabilityCredit.addCaseNote({
-      caseId: c.id, authorUserId: userId, body: `${run} original note`,
-    });
-    const n2 = await storage.baoDisabilityCredit.addCaseNote({
-      caseId: c.id, authorUserId: userId, body: `${run} correction`, correctsNoteId: n1.id,
-    });
-    expect(n2.correctsNoteId).toBe(n1.id);
-    // No update/delete surface exists at all.
-    expect((storage.baoDisabilityCredit as any).updateCaseNote).toBeUndefined();
-    expect((storage.baoDisabilityCredit as any).deleteCaseNote).toBeUndefined();
-    // A correction may only reference a note on the SAME case.
-    const other = await storage.baoDisabilityCredit.openCase({
-      workerId, openedYmd: "2027-01-01",
-      qualifyingBasis: { asOfYmd: "2027-01-01", conditions: ["denial_letter"], denialLetterIds: ["x"] },
-    });
-    caseIds.push(other.id);
-    await expect(
-      storage.baoDisabilityCredit.addCaseNote({
-        caseId: other.id, authorUserId: userId, body: "cross-case", correctsNoteId: n1.id,
-      }),
-    ).rejects.toThrow("CORRECTED_NOTE_NOT_ON_CASE");
-    expect(await storage.baoDisabilityCredit.listCaseNotes(c.id)).toHaveLength(2);
     await storage.baoDisabilityCredit.transitionCase(c.id, {
       to: "void", reason: "test cleanup", actorUserId: userId,
     });
-    await storage.baoDisabilityCredit.transitionCase(other.id, {
-      to: "void", reason: "test cleanup", actorUserId: userId,
-    });
+    const events = await db
+      .select()
+      .from(sitespecificBaoDcEvents)
+      .where(eq(sitespecificBaoDcEvents.caseId, c.id));
+    const hop = events.find((e) => e.eventType === "case_status_changed");
+    expect((hop?.payload as { reason?: string })?.reason).toBe("test cleanup");
   });
 
   it("records and voids denial letters with idempotent events", async () => {
@@ -475,7 +478,7 @@ describe("DC document classification boundary", () => {
     });
     await storage.baoDisabilityCredit.updateCaseAttestations(
       c.id,
-      { signed: true, fields: { doctorAddress: true, doctorPhone: true, dates: true } },
+      { dcFormOnFile: true, signed: true, fields: { doctorAddress: true, doctorPhone: true, dates: true } },
       userId,
     );
     // Give it a month directly (bypassing coverage continuity for the test).
@@ -498,13 +501,176 @@ describe("DC document classification boundary", () => {
     expect(bounced).toBe(true);
     const after = await storage.baoDisabilityCredit.getCase(c.id);
     expect(after?.status).toBe("draft");
-    const notes = await storage.baoDisabilityCredit.listCaseNotes(c.id);
-    expect(notes.some((n) => n.body.toLowerCase().includes("no longer passes"))).toBe(true);
+    // The bounce reason rides the status-change event payload (notes retired).
+    const events = await db
+      .select()
+      .from(sitespecificBaoDcEvents)
+      .where(eq(sitespecificBaoDcEvents.caseId, c.id));
+    const bounceHop = events.find(
+      (e) =>
+        e.eventType === "case_status_changed" &&
+        (e.payload as { to?: string })?.to === "draft",
+    );
+    expect(
+      String((bounceHop?.payload as { reason?: string })?.reason ?? "").toLowerCase(),
+    ).toContain("no longer passes");
 
     await db.delete(sitespecificBaoDcCaseMonths).where(eq(sitespecificBaoDcCaseMonths.caseId, c.id));
     await storage.baoDisabilityCredit.transitionCase(c.id, {
       to: "void", reason: "test cleanup", actorUserId: userId,
     });
+  });
+});
+
+describe("DC form manual attestation guard", () => {
+  it("refuses dcFormOnFile without a current dc_form document, then accepts once one exists", async () => {
+    const c = await storage.baoDisabilityCredit.openCase({
+      workerId: otherWorkerId, openedYmd: "2027-03-01",
+      qualifyingBasis: { asOfYmd: "2027-03-01", conditions: ["denial_letter"], denialLetterIds: ["x"] },
+      allowDuplicate: true,
+    });
+    caseIds.push(c.id);
+    // No document at all.
+    await expect(
+      storage.baoDisabilityCredit.updateCaseAttestations(c.id, { dcFormOnFile: true }, userId),
+    ).rejects.toThrow("DC_FORM_ATTESTATION_REQUIRES_FORM");
+    // An unclassified upload (docType "other") is not enough either.
+    const other = await storage.baoDisabilityCredit.addDocument({
+      parentKind: "case", caseId: c.id, name: "upload.pdf", uploadedByUserId: userId, docType: "other",
+    });
+    await expect(
+      storage.baoDisabilityCredit.updateCaseAttestations(c.id, { dcFormOnFile: true }, userId),
+    ).rejects.toThrow("DC_FORM_ATTESTATION_REQUIRES_FORM");
+    // Classified as a DC form → the manual attestation becomes settable.
+    await storage.baoDisabilityCredit.updateCaseDocument(c.id, other.id, { docType: "dc_form" });
+    const updated = await storage.baoDisabilityCredit.updateCaseAttestations(
+      c.id, { dcFormOnFile: true }, userId,
+    );
+    expect((updated.attestations as { dcFormOnFile?: boolean })?.dcFormOnFile).toBe(true);
+    // A superseded form no longer supports the attestation.
+    await storage.baoDisabilityCredit.supersedeDocument(other.id, userId);
+    await expect(
+      storage.baoDisabilityCredit.updateCaseAttestations(
+        c.id, { dcFormOnFile: true, signed: true }, userId,
+      ),
+    ).rejects.toThrow("DC_FORM_ATTESTATION_REQUIRES_FORM");
+    await storage.baoDisabilityCredit.transitionCase(c.id, {
+      to: "void", reason: "test cleanup", actorUserId: userId,
+    });
+  });
+});
+
+describe("DC extensions", () => {
+  const approvedBasis = {
+    asOfYmd: "2027-04-01",
+    conditions: ["denial_letter" as const],
+    denialLetterIds: ["x"],
+  };
+
+  async function makeApprovedCase(): Promise<string> {
+    const c = await storage.baoDisabilityCredit.openCase({
+      workerId: otherWorkerId, openedYmd: "2027-04-01",
+      qualifyingBasis: approvedBasis, allowDuplicate: true,
+    });
+    caseIds.push(c.id);
+    await db
+      .update(sitespecificBaoDcCases)
+      .set({ status: "approved" })
+      .where(eq(sitespecificBaoDcCases.id, c.id));
+    return c.id;
+  }
+
+  it("requires an approved parent and a non-empty reason", async () => {
+    const draft = await storage.baoDisabilityCredit.openCase({
+      workerId: otherWorkerId, openedYmd: "2027-04-02",
+      qualifyingBasis: approvedBasis, allowDuplicate: true,
+    });
+    caseIds.push(draft.id);
+    await expect(
+      storage.baoDisabilityCredit.openCaseExtension(draft.id, {
+        reason: "still disabled", actorUserId: userId, allowDuplicate: true,
+      }),
+    ).rejects.toThrow("EXTENSION_PARENT_NOT_APPROVED");
+
+    const approvedId = await makeApprovedCase();
+    await expect(
+      storage.baoDisabilityCredit.openCaseExtension(approvedId, {
+        reason: "   ", actorUserId: userId, allowDuplicate: true,
+      }),
+    ).rejects.toThrow("EXTENSION_REASON_REQUIRED");
+    // Clean the drafts.
+    await storage.baoDisabilityCredit.transitionCase(draft.id, {
+      to: "void", reason: "test cleanup", actorUserId: userId,
+    });
+  });
+
+  it("opens a linked draft, records the extension event on the parent, and never un-approves it", async () => {
+    const approvedId = await makeApprovedCase();
+    const ext = await storage.baoDisabilityCredit.openCaseExtension(approvedId, {
+      reason: "condition continues", actorUserId: userId, allowDuplicate: true,
+    });
+    caseIds.push(ext.id);
+    expect(ext.status).toBe("draft");
+    expect((ext.data as { extensionOfCaseId?: string })?.extensionOfCaseId).toBe(approvedId);
+    expect((ext.data as { extensionReason?: string })?.extensionReason).toBe(
+      "condition continues",
+    );
+    expect(ext.qualifyingBasis).toEqual(approvedBasis);
+    // Parent untouched.
+    const parent = await storage.baoDisabilityCredit.getCase(approvedId);
+    expect(parent?.status).toBe("approved");
+    // Auditable request event lives on the PARENT.
+    const parentEvents = await db
+      .select()
+      .from(sitespecificBaoDcEvents)
+      .where(eq(sitespecificBaoDcEvents.caseId, approvedId));
+    const reqEvent = parentEvents.find((e) => e.eventType === "case_extension_requested");
+    expect(reqEvent).toBeDefined();
+    expect((reqEvent?.payload as { extensionCaseId?: string })?.extensionCaseId ?? (reqEvent?.payload as { newCaseId?: string })?.newCaseId).toBe(ext.id);
+    await storage.baoDisabilityCredit.transitionCase(ext.id, {
+      to: "void", reason: "test cleanup", actorUserId: userId,
+    });
+  });
+});
+
+describe("DC queue continuation", () => {
+  it("returns queued cases oldest-first, excludes the finished case, and null on empty", async () => {
+    // Two queued cases with a deterministic order.
+    const mk = async (openedYmd: string) => {
+      const c = await storage.baoDisabilityCredit.openCase({
+        workerId: otherWorkerId, openedYmd,
+        qualifyingBasis: { asOfYmd: openedYmd, conditions: ["denial_letter"], denialLetterIds: ["x"] },
+        allowDuplicate: true,
+      });
+      caseIds.push(c.id);
+      await db
+        .update(sitespecificBaoDcCases)
+        .set({ status: "in_queue" })
+        .where(eq(sitespecificBaoDcCases.id, c.id));
+      return c.id;
+    };
+    // Exclude any queued cases that pre-exist in the shared dev database so
+    // the assertions only see this test's own two cases.
+    const baseline = (await storage.baoDisabilityCredit.listCasesByStatus("in_queue")).map(
+      (q) => q.id,
+    );
+    const older = await mk("2027-05-01");
+    const newer = await mk("2027-05-02");
+    const next = await getNextQueuedDcCaseId(baseline);
+    expect(next).toBe(older);
+    // Excluding the case just finished moves on to the next one.
+    expect(await getNextQueuedDcCaseId([...baseline, older])).toBe(newer);
+    // Empty (both excluded) → null, handled cleanly.
+    expect(await getNextQueuedDcCaseId([...baseline, older, newer])).toBeNull();
+    for (const id of [older, newer]) {
+      await db
+        .update(sitespecificBaoDcCases)
+        .set({ status: "draft" })
+        .where(eq(sitespecificBaoDcCases.id, id));
+      await storage.baoDisabilityCredit.transitionCase(id, {
+        to: "void", reason: "test cleanup", actorUserId: userId,
+      });
+    }
   });
 });
 
@@ -521,7 +687,7 @@ describe("DC approval vs evidence-mutation race", () => {
     });
     await storage.baoDisabilityCredit.updateCaseAttestations(
       c.id,
-      { signed: true, fields: { doctorAddress: true, doctorPhone: true, dates: true } },
+      { dcFormOnFile: true, signed: true, fields: { doctorAddress: true, doctorPhone: true, dates: true } },
       userId,
     );
     await db.insert(sitespecificBaoDcCaseMonths).values({

@@ -1531,6 +1531,13 @@ export type BaoDcIntakeChannel = (typeof BAO_DC_INTAKE_CHANNELS)[number];
  * these attestations at read time.
  */
 export type BaoDcAttestations = {
+  /**
+   * A reviewer manually attested that a current document classified as a DC
+   * form is on file and has been checked. Upload/classification alone never
+   * satisfies the checklist — this flag is the human confirmation, and the
+   * storage layer rejects setting it without a current dc_form document.
+   */
+  dcFormOnFile?: boolean;
   /** The DC form on file is doctor-signed. */
   signed?: boolean;
   /** A doctor's note lists work restrictions (requires the employer letter). */
@@ -1773,36 +1780,9 @@ export const sitespecificBaoDcDocuments = pgTable(
   ],
 );
 
-export const sitespecificBaoDcCaseNotes = pgTable(
-  "sitespecific_bao_dc_case_notes",
-  {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    caseId: varchar("case_id").notNull(),
-    authorUserId: varchar("author_user_id").notNull(),
-    body: text("body").notNull(),
-    /** A correction is a NEW note pointing at the note it corrects. */
-    correctsNoteId: varchar("corrects_note_id"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
-  },
-  (table) => [
-    index("sitespecific_bao_dc_case_notes_case_idx").on(table.caseId),
-    foreignKey({
-      name: "sitespecific_bao_dc_case_notes_case_id_fkey",
-      columns: [table.caseId],
-      foreignColumns: [sitespecificBaoDcCases.id],
-    }).onDelete("cascade"),
-    foreignKey({
-      name: "sitespecific_bao_dc_case_notes_author_user_id_fkey",
-      columns: [table.authorUserId],
-      foreignColumns: [users.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "sitespecific_bao_dc_case_notes_corrects_note_id_fkey",
-      columns: [table.correctsNoteId],
-      foreignColumns: [table.id],
-    }).onDelete("restrict"),
-  ],
-);
+// NOTE: the bespoke sitespecific_bao_dc_case_notes table was retired in
+// migration 014 — historical rows were archived into the core `notes` table
+// (entity type "worker") and DC cases carry their history via events.
 
 /** Typed DC lifecycle event kinds recorded durably per emission. */
 export const BAO_DC_EVENT_TYPES = [
@@ -1822,6 +1802,8 @@ export const BAO_DC_EVENT_TYPES = [
   "case_month_queued",
   "case_month_released",
   "case_month_reconciled",
+  // Extension request lifecycle (014_dc_extensions_and_notes_retirement)
+  "case_extension_requested",
 ] as const;
 export type BaoDcEventType = (typeof BAO_DC_EVENT_TYPES)[number];
 
@@ -1846,7 +1828,7 @@ export const sitespecificBaoDcEvents = pgTable(
     index("sitespecific_bao_dc_events_worker_idx").on(table.workerId),
     check(
       "sitespecific_bao_dc_events_event_type_check",
-      sql`${table.eventType} IN ('case_opened', 'case_closed', 'case_voided', 'case_month_added', 'case_month_voided', 'denial_letter_recorded', 'denial_letter_voided', 'case_status_changed', 'document_uploaded', 'document_superseded', 'attestations_updated', 'case_month_granted', 'case_month_queued', 'case_month_released', 'case_month_reconciled')`,
+      sql`${table.eventType} IN ('case_opened', 'case_closed', 'case_voided', 'case_month_added', 'case_month_voided', 'denial_letter_recorded', 'denial_letter_voided', 'case_status_changed', 'document_uploaded', 'document_superseded', 'attestations_updated', 'case_month_granted', 'case_month_queued', 'case_month_released', 'case_month_reconciled', 'case_extension_requested')`,
     ),
   ],
 );
@@ -1859,6 +1841,4 @@ export type BaoDcDenialLetter = typeof sitespecificBaoDcDenialLetters.$inferSele
 export type InsertBaoDcDenialLetter = typeof sitespecificBaoDcDenialLetters.$inferInsert;
 export type BaoDcDocument = typeof sitespecificBaoDcDocuments.$inferSelect;
 export type InsertBaoDcDocument = typeof sitespecificBaoDcDocuments.$inferInsert;
-export type BaoDcCaseNote = typeof sitespecificBaoDcCaseNotes.$inferSelect;
-export type InsertBaoDcCaseNote = typeof sitespecificBaoDcCaseNotes.$inferInsert;
 export type BaoDcEvent = typeof sitespecificBaoDcEvents.$inferSelect;

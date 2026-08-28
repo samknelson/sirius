@@ -6,8 +6,8 @@
  * staff attestations) plus at least one non-removed month. Whenever evidence
  * changes (upload, supersede, attestation edit), callers run
  * `recomputeReadinessAndMaybeBounce` — an in-queue or ready case whose
- * checklist stops passing is automatically bounced back to draft with an
- * explanatory system note.
+ * checklist stops passing is automatically bounced back to draft with the
+ * explanation carried on the case_status_changed event payload.
  */
 import { storage } from "../../../storage";
 import {
@@ -51,9 +51,10 @@ export interface DcCaseBundle {
   case: BaoDcCase;
   months: BaoDcCaseMonth[];
   documents: Awaited<ReturnType<typeof storage.baoDisabilityCredit.listCaseDocumentsWithFiles>>;
-  notes: Awaited<ReturnType<typeof storage.baoDisabilityCredit.listCaseNotes>>;
   events: Awaited<ReturnType<typeof storage.baoDisabilityCredit.listEventsForCase>>;
   readiness: DcCaseReadiness;
+  /** Display reference for whoever last completed the attestations. */
+  attestationAuthor: { id: string; name: string } | null;
   /**
    * Guided-picker choices: the rolling option window with per-month
    * status/reason so the interface can distinguish selectable, selected,
@@ -75,11 +76,10 @@ export async function getDcCaseBundle(caseId: string): Promise<DcCaseBundle | un
   const dc = storage.baoDisabilityCredit;
   const theCase = await dc.getCase(caseId);
   if (!theCase) return undefined;
-  const [months, documents, notes, events, applicable, letters, validityMonths, covered] =
+  const [months, documents, events, applicable, letters, validityMonths, covered] =
     await Promise.all([
       dc.listCaseMonths(caseId),
       dc.listCaseDocumentsWithFiles(caseId),
-      dc.listCaseNotes(caseId),
       dc.listEventsForCase(caseId),
       dc.listApplicableMonthsForWorker(theCase.workerId),
       dc.listNonVoidedDenialLettersForWorker(theCase.workerId),
@@ -87,6 +87,17 @@ export async function getDcCaseBundle(caseId: string): Promise<DcCaseBundle | un
       dc.getCoveredMonthsForWorker(theCase.workerId),
     ]);
   const readiness = computeCaseReadiness(theCase, documents, months);
+  // Approvers need to see WHO completed the attestations, not just that
+  // they exist — resolve the stamped user id to a display name.
+  let attestationAuthor: { id: string; name: string } | null = null;
+  const attestedById = theCase.attestations?.updatedByUserId;
+  if (attestedById) {
+    const user = await storage.users.getUser(attestedById);
+    const name = user
+      ? [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.email
+      : attestedById;
+    attestationAuthor = { id: attestedById, name };
+  }
   const yearUsage = buildDcYearUsage(applicable);
   const monthOptions = computeDcMonthOptions({
     nowMonthYmd: `${new Date().toISOString().slice(0, 7)}-01`,
@@ -103,9 +114,9 @@ export async function getDcCaseBundle(caseId: string): Promise<DcCaseBundle | un
     months,
     monthOptions,
     documents,
-    notes,
     events,
     readiness,
+    attestationAuthor,
     yearUsage,
     denialLetters: letters.map((l) => ({
       ...l,
@@ -117,7 +128,8 @@ export async function getDcCaseBundle(caseId: string): Promise<DcCaseBundle | un
 /**
  * Recompute readiness after an evidence change; auto-bounce a
  * ready_for_review or in_queue case back to draft when the checklist no
- * longer passes, recording a system note naming what went missing.
+ * longer passes; the reason (naming what went missing) rides the
+ * case_status_changed event payload.
  */
 export async function recomputeReadinessAndMaybeBounce(
   caseId: string,
@@ -142,11 +154,7 @@ export async function recomputeReadinessAndMaybeBounce(
       to: "draft",
       actorUserId,
       expectedStatus: theCase.status,
-    });
-    await dc.addCaseNote({
-      caseId,
-      authorUserId: actorUserId,
-      body: `Automatically returned to draft — readiness no longer passes. Missing: ${readiness.missing.join("; ")}.`,
+      reason: `Automatically returned to draft — readiness no longer passes. Missing: ${readiness.missing.join("; ")}.`,
     });
     return { readiness, bounced: true };
   });
@@ -170,6 +178,19 @@ export async function mutateEvidenceAndRecompute<T>(
     const { readiness, bounced } = await recomputeReadinessAndMaybeBounce(caseId, actorUserId);
     return { result, readiness, bounced };
   });
+}
+
+/**
+ * Oldest-first next open queued case, excluding the given case(s). Used for
+ * "go to next case" continuation after an MSR/approver finishes one — an
+ * empty (or concurrently drained) queue resolves to null cleanly.
+ */
+export async function getNextQueuedDcCaseId(
+  excludeCaseIds: string[] = [],
+): Promise<string | null> {
+  const queued = await storage.baoDisabilityCredit.listCasesByStatus("in_queue");
+  const next = queued.find((c) => !excludeCaseIds.includes(c.id));
+  return next?.id ?? null;
 }
 
 export type DcCaseAction =
@@ -232,16 +253,10 @@ export async function performDcCaseAction(
     const updated = await dc.transitionCase(caseId, {
       to: ACTION_TARGET[action],
       actorUserId: opts.actorUserId,
+      // Bounce (and terminal) reasons ride the case_status_changed payload.
       reason: opts.reason,
       expectedStatus: opts.expectedStatus,
     });
-    if (action === "bounce" && opts.reason?.trim()) {
-      await dc.addCaseNote({
-        caseId,
-        authorUserId: opts.actorUserId,
-        body: `Returned to draft: ${opts.reason.trim()}`,
-      });
-    }
     if (action === "approve") {
       // Grant cascade — same transaction and worker lock as the transition,
       // so approval and its hours writes commit (or fail) atomically. Runs

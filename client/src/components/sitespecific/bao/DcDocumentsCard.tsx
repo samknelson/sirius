@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Download, FileUp, History } from "lucide-react";
+import { Download, Eye, EyeOff, FileUp, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -40,8 +40,21 @@ type EntityFileRecord = {
     supersededAt?: string | null;
     supersededByUserId?: string | null;
   } | null;
-  file: { id: string; fileName: string; uploadedAt?: string | null } | null;
+  file: {
+    id: string;
+    fileName: string;
+    mimeType?: string | null;
+    uploadedAt?: string | null;
+  } | null;
 };
+
+/** Content types the collapsed inline preview can render directly. */
+function previewKind(mimeType: string | null | undefined): "pdf" | "image" | null {
+  if (!mimeType) return null;
+  if (mimeType === "application/pdf") return "pdf";
+  if (mimeType.startsWith("image/")) return "image";
+  return null;
+}
 
 type ListResponse = {
   configured: boolean;
@@ -68,6 +81,16 @@ export function DcDocumentsCard({
   const { toast } = useToast();
   const fileInput = useRef<HTMLInputElement>(null);
   const [uploadDocType, setUploadDocType] = useState<string>("other");
+  // Every uploaded form stays HIDDEN until the reviewer expands its inline
+  // preview — collapsed by default, per row.
+  const [expandedPreviews, setExpandedPreviews] = useState<Set<string>>(new Set());
+  const togglePreview = (id: string) =>
+    setExpandedPreviews((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const listKey = ["/api/entity-files", "bao-dc-case", caseId];
 
   const { data, isLoading } = useQuery<ListResponse>({ queryKey: listKey });
@@ -233,7 +256,10 @@ export function DcDocumentsCard({
             <TableBody>
               {files.map((f) => {
                 const superseded = Boolean(f.data?.supersededAt);
+                const kind = previewKind(f.file?.mimeType);
+                const expanded = expandedPreviews.has(f.id);
                 return (
+                  <Fragment key={f.id}>
                   <TableRow
                     key={f.id}
                     className={superseded ? "opacity-60" : undefined}
@@ -276,6 +302,21 @@ export function DcDocumentsCard({
                       )}
                     </TableCell>
                     <TableCell className="text-right space-x-2">
+                      {kind && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => togglePreview(f.id)}
+                          aria-expanded={expanded}
+                          data-testid={`button-dc-preview-${f.id}`}
+                        >
+                          {expanded ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </Button>
+                      )}
                       <Button asChild variant="ghost" size="sm">
                         <a
                           href={`/api/files/${f.fileId}/download`}
@@ -297,6 +338,26 @@ export function DcDocumentsCard({
                       )}
                     </TableCell>
                   </TableRow>
+                  {expanded && kind && (
+                    <TableRow data-testid={`row-dc-preview-${f.id}`}>
+                      <TableCell colSpan={5}>
+                        {kind === "image" ? (
+                          <img
+                            src={`/api/files/${f.fileId}/download`}
+                            alt={f.name}
+                            className="max-h-[480px] rounded-md border"
+                          />
+                        ) : (
+                          <iframe
+                            src={`/api/files/${f.fileId}/download`}
+                            title={f.name}
+                            className="w-full h-[480px] rounded-md border"
+                          />
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  </Fragment>
                 );
               })}
             </TableBody>

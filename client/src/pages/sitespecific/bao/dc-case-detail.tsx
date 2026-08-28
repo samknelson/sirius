@@ -1,8 +1,16 @@
 import { useMemo, useState } from "react";
-import { Link, useParams } from "wouter";
+import { Link, useLocation, useParams } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle2, XCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarPlus, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Card,
   CardContent,
@@ -17,13 +25,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, getApiErrorMessage, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { DcDocumentsCard } from "@/components/sitespecific/bao/DcDocumentsCard";
-import { DcNotesCard } from "@/components/sitespecific/bao/DcNotesCard";
 import { DcStatusBadge, formatYmd } from "@/components/sitespecific/bao/dc-shared";
 import type {
   BaoDcAttestations,
   BaoDcCase,
   BaoDcCaseMonth,
-  BaoDcCaseNote,
 } from "@shared/schema";
 import type { DcMonthOption } from "@shared/sitespecific/bao/dc-workflow";
 
@@ -40,16 +46,23 @@ function formatMonthLabel(monthYmd: string): string {
 
 type ChecklistItem = { key: string; label: string; satisfied: boolean; detail?: string };
 
+type DocumentRecord = {
+  id: string;
+  docType: string;
+  supersededAt: string | null;
+};
+
 type Bundle = {
   case: BaoDcCase;
   months: BaoDcCaseMonth[];
   monthOptions: DcMonthOption[];
-  notes: BaoDcCaseNote[];
+  documents: DocumentRecord[];
   readiness: {
     checklist: { items: ChecklistItem[]; passing: boolean };
     ready: boolean;
     missing: string[];
   };
+  attestationAuthor: { id: string; name: string } | null;
   yearUsage: Record<string, { used: number; limit: number }>;
   denialLetters: Array<{ id: string; letterYmd: string; expiresYmd: string }>;
   isStaff: boolean;
@@ -66,12 +79,16 @@ export default function BaoDcCaseDetailPage() {
   const params = useParams<{ id: string }>();
   const caseId = params.id;
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const caseKey = ["/api/sitespecific/bao/dc/cases", caseId];
 
   const { data, isLoading, error } = useQuery<Bundle>({ queryKey: caseKey });
 
   const [monthsDraft, setMonthsDraft] = useState<string[] | null>(null);
   const [actionReason, setActionReason] = useState("");
+  const [nextCaseId, setNextCaseId] = useState<string | null>(null);
+  const [extendOpen, setExtendOpen] = useState(false);
+  const [extendReason, setExtendReason] = useState("");
 
   const activeMonths = useMemo(
     () => (data?.months ?? []).filter((m) => m.status !== "removed"),
@@ -151,8 +168,9 @@ export default function BaoDcCaseDetailPage() {
         reason: actionReason || undefined,
         expectedStatus: data?.case.status,
       }),
-    onSuccess: () => {
+    onSuccess: (result: { nextCaseId?: string | null }) => {
       setActionReason("");
+      setNextCaseId(result?.nextCaseId ?? null);
       toast({ title: "Case updated" });
       invalidate();
       queryClient.invalidateQueries({ queryKey: ["/api/sitespecific/bao/dc/queue"] });
@@ -160,6 +178,28 @@ export default function BaoDcCaseDetailPage() {
     onError: (err) =>
       toast({
         title: "Action failed",
+        description: getApiErrorMessage(err, "Please try again."),
+        variant: "destructive",
+      }),
+  });
+
+  const extend = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", `/api/sitespecific/bao/dc/cases/${caseId}/extend`, {
+        reason: extendReason.trim(),
+      }) as Promise<{ case: BaoDcCase }>,
+    onSuccess: (result) => {
+      setExtendOpen(false);
+      setExtendReason("");
+      toast({
+        title: "Extension request created",
+        description: "Select the additional months on the new case.",
+      });
+      navigate(`/bao/dc/cases/${result.case.id}`);
+    },
+    onError: (err) =>
+      toast({
+        title: "Could not create the extension",
         description: getApiErrorMessage(err, "Please try again."),
         variant: "destructive",
       }),
@@ -178,6 +218,7 @@ export default function BaoDcCaseDetailPage() {
   const att = (c.attestations ?? {}) as BaoDcAttestations;
   const setAtt = (patch: Partial<BaoDcAttestations>) =>
     saveAttestations.mutate({
+      dcFormOnFile: att.dcFormOnFile,
       signed: att.signed,
       restrictionsNoted: att.restrictionsNoted,
       fields: att.fields,
@@ -186,6 +227,12 @@ export default function BaoDcCaseDetailPage() {
 
   const isDraft = c.status === "draft";
   const terminal = ["denied", "withdrawn", "void"].includes(c.status);
+  // The manual "DC form on file" attestation only appears once a CURRENT
+  // document is classified as a DC form — upload alone never attests.
+  const hasCurrentDcForm = (data.documents ?? []).some(
+    (d) => d.docType === "dc_form" && !d.supersededAt,
+  );
+  const isExtension = Boolean((c.data as any)?.extensionOfCaseId);
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
@@ -200,6 +247,17 @@ export default function BaoDcCaseDetailPage() {
             Disability Credit case — opened {formatYmd(c.openedYmd)}
           </h1>
           <DcStatusBadge status={c.status} />
+          {isExtension && (
+            <Badge variant="secondary" data-testid="badge-dc-extension">
+              Extension of{" "}
+              <Link
+                href={`/bao/dc/cases/${(c.data as any).extensionOfCaseId}`}
+                className="underline ml-1"
+              >
+                original case
+              </Link>
+            </Badge>
+          )}
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           {Object.entries(data.yearUsage)
@@ -234,6 +292,26 @@ export default function BaoDcCaseDetailPage() {
         </CardContent>
       </Card>
 
+      {nextCaseId && (
+        <Card data-testid="card-dc-next-case">
+          <CardContent className="flex items-center justify-between gap-4 py-4">
+            <p className="text-sm">Another case is waiting in the approval queue.</p>
+            <Button
+              onClick={() => {
+                setNextCaseId(null);
+                navigate(`/bao/dc/cases/${nextCaseId}`);
+              }}
+              data-testid="button-dc-next-case"
+            >
+              Go to next case <ArrowRight className="h-4 w-4 ml-2" />
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Documents come FIRST — review is document-driven. */}
+      <DcDocumentsCard caseId={caseId} canSupersede canSetType onEvidenceChange={invalidate} />
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Readiness checklist</CardTitle>
@@ -241,6 +319,12 @@ export default function BaoDcCaseDetailPage() {
             {data.readiness.ready
               ? "All checklist items pass."
               : `Missing: ${data.readiness.missing.join("; ")}`}
+            {data.attestationAuthor && (
+              <span className="block" data-testid="text-dc-attestation-author">
+                Attestations completed by {data.attestationAuthor.name}
+                {att.updatedAt ? ` on ${formatYmd(att.updatedAt.slice(0, 10))}` : ""}
+              </span>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -259,6 +343,16 @@ export default function BaoDcCaseDetailPage() {
           ))}
           {!terminal && c.status !== "approved" && (
             <div className="pt-3 border-t mt-3 grid gap-2 sm:grid-cols-2">
+              {hasCurrentDcForm && (
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={att.dcFormOnFile === true}
+                    onCheckedChange={(v) => setAtt({ dcFormOnFile: v === true })}
+                    data-testid="checkbox-dc-att-dcFormOnFile"
+                  />
+                  DC form on file (verified against the classified document)
+                </label>
+              )}
               {[
                 { key: "signed", label: "Form is doctor-signed", value: att.signed === true },
                 {
@@ -434,8 +528,53 @@ export default function BaoDcCaseDetailPage() {
         </Card>
       )}
 
-      <DcDocumentsCard caseId={caseId} canSupersede canSetType onEvidenceChange={invalidate} />
-      <DcNotesCard caseId={caseId} notes={data.notes} />
+      {c.status === "approved" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Extend disability</CardTitle>
+            <CardDescription>
+              Record an auditable extension request — a new linked case routed
+              through review and approval. This case stays approved.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => setExtendOpen(true)} data-testid="button-dc-extend">
+              <CalendarPlus className="h-4 w-4 mr-2" /> Extend disability
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={extendOpen} onOpenChange={setExtendOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Extend disability</DialogTitle>
+            <DialogDescription>
+              A reason is required. The extension opens as a new draft case where
+              you select the eligible additional months; it goes through the
+              normal review and approval queue.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={extendReason}
+            onChange={(e) => setExtendReason(e.target.value)}
+            placeholder="Reason for the extension (required)…"
+            data-testid="input-dc-extend-reason"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExtendOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => extend.mutate()}
+              disabled={extend.isPending || !extendReason.trim()}
+              data-testid="button-dc-extend-confirm"
+            >
+              Create extension request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

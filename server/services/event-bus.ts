@@ -482,6 +482,7 @@ export interface BaoDcCaseSavedPayload {
     | "case_month_added"
     | "case_month_voided"
     | "case_status_changed"
+    | "case_extension_requested"
     | "document_uploaded"
     | "document_superseded"
     | "attestations_updated";

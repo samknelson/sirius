@@ -1,8 +1,7 @@
 /**
  * Disability Credit (DC) storage — component-owned persistence for the DC
  * case workflow (cases + lifecycle, case months, denial letters, documents
- * with supersession, append-only case notes, and the idempotent DC event
- * log).
+ * with supersession, and the idempotent DC event log).
  *
  * Integrity model:
  * - One non-removed case month per worker/work-month (partial unique index);
@@ -17,8 +16,9 @@
  * - Month selection is FULL-SET replace, validated in-transaction against
  *   coverage continuity and annual capacity (shared pure validator), so
  *   concurrent cases cannot over-allocate the same worker/month or year.
- * - Documents are never deleted; superseding marks them. Case notes are
- *   append-only; corrections are new notes linking the corrected one.
+ * - Documents are never deleted; superseding marks them. Case history lives
+ *   in the typed event log (bounce reasons ride the case_status_changed
+ *   payload) — the bespoke DC notes table was retired in migration 014.
  * - Every lifecycle write records a typed row in sitespecific_bao_dc_events
  *   keyed by a deterministic dedupe key, INSERT .. ON CONFLICT DO NOTHING
  *   RETURNING. Only the insert that CLAIMS the row schedules a bus emission
@@ -56,14 +56,12 @@ import {
   sitespecificBaoDcCaseMonths,
   sitespecificBaoDcDenialLetters,
   sitespecificBaoDcDocuments,
-  sitespecificBaoDcCaseNotes,
   sitespecificBaoDcEvents,
   BAO_DC_TERMINAL_CASE_STATUSES,
   BAO_DC_OPEN_CASE_STATUSES,
   type BaoDcAttestations,
   type BaoDcCase,
   type BaoDcCaseMonth,
-  type BaoDcCaseNote,
   type BaoDcCaseStatus,
   type BaoDcMonthStatus,
   type BaoDcDenialLetter,
@@ -89,13 +87,18 @@ const casesTable = sitespecificBaoDcCases;
 const monthsTable = sitespecificBaoDcCaseMonths;
 const lettersTable = sitespecificBaoDcDenialLetters;
 const documentsTable = sitespecificBaoDcDocuments;
-const notesTable = sitespecificBaoDcCaseNotes;
 const eventsTable = sitespecificBaoDcEvents;
 
 const TERMINAL: readonly string[] = BAO_DC_TERMINAL_CASE_STATUSES;
 const OPEN: readonly string[] = BAO_DC_OPEN_CASE_STATUSES;
 
 export interface OpenDcCaseInput {
+  /**
+   * Optional caller-supplied id (crypto.randomUUID()). Used by member intake
+   * to pre-resolve the file-storage path for the case before the row exists,
+   * so the bytes-then-rows upload pattern stays atomic per case id.
+   */
+  id?: string;
   workerId: string;
   openedYmd: string;
   qualifyingBasis: BaoDcQualifyingBasis;
@@ -226,14 +229,22 @@ export interface BaoDisabilityCreditStorage {
   /** Mark superseded (idempotent). Documents can never be deleted. */
   supersedeDocument(documentId: string, actorUserId: string): Promise<BaoDcDocument>;
 
-  // Append-only case notes ----------------------------------------------------
-  addCaseNote(input: {
-    caseId: string;
-    authorUserId: string;
-    body: string;
-    correctsNoteId?: string | null;
-  }): Promise<BaoDcCaseNote>;
-  listCaseNotes(caseId: string): Promise<BaoDcCaseNote[]>;
+  /**
+   * Open an EXTENSION case linked to an approved parent case. The parent
+   * must be `approved` and stays approved; the extension is a new draft case
+   * carrying the parent's qualifying basis, the required reason and the link
+   * in `data`, plus a durable `case_extension_requested` event on the parent.
+   * Duplicate-open-case confirmation applies as for openCase.
+   */
+  openCaseExtension(
+    parentCaseId: string,
+    input: {
+      reason: string;
+      actorUserId: string;
+      openedYmd?: string;
+      allowDuplicate?: boolean;
+    },
+  ): Promise<BaoDcCase>;
 
   // Event log ----------------------------------------------------------------
   listEventsForWorker(workerId: string): Promise<BaoDcEvent[]>;
@@ -570,6 +581,7 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
         const [created] = await getClient()
           .insert(casesTable)
           .values({
+            ...(input.id ? { id: input.id } : {}),
             workerId: input.workerId,
             status: "draft",
             openedYmd: input.openedYmd,
@@ -642,7 +654,13 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
             from: theCase.status,
             to,
             actorUserId: input.actorUserId,
-            ...(isTerminal ? { reason: input.reason!.trim(), terminalYmd: updated.terminalYmd } : {}),
+            // Non-terminal transitions may carry a reason too (e.g. bounce
+            // back to draft) — history lives in the event payload, not notes.
+            ...(isTerminal
+              ? { reason: input.reason!.trim(), terminalYmd: updated.terminalYmd }
+              : input.reason?.trim()
+                ? { reason: input.reason.trim() }
+                : {}),
           },
         });
         return updated;
@@ -666,6 +684,24 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
         if (!theCase) throw new Error("CASE_NOT_FOUND");
         if (TERMINAL.includes(theCase.status) || theCase.status === "approved") {
           throw new Error("CASE_NOT_EDITABLE");
+        }
+        // The manual "DC form on file" attestation can only be set while a
+        // CURRENT (non-superseded) document is classified as a DC form —
+        // upload alone never attests, and a bare flag can't fake the doc.
+        if (attestations.dcFormOnFile === true) {
+          const docRows = await client
+            .select({ id: documentsTable.id })
+            .from(documentsTable)
+            .where(
+              and(
+                eq(documentsTable.caseId, id),
+                eq(documentsTable.docType, "dc_form"),
+                isNull(documentsTable.supersededAt),
+              ),
+            );
+          if (docRows.length === 0) {
+            throw new Error("DC_FORM_ATTESTATION_REQUIRES_FORM");
+          }
         }
         const strip = ({ updatedAt, updatedByUserId, ...rest }: BaoDcAttestations) => rest;
         if (canonicalJson(strip(theCase.attestations ?? {})) === canonicalJson(strip(attestations))) {
@@ -1078,47 +1114,78 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
       });
     },
 
-    async addCaseNote(input: {
-      caseId: string;
-      authorUserId: string;
-      body: string;
-      correctsNoteId?: string | null;
-    }): Promise<BaoDcCaseNote> {
+    async openCaseExtension(
+      parentCaseId: string,
+      input: {
+        reason: string;
+        actorUserId: string;
+        openedYmd?: string;
+        allowDuplicate?: boolean;
+      },
+    ): Promise<BaoDcCase> {
       await requireTables(this);
-      if (!input.body || !input.body.trim()) {
-        throw new Error("NOTE_BODY_REQUIRED");
+      if (!input.reason || !input.reason.trim()) {
+        throw new Error("EXTENSION_REASON_REQUIRED");
       }
       return runInTransaction(async () => {
         const client = getClient();
-        if (input.correctsNoteId) {
-          const [corrected] = await client
-            .select()
-            .from(notesTable)
-            .where(eq(notesTable.id, input.correctsNoteId));
-          if (!corrected || corrected.caseId !== input.caseId) {
-            throw new Error("CORRECTED_NOTE_NOT_ON_CASE");
-          }
+        const [parent] = await client
+          .select()
+          .from(casesTable)
+          .where(eq(casesTable.id, parentCaseId))
+          .for("update");
+        if (!parent) throw new Error("CASE_NOT_FOUND");
+        await lockWorker(parent.workerId);
+        if (parent.status !== "approved") {
+          throw new Error("EXTENSION_PARENT_NOT_APPROVED");
         }
+        const open = await this.listOpenCasesForWorker(parent.workerId);
+        if (open.length > 0 && !input.allowDuplicate) {
+          throw new Error("DUPLICATE_OPEN_CASE");
+        }
+        const reason = input.reason.trim();
         const [created] = await client
-          .insert(notesTable)
+          .insert(casesTable)
           .values({
-            caseId: input.caseId,
-            authorUserId: input.authorUserId,
-            body: input.body,
-            correctsNoteId: input.correctsNoteId ?? null,
+            workerId: parent.workerId,
+            status: "draft",
+            openedYmd: input.openedYmd ?? new Date().toISOString().slice(0, 10),
+            // The extension inherits the parent's qualifying snapshot — the
+            // original qualification, not a recomputation, backs it.
+            qualifyingBasis: parent.qualifyingBasis,
+            intakeChannel: "msr",
+            createdByUserId: input.actorUserId,
+            data: { extensionOfCaseId: parent.id, extensionReason: reason },
           })
           .returning();
+        // The request is recorded against the PARENT case; the parent itself
+        // never leaves `approved`.
+        await recordAndEmitDcEvent({
+          eventType: "case_extension_requested",
+          workerId: parent.workerId,
+          caseId: parent.id,
+          dedupeKey: `case_extension_requested:${created.id}`,
+          payload: {
+            extensionCaseId: created.id,
+            reason,
+            actorUserId: input.actorUserId,
+          },
+        });
+        await recordAndEmitDcEvent({
+          eventType: "case_opened",
+          workerId: created.workerId,
+          caseId: created.id,
+          dedupeKey: `case_opened:${created.id}`,
+          payload: {
+            openedYmd: created.openedYmd,
+            conditions: parent.qualifyingBasis.conditions,
+            intakeChannel: created.intakeChannel,
+            duplicateConfirmed: open.length > 0,
+            extensionOfCaseId: parent.id,
+          },
+        });
         return created;
       });
-    },
-
-    async listCaseNotes(caseId: string): Promise<BaoDcCaseNote[]> {
-      await requireTables(this);
-      return getClient()
-        .select()
-        .from(notesTable)
-        .where(eq(notesTable.caseId, caseId))
-        .orderBy(asc(notesTable.createdAt), asc(notesTable.id));
     },
 
     async listEventsForWorker(workerId: string): Promise<BaoDcEvent[]> {
