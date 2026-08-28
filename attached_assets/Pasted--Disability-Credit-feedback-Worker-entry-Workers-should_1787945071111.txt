@@ -1,0 +1,73 @@
+## Disability Credit feedback
+
+- **Worker entry:** Workers should only be able to start a Disability Credit case when they have at least three months of FMLA recorded. Otherwise, direct them to contact the fund.
+- **Denial-letter exception:** Members should not self-upload denial letters. Fund staff should initiate an exception case when a member believes they should qualify despite not having three FMLA months. > there is no workflow for this currently; staff need to be able to initiate a case whenever **FMLA-eligible is not met**
+- **Workflow simplification:** Combine “Mark as Ready” and “Send to Queue” into one action.
+- **Approval queue:** A central reviewer should periodically review and approve prepared cases before coverage months arrive.
+- **Dashboard:** Rename “Active Grants” to a clearer label such as **Currently on Disability Credit**. Keep an active-case view, but simplify the FMLA-eligible display to a count/link rather than a truncated list.
+- **Denial letters on dashboard:** The dedicated denial-letters section may not be necessary.
+
+## Disability Credit Experience Spec
+
+1. Purpose
+
+Provide a controlled workflow for granting Disability Credit while keeping member self-service simple, staff preparation clear, and final approval centralized.
+
+2. Member experience
+
+- Show Disability Credit self-service only to workers with **3+ months of FMLA** in the rolling 12-month period.
+- Eligible workers can upload a Disability Credit form to create a case.
+- Ineligible workers cannot upload forms or denial letters.
+- Show an instruction: **“You are not currently eligible to submit a Disability Credit request. If you believe you should be eligible, please contact the Fund.”**
+
+3. Fund-initiated exception cases
+
+- Fund staff can create a Disability Credit case for an ineligible worker when supporting documentation, such as a denial letter, must be reviewed.
+- The exception pathway is staff-managed; it is not exposed as a separate member upload flow.
+
+4. Case preparation
+
+Staff can:
+
+- Review uploaded files.
+- Classify documents, including Disability Credit form, doctor’s note, employer accommodation letter, and denial letter.
+- Upload additional documentation.
+- Complete a readiness checklist:
+  - Disability Credit form received
+  - Doctor signature present
+  - Phone number present
+  - Doctor address present
+  - Date present
+- Select requested grant months.
+
+5. Submission and approval
+
+- Replace separate **Mark as Ready** and **Send to Queue** actions with one action: **Send for Approval**.
+- Sending for approval validates the readiness checklist and selected months.
+- Cases in the approval queue are reviewed by the designated approver.
+- Approver actions: **Approve** or **Deny**.
+- Approved cases move to **Currently on Disability Credit**.
+
+6. Credit rules
+
+- On approval, calculate Disability Credit according to the worker’s plan minimum.
+- If reported employer hours are below the minimum, add only the hours needed to reach the minimum.
+- If employer reporting is later corrected and provides sufficient hours:
+  - Remove previously granted Disability Credit hours as needed.
+  - Restore the affected Disability Credit month to the worker’s available balance.
+- Employer reporting remains the source for FMLA status; employers do not participate in DC approval or document review.
+
+7. Dashboard
+
+Display:
+
+- **FMLA Eligible:** count with link to the full list.
+- **Approval Queue:** cases awaiting final review.
+- **Currently on Disability Credit:** active approved cases.
+- **Annual Maximum Reached:** workers who have used their available Disability Credit months.
+
+Remove or defer:
+
+- Full FMLA-eligible member list on the dashboard.
+- Standalone denial-letter dashboard section.
+- “Cases with Upcoming Months” unless a clearer operational use is identified.
