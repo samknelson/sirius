@@ -132,6 +132,17 @@ export async function deleteMapping(entity: string, s1Id: number): Promise<void>
   `);
 }
 
+/** Bulk deleteMapping (batched orphan cleanup) — chunked IN-deletes. */
+export async function deleteMappings(entity: string, s1Ids: number[]): Promise<void> {
+  for (let i = 0; i < s1Ids.length; i += 500) {
+    const chunk = s1Ids.slice(i, i + 500);
+    await db.execute(sql`
+      DELETE FROM s1_staging.id_map
+       WHERE entity = ${entity} AND s1_id IN (${sql.join(chunk.map((n) => sql`${n}`), sql`, `)})
+    `);
+  }
+}
+
 /**
  * Record a mapping and return the WINNING s2_id. On conflict the existing
  * mapping wins — a caller that created an S2 row and lost the race must use

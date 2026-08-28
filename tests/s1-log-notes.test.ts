@@ -127,6 +127,31 @@ describe("S1 log-to-note classification", () => {
     });
   });
 
+  it("classifies whitespace/case variants of smf:notes raw as the immutable legacy population", () => {
+    // Must stay in lockstep with the loader's SQL immutable predicate
+    // (IMMUTABLE_PREDICATE_SQL in load-log-notes.ts): trim, lowercase,
+    // collapsed inner whitespace, first-array-element/{value} extraction.
+    for (const [category, type] of [
+      ["smf:notes", "raw"],
+      ["  SMF:Notes ", " Raw  "],
+      ["smf:notes", "RAW"],
+    ] as const) {
+      expect(classifyS1Log(category, type)).toMatchObject({ noteType: "Legacy Notes" });
+    }
+    expect(classifyS1Log("smf:notes", "cooked")).toBeNull();
+  });
+
+  it("keeps a created-but-unverified row retryable (mapping without fingerprint)", () => {
+    const fp = combineFingerprints([["source", contentHashOf({ nid: 1 })]]);
+    // putMappings stamps fingerprint NULL at insert; only a verified batch
+    // advances it — so a failed initial import is classified "changed" on
+    // the next run and re-attempted, never frozen behind the immutable skip.
+    expect(classifyRow({ stub: false, consumedFingerprint: null, logicVersion: 3 }, fp, 3, false)).toBe("changed");
+    expect(classifyRow({ stub: false, consumedFingerprint: fp, logicVersion: 3 }, fp, 3, false)).toBe("unchanged");
+    // Logic-version bump reopens even completed rows once re-fetched.
+    expect(classifyRow({ stub: false, consumedFingerprint: fp, logicVersion: 2 }, fp, 3, false)).toBe("changed");
+  });
+
   it("excludes every prohibited disposition family before workbook matching", () => {
     const excluded = [
       ["bulk:queue", "sent"],

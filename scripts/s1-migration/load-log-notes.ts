@@ -15,14 +15,15 @@ import {
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import {
   advanceFingerprints,
-  deleteMapping,
+  deleteMappings,
   ensureIdMap,
   getAllMappings,
   getMappings,
-  putMapping,
+  putMappings,
+  type MappingInfo,
 } from "./lib/idmap";
 import { ensureRawUserTables } from "./lib/staging";
-import { RejectLog, strOf, throttleStorageOpLogs, LOADER_PAGE_SIZE } from "./lib/loader-utils";
+import { RejectLog, chunk, strOf, throttleStorageOpLogs, LOADER_PAGE_SIZE } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
 import {
   buildLoaderResult,
@@ -248,14 +249,71 @@ type RawLog = {
   content_hash: string | null;
 };
 
+/**
+ * SQL mirror of `sourceValue(...)` + `norm(...)` for one staged field key:
+ * first array element, `{value}` unwrap, trim, empty→NULL. Only used by the
+ * immutable-skip predicate below, which additionally requires a COMPLETED
+ * mapping — a shape this mirror mis-reads simply flows through the ordinary
+ * JS classification path.
+ */
+function stagedFieldTextSql(key: string) {
+  return sql`
+    NULLIF(btrim(CASE jsonb_typeof(r.fields->${key})
+      WHEN 'array' THEN CASE WHEN jsonb_typeof(r.fields->${key}->0) = 'object'
+                             THEN r.fields->${key}->0->>'value'
+                             ELSE r.fields->${key}->>0 END
+      WHEN 'object' THEN r.fields->${key}->>'value'
+      ELSE r.fields->>${key}
+    END), '')`;
+}
+
+function normalizedSql(expr: ReturnType<typeof sql>) {
+  return sql`lower(regexp_replace(btrim(${expr}), '\\s+', ' ', 'g'))`;
+}
+
+/**
+ * The dominant `smf:notes` / `raw` population ("Legacy Notes") is immutable
+ * after its initial successful import: once such a row carries a completed
+ * (non-stub, fingerprint-stamped, current-logic-version) `s1_log_note`
+ * mapping, ordinary runs exclude it AT THE QUERY BOUNDARY — its JSON payload
+ * is never fetched, classified, resolved, hashed, verified, updated, or
+ * deleted again. Unmapped or failed initial imports (fingerprint still NULL)
+ * stay eligible for retry, and `--force-reconcile` disables the exclusion
+ * entirely (operator escape hatch, e.g. after a transform correction).
+ */
+const IMMUTABLE_PREDICATE_SQL = sql`(
+  ${normalizedSql(sql`COALESCE(${stagedFieldTextSql("field_sirius_log_category")}, ${stagedFieldTextSql("field_sirius_category")})`)} = 'smf:notes'
+  AND ${normalizedSql(sql`COALESCE(${stagedFieldTextSql("field_sirius_log_type")}, ${stagedFieldTextSql("field_sirius_type")})`)} = 'raw'
+)`;
+
+const COMPLETED_MAPPING_SQL = sql`EXISTS (
+  SELECT 1 FROM s1_staging.id_map m
+   WHERE m.entity = ${ID_MAP_ENTITY} AND m.s1_id = r.nid
+     AND m.stub = false AND m.consumed_fingerprint IS NOT NULL
+     AND m.logic_version = ${LOGIC_VERSION}
+)`;
+
+async function immutableSkippedCount(): Promise<number> {
+  if (FORCE_RECONCILE) return 0;
+  const result = await db.execute(sql`
+    SELECT count(*)::integer AS count
+      FROM s1_staging.records r
+     WHERE r.bundle = 'sirius_log' AND ${IMMUTABLE_PREDICATE_SQL} AND ${COMPLETED_MAPPING_SQL}
+  `);
+  return Number((result as unknown as { rows: Array<{ count: number | string }> }).rows[0]?.count ?? 0);
+}
+
 async function* pagedStagedLogs(): AsyncGenerator<StagedLog[]> {
+  const exclusion = FORCE_RECONCILE
+    ? sql``
+    : sql` AND NOT (${IMMUTABLE_PREDICATE_SQL} AND ${COMPLETED_MAPPING_SQL})`;
   let lastNid = -1;
   for (;;) {
     const result = await db.execute(sql`
-      SELECT nid, title, uid, created, fields, content_hash
-        FROM s1_staging.records
-       WHERE bundle = 'sirius_log' AND nid > ${lastNid}
-       ORDER BY nid LIMIT ${LOADER_PAGE_SIZE}
+      SELECT r.nid, r.title, r.uid, r.created, r.fields, r.content_hash
+        FROM s1_staging.records r
+       WHERE r.bundle = 'sirius_log' AND r.nid > ${lastNid}${exclusion}
+       ORDER BY r.nid LIMIT ${LOADER_PAGE_SIZE}
     `);
     const rows = (result as unknown as { rows: RawLog[] }).rows.map((row) => ({
       nid: Number(row.nid),
@@ -419,23 +477,60 @@ async function main() {
   if (MIGRATION_MODE) console.error("MIGRATION MODE: charge-plugin execution is suppressed for all writes in this run.");
   throttleStorageOpLogs();
   const options = await ensureNoteOptions();
-  const progress = makeProgressLogger(LOADER, await stagedLogCount(), { verb: "scanned" });
+  const stagedTotal = await stagedLogCount();
+  const immutableSkipped = await immutableSkippedCount();
+  const progress = makeProgressLogger(LOADER, stagedTotal - immutableSkipped, { verb: "scanned" });
   const rejects = new RejectLog();
   const summary = emptySummary();
   const report: Record<string, unknown> = {};
   const inScopeNids = new Set<number>();
-  const processedNids: number[] = [];
   const pendingAdvance: Array<{ s1Id: number; fingerprint: string }> = [];
   const resolutionCounts: Record<string, number> = {};
   const classificationCounts: Record<string, number> = {};
-  let stagedLogs = 0;
+  let stagedFetched = 0;
   let inScope = 0;
   let orphaned = 0;
   let fastPathSkips = 0;
+  let pages = 0;
+  let bulkWriteChunks = 0;
+  let verifyChunks = 0;
+  let verifyFailures = 0;
   const creators = await loadCreatorContext();
 
+  const BULK_WRITE_CHUNK = 400;
+  const verifyPage = async (
+    targets: Array<{ nid: number; s2Id: string; workerId: string; fingerprint: string }>,
+  ): Promise<void> => {
+    for (const batch of chunk(targets, 500)) {
+      verifyChunks++;
+      progress.phase("verify", batch.length, { cumulative: true });
+      const values = batch.map((t) => sql`(${t.nid}::bigint, ${t.s2Id}, ${t.workerId})`);
+      const result = await db.execute(sql`
+        SELECT v.nid FROM (VALUES ${sql.join(values, sql`, `)}) AS v(nid, note_id, worker_id)
+          JOIN notes n ON n.id = v.note_id
+         WHERE n.entity_type = 'worker' AND n.entity_id = v.worker_id
+           AND n.data->>'s1Loader' = ${LOADER}
+      `);
+      const verified = new Set(
+        (result as unknown as { rows: Array<{ nid: string | number }> }).rows.map((r) => Number(r.nid)),
+      );
+      for (const t of batch) {
+        if (rejects.hasAnyIn(t.nid, FATAL_REASONS)) continue;
+        if (verified.has(t.nid)) {
+          pendingAdvance.push({ s1Id: t.nid, fingerprint: t.fingerprint });
+        } else {
+          verifyFailures++;
+          rejects.add("update_failed", { reason: "verify_failed" }, t.nid);
+        }
+      }
+      progress.add(batch.length);
+      progress.phase(null);
+    }
+  };
+
   for await (const page of pagedStagedLogs()) {
-    stagedLogs += page.length;
+    pages++;
+    stagedFetched += page.length;
     const scoped = page.map((row) => ({ row, classification: classifyS1Log(
       sourceValue(row.fields, "field_sirius_log_category", "field_sirius_category"),
       sourceValue(row.fields, "field_sirius_log_type", "field_sirius_type"),
@@ -466,8 +561,14 @@ async function main() {
       ]);
       return { row, classification, handlerNids, resolution, creator, fingerprint };
     });
+    // ONE mapping lookup per page (covers orphan cleanup AND disposition).
+    const pageMappings = await getMappings(ID_MAP_ENTITY, classificationRows.map((item) => item.row.nid));
+    type WriteItem = (typeof classificationRows)[number] & { existing: MappingInfo | undefined };
+    const orphanDeletes: Array<{ nid: number; s2Id: string }> = [];
+    const verifyTargets: Array<{ nid: number; s2Id: string; workerId: string; fingerprint: string }> = [];
+    const writes: WriteItem[] = [];
     for (const item of classificationRows) {
-      const { row, classification, handlerNids, resolution, creator, fingerprint } = item;
+      const { row, classification, resolution, fingerprint } = item;
       inScope++;
       inScopeNids.add(row.nid);
       const typeKey = `${classification.noteType}:${classification.medium ?? "none"}`;
@@ -475,15 +576,10 @@ async function main() {
       resolutionCounts[resolution.outcome] = (resolutionCounts[resolution.outcome] ?? 0) + 1;
       if (!resolution.workerId) {
         orphaned++;
-        const existing = (await getMappings(ID_MAP_ENTITY, [row.nid])).get(row.nid);
+        const existing = pageMappings.get(row.nid);
         if (existing) {
-          if (DRY_RUN) {
-            summary.deleted++;
-          } else {
-            const deleted = await loaderScope(() => storage.notes.deleteForMigration(existing.s2Id, LOADER));
-            if (deleted === "deleted") summary.deleted++;
-            await deleteMapping(ID_MAP_ENTITY, row.nid);
-          }
+          if (DRY_RUN) summary.deleted++;
+          else orphanDeletes.push({ nid: row.nid, s2Id: existing.s2Id });
         }
         continue;
       }
@@ -491,102 +587,140 @@ async function main() {
         rejects.add("timestamp_missing", {}, row.nid);
         continue;
       }
-      const existing = (await getMappings(ID_MAP_ENTITY, [row.nid])).get(row.nid);
+      const existing = pageMappings.get(row.nid);
       const disposition = classifyRow(existing, fingerprint, LOGIC_VERSION, FORCE_RECONCILE);
       if (disposition === "unchanged") {
         fastPathSkips++;
         summary.unchanged++;
-        processedNids.push(row.nid);
-        pendingAdvance.push({ s1Id: row.nid, fingerprint });
+        verifyTargets.push({ nid: row.nid, s2Id: existing!.s2Id, workerId: resolution.workerId, fingerprint });
         continue;
       }
       if (DRY_RUN) {
         summary[disposition === "new" ? "created" : "updated"]++;
         continue;
       }
-      const text = noteText(row, creator);
-      const data = {
-        s1Loader: LOADER,
-        s1: {
-          nid: row.nid,
-          originalCategory: rawSourceValue(row.fields, "field_sirius_log_category", "field_sirius_category"),
-          originalType: rawSourceValue(row.fields, "field_sirius_log_type", "field_sirius_type"),
-          sourceTimestampEpoch: row.created,
-           sourceTitle: row.title,
-          normalizedCategory: classification.category,
-          normalizedType: classification.type,
-          handlerNids,
-           creatorUid: creator.s1Uid,
-           creatorDisplayName: creator.displayName,
-        },
-        resolution: {
-          sourceKind: resolution.sourceKind,
-          sourceId: resolution.sourceId,
-          s1ContactId: resolution.sourceKind === "contact" ? resolution.sourceId : null,
-          s1WorkerId: resolution.sourceKind === "worker" ? resolution.sourceId : null,
-           candidateWorkerIds: resolution.candidateWorkerIds ?? [],
-          contactId: resolution.contactId,
-          workerId: resolution.workerId,
-        },
-      };
-      try {
-        const saved = await loaderScope(() => storage.notes.reconcileForMigration({
-          noteId: existing?.s2Id,
-          loader: LOADER,
+      writes.push({ ...item, existing });
+    }
+
+    // Batched orphan cleanup (ownership-guarded set-based delete + mapping removal).
+    if (!DRY_RUN && orphanDeletes.length > 0) {
+      const result = await loaderScope(() => storage.notes.bulkDeleteForMigration(
+        orphanDeletes.map((o) => o.s2Id), LOADER,
+      ));
+      summary.deleted += result.deleted;
+      await deleteMappings(ID_MAP_ENTITY, orphanDeletes.map((o) => o.nid));
+    }
+
+    // Bounded bulk persistence: one transaction per chunk; a chunk-level
+    // failure rejects every row in it (fingerprints never advanced → retryable).
+    for (const writeChunk of chunk(writes, BULK_WRITE_CHUNK)) {
+      bulkWriteChunks++;
+      progress.phase("persist", writeChunk.length, { cumulative: true });
+      const payload = writeChunk.map((item) => {
+        const { row, classification, handlerNids, resolution, creator } = item;
+        const text = noteText(row, creator);
+        return {
+          ref: row.nid,
+          noteId: item.existing?.s2Id,
           note: {
             entityType: "worker",
             entityId: resolution.workerId!,
             typeId: options.noteTypeIds.get(classification.noteType)!,
             subject: text.subject,
             body: text.body,
-            data,
-            timestamp: new Date(row.created! * 1000),
-            userId: creator.s2UserId,
+            data: {
+              s1Loader: LOADER,
+              s1: {
+                nid: row.nid,
+                originalCategory: rawSourceValue(row.fields, "field_sirius_log_category", "field_sirius_category"),
+                originalType: rawSourceValue(row.fields, "field_sirius_log_type", "field_sirius_type"),
+                sourceTimestampEpoch: row.created,
+                sourceTitle: row.title,
+                normalizedCategory: classification.category,
+                normalizedType: classification.type,
+                handlerNids,
+                creatorUid: creator.s1Uid,
+                creatorDisplayName: creator.displayName,
+              },
+              resolution: {
+                sourceKind: resolution.sourceKind,
+                sourceId: resolution.sourceId,
+                s1ContactId: resolution.sourceKind === "contact" ? resolution.sourceId : null,
+                s1WorkerId: resolution.sourceKind === "worker" ? resolution.sourceId : null,
+                candidateWorkerIds: resolution.candidateWorkerIds ?? [],
+                contactId: resolution.contactId,
+                workerId: resolution.workerId,
+              },
+            },
+            timestamp: new Date(item.row.created! * 1000),
+            userId: item.creator.s2UserId,
           },
           tagIds: tagIdsFor(classification, options.tagIds),
+        };
+      });
+      try {
+        const { saved, failed } = await loaderScope(() => storage.notes.bulkReconcileForMigration({
+          loader: LOADER,
+          rows: payload,
         }));
-        if (!saved) {
-           rejects.add("update_failed", {}, row.nid);
-          continue;
+        const newMappings: Array<{ s1Id: number; s2Id: string; fingerprint: string | null }> = [];
+        for (const item of writeChunk) {
+          const nid = item.row.nid;
+          const failure = failed.get(nid);
+          if (failure) {
+            rejects.add(item.existing ? "update_failed" : "create_failed", { reason: failure }, nid);
+            continue;
+          }
+          const result = saved.get(nid);
+          if (!result) {
+            rejects.add(item.existing ? "update_failed" : "create_failed", { reason: "not_saved" }, nid);
+            continue;
+          }
+          if (item.existing) summary.updated++;
+          else {
+            // Fingerprint stays NULL until this row VERIFIES below — a failed
+            // initial import (incl. immutable smf:notes rows) keeps its
+            // mapping incomplete and stays eligible for retry.
+            newMappings.push({ s1Id: nid, s2Id: result.noteId, fingerprint: null });
+            summary.created++;
+          }
+          verifyTargets.push({ nid, s2Id: result.noteId, workerId: item.resolution.workerId!, fingerprint: item.fingerprint });
         }
-        if (existing) summary.updated++;
-        else {
-          await putMapping(ID_MAP_ENTITY, row.nid, saved.note.id, { stub: false, loader: LOADER, fingerprint, logicVersion: LOGIC_VERSION });
-          summary.created++;
+        if (newMappings.length > 0) {
+          await putMappings(ID_MAP_ENTITY, newMappings, { loader: LOADER, logicVersion: LOGIC_VERSION });
         }
-        processedNids.push(row.nid);
-        pendingAdvance.push({ s1Id: row.nid, fingerprint });
       } catch {
-         rejects.add(existing ? "update_failed" : "create_failed", {}, row.nid);
+        for (const item of writeChunk) {
+          rejects.add(item.existing ? "update_failed" : "create_failed", { reason: "chunk_failed" }, item.row.nid);
+        }
       }
+      progress.add(writeChunk.length);
+      progress.phase(null);
     }
+
+    // Batch verification BEFORE fingerprints advance: existence, ownership,
+    // and worker linkage checked set-based for every processed row.
+    if (!DRY_RUN && verifyTargets.length > 0) await verifyPage(verifyTargets);
     progress.add(page.length);
   }
 
-  progress.phase("verify", processedNids.length);
-  let verifyFailures = 0;
   if (!DRY_RUN) {
-    const mappings = await getMappings(ID_MAP_ENTITY, processedNids);
-    for (const nid of processedNids) {
-      progress.add(1);
-      const mapping = mappings.get(nid);
-      if (!mapping || rejects.hasAnyIn(nid, FATAL_REASONS)) continue;
-      const check = await db.execute(sql`
-        SELECT id FROM notes
-         WHERE id = ${mapping.s2Id} AND entity_type = 'worker'
-           AND data->>'s1Loader' = ${LOADER}
-      `);
-      if ((check as unknown as { rows: unknown[] }).rows.length !== 1) {
-        verifyFailures++;
-          rejects.add("update_failed", {}, nid);
-      }
-    }
-    await advanceFingerprints(ID_MAP_ENTITY, pendingAdvance.filter(({ s1Id }) => !rejects.hasAnyIn(s1Id, FATAL_REASONS)), LOGIC_VERSION);
+    await advanceFingerprints(
+      ID_MAP_ENTITY,
+      pendingAdvance.filter(({ s1Id }) => !rejects.hasAnyIn(s1Id, FATAL_REASONS)),
+      LOGIC_VERSION,
+    );
   }
 
   const sweep = await sweepDeletions({
     entity: ID_MAP_ENTITY,
     loaders: [LOADER],
+    // Completed immutable rows are excluded at the page-query boundary, so
+    // they never enter inScopeNids — the sourceSql leg marks every staged
+    // immutable row as still-current so query exclusion is never mistaken
+    // for source deletion (completed immutable mappings are permanently
+    // retained). A row REALLY deleted from staging matches neither leg.
+    sourceSql: sql`SELECT r.nid AS s1_id FROM s1_staging.records r WHERE r.bundle = 'sirius_log' AND ${IMMUTABLE_PREDICATE_SQL}`,
     sourceIds: inScopeNids,
     dryRun: DRY_RUN,
     policy: async (candidate: DeletionCandidate) => ({
@@ -598,10 +732,29 @@ async function main() {
   });
   summary.deleted += sweep.deleted;
   progress.stop();
-  report.stagedLogs = stagedLogs;
+  const elapsedSeconds = Math.max((Date.now() - startedAt.getTime()) / 1000, 0.001);
+  report.stagedLogs = stagedFetched + immutableSkipped;
+  report.stagedFetched = stagedFetched;
+  report.immutableSkipped = immutableSkipped;
   report.inScope = inScope;
   report.orphaned = orphaned;
   report.fastPathSkips = fastPathSkips;
+  report.batching = {
+    pageSize: LOADER_PAGE_SIZE,
+    pages,
+    bulkWriteChunks,
+    verifyChunks,
+    bulkWritePath: !DRY_RUN,
+  };
+  report.performance = {
+    elapsedSeconds: Math.round(elapsedSeconds * 10) / 10,
+    stagedRowsPerSecond: Math.round(((stagedFetched + immutableSkipped) / elapsedSeconds) * 10) / 10,
+    fetchedRowsPerSecond: Math.round((stagedFetched / elapsedSeconds) * 10) / 10,
+    phases: {
+      persist: progress.stats("persist"),
+      verify: progress.stats("verify"),
+    },
+  };
   report.classificationCounts = classificationCounts;
   report.resolutionCounts = resolutionCounts;
   report.sweep = { candidates: sweep.candidates, deleted: sweep.deleted, alreadyHandled: sweep.alreadyHandled };

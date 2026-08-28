@@ -45,6 +45,10 @@ async function main() {
     ["99939312", "Excluded raw SMF fixture", "smf", "importraw", "Excluded", [handler]],
     ["99939313", "Long body fixture", "Office Visit", "Walk In", "Long note", [handler]],
     ["99939314", "Multi value fixture", "Comment", "Public", "Multi part", [handler]],
+    // Immutable legacy population: after a successful first import these two
+    // must be excluded at the query boundary on reruns (immutableSkipped=2).
+    ["99939315", "Legacy notes fixture", "smf:notes", "raw", "Legacy raw note", [handler]],
+    ["99939316", "Legacy notes whitespace fixture", "  SMF:Notes ", " Raw  ", "Legacy raw note 2", [handler]],
   ] as const;
 
   for (const [nid, title, category, type, summary, handlers] of rows) {

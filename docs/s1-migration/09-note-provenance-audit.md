@@ -126,10 +126,17 @@ No reject allowance on the first run (RUNBOOK §5: `timestamp_missing` /
 stdout JSON (aggregates only by design) and paste it back.
 
 **OP-3 — rerun (idempotency proof).** Run the exact same command again.
-Expected: `created = 0, updated = 0, deleted = 0`, `unchanged` equal to the
-first run's `created + updated + unchanged`, identical rejects, sweep 0.
+Expected: `created = 0, updated = 0, deleted = 0`, and
+`unchanged + detail.immutableSkipped` equal to the first run's
+`created + updated + unchanged`, identical rejects, sweep 0.
+`detail.immutableSkipped` counts completed `smf:notes` / `raw` ("Legacy
+Notes") rows excluded at the staged-page query boundary — the loader never
+re-reads, re-hashes, or re-verifies them on ordinary runs, so the dominant
+population costs nothing on reruns. `unchanged` covers only the mutable
+classifications that were actually fetched and fingerprint-checked.
 Any `updated > 0` on an untouched staging snapshot is a fingerprint
-instability — paste back.
+instability — paste back. (`--force-reconcile` disables the immutable skip
+and re-reconciles everything; expect `immutableSkipped = 0` on such runs.)
 
 **OP-4 — target-DB query pack.** Run **N0–N8b** (§3) in the Neon SQL editor;
 paste back all outputs. If N4 shows `body_mismatch > 0`, also run **N9** ⚠
@@ -185,7 +192,9 @@ SELECT 'tag', g.id, g.name, g.description, g.data,
 ### N2 — recorded runs (create run + idempotent rerun)
 
 Gate: latest run `reject_gate = pass`, `verify = pass`; the rerun row shows
-`created/updated/deleted = 0` with `unchanged` = the create run's total.
+`created/updated/deleted = 0` with `unchanged + immutable_skipped` = the
+create run's total (completed `smf:notes`/`raw` rows are query-excluded on
+reruns and reported in `detail.immutableSkipped`, not `unchanged`).
 
 ```sql
 SELECT id, started_at,
@@ -193,6 +202,7 @@ SELECT id, started_at,
        report->'rejectGate'->>'status' AS reject_gate,
        report->'verify'->>'status'     AS verify,
        report->'detail'->>'stagedLogs' AS staged,
+       report->'detail'->>'immutableSkipped' AS immutable_skipped,
        report->'detail'->>'inScope'    AS in_scope,
        report->'detail'->>'orphaned'   AS orphaned,
        report->'detail'->'classificationCounts' AS classification_counts
@@ -613,7 +623,7 @@ WHERE p.type = 'sirius_log';
 |---|---|---|
 | Long/multi-value body parity, no content exposed | N4 (+N7, N9) | `body_mismatch = 0`, `long_notes_match = long_notes`, `unkeyed_object_rows = 0` |
 | Mapped creators → `notes.user_id`; unmapped keep UID/display-name | N5, N5c, N5b, M4 | all `*_bad = 0`, `no_provenance_at_all = 0`, `uid_invented = 0`, `uid_wrong_or_missing = 0` |
-| Rerun updates in place, no duplicate mappings | OP-3, N2, N3 | rerun `created/updated/deleted = 0`; `dup_note_targets = 0`; `id_mapped = loaded_notes` |
+| Rerun updates in place, no duplicate mappings | OP-3, N2, N3 | rerun `created/updated/deleted = 0` with `unchanged + immutableSkipped` = first-run total; `dup_note_targets = 0`; `id_mapped = loaded_notes` |
 | Aggregate mismatches + shape variants recorded | N6, N7, M1–M3 | census paste-backs folded into §7 below |
 
 ---
