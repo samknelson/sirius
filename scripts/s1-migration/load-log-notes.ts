@@ -272,6 +272,16 @@ async function* pagedStagedLogs(): AsyncGenerator<StagedLog[]> {
   }
 }
 
+async function stagedLogCount(): Promise<number> {
+  const result = await db.execute(sql`
+    SELECT count(*)::integer AS count
+      FROM s1_staging.records
+     WHERE bundle = 'sirius_log'
+  `);
+  const row = (result as unknown as { rows: Array<{ count: number | string }> }).rows[0];
+  return Number(row?.count ?? 0);
+}
+
 interface Resolution {
   workerId: string | null;
   contactId: string | null;
@@ -409,7 +419,7 @@ async function main() {
   if (MIGRATION_MODE) console.error("MIGRATION MODE: charge-plugin execution is suppressed for all writes in this run.");
   throttleStorageOpLogs();
   const options = await ensureNoteOptions();
-  const progress = makeProgressLogger(LOADER, 0);
+  const progress = makeProgressLogger(LOADER, await stagedLogCount());
   const rejects = new RejectLog();
   const summary = emptySummary();
   const report: Record<string, unknown> = {};
