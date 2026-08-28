@@ -419,7 +419,7 @@ async function main() {
   if (MIGRATION_MODE) console.error("MIGRATION MODE: charge-plugin execution is suppressed for all writes in this run.");
   throttleStorageOpLogs();
   const options = await ensureNoteOptions();
-  const progress = makeProgressLogger(LOADER, await stagedLogCount());
+  const progress = makeProgressLogger(LOADER, await stagedLogCount(), { verb: "scanned" });
   const rejects = new RejectLog();
   const summary = emptySummary();
   const report: Record<string, unknown> = {};
