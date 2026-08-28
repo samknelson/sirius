@@ -139,3 +139,10 @@ uri = "file://scripts/oneoffs/s1-drush-remove-stale-election-benefit-2457521.php
 type = "unspecified"
 title = "S1 Drush cleanup for stale benefit references"
 description = "Drupal 7 Drush script; dry-run by default, explicit --apply required. Uses node_save, preserves historical revisions, and rolls back on guard or post-check failure."
+
+[[outputs]]
+id = "JnfqYrd9pB6KMEJ4tOlID"
+uri = "file://attached_assets/s1-no-restage-log-notes-cloudshell.sh"
+type = "unspecified"
+title = "S1 no-restage log-notes ECS launcher"
+description = "CloudShell launcher for the production-profile sync fleet using the existing staging snapshot. It runs with --skip-stage and --keep-going, without --force-reconcile, and preserves the migration lock and app write fence."
