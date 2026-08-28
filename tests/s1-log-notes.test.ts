@@ -120,7 +120,11 @@ describe("S1 log-to-note classification", () => {
     expect(classifyS1Log("material", "material")?.noteType).toBe("Document Detail");
     expect(classifyS1Log("Email from Member", "Eligibility")?.medium).toBe("Email");
     expect(classifyS1Log("Letter", "Appeal Denial")?.medium).toBe("Letter");
-    expect(classifyS1Log("smf:notes", "raw")).toBeNull();
+    expect(classifyS1Log("smf:notes", "raw")).toMatchObject({
+      noteType: "Legacy Notes",
+      medium: null,
+      issues: [],
+    });
   });
 
   it("excludes every prohibited disposition family before workbook matching", () => {

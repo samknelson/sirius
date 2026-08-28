@@ -19,9 +19,13 @@ async function main() {
   await ensureStagingSchema();
   await ensureIdMap();
   const result = await db.execute(sql`
-    SELECT s1_id FROM s1_staging.id_map
-     WHERE entity = 'contact' AND stub = false
-     ORDER BY s1_id LIMIT 1
+    SELECT m.s1_id
+      FROM s1_staging.id_map m
+      JOIN workers w ON w.contact_id = m.s2_id
+     WHERE m.entity = 'contact' AND m.stub = false
+     GROUP BY m.s1_id
+    HAVING count(*) = 1
+     ORDER BY m.s1_id LIMIT 1
   `);
   const handler = Number((result as unknown as { rows: Array<{ s1_id: string | number }> }).rows[0]?.s1_id);
   if (!Number.isFinite(handler)) throw new Error("ABORTING: load contacts-workers before seeding log-note fixtures");
@@ -39,6 +43,8 @@ async function main() {
     ["99939310", "Excluded system email", "email", "sending", "Excluded", [handler]],
     ["99939311", "Excluded Twilio fixture", "twilio:conversation", "incoming_sms", "Excluded", [handler]],
     ["99939312", "Excluded raw SMF fixture", "smf", "importraw", "Excluded", [handler]],
+    ["99939313", "Long body fixture", "Office Visit", "Walk In", "Long note", [handler]],
+    ["99939314", "Multi value fixture", "Comment", "Public", "Multi part", [handler]],
   ] as const;
 
   for (const [nid, title, category, type, summary, handlers] of rows) {
@@ -46,7 +52,11 @@ async function main() {
       field_sirius_category: scalar(category),
       field_sirius_type: scalar(type),
       field_sirius_summary: scalar(summary),
-      field_sirius_notes: scalar(`fixture body ${nid}`),
+      field_sirius_notes: nid === "99939313"
+        ? scalar(`long fixture body ${nid} ${"lorem ipsum dolor sit amet ".repeat(200)}`)
+        : nid === "99939314"
+          ? [scalar(`fixture part one ${nid}`), scalar(`fixture part two ${nid}`), scalar(`fixture part three ${nid}`)]
+          : scalar(`fixture body ${nid}`),
     };
     if (handlers) fields.field_sirius_log_handler = handlers;
     const staged = {

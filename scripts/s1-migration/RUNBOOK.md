@@ -456,6 +456,12 @@ allow-list → drift 0): `docs/s1-migration/08-ledger-payment-reconciliation.md`
 — includes the validated debug-query kit (R/M series) and the expected
 mismatch-class census derived from recorded t19 rejects.
 
+Imported-note provenance audit (post row-13 sync: body parity for long/
+multi-value notes, creator provenance, rerun/no-duplicate-mapping gates,
+shape-variant census, and the seeded-option identity-adoption preflight the
+loader otherwise ABORTs on): `docs/s1-migration/09-note-provenance-audit.md`
+— validated verbatim N/M query kit, operator-run.
+
 ## 7. Failure & retry guidance
 
 - **Loaders are idempotent.** Every loader resolves `s1_staging.id_map` first and

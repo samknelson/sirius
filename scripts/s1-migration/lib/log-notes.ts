@@ -118,6 +118,11 @@ const m = (
  * This is deliberately an explicit allowlist rather than a family matcher.
  * The workbook has a few intentionally similar-looking exclusions (for
  * example system email beside the one approved member email).
+ *
+ * Approved workbook-to-S2 vocabulary translations:
+ * - "Internal Comment" becomes the S2 "Comment" note type.
+ * - "Legacy" becomes the S2 "Legacy Notes" note type.
+ * - The legacy "Dyntl" issue spelling is normalized to the "Dental" tag.
  */
 const APPROVED: Record<string, Mapping> = {
   ":manual\u0000comment": m("Comment"),
@@ -168,6 +173,7 @@ const APPROVED: Record<string, Mapping> = {
   "office visit\u0000dental insurance problems": m("Member Inbound", "In-Person", ["Dental"]),
   "onsite visit\u0000scheduled": m("Member Inbound", "In-Person"),
   "provider call\u0000enrollment": m("Provider Communication", "Call", ["Enrollment"]),
+  "smf:notes\u0000raw": m("Legacy Notes"),
   "visit\u0000office": m("Member Inbound", "In-Person"),
   "visit\u0000onsite": m("Member Inbound", "In-Person"),
   "visit\u0000comment": m("Member Inbound", "In-Person"),
@@ -182,7 +188,7 @@ function explicitlyExcluded(category: string | null, type: string | null): boole
   if (c.startsWith("bulk:") || c.startsWith("twilio:")) return true;
   if (c === "auditlog" || c === "election" || c.startsWith("trust:election_wizard") || c === "system email") return true;
   if (c === "letter" && (t === "draft" || t === "sent")) return true;
-  if (c === "smf" || c === "smf:notes") return true;
+  if (c === "smf") return true;
   if (c === "trust:wb:scan" || c === "news:view" || c === "fastload") return true;
   if (c === "sms" || c === "email" || c === "postal" || c === "voice" || c.includes("stop") || t === "stop") return true;
   return false;
