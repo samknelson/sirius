@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,23 +22,21 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
-import { NotebookPen, Pencil, Plus, Tag, Trash2 } from "lucide-react";
-import { format, parseISO, isValid } from "date-fns";
-import { Link } from "wouter";
+import { ChevronsDownUp, ChevronsUpDown, NotebookPen, Plus } from "lucide-react";
+import NoteCard, { type NoteRow } from "./NoteCard";
+import {
+  collapseAll,
+  expandAll,
+  initialNotesDisplayState,
+  isNoteExpanded,
+  toggleNote,
+} from "./note-display";
 
 interface NoteTypeOption {
   id: string;
   name: string;
   description: string | null;
   data: { entityTypes?: string[] } | null;
-}
-
-interface NoteTag {
-  id: string;
-  name: string;
-  tagTypeId: string;
-  tagTypeName: string | null;
-  tagTypeSequence: number | null;
 }
 
 interface NoteTagOption {
@@ -55,32 +52,11 @@ interface NoteTagTypeOption {
   sequence: number;
 }
 
-interface NoteRow {
-  id: string;
-  entityType: string;
-  entityId: string;
-  typeId: string;
-  subject: string;
-  body: string | null;
-  timestamp: string;
-  userId: string | null;
-  typeName: string | null;
-  authorName: string | null;
-  /** Present only on BAO deployments (sitespecific.bao enabled). */
-  tags?: NoteTag[];
-  caseId?: string | null;
-}
-
 interface NotesPanelProps {
   /** Registered note-able record type, e.g. "worker". */
   entityType: string;
   /** Id of the record the notes hang off. */
   entityId: string;
-}
-
-function formatTimestamp(value: string): string {
-  const parsed = parseISO(value);
-  return isValid(parsed) ? format(parsed, "MMM d, yyyy h:mm a") : value;
 }
 
 /**
@@ -103,6 +79,9 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
   const [formSubject, setFormSubject] = useState("");
   const [formBody, setFormBody] = useState("");
   const [formTagIds, setFormTagIds] = useState<string[]>([]);
+  // Body display state: full text by default; Collapse/Expand all reset every
+  // note, later per-note toggles override just that note. Never persisted.
+  const [displayState, setDisplayState] = useState(initialNotesDisplayState);
 
   const notesQueryKey = ["/api/notes", entityType, entityId];
 
@@ -303,73 +282,38 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
             )
           ) : (
             <div className="space-y-3">
-              {notes.map((note) => (
-                <div
-                  key={note.id}
-                  className="rounded-md border p-4 space-y-2"
-                  data-testid={`card-note-${note.id}`}
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDisplayState(collapseAll())}
+                  data-testid="button-collapse-all-notes"
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" data-testid={`badge-note-type-${note.id}`}>
-                          {note.typeName ?? "Unknown type"}
-                        </Badge>
-                        <span className="font-medium" data-testid={`text-note-subject-${note.id}`}>
-                          {note.subject}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground" data-testid={`text-note-meta-${note.id}`}>
-                        {formatTimestamp(note.timestamp)}
-                        {note.authorName ? ` · ${note.authorName}` : ""}
-                      </p>
-                    </div>
-                    <div className="flex gap-1">
-                      {tagsEnabled && (
-                        note.caseId ? (
-                          <Link href={`/bao/cases/${note.caseId}`}>
-                            <Button variant="outline" size="sm" data-testid={`button-view-case-note-${note.id}`}>View Case</Button>
-                          </Link>
-                        ) : (
-                          <Link href={`/bao/cases/new?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}&noteId=${encodeURIComponent(note.id)}`}>
-                            <Button variant="outline" size="sm" data-testid={`button-create-case-note-${note.id}`}>Create Case</Button>
-                          </Link>
-                        )
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => openEditDialog(note)}
-                        data-testid={`button-edit-note-${note.id}`}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setDeletingNote(note)}
-                        data-testid={`button-delete-note-${note.id}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                  {note.body && (
-                    <p className="text-sm whitespace-pre-wrap" data-testid={`text-note-body-${note.id}`}>
-                      {note.body}
-                    </p>
-                  )}
-                  {tagsEnabled && (note.tags?.length ?? 0) > 0 && (
-                    <div className="flex flex-wrap items-center gap-1.5" data-testid={`tags-note-${note.id}`}>
-                      <Tag className="h-3.5 w-3.5 text-muted-foreground" />
-                      {note.tags!.map((tag) => (
-                        <Badge key={tag.id} variant="outline" data-testid={`badge-note-tag-${note.id}-${tag.id}`}>
-                          {tag.tagTypeName ? `${tag.tagTypeName}: ${tag.name}` : tag.name}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                  <ChevronsDownUp className="h-4 w-4 mr-2" />
+                  Collapse all
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDisplayState(expandAll())}
+                  data-testid="button-expand-all-notes"
+                >
+                  <ChevronsUpDown className="h-4 w-4 mr-2" />
+                  Expand all
+                </Button>
+              </div>
+              {notes.map((note) => (
+                <NoteCard
+                  key={note.id}
+                  note={note}
+                  tagsEnabled={tagsEnabled}
+                  entityType={entityType}
+                  entityId={entityId}
+                  expanded={isNoteExpanded(displayState, note.id)}
+                  onToggleExpanded={() => setDisplayState((prev) => toggleNote(prev, note.id))}
+                  onEdit={() => openEditDialog(note)}
+                  onDelete={() => setDeletingNote(note)}
+                />
               ))}
             </div>
           )}
