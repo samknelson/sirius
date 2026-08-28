@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DcDocumentsCard } from "./DcDocumentsCard";
 import { DcStatusBadge, formatYmd } from "./dc-shared";
+import { formatYmdMonth } from "@shared/utils/date";
 import type { BaoDcCase, BaoDcCaseMonth } from "@shared/schema";
 
 type Bundle = {
@@ -45,7 +46,7 @@ export function DcMemberCasePanel({ caseId }: { caseId: string }) {
           </CardTitle>
           <CardDescription>
             {activeMonths.length > 0
-              ? `Months: ${activeMonths.map((m) => formatYmd(m.workMonthYmd).slice(0, 7)).join(", ")}`
+              ? `Months: ${activeMonths.map((m) => formatYmdMonth(m.workMonthYmd)).join(", ")}`
               : "No months selected yet — a member service representative selects months."}
           </CardDescription>
         </CardHeader>

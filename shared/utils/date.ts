@@ -117,6 +117,19 @@ function getDayOfWeekFromYmd(year: number, month: number, day: number): number {
   return ((h + 6) % 7);
 }
 
+/**
+ * Format a first-of-month (or any) Ymd as a complete human-readable month
+ * label, e.g. "2026-02-01" → "February 2026". Falls back to the raw input
+ * when it is not a valid Ymd.
+ */
+export function formatYmdMonth(ymd: Ymd): string {
+  if (!isValidYmd(ymd)) return ymd;
+  const [year, month] = ymd.split('-').map(Number);
+  const months = ['January', 'February', 'March', 'April', 'May', 'June',
+                  'July', 'August', 'September', 'October', 'November', 'December'];
+  return `${months[month - 1]} ${year}`;
+}
+
 export function formatYmd(ymd: Ymd, formatStr: 'long' | 'short' | 'weekday-long' | 'weekday-short' = 'long'): string {
   if (!isValidYmd(ymd)) return ymd;
   
