@@ -4,9 +4,11 @@
  * sweep deleted), t20-hours stale-key cleanup via the s1_staging.hours_keys
  * sidecar, and a 0-drift verify-balance-parity run at the end.
  *
- * Phase order mirrors the production sync order: PAYMENTS before LEDGER so
- * AR payment references resolve against a converged id_map (t19 → t18), then
- * HOURS, then PARITY.
+ * Phase order mirrors the production sync order (Task 414): PAYMENTS, then
+ * HOURS, then LEDGER — payment references resolve against a converged t19
+ * id_map, and pay-period references resolve against the t20-maintained
+ * id_map `payperiod` crosswalk (nid → worker_hours.id). Then CASCADE,
+ * REPAIR (one-time repair-hour-links.ts idempotence), and PARITY.
  *
  * Dev-regen fallout this smoke deliberately heals on first run (see
  * memory: s1-regen-idmap-staleness): id_map `payment` rows carry RETIRED
@@ -26,7 +28,7 @@
  * still-staged AR rows instead of fast-skipping them as unchanged.
  *
  * Usage: npx tsx scripts/s1-migration/dev/smoke-money-sync.ts \
- *          [--phase payments|ledger|cascade|hours|rerun|parity]
+ *          [--phase payments|hours|ledger|cascade|repair|rerun|parity]
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync, unlinkSync, existsSync } from "node:fs";
@@ -519,10 +521,66 @@ async function phasePayments(): Promise<void> {
 // ---------------------------------------------------------------------------
 // Phase: ledger (t18)
 // ---------------------------------------------------------------------------
+// Synthetic ledger_id for the seeded payperiod-referencing AR fake (Task
+// 414): dev staging carries no AR rows whose reference targets a payperiod,
+// so the hour-resolution and repair wet paths would silently skip. Seeded in
+// phaseLedger, cleaned up (staged row deleted + swept) at the end of
+// phaseRepair; the row is consistent on both sides so parity stays 0-drift
+// even when phases run separately.
+const PP_FAKE_LEDGER_ID = 990000414;
+
+async function seedPayperiodArFake(): Promise<boolean> {
+  const tmpl = rowsOf(await db.execute(sql`
+    SELECT a.ledger_account, a.ledger_participant
+      FROM s1_staging.raw_ledger_ar a
+     WHERE lower(trim(coalesce(a.ledger_status,''))) = 'cleared'
+       AND a.ledger_account IS NOT NULL AND a.ledger_participant IS NOT NULL
+       AND a.ledger_id <> ${PP_FAKE_LEDGER_ID}
+     ORDER BY a.ledger_id LIMIT 1
+  `))[0];
+  const pp = rowsOf(await db.execute(sql`
+    SELECT m.s1_id FROM s1_staging.id_map m
+      JOIN s1_staging.records r ON r.nid = m.s1_id AND r.bundle = 'sirius_payperiod'
+     WHERE m.entity = 'payperiod' ORDER BY m.s1_id LIMIT 1
+  `))[0];
+  if (!tmpl || !pp) return false;
+  await upsertRawLedger([{
+    ledgerId: PP_FAKE_LEDGER_ID,
+    amount: "12.34",
+    status: "Cleared",
+    account: Number(tmpl.ledger_account),
+    participant: Number(tmpl.ledger_participant),
+    reference: Number(pp.s1_id),
+    ts: 1700000000,
+    memo: "smoke payperiod-ref fake (Task 414)",
+    key: null,
+    json: null,
+    contentHash: null,
+  }]);
+  return true;
+}
+
+async function removePayperiodArFake(): Promise<void> {
+  const staged = rowsOf(await db.execute(sql`
+    SELECT 1 FROM s1_staging.raw_ledger_ar WHERE ledger_id = ${PP_FAKE_LEDGER_ID}
+  `)).length > 0;
+  if (!staged) return;
+  await db.execute(sql`DELETE FROM s1_staging.raw_ledger_ar WHERE ledger_id = ${PP_FAKE_LEDGER_ID}`);
+  const r = await runLoader(T18, T18_FLAGS); // sweep removes the S2 row + mapping
+  check("rpr cleanup: t18 sweep of the seeded payperiod fake exits 0", r.code === 0);
+  const left = rowsOf(await db.execute(sql`
+    SELECT count(*)::int AS n FROM ledger WHERE charge_plugin_key = ${"ar-" + PP_FAKE_LEDGER_ID}
+  `))[0];
+  check("rpr cleanup: seeded fake swept from S2", Number(left.n) === 0, `left=${left.n}`);
+}
+
 async function phaseLedger(): Promise<void> {
   console.log("== phase: ledger (t18 reconcile) ==");
   // hash backfill: dev raw AR rows were staged before the sync upgrade
   await upsertRawLedger(await loadRawLedger());
+  // seed the payperiod-referencing AR fake so the hour-resolution path runs
+  const seeded = await seedPayperiodArFake();
+  if (!seeded) console.log("  · could not seed payperiod AR fake (no template/crosswalk row) — hour-link checks will skip");
   const nulls = rowsOf(await db.execute(sql`SELECT count(*) FILTER (WHERE content_hash IS NULL)::int AS n FROM s1_staging.raw_ledger_ar`))[0];
   check("ldg prep: AR content hashes backfilled", Number(nulls.n) === 0, `nullHashes=${nulls.n}`);
 
@@ -542,6 +600,94 @@ async function phaseLedger(): Promise<void> {
   // t19-before-t18 ordering proof: allocation rows resolve payment references
   const refTypes = (r1.result.detail.referenceTypes ?? {}) as Record<string, number>;
   check("ldg run1: payment references resolved", Number(refTypes.payment ?? 0) > 0, JSON.stringify(refTypes));
+  // t20-before-t18 ordering proof (Task 414): AR rows referencing staged
+  // payperiods must resolve through the crosswalk as referenceType 'hour'.
+  // Conditional — dev staging may carry no payperiod-referencing AR rows.
+  const ppRefs = rowsOf(await db.execute(sql`
+    SELECT count(*)::int AS n
+      FROM s1_staging.raw_ledger_ar a
+      JOIN s1_staging.records r ON r.nid = a.ledger_reference AND r.bundle = 'sirius_payperiod'
+      JOIN s1_staging.id_map m ON m.entity = 'payperiod' AND m.s1_id = a.ledger_reference
+     WHERE lower(trim(coalesce(a.ledger_status,''))) = 'cleared'
+  `))[0];
+  if (Number(ppRefs.n) > 0) {
+    check("ldg run1: pay-period references resolved via crosswalk", Number(refTypes.hour ?? 0) > 0, JSON.stringify({ refTypes, crosswalkResolvable: ppRefs.n }));
+    const linked = rowsOf(await db.execute(sql`
+      SELECT count(*)::int AS n FROM ledger
+       WHERE charge_plugin = 's1-import' AND reference_type = 'hour'
+    `))[0];
+    check("ldg run1: linked s1-import hour rows exist", Number(linked.n) > 0, `linked=${linked.n}`);
+
+    // ---- drifted hour-link heal (Task 414): a payperiod retargeted or
+    // deleted in S1 changes the crosswalk WITHOUT changing the AR row's
+    // source content, so t18 must re-check linked rows against the current
+    // crosswalk each run (refHeal.hourDrift) instead of fast-skipping them.
+    // The crosswalk mutations below are exactly what a t20 run performs on a
+    // retarget (OVERWRITE repoint) / S1 delete (mapping retirement) — the
+    // t20 side of those transitions is asserted in the hours phase.
+    const fakeKey = `ar-${PP_FAKE_LEDGER_ID}`;
+    const fakeRow = rowsOf(await db.execute(sql`
+      SELECT reference_id, (data->>'s1ReferenceNid')::bigint AS nid FROM ledger WHERE charge_plugin_key = ${fakeKey}
+    `))[0];
+    if (fakeRow) {
+      const otherHours = rowsOf(await db.execute(sql`
+        SELECT id FROM worker_hours WHERE id <> ${fakeRow.reference_id} LIMIT 1
+      `))[0];
+      const importedBefore = rowsOf(await db.execute(sql`SELECT count(*)::int AS n FROM ledger WHERE charge_plugin = 's1-import'`))[0];
+
+      // (a) repoint: crosswalk now targets a different hours row → t18 must follow
+      await db.execute(sql`
+        UPDATE s1_staging.id_map SET s2_id = ${otherHours.id} WHERE entity = 'payperiod' AND s1_id = ${fakeRow.nid}
+      `);
+      const rRepoint = await runLoader(T18, T18_FLAGS);
+      check("ldg drift: repoint run exit 0", rRepoint.code === 0);
+      check(
+        "ldg drift: refHeal reports the drifted hour link",
+        Number((rRepoint.result?.detail?.refHeal as any)?.hourDrift ?? 0) >= 1,
+        JSON.stringify(rRepoint.result?.detail?.refHeal),
+      );
+      const afterRepoint = rowsOf(await db.execute(sql`SELECT reference_type, reference_id FROM ledger WHERE charge_plugin_key = ${fakeKey}`))[0];
+      check(
+        "ldg drift: ledger reference follows the repointed crosswalk",
+        afterRepoint.reference_type === "hour" && afterRepoint.reference_id === otherHours.id,
+        JSON.stringify(afterRepoint),
+      );
+
+      // (b) retire: mapping deleted (payperiod gone in S1) → t18 must degrade
+      await db.execute(sql`DELETE FROM s1_staging.id_map WHERE entity = 'payperiod' AND s1_id = ${fakeRow.nid}`);
+      const rRetire = await runLoader(T18, T18_FLAGS);
+      check("ldg drift: retire run exit 0", rRetire.code === 0);
+      const afterRetire = rowsOf(await db.execute(sql`SELECT reference_type, reference_id FROM ledger WHERE charge_plugin_key = ${fakeKey}`))[0];
+      check(
+        "ldg drift: retired mapping degrades the link to s1-unknown",
+        afterRetire.reference_type === "s1-unknown" && afterRetire.reference_id === String(fakeRow.nid),
+        JSON.stringify(afterRetire),
+      );
+
+      // (c) restore: mapping back → the existing s1-unknown heal relinks it
+      await db.execute(sql`
+        INSERT INTO s1_staging.id_map (entity, s1_id, s2_id, stub, loader, last_synced_at)
+        VALUES ('payperiod', ${fakeRow.nid}, ${fakeRow.reference_id}, false, 'load-hours', now())
+        ON CONFLICT (entity, s1_id) DO UPDATE SET s2_id = EXCLUDED.s2_id, last_synced_at = now()
+      `);
+      const rRestore = await runLoader(T18, T18_FLAGS);
+      check("ldg drift: restore run exit 0", rRestore.code === 0);
+      const afterRestore = rowsOf(await db.execute(sql`SELECT reference_type, reference_id FROM ledger WHERE charge_plugin_key = ${fakeKey}`))[0];
+      check(
+        "ldg drift: restored mapping relinks to the original hours row",
+        afterRestore.reference_type === "hour" && afterRestore.reference_id === fakeRow.reference_id,
+        JSON.stringify(afterRestore),
+      );
+      // throughout: the imported fact stayed a single s1-import row — no
+      // duplicate charge state was created by any of the three runs
+      const importedAfter = rowsOf(await db.execute(sql`SELECT count(*)::int AS n FROM ledger WHERE charge_plugin = 's1-import'`))[0];
+      check("ldg drift: no duplicate imported/billing rows created", Number(importedAfter.n) === Number(importedBefore.n), `before=${importedBefore.n} after=${importedAfter.n}`);
+    } else {
+      console.log("  · seeded payperiod fake not present — drift checks skipped");
+    }
+  } else {
+    console.log("  · no crosswalk-resolvable payperiod AR references in dev staging — hour-link checks skipped");
+  }
 
   // run2: all-unchanged fast path
   const r2 = await runLoader(T18, T18_FLAGS);
@@ -803,6 +949,38 @@ async function phaseHours(): Promise<void> {
     JSON.stringify(d1.phaseStats),
   );
 
+  // ---- payperiod crosswalk (Task 414): every written month must be backed
+  // by nid → worker_hours.id mappings, and every mapping must point at a
+  // live worker_hours row (many nids per row for multi-payperiod months). ----
+  check(
+    "hrs run1: crosswalk counters reported",
+    d1.payperiodCrosswalk != null && Number(d1.payperiodCrosswalk.mapped) > 0,
+    JSON.stringify(d1.payperiodCrosswalk),
+  );
+  const xwalk = rowsOf(await db.execute(sql`
+    SELECT count(*)::int AS total,
+           count(*) FILTER (WHERE wh.id IS NULL)::int AS dangling,
+           count(DISTINCT m.s2_id)::int AS distinct_rows
+      FROM s1_staging.id_map m
+      LEFT JOIN worker_hours wh ON wh.id = m.s2_id
+     WHERE m.entity = 'payperiod'
+  `))[0];
+  check("hrs run1: crosswalk populated", Number(xwalk.total) > 0, `total=${xwalk.total}`);
+  check("hrs run1: crosswalk has no dangling targets", Number(xwalk.dangling) === 0, `dangling=${xwalk.dangling}`);
+  // multi-payperiod month: all contributing nids share ONE hours row
+  const multi = (await payperiodGroups()).find((g) => g.nids.length > 1);
+  if (multi) {
+    const m = await getMappings("payperiod", multi.nids);
+    const targets = new Set([...m.values()].map((v) => v.s2Id));
+    check(
+      "hrs run1: multi-payperiod month maps all nids to one hours row",
+      m.size === multi.nids.length && targets.size === 1,
+      `nids=${multi.nids.length} mapped=${m.size} targets=${targets.size}`,
+    );
+  } else {
+    console.log("  · no multi-payperiod month in dev staging — multi-nid check skipped");
+  }
+
   // pick a single-payperiod group whose worker+employer resolve
   const groups = await payperiodGroups();
   const singles = groups.filter((g) => g.nids.length === 1);
@@ -828,13 +1006,17 @@ async function phaseHours(): Promise<void> {
     check("hrs run2: deleted=1", r2.result!.summary.deleted === 1, JSON.stringify(r2.result!.summary));
     check("hrs run2: S2 hours row gone", (await s2HoursRow(target.workerId, target.employerId, target.year, target.month)) === null);
     check("hrs run2: sidecar key gone", !(await hoursKeyExists(target.workerId, target.employerId, target.year, target.month)));
+    check("hrs run2: crosswalk mapping retired", !(await getMappings("payperiod", [ppNid])).has(ppNid));
   } finally {
     await upsertRecords([saved]);
   }
   const r3 = await runLoader(T20, T20_FLAGS);
   check("hrs run3 (restore): exit 0", r3.code === 0);
-  check("hrs run3: S2 hours row back", (await s2HoursRow(target.workerId, target.employerId, target.year, target.month)) !== null);
+  const restoredRow = await s2HoursRow(target.workerId, target.employerId, target.year, target.month);
+  check("hrs run3: S2 hours row back", restoredRow !== null);
   check("hrs run3: sidecar key back", await hoursKeyExists(target.workerId, target.employerId, target.year, target.month));
+  const xw3 = (await getMappings("payperiod", [ppNid])).get(ppNid);
+  check("hrs run3: crosswalk mapping back and pointing at the restored row", xw3 != null && restoredRow != null && xw3.s2Id === (restoredRow as any).id, JSON.stringify({ xw: xw3?.s2Id }));
 
   // month retarget (payperiod MOVED): shift date_start to a month with no
   // other payperiod for the same (worker, employer) — old month row must be
@@ -855,7 +1037,10 @@ async function phaseHours(): Promise<void> {
     check("hrs run4 (month retarget): exit 0", r4.code === 0);
     check("hrs run4: deleted=1 (old month)", r4.result!.summary.deleted === 1, JSON.stringify(r4.result!.summary));
     check("hrs run4: old month row gone", (await s2HoursRow(target.workerId, target.employerId, target.year, target.month)) === null);
-    check("hrs run4: new month row exists", (await s2HoursRow(target.workerId, target.employerId, mv.year, mv.month)) !== null);
+    const movedRow = await s2HoursRow(target.workerId, target.employerId, mv.year, mv.month);
+    check("hrs run4: new month row exists", movedRow !== null);
+    const xw4 = (await getMappings("payperiod", [ppNid])).get(ppNid);
+    check("hrs run4: crosswalk repointed to the moved month row", xw4 != null && movedRow != null && xw4.s2Id === movedRow.id, JSON.stringify({ xw: xw4?.s2Id, moved: movedRow?.id }));
   } finally {
     await upsertRecords([saved]);
   }
@@ -960,6 +1145,80 @@ async function phaseHours(): Promise<void> {
   check("hrs verify-fail heal: exit 0", rFix.code === 0);
   const healed = await s2HoursRow(target.workerId, target.employerId, target.year, target.month);
   check("hrs verify-fail heal: perturbed hours reasserted", healed != null && Math.abs(healed.hours - trueHours) < 1e-9, JSON.stringify(healed));
+}
+
+// ---------------------------------------------------------------------------
+// Phase: repair (one-time repair-hour-links.ts — Task 414). Degrades one
+// linked s1-import row back to 's1-unknown', then proves: dry run reports the
+// candidate without writing, wet run relinks it, and a second wet run is a
+// no-op (alreadyLinked). Duplicate-charge reconciliation math is covered by
+// the vitest suite (tests/sitespecific/bao-hourly-imported-base.test.ts);
+// here we only assert the command runs clean and moves no money.
+// ---------------------------------------------------------------------------
+async function phaseRepair(): Promise<void> {
+  console.log("== phase: repair (repair-hour-links one-time command) ==");
+  const runRepair = (wet: boolean) => {
+    const proc = spawnSync(
+      "npx",
+      ["tsx", "scripts/s1-migration/repair-hour-links.ts", ...(wet ? ["--wet"] : [])],
+      { encoding: "utf8", timeout: 600_000 },
+    );
+    const m = (proc.stdout ?? "").match(/^REPORT (\{.*\})$/m);
+    return { code: proc.status, report: m ? JSON.parse(m[1]) : null, out: proc.stdout ?? "" };
+  };
+
+  const candidate = rowsOf(await db.execute(sql`
+    SELECT l.id, l.reference_id
+      FROM ledger l
+      JOIN s1_staging.id_map m ON m.entity = 'payperiod' AND m.s1_id = (l.data->>'s1ReferenceNid')::bigint
+     WHERE l.charge_plugin = 's1-import' AND l.reference_type = 'hour'
+     ORDER BY l.charge_plugin_key LIMIT 1
+  `))[0];
+  if (!candidate) {
+    console.log("  · no linked s1-import hour rows in dev — running dry-run smoke only");
+    const dry = runRepair(false);
+    check("rpr dry (no candidates): exit 0", dry.code === 0, dry.out.slice(-500));
+    check("rpr dry: report emitted", dry.report != null);
+    await removePayperiodArFake();
+    return;
+  }
+
+  const before = await moneySnapshot();
+  // degrade: simulate a row imported before the crosswalk existed
+  await db.execute(sql`UPDATE ledger SET reference_type = 's1-unknown', reference_id = data->>'s1ReferenceNid' WHERE id = ${candidate.id}`);
+  try {
+    const dry = runRepair(false);
+    check("rpr dry: exit 0", dry.code === 0, dry.out.slice(-500));
+    check("rpr dry: reports the degraded candidate as linkable", dry.report?.link?.linked === 1, JSON.stringify(dry.report?.link));
+    const stillDegraded = rowsOf(await db.execute(sql`SELECT reference_type FROM ledger WHERE id = ${candidate.id}`))[0];
+    check("rpr dry: wrote nothing", stillDegraded.reference_type === "s1-unknown");
+
+    const wet = runRepair(true);
+    check("rpr wet: exit 0", wet.code === 0, wet.out.slice(-500));
+    check("rpr wet: linked=1", wet.report?.link?.linked === 1, JSON.stringify(wet.report?.link));
+    const relinked = rowsOf(await db.execute(sql`SELECT reference_type, reference_id FROM ledger WHERE id = ${candidate.id}`))[0];
+    check(
+      "rpr wet: row relinked to the SAME hours row",
+      relinked.reference_type === "hour" && relinked.reference_id === candidate.reference_id,
+      JSON.stringify(relinked),
+    );
+
+    const rerun = runRepair(true);
+    check("rpr rerun: exit 0", rerun.code === 0, rerun.out.slice(-500));
+    check("rpr rerun: idempotent (linked=0, candidate now alreadyLinked)", rerun.report?.link?.linked === 0 && rerun.report?.link?.alreadyLinked >= 1, JSON.stringify(rerun.report?.link));
+    check("rpr rerun: no money moved", rerun.report?.duplicates?.adjustmentsCreated === 0, JSON.stringify(rerun.report?.duplicates));
+
+    const after = await moneySnapshot();
+    check(
+      "rpr: imported totals untouched",
+      after.importedLedger.count === before.importedLedger.count && after.importedLedger.cents === before.importedLedger.cents,
+      JSON.stringify({ before: before.importedLedger, after: after.importedLedger }),
+    );
+  } finally {
+    // belt-and-braces: the wet run should already have restored the link
+    await db.execute(sql`UPDATE ledger SET reference_type = 'hour', reference_id = ${candidate.reference_id} WHERE id = ${candidate.id}`);
+    await removePayperiodArFake();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1115,10 +1374,12 @@ async function main(): Promise<void> {
   const needsFixture = PHASE !== "parity";
   const fixture = needsFixture ? await installBillingFixture() : null;
   try {
+    // Production money order (Task 414): payments → hours → ledger.
     if (PHASE === "all" || PHASE === "payments") await phasePayments();
+    if (PHASE === "all" || PHASE === "hours") await phaseHours();
     if (PHASE === "all" || PHASE === "ledger") await phaseLedger();
     if (PHASE === "all" || PHASE === "cascade") await phaseCascade();
-    if (PHASE === "all" || PHASE === "hours") await phaseHours();
+    if (PHASE === "all" || PHASE === "repair") await phaseRepair();
     if (PHASE === "all" || PHASE === "rerun") await phaseNoopWetRerun();
     if (PHASE === "all" || PHASE === "parity") await phaseParity();
   } finally {

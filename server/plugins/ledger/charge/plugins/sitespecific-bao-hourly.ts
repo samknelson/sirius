@@ -331,52 +331,155 @@ class BaoHourlyChargePlugin extends ChargePlugin {
         chargePluginKey,
       );
 
-      if (!expectedEntry && !existingEntry) {
-        return {
-          success: true,
-          transactions: [],
-          message:
-            "No charge applicable (non-billed status, no effective rate, or zero amount)",
-        };
-      }
+      // Migrated S1 history (Task 414): ledger rows imported by the S1
+      // migration carry chargePlugin "s1-import" with referenceType "hour"
+      // once linked to their monthly hours row. For the same hours row and
+      // billed employer account they ARE the historical billing base — the
+      // net-total reconcile below must count them, and a brand-new full base
+      // must never be created on top of them.
+      const importedEntries = (
+        await storage.ledger.entries.getByReference("hour", hoursContext.hoursId)
+      ).filter((e) => e.chargePlugin === "s1-import" && e.eaId === ea.id);
+      const importedTotal = importedEntries.reduce(
+        (sum, e) => sum + parseFloat(e.amount),
+        0,
+      );
 
-      if (!expectedEntry && existingEntry) {
-        // The hours row no longer qualifies: remove the base entry and any
-        // adjustment entries posted against the same hours row.
-        const allEntries = await storage.ledger.entries.getByReferenceAndConfig(
-          hoursContext.hoursId,
-          config.id,
-        );
+      if (!expectedEntry) {
+        // No charge applies. Native entries (base + adjustments) are OUR
+        // rows and are deleted outright. Imported S1 history is a preserved
+        // historical fact and is never deleted — instead the posted total
+        // (surviving native offset adjustments + imported history) must be
+        // reconciled to zero with a single correcting adjustment (Task 414):
+        // zeroed hours, a newly non-billed status, or a removed rate on a
+        // migrated month otherwise leaves the imported charge standing.
         let removedTotal = 0;
-        for (const entry of allEntries) {
-          removedTotal += parseFloat(entry.amount);
-          await storage.ledger.entries.delete(entry.id);
+        let removedCount = 0;
+        if (existingEntry) {
+          const allEntries =
+            await storage.ledger.entries.getByReferenceAndConfig(
+              hoursContext.hoursId,
+              config.id,
+            );
+          for (const entry of allEntries) {
+            removedTotal += parseFloat(entry.amount);
+            await storage.ledger.entries.delete(entry.id);
+          }
+          removedCount = allEntries.length;
+          logger.info("Deleted BAO Hourly entries - no longer qualifying", {
+            service: "charge-plugin-bao-hourly",
+            hoursId: hoursContext.hoursId,
+            removedEntries: removedCount,
+            removedTotal: removedTotal.toFixed(2),
+          });
         }
-        const removed = removedTotal.toFixed(2);
 
-        logger.info("Deleted BAO Hourly entries - no longer qualifying", {
-          service: "charge-plugin-bao-hourly",
-          hoursId: hoursContext.hoursId,
-          removedEntries: allEntries.length,
-          removedTotal: removed,
-        });
+        // Remaining posted total for this hours row + config after any
+        // deletions: surviving native rows (e.g. a prior imported-base
+        // offset adjustment, which has no base entry) + imported history.
+        const survivors = existingEntry
+          ? [] // just deleted every native row for this config
+          : await storage.ledger.entries.getByReferenceAndConfig(
+              hoursContext.hoursId,
+              config.id,
+            );
+        const residual = Number(
+          (
+            survivors.reduce((sum, e) => sum + parseFloat(e.amount), 0) +
+            importedTotal
+          ).toFixed(2),
+        );
+
+        const notifications = existingEntry
+          ? [
+              {
+                type: "deleted" as const,
+                amount: removedTotal.toFixed(2),
+                description: `BAO Hourly entry deleted: -$${removedTotal.toFixed(2)}`,
+              },
+            ]
+          : [];
+
+        if (importedEntries.length === 0 || Math.abs(residual) < 0.005) {
+          return {
+            success: true,
+            transactions: [],
+            notifications,
+            message: existingEntry
+              ? "Deleted BAO Hourly entry - no longer qualifying"
+              : "No charge applicable (non-billed status, no effective rate, or zero amount)",
+          };
+        }
+
+        const offsetAmount = (-residual).toFixed(2);
+        const offsetKey = `${config.id}:${ea.id}:${hoursContext.hoursId}:adj:${Date.now()}`;
+        const transaction: LedgerTransaction = {
+          chargePlugin: this.metadata.id,
+          chargePluginKey: offsetKey,
+          chargePluginConfigId: config.id,
+          accountId: config.account,
+          entityType: "employer",
+          entityId: hoursContext.employerId,
+          amount: offsetAmount,
+          description: `BAO Hourly Adjustment: migrated charge no longer applies — $${residual.toFixed(2)} → $0.00 (${offsetAmount})`,
+          transactionDate: new Date(
+            hoursContext.year,
+            hoursContext.month - 1,
+            1,
+          ),
+          statementYmd: workMonthStatementYmd(
+            hoursContext.year,
+            hoursContext.month,
+          ),
+          referenceType: "hour_adjustment",
+          referenceId: hoursContext.hoursId,
+          metadata: {
+            pluginId: this.metadata.id,
+            pluginConfigId: config.id,
+            workerId: hoursContext.workerId,
+            employerId: hoursContext.employerId,
+            year: hoursContext.year,
+            month: hoursContext.month,
+            day: hoursContext.day,
+            hours: hoursContext.hours,
+            adjustmentType: "no_longer_qualifying",
+            baseSource: "s1-import",
+            importedBaseIds: importedEntries.map((e) => e.id),
+            importedTotal: importedTotal.toFixed(2),
+            previousTotal: residual.toFixed(2),
+            newAmount: "0.00",
+          },
+        };
+
+        logger.info(
+          "Creating BAO Hourly offset adjustment - imported history no longer qualifies",
+          {
+            service: "charge-plugin-bao-hourly",
+            hoursId: hoursContext.hoursId,
+            previousTotal: residual.toFixed(2),
+            adjustmentAmount: offsetAmount,
+          },
+        );
 
         return {
           success: true,
-          transactions: [],
+          transactions: [transaction],
           notifications: [
+            ...notifications,
             {
-              type: "deleted" as const,
-              amount: removed,
-              description: `BAO Hourly entry deleted: -$${removed}`,
+              type: "created" as const,
+              amount: offsetAmount,
+              description: `BAO Hourly adjustment: $${residual.toFixed(2)} → $0.00 (adjustment: $${offsetAmount})`,
             },
           ],
-          message: "Deleted BAO Hourly entry - no longer qualifying",
+          message: `Created offset adjustment for $${offsetAmount} (imported charge no longer applies)`,
         };
       }
 
-      // From here a charge applies (expectedEntry is non-null).
-      if (expectedEntry && !existingEntry) {
+      // From here a charge applies (expectedEntry is non-null). Create a
+      // full base only when NEITHER a native base NOR imported S1 history
+      // exists; otherwise reconcile against the combined net total.
+      if (expectedEntry && !existingEntry && importedEntries.length === 0) {
         const transaction: LedgerTransaction = {
           chargePlugin: this.metadata.id,
           chargePluginKey: expectedEntry.chargePluginKey,
@@ -416,17 +519,17 @@ class BaoHourlyChargePlugin extends ChargePlugin {
         };
       }
 
-      // Both exist: reconcile the net posted total (base + adjustments) to
-      // the expected amount with a single correcting delta. Idempotent: when
-      // the totals already match, do nothing.
+      // A base exists (native, imported, or both): reconcile the net posted
+      // total (bases + adjustments + imported S1 history) to the expected
+      // amount with a single correcting delta. Idempotent: when the totals
+      // already match, do nothing.
       const allEntries = await storage.ledger.entries.getByReferenceAndConfig(
         hoursContext.hoursId,
         config.id,
       );
-      const netTotal = allEntries.reduce(
-        (sum, e) => sum + parseFloat(e.amount),
-        0,
-      );
+      const netTotal =
+        allEntries.reduce((sum, e) => sum + parseFloat(e.amount), 0) +
+        importedTotal;
       const expectedAmount = parseFloat(expectedEntry!.amount);
       const delta = Number((expectedAmount - netTotal).toFixed(2));
       if (Math.abs(delta) < 0.005) {
@@ -467,7 +570,14 @@ class BaoHourlyChargePlugin extends ChargePlugin {
         metadata: {
           ...expectedEntry!.metadata,
           adjustmentType: "amount_change",
-          originalEntryId: existingEntry!.id,
+          originalEntryId: (existingEntry ?? importedEntries[0]).id,
+          baseSource: existingEntry ? "native" : "s1-import",
+          ...(importedEntries.length > 0
+            ? {
+                importedBaseIds: importedEntries.map((e) => e.id),
+                importedTotal: importedTotal.toFixed(2),
+              }
+            : {}),
           previousTotal: netTotalStr,
           newAmount: expectedEntry!.amount,
         },
@@ -618,10 +728,14 @@ class BaoHourlyChargePlugin extends ChargePlugin {
           entry.referenceId,
           config.id,
         );
-      const totalAmount = allEntriesForHours.reduce(
-        (sum, e) => sum + parseFloat(e.amount),
-        0,
-      );
+      // Linked imported S1 history on the same hours row + billed account is
+      // part of the posted total (Task 414) — mirror execute()'s math.
+      const importedForHours = (
+        await storage.ledger.entries.getByReference("hour", entry.referenceId)
+      ).filter((e) => e.chargePlugin === "s1-import" && e.eaId === entry.eaId);
+      const totalAmount =
+        allEntriesForHours.reduce((sum, e) => sum + parseFloat(e.amount), 0) +
+        importedForHours.reduce((sum, e) => sum + parseFloat(e.amount), 0);
       const expectedAmount = parseFloat(expectedEntry.amount);
       if (Math.abs(totalAmount - expectedAmount) > 0.01) {
         discrepancies.push(

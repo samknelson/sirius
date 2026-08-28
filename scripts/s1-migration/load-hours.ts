@@ -125,13 +125,19 @@ import {
   adoptHoursKeysFromWorkerHours,
   type HoursKey,
 } from "./lib/staging";
-import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
+import {
+  ensureIdMap,
+  getMappings,
+  putMapping,
+  putMappingsOverwrite,
+  retireMappingsNotSyncedSince,
+} from "./lib/idmap";
 import { LOADER_PAGE_SIZE, stagedCountOf, chunk, throttleStorageOpLogs } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
 import { buildLoaderResult, emitLoaderResult, loaderExitCode, emptySummary } from "./lib/sync";
 
 const LOADER = "t20-hours";
-const LOGIC_VERSION = 1;
+const LOGIC_VERSION = 2; // v2 (Task 414): payperiod crosswalk provenance (hours) / pay-period reference resolution (ledger)
 const DRY_RUN = process.argv.includes("--dry-run");
 const STUB_MISSING = process.argv.includes("--stub-missing");
 const MIGRATION_MODE = process.argv.includes("--migration-mode");
@@ -317,6 +323,11 @@ async function main() {
     hours: number;
     tids: Set<string>;
     latest: ParsedRow;
+    /** Every contributing S1 payperiod nid — persisted to the id_map
+     * `payperiod` crosswalk (nid → worker_hours.id) after the flush verifies,
+     * so t18 ledger reference resolution and the one-time hour-link repair
+     * can resolve pay-period references to the exact monthly row. */
+    nids: number[];
   }
   const groups = new Map<string, Group>(); // current worker's groups only
   let parsedCount = 0;
@@ -333,10 +344,12 @@ async function main() {
         hours: p.hours,
         tids: new Set([p.hourTypeTid]),
         latest: p,
+        nids: [p.nid],
       });
     } else {
       g.hours += p.hours;
       g.tids.add(p.hourTypeTid);
+      g.nids.push(p.nid);
       if (
         p.dateStart > g.latest.dateStart ||
         (p.dateStart === g.latest.dateStart && p.nid > g.latest.nid)
@@ -363,6 +376,8 @@ async function main() {
   let stubbedEmployers = 0;
   let verifyMismatchCount = 0;
   const verifyMismatchSamples: string[] = []; // ≤20 samples; count stays exact
+  let crosswalkMapped = 0; // payperiod nids (re)mapped to worker_hours rows this run
+  let crosswalkRetired = 0; // payperiod mappings retired (source vanished/skipped)
   // employer cache is global (distinct employers are few); worker mappings are per-flush.
   const employerMap = new Map<number, { s2Id: string; stub: boolean }>();
   const employerSeen = new Set<number>();
@@ -449,6 +464,7 @@ async function main() {
       month: number;
       employmentStatusId: string;
       hours: number;
+      nids: number[]; // contributing payperiod nids — crosswalk provenance
     }
     const rowsToWrite: WriteRow[] = [];
     for (const g of batch) {
@@ -482,6 +498,7 @@ async function main() {
         month: g.month,
         employmentStatusId: tidToStatusId.get(g.latest.hourTypeTid)!,
         hours: g.hours,
+        nids: g.nids,
       });
     }
 
@@ -581,7 +598,10 @@ async function main() {
       }
     }
 
-    // verify: re-read every written key and compare hours exactly
+    // verify: re-read every written key and compare hours exactly. The same
+    // read also captures each row's id so the payperiod crosswalk below maps
+    // contributing nids to the EXACT worker_hours row that verified.
+    const hoursIdByKey = new Map<string, string>();
     if (!DRY_RUN && writtenKeys.length > 0) {
       progress.phase("verify", writtenKeys.length, { cumulative: true });
       for (let i = 0; i < writtenKeys.length; i += 200) {
@@ -591,17 +611,18 @@ async function main() {
             sql`(worker_id = ${k.workerId} AND employer_id = ${k.employerId} AND year = ${k.year} AND month = ${k.month} AND day = 1)`,
         );
         const res = await db.execute(sql`
-          SELECT worker_id, employer_id, year, month, hours FROM worker_hours
+          SELECT id, worker_id, employer_id, year, month, hours FROM worker_hours
            WHERE ${sql.join(conditions, sql` OR `)}
         `);
         const found = new Map(
-          (res as unknown as { rows: Array<{ worker_id: string; employer_id: string; year: number; month: number; hours: number | null }> }).rows.map(
-            (r) => [`${r.worker_id}|${r.employer_id}|${r.year}|${r.month}`, r.hours],
+          (res as unknown as { rows: Array<{ id: string; worker_id: string; employer_id: string; year: number; month: number; hours: number | null }> }).rows.map(
+            (r) => [`${r.worker_id}|${r.employer_id}|${r.year}|${r.month}`, { id: r.id, hours: r.hours }],
           ),
         );
         for (const k of keySlice) {
-          const hours = found.get(`${k.workerId}|${k.employerId}|${k.year}|${k.month}`);
-          if (hours != null && Math.abs(hours - k.hours) < 1e-9) verified++;
+          const hit = found.get(`${k.workerId}|${k.employerId}|${k.year}|${k.month}`);
+          if (hit) hoursIdByKey.set(`${k.workerId}|${k.employerId}|${k.year}|${k.month}`, hit.id);
+          if (hit && hit.hours != null && Math.abs(hit.hours - k.hours) < 1e-9) verified++;
           else {
             verifyMismatchCount++;
             if (verifyMismatchSamples.length < 20)
@@ -610,6 +631,22 @@ async function main() {
         }
         progress.add(keySlice.length);
       }
+    }
+
+    // ---- payperiod → worker_hours crosswalk (id_map entity `payperiod`).
+    // OVERWRITE semantics: a payperiod retargeted in S1 repoints to its new
+    // monthly row; restamped last_synced_at lets the post-run retirement pass
+    // drop mappings whose staged payperiods vanished. Many nids share one
+    // s2_id by design (multi-payperiod months). ----
+    if (!DRY_RUN && rowsToWrite.length > 0 && hoursIdByKey.size > 0) {
+      const crosswalkRows: Array<{ s1Id: number; s2Id: string }> = [];
+      for (const r of rowsToWrite) {
+        const hoursId = hoursIdByKey.get(`${r.workerId}|${r.employerId}|${r.year}|${r.month}`);
+        if (!hoursId) continue; // verify mismatch — retried next run
+        for (const nid of r.nids) crosswalkRows.push({ s1Id: nid, s2Id: hoursId });
+      }
+      await putMappingsOverwrite("payperiod", crosswalkRows, { loader: LOADER, logicVersion: LOGIC_VERSION });
+      crosswalkMapped += crosswalkRows.length;
     }
     progress.phase(null);
     flushActiveMs += Date.now() - flushT0;
@@ -836,6 +873,12 @@ async function main() {
       }
       if (processed.length > 0) await deleteHoursKeys(processed);
     }
+    // Crosswalk retirement under the SAME fully-verified gate: payperiod
+    // mappings not restamped this run lost their staged source (deleted in
+    // S1) or stopped contributing (skip-class rows). Pure mapping rows —
+    // deletable and reconstructible; a resolution regression self-heals on
+    // the next run.
+    crosswalkRetired = await retireMappingsNotSyncedSince("payperiod", watermark);
     progress.phase(null);
   }
   progress.stop();
@@ -902,6 +945,12 @@ async function main() {
     staleHoursCleanup: cleanupSkipped
       ? { skipped: cleanupSkipped }
       : { staleKeys, deletedRows: staleDeleted, alreadyGone: staleAlreadyGone, deleteFailed: staleDeleteFailed },
+    // Pay-period provenance (Task 414): nid → worker_hours.id crosswalk kept
+    // in id_map entity `payperiod`; retirement shares the stale-cleanup gate.
+    payperiodCrosswalk: {
+      mapped: crosswalkMapped,
+      retired: cleanupSkipped ? { skipped: cleanupSkipped } : crosswalkRetired,
+    },
   };
 
   // Envelope (RUNBOOK §10): upserts cannot split create vs update, so all

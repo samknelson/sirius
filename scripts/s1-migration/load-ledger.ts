@@ -86,7 +86,7 @@ import {
 
 const LOADER = "t18-ledger";
 const ENTITY = "ledger-ar";
-const LOGIC_VERSION = 1;
+const LOGIC_VERSION = 2; // v2 (Task 414): payperiod crosswalk provenance (hours) / pay-period reference resolution (ledger)
 const CHARGE_PLUGIN = "s1-import";
 const KEY_RE = /^ar-(\d+)$/;
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -129,6 +129,14 @@ const REFERENCE_ENTITIES: Array<{ entity: string; referenceType: string }> = [
   { entity: "wb", referenceType: "wmb" },
   { entity: "election", referenceType: "worker_trust_election" },
   { entity: "payment", referenceType: "payment" },
+  // Pay-period crosswalk maintained by t20-hours (Task 414): S1 hours-charge
+  // AR rows reference sirius_payperiod nids; the crosswalk resolves them to
+  // the monthly worker_hours row those payperiods aggregated into. Runtime
+  // vocabulary is "hour" — the same referenceType the bao-hourly charge
+  // plugin writes — so consumers (transaction views, plugin reconciliation)
+  // see imported hour charges exactly like native ones. REQUIRES the fleet
+  // order payments → hours → ledger (sync-config asserts it).
+  { entity: "payperiod", referenceType: "hour" },
   { entity: "worker", referenceType: "worker" },
   { entity: "shell-worker", referenceType: "worker" },
   { entity: "relation", referenceType: "worker_relation" },
@@ -242,6 +250,7 @@ async function main() {
   // reference. Still-unresolvable rows are left alone — no repeat writes.
   let refHealDegraded = 0;
   let refHealCleared = 0;
+  let refHealHourDrift = 0;
   if (!DRY_RUN) {
     progress.phase("ref-heal");
     const degraded: Array<{ ledgerId: number; refNid: number }> = [];
@@ -272,6 +281,49 @@ async function main() {
       if (healIds.length > 0) {
         await clearFingerprints(ENTITY, healIds);
         refHealCleared = healIds.length;
+      }
+    }
+
+    // ---- drifted hour-link heal (Task 414). A payperiod retargeted to a
+    // different month (crosswalk repointed) or deleted in S1 (mapping
+    // retired) changes the AR row's correct reference WITHOUT changing its
+    // source content, so the fingerprint fast path would keep the stale
+    // 'hour' link forever — pointing at an old/deleted worker_hours row and
+    // hiding the imported base from the BAO plugin on the new row. Re-check
+    // every hour-linked ar-* row against the CURRENT payperiod crosswalk and
+    // clear fingerprints where the target differs or vanished; the main loop
+    // then rewrites the reference (or degrades it back to 's1-unknown')
+    // through the standard update path. Scoped to payperiod-provenance rows
+    // only (data.s1ReferenceNid + referenceType='hour').
+    const hourLinked: Array<{ ledgerId: number; refNid: number; refId: string }> = [];
+    let lastHourKey = "";
+    for (;;) {
+      const res = (await db.execute(sql`
+        SELECT charge_plugin_key AS k, (data->>'s1ReferenceNid')::bigint AS ref_nid, reference_id AS ref_id
+          FROM ledger
+         WHERE charge_plugin = ${CHARGE_PLUGIN} AND reference_type = 'hour'
+           AND charge_plugin_key ~ '^ar-[0-9]+$' AND data->>'s1ReferenceNid' IS NOT NULL
+           AND charge_plugin_key > ${lastHourKey}
+         ORDER BY charge_plugin_key LIMIT 5000
+      `)) as unknown as { rows: Array<{ k: string; ref_nid: string | number; ref_id: string }> };
+      for (const row of res.rows) {
+        hourLinked.push({ ledgerId: Number(row.k.slice(3)), refNid: Number(row.ref_nid), refId: String(row.ref_id) });
+      }
+      if (res.rows.length < 5000) break;
+      lastHourKey = res.rows[res.rows.length - 1].k;
+    }
+    if (hourLinked.length > 0) {
+      const currentTarget = new Map<number, string>();
+      for (const batch of chunk([...new Set(hourLinked.map((d) => d.refNid))], 500)) {
+        const m = await getMappings("payperiod", batch);
+        for (const [nid, info] of m) currentTarget.set(nid, info.s2Id);
+      }
+      const driftedIds = hourLinked
+        .filter((d) => currentTarget.get(d.refNid) !== d.refId) // repointed OR retired
+        .map((d) => d.ledgerId);
+      if (driftedIds.length > 0) {
+        await clearFingerprints(ENTITY, driftedIds);
+        refHealHourDrift = driftedIds.length;
       }
     }
   }
@@ -498,7 +550,7 @@ async function main() {
   detail.adopted = adopted;
   detail.recreatedMissing = recreatedMissing;
   detail.staleFingerprintRows = staleFingerprintRows;
-  detail.refHeal = { degraded: refHealDegraded, cleared: refHealCleared };
+  detail.refHeal = { degraded: refHealDegraded, cleared: refHealCleared, hourDrift: refHealHourDrift };
   detail.positiveRows = positiveRows;
   detail.negativeRows = negativeRows;
   detail.participantContactEAs = participantContactEAs;

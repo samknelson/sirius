@@ -278,6 +278,14 @@ No repair project is warranted at this scale. **ETL requirement stands:** fail l
 
 ### 4.12 `sirius_payperiod` — hours live inside the JSON payload (Q21 CLOSED)
 
+> **Task 414 (2026-08-28):** pay-period provenance is now persisted — T20
+> upserts an id_map `payperiod` crosswalk (nid → monthly `worker_hours.id`)
+> after each verified run, the permanent money order is payments → hours →
+> ledger so T18 resolves AR pay-period references as hour links, and the BAO
+> hourly plugin treats linked `s1-import` entries as the historical billing
+> base. Pre-order data is fixed once via `repair-hour-links.ts` (RUNBOOK
+> §10.1).
+
 The bundle's 12 fields include no hours amount and no hour-type reference. Both live in `field_sirius_json`. Structure, confirmed against all 3,615,475 rows:
 
 **Modern format — 3,615,465 rows (99.9997%), depth 10:**

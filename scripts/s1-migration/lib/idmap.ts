@@ -197,6 +197,55 @@ export async function putMappings(
   }
 }
 
+/**
+ * Bulk upsert with OVERWRITE semantics — crosswalk maintenance (e.g. the
+ * `payperiod` → worker_hours crosswalk kept by t20). Unlike putMappings, a
+ * conflicting row is REPOINTED to the new s2_id (a payperiod retargeted to a
+ * different worker/employer/month in S1 must follow its new monthly row) and
+ * last_synced_at is restamped so retireMappingsNotSyncedSince() can retire
+ * mappings whose source rows vanished. Never use this for entities whose S2
+ * row identity must win races (worker, employer, ...) — first-wins putMapping
+ * exists for those.
+ */
+export async function putMappingsOverwrite(
+  entity: string,
+  rows: Array<{ s1Id: number; s2Id: string }>,
+  opts: { loader: string; logicVersion: number },
+): Promise<void> {
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500);
+    const values = chunk.map(
+      (r) => sql`(${entity}, ${r.s1Id}, ${r.s2Id}, false, ${opts.loader}, ${null}, ${opts.logicVersion}, now())`,
+    );
+    await db.execute(sql`
+      INSERT INTO s1_staging.id_map (entity, s1_id, s2_id, stub, loader, consumed_fingerprint, logic_version, last_synced_at)
+      VALUES ${sql.join(values, sql`, `)}
+      ON CONFLICT (entity, s1_id) DO UPDATE
+        SET s2_id = EXCLUDED.s2_id,
+            loader = EXCLUDED.loader,
+            logic_version = EXCLUDED.logic_version,
+            last_synced_at = now(),
+            s1_deleted_at = NULL
+    `);
+  }
+}
+
+/**
+ * Retire crosswalk mappings not restamped by the current run (their source
+ * rows were deleted in S1, or stopped contributing). Only meaningful for
+ * entities maintained via putMappingsOverwrite — callers must gate this on a
+ * fully-verified run, exactly like sidecar stale cleanup. Returns the number
+ * of mappings removed.
+ */
+export async function retireMappingsNotSyncedSince(entity: string, watermark: string | Date): Promise<number> {
+  const res = await db.execute(sql`
+    DELETE FROM s1_staging.id_map
+     WHERE entity = ${entity}
+       AND (last_synced_at IS NULL OR last_synced_at < ${watermark instanceof Date ? watermark.toISOString() : watermark})
+  `);
+  return (res as unknown as { rowCount?: number }).rowCount ?? 0;
+}
+
 /** Mark a stub mapping as absorbed by the entity's real loader (stub=false). */
 export async function markAbsorbed(entity: string, s1Id: number, loader: string): Promise<void> {
   await db.execute(sql`

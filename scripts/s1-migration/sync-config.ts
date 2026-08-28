@@ -65,8 +65,11 @@ export interface FleetStep {
  * options first (everything resolves options), contacts-workers before every
  * worker consumer (beneficiaries, users, ...), employers before
  * employer-policies/rates, policies before employer-policies, elections
- * before benefit-history (employer fallback via election), payments BEFORE
- * ledger (payment refs + cascade re-create, §10), hours after ledger.
+ * before benefit-history (employer fallback via election), and the money
+ * order is payments → hours → ledger (Task 414): payments before ledger
+ * (payment refs + cascade re-create, §10), hours before ledger so t20's
+ * payperiod → worker_hours crosswalk exists when t18 resolves pay-period
+ * ledger references to their monthly hours rows.
  */
 export const FLEET: FleetStep[] = [
   { id: "seed-trust-config", script: "seed-trust-config.ts", loader: "seed-trust-config", logicVersion: 1, supportsForceReconcile: false, supportsAllowFindings: false, supportsAllowRejects: false },
@@ -85,8 +88,8 @@ export const FLEET: FleetStep[] = [
   { id: "elections", script: "load-elections.ts", loader: "t16-elections", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
   { id: "benefit-history", script: "load-benefit-history.ts", loader: "t17-benefit-history", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
   { id: "payments", script: "load-payments.ts", loader: "t19-payments", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: false, supportsAllowRejects: true },
-  { id: "ledger", script: "load-ledger.ts", loader: "t18-ledger", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: false, supportsAllowRejects: true },
-  { id: "hours", script: "load-hours.ts", loader: "t20-hours", logicVersion: 1, supportsForceReconcile: false, supportsAllowFindings: false, supportsAllowRejects: false, extraArgs: ["--migration-mode"] },
+  { id: "hours", script: "load-hours.ts", loader: "t20-hours", logicVersion: 2, supportsForceReconcile: false, supportsAllowFindings: false, supportsAllowRejects: false, extraArgs: ["--migration-mode"] },
+  { id: "ledger", script: "load-ledger.ts", loader: "t18-ledger", logicVersion: 2, supportsForceReconcile: true, supportsAllowFindings: false, supportsAllowRejects: true },
   { id: "cardchecks", script: "load-cardchecks.ts", loader: "cardchecks", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true, extraArgs: ["--migration-mode"] },
   { id: "enrollment-packet-tags", script: "load-enrollment-packet-tags.ts", loader: "t29-enrollment-packet-tags", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true, extraArgs: ["--migration-mode"] },
 ];
@@ -329,8 +332,11 @@ export function validateSyncConfig(): void {
     ids.add(s.id);
   }
   const pay = FLEET.findIndex((s) => s.id === "payments");
+  const hrs = FLEET.findIndex((s) => s.id === "hours");
   const led = FLEET.findIndex((s) => s.id === "ledger");
   if (pay < 0 || led < 0 || pay > led) throw new Error("sync-config: payments must run before ledger (§10)");
+  if (hrs < 0 || hrs > led) throw new Error("sync-config: hours must run before ledger (payperiod crosswalk, Task 414)");
+  if (pay > hrs) throw new Error("sync-config: payments must run before hours (money order payments → hours → ledger)");
   const known = new Set<string>(KNOWN_FINDING_KINDS);
   for (const [name, p] of Object.entries(PROFILES)) {
     for (const kind of p.dailyAllowedFindings) {

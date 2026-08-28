@@ -651,6 +651,26 @@ and the production run must gate on the §8.4 post-load linkage counter.
 Candidate follow-up: make the t18 adopt path re-resolve `s1-unknown`
 references so ordering is self-healing.
 
+**Resolution (Task 414, 2026-08-28):** both halves are implemented.
+(1) *Permanent order + crosswalk:* the money fleet is now
+payments → hours → ledger; t20 maintains the id_map `payperiod` crosswalk
+(payperiod nid → monthly `worker_hours.id`) after each verified run, and t18
+resolves pay-period `ledger_reference` nids through it as
+`referenceType='hour'` (`detail.referenceTypes.hour`); t18's ref-heal
+pre-pass makes the ordering self-healing for late-arriving mappings.
+(2) *One-time historical repair:* `scripts/s1-migration/repair-hour-links.ts`
+(dry-run by default, `--wet` to apply — see RUNBOOK §10.1) relinks
+already-imported `s1-unknown` rows whose stashed `data.s1ReferenceNid`
+resolves AND cross-validates (staged pay-period worker/employer/period vs
+the hours row), reporting aggregate linked / alreadyLinked / unresolved /
+ambiguous / mismatch counts and refusing unsafe matches; its duplicate
+section reconciles months where linked imported history coexists with a
+post-migration native BAO full base to the expected net via ONE auditable
+correcting adjustment (`data.repairSource`) — reruns move no money. The BAO
+hourly plugin now adopts linked `s1-import` entries (same hours row + billed
+EA) as the billing base: unchanged saves create nothing, changed saves post
+only the net delta. The repair is NOT part of any load/sync fleet.
+
 ### 9.4 Reject dispositions — confirmed (supersedes §5 hypotheses)
 
 Post-rehearsal S1 investigation and cleanup (operator-run, 2026-08-18)

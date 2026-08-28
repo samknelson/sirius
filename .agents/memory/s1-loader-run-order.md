@@ -19,3 +19,7 @@ query (join s1-unknown reference nids to staged bundles) showed 100% staged
 references on rerun, so ordering is not self-healing. Gate with a post-load
 linkage counter (dangling payment refs). Triage recipe lives in
 docs/s1-migration/08-ledger-payment-reconciliation.md §9.
+
+## Money order is payments → hours → ledger (permanent)
+Hours must load before ledger: the hours loader owns the pay-period→monthly-hours crosswalk that ledger reference resolution depends on. Migrated billing history is a preserved fact — reconcile against it with adjustments, never delete it, and date historical corrections to the affected work month, not the run date.
+**Why:** the reverse order left references unresolved and caused double-billing on the first post-migration save.
