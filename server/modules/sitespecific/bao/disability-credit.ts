@@ -34,6 +34,7 @@ import { insertFileSchema } from "@shared/schema";
 import { listDcApprovalQueue } from "../../../services/sitespecific/bao/dc-reporting";
 import { buildDcYearUsage } from "@shared/sitespecific/bao/dc-reporting";
 import { DcSelectionInvalidError } from "../../../storage/sitespecific/bao/disability-credit";
+import { DcGrantError, type DcGrantErrorCode } from "../../../services/sitespecific/bao/dc-grant";
 import { logger } from "../../../logger";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -98,6 +99,25 @@ function handleDcError(res: Response, error: unknown): void {
       message: "Month selection is not valid",
       code: "MONTH_SELECTION_INVALID",
       validation: error.validation,
+    });
+    return;
+  }
+  // Expected approval-time grant failures: the whole approval transaction
+  // has rolled back (case unchanged) — surface WHY as an actionable 422
+  // instead of a generic internal error.
+  if (error instanceof DcGrantError) {
+    const grantMap: Record<DcGrantErrorCode, string> = {
+      NO_POLICY:
+        "Approval failed: no benefits policy could be resolved for the worker's employer for a selected month. The case was left unchanged.",
+      NO_THRESHOLD_RULE:
+        "Approval failed: no continuation-threshold eligibility rule (buildup/threshold) covers the worker's continued benefits for a selected month. The case was left unchanged.",
+      CONFLICTING_THRESHOLDS:
+        "Approval failed: the worker's continued benefits carry conflicting continuation thresholds or coverage lags — fix the eligibility rule configuration. The case was left unchanged.",
+    };
+    res.status(422).json({
+      message: grantMap[error.code],
+      code: `DC_GRANT_${error.code}`,
+      ...(error.details ? { details: error.details } : {}),
     });
     return;
   }

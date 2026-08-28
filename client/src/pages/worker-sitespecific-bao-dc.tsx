@@ -35,6 +35,7 @@ import { apiRequest, getApiErrorMessage, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { BaoDcCase } from "@shared/schema";
 import { DcStatusBadge, formatYmd } from "@/components/sitespecific/bao/dc-shared";
+import { formatYmdMonth } from "@shared/utils/date";
 import { DcMemberCasePanel } from "@/components/sitespecific/bao/DcMemberCasePanel";
 
 type WorkerDcResponse = {
@@ -193,7 +194,7 @@ function WorkerDcContent() {
             {data.eligibility.conditions.includes("fmla_months") && (
               <Badge variant="secondary">
                 Qualifies via FMLA months (
-                {data.eligibility.fmlaMonthsInWindow.map((m) => formatYmd(m).slice(0, 7)).join(", ")}
+                {data.eligibility.fmlaMonthsInWindow.map((m) => formatYmdMonth(m)).join(", ")}
                 )
               </Badge>
             )}

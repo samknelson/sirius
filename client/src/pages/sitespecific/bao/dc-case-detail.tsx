@@ -26,6 +26,7 @@ import { apiRequest, getApiErrorMessage, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { DcDocumentsCard } from "@/components/sitespecific/bao/DcDocumentsCard";
 import { DcStatusBadge, formatYmd } from "@/components/sitespecific/bao/dc-shared";
+import { formatYmdMonth } from "@shared/utils/date";
 import type {
   BaoDcAttestations,
   BaoDcCase,
@@ -279,7 +280,7 @@ export default function BaoDcCaseDetailPage() {
             <Badge key={cond} variant="secondary" data-testid={`badge-dc-basis-${cond}`}>
               {cond === "fmla_months"
                 ? `FMLA months: ${((c.qualifyingBasis as any)?.fmlaMonths ?? [])
-                    .map((m: string) => m.slice(0, 7))
+                    .map((m: string) => formatYmdMonth(m))
                     .join(", ")}`
                 : "Active denial letter"}
             </Badge>
