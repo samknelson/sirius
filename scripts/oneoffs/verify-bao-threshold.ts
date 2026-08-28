@@ -28,11 +28,12 @@
  */
 
 import { storage } from "../../server/storage/database";
+import { createUnifiedOptionsStorage } from "../../server/storage/unified-options";
 import { fetchThresholdStatus } from "../../server/plugins/trust/eligibility/plugins/sitespecific-bao-threshold";
 
-// Known fixtures in this database (see `employers` / `options_employment_status`).
-const EMPLOYER_ID = "9a80c1c5-7d46-4124-adc4-4be57375c5ee"; // TEST HOTEL (no industry => default threshold 100)
-const EMPLOYMENT_STATUS_ID = "46487fff-698d-4031-b9da-1846a09ef986"; // Active
+// Fixtures are resolved (or created) by name so the script works on any
+// database: an industry-less employer forces the default-threshold path.
+const EMPLOYER_NAME = "[THRESHOLD TEST] Employer (no industry)";
 
 // Evaluate as of April 2026 => examined month is January 2026.
 const AS_OF = { year: 2026, month: 4 };
@@ -61,13 +62,29 @@ async function findOrCreateWorker(name: string): Promise<string> {
 async function main(): Promise<void> {
   let failures = 0;
 
+  // Industry-less employer => resolveBaoThreshold falls back to the default.
+  const employers = await storage.employers.searchEmployers?.(EMPLOYER_NAME).catch(() => undefined);
+  let employerId =
+    (Array.isArray(employers) ? employers.find((e: any) => e.name === EMPLOYER_NAME)?.id : undefined) ??
+    (await storage.employers.getAllEmployers()).find((e: any) => e.name === EMPLOYER_NAME)?.id;
+  if (!employerId) {
+    employerId = (await storage.employers.createEmployer({ name: EMPLOYER_NAME } as any)).id;
+  }
+
+  const options = createUnifiedOptionsStorage();
+  const statuses = (await options.list("employment-status")) as Array<{ id: string; name: string }>;
+  const employmentStatusId = (
+    statuses.find((s) => s.name.toLowerCase() === "active") ?? statuses[0]
+  )?.id;
+  if (!employmentStatusId) throw new Error("no options_employment_status rows — seed the database first");
+
   for (const scenario of scenarios) {
     const workerId = await findOrCreateWorker(scenario.name);
 
     await storage.workerHours.upsertWorkerHours({
       workerId,
-      employerId: EMPLOYER_ID,
-      employmentStatusId: EMPLOYMENT_STATUS_ID,
+      employerId,
+      employmentStatusId,
       year: TARGET.year,
       month: TARGET.month,
       hours: scenario.januaryHours,
@@ -75,12 +92,12 @@ async function main(): Promise<void> {
     });
 
     const status = await fetchThresholdStatus(workerId, AS_OF, {
-      employerId: EMPLOYER_ID,
+      employerId,
     });
 
     const lookbackOk =
       status.targetYear === TARGET.year && status.targetMonth === TARGET.month;
-    // TEST HOTEL has no industry, so the default threshold (100) must be used.
+    // The fixture employer has no industry, so the default threshold (100) must be used.
     const defaultOk = status.thresholdResolved === false && status.threshold === 100;
     const eligibleOk = status.success === scenario.expectEligible;
     const ok = lookbackOk && defaultOk && eligibleOk;

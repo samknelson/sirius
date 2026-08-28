@@ -65,6 +65,7 @@ interface FieldDefinition {
   columnHeader?: string;
   columnWidth?: string;
   dataField?: boolean;
+  dataPath?: string[];
   selectOptionsType?: string;
   enumOptions?: Array<{ value: string; label?: string }>;
 }
@@ -139,6 +140,16 @@ function buildHierarchy(items: OptionItem[], useSequence: boolean): ItemWithLeve
  * map (the `x-data-field` markers in the schema let us split it back
  * out on save).
  */
+/** Read a value at a nested path inside a row's JSONB `data` blob. */
+function readAtDataPath(data: unknown, path: string[]): unknown {
+  let cursor: unknown = data;
+  for (const key of path) {
+    if (typeof cursor !== "object" || cursor === null) return undefined;
+    cursor = (cursor as Record<string, unknown>)[key];
+  }
+  return cursor;
+}
+
 function rowToFormData(
   item: OptionItem | null,
   fields: FieldDefinition[],
@@ -146,7 +157,11 @@ function rowToFormData(
   if (!item) return {};
   const out: Record<string, unknown> = {};
   for (const f of fields) {
-    const v = f.dataField ? item.data?.[f.name] : item[f.name];
+    const v = f.dataPath
+      ? readAtDataPath(item.data, f.dataPath)
+      : f.dataField
+        ? item.data?.[f.name]
+        : item[f.name];
     if (v === null || v === undefined) continue;
     out[f.name] = v;
   }
@@ -324,6 +339,7 @@ export function GenericOptionsPage({ optionsType }: GenericOptionsPageProps) {
   }
 
   function getFieldValue(item: OptionItem, field: FieldDefinition): any {
+    if (field.dataPath) return readAtDataPath(item.data, field.dataPath);
     return field.dataField ? item.data?.[field.name] : item[field.name];
   }
 

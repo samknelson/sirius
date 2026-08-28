@@ -38,6 +38,12 @@ import { withNotificationsSuppressed } from "../../server/middleware/request-con
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping, advanceFingerprints } from "./lib/idmap";
 import {
+  decodeThresholdFromTermName,
+  mergeOptionData,
+  readWorkerMsThreshold,
+  thresholdPatch,
+} from "../../shared/worker-ms-threshold";
+import {
   buildLoaderResult,
   classifyRow,
   emitLoaderResult,
@@ -53,8 +59,10 @@ import {
 const DRY_RUN = process.argv.includes("--dry-run");
 const LOADER = "t4-options";
 /** Loader logic version — BUMP whenever transform logic changes so unchanged
- * S1 terms reprocess into the corrected S2 shape on their next run. */
-const LOGIC_VERSION = 1;
+ * S1 terms reprocess into the corrected S2 shape on their next run.
+ * v2 (Task 415): decode the worker-ms hours threshold from the term name and
+ * write it to data.sitespecific.bao.threshold (create AND already-mapped). */
+const LOGIC_VERSION = 2;
 const FORCE_RECONCILE = parseForceReconcile();
 const ALLOWED_FINDINGS = parseAllowedFindings();
 /** Dev-only: synthetic member-status terms stage no industry field. In
@@ -275,6 +283,13 @@ async function main() {
   const pendingAdvance: Array<{ s1Id: number; fingerprint: string | null }> = [];
   let workerMsUnresolvedIndustry = 0;
   let workerMsFallbackIndustry = 0;
+  /** worker-ms thresholds decoded from term names and written to S2 (Task 415) */
+  let workerMsThresholdApplied = 0;
+  /** worker-ms terms whose name carries NO decodable "- NN hours" suffix —
+   * reported explicitly (e.g. "PA Worker"); the eligibility default applies. */
+  const workerMsThresholdMissing: string[] = [];
+  /** dedupe the missing-threshold report across reruns of the same term */
+  const workerMsThresholdMissingSeen = new Set<number>();
   /** resolved lazily on first use; null = lookup failed (throws) */
   let fallbackIndustryId: string | null | undefined = undefined;
   /** synthetic-signature gate: if ANY worker-ms term stages an industry
@@ -324,7 +339,7 @@ async function main() {
       for (const t of vterms) skipUnchanged(t);
       continue; // whole vocabulary unchanged — no storage reads at all
     }
-    const rows: Array<{ id: string; name: string; code?: string | null; siriusId?: string | null; sequence?: number | null; industryId?: string | null }> =
+    const rows: Array<{ id: string; name: string; code?: string | null; siriusId?: string | null; sequence?: number | null; industryId?: string | null; data?: Record<string, unknown> | null }> =
       await options.list(type);
     const supportsSiriusId = rows.length > 0 ? "siriusId" in rows[0] : SIRIUSID_SUPPORTED.has(type);
     const supportsSequence = SEQUENCE_SUPPORTED.has(type);
@@ -349,12 +364,34 @@ async function main() {
       }
     }
     /** drift = fields that differ from the staged term and are writable for this type */
-    const driftOf = (row: { name: string; sequence?: number | null; industryId?: string | null }, t: StagedTermRow, industryId?: string) => {
+    const driftOf = (row: { name: string; sequence?: number | null; industryId?: string | null; data?: Record<string, unknown> | null }, t: StagedTermRow, industryId?: string) => {
       const patch: Record<string, unknown> = {};
       if (row.name !== t.name) patch.name = t.name;
       if (supportsSequence && row.sequence !== t.weight) patch.sequence = t.weight;
       if (type === "worker-ms" && industryId && row.industryId !== industryId) patch.industryId = industryId;
+      // Canonical BAO threshold (Task 415): the S1 payload encodes it ONLY in
+      // the term name's "- NN hours" suffix. When decodable and different
+      // from the stored value, merge it into data.sitespecific.bao.threshold
+      // WITHOUT touching sibling JSON keys. A name with no decodable
+      // threshold is reported (never invented, never used to erase an
+      // S2-configured value — legitimate S2-only data survives reruns).
+      if (type === "worker-ms") {
+        const decoded = workerMsThresholdOf(t);
+        if (decoded !== null && readWorkerMsThreshold(row.data) !== decoded) {
+          patch.data = mergeOptionData(row.data, thresholdPatch(decoded));
+          workerMsThresholdApplied++;
+        }
+      }
       return patch;
+    };
+    /** decode + missing-report bookkeeping for a worker-ms term's threshold */
+    const workerMsThresholdOf = (t: StagedTermRow): number | null => {
+      const decoded = decodeThresholdFromTermName(t.name);
+      if (decoded === null && !workerMsThresholdMissingSeen.has(t.tid)) {
+        workerMsThresholdMissingSeen.add(t.tid);
+        workerMsThresholdMissing.push(`tid ${t.tid} "${t.name}"`);
+      }
+      return decoded;
     };
 
     for (const t of vterms) {
@@ -436,10 +473,21 @@ async function main() {
           );
         }
         stats.adoptedByName++;
+        // Adopted rows get the decoded threshold too — but ONLY when the
+        // stored value differs, and merged so S2-only sibling JSON survives.
+        let adoptionData: Record<string, unknown> | undefined;
+        if (type === "worker-ms") {
+          const decoded = workerMsThresholdOf(t);
+          if (decoded !== null && readWorkerMsThreshold(row.data) !== decoded) {
+            adoptionData = mergeOptionData(row.data, thresholdPatch(decoded));
+            workerMsThresholdApplied++;
+          }
+        }
         const adoptionPatch = {
           ...(supportsSequence ? { sequence: t.weight } : {}),
           ...(supportsSiriusId ? { siriusId: tidStr } : {}),
           ...(type === "worker-ms" && industryId ? { industryId } : {}),
+          ...(adoptionData ? { data: adoptionData } : {}),
         };
         if (!DRY_RUN && Object.keys(adoptionPatch).length > 0) {
           await withNotificationsSuppressed(() =>
@@ -457,6 +505,15 @@ async function main() {
         );
       } else {
         stats.created++;
+        // New worker-ms rows carry the decoded threshold from birth.
+        let createData: Record<string, unknown> | undefined;
+        if (type === "worker-ms") {
+          const decoded = workerMsThresholdOf(t);
+          if (decoded !== null) {
+            createData = mergeOptionData({}, thresholdPatch(decoded));
+            workerMsThresholdApplied++;
+          }
+        }
         if (!DRY_RUN) {
           row = await withNotificationsSuppressed(() =>
             options.create(type, {
@@ -466,6 +523,7 @@ async function main() {
               ...(supportsSiriusId
                 ? { siriusId: tidStr }
                 : { data: { s1Tid: t.tid } }), // no sirius_id column — spec: carry S1 id in data
+              ...(createData ? { data: createData } : {}),
               ...(industryId ? { industryId } : {}),
               ...(t.description ? { description: t.description } : {}),
             }),
@@ -580,6 +638,8 @@ async function main() {
   report.perVocab = perVocab;
   report.workerMsUnresolvedIndustry = workerMsUnresolvedIndustry;
   report.workerMsFallbackIndustry = workerMsFallbackIndustry;
+  report.workerMsThresholdApplied = workerMsThresholdApplied;
+  report.workerMsThresholdMissing = workerMsThresholdMissing;
   report.skippedVocabs = skippedVocabs;
   report.unhandledVocabularies = unhandled;
   report.fastPathSkips = fastPathSkips;

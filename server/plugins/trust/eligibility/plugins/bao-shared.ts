@@ -4,6 +4,7 @@ import { distanceInMiles, type Coordinates } from "@shared/utils/geocode";
 import { getDrivingDistanceMiles } from "../../../../services/driving-distance";
 import type { BaoDistanceMethod } from "@shared/schema/sitespecific/bao/schema";
 import type { JsonSchema } from "@shared/json-schema-form";
+import { readWorkerMsThreshold } from "@shared/worker-ms-threshold";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -19,11 +20,7 @@ const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
 /** Read a non-negative integer threshold from a member status option's JSON. */
 export function readThresholdFromMs(ms: unknown): number | undefined {
-  const value = (ms as { data?: { sitespecific?: { bao?: { threshold?: unknown } } } } | null)
-    ?.data?.sitespecific?.bao?.threshold;
-  return typeof value === "number" && Number.isInteger(value) && value >= 0
-    ? value
-    : undefined;
+  return readWorkerMsThreshold((ms as { data?: unknown } | null | undefined)?.data);
 }
 
 /** Last day of the given month, as a YYYY-MM-DD string. */

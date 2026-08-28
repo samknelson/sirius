@@ -5,6 +5,7 @@
 - [Checkpointing during active merges](checkpoint-active-merge.md) — ordinary agent edits can checkpoint/reset an uncommitted merge; resolve and commit via Git before workspace edits.
 - [package-lock empty-version dedupe crash](lockfile-empty-version-dedupe.md) — fresh npm install dies with "Invalid Version:" when lockfile has nested optional platform entries lacking version.
 - [Vite HMR vs app WebSocket conflict](vite-hmr-ws-conflict.md) — app WS using `{ server, path }` aborts Vite HMR upgrades with 400 ("preview not loading").
+- [BAO member-status threshold source](worker-ms-threshold-source.md) — S1 threshold lives ONLY in the term-name "- NN hours" suffix; S2 canonical path data.sitespecific.bao.threshold, deep-merge via shared helper, never whole-column replace.
 - [BAO buildup threemonthsprevElig quirk](bao-buildup-threemonthsprev-elig.md) — buildup's threemonthsprevElig short-circuits to false on its no-hours early return.
 - [Neon pool error handler](neon-pool-error-handler.md) — db.ts Pool must keep an 'error' listener or idle-connection drops crash the process (intermittent prod 500s).
 - [Employer compliance gating](employer-compliance-gating.md) — /employers/compliance is staff+ledger gated, never bulk.edit (bulk.edit is unsatisfiable: no staff.bulk perm, bulk component often off).
