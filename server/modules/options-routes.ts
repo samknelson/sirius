@@ -524,9 +524,17 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       // current JSON, never a whole-column replacement — saving the managed
       // threshold (or any other worker-ms field) must not erase unrelated
       // member-status JSON (e.g. loader-carried keys). An explicit `null`
-      // leaf deletes that key. The threshold slot itself is validated as a
-      // non-negative whole number of hours.
+      // LEAF deletes that key; a top-level `data: null` whole-column erase is
+      // rejected outright — there is no supported way to wipe the JSON in one
+      // call. The threshold slot itself is validated as a non-negative whole
+      // number of hours.
       if (type === "worker-ms" && updates.data !== undefined) {
+        if (updates.data === null) {
+          return res.status(400).json({
+            message:
+              "data cannot be null: member-status JSON updates are merged, not replaced. Clear individual keys with explicit null leaves instead.",
+          });
+        }
         const thresholdError = validateWorkerMsDataThreshold(updates.data);
         if (thresholdError) {
           return res.status(400).json({ message: thresholdError });
@@ -535,10 +543,7 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
         if (!current) {
           return res.status(404).json({ message: `${config.name} not found` });
         }
-        updates.data =
-          updates.data === null
-            ? null
-            : mergeOptionData(current.data, updates.data as Record<string, unknown>);
+        updates.data = mergeOptionData(current.data, updates.data as Record<string, unknown>);
       }
 
       // Status classification is live case state, not presentation metadata.

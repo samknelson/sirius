@@ -139,6 +139,21 @@ describe("worker-ms options API — threshold validation and sibling preservatio
     expect(row.data?.sitespecific?.bao?.threshold).toBe(40);
   });
 
+  it("rejects a top-level data:null whole-column erase", async () => {
+    const created = await createMs({ s1Tid: 1667, sitespecific: { bao: { threshold: 100 } } });
+    const id = created.body.id;
+    const res = await request(`/api/options/worker-ms/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ data: null }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.message).toMatch(/merged, not replaced/);
+    // Row JSON fully intact.
+    const row = await (await request(`/api/options/worker-ms/${id}`)).json();
+    expect(row.data).toEqual({ s1Tid: 1667, sitespecific: { bao: { threshold: 100 } } });
+  });
+
   it("prunes null leaves on create rather than persisting them", async () => {
     const created = await createMs({ sitespecific: { bao: { threshold: null } }, note: "x" });
     expect([200, 201]).toContain(created.status);
