@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 #
-# Run the production-profile S1 sync fleet against the existing staging
-# snapshot. This intentionally skips stage.ts, but retains the fleet's
-# migration advisory lock, deployed-app write fence, loader gates, and parity
-# checks. The log-notes step runs after contacts-workers.
+# Run only the S1 log-notes loader against the existing staging snapshot.
+# An inline runner acquires the same migration advisory lock and deployed-app
+# write fence as the full sync before invoking load-log-notes.ts.
 #
 # Run in the REGULAR AWS CloudShell tab after setting:
 #   export CLUSTER='...'
@@ -118,14 +117,77 @@ PINNED_TD=$(aws ecs register-task-definition \
   --output text) ||
   fail "register immutable task definition"
 
+RUNNER_CODE=$(cat <<'EOF'
+import { spawn } from "node:child_process";
+import { pool as pgPool } from "./server/storage/db";
+import {
+  acquireExclusiveAppWriteFence,
+  endAppWriteFencePool,
+} from "./server/services/s1-write-fence";
+
+const MIGRATION_LOCK_KEY = 727001;
+
+(async () => {
+  const lockClient = await pgPool.connect();
+  let lease;
+  try {
+    const lock = await lockClient.query(
+      "SELECT pg_try_advisory_lock($1) AS acquired",
+      [MIGRATION_LOCK_KEY],
+    );
+    if (lock.rows[0]?.acquired !== true) {
+      throw new Error("another migration command owns the advisory lock");
+    }
+    console.log("[log-notes-runner] migration lock acquired; waiting for in-flight app mutations");
+    lease = await acquireExclusiveAppWriteFence();
+    console.log("[log-notes-runner] app write fence acquired; starting log-notes loader");
+
+    const exitCode = await new Promise((resolve, reject) => {
+      const child = spawn(
+        "npx",
+        ["tsx", "scripts/s1-migration/load-log-notes.ts", "--migration-mode"],
+        { stdio: "inherit", env: process.env },
+      );
+      child.once("error", reject);
+      child.once("exit", (code, signal) => {
+        if (signal) {
+          reject(new Error(`log-notes loader terminated by ${signal}`));
+          return;
+        }
+        resolve(code ?? 1);
+      });
+    });
+
+    if (exitCode !== 0) {
+      throw new Error(`log-notes loader exited ${exitCode}`);
+    }
+    console.log("[log-notes-runner] log-notes loader completed successfully");
+  } finally {
+    await lease?.release();
+    await lockClient
+      .query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY])
+      .catch(() => undefined);
+    lockClient.release(true);
+    await endAppWriteFencePool();
+    await pgPool.end();
+    console.log("[log-notes-runner] migration lock and app write fence released");
+  }
+})().catch((error) => {
+  console.error(
+    `[log-notes-runner] FAIL: ${
+      error instanceof Error ? error.message.split("\n")[0] : String(error)
+    }`,
+  );
+  process.exitCode = 1;
+});
+EOF
+) || fail "build fenced loader runner"
+
 COMMAND_JSON=$(printf '%s\n' \
   npx \
   tsx \
-  scripts/s1-migration/sync.ts \
-  --mode daily \
-  --profile production \
-  --skip-stage \
-  --keep-going |
+  -e \
+  "$RUNNER_CODE" |
   jq -R . |
   jq -s .) || fail "build command override"
 OVERRIDES=$(jq -cn --argjson command "$COMMAND_JSON" \
@@ -165,7 +227,7 @@ export S1_LOG_NOTES_LOG_STREAM='$LOG_STREAM'
 export S1_LOG_NOTES_SOURCE_SHA='$SOURCE_SHA'
 EOF
 
-echo "No-restage production sync launched."
+echo "Fenced log-notes-only loader launched."
 echo "source image: sirius-migration:$SOURCE_SHA"
 echo "task: $TASK_ARN"
 echo "log stream: $LOG_STREAM"
@@ -174,5 +236,5 @@ echo "Follow aggregate-only logs:"
 echo "  source \"\$HOME/s1-log-notes-current.env\""
 echo "  aws logs tail \"\$S1_LOG_NOTES_LOG_GROUP\" --region \"$REGION\" --log-stream-names \"\$S1_LOG_NOTES_LOG_STREAM\" --follow"
 echo
-echo "This command runs the full fleet with --skip-stage --keep-going."
-echo "It does not use --force-reconcile."
+echo "This command runs only load-log-notes.ts --migration-mode."
+echo "It does not stage, run another loader, or use --force-reconcile."

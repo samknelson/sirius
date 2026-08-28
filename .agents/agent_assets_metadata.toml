@@ -144,5 +144,5 @@ description = "Drupal 7 Drush script; dry-run by default, explicit --apply requi
 id = "JnfqYrd9pB6KMEJ4tOlID"
 uri = "file://attached_assets/s1-no-restage-log-notes-cloudshell.sh"
 type = "unspecified"
-title = "Updated no-restage log-notes ECS launcher"
-description = "Updated launcher that safely runs a deps-stage migration image as the node user from /app with NODE_ENV=production, avoiding the redundant migration-stage snapshot."
+title = "Corrected log-notes-only ECS launcher"
+description = "Runs only load-log-notes.ts against existing staging while holding the migration advisory lock and application write fence. No restaging, full fleet, force reconcile, or Docker build."
