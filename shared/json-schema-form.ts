@@ -26,6 +26,14 @@ export const VendorExtensions = {
    * the schema and split the payload accordingly.
    */
   dataField: "x-data-field",
+  /**
+   * Marks a field persisted at a NESTED path inside the row's JSONB `data`
+   * blob (value: string[] path, e.g. ["sitespecific","bao","threshold"]).
+   * A missing/cleared value serializes as an explicit `null` leaf so the
+   * server can distinguish "clear this setting" from "not touched"; the
+   * server deep-merges the nested payload with the row's current JSON.
+   */
+  dataPath: "x-data-path",
 } as const;
 
 /** Allowed JSON Schema primitive type names. */
@@ -115,6 +123,25 @@ export function splitPayloadByDataField(
   const dataFields: Record<string, unknown> = {};
   if (!schema.properties) return { columnFields, dataFields };
   for (const [name, sub] of Object.entries(schema.properties)) {
+    const dataPath = sub[VendorExtensions.dataPath];
+    if (Array.isArray(dataPath) && dataPath.length > 0) {
+      // Nested data field: place the value at its declared path. A field the
+      // form omitted (cleared input) becomes an explicit null leaf — the
+      // "clear this setting" signal for the server-side deep merge. Never a
+      // silent skip: skipping would make clearing impossible.
+      const v = name in payload ? payload[name] : undefined;
+      let cursor = dataFields;
+      for (let i = 0; i < dataPath.length - 1; i++) {
+        const key = String(dataPath[i]);
+        const next = cursor[key];
+        cursor = (cursor[key] =
+          typeof next === "object" && next !== null && !Array.isArray(next)
+            ? (next as Record<string, unknown>)
+            : {});
+      }
+      cursor[String(dataPath[dataPath.length - 1])] = v === undefined ? null : v;
+      continue;
+    }
     if (!(name in payload)) continue;
     const v = payload[name];
     if (sub[VendorExtensions.dataField] === true) {

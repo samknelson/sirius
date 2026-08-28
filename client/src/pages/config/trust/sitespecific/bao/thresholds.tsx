@@ -21,6 +21,7 @@ import {
 import { Loader2, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
+import { readWorkerMsThreshold, thresholdPatch } from "@shared/worker-ms-threshold";
 
 interface MemberStatus {
   id: string;
@@ -32,34 +33,7 @@ interface MemberStatus {
 const OPTIONS_KEY = ["/api/options", "worker-ms"] as const;
 
 function getSavedThreshold(status: MemberStatus): number | undefined {
-  const value = status.data?.sitespecific?.bao?.threshold;
-  return typeof value === "number" && Number.isInteger(value) && value >= 0
-    ? value
-    : undefined;
-}
-
-/**
- * Merge a threshold (or its removal) into a status's existing JSON `data`
- * without disturbing any other keys. The unified-options update endpoint
- * replaces the whole `data` column, so we must send the full merged object.
- */
-function mergeThreshold(
-  existing: Record<string, any> | null | undefined,
-  threshold: number | undefined,
-): Record<string, any> {
-  const data: Record<string, any> = { ...(existing ?? {}) };
-  const sitespecific: Record<string, any> = { ...(data.sitespecific ?? {}) };
-  const bao: Record<string, any> = { ...(sitespecific.bao ?? {}) };
-
-  if (threshold === undefined) {
-    delete bao.threshold;
-  } else {
-    bao.threshold = threshold;
-  }
-
-  sitespecific.bao = bao;
-  data.sitespecific = sitespecific;
-  return data;
+  return readWorkerMsThreshold(status.data);
 }
 
 export default function BaoMemberStatusThresholdsPage() {
@@ -88,8 +62,13 @@ export default function BaoMemberStatusThresholdsPage() {
       status: MemberStatus;
       threshold: number | undefined;
     }) => {
-      const data = mergeThreshold(status.data, threshold);
-      return apiRequest("PUT", `/api/options/worker-ms/${status.id}`, { data });
+      // The worker-ms update endpoint deep-merges `data` with the row's
+      // current JSON (an explicit null leaf clears the setting), so send
+      // only the managed threshold path — sibling keys are preserved
+      // server-side.
+      return apiRequest("PUT", `/api/options/worker-ms/${status.id}`, {
+        data: thresholdPatch(threshold ?? null),
+      });
     },
     onSuccess: async (_result, variables) => {
       await queryClient.invalidateQueries({ queryKey: OPTIONS_KEY });

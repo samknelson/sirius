@@ -8,6 +8,10 @@ import { requireComponent, isComponentEnabled } from "./components";
 import { getComponentById } from "../../shared/components";
 import { jobTypeBullpenEnum } from "@shared/schema";
 import { logger } from "../logger";
+import {
+  mergeOptionData,
+  validateWorkerMsDataThreshold,
+} from "@shared/worker-ms-threshold";
 
 /**
  * Map a caught database error to a clear, user-facing message (or null if
@@ -427,7 +431,19 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       if (type === "bao-case-status" && data.closed !== undefined && typeof data.closed !== "boolean") {
         return res.status(400).json({ message: "closed must be a boolean" });
       }
-      
+
+      // Member statuses: the BAO hours threshold lives at the canonical
+      // nested path data.sitespecific.bao.threshold. Validate it and
+      // canonicalize the payload (null leaves — the "cleared" signal from
+      // the form — are pruned rather than persisted).
+      if (type === "worker-ms" && data.data !== undefined && data.data !== null) {
+        const thresholdError = validateWorkerMsDataThreshold(data.data);
+        if (thresholdError) {
+          return res.status(400).json({ message: thresholdError });
+        }
+        data.data = mergeOptionData({}, data.data as Record<string, unknown>);
+      }
+
       const item = await config.create(data);
       res.status(201).json(item);
     } catch (error: any) {
@@ -502,6 +518,27 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
         if (pluginError) {
           return res.status(400).json({ message: pluginError });
         }
+      }
+
+      // Member statuses: a `data` update is a DEEP MERGE into the row's
+      // current JSON, never a whole-column replacement — saving the managed
+      // threshold (or any other worker-ms field) must not erase unrelated
+      // member-status JSON (e.g. loader-carried keys). An explicit `null`
+      // leaf deletes that key. The threshold slot itself is validated as a
+      // non-negative whole number of hours.
+      if (type === "worker-ms" && updates.data !== undefined) {
+        const thresholdError = validateWorkerMsDataThreshold(updates.data);
+        if (thresholdError) {
+          return res.status(400).json({ message: thresholdError });
+        }
+        const current = await config.get(id);
+        if (!current) {
+          return res.status(404).json({ message: `${config.name} not found` });
+        }
+        updates.data =
+          updates.data === null
+            ? null
+            : mergeOptionData(current.data, updates.data as Record<string, unknown>);
       }
 
       // Status classification is live case state, not presentation metadata.

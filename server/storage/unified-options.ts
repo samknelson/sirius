@@ -108,6 +108,16 @@ export interface FieldDefinition {
   columnHeader?: string;
   columnWidth?: string;
   dataField?: boolean;
+  /**
+   * Persist this field at a NESTED path inside the JSONB `data` column
+   * instead of a top-level `data` key (e.g. the BAO member-status threshold
+   * lives at data.sitespecific.bao.threshold). Serialized into the schema as
+   * `x-data-path` so the client hydrates/serializes the same location.
+   * Mutually exclusive with `dataField`.
+   */
+  dataPath?: string[];
+  /** For inputType="number": minimum accepted value (schema `minimum`). */
+  min?: number;
   selectOptionsType?: OptionsTypeName;
   /** For inputType="multi-enum" or "enum": the allowed string values (and optional human labels). */
   enumOptions?: Array<{ value: string; label?: string }>;
@@ -182,6 +192,7 @@ export function fieldsToJsonSchema(
         break;
       case "number":
         prop.type = "integer";
+        if (f.min !== undefined) prop.minimum = f.min;
         break;
       case "checkbox":
         prop.type = "boolean";
@@ -267,6 +278,9 @@ export function fieldsToJsonSchema(
 
     if (f.dataField) {
       (prop as Record<string, unknown>)["x-data-field"] = true;
+    }
+    if (f.dataPath) {
+      (prop as Record<string, unknown>)["x-data-path"] = f.dataPath;
     }
 
     properties[f.name] = prop;
@@ -452,6 +466,7 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
       { name: "code", label: "Code", inputType: "text", required: false, placeholder: "Optional code", showInTable: true, columnHeader: "Code" },
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "Optional Sirius ID", showInTable: true, columnHeader: "Sirius ID" },
       { name: "industryId", label: "Industry", inputType: "select-options", required: true, selectOptionsType: "industry", showInTable: true, columnHeader: "Industry" },
+      { name: "baoThreshold", label: "Hours Threshold", inputType: "number", min: 0, required: false, placeholder: "Default when blank", helperText: "Qualifying hours required each examined month for BAO eligibility under this status. Leave blank to use the plugin default.", showInTable: true, columnHeader: "Hours Threshold", dataPath: ["sitespecific", "bao", "threshold"] },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: false },
     ],
   },
