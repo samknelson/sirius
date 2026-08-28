@@ -98,7 +98,15 @@ jq --arg image "$IMAGE" '
     .registeredBy
   )
   | .containerDefinitions |= map(
-      if .name == "migration" then .image = $image else . end
+      if .name == "migration" then
+        .image = $image
+        | .user = "node"
+        | .workingDirectory = "/app"
+        | .environment = (
+            ((.environment // []) | map(select(.name != "NODE_ENV")))
+            + [{name: "NODE_ENV", value: "production"}]
+          )
+      else . end
     )
 ' "$BASE_TD" > "$NEXT_TD" ||
   fail "prepare immutable task definition"
