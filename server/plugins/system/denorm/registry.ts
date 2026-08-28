@@ -1,4 +1,4 @@
-import { logger } from "../../../logger";
+import { logger, storageLogger } from "../../../logger";
 import { isCacheInitialized } from "../../../services/component-cache";
 import { eventBus } from "../../../services/event-bus";
 import { storage } from "../../../storage";
@@ -95,6 +95,32 @@ class DenormPluginRegistry extends PluginRegistry<DenormPlugin, DenormManifestEn
                 `No denorm config found for plugin ${plugin.metadata.id}; skipping update`,
                 { service: "denorm-registry", pluginId: plugin.metadata.id },
               );
+              storageLogger.error(
+                `Denorm processing unavailable: no ${plugin.metadata.id} config exists, so event ${eventHandler.event} was dropped`,
+                {
+                  source: "denorm",
+                  module: "denorm",
+                  operation: "event_update_no_config",
+                  description: `plugin ${plugin.metadata.id} has no plugin_configs row (seeding missing?)`,
+                },
+              );
+              return;
+            }
+            // Durably enqueue before computing: if compute/apply below throws,
+            // the row stays `stale` and the hourly denorm_stale cron recomputes
+            // it instead of the update being silently lost forever. On success
+            // applyComputed flips the row straight back to `ok`.
+            await storage.denorm.insertStaleBatch([
+              { entityId, entityType: plugin.entityType, configId: config.id },
+            ]);
+            if (!config.enabled) {
+              // Disabled config = processing paused, not lost: leave the row
+              // queued `stale` (the recompute sweep also skips disabled
+              // configs) so it drains when the config is re-enabled.
+              logger.info(
+                `Denorm config ${plugin.metadata.id} is disabled; leaving entity ${entityId} queued stale`,
+                { service: "denorm-registry", pluginId: plugin.metadata.id, entityId },
+              );
               return;
             }
             const data = eventHandler.getPayload
@@ -102,13 +128,26 @@ class DenormPluginRegistry extends PluginRegistry<DenormPlugin, DenormManifestEn
               : await plugin.compute(entityId);
             await applyComputed(plugin, config.id, entityId, data);
           } catch (error) {
+            // The entity's denorm row (marked `stale` above when the config
+            // resolved) remains queued for the denorm_stale cron, and the
+            // failure is surfaced in the admin log viewer.
+            const message = error instanceof Error ? error.message : String(error);
             logger.error(
               `Denorm plugin ${plugin.metadata.id} failed to update from event ${eventHandler.event}`,
               {
                 service: "denorm-registry",
                 pluginId: plugin.metadata.id,
                 event: eventHandler.event,
-                error: error instanceof Error ? error.message : String(error),
+                error: message,
+              },
+            );
+            storageLogger.error(
+              `Denorm plugin ${plugin.metadata.id} failed to update from event ${eventHandler.event}; the record is queued stale for the next recompute sweep`,
+              {
+                source: "denorm",
+                module: "denorm",
+                operation: "event_update_failed",
+                description: message,
               },
             );
           }

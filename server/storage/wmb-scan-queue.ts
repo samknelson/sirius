@@ -6,10 +6,12 @@ import {
   workers,
   contacts,
   employers,
+  denorm,
   type TrustWmbScanStatus,
   type TrustWmbScanQueue,
 } from "@shared/schema";
 import { eq, and, sql, gte, inArray, or, desc, asc } from "drizzle-orm";
+import type { DenormStaleSeed } from "./system/denorm";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -119,7 +121,13 @@ export interface WmbScanQueueStorage {
    * job: whichever claims first wins, the other sees undefined.
    */
   claimJobById(queueId: string): Promise<TrustWmbScanQueue | undefined>;
-  recordJobResult(queueId: string, success: boolean, resultSummary: any, error?: string): Promise<JobResultInfo>;
+  /**
+   * Record a job's terminal result. When `staleSeed` is provided on a
+   * successful result, the entity's denorm status row is marked `stale` in
+   * the SAME transaction — the durable queue→denorm handoff (see
+   * `processClaimedJob`).
+   */
+  recordJobResult(queueId: string, success: boolean, resultSummary: any, error?: string, staleSeed?: DenormStaleSeed): Promise<JobResultInfo>;
   
   // Invalidation
   invalidateWorkerScans(workerId: string): Promise<number>;
@@ -720,7 +728,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
       });
     },
 
-    async recordJobResult(queueId: string, success: boolean, resultSummary: any, error?: string): Promise<JobResultInfo> {
+    async recordJobResult(queueId: string, success: boolean, resultSummary: any, error?: string, staleSeed?: DenormStaleSeed): Promise<JobResultInfo> {
       const client = getClient();
       return await client.transaction(async (tx) => {
         const [job] = await tx
@@ -735,6 +743,33 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
           .returning();
 
         if (!job) return { scanCompleted: false };
+
+        // Durable queue→denorm handoff: mark the entity's denorm row `stale`
+        // IN THE SAME TRANSACTION that records the successful result, so a
+        // scan can never commit as `success` without its downstream denorm
+        // processing being durably enqueued (a crash or write failure rolls
+        // both back and the job is retried). The completion-event handler
+        // recomputes immediately and flips the row back to `ok`; if it is
+        // missing, skipped or fails, the row stays `stale` for the hourly
+        // denorm_stale cron.
+        if (success && staleSeed) {
+          const now = new Date();
+          await tx
+            .insert(denorm)
+            .values({
+              entityId: staleSeed.entityId,
+              entityType: staleSeed.entityType,
+              configId: staleSeed.configId,
+              status: "stale",
+              computedAt: null,
+              staleAt: now,
+              message: null,
+            })
+            .onConflictDoUpdate({
+              target: [denorm.entityId, denorm.configId],
+              set: { status: "stale", staleAt: now },
+            });
+        }
 
         // Parse benefit outcomes from resultSummary
         // Priority: check for termination (delete action) before continuation (eligible)

@@ -15,6 +15,7 @@ import {
   WMB_IMMEDIATE_SCAN_WORKER_FLOOD_EVENT,
 } from "../flood/events";
 import { tryAcquireAppWriteFence } from "./s1-write-fence";
+import { getDenormStaleSeed } from "../plugins/system/denorm/mark-stale";
 
 /**
  * Per-worker, event-driven trigger sources. Jobs from these sources also
@@ -83,7 +84,11 @@ export async function processNextQueueJob(
 export async function processClaimedJob(
   storage: IStorage,
   job: TrustWmbScanQueue,
-  policyCache?: PolicyResolutionCache
+  policyCache?: PolicyResolutionCache,
+  deps: {
+    /** Test seam: replaces the real benefits scan with a canned result. */
+    runScan?: typeof runBenefitsScan;
+  } = {},
 ): Promise<{ processed: boolean; workerId?: string; success?: boolean }> {
   logger.info(`Processing WMB scan job for worker ${job.workerId}`, {
     service: "wmb-scan-queue",
@@ -98,13 +103,28 @@ export async function processClaimedJob(
     // Event-driven single-worker jobs also re-evaluate the worker's covered
     // dependents; see PER_WORKER_AUTO_TRIGGER_SOURCES.
     const includeDependents = PER_WORKER_AUTO_TRIGGER_SOURCES.includes(job.triggerSource);
-    const result = await runBenefitsScan(
+    const result = await (deps.runScan ?? runBenefitsScan)(
       storage,
       job.workerId,
       job.month,
       job.year,
       "live",
       { includeDependents, policyCache }
+    );
+
+    // Durable queue→denorm handoff: resolve the trust-wmb-terminate stale
+    // seed up front and let recordJobResult persist the `stale` mark in the
+    // SAME transaction as the successful result — a scan can never commit as
+    // success without its terminate-event processing durably enqueued. The
+    // completion event below recomputes immediately (flipping the row back
+    // to `ok`); if the handler is missing, disabled, or fails — or the emit
+    // itself fails — the row stays `stale`, visible in the operator denorm
+    // dashboard and recomputed by the hourly denorm_stale cron. A missing
+    // config (seed === null) alerts via the admin log viewer inside the
+    // helper.
+    const terminateStaleSeed = await getDenormStaleSeed(
+      "trust-wmb-terminate",
+      job.workerId,
     );
 
     const jobResultInfo = await storage.wmbScanQueue.recordJobResult(
@@ -124,7 +144,9 @@ export async function processClaimedJob(
           executed: a.executed,
           pluginResults: a.pluginResults,
         })),
-      }
+      },
+      undefined,
+      terminateStaleSeed ?? undefined,
     );
 
     logger.info(`Completed WMB scan job for worker ${job.workerId}`, {
