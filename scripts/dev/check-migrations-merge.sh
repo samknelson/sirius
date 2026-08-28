@@ -30,7 +30,12 @@ for ref in origin/bao-dev origin/bao-prd; do
     continue
   fi
   echo "[check-migrations-merge] checking against --base=$ref"
-  if ! npx tsx scripts/check-migrations.ts --base="$ref"; then
+  # Task completion already enforces schema-change/migration pairing. At
+  # post-merge time the deployment branches can legitimately contain different
+  # subsets of migrations, so rerunning that pairing check against each branch
+  # produces false failures for later type-only schema edits. --skip bypasses
+  # only the pairing rule; checkCoreVersionCollisions deliberately still runs.
+  if ! npx tsx scripts/check-migrations.ts --base="$ref" --skip; then
     echo "[check-migrations-merge] FAILED against $ref"
     FAIL=1
   fi
