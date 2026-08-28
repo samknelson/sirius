@@ -13,15 +13,21 @@ import {
  * Disability Credit operational dashboard — live views only (every number is
  * derived at read time from case/month/event/hours rows). BAO-gated, staff.
  *
+ * Four sections (Fund ruling): a linked FMLA-eligible COUNT (the complete
+ * list lives on its own page), the approval queue, currently-on-DC (active
+ * grants), and annual-maximum-reached. Denial-letter and upcoming-month
+ * previews were removed; the authoritative reporting calculations behind
+ * them are unchanged and still used elsewhere.
+ *
  * Actions:
- *  - (default)      populations + active grants + queue + max-out + net
+ *  - (default)      fmla count + queue + active grants + max-out + net
  *  - upload-review  the heavier upload-anomaly scan, loaded on demand
  */
 export const baoDcSummaryPlugin: DashboardPlugin = {
   id: "bao-dc-summary",
   name: "Disability Credit",
   description:
-    "Live Disability Credit operations: upcoming populations (FMLA-eligible, active denial letters, upcoming months), active grants, approval queue, annual max-out, upload review, and net grant activity",
+    "Live Disability Credit operations: FMLA-eligible count, approval queue, workers currently on Disability Credit, annual max-out, upload review, and net grant activity",
   requiredComponent: "sitespecific.bao",
   requiredPolicy: "staff",
 
@@ -36,7 +42,15 @@ export const baoDcSummaryPlugin: DashboardPlugin = {
           listDcMaxedOutWorkers(),
           getDcNetGrantActivity(),
         ]);
-      return { populations, activeGrants, queue, maxedOut, netActivity };
+      // Only the COUNT ships to the dashboard — the full list has its own
+      // linked page backed by the same reporting service.
+      return {
+        fmlaEligibleCount: populations.fmlaEligible.length,
+        activeGrants,
+        queue,
+        maxedOut,
+        netActivity,
+      };
     },
     "upload-review": async () => ({
       findings: await listDcUploadReviewFindings(),

@@ -3,14 +3,16 @@
  * eligibility service and the `worker.dc` access policy (shared policy files
  * must not import server modules; see the policy for the DB-backed reads).
  *
- * A worker is eligible to OPEN a DC case when either condition holds:
- *  1. FMLA months — at least BAO_DC_FMLA_REQUIRED_MONTHS (3) distinct FMLA
- *     months (intermittent OR consecutive) within the rolling
- *     BAO_DC_ROLLING_WINDOW_MONTHS (12) calendar months ending with the
- *     as-of month.
- *  2. Active denial letter — a non-voided denial letter whose DERIVED
- *     validity window (letter date .. letter date + configured validity
- *     months, end-exclusive) covers the as-of date.
+ * A worker is eligible to OPEN a DC case on exactly ONE condition:
+ *  - FMLA months — at least BAO_DC_FMLA_REQUIRED_MONTHS (3) distinct FMLA
+ *    months (intermittent OR consecutive) within the rolling
+ *    BAO_DC_ROLLING_WINDOW_MONTHS (12) calendar months ending with the
+ *    as-of month.
+ *
+ * Denial letters do NOT confer member eligibility (Fund ruling). Workers who
+ * fall outside the FMLA gate enter only through a staff-opened EXCEPTION
+ * case (`staff_exception` basis). The denial-letter helpers below remain for
+ * displaying historical letters and their derived validity windows.
  *
  * All date handling is date-only (Ymd strings) — never `new Date(ymd)`.
  * LOA is a DISTINCT input and never qualifies as FMLA.
@@ -114,12 +116,19 @@ export interface DcEligibilityResult {
   conditions: BaoDcQualifyingCondition[];
   /** FMLA months inside the rolling window (sorted ascending). */
   fmlaMonthsInWindow: Ymd[];
+  /** Informational only — active letters NEVER confer eligibility. */
   activeDenialLetterIds: string[];
   /** Snapshot to store on the case at open. */
   basis: BaoDcQualifyingBasis;
 }
 
-/** Pure eligibility core — fully unit-testable without a database. */
+/**
+ * Pure eligibility core — fully unit-testable without a database.
+ *
+ * Eligibility is FMLA-only. Active denial letters are still surfaced (for
+ * history display) but do not qualify a worker and are not snapshotted into
+ * the basis of new cases.
+ */
 export function evaluateDcEligibility(inputs: DcEligibilityInputs): DcEligibilityResult {
   const { startMonthYmd, endMonthYmd } = rollingWindow(inputs.asOfYmd);
   const fmlaMonthsInWindow = Array.from(new Set(inputs.fmlaMonths))
@@ -133,10 +142,9 @@ export function evaluateDcEligibility(inputs: DcEligibilityInputs): DcEligibilit
 
   const conditions: BaoDcQualifyingCondition[] = [];
   if (fmlaQualifies) conditions.push("fmla_months");
-  if (activeDenialLetterIds.length > 0) conditions.push("denial_letter");
 
   return {
-    eligible: conditions.length > 0,
+    eligible: fmlaQualifies,
     conditions,
     fmlaMonthsInWindow,
     activeDenialLetterIds,
@@ -144,9 +152,6 @@ export function evaluateDcEligibility(inputs: DcEligibilityInputs): DcEligibilit
       asOfYmd: inputs.asOfYmd,
       conditions,
       ...(fmlaQualifies ? { fmlaMonths: fmlaMonthsInWindow } : {}),
-      ...(activeDenialLetterIds.length > 0
-        ? { denialLetterIds: activeDenialLetterIds }
-        : {}),
     },
   };
 }

@@ -31,7 +31,11 @@ import {
   isExtensionAllowed,
 } from "../../../services/entity-files/config";
 import { insertFileSchema } from "@shared/schema";
-import { listDcApprovalQueue } from "../../../services/sitespecific/bao/dc-reporting";
+import {
+  listDcApprovalQueue,
+  getDcUpcomingPopulations,
+} from "../../../services/sitespecific/bao/dc-reporting";
+import { BAO_DC_APPROVE_PERMISSION } from "../../../storage/sitespecific/bao/dc-approver";
 import { buildDcYearUsage } from "@shared/sitespecific/bao/dc-reporting";
 import { DcSelectionInvalidError } from "../../../storage/sitespecific/bao/disability-credit";
 import { DcGrantError, type DcGrantErrorCode } from "../../../services/sitespecific/bao/dc-grant";
@@ -49,6 +53,14 @@ type AccessMiddleware = (
 const todayYmd = () => new Date().toISOString().slice(0, 10);
 
 const openCaseSchema = z.object({
+  confirmDuplicate: z.boolean().optional(),
+});
+
+// Staff-opened exception case for a worker OUTSIDE the FMLA gate — the
+// reason is required and rides both the case snapshot and the durable
+// case_opened event, so the exception is auditable end to end.
+const exceptionCaseSchema = z.object({
+  reason: z.string().trim().min(1).max(2000),
   confirmDuplicate: z.boolean().optional(),
 });
 
@@ -80,7 +92,7 @@ const documentUpdateSchema = z.object({
 });
 
 const actionSchema = z.object({
-  action: z.enum(["mark_ready", "queue", "bounce", "approve", "deny", "withdraw"]),
+  action: z.enum(["send_for_approval", "bounce", "approve", "deny", "withdraw"]),
   reason: z.string().max(2000).optional(),
   expectedStatus: z.enum(BAO_DC_CASE_STATUSES).optional(),
 });
@@ -141,6 +153,14 @@ function handleDcError(res: Response, error: unknown): void {
     EXTENSION_REASON_REQUIRED: [400, "An extension reason is required"],
     DOCUMENT_NOT_FOUND: [404, "Document not found"],
     QUALIFYING_BASIS_REQUIRED: [422, "Worker is not eligible for Disability Credit"],
+    DC_APPROVER_REQUIRED: [
+      403,
+      "Only designated Disability Credit approvers can approve, deny, or return queued cases",
+    ],
+    DC_EXCEPTION_NOT_APPLICABLE: [
+      409,
+      "This worker currently meets the FMLA eligibility gate — open a regular case instead of an exception",
+    ],
     COMPONENT_TABLE_NOT_FOUND: [503, "Disability Credit tables are not installed"],
   };
   const hit = map[msg];
@@ -256,6 +276,51 @@ export function registerBaoDisabilityCreditRoutes(
     },
   );
 
+  // Staff-only EXCEPTION intake: open an auditable case for a worker who
+  // does NOT meet the FMLA gate. A reason is required; it is snapshotted on
+  // the qualifying basis and rides the durable case_opened event. Members
+  // never reach this path (staff policy), and the member routes above stay
+  // FMLA-only.
+  app.post(
+    "/api/workers/:workerId/sitespecific/bao/dc/exception-cases",
+    requireAuth,
+    componentMiddleware,
+    requireAccess("staff"),
+    async (req: Request, res: Response) => {
+      try {
+        const workerId = req.params.workerId;
+        const body = exceptionCaseSchema.parse(req.body ?? {});
+        // Exceptions exist ONLY for workers outside the FMLA gate; an
+        // eligible worker must go through the regular (auditable-as-normal)
+        // path instead.
+        const eligibility = await computeDcEligibilityForWorker(workerId, todayYmd());
+        if (eligibility.eligible) {
+          throw new Error("DC_EXCEPTION_NOT_APPLICABLE");
+        }
+        const created = await dc.openCase({
+          workerId,
+          openedYmd: todayYmd(),
+          qualifyingBasis: {
+            asOfYmd: todayYmd(),
+            conditions: ["staff_exception"],
+            exceptionReason: body.reason,
+          },
+          intakeChannel: "msr",
+          createdByUserId: await actorId(req),
+          allowDuplicate: body.confirmDuplicate === true,
+          data: { exceptionReason: body.reason },
+        });
+        res.status(201).json(created);
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          res.status(400).json({ message: "Invalid request", errors: error.errors });
+          return;
+        }
+        handleDcError(res, error);
+      }
+    },
+  );
+
   // Case detail bundle: staff, or the member who owns the case.
   app.get(
     "/api/sitespecific/bao/dc/cases/:caseId",
@@ -269,7 +334,14 @@ export function registerBaoDisabilityCreditRoutes(
           res.status(404).json({ message: "Case not found" });
           return;
         }
-        res.json({ ...bundle, isStaff: await isStaff(req) });
+        // isApprover drives which decision actions the interface offers;
+        // the actions route below enforces the same boundary server-side.
+        const actor = await actorId(req);
+        const isApprover = await storage.users.userHasPermission(
+          actor,
+          BAO_DC_APPROVE_PERMISSION,
+        );
+        res.json({ ...bundle, isStaff: await isStaff(req), isApprover });
       } catch (error) {
         handleDcError(res, error);
       }
@@ -582,7 +654,10 @@ export function registerBaoDisabilityCreditRoutes(
     },
   );
 
-  // Lifecycle actions — STAFF only (approve/deny recheck readiness inside).
+  // Lifecycle actions — STAFF prepare (send_for_approval, withdraw, legacy
+  // return-to-draft); FINAL decisions on QUEUED cases (approve, deny, or
+  // return) require the designated-approver permission — enforced here at
+  // the API boundary, mirrored by the interface via `isApprover`.
   app.post(
     "/api/sitespecific/bao/dc/cases/:caseId/actions",
     requireAuth,
@@ -591,10 +666,27 @@ export function registerBaoDisabilityCreditRoutes(
     async (req: Request, res: Response) => {
       try {
         const body = actionSchema.parse(req.body ?? {});
+        const actor = await actorId(req);
         const result = await performDcCaseAction(req.params.caseId, body.action as DcCaseAction, {
-          actorUserId: await actorId(req),
+          actorUserId: actor,
           reason: body.reason,
           expectedStatus: body.expectedStatus,
+          // Runs INSIDE the case serialization lock on the freshly-loaded
+          // case — the status checked here is the status the transition acts
+          // on, so a concurrent queue/bounce cannot open a check-then-act
+          // gap around the approver boundary.
+          authorize: async (theCase) => {
+            const decidesQueuedCase =
+              body.action === "approve" ||
+              body.action === "deny" ||
+              (body.action === "bounce" && theCase.status === "in_queue");
+            if (
+              decidesQueuedCase &&
+              !(await storage.users.userHasPermission(actor, BAO_DC_APPROVE_PERMISSION))
+            ) {
+              throw new Error("DC_APPROVER_REQUIRED");
+            }
+          },
         });
         // Queue continuation: after finishing this case, offer the oldest
         // still-open queued case so MSRs/approvers can keep working.
@@ -620,6 +712,23 @@ export function registerBaoDisabilityCreditRoutes(
       try {
         // Shared live-query service — the SAME rows the dashboard shows.
         res.json(await listDcApprovalQueue());
+      } catch (error) {
+        handleDcError(res, error);
+      }
+    },
+  );
+
+  // Complete current FMLA-eligible list — STAFF. The dashboard shows only
+  // the linked COUNT; this endpoint backs the full-list page.
+  app.get(
+    "/api/sitespecific/bao/dc/fmla-eligible",
+    requireAuth,
+    componentMiddleware,
+    requireAccess("staff"),
+    async (_req: Request, res: Response) => {
+      try {
+        const populations = await getDcUpcomingPopulations();
+        res.json({ fmlaEligible: populations.fmlaEligible });
       } catch (error) {
         handleDcError(res, error);
       }

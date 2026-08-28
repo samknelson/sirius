@@ -19,6 +19,10 @@ import {
   pluginConfigsBenefitEligibility,
   workerTrustElections,
   workers as workersTable,
+  rolePermissions,
+  roles,
+  userRoles,
+  users,
 } from "@shared/schema";
 import { inArray } from "drizzle-orm";
 import { formatYmdMonth } from "@shared/utils/date";
@@ -33,6 +37,10 @@ let base = "";
 let closeServer: (() => Promise<void>) | undefined;
 let workerId = "";
 let staffId = "";
+// A staff user WITHOUT the bao.dc.approve permission — preparation works,
+// queued-case decisions must 403.
+let plainStaffId = "";
+let approverRoleId = "";
 const caseIds: string[] = [];
 
 async function request(path: string, init: RequestInit & { user?: string; staff?: boolean } = {}) {
@@ -66,6 +74,25 @@ beforeAll(async () => {
   if (!workers[0] || !staff) throw new Error("DC route harness prerequisites unavailable");
   workerId = workers[0].id;
   staffId = staff.id;
+
+  // Designate staffId as a DC approver via a real role-permission row (the
+  // same mechanism admins use), and create a plain staff user without it.
+  const run = `dc-routes-${Date.now()}`;
+  const approverRole = await storage.users.createRole({
+    name: `${run}-approver`,
+    description: "DC approver test role",
+  } as any);
+  approverRoleId = approverRole.id;
+  await db
+    .insert(rolePermissions)
+    .values({ roleId: approverRoleId, permissionKey: "bao.dc.approve" });
+  await storage.users.assignRoleToUser({ userId: staffId, roleId: approverRoleId } as any);
+  const plainStaff = await storage.users.createUser({
+    email: `${run}-plain@example.test`,
+    firstName: "Plain",
+    lastName: "Staff",
+  } as any);
+  plainStaffId = plainStaff.id;
 
   const app = express();
   app.use(express.json());
@@ -101,6 +128,17 @@ afterAll(async () => {
     await db.delete(sitespecificBaoDcEvents).where(eq(sitespecificBaoDcEvents.caseId, id));
     await db.delete(sitespecificBaoDcCases).where(eq(sitespecificBaoDcCases.id, id));
   }
+  if (approverRoleId) {
+    await db.delete(userRoles).where(eq(userRoles.roleId, approverRoleId)).catch(() => {});
+    await db
+      .delete(rolePermissions)
+      .where(eq(rolePermissions.roleId, approverRoleId))
+      .catch(() => {});
+    await db.delete(roles).where(eq(roles.id, approverRoleId)).catch(() => {});
+  }
+  if (plainStaffId) {
+    await db.delete(users).where(eq(users.id, plainStaffId)).catch(() => {});
+  }
 });
 
 async function makeCase(status: string): Promise<string> {
@@ -109,8 +147,8 @@ async function makeCase(status: string): Promise<string> {
     openedYmd: "2027-09-01",
     qualifyingBasis: {
       asOfYmd: "2027-09-01",
-      conditions: ["denial_letter"],
-      denialLetterIds: ["x"],
+      conditions: ["staff_exception"],
+      exceptionReason: "harness case",
     },
     createdByUserId: staffId,
     allowDuplicate: true,
@@ -139,7 +177,9 @@ describe("DC route stage boundaries", () => {
   it("members cannot reach lifecycle, attestation, month, extension, or queue routes", async () => {
     const id = await makeCase("draft");
     const memberCalls: Array<[string, RequestInit]> = [
-      [`/api/sitespecific/bao/dc/cases/${id}/actions`, { method: "POST", body: JSON.stringify({ action: "mark_ready" }) }],
+      [`/api/sitespecific/bao/dc/cases/${id}/actions`, { method: "POST", body: JSON.stringify({ action: "send_for_approval" }) }],
+      [`/api/workers/${workerId}/sitespecific/bao/dc/exception-cases`, { method: "POST", body: JSON.stringify({ reason: "member try" }) }],
+      [`/api/sitespecific/bao/dc/fmla-eligible`, {}],
       [`/api/sitespecific/bao/dc/cases/${id}/attestations`, { method: "PUT", body: JSON.stringify({ dcFormOnFile: true }) }],
       [`/api/sitespecific/bao/dc/cases/${id}/months`, { method: "PUT", body: JSON.stringify({ months: [] }) }],
       [`/api/sitespecific/bao/dc/cases/${id}/extend`, { method: "POST", body: JSON.stringify({ reason: "x" }) }],
@@ -207,6 +247,227 @@ describe("DC route stage boundaries", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect("nextCaseId" in body).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Staff exception intake, one-step handoff, approver boundary (task 418)
+// ---------------------------------------------------------------------------
+
+describe("staff exception intake", () => {
+  it("requires a reason", async () => {
+    const res = await request(`/api/workers/${workerId}/sitespecific/bao/dc/exception-cases`, {
+      method: "POST",
+      user: staffId,
+      body: JSON.stringify({ reason: "  ", confirmDuplicate: true }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("refuses an exception for a worker who currently MEETS the FMLA gate", async () => {
+    // Build a genuinely FMLA-eligible worker: 3 FMLA months in the rolling
+    // window — the exception path must refuse and point at the regular path.
+    const run = `dc-exc-eligible-${Date.now()}`;
+    const w = await storage.workers.createWorker(`DC Exception Eligible ${run}`);
+    const [emp] = await db
+      .insert(employers)
+      .values({ name: `${run}-e`, siriusId: `${run}-e`, isActive: true } as never)
+      .returning();
+    const [fmla] = await db
+      .insert(optionsEmploymentStatus)
+      .values({ name: "FMLA", code: `${run}`, employed: false })
+      .returning();
+    const now = new Date();
+    try {
+      for (const back of [1, 2, 3]) {
+        const o = now.getFullYear() * 12 + now.getMonth() - back;
+        await db.insert(workerHours).values({
+          year: Math.floor(o / 12),
+          month: (o % 12) + 1,
+          day: 1,
+          workerId: w.id,
+          employerId: emp.id,
+          employmentStatusId: fmla.id,
+          hours: 10,
+        });
+      }
+      const res = await request(`/api/workers/${w.id}/sitespecific/bao/dc/exception-cases`, {
+        method: "POST",
+        user: staffId,
+        body: JSON.stringify({ reason: "should be refused" }),
+      });
+      expect(res.status).toBe(409);
+      expect((await res.json()).code).toBe("DC_EXCEPTION_NOT_APPLICABLE");
+      const cases = await storage.baoDisabilityCredit.listCasesForWorker(w.id);
+      expect(cases).toHaveLength(0);
+    } finally {
+      await db.delete(workerHours).where(eq(workerHours.workerId, w.id));
+      await db.delete(workersTable).where(eq(workersTable.id, w.id));
+      await db.delete(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, fmla.id));
+      await db.delete(employers).where(eq(employers.id, emp.id));
+    }
+  });
+
+  it("opens an auditable staff_exception case carrying the reason", async () => {
+    const res = await request(`/api/workers/${workerId}/sitespecific/bao/dc/exception-cases`, {
+      method: "POST",
+      user: staffId,
+      body: JSON.stringify({ reason: "Denial letter received by mail", confirmDuplicate: true }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    caseIds.push(body.id);
+    expect(body.status).toBe("draft");
+    expect(body.qualifyingBasis.conditions).toEqual(["staff_exception"]);
+    expect(body.qualifyingBasis.exceptionReason).toBe("Denial letter received by mail");
+    // The durable case_opened event carries the reason — auditable intake.
+    const events = await db
+      .select()
+      .from(sitespecificBaoDcEvents)
+      .where(eq(sitespecificBaoDcEvents.caseId, body.id));
+    const opened = events.find((e) => e.eventType === "case_opened");
+    expect((opened?.payload as any)?.exceptionReason).toBe("Denial letter received by mail");
+    expect((opened?.payload as any)?.conditions).toEqual(["staff_exception"]);
+  });
+});
+
+describe("one-step Send for Approval and legacy states", () => {
+  it("rejects the retired mark_ready and queue actions", async () => {
+    const id = await makeCase("draft");
+    for (const action of ["mark_ready", "queue"]) {
+      const res = await request(`/api/sitespecific/bao/dc/cases/${id}/actions`, {
+        method: "POST",
+        user: staffId,
+        body: JSON.stringify({ action }),
+      });
+      expect(res.status, action).toBe(400);
+    }
+  });
+
+  it("blocks send_for_approval on an unready draft", async () => {
+    const id = await makeCase("draft");
+    const res = await request(`/api/sitespecific/bao/dc/cases/${id}/actions`, {
+      method: "POST",
+      user: staffId,
+      body: JSON.stringify({ action: "send_for_approval" }),
+    });
+    expect(res.ok).toBe(false);
+    const after = await storage.baoDisabilityCredit.getCase(id);
+    expect(after?.status).toBe("draft");
+  });
+
+  it("keeps legacy ready_for_review cases actionable (return to draft)", async () => {
+    const id = await makeCase("ready_for_review");
+    const res = await request(`/api/sitespecific/bao/dc/cases/${id}/actions`, {
+      method: "POST",
+      user: staffId,
+      body: JSON.stringify({ action: "bounce", expectedStatus: "ready_for_review" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.case.status).toBe("draft");
+  });
+});
+
+describe("approver boundary on queued cases", () => {
+  it("refuses approve/deny/return on a queued case for non-approver staff", async () => {
+    const id = await makeCase("in_queue");
+    for (const [action, extra] of [
+      ["approve", {}],
+      ["deny", { reason: "no" }],
+      ["bounce", {}],
+    ] as const) {
+      const res = await request(`/api/sitespecific/bao/dc/cases/${id}/actions`, {
+        method: "POST",
+        user: plainStaffId,
+        body: JSON.stringify({ action, ...extra }),
+      });
+      expect(res.status, action).toBe(403);
+      const body = await res.json();
+      expect(body.code, action).toBe("DC_APPROVER_REQUIRED");
+    }
+    const after = await storage.baoDisabilityCredit.getCase(id);
+    expect(after?.status).toBe("in_queue");
+  });
+
+  it("lets non-approver staff prepare: return a ready_for_review case, withdraw a draft", async () => {
+    const rfr = await makeCase("ready_for_review");
+    const bounce = await request(`/api/sitespecific/bao/dc/cases/${rfr}/actions`, {
+      method: "POST",
+      user: plainStaffId,
+      body: JSON.stringify({ action: "bounce" }),
+    });
+    expect(bounce.status).toBe(200);
+
+    const draft = await makeCase("draft");
+    const withdraw = await request(`/api/sitespecific/bao/dc/cases/${draft}/actions`, {
+      method: "POST",
+      user: plainStaffId,
+      body: JSON.stringify({ action: "withdraw", reason: "member asked" }),
+    });
+    expect(withdraw.status).toBe(200);
+  });
+
+  it("authorizes on the FRESH status under the lock: a bounce racing a queue transition still requires an approver", async () => {
+    const id = await makeCase("ready_for_review");
+    let bouncePromise: Promise<Awaited<ReturnType<typeof request>>> | undefined;
+    // Hold the case's serialization lock: queue the case, then let a
+    // non-approver's bounce arrive while ready_for_review was the last
+    // state visible OUTSIDE the lock. The route must authorize against the
+    // in_queue status it will actually act on, not a stale pre-lock read.
+    await storage.baoDisabilityCredit.withCaseSerialization(id, async () => {
+      await storage.baoDisabilityCredit.transitionCase(id, {
+        to: "in_queue",
+        actorUserId: staffId,
+      });
+      bouncePromise = request(`/api/sitespecific/bao/dc/cases/${id}/actions`, {
+        method: "POST",
+        user: plainStaffId,
+        body: JSON.stringify({ action: "bounce" }),
+      });
+      // Give the request time to start and block on the lock.
+      await new Promise((r) => setTimeout(r, 500));
+    });
+    const res = await bouncePromise!;
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("DC_APPROVER_REQUIRED");
+    const after = await storage.baoDisabilityCredit.getCase(id);
+    expect(after?.status).toBe("in_queue");
+  });
+
+  it("lets a designated approver return a queued case to draft", async () => {
+    const id = await makeCase("in_queue");
+    const res = await request(`/api/sitespecific/bao/dc/cases/${id}/actions`, {
+      method: "POST",
+      user: staffId,
+      body: JSON.stringify({ action: "bounce", expectedStatus: "in_queue" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.case.status).toBe("draft");
+  });
+
+  it("exposes isApprover on the case bundle", async () => {
+    const id = await makeCase("draft");
+    const asApprover = await request(`/api/sitespecific/bao/dc/cases/${id}`, { user: staffId });
+    expect(asApprover.status).toBe(200);
+    expect((await asApprover.json()).isApprover).toBe(true);
+    const asPlain = await request(`/api/sitespecific/bao/dc/cases/${id}`, { user: plainStaffId });
+    expect(asPlain.status).toBe(200);
+    expect((await asPlain.json()).isApprover).toBe(false);
+  });
+});
+
+describe("complete FMLA-eligible list endpoint", () => {
+  it("returns the full current population for staff", async () => {
+    const res = await request(`/api/sitespecific/bao/dc/fmla-eligible`, { user: staffId });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.fmlaEligible)).toBe(true);
+    for (const row of body.fmlaEligible) {
+      expect(row.worker.workerId).toBeTruthy();
+      expect(row.fmlaMonths.length).toBeGreaterThanOrEqual(3);
+    }
   });
 });
 
@@ -280,17 +541,15 @@ describe("queued-case approval through the real action route (task 411)", () => 
       } as never,
       staffId,
     );
-    for (const [action, expected] of [
-      ["mark_ready", "draft"],
-      ["queue", "ready_for_review"],
-    ] as const) {
-      const res = await request(`/api/sitespecific/bao/dc/cases/${c.id}/actions`, {
-        method: "POST",
-        user: staffId,
-        body: JSON.stringify({ action, expectedStatus: expected }),
-      });
-      expect(res.status).toBe(200);
-    }
+    // One-step handoff: preparation ends with a single Send for Approval.
+    const res = await request(`/api/sitespecific/bao/dc/cases/${c.id}/actions`, {
+      method: "POST",
+      user: staffId,
+      body: JSON.stringify({ action: "send_for_approval", expectedStatus: "draft" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.case.status).toBe("in_queue");
     return c.id;
   }
 

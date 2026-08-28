@@ -17,23 +17,8 @@ import { useDashboardContent } from "../useDashboardContent";
 type WorkerRef = { workerId: string; siriusId: number | null; name: string };
 
 interface DcSummaryContent {
-  populations: {
-    asOfYmd: string;
-    fmlaEligible: Array<{ worker: WorkerRef; fmlaMonths: string[] }>;
-    denialLetters: Array<{
-      worker: WorkerRef;
-      letterYmd: string;
-      expiryYmd: string;
-      daysToExpiry: number;
-      expiryWarning: boolean;
-    }>;
-    upcomingMonths: Array<{
-      caseId: string;
-      caseStatus: string;
-      worker: WorkerRef;
-      months: Array<{ workMonthYmd: string; status: string }>;
-    }>;
-  };
+  /** Linked count only — the complete list lives on its own page. */
+  fmlaEligibleCount: number;
   activeGrants: Array<{
     worker: WorkerRef;
     caseId: string;
@@ -146,7 +131,7 @@ export function BaoDcSummary(_props: DashboardPluginProps) {
   }
   if (!data) return null;
 
-  const { populations, activeGrants, queue, maxedOut, netActivity } = data;
+  const { fmlaEligibleCount, activeGrants, queue, maxedOut, netActivity } = data;
   const recentNet = netActivity.slice(-6);
 
   return (
@@ -156,76 +141,26 @@ export function BaoDcSummary(_props: DashboardPluginProps) {
           <HeartPulse className="h-4 w-4" /> Disability Credit
         </CardTitle>
         <CardDescription>
-          Live counts as of {populations.asOfYmd} — derived from case, month,
-          event, and hours records.
+          Live counts derived from case, month, event, and hours records.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
-        <Section
-          title="FMLA-eligible (no open case)"
-          count={populations.fmlaEligible.length}
-        >
-          <ul className="space-y-0.5" data-testid="list-dc-fmla-eligible">
-            {populations.fmlaEligible.slice(0, 8).map((row) => (
-              <li key={row.worker.workerId} className="flex justify-between gap-2">
-                <WorkerLink worker={row.worker} />
-                <span className="text-muted-foreground text-xs">
-                  {row.fmlaMonths.length} FMLA month(s)
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Section>
+        {/* Count only — click through for the complete current list. */}
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <h4 className="text-sm font-medium">FMLA Eligible</h4>
+            <Badge variant="secondary" data-testid="badge-dc-fmla-eligible-count">
+              {fmlaEligibleCount}
+            </Badge>
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/bao/dc/fmla-eligible" data-testid="link-dc-fmla-eligible">
+              View the complete list
+            </Link>
+          </Button>
+        </div>
 
-        <Section
-          title="Active denial letters (no open case)"
-          count={populations.denialLetters.length}
-        >
-          <ul className="space-y-0.5" data-testid="list-dc-denial-letters">
-            {populations.denialLetters.slice(0, 8).map((row) => (
-              <li
-                key={`${row.worker.workerId}-${row.letterYmd}`}
-                className="flex justify-between gap-2 items-center"
-              >
-                <WorkerLink worker={row.worker} />
-                {row.expiryWarning ? (
-                  <Badge
-                    variant="destructive"
-                    data-testid={`badge-dc-expiry-warning-${row.worker.workerId}`}
-                  >
-                    Expires in {row.daysToExpiry}d
-                  </Badge>
-                ) : (
-                  <span className="text-muted-foreground text-xs">
-                    expires {row.expiryYmd}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </Section>
-
-        <Section
-          title="Cases with upcoming months"
-          count={populations.upcomingMonths.length}
-        >
-          <ul className="space-y-0.5" data-testid="list-dc-upcoming-months">
-            {populations.upcomingMonths.slice(0, 8).map((row) => (
-              <li key={row.caseId} className="flex justify-between gap-2">
-                <WorkerLink worker={row.worker} />
-                <Link
-                  href={`/bao/dc/cases/${row.caseId}`}
-                  className="text-muted-foreground text-xs hover:underline"
-                >
-                  {row.months.map((m) => monthLabel(m.workMonthYmd)).join(", ")} (
-                  {row.caseStatus})
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </Section>
-
-        <Section title="Approval queue" count={queue.length}>
+        <Section title="Approval Queue" count={queue.length}>
           <ul className="space-y-0.5" data-testid="list-dc-queue">
             {queue.slice(0, 8).map((row) => (
               <li key={row.case.id} className="flex justify-between gap-2 items-center">
@@ -246,7 +181,7 @@ export function BaoDcSummary(_props: DashboardPluginProps) {
           </ul>
         </Section>
 
-        <Section title="Active grants" count={activeGrants.length}>
+        <Section title="Currently on Disability Credit" count={activeGrants.length}>
           <ul className="space-y-0.5" data-testid="list-dc-active-grants">
             {activeGrants.slice(0, 8).map((row) => (
               <li
@@ -263,7 +198,7 @@ export function BaoDcSummary(_props: DashboardPluginProps) {
           </ul>
         </Section>
 
-        <Section title="Annual max-out" count={maxedOut.length}>
+        <Section title="Annual Maximum Reached" count={maxedOut.length}>
           <ul className="space-y-0.5" data-testid="list-dc-maxed-out">
             {maxedOut.slice(0, 8).map((row) => (
               <li

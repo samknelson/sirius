@@ -910,6 +910,10 @@ export const componentRegistry: ComponentDefinition[] = [
         key: "bao.case.assign",
         description: "Assign BAO cases to other staff users (self-assignment never requires this)",
       },
+      {
+        key: "bao.dc.approve",
+        description: "Approve, deny, or return queued Disability Credit cases (designated approvers)",
+      },
     ],
     managesSchema: true,
     schemaManifest: {

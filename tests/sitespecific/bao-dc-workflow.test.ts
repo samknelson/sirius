@@ -30,16 +30,20 @@ describe("DC lifecycle transitions", () => {
     expect(BAO_DC_CASE_TRANSITIONS.approved).toEqual([]);
   });
 
-  it("allows the review path and bounce-backs, refuses skips", () => {
-    expect(isDcTransitionAllowed("draft", "ready_for_review")).toBe(true);
+  it("allows the one-step approval handoff and bounce-backs, refuses skips", () => {
+    // One-step handoff: draft goes STRAIGHT to the queue.
+    expect(isDcTransitionAllowed("draft", "in_queue")).toBe(true);
+    // The intermediate mark-ready hop is retired for new work…
+    expect(isDcTransitionAllowed("draft", "ready_for_review")).toBe(false);
+    // …but legacy ready_for_review cases keep every exit so they are never
+    // stranded: they can be sent for approval or returned to draft.
     expect(isDcTransitionAllowed("ready_for_review", "in_queue")).toBe(true);
+    expect(isDcTransitionAllowed("ready_for_review", "draft")).toBe(true);
     expect(isDcTransitionAllowed("in_queue", "approved")).toBe(true);
     expect(isDcTransitionAllowed("in_queue", "denied")).toBe(true);
     // Bounces
-    expect(isDcTransitionAllowed("ready_for_review", "draft")).toBe(true);
     expect(isDcTransitionAllowed("in_queue", "draft")).toBe(true);
     // Skips / illegal
-    expect(isDcTransitionAllowed("draft", "in_queue")).toBe(false);
     expect(isDcTransitionAllowed("draft", "approved")).toBe(false);
     expect(isDcTransitionAllowed("approved", "draft")).toBe(false);
     expect(isDcTransitionAllowed("denied", "draft")).toBe(false);

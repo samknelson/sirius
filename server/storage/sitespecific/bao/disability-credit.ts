@@ -601,6 +601,11 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
             conditions: input.qualifyingBasis.conditions,
             intakeChannel: created.intakeChannel,
             duplicateConfirmed: open.length > 0,
+            // Staff-exception cases carry WHY the exception is being
+            // reviewed on the durable event — auditable intake.
+            ...(input.qualifyingBasis.exceptionReason
+              ? { exceptionReason: input.qualifyingBasis.exceptionReason }
+              : {}),
           },
         });
         return created;

@@ -143,7 +143,7 @@ describe("denial-letter eligibility (derived expiry)", () => {
     expect(isDenialLetterActive(letter, "2026-08-01", 12)).toBe(true);
   });
 
-  it("qualifies a worker without FMLA months and records the condition", () => {
+  it("NEVER qualifies a worker on a denial letter alone — FMLA is the sole member gate", () => {
     const result = evaluateDcEligibility({
       asOfYmd: "2026-08-15",
       fmlaMonths: [],
@@ -154,19 +154,21 @@ describe("denial-letter eligibility (derived expiry)", () => {
       ],
       denialLetterValidityMonths: 12,
     });
-    expect(result.eligible).toBe(true);
-    expect(result.conditions).toEqual(["denial_letter"]);
+    expect(result.eligible).toBe(false);
+    expect(result.conditions).toEqual([]);
+    // Active letters are still surfaced informationally for staff context.
     expect(result.activeDenialLetterIds).toEqual(["L1"]);
   });
 
-  it("records BOTH conditions when both hold", () => {
+  it("records only the FMLA condition even when an active letter exists", () => {
     const result = evaluateDcEligibility({
       asOfYmd: "2026-08-15",
       fmlaMonths: ["2026-05-01", "2026-06-01", "2026-07-01"],
       denialLetters: [{ id: "L1", letterYmd: "2026-06-01", voidedYmd: null }],
       denialLetterValidityMonths: 12,
     });
-    expect(result.conditions).toEqual(["fmla_months", "denial_letter"]);
+    expect(result.eligible).toBe(true);
+    expect(result.conditions).toEqual(["fmla_months"]);
   });
 });
 
@@ -486,9 +488,6 @@ describe("DC document classification boundary", () => {
       caseId: c.id, workerId: otherWorkerId, workMonthYmd: "2098-01-01", status: "selected",
     });
     await storage.baoDisabilityCredit.transitionCase(c.id, {
-      to: "ready_for_review", actorUserId: userId,
-    });
-    await storage.baoDisabilityCredit.transitionCase(c.id, {
       to: "in_queue", actorUserId: userId,
     });
 
@@ -693,7 +692,6 @@ describe("DC approval vs evidence-mutation race", () => {
     await db.insert(sitespecificBaoDcCaseMonths).values({
       caseId: c.id, workerId: otherWorkerId, workMonthYmd: "2099-01-01", status: "selected",
     });
-    await storage.baoDisabilityCredit.transitionCase(c.id, { to: "ready_for_review", actorUserId: userId });
     await storage.baoDisabilityCredit.transitionCase(c.id, { to: "in_queue", actorUserId: userId });
 
     // Hold the case's serialization lock, supersede the only DC form inside

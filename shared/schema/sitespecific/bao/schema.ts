@@ -1552,8 +1552,19 @@ export type BaoDcAttestations = {
   updatedAt?: string;
 };
 
-/** The two ways a worker can qualify to open a DC case. */
-export const BAO_DC_QUALIFYING_CONDITIONS = ["fmla_months", "denial_letter"] as const;
+/**
+ * Ways a DC case can qualify at open.
+ * - `fmla_months` — the ONLY member-eligibility condition (rolling FMLA gate).
+ * - `denial_letter` — LEGACY: retained so historical basis snapshots stay
+ *   valid; new cases never qualify this way (Fund ruling).
+ * - `staff_exception` — staff-opened exception case for a worker outside the
+ *   FMLA gate; requires an auditable reason.
+ */
+export const BAO_DC_QUALIFYING_CONDITIONS = [
+  "fmla_months",
+  "denial_letter",
+  "staff_exception",
+] as const;
 export type BaoDcQualifyingCondition = (typeof BAO_DC_QUALIFYING_CONDITIONS)[number];
 
 /** FMLA months (intermittent or consecutive) required in the rolling window. */
@@ -1571,8 +1582,10 @@ export type BaoDcQualifyingBasis = {
   conditions: BaoDcQualifyingCondition[];
   /** First-of-month Ymds of the FMLA months counted (when fmla_months). */
   fmlaMonths?: string[];
-  /** Active denial-letter ids at open (when denial_letter). */
+  /** Active denial-letter ids at open (LEGACY denial_letter cases only). */
   denialLetterIds?: string[];
+  /** Why staff opened an exception case (when staff_exception). */
+  exceptionReason?: string;
 };
 
 export const sitespecificBaoDcCases = pgTable(

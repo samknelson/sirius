@@ -22,9 +22,16 @@ import { addMonthsYmd, type Ymd } from "../../utils/date";
 // Lifecycle transitions
 // ---------------------------------------------------------------------------
 
-/** Legal case-status transitions. Terminal states have no exits. */
+/**
+ * Legal case-status transitions. Terminal states have no exits.
+ *
+ * Preparation collapses into ONE handoff: draft → in_queue (Send for
+ * Approval). `ready_for_review` is LEGACY — nothing enters it anymore, but
+ * existing cases in that state keep their exits (send for approval, return
+ * to draft, withdraw, void) so they never strand.
+ */
 export const BAO_DC_CASE_TRANSITIONS: Record<BaoDcCaseStatus, BaoDcCaseStatus[]> = {
-  draft: ["ready_for_review", "withdrawn", "void"],
+  draft: ["in_queue", "withdrawn", "void"],
   ready_for_review: ["in_queue", "draft", "withdrawn", "void"],
   in_queue: ["approved", "denied", "draft", "withdrawn", "void"],
   approved: [],

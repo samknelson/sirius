@@ -227,10 +227,7 @@ beforeAll(async () => {
     { dcFormOnFile: true, signed: true, fields: { doctorAddress: true, doctorPhone: true, dates: true } },
     userId,
   );
-  await storage.baoDisabilityCredit.transitionCase(caseId, {
-    to: "ready_for_review",
-    actorUserId: userId,
-  });
+  // One-step handoff: draft goes straight to the queue.
   await storage.baoDisabilityCredit.transitionCase(caseId, {
     to: "in_queue",
     actorUserId: userId,
@@ -583,7 +580,6 @@ describe("approval fails closed without continued benefits", () => {
       workMonthYmd: ymd(monthA),
       status: "selected",
     });
-    await storage.baoDisabilityCredit.transitionCase(c.id, { to: "ready_for_review", actorUserId: userId });
     await storage.baoDisabilityCredit.transitionCase(c.id, { to: "in_queue", actorUserId: userId });
 
     // The advisory preview surfaces the failure BEFORE approve is clicked,

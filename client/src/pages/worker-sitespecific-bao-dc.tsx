@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -55,6 +56,8 @@ function WorkerDcContent() {
   const { worker } = useWorkerLayout();
   const { toast } = useToast();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [exceptionOpen, setExceptionOpen] = useState(false);
+  const [exceptionReason, setExceptionReason] = useState("");
 
   const { data, isLoading, error } = useQuery<WorkerDcResponse>({
     queryKey: ["/api/workers", worker.id, "sitespecific/bao/dc"],
@@ -75,6 +78,31 @@ function WorkerDcContent() {
     onError: (err) =>
       toast({
         title: "Could not open case",
+        description: getApiErrorMessage(err, "Please try again."),
+        variant: "destructive",
+      }),
+  });
+
+  // Staff-only exception intake for a worker OUTSIDE the FMLA gate — the
+  // reason is required and recorded on the case and its opening event.
+  const openExceptionCase = useMutation({
+    mutationFn: () =>
+      apiRequest(
+        "POST",
+        `/api/workers/${worker.id}/sitespecific/bao/dc/exception-cases`,
+        { reason: exceptionReason.trim() },
+      ),
+    onSuccess: () => {
+      setExceptionOpen(false);
+      setExceptionReason("");
+      toast({ title: "Exception case opened" });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/workers", worker.id, "sitespecific/bao/dc"],
+      });
+    },
+    onError: (err) =>
+      toast({
+        title: "Could not open the exception case",
         description: getApiErrorMessage(err, "Please try again."),
         variant: "destructive",
       }),
@@ -165,6 +193,16 @@ function WorkerDcContent() {
               <FilePlus2 className="h-4 w-4 mr-2" /> Start case
             </Button>
           )}
+          {data.isStaff && !data.eligibility.eligible && (
+            <Button
+              variant="outline"
+              onClick={() => setExceptionOpen(true)}
+              disabled={openExceptionCase.isPending}
+              data-testid="button-dc-exception-case"
+            >
+              <FilePlus2 className="h-4 w-4 mr-2" /> Open exception case
+            </Button>
+          )}
           {!data.isStaff && (data.eligibility.eligible || data.hasOpenCase) && (
             <>
               <input
@@ -198,15 +236,20 @@ function WorkerDcContent() {
                 )
               </Badge>
             )}
-            {data.eligibility.conditions.includes("denial_letter") && (
-              <Badge variant="secondary">Qualifies via active denial letter</Badge>
-            )}
-            {!data.eligibility.eligible && (
-              <span className="text-sm text-muted-foreground">
-                Eligibility requires 3 FMLA months in the last 12 months or an active
-                denial letter.
-              </span>
-            )}
+            {!data.eligibility.eligible &&
+              (data.isStaff ? (
+                <span className="text-sm text-muted-foreground" data-testid="text-dc-staff-ineligible">
+                  This worker does not meet the FMLA eligibility gate (3 FMLA
+                  months in the last 12 months). Staff can open an auditable
+                  exception case with a documented reason.
+                </span>
+              ) : (
+                <span className="text-sm text-muted-foreground" data-testid="text-dc-member-ineligible">
+                  You are not currently eligible to submit a Disability Credit
+                  request. If you believe you should be eligible, please
+                  contact the Fund.
+                </span>
+              ))}
           </div>
         </CardContent>
       </Card>
@@ -268,7 +311,11 @@ function WorkerDcContent() {
                     <TableCell className="text-sm text-muted-foreground">
                       {(c.qualifyingBasis?.conditions ?? [])
                         .map((cond: string) =>
-                          cond === "fmla_months" ? "FMLA months" : "Denial letter",
+                          cond === "fmla_months"
+                            ? "FMLA months"
+                            : cond === "staff_exception"
+                              ? "Staff exception"
+                              : "Denial letter",
                         )
                         .join(", ")}
                     </TableCell>
@@ -290,6 +337,39 @@ function WorkerDcContent() {
       </Card>
 
       <MemberCasePanels cases={data.cases} isStaff={data.isStaff} />
+
+      <AlertDialog open={exceptionOpen} onOpenChange={setExceptionOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Open an exception case?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This worker does not meet the FMLA eligibility gate. Record why
+              the exception is being reviewed — the reason is stored on the
+              case and its audit trail. Supporting documents (such as a denial
+              letter) can be uploaded and classified on the case afterwards.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Textarea
+            value={exceptionReason}
+            onChange={(e) => setExceptionReason(e.target.value)}
+            placeholder="Reason the exception is being reviewed (required)…"
+            data-testid="input-dc-exception-reason"
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-exception">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                openExceptionCase.mutate();
+              }}
+              disabled={!exceptionReason.trim() || openExceptionCase.isPending}
+              data-testid="button-confirm-exception"
+            >
+              Open exception case
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>

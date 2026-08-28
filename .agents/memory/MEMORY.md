@@ -150,4 +150,5 @@
 - [Notifier staff-recipient hooks](notifier-staff-recipient-hooks.md) — event-derived staff recipients + per-config actor suppression via plugin hooks; cross-field config rules via validateConfigData, never a root JSON-Schema anyOf (RJSF).
 - [S1 log-notes immutable skip](s1-log-notes-immutable-skip.md) — completed smf:notes/raw rows excluded at the page-query boundary; mappings insert with NULL fingerprint until batch verify; sweep needs the immutable sourceSql leg.
 - [WMB terminate denorm lifecycle](wmb-terminate-denorm-lifecycle.md) — mark denorm stale BEFORE emit/compute so failed handlers self-heal via cron; dev DB may have NO trust-eligibility rules (scans pass everything).
+- [Status-dependent route authz](status-dependent-route-authz.md) — state-varying permission checks run INSIDE the serialized transition (authorize hook), never on a pre-lock read; view access must not share initiation's eligibility gate.
 - [T17 dependent-worker refresh](t17-dependent-worker-refresh.md) — benefit-span fingerprints do not change when a relationship endpoint retargets; refresh worker_2 before diff and sweep relation-owned stale rows.

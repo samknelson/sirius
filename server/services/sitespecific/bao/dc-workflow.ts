@@ -216,16 +216,16 @@ export async function getNextQueuedDcCaseId(
 }
 
 export type DcCaseAction =
-  | "mark_ready"
-  | "queue"
+  | "send_for_approval"
   | "bounce"
   | "approve"
   | "deny"
   | "withdraw";
 
 const ACTION_TARGET: Record<DcCaseAction, BaoDcCaseStatus> = {
-  mark_ready: "ready_for_review",
-  queue: "in_queue",
+  // The ONE preparation handoff: draft (or legacy ready_for_review) →
+  // in_queue. Readiness and month selection are validated below.
+  send_for_approval: "in_queue",
   bounce: "draft",
   approve: "approved",
   deny: "denied",
@@ -233,7 +233,7 @@ const ACTION_TARGET: Record<DcCaseAction, BaoDcCaseStatus> = {
 };
 
 /**
- * Perform a staff/approver action. mark_ready, queue and approve re-check
+ * Perform a staff/approver action. send_for_approval and approve re-check
  * readiness IMMEDIATELY before transitioning so stale screens cannot push a
  * no-longer-ready case forward (Error("CASE_NOT_READY") names the missing
  * items via `details`).
@@ -245,6 +245,14 @@ export async function performDcCaseAction(
     actorUserId: string;
     reason?: string;
     expectedStatus?: BaoDcCaseStatus;
+    /**
+     * Status-dependent authorization, run INSIDE the case serialization
+     * lock on the freshly-loaded case — the status it sees is the status
+     * the transition will act on, so a concurrent transition cannot open a
+     * check-then-act gap (e.g. a non-approver bouncing a case that became
+     * queued between an outside read and the lock). Throw to refuse.
+     */
+    authorize?: (theCase: BaoDcCase) => Promise<void>;
   },
 ): Promise<{
   case: BaoDcCase;
@@ -264,9 +272,10 @@ export async function performDcCaseAction(
       dc.listDocumentsForCase(caseId),
       dc.listCaseMonths(caseId),
     ]);
+    if (opts.authorize) await opts.authorize(theCase);
     const readiness = computeCaseReadiness(theCase, docs, months);
 
-    if (["mark_ready", "queue", "approve"].includes(action) && !readiness.ready) {
+    if (["send_for_approval", "approve"].includes(action) && !readiness.ready) {
       const err = new Error("CASE_NOT_READY") as Error & { details?: string[] };
       err.details = readiness.missing;
       throw err;

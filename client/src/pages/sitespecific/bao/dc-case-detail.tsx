@@ -69,6 +69,8 @@ type Bundle = {
   /** Advisory approval-time configuration preview for the selected months. */
   grantConfigWarnings: Array<{ workMonthYmd: string; code: string; message: string }>;
   isStaff: boolean;
+  /** Only designated approvers may approve, deny, or return queued cases. */
+  isApprover: boolean;
 };
 
 type SelectionValidation = {
@@ -284,9 +286,19 @@ export default function BaoDcCaseDetailPage() {
                 ? `FMLA months: ${((c.qualifyingBasis as any)?.fmlaMonths ?? [])
                     .map((m: string) => formatYmdMonth(m))
                     .join(", ")}`
-                : "Active denial letter"}
+                : cond === "staff_exception"
+                  ? "Staff exception"
+                  : "Active denial letter"}
             </Badge>
           ))}
+          {(c.qualifyingBasis as any)?.exceptionReason && (
+            <p
+              className="w-full text-sm text-muted-foreground"
+              data-testid="text-dc-exception-reason"
+            >
+              Exception reason: {(c.qualifyingBasis as any).exceptionReason}
+            </p>
+          )}
           {data.denialLetters.map((l) => (
             <Badge key={l.id} variant="outline">
               Letter {formatYmd(l.letterYmd)} — expires {formatYmd(l.expiresYmd)}
@@ -512,43 +524,47 @@ export default function BaoDcCaseDetailPage() {
               data-testid="input-dc-action-reason"
             />
             <div className="flex flex-wrap gap-2">
-              {c.status === "draft" && (
+              {(c.status === "draft" || c.status === "ready_for_review") && (
                 <Button
-                  onClick={() => act.mutate("mark_ready")}
+                  onClick={() => act.mutate("send_for_approval")}
                   disabled={act.isPending || !data.readiness.ready}
-                  data-testid="button-dc-mark-ready"
+                  data-testid="button-dc-send-for-approval"
                 >
-                  Mark ready
+                  Send for Approval
                 </Button>
               )}
               {c.status === "ready_for_review" && (
-                <>
-                  <Button onClick={() => act.mutate("queue")} disabled={act.isPending} data-testid="button-dc-queue">
-                    Send to queue
-                  </Button>
-                  <Button variant="outline" onClick={() => act.mutate("bounce")} disabled={act.isPending} data-testid="button-dc-bounce">
-                    Return to draft
-                  </Button>
-                </>
+                <Button variant="outline" onClick={() => act.mutate("bounce")} disabled={act.isPending} data-testid="button-dc-bounce">
+                  Return to draft
+                </Button>
               )}
-              {c.status === "in_queue" && (
-                <>
-                  <Button onClick={() => act.mutate("approve")} disabled={act.isPending} data-testid="button-dc-approve">
-                    Approve
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => act.mutate("deny")}
-                    disabled={act.isPending || !actionReason.trim()}
-                    data-testid="button-dc-deny"
+              {c.status === "in_queue" &&
+                (data.isApprover ? (
+                  <>
+                    <Button onClick={() => act.mutate("approve")} disabled={act.isPending} data-testid="button-dc-approve">
+                      Approve
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => act.mutate("deny")}
+                      disabled={act.isPending || !actionReason.trim()}
+                      data-testid="button-dc-deny"
+                    >
+                      Deny
+                    </Button>
+                    <Button variant="outline" onClick={() => act.mutate("bounce")} disabled={act.isPending} data-testid="button-dc-bounce">
+                      Return to draft
+                    </Button>
+                  </>
+                ) : (
+                  <p
+                    className="text-sm text-muted-foreground"
+                    data-testid="text-dc-approver-required"
                   >
-                    Deny
-                  </Button>
-                  <Button variant="outline" onClick={() => act.mutate("bounce")} disabled={act.isPending} data-testid="button-dc-bounce">
-                    Bounce to draft
-                  </Button>
-                </>
-              )}
+                    This case is in the approval queue. Only designated
+                    Disability Credit approvers can approve, deny, or return it.
+                  </p>
+                ))}
               <Button
                 variant="outline"
                 onClick={() => act.mutate("withdraw")}
