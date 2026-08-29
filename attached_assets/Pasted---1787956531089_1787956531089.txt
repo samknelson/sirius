@@ -1,0 +1,40 @@
+-------------------------------------------------------------------------------
+|                                ListClusters                                 |
++-----------------------------------------------------------------------------+
+|  arn:aws:ecs:us-west-2:142403088251:cluster/fc-web-server-4bcead-vi37w1m0e  |
+|  arn:aws:ecs:us-west-2:142403088251:cluster/fc-web-server-4bcead-vm2tt0zzo  |
+|  arn:aws:ecs:us-west-2:142403088251:cluster/fc-web-server-4bcead-s7vk0xww   |
++-----------------------------------------------------------------------------+
+~ $ aws ecs list-task-definitions \
+>   --region us-west-2 \
+>   --status ACTIVE \
+>   --sort DESC \
+>   --query 'taskDefinitionArns[?contains(@, `migration`)]' \
+>   --output table
+----------------------------------------------------------------------------
+|                            ListTaskDefinitions                           |
++--------------------------------------------------------------------------+
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:23  |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:22  |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:21  |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:20  |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:19  |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:18  |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:17  |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:16  |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:15  |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:14  |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:13  |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:12  |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:11  |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:10  |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:9   |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:8   |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:7   |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:6   |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:5   |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:4   |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:3   |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:2   |
+|  arn:aws:ecs:us-west-2:142403088251:task-definition/sirius-migration:1   |
++--------------------------------------------------------------------------+

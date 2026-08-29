@@ -1,0 +1,96 @@
+sirius $ docker run --rm \
+>   --entrypoint sh \
+>   "$IMAGE:$COMMIT_SHA" \
+>   -lc '
+>     test -f /app/scripts/s1-migration/repair-hour-links.ts &&
+>       echo "repair script present"
+>     test -x /app/node_modules/.bin/tsx &&
+>       echo "tsx present"
+>   '
+^C
+^Csirius $ ^C
+sirius $ echo "$IMAGE:$COMMIT_SHA"
+142403088251.dkr.ecr.us-west-2.amazonaws.com/sirius-migration:7149ba93
+sirius $ 
+sirius $ docker image inspect "$IMAGE:$COMMIT_SHA" \
+>   --format 'image={{.Id}} size={{.Size}}'
+image=sha256:4b5ef0c717a3296d9ade324990be24a83fbf123545106d1fd9d197e07ac08809 size=1707344149
+sirius $ docker run --rm \
+>   --user root \
+>   --entrypoint /bin/sh \
+>   "$IMAGE:$COMMIT_SHA" \
+>   -c 'echo CONTAINER_STARTED'
+^C
+sirius $ docker ps
+CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+sirius $ docker info
+Client:
+ Version:    25.0.14
+ Context:    default
+ Debug Mode: false
+ Plugins:
+  buildx: Docker Buildx (Docker Inc.)
+    Version:  0.12.1
+    Path:     /usr/libexec/docker/cli-plugins/docker-buildx
+
+Server:
+ Containers: 0
+  Running: 0
+  Paused: 0
+  Stopped: 0
+ Images: 1
+ Server Version: 25.0.16
+ Storage Driver: vfs
+ Logging Driver: json-file
+ Cgroup Driver: cgroupfs
+ Cgroup Version: 2
+ Plugins:
+  Volume: local
+  Network: bridge host ipvlan macvlan null overlay
+  Log: awslogs fluentd gcplogs gelf journald json-file local splunk syslog
+ Swarm: inactive
+ Runtimes: io.containerd.runc.v2 runc
+ Default Runtime: runc
+ Init Binary: docker-init
+ containerd version: 
+ runc version: 488fc13e1f2d3d73ec36d829fdf2c98e47dc5ae8
+ init version: de40ad0
+ Security Options:
+  seccomp
+   Profile: builtin
+  cgroupns
+ Kernel Version: 6.1.177-224.371.amzn2023.x86_64
+ Operating System: Amazon Linux 2023.12.20260727
+ OSType: linux
+ Architecture: x86_64
+ CPUs: 2
+ Total Memory: 3.75GiB
+ Name: ip-10-141-8-116.us-west-2.compute.internal
+ ID: 4c5af7ed-469e-4d4e-bc29-a061d134818b
+ Docker Root Dir: /var/lib/docker
+ Debug Mode: false
+ Experimental: false
+ Insecure Registries:
+  127.0.0.0/8
+ Live Restore Enabled: false
+
+WARNING: No memory limit support
+WARNING: No swap limit support
+WARNING: No io.weight support
+WARNING: No io.weight (per device) support
+WARNING: No io.max (rbps) support
+WARNING: No io.max (wbps) support
+WARNING: No io.max (riops) support
+WARNING: No io.max (wiops) support
+sirius $ docker ps --no-trunc
+CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+sirius $ df -h
+Filesystem      Size  Used Avail Use% Mounted on
+overlay          16G   16G     0 100% /
+tmpfs            64M     0   64M   0% /dev
+shm              64M     0   64M   0% /dev/shm
+/dev/nvme1n1     16G   16G     0 100% /home
+/dev/loop0      974M  141M  766M  16% /home/cloudshell-user
+/dev/nvme0n1p1   30G  6.1G   24G  21% /aws/mde/mde
+sirius $ docker system df
+Error response from daemon: error get

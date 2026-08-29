@@ -1,0 +1,299 @@
+	
+NOTE: 880 month-groups skipped on unresolved references — run worker/employer loaders (or --stub-missing in dev) and re-run.
+migration
+August 28, 2026, 19:37
+5852395,
+migration
+August 28, 2026, 19:37
+5852396,
+migration
+August 28, 2026, 19:37
+5852397,
+migration
+August 28, 2026, 19:37
+5852398,
+migration
+August 28, 2026, 19:37
+5852399,
+migration
+August 28, 2026, 19:37
+5852400,
+migration
+August 28, 2026, 19:37
+5852401,
+migration
+August 28, 2026, 19:37
+5852402
+migration
+August 28, 2026, 19:37
+]
+migration
+August 28, 2026, 19:37
+},
+migration
+August 28, 2026, 19:37
+"monthGroups": 3634380,
+migration
+August 28, 2026, 19:37
+"written": 3633500,
+migration
+August 28, 2026, 19:37
+"verified": 3633500,
+migration
+August 28, 2026, 19:37
+"verifyMismatchCount": 0,
+migration
+August 28, 2026, 19:37
+"verifyMismatchMonths": [],
+migration
+August 28, 2026, 19:37
+"unresolvedWorker": 880,
+migration
+August 28, 2026, 19:37
+"unresolvedEmployer": 0,
+migration
+August 28, 2026, 19:37
+"unresolvedWorkerDistinctNids": 65,
+migration
+August 28, 2026, 19:37
+"unresolvedWorkerSampleNids": [
+migration
+August 28, 2026, 19:37
+2520418,
+migration
+August 28, 2026, 19:37
+2554299,
+migration
+August 28, 2026, 19:37
+2587221,
+migration
+August 28, 2026, 19:37
+2638973,
+migration
+August 28, 2026, 19:37
+2658017,
+migration
+August 28, 2026, 19:37
+2680941,
+migration
+August 28, 2026, 19:37
+2961107,
+migration
+August 28, 2026, 19:37
+2963571,
+migration
+August 28, 2026, 19:37
+3033747,
+migration
+August 28, 2026, 19:37
+3076446,
+migration
+August 28, 2026, 19:37
+3101544,
+migration
+August 28, 2026, 19:37
+3148939,
+migration
+August 28, 2026, 19:37
+3192342,
+migration
+August 28, 2026, 19:37
+6282108,
+migration
+August 28, 2026, 19:37
+6446206,
+migration
+August 28, 2026, 19:37
+6511413,
+migration
+August 28, 2026, 19:37
+6723341,
+migration
+August 28, 2026, 19:37
+7283450,
+migration
+August 28, 2026, 19:37
+7754780,
+migration
+August 28, 2026, 19:37
+8119394
+migration
+August 28, 2026, 19:37
+],
+migration
+August 28, 2026, 19:37
+"unresolvedEmployerDistinctNids": 0,
+migration
+August 28, 2026, 19:37
+"unresolvedEmployerSampleNids": [],
+migration
+August 28, 2026, 19:37
+"stubbedWorkers": 0,
+migration
+August 28, 2026, 19:37
+"stubbedEmployers": 0,
+migration
+August 28, 2026, 19:37
+"negativeHours_OPEN3": 385,
+migration
+August 28, 2026, 19:37
+"boundarySpanningPeriods_OPEN5": 0,
+migration
+August 28, 2026, 19:37
+"multiStatusMonths": 5,
+migration
+August 28, 2026, 19:37
+"provenanceCounts": {
+migration
+August 28, 2026, 19:37
+"import": 3299258,
+migration
+August 28, 2026, 19:37
+"upload": 332571,
+migration
+August 28, 2026, 19:37
+"manual": 2567,
+migration
+August 28, 2026, 19:37
+"nid_keyed": 70
+migration
+August 28, 2026, 19:37
+},
+migration
+August 28, 2026, 19:37
+"hourTypeCounts": {
+migration
+August 28, 2026, 19:37
+"1544": 3599419,
+migration
+August 28, 2026, 19:37
+"1632": 2580,
+migration
+August 28, 2026, 19:37
+"1633": 3184,
+migration
+August 28, 2026, 19:37
+"1634": 7434,
+migration
+August 28, 2026, 19:37
+"1635": 17,
+migration
+August 28, 2026, 19:37
+"1636": 4,
+migration
+August 28, 2026, 19:37
+"1637": 7422,
+migration
+August 28, 2026, 19:37
+"1662": 12,
+migration
+August 28, 2026, 19:37
+"1682": 14334,
+migration
+August 28, 2026, 19:37
+"1691": 15,
+migration
+August 28, 2026, 19:37
+"1701": 11
+migration
+August 28, 2026, 19:37
+},
+migration
+August 28, 2026, 19:37
+"adoptedKeys": 59,
+migration
+August 28, 2026, 19:37
+"bulkWritePath": true,
+migration
+August 28, 2026, 19:37
+"createdRows": 0,
+migration
+August 28, 2026, 19:37
+"downstream": {
+migration
+August 28, 2026, 19:37
+"workersInvalidated": 69704,
+migration
+August 28, 2026, 19:37
+"scanQueueRowsReset": 0,
+migration
+August 28, 2026, 19:37
+"denormMarkedStale": 69704,
+migration
+August 28, 2026, 19:37
+"denormConfigMissing": false
+migration
+August 28, 2026, 19:37
+},
+migration
+August 28, 2026, 19:37
+"phaseStats": {
+migration
+August 28, 2026, 19:37
+"scanSeconds": 220.1,
+migration
+August 28, 2026, 19:37
+"scanRowsPerSec": 16530,
+migration
+August 28, 2026, 19:37
+"writeSeconds": 882.2,
+migration
+August 28, 2026, 19:37
+"writeGroupsPerSec": 4119,
+migration
+August 28, 2026, 19:37
+"verifySeconds": 730.5,
+migration
+August 28, 2026, 19:37
+"verifyKeysPerSec": 4974
+migration
+August 28, 2026, 19:37
+},
+migration
+August 28, 2026, 19:37
+"staleHoursCleanup": {
+migration
+August 28, 2026, 19:37
+"staleKeys": 59,
+migration
+August 28, 2026, 19:37
+"deletedRows": 59,
+migration
+August 28, 2026, 19:37
+"alreadyGone": 0,
+migration
+August 28, 2026, 19:37
+"deleteFailed": 0
+migration
+August 28, 2026, 19:37
+},
+migration
+August 28, 2026, 19:37
+"payperiodCrosswalk": {
+migration
+August 28, 2026, 19:37
+"mapped": 3633552,
+migration
+August 28, 2026, 19:37
+"retired": 0
+migration
+August 28, 2026, 19:37
+}
+migration
+August 28, 2026, 19:37
+}
+migration
+August 28, 2026, 19:37
+}
+migration
+August 28, 2026, 19:37
+{
+migration
+August 28, 2026, 19:37
+"loader": "t20-hours",
+migration
+August 28, 2026, 19:37
+"logicVersion": 2,
+migration
+August 28, 2026, 19:37
+"dryRun": false,
