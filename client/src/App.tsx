@@ -268,6 +268,7 @@ const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
 const T631FetchPage = lazy(() => import("@/pages/config/edls/t631-fetch"));
+const FreemanEdlsMigratePage = lazy(() => import("@/pages/admin/sitespecific/freeman/edls-migrate"));
 const T631MemberStatusSyncPage = lazy(() => import("@/pages/config/edls/t631-ms"));
 const BaoMemberStatusThresholdsPage = lazy(() => import("@/pages/config/trust/sitespecific/bao/thresholds"));
 const WsServicesPage = lazy(() => import("@/pages/config/ws/services"));
@@ -2822,6 +2823,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <T631MemberStatusSyncPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/sitespecific/freeman/edls/migrate">
+        <ProtectedRoute permission="admin" componentAll={["edls", "sitespecific.freeman.edls_migrate"]}>
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <FreemanEdlsMigratePage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

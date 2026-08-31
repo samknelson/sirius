@@ -6,6 +6,7 @@ import {
   userRoles,
   rolePermissions,
   pluginConfigsDashboard,
+  pluginConfigsQuicksearch,
   type User,
   type InsertUser,
   type UpsertUser,
@@ -444,16 +445,28 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
 
     async deleteRole(id: string): Promise<boolean> {
       const client = getClient();
-      // The dashboard subsidiary stores roles as a varchar[] (no FK possible),
-      // so the old FK RESTRICT protection is enforced here instead: refuse to
-      // delete a role any dashboard config's roles array still references.
-      const [{ count: refCount }] = await client
+      // The dashboard and quicksearch subsidiaries store roles as a varchar[]
+      // (no FK possible), so the old FK RESTRICT protection is enforced here
+      // instead: refuse to delete a role either kind's config still references.
+      // Losing the reference silently would not just hide a widget — for
+      // quicksearch the roles array IS the access decision, so an orphaned
+      // config would become unreachable rather than merely mis-scoped.
+      const [{ count: dashboardRefs }] = await client
         .select({ count: count() })
         .from(pluginConfigsDashboard)
         .where(arrayContains(pluginConfigsDashboard.roles, [id]));
-      if (Number(refCount) > 0) {
+      if (Number(dashboardRefs) > 0) {
         throw new RoleInUseError(
-          `Role is still used by ${refCount} dashboard configuration(s). Remove it from those configurations before deleting.`,
+          `Role is still used by ${dashboardRefs} dashboard configuration(s). Remove it from those configurations before deleting.`,
+        );
+      }
+      const [{ count: quicksearchRefs }] = await client
+        .select({ count: count() })
+        .from(pluginConfigsQuicksearch)
+        .where(arrayContains(pluginConfigsQuicksearch.roles, [id]));
+      if (Number(quicksearchRefs) > 0) {
+        throw new RoleInUseError(
+          `Role is still used by ${quicksearchRefs} quicksearch configuration(s). Remove it from those configurations before deleting.`,
         );
       }
       const result = await client.delete(roles).where(eq(roles.id, id)).returning();

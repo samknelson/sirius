@@ -133,6 +133,7 @@ import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./
 import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMapLoggingConfig } from "./sitespecific/btu/employer-map";
 import { type BtuTerritoriesStorage, createBtuTerritoriesStorage } from "./sitespecific/btu/territories";
 import { type FreemanCrewleadsStorage, createFreemanCrewleadsStorage, freemanCrewleadsLoggingConfig } from "./sitespecific/freeman/crewleads";
+import { type FreemanEdlsMigrateStagingStorage, createFreemanEdlsMigrateStagingStorage } from "./sitespecific/freeman/edls-migrate-staging";
 import { type T631InterviewsStorage, createT631InterviewsStorage, t631InterviewsLoggingConfig } from "./sitespecific/t631/interviews";
 import { type DispatchJobEmployerContactsStorage, createDispatchJobEmployerContactsStorage, dispatchJobEmployerContactsLoggingConfig } from "./dispatch/job-employer-contacts";
 import { type BtuSchoolTypesStorage, createBtuSchoolTypesStorage } from "./sitespecific/btu/school-types";
@@ -261,6 +262,7 @@ export interface IStorage {
   baoImmediateEligibility: BaoImmediateEligibilityStorage;
   baoBeneficiaries: BaoBeneficiariesStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
+  freemanEdlsMigrateStaging: FreemanEdlsMigrateStagingStorage;
   t631Interviews: T631InterviewsStorage;
   workerBans: WorkerBanStorage;
   notes: NotesStorage;
@@ -377,6 +379,7 @@ export class DatabaseStorage implements IStorage {
   baoImmediateEligibility: BaoImmediateEligibilityStorage;
   baoBeneficiaries: BaoBeneficiariesStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
+  freemanEdlsMigrateStaging: FreemanEdlsMigrateStagingStorage;
   t631Interviews: T631InterviewsStorage;
   workerBans: WorkerBanStorage;
   notes: NotesStorage;
@@ -606,6 +609,9 @@ export class DatabaseStorage implements IStorage {
       createFreemanCrewleadsStorage(),
       freemanCrewleadsLoggingConfig,
     );
+    // Unlogged on purpose: this is a bulk copy of legacy rows into a staging
+    // table, and per-row audit entries for a sweep would bury the log.
+    this.freemanEdlsMigrateStaging = createFreemanEdlsMigrateStagingStorage();
     this.t631Interviews = withStorageLogging(
       createT631InterviewsStorage(),
       t631InterviewsLoggingConfig,

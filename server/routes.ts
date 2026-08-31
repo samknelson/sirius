@@ -121,6 +121,7 @@ import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
 import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
 import { registerFreemanCrewleadsRoutes } from "./modules/sitespecific/freeman/crewleads";
+import { registerFreemanEdlsMigrateRoutes } from "./modules/sitespecific/freeman/edls-migrate/routes";
 import { registerT631InterviewsRoutes } from "./modules/sitespecific/t631/interviews";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
 import { registerSnapshotsRoutes } from "./modules/snapshots";
@@ -135,7 +136,7 @@ import { registerCompaniesRoutes } from "./modules/employers/companies";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
 import { addressValidationService } from "./services/comm/validators/address";
-import { phoneValidationService } from "./services/comm/validators/phone";
+import { phoneValidationService, DEFAULT_REVALIDATE_AFTER_DAYS } from "./services/comm/validators/phone";
 import { serviceRegistry } from "./services/service-registry";
 import { isAuthenticated } from "./auth";
 
@@ -369,6 +370,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // over the in-memory status collector.
   const { registerSystemStatusRoutes } = await import("./modules/system/status");
   registerSystemStatusRoutes(app, requireAuth);
+
+  // Quicksearch — the search-from-anywhere endpoint. Which searchers run is
+  // decided server-side from the caller's roles, never from the request.
+  const { registerQuicksearchRoutes } = await import("./modules/system/quicksearch");
+  registerQuicksearchRoutes(app, requireAuth);
 
   // Register bookmark routes
   registerBookmarkRoutes(app, requireAuth, requirePermission);
@@ -1516,6 +1522,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
               "line_type_intelligence",
               "caller_name",
             ],
+            revalidateAfterDays:
+              twilioValidation.revalidateAfterDays ?? DEFAULT_REVALIDATE_AFTER_DAYS,
           },
           fallback: {
             useLocalOnTwilioFailure:
@@ -1540,6 +1548,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       
       if (!mode || (mode !== "local" && mode !== "twilio")) {
         return res.status(400).json({ message: "Invalid validation mode. Must be 'local' or 'twilio'." });
+      }
+
+      let revalidateAfterDays: number | undefined;
+      if (twilio?.revalidateAfterDays !== undefined && twilio.revalidateAfterDays !== null) {
+        revalidateAfterDays = Number(twilio.revalidateAfterDays);
+        if (!Number.isInteger(revalidateAfterDays) || revalidateAfterDays < 1) {
+          return res.status(400).json({ message: "Revalidation interval must be a whole number of days, at least 1." });
+        }
       }
       
       // Store local-specific settings in the local provider
@@ -1569,6 +1585,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         ],
         useLocalOnTwilioFailure: fallback?.useLocalOnTwilioFailure ?? existingTwilioValidation.useLocalOnTwilioFailure ?? true,
         logValidationAttempts: fallback?.logValidationAttempts ?? existingTwilioValidation.logValidationAttempts ?? true,
+        // How long a Twilio answer stays good for. Every path that formats a
+        // phone number runs through the validator, so without an age the app
+        // would pay for a lookup on each of them.
+        revalidateAfterDays: revalidateAfterDays ?? existingTwilioValidation.revalidateAfterDays ?? DEFAULT_REVALIDATE_AFTER_DAYS,
       };
       await serviceRegistry.saveProviderSettings("sms", "twilio", {
         ...twilioCurrentSettings,
@@ -1601,6 +1621,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             "line_type_intelligence",
             "caller_name",
           ],
+          revalidateAfterDays:
+            twilioValidation.revalidateAfterDays ?? DEFAULT_REVALIDATE_AFTER_DAYS,
         },
         fallback: {
           useLocalOnTwilioFailure: twilioValidation.useLocalOnTwilioFailure ?? true,
@@ -1788,6 +1810,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register Freeman Crew Leads routes
   registerFreemanCrewleadsRoutes(app, requireAuth, requirePermission, requireAccess);
+
+  // Register Freeman EDLS migration routes
+  registerFreemanEdlsMigrateRoutes(app, requireAuth, requirePermission);
+
   registerT631InterviewsRoutes(app, requireAuth, requirePermission, requireAccess);
 
   // Register HTA routes

@@ -35,6 +35,7 @@ import "./plugins/btu-cardcheck-scrape-import";
 import "./plugins/hta-union-import";
 import "./plugins/gbhet-legal-workers";
 import "./plugins/employer-onboarding";
+import "./plugins/worker-ratings-import";
 import "./plugins/trust-provider-edi";
 
 let kindRegistered = false;

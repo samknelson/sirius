@@ -4,6 +4,7 @@ import { createCommStorage, createCommSmsStorage, createCommSmsOptinStorage } fr
 import { storage } from '../../../storage';
 import { runInTransaction } from '../../../storage/transaction-context';
 import { buildStatusCallbackUrl } from '../callback-handlers/url-builder';
+import { phoneValidationService } from '../validators/phone';
 import type { SmsTransport } from '../providers/sms';
 import type { Comm, CommSms } from '@shared/schema';
 
@@ -79,16 +80,22 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
       };
     }
 
-    const validationResult = await smsTransport.validatePhone(toPhoneNumber);
-    if (!validationResult.valid || !validationResult.formatted) {
+    // Normalize locally first. Deciding whether this number can be texted at
+    // all is a question for the provider, but it is not worth asking before
+    // we know the recipient has opted in — a message that is about to be
+    // rejected as not-opted-in should cost nothing.
+    const localResult = await phoneValidationService.validateAndFormat(toPhoneNumber, {
+      revalidate: 'never',
+    });
+    if (!localResult.isValid || !localResult.e164Format) {
       return {
         success: false,
-        error: `Invalid phone number: ${validationResult.error || 'Unknown validation error'}`,
+        error: `Invalid phone number: ${localResult.error || 'Unknown validation error'}`,
         errorCode: 'VALIDATION_ERROR',
       };
     }
 
-    const normalizedPhone = validationResult.formatted;
+    const normalizedPhone = localResult.e164Format;
 
     const { comm, commSms } = await runInTransaction(async () => {
       const comm = await commStorage.createComm({
@@ -153,6 +160,31 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
         commSms,
         error: `Phone number is not allowlisted. System mode is "${systemMode}" - only allowlisted numbers can receive SMS in non-live modes.`,
         errorCode: 'NOT_ALLOWLISTED',
+      };
+    }
+
+    // The recipient is real and has opted in, so the number is now worth
+    // confirming with the provider — at most one lookup, and none at all if it
+    // was confirmed within the revalidation window.
+    const validationResult = await phoneValidationService.validateAndFormat(normalizedPhone, {
+      revalidate: 'default',
+    });
+    if (!validationResult.isValid) {
+      await commStorage.updateComm(comm.id, {
+        status: 'failed',
+        data: {
+          ...comm.data as object,
+          errorCode: 'VALIDATION_ERROR',
+          errorMessage: validationResult.error || 'Unknown validation error',
+        },
+      });
+
+      return {
+        success: false,
+        comm: { ...comm, status: 'failed' },
+        commSms,
+        error: `Invalid phone number: ${validationResult.error || 'Unknown validation error'}`,
+        errorCode: 'VALIDATION_ERROR',
       };
     }
 

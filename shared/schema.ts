@@ -1163,6 +1163,13 @@ export {
 } from "./schema/sitespecific/freeman/schema";
 
 export {
+  sitespecificFreemanEdlsMigrate,
+  insertFreemanEdlsMigrateSchema,
+  type FreemanEdlsMigrateRow,
+  type InsertFreemanEdlsMigrateRow,
+} from "./schema/sitespecific/freeman/edls-migrate-schema";
+
+export {
   optionsGrievanceStatus,
   insertOptionsGrievanceStatusSchema,
   type OptionsGrievanceStatus,
@@ -2205,6 +2212,21 @@ export const pluginConfigsDashboard = pgTable("plugin_configs_dashboard", {
 export const insertPluginConfigDashboardSchema = createInsertSchema(pluginConfigsDashboard);
 export type InsertPluginConfigDashboard = z.infer<typeof insertPluginConfigDashboardSchema>;
 export type PluginConfigDashboard = typeof pluginConfigsDashboard.$inferSelect;
+
+// Quicksearch subsidiary — which roles a quicksearch configuration is offered
+// to. Mirrors the dashboard subsidiary exactly (a varchar array, no FK
+// possible), and carries the same weight for quicksearch: the roles ARE the
+// access decision, so a viewer holding ANY of a config's roles may see any
+// record that config's searcher returns. Role deletion is guarded in
+// `storage.users.deleteRole` alongside the dashboard check.
+export const pluginConfigsQuicksearch = pgTable("plugin_configs_quicksearch", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+  roles: varchar("roles").array().notNull(),
+});
+
+export const insertPluginConfigQuicksearchSchema = createInsertSchema(pluginConfigsQuicksearch);
+export type InsertPluginConfigQuicksearch = z.infer<typeof insertPluginConfigQuicksearchSchema>;
+export type PluginConfigQuicksearch = typeof pluginConfigsQuicksearch.$inferSelect;
 
 // Payment-gateway subsidiary — exists primarily as a type-safe FK target so
 // other tables (e.g. ledger_accounts.gateway_config_id) can reference a
