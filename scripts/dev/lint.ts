@@ -79,7 +79,7 @@ const RULES: Rule[] = [
   {
     id: "main-branch-files",
     script: "scripts/dev/check-main-branch-files.ts",
-    summary: "no .github/ or deploy/ files are tracked on main",
+    summary: "deployment config is tracked on carrying branches, never on main",
   },
   {
     id: "maintenance-guards",

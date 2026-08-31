@@ -61,14 +61,37 @@ function git(args: string[]): { ok: boolean; stdout: string; stderr: string } {
 }
 
 /**
+ * A git read the verdict depends on. A failure here must not be folded into
+ * the same empty result an honest answer produces — "no branch" and "no
+ * tracked files" are both passes, so a broken git invocation would report
+ * success without having checked anything.
+ */
+function gitOrDie(args: string[]): string {
+  const result = git(args);
+  if (result.ok) return result.stdout;
+
+  console.error(
+    [
+      "",
+      `[check-main-branch-files] FAILED — \`git ${args.join(" ")}\` did not run:`,
+      `  ${result.stderr || "unknown error"}`,
+      "",
+      "The rule cannot tell where the deployment config is, so it fails rather than",
+      "passing blind.",
+      "",
+    ].join("\n"),
+  );
+  process.exit(1);
+}
+
+/**
  * The current branch name, or null on a detached HEAD (or when git cannot
  * answer — an unborn branch, no repository).
  */
 export function currentBranch(): string | null {
-  const head = git(["rev-parse", "--abbrev-ref", "HEAD"]);
-  if (!head.ok) return null;
-  if (head.stdout === "" || head.stdout === "HEAD") return null;
-  return head.stdout;
+  const head = gitOrDie(["rev-parse", "--abbrev-ref", "HEAD"]);
+  if (head === "" || head === "HEAD") return null;
+  return head;
 }
 
 /**
@@ -77,10 +100,9 @@ export function currentBranch(): string | null {
  * these paths once they are ignored, whether or not they are tracked.
  */
 export function trackedForbiddenPaths(): string[] {
-  const tree = git(["ls-tree", "-r", "--name-only", "HEAD", "--", ...FORBIDDEN_PATHS]);
-  if (!tree.ok) return [];
-  if (tree.stdout === "") return [];
-  return tree.stdout.split("\n").filter((line) => line !== "");
+  const tree = gitOrDie(["ls-tree", "-r", "--name-only", "HEAD", "--", ...FORBIDDEN_PATHS]);
+  if (tree === "") return [];
+  return tree.split("\n").filter((line) => line !== "");
 }
 
 /**
@@ -96,20 +118,26 @@ function emptyDirectories(tracked: string[]): string[] {
 }
 
 /**
- * The newest commit that deleted anything under these paths — the repair
- * needs a commit that still has the files, and its parent is the best guess.
+ * The newest commit reachable from HEAD that still tracks `dir` — the copy to
+ * restore from.
+ *
+ * Asking "which commit deleted it" is the wrong question, and answering it
+ * produces confident but wrong advice: a deletion arriving in a merge is not
+ * diffed by a plain `git log`, and the two directories can be lost at
+ * different times, so one deletion's parent is not necessarily a good copy of
+ * the other. Looking for a commit that demonstrably HAS the directory answers
+ * the question the repair actually asks, and is verified rather than
+ * inferred. Resolved per directory for the same reason.
  */
-function lastDeletingCommit(): string | null {
-  const log = git([
-    "log",
-    "--diff-filter=D",
-    "--format=%h",
-    "-1",
-    "--",
-    ...FORBIDDEN_PATHS,
-  ]);
+function lastCommitContaining(dir: string): string | null {
+  const log = git(["log", "--format=%h", "-50", "--", dir]);
   if (!log.ok || log.stdout === "") return null;
-  return log.stdout.split("\n")[0] ?? null;
+
+  for (const sha of log.stdout.split("\n").filter((line) => line !== "")) {
+    const tree = git(["ls-tree", "-r", "--name-only", sha, "--", dir]);
+    if (tree.ok && tree.stdout !== "") return sha;
+  }
+  return null;
 }
 
 function main(): void {
@@ -135,7 +163,12 @@ function main(): void {
       process.exit(0);
     }
 
-    const culprit = lastDeletingCommit();
+    // Resolved per directory: they can have been lost at different times, and
+    // restoring one from the other's last good commit would be wrong.
+    const sources = missing.map((dir) => ({ dir, sha: lastCommitContaining(dir) }));
+    const found = sources.filter((s) => s.sha !== null);
+    const unresolved = sources.filter((s) => s.sha === null).map((s) => s.dir);
+
     console.error(
       [
         "",
@@ -152,25 +185,29 @@ function main(): void {
         "merge takes the deletion. Nothing warns, and git status stays silent because",
         "the paths are ignored.",
         "",
-        culprit
-          ? `The newest commit deleting them here is ${culprit}; the copy in its parent is`
-          : "Find the newest commit that deleted them, and take the copy from its parent:",
-        culprit
-          ? `the one to restore. Restore with (note the ^ — the parent, not the deletion):`
-          : "",
-        "",
-        culprit
-          ? `  git checkout ${culprit}^ -- ${FORBIDDEN_PATHS.join(" ")}`
-          : `  git log --diff-filter=D --oneline -- ${FORBIDDEN_PATHS.join(" ")}`,
-        "",
-        "A plain `git add` will NOT stage them — they are gitignored, so it does",
-        "nothing and reports no error. `git checkout <commit> -- <paths>` bypasses the",
+        ...(found.length > 0
+          ? [
+              "Restore from the newest commit here that still has each one:",
+              "",
+              ...found.map((s) => `  git checkout ${s.sha} -- ${s.dir}`),
+              "",
+            ]
+          : []),
+        ...(unresolved.length > 0
+          ? [
+              `No commit on this branch tracks ${unresolved.join(" or ")} — copy from a`,
+              "branch that has it, and check that branch is up to date first:",
+              "",
+              ...unresolved.map((dir) => `  git checkout <carrying-branch> -- ${dir}`),
+              "",
+            ]
+          : []),
+        "A plain `git add` will NOT stage these — they are gitignored, so it does",
+        "nothing and reports no error. `git checkout <commit> -- <path>` bypasses the",
         "ignore rules and stages them directly. Confirm with `git diff --cached",
         "--name-only` before committing.",
         "",
-      ]
-        .filter((line) => line !== "")
-        .join("\n"),
+      ].join("\n"),
     );
     process.exit(1);
   }
