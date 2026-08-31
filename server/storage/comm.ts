@@ -21,7 +21,7 @@ export const phoneValidateOptional = createAsyncStorageValidator<{ phoneNumber: 
       return { ok: true, value: { phoneNumber: null } };
     }
     
-    const validationResult = await phoneValidationService.validateAndFormat(data.phoneNumber);
+    const validationResult = await phoneValidationService.validateAndFormat(data.phoneNumber, { revalidate: 'never' });
     if (!validationResult.isValid) {
       errors.push({
         field: 'phoneNumber',
@@ -51,7 +51,7 @@ export const phoneValidateRequired = createAsyncStorageValidator<{ phoneNumber: 
       return { ok: false, errors };
     }
     
-    const validationResult = await phoneValidationService.validateAndFormat(data.phoneNumber);
+    const validationResult = await phoneValidationService.validateAndFormat(data.phoneNumber, { revalidate: 'never' });
     if (!validationResult.isValid) {
       errors.push({
         field: 'phoneNumber',
@@ -419,7 +419,7 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
   return {
     async getSmsOptinByPhoneNumber(phoneNumber: string): Promise<CommSmsOptin | undefined> {
       const client = getClient();
-      const validationResult = await phoneValidationService.validateAndFormat(phoneNumber);
+      const validationResult = await phoneValidationService.validateAndFormat(phoneNumber, { revalidate: 'never' });
       const normalizedPhone = validationResult.e164Format || phoneNumber;
       
       const [result] = await client.select().from(commSmsOptin).where(eq(commSmsOptin.phoneNumber, normalizedPhone));
@@ -437,7 +437,7 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
       // resolve to the same opt-in row.
       const normalizedByInput = new Map<string, string>();
       for (const phoneNumber of unique) {
-        const validationResult = await phoneValidationService.validateAndFormat(phoneNumber);
+        const validationResult = await phoneValidationService.validateAndFormat(phoneNumber, { revalidate: 'never' });
         normalizedByInput.set(phoneNumber, validationResult.e164Format || phoneNumber);
       }
 
@@ -492,7 +492,7 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
 
     async updateSmsOptinByPhoneNumber(phoneNumber: string, data: Partial<InsertCommSmsOptin>): Promise<CommSmsOptin | undefined> {
       const client = getClient();
-      const validationResult = await phoneValidationService.validateAndFormat(phoneNumber);
+      const validationResult = await phoneValidationService.validateAndFormat(phoneNumber, { revalidate: 'never' });
       const normalizedPhone = validationResult.e164Format || phoneNumber;
 
       let updateData = { ...data };
@@ -520,7 +520,7 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
 
     async getOrCreatePublicToken(phoneNumber: string): Promise<string> {
       const client = getClient();
-      const validationResult = await phoneValidationService.validateAndFormat(phoneNumber);
+      const validationResult = await phoneValidationService.validateAndFormat(phoneNumber, { revalidate: 'never' });
       const normalizedPhone = validationResult.e164Format || phoneNumber;
       
       const [existing] = await client.select().from(commSmsOptin).where(eq(commSmsOptin.phoneNumber, normalizedPhone));

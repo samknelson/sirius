@@ -135,4 +135,6 @@
 - [Drizzle select-list unqualified columns](drizzle-select-list-unqualified-columns.md) — a column renders bare in a single-table select list but qualified in WHERE; reusing one fragment in both breaks correlated subqueries.
 - [Quicksearch role-as-access](quicksearch-role-as-access.md) — a config's role list IS the decision (no per-record checks); sensitive clauses gated by the framework; pure clause planners; cmdk needs shouldFilter={false}.
 - [Bespoke feed wizard subclass](feed-wizard-bespoke-subclass.md) — base feed processing is SSN/worker-create only; override validate+process over ONE resolution routine; mapping orientation flips client↔server; audit user comes from the request ALS.
+- [Paid lookups must be storable first](paid-lookup-store-gate.md) — gate a billable call on `current_setting('transaction_read_only')` on the caller's OWN connection; a swallowed-error transport "answers" locally, detect by payload richness.
+- [Ambient transaction context lies twice](als-transaction-context-leaks.md) — deferred callbacks inherit the caller's (committed/read-only) tx; a helper that passes a client without binding the ALS lets ambient `getClient()` escape it.
 - [Splitting a tab into sub-tabs](tab-split-into-subtabs.md) — keep the old URL on one child; child id goes in BOTH activeTab and ProtectedRoute tabId; ids unique tree-wide.
