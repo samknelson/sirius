@@ -93,67 +93,15 @@ function isNewShape(data: unknown): boolean {
  */
 export async function migrateWelcomeMessages(): Promise<void> {
   try {
-    const rows = await storage.pluginConfigs.getByKindAndPlugin(
-      "dashboard",
-      welcomeMessagesPlugin.id,
-    );
-    const legacyRows = rows.filter((r) => !isNewShape(r.data));
-    const legacyVars = await storage.variables.getByNamePrefix(
-      LEGACY_VARIABLE_PREFIX,
-    );
-
-    if (legacyRows.length === 0 && legacyVars.length === 0) return;
-
-    const roles = await storage.users.getAllRoles();
-    const roleNameById = new Map(roles.map((r) => [r.id, r.name]));
-
-    // roleId -> { message, enabled }. Config rows take precedence over legacy
-    // variables for both the message body and the enabled state. Variables had
-    // no enabled concept of their own — they were shown whenever the plugin was
-    // active — so they migrate as enabled. A disabled legacy config row carries
-    // its disabled state onto every message it produces.
-    const byRole = new Map<string, { message: string; enabled: boolean }>();
-    for (const v of legacyVars) {
-      const roleId = v.name.slice(LEGACY_VARIABLE_PREFIX.length);
-      if (roleId && typeof v.value === "string" && v.value.trim()) {
-        byRole.set(roleId, { message: v.value, enabled: true });
-      }
-    }
-    for (const row of legacyRows) {
-      const data = (row.data ?? {}) as Record<string, unknown>;
-      for (const [roleId, value] of Object.entries(data)) {
-        if (typeof value === "string" && value.trim()) {
-          byRole.set(roleId, { message: value, enabled: row.enabled });
-        }
-      }
-    }
-
-    // Create the new per-message rows and remove the legacy rows/variables
-    // atomically. Without a single transaction a partial failure (some creates
-    // committed, cleanup skipped) would leave the legacy sources in place and
-    // re-create duplicates on the next boot, defeating idempotency.
-    await runInTransaction(async () => {
-      let ordering = 0;
-      for (const [roleId, { message, enabled }] of byRole) {
-        await storage.pluginConfigs.create({
-          pluginKind: "dashboard",
-          pluginId: welcomeMessagesPlugin.id,
-          enabled,
-          name: roleNameById.get(roleId) ?? null,
-          ordering: ordering++,
-          data: { message, roles: [roleId] },
-        });
-      }
-
-      for (const row of legacyRows) {
-        await storage.pluginConfigs.delete(row.id);
-      }
-      await storage.variables.deleteByNamePrefix(LEGACY_VARIABLE_PREFIX);
-    });
-
-    logger.info(
-      `Migrated welcome messages: ${byRole.size} per-message config(s) created`,
-      { service: SERVICE },
+    // The whole migration — the "is there anything legacy left?" check
+    // included — runs under one advisory lock, because two tasks booting
+    // against one database (Task #1350) would otherwise both read the legacy
+    // rows and both split them, doubling every welcome message. Holding the
+    // lock for the read too is what makes the second task see an already
+    // migrated database and return.
+    await storage.advisoryLock.withTransactionLock(
+      "dashboard-welcome-message-migration",
+      () => migrateWelcomeMessagesLocked(),
     );
   } catch (error) {
     logger.error("Failed to migrate welcome messages", {
@@ -161,4 +109,69 @@ export async function migrateWelcomeMessages(): Promise<void> {
       error: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+async function migrateWelcomeMessagesLocked(): Promise<void> {
+  const rows = await storage.pluginConfigs.getByKindAndPlugin(
+    "dashboard",
+    welcomeMessagesPlugin.id,
+  );
+  const legacyRows = rows.filter((r) => !isNewShape(r.data));
+  const legacyVars = await storage.variables.getByNamePrefix(
+    LEGACY_VARIABLE_PREFIX,
+  );
+
+  if (legacyRows.length === 0 && legacyVars.length === 0) return;
+
+  const roles = await storage.users.getAllRoles();
+  const roleNameById = new Map(roles.map((r) => [r.id, r.name]));
+
+  // roleId -> { message, enabled }. Config rows take precedence over legacy
+  // variables for both the message body and the enabled state. Variables had
+  // no enabled concept of their own — they were shown whenever the plugin was
+  // active — so they migrate as enabled. A disabled legacy config row carries
+  // its disabled state onto every message it produces.
+  const byRole = new Map<string, { message: string; enabled: boolean }>();
+  for (const v of legacyVars) {
+    const roleId = v.name.slice(LEGACY_VARIABLE_PREFIX.length);
+    if (roleId && typeof v.value === "string" && v.value.trim()) {
+      byRole.set(roleId, { message: v.value, enabled: true });
+    }
+  }
+  for (const row of legacyRows) {
+    const data = (row.data ?? {}) as Record<string, unknown>;
+    for (const [roleId, value] of Object.entries(data)) {
+      if (typeof value === "string" && value.trim()) {
+        byRole.set(roleId, { message: value, enabled: row.enabled });
+      }
+    }
+  }
+
+  // Create the new per-message rows and remove the legacy rows/variables
+  // atomically. Without a single transaction a partial failure (some creates
+  // committed, cleanup skipped) would leave the legacy sources in place and
+  // re-create duplicates on the next boot, defeating idempotency.
+  await runInTransaction(async () => {
+    let ordering = 0;
+    for (const [roleId, { message, enabled }] of byRole) {
+      await storage.pluginConfigs.create({
+        pluginKind: "dashboard",
+        pluginId: welcomeMessagesPlugin.id,
+        enabled,
+        name: roleNameById.get(roleId) ?? null,
+        ordering: ordering++,
+        data: { message, roles: [roleId] },
+      });
+    }
+
+    for (const row of legacyRows) {
+      await storage.pluginConfigs.delete(row.id);
+    }
+    await storage.variables.deleteByNamePrefix(LEGACY_VARIABLE_PREFIX);
+  });
+
+  logger.info(
+    `Migrated welcome messages: ${byRole.size} per-message config(s) created`,
+    { service: SERVICE },
+  );
 }

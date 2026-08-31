@@ -44,31 +44,86 @@ vi.mock('../../server/services/service-registry', () => ({
   },
 }));
 
+/**
+ * A row of the web client cache, as the framework sees it. Phone validation
+ * no longer keeps its own store: it is one request type among others, and
+ * what is cached is the Lookup response keyed by the E.164 number.
+ */
 interface StoredEntry {
-  validatedAt: Date | null;
-  validationResponse: unknown;
+  service: string;
+  requestType: string;
+  requestKey: string;
+  outcome: 'success' | 'failure';
+  response: unknown;
+  fetchedAt: Date;
 }
 
 const store = new Map<string, StoredEntry>();
 let writable = true;
 let writeThrows = false;
 const canStore = vi.fn(async () => writable);
+const optinWrite = vi.fn(async () => {});
 
-vi.mock('../../server/storage/phone-validation-cache', () => ({
-  phoneValidationCache: {
-    read: async (phoneNumber: string) => store.get(phoneNumber),
-    write: async (phoneNumber: string, entry: { validationResponse: unknown }) => {
+vi.mock('../../server/storage/wc-cache', () => ({
+  wcRequestKeyHash: (requestKey: string) => requestKey,
+  wcCacheStorage: {
+    read: async (_service: string, _requestType: string, requestKey: string) =>
+      store.get(requestKey),
+    writeSuccess: async (
+      service: string,
+      requestType: string,
+      requestKey: string,
+      response: unknown,
+    ) => {
       if (writeThrows) throw new Error('cannot execute INSERT in a read-only transaction');
-      store.set(phoneNumber, { validatedAt: new Date(), validationResponse: entry.validationResponse });
+      store.set(requestKey, {
+        service,
+        requestType,
+        requestKey,
+        outcome: 'success',
+        response,
+        fetchedAt: new Date(),
+      });
+    },
+    writeFailure: async (
+      service: string,
+      requestType: string,
+      requestKey: string,
+      error: string | undefined,
+      keepSuccessNewerThan: Date,
+    ) => {
+      const existing = store.get(requestKey);
+      // A still-fresh answer outlives an outage; see the framework's own guard.
+      if (existing?.outcome === 'success' && existing.fetchedAt >= keepSuccessNewerThan) return;
+      store.set(requestKey, {
+        service,
+        requestType,
+        requestKey,
+        outcome: 'failure',
+        response: { error: error ?? null },
+        fetchedAt: new Date(),
+      });
     },
     canStore: () => canStore(),
   },
+}));
+
+vi.mock('../../server/storage/phone-optin-validation', () => ({
+  phoneOptinValidation: { write: () => optinWrite() },
+}));
+
+vi.mock('../../server/logger', () => ({
+  logger: { error: () => {}, warn: () => {}, info: () => {}, debug: () => {} },
 }));
 
 vi.mock('../../server/storage/transaction-context', () => ({
   runOutsideTransaction: <T>(fn: () => T) => fn(),
 }));
 
+const { resetUnstorableHolds } = await import('../../server/services/webclient');
+const { resetPhoneValidationSettings } = await import(
+  '../../server/services/comm/validators/phone-validation-settings'
+);
 const { PhoneValidationService, DEFAULT_REVALIDATE_AFTER_DAYS } = await import(
   '../../server/services/comm/validators/phone'
 );
@@ -82,7 +137,12 @@ beforeEach(() => {
   lookup.mockClear();
   canStore.mockClear();
   getProviderSettings.mockClear();
+  optinWrite.mockClear();
   store.clear();
+  // The settings memo and the "paid for it, could not store it" hold both
+  // outlive an instance now that they are module-level.
+  resetPhoneValidationSettings();
+  resetUnstorableHolds();
   providerSettings.twilio = { phoneValidation: {} };
   providerId = 'twilio';
   writable = true;
@@ -133,7 +193,7 @@ describe('phone validation call frequency', () => {
     expect(lookup).toHaveBeenCalledTimes(1);
 
     const stale = store.get(E164)!;
-    stale.validatedAt = new Date(
+    stale.fetchedAt = new Date(
       Date.now() - (DEFAULT_REVALIDATE_AFTER_DAYS + 1) * 24 * 60 * 60 * 1000,
     );
 
@@ -146,7 +206,7 @@ describe('phone validation call frequency', () => {
     await service.validateAndFormat(NUMBER);
 
     const stored = store.get(E164)!;
-    stored.validatedAt = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    stored.fetchedAt = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
 
     await service.validateAndFormat(NUMBER);
     expect(lookup).toHaveBeenCalledTimes(2);
@@ -195,11 +255,17 @@ describe('phone validation call frequency', () => {
     lookup.mockRejectedValueOnce(new Error('twilio unreachable'));
     const first = await service.validateAndFormat(NUMBER);
     expect(first.isValid).toBe(true); // local fallback
-    expect(store.has(E164)).toBe(false);
     expect(lookup).toHaveBeenCalledTimes(1);
 
-    // Within the back-off window the next reader gets the local answer and no
-    // second attempt: an outage must not turn every read into a call.
+    // The failure is recorded as a failure — never as a validation. It is the
+    // hold itself, which is why it now survives a restart instead of living
+    // in one process's memory.
+    const held = store.get(E164)!;
+    expect(held.outcome).toBe('failure');
+    expect(held.response).toEqual({ error: 'twilio unreachable' });
+
+    // Within that window the next reader gets the local answer and no second
+    // attempt: an outage must not turn every read into a call.
     await service.validateAndFormat(NUMBER);
     expect(lookup).toHaveBeenCalledTimes(1);
   });
@@ -210,7 +276,7 @@ describe('phone validation call frequency', () => {
     // of silence on the strength of a call that never happened.
     lookup.mockResolvedValueOnce({ valid: true, formatted: E164 } as any);
     await service.validateAndFormat(NUMBER);
-    expect(store.has(E164)).toBe(false);
+    expect(store.get(E164)?.outcome).toBe('failure');
   });
 
   it('backs off after paying for an answer it could not store', async () => {

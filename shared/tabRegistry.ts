@@ -85,7 +85,12 @@ export type TabEntityType =
   | 'contract'
   | 'business_calendar'
   /** A unified-options type; the entity id is the type slug (e.g. `department`). */
-  | 'options';
+  | 'options'
+  /**
+   * The web client browser. A single admin page, not a row, so the entity id
+   * is the constant {@link WC_BROWSER_ENTITY_ID}.
+   */
+  | 'wc';
 
 /**
  * Tab check request for batch access evaluation
@@ -704,6 +709,24 @@ export const optionsTabTree: HierarchicalTab[] = [
   { id: 'export', label: 'Export', hrefTemplate: '/config/options/{id}/export', permission: 'admin' },
   { id: 'import', label: 'Import', hrefTemplate: '/config/options/{id}/import', permission: 'admin' },
 ];
+
+/**
+ * The web client browser's tab tree.
+ *
+ * There is no entity: this is one admin page with two views of the same
+ * outbound traffic, so its hrefs carry no `{id}` and callers pass
+ * {@link WC_BROWSER_ENTITY_ID}. Both tabs are admin-only, matching the
+ * endpoints they read — the stored responses are whatever the vendor returned.
+ *
+ * `wc-cache` keeps the page's original URL so existing links and bookmarks
+ * still land on the entries list.
+ */
+export const WC_BROWSER_ENTITY_ID = 'browser';
+
+export const wcTabTree: HierarchicalTab[] = [
+  { id: 'wc-cache', label: 'Cached Entries', hrefTemplate: '/admin/wc-cache', permission: 'admin' },
+  { id: 'wc-stats', label: 'Stats', hrefTemplate: '/admin/wc-stats', permission: 'admin' },
+];
 /**
  * Entity tab trees by type
  */
@@ -741,6 +764,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   contract: contractTabTree,
   business_calendar: businessCalendarTabTree,
   options: optionsTabTree,
+  wc: wcTabTree,
 };
 
 /**

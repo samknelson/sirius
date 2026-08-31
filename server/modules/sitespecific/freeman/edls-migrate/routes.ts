@@ -9,6 +9,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { requireComponent } from "../../../components";
 import { storage } from "../../../../storage";
+import { sendIfMaintenanceRefusal } from "../../../../services/maintenance-flag";
 import {
   FREEMAN_EDLS_MIGRATE_COMPONENT_ID,
   freemanEdlsMigratePing,
@@ -68,6 +69,9 @@ export function registerFreemanEdlsMigrateRoutes(
         // so the endpoint answers 200 and the page renders the diagnosis.
         res.json(await freemanEdlsMigratePing());
       } catch (error) {
+        // A refusal is not a failed ping — nothing was asked — so it keeps its
+        // own status and the shared wording.
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({ message: failureMessage(error, "Failed to run the ping") });
       }
     },
@@ -98,6 +102,7 @@ export function registerFreemanEdlsMigrateRoutes(
       try {
         res.json(await runFreemanEdlsNodeSweep());
       } catch (error) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({
           message: failureMessage(error, "Failed to sweep the legacy node table"),
         });
@@ -112,6 +117,7 @@ export function registerFreemanEdlsMigrateRoutes(
       try {
         res.json(await runFreemanEdlsFieldSweep());
       } catch (error) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({
           message: failureMessage(error, "Failed to sweep the legacy field tables"),
         });

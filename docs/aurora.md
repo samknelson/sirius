@@ -195,11 +195,52 @@ the right database", "did the migrations run", and "how far did it get"
 without any access to the target.
 
 If the deploy log is hard to reach, set `EXPOSE_BOOT_ERRORS=1` and the
-same report is served over HTTP: `GET /health` returns it as
-`bringUpReport`, and the root page renders it. `/health` also carries
-`blockedOn`, which distinguishes a boot blocked on `migrations` or
-`drift` from an ordinary `other` startup failure. Do not leave
-`EXPOSE_BOOT_ERRORS=1` set on a public production deployment.
+same report is served over HTTP as `bringUpReport` by the boot-status
+addresses below. Without the flag those addresses still name the state
+and the blocker; only the error text, the stack and the report are
+withheld. Do not leave `EXPOSE_BOOT_ERRORS=1` set on a public production
+deployment.
+
+### The boot-status addresses
+
+Four addresses answer the same thing, in every state, from the first
+moment the process is listening:
+
+| Address | Reaches |
+| --- | --- |
+| `/health` | the UI service (historic; also the container/target health check) |
+| `/boot-status` | the UI service, on a path no load-balancer health rule occupies |
+| `/api/health` | **the API service** |
+| `/api/boot-status` | **the API service**, on a path no health rule occupies |
+
+Why four: one image runs as TWO services behind a single ALB — `/*`
+routes to the UI service and `/api/*` to the API service — so a status
+endpoint on a root path only ever answers for the UI service, and a
+fixed-response ALB rule on `/health` can shadow even that. The `/api/…`
+spellings are the only way to read the API service's boot state, which
+is the service a wedged deployment usually fails on.
+
+They always answer HTTP 200 (deliberately — the task must stabilize and
+stay observable rather than be cycled), with a browser page for a
+`text/html` request and JSON otherwise:
+
+```json
+{ "status": "init-failed", "message": "Initialization failed and this process will NOT recover…",
+  "blockedOn": "migrations", "driftCheck": "not-run",
+  "bootId": "…", "startedAt": "…", "path": "/api/boot-status", "details": "withheld" }
+```
+
+- `status` is one of `starting`, `ready`, `init-failed`, `report-only` —
+  the first will change on its own, the last two never will.
+- `blockedOn` distinguishes a boot blocked on `database`, `migrations`
+  or `drift` from an ordinary `other` startup failure.
+- `bootId` / `startedAt` identify the process, so two rolled tasks can be
+  told apart.
+
+Every OTHER request to a not-ready process gets the same body with the
+same fields, as HTTP 503 (the root path stays 200). So a plain
+`/api/anything` call on a wedged deployment says *why* it is not being
+served instead of claiming the app is starting.
 
 ### Step 1 — look without touching: `BRINGUP_REPORT_ONLY=1`
 
@@ -213,8 +254,9 @@ The process connects, classifies the database, reads the migration
 bookkeeping, runs the drift check read-only, prints the report, and
 **stops**. It applies no migration, creates no schema, and writes no
 variable — safe against a database you are not sure about. The app does
-not start; the failure page and `/health` (status `report-only`) serve
-the report. Remove the variable to boot normally.
+not start; the boot-status addresses report `report-only` (and serve the
+report under `EXPOSE_BOOT_ERRORS=1`), and so does every other request.
+Remove the variable to boot normally.
 
 ### Step 2 — read the `state:` line
 

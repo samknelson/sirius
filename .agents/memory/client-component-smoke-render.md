@@ -25,6 +25,10 @@ types; a Vite transform only proves it parses.
   nowhere to live.
 - Wrap anything using TanStack Query in a `QueryClientProvider`; with no
   server the query just stays empty, which is a useful "catalog hasn't
-  loaded yet" case.
+  loaded yet" case. Prime a specific state with `queryClient.setQueryData`
+  on the exact query key rather than standing a server up.
+- A whole page that renders a registry-driven tab strip also needs
+  `TerminologyProvider`: the tab-access hook labels tabs through
+  `useTerm`, which throws outside it.
 - Stub RJSF field props by hand (`schema`, `formData`, `onChange`,
   `registry.formContext`, `fieldPathId`).

@@ -1,40 +1,45 @@
 #!/usr/bin/env tsx
 /**
- * Check Maintenance Guards On Outbound Vendor Calls
+ * Check Outbound Calls Go Through The Web Client Framework
  *
- * Maintenance mode locks the database, but a write lock cannot undo an SMS,
- * an email, a physical letter, or a metered Google geocode. So while
- * `system_mode` is "maintenance", every server-side call to Twilio, SendGrid,
- * Lob and Google is refused by one shared guard —
- * `assertExternalServiceAllowed()` in `server/services/maintenance-flag.ts` —
- * before the network call and before any credential is read.
+ * Maintenance mode locks the database, but a write lock cannot undo an SMS, an
+ * email, a physical letter, or a metered geocode. The refusal that stops those
+ * — along with the failure hold, the writable-database requirement and the
+ * single audit trail — lives in the web client framework
+ * (`server/services/webclient`), which every outbound call is required to go
+ * through: `wcRequest()` for a cacheable answer, `wcUncachedRequest()` for one
+ * that must never be replayed, such as a send.
  *
- * That kind of guard is only as good as its coverage, and the way it breaks is
- * always the same: somebody adds a method to a vendor wrapper, or a fifth
- * vendor wrapper next to the four, and simply does not call it. Nothing fails;
- * the bypass is invisible until maintenance is on and a letter goes out.
+ * That framework is only as good as its coverage, and the way it breaks is
+ * always the same: somebody adds a method to a vendor wrapper, or a new
+ * wrapper next to the existing ones, and simply calls out directly. Nothing
+ * fails; the bypass is invisible until maintenance is on and a letter goes
+ * out.
  *
  * So this check enforces both halves:
  *
- *   1. NO UNGUARDED OPERATION. In each of the vendor modules below, any
- *      function that makes an outbound call (`fetch(…)`, `sgMail.send(…)`,
- *      `getTwilioClient()`) must have `assertExternalServiceAllowed(…)` as a
- *      statement of its own body — or of an enclosing function's body. It must
- *      be a plain statement, not buried in a branch or a nested closure,
- *      because the guard is meant to run first, ahead of the credential read
- *      and outside the method's own try/catch.
+ *   1. NO OFF-FRAMEWORK CALL. In each of the modules below, an outbound call
+ *      (`fetch(…)`, `sgMail.send(…)`, `getTwilioClient()`, `page.goto(…)`)
+ *      must happen underneath a framework request: lexically inside the
+ *      `fetch:` callback of a `wcRequest`/`wcUncachedRequest` call, or inside
+ *      a function this file hands that callback the work to. Reaching the
+ *      network from anywhere else is the violation.
  *
  *   2. NO UNLISTED VENDOR MODULE. No server file outside that list may name a
- *      Twilio/SendGrid/Lob/Google endpoint or import a vendor SDK. A new
- *      wrapper therefore fails this check on its first line, and the fix is to
- *      add it to GUARDED_MODULES — which immediately subjects it to rule 1.
+ *      vendor endpoint or import a vendor SDK. A new wrapper therefore fails
+ *      this check on its first line, and the fix is to add it to
+ *      OUTBOUND_MODULES — which immediately subjects it to rule 1.
+ *
+ * The US Census is the odd one out on the list: it is free and has no side
+ * effect. It is here because it is a service the framework can name, and
+ * everything the framework calls is refused through the one guard — so leaving
+ * it out would split the one list in two.
  *
  * Deliberately NOT covered, matching the task's scope: browser-side Google
  * Maps in `client/` (the browser calls Google directly and cannot be gated
  * server-side), standalone `scripts/` (they never arm the flag, exactly like
- * the database write lock), and the non-vendor external calls that live in
- * these same files (OpenStates, the US Census, the Replit connector
- * credential endpoint) — those are named in UNGUARDED_FUNCTIONS with a reason.
+ * the database write lock), and the individual calls named in
+ * OFF_FRAMEWORK_FUNCTIONS, each with its written reason.
  *
  * Like scripts/dev/check-env-registry.ts, this scans the CURRENT working tree
  * — tracked AND untracked files — so a brand-new vendor module cannot dodge
@@ -45,53 +50,46 @@
  * Exits 0 on pass, 1 on violations.
  */
 import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import ts from "typescript";
 
-/** The one guard every outbound vendor operation must call. */
+/** The legacy standalone guard, still used by the calls exempted below. */
 const GUARD_FN = "assertExternalServiceAllowed";
 
-/** Where the guard lives; the module itself is not a vendor wrapper. */
+/** Where the refusal lives; the module itself makes no outbound call. */
 const GUARD_MODULE = "server/services/maintenance-flag.ts";
 
 /**
- * The vendor wrappers. Every outbound call to Twilio, SendGrid, Lob or Google
- * is made from one of these files, and each one is subject to rule 1.
+ * Every module that reaches somebody else's system. Each one is subject to
+ * rule 1.
  */
-const GUARDED_MODULES = [
+const OUTBOUND_MODULES = [
   "server/lib/twilio-client.ts",
   "server/services/comm/providers/sms/twilio.ts",
   "server/services/comm/providers/email/sendgrid.ts",
   "server/services/comm/providers/postal/lob.ts",
   "server/services/comm/validators/address.ts",
   "server/services/google-civics.ts",
+  "server/services/google-geocode.ts",
+  "server/services/census-geocoder.ts",
+  "server/modules/sitespecific/t631/client/fetch.ts",
+  "server/modules/sitespecific/freeman/edls-migrate/client.ts",
+  "server/modules/sitespecific/btu/scraper-import.ts",
+  "server/plugins/wizards/plugins/btu-cardcheck-scrape-import.ts",
 ];
-
 /**
- * Functions inside a guarded module that make an outbound call which is NOT a
- * Twilio/SendGrid/Lob/Google call, and so is intentionally left alone.
- *
- * Per-function rather than per-file on purpose: exempting a whole file would
- * silently cover the next vendor method somebody adds to it.
+ * How an outbound call is recognized. `fetch` covers Lob, Google, OpenStates,
+ * the site-specific clients and the scraper's attachment downloads;
+ * `getTwilioClient` is the single door to Twilio; `sgMail.send` is SendGrid's;
+ * `page.goto`/`page.pdf` are how the BTU scrape reaches the site it drives.
  */
-const UNGUARDED_FUNCTIONS: Record<string, Record<string, string>> = {
-  "server/lib/twilio-client.ts": {
-    getCredentialsFromConnector:
-      "Reads Twilio credentials from the Replit connector endpoint, not from Twilio. " +
-      "getTwilioClient() — the only caller path — is guarded, so this never runs during maintenance.",
-  },
-  "server/services/google-civics.ts": {
-    callOpenStates:
-      "OpenStates, not Google. Non-vendor external calls are out of this guard's scope.",
-  },
-};
-
-/**
- * How an outbound vendor call is recognized. `fetch` covers Lob and Google;
- * `getTwilioClient` is the single door to Twilio (and is itself guarded);
- * `sgMail.send` is SendGrid's.
- */
-const OUTBOUND_CALLS = ["fetch", "getTwilioClient", "sgMail.send"];
+const OUTBOUND_CALLS = [
+  "fetch",
+  "getTwilioClient",
+  "sgMail.send",
+  "page.goto",
+  "page.pdf",
+];
 
 /**
  * How an unlisted vendor module is recognized: a vendor endpoint, or a vendor
@@ -102,6 +100,12 @@ const VENDOR_MARKERS: { pattern: RegExp; what: string }[] = [
   { pattern: /https?:\/\/[\w.-]*\blob\.com/, what: "a Lob API endpoint" },
   { pattern: /https?:\/\/[\w.-]*\btwilio\.com/, what: "a Twilio API endpoint" },
   { pattern: /https?:\/\/[\w.-]*\bsendgrid\.(com|net)/, what: "a SendGrid API endpoint" },
+  { pattern: /https?:\/\/[\w.-]*\bcensus\.gov/, what: "a US Census API endpoint" },
+  { pattern: /https?:\/\/[\w.-]*\bopenstates\.org/, what: "an OpenStates API endpoint" },
+  {
+    pattern: /https?:\/\/sirius-btu\.activistcentral\.net/,
+    what: "the BTU site the scraper drives",
+  },
   { pattern: /from\s+['"]@sendgrid\//, what: "the SendGrid SDK" },
   { pattern: /from\s+['"]twilio['"]/, what: "the Twilio SDK" },
 ];
@@ -138,7 +142,11 @@ function listWorkingTreeFiles(): string[] {
         .map((s) => s.trim())
         .filter(Boolean),
     ),
-  );
+    // `git ls-files` still names a tracked file that has been deleted in the
+    // working tree. The scan is of the working tree, so a file that is not
+    // there is not a file: reading it would crash the whole check on the one
+    // commit that removes a module.
+  ).filter((file) => existsSync(file));
 }
 
 function isScanned(file: string): boolean {
@@ -196,27 +204,155 @@ function calleeText(call: ts.CallExpression, sf: ts.SourceFile): string {
   return call.expression.getText(sf);
 }
 
-/**
- * True when the guard is a plain statement of this function's own body — not
- * inside an `if`, a `try`, or a nested closure. That placement is the point:
- * the guard runs before the credential read and outside the try/catch that
- * would otherwise turn a refusal into an empty list or a failed-send result.
- */
-function hasGuardStatement(fn: FunctionLike, sf: ts.SourceFile): boolean {
-  const body = fn.body;
-  if (!body || !ts.isBlock(body)) return false;
-  return body.statements.some(
-    (stmt) =>
-      ts.isExpressionStatement(stmt) &&
-      ts.isCallExpression(stmt.expression) &&
-      calleeText(stmt.expression, sf) === GUARD_FN,
-  );
+/** Every function-like node declared in the file, indexed by callable name. */
+function declaredFunctions(sf: ts.SourceFile): Map<string, FunctionLike[]> {
+  const byName = new Map<string, FunctionLike[]>();
+  const record = (name: string, fn: FunctionLike) => {
+    const existing = byName.get(name);
+    if (existing) existing.push(fn);
+    else byName.set(name, [fn]);
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (isFunctionLike(node)) {
+      const name = nameOf(node, sf);
+      record(name, node);
+      // A method is called as `this.method(…)` or `service.method(…)`; index
+      // it under the bare name and let the caller match on the last segment.
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sf);
+  return byName;
+}
+/** Rule 2: nothing outside OUTBOUND_MODULES talks to one of these vendors. */
+function auditUnlistedVendorModules(files: string[]): Violation[] {
+  const violations: Violation[] = [];
+  const known = new Set([...OUTBOUND_MODULES, GUARD_MODULE]);
+
+  for (const file of files) {
+    if (known.has(file) || VENDOR_MARKER_EXEMPT[file]) continue;
+    const lines = readFileSync(file, "utf8").split("\n");
+    for (const marker of VENDOR_MARKERS) {
+      const index = lines.findIndex((l) => marker.pattern.test(l));
+      if (index === -1) continue;
+      violations.push({
+        file,
+        line: index + 1,
+        detail: `references ${marker.what} but is not a listed outbound module`,
+        remedy:
+          `Add "${file}" to OUTBOUND_MODULES in scripts/dev/check-maintenance-guards.ts and put ` +
+          `each outbound operation through the web client framework. If it names the vendor ` +
+          `without calling it, add it to VENDOR_MARKER_EXEMPT with the reason.`,
+      });
+    }
+  }
+  return violations;
 }
 
-/** Rule 1: every outbound call in a guarded module sits under the guard. */
-function auditGuardedModule(file: string): Violation[] {
+/** Rule 0: the list itself has to be real, or the whole check quietly passes. */
+function auditModuleList(files: Set<string>): Violation[] {
+  return OUTBOUND_MODULES.filter((m) => !files.has(m)).map((m) => ({
+    file: "scripts/dev/check-maintenance-guards.ts",
+    line: 1,
+    detail: `OUTBOUND_MODULES names "${m}", which no longer exists`,
+    remedy: "Remove or rename the entry so the list keeps describing the real outbound modules.",
+  }));
+}
+
+/** The framework entry points. An outbound call must sit under one of them. */
+const FRAMEWORK_CALLS = ["wcRequest", "wcUncachedRequest"];
+
+/** The property that carries the work the framework performs. */
+const FRAMEWORK_WORK_PROPERTY = "fetch";
+
+/**
+ * The functions in this file that run underneath a framework request: the
+ * `fetch:` callbacks themselves, plus everything they hand the work to.
+ *
+ * The second half matters because a long operation is usually a callback that
+ * delegates — `fetch: () => this.printLetterAtLob(params)`. The delegate is
+ * still on the framework's path: it only runs once the refusal, the hold and
+ * the writable-database requirement have all been satisfied.
+ */
+function functionsUnderFramework(sf: ts.SourceFile): Set<FunctionLike> {
+  const declared = declaredFunctions(sf);
+  const underFramework = new Set<FunctionLike>();
+  const queue: FunctionLike[] = [];
+
+  const findCallbacks = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && FRAMEWORK_CALLS.includes(calleeText(node, sf))) {
+      for (const arg of node.arguments) {
+        if (!ts.isObjectLiteralExpression(arg)) continue;
+        for (const prop of arg.properties) {
+          if (!prop.name || !ts.isIdentifier(prop.name)) continue;
+          if (prop.name.text !== FRAMEWORK_WORK_PROPERTY) continue;
+          const value = ts.isPropertyAssignment(prop) ? prop.initializer : prop;
+          if (isFunctionLike(value)) queue.push(value);
+        }
+      }
+    }
+    ts.forEachChild(node, findCallbacks);
+  };
+  findCallbacks(sf);
+
+  // Walk outward from each callback to whatever it calls, by name, until the
+  // set stops growing.
+  while (queue.length > 0) {
+    const fn = queue.pop()!;
+    if (underFramework.has(fn)) continue;
+    underFramework.add(fn);
+
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node)) {
+        const callee = calleeText(node, sf);
+        const bareName = callee.split(".").pop() ?? callee;
+        for (const target of declared.get(bareName) ?? []) {
+          if (!underFramework.has(target)) queue.push(target);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(fn);
+  }
+
+  return underFramework;
+}
+
+/**
+ * Outbound calls that are deliberately not made through the framework, with
+ * the reason for each.
+ *
+ * Per-function rather than per-file on purpose: exempting a whole file would
+ * silently cover the next method somebody adds to it.
+ */
+const OFF_FRAMEWORK_FUNCTIONS: Record<string, Record<string, string>> = {
+  "server/lib/twilio-client.ts": {
+    getCredentialsFromConnector:
+      "Reads Twilio credentials from the Replit connector endpoint, not from Twilio. It is " +
+      "reached only from getTwilioClient(), which is itself an outbound call the framework " +
+      "gates at every call site, so it cannot run during maintenance.",
+  },
+  "server/services/comm/providers/sms/twilio.ts": {
+    validatePhone:
+      "IS the work of a framework request — the cached phone-lookup entry registered in " +
+      "server/services/comm/validators/phone.ts, whose fetch callback calls this. The " +
+      "framework request is in that file, so it is not visible here.",
+  },
+  "server/services/comm/providers/postal/lob.ts": {
+    verifyAddress:
+      "Cacheable, and the only one of the address lookups still off the framework: the " +
+      "Google validation, parsing and geocoding that surround it are now cached entries, " +
+      `and this one follows them. Guarded by ${GUARD_FN}() until it does.`,
+  },
+};
+
+/** Rule 1: every outbound call in a listed module goes through the framework. */
+function auditOutboundModule(file: string): Violation[] {
   const sf = parse(file);
-  const exemptions = UNGUARDED_FUNCTIONS[file] ?? {};
+  const exemptions = OFF_FRAMEWORK_FUNCTIONS[file] ?? {};
+  const underFramework = functionsUnderFramework(sf);
   const violations: Violation[] = [];
   const stack: FunctionLike[] = [];
 
@@ -231,14 +367,19 @@ function auditGuardedModule(file: string): Violation[] {
         .map((fn) => exemptions[nameOf(fn, sf)])
         .find(Boolean);
 
-      if (!exemptReason && !stack.some((fn) => hasGuardStatement(fn, sf))) {
+      if (!exemptReason && !stack.some((fn) => underFramework.has(fn))) {
         violations.push({
           file,
           line: lineOf(sf, node),
-          detail: `${owner}() makes an outbound call (${calleeText(node, sf)}) with no maintenance guard`,
+          detail:
+            `${owner}() makes an outbound call (${calleeText(node, sf)}) that does not go ` +
+            `through the web client framework`,
           remedy:
-            `Add \`${GUARD_FN}("<Twilio|SendGrid|Lob|Google>", "<what it does>");\` as the ` +
-            `first statement of ${owner}(), ahead of credential resolution and outside any try/catch.`,
+            `Register the operation (registerWcRequest for a cacheable answer, ` +
+            `registerUncachedWcRequest for one that must never be replayed) and make the call ` +
+            `inside the \`${FRAMEWORK_WORK_PROPERTY}:\` callback of ${FRAMEWORK_CALLS.join("/")}. ` +
+            `If it genuinely must not go through the framework, name ${owner} in ` +
+            `OFF_FRAMEWORK_FUNCTIONS with the reason.`,
         });
       }
     }
@@ -251,49 +392,14 @@ function auditGuardedModule(file: string): Violation[] {
   return violations;
 }
 
-/** Rule 2: nothing outside GUARDED_MODULES talks to one of these vendors. */
-function auditUnlistedVendorModules(files: string[]): Violation[] {
-  const violations: Violation[] = [];
-  const known = new Set([...GUARDED_MODULES, GUARD_MODULE]);
-
-  for (const file of files) {
-    if (known.has(file) || VENDOR_MARKER_EXEMPT[file]) continue;
-    const lines = readFileSync(file, "utf8").split("\n");
-    for (const marker of VENDOR_MARKERS) {
-      const index = lines.findIndex((l) => marker.pattern.test(l));
-      if (index === -1) continue;
-      violations.push({
-        file,
-        line: index + 1,
-        detail: `references ${marker.what} but is not a guarded vendor module`,
-        remedy:
-          `Add "${file}" to GUARDED_MODULES in scripts/dev/check-maintenance-guards.ts and guard ` +
-          `each outbound operation with ${GUARD_FN}(). If it names the vendor without calling it, ` +
-          `add it to VENDOR_MARKER_EXEMPT with the reason.`,
-      });
-    }
-  }
-  return violations;
-}
-
-/** Rule 0: the list itself has to be real, or the whole check quietly passes. */
-function auditModuleList(files: Set<string>): Violation[] {
-  return GUARDED_MODULES.filter((m) => !files.has(m)).map((m) => ({
-    file: "scripts/dev/check-maintenance-guards.ts",
-    line: 1,
-    detail: `GUARDED_MODULES names "${m}", which no longer exists`,
-    remedy: "Remove or rename the entry so the list keeps describing the real vendor wrappers.",
-  }));
-}
-
 export function findViolations(): Violation[] {
   const all = listWorkingTreeFiles();
   const present = new Set(all);
   const scanned = all.filter(isScanned);
 
   const violations = auditModuleList(present);
-  for (const module of GUARDED_MODULES) {
-    if (present.has(module)) violations.push(...auditGuardedModule(module));
+  for (const module of OUTBOUND_MODULES) {
+    if (present.has(module)) violations.push(...auditOutboundModule(module));
   }
   violations.push(...auditUnlistedVendorModules(scanned));
   return violations;
@@ -304,8 +410,9 @@ function main(): void {
 
   if (violations.length === 0) {
     console.log(
-      `[check-maintenance-guards] OK — every outbound call in ${GUARDED_MODULES.length} vendor ` +
-        `module(s) runs under ${GUARD_FN}(), and no other server file talks to Twilio, SendGrid, Lob or Google.`,
+      `[check-maintenance-guards] OK — every outbound call in ${OUTBOUND_MODULES.length} ` +
+        `module(s) goes through the web client framework, and no other server file reaches one ` +
+        `of these outside systems.`,
     );
     process.exit(0);
   }
@@ -315,12 +422,13 @@ function main(): void {
       "",
       "[check-maintenance-guards] FAILED",
       "",
-      "An outbound vendor call can bypass maintenance mode.",
+      "An outbound call can bypass maintenance mode.",
       "",
       "Maintenance mode makes the database read-only, but an SMS, an email, a",
       "letter or a metered geocode cannot be rolled back when maintenance ends.",
-      `Every call to Twilio, SendGrid, Lob and Google must go through ${GUARD_FN}()`,
-      `from ${GUARD_MODULE}.`,
+      "The refusal, the failure hold and the audit trail all live in the web",
+      `client framework, so every outbound call goes through ${FRAMEWORK_CALLS.join(" / ")}`,
+      "from server/services/webclient.",
       "",
       ...violations.map((v) => `  ${v.file}:${v.line}  ${v.detail}\n      → ${v.remedy}`),
       "",

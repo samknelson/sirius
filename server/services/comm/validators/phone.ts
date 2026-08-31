@@ -1,17 +1,32 @@
 import { parsePhoneNumber, CountryCode, PhoneNumber } from 'libphonenumber-js';
 import { serviceRegistry } from '../../service-registry';
-import { phoneValidationCache } from '../../../storage/phone-validation-cache';
+import { phoneOptinValidation } from '../../../storage/phone-optin-validation';
 import { runOutsideTransaction } from '../../../storage/transaction-context';
+import { registerWcRequest, wcRequest, type WcRequestMode, type WcResult } from '../../webclient';
+import { isMaintenanceModeError } from '../../maintenance-flag';
+import {
+  PHONE_LOOKUP_REQUEST_TYPE,
+  PHONE_LOOKUP_SERVICE,
+  phoneLookupRequestKey,
+  type PhoneLookupArgs,
+} from './phone-lookup-request';
+import {
+  DEFAULT_REVALIDATE_AFTER_DAYS,
+  getPhoneValidationSettings,
+  revalidateAfterDays,
+  type PhoneValidationSettings,
+} from './phone-validation-settings';
 import type { SmsTransport } from '../providers/sms';
+
+export { DEFAULT_REVALIDATE_AFTER_DAYS };
 
 /**
  * How hard a caller wants a number re-checked against the provider.
  *
  * - `never` — pure local parse. No network call AND no cache read. This is the
  *   mode for normalization: turning a number into E.164 to build a `WHERE`
- *   clause is not a question about whether the number is real. It is also what
- *   keeps the validator and the opt-in read from calling each other, since the
- *   cache lives on the opt-in row.
+ *   clause is not a question about whether the number is real, and every row
+ *   of a list view takes this path.
  * - `default` — return the stored answer unless it is older than the
  *   configured age (180 days by default).
  * - `always` — ask the provider regardless of how recent the stored answer is.
@@ -23,24 +38,43 @@ export interface PhoneValidationOptions {
   revalidate?: PhoneRevalidateMode;
 }
 
-/** Fallback when the setting is unset. A number does not change hands twice a year. */
-export const DEFAULT_REVALIDATE_AFTER_DAYS = 180;
+/** The caller's intent, in the web client framework's own vocabulary. */
+const WC_MODE_BY_REVALIDATE: Record<PhoneRevalidateMode, WcRequestMode> = {
+  never: 'local',
+  default: 'default',
+  always: 'force',
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * How long to leave a number alone after the provider failed to answer for it.
+ * How long a failed lookup is left alone.
  *
  * A failure must not stamp the number as freshly validated — an outage would
  * otherwise buy six months of silence — but without a pause every read during
- * that outage becomes another attempt. Short and in-memory: this is a
- * back-off, not a record, and it must not itself become a write.
+ * that outage becomes another attempt. It is recorded as a failure entry in
+ * the web client cache, so unlike the in-process back-off it replaces, the
+ * pause survives a restart and every process observes the same one.
  */
-const FAILURE_BACKOFF_MS = 5 * 60 * 1000;
-
-/** How long settings stay memoized. See {@link PhoneValidationService.settingsMemo}. */
-const SETTINGS_MEMO_MS = 60 * 1000;
+const FAILURE_REMEMBERED_FOR_MS = 5 * 60 * 1000;
 
 /** Cap on numbers waiting for an out-of-band refresh, so a big list cannot pile up unboundedly. */
 const MAX_QUEUED_REVALIDATIONS = 500;
+
+registerWcRequest<PhoneLookupArgs>({
+  service: PHONE_LOOKUP_SERVICE,
+  requestType: PHONE_LOOKUP_REQUEST_TYPE,
+  operation: 'validate a phone number',
+  cached: true,
+  // A Lookup is billed. Making one on a connection that will forget the
+  // answer means paying for it again on the very next call.
+  needsWritableDatabase: true,
+  // Resolved per request, so shortening the setting takes effect on the next
+  // read rather than only on entries written afterwards.
+  freshFor: async () => revalidateAfterDays(await getPhoneValidationSettings()) * DAY_MS,
+  failureRememberedFor: FAILURE_REMEMBERED_FOR_MS,
+  requestKey: phoneLookupRequestKey,
+});
 
 export interface PhoneValidationResult {
   isValid: boolean;
@@ -55,65 +89,11 @@ export interface PhoneValidationResult {
   voicePossible?: boolean;
 }
 
-interface PhoneValidationSettings {
-  defaultCountry?: string;
-  strictValidation?: boolean;
-  useLocalOnTwilioFailure?: boolean;
-  logValidationAttempts?: boolean;
-  revalidateAfterDays?: number;
-}
-
 export class PhoneValidationService {
   private defaultCountry: CountryCode = 'US';
 
-  /** e164 → time the back-off expires. Deliberately in memory; see FAILURE_BACKOFF_MS. */
-  private failureBackoff = new Map<string, number>();
-
-  /**
-   * Settings, briefly memoized.
-   *
-   * `defaultCountry` decides how a bare national number parses, so it has to
-   * apply in every mode — a `never` normalization that skipped it would key
-   * the cache on a different E.164 than the lookup that filled it. Since a
-   * normalization can happen per row in a loop, reading settings from the
-   * database each time is what the memo avoids. The window is short because
-   * nothing here is worth serving stale for long.
-   */
-  private settingsMemo?: { value: PhoneValidationSettings; expires: number };
-
   constructor(defaultCountry: CountryCode = 'US') {
     this.defaultCountry = defaultCountry;
-  }
-
-  private async getValidationSettings(): Promise<PhoneValidationSettings> {
-    const memo = this.settingsMemo;
-    if (memo && memo.expires > Date.now()) return memo.value;
-    const value = await this.loadValidationSettings();
-    this.settingsMemo = { value, expires: Date.now() + SETTINGS_MEMO_MS };
-    return value;
-  }
-
-  private async loadValidationSettings(): Promise<PhoneValidationSettings> {
-    try {
-      // Always read local settings (defaultCountry, strictValidation) from local provider
-      // These are provider-agnostic and apply regardless of which SMS provider is active
-      const localSettings = await serviceRegistry.getProviderSettings('sms', 'local');
-      const localValidation = (localSettings as any)?.phoneValidation || {};
-      
-      // Read fallback settings from twilio provider (since they control Twilio failure behavior)
-      const twilioSettings = await serviceRegistry.getProviderSettings('sms', 'twilio');
-      const twilioValidation = (twilioSettings as any)?.phoneValidation || {};
-      
-      return {
-        defaultCountry: localValidation.defaultCountry || 'US',
-        strictValidation: localValidation.strictValidation ?? true,
-        useLocalOnTwilioFailure: twilioValidation.useLocalOnTwilioFailure ?? true,
-        logValidationAttempts: twilioValidation.logValidationAttempts ?? true,
-        revalidateAfterDays: twilioValidation.revalidateAfterDays
-      };
-    } catch {
-      return {};
-    }
   }
 
   /**
@@ -127,7 +107,10 @@ export class PhoneValidationService {
    *
    * The overriding rule: **it never calls the provider unless the result can
    * be stored.** An unstored lookup is money spent to learn something that is
-   * immediately forgotten and would be spent again on the next call.
+   * immediately forgotten and would be spent again on the next call. That
+   * rule, the freshness window, and the pause after a failure are all applied
+   * by the web client framework; this method's job is to say what a Twilio
+   * Lookup means once one has been made.
    */
   async validateAndFormat(
     phoneNumberInput: string,
@@ -137,7 +120,7 @@ export class PhoneValidationService {
 
     let settings: PhoneValidationSettings = {};
     try {
-      settings = await this.getValidationSettings();
+      settings = await getPhoneValidationSettings();
     } catch {
       // Settings are advisory; their absence must not stop validation.
     }
@@ -145,11 +128,11 @@ export class PhoneValidationService {
       options?.country || (settings.defaultCountry as CountryCode) || this.defaultCountry;
 
     const local = this.validateLocally(phoneNumberInput, country);
+    const wcMode = WC_MODE_BY_REVALIDATE[mode];
 
-    // `never` is a pure local parse: no network, and no cache read either.
-    // Reading the cache here would mean the opt-in read (which normalizes
-    // through this function) and this function each waiting on the other.
-    if (mode === 'never') return local;
+    // `never` is a pure local parse, and the framework's local mode is what
+    // makes it one: no network, and no cache read either.
+    if (wcMode === 'local') return local;
 
     // A number that fails the local parse never reaches the provider, so it
     // never has a cached answer either. Retrying it costs nothing.
@@ -168,48 +151,87 @@ export class PhoneValidationService {
     if (smsTransport.id !== 'twilio') return local;
 
     const e164 = local.e164Format;
-    const cached = await this.readCache(e164);
+    const args: PhoneLookupArgs = { phoneNumber: e164 };
 
-    if (mode === 'default') {
-      if (this.isFresh(cached, settings)) return this.merge(local, cached);
-      // Mid-outage: serve what we have rather than re-attempt on every read.
-      if (this.inFailureBackoff(e164)) return this.merge(local, cached);
+    // `always` asks the provider regardless of how recent the stored answer
+    // is, and regardless of a failure pause. It exists for the one caller that
+    // is a person pressing "revalidate" because they believe the stored answer
+    // is wrong; honouring the pause there would hand them the same stale
+    // answer while reporting a fresh check. A caller that is not a person
+    // asking on purpose wants `default`.
+    let result: WcResult<PhoneValidationResult>;
+    try {
+      result = await wcRequest<PhoneValidationResult>({
+        service: PHONE_LOOKUP_SERVICE,
+        requestType: PHONE_LOOKUP_REQUEST_TYPE,
+        args,
+        mode: wcMode,
+        fetch: () => this.lookupWithProvider(smsTransport, local, e164),
+      });
+    } catch (error) {
+      if (!isMaintenanceModeError(error)) throw error;
+      // The vendor is off limits, but what we already know still stands.
+      result = await wcRequest<PhoneValidationResult>({
+        service: PHONE_LOOKUP_SERVICE,
+        requestType: PHONE_LOOKUP_REQUEST_TYPE,
+        args,
+        mode: 'cached-only',
+        fetch: () => {
+          throw new Error('unreachable: cached-only never calls');
+        },
+      });
     }
-    // `always` deliberately ignores the back-off as well as the age. It exists
-    // for the one caller that is a person pressing "revalidate" because they
-    // believe the stored answer is wrong; honouring the back-off there would
-    // hand them the same stale answer while reporting a fresh check. A caller
-    // that is not a person asking on purpose wants `default`.
 
-    if (!(await phoneValidationCache.canStore())) {
-      return this.merge(local, cached);
+    if (result.outcome === 'success' && result.value) {
+      const answer = this.merge(local, result.value);
+      // The derived possibility flags live on the opt-in row, and are written
+      // as the cache fills — not on every read of an answer already stored.
+      if (result.source === 'network' && answer.isValid) {
+        await this.writeOptinValidation(e164, answer);
+      }
+      return answer;
     }
 
-    return this.validateWithProvider(smsTransport, local, e164, cached, settings);
+    // No answer: either the provider did not give one, or nothing was asked.
+    if (result.fallback) return result.fallback;
+    if (result.outcome === 'failure' && !(settings.useLocalOnTwilioFailure ?? true)) {
+      return { isValid: false, error: result.error || 'Provider validation failed' };
+    }
+    return local;
   }
 
-  private async validateWithProvider(
+  /**
+   * Make the Lookup and say what came back.
+   *
+   * Whether the vendor actually answered is declared here rather than inferred
+   * by the framework from the absence of a thrown error, because this provider
+   * swallows its own transport errors and answers with a locally-derived
+   * result instead.
+   */
+  private async lookupWithProvider(
     smsTransport: SmsTransport,
     local: PhoneValidationResult,
     e164: string,
-    cached: PhoneValidationResult | undefined,
-    settings: PhoneValidationSettings,
-  ): Promise<PhoneValidationResult> {
+  ): Promise<{ answered: boolean; value?: PhoneValidationResult; error?: string; store?: boolean }> {
     let result: Awaited<ReturnType<SmsTransport['validatePhone']>>;
     try {
       result = await smsTransport.validatePhone(e164);
     } catch (error) {
+      if (isMaintenanceModeError(error)) throw error;
       console.error('Provider validation failed:', error);
-      return this.handleProviderFailure(local, e164, cached, settings, error);
+      return {
+        answered: false,
+        value: local,
+        error: error instanceof Error ? error.message : 'Provider validation failed',
+      };
     }
 
-    // The provider swallows its own transport errors and answers with a
-    // locally-derived result instead, which is indistinguishable from a real
-    // Lookup except that it carries no line-type intelligence. Treating that
-    // as an answer would stamp the number as freshly validated on the
-    // strength of a call that never reached the carrier.
+    // The locally-derived fallback is indistinguishable from a real Lookup
+    // except that it carries no line-type intelligence. Treating it as an
+    // answer would stamp the number as freshly validated on the strength of a
+    // call that never reached the carrier.
     if (result.valid && result.smsPossible === undefined) {
-      return this.handleProviderFailure(local, e164, cached, settings, undefined);
+      return { answered: false, value: local, error: 'Provider answered without line-type intelligence' };
     }
 
     const answer: PhoneValidationResult = {
@@ -229,87 +251,27 @@ export class PhoneValidationService {
       },
     };
 
-    this.failureBackoff.delete(e164);
-
-    // A "not in the carrier database" answer is not cached: the number is
-    // rejected at the surface the caller is standing on, and caching it would
-    // keep rejecting a number the carrier may activate tomorrow.
-    if (answer.isValid) {
-      try {
-        await phoneValidationCache.write(e164, {
-          validationResponse: answer,
-          smsPossible: answer.smsPossible ?? null,
-          voicePossible: answer.voicePossible ?? null,
-        });
-      } catch (error) {
-        // The gate passed and the write still failed — the connection turned
-        // read-only during the lookup, most likely because maintenance mode
-        // was switched on mid-call. We have already paid for this answer and
-        // cannot keep it, so back the number off rather than pay again on the
-        // very next call for as long as the condition lasts.
-        console.error('Paid for a phone lookup that could not be stored:', error);
-        this.failureBackoff.set(e164, Date.now() + FAILURE_BACKOFF_MS);
-      }
-    }
-
-    return answer;
+    // A "not in the carrier database" answer is a real answer — the caller is
+    // told the number is bad — but it is not kept: caching it would keep
+    // rejecting a number the carrier may activate tomorrow.
+    return { answered: true, value: answer, store: answer.isValid };
   }
 
-  private handleProviderFailure(
-    local: PhoneValidationResult,
+  private async writeOptinValidation(
     e164: string,
-    cached: PhoneValidationResult | undefined,
-    settings: PhoneValidationSettings,
-    error: unknown,
-  ): PhoneValidationResult {
-    this.failureBackoff.set(e164, Date.now() + FAILURE_BACKOFF_MS);
-
-    if (cached) return this.merge(local, cached);
-    if (settings.useLocalOnTwilioFailure ?? true) return local;
-    return {
-      isValid: false,
-      error: error instanceof Error ? error.message : 'Provider validation failed',
-    };
-  }
-
-  private async readCache(e164: string): Promise<PhoneValidationResult | undefined> {
+    answer: PhoneValidationResult,
+  ): Promise<void> {
     try {
-      const entry = await phoneValidationCache.read(e164);
-      if (!entry?.validatedAt || !entry.validationResponse) return undefined;
-      const stored = entry.validationResponse as PhoneValidationResult;
-      if (typeof stored !== 'object' || stored === null) return undefined;
-      return { ...stored, validatedAt: entry.validatedAt } as PhoneValidationResult & {
-        validatedAt: Date;
-      };
+      await phoneOptinValidation.write(e164, {
+        validationResponse: answer,
+        smsPossible: answer.smsPossible ?? null,
+        voicePossible: answer.voicePossible ?? null,
+      });
     } catch (error) {
-      console.error('Failed to read stored phone validation:', error);
-      return undefined;
+      // The answer itself is already in the cache, so nothing will be bought
+      // again; only the derived flags are missing.
+      console.error('Failed to record phone validation on the opt-in row:', error);
     }
-  }
-
-  private isFresh(
-    cached: PhoneValidationResult | undefined,
-    settings: PhoneValidationSettings,
-  ): boolean {
-    const validatedAt = (cached as { validatedAt?: Date } | undefined)?.validatedAt;
-    if (!validatedAt) return false;
-    const days = this.revalidateAfterDays(settings);
-    return Date.now() - new Date(validatedAt).getTime() < days * 24 * 60 * 60 * 1000;
-  }
-
-  private revalidateAfterDays(settings: PhoneValidationSettings): number {
-    const configured = Number(settings.revalidateAfterDays);
-    return Number.isFinite(configured) && configured > 0
-      ? configured
-      : DEFAULT_REVALIDATE_AFTER_DAYS;
-  }
-
-  private inFailureBackoff(e164: string): boolean {
-    const until = this.failureBackoff.get(e164);
-    if (until === undefined) return false;
-    if (until > Date.now()) return true;
-    this.failureBackoff.delete(e164);
-    return false;
   }
 
   /**

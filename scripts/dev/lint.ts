@@ -91,6 +91,11 @@ const RULES: Rule[] = [
     script: "scripts/dev/check-maintenance-guards.ts",
     summary: "outbound vendor calls are refused during maintenance mode",
   },
+  {
+    id: "theme-color-vars",
+    script: "scripts/dev/check-theme-color-vars.ts",
+    summary: "theme colour variables are named as-is, never wrapped in hsl()",
+  },
 ];
 
 function usage(): void {

@@ -44,12 +44,13 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 
 -   **`npm run lint` is the architecture-lint suite** — one entry point for
     every repo-wide architecture rule (`scripts/dev/lint.ts`). It runs all
-    nine rules and reports **every** violation in one pass rather than
+    twelve rules and reports **every** violation in one pass rather than
     stopping at the first, each with its own fix instructions:
     `env-registry`, `storage-encapsulation`, `denorm-declarations`,
     `html-utils`, `constraint-names`, `component-table-order`,
     `core-migration-component-tables`, `lockfile-registry`,
-    `main-branch-files`. Run one rule
+    `main-branch-files`, `carrying-branch-drift`, `maintenance-guards`,
+    `theme-color-vars`. Run one rule
     with `npx tsx scripts/dev/lint.ts <rule-id>`, list them with `--list`.
     A new repo-wide rule is added to the `RULES` table in that file — never
     as its own workflow.

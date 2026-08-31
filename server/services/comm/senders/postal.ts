@@ -4,6 +4,7 @@ import { createCommStorage, createCommPostalStorage, createCommPostalOptinStorag
 import { storage } from '../../../storage';
 import { runInTransaction } from '../../../storage/transaction-context';
 import type { PostalTransport, PostalAddress, SendLetterParams } from '../providers/postal';
+import { verifyPostalAddress } from '../validators/address-verification';
 import type { Comm, CommPostal } from '@shared/schema';
 import { logger } from '../../../logger';
 import { buildStatusCallbackUrl } from '../callback-handlers/url-builder';
@@ -127,7 +128,7 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
       };
     }
 
-    const verificationResult = await postalTransport.verifyAddress(toAddress);
+    const verificationResult = await verifyPostalAddress(postalTransport, toAddress);
     if (!verificationResult.valid) {
       return {
         success: false,

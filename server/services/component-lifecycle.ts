@@ -681,16 +681,30 @@ export async function reconcileComponentPluginConfigs(
 
     if (enabled) {
       if (!existing) {
-        await storage.pluginConfigs.create({
-          pluginKind: managed.pluginKind,
-          pluginId: managed.pluginId,
-          siriusId: managed.siriusId,
-          name: managed.name ?? null,
-          ordering: managed.ordering ?? 0,
-          enabled: true,
-          data: managed.data ?? {},
-        });
-        result.created.push(managed.siriusId);
+        try {
+          await storage.pluginConfigs.create({
+            pluginKind: managed.pluginKind,
+            pluginId: managed.pluginId,
+            siriusId: managed.siriusId,
+            name: managed.name ?? null,
+            ordering: managed.ordering ?? 0,
+            enabled: true,
+            data: managed.data ?? {},
+          });
+          result.created.push(managed.siriusId);
+        } catch (error: any) {
+          // Two tasks boot against one database (Task #1350) and both run this
+          // reconcile. `siriusId` is unique, so the loser sees 23505 — which
+          // means the row it wanted now exists. Adopt it rather than aborting
+          // the boot; the winner created exactly the row we were about to.
+          if (error?.code !== "23505") throw error;
+          const created = await storage.pluginConfigs.findBySiriusId(managed.siriusId);
+          if (!created) throw error;
+          if (!created.enabled) {
+            await storage.pluginConfigs.update(created.id, { enabled: true });
+            result.reactivated.push(managed.siriusId);
+          }
+        }
       } else if (!existing.enabled) {
         // Re-activate only; preserve admin edits to name/ordering/data.
         await storage.pluginConfigs.update(existing.id, { enabled: true });

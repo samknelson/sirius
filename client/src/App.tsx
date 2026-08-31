@@ -346,6 +346,8 @@ const FileBrowserDetailPage = lazy(() => import("@/pages/admin/file-browser-deta
 const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
 const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
 const EbsInspectionPage = lazy(() => import("@/pages/admin/ebs"));
+const WcCachePage = lazy(() => import("@/pages/admin/wc-cache"));
+const WcStatsPage = lazy(() => import("@/pages/admin/wc-stats"));
 const RestartPage = lazy(() => import("@/pages/admin/restart"));
 const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
 const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
@@ -3681,6 +3683,30 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <EbsInspectionPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Cached third-party responses (web client cache). Admin-gated to match
+          the endpoints: the stored responses are whatever the vendor returned. */}
+      <Route path="/admin/wc-cache">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WcCachePage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* How often we actually called out, per service and request type. Same
+          admin gate as the cached entries beside it. */}
+      <Route path="/admin/wc-stats">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WcStatsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
