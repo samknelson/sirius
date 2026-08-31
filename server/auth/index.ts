@@ -63,6 +63,35 @@ export function getAuthConfig(): AuthConfig {
   return authConfig;
 }
 
+/**
+ * Session middleware options, exported separately so lifecycle tests can
+ * assert on and exercise the exact configuration the app runs with.
+ */
+export function buildSessionOptions(params: {
+  secret: string;
+  sessionTtl: number;
+  isProduction: boolean;
+  store?: session.Store;
+}): session.SessionOptions {
+  return {
+    secret: params.secret,
+    store: params.store ?? new StorageSessionStore({ ttlMs: params.sessionTtl }),
+    resave: false,
+    saveUninitialized: false,
+    // Rolling cookies: every response on an authenticated session re-sends
+    // the cookie with a fresh maxAge, which also makes express-session call
+    // store.touch() — so ACTIVE users advance both the browser cookie and the
+    // persisted `sessions.expire` row together, while an idle session still
+    // dies after `sessionTtl` of no requests.
+    rolling: true,
+    cookie: {
+      httpOnly: true,
+      secure: params.isProduction,
+      maxAge: params.sessionTtl,
+    },
+  };
+}
+
 export function getSession(): RequestHandler {
   const config = getAuthConfig();
   const sessionTtl = config.sessionTtl || 7 * 24 * 60 * 60 * 1000; // Default: 1 week
@@ -70,21 +99,13 @@ export function getSession(): RequestHandler {
   // Session persistence goes through the storage layer (storage.sessions.*)
   // like every other table, on the single shared db.ts pool. Expired rows are
   // pruned by the `session-prune` cron plugin.
-  const sessionStore = new StorageSessionStore({ ttlMs: sessionTtl });
-
-  const isProduction = getEnvironmentVariable("NODE_ENV") === "production";
-
-  return session({
-    secret: config.sessionSecret,
-    store: sessionStore,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: isProduction,
-      maxAge: sessionTtl,
-    },
-  });
+  return session(
+    buildSessionOptions({
+      secret: config.sessionSecret,
+      sessionTtl,
+      isProduction: getEnvironmentVariable("NODE_ENV") === "production",
+    }),
+  );
 }
 
 export async function setupAuth(app: Express): Promise<void> {
@@ -250,6 +271,60 @@ export async function setupAuth(app: Express): Promise<void> {
   });
 }
 
+/**
+ * Persist a refreshed passport user back into the session row so rotated
+ * provider credentials (e.g. a rotated Okta refresh token) survive later
+ * requests and other application instances. `req.user` is usually the same
+ * object as `session.passport.user`, but we assign explicitly and save
+ * before continuing so the write cannot be lost to a crash or a competing
+ * request hitting another instance mid-flight.
+ *
+ * Resolves true when the session row was durably saved (one retry on
+ * failure), false otherwise. Callers must NOT continue the protected request
+ * on false: Okta may have rotated the refresh token, and serving the request
+ * with only-in-memory credentials would let a later request (or another
+ * instance) load the stale, now-invalid token from the store.
+ */
+async function persistRefreshedUser(req: Parameters<RequestHandler>[0]): Promise<boolean> {
+  const sessionData = req.session as unknown as {
+    passport?: { user?: unknown };
+    save: (cb: (err?: unknown) => void) => void;
+  };
+  if (sessionData.passport) {
+    sessionData.passport.user = req.user;
+  }
+  const saveOnce = () =>
+    new Promise<unknown>((resolve) => sessionData.save((err?: unknown) => resolve(err)));
+
+  let err = await saveOnce();
+  if (err) {
+    err = await saveOnce(); // one retry — session-store writes can fail transiently
+  }
+  if (err) {
+    logger.error("Failed to persist refreshed credentials to session", {
+      service: "auth",
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Authentication gate for protected routes.
+ *
+ * The persisted Sirius session is the authoritative login lifetime:
+ * - No session → 401 (local-session expiry / not signed in).
+ * - Provider access token expired but no refresh capability → the request
+ *   proceeds; the access token is not used outside authentication, so its
+ *   expiry alone must not terminate a valid active session.
+ * - Refresh capability present → refresh is attempted; success is durably
+ *   persisted to the session (including rotated refresh tokens) before the
+ *   request continues; explicit provider rejection (revocation-class OAuth
+ *   error → refreshToken returns null) destroys the session down one
+ *   explicit reauth path; a transient refresh error (thrown) preserves the
+ *   session and the refresh is retried on a later request.
+ */
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   const user = req.user as AuthenticatedUser | undefined;
 
@@ -260,21 +335,77 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   if (user.expires_at) {
     const now = Math.floor(Date.now() / 1000);
     if (now > user.expires_at) {
-      if (user.providerType && user.refresh_token) {
-        const provider = providerRegistry.get(user.providerType);
-        if (provider?.refreshToken) {
-          try {
-            const refreshedUser = await provider.refreshToken(user);
-            if (refreshedUser) {
-              Object.assign(user, refreshedUser);
-              return next();
-            }
-          } catch (error) {
-            logger.error("Token refresh failed", { error });
-          }
-        }
+      const provider = user.providerType
+        ? providerRegistry.get(user.providerType)
+        : undefined;
+
+      if (!user.refresh_token || !provider?.refreshToken) {
+        // No refresh capability. The local session governs login lifetime;
+        // continue rather than logging the active user out.
+        logger.info(
+          "Provider access token expired with no refresh capability; local session remains authoritative",
+          {
+            service: "auth",
+            providerType: user.providerType,
+            userId: user.dbUser?.id,
+            hasRefreshToken: Boolean(user.refresh_token),
+          },
+        );
+        return next();
       }
-      return res.status(401).json({ message: "Token expired" });
+
+      let refreshedUser: AuthenticatedUser | null = null;
+      try {
+        refreshedUser = await provider.refreshToken(user);
+      } catch (error) {
+        // Transient failure (network outage, token endpoint down, unexpected
+        // error). This says nothing about whether the credentials are
+        // revoked, so the local session stays authoritative: continue and
+        // retry the refresh on a later request.
+        logger.warn(
+          "Provider token refresh errored transiently; local session remains authoritative",
+          {
+            service: "auth",
+            providerType: user.providerType,
+            userId: user.dbUser?.id,
+            reason: "refresh_transient_error",
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+        return next();
+      }
+
+      if (refreshedUser) {
+        Object.assign(user, refreshedUser);
+        if (!(await persistRefreshedUser(req))) {
+          // The provider may have rotated the refresh token; without a
+          // durable save, a later request would load the stale token from
+          // the store. Fail this request explicitly (retryable) rather than
+          // continuing with unpersisted credentials or logging the user out.
+          return res
+            .status(503)
+            .json({ message: "Could not persist refreshed session; please retry" });
+        }
+        return next();
+      }
+
+      // Provider explicitly rejected the refresh (revocation-class OAuth
+      // error, e.g. invalid_grant): the stored credentials are unusable.
+      // One explicit reauth path — destroy the session and signal the
+      // client to sign in again.
+      logger.warn("Provider rejected token refresh; requiring reauthentication", {
+        service: "auth",
+        providerType: user.providerType,
+        userId: user.dbUser?.id,
+        reason: "provider_rejected",
+      });
+      return req.logout(() => {
+        req.session?.destroy(() => {
+          res
+            .status(401)
+            .json({ message: "Session expired", code: "reauth_required" });
+        });
+      });
     }
   }
 

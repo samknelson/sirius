@@ -916,8 +916,34 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
           expires_at: tokenResponse.claims()?.exp,
         };
       } catch (error) {
-        logger.error("Failed to refresh Okta token", { error });
-        return null;
+        // Only a revocation-class OAuth error response (the refresh token is
+        // revoked, expired, already rotated, or the client is no longer
+        // authorized) is an explicit provider rejection: return null so the
+        // caller sends the user down the reauth path. Transient OAuth errors
+        // (temporarily_unavailable, server_error) and anything else
+        // (network, config) are rethrown so they are not mistaken for a
+        // revocation and never cost the user their session. Never log token
+        // values.
+        const oauthError = (error as { error?: string } | null)?.error;
+        const revocationErrors = [
+          "invalid_grant",
+          "invalid_client",
+          "unauthorized_client",
+          "invalid_scope",
+        ];
+        if (typeof oauthError === "string" && revocationErrors.includes(oauthError)) {
+          logger.warn("Okta rejected token refresh", {
+            service: "okta-auth",
+            oauthError,
+          });
+          return null;
+        }
+        logger.error("Okta token refresh errored", {
+          service: "okta-auth",
+          oauthError: typeof oauthError === "string" ? oauthError : undefined,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
       }
     },
   };
