@@ -85,6 +85,7 @@ function getReferenceLink(
       return `/ledger/payment/${referenceId}`;
     case "hour":
     case "hours":
+    case "hour_adjustment":
       // Check if referenceId is a legacy composite key (workerId:employerId:year:month)
       // or the new format (hoursId UUID)
       const isLegacyFormat = referenceId.split(":").length === 4;

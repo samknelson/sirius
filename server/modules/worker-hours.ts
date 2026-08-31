@@ -179,8 +179,20 @@ export function registerWorkerHoursRoutes(
         referenceType: "hours",
         referenceId: id,
       });
-      
-      const allTransactions = [...newFormatTransactions, ...legacyTransactions, ...hoursTypeTransactions];
+
+      // BAO manual edits post correcting entries with reference type
+      // "hour_adjustment" and the same hours-entry ID.
+      const adjustmentTransactions = await ledgerStorage.entries.getTransactions({
+        referenceType: "hour_adjustment",
+        referenceId: id,
+      });
+
+      const allTransactions = [
+        ...newFormatTransactions,
+        ...legacyTransactions,
+        ...hoursTypeTransactions,
+        ...adjustmentTransactions,
+      ];
       const uniqueTransactions = allTransactions.filter((tx, index, self) => 
         index === self.findIndex(t => t.id === tx.id)
       );
