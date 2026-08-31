@@ -7,6 +7,7 @@ import { buildStatusCallbackUrl } from '../callback-handlers/url-builder';
 import { phoneValidationService } from '../validators/phone';
 import type { SmsTransport } from '../providers/sms';
 import type { Comm, CommSms } from '@shared/schema';
+import { isMaintenanceModeError } from "../../maintenance-flag";
 
 export interface SendSmsRequest {
   contactId: string;
@@ -246,6 +247,10 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
       };
 
     } catch (providerError: any) {
+      // A maintenance refusal is not a provider failure. Let it out so the
+      // route answers 503 with the maintenance message instead of burying it
+      // in a PROVIDER_ERROR/UNKNOWN_ERROR result.
+      if (isMaintenanceModeError(providerError)) throw providerError;
       const errorMessage = providerError?.message || 'Failed to send SMS';
       
       await commStorage.updateComm(comm.id, {
@@ -269,6 +274,8 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
     }
 
   } catch (error: any) {
+    // See above: the refusal is the answer, not a failed send.
+    if (isMaintenanceModeError(error)) throw error;
     console.error('SMS sending error:', error);
     return {
       success: false,

@@ -13,6 +13,7 @@ import { buildCanonicalAddress } from './index';
 import { storage } from '../../../../storage';
 import { getConfigKey } from '../base';
 import { getEnvironmentVariable, registerEnvironmentVariables } from "../../../../config/env-registry";
+import { assertExternalServiceAllowed } from "../../../maintenance-flag";
 
 // changeTakesEffect: "immediate". getApiKey() re-reads the variable through
 // the registry on every call, and nothing caches it — the only cached key is
@@ -157,6 +158,8 @@ export class LobPostalProvider implements PostalTransport {
   }
 
   async testConnection(): Promise<ConnectionTestResult> {
+    // Outside the try: a maintenance refusal is not a failed connection.
+    assertExternalServiceAllowed('Lob', 'test connection');
     try {
       const apiKey = await this.getApiKey();
       if (!apiKey) {
@@ -220,6 +223,10 @@ export class LobPostalProvider implements PostalTransport {
   }
 
   async verifyAddress(address: PostalAddress): Promise<AddressVerificationResult> {
+    // Ahead of the key read and the try: every failure below becomes a
+    // `deliverable: false` result, and a refusal must not be mistaken for an
+    // address Lob judged undeliverable.
+    assertExternalServiceAllowed('Lob', 'verify address');
     const apiKey = await this.getApiKey();
     if (!apiKey) {
       return {
@@ -360,6 +367,7 @@ export class LobPostalProvider implements PostalTransport {
   }
 
   async sendLetter(params: SendLetterParams): Promise<LetterSendResult> {
+    assertExternalServiceAllowed('Lob', 'send letter');
     const apiKey = await this.getApiKey();
     if (!apiKey) {
       return {
@@ -470,6 +478,7 @@ export class LobPostalProvider implements PostalTransport {
   }
 
   async getLetterStatus(letterId: string): Promise<{ status: string; trackingEvents: LetterTrackingEvent[] }> {
+    assertExternalServiceAllowed('Lob', 'poll letter status');
     const apiKey = await this.getApiKey();
     if (!apiKey) {
       throw new Error('LOB_API_KEY not configured');
@@ -512,6 +521,7 @@ export class LobPostalProvider implements PostalTransport {
   }
 
   async cancelLetter(letterId: string): Promise<{ success: boolean; error?: string }> {
+    assertExternalServiceAllowed('Lob', 'cancel letter');
     const apiKey = await this.getApiKey();
     if (!apiKey) {
       return { success: false, error: 'LOB_API_KEY not configured' };
@@ -572,6 +582,9 @@ export class LobPostalProvider implements PostalTransport {
   }
 
   async listTemplates(): Promise<PostalTemplate[]> {
+    // Ahead of the try: every failure below collapses into an empty list, and
+    // "Lob has no templates" is not what a maintenance refusal means.
+    assertExternalServiceAllowed('Lob', 'list templates');
     const apiKey = await this.getApiKey();
     if (!apiKey) {
       console.warn('[Lob] LOB_API_KEY not configured - cannot list templates');

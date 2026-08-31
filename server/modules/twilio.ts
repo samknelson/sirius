@@ -3,6 +3,7 @@ import { requireAccess } from "../services/access-policy-evaluator";
 import { z } from "zod";
 import { serviceRegistry } from "../services/service-registry";
 import type { SmsTransport } from "../services/comm/providers/sms";
+import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
 
 export function registerTwilioRoutes(app: Express) {
   app.get(
@@ -30,6 +31,7 @@ export function registerTwilioRoutes(app: Express) {
           },
         });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({ 
           message: "Failed to get SMS configuration",
           error: error?.message 
@@ -48,6 +50,7 @@ export function registerTwilioRoutes(app: Express) {
         const result = await smsTransport.testConnection();
         res.json(result);
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.json({
           success: false,
           error: error?.message || "Failed to connect to SMS provider",
@@ -70,6 +73,7 @@ export function registerTwilioRoutes(app: Express) {
         
         res.json({ success: true, defaultProvider: providerId });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         if (error instanceof z.ZodError) {
           return res.status(400).json({ message: "Invalid request", errors: error.errors });
         }
@@ -95,6 +99,7 @@ export function registerTwilioRoutes(app: Express) {
         const phoneNumbers = await smsTransport.getAvailablePhoneNumbers();
         res.json(phoneNumbers);
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({ 
           message: "Failed to fetch phone numbers",
           error: error?.message 
@@ -127,6 +132,7 @@ export function registerTwilioRoutes(app: Express) {
         
         res.json({ success: true, defaultPhoneNumber: phoneNumber });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         if (error instanceof z.ZodError) {
           return res.status(400).json({ message: "Invalid request", errors: error.errors });
         }
@@ -150,6 +156,7 @@ export function registerTwilioRoutes(app: Express) {
           defaultPhoneNumber: defaultNumber,
         });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({ 
           message: "Failed to get default phone number",
           error: error?.message 
@@ -185,6 +192,7 @@ export function registerTwilioRoutes(app: Express) {
           error: providerConfig.error,
         });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({ 
           message: "Failed to get Twilio configuration",
           error: error?.message 
@@ -218,6 +226,7 @@ export function registerTwilioRoutes(app: Express) {
           error: result.error,
         });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.json({
           success: false,
           error: error?.message || "Failed to connect to Twilio",
@@ -240,6 +249,7 @@ export function registerTwilioRoutes(app: Express) {
         const phoneNumbers = await smsTransport.getAvailablePhoneNumbers();
         res.json(phoneNumbers);
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({ 
           message: "Failed to fetch phone numbers from Twilio",
           error: error?.message 
@@ -269,6 +279,7 @@ export function registerTwilioRoutes(app: Express) {
         
         res.json({ success: true, defaultPhoneNumber: phoneNumber });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         if (error instanceof z.ZodError) {
           return res.status(400).json({ message: "Invalid request", errors: error.errors });
         }
@@ -292,6 +303,7 @@ export function registerTwilioRoutes(app: Express) {
           defaultPhoneNumber: defaultNumber,
         });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({ 
           message: "Failed to get default phone number",
           error: error?.message 

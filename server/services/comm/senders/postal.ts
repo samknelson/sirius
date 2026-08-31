@@ -7,6 +7,7 @@ import type { PostalTransport, PostalAddress, SendLetterParams } from '../provid
 import type { Comm, CommPostal } from '@shared/schema';
 import { logger } from '../../../logger';
 import { buildStatusCallbackUrl } from '../callback-handlers/url-builder';
+import { isMaintenanceModeError } from "../../maintenance-flag";
 
 export interface SendPostalRequest {
   contactId: string;
@@ -343,6 +344,10 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
       };
 
     } catch (error: any) {
+      // A maintenance refusal is not a provider failure. Let it out so the
+      // route answers 503 with the maintenance message instead of burying it
+      // in a PROVIDER_ERROR/UNKNOWN_ERROR result.
+      if (isMaintenanceModeError(error)) throw error;
       await commStorage.updateComm(comm.id, {
         status: 'failed',
         data: {
@@ -368,6 +373,8 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
     }
 
   } catch (error: any) {
+    // See above: the refusal is the answer, not a failed send.
+    if (isMaintenanceModeError(error)) throw error;
     logger.error('Postal sending failed', {
       service: 'postal-sender',
       error: error?.message || String(error),

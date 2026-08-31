@@ -176,8 +176,15 @@ landing on a deployment branch is what causes the recurring merge conflicts.
 -   The `main-branch-files` architecture-lint rule enforces the first bullet:
     on `main` it fails when any `.github/` or `deploy/` file is tracked
     (`git ls-tree`, not `git status`) and tells you to run
-    `git rm -r --cached .github deploy`. On any other branch it passes, so
-    the Freeman branches keep their copies.
+    `git rm -r --cached .github deploy`. On a Freeman branch it fails when
+    those directories have gone missing instead.
+-   The `carrying-branch-drift` architecture-lint rule catches the opposite
+    accident: a finished feature merged onto a Freeman branch because that
+    was the branch checked out when the work completed, leaving it
+    unreachable from `main`. It runs only on a Freeman branch and fails when
+    that branch changed anything outside `.github/` and `deploy/` that still
+    differs from `main`, naming the paths and the `git checkout <branch> --
+    <paths>` repair. A branch merely *behind* `main` passes.
 -   Helper script for the one-time history split: `.local/split-branches.sh`.
 
 ## Gotchas
@@ -324,7 +331,7 @@ reserved for the durable tooling that the app and its checks depend on
 The rest of `scripts/` is split by who runs it and when:
 
 -   `scripts/dev/` — checks. The lint entry point (`lint.ts`) and the
-    nine architecture-lint rules it registers — every file here is
+    architecture-lint rules it registers — every file here is
     reachable from `npm run lint`. Nothing here is a behavioral test;
     those go in `tests/`. A new check is a rule in the `RULES` table of
     `lint.ts` or a case under `tests/` — never a new script here with

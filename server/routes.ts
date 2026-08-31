@@ -139,6 +139,7 @@ import { addressValidationService } from "./services/comm/validators/address";
 import { phoneValidationService, DEFAULT_REVALIDATE_AFTER_DAYS } from "./services/comm/validators/phone";
 import { serviceRegistry } from "./services/service-registry";
 import { isAuthenticated } from "./auth";
+import { sendIfMaintenanceRefusal } from "./services/maintenance-flag";
 
 // Authentication middleware
 const requireAuth = isAuthenticated;
@@ -1653,6 +1654,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       res.json(result);
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       res.status(500).json({
         success: false,
         error: "Failed to geocode address",

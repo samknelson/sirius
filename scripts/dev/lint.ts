@@ -79,7 +79,17 @@ const RULES: Rule[] = [
   {
     id: "main-branch-files",
     script: "scripts/dev/check-main-branch-files.ts",
-    summary: "no .github/ or deploy/ files are tracked on main",
+    summary: "deployment config is tracked on carrying branches, never on main",
+  },
+  {
+    id: "carrying-branch-drift",
+    script: "scripts/dev/check-carrying-branch-drift.ts",
+    summary: "carrying branches hold no application work that is missing from main",
+  },
+  {
+    id: "maintenance-guards",
+    script: "scripts/dev/check-maintenance-guards.ts",
+    summary: "outbound vendor calls are refused during maintenance mode",
   },
 ];
 

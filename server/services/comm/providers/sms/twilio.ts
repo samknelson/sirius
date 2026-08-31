@@ -2,6 +2,7 @@ import type { ConnectionTestResult } from '../base';
 import type { SmsTransport, PhoneValidationResult, SmsSendResult, SmsProviderSettings } from './index';
 import { getTwilioClient, getTwilioFromPhoneNumber, clearTwilioCredentialsCache } from '../../../../lib/twilio-client';
 import { parsePhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
+import { assertExternalServiceAllowed } from '../../../maintenance-flag';
 
 export class TwilioSmsProvider implements SmsTransport {
   readonly id = 'twilio';
@@ -18,6 +19,9 @@ export class TwilioSmsProvider implements SmsTransport {
   }
 
   async testConnection(): Promise<ConnectionTestResult> {
+    // Outside the try: this method reports every failure as a connection
+    // result, and a maintenance refusal is not a failed connection.
+    assertExternalServiceAllowed('Twilio', 'test connection');
     try {
       clearTwilioCredentialsCache();
       const client = await getTwilioClient();
@@ -49,6 +53,7 @@ export class TwilioSmsProvider implements SmsTransport {
   }
 
   async getConfiguration(): Promise<Record<string, unknown>> {
+    assertExternalServiceAllowed('Twilio', 'read account configuration');
     try {
       const client = await getTwilioClient();
       const accounts = await client.api.accounts.list({ limit: 1 });
@@ -77,6 +82,10 @@ export class TwilioSmsProvider implements SmsTransport {
   }
 
   async validatePhone(phoneNumber: string): Promise<PhoneValidationResult> {
+    // The carrier lookup below treats a Twilio error as "trust the local
+    // parse" and returns valid:true. A maintenance refusal must not be read
+    // that way, so it is raised before any of that runs.
+    assertExternalServiceAllowed('Twilio', 'look up phone number');
     try {
       const parsed = parsePhoneNumber(phoneNumber, 'US');
       
@@ -191,6 +200,7 @@ export class TwilioSmsProvider implements SmsTransport {
     from?: string;
     statusCallbackUrl?: string;
   }): Promise<SmsSendResult> {
+    assertExternalServiceAllowed('Twilio', 'send SMS');
     try {
       const client = await getTwilioClient();
       const fromNumber = params.from || await this.getDefaultFromNumber();
@@ -241,6 +251,7 @@ export class TwilioSmsProvider implements SmsTransport {
     friendlyName: string;
     capabilities: { sms: boolean; voice: boolean; mms: boolean };
   }>> {
+    assertExternalServiceAllowed('Twilio', 'list phone numbers');
     const client = await getTwilioClient();
     const numbers = await client.incomingPhoneNumbers.list({ limit: 50 });
 

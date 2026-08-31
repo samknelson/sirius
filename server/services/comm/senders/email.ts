@@ -7,6 +7,7 @@ import type { EmailTransport, EmailRecipient } from '../providers/email';
 import type { Comm, CommEmail } from '@shared/schema';
 import { logger } from '../../../logger';
 import { buildStatusCallbackUrl } from '../callback-handlers/url-builder';
+import { isMaintenanceModeError } from "../../maintenance-flag";
 
 export interface SendEmailRequest {
   contactId: string;
@@ -279,6 +280,10 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
       };
 
     } catch (error: any) {
+      // A maintenance refusal is not a provider failure. Let it out so the
+      // route answers 503 with the maintenance message instead of burying it
+      // in a PROVIDER_ERROR/UNKNOWN_ERROR result.
+      if (isMaintenanceModeError(error)) throw error;
       await commStorage.updateComm(comm.id, {
         status: 'failed',
         data: {
@@ -304,6 +309,8 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
     }
 
   } catch (error: any) {
+    // See above: the refusal is the answer, not a failed send.
+    if (isMaintenanceModeError(error)) throw error;
     logger.error('Email sending failed', {
       service: 'email-sender',
       error: error?.message || String(error),

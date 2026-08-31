@@ -26,28 +26,30 @@
  *
  * The ONLY sanctioned escape is `allowInMaintenanceMode` in
  * `server/storage/maintenance.ts` (SET LOCAL, scoped to one transaction).
+ *
+ * The write lock is only half of maintenance mode. The flag itself lives in
+ * `server/services/maintenance-flag.ts` — a module with no runtime imports —
+ * so the vendor wrappers can guard their outbound calls off the SAME boolean
+ * without importing the connection pool. This module owns loading and
+ * refreshing that flag; that module owns the refusal (Task #1338).
  */
 import { pool } from "../storage/db";
 import { logger } from "../logger";
 import { getSystemMode, isMaintenanceMode } from "./system-mode";
+import { isMaintenanceActive, setMaintenanceActive } from "./maintenance-flag";
 
-let maintenanceActive = false;
 let armed = false;
 
 /** Tracks the read-only state last applied to each pooled connection. */
 const APPLIED_READ_ONLY = Symbol("maintenanceReadOnlyApplied");
 
-/** Current in-memory maintenance flag (loaded at boot, refreshed on writes). */
-export function isMaintenanceActive(): boolean {
-  return maintenanceActive;
-}
+export { isMaintenanceActive };
 
 /** Set the in-memory flag; enforcement is applied per-checkout (see above). */
 function applyMaintenanceFlag(active: boolean): void {
-  if (maintenanceActive === active) return;
-  maintenanceActive = active;
+  if (!setMaintenanceActive(active)) return;
   logger.info(
-    `Maintenance mode ${active ? "ENTERED — database writes locked" : "exited — database writes restored"}`,
+    `Maintenance mode ${active ? "ENTERED — database writes locked, external services refused" : "exited — database writes and external services restored"}`,
     { source: "maintenance-mode" },
   );
 }
@@ -76,7 +78,7 @@ export async function armMaintenanceEnforcement(): Promise<void> {
   // only maintenance entries/exits and fresh connections during maintenance
   // pay the extra round-trip; steady state is a no-op property check.
   pool.on("acquire", (client: any) => {
-    const desired = maintenanceActive;
+    const desired = isMaintenanceActive();
     const current: boolean = client[APPLIED_READ_ONLY] ?? false;
     if (current === desired) return;
     client[APPLIED_READ_ONLY] = desired;
@@ -99,6 +101,6 @@ export async function armMaintenanceEnforcement(): Promise<void> {
   }
   logger.info("Maintenance-mode enforcement armed", {
     source: "startup",
-    maintenanceActive,
+    maintenanceActive: isMaintenanceActive(),
   });
 }
