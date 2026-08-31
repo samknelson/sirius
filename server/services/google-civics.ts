@@ -1,6 +1,7 @@
 import { lookupDistricts, type CensusDistrictInfo } from "./census-geocoder";
 import type { BtuPoliticalStorage } from "../storage/sitespecific/btu/political";
 import { getEnvironmentVariable, registerEnvironmentVariables } from "../config/env-registry";
+import { assertExternalServiceAllowed } from "./maintenance-flag";
 
 // changeTakesEffect: "immediate" for both. Each key is read through the
 // registry inside the function that makes the outbound call, once per lookup,
@@ -107,6 +108,9 @@ interface OpenStatesResponse {
 }
 
 async function geocodeAddress(address: string): Promise<GeocodingResult> {
+  // First thing, ahead of the key read: during maintenance no lookup reaches
+  // Google, and none of them spends geocoding quota.
+  assertExternalServiceAllowed("Google", "geocode address");
   const apiKey = getEnvironmentVariable("GOOGLE_CIVICS_API_KEY");
   if (!apiKey) {
     throw new Error("GOOGLE_CIVICS_API_KEY environment variable is not set");

@@ -121,6 +121,7 @@ import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
 import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
 import { registerFreemanCrewleadsRoutes } from "./modules/sitespecific/freeman/crewleads";
+import { registerFreemanEdlsMigrateRoutes } from "./modules/sitespecific/freeman/edls-migrate/routes";
 import { registerT631InterviewsRoutes } from "./modules/sitespecific/t631/interviews";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
 import { registerSnapshotsRoutes } from "./modules/snapshots";
@@ -138,6 +139,7 @@ import { addressValidationService } from "./services/comm/validators/address";
 import { phoneValidationService } from "./services/comm/validators/phone";
 import { serviceRegistry } from "./services/service-registry";
 import { isAuthenticated } from "./auth";
+import { sendIfMaintenanceRefusal } from "./services/maintenance-flag";
 
 // Authentication middleware
 const requireAuth = isAuthenticated;
@@ -369,6 +371,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // over the in-memory status collector.
   const { registerSystemStatusRoutes } = await import("./modules/system/status");
   registerSystemStatusRoutes(app, requireAuth);
+
+  // Quicksearch — the search-from-anywhere endpoint. Which searchers run is
+  // decided server-side from the caller's roles, never from the request.
+  const { registerQuicksearchRoutes } = await import("./modules/system/quicksearch");
+  registerQuicksearchRoutes(app, requireAuth);
 
   // Register bookmark routes
   registerBookmarkRoutes(app, requireAuth, requirePermission);
@@ -1631,6 +1638,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       res.json(result);
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       res.status(500).json({
         success: false,
         error: "Failed to geocode address",
@@ -1788,6 +1796,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register Freeman Crew Leads routes
   registerFreemanCrewleadsRoutes(app, requireAuth, requirePermission, requireAccess);
+
+  // Register Freeman EDLS migration routes
+  registerFreemanEdlsMigrateRoutes(app, requireAuth, requirePermission);
+
   registerT631InterviewsRoutes(app, requireAuth, requirePermission, requireAccess);
 
   // Register HTA routes

@@ -62,6 +62,7 @@ import "./core/1057_create_options_note_type";
 import "./core/1058_create_notes";
 import "./core/1059_ledger_accounts_sirius_id";
 import "./core/1060_ws_bundles_to_grants";
+import "./core/1061_create_plugin_configs_quicksearch";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
@@ -75,6 +76,7 @@ import "./components/trust.benefits.eligibility.exemptions/001_create_exemptions
 import "./components/trust.benefits.eligibility.exemptions/002_require_benefit_and_plugins";
 import "./components/sitespecific.bao/001_create_immediate_eligibility";
 import "./components/sitespecific.freeman/001_create_crewleads";
+import "./components/sitespecific.freeman.edls_migrate/001_create_staging";
 import "./components/grievance/001_create_options_grievance_status";
 import "./components/grievance/002_create_options_grievance_category";
 import "./components/grievance/003_create_grievances";

@@ -10,6 +10,7 @@ import type {
 import type { ConnectionTestResult } from '../base';
 import { logger } from '../../../../logger';
 import { getEnvironmentVariable, registerEnvironmentVariables } from "../../../../config/env-registry";
+import { assertExternalServiceAllowed } from "../../../maintenance-flag";
 
 // SENDGRID_API_KEY is "restart": initializeSendGrid() hands the key to the
 // SendGrid client once and then short-circuits on `this.initialized`, and the
@@ -68,6 +69,9 @@ export class SendGridEmailProvider implements EmailTransport {
   }
 
   async testConnection(): Promise<ConnectionTestResult> {
+    // Outside the try: this method turns every failure into a connection
+    // result, and a maintenance refusal is not a failed connection.
+    assertExternalServiceAllowed('SendGrid', 'test connection');
     try {
       const apiKey = getSendGridApiKey();
       sgMail.setApiKey(apiKey);
@@ -148,6 +152,10 @@ export class SendGridEmailProvider implements EmailTransport {
   }
 
   async sendEmail(params: SendEmailParams): Promise<EmailSendResult> {
+    // Ahead of initializeSendGrid(), so a refusal never hands the API key to
+    // the SendGrid client, and ahead of the try, so it is not reported as a
+    // failed send.
+    assertExternalServiceAllowed('SendGrid', 'send email');
     try {
       await this.initializeSendGrid();
       

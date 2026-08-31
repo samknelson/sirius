@@ -3,6 +3,10 @@ import {
   getEnvironmentVariable,
   registerEnvironmentVariable,
 } from "../../../config/env-registry";
+import {
+  assertExternalServiceAllowed,
+  isMaintenanceModeError,
+} from "../../maintenance-flag";
 import { 
   ParseAddressRequest, 
   ParseAddressResponse, 
@@ -159,6 +163,10 @@ class AddressValidationService {
       try {
         return await this.validateWithGoogle(address);
       } catch (error) {
+        // A maintenance refusal is not a Google outage. Falling back here
+        // would report a successful local validation and hide the fact that
+        // the configured validator never ran.
+        if (isMaintenanceModeError(error)) throw error;
         console.error("Google validation failed:", error);
         if (config.fallback.useLocalOnGoogleFailure) {
           console.log("Falling back to local validation");
@@ -255,6 +263,7 @@ class AddressValidationService {
   }
 
   private async validateWithGoogle(address: AddressInput): Promise<AddressValidationResult> {
+    assertExternalServiceAllowed("Google", "validate address");
     const config = await this.getConfig();
     const apiKey = resolveGoogleApiKey(config.google.apiKeyName);
     
@@ -368,6 +377,8 @@ class AddressValidationService {
           structuredAddress = parseResult.structuredAddress;
           validation = parseResult.validation;
         } catch (error) {
+          // Same as validateAddress: never fall back past a refusal.
+          if (isMaintenanceModeError(error)) throw error;
           console.error("Google parsing failed:", error);
           if (config.fallback.useLocalOnGoogleFailure) {
             console.log("Falling back to local parsing");
@@ -407,6 +418,7 @@ class AddressValidationService {
         };
       }
     } catch (error) {
+      if (isMaintenanceModeError(error)) throw error;
       console.error("Address parsing error:", error);
       return {
         success: false,
@@ -458,6 +470,7 @@ class AddressValidationService {
     structuredAddress: StructuredAddress;
     validation: AddressParseValidation;
   }> {
+    assertExternalServiceAllowed("Google", "parse address");
     const config = await this.getConfig();
     const apiKey = resolveGoogleApiKey(config.google.apiKeyName);
     
@@ -856,6 +869,9 @@ class AddressValidationService {
     validationResponse?: any;
     error?: string;
   }> {
+    // Ahead of the key read and the try below, which turns every failure into
+    // `success: false` — the geocode endpoint needs the refusal itself.
+    assertExternalServiceAllowed("Google", "geocode address");
     const config = await this.getConfig();
     const apiKey = resolveGoogleApiKey(config.google.apiKeyName);
     
@@ -906,6 +922,7 @@ class AddressValidationService {
       };
 
     } catch (error) {
+      if (isMaintenanceModeError(error)) throw error;
       console.error("Geocoding error:", error);
       return {
         success: false,

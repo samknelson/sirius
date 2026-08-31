@@ -3,6 +3,7 @@ import { requireAccess } from "../services/access-policy-evaluator";
 import { z } from "zod";
 import { serviceRegistry } from "../services/service-registry";
 import type { PostalTransport, PostalAddress } from "../services/comm/providers/postal";
+import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
 
 export function registerPostalConfigRoutes(app: Express) {
   app.get(
@@ -30,6 +31,7 @@ export function registerPostalConfigRoutes(app: Express) {
           },
         });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({ 
           message: "Failed to get postal configuration",
           error: error?.message 
@@ -53,6 +55,7 @@ export function registerPostalConfigRoutes(app: Express) {
         
         res.json(result);
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({
           success: false,
           error: error?.message || "Failed to connect to postal provider",
@@ -75,6 +78,7 @@ export function registerPostalConfigRoutes(app: Express) {
         
         res.json({ success: true, defaultProvider: providerId });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         if (error instanceof z.ZodError) {
           return res.status(400).json({ message: "Invalid request", errors: error.errors });
         }
@@ -98,6 +102,7 @@ export function registerPostalConfigRoutes(app: Express) {
           returnAddress,
         });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({ 
           message: "Failed to get default return address",
           error: error?.message 
@@ -137,6 +142,7 @@ export function registerPostalConfigRoutes(app: Express) {
         
         res.json({ success: true, returnAddress: address });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         if (error instanceof z.ZodError) {
           return res.status(400).json({ message: "Invalid request", errors: error.errors });
         }
@@ -174,6 +180,7 @@ export function registerPostalConfigRoutes(app: Express) {
           error: providerConfig.error,
         });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({ 
           message: "Failed to get Lob configuration",
           error: error?.message 
@@ -206,6 +213,7 @@ export function registerPostalConfigRoutes(app: Express) {
           details: result.details,
         });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.json({
           success: false,
           error: error?.message || "Failed to connect to Lob",
@@ -239,6 +247,7 @@ export function registerPostalConfigRoutes(app: Express) {
         
         res.json(result);
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         if (error instanceof z.ZodError) {
           return res.status(400).json({ message: "Invalid address", errors: error.errors });
         }

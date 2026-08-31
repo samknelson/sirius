@@ -32,6 +32,7 @@ import "./services/comm/providers";
 import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
 import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
 import { initializeDashboardPluginSystem } from "./plugins/dashboard";
+import { initializeQuicksearchPluginSystem } from "./plugins/quicksearch";
 import { initializeClientInjectionPluginSystem } from "./plugins/client-injection";
 import { initializeEventNotifierPluginSystem } from "./plugins/event-notifier";
 import { initializeWizardPluginSystem } from "./plugins/wizards";
@@ -284,6 +285,12 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Initialize event-notifier plugin system (registration + adapter)
   initializeEventNotifierPluginSystem();
   logger.info("Event-notifier plugin system initialized", { source: "startup" });
+
+  // Initialize quicksearch plugin system (registration + adapter). No seeding:
+  // a quicksearch config's roles are its access decision, so an administrator
+  // has to create one before anyone gets a search box.
+  initializeQuicksearchPluginSystem();
+  logger.info("Quicksearch plugin system initialized", { source: "startup" });
 
   // Materialize component-owned plugin_configs for components that are already
   // enabled (Task #397). Idempotent: existing rows are left untouched (admin

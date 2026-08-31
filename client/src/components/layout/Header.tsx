@@ -44,6 +44,7 @@ import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { AlertsBell } from "./AlertsBell";
+import { QuickSearch } from "./QuickSearch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -373,6 +374,7 @@ export default function Header() {
 
         {/* User menu - right side of row 1 */}
         <div className="flex items-center gap-2">
+          {user && <QuickSearch />}
           {user && <AlertsBell />}
           {user && (
             <DropdownMenu>

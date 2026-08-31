@@ -57,4 +57,5 @@ export type PluginKind =
   | "trust-provider-edi"
   | "worker-ban"
   | "token"
-  | "web-service";
+  | "web-service"
+  | "quicksearch";

@@ -3,6 +3,47 @@ import { FloodEventDefinition, FloodContext } from "./types";
 import { storage } from "../storage";
 import { logger } from "../logger";
 
+/**
+ * Quicksearch rate cap.
+ *
+ * Search-as-you-type is debounced client-side, but the endpoint is reachable
+ * directly, and each request fans out into several database scans across every
+ * searcher a user's roles allow. This bounds how often one person can pay that
+ * cost. The threshold is deliberately generous — a person typing steadily for a
+ * minute must never hit it — and the check FAILS OPEN, so a flood-store problem
+ * degrades to an unthrottled search rather than a broken one.
+ *
+ * Tunable at runtime via the `flood_quicksearch` variable like every other
+ * flood event; no migration needed, and expired rows are swept by the flood cron.
+ */
+export const QUICKSEARCH_FLOOD_EVENT = "quicksearch";
+
+export const quicksearchFloodEvent: FloodEventDefinition = {
+  name: QUICKSEARCH_FLOOD_EVENT,
+  threshold: 120,
+  windowSeconds: 60,
+  getIdentifier: (context: FloodContext): string => {
+    // Authenticated-only endpoint, so the user is the bucket. The IP fallback
+    // exists so a missing session can never throw inside the rate check.
+    const id = context.userId || context.ip;
+    if (!id) {
+      throw new Error("userId or ip is required for quicksearch flood event");
+    }
+    return id;
+  },
+  resolveIdentifierName: async (identifier: string): Promise<string | null> => {
+    try {
+      const user = await storage.users.getUser(identifier);
+      if (!user) return null;
+      return user.firstName && user.lastName
+        ? `${user.firstName} ${user.lastName}`.trim()
+        : user.email || null;
+    } catch {
+      return null;
+    }
+  },
+};
+
 export const bookmarkFloodEvent: FloodEventDefinition = {
   name: "bookmark",
   threshold: 1000,
@@ -198,6 +239,7 @@ export const edlsScheduleAnswerFloodEvent: FloodEventDefinition = {
 };
 
 export function registerFloodEvents(): void {
+  registerFloodEvent(quicksearchFloodEvent);
   registerFloodEvent(bookmarkFloodEvent);
   registerFloodEvent(localLoginFloodEvent);
   registerFloodEvent(localPasswordChangeFloodEvent);

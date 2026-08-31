@@ -14,6 +14,7 @@ import { broadcastAlertUpdate } from "../services/websocket";
 import { getEffectiveUser } from "./masquerade";
 import { resolveContactLinks } from "./contact-links";
 import { createCommTagsStorage } from "../storage/comm-tags";
+import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -246,6 +247,7 @@ export function registerCommRoutes(
       });
 
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       console.error("Failed to send SMS:", error);
       res.status(500).json({ message: "Failed to send SMS" });
     }
@@ -304,6 +306,7 @@ export function registerCommRoutes(
       });
 
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       console.error("Failed to send email:", error);
       res.status(500).json({ message: "Failed to send email" });
     }
@@ -367,6 +370,7 @@ export function registerCommRoutes(
       });
 
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       console.error("Failed to send postal mail:", error);
       res.status(500).json({ message: "Failed to send postal mail" });
     }
@@ -704,6 +708,7 @@ export function registerCommRoutes(
       });
 
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       console.error("Failed to verify address:", error);
       res.status(500).json({ message: "Failed to verify address" });
     }
@@ -875,6 +880,7 @@ export function registerCommRoutes(
         });
       }
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       console.error("Failed to verify and register address:", error);
       res.status(500).json({ message: "Failed to verify and register address" });
     }
@@ -912,6 +918,7 @@ export function registerCommRoutes(
       const templates = await postalProvider.listTemplates();
       res.json({ templates });
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       console.error("Failed to fetch postal templates:", error);
       res.status(500).json({ message: "Failed to fetch postal templates" });
     }

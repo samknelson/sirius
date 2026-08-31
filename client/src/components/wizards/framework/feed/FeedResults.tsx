@@ -338,6 +338,24 @@ export function FeedResults({ wizardId, step }: WizardStepComponentProps) {
             </div>
           )}
 
+          {/* Worker ratings import */}
+          {r.ratingsSet !== undefined && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Stat label="Ratings Set" value={r.ratingsSet} tone="success" />
+              <Stat
+                label="Ratings Cleared"
+                value={r.ratingsCleared ?? 0}
+                tone="success"
+              />
+              <Stat label="Already Correct" value={r.ratingsUnchanged ?? 0} />
+              <Stat
+                label="Rows Skipped"
+                value={r.ratingsSkipped ?? 0}
+                tone={r.ratingsSkipped ? "danger" : "muted"}
+              />
+            </div>
+          )}
+
           {errors.length > 0 && (
             <Card>
               <CardHeader>

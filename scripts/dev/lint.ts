@@ -81,6 +81,11 @@ const RULES: Rule[] = [
     script: "scripts/dev/check-main-branch-files.ts",
     summary: "no .github/ or deploy/ files are tracked on main",
   },
+  {
+    id: "maintenance-guards",
+    script: "scripts/dev/check-maintenance-guards.ts",
+    summary: "outbound vendor calls are refused during maintenance mode",
+  },
 ];
 
 function usage(): void {
