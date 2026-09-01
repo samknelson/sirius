@@ -2532,7 +2532,37 @@ export const comm = pgTable("comm", {
   sent: timestamp("sent"),
   received: timestamp("received"),
   data: jsonb("data"),
-});
+  /**
+   * Optional caller-supplied send key: "send this exact message at most once,
+   * ever". A repeating job (a threshold scan, a reminder sweep) hands over a
+   * key it can recompute on every run; the first send claims it and every
+   * later send with the same key, to the same contact, on the same medium is
+   * refused before anything reaches the provider.
+   *
+   * The claim is the INSERT of this row under
+   * `comm_medium_contact_id_send_key_unique`, not a read-then-write — two
+   * racing sends cannot both win. NULL is unconstrained (Postgres treats
+   * nulls as distinct), so un-keyed sends are unaffected and a contact can
+   * receive any number of them. A blank string is normalized to NULL at the
+   * insert boundary (`createComm`), because an empty string IS a value to the
+   * constraint and two unrelated un-keyed sends would collide on it.
+   *
+   * TRADE-OFF — a spent key stays spent. A keyed send that FAILS (recipient
+   * not opted in, provider outage, anything) has still consumed its key and
+   * will never be retried; the failed communication row stays in the log as
+   * the evidence of what happened. The alternative — re-opening the key when
+   * a send fails — puts the race back, because "did it fail?" is only
+   * knowable after the provider has been called. Callers that need retries
+   * must vary the key (e.g. include the attempt or the day in it).
+   */
+  sendKey: varchar("send_key"),
+}, (table) => ({
+  sendKeyUnique: unique("comm_medium_contact_id_send_key_unique").on(
+    table.medium,
+    table.contactId,
+    table.sendKey,
+  ),
+}));
 
 export const insertCommSchema = createInsertSchema(comm).omit({
   id: true,
