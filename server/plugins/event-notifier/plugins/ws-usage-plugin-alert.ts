@@ -1,5 +1,6 @@
 import { registerEventNotifier } from "../registry";
 import { createUsageAlertNotifier } from "../web-usage-alert-notifier";
+import { findWsPluginCrossings } from "../usage-alert-crossings";
 import {
   usageAlertConfigSchema,
   usageAlertUiSchema,
@@ -11,15 +12,16 @@ import {
  * whoever called it.
  *
  * The numbers are the ones the "Web Services - Incoming by Service" dashboard
- * card already shows; the crossings are found by the usage alert scan cron.
+ * card already shows. The notifier wakes on the ten minute tick and reads them
+ * itself; nothing outside it knows what these rules mean.
  */
 export const wsPluginUsageAlertNotifier = createUsageAlertNotifier({
   id: WS_PLUGIN_USAGE_ALERT_NOTIFIER_ID,
   name: "Incoming Usage Alert (by Service)",
   description:
     "Notifies selected staff when today's incoming calls to one of our web services reach a configured number.",
-  surface: "ws-plugin",
   statsPath: "/admin/ws/stats",
+  findCrossings: findWsPluginCrossings,
   phrase: (subject) => `Incoming calls to ${subject}`,
   configSchema: usageAlertConfigSchema({
     rulesDescription:

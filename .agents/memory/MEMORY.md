@@ -148,4 +148,5 @@
 - [Comm send-once key](comm-send-once-key.md) — at-most-once sends: normalize the key at the storage insert (senders bypass the zod schema), the insert IS the claim, a duplicate is its own outcome, a spent key stays spent.
 - [Picker widgets inside repeatable rows](rjsf-array-item-widget-inference.md) — vendor widget inference skips array `items`; a picker in a rules list needs an explicit `uiSchema` or it renders as a text box.
 - [Alerting once from a repeating scan](repeating-scan-alert-once.md) — exactly-once is the send-once key (config+day+what+threshold), checked BEFORE the flood budget; events themselves repeat freely.
+- [Cron tick heartbeat](cron-tick-heartbeat.md) — periodic plugin work subscribes to a shared wall-clock tick (one EventType per period), not its own cron; best-effort + level-triggered, dueness from the last LIVE SUCCESS, never a "how late" count.
 - [Dashboard widget registry glob depth](dashboard-widget-registry-glob-depth.md) — client registry globs ./*/*.tsx as `<dir>:<File>`; a SHARED card must sit above the widget dirs or it registers as a phantom widget.

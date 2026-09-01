@@ -1,19 +1,20 @@
 /**
  * What a usage alert promises, and what would silently break it.
  *
- * The scan re-raises the same crossing on every pass, on purpose. Nothing
- * deduplicates the events; the whole guarantee that staff hear about a
- * threshold once — and hear about it again tomorrow, and hear about a second
- * rule separately — lives in two small pure decisions: which crossings a
- * notifier claims as its own, and what its composed message's send-once key is
- * made of.
+ * A usage alert notifier is woken by a heartbeat, not by something happening:
+ * the ten minute tick says only that ten minutes have passed, and the notifier
+ * re-reads the counters and re-raises the same crossing every time. Nothing
+ * deduplicates the ticks. The whole guarantee that staff hear about a threshold
+ * once — and hear about it again tomorrow, and hear about a second rule too —
+ * lives in two small pure decisions: which rules a configuration is watching,
+ * and what the composed message's send-once key is made of.
  *
  * Both fail quietly. A key that forgets the threshold means an admin who lowers
  * a limit below today's count is told nothing until midnight; a key that
- * forgets the day means the alert never comes back; a notifier that does not
- * filter on its configuration means two configurations answer each other's
- * crossings. None of that crashes, none of it fails typecheck, and none of it
- * shows up until somebody is not told something.
+ * forgets the day means the alert never comes back; a key that does not span
+ * every crossing the message reports means the second rule to cross is
+ * swallowed by the first one's key. None of that crashes, none of it fails
+ * typecheck, and none of it shows up until somebody is not told something.
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -26,35 +27,72 @@ import {
   parseWcUsageRules,
   parseWsClientUsageRules,
   parseWsPluginUsageRules,
+  usageAlertMessageSendKey,
   usageAlertSendKey,
   wcTargetKey,
   wsClientTargetKey,
   wsPluginTargetKey,
 } from "../../server/services/web-usage-alerts";
-import { wcUsageAlertNotifier } from "../../server/plugins/event-notifier/plugins/wc-usage-alert";
-import { wsClientUsageAlertNotifier } from "../../server/plugins/event-notifier/plugins/ws-usage-client-alert";
+import { createUsageAlertNotifier } from "../../server/plugins/event-notifier/web-usage-alert-notifier";
+import type { UsageCrossing } from "../../server/plugins/event-notifier/usage-alert-crossings";
 import { EventType } from "../../server/services/event-bus";
-import type { EventNotifierEventContext } from "../../server/plugins/event-notifier/types";
+import type {
+  EventNotifierEventContext,
+  EventNotifierPlugin,
+} from "../../server/plugins/event-notifier/types";
+
+import { getTodayYmd } from "../../shared/utils/date";
 
 const CONFIG_ID = "config-1";
+const TODAY = getTodayYmd();
 
-function crossingContext(overrides: Record<string, unknown> = {}) {
+const ONE: UsageCrossing = {
+  subject: "Twilio / phone-lookup",
+  targetKey: "wc:Twilio:phone-lookup",
+  count: 1200,
+  threshold: 1000,
+};
+const OTHER: UsageCrossing = {
+  subject: "Twilio / send-sms",
+  targetKey: "wc:Twilio:send-sms",
+  count: 90,
+  threshold: 50,
+};
+
+/**
+ * A notifier whose counting is a fixture. Composition is what is under test
+ * here; reading `wc_stats` is not, and cannot be, without a live database.
+ */
+function notifierFinding(crossings: UsageCrossing[]): EventNotifierPlugin {
+  return createUsageAlertNotifier({
+    id: "test-usage-alert",
+    name: "Test Usage Alert",
+    description: "",
+    statsPath: "/admin/wc/stats",
+    findCrossings: async () => crossings,
+    phrase: (subject) => `Outgoing calls to ${subject}`,
+    configSchema: {} as never,
+    uiSchema: {} as never,
+  });
+}
+
+function ctx(): EventNotifierEventContext {
   return {
-    event: EventType.WEB_USAGE_THRESHOLD_REACHED,
-    payload: {
-      surface: "wc",
-      configId: CONFIG_ID,
-      ymd: "2026-09-01",
-      subject: "Twilio / phone-lookup",
-      targetKey: "wc:Twilio:phone-lookup",
-      count: 1200,
-      threshold: 1000,
-      ...((overrides.payload as Record<string, unknown>) ?? {}),
-    },
+    event: EventType.CRON_TICK_10M,
+    payload: { period: "10m", slotStartedAt: new Date().toISOString(), late: false },
     configId: CONFIG_ID,
     configName: "Phone lookups",
-    ...overrides,
-  } as unknown as EventNotifierEventContext;
+  };
+}
+
+/** Wake the notifier the way a tick does, then compose one channel. */
+async function wakeAndCompose(
+  notifier: EventNotifierPlugin,
+  medium: "email" | "sms" | "inapp",
+  crossingsCtx = ctx(),
+) {
+  await notifier.shouldDispatch!(crossingsCtx, {});
+  return notifier.getMessage!(medium, { contactId: "c" }, crossingsCtx, {});
 }
 
 describe("usage alert rules", () => {
@@ -111,7 +149,7 @@ describe("the send-once key", () => {
     threshold: 1000,
   };
 
-  it("is the same on the next scan of the same crossing", () => {
+  it("is the same on the next tick over the same crossing", () => {
     expect(usageAlertSendKey(base)).toBe(usageAlertSendKey({ ...base }));
   });
 
@@ -131,56 +169,98 @@ describe("the send-once key", () => {
   });
 });
 
-describe("a usage alert notifier", () => {
-  it("claims its own configuration's crossings and no others", async () => {
-    const data = {};
-    await expect(wcUsageAlertNotifier.shouldDispatch!(crossingContext(), data)).resolves.toBe(true);
-    await expect(
-      wcUsageAlertNotifier.shouldDispatch!(crossingContext({ configId: "config-2" }), data),
-    ).resolves.toBe(false);
-    // Same configuration, another surface's crossing: not this notifier's.
-    await expect(
-      wcUsageAlertNotifier.shouldDispatch!(
-        crossingContext({ payload: { surface: "ws-client" } }),
-        data,
-      ),
-    ).resolves.toBe(false);
-    await expect(
-      wsClientUsageAlertNotifier.shouldDispatch!(crossingContext(), data),
-    ).resolves.toBe(false);
+/**
+ * One dispatch composes at most one message per recipient per channel, so a
+ * configuration with two rules over their numbers reports both in one message.
+ * The key has to span exactly what was reported.
+ */
+describe("the send-once key of a message reporting several crossings", () => {
+  const base = { configId: CONFIG_ID, ymd: "2026-09-01" };
+
+  it("is the plain one-crossing key when there is one crossing", () => {
+    expect(usageAlertMessageSendKey({ ...base, crossings: [ONE] })).toBe(
+      usageAlertSendKey({ ...base, targetKey: ONE.targetKey, threshold: ONE.threshold }),
+    );
+  });
+
+  it("is not either crossing's own key, so neither is swallowed", () => {
+    const both = usageAlertMessageSendKey({ ...base, crossings: [ONE, OTHER] });
+    expect(both).not.toBe(usageAlertMessageSendKey({ ...base, crossings: [ONE] }));
+    expect(both).not.toBe(usageAlertMessageSendKey({ ...base, crossings: [OTHER] }));
+  });
+
+  it("does not depend on the order the crossings were found in", () => {
+    expect(usageAlertMessageSendKey({ ...base, crossings: [ONE, OTHER] })).toBe(
+      usageAlertMessageSendKey({ ...base, crossings: [OTHER, ONE] }),
+    );
+  });
+
+  it("still differs by day and by configuration", () => {
+    const both = usageAlertMessageSendKey({ ...base, crossings: [ONE, OTHER] });
+    expect(usageAlertMessageSendKey({ ...base, ymd: "2026-09-02", crossings: [ONE, OTHER] })).not.toBe(
+      both,
+    );
+    expect(
+      usageAlertMessageSendKey({ ...base, configId: "config-2", crossings: [ONE, OTHER] }),
+    ).not.toBe(both);
+  });
+});
+
+describe("a usage alert notifier woken by a tick", () => {
+  it("says nothing when nothing is over its number", async () => {
+    const notifier = notifierFinding([]);
+    await expect(notifier.shouldDispatch!(ctx(), {})).resolves.toBe(false);
   });
 
   it("says what was counted, how many, and against which number", async () => {
-    const ctx = crossingContext();
-    const email = await wcUsageAlertNotifier.getMessage!("email", { contactId: "c" }, ctx, {});
+    const email = await wakeAndCompose(notifierFinding([ONE]), "email");
     expect(email?.subject).toContain("Twilio / phone-lookup");
     expect(email?.bodyText).toContain("1200");
     expect(email?.bodyText).toContain("1000");
   });
 
-  it("links absolutely off-app and relatively in-app", async () => {
-    const ctx = crossingContext();
-    const recipient = { contactId: "c" };
-    const email = await wcUsageAlertNotifier.getMessage!("email", recipient, ctx, {});
-    const sms = await wcUsageAlertNotifier.getMessage!("sms", recipient, ctx, {});
-    const inapp = await wcUsageAlertNotifier.getMessage!("inapp", recipient, ctx, {});
-    expect(email?.bodyText).toContain("https://example.test/admin/wc/stats");
-    expect(sms?.message).toContain("https://example.test/admin/wc/stats");
-    expect(inapp?.linkUrl).toBe("/admin/wc/stats");
+  it("reports every crossing in the one message it is allowed to send", async () => {
+    const email = await wakeAndCompose(notifierFinding([ONE, OTHER]), "email");
+    for (const text of [ONE.subject, OTHER.subject, "1200", "90", "1000", "50"]) {
+      expect(email?.bodyText).toContain(text);
+    }
   });
 
-  it("carries one send-once key for every channel of one crossing", async () => {
-    const ctx = crossingContext();
-    const recipient = { contactId: "c" };
-    const expected = usageAlertSendKey({
+  it("links absolutely off-app and relatively in-app", async () => {
+    const notifier = notifierFinding([ONE]);
+    expect((await wakeAndCompose(notifier, "email"))?.bodyText).toContain(
+      "https://example.test/admin/wc/stats",
+    );
+    expect((await wakeAndCompose(notifier, "sms"))?.message).toContain(
+      "https://example.test/admin/wc/stats",
+    );
+    expect((await wakeAndCompose(notifier, "inapp"))?.linkUrl).toBe("/admin/wc/stats");
+  });
+
+  it("carries one send-once key for every channel of one message", async () => {
+    const notifier = notifierFinding([ONE, OTHER]);
+    const shared = ctx();
+    const expected = usageAlertMessageSendKey({
       configId: CONFIG_ID,
-      ymd: "2026-09-01",
-      targetKey: "wc:Twilio:phone-lookup",
-      threshold: 1000,
+      ymd: TODAY,
+      crossings: [ONE, OTHER],
     });
     for (const medium of ["email", "sms", "inapp"] as const) {
-      const message = await wcUsageAlertNotifier.getMessage!(medium, recipient, ctx, {});
+      const message = await wakeAndCompose(notifier, medium, shared);
       expect(message?.sendKey).toBe(expected);
     }
+  });
+
+  /**
+   * The counters are read in `shouldDispatch` and reported in `getMessage`.
+   * If what the first found does not reach the second, the message is composed
+   * from nothing — which must be a refusal, never a message with the numbers
+   * quietly missing.
+   */
+  it("refuses to compose a message nobody decided to send", async () => {
+    const notifier = notifierFinding([ONE]);
+    await expect(
+      notifier.getMessage!("email", { contactId: "c" }, ctx(), {}),
+    ).resolves.toBeNull();
   });
 });

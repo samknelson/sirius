@@ -1,19 +1,19 @@
 import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
 
 /**
- * The vocabulary shared by the three usage-alert notifiers and the scan that
- * feeds them.
+ * The vocabulary the three usage-alert notifiers share.
  *
  * A usage alert watches ONE number: how many calls a dimension has counted
  * TODAY. The counters (`wc_stats` outgoing, `ws_stats` incoming) are the only
- * source, and nothing here changes how they are written — the scan reads them,
- * compares each configured rule against today's figure, and raises an event
- * when a rule's number has been reached.
+ * source, and nothing here changes how they are written.
  *
- * Everything in this module is pure: rule shapes, the JSON Schema each
- * notifier offers its admin, and the two identities a crossing needs — the
- * `targetKey` naming what was counted and the send-once key that makes one
- * crossing deliverable exactly once.
+ * Everything in this module is PURE — rule shapes, the JSON Schema each
+ * notifier offers its admin, and the two identities a crossing needs: the
+ * `targetKey` naming what was counted and the send-once key that makes what a
+ * message reports deliverable exactly once. Reading the counters is a separate
+ * job and lives with the notifiers, in
+ * `server/plugins/event-notifier/usage-alert-crossings.ts`; keeping this side
+ * pure is what lets the keys be reasoned about and tested on their own.
  */
 
 /** Notifier watching outgoing (third-party) calls, per the `wc-usage` card. */
@@ -22,20 +22,6 @@ export const WC_USAGE_ALERT_NOTIFIER_ID = "wc-usage-alert";
 export const WS_CLIENT_USAGE_ALERT_NOTIFIER_ID = "ws-usage-client-alert";
 /** Notifier watching incoming calls per service plugin, per `ws-usage-byplugin`. */
 export const WS_PLUGIN_USAGE_ALERT_NOTIFIER_ID = "ws-usage-plugin-alert";
-
-/**
- * Which usage surface a crossing belongs to. One event type carries all three,
- * so a notifier states which surface is its own rather than reading the
- * configuration id twice.
- */
-export type WebUsageSurface = "wc" | "ws-client" | "ws-plugin";
-
-/** The three notifiers, by the surface each one watches. */
-export const USAGE_ALERT_NOTIFIER_IDS: Record<WebUsageSurface, string> = {
-  wc: WC_USAGE_ALERT_NOTIFIER_ID,
-  "ws-client": WS_CLIENT_USAGE_ALERT_NOTIFIER_ID,
-  "ws-plugin": WS_PLUGIN_USAGE_ALERT_NOTIFIER_ID,
-};
 
 /** Outgoing: a service, optionally narrowed to one of its request types. */
 export interface WcUsageRule {
@@ -168,6 +154,43 @@ export function usageAlertSendKey(crossing: {
   threshold: number;
 }): string {
   return `usage-alert:${crossing.configId}:${crossing.ymd}:${crossing.targetKey}:${crossing.threshold}`;
+}
+
+/**
+ * The send-once key for a MESSAGE, which may report more than one crossing.
+ *
+ * A dispatch composes at most one message per recipient per channel, so a
+ * configuration with two rules over their numbers says both things in one
+ * message — and the key has to span exactly the set it reported, or the second
+ * crossing is silently swallowed by the first one's key.
+ *
+ * A single crossing keeps the one-crossing key unchanged, so the common case
+ * behaves as it always has and keys already spent today stay spent.
+ *
+ * The set is sorted, so the same crossings in a different order are the same
+ * message. A LATER crossing makes a new set and therefore a new message, which
+ * restates the earlier crossing alongside the new one: telling somebody a
+ * number again is the acceptable failure here, and not telling them the second
+ * number is not.
+ */
+export function usageAlertMessageSendKey(message: {
+  configId: string;
+  ymd: string;
+  crossings: { targetKey: string; threshold: number }[];
+}): string {
+  const [only] = message.crossings;
+  if (message.crossings.length === 1) {
+    return usageAlertSendKey({
+      configId: message.configId,
+      ymd: message.ymd,
+      targetKey: only.targetKey,
+      threshold: only.threshold,
+    });
+  }
+  const parts = message.crossings
+    .map((crossing) => `${crossing.targetKey}@${crossing.threshold}`)
+    .sort();
+  return `usage-alert:${message.configId}:${message.ymd}:set:${parts.join(",")}`;
 }
 
 /** The recipients field every staff notifier shares. */

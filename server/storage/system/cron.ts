@@ -18,6 +18,7 @@ export interface CronJobRunStorage {
   list(filters?: { jobName?: string; status?: string }): Promise<CronJobRunWithUser[]>;
   getById(id: string): Promise<CronJobRunWithUser | undefined>;
   getLatestByJobName(jobName: string): Promise<CronJobRunWithUser | undefined>;
+  getLastSuccessfulLiveRun(jobName: string): Promise<CronJobRun | undefined>;
   create(run: InsertCronJobRun): Promise<CronJobRun>;
   update(id: string, updates: Partial<Omit<InsertCronJobRun, 'id'>>): Promise<CronJobRun | undefined>;
   delete(id: string): Promise<boolean>;
@@ -106,6 +107,30 @@ export function createCronJobRunStorage(): CronJobRunStorage {
         .from(cronJobRuns)
         .leftJoin(users, eq(cronJobRuns.triggeredBy, users.id))
         .where(eq(cronJobRuns.jobName, jobName))
+        .orderBy(desc(cronJobRuns.startedAt))
+        .limit(1);
+      return run || undefined;
+    },
+
+    /**
+     * The most recent run of this job that actually did its work: live mode,
+     * finished successfully. A job that decides what to do from how long it has
+     * been since it last ran needs exactly this and not `getLatestByJobName` —
+     * that one answers with the run currently in flight (the scheduler inserts
+     * the row before executing), with a test run, or with a run that failed.
+     */
+    async getLastSuccessfulLiveRun(jobName: string): Promise<CronJobRun | undefined> {
+      const client = getClient();
+      const [run] = await client
+        .select()
+        .from(cronJobRuns)
+        .where(
+          and(
+            eq(cronJobRuns.jobName, jobName),
+            eq(cronJobRuns.status, 'success'),
+            eq(cronJobRuns.mode, 'live'),
+          ),
+        )
         .orderBy(desc(cronJobRuns.startedAt))
         .limit(1);
       return run || undefined;
