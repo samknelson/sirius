@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { usePageTitle } from "@/contexts/PageTitleContext";
-import { WcLayout } from "@/components/layouts/WcLayout";
+import { WcLayout } from "@/components/layouts/WebServicesLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,7 +88,7 @@ function fillRange(start: Ymd, end: Ymd, days: WcStatsDay[]): WcStatsDay[] {
 }
 
 export default function WcStatsPage() {
-  usePageTitle("Web Client Stats");
+  usePageTitle("Outgoing Web Service Usage");
 
   const today = getTodayYmd();
   const [start, setStart] = useState<Ymd>(addDaysYmd(today, -(DEFAULT_RANGE_DAYS - 1)));

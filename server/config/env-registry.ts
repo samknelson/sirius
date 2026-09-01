@@ -525,6 +525,14 @@ registerEnvironmentVariables([
   { name: "DB_PASSWORD", description: "Database password (URL assembly part).", secret: true, category: "core", changeTakesEffect: "restart", },
   { name: "DB_SECRET", description: "AWS Secrets Manager DB secret: JSON blob or raw password (URL assembly part).", secret: true, category: "core", changeTakesEffect: "restart", },
   { name: "DB_SSLMODE", description: "sslmode for the assembled DATABASE_URL (default require).", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "DB_IAM_AUTH", description: "Set to 1/true to authenticate to Postgres with short-lived AWS IAM tokens instead of a password (RDS Proxy + rds-db:connect). No DB_PASSWORD/DB_SECRET is required or used.", secret: false, category: "core", changeTakesEffect: "restart", },
+  // Read by the RDS token signer under DB_IAM_AUTH. Both MUST be declared even
+  // though nothing in this app sets them: getEnvironmentVariable() throws on an
+  // unregistered name, so reading an undeclared variable is a crash, not an
+  // undefined. ECS injects AWS_REGION into every task; AWS_DEFAULT_REGION is the
+  // CLI/SDK fallback and is the one present when running locally.
+  { name: "AWS_REGION", description: "AWS region, injected by ECS. Read by the RDS IAM token signer when DB_IAM_AUTH is on; a token cannot be signed without it.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "AWS_DEFAULT_REGION", description: "Fallback AWS region (CLI/SDK convention) used by the RDS IAM token signer when AWS_REGION is absent.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "SESSION_SECRET", description: "Express session signing secret.", secret: true, category: "core", changeTakesEffect: "restart", },
   { name: "SESSION_TTL", description: "Session time-to-live in milliseconds.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "ALLOW_INSECURE_SESSION_SECRET", description: "Set to 1 to permit the fixed insecure session-secret fallback in non-prod deploys.", secret: false, category: "core", changeTakesEffect: "restart", },

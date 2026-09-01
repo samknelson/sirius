@@ -31,7 +31,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { WcLayout } from "@/components/layouts/WcLayout";
+import { WcLayout } from "@/components/layouts/WebServicesLayout";
 import {
   Loader2,
   ChevronLeft,
@@ -269,7 +269,7 @@ function DetailDialog({ id, onClose }: { id: string | null; onClose: () => void 
 }
 
 export default function WcCachePage() {
-  usePageTitle("Web Client Cache");
+  usePageTitle("Outgoing Web Service Cache");
 
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<Filters>({ ...EMPTY_FILTERS });

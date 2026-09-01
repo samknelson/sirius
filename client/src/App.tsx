@@ -272,6 +272,7 @@ const FreemanEdlsMigratePage = lazy(() => import("@/pages/admin/sitespecific/fre
 const T631MemberStatusSyncPage = lazy(() => import("@/pages/config/edls/t631-ms"));
 const BaoMemberStatusThresholdsPage = lazy(() => import("@/pages/config/trust/sitespecific/bao/thresholds"));
 const WsServicesPage = lazy(() => import("@/pages/config/ws/services"));
+const WsStatsPage = lazy(() => import("@/pages/admin/ws-stats"));
 const WsClientsPage = lazy(() => import("@/pages/config/ws/clients"));
 const WsClientSettingsPage = lazy(() => import("@/pages/config/ws/client-settings"));
 const WsClientCredentialsPage = lazy(() => import("@/pages/config/ws/client-credentials"));
@@ -346,6 +347,7 @@ const FileBrowserDetailPage = lazy(() => import("@/pages/admin/file-browser-deta
 const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
 const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
 const EbsInspectionPage = lazy(() => import("@/pages/admin/ebs"));
+const WcOverviewPage = lazy(() => import("@/pages/admin/wc-overview"));
 const WcCachePage = lazy(() => import("@/pages/admin/wc-cache"));
 const WcStatsPage = lazy(() => import("@/pages/admin/wc-stats"));
 const RestartPage = lazy(() => import("@/pages/admin/restart"));
@@ -2850,7 +2852,17 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/services">
+      {/* Web Services - Incoming: what other people call on us. The three tabs
+          are one page, so `/admin/ws` is the page's own address and lands on
+          the default tab. The client detail pages live under the Clients tab's
+          URL because that is where you get to them from. */}
+      <Route path="/admin/ws">
+        <ProtectedRoute permission="admin">
+          <Redirect to="/admin/ws/services" />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/ws/services">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -2860,7 +2872,17 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients/:id/logs">
+      <Route path="/admin/ws/stats">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WsStatsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/ws/clients/:id/logs">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientLogsPage />
@@ -2868,7 +2890,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients/:id/test">
+      <Route path="/admin/ws/clients/:id/test">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientTestPage />
@@ -2876,7 +2898,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients/:id/swagger">
+      <Route path="/admin/ws/clients/:id/swagger">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientSwaggerPage />
@@ -2884,7 +2906,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients/:id/ip-rules">
+      <Route path="/admin/ws/clients/:id/ip-rules">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientIpRulesPage />
@@ -2892,7 +2914,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients/:id/credentials">
+      <Route path="/admin/ws/clients/:id/credentials">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientCredentialsPage />
@@ -2900,7 +2922,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients/:id">
+      <Route path="/admin/ws/clients/:id">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientSettingsPage />
@@ -2908,7 +2930,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients">
+      <Route path="/admin/ws/clients">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -3688,9 +3710,29 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      {/* Cached third-party responses (web client cache). Admin-gated to match
-          the endpoints: the stored responses are whatever the vendor returned. */}
-      <Route path="/admin/wc-cache">
+      {/* Web Services - Outgoing: what we call on other people. Admin-gated
+          throughout to match the endpoints — the stored responses are whatever
+          the vendor returned. `/admin/wc` is the page's own address and lands
+          on the default tab. */}
+      <Route path="/admin/wc">
+        <ProtectedRoute permission="admin">
+          <Redirect to="/admin/wc/overview" />
+        </ProtectedRoute>
+      </Route>
+
+      {/* What we are able to call: the registry as it stands in this process. */}
+      <Route path="/admin/wc/overview">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WcOverviewPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Cached third-party responses. */}
+      <Route path="/admin/wc/cache">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -3700,9 +3742,8 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      {/* How often we actually called out, per service and request type. Same
-          admin gate as the cached entries beside it. */}
-      <Route path="/admin/wc-stats">
+      {/* How often we actually called out, per service and request type. */}
+      <Route path="/admin/wc/stats">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>

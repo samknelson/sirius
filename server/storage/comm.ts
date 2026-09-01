@@ -96,7 +96,26 @@ export interface CommStorage {
   getCommsByContactWithDetails(contactId: string): Promise<CommWithDetails[]>;
   getCommWithSms(id: string): Promise<CommWithSms | undefined>;
   getCommWithDetails(id: string): Promise<CommWithDetails | undefined>;
-  createComm(data: InsertComm): Promise<Comm>;
+  /**
+   * The communication row whose send key was already claimed, if any.
+   *
+   * READ-ONLY OPTIMIZATION, NOT A GUARANTEE. It takes no lock, so two callers
+   * asking at the same time can both be told "not yet". The guarantee is the
+   * conflict-tolerant insert in {@link CommStorage.createComm}; this exists
+   * only so a caller can skip composing a message or spending a rate-limit
+   * budget on a send that is going to be refused anyway.
+   */
+  getCommBySendKey(medium: string, contactId: string, sendKey: string): Promise<Comm | undefined>;
+  /**
+   * Insert a communication row, claiming its send key if it has one.
+   *
+   * Returns `undefined` — and writes nothing — when the key was already
+   * claimed for this (medium, contact). Callers must abandon the send in that
+   * case: the message has already gone out, and nothing may be handed to the
+   * provider a second time. A row with no key (or a blank one, which is
+   * trimmed to absent here) can never lose and always comes back.
+   */
+  createComm(data: InsertComm): Promise<Comm | undefined>;
   updateComm(id: string, data: Partial<InsertComm>): Promise<Comm | undefined>;
   updateWithTags(
     id: string,
@@ -273,10 +292,42 @@ export function createCommStorage(
       return { ...c, ...base, tags };
     },
 
-    async createComm(data: InsertComm): Promise<Comm> {
+    async getCommBySendKey(medium: string, contactId: string, sendKey: string): Promise<Comm | undefined> {
+      const trimmed = sendKey.trim();
+      if (!trimmed) return undefined;
       const client = getClient();
-      const [result] = await client.insert(comm).values(data).returning();
-      return result;
+      const [result] = await client
+        .select()
+        .from(comm)
+        .where(and(eq(comm.medium, medium), eq(comm.contactId, contactId), eq(comm.sendKey, trimmed)));
+      return result || undefined;
+    },
+
+    async createComm(data: InsertComm): Promise<Comm | undefined> {
+      const client = getClient();
+
+      // The one insert boundary for a communication row, and therefore the one
+      // place a send key is normalized. A blank key is no key: an empty string
+      // is a real value to the unique constraint, so leaving it through would
+      // make two unrelated un-keyed sends collide with each other.
+      const sendKey = typeof data.sendKey === 'string' ? data.sendKey.trim() : data.sendKey;
+      const values = { ...data, sendKey: sendKey ? sendKey : null };
+
+      if (!values.sendKey) {
+        const [result] = await client.insert(comm).values(values).returning();
+        return result;
+      }
+
+      // The insert IS the claim. Losing the race must not raise: inside a
+      // Postgres transaction a unique violation aborts the whole transaction,
+      // so the caller could not recover from a catch even if it wanted to.
+      // Nothing coming back means someone else already sent this message.
+      const [result] = await client
+        .insert(comm)
+        .values(values)
+        .onConflictDoNothing({ target: [comm.medium, comm.contactId, comm.sendKey] })
+        .returning();
+      return result || undefined;
     },
 
     async updateComm(id: string, data: Partial<InsertComm>): Promise<Comm | undefined> {

@@ -272,6 +272,7 @@ export function registerAccessPolicyRoutes(app: Express) {
         edls_sheet: 'edls.sheet.view',
         business_calendar: 'admin',
         options: 'admin',
+        ws: 'admin',
         wc: 'admin',
       };
       const basePolicy = entityPolicyMap[entityType] || 'authenticated';

@@ -166,6 +166,7 @@ import { type BtuPoliticalStorage, createBtuPoliticalStorage, btuPoliticalLoggin
 import { type WsClientStorage, type WsClientGrantStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsClientStorage, createWsClientGrantStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
 import { type WcCacheStorage, createWcCacheStorage } from "./wc-cache";
 import { type WcStatsStorage, createWcStatsStorage } from "./wc-stats";
+import { type WsStatsStorage, createWsStatsStorage } from "./ws-stats";
 import { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type EmployerCompanyStorage, createEmployerCompanyStorage, employerCompanyLoggingConfig } from "./employers/companies";
 import { type ContractStorage, createContractStorage, contractLoggingConfig } from "./contract";
 import { type ContactLinkStorage, createContactLinkStorage } from "./contact-links";
@@ -296,6 +297,7 @@ export interface IStorage {
   wsClientIpRules: WsClientIpRuleStorage;
   wcCache: WcCacheStorage;
   wcStats: WcStatsStorage;
+  wsStats: WsStatsStorage;
   btuPolitical: BtuPoliticalStorage;
   companies: CompanyStorage;
   employerCompanies: EmployerCompanyStorage;
@@ -416,6 +418,7 @@ export class DatabaseStorage implements IStorage {
   wsClientIpRules: WsClientIpRuleStorage;
   wcCache: WcCacheStorage;
   wcStats: WcStatsStorage;
+  wsStats: WsStatsStorage;
   btuPolitical: BtuPoliticalStorage;
   companies: CompanyStorage;
   employerCompanies: EmployerCompanyStorage;
@@ -657,6 +660,7 @@ export class DatabaseStorage implements IStorage {
     this.wsClientIpRules = createWsClientIpRuleStorage();
     this.wcCache = createWcCacheStorage();
     this.wcStats = createWcStatsStorage();
+    this.wsStats = createWsStatsStorage();
     this.btuPolitical = withStorageLogging(createBtuPoliticalStorage(), btuPoliticalLoggingConfig);
     this.companies = withStorageLogging(createCompanyStorage(), companyLoggingConfig);
     this.employerCompanies = withStorageLogging(createEmployerCompanyStorage(), employerCompanyLoggingConfig);

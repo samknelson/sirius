@@ -61,7 +61,6 @@ export const configSections: NavSection[] = [
       { path: "/config/helps", label: "Help Text", icon: HelpCircle, testId: "nav-config-helps", permission: "admin" },
       { path: "/admin/debug/event-bus", label: "Event Bus", icon: Radio, testId: "nav-admin-debug-event-bus", permission: "admin", requiresComponent: "debug" },
       { path: "/admin/ebs", label: "Event Scheduler", icon: Calendar, testId: "nav-config-ebs", permission: "admin" },
-      { path: "/admin/wc-cache", label: "Web Client Cache", icon: Cloud, testId: "nav-config-wc-cache", permission: "admin" },
       { path: "/admin/restart", label: "Restart & Reload", icon: Power, testId: "nav-config-restart", permission: "admin" },
     ],
   },
@@ -218,13 +217,16 @@ export const configSections: NavSection[] = [
     ],
   },
   {
+    // Both directions of third-party traffic, named by direction. Each item is
+    // one tabbed page, so the sidebar stops at the page and the tabs take it
+    // from there rather than the sidebar listing every view of both.
     id: "webservices",
     title: "Web Services",
-    description: "External API access and client management",
+    description: "Calls other people make to us, and calls we make to them",
     icon: Network,
     items: [
-      { path: "/config/ws/services", label: "Services", icon: Package, testId: "nav-config-ws-services", permission: "admin" },
-      { path: "/config/ws/clients", label: "Clients", icon: Key, testId: "nav-config-ws-clients", permission: "admin" },
+      { path: "/admin/ws", label: "Incoming", icon: Network, testId: "nav-config-ws", permission: "admin" },
+      { path: "/admin/wc", label: "Outgoing", icon: Cloud, testId: "nav-config-wc", permission: "admin" },
     ],
   },
 ];

@@ -24,8 +24,9 @@ import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres';
 import ws from "ws";
 import * as schema from "@shared/schema";
 import { getEnvironmentVariable } from "../config/env-registry";
-import { getDatabaseUrlSource } from "../config/assemble-database-url";
+import { getDatabaseUrlSource, isIamAuth } from "../config/assemble-database-url";
 import { recordDatabaseIdentity, type BringUpDatabaseIdentity } from "../services/bringup-report";
+import { buildPgPoolConfig, parseConnectionUrl } from "./pg-pool-config";
 
 const databaseUrl = getEnvironmentVariable("DATABASE_URL");
 if (!databaseUrl) {
@@ -126,6 +127,49 @@ function stripSslParams(url: string): string {
   }
 }
 
+/**
+ * IAM auth password provider (RDS Proxy).
+ *
+ * An RDS IAM auth token IS the password, but it is signed and expires in ~15
+ * minutes — so it cannot be baked into the connection string at boot. pg
+ * accepts a function for `password` and calls it for EVERY new connection, so
+ * long-lived pools keep working and expiry is handled for free.
+ *
+ * The `@aws-sdk/rds-signer` import is dynamic and only happens in IAM mode:
+ * the password path must not require the dependency to be resolvable, so
+ * password-based deployments (dev, and any environment with
+ * enable_db_rbac = false) behave exactly as before.
+ */
+function iamPasswordProvider(url: string): () => Promise<string> {
+  // Parsed via the shared helper rather than `new URL()` directly. This
+  // function is evaluated as an ARGUMENT to buildPgPoolConfig, so it runs
+  // first — parsing here with a bare constructor would throw
+  // "TypeError: Invalid URL" and pre-empt the purpose-built errors that
+  // parseConnectionUrl raises for exactly this failure.
+  const { host: hostname, port, user: username } = parseConnectionUrl(url);
+  // ECS injects AWS_REGION; AWS_DEFAULT_REGION is the CLI/SDK fallback.
+  const region =
+    getEnvironmentVariable("AWS_REGION") ??
+    getEnvironmentVariable("AWS_DEFAULT_REGION");
+
+  if (!region) {
+    throw new Error(
+      "DB_IAM_AUTH is on but neither AWS_REGION nor AWS_DEFAULT_REGION is set; " +
+        "the RDS signer cannot build a token without a region.",
+    );
+  }
+
+  let signer: { getAuthToken: () => Promise<string> } | undefined;
+
+  return async () => {
+    if (!signer) {
+      const { Signer } = await import("@aws-sdk/rds-signer");
+      signer = new Signer({ hostname, port, username, region });
+    }
+    return signer.getAuthToken();
+  };
+}
+
 export const driverKind: DriverKind = detectDriver(databaseUrl);
 
 // Both drivers expose the node-postgres Pool API surface; the Neon Pool is
@@ -161,9 +205,28 @@ if (driverKind === "neon") {
   console.log("[db] driver=neon (serverless/WebSocket)");
 } else {
   const ssl = sslConfigFromUrl(databaseUrl);
+  // Under IAM auth this passes discrete host/port/database/user fields and NO
+  // connection string, because pg applies the parsed connection string over the
+  // explicit config — a password-less URL parses to `password: undefined` and
+  // would overwrite the token provider, producing the proxy's "authentication
+  // token is empty". See server/storage/pg-pool-config.ts.
+  // Read ONCE. isIamAuth() now derives from the environment on each call, so
+  // two reads could in principle disagree and yield a config that is IAM in one
+  // field and password in another — the sort of half-state that produced the
+  // empty-token failure.
+  const iamAuth = isIamAuth();
   poolInstance = new pg.Pool({
-    connectionString: stripSslParams(databaseUrl),
-    ssl,
+    ...buildPgPoolConfig(
+      databaseUrl,
+      ssl,
+      iamAuth,
+      // Built only in IAM mode: iamPasswordProvider validates its inputs and
+      // throws when they are absent, which must not happen on the password path.
+      iamAuth ? iamPasswordProvider(databaseUrl) : (async () => ""),
+      stripSslParams,
+    ),
+    // Bounded checkout applies on BOTH paths: an unreachable database must be a
+    // named boot failure whether we authenticate with a password or an IAM token.
     connectionTimeoutMillis,
   });
   dbInstance = drizzlePg({

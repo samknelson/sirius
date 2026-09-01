@@ -68,6 +68,8 @@ import "./core/1063_backfill_wc_cache_phone_lookup";
 import "./core/1064_backfill_wc_cache_address_verification";
 import "./core/1065_create_wc_stats";
 import "./core/1066_wc_stats_ymd";
+import "./core/1067_create_ws_stats";
+import "./core/1068_add_comm_send_key";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

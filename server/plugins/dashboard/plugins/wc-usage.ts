@@ -19,7 +19,7 @@ const WINDOW_DAYS = 7;
 
 export const wcUsagePlugin: DashboardPlugin = {
   id: "wc-usage",
-  name: "Web Client Usage",
+  name: "Web Services - Outgoing",
   description:
     "Outbound calls per external service: today, and over the last 7 days.",
   requiredPolicy: "admin",

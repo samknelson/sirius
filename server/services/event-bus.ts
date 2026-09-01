@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { logger } from "../logger";
+import type { WebUsageSurface } from "./web-usage-alerts";
 import type {
   DispatchJob,
   DispatchJobFore,
@@ -57,6 +58,7 @@ export enum EventType {
   TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
   TRUST_WMB_SCAN_WORKER_COMPLETED = "trust.wmb.scan.worker.completed",
   TOS_ABSENCE_REMINDER = "tos.absence.reminder",
+  WEB_USAGE_THRESHOLD_REACHED = "web.usage.threshold.reached",
   GRIEVANCE_DEADLINE_REMINDER = "grievance.deadline.reminder",
   EMPLOYER_MONTHLY = "employer.monthly",
   PLUGIN_CONFIG_SAVED = "plugin.config.saved",
@@ -394,6 +396,36 @@ export interface TrustWmbScanCompletedPayload {
 }
 
 /**
+ * One usage rule whose watched number has been reached today.
+ *
+ * Raised by the usage alert scan cron, once per crossing, and delivered by
+ * whichever of the three usage-alert notifiers owns `configId`. It is not a
+ * record: a crossing has no page of its own, so the payload carries everything
+ * a message needs to say — what was counted (`subject`, in words), how many
+ * (`count`), and the number that was reached (`threshold`).
+ *
+ * `targetKey` is the machine-readable form of `subject`, and together with
+ * `configId`, `ymd` and `threshold` it is what makes one crossing deliverable
+ * exactly once (see `usageAlertSendKey`).
+ */
+export interface WebUsageThresholdReachedPayload {
+  /** Which usage surface was counted: outgoing, incoming-by-client, incoming-by-plugin. */
+  surface: WebUsageSurface;
+  /** The alert configuration whose rule this is. */
+  configId: string;
+  /** The day counted, as a Ymd string. */
+  ymd: string;
+  /** What was counted, in words, e.g. "Twilio / phone-lookup". */
+  subject: string;
+  /** What was counted, as a stable key. */
+  targetKey: string;
+  /** Today's count for that dimension at scan time. */
+  count: number;
+  /** The number the rule was watching for. */
+  threshold: number;
+}
+
+/**
  * A single TOS/absence reminder that fell due. Emitted by the generic EBS pump
  * cron from an `ebs_denorm` row scheduled by the `tos_absence_reminder` denorm
  * plugin; delivered by the `tos-absence-notifier` event-notifier plugin.
@@ -495,6 +527,7 @@ export interface EventPayloadMap {
   [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
   [EventType.TRUST_WMB_SCAN_WORKER_COMPLETED]: TrustWmbScanWorkerCompletedPayload;
   [EventType.TOS_ABSENCE_REMINDER]: TosAbsenceReminderPayload;
+  [EventType.WEB_USAGE_THRESHOLD_REACHED]: WebUsageThresholdReachedPayload;
   [EventType.GRIEVANCE_DEADLINE_REMINDER]: GrievanceDeadlineReminderPayload;
   [EventType.EMPLOYER_MONTHLY]: EmployerMonthlyPayload;
   [EventType.PLUGIN_CONFIG_SAVED]: PluginConfigSavedPayload;

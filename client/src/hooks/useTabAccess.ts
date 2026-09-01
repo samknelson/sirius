@@ -6,7 +6,8 @@ import {
   HierarchicalTab,
   getTabTreeForEntity,
   buildTabHref,
-  WC_BROWSER_ENTITY_ID,
+  WS_ADMIN_ENTITY_ID,
+  WC_ADMIN_ENTITY_ID,
 } from "@shared/tabRegistry";
 import { apiRequest } from "@/lib/queryClient";
 import { useTerm } from "@/contexts/TerminologyContext";
@@ -469,13 +470,25 @@ export function useOptionsTabAccess(optionsType: string | undefined, enabled = t
 }
 
 /**
- * Tab access for the web client browser. It is one page rather than an entity,
- * so the id is the registry's constant.
+ * Tab access for the incoming web services page. It is one page rather than an
+ * entity, so the id is the registry's constant.
+ */
+export function useWsTabAccess(enabled = true) {
+  return useTabAccess({
+    entityType: 'ws',
+    entityId: WS_ADMIN_ENTITY_ID,
+    enabled,
+  });
+}
+
+/**
+ * Tab access for the outgoing web services page. It is one page rather than an
+ * entity, so the id is the registry's constant.
  */
 export function useWcTabAccess(enabled = true) {
   return useTabAccess({
     entityType: 'wc',
-    entityId: WC_BROWSER_ENTITY_ID,
+    entityId: WC_ADMIN_ENTITY_ID,
     enabled,
   });
 }

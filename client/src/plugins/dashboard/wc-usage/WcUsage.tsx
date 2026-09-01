@@ -41,10 +41,10 @@ export function WcUsage(_props: DashboardPluginProps) {
       <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
         <CardTitle className="text-base font-medium flex items-center gap-2">
           <Globe className="h-4 w-4 text-muted-foreground" />
-          Web Client Usage
+          Web Services - Outgoing
         </CardTitle>
         <Link
-          href="/admin/wc-stats"
+          href="/admin/wc/stats"
           className="text-xs text-primary flex items-center hover:underline"
           data-testid="link-wc-stats-page"
         >

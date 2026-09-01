@@ -213,6 +213,127 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
     },
   );
 
+  // Usage-alert dimensions. The three web service usage alert notifiers let an
+  // admin pick what to watch: an outgoing service (and optionally one of its
+  // request types), an incoming service plugin (and optionally one of its
+  // operations), or an incoming client. Read-only, admin-only — the usage
+  // dashboard cards these alerts mirror are admin-gated too.
+  //
+  // The registry-backed lists come from the registries, NOT from what the
+  // counters happen to have seen: a service nobody has called yet is exactly
+  // the one an admin most wants a first alert on, and a list built from
+  // counted rows could not offer it. Register BEFORE the generic
+  // `/api/options/:type` so these match first.
+  app.get(
+    "/api/options/wc-service",
+    requireAccess('admin'),
+    async (_req: Request, res: Response) => {
+      try {
+        const { listWcRequests } = await import("../services/webclient");
+        const services = Array.from(
+          new Set(listWcRequests().map((b) => b.service)),
+        ).sort((a, b) => a.localeCompare(b));
+        res.json(services.map((service) => ({ id: service, name: service })));
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch outgoing services" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/options/wc-request-type",
+    requireAccess('admin'),
+    async (_req: Request, res: Response) => {
+      try {
+        const { listWcRequests } = await import("../services/webclient");
+        // A request type is only unique within its service ("lookup" belongs
+        // to more than one), so the option is the bare request type and the
+        // label names the services that have one, letting the admin see which
+        // service to pair it with.
+        const servicesByType = new Map<string, string[]>();
+        for (const behavior of listWcRequests()) {
+          const services = servicesByType.get(behavior.requestType) ?? [];
+          if (!services.includes(behavior.service)) services.push(behavior.service);
+          servicesByType.set(behavior.requestType, services);
+        }
+        const options = Array.from(servicesByType.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([requestType, services]) => ({
+            id: requestType,
+            name: `${requestType} (${services.sort().join(", ")})`,
+          }));
+        res.json(options);
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch outgoing request types" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/options/ws-service-plugin",
+    requireAccess('admin'),
+    async (_req: Request, res: Response) => {
+      try {
+        const { webServiceRegistry } = await import("../plugins/web-service/registry");
+        const plugins = await webServiceRegistry.listEnabledAsync();
+        res.json(
+          plugins
+            .map((p) => ({ id: p.id, name: p.name }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch web service plugins" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/options/ws-operation",
+    requireAccess('admin'),
+    async (_req: Request, res: Response) => {
+      try {
+        const { webServiceRegistry } = await import("../plugins/web-service/registry");
+        const plugins = await webServiceRegistry.listEnabledAsync();
+        // Same as request types: an operation name is unique within its
+        // plugin, so the label names the plugins offering it.
+        const pluginsByOperation = new Map<string, string[]>();
+        for (const plugin of plugins) {
+          for (const operation of plugin.operations) {
+            const owners = pluginsByOperation.get(operation.name) ?? [];
+            if (!owners.includes(plugin.name)) owners.push(plugin.name);
+            pluginsByOperation.set(operation.name, owners);
+          }
+        }
+        const options = Array.from(pluginsByOperation.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([operation, owners]) => ({
+            id: operation,
+            name: `${operation} (${owners.sort().join(", ")})`,
+          }));
+        res.json(options);
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch web service operations" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/options/ws-client",
+    requireAccess('admin'),
+    async (_req: Request, res: Response) => {
+      try {
+        const clients = await storage.wsClients.getAll();
+        res.json(
+          clients
+            .map((c) => ({ id: c.id, name: c.name }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch web service clients" });
+      }
+    },
+  );
+
   // GET /api/options/:type - List all items of a specific options type
   app.get("/api/options/:type", requireAccess('authenticated'), requireOptionTypeComponent(), async (req: Request, res: Response) => {
     try {

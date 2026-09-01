@@ -5,6 +5,8 @@ import {
 } from '../../middleware/webservice-auth';
 import { logger, logWsRequest } from '../../logger';
 import { storage } from '../../storage';
+import { runOutsideTransaction } from '../../storage/transaction-context';
+import { getTodayYmd } from '@shared/utils/date';
 import { isPluginComponentEnabledAsync } from '../../plugins/_core';
 import { webServiceRegistry, findWebServiceOperation } from '../../plugins/web-service';
 import type { PluginConfig } from '@shared/schema';
@@ -14,6 +16,7 @@ import { WEB_SERVICE_BASE_PATH } from './base-path';
 // Resolution lives beside its inverse (the address the API document
 // publishes), so the two can never drift apart.
 import { resolveConfiguration } from './addressing';
+import { assertMaintenanceGateInstalled } from './maintenance';
 
 /**
  * The single refusal returned for every reason a caller may not reach a
@@ -37,9 +40,57 @@ type RefusalReason =
   | 'PLUGIN_UNREGISTERED'
   | 'COMPONENT_DISABLED';
 
-// Middleware that logs WS requests after they complete
+/**
+ * Count one served call, if this request actually reached a service handler.
+ *
+ * The flag is set immediately before the handler is called, so what is counted
+ * is "a call reached the service", whatever the handler then did with it — an
+ * error it raised is work we did, and its outcome is the request log's
+ * business, not the counter's. Every refusal above the handler counts nothing,
+ * because none of them did any work.
+ *
+ * Off the caller's transaction, deliberately, and for the same two reasons as
+ * the outbound counter: on the caller's client a failed upsert would abort the
+ * caller's transaction and turn a best-effort statistic into a fatal error,
+ * and a handler that later rolled back would discard the record of a call that
+ * really happened. Failures are logged and swallowed — this runs after the
+ * response is gone, so there is nothing left to fail.
+ */
+function countServedCall(res: Parameters<RequestHandler>[1]): void {
+  if (res.locals.wsHandled !== true) return;
+  const context = res.locals.wsContext as WebServiceContext | undefined;
+  if (!context?.pluginId || !context.operation) return;
+
+  const { pluginId, clientId, operation } = context;
+  void (async () => {
+    try {
+      await runOutsideTransaction(() =>
+        storage.wsStats.recordCall(pluginId, clientId, operation, getTodayYmd()),
+      );
+    } catch (error) {
+      logger.error('Failed to count an incoming web service call', {
+        service: 'webservices',
+        pluginId,
+        clientId,
+        wsOperation: operation,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  })();
+}
+
+// Middleware that logs WS requests after they complete, and counts the ones
+// that reached a service handler.
 function createWsLoggingMiddleware(): RequestHandler {
   return (req, res, next) => {
+    // Counting hangs off 'close' rather than 'finish', and the difference is
+    // deliberate: 'finish' means we sent the whole response, 'close' means the
+    // exchange is over either way. A partner who hangs up halfway through a
+    // long export still made us do that export, so it is a call we served;
+    // logging keeps 'finish' because a response nobody received has no status
+    // worth recording. 'close' fires exactly once in both cases.
+    res.on('close', () => countServedCall(res));
+
     // Log when response finishes
     res.on('finish', () => {
       const context = res.locals.wsContext as WebServiceContext | undefined;
@@ -78,6 +129,12 @@ function createWsLoggingMiddleware(): RequestHandler {
  * record for the grant check, the enabled checks and the handler call.
  */
 export function registerWebServiceDispatcher(app: Express): void {
+  // Maintenance refusal is not mounted here: it has to beat the base
+  // middleware, which is registered long before this runs. This insists the
+  // entry point installed it — see `./maintenance` for why the ordering is
+  // load-bearing rather than tidy.
+  assertMaintenanceGateInstalled(app);
+
   const router = Router();
   router.use(requireWebServiceAuth());
   router.use(createWsLoggingMiddleware());
@@ -140,6 +197,9 @@ export function registerWebServiceDispatcher(app: Express): void {
         });
       }
 
+      // Past this line the call is served, and counted, whatever the handler
+      // does with it — including throwing. See `countServedCall`.
+      res.locals.wsHandled = true;
       await op.handler({ config, settings: data, req, res });
     } catch (error) {
       logger.error('Web service dispatch failed', {

@@ -277,6 +277,9 @@ async function main() {
       data: { verifyScript: true },
     });
 
+    // Un-keyed inserts can never lose a send-once claim, so both rows exist.
+    if (!older || !newer) throw new Error("comm insert returned nothing for an un-keyed send");
+
     const olderWrote = await storage.edlsAssignments.setCommId(sampleId, older.id, sample.data);
     const afterOlder = await linkOf(chosen.sheetId, sampleId);
     check(

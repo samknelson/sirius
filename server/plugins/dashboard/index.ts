@@ -177,3 +177,5 @@ import "./plugins/edi-summary";
 import "./plugins/my-shops";
 import "./plugins/system-status";
 import "./plugins/wc-usage";
+import "./plugins/ws-usage-byplugin";
+import "./plugins/ws-usage-byclient";

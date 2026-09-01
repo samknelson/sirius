@@ -280,6 +280,19 @@ export function CommDetailContent({ commId, statusAction, renderFallback }: Comm
             </div>
           </div>
 
+          {comm.sendKey && (
+            <div>
+              <Label className="text-muted-foreground">Send Key</Label>
+              <div
+                className="font-mono text-sm mt-1 break-all"
+                title="This message was sent at most once: a later send with the same key, to this contact, on this medium is refused."
+                data-testid="text-comm-send-key"
+              >
+                {comm.sendKey}
+              </div>
+            </div>
+          )}
+
           {comm.smsDetails?.body && (
             <div>
               <Label className="text-muted-foreground">Message Body</Label>

@@ -19,7 +19,7 @@
  * rejected later, when it is substituted into `stroke` or `color`, and a
  * property that is invalid at computed-value time is simply dropped. Neither
  * the type checker nor the browser console says a word. The stats chart at
- * /admin/wc-stats shipped this way and drew its grid, its axes and its tooltip
+ * /admin/wc/stats shipped this way and drew its grid, its axes and its tooltip
  * perfectly while the line itself was never painted at all — the page looked
  * like it had no data, and the data was fine.
  *

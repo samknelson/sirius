@@ -146,6 +146,44 @@ export function registerWcCacheAdminRoutes(app: Express) {
     }
   });
 
+  // Every outbound call we are able to make, as the registry declares it.
+  //
+  // This reports what is registered in THIS process right now, not a written
+  // list: a service whose module is not loaded in this environment is simply
+  // absent, which is the honest answer to "what can we call from here". The
+  // request key builder is not exposed — it is a function over caller
+  // arguments, and what it makes of them is nobody's business outside the
+  // wrapper.
+  //
+  // Registered before `/:id` so the literal path is not read as an id.
+  app.get("/api/admin/wc-requests", requireAccess("admin"), async (_req, res) => {
+    try {
+      const behaviors = await Promise.all(
+        listWcRequests().map(async (behavior) => ({
+          service: behavior.service,
+          requestType: behavior.requestType,
+          operation: behavior.operation,
+          cached: behavior.cached,
+          // Defaults to `cached` at the point the wrapper decides, so it is
+          // resolved the same way here rather than reported as unset.
+          needsWritableDatabase: behavior.needsWritableDatabase ?? behavior.cached,
+          // Resolved now, exactly as the wrapper resolves them, so a window
+          // that is a settings read reports the setting's current value.
+          freshForMs: await resolveWcDuration(behavior.freshFor),
+          failureRememberedForMs: await resolveWcDuration(behavior.failureRememberedFor),
+        })),
+      );
+      behaviors.sort(
+        (a, b) =>
+          a.service.localeCompare(b.service) || a.requestType.localeCompare(b.requestType),
+      );
+      res.json(behaviors);
+    } catch (error) {
+      console.error("Failed to list registered web client requests:", error);
+      res.status(500).json({ message: "Failed to list registered requests" });
+    }
+  });
+
   // Every (service, request type) worth offering as a filter: the pairs
   // present in the table, plus the registered ones that have no rows yet.
   // A pair present but unregistered is included and marked, because it is the

@@ -8,6 +8,7 @@ import { phoneValidationService } from '../validators/phone';
 import type { SmsTransport } from '../providers/sms';
 import type { Comm, CommSms } from '@shared/schema';
 import { isMaintenanceModeError } from "../../maintenance-flag";
+import { ALREADY_SENT, findSentWithKey, type AlreadySentCode } from '../send-key';
 
 export interface SendSmsRequest {
   contactId: string;
@@ -16,6 +17,12 @@ export interface SendSmsRequest {
   userId?: string;
   tagIds?: string[];
   sendOffline?: boolean;
+  /**
+   * Optional send-once key. See `comm.sendKey` in `shared/schema.ts`: the
+   * first send with this key to this contact goes out, every later one is
+   * refused with {@link ALREADY_SENT} and nothing reaches the provider.
+   */
+  sendKey?: string;
 }
 
 export interface SendSmsResult {
@@ -23,7 +30,13 @@ export interface SendSmsResult {
   comm?: Comm;
   commSms?: CommSms;
   error?: string;
-  errorCode?: 'NOT_OPTED_IN' | 'NOT_ALLOWLISTED' | 'PROVIDER_ERROR' | 'VALIDATION_ERROR' | 'SMS_NOT_SUPPORTED' | 'UNKNOWN_ERROR';
+  errorCode?: 'NOT_OPTED_IN' | 'NOT_ALLOWLISTED' | 'PROVIDER_ERROR' | 'VALIDATION_ERROR' | 'SMS_NOT_SUPPORTED' | 'UNKNOWN_ERROR' | AlreadySentCode;
+  /**
+   * The send was refused because its key was already spent. This is NOT a
+   * failure — nothing was attempted and nothing broke. `comm` carries the
+   * message that did go out, when it can still be read.
+   */
+  alreadySent?: boolean;
   messageId?: string;
 }
 
@@ -31,19 +44,36 @@ const commStorage = createCommStorage();
 const commSmsStorage = createCommSmsStorage();
 const smsOptinStorage = createCommSmsOptinStorage();
 
+/**
+ * The answer when the claim insert came back empty: this key is spent, so the
+ * message already went out and nothing may be handed to the provider again.
+ */
+async function alreadySent(contactId: string, sendKey: string): Promise<SendSmsResult> {
+  const existing = await findSentWithKey({ medium: 'sms', contactId, sendKey });
+  return {
+    success: false,
+    alreadySent: true,
+    comm: existing,
+    error: 'An SMS with this send key has already been sent to this contact',
+    errorCode: ALREADY_SENT,
+  };
+}
+
 export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
-  const { contactId, toPhoneNumber, message, userId, tagIds, sendOffline } = request;
+  const { contactId, toPhoneNumber, message, userId, tagIds, sendOffline, sendKey } = request;
 
   if (sendOffline) {
     try {
-      const { comm, commSms } = await runInTransaction(async () => {
+      const claimed = await runInTransaction(async () => {
         const comm = await commStorage.createComm({
           medium: 'sms',
           contactId,
           status: 'offline',
           sent: new Date(),
           data: { initiatedBy: userId || 'system', offline: true },
+          sendKey: sendKey ?? null,
         });
+        if (!comm) return null;
 
         const commSms = await commSmsStorage.createCommSms({
           commId: comm.id,
@@ -58,6 +88,9 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
 
         return { comm, commSms };
       });
+
+      if (!claimed) return await alreadySent(contactId, sendKey!);
+      const { comm, commSms } = claimed;
 
       return { success: true, comm, commSms };
     } catch (error: any) {
@@ -98,14 +131,18 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
 
     const normalizedPhone = localResult.e164Format;
 
-    const { comm, commSms } = await runInTransaction(async () => {
+    // This insert is the send-once claim: if a key was supplied and it is
+    // already spent, nothing is written and nothing is sent.
+    const claimed = await runInTransaction(async () => {
       const comm = await commStorage.createComm({
         medium: 'sms',
         contactId,
         status: 'sending',
         sent: new Date(),
         data: { initiatedBy: userId || 'system' },
+        sendKey: sendKey ?? null,
       });
+      if (!comm) return null;
 
       const commSms = await commSmsStorage.createCommSms({
         commId: comm.id,
@@ -120,6 +157,9 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
 
       return { comm, commSms };
     });
+
+    if (!claimed) return await alreadySent(contactId, sendKey!);
+    const { comm, commSms } = claimed;
 
     const optinRecord = await smsOptinStorage.getSmsOptinByPhoneNumber(normalizedPhone);
     

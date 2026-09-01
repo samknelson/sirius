@@ -67,6 +67,7 @@
 - [Tx race handling: ON CONFLICT, not catch](tx-race-onconflict-not-catch.md) — inside a Postgres transaction, catch-and-continue after a unique violation leaves the tx aborted; use ON CONFLICT DO NOTHING + returning() rowcount and undo side-effect inserts when losing the race.
 - [Worker-ban framework](worker-ban-framework.md) — soft-ref ban types + singleton behavior plugins; only unconditional behaviors get denorm facts; ban-type edits must re-emit WORKER_BAN_SAVED; guard ALL accept paths.
 - [Storage audit log args PII](storage-audit-log-args-pii.md) — logged storage methods persist raw args to winston_logs; redact payloads via logArgs, conditional-log via shouldLog; prune deletes must re-qualify atomically.
+- [Inbound maintenance refusal ordering](inbound-maintenance-gate.md) — an always-on refusal goes at the FRONT of middleware assembly (body parsers 400/413 first, auth writes a last-used stamp); router registration must assert it.
 - [Maintenance-mode write lock + vendor refusal](maintenance-mode-write-lock.md) — read-only per pool checkout AND one guard refusing every outbound vendor call off the same import-free flag; allowInMaintenanceMode unlocks the DB only.
 - [Denorm event ordering race](denorm-event-ordering-race.md) — registry runs compute() outside applyComputed's tx; stale snapshot can win last & be marked ok. Framework-wide, don't fix per-plugin.
 - [Wizard advance via navigate](wizard-advance-via-navigate.md) — advance programmatic wizard launches with dispatch/navigate, not a currentStep PATCH (else next step stays pending, UI treats it as inactive).
@@ -142,4 +143,9 @@
 - [One cached answer, many askers](wc-request-shared-answer-identity.md) — shared wc entry: credential out of the key, restrictions in, caller-specific echoes stripped+re-applied; no infinite window (sweep can't reclaim); free services still join the vendor guard.
 - [Splitting a tab into sub-tabs](tab-split-into-subtabs.md) — keep the old URL on one child; child id goes in BOTH activeTab and ProtectedRoute tabId; ids unique tree-wide.
 - [Theme colour vars hold whole colours](theme-color-var-convention.md) — `var(--chart-1)`, never `hsl(var(--chart-1))`; nested colour is dropped at computed-value time with zero warnings (invisible chart line).
+- [Counting served work](counting-served-work.md) — usage counters: flag at the handler boundary (never infer from status), count on `close` / log on `finish`, write outside the caller's tx.
 - [Cross-process boot serialization](cross-process-boot-serialization.md) — two services boot one image against one DB: bring-up is exclusive (session advisory lock), every other boot write must be atomic/23505-retry/xact-lock, every wait bounded.
+- [Comm send-once key](comm-send-once-key.md) — at-most-once sends: normalize the key at the storage insert (senders bypass the zod schema), the insert IS the claim, a duplicate is its own outcome, a spent key stays spent.
+- [Picker widgets inside repeatable rows](rjsf-array-item-widget-inference.md) — vendor widget inference skips array `items`; a picker in a rules list needs an explicit `uiSchema` or it renders as a text box.
+- [Alerting once from a repeating scan](repeating-scan-alert-once.md) — exactly-once is the send-once key (config+day+what+threshold), checked BEFORE the flood budget; events themselves repeat freely.
+- [Dashboard widget registry glob depth](dashboard-widget-registry-glob-depth.md) — client registry globs ./*/*.tsx as `<dir>:<File>`; a SHARED card must sit above the widget dirs or it registers as a phantom widget.
