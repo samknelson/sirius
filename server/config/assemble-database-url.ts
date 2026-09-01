@@ -72,7 +72,7 @@ function envFlag(name: string): boolean {
  * Derived from the environment on every call, NOT from a flag set as a side
  * effect of {@link assembleDatabaseUrl}. It used to be the latter, which made
  * the answer depend on whether an entry point happened to have run: only
- * `production-entry.ts` and `migrate-entry.ts` call `assembleDatabaseUrl()`, so
+ * the production entry point calls `assembleDatabaseUrl()`, so
  * anything importing `server/storage/db` directly — `scripts/db-push.ts` does —
  * saw `false` regardless of `DB_IAM_AUTH`. With a password-less URL that
  * silently selects the password path and connects with an empty password, which

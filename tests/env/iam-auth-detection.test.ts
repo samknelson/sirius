@@ -3,7 +3,7 @@
  *
  * It used to return a module-level flag that only `assembleDatabaseUrl()` set.
  * That made the answer depend on whether an entry point had run: only
- * `production-entry.ts` and `migrate-entry.ts` call it, so anything importing
+ * `production-entry.ts` calls it, so anything importing
  * `server/storage/db` directly — `scripts/db-push.ts` does — saw `false` no
  * matter what `DB_IAM_AUTH` said. Combined with a password-less URL that
  * selects the password path and connects with an EMPTY password, which is
