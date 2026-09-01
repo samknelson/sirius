@@ -105,6 +105,24 @@ them across with `git checkout <merge-commit> -- <paths>` and confirm
 `git diff main <merge-commit>` is empty. Never merge the carrying branch into `main` to
 recover work (see above).
 
+## Converging the two branches: resolve on the branch, then copy to main
+
+When the carrying branch holds application work `main` lacks AND `main` has moved on, the
+repair is ordered, not symmetric: merge `main` into the carrying branch and resolve there
+FIRST, then copy the settled files onto `main` with `git checkout <branch> -- <paths>`.
+
+**Why:** resolving the same conflict separately on each side produces two textually different
+resolutions, so the branches still differ and the next merge conflicts again on the same
+hunk. Copying the already-settled text makes both trees byte-identical, which merges cleanly
+regardless of the divergent history. Copying (never merging) is also what keeps
+`.github/`/`deploy/` off `main` — see the merge-direction section above.
+
+**How to apply:** expect the carrying-branch-drift lint rule to fail on the intermediate
+commit — that failure is accurate and clears once `main` has the same files. Finish by
+proving `git diff --name-only main <branch>` lists only `.github/` and `deploy/`, and
+rehearse the next merge in a throwaway clone under `/tmp` so the workspace is never left
+mid-merge.
+
 **Working-tree consequence:** once the directories are tracked on the carrying branch again,
 `git checkout main` DELETES the on-disk copies — correct, and better than the alternative:
 an untracked copy sitting on `main` blocks `git checkout <carrying-branch>` with "untracked
