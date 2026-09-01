@@ -182,9 +182,24 @@ let poolInstance: NeonPool | pg.Pool;
 let dbInstance: NeonDatabase<typeof schema>;
 let tlsDescription: string;
 
+/**
+ * How long a connection checkout may take before it fails (Task #1350).
+ *
+ * Without this, `pool.connect()` waits forever: an unreachable or saturated
+ * database turns every boot step — and the wait for the schema bring-up lock,
+ * which needs a connection before it can even ask — into an indefinite hang
+ * with the process deliberately staying alive. A bounded checkout makes an
+ * unreachable database a NAMED boot failure instead.
+ */
+const connectionTimeoutMillis = (() => {
+  const raw = getEnvironmentVariable("DB_CONNECT_TIMEOUT_MS");
+  const parsed = raw === undefined ? NaN : Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 15_000;
+})();
+
 if (driverKind === "neon") {
   neonConfig.webSocketConstructor = ws;
-  poolInstance = new NeonPool({ connectionString: databaseUrl });
+  poolInstance = new NeonPool({ connectionString: databaseUrl, connectionTimeoutMillis });
   dbInstance = drizzleNeon({ client: poolInstance as NeonPool, schema });
   tlsDescription = "TLS terminated by the Neon WebSocket proxy";
   console.log("[db] driver=neon (serverless/WebSocket)");
@@ -200,8 +215,8 @@ if (driverKind === "neon") {
   // field and password in another — the sort of half-state that produced the
   // empty-token failure.
   const iamAuth = isIamAuth();
-  poolInstance = new pg.Pool(
-    buildPgPoolConfig(
+  poolInstance = new pg.Pool({
+    ...buildPgPoolConfig(
       databaseUrl,
       ssl,
       iamAuth,
@@ -210,7 +225,10 @@ if (driverKind === "neon") {
       iamAuth ? iamPasswordProvider(databaseUrl) : (async () => ""),
       stripSslParams,
     ),
-  );
+    // Bounded checkout applies on BOTH paths: an unreachable database must be a
+    // named boot failure whether we authenticate with a password or an IAM token.
+    connectionTimeoutMillis,
+  });
   dbInstance = drizzlePg({
     client: poolInstance as pg.Pool,
     schema,

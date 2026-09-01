@@ -3,6 +3,7 @@ import { requireAccess } from "../services/access-policy-evaluator";
 import { z } from "zod";
 import { serviceRegistry } from "../services/service-registry";
 import type { PostalTransport, PostalAddress } from "../services/comm/providers/postal";
+import { verifyPostalAddress } from "../services/comm/validators/address-verification";
 import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
 
 export function registerPostalConfigRoutes(app: Express) {
@@ -243,7 +244,10 @@ export function registerPostalConfigRoutes(app: Express) {
         };
         
         const postalTransport = await serviceRegistry.resolve<PostalTransport>('postal');
-        const result = await postalTransport.verifyAddress(address);
+        // A person on the config screen testing the provider: `force` because
+        // handing them a stored answer would report the vendor reachable
+        // without having reached it.
+        const result = await verifyPostalAddress(postalTransport, address, { mode: 'force' });
         
         res.json(result);
       } catch (error: any) {

@@ -42,11 +42,19 @@ const PROTECTED_BRANCH = "main";
 /**
  * Branches that must carry these directories. Each deployment branch keeps
  * its own copy; losing it silently breaks that environment's deploy.
+ *
+ * Exported because the sibling `check-carrying-branch-drift` rule asks the
+ * same question of the same branches — one list, or adding a deployment
+ * branch guards it against half the failures.
  */
-const CARRYING_BRANCHES = ["freeman-dev", "freeman-uat"];
+export const CARRYING_BRANCHES = ["freeman-dev", "freeman-uat"];
 
-/** Directories that must never be tracked on the protected branch. */
-const FORBIDDEN_PATHS = [".github", "deploy"];
+/**
+ * Directories that must never be tracked on the protected branch — and, seen
+ * from the carrying branch, the only paths that may differ from `main` there.
+ * Exported for the sibling rule that enforces that second reading.
+ */
+export const FORBIDDEN_PATHS = [".github", "deploy"];
 
 /** The one-line repair: untrack, leaving the on-disk copies alone. */
 const FIX_COMMAND = `git rm -r --cached ${FORBIDDEN_PATHS.join(" ")}`;

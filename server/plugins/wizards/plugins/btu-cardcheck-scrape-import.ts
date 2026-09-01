@@ -8,6 +8,12 @@ import { logger } from "../../../logger";
 import { sendInapp } from "../../../services/comm/senders/inapp";
 import { sendEmail } from "../../../services/comm/senders/email";
 import { getEnvironmentVariable, registerEnvironmentVariables } from "../../../config/env-registry";
+import { wcUncachedRequest } from "../../../services/webclient";
+import { isMaintenanceModeError } from "../../../services/maintenance-flag";
+import {
+  BTU_SCRAPE_FETCH_CARDCHECK,
+  BTU_SCRAPE_LOGIN,
+} from "../../../modules/sitespecific/btu/scrape-requests";
 
 // changeTakesEffect: "immediate" for both — loginToSite() reads them through
 // the registry at the start of each scrape run and nothing holds them between
@@ -59,30 +65,45 @@ async function loginToSite(page: Page): Promise<void> {
     );
   }
 
-  await page.goto(LOGIN_URL, { waitUntil: "networkidle2", timeout: 60000 });
+  const { error } = await wcUncachedRequest<true>({
+    service: "BTU",
+    requestType: BTU_SCRAPE_LOGIN,
+    fetch: async () => {
+      await page.goto(LOGIN_URL, { waitUntil: "networkidle2", timeout: 60000 });
 
-  const hasLoginForm = await page.evaluate(
-    () => !!document.querySelector("#edit-name"),
-  );
-  if (!hasLoginForm) {
-    const pageTitle = await page.title();
-    throw new Error(`Login form not found on page. Page title: ${pageTitle}`);
-  }
+      const hasLoginForm = await page.evaluate(
+        () => !!document.querySelector("#edit-name"),
+      );
+      if (!hasLoginForm) {
+        const pageTitle = await page.title();
+        return {
+          answered: false,
+          error: `Login form not found on page. Page title: ${pageTitle}`,
+        };
+      }
 
-  await page.type("#edit-name", username);
-  await page.type("#edit-pass", password);
-  await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 }),
-    page.click("#edit-submit"),
-  ]);
+      await page.type("#edit-name", username);
+      await page.type("#edit-pass", password);
+      await Promise.all([
+        page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 }),
+        page.click("#edit-submit"),
+      ]);
 
-  const hasLoginError = await page.evaluate(() => {
-    const errorMsg = document.querySelector(".messages.error, .error-message");
-    return errorMsg ? errorMsg.textContent?.trim() : null;
+      const hasLoginError = await page.evaluate(() => {
+        const errorMsg = document.querySelector(".messages.error, .error-message");
+        return errorMsg ? errorMsg.textContent?.trim() : null;
+      });
+      if (hasLoginError) {
+        return { answered: false, error: `Login failed: ${hasLoginError}` };
+      }
+
+      return { answered: true, value: true };
+    },
   });
-  if (hasLoginError) {
-    throw new Error(`Login failed: ${hasLoginError}`);
-  }
+
+  // Nothing downstream can work without a session, so a login that did not
+  // happen stops the run here, exactly as it always has.
+  if (error) throw new Error(error);
 }
 
 interface ScrapeResults {
@@ -270,87 +291,103 @@ export const btuCardcheckScrapeImportPlugin: WizardPlugin = {
                 continue;
               }
 
-              const cardcheckPageUrl = getCardcheckPageUrl(nid);
-              await page.goto(cardcheckPageUrl, {
-                waitUntil: "networkidle2",
-                timeout: 60000,
-              });
-              await delay(500);
+              const fetched = await wcUncachedRequest<Uint8Array>({
+                service: "BTU",
+                requestType: BTU_SCRAPE_FETCH_CARDCHECK,
+                fetch: async () => {
+                  const cardcheckPageUrl = getCardcheckPageUrl(nid);
+                  await page.goto(cardcheckPageUrl, {
+                    waitUntil: "networkidle2",
+                    timeout: 60000,
+                  });
+                  await delay(500);
 
-              const pageTitle = await page.title();
-              if (pageTitle.toLowerCase().includes("access denied")) {
-                throw new Error(`Access denied for NID ${nid}`);
-              }
-              if (
-                pageTitle.toLowerCase().includes("not found") ||
-                pageTitle.toLowerCase().includes("page not found")
-              ) {
-                throw new Error(`Page not found for NID ${nid}`);
-              }
-
-              const pagePdfBuffer = await page.pdf({
-                format: "Letter",
-                printBackground: true,
-              });
-
-              const attachedPdfUrls: string[] = await page.evaluate(() => {
-                const links = Array.from(
-                  document.querySelectorAll("a[href]"),
-                );
-                return links
-                  .map((a) => (a as HTMLAnchorElement).href)
-                  .filter((href) => href.toLowerCase().endsWith(".pdf"));
-              });
-
-              const cookies = await page.cookies();
-              const cookieString = cookies
-                .map((c) => `${c.name}=${c.value}`)
-                .join("; ");
-
-              let combinedPdfBytes: Uint8Array;
-              try {
-                const combinedDoc = await PDFDocument.create();
-                const pageDoc = await PDFDocument.load(pagePdfBuffer);
-                const pagePages = await combinedDoc.copyPages(
-                  pageDoc,
-                  pageDoc.getPageIndices(),
-                );
-                for (const p of pagePages) combinedDoc.addPage(p);
-
-                for (const pdfUrl of attachedPdfUrls) {
-                  try {
-                    const pdfFetchResponse = await fetch(pdfUrl, {
-                      headers: { Cookie: cookieString },
-                      redirect: "follow",
-                    });
-                    if (!pdfFetchResponse.ok) continue;
-                    const pdfArrayBuffer = await pdfFetchResponse.arrayBuffer();
-                    const pdfBuffer = Buffer.from(pdfArrayBuffer);
-                    if (pdfBuffer.length < 100) continue;
-                    const attachedDoc = await PDFDocument.load(pdfBuffer, {
-                      ignoreEncryption: true,
-                    });
-                    const attachedPages = await combinedDoc.copyPages(
-                      attachedDoc,
-                      attachedDoc.getPageIndices(),
-                    );
-                    for (const ap of attachedPages) combinedDoc.addPage(ap);
-                  } catch (attachErr) {
-                    logger.warn("Failed to download/parse attached PDF", {
-                      service: SERVICE,
-                      pdfUrl,
-                      error: attachErr,
-                    });
+                  const pageTitle = await page.title();
+                  if (pageTitle.toLowerCase().includes("access denied")) {
+                    return { answered: false, error: `Access denied for NID ${nid}` };
                   }
-                }
-                combinedPdfBytes = await combinedDoc.save();
-              } catch (combineErr) {
-                logger.warn("Failed to combine PDFs, using page PDF only", {
-                  service: SERVICE,
-                  error: combineErr,
-                });
-                combinedPdfBytes = new Uint8Array(pagePdfBuffer);
+                  if (
+                    pageTitle.toLowerCase().includes("not found") ||
+                    pageTitle.toLowerCase().includes("page not found")
+                  ) {
+                    return { answered: false, error: `Page not found for NID ${nid}` };
+                  }
+
+                  const pagePdfBuffer = await page.pdf({
+                    format: "Letter",
+                    printBackground: true,
+                  });
+
+                  const attachedPdfUrls: string[] = await page.evaluate(() => {
+                    const links = Array.from(
+                      document.querySelectorAll("a[href]"),
+                    );
+                    return links
+                      .map((a) => (a as HTMLAnchorElement).href)
+                      .filter((href) => href.toLowerCase().endsWith(".pdf"));
+                  });
+
+                  const cookies = await page.cookies();
+                  const cookieString = cookies
+                    .map((c) => `${c.name}=${c.value}`)
+                    .join("; ");
+
+                  let combinedPdfBytes: Uint8Array;
+                  try {
+                    const combinedDoc = await PDFDocument.create();
+                    const pageDoc = await PDFDocument.load(pagePdfBuffer);
+                    const pagePages = await combinedDoc.copyPages(
+                      pageDoc,
+                      pageDoc.getPageIndices(),
+                    );
+                    for (const p of pagePages) combinedDoc.addPage(p);
+
+                    for (const pdfUrl of attachedPdfUrls) {
+                      try {
+                        const pdfFetchResponse = await fetch(pdfUrl, {
+                          headers: { Cookie: cookieString },
+                          redirect: "follow",
+                        });
+                        if (!pdfFetchResponse.ok) continue;
+                        const pdfArrayBuffer = await pdfFetchResponse.arrayBuffer();
+                        const pdfBuffer = Buffer.from(pdfArrayBuffer);
+                        if (pdfBuffer.length < 100) continue;
+                        const attachedDoc = await PDFDocument.load(pdfBuffer, {
+                          ignoreEncryption: true,
+                        });
+                        const attachedPages = await combinedDoc.copyPages(
+                          attachedDoc,
+                          attachedDoc.getPageIndices(),
+                        );
+                        for (const ap of attachedPages) combinedDoc.addPage(ap);
+                      } catch (attachErr) {
+                        logger.warn("Failed to download/parse attached PDF", {
+                          service: SERVICE,
+                          pdfUrl,
+                          error: attachErr,
+                        });
+                      }
+                    }
+                    combinedPdfBytes = await combinedDoc.save();
+                  } catch (combineErr) {
+                    logger.warn("Failed to combine PDFs, using page PDF only", {
+                      service: SERVICE,
+                      error: combineErr,
+                    });
+                    combinedPdfBytes = new Uint8Array(pagePdfBuffer);
+                  }
+
+                  return { answered: true, value: combinedPdfBytes };
+                },
+              });
+
+              if (!fetched.value) {
+                throw new Error(
+                  fetched.error ||
+                    `Failed to fetch the card check page for NID ${nid}`,
+                );
               }
+              const combinedPdfBytes = fetched.value;
 
               const fileName = `cardcheck_scrape_${nid}.pdf`;
               const uploadResult = await fileSystemService.upload({
@@ -417,6 +454,10 @@ export const btuCardcheckScrapeImportPlugin: WizardPlugin = {
                 esigId: esig.id,
               });
             } catch (err) {
+              // A maintenance refusal stops the run rather than becoming a
+              // per-card error: nothing was fetched, and every remaining card
+              // would be refused for the same reason.
+              if (isMaintenanceModeError(err)) throw err;
               const errorMessage =
                 err instanceof Error ? err.message : "Unknown error";
               logger.error(`Scraper error for NID ${nid}`, {

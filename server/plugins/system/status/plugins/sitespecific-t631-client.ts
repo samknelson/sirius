@@ -4,6 +4,7 @@ import {
   getEnvironmentVariable,
   registerEnvironmentVariables,
 } from "../../../../config/env-registry";
+import { isMaintenanceModeError } from "../../../../services/maintenance-flag";
 
 // changeTakesEffect: "immediate" for all five — see the matching registration
 // in server/modules/sitespecific/t631/client/fetch.ts, whose getConfig()
@@ -76,6 +77,17 @@ registerSystemStatusPlugin({
         },
       ];
     } catch (error) {
+      // A maintenance refusal is not a broken remote service: nothing was
+      // asked. Reported as the refusal it is, in the guard's own words.
+      if (isMaintenanceModeError(error)) {
+        return [
+          {
+            priority: "notice",
+            title: "T631 service not contacted",
+            details: error.message,
+          },
+        ];
+      }
       return [
         {
           priority: "error",

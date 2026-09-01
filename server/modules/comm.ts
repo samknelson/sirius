@@ -9,6 +9,7 @@ import { sendInapp, markInappAsRead, markAllInappAsRead } from "../services/comm
 import { handleStatusCallback } from "../services/comm/callback-handlers/handler";
 import { serviceRegistry } from "../services/service-registry";
 import type { PostalTransport, PostalAddress } from "../services/comm/providers/postal";
+import { verifyPostalAddress } from "../services/comm/validators/address-verification";
 import { mapVerificationToDeliverabilityStatus, isTerminalDeliverabilityStatus } from "../services/comm/validators/address";
 import { broadcastAlertUpdate } from "../services/websocket";
 import { getEffectiveUser } from "./masquerade";
@@ -667,11 +668,14 @@ export function registerCommRoutes(
       }
 
       const address: PostalAddress = parsed.data;
-      const result = await postalProvider.verifyAddress(address);
+      const result = await verifyPostalAddress(postalProvider, address);
 
       // If addressId was provided AND verification succeeded, update deliverability_status
       // and apply terminal-status side-effect (markUndeliverable) so primary auto-promotion runs.
       if (typeof addressId === "string" && addressId && result.valid) {
+        // "Last verified" is when the vendor was asked, which for an answer
+        // served from the cache is not now.
+        const verifiedAt = result.verifiedAt ?? new Date();
         const status = mapVerificationToDeliverabilityStatus({
           valid: result.valid,
           deliverable: result.deliverable,
@@ -682,9 +686,9 @@ export function registerCommRoutes(
             // markUndeliverable handles status set + primary demotion + auto-promotion
             await storage.contacts.addresses.markUndeliverable(addressId);
             // Then explicitly set the precise terminal status (vacant vs undeliverable)
-            await storage.contacts.addresses.updateDeliverabilityStatus(addressId, status, new Date());
+            await storage.contacts.addresses.updateDeliverabilityStatus(addressId, status, verifiedAt);
           } else {
-            await storage.contacts.addresses.updateDeliverabilityStatus(addressId, status, new Date());
+            await storage.contacts.addresses.updateDeliverabilityStatus(addressId, status, verifiedAt);
           }
         } catch (sideEffectError) {
           console.error("Failed to apply verify-address side-effect:", sideEffectError);
@@ -822,7 +826,7 @@ export function registerCommRoutes(
       }
 
       const address: PostalAddress = parsed.data;
-      const result = await postalProvider.verifyAddress(address);
+      const result = await verifyPostalAddress(postalProvider, address);
 
       if (!result.valid || !result.canonicalAddress) {
         return res.status(400).json({
@@ -835,12 +839,19 @@ export function registerCommRoutes(
       const existingOptin = await postalOptinStorage.getPostalOptinByCanonicalAddress(result.canonicalAddress);
       
       if (existingOptin) {
-        const updated = await postalOptinStorage.updatePostalOptinByCanonicalAddress(result.canonicalAddress, {
-          deliverable: result.deliverable,
-          deliverabilityAnalysis: result.deliverabilityAnalysis as Record<string, unknown>,
-          validatedAt: new Date(),
-          validationResponse: result as unknown as Record<string, unknown>,
-        });
+        // The deliverability fields on the opt-in row are derived from the
+        // verification, and are written as the cache fills — not on every
+        // read of an answer already stored. The exception is a row that has
+        // never carried one: filling that gap is what the fields are for.
+        const record =
+          result.fromNetwork || !existingOptin.validatedAt
+            ? await postalOptinStorage.updatePostalOptinByCanonicalAddress(result.canonicalAddress, {
+                deliverable: result.deliverable,
+                deliverabilityAnalysis: result.deliverabilityAnalysis as Record<string, unknown>,
+                validatedAt: result.verifiedAt ?? new Date(),
+                validationResponse: result as unknown as Record<string, unknown>,
+              })
+            : existingOptin;
         
         res.json({
           valid: true,
@@ -848,7 +859,7 @@ export function registerCommRoutes(
           canonicalAddress: result.canonicalAddress,
           normalizedAddress: result.normalizedAddress,
           deliverabilityAnalysis: result.deliverabilityAnalysis,
-          optinRecord: updated,
+          optinRecord: record,
           created: false,
         });
       } else {
@@ -865,7 +876,9 @@ export function registerCommRoutes(
           allowlist: false,
           deliverable: result.deliverable,
           deliverabilityAnalysis: result.deliverabilityAnalysis as Record<string, unknown>,
-          validatedAt: new Date(),
+          // A brand new row carries the answer whether or not it was bought
+          // just now — but stamped with when the vendor was actually asked.
+          validatedAt: result.verifiedAt ?? new Date(),
           validationResponse: result as unknown as Record<string, unknown>,
         });
         

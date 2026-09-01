@@ -94,7 +94,11 @@ feature is simply absent from the running app.
 **Why:** the merge target is the branch that was checked out, and these branches are
 long-lived, so the commit sits on a line `main` never sees.
 
-**How to apply:** before believing a feature is on `main`, test reachability, not existence
+**How to apply:** an architecture-lint rule now catches this on the carrying branch itself —
+it fails when the branch changed anything outside `.github/`/`deploy/` that still differs
+from `main` (three-dot diff so "behind main" passes, two-dot so the repair clears it), and it
+stays silent on `main`, where the message would be unactionable. It only fires while that
+branch is checked out, so a hand check is still worth it: test reachability, not existence
 — `git merge-base --is-ancestor <merge-commit> main`. To recover, diff the tree
 (`git diff --stat main <merge-commit>`); if the differing paths are only the feature's, copy
 them across with `git checkout <merge-commit> -- <paths>` and confirm

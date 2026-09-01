@@ -68,7 +68,7 @@ export function WsClientLayout({ activeTab, children }: WsClientLayoutProps) {
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         <div className="text-center py-12">
           <p className="text-destructive mb-4">Client not found or failed to load.</p>
-          <Link href="/config/ws/clients">
+          <Link href="/admin/ws/clients">
             <Button variant="outline">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Clients
@@ -83,15 +83,15 @@ export function WsClientLayout({ activeTab, children }: WsClientLayoutProps) {
     <div className="container mx-auto px-4 py-8 max-w-6xl">
       <div className="flex items-center justify-between mb-6">
         <nav className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="breadcrumb">
-          <Link href="/config/ws/clients" className="hover:text-foreground transition-colors">
-            WS Clients
+          <Link href="/admin/ws/clients" className="hover:text-foreground transition-colors">
+            Web Services - Incoming
           </Link>
           <ChevronRight size={16} />
           <span className="text-foreground font-medium">
             {client.name}
           </span>
         </nav>
-        <Link href="/config/ws/clients">
+        <Link href="/admin/ws/clients">
           <Button variant="ghost" size="sm" data-testid="button-back">
             <ArrowLeft size={16} className="mr-2" />
             Back to Clients

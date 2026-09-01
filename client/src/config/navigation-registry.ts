@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
   CreditCard, Activity, Wallet, Settings, Shield, Key, KeyRound, FileText, 
-  Building2, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, Tag, RefreshCw, Radio, HelpCircle, FolderOpen, Terminal, Power, type LucideIcon
+  Building2, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, Tag, RefreshCw, Radio, HelpCircle, FolderOpen, Terminal, Power, Cloud, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -217,13 +217,16 @@ export const configSections: NavSection[] = [
     ],
   },
   {
+    // Both directions of third-party traffic, named by direction. Each item is
+    // one tabbed page, so the sidebar stops at the page and the tabs take it
+    // from there rather than the sidebar listing every view of both.
     id: "webservices",
     title: "Web Services",
-    description: "External API access and client management",
+    description: "Calls other people make to us, and calls we make to them",
     icon: Network,
     items: [
-      { path: "/config/ws/services", label: "Services", icon: Package, testId: "nav-config-ws-services", permission: "admin" },
-      { path: "/config/ws/clients", label: "Clients", icon: Key, testId: "nav-config-ws-clients", permission: "admin" },
+      { path: "/admin/ws", label: "Incoming", icon: Network, testId: "nav-config-ws", permission: "admin" },
+      { path: "/admin/wc", label: "Outgoing", icon: Cloud, testId: "nav-config-wc", permission: "admin" },
     ],
   },
 ];

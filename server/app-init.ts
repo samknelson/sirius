@@ -10,6 +10,7 @@ import { setupAuth } from "./auth";
 import { initAccessControl, registerEntityLoader } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
+import { installWebServiceMaintenanceGate } from "./modules/webservices/maintenance";
 import { cronScheduler } from "./cron";
 import { initializeCronPluginSystem } from "./plugins/system/cron";
 import { initializeDenormPluginSystem } from "./plugins/system/denorm";
@@ -75,6 +76,13 @@ export function redactSensitiveData(data: any): any {
  * requests that arrive during startup are parsed/logged consistently.
  */
 function installBaseMiddleware(app: Express): void {
+  // Before the parsers, deliberately: while the site is in maintenance mode
+  // every web service call is refused outright, and a malformed or oversized
+  // body must not be answered "your request is bad" when the real answer is
+  // "the site is down". Scoped to the web service mount; the site itself stays
+  // browsable during maintenance.
+  installWebServiceMaintenanceGate(app);
+
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 

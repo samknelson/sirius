@@ -45,8 +45,31 @@ import {
   getEnvironmentVariable,
   registerEnvironmentVariables,
 } from "../../../../config/env-registry";
+import {
+  registerUncachedWcRequest,
+  wcUncachedRequest,
+} from "../../../../services/webclient";
 
 export const FREEMAN_EDLS_MIGRATE_COMPONENT_ID = "sitespecific.freeman.edls_migrate";
+
+/**
+ * One framework entry for the whole client: every call is the same generic
+ * web-service request with a different action, and the action is data rather
+ * than a fixed list this module could enumerate.
+ *
+ * Never cached — the legacy system is being migrated FROM, so a stored answer
+ * would be a copy of data that is actively moving — and no writable database
+ * is needed, because nothing here writes anything down. What the caller does
+ * with the answer is the caller's decision.
+ */
+const EDLS_MIGRATE_REQUEST = "request";
+
+registerUncachedWcRequest({
+  service: "Freeman EDLS",
+  requestType: EDLS_MIGRATE_REQUEST,
+  operation: "contact the legacy Freeman EDLS system",
+  needsWritableDatabase: false,
+});
 
 export const FREEMAN_EDLS_MIGRATE_URL_VAR = "SITESPECIFIC_FREEMAN_EDLS_MIGRATE_URL";
 export const FREEMAN_EDLS_MIGRATE_USER_VAR = "SITESPECIFIC_FREEMAN_EDLS_MIGRATE_USER";
@@ -288,14 +311,35 @@ function echoReturned(parsed: unknown, token: string): boolean {
  * Send one request to the legacy service and describe the outcome.
  *
  * Never throws for a remote or network condition — every failure comes back as
- * a result an administrator can read.
+ * a result an administrator can read. The single exception is a
+ * `MaintenanceModeError` from the framework: nothing was asked, so there is no
+ * outcome to describe, and calling it a failed request would say the legacy
+ * system is unwell when it was never contacted. Routes turn it into the shared
+ * refusal.
  */
 export async function freemanEdlsMigrateRequest(
   spec: FreemanEdlsMigrateRequestSpec,
   options: { echoToken?: string } = {},
 ): Promise<FreemanEdlsMigrateResult> {
-  // ONE exit point for redaction: everything below may relay remote content.
-  return redactDeep(await performRequest(spec, options), secretForms());
+  let outcome: FreemanEdlsMigrateResult | undefined;
+
+  await wcUncachedRequest<FreemanEdlsMigrateResult>({
+    service: "Freeman EDLS",
+    requestType: EDLS_MIGRATE_REQUEST,
+    fetch: async () => {
+      outcome = await performRequest(spec, options);
+      return { answered: outcome.success, error: outcome.error };
+    },
+  });
+
+  // Only reachable if the framework declined to make the call, which this
+  // entry cannot ask for: it does not need a writable database.
+  if (!outcome) {
+    throw new Error(`The legacy Freeman EDLS request "${spec.action}" was not attempted.`);
+  }
+
+  // ONE exit point for redaction: everything above may relay remote content.
+  return redactDeep(outcome, secretForms());
 }
 
 async function performRequest(

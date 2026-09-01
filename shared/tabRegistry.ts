@@ -85,7 +85,17 @@ export type TabEntityType =
   | 'contract'
   | 'business_calendar'
   /** A unified-options type; the entity id is the type slug (e.g. `department`). */
-  | 'options';
+  | 'options'
+  /**
+   * The incoming web services page. A single admin page, not a row, so the
+   * entity id is the constant {@link WS_ADMIN_ENTITY_ID}.
+   */
+  | 'ws'
+  /**
+   * The outgoing web services page. A single admin page, not a row, so the
+   * entity id is the constant {@link WC_ADMIN_ENTITY_ID}.
+   */
+  | 'wc';
 
 /**
  * Tab check request for batch access evaluation
@@ -638,12 +648,12 @@ export const userTabTree: HierarchicalTab[] = [
  * Web service client entity tab tree
  */
 export const wsClientTabTree: HierarchicalTab[] = [
-  { id: 'settings', label: 'Settings', hrefTemplate: '/config/ws/clients/{id}', permission: 'admin' },
-  { id: 'credentials', label: 'Credentials', hrefTemplate: '/config/ws/clients/{id}/credentials', permission: 'admin' },
-  { id: 'ip-rules', label: 'IP Rules', hrefTemplate: '/config/ws/clients/{id}/ip-rules', permission: 'admin' },
-  { id: 'test', label: 'Test', hrefTemplate: '/config/ws/clients/{id}/test', permission: 'admin' },
-  { id: 'swagger', label: 'Swagger', hrefTemplate: '/config/ws/clients/{id}/swagger', permission: 'admin' },
-  { id: 'logs', label: 'Logs', hrefTemplate: '/config/ws/clients/{id}/logs', permission: 'admin' },
+  { id: 'settings', label: 'Settings', hrefTemplate: '/admin/ws/clients/{id}', permission: 'admin' },
+  { id: 'credentials', label: 'Credentials', hrefTemplate: '/admin/ws/clients/{id}/credentials', permission: 'admin' },
+  { id: 'ip-rules', label: 'IP Rules', hrefTemplate: '/admin/ws/clients/{id}/ip-rules', permission: 'admin' },
+  { id: 'test', label: 'Test', hrefTemplate: '/admin/ws/clients/{id}/test', permission: 'admin' },
+  { id: 'swagger', label: 'Swagger', hrefTemplate: '/admin/ws/clients/{id}/swagger', permission: 'admin' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/admin/ws/clients/{id}/logs', permission: 'admin' },
 ];
 
 export const sftpClientDestinationTabTree: HierarchicalTab[] = [
@@ -704,6 +714,35 @@ export const optionsTabTree: HierarchicalTab[] = [
   { id: 'export', label: 'Export', hrefTemplate: '/config/options/{id}/export', permission: 'admin' },
   { id: 'import', label: 'Import', hrefTemplate: '/config/options/{id}/import', permission: 'admin' },
 ];
+
+/**
+ * The two web services pages, one per direction of traffic.
+ *
+ * `ws` is what other people call on us, `wc` is what we call on other people —
+ * the code-level names, which stay in the URLs and everywhere else. What the
+ * screens are titled is the direction, because "web services" having "clients"
+ * and "web client" being something else again is not a distinction anyone
+ * should have to hold in their head to find a page.
+ *
+ * Neither is an entity: each is one admin page with several views of the same
+ * subject, so their hrefs carry no `{id}` and callers pass the page's constant
+ * id. Every tab is admin-only, matching the endpoints behind it.
+ */
+export const WS_ADMIN_ENTITY_ID = 'admin';
+
+export const wsTabTree: HierarchicalTab[] = [
+  { id: 'ws-services', label: 'Services', hrefTemplate: '/admin/ws/services', permission: 'admin' },
+  { id: 'ws-clients', label: 'Clients', hrefTemplate: '/admin/ws/clients', permission: 'admin' },
+  { id: 'ws-stats', label: 'Stats', hrefTemplate: '/admin/ws/stats', permission: 'admin' },
+];
+
+export const WC_ADMIN_ENTITY_ID = 'admin';
+
+export const wcTabTree: HierarchicalTab[] = [
+  { id: 'wc-overview', label: 'Overview', hrefTemplate: '/admin/wc/overview', permission: 'admin' },
+  { id: 'wc-cache', label: 'Cache', hrefTemplate: '/admin/wc/cache', permission: 'admin' },
+  { id: 'wc-stats', label: 'Stats', hrefTemplate: '/admin/wc/stats', permission: 'admin' },
+];
 /**
  * Entity tab trees by type
  */
@@ -741,6 +780,8 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   contract: contractTabTree,
   business_calendar: businessCalendarTabTree,
   options: optionsTabTree,
+  ws: wsTabTree,
+  wc: wcTabTree,
 };
 
 /**

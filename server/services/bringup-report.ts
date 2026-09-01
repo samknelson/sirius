@@ -92,8 +92,50 @@ export interface BringUpReport {
     /** One line per drift item; empty when the gate passed. */
     summary: string[];
   };
+  /** How this process's bring-up related to other tasks booting at once. */
+  concurrency: BringUpConcurrencyInfo;
   /** Set when the bring-up phase threw; names the phase and quotes the error. */
   failure: { phase: string; message: string } | null;
+}
+
+/**
+ * The outcome of contending for the schema bring-up lock (Task #1350).
+ *
+ * Kept as its own string union rather than imported from `boot-status.ts`:
+ * both modules are pure leaves reached at different points of the boot, and
+ * neither may grow an import. The two unions are intentionally the same
+ * vocabulary so a reader comparing /health to the report sees one word.
+ */
+export type BringUpConcurrencyOutcome =
+  | "not-run"
+  | "unlocked-report-only"
+  | "sole"
+  | "waited-and-proceeded"
+  | "deferred-to-peer"
+  | "peer-failed"
+  | "lock-timeout";
+
+/** What another booting task recorded about ITS bring-up run. */
+export interface BringUpPeerRun {
+  status: "in-progress" | "succeeded" | "failed";
+  /** Identifies the process that wrote it; not a hostname, just a boot id. */
+  bootId: string;
+  startedAt: string;
+  finishedAt: string | null;
+  /** Phase the peer was in when it failed. */
+  phase: string | null;
+  /** The peer's error message, verbatim. */
+  error: string | null;
+}
+
+export interface BringUpConcurrencyInfo {
+  outcome: BringUpConcurrencyOutcome;
+  /** Milliseconds spent waiting for the lock; null when never attempted. */
+  waitedMs: number | null;
+  /** The peer run this process observed, when there was one. */
+  peer: BringUpPeerRun | null;
+  /** Free-form lines explaining what was skipped or re-verified, and why. */
+  notes: string[];
 }
 
 const report: BringUpReport = {
@@ -112,6 +154,7 @@ const report: BringUpReport = {
   },
   components: null,
   drift: { status: "not-run", summary: [] },
+  concurrency: { outcome: "not-run", waitedMs: null, peer: null, notes: [] },
   failure: null,
 };
 
@@ -174,6 +217,19 @@ export function recordDriftOutcome(
   report.drift = { status, summary };
 }
 
+export function recordBringUpConcurrency(
+  outcome: BringUpConcurrencyOutcome,
+  details?: { waitedMs?: number | null; peer?: BringUpPeerRun | null },
+): void {
+  report.concurrency.outcome = outcome;
+  if (details && "waitedMs" in details) report.concurrency.waitedMs = details.waitedMs ?? null;
+  if (details && "peer" in details) report.concurrency.peer = details.peer ?? null;
+}
+
+export function recordBringUpConcurrencyNote(note: string): void {
+  report.concurrency.notes.push(note);
+}
+
 export function recordBringUpFailure(phase: string, message: string): void {
   report.failure = { phase, message };
 }
@@ -196,6 +252,25 @@ function describeState(state: DatabaseState): string {
       return "INITIALIZED (this app's `variables` table is present)";
     default:
       return "UNKNOWN (not classified)";
+  }
+}
+
+function describeConcurrency(outcome: BringUpConcurrencyOutcome): string {
+  switch (outcome) {
+    case "unlocked-report-only":
+      return "no lock taken (report-only writes nothing, so it cannot race)";
+    case "sole":
+      return "SOLE — the lock was free; this task did the bring-up alone";
+    case "waited-and-proceeded":
+      return "WAITED for another booting task, then did remaining work itself";
+    case "deferred-to-peer":
+      return "DEFERRED — another task brought the schema up; verified and skipped";
+    case "peer-failed":
+      return "PEER FAILED — another task's bring-up failed while this one waited";
+    case "lock-timeout":
+      return "TIMED OUT waiting for the lock (another task holds it, or died holding it)";
+    default:
+      return "not run";
   }
 }
 
@@ -283,6 +358,22 @@ export function formatBringUpReport(): string {
       }
     }
   }
+
+  section(lines, "Concurrent boot (schema bring-up lock)");
+  lines.push(`  outcome: ${describeConcurrency(r.concurrency.outcome)}`);
+  if (r.concurrency.waitedMs !== null) {
+    lines.push(`  waited:  ${r.concurrency.waitedMs} ms for the lock`);
+  }
+  if (r.concurrency.peer) {
+    const p = r.concurrency.peer;
+    lines.push(
+      `  peer:    boot ${p.bootId} ${p.status}` +
+        (p.finishedAt ? ` at ${p.finishedAt}` : ` (started ${p.startedAt})`),
+    );
+    if (p.phase) lines.push(`           phase: ${p.phase}`);
+    if (p.error) for (const line of p.error.split("\n")) lines.push(`           ${line}`);
+  }
+  for (const note of r.concurrency.notes) lines.push(`  ${note}`);
 
   section(lines, "Schema drift gate");
   lines.push(`  status: ${r.drift.status}`);

@@ -60,6 +60,7 @@ import { registerWorkerHoursRoutes } from "./modules/worker-hours";
 import { registerCronJobRoutes } from "./modules/system/cron";
 import { registerEventBusIntrospectRoutes } from "./modules/dev/event-bus-introspect";
 import { registerEbsInspectionRoutes } from "./modules/system/ebs";
+import { registerWcCacheAdminRoutes } from "./modules/system/wc-cache";
 import { registerEligibilityPluginRoutes } from "./modules/eligibility-plugins";
 import { registerTwilioRoutes } from "./modules/twilio";
 import { registerEmailConfigRoutes } from "./modules/email-config";
@@ -434,6 +435,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register read-only EBS (deferred event bus) inspection routes (admin)
   registerEbsInspectionRoutes(app);
+
+  // Register web client cache viewer routes (admin): what we asked third
+  // parties, what they answered, and a per-entry force-expire.
+  registerWcCacheAdminRoutes(app);
 
   // Charge plugin configs are served by the unified generic config routes
   // (registerPluginsConfigRoutes); the bespoke charge route was removed in

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { WsLayout } from "@/components/layouts/WebServicesLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -82,31 +83,32 @@ export default function WsClientsPage() {
 
   if (clientsLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" data-testid="loader-clients" />
-      </div>
+      <WsLayout activeTab="ws-clients">
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" data-testid="loader-clients" />
+        </div>
+      </WsLayout>
     );
   }
 
   if (clientsError) {
     return (
-      <Alert variant="destructive" data-testid="alert-error">
-        <AlertDescription>Failed to load clients. Please try again.</AlertDescription>
-      </Alert>
+      <WsLayout activeTab="ws-clients">
+        <Alert variant="destructive" data-testid="alert-error">
+          <AlertDescription>Failed to load clients. Please try again.</AlertDescription>
+        </Alert>
+      </WsLayout>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <WsLayout activeTab="ws-clients">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold" data-testid="heading-ws-clients">
-            Web Service Clients
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Manage external clients that can access your web service APIs
-          </p>
-        </div>
+        <p className="text-muted-foreground" data-testid="text-page-description">
+          External callers that may reach our web services. What each one is
+          allowed to call is granted per service, from the client's own Settings
+          tab.
+        </p>
         <Button onClick={() => setIsCreateOpen(true)} data-testid="button-create-client">
           <Plus className="h-4 w-4 mr-2" />
           Create Client
@@ -168,7 +170,7 @@ export default function WsClientsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <Link href={`/config/ws/clients/${client.id}`}>
+                        <Link href={`/admin/ws/clients/${client.id}`}>
                           <Button variant="ghost" size="icon" data-testid={`button-view-${client.id}`}>
                             <Eye className="h-4 w-4" />
                           </Button>
@@ -261,6 +263,6 @@ export default function WsClientsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </WsLayout>
   );
 }

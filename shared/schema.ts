@@ -147,6 +147,8 @@ export {
   insertWsClientCredentialSchema,
   wsClientIpRules,
   insertWsClientIpRuleSchema,
+  wsStats,
+  insertWsStatsSchema,
   type WsClientStatus,
   type InsertWsClient,
   type WsClient,
@@ -156,7 +158,22 @@ export {
   type WsClientCredential,
   type InsertWsClientIpRule,
   type WsClientIpRule,
+  type InsertWsStats,
+  type WsStats,
 } from "./schema/webservices/schema";
+
+export {
+  wcCache,
+  wcCacheOutcomeEnum,
+  insertWcCacheSchema,
+  wcStats,
+  insertWcStatsSchema,
+  type WcCacheOutcome,
+  type InsertWcCache,
+  type WcCache,
+  type InsertWcStats,
+  type WcStats,
+} from "./schema/webclient/schema";
 
 // Session storage table for Replit Auth
 export const sessions = pgTable(

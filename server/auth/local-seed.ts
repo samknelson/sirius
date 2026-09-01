@@ -234,7 +234,7 @@ async function ensureAdminRole(
     return;
   }
 
-  let target = grantingRoles[0] ?? null;
+  let target: (typeof grantingRoles)[number] | null = grantingRoles[0] ?? null;
 
   if (!target) {
     // Creating a role is only meaningful once the permission registry knows
@@ -258,12 +258,22 @@ async function ensureAdminRole(
     const name = existingNames.has(PREFERRED_ADMIN_ROLE_NAME)
       ? FALLBACK_ADMIN_ROLE_NAME
       : PREFERRED_ADMIN_ROLE_NAME;
-    target =
-      allRoles.find((r) => r.name === name) ??
-      (await storage.users.createRole({
-        name,
-        description: "Administrator role with all permissions",
-      }));
+    target = allRoles.find((r) => r.name === name) ?? null;
+    if (!target) {
+      try {
+        target = await storage.users.createRole({
+          name,
+          description: "Administrator role with all permissions",
+        });
+      } catch (error: any) {
+        // Lost a race with another booting task creating the same reserved
+        // role name (Task #1350: two services boot against one database).
+        // Adopt theirs — it is being built exactly the same way.
+        if (error?.code !== "23505") throw error;
+        target = (await storage.users.getAllRoles()).find((r) => r.name === name) ?? null;
+        if (!target) throw error;
+      }
+    }
 
     await storage.users.assignPermissionsToRoleBulk(target.id, permissionKeys);
     report.notes.push(

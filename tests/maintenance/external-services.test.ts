@@ -20,7 +20,9 @@
  * that changed, not a missing key or a broken import). `fetch` and the network
  * are stubbed to throw, so a passing run also proves nothing reached a vendor.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { wcCacheStorage } from "../../server/storage/wc-cache";
+import { getRawProcessEnv } from "../../server/config/env-registry";
 import {
   MaintenanceModeError,
   assertExternalServiceAllowed,
@@ -38,6 +40,8 @@ import { LocalEmailProvider } from "../../server/services/comm/providers/email/l
 import { LocalPostalProvider } from "../../server/services/comm/providers/postal/local";
 import { addressValidationService } from "../../server/services/comm/validators/address";
 import { lookupRepresentatives } from "../../server/services/google-civics";
+import { t631Fetch } from "../../server/modules/sitespecific/t631/client/fetch";
+import { freemanEdlsMigratePing } from "../../server/modules/sitespecific/freeman/edls-migrate/client";
 
 /** The address-validation shape (Google side). */
 const ADDRESS = {
@@ -106,6 +110,14 @@ function operations() {
     ],
     ["Google", "geocodeAddress", () => addressValidationService.geocodeAddress(ADDRESS)],
     ["Google", "lookupRepresentatives", () => lookupRepresentatives("1 Main St, Boston MA")],
+
+    // The two site-specific clients are written to answer rather than throw:
+    // every remote and network condition comes back as a result an operator
+    // reads on a diagnostics page. A refusal must NOT be converted into one of
+    // those — it would report the remote system as unwell when nobody asked it
+    // anything — so each is asserted the same way as a vendor call.
+    ["T631", "ping", () => t631Fetch("sirius_service_ping")],
+    ["Freeman EDLS", "ping", () => freemanEdlsMigratePing()],
   ] as const;
 }
 
@@ -170,7 +182,47 @@ describe("the refusal itself", () => {
   });
 });
 
+/**
+ * Forget every stored answer for the services asserted below.
+ *
+ * The cacheable operations now answer from the web client cache when a fresh
+ * answer is stored, and a stored answer is served without asking anybody —
+ * during maintenance too, deliberately, because reading a stored answer is not
+ * an outbound call. That includes a stored FAILURE, which is the hold that
+ * stops an outage becoming a retry storm.
+ *
+ * This suite asks the other question: when the vendor WOULD have to be asked,
+ * is it refused? So it starts from nothing stored. Without this, a run that
+ * stored a failure (this suite stubs the network to throw, so the
+ * maintenance-OFF half does exactly that) makes the NEXT run pass its
+ * refusals off as stored answers and fail.
+ */
+/**
+ * Give the civic lookup a key, if this machine has none.
+ *
+ * The refusal now comes from inside the framework request rather than from a
+ * guard at the top of the method, so the caller reads its key first. On a
+ * machine without one, "no key configured" answers before maintenance mode
+ * ever gets a say — a configuration difference, not the behavior under test.
+ * The network is stubbed to throw either way, so the key is never used.
+ */
+function ensureCivicKey(): void {
+  const env = getRawProcessEnv();
+  if (!env.GOOGLE_CIVICS_API_KEY) env.GOOGLE_CIVICS_API_KEY = "test-civic-key-never-sent";
+}
+
+async function forgetStoredAnswers(): Promise<void> {
+  for (const service of ["Google", "Census"]) {
+    const rows = await wcCacheStorage.list({ service, page: 1, pageSize: 500 });
+    for (const row of rows) await wcCacheStorage.deleteById(row.id);
+  }
+}
+
 describe("with maintenance ON, no vendor is reached", () => {
+  beforeAll(async () => {
+    ensureCivicKey();
+    await forgetStoredAnswers();
+  });
   beforeEach(() => setMaintenanceActive(true));
 
   for (const [service, name, run] of operations()) {

@@ -3,6 +3,8 @@ import { randomBytes } from "crypto";
 import { requireComponent } from "../../../components";
 import { z } from "zod";
 import { getEnvironmentVariable, registerEnvironmentVariables } from "../../../../config/env-registry";
+import { sendIfMaintenanceRefusal } from "../../../../services/maintenance-flag";
+import { registerUncachedWcRequest, wcUncachedRequest } from "../../../../services/webclient";
 
 // changeTakesEffect: "immediate" for all five. getConfig() re-reads every one
 // of them through the registry on each t631Fetch call and keeps nothing
@@ -89,7 +91,66 @@ const VALID_ACTIONS = [
 
 type T631Action = typeof VALID_ACTIONS[number];
 
+/**
+ * One uncached framework entry per action.
+ *
+ * Registered in a loop because the action IS the request type — a new member
+ * of VALID_ACTIONS is a new outbound operation, and a list that had to be
+ * extended by hand alongside it would quietly leave the new one ungated.
+ *
+ * None of them needs a writable database: t631Fetch records nothing itself, it
+ * hands the remote system's answer back to a caller that decides what to keep,
+ * and the diagnostics page that runs a ping is exactly what an operator
+ * reaches for while the site is read-only.
+ */
+for (const action of VALID_ACTIONS) {
+  registerUncachedWcRequest({
+    service: "T631",
+    requestType: action,
+    operation: `run ${action}`,
+    needsWritableDatabase: false,
+  });
+}
+
+/**
+ * Ask the remote T631 service for one action.
+ *
+ * Never throws for a remote or network condition — every one of those comes
+ * back as a result the diagnostics page can show. The single exception is a
+ * `MaintenanceModeError`, which is deliberately left to propagate: it is not
+ * something T631 said, and describing it as a failed request would tell an
+ * operator the remote system is broken when nobody asked it anything. Callers
+ * either report it as the refusal it is or let it reach the route, where
+ * `sendIfMaintenanceRefusal` answers with the shared wording.
+ */
 export async function t631Fetch(action: T631Action): Promise<T631FetchResult> {
+  // Missing configuration has always been thrown rather than reported as a
+  // failed request, so it is carried back out as itself.
+  let thrown: unknown;
+  let outcome: T631FetchResult | undefined;
+
+  await wcUncachedRequest<T631FetchResult>({
+    service: "T631",
+    requestType: action,
+    fetch: async () => {
+      try {
+        outcome = await performT631Fetch(action);
+        return { answered: outcome.success, error: outcome.error };
+      } catch (error) {
+        thrown = error;
+        return { answered: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  });
+
+  if (outcome) return outcome;
+  if (thrown !== undefined) throw thrown;
+  // Only reachable if the framework declined to make the call, which this
+  // entry cannot ask for: it does not need a writable database.
+  throw new Error(`T631 ${action} was not attempted.`);
+}
+
+async function performT631Fetch(action: T631Action): Promise<T631FetchResult> {
   const startTime = Date.now();
   const timestamp = new Date().toISOString();
 
@@ -216,6 +277,7 @@ export function registerT631ClientFetchRoutes(
 
         res.json(result);
       } catch (error) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         const message = error instanceof Error ? error.message : "Failed to execute T631 fetch";
         res.status(500).json({ message });
       }
@@ -264,6 +326,7 @@ export function registerT631ClientFetchRoutes(
 
         res.json({ dryRun, ...syncResult });
       } catch (error) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         const message = error instanceof Error ? error.message : "Failed to sync T631 worker EINs";
         res.status(500).json({ message });
       }

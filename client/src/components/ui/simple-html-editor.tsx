@@ -837,7 +837,7 @@ export function SimpleHtmlEditor({
       <style>{`
         [contenteditable][data-placeholder]:empty:before {
           content: attr(data-placeholder);
-          color: hsl(var(--muted-foreground));
+          color: var(--muted-foreground);
           pointer-events: none;
           position: absolute;
         }
@@ -862,7 +862,7 @@ export function SimpleHtmlEditor({
           margin: 0.25rem 0;
         }
         [contenteditable] a {
-          color: hsl(var(--primary));
+          color: var(--primary);
           text-decoration: underline;
         }
         [contenteditable] a:hover {
