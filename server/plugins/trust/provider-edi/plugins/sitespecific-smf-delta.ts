@@ -19,22 +19,38 @@ import { clientGroupIdsByWorker, readModeIndicator } from "./sitespecific-smf-sh
 /**
  * SMF — Delta Dental eligibility EDI file.
  *
- * Port of the legacy `edi_delta.inc`. Fixed-width, 2000-character records:
- * a "10" header record (group ID, reporting/as-of date, production/test
- * indicator, file-create date), one "30" detail record per subscriber and
- * covered dependent, and a "90" trailer whose record count is the number
- * of detail records + 2 (header + trailer), matching the legacy count.
+ * Conforms to the Delta Dental "Enterprise Standard File Layout (SFL)
+ * Traders Handbook" ver 1.1 (full-file exchange): fixed-width 2,000-byte
+ * records — a "10" file-level header (group ID, reporting date,
+ * production/test indicator, file create date/time), one "30" Individual
+ * Eligibility record per covered subscriber and dependent, and a "90"
+ * trailer whose record count is the TOTAL number of records on the file
+ * (details + header + trailer).
+ *
+ * Field-by-field mapping, blank-field rationale, and open carrier
+ * questions are documented in `docs/edi/smf-delta-dental.md`. The
+ * conformance/golden tests live in `tests/edi/delta-edi.test.ts` with the
+ * handbook layout pinned in `tests/edi/fixtures/legacy-layouts.ts`.
  *
  * The medical-plan-derived client group ID (MLK → SMM00, HealthNet →
  * SMH00, Kaiser → SMK00) is computed per subscriber and carried on each
- * row for the preview/report; as in the legacy layout it is not part of
- * the fixed-width detail record itself.
+ * row for the preview/report only; it is not part of the fixed-width
+ * detail record.
  *
- * QMSCO responsible-party ("Contact ...") fields have no source in the
- * current model and emit spaces.
+ * Optional handbook fields with no authoritative S2 source (residence
+ * address, QMSCO responsible-party "Contact" block, COB block, provider
+ * assignment, ethnicity/language/Medicare, name suffixes) intentionally
+ * emit spaces — never invented data.
  */
 
-const GROUP_ID = "17975";
+/** Delta-assigned five-digit group number (config `groupId` overrides). */
+const DEFAULT_GROUP_ID = "17975";
+
+/** The run's Delta group ID: config-level override, else the SMF default. */
+export function effectiveGroupId(ctx: TrustProviderEdiContext): string {
+  const raw = (ctx.configData ?? {}).groupId;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : DEFAULT_GROUP_ID;
+}
 
 const HEADER_FIELDS: EdiField[] = [
   { name: "Record Type", width: 2, get: () => "10" },
@@ -44,7 +60,7 @@ const HEADER_FIELDS: EdiField[] = [
   { name: "File Type", width: 1, get: (r) => str(r.fileType) },
   { name: "Report Set ID", width: 12 },
   { name: "File create date", width: 8, get: (r) => str(r.fileCreateDate) },
-  { name: "File create time", width: 6 },
+  { name: "File create time", width: 6, get: (r) => str(r.fileCreateTime) },
   { name: "Filler", width: 1953 },
 ];
 
@@ -105,7 +121,7 @@ const DETAIL_FIELDS: EdiField[] = [
   { name: "Member Work Phone", width: 14 },
   { name: "Member Work Phone Extension", width: 5 },
   { name: "Member Cell Phone", width: 14 },
-  { name: "Member Email Address", width: 64 },
+  { name: "Member Email Address", width: 64, get: (r) => str(r.email) },
   { name: "Contact Last Name", width: 35 },
   { name: "Contact First Name", width: 25 },
   { name: "Contact Middle Name", width: 25 },
@@ -157,25 +173,39 @@ export function encodeDeltaRow(row: Record<string, unknown>): string {
   return encodeFixedWidthRow(DETAIL_FIELDS, row);
 }
 
-export function encodeDeltaHeader(ctx: TrustProviderEdiContext): string {
-  const today = new Date().toISOString().slice(0, 10);
+export function encodeDeltaHeader(
+  ctx: TrustProviderEdiContext,
+  now: Date = new Date(),
+): string {
+  const iso = now.toISOString();
   return encodeFixedWidthRow(HEADER_FIELDS, {
-    groupId: GROUP_ID,
+    groupId: effectiveGroupId(ctx),
     reportingDate: ymdCompact(readAsOfYmd(ctx)),
     fileType: readModeIndicator(ctx),
-    fileCreateDate: ymdCompact(today),
+    fileCreateDate: ymdCompact(iso.slice(0, 10)),
+    // Handbook: creation time of the input file, HHMMSS.
+    fileCreateTime: iso.slice(11, 19).replace(/:/g, ""),
   });
 }
 
 export function encodeDeltaTrailer(aggregates: EdiBatchAggregates): string {
   return encodeFixedWidthRow(TRAILER_FIELDS, {
-    // Legacy trailer counts every record in the file: details + header + trailer.
+    // Handbook: "Total number of records on the file including header and
+    // trailer records" — details + 2.
     recordCount: String(aggregates.detailRecordCount + 2),
   });
 }
 
 /**
- * Relation-type sirius id → Delta member classification.
+ * Relation-type sirius id → Delta member classification (handbook
+ * positions 213–216; configured values 10/11/12/13/20/21/30/31/32/33/40).
+ *
+ * Handbook meanings: 10 Subscriber, 20 Spouse, 21 Domestic Partner,
+ * 30 Child, 32 Disabled Child, 40 Other Adult (LDA). The QMSCO → 13
+ * mapping is the established SMF/Delta arrangement carried over from the
+ * legacy feed (the handbook labels 13 "Non-Covered Subscriber") — see the
+ * open-questions section of docs/edi/smf-delta-dental.md.
+ *
  * S1-taxonomy rulings (2026-08-05): RP (QMSCO variant) → 13 like QMSCO;
  * EX (Ex Spouse, retired "ES") is explicitly blank — never spouse-like.
  */
@@ -222,6 +252,13 @@ registerTrustProviderEdiPlugin({
   configSchema: {
     type: "object",
     properties: {
+      groupId: {
+        type: "string",
+        title: "Delta Group ID",
+        default: DEFAULT_GROUP_ID,
+        description:
+          "Five-digit group number assigned by Delta Dental (header and detail positions 3–7).",
+      },
       benefitSiriusId: {
         type: "string",
         title: "Benefit Sirius ID",
@@ -259,18 +296,28 @@ registerTrustProviderEdiPlugin({
       },
     },
   },
+  // Carrier-facing preview columns only — every column is a value that
+  // lands in the delivered record (or the report-only client group ID);
+  // no internal or S1 diagnostic identifiers.
   getColumns() {
     return [
       { id: "memberClassification", header: "Class", type: "string", width: 70 },
-      { id: "subscriberName", header: "Subscriber", type: "string", width: 200 },
-      { id: "memberName", header: "Member", type: "string", width: 200 },
+      { id: "subscriberName", header: "Subscriber", type: "string", width: 180 },
+      { id: "subscriberSsn", header: "Subscriber ID", type: "string", width: 110 },
+      { id: "memberName", header: "Member", type: "string", width: 180 },
+      { id: "memberSsn", header: "Member SSN", type: "string", width: 100 },
+      { id: "gender", header: "Gender", type: "string", width: 70 },
+      { id: "birthDate", header: "Birth Date", type: "string", width: 100 },
       { id: "divisionId", header: "Division", type: "string", width: 90 },
       { id: "clientGroupId", header: "Client Group", type: "string", width: 110 },
-      { id: "memberSsn", header: "SSN", type: "string", width: 100 },
-      { id: "birthDate", header: "Birth Date", type: "string", width: 100 },
-      { id: "coverageStart", header: "Coverage Start", type: "string", width: 110 },
+      { id: "coverageStart", header: "Elig. Effective", type: "string", width: 110 },
+      { id: "coverageEnd", header: "Elig. Termination", type: "string", width: 120 },
+      { id: "street", header: "Mailing Address", type: "string", width: 180 },
       { id: "city", header: "City", type: "string", width: 130 },
       { id: "state", header: "State", type: "string", width: 60 },
+      { id: "zip", header: "Zip", type: "string", width: 90 },
+      { id: "phone", header: "Home Phone", type: "string", width: 110 },
+      { id: "email", header: "Email", type: "string", width: 180 },
     ];
   },
 
@@ -282,7 +329,7 @@ registerTrustProviderEdiPlugin({
     for (const unit of units) {
       const { wmb, subscriber } = unit;
       const shared = {
-        groupId: GROUP_ID,
+        groupId: effectiveGroupId(ctx),
         divisionId: deltaDivisionId(unit.isCobra),
         clientGroupId: groupIds.get(wmb.workerId) ?? "",
         subscriberSsn: padSsn(subscriber.ssn),
@@ -308,6 +355,7 @@ registerTrustProviderEdiPlugin({
         state: subscriber.postal?.state ?? "",
         zip: zip15(subscriber.postal?.postalCode),
         phone: phoneDigits(subscriber.phoneNumber),
+        email: subscriber.email ?? "",
       });
 
       // Dependent detail records.
@@ -328,6 +376,7 @@ registerTrustProviderEdiPlugin({
           state: dep.postal?.state ?? "",
           zip: zip15(dep.postal?.postalCode),
           phone: phoneDigits(dep.phoneNumber),
+          email: dep.email ?? "",
         });
       }
     }
