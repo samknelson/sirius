@@ -40,7 +40,12 @@ function WorkerGrievancesContent() {
   const appealOnly = hasComponent(APPEAL_ONLY_COMPONENT);
 
   const { data: grievances = [], isLoading } = useQuery<GrievanceListItem[]>({
-    queryKey: ["/api/grievances", { workerId: worker.id }],
+    // In appeal-only mode legacy generic grievances stay hidden here, the
+    // same way the main list filters to appeals.
+    queryKey: [
+      "/api/grievances",
+      appealOnly ? { workerId: worker.id, kind: "appeal" } : { workerId: worker.id },
+    ],
   });
 
   return (

@@ -100,8 +100,22 @@ export function isAppealRecord(grievance: Pick<GrievanceWithDetails, "data">): b
   return (grievance.data as any)?.[APPEAL_META_KEY]?.kind === "appeal";
 }
 
-function grievanceTitle(grievance: GrievanceWithDetails): string {
-  const noun = isAppealRecord(grievance) ? "Appeal" : "Grievance";
+/**
+ * Whether a record should be PRESENTED as an appeal. On the BAO appeal-only
+ * surface every record is called an appeal — including legacy generic
+ * grievances reached by direct URL — so wording never mixes nouns. Outside
+ * BAO, the record's own appeal metadata decides.
+ */
+export function useAppealPresentation(
+  grievance?: Pick<GrievanceWithDetails, "data"> | null,
+): boolean {
+  const { hasComponent } = useAuth();
+  if (hasComponent(APPEAL_ONLY_COMPONENT)) return true;
+  return grievance ? isAppealRecord(grievance) : false;
+}
+
+function grievanceTitle(grievance: GrievanceWithDetails, isAppeal: boolean): string {
+  const noun = isAppeal ? "Appeal" : "Grievance";
   if (grievance.name && grievance.name.trim()) return grievance.name;
   if (grievance.categoryName) return `${grievance.categoryName} ${noun}`;
   return `${noun} ${grievance.id.slice(0, 8)}`;
@@ -179,11 +193,11 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
     });
 
   const { hasComponent } = useAuth();
-  // Appeal-only (BAO) surface: every record is an appeal, so navigation and
-  // fallback copy talk about appeals. For a loaded record, its own appeal
-  // metadata decides the noun (mixed deployments show both kinds).
+  // Appeal-only (BAO) surface: every record is presented as an appeal —
+  // including legacy generic grievances reached by direct URL. Outside BAO,
+  // the record's own appeal metadata decides the noun.
   const appealOnly = hasComponent(APPEAL_ONLY_COMPONENT);
-  const isAppeal = grievance ? isAppealRecord(grievance) : appealOnly;
+  const isAppeal = appealOnly || (grievance ? isAppealRecord(grievance) : false);
   const listLabel = appealOnly ? "Back to Appeals" : "Back to Grievances";
   const noun = isAppeal ? "Appeal" : "Grievance";
 
@@ -192,7 +206,7 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
   const activeRoot = getActiveRoot(activeTab);
   const subTabs = activeRoot?.children;
 
-  usePageTitle(grievance ? grievanceTitle(grievance) : undefined);
+  usePageTitle(grievance ? grievanceTitle(grievance, isAppeal) : undefined);
 
   const isLoading = grievanceLoading;
 
@@ -308,7 +322,7 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
                   className="text-xl font-semibold text-foreground"
                   data-testid={`text-grievance-title-${grievance.id}`}
                 >
-                  {grievanceTitle(grievance)}
+                  {grievanceTitle(grievance, isAppeal)}
                 </h1>
               </div>
               <div className="flex items-center space-x-4">

@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GrievanceLayout, useGrievanceLayout, isAppealRecord } from "@/components/layouts/GrievanceLayout";
+import { GrievanceLayout, useGrievanceLayout, isAppealRecord, useAppealPresentation } from "@/components/layouts/GrievanceLayout";
 import { GrievanceForm, type GrievanceFormValues } from "@/components/grievances/grievance-form";
 import { GrievanceWorkerManager } from "@/components/grievances/grievance-worker-section";
 import { GrievanceEmployerManager } from "@/components/grievances/grievance-employer-section";
@@ -32,7 +32,11 @@ function GrievanceEditContent() {
   const showContract = hasComponent("grievance.contract");
   // Appeals reuse the grievance record but are always individual cases; the
   // form hides the generic creation choices and labels the record an appeal.
+  // Form BEHAVIOR (hidden fields, forced individual cardinality) follows the
+  // record's own metadata so a legacy generic record on the BAO surface keeps
+  // its cardinality/class data intact; WORDING follows the surface.
   const isAppeal = isAppealRecord(grievance);
+  const appealWording = useAppealPresentation(grievance);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (values: GrievanceFormValues) => {
@@ -51,11 +55,11 @@ function GrievanceEditContent() {
       });
       await queryClient.invalidateQueries({ queryKey: ["/api/grievances"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/grievances", grievance.id] });
-      toast({ title: isAppeal ? "Appeal updated" : "Grievance updated" });
+      toast({ title: appealWording ? "Appeal updated" : "Grievance updated" });
       navigate(`/grievance/${grievance.id}`);
     } catch (error: any) {
       toast({
-        title: isAppeal ? "Failed to update appeal" : "Failed to update grievance",
+        title: appealWording ? "Failed to update appeal" : "Failed to update grievance",
         description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });

@@ -16,10 +16,8 @@ Appeals are individual grievances with `data.appealMeta.kind = "appeal"` — no 
 - Migration: `scripts/migrate/components/grievance/030_create_options_grievance_denial_reason.ts` (component `grievance`, version 30).
 
 ## BAO appeal-only mode
-- BAO enablement (`isComponentEnabled("sitespecific.bao")` server / `hasComponent(APPEAL_ONLY_COMPONENT)` client) makes the grievance surface appeal-only: generic `POST /api/grievances` returns 403, list/detail/edit/history pages relabel as Appeals, `/grievances/add` redirects to `/grievances/appeal`.
-- Appeal defaults are one variables row `sitespecific.bao.appeal_workflow` (`{ initialStatusId, timelineTemplateId }`), Zod-validated via `appealWorkflowSettingsSchema` and registered in the variable registry. In BAO mode intake ignores client statusId and applies these; missing/stale config → 409 with an actionable message. Non-BAO deployments still require an explicit statusId (400 without one).
-- New exports from `shared/schema/grievance/schema.ts` MUST also be added to the named re-export list in `shared/schema.ts` (the barrel is selective; typecheck catches it, but a missed name means undefined at runtime in dev).
-- The edit page's status card syncs `selectedStatusId` from the refreshed grievance's `currentStatusId` via useEffect — the status-history POST invalidates the grievance query and the card must follow the refreshed data, not its initial state.
+- **Decision:** BAO component enablement selects an appeal-only product surface on the shared grievance infrastructure — no mode flag of its own, no second case system. Generic creation is refused server-side; every list/entity-scoped query on the surface filters `kind=appeal`; WORDING follows the surface (legacy generic records reached by direct URL are presented as appeals) while form BEHAVIOR follows the record's own metadata so legacy cardinality/class data is never coerced.
+- **Decision:** appeal intake defaults (initial status + timeline template) are configuration, not user choice: one registry-validated variables row, applied server-side; missing or stale config refuses intake with an actionable conflict rather than silently picking a status. Non-BAO deployments keep the explicit-status contract.
 
 ## Integration tests
 - Test file: `tests/grievances/appeal-intake.test.ts`

@@ -648,6 +648,49 @@ describe("BAO appeal-only mode", () => {
     } as any);
   });
 
+  it("worker-scoped list with kind=appeal hides legacy generic grievances", async () => {
+    // A legacy generic grievance can predate BAO enablement. Create one via
+    // the generic route with BAO briefly off (the route is 403 in BAO mode).
+    await updateComponentCache(BAO, false);
+    const legacyRes = await request("/api/grievances", {
+      method: "POST",
+      user: staffId,
+      body: JSON.stringify({ categoryId, cardinality: "individual" }),
+    });
+    expect(legacyRes.status).toBe(201);
+    const legacy = await legacyRes.json();
+    const linkRes = await request(`/api/grievances/${legacy.id}/workers`, {
+      method: "POST",
+      user: staffId,
+      body: JSON.stringify({ workerId }),
+    });
+    expect(linkRes.status).toBe(201);
+    await updateComponentCache(BAO, true);
+
+    // An appeal for the same worker via the BAO intake path.
+    const appealRes = await request("/api/grievances/appeal", {
+      method: "POST",
+      user: staffId,
+      body: JSON.stringify({ categoryId, workerId, benefitId, denialReasonId }),
+    });
+    expect(appealRes.status).toBe(201);
+    const appeal = await appealRes.json();
+
+    // The worker tab's BAO query (workerId + kind=appeal) shows only appeals.
+    const filtered = await (
+      await request(`/api/grievances?workerId=${workerId}&kind=appeal`, { user: staffId })
+    ).json();
+    expect(filtered.some((g: any) => g.id === appeal.id)).toBe(true);
+    expect(filtered.some((g: any) => g.id === legacy.id)).toBe(false);
+
+    // Without the kind filter the legacy record is still reachable (data is
+    // hidden from the appeal surface, not lost).
+    const unfiltered = await (
+      await request(`/api/grievances?workerId=${workerId}`, { user: staffId })
+    ).json();
+    expect(unfiltered.some((g: any) => g.id === legacy.id)).toBe(true);
+  }, 30_000);
+
   it("non-BAO behavior is restored when the component is disabled", async () => {
     await updateComponentCache(BAO, false);
     try {

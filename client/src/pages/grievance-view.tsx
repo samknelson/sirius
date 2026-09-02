@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   GrievanceLayout,
   useGrievanceLayout,
+  useAppealPresentation,
 } from "@/components/layouts/GrievanceLayout";
 import { GRIEVANCE_CARDINALITY_LABELS } from "@/components/grievances/grievance-form";
 import { GrievanceContractSummary } from "@/components/grievances/grievance-contract-section";
@@ -41,6 +42,9 @@ function GrievanceDetailsContent() {
     (grievance as any).data?.appealMeta?.kind === "appeal"
       ? (grievance as any).data.appealMeta
       : null;
+  // Wording follows the surface: on the BAO appeal-only surface even a legacy
+  // generic record is presented as an appeal.
+  const appealWording = useAppealPresentation(grievance);
 
   const { data: appealBenefits = [] } = useQuery<BenefitItem[]>({
     queryKey: ["/api/grievances/appeal/benefits"],
@@ -110,7 +114,7 @@ function GrievanceDetailsContent() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">
-                  {appealMeta ? "Appeal ID" : "Grievance ID"}
+                  {appealWording ? "Appeal ID" : "Grievance ID"}
                 </label>
                 <p className="text-foreground" data-testid="text-grievance-sirius-id">
                   {grievance.siriusId || "—"}
