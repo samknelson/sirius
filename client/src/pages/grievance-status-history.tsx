@@ -41,7 +41,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { GrievanceLayout, useGrievanceLayout } from "@/components/layouts/GrievanceLayout";
+import { GrievanceLayout, useGrievanceLayout, isAppealRecord } from "@/components/layouts/GrievanceLayout";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -159,8 +159,9 @@ function TimelineTemplateCard() {
             </Select>
           )}
           <p className="text-sm text-muted-foreground">
-            Associate a timeline template with this grievance, or choose None to
-            clear it. Computed steps appear on the Timeline tab.
+            Associate a timeline template with this{" "}
+            {isAppealRecord(grievance) ? "appeal" : "grievance"}, or choose None
+            to clear it. Computed steps appear on the Timeline tab.
           </p>
         </div>
         <Button
@@ -347,7 +348,8 @@ function GrievanceStatusHistoryContent() {
           </div>
         ) : entries.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4" data-testid="text-no-status-history">
-            No status history yet. Add an entry to set this grievance's status.
+            No status history yet. Add an entry to set this{" "}
+            {isAppealRecord(grievance) ? "appeal" : "grievance"}'s status.
           </p>
         ) : (
           <Table>
@@ -429,7 +431,8 @@ function GrievanceStatusHistoryContent() {
           <DialogHeader>
             <DialogTitle>{editingEntry ? "Edit Entry" : "Add Entry"}</DialogTitle>
             <DialogDescription>
-              The entry with the latest date becomes the grievance's current
+              The entry with the latest date becomes the{" "}
+              {isAppealRecord(grievance) ? "appeal" : "grievance"}'s current
               status. Dates may be in the past but not in the future.
             </DialogDescription>
           </DialogHeader>
@@ -583,7 +586,7 @@ function GrievanceStatusHistoryContent() {
             <AlertDialogTitle>Delete this entry?</AlertDialogTitle>
             <AlertDialogDescription>
               {deleteTarget?.isCurrent
-                ? "This is the current status entry. Deleting it will make the next most recent entry current, or leave the grievance with no status."
+                ? `This is the current status entry. Deleting it will make the next most recent entry current, or leave the ${isAppealRecord(grievance) ? "appeal" : "grievance"} with no status.`
                 : "This status history entry will be permanently removed."}
             </AlertDialogDescription>
           </AlertDialogHeader>

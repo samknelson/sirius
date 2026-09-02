@@ -37,11 +37,14 @@ export const GRIEVANCE_CARDINALITY_LABELS: Record<GrievanceCardinality, string> 
   class: "Class",
 };
 
+// `statusId` is optional: the current status is derived from status history
+// (managed by the dedicated status card / Status History tab), and the create
+// route ignores it — so an empty selection must never block a save.
 const grievanceFormSchema = z.object({
   siriusId: z.string().optional(),
   classDescription: z.string().optional(),
   cardinality: z.enum(GRIEVANCE_CARDINALITIES),
-  statusId: z.string().uuid("Please select a status"),
+  statusId: z.string().optional(),
   categoryId: z.string().uuid("Please select a category"),
   bargainingUnitId: z.string().optional(),
 });
@@ -56,6 +59,13 @@ interface GrievanceFormProps {
   submitLabel: string;
   isSubmitting?: boolean;
   canEditSiriusId?: boolean;
+  /**
+   * "appeal" renders the appeal-aware variant: the record is labeled an
+   * appeal and the generic creation choices that never apply to an appeal
+   * (status picker, cardinality, class description) are not shown — an
+   * appeal is always an individual case whose status lives in its history.
+   */
+  variant?: "grievance" | "appeal";
   onCardinalityChange?: (cardinality: GrievanceCardinality) => void;
   renderWorkerSection?: (cardinality: GrievanceCardinality) => ReactNode;
   renderEmployerSection?: () => ReactNode;
@@ -67,10 +77,12 @@ export function GrievanceForm({
   submitLabel,
   isSubmitting,
   canEditSiriusId = true,
+  variant = "grievance",
   onCardinalityChange,
   renderWorkerSection,
   renderEmployerSection,
 }: GrievanceFormProps) {
+  const isAppeal = variant === "appeal";
   const { data: statuses = [] } = useQuery<OptionItem[]>({
     queryKey: ["/api/options/grievance-status"],
   });
@@ -107,7 +119,7 @@ export function GrievanceForm({
           name="siriusId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Grievance ID</FormLabel>
+              <FormLabel>{isAppeal ? "Appeal ID" : "Grievance ID"}</FormLabel>
               <FormControl>
                 <Input
                   placeholder={canEditSiriusId ? "Leave blank to auto-generate" : "Assigned automatically"}
@@ -120,7 +132,7 @@ export function GrievanceForm({
               <p className="text-sm text-muted-foreground">
                 {canEditSiriusId
                   ? "Leave blank to auto-generate (format: year + sequence, e.g. 20260097)."
-                  : "Only admins can set the grievance ID; it is generated automatically."}
+                  : `Only admins can set the ${isAppeal ? "appeal" : "grievance"} ID; it is generated automatically.`}
               </p>
               <FormMessage />
             </FormItem>
@@ -154,6 +166,7 @@ export function GrievanceForm({
           )}
         />
 
+        {!isAppeal && (
         <FormField
           control={form.control}
           name="statusId"
@@ -180,6 +193,7 @@ export function GrievanceForm({
             </FormItem>
           )}
         />
+        )}
 
         {showBargainingUnit && (
           <FormField
@@ -216,6 +230,7 @@ export function GrievanceForm({
           />
         )}
 
+        {!isAppeal && (
         <FormField
           control={form.control}
           name="cardinality"
@@ -246,8 +261,9 @@ export function GrievanceForm({
             </FormItem>
           )}
         />
+        )}
 
-        {cardinality === "class" ? (
+        {cardinality === "class" && !isAppeal ? (
           <FormField
             control={form.control}
             name="classDescription"

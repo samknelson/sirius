@@ -244,3 +244,7 @@ const grievanceTimelinePlugin: DenormPlugin<GrievanceTimelinePayload> = {
 };
 
 registerDenormPlugin(grievanceTimelinePlugin);
+
+// Exported for tests: allows calling compute() directly against a known
+// grievance without driving the full event bus + denorm cron machinery.
+export { grievanceTimelinePlugin };

@@ -1,5 +1,7 @@
 import { Link } from "wouter";
 import { Gavel } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { APPEAL_ONLY_COMPONENT } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -32,6 +34,10 @@ interface GrievanceListItem {
 
 function WorkerGrievancesContent() {
   const { worker } = useWorkerLayout();
+  const { hasComponent } = useAuth();
+  // Appeal-only (BAO) surface: every case is an appeal, so the empty state
+  // and per-row badge use appeal wording without a redundant kind badge.
+  const appealOnly = hasComponent(APPEAL_ONLY_COMPONENT);
 
   const { data: grievances = [], isLoading } = useQuery<GrievanceListItem[]>({
     queryKey: ["/api/grievances", { workerId: worker.id }],
@@ -48,7 +54,9 @@ function WorkerGrievancesContent() {
           </div>
         ) : grievances.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground" data-testid="text-no-grievances">
-            No grievances found for this worker.
+            {appealOnly
+              ? "No appeals found for this worker."
+              : "No grievances found for this worker."}
           </div>
         ) : (
           <Table>
@@ -67,7 +75,7 @@ function WorkerGrievancesContent() {
                   <TableCell className="font-medium" data-testid={`text-grievance-category-${g.id}`}>
                     <div className="flex items-center gap-2">
                       {g.categoryName || "—"}
-                      {g.data?.appealMeta?.kind === "appeal" && (
+                      {!appealOnly && g.data?.appealMeta?.kind === "appeal" && (
                         <Badge variant="outline" className="text-xs" data-testid={`badge-appeal-${g.id}`}>
                           <Gavel size={10} className="mr-1" />
                           Appeal

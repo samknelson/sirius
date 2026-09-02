@@ -2,12 +2,16 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { eq, asc } from "drizzle-orm";
 import { storage } from "../../storage";
-import { requireComponent } from "../components";
+import { requireComponent, isComponentEnabled } from "../components";
 import { buildContext, getAccessStorage } from "../../services/access-policy-evaluator";
 import {
   GRIEVANCE_CARDINALITIES,
   grievanceTimelineAdjustmentSchema,
   APPEAL_META_KEY,
+  APPEAL_ONLY_COMPONENT,
+  APPEAL_WORKFLOW_VARIABLE,
+  appealWorkflowSettingsSchema,
+  type AppealWorkflowSettings,
   trustBenefits,
   trustProviders,
   workers,
@@ -64,14 +68,53 @@ const searchGrievancesSchema = z.object({
   kind: z.preprocess(emptyToUndefined, z.enum(["appeal"]).optional()),
 });
 
-/** Schema for the appeal intake POST body. */
+/**
+ * Schema for the appeal intake POST body. `statusId` is optional here because
+ * in appeal-only (BAO) mode the initial status comes from the configured
+ * appeal workflow settings instead of the client; outside appeal-only mode
+ * the route still requires it.
+ */
 const createAppealSchema = z.object({
   categoryId: z.string().uuid("A valid category is required"),
-  statusId: z.string().uuid("A valid status is required"),
+  statusId: z.string().uuid("A valid status is required").optional(),
   workerId: z.string().uuid("A valid worker is required"),
   benefitId: z.string().uuid("A valid benefit is required"),
   denialReasonId: z.string().uuid("A valid denial reason is required"),
 });
+
+/**
+ * Whether this deployment runs the appeal-only surface: the BAO component
+ * selects it. When active, generic grievance creation is rejected and appeal
+ * intake applies the configured appeal workflow defaults.
+ */
+async function isAppealOnlyMode(): Promise<boolean> {
+  return isComponentEnabled(APPEAL_ONLY_COMPONENT);
+}
+
+/**
+ * Load and validate the BAO appeal workflow settings. Returns an error string
+ * (never throws) when the variable is missing or malformed so the intake
+ * route can fail loudly with an actionable message.
+ */
+async function loadAppealWorkflowSettings(): Promise<
+  { ok: true; settings: AppealWorkflowSettings } | { ok: false; message: string }
+> {
+  const row = await storage.variables.getByName(APPEAL_WORKFLOW_VARIABLE);
+  if (!row) {
+    return {
+      ok: false,
+      message: `Appeal workflow settings are not configured. An administrator must set the "${APPEAL_WORKFLOW_VARIABLE}" variable (initial status and timeline template) before appeals can be created.`,
+    };
+  }
+  const parsed = appealWorkflowSettingsSchema.safeParse(row.value);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: `Appeal workflow settings are invalid. An administrator must correct the "${APPEAL_WORKFLOW_VARIABLE}" variable (initial status and timeline template).`,
+    };
+  }
+  return { ok: true, settings: parsed.data };
+}
 
 const linkWorkerSchema = z.object({ workerId: z.string().uuid("A valid worker is required") });
 const linkEmployerSchema = z.object({ employerId: z.string().uuid("A valid employer is required") });
@@ -209,6 +252,15 @@ export function registerGrievanceRoutes(
 
   app.post("/api/grievances", ...gate, async (req, res) => {
     try {
+      // Appeal-only (BAO) deployments have exactly one case type: appeals.
+      // Generic grievance creation is rejected here (not just hidden in the
+      // client) so direct API calls cannot create a second case type.
+      if (await isAppealOnlyMode()) {
+        return res.status(403).json({
+          message:
+            "Generic grievance creation is disabled: this deployment is appeal-only. Use the appeal intake (POST /api/grievances/appeal).",
+        });
+      }
       const parsed = createGrievanceSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
@@ -294,7 +346,36 @@ export function registerGrievanceRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
       }
-      const { categoryId, statusId, workerId, benefitId, denialReasonId } = parsed.data;
+      const { categoryId, workerId, benefitId, denialReasonId } = parsed.data;
+
+      // Resolve the initial status and (in appeal-only mode) the default
+      // timeline template. Appeal-only deployments take both from the
+      // configured appeal workflow settings — staff never choose an
+      // arbitrary initial status. Other deployments keep the pre-existing
+      // behavior: the client supplies the status, no template is assigned.
+      const appealOnly = await isAppealOnlyMode();
+      let statusId: string;
+      let timelineTemplateId: string | null = null;
+      if (appealOnly) {
+        const loaded = await loadAppealWorkflowSettings();
+        if (!loaded.ok) {
+          return res.status(409).json({ message: loaded.message });
+        }
+        statusId = loaded.settings.initialStatusId;
+        timelineTemplateId = loaded.settings.timelineTemplateId;
+        const template = await storage.grievanceTimelineTemplates.get(timelineTemplateId);
+        if (!template) {
+          return res.status(409).json({
+            message:
+              "The configured appeal timeline template no longer exists. An administrator must update the appeal workflow settings.",
+          });
+        }
+      } else {
+        if (!parsed.data.statusId) {
+          return res.status(400).json({ message: "A valid status is required" });
+        }
+        statusId = parsed.data.statusId;
+      }
 
       const client = getClient();
 
@@ -327,13 +408,21 @@ export function registerGrievanceRoutes(
         return res.status(400).json({ message: "Denial reason not found" });
       }
 
-      // Validate status exists.
+      // Validate status exists. In appeal-only mode a missing status means
+      // the CONFIGURATION is stale (the client never supplied it), so answer
+      // with an actionable conflict instead of an input error.
       const [statusRow] = await client
         .select({ id: optionsGrievanceStatus.id })
         .from(optionsGrievanceStatus)
         .where(eq(optionsGrievanceStatus.id, statusId))
         .limit(1);
       if (!statusRow) {
+        if (appealOnly) {
+          return res.status(409).json({
+            message:
+              "The configured initial appeal status no longer exists. An administrator must update the appeal workflow settings.",
+          });
+        }
         return res.status(400).json({ message: "Status not found" });
       }
 
@@ -349,6 +438,7 @@ export function registerGrievanceRoutes(
       const created = await storage.grievances.create({
         categoryId,
         cardinality: "individual",
+        timelineTemplateId,
         data: { [APPEAL_META_KEY]: appealMeta } as unknown as null,
       });
 

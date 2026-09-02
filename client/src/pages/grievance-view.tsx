@@ -109,7 +109,9 @@ function GrievanceDetailsContent() {
             <h3 className="text-lg font-semibold text-foreground mb-3">Basic Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">Grievance ID</label>
+                <label className="text-sm font-medium text-muted-foreground">
+                  {appealMeta ? "Appeal ID" : "Grievance ID"}
+                </label>
                 <p className="text-foreground" data-testid="text-grievance-sirius-id">
                   {grievance.siriusId || "—"}
                 </p>
@@ -142,12 +144,16 @@ function GrievanceDetailsContent() {
                   )}
                 </div>
               )}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">Cardinality</label>
-                <p className="text-foreground" data-testid="text-grievance-cardinality">
-                  {GRIEVANCE_CARDINALITY_LABELS[grievance.cardinality] ?? grievance.cardinality}
-                </p>
-              </div>
+              {/* Appeals are always individual cases — cardinality is a
+                  generic-grievance concept, so it isn't shown for them. */}
+              {!appealMeta && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-muted-foreground">Cardinality</label>
+                  <p className="text-foreground" data-testid="text-grievance-cardinality">
+                    {GRIEVANCE_CARDINALITY_LABELS[grievance.cardinality] ?? grievance.cardinality}
+                  </p>
+                </div>
+              )}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">Record ID</label>
                 <p className="text-foreground font-mono text-sm" data-testid="text-grievance-id">
