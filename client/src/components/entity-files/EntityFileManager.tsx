@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Upload, Download, Pencil, Trash2, FileText, Check, X, NotebookPen } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,14 +23,42 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  ALL_TYPES,
+  TypeFilter,
+  buildTypeFilterChoices,
+  typeFilterMatches,
+  type TypeFilterChoice,
+} from "@/components/type-filter";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+
+/** Sentinel for the "No type" choice — Select cannot hold an empty value. */
+const NO_TYPE = "__none__";
+
+interface FileTypeOption {
+  id: string;
+  name: string;
+  description: string | null;
+  data: { contextIds?: string[] } | null;
+}
 
 export interface EntityFileItem {
   id: string;
   entityId: string;
   fileId: string;
   name: string;
+  typeId: string | null;
+  typeName: string | null;
   data: unknown;
   file: {
     id: string;
@@ -79,6 +107,14 @@ export function EntityFileManager({
   const [deleteTarget, setDeleteTarget] = useState<EntityFileItem | null>(null);
   const [metaTarget, setMetaTarget] = useState<EntityFileItem | null>(null);
   const [metaDescription, setMetaDescription] = useState("");
+  // The chosen type is tracked as "what the user picked", not as seeded
+  // state: the type list can arrive AFTER this dialog opens, and a seed taken
+  // before it arrived would silently become a request to clear the type.
+  const [metaTypeId, setMetaTypeId] = useState<string>(NO_TYPE);
+  const [metaTypeTouched, setMetaTypeTouched] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [uploadTypeId, setUploadTypeId] = useState<string>(NO_TYPE);
+  const [typeFilter, setTypeFilter] = useState<TypeFilterChoice>(ALL_TYPES);
 
   const listKey = ["/api/entity-files", context, entityId];
 
@@ -87,10 +123,55 @@ export function EntityFileManager({
     enabled: !!entityId,
   });
 
+  const {
+    data: allFileTypes = [],
+    isLoading: typesLoading,
+    isError: typesError,
+  } = useQuery<FileTypeOption[]>({
+    queryKey: ["/api/options/file-type"],
+  });
+
+  // Only types that declare this area are offerable; the server enforces the
+  // same pairing on save.
+  const fileTypes = useMemo(
+    () => allFileTypes.filter((t) => (t.data?.contextIds ?? []).includes(context)),
+    [allFileTypes, context],
+  );
+
+  // An unanswered query is NOT "this area has no types": treating it as one
+  // would let a description edit submit "no type" and wipe a type the panel
+  // simply had not loaded yet. Nothing offers or submits a type until the
+  // list has actually arrived.
+  const typesResolved = !typesLoading && !typesError;
+  const canChooseType = typesResolved && fileTypes.length > 0;
+
+  // Until the user picks something, the control shows the attachment's stored
+  // type — but only if this area still offers it. A type that no longer
+  // applies shows as "No type", which is what saving would make it, and the
+  // dialog says so.
+  const metaTypeValue = metaTypeTouched
+    ? metaTypeId
+    : metaTarget?.typeId && fileTypes.some((t) => t.id === metaTarget.typeId)
+      ? metaTarget.typeId
+      : NO_TYPE;
+
+  // A view over the attachments already loaded: the filter narrows what is
+  // listed, it never changes what was fetched.
+  const allFiles = data?.files ?? [];
+  const filterChoices = useMemo(
+    () => buildTypeFilterChoices(allFiles, typeFilter),
+    [allFiles, typeFilter],
+  );
+  const visibleFiles = useMemo(
+    () => allFiles.filter((item) => typeFilterMatches(typeFilter, item)),
+    [allFiles, typeFilter],
+  );
+
   const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async ({ file, typeId }: { file: File; typeId: string | null }) => {
       const formData = new FormData();
       formData.append("file", file);
+      if (typeId) formData.append("typeId", typeId);
       const res = await fetch(`/api/entity-files/${context}/${entityId}`, {
         method: "POST",
         body: formData,
@@ -104,6 +185,8 @@ export function EntityFileManager({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: listKey });
+      setPendingFile(null);
+      setUploadTypeId(NO_TYPE);
       toast({ title: "File uploaded" });
     },
     onError: (error) => {
@@ -133,8 +216,22 @@ export function EntityFileManager({
   });
 
   const metadataMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) =>
-      apiRequest("PATCH", `/api/entity-files/${context}/${entityId}/${id}`, { data }),
+    mutationFn: async ({
+      id,
+      data,
+      typeId,
+    }: {
+      id: string;
+      data: Record<string, unknown>;
+      typeId?: string | null;
+    }) =>
+      apiRequest("PATCH", `/api/entity-files/${context}/${entityId}/${id}`, {
+        data,
+        // Omitted where this screen offered no type control: PATCH leaves an
+        // absent field alone, and resending a type this area no longer offers
+        // would be refused, taking the description edit down with it.
+        ...(typeId === undefined ? {} : { typeId }),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: listKey });
       setMetaTarget(null);
@@ -195,7 +292,18 @@ export function EntityFileManager({
             data-testid="input-file-upload"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) uploadMutation.mutate(file);
+              if (file) {
+                // With no types to choose from there is nothing to ask, so the
+                // button keeps behaving exactly as it did before the list
+                // existed: pick a file, it uploads. Still loading counts as
+                // "might have types" — the dialog waits for the answer.
+                if (typesResolved && fileTypes.length === 0) {
+                  uploadMutation.mutate({ file, typeId: null });
+                } else {
+                  setUploadTypeId(NO_TYPE);
+                  setPendingFile(file);
+                }
+              }
               e.target.value = "";
             }}
           />
@@ -221,13 +329,27 @@ export function EntityFileManager({
             Allowed file types: {data.allowed.join(", ")}
           </p>
         )}
+        <TypeFilter
+          id="entity-file-type-filter"
+          value={typeFilter}
+          onChange={setTypeFilter}
+          choices={filterChoices}
+          shown={visibleFiles.length}
+          total={data.files.length}
+        />
+
         {data.files.length === 0 ? (
           <p className="text-muted-foreground text-sm" data-testid="text-files-empty">
             No files attached.
           </p>
+        ) : visibleFiles.length === 0 ? (
+          <p className="text-muted-foreground text-sm" data-testid="text-files-empty-match">
+            No files of this type. {data.files.length} file
+            {data.files.length === 1 ? " is" : "s are"} hidden by the filter.
+          </p>
         ) : (
           <div className="divide-y">
-            {data.files.map((item) => (
+            {visibleFiles.map((item) => (
               <div
                 key={item.id}
                 className="flex items-center gap-3 py-3"
@@ -267,9 +389,16 @@ export function EntityFileManager({
                     </div>
                   ) : (
                     <>
-                      <p className="font-medium truncate" data-testid={`text-file-name-${item.id}`}>
-                        {item.name}
-                      </p>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <p className="font-medium truncate" data-testid={`text-file-name-${item.id}`}>
+                          {item.name}
+                        </p>
+                        {item.typeName && (
+                          <Badge variant="secondary" data-testid={`badge-file-type-${item.id}`}>
+                            {item.typeName}
+                          </Badge>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground truncate">
                         {item.file.fileName} · {formatSize(item.file.size)} ·{" "}
                         {formatDate(item.file.uploadedAt)}
@@ -320,6 +449,8 @@ export function EntityFileManager({
                         setMetaTarget(item);
                         const desc = (item.data as any)?.description;
                         setMetaDescription(typeof desc === "string" ? desc : "");
+                        setMetaTypeId(NO_TYPE);
+                        setMetaTypeTouched(false);
                       }}
                       data-testid={`button-edit-metadata-${item.id}`}
                     >
@@ -342,11 +473,132 @@ export function EntityFileManager({
         )}
       </CardContent>
 
+      {/* Asked only where there is something to ask: an area with no file
+          types uploads on file-pick, with no dialog in the way. */}
+      <Dialog open={!!pendingFile} onOpenChange={(open) => !open && setPendingFile(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upload file</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground truncate" data-testid="text-upload-file-name">
+              {pendingFile?.name}
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="entity-file-upload-type">Type</Label>
+              {typesLoading && (
+                <p className="text-sm text-muted-foreground" data-testid="text-upload-types-loading">
+                  Loading file types…
+                </p>
+              )}
+              {typesError && (
+                <p className="text-sm text-destructive" data-testid="text-upload-types-error">
+                  Could not load file types. You can still upload the file without one.
+                </p>
+              )}
+              <Select value={uploadTypeId} onValueChange={setUploadTypeId} disabled={!canChooseType}>
+                <SelectTrigger id="entity-file-upload-type" data-testid="select-upload-file-type">
+                  <SelectValue placeholder="No type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_TYPE} data-testid="option-upload-file-type-none">
+                    No type
+                  </SelectItem>
+                  {fileTypes.map((type) => (
+                    <SelectItem
+                      key={type.id}
+                      value={type.id}
+                      data-testid={`option-upload-file-type-${type.id}`}
+                    >
+                      {type.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPendingFile(null)}
+              data-testid="button-upload-cancel"
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={uploadMutation.isPending || typesLoading}
+              onClick={() => {
+                if (!pendingFile) return;
+                uploadMutation.mutate({
+                  file: pendingFile,
+                  typeId: uploadTypeId === NO_TYPE ? null : uploadTypeId,
+                });
+              }}
+              data-testid="button-upload-confirm"
+            >
+              {uploadMutation.isPending ? "Uploading…" : "Upload"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!metaTarget} onOpenChange={(open) => !open && setMetaTarget(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>File details</DialogTitle>
           </DialogHeader>
+          {canChooseType && (
+            <div className="space-y-2">
+              <Label htmlFor="entity-file-type">Type</Label>
+              <Select
+                value={metaTypeValue}
+                onValueChange={(value) => {
+                  setMetaTypeId(value);
+                  setMetaTypeTouched(true);
+                }}
+              >
+                <SelectTrigger id="entity-file-type" data-testid="select-file-type">
+                  <SelectValue placeholder="No type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_TYPE} data-testid="option-file-type-none">
+                    No type
+                  </SelectItem>
+                  {fileTypes.map((type) => (
+                    <SelectItem
+                      key={type.id}
+                      value={type.id}
+                      data-testid={`option-file-type-${type.id}`}
+                    >
+                      {type.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {/* A type the file already carries but this area no longer
+                  offers stays visible on the row; saving here would clear it. */}
+              {metaTarget?.typeId &&
+                !fileTypes.some((t) => t.id === metaTarget.typeId) && (
+                  <p
+                    className="text-xs text-muted-foreground"
+                    data-testid="text-file-type-unavailable"
+                  >
+                    Its current type ({metaTarget.typeName ?? "unknown"}) no longer applies to this
+                    record type. Saving will clear it.
+                  </p>
+                )}
+            </div>
+          )}
+          {!canChooseType && metaTarget?.typeName && (
+            <p className="text-sm text-muted-foreground" data-testid="text-file-type-kept">
+              Type: {metaTarget.typeName} —{" "}
+              {typesLoading
+                ? "still loading the file types, so this one is left as it is."
+                : typesError
+                  ? "the file types could not be loaded, so this one is left as it is."
+                  : "no file types apply to this record type, so this one is left as it is."}
+            </p>
+          )}
           <div className="space-y-2">
             <label className="text-sm font-medium" htmlFor="entity-file-description">
               Description
@@ -375,6 +627,9 @@ export function EntityFileManager({
                 metadataMutation.mutate({
                   id: metaTarget.id,
                   data: { ...existing, description: metaDescription.trim() },
+                  ...(canChooseType
+                    ? { typeId: metaTypeValue === NO_TYPE ? null : metaTypeValue }
+                    : {}),
                 });
               }}
               data-testid="button-metadata-save"

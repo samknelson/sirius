@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { usePageTitle } from "@/contexts/PageTitleContext";
 import {
   Card,
   CardContent,
@@ -234,8 +233,6 @@ export function GenericOptionsPage({ optionsType }: GenericOptionsPageProps) {
     },
     enabled: externalOptionsTypes.length > 0,
   });
-
-  usePageTitle(definition?.displayName || "Options");
 
   const { data: items = [], isLoading: itemsLoading } = useQuery<OptionItem[]>({
     queryKey: ["/api/options", optionsType],

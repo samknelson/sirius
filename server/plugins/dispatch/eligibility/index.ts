@@ -115,6 +115,7 @@ import "./plugins/skill";
 import "./plugins/status";
 import "./plugins/ws";
 import "./plugins/singleshift";
+import "./plugins/started";
 import "./plugins/accepted";
 import "./plugins/hta-home-employer";
 import "./plugins/sitespecific-t631-interview";

@@ -1,0 +1,21 @@
+I'd like to build support for deletions and orphan cleanup in the two "entity-" tables.
+
+We're going to take a belt-and-suspenders approach. We want to respond to both deletion events and have a just-in-case daily cron sweeop for orphans. Both should call the same "deletion" routines.
+
+Deletion should always be atomic, one record at a time, with each logged individually. I think the current notes sweep does a bulk "delete from..."; we should replace that, and delete the storage layer function that supports it.
+
+I don't think we need any new storage layer functions for this task, except perhaps an orphan search (read only).
+
+We will, however, need to emit "deletion" events. These should be non-transactional, best effort events emitted after the deletion is complete.
+
+I'd like to put some thought into naming schemes and standardization for the "delete" events. We currently have some events that happen in transactions, some before, and some after. Most are type-specific at the moment. I don't want to invent a new generic "delete" event that carries the entity type, because I don't think we're doing that anywhere else, right? We don't have a generic "entity saved" event, we have "grievance saved" or "worker saved" or whatever. I want to stick to that standard.
+
+However, I'd like to start moving towards a framework where the event name is clear if it is a pre, post, or in-transaction event. Perhaps the scheme should be something like:
+
+- grievance-delete-pre (an event thrown before the transaction)
+- grievance-delete (thrown in the transaction)
+- grievance-delete-post (thrown after the transaction)
+
+We don't have to throw all events for all storage layers; we can just start throwing the events that we need, as we have been until now. In this case, the events would be the post-transaction event, and only for the entity types that actually have notes or files. But I want to start to standardize what mutation events we emit and how they are named.
+
+We don't need new tests for this task. 

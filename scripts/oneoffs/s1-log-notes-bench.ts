@@ -105,14 +105,14 @@ function runLoader(): { code: number; seconds: number; result: LoaderEnvelope | 
 }
 
 const BENCH_NOTE_IDS = sql`
-  SELECT id FROM notes
+  SELECT id FROM entity_notes
    WHERE data->>'s1Loader' = ${NOTES_LOADER}
      AND (data->'s1'->>'nid')::bigint >= ${LOG_BASE} AND (data->'s1'->>'nid')::bigint < ${LOG_END}
 `;
 
 async function cleanup(): Promise<void> {
   await db.execute(sql`DELETE FROM sitespecific_bao_notes_tags WHERE note_id IN (${BENCH_NOTE_IDS})`);
-  await db.execute(sql`DELETE FROM notes WHERE id IN (${BENCH_NOTE_IDS})`);
+  await db.execute(sql`DELETE FROM entity_notes WHERE id IN (${BENCH_NOTE_IDS})`);
   await db.execute(sql`
     DELETE FROM s1_staging.id_map WHERE entity = 's1_log_note' AND s1_id >= ${LOG_BASE} AND s1_id < ${LOG_END}
   `);
@@ -256,7 +256,7 @@ async function main() {
              count(*) FILTER (WHERE subject NOT LIKE 'Imported Note%')::int AS bad_subject
         FROM (SELECT n.body, n.subject,
                      count(*) OVER (PARTITION BY n.data->'s1'->>'nid') AS cnt
-                FROM notes n
+                FROM entity_notes n
                WHERE n.data->>'s1Loader' = ${NOTES_LOADER}
                  AND (n.data->'s1'->>'nid')::bigint >= ${LOG_BASE} AND (n.data->'s1'->>'nid')::bigint < ${LOG_END}) t
     `))[0];
@@ -266,7 +266,7 @@ async function main() {
     check("parity: subjects carry creator provenance", Number(parity.bad_subject) === 0, `bad=${parity.bad_subject}`);
     const tagless = (await q<{ n: number }>(sql`
       SELECT count(*)::int AS n
-        FROM notes n
+        FROM entity_notes n
        WHERE n.data->>'s1Loader' = ${NOTES_LOADER}
          AND (n.data->'s1'->>'nid')::bigint >= ${LOG_BASE} AND (n.data->'s1'->>'nid')::bigint < ${LOG_END}
          AND n.data->'s1'->>'normalizedCategory' = 'call from member'

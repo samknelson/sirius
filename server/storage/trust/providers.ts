@@ -1,8 +1,9 @@
 import { createNoopValidator } from '../utils/validation';
-import { getClient } from '../transaction-context';
+import { getClient, onAfterCommit } from '../transaction-context';
 import { trustProviders, InsertTrustProvider, TrustProvider } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "../middleware/logging";
+import { eventBus, EventType } from "../../services/event-bus";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -122,6 +123,15 @@ function createTrustProviderStorageInternal(): TrustProviderStorage {
     async deleteTrustProvider(id: string): Promise<boolean> {
       const client = getClient();
       const result = await client.delete(trustProviders).where(eq(trustProviders.id, id)).returning();
+      if (result.length > 0) {
+        // Announce the deletion once it is durable, so the areas that hang off
+        // a provider with no foreign key (notes, file attachments) clean up now
+        // rather than waiting for their nightly sweep. Best-effort: a failed
+        // emit or handler never fails the delete.
+        onAfterCommit(() => {
+          void eventBus.emit(EventType.TRUST_PROVIDER_DELETE_AFTER, { trustProviderId: id });
+        });
+      }
       return result.length > 0;
     }
   };

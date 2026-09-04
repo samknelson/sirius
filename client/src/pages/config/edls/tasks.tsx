@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { useOptionsListName } from "@/hooks/useConfigNavigation";
+import { BackToOptions } from "@/components/shared/BackToOptions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -121,7 +123,9 @@ function serializeTasksToCsv(tasks: EdlsTask[]): string {
 }
 
 export default function EdlsTasksPage() {
-  usePageTitle("EDLS Tasks");
+  // The options registry names this list; this page does not name it again.
+  const { pluralName: listName } = useOptionsListName("edls-task");
+  usePageTitle(listName ?? "Options");
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -491,11 +495,12 @@ export default function EdlsTasksPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
+    <div className="container mx-auto p-6 max-w-4xl space-y-4">
+      <BackToOptions />
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-4">
           <div>
-            <CardTitle>EDLS Tasks</CardTitle>
+            <CardTitle>{listName ?? "Options"}</CardTitle>
             <CardDescription>
               Manage task types available for EDLS crew assignments
             </CardDescription>

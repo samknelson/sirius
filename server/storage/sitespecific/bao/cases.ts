@@ -23,7 +23,7 @@ import {
   comm,
   commEmail,
   commPostal,
-  notes,
+  entityNotes,
   optionsBaoCaseResolution,
   optionsBaoCaseStatus,
   optionsBaoCaseType,
@@ -51,7 +51,8 @@ import {
 } from "@shared/schema";
 import { getClient, onAfterCommit, runInTransaction } from "../../transaction-context";
 import { eventBus, EventType } from "../../../services/event-bus";
-import { createNotesStorage, type NoteWithDetails } from "../../notes";
+import { createEntityNotesStorage, type EntityNoteWithDetails } from "../../entity-notes";
+import { noteContextTables } from "../../entity-notes-context-tables";
 import { assignmentForbidden } from "./case-assignment";
 import { createBaoNoteTagsStorage } from "./note-tags";
 import { tableExists } from "../../utils";
@@ -66,7 +67,7 @@ export interface BaoCaseDetails extends BaoCase, BaoCaseAppealFacts {
   resolutionName: string | null;
   /** Appeal: the denial reason's configured checks — what an approval exempts by default. */
   denialReasonEligibilityPluginIds: string[];
-  notes?: NoteWithDetails[];
+  notes?: EntityNoteWithDetails[];
 }
 
 export interface BaoCaseListResult {
@@ -168,7 +169,7 @@ export interface BaoCasesStorage {
     options?: { systemClose?: boolean },
   ): Promise<BaoCase>;
   listLapsedOpenCases(todayYmd: string): Promise<Array<{ id: string; deadlineYmd: string; statusId: string; lapseStatusId: string }>>;
-  addNote(caseId: string, input: CreateBaoCaseInput["initialNote"], actorUserId: string): Promise<NoteWithDetails>;
+  addNote(caseId: string, input: CreateBaoCaseInput["initialNote"], actorUserId: string): Promise<EntityNoteWithDetails>;
   list(input: {
     entityType?: BaoCaseEntityType;
     entityId?: string;
@@ -225,7 +226,21 @@ export interface BaoCasesStorage {
 }
 
 const cases = sitespecificBaoCases;
-const noteStorage = createNotesStorage();
+const noteStorage = createEntityNotesStorage();
+
+/**
+ * Does the case's parent record exist? A BAO case's entityType doubles as the
+ * note context id (worker/employer/trust_provider — all core tables, always
+ * present), so the notes framework's context→table map names the table. No
+ * binding — the record cannot be confirmed, so refuse.
+ */
+async function caseEntityExists(entityType: string, entityId: string): Promise<boolean> {
+  const table = noteContextTables[entityType];
+  if (!table) return false;
+  const idColumn = (table as any).id;
+  const rows = await getClient().select({ id: idColumn }).from(table).where(eq(idColumn, entityId)).limit(1);
+  return rows.length > 0;
+}
 const tagStorage = createBaoNoteTagsStorage();
 
 const entityName = sql<string | null>`CASE
@@ -407,7 +422,7 @@ async function emitCaseStatusSaved(
 
 async function assertNoteType(typeId: string, entityType: string): Promise<void> {
   const [type] = await getClient().select().from(optionsNoteType).where(eq(optionsNoteType.id, typeId));
-  if (!type || !Array.isArray((type.data as any)?.entityTypes) || !(type.data as any).entityTypes.includes(entityType)) {
+  if (!type || !Array.isArray((type.data as any)?.contextIds) || !(type.data as any).contextIds.includes(entityType)) {
     throw new Error("INVALID_NOTE_TYPE");
   }
 }
@@ -417,10 +432,10 @@ async function assertNoteType(typeId: string, entityType: string): Promise<void>
  * carries a note whose type is flagged `memberOutreach`.
  */
 async function assertOutreachNote(caseId: string): Promise<void> {
-  const [outreach] = await getClient().select({ id: notes.id })
+  const [outreach] = await getClient().select({ id: entityNotes.id })
     .from(sitespecificBaoCaseNotes)
-    .innerJoin(notes, eq(notes.id, sitespecificBaoCaseNotes.noteId))
-    .innerJoin(optionsNoteType, eq(optionsNoteType.id, notes.typeId))
+    .innerJoin(entityNotes, eq(entityNotes.id, sitespecificBaoCaseNotes.noteId))
+    .innerJoin(optionsNoteType, eq(optionsNoteType.id, entityNotes.typeId))
     .where(and(
       eq(sitespecificBaoCaseNotes.caseId, caseId),
       sql`COALESCE((${optionsNoteType.data}->>'memberOutreach')::boolean, false)`,
@@ -436,7 +451,7 @@ async function addLinkedNote(
 ) {
   await assertNoteType(input.typeId, theCase.entityType);
   const note = await noteStorage.create({
-    entityType: theCase.entityType,
+    contextId: theCase.entityType,
     entityId: theCase.entityId,
     typeId: input.typeId,
     subject: input.subject,
@@ -469,7 +484,7 @@ export function createBaoCasesStorage(): BaoCasesStorage {
 
     async create(input) {
       return runInTransaction(async () => {
-        if (!(await noteStorage.entityExists(input.entityType, input.entityId))) {
+        if (!(await caseEntityExists(input.entityType, input.entityId))) {
           throw new Error("ENTITY_NOT_FOUND");
         }
         if (!(await this.isAssignableUser(input.assigneeUserId))) {
@@ -502,13 +517,13 @@ export function createBaoCasesStorage(): BaoCasesStorage {
         if (noteId) {
           const note = await noteStorage.get(noteId);
           if (!note) throw new Error("NOTE_NOT_FOUND");
-          if (note.entityType !== input.entityType || note.entityId !== input.entityId) {
+          if (note.contextId !== input.entityType || note.entityId !== input.entityId) {
             throw new Error("NOTE_ENTITY_MISMATCH");
           }
         } else if (input.initialNote) {
           await assertNoteType(input.initialNote.typeId, input.entityType);
           const note = await noteStorage.create({
-            entityType: input.entityType,
+            contextId: input.entityType,
             entityId: input.entityId,
             typeId: input.initialNote.typeId,
             subject: input.initialNote.subject,
@@ -569,13 +584,13 @@ export function createBaoCasesStorage(): BaoCasesStorage {
       const result = mapDetail(row);
       if (includeNotes) {
         const linked = await getClient()
-          .select({ note: notes, typeName: optionsNoteType.name, firstName: users.firstName, lastName: users.lastName, email: users.email })
+          .select({ note: entityNotes, typeName: optionsNoteType.name, firstName: users.firstName, lastName: users.lastName, email: users.email })
           .from(sitespecificBaoCaseNotes)
-          .innerJoin(notes, eq(notes.id, sitespecificBaoCaseNotes.noteId))
-          .leftJoin(optionsNoteType, eq(optionsNoteType.id, notes.typeId))
-          .leftJoin(users, eq(users.id, notes.userId))
+          .innerJoin(entityNotes, eq(entityNotes.id, sitespecificBaoCaseNotes.noteId))
+          .leftJoin(optionsNoteType, eq(optionsNoteType.id, entityNotes.typeId))
+          .leftJoin(users, eq(users.id, entityNotes.userId))
           .where(eq(sitespecificBaoCaseNotes.caseId, id))
-          .orderBy(asc(notes.timestamp), asc(notes.id));
+          .orderBy(asc(entityNotes.timestamp), asc(entityNotes.id));
         result.notes = linked.map((row) => ({
           ...row.note,
           typeName: row.typeName ?? null,
@@ -693,7 +708,7 @@ export function createBaoCasesStorage(): BaoCasesStorage {
         if (!theCase) throw new Error("CASE_NOT_FOUND");
         await assertNoteType(input.typeId, theCase.entityType);
         const note = await noteStorage.create({
-          entityType: theCase.entityType,
+          contextId: theCase.entityType,
           entityId: theCase.entityId,
           typeId: input.typeId,
           subject: input.subject,
@@ -866,7 +881,7 @@ export function createBaoCasesStorage(): BaoCasesStorage {
         if (prior.length) throw new Error("MEMBER_LETTER_ALREADY_RECORDED");
         if (!noteInput) throw new Error("INITIAL_NOTE_REQUIRED");
         await assertNoteType(noteInput.typeId, existing.entityType);
-        const note = await noteStorage.create({ entityType: existing.entityType, entityId: existing.entityId, typeId: noteInput.typeId, subject: noteInput.subject, body: noteInput.body ?? null, data: noteInput.data ?? null, userId: actorUserId });
+        const note = await noteStorage.create({ contextId: existing.entityType, entityId: existing.entityId, typeId: noteInput.typeId, subject: noteInput.subject, body: noteInput.body ?? null, data: noteInput.data ?? null, userId: actorUserId });
         await getClient().insert(sitespecificBaoCaseNotes).values({ caseId, noteId: note.id });
         const [document] = await getClient().update(sitespecificBaoCaseDocuments).set({ documentType: "member_letter" }).where(and(eq(sitespecificBaoCaseDocuments.caseId, caseId), eq(sitespecificBaoCaseDocuments.fileId, fileId))).returning();
         if (!document) throw new Error("CASE_DOCUMENT_NOT_FOUND");

@@ -10,8 +10,9 @@ import { getEntityFileContext, listEntityFileContexts } from "./registry";
  *   { "<contextId>": { file_system, directory, allowed? } }
  *
  * - `file_system`: id of a filesystem from the FILESYSTEMS env config.
- * - `directory`: directory template; may embed the context's tokens
- *   (e.g. "grievances/:grievance-id"). Leading/trailing slashes are ignored.
+ * - `directory`: directory template; may embed the single framework token
+ *   `:entity-id` (e.g. "employers/:entity-id"). Leading/trailing slashes are
+ *   ignored.
  * - `allowed`: optional list of allowed file extensions (no dot, case
  *   insensitive, e.g. ["pdf","docx"]). Absent/empty = all extensions.
  *
@@ -20,6 +21,14 @@ import { getEntityFileContext, listEntityFileContexts } from "./registry";
  */
 
 export const ENTITY_FILES_CONFIG_VARIABLE = "entity_files_config";
+
+/**
+ * The ONE directory token, supplied by the framework and offered for every
+ * area: the id of the record the files hang off. A context does not declare
+ * tokens and cannot add one — validation below rejects any other `:token`,
+ * and expansion refuses to hand back a path that still contains one.
+ */
+export const ENTITY_FILES_DIRECTORY_TOKEN = ":entity-id";
 
 const contextConfigSchema = z.object({
   file_system: z.string().min(1),
@@ -41,8 +50,8 @@ export type EntityFilesContextConfig = z.infer<typeof contextConfigSchema>;
 
 /**
  * Full value schema. Rejects unknown context ids and directory templates
- * that reference tokens the context does not provide, so a typo cannot be
- * saved and silently break uploads later.
+ * that name anything other than the one framework token, so a typo cannot
+ * be saved and silently break uploads later.
  */
 export const entityFilesConfigSchema = z
   .record(z.string(), contextConfigSchema)
@@ -70,11 +79,12 @@ export const entityFilesConfigSchema = z
       }
       const tokensInDirectory = config.directory.match(/:[a-z0-9-]+/gi) ?? [];
       for (const token of tokensInDirectory) {
-        if (!context.tokens.includes(token)) {
+        const allowed = [ENTITY_FILES_DIRECTORY_TOKEN, ...(context.tokens ?? [])];
+        if (!allowed.includes(token)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: [contextId, "directory"],
-            message: `Unknown token "${token}" for context "${contextId}". Available: ${context.tokens.join(", ") || "(none)"}`,
+            message: `Unknown token "${token}". Available for this context: ${allowed.join(", ")}.`,
           });
         }
       }
@@ -115,18 +125,38 @@ export async function resolveUsableContextConfig(
   return { config };
 }
 
-/** Expand the directory template with resolved token values. */
+/**
+ * Expand the directory template for one entity.
+ *
+ * Refuses to hand back a path that still contains a `:token`: a stored
+ * template naming something the framework does not supply would otherwise
+ * put a literal ":whatever" segment in the object path. Validation above
+ * already rejects such a template on save; this is the second, unskippable
+ * check on the upload path.
+ */
 export function expandDirectoryTemplate(
   directory: string,
-  tokenValues: Record<string, string>,
+  entityId: string,
+  /** Context-resolved extra tokens (fork extension; see registry `tokens`). */
+  extraTokens: Record<string, string> = {},
 ): string {
+  // Token values come from our own storage (entity ids); sanitize anyway.
+  const sanitize = (value: string) => value.replace(/[^\w.\-]+/g, "_");
+  // Context-declared tokens expand FIRST so a context may redefine the
+  // framework token (bao-case spells its parent record as ":entity-id").
   let expanded = directory;
-  for (const [token, value] of Object.entries(tokenValues)) {
-    // Token values come from our own storage (entity ids); sanitize anyway.
-    const safe = value.replace(/[^\w.\-]+/g, "_");
-    expanded = expanded.split(token).join(safe);
+  for (const [token, value] of Object.entries(extraTokens)) {
+    expanded = expanded.split(token).join(sanitize(value));
   }
-  return expanded.replace(/^\/+|\/+$/g, "");
+  expanded = expanded.split(ENTITY_FILES_DIRECTORY_TOKEN).join(sanitize(entityId));
+  expanded = expanded.replace(/^\/+|\/+$/g, "");
+  const leftover = expanded.match(/:[a-z0-9-]+/i);
+  if (leftover) {
+    throw new Error(
+      `Directory template "${directory}" contains unknown token "${leftover[0]}". The only directory token is "${ENTITY_FILES_DIRECTORY_TOKEN}".`,
+    );
+  }
+  return expanded;
 }
 
 /** Extension allow-list check ("" extension = file with no extension). */

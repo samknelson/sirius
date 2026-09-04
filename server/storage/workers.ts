@@ -1,4 +1,4 @@
-import { getClient } from './transaction-context';
+import { getClient, onAfterCommit } from './transaction-context';
 import {
   workers,
   contacts,
@@ -24,6 +24,7 @@ import {
 } from "./utils/validation";
 import { parseSSN, validateSSN } from "@shared/utils/ssn";
 import { isComponentEnabledSync } from "../services/component-cache";
+import { eventBus, EventType } from "../services/event-bus";
 
 export const ssnValidate = createAsyncStorageValidator<{ ssn: string | null; workerId?: string; allowSsaRuleInvalid?: boolean }, never, { ssn: string | null }>(
   async (data) => {
@@ -1504,6 +1505,13 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // If worker was deleted, also delete the corresponding contact using contact storage
       if (result.length > 0) {
         await contactsStorage.deleteContact(worker.contactId);
+        // Announce the deletion once it is durable, so the areas that hang off
+        // a worker with no foreign key (notes, file attachments) clean up now
+        // rather than waiting for their nightly sweep. Best-effort: a failed
+        // emit or handler never fails the delete.
+        onAfterCommit(() => {
+          void eventBus.emit(EventType.WORKER_DELETE_AFTER, { workerId: id });
+        });
       }
       
       return result.length > 0;

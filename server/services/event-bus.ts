@@ -29,6 +29,36 @@ export class EventBusEmitDepthExceededError extends Error {
   }
 }
 
+/**
+ * The event vocabulary.
+ *
+ * NAMING CONVENTION (the standard for every event added from now on)
+ * -----------------------------------------------------------------
+ * An event name is `<entity>.<action>` with the transaction PHASE appended as
+ * the last segment:
+ *
+ *   - `<entity>.<action>.before` — emitted BEFORE the transaction opens.
+ *   - `<entity>.<action>`        — emitted INSIDE the transaction, so a
+ *                                  handler's writes commit or roll back with
+ *                                  the write that announced them.
+ *   - `<entity>.<action>.after`  — emitted AFTER the transaction commits (via
+ *                                  `onAfterCommit`), so nothing is announced
+ *                                  for a write that rolled back. Best effort:
+ *                                  a failing handler cannot undo the write.
+ *
+ * Only the phases actually needed are declared and emitted — there is no
+ * requirement that a storage layer emit all three for an action.
+ *
+ * Events are PER ENTITY: `worker.delete.after`, never a generic
+ * `entity.delete.after` carrying a type discriminator. Nothing else in this
+ * system dispatches on a payload field, and a per-entity event lets a handler
+ * subscribe to exactly the record types it can act on.
+ *
+ * LEGACY: the `<entity>.saved` names below predate this convention. They are
+ * the target of a future rename to `<entity>.save[.before|.after]` — deliberately
+ * NOT done yet, because each name is subscribed to by name. Do not invent a
+ * third spelling: new events use the convention above.
+ */
 export enum EventType {
   HOURS_SAVED = "hours.saved",
   PAYMENT_SAVED = "payment.saved",
@@ -83,6 +113,12 @@ export enum EventType {
   GRIEVANCE_DEADLINE_REMINDER = "grievance.deadline.reminder",
   EMPLOYER_MONTHLY = "employer.monthly",
   PLUGIN_CONFIG_SAVED = "plugin.config.saved",
+  // Record deletions, announced after the delete commits. One per record type
+  // that can carry notes or file attachments; see the payloads below.
+  WORKER_DELETE_AFTER = "worker.delete.after",
+  EMPLOYER_DELETE_AFTER = "employer.delete.after",
+  TRUST_PROVIDER_DELETE_AFTER = "trust.provider.delete.after",
+  GRIEVANCE_DELETE_AFTER = "grievance.delete.after",
   CRON = "cron",
   LOG = "log",
 }
@@ -754,6 +790,34 @@ export interface EmployerMonthlyPayload {
   month: string;
 }
 
+/**
+ * One record has been deleted, and the delete has committed.
+ *
+ * These four exist so the polymorphic areas that hang off a record — its
+ * notes (`entity_notes`) and its file attachments (`entity_files`), neither
+ * of which has a foreign key back to the record — can clean up at the moment
+ * of deletion instead of waiting for a nightly sweep. A handler runs after
+ * the commit and best effort: it can never fail or roll back the delete.
+ *
+ * Only the record's id is carried. A handler that needs more cannot have it —
+ * the row is gone by the time the event is delivered.
+ */
+export interface WorkerDeleteAfterPayload {
+  workerId: string;
+}
+
+export interface EmployerDeleteAfterPayload {
+  employerId: string;
+}
+
+export interface TrustProviderDeleteAfterPayload {
+  trustProviderId: string;
+}
+
+export interface GrievanceDeleteAfterPayload {
+  grievanceId: string;
+}
+
 export interface CronPayload {
   jobId: string;
   mode: "live" | "test";
@@ -833,6 +897,10 @@ export interface EventPayloadMap {
   [EventType.GRIEVANCE_DEADLINE_REMINDER]: GrievanceDeadlineReminderPayload;
   [EventType.EMPLOYER_MONTHLY]: EmployerMonthlyPayload;
   [EventType.PLUGIN_CONFIG_SAVED]: PluginConfigSavedPayload;
+  [EventType.WORKER_DELETE_AFTER]: WorkerDeleteAfterPayload;
+  [EventType.EMPLOYER_DELETE_AFTER]: EmployerDeleteAfterPayload;
+  [EventType.TRUST_PROVIDER_DELETE_AFTER]: TrustProviderDeleteAfterPayload;
+  [EventType.GRIEVANCE_DELETE_AFTER]: GrievanceDeleteAfterPayload;
   [EventType.CRON]: CronPayload;
   [EventType.LOG]: LogPayload;
 }

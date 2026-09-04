@@ -177,6 +177,7 @@
 - [Comm send-once key](comm-send-once-key.md) — at-most-once sends: normalize the key at the storage insert (senders bypass the zod schema), the insert IS the claim, a duplicate is its own outcome, a spent key stays spent.
 - [Timezone model](timezone-model.md) — naive columns hold wall clock in the PROCESS zone (`now()` in the PG SESSION zone — set both); site zone = process.env.TZ; browser half redirects formatters (zoned Date subclass, calendar≠instant).
 - [Cron tick heartbeat](cron-tick-heartbeat.md) — periodic plugin work subscribes to a shared wall-clock tick (one EventType per period), not its own cron; best-effort + level-triggered, dueness from the last LIVE SUCCESS, never a "how late" count.
+- [Whole-job dispatch eligibility](whole-job-eligibility-without-facts.md) — job-level rule = no condition, or an `exists` on a category NO denorm plugin writes (comment it); job-type-less configs are inert.
 - [Dashboard widget registry glob depth](dashboard-widget-registry-glob-depth.md) — client registry globs ./*/*.tsx as `<dir>:<File>`; a SHARED card must sit above the widget dirs or it registers as a phantom widget.
 - [Upstream merge playbook](upstream-merge-playbook.md) — renumber upstream core migrations above our counter (else silently skipped); keep-both splits JSDoc/JSX; run arch lint; known env-noise test failures.
 - [Migration system-zone pin](migration-timezone-pin.md) — every S1→S2 writer gated on TZ=America/Los_Angeles via ensureStagingSchema (no override); evidence in envelopes; dev shell is UTC so prefix TZ.
@@ -190,3 +191,7 @@
 - [Dev UI verification login](dev-ui-verification-login.md) — INITIAL_ADMIN_PASSWORD is not a login (unreferenced); make a throwaway local account (users+auth_identities+user_roles, hash via generate-password-hash) for browser/API checks, delete after.
 - [Exemption provenance contract](exemption-provenance-contract.md) — `data.source` discriminated union, storage returns a view (raw jsonb never leaves), no request-body `data`, malformed source throws, reverse lookup by jsonb containment.
 - [Appeal outcome cross-component grant](appeal-outcome-cross-component-grant.md) — storage owns tx+row lock, service supplies an idempotent grant callback fed the LOCKED row; staff pickers never read the admin-only plugin manifest.
+- [Context-framework gating](context-framework-gating.md) — presence in the config var = on; a hidden tab needs a route guard reading the same server answer; a context id rename also moves discriminators + config KEYS.
+- [Server-fed nav sections](nav-section-fed-by-server-registry.md) — a nav group whose items come from a server registry must feed the path helpers too, and say "loading/couldn't load" rather than render empty.
+- [Polymorphic child cleanup](polymorphic-child-cleanup.md) — FK-less children of a deleted record: after-commit per-entity event + daily sweep calling ONE routine; per-record deletes only (bulk logs nothing).
+- [Context-filtered picker resend](context-filtered-picker-resend.md) — seed a scoped picker from the OFFERED set and omit the field when the control isn't rendered; resending a de-scoped id 400s unrelated edits.

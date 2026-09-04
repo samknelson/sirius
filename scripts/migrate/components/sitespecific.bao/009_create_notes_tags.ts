@@ -50,6 +50,7 @@ async function up(): Promise<void> {
   }
 
   if (!(await tableExists("sitespecific_bao_notes_tags"))) {
+    const notesTable = sql.raw(await coreNotesTable(db));
     await db.execute(sql`
       CREATE TABLE sitespecific_bao_notes_tags (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -60,11 +61,22 @@ async function up(): Promise<void> {
         CONSTRAINT sitespecific_bao_notes_tags_tag_id_fkey
           FOREIGN KEY (tag_id) REFERENCES options_sitespecific_bao_notes_tags(id) ON DELETE CASCADE,
         CONSTRAINT sitespecific_bao_notes_tags_note_id_fkey
-          FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE
+          FOREIGN KEY (note_id) REFERENCES ${notesTable}(id) ON DELETE CASCADE
       )
     `);
     logger.info("Created sitespecific_bao_notes_tags table", { service: SERVICE });
   }
+}
+
+/**
+ * Core notes table name. Core migration 1146 (upstream 1072) renames `notes`
+ * to `entity_notes`; core runs before component migrations, so a fresh
+ * install sees the new name while databases stamped before the rename saw
+ * the old one. Resolve at run time rather than hard-coding either.
+ */
+async function coreNotesTable(exec: { execute: (q: any) => Promise<{ rows?: unknown[] }> }): Promise<"notes" | "entity_notes"> {
+  const r = await exec.execute(sql`SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'entity_notes'`);
+  return (r.rows ?? []).length > 0 ? "entity_notes" : "notes";
 }
 
 const migration: Migration = {

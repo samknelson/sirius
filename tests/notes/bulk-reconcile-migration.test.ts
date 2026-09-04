@@ -26,7 +26,7 @@ const created = {
 
 async function cleanup() {
   for (const id of created.noteIds) {
-    await storage.notes.delete(id).catch(() => {});
+    await storage.entityNotes.delete(id).catch(() => {});
   }
   const options = getOptionsStorage();
   for (const id of created.tagIds) {
@@ -45,7 +45,7 @@ afterAll(cleanup);
 
 function migrationNote(worker: { id: string }, typeId: string, nid: number, body: string) {
   return {
-    entityType: "worker",
+    contextId: "worker",
     entityId: worker.id,
     typeId,
     subject: `${RUN_TAG} subject ${nid}`,
@@ -71,7 +71,7 @@ describe("bulk migration reconcile — tag replacement and ownership", () => {
     created.tagIds.push(tagA.id, tagB.id);
 
     // Create two notes in one batch: A with two tags, B tagless.
-    const first = await storage.notes.bulkReconcileForMigration({
+    const first = await storage.entityNotes.bulkReconcileForMigration({
       loader: LOADER,
       rows: [
         { ref: NID_BASE + 1, note: migrationNote(worker, noteType.id, NID_BASE + 1, "note A") as any, tagIds: [tagA.id, tagB.id] },
@@ -89,7 +89,7 @@ describe("bulk migration reconcile — tag replacement and ownership", () => {
 
     // Mixed update batch: A goes tagged → TAGLESS (stale tags must be
     // deleted), B goes tagless → tagged; bodies overwritten in place.
-    const second = await storage.notes.bulkReconcileForMigration({
+    const second = await storage.entityNotes.bulkReconcileForMigration({
       loader: LOADER,
       rows: [
         { ref: NID_BASE + 1, noteId: aId, note: migrationNote(worker, noteType.id, NID_BASE + 1, "note A v2") as any, tagIds: [] },
@@ -100,7 +100,7 @@ describe("bulk migration reconcile — tag replacement and ownership", () => {
     expect(second.saved.get(NID_BASE + 1)!.created).toBe(false);
     expect(await storage.baoNoteTags.listByNote(aId)).toHaveLength(0);
     expect((await storage.baoNoteTags.listByNote(bId)).map((r) => r.tagId)).toEqual([tagB.id]);
-    expect((await storage.notes.get(aId))?.body).toBe("note A v2");
+    expect((await storage.entityNotes.get(aId))?.body).toBe("note A v2");
   });
 
   it("adopts by provenance and fail-closes on foreign ownership", async (ctx) => {
@@ -112,13 +112,13 @@ describe("bulk migration reconcile — tag replacement and ownership", () => {
 
     // Adoption: a create (no noteId) whose nid already exists under this
     // loader updates the existing note instead of duplicating it.
-    const seeded = await storage.notes.bulkReconcileForMigration({
+    const seeded = await storage.entityNotes.bulkReconcileForMigration({
       loader: LOADER,
       rows: [{ ref: NID_BASE + 3, note: migrationNote(worker, noteType.id, NID_BASE + 3, "orig") as any, tagIds: [] }],
     });
     const seededId = seeded.saved.get(NID_BASE + 3)!.noteId;
     created.noteIds.push(seededId);
-    const adopted = await storage.notes.bulkReconcileForMigration({
+    const adopted = await storage.entityNotes.bulkReconcileForMigration({
       loader: LOADER,
       rows: [{ ref: NID_BASE + 3, note: migrationNote(worker, noteType.id, NID_BASE + 3, "adopted") as any, tagIds: [] }],
     });
@@ -126,8 +126,8 @@ describe("bulk migration reconcile — tag replacement and ownership", () => {
 
     // Ownership: an update aimed at a note owned by another loader is a
     // per-row failure, and the foreign note is untouched.
-    const foreign = await storage.notes.create({
-      entityType: "worker",
+    const foreign = await storage.entityNotes.create({
+      contextId: "worker",
       entityId: worker.id,
       typeId: noteType.id,
       subject: `${RUN_TAG} foreign`,
@@ -136,7 +136,7 @@ describe("bulk migration reconcile — tag replacement and ownership", () => {
       userId: null,
     });
     created.noteIds.push(foreign.id);
-    const res = await storage.notes.bulkReconcileForMigration({
+    const res = await storage.entityNotes.bulkReconcileForMigration({
       loader: LOADER,
       rows: [
         { ref: NID_BASE + 4, noteId: foreign.id, note: migrationNote(worker, noteType.id, NID_BASE + 4, "hijack") as any, tagIds: [] },
@@ -146,6 +146,6 @@ describe("bulk migration reconcile — tag replacement and ownership", () => {
     expect(res.failed.get(NID_BASE + 4)).toBe("owner_mismatch");
     expect(res.failed.get(NID_BASE + 5)).toBe("missing");
     expect(res.saved.size).toBe(0);
-    expect((await storage.notes.get(foreign.id))?.body).toBe("foreign body");
+    expect((await storage.entityNotes.get(foreign.id))?.body).toBe("foreign body");
   });
 });

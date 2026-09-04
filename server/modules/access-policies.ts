@@ -13,6 +13,7 @@ import {
   TabDefinition 
 } from '@shared/tabRegistry';
 import { storage } from '../storage';
+import { isEntityContextAvailable } from './entity-contexts';
 import { logger } from '../logger';
 
 /**
@@ -298,6 +299,18 @@ export function registerAccessPolicyRoutes(app: Express) {
         if (!componentEnabled) {
           granted = false;
           reason = `Component not enabled: ${tab.component}`;
+        }
+
+        // A tab showing one area of a context framework (files, notes) is
+        // hidden while that area is switched off, so the tab can never lead to
+        // routes that refuse. The server owns this answer: the operator's
+        // configuration is not client-visible.
+        if (granted && tab.entityContext) {
+          const areaOn = await isEntityContextAvailable(tab.entityContext);
+          if (!areaOn) {
+            granted = false;
+            reason = `Area not enabled: ${tab.entityContext.framework}/${tab.entityContext.contextId}`;
+          }
         }
 
         // Check policy or permission if component passed

@@ -3,6 +3,7 @@ import {
   type UnifiedOptionsStorage,
   type OptionsTypeName,
   optionsMetadata,
+  resolveFieldChoices,
 } from "../storage/unified-options";
 
 export interface OptionsTypeConfig {
@@ -21,8 +22,11 @@ export interface OptionsTypeConfig {
    * Used by the write routes to reject values outside the fixed set
    * (the UI already constrains these via a select, but a direct API
    * call must not be able to persist an out-of-range value).
+   *
+   * A function, not a snapshot: choices may come from a registry that is
+   * populated during boot, after this module is imported.
    */
-  enumConstraints: Record<string, string[]>;
+  enumConstraints: () => Record<string, string[]>;
 }
 
 let unifiedStorage: UnifiedOptionsStorage | null = null;
@@ -38,12 +42,18 @@ function createTypeConfig(type: OptionsTypeName): OptionsTypeConfig {
   const storage = getUnifiedStorage();
   const metadata = optionsMetadata[type];
 
-  const enumConstraints: Record<string, string[]> = {};
-  for (const field of metadata.fields) {
-    if (field.inputType === "enum" && field.enumOptions?.length) {
-      enumConstraints[field.name] = field.enumOptions.map((o) => o.value);
+  // Resolved on ACCESS, not here: this registry is built when the module is
+  // imported, and a field whose choices come from a registry populated during
+  // boot would otherwise freeze an empty allow-list and reject every write.
+  const enumConstraints = (): Record<string, string[]> => {
+    const constraints: Record<string, string[]> = {};
+    for (const field of resolveFieldChoices(metadata.fields)) {
+      if (field.inputType === "enum" && field.enumOptions?.length) {
+        constraints[field.name] = field.enumOptions.map((o) => o.value);
+      }
     }
-  }
+    return constraints;
+  };
 
   return {
     name: metadata.displayName,
@@ -106,6 +116,7 @@ export const optionsTypeRegistry: Record<string, OptionsTypeConfig> = {
   "worker-ban-type": createTypeConfig("worker-ban-type"),
   "note-type": createTypeConfig("note-type"),
   "grievance-denial-reason": createTypeConfig("grievance-denial-reason"),
+  "file-type": createTypeConfig("file-type"),
 };
 
 export function getOptionsType(type: string): OptionsTypeConfig | undefined {

@@ -325,9 +325,9 @@ export const optionsWorkerBanType = pgTable("options_worker_ban_type", {
 });
 
 /**
- * Note types (unified options kind `note-type`). `data.entityTypes` holds the
- * record types a type applies to, validated against the shared note-entity
- * registry (`shared/notes.ts`) on save.
+ * Note types (unified options kind `note-type`). `data.contextIds` holds the
+ * note contexts a type applies to, validated against the note-context
+ * registry (`server/services/entity-notes/registry.ts`) on save.
  */
 export const optionsNoteType = pgTable("options_note_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -338,17 +338,36 @@ export const optionsNoteType = pgTable("options_note_type", {
 });
 
 /**
+ * File types (unified options kind `file-type`) — the notes list's twin for
+ * attachments. `data.contextIds` holds the entity-file contexts a type
+ * applies to, validated against the file-context registry
+ * (`server/services/entity-files/registry.ts`) on save.
+ *
+ * Unlike a note's type, an attachment's type is OPTIONAL: `entity_files`
+ * predates this list and an area with no types must still accept uploads.
+ */
+export const optionsFileType = pgTable("options_file_type", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  siriusId: text("sirius_id").unique(),
+  data: jsonb("data"),
+});
+
+/**
  * Staff notes attached to a record.
  *
- * `entity_type` / `entity_id` are a polymorphic pair (the house convention —
+ * `context_id` / `entity_id` are a polymorphic pair (the house convention —
  * see `files`), so there is no FK to the parent: existence is checked at the
- * API layer against the shared note-entity registry and orphans are swept by
- * the `notes_orphan_sweep` cron. `type_id` DOES have a real FK, on delete
+ * API layer against the note-context registry and orphans are swept by
+ * the `notes_orphan_sweep` cron. `context_id` names the registered note
+ * context (worker, employer, …), the same spelling `entity_files` uses for
+ * its contexts. `type_id` DOES have a real FK, on delete
  * restrict, so a note type in use cannot be deleted out from under its notes.
  */
-export const notes = pgTable("notes", {
+export const entityNotes = pgTable("entity_notes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  entityType: varchar("entity_type").notNull(),
+  contextId: varchar("context_id").notNull(),
   entityId: varchar("entity_id").notNull(),
   typeId: varchar("type_id").notNull().references(() => optionsNoteType.id, { onDelete: 'restrict' }),
   subject: text("subject").notNull(),
@@ -357,8 +376,8 @@ export const notes = pgTable("notes", {
   timestamp: timestamp("timestamp").default(sql`now()`).notNull(),
   userId: varchar("user_id").references(() => users.id, { onDelete: 'set null' }),
 }, (table) => [
-  index("idx_notes_entity").on(table.entityType, table.entityId),
-  index("idx_notes_type_id").on(table.typeId),
+  index("idx_entity_notes_entity").on(table.contextId, table.entityId),
+  index("idx_entity_notes_type_id").on(table.typeId),
 ]);
 
 export const workerBans = pgTable("worker_bans", {
@@ -1041,6 +1060,60 @@ export const files = pgTable("files", {
   unique("files_file_system_id_storage_path_unique").on(table.fileSystemId, table.storagePath),
 ]);
 
+/**
+ * File attachments for the generic entity-files framework.
+ *
+ * ONE shared table for every registered area (grievance, worker, employer,
+ * trust provider, …): `context_id` names the registered context and
+ * `entity_id` the record it hangs off. That pair is a soft reference — the
+ * same polymorphic shape as `notes`, with no FK to the owning entity — so
+ * registering a new area is a code registration plus operator config, never
+ * a migration.
+ *
+ * `file_id` DOES have a real FK (cascade both ways in effect: deleting the
+ * files row removes the attachment), and is UNIQUE — a files row belongs to
+ * at most one attachment. `name` is the user-editable display name served on
+ * download; `data` is freeform jsonb.
+ *
+ * `type_id` names an `options_file_type` row and is NULLABLE — an attachment
+ * may have no type, and an area whose operator has created no types uploads
+ * exactly as it did before the list existed. The FK is ON DELETE RESTRICT
+ * (same as notes), so a type in use cannot be deleted out from under its
+ * files.
+ *
+ * Every constraint and index is explicitly named because the startup drift
+ * gate compares reflected definitions against these declarations.
+ */
+export const entityFiles = pgTable("entity_files", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  contextId: varchar("context_id").notNull(),
+  entityId: varchar("entity_id").notNull(),
+  fileId: varchar("file_id").notNull(),
+  typeId: varchar("type_id"),
+  name: varchar("name", { length: 255 }).notNull(),
+  data: jsonb("data"),
+}, (table) => [
+  foreignKey({
+    name: "entity_files_file_id_files_id_fk",
+    columns: [table.fileId],
+    foreignColumns: [files.id],
+  }).onDelete("cascade"),
+  foreignKey({
+    name: "entity_files_type_id_options_file_type_id_fk",
+    columns: [table.typeId],
+    foreignColumns: [optionsFileType.id],
+  }).onDelete("restrict"),
+  unique("entity_files_file_id_unique").on(table.fileId),
+  index("idx_entity_files_entity").on(table.contextId, table.entityId),
+  index("idx_entity_files_type_id").on(table.typeId),
+]);
+
+export const insertEntityFileSchema = createInsertSchema(entityFiles).omit({
+  id: true,
+});
+export type EntityFile = typeof entityFiles.$inferSelect;
+export type InsertEntityFile = z.infer<typeof insertEntityFileSchema>;
+
 export const esigStatusEnum = pgEnum("esig_status", ["pending", "signed"]);
 export const esigTypeEnum = pgEnum("esig_type", ["online", "offline", "upload"]);
 
@@ -1317,10 +1390,6 @@ export {
   insertGrievanceStatusHistorySchema,
   type GrievanceStatusHistory,
   type InsertGrievanceStatusHistory,
-  grievanceFiles,
-  insertGrievanceFileSchema,
-  type GrievanceFile,
-  type InsertGrievanceFile,
   grievanceTimelineAdjustmentSchema,
   type GrievanceTimelineAdjustment,
   TIMELINE_ADJUSTMENT_DATA_KEY,
@@ -1555,7 +1624,7 @@ export const insertWorkerBanSchema = createInsertSchema(workerBans).omit({
   type: z.string().optional().nullable(),
 });
 
-export const insertNoteSchema = createInsertSchema(notes).omit({
+export const insertEntityNoteSchema = createInsertSchema(entityNotes).omit({
   id: true,
   timestamp: true,
 }).extend({
@@ -1872,8 +1941,8 @@ export type Worker = Omit<typeof workers.$inferSelect, "data"> & {
 export type InsertWorkerBan = z.infer<typeof insertWorkerBanSchema>;
 export type WorkerBan = typeof workerBans.$inferSelect;
 
-export type InsertNote = z.infer<typeof insertNoteSchema>;
-export type Note = typeof notes.$inferSelect;
+export type InsertEntityNote = z.infer<typeof insertEntityNoteSchema>;
+export type EntityNote = typeof entityNotes.$inferSelect;
 export type OptionsNoteType = typeof optionsNoteType.$inferSelect;
 
 export type InsertEmployer = z.infer<typeof insertEmployerSchema>;

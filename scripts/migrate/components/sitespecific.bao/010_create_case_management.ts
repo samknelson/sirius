@@ -95,6 +95,7 @@ async function up(): Promise<void> {
     await tx.execute(sql`CREATE INDEX IF NOT EXISTS sitespecific_bao_cases_assignee_idx ON sitespecific_bao_cases(assignee_user_id)`);
     await tx.execute(sql`CREATE INDEX IF NOT EXISTS sitespecific_bao_cases_status_idx ON sitespecific_bao_cases(status_id)`);
     await tx.execute(sql`CREATE INDEX IF NOT EXISTS sitespecific_bao_cases_deadline_idx ON sitespecific_bao_cases(deadline_ymd)`);
+    const notesTable = sql.raw(await coreNotesTable(tx));
     await tx.execute(sql`
       CREATE TABLE IF NOT EXISTS sitespecific_bao_case_notes (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -105,11 +106,22 @@ async function up(): Promise<void> {
         CONSTRAINT sitespecific_bao_case_notes_case_id_fkey
           FOREIGN KEY (case_id) REFERENCES sitespecific_bao_cases(id) ON DELETE CASCADE,
         CONSTRAINT sitespecific_bao_case_notes_note_id_fkey
-          FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE RESTRICT
+          FOREIGN KEY (note_id) REFERENCES ${notesTable}(id) ON DELETE RESTRICT
       )
     `);
     await tx.execute(sql`CREATE INDEX IF NOT EXISTS sitespecific_bao_case_notes_case_idx ON sitespecific_bao_case_notes(case_id)`);
   });
+}
+
+/**
+ * Core notes table name. Core migration 1146 (upstream 1072) renames `notes`
+ * to `entity_notes`; core runs before component migrations, so a fresh
+ * install sees the new name while databases stamped before the rename saw
+ * the old one. Resolve at run time rather than hard-coding either.
+ */
+async function coreNotesTable(exec: { execute: (q: any) => Promise<{ rows?: unknown[] }> }): Promise<"notes" | "entity_notes"> {
+  const r = await exec.execute(sql`SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'entity_notes'`);
+  return (r.rows ?? []).length > 0 ? "entity_notes" : "notes";
 }
 
 const migration: Migration = {

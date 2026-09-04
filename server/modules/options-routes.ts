@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { getOptionsType, getAllOptionsTypes, getOptionsStorage } from "./options-registry";
 import { requireAccess } from "../services/access-policy-evaluator";
-import { OptionsTypeName } from "../storage/unified-options";
+import { OptionsTypeName, getOptionsCatalog } from "../storage/unified-options";
 import { storage } from "../storage";
 import { requireComponent, isComponentEnabled } from "./components";
 import { getComponentById } from "../../shared/components";
@@ -105,6 +105,25 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       res.json({ types: getAllOptionsTypes() });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch options types" });
+    }
+  });
+
+  // GET /api/options/catalog - Name + description of every options type.
+  //
+  // Deliberately the lightest gate on this router: it answers "what dropdown
+  // lists exist and what are they called" — category names, no contents and no
+  // configuration — so any signed-in user may ask. The screens built on it
+  // (the config navigation, the options index) stay admin-only through their
+  // own route gates. Component gating is not applied here; each entry carries
+  // its `requiredComponent` so callers gate exactly as they do for the rest of
+  // the navigation, and the per-type routes still refuse a disabled list.
+  //
+  // NOTE: must stay ahead of the generic `/api/options/:type` route below.
+  app.get("/api/options/catalog", requireAccess('authenticated'), async (req: Request, res: Response) => {
+    try {
+      res.json(getOptionsCatalog());
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch options catalog" });
     }
   });
 

@@ -48,6 +48,7 @@ export function registerBaoDcEntityFileContext(): void {
   registerEntityFileContext({
     id: "bao-dc-case",
     label: "Disability Credit cases",
+    recordLabel: "Disability Credit case",
     component: "sitespecific.bao",
     tokens: [":worker-id", ":case-id"],
 

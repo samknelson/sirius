@@ -11,14 +11,14 @@
  *   - type, imported marker, subject, author, timestamp, tags and actions
  *     stay visible in BOTH states.
  *
- * The state model is pure (client/src/components/notes/note-display.ts) and
+ * The state model is pure (client/src/components/entity-notes/note-display.ts) and
  * the card is presentational, so both are exercised here without a DOM:
  * static markup is enough to prove what each state renders.
  */
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Router } from "wouter";
-import NoteCard, { type NoteRow } from "@/components/notes/NoteCard";
+import NoteCard, { type NoteRow } from "@/components/entity-notes/NoteCard";
 import {
   collapseAll,
   expandAll,
@@ -27,7 +27,7 @@ import {
   isNoteExpanded,
   toggleNote,
   type NotesDisplayState,
-} from "@/components/notes/note-display";
+} from "@/components/entity-notes/note-display";
 
 describe("notes display state model", () => {
   const ids = ["n1", "n2", "n3"];
@@ -107,7 +107,7 @@ describe("first-line preview extraction", () => {
 describe("note card rendering in both states", () => {
   const note: NoteRow = {
     id: "note-1",
-    entityType: "worker",
+    contextId: "worker",
     entityId: "w-1",
     typeId: "t-1",
     subject: "Call about eligibility",
@@ -135,7 +135,7 @@ describe("note card rendering in both states", () => {
         <NoteCard
           note={{ ...note, ...overrides }}
           tagsEnabled={tagsEnabled}
-          entityType={note.entityType}
+          contextId={note.contextId}
           entityId={note.entityId}
           expanded={expanded}
           onToggleExpanded={() => {}}

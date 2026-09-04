@@ -23,6 +23,17 @@ const COMPONENT_ID = "sitespecific.bao";
  * while the legacy table still exists, and inserts skip rows already
  * archived (matched on data.originalNoteId).
  */
+/**
+ * Core notes table name. Core migration 1146 (upstream 1072) renames `notes`
+ * to `entity_notes`; core runs before component migrations, so a fresh
+ * install sees the new name while databases stamped before the rename saw
+ * the old one. Resolve at run time rather than hard-coding either.
+ */
+async function coreNotesTable(exec: { execute: (q: any) => Promise<{ rows?: unknown[] }> }): Promise<"notes" | "entity_notes"> {
+  const r = await exec.execute(sql`SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'entity_notes'`);
+  return (r.rows ?? []).length > 0 ? "entity_notes" : "notes";
+}
+
 const migration: Migration = {
   version: 14,
   name: "dc_extensions_and_notes_retirement",
@@ -51,17 +62,23 @@ const migration: Migration = {
         `);
         if ((hasRows.rows ?? []).length > 0) {
           // Get-or-create the archive note type (applies to workers).
+          // Column name follows the table: 1147 renames entity_type -> context_id,
+          // and 1150 renames the note-type key entityTypes -> contextIds.
+          const notesTable = await coreNotesTable(tx);
+          const notesTableSql = sql.raw(notesTable);
+          const contextColumn = sql.raw(notesTable === "entity_notes" ? "context_id" : "entity_type");
+          const appliesToKey = notesTable === "entity_notes" ? "contextIds" : "entityTypes";
           await tx.execute(sql`
             INSERT INTO options_note_type (name, description, data)
             SELECT 'Disability Credit (archived)',
                    'Historical Disability Credit case notes archived when the bespoke DC notes table was retired.',
-                   '{"entityTypes": ["worker"]}'::jsonb
+                   ${JSON.stringify({ [appliesToKey]: ["worker"] })}::jsonb
             WHERE NOT EXISTS (
               SELECT 1 FROM options_note_type WHERE name = 'Disability Credit (archived)'
             )
           `);
           await tx.execute(sql`
-            INSERT INTO notes (entity_type, entity_id, type_id, subject, body, timestamp, user_id, data)
+            INSERT INTO ${notesTableSql} (${contextColumn}, entity_id, type_id, subject, body, timestamp, user_id, data)
             SELECT
               'worker',
               c.worker_id,
@@ -79,7 +96,7 @@ const migration: Migration = {
             FROM sitespecific_bao_dc_case_notes n
             JOIN sitespecific_bao_dc_cases c ON c.id = n.case_id
             WHERE NOT EXISTS (
-              SELECT 1 FROM notes a WHERE a.data->>'originalNoteId' = n.id
+              SELECT 1 FROM ${notesTableSql} a WHERE a.data->>'originalNoteId' = n.id
             )
           `);
         }

@@ -6,7 +6,7 @@ import { db } from "../../server/db";
 import { storage } from "../../server/storage";
 import { getOptionsStorage, getOptionsType } from "../../server/modules/options-registry";
 import { getComponentById } from "@shared/components";
-import { notes, rolePermissions, roles, sitespecificBaoCases, userRoles, users } from "@shared/schema";
+import { entityNotes, rolePermissions, roles, sitespecificBaoCases, userRoles, users } from "@shared/schema";
 import { ensureBaoCaseSchema, getGeneralCaseTypeId } from "./fixtures/bao-schema";
 
 const run = `bao-case-test-${Date.now()}`;
@@ -32,7 +32,7 @@ beforeAll(async () => {
   const workers = await storage.workers.getAllWorkers();
   const assignees = await storage.users.getUsersWithAnyPermission(["staff", "admin"]);
   const noteTypes = await getOptionsStorage().list("note-type");
-  const workerType = noteTypes.find((t: any) => t.data?.entityTypes?.includes("worker"));
+  const workerType = noteTypes.find((t: any) => t.data?.contextIds?.includes("worker"));
   if (workers.length < 2 || !assignees[0] || !workerType) {
     throw new Error("BAO case tests require two workers, one staff user, and a worker note type");
   }
@@ -66,7 +66,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!available) return;
   for (const id of caseIds) await db.delete(sitespecificBaoCases).where(eq(sitespecificBaoCases.id, id));
-  for (const id of noteIds) await db.delete(notes).where(eq(notes.id, id));
+  for (const id of noteIds) await db.delete(entityNotes).where(eq(entityNotes.id, id));
   const options = getOptionsStorage();
   await options.delete("bao-case-status", openStatusId).catch(() => {});
   await options.delete("bao-case-status", closedStatusId).catch(() => {});
@@ -380,8 +380,8 @@ describe("BAO transactional case invariants", () => {
 
   it("refuses cross-entity note conversion and preserves the note", async (ctx) => {
     if (!available) throw new Error("BAO case schema unavailable");
-    const note = await storage.notes.create({
-      entityType: "worker", entityId: workerId, typeId: noteTypeId,
+    const note = await storage.entityNotes.create({
+      contextId: "worker", entityId: workerId, typeId: noteTypeId,
       subject: `${run} cross entity`, body: null, data: null, userId,
     });
     noteIds.push(note.id);
@@ -390,7 +390,7 @@ describe("BAO transactional case invariants", () => {
       deadlineYmd: "2099-01-01", statusId: openStatusId,
       assigneeUserId: userId, actorUserId: userId,
     })).rejects.toThrow("NOTE_ENTITY_MISMATCH");
-    expect(await storage.notes.get(note.id)).toBeTruthy();
+    expect(await storage.entityNotes.get(note.id)).toBeTruthy();
   });
 
   it("requires resolution on close and clears it on reopen", async (ctx) => {

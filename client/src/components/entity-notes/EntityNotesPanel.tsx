@@ -23,6 +23,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { ChevronsDownUp, ChevronsUpDown, NotebookPen, Plus } from "lucide-react";
+import {
+  ALL_TYPES,
+  TypeFilter,
+  buildTypeFilterChoices,
+  typeFilterMatches,
+  type TypeFilterChoice,
+} from "@/components/type-filter";
 import NoteCard, { type NoteRow } from "./NoteCard";
 import {
   collapseAll,
@@ -36,7 +43,7 @@ interface NoteTypeOption {
   id: string;
   name: string;
   description: string | null;
-  data: { entityTypes?: string[] } | null;
+  data: { contextIds?: string[] } | null;
 }
 
 interface NoteTagOption {
@@ -53,8 +60,8 @@ interface NoteTagTypeOption {
 }
 
 interface NotesPanelProps {
-  /** Registered note-able record type, e.g. "worker". */
-  entityType: string;
+  /** Registered note context, e.g. "worker". */
+  contextId: string;
   /** Id of the record the notes hang off. */
   entityId: string;
 }
@@ -62,12 +69,12 @@ interface NotesPanelProps {
 /**
  * Notes tab content, shared by every note-able record type.
  *
- * The only thing that varies per record is the `entityType` / `entityId` pair:
+ * The only thing that varies per record is the `contextId` / `entityId` pair:
  * the note-type dropdown filters itself to the types that declare this record
  * type, and every mutation posts the pair back. Staff-only — the tab itself is
  * gated, and the API refuses non-staff regardless.
  */
-export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
+export default function EntityNotesPanel({ contextId, entityId }: NotesPanelProps) {
   const { toast } = useToast();
   const auth = useAuth();
   // Note tagging is BAO-only: no tag UI (and no tag queries) elsewhere.
@@ -83,7 +90,9 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
   // note, later per-note toggles override just that note. Never persisted.
   const [displayState, setDisplayState] = useState(initialNotesDisplayState);
 
-  const notesQueryKey = ["/api/notes", entityType, entityId];
+  const [typeFilter, setTypeFilter] = useState<TypeFilterChoice>(ALL_TYPES);
+
+  const notesQueryKey = ["/api/entity-notes", contextId, entityId];
 
   const { data: notes = [], isLoading } = useQuery<NoteRow[]>({
     queryKey: notesQueryKey,
@@ -96,8 +105,16 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
   // Only types that declare this record type are offerable; the server
   // enforces the same pairing on save.
   const noteTypes = useMemo(
-    () => allNoteTypes.filter((t) => (t.data?.entityTypes ?? []).includes(entityType)),
-    [allNoteTypes, entityType],
+    () => allNoteTypes.filter((t) => (t.data?.contextIds ?? []).includes(contextId)),
+    [allNoteTypes, contextId],
+  );
+
+  // A view over the notes already loaded: the filter narrows what is listed,
+  // it never changes what was fetched.
+  const filterChoices = useMemo(() => buildTypeFilterChoices(notes, typeFilter), [notes, typeFilter]);
+  const visibleNotes = useMemo(
+    () => notes.filter((note) => typeFilterMatches(typeFilter, note)),
+    [notes, typeFilter],
   );
 
   const { data: tagOptions = [] } = useQuery<NoteTagOption[]>({
@@ -149,9 +166,9 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
   const createMutation = useMutation({
     mutationFn: async (data: { typeId: string; subject: string; body: string | null; tagIds: string[] }) => {
       const { tagIds, ...note } = data;
-      const created = await apiRequest("POST", "/api/notes", { entityType, entityId, ...note });
+      const created = await apiRequest("POST", "/api/entity-notes", { contextId, entityId, ...note });
       if (tagsEnabled && tagIds.length > 0 && created?.id) {
-        await apiRequest("PUT", `/api/notes/${created.id}/tags`, { tagIds });
+        await apiRequest("PUT", `/api/entity-notes/${created.id}/tags`, { tagIds });
       }
       return created;
     },
@@ -168,9 +185,9 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: { typeId: string; subject: string; body: string | null; tagIds: string[] } }) => {
       const { tagIds, ...note } = data;
-      const updated = await apiRequest("PUT", `/api/notes/${id}`, note);
+      const updated = await apiRequest("PUT", `/api/entity-notes/${id}`, note);
       if (tagsEnabled) {
-        await apiRequest("PUT", `/api/notes/${id}/tags`, { tagIds });
+        await apiRequest("PUT", `/api/entity-notes/${id}/tags`, { tagIds });
       }
       return updated;
     },
@@ -185,7 +202,7 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => apiRequest("DELETE", `/api/notes/${id}`),
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/entity-notes/${id}`),
     onSuccess: () => {
       invalidate();
       toast({ title: "Note deleted" });
@@ -269,6 +286,17 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
             </p>
           )}
 
+          {!isLoading && (
+            <TypeFilter
+              id="note-type-filter"
+              value={typeFilter}
+              onChange={setTypeFilter}
+              choices={filterChoices}
+              shown={visibleNotes.length}
+              total={notes.length}
+            />
+          )}
+
           {isLoading ? (
             <div className="space-y-3" data-testid="loading-notes">
               <Skeleton className="h-16 w-full" />
@@ -280,6 +308,11 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
                 No notes on this record yet.
               </p>
             )
+          ) : visibleNotes.length === 0 ? (
+            <p className="text-sm text-muted-foreground" data-testid="text-no-notes-match">
+              No notes of this type. {notes.length} note{notes.length === 1 ? " is" : "s are"} hidden
+              by the filter.
+            </p>
           ) : (
             <div className="space-y-3">
               <div className="flex items-center justify-end gap-2">
@@ -302,12 +335,12 @@ export default function NotesPanel({ entityType, entityId }: NotesPanelProps) {
                   Expand all
                 </Button>
               </div>
-              {notes.map((note) => (
+              {visibleNotes.map((note) => (
                 <NoteCard
                   key={note.id}
                   note={note}
                   tagsEnabled={tagsEnabled}
-                  entityType={entityType}
+                  contextId={contextId}
                   entityId={entityId}
                   expanded={isNoteExpanded(displayState, note.id)}
                   onToggleExpanded={() => setDisplayState((prev) => toggleNote(prev, note.id))}

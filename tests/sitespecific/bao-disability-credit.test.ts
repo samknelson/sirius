@@ -462,10 +462,10 @@ describe("DC document classification boundary", () => {
     // The generic PATCH route calls adapter.update after a manage check that
     // a member who owns the case passes — so the adapter itself must refuse.
     await expect(
-      context!.adapter.update("any-case", "any-doc", { data: { docType: "dc_form" } }),
+      context!.adapter!.update("any-case", "any-doc", { data: { docType: "dc_form" } }),
     ).rejects.toThrow("DC_DOCUMENT_UPDATE_VIA_DC_ROUTES");
     // Deletion is likewise impossible through the generic route.
-    await expect(context!.adapter.remove("any-case", "any-doc")).rejects.toThrow(
+    await expect(context!.adapter!.remove("any-case", "any-doc")).rejects.toThrow(
       "DC_DOCUMENTS_CANNOT_BE_DELETED",
     );
   });

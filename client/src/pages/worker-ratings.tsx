@@ -142,7 +142,7 @@ function RatingsContent() {
       <CardContent>
         {hierarchicalRatingTypes.length === 0 ? (
           <p className="text-muted-foreground text-center py-8">
-            No rating types have been configured. Add rating types in Config &gt; Workers &gt; Rating Types.
+            No rating types have been configured. Add them in Config &gt; Dropdown Lists &gt; Worker Rating Type.
           </p>
         ) : (
           <Table>

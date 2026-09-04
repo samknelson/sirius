@@ -33,7 +33,7 @@ export interface CaseStatusOption {
 export interface NamedOption {
   id: string;
   name: string;
-  data?: { entityTypes?: string[] };
+  data?: { contextIds?: string[] };
 }
 
 interface EligibilityPlugin {
@@ -130,7 +130,7 @@ export function AppealOutcomeCard({ record, statuses, resolutions, noteTypes, ta
     setDenyResolutionId(deniedStatus?.defaultResolutionId ?? "");
     setDenyResolutionYmd(todayYmd());
   });
-  const applicableNoteTypes = noteTypes.filter((t) => t.data?.entityTypes?.includes(record.entityType));
+  const applicableNoteTypes = noteTypes.filter((t) => t.data?.contextIds?.includes(record.entityType));
   const withNote = noteTypeId !== NO_NOTE;
 
   const finish = (title: string, description?: string) => {

@@ -59,6 +59,19 @@ function emitGrievanceTimelineChanged(grievanceId: string): void {
 }
 
 /**
+ * Announce a deleted grievance once the surrounding transaction commits, so
+ * the areas that hang off a grievance with no foreign key (notes, file
+ * attachments) clean up now rather than waiting for their nightly sweep.
+ * Best-effort: a rolled-back delete announces nothing, and a failed emit or
+ * handler never fails the delete.
+ */
+function emitGrievanceDeleteAfter(grievanceId: string): void {
+  onAfterCommit(() => {
+    void eventBus.emit(EventType.GRIEVANCE_DELETE_AFTER, { grievanceId });
+  });
+}
+
+/**
  * Emit the grievance-assignment-saved event once the surrounding transaction
  * (if any) commits, so the grievance-assignment event-notifier plugin can fan a
  * notification out to the affected user. Best-effort: a failed emit never fails
@@ -542,6 +555,7 @@ export function createGrievanceStorage(): GrievanceStorage {
         await client.delete(grievanceEmployers).where(eq(grievanceEmployers.grievanceId, id));
         await client.delete(grievanceUsers).where(eq(grievanceUsers.grievanceId, id));
         const result = await client.delete(grievances).where(eq(grievances.id, id)).returning();
+        if (result.length > 0) emitGrievanceDeleteAfter(id);
         return result.length > 0;
       });
     },

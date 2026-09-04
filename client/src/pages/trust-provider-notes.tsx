@@ -1,5 +1,5 @@
 import TrustProviderLayout, { useTrustProviderLayout } from "@/components/layouts/TrustProviderLayout";
-import NotesPanel from "@/components/notes/NotesPanel";
+import EntityNotesPanel from "@/components/entity-notes/EntityNotesPanel";
 
 function TrustProviderNotesContent() {
   const { provider } = useTrustProviderLayout();
@@ -8,7 +8,7 @@ function TrustProviderNotesContent() {
     return null;
   }
 
-  return <NotesPanel entityType="trust_provider" entityId={provider.id} />;
+  return <EntityNotesPanel contextId="trust_provider" entityId={provider.id} />;
 }
 
 export default function TrustProviderNotesPage() {

@@ -10,6 +10,7 @@ import { dispatchSeniorityResetSettingsSchema } from "../dispatch/seniority-rese
 import { dispatchDncNotificationConfigSchema } from "../dispatch/dnc-config";
 import { workerBanNotificationConfigSchema } from "../worker-ban-config";
 import { entityFilesConfigSchema } from "../../services/entity-files/config";
+import { entityNotesConfigSchema } from "../../services/entity-notes/config";
 import { authSettingsSchema } from "../../auth/auth-settings";
 import {
   isEnvironmentVariableSecret,
@@ -123,6 +124,10 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
   // allowed?} map (admin read/write). Validated against the registered
   // contexts (unknown ids / unknown directory tokens are rejected).
   entity_files_config: { schema: entityFilesConfigSchema },
+
+  // Entity notes framework: the areas notes are switched on for (admin
+  // read/write). A context's PRESENCE is the setting; unknown ids rejected.
+  entity_notes_config: { schema: entityNotesConfigSchema },
 
   // Worker TOS absence banner HTML (any authenticated user can read,
   // staff can write; gated by the worker.tos component)

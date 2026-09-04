@@ -216,5 +216,6 @@ import "./plugins/ebsPump";
 import "./plugins/fileConsistencySweep";
 import "./plugins/sessionPrune";
 import "./plugins/notesOrphanSweep";
+import "./plugins/filesOrphanSweep";
 import "./plugins/wcCacheSweep";
 import "./plugins/cronTickEmitter";

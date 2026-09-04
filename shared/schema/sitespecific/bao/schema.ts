@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { parsePhoneNumber } from "libphonenumber-js";
-import { comm, employers, files, ledgerAccounts, ledgerEa, ledgerPayments, workers, wizards, trustBenefits, trustProviders, notes, users } from "../../../schema";
+import { comm, employers, files, ledgerAccounts, ledgerEa, ledgerPayments, workers, wizards, trustBenefits, trustProviders, entityNotes, users } from "../../../schema";
 import { validateSSN } from "../../../utils/ssn";
 import { toYmd } from "../../../utils/date";
 
@@ -1314,7 +1314,7 @@ export const sitespecificBaoNotesTags = pgTable(
     foreignKey({
       name: "sitespecific_bao_notes_tags_note_id_fkey",
       columns: [table.noteId],
-      foreignColumns: [notes.id],
+      foreignColumns: [entityNotes.id],
     }).onDelete("cascade"),
   ],
 );
@@ -1492,7 +1492,7 @@ export const sitespecificBaoCaseNotes = pgTable(
     foreignKey({
       name: "sitespecific_bao_case_notes_note_id_fkey",
       columns: [table.noteId],
-      foreignColumns: [notes.id],
+      foreignColumns: [entityNotes.id],
     }).onDelete("restrict"),
   ],
 );

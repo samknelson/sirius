@@ -11,6 +11,22 @@
 /**
  * Base tab definition with access requirements
  */
+/**
+ * A tab whose content is one area of a context-based framework.
+ *
+ * Both frameworks with contexts — entity-files and entity-notes — are
+ * switched on per area by an operator (Config → Entity Files / Entity Notes).
+ * A tab that names its context is hidden wherever that area is switched off,
+ * so the tab and the routes behind it can never disagree. The server resolves
+ * this (see server/modules/entity-contexts.ts); the registry only declares
+ * WHICH area the tab shows.
+ */
+export interface TabEntityContext {
+  framework: 'entity-files' | 'entity-notes';
+  /** Context id as registered in that framework and stored on its rows. */
+  contextId: string;
+}
+
 export interface TabDefinition {
   id: string;
   label: string;
@@ -18,6 +34,8 @@ export interface TabDefinition {
   policyId?: string;
   permission?: string;
   component?: string;
+  /** Hide this tab while its framework area is switched off. */
+  entityContext?: TabEntityContext;
   parent?: string;
   /** Terminology key for dynamic label substitution (e.g., 'steward', 'union') */
   termKey?: string;
@@ -241,7 +259,8 @@ export const workerTabTree: HierarchicalTab[] = [
   },
   { id: 'vdb-pension', label: 'VDB Pension', hrefTemplate: '/workers/{id}/vdb-pension', permission: 'staff', component: 'sitespecific.gbhet.pension' },
   { id: 'grievances', label: 'Grievances', hrefTemplate: '/workers/{id}/grievances', permission: 'staff', component: 'grievance', appealOnlyLabel: 'Appeals' },
-  { id: 'notes', label: 'Notes', hrefTemplate: '/workers/{id}/notes', permission: 'staff' },
+  { id: 'notes', label: 'Notes', hrefTemplate: '/workers/{id}/notes', permission: 'staff', entityContext: { framework: 'entity-notes', contextId: 'worker' } },
+  { id: 'files', label: 'Files', hrefTemplate: '/workers/{id}/files', permission: 'staff', entityContext: { framework: 'entity-files', contextId: 'worker' } },
   { id: 'cases', label: 'Cases', hrefTemplate: '/workers/{id}/cases', permission: 'staff', component: 'sitespecific.bao' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/workers/{id}/logs', permission: 'staff' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/workers/{id}/delete', permission: 'workers.delete' },
@@ -257,7 +276,8 @@ export const employerTabTree: HierarchicalTab[] = [
   { id: 'contacts', label: 'Contacts', hrefTemplate: '/employers/{id}/contacts', policyId: 'employer.steward.view' },
   { id: 'policy-history', label: 'Policy History', hrefTemplate: '/employers/{id}/policy-history', permission: 'staff' },
   { id: 'wizards', label: 'Wizards', hrefTemplate: '/employers/{id}/wizards', policyId: 'employer.mine' },
-  { id: 'notes', label: 'Notes', hrefTemplate: '/employers/{id}/notes', permission: 'staff' },
+  { id: 'notes', label: 'Notes', hrefTemplate: '/employers/{id}/notes', permission: 'staff', entityContext: { framework: 'entity-notes', contextId: 'employer' } },
+  { id: 'files', label: 'Files', hrefTemplate: '/employers/{id}/files', permission: 'staff', entityContext: { framework: 'entity-files', contextId: 'employer' } },
   { id: 'cases', label: 'Cases', hrefTemplate: '/employers/{id}/cases', permission: 'staff', component: 'sitespecific.bao' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/employers/{id}/logs', permission: 'staff' },
   { 
@@ -298,7 +318,8 @@ export const providerTabTree: HierarchicalTab[] = [
   { id: 'contacts', label: 'Contacts', hrefTemplate: '/trust/provider/{id}/contacts', policyId: 'trust.provider.mine' },
   { id: 'edi', label: 'EDI', hrefTemplate: '/trust/provider/{id}/edi', permission: 'admin', component: 'trust.providers.edi' },
   { id: 'premium-files', label: 'Premium Files', hrefTemplate: '/trust/provider/{id}/premium-files', permission: 'staff', component: 'sitespecific.bao' },
-  { id: 'notes', label: 'Notes', hrefTemplate: '/trust/provider/{id}/notes', permission: 'staff', component: 'trust.providers' },
+  { id: 'notes', label: 'Notes', hrefTemplate: '/trust/provider/{id}/notes', permission: 'staff', component: 'trust.providers', entityContext: { framework: 'entity-notes', contextId: 'trust_provider' } },
+  { id: 'files', label: 'Files', hrefTemplate: '/trust/provider/{id}/files', permission: 'staff', component: 'trust.providers', entityContext: { framework: 'entity-files', contextId: 'trust_provider' } },
   { id: 'cases', label: 'Cases', hrefTemplate: '/trust/provider/{id}/cases', permission: 'staff', component: 'sitespecific.bao' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/trust/provider/{id}/logs', permission: 'staff' },
 ];
@@ -528,8 +549,8 @@ export const grievanceTabTree: HierarchicalTab[] = [
     ],
   },
   { id: 'settlements', label: 'Settlements', hrefTemplate: '/grievance/{id}/settlements', permission: 'staff', component: 'grievance.settlement' },
-  { id: 'files', label: 'Files', hrefTemplate: '/grievance/{id}/files', permission: 'staff', component: 'grievance' },
-  { id: 'notes', label: 'Notes', hrefTemplate: '/grievance/{id}/notes', permission: 'staff', component: 'grievance' },
+  { id: 'files', label: 'Files', hrefTemplate: '/grievance/{id}/files', permission: 'staff', component: 'grievance', entityContext: { framework: 'entity-files', contextId: 'grievance' } },
+  { id: 'notes', label: 'Notes', hrefTemplate: '/grievance/{id}/notes', permission: 'staff', component: 'grievance', entityContext: { framework: 'entity-notes', contextId: 'grievance' } },
   { id: 'logs', label: 'Logs', hrefTemplate: '/grievance/{id}/logs', permission: 'staff', component: 'grievance' },
 ];
 
@@ -916,6 +937,7 @@ export interface TabAccessRequirements {
   policyId?: string;
   permission?: string;
   component?: string;
+  entityContext?: TabEntityContext;
 }
 
 /**
@@ -937,6 +959,7 @@ export function getTabAccessRequirements(
     policyId: tab.policyId,
     permission: tab.permission,
     component: tab.component,
+    entityContext: tab.entityContext,
   };
 }
 

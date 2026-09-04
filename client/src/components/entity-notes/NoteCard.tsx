@@ -16,7 +16,7 @@ export interface NoteTag {
 
 export interface NoteRow {
   id: string;
-  entityType: string;
+  contextId: string;
   entityId: string;
   typeId: string;
   subject: string;
@@ -35,7 +35,7 @@ export interface NoteCardProps {
   note: NoteRow;
   /** BAO-only surfaces: tag badges and the case link/create buttons. */
   tagsEnabled: boolean;
-  entityType: string;
+  contextId: string;
   entityId: string;
   /** Whether the complete body is shown (true) or the compact preview (false). */
   expanded: boolean;
@@ -61,7 +61,7 @@ function formatTimestamp(value: string): string {
 export default function NoteCard({
   note,
   tagsEnabled,
-  entityType,
+  contextId,
   entityId,
   expanded,
   onToggleExpanded,
@@ -104,7 +104,7 @@ export default function NoteCard({
                 <Button variant="outline" size="sm" data-testid={`button-view-case-note-${note.id}`}>View Case</Button>
               </Link>
             ) : (
-              <Link href={`/bao/cases/new?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}&noteId=${encodeURIComponent(note.id)}`}>
+              <Link href={`/bao/cases/new?entityType=${encodeURIComponent(contextId)}&entityId=${encodeURIComponent(entityId)}&noteId=${encodeURIComponent(note.id)}`}>
                 <Button variant="outline" size="sm" data-testid={`button-create-case-note-${note.id}`}>Create Case</Button>
               </Link>
             )

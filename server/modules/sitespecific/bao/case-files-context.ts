@@ -16,7 +16,7 @@ export function registerBaoCaseEntityFileContext(): void {
     file: row.file,
   });
   registerEntityFileContext({
-    id: "bao-case", label: "BAO cases", component: "sitespecific.bao",
+    id: "bao-case", label: "BAO cases", recordLabel: "BAO case", component: "sitespecific.bao",
     tokens: [":entity-id", ":case-id"],
     entityExists: async (id) => Boolean(await storage.baoCases.get(id)),
     resolveTokens: async (id) => {

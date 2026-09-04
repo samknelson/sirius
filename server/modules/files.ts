@@ -34,7 +34,10 @@ async function resolveDownloadName(file: {
   }
   try {
     const context = getEntityFileContext(file.entityType.slice(prefix.length));
-    const record = await context?.adapter.getByFileId(file.entityId, file.id);
+    if (!context) return file.fileName;
+    const record = context.adapter
+      ? await context.adapter.getByFileId(file.entityId, file.id)
+      : await storage.entityFiles.getByFileId(context.id, file.entityId, file.id);
     return record?.name || file.fileName;
   } catch (error) {
     logger.warn("Failed to resolve attachment display name; using original filename", {

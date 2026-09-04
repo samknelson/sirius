@@ -62,11 +62,14 @@ const WorkerDispatchEba = lazy(() => import("@/pages/workers/dispatch-eba"));
 const WorkerDispatchAsi = lazy(() => import("@/pages/workers/dispatch-asi"));
 const WorkerBans = lazy(() => import("@/pages/workers/bans"));
 const WorkerNotes = lazy(() => import("@/pages/workers/notes"));
+const WorkerFiles = lazy(() => import("@/pages/workers/files"));
 const EmployerNotes = lazy(() => import("@/pages/employers/notes"));
+const EmployerFiles = lazy(() => import("@/pages/employers/files"));
 const TrustProviderNotesPage = lazy(() => import("@/pages/trust-provider-notes"));
 const WorkerCases = lazy(() => import("@/pages/workers/cases"));
 const EmployerCases = lazy(() => import("@/pages/employers/cases"));
 const TrustProviderCases = lazy(() => import("@/pages/trust-provider-cases"));
+const TrustProviderFilesPage = lazy(() => import("@/pages/trust-provider-files"));
 const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
 const WorkerEdlsAssignments = lazy(() => import("@/pages/worker-edls-assignments"));
 const WorkerSecondShift = lazy(() => import("@/pages/worker-sitespecific-freeman-2shift"));
@@ -126,6 +129,7 @@ const GrievanceTimeline = lazy(() => import("@/pages/grievance-timeline"));
 const GrievanceSettlements = lazy(() => import("@/pages/grievance-settlements"));
 const GrievanceFiles = lazy(() => import("@/pages/grievance-files"));
 const EntityFilesConfigPage = lazy(() => import("@/pages/config/entity-files"));
+const EntityNotesConfigPage = lazy(() => import("@/pages/config/entity-notes"));
 const GrievanceTimelineTemplatesPage = lazy(() => import("@/pages/config/grievance-timeline-templates"));
 const GrievanceTimelineTemplateView = lazy(() => import("@/pages/grievance-timeline-template-view"));
 const GrievanceTimelineTemplateEdit = lazy(() => import("@/pages/grievance-timeline-template-edit"));
@@ -264,6 +268,7 @@ const PhoneNumbersConfigPage = lazy(() => import("@/pages/config/phone-numbers")
 const DynamicOptionsPage = lazy(() => import("@/pages/config/options"));
 
 const OptionsExportPage = lazy(() => import("@/pages/config/options-export"));
+const OptionsIndexPage = lazy(() => import("@/pages/config/options-index"));
 const StewardSettingsPage = lazy(() => import("@/pages/config/steward-settings"));
 const EventTypesPage = lazy(() => import("@/pages/config/event-types"));
 const DispatchJobTypesPage = lazy(() => import("@/pages/config/dispatch-job-types"));
@@ -965,6 +970,14 @@ function Router() {
       <Route path="/workers/:id/cases">
         <ProtectedRoute tabId="cases" entityType="worker">
           <AuthenticatedLayout><WorkerCases /></AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/files">
+        <ProtectedRoute tabId="files" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerFiles />
+          </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
@@ -1919,6 +1932,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/employers/:id/files">
+        <ProtectedRoute tabId="files" entityType="employer">
+          <AuthenticatedLayout>
+            <EmployerFiles />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/employers/:id/policy-history">
         <ProtectedRoute tabId="policy-history" entityType="employer">
           <AuthenticatedLayout>
@@ -2332,6 +2353,14 @@ function Router() {
       <Route path="/trust/provider/:id/cases">
         <ProtectedRoute tabId="cases" entityType="provider">
           <AuthenticatedLayout><TrustProviderCases /></AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/provider/:id/files">
+        <ProtectedRoute tabId="files" entityType="provider">
+          <AuthenticatedLayout>
+            <TrustProviderFilesPage />
+          </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
@@ -2760,11 +2789,33 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/entity-notes">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EntityNotesConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/phone-numbers">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PhoneNumbersConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* The index of every dropdown list. Registered before the
+          parameterized options routes so "options" isn't read as a type. */}
+      <Route path="/config/options">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <OptionsIndexPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

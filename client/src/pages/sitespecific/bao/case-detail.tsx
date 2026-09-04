@@ -18,7 +18,7 @@ import { GrantedExemptionsCard } from "@/components/sitespecific/bao/GrantedExem
 import { AppealOutcomeCard, type CaseStatusOption } from "@/components/sitespecific/bao/AppealOutcomeCard";
 import type { TrustBenefitEligibilityExemptionView } from "@shared/schema";
 
-type Option = { id: string; name: string; closed?: boolean; data?: { entityTypes?: string[] } };
+type Option = { id: string; name: string; closed?: boolean; data?: { contextIds?: string[] } };
 type CaseTypeOption = Option & { workflowCode?: string };
 /** Workflow steps reached only through the Approve/Deny actions, never a status edit. */
 const OUTCOME_STEPS = ["approved", "denied"];
@@ -156,7 +156,7 @@ export default function BaoCaseDetailPage() {
   });
   if (!record) return <div className="p-6">Loading…</div>;
   const nextClosed = statuses.find((s) => s.id === statusId)?.closed ?? record.statusClosed;
-  const applicable = noteTypes.filter((t) => t.data?.entityTypes?.includes(record.entityType));
+  const applicable = noteTypes.filter((t) => t.data?.contextIds?.includes(record.entityType));
   const isAppeal = caseTypes.find((t) => t.id === record.caseTypeId)?.workflowCode === "benefit_appeal";
   // An appeal's outcome statuses are not offered as a plain status edit (the
   // server refuses them); the current one stays so the control reads right.

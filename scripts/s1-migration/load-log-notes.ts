@@ -123,13 +123,13 @@ async function ensureNoteOptions(): Promise<{
         INSERT INTO options_note_type (id, name, description, sirius_id, data)
         VALUES (
           ${`s1-log-note-type-${definition.id}`}, ${definition.name}, ${definition.description},
-          ${definition.id}, ${JSON.stringify({ entityTypes: ["worker"], s1SourceId: `s1-log-note:type:${definition.id}`, order: definition.order })}::jsonb
+          ${definition.id}, ${JSON.stringify({ contextIds: ["worker"], s1SourceId: `s1-log-note:type:${definition.id}`, order: definition.order })}::jsonb
         ) RETURNING id, name, description, data
       `);
       row = (inserted as unknown as { rows: typeof rows }).rows[0];
     } else {
       const data = jsonObject(row.data);
-      const entities = Array.isArray(data.entityTypes) ? data.entityTypes : [];
+      const entities = Array.isArray(data.contextIds) ? data.contextIds : [];
       if (row.name !== definition.name || !entities.includes("worker") || data.s1SourceId !== `s1-log-note:type:${definition.id}`) {
         throw new Error(`ABORTING: incompatible note type definition for ${definition.id}`);
       }
@@ -137,7 +137,7 @@ async function ensureNoteOptions(): Promise<{
         await db.execute(sql`
           UPDATE options_note_type
              SET description = ${definition.description},
-                 data = COALESCE(data, '{}'::jsonb) || ${JSON.stringify({ entityTypes: ["worker"], s1SourceId: `s1-log-note:type:${definition.id}`, order: definition.order })}::jsonb
+                 data = COALESCE(data, '{}'::jsonb) || ${JSON.stringify({ contextIds: ["worker"], s1SourceId: `s1-log-note:type:${definition.id}`, order: definition.order })}::jsonb
            WHERE id = ${row.id}
         `);
       }
@@ -507,8 +507,8 @@ async function main() {
       const values = batch.map((t) => sql`(${t.nid}::bigint, ${t.s2Id}, ${t.workerId})`);
       const result = await db.execute(sql`
         SELECT v.nid FROM (VALUES ${sql.join(values, sql`, `)}) AS v(nid, note_id, worker_id)
-          JOIN notes n ON n.id = v.note_id
-         WHERE n.entity_type = 'worker' AND n.entity_id = v.worker_id
+          JOIN entity_notes n ON n.id = v.note_id
+         WHERE n.context_id = 'worker' AND n.entity_id = v.worker_id
            AND n.data->>'s1Loader' = ${LOADER}
       `);
       const verified = new Set(
@@ -604,7 +604,7 @@ async function main() {
 
     // Batched orphan cleanup (ownership-guarded set-based delete + mapping removal).
     if (!DRY_RUN && orphanDeletes.length > 0) {
-      const result = await loaderScope(() => storage.notes.bulkDeleteForMigration(
+      const result = await loaderScope(() => storage.entityNotes.bulkDeleteForMigration(
         orphanDeletes.map((o) => o.s2Id), LOADER,
       ));
       summary.deleted += result.deleted;
@@ -623,7 +623,7 @@ async function main() {
           ref: row.nid,
           noteId: item.existing?.s2Id,
           note: {
-            entityType: "worker",
+            contextId: "worker",
             entityId: resolution.workerId!,
             typeId: options.noteTypeIds.get(classification.noteType)!,
             subject: text.subject,
@@ -659,7 +659,7 @@ async function main() {
         };
       });
       try {
-        const { saved, failed } = await loaderScope(() => storage.notes.bulkReconcileForMigration({
+        const { saved, failed } = await loaderScope(() => storage.entityNotes.bulkReconcileForMigration({
           loader: LOADER,
           rows: payload,
         }));
@@ -726,7 +726,7 @@ async function main() {
     policy: async (candidate: DeletionCandidate) => ({
       action: "delete",
       apply: async () => {
-         await loaderScope(() => storage.notes.deleteForMigration(candidate.s2Id, LOADER));
+         await loaderScope(() => storage.entityNotes.deleteForMigration(candidate.s2Id, LOADER));
       },
     }),
   });

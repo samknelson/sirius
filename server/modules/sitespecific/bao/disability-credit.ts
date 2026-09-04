@@ -432,7 +432,7 @@ export function registerBaoDisabilityCreditRoutes(
             ? openCases[openCases.length - 1].id
             : crypto.randomUUID();
 
-        const directory = expandDirectoryTemplate(usable.config.directory, {
+        const directory = expandDirectoryTemplate(usable.config.directory, targetCaseId, {
           ":worker-id": workerId,
           ":case-id": targetCaseId,
         });

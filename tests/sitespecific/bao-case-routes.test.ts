@@ -29,7 +29,7 @@ beforeAll(async () => {
   await ensureBaoCaseSchema();
   const workers = await storage.workers.getAllWorkers();
   const staff = (await storage.users.getUsersWithAnyPermission(["staff", "admin"]))[0];
-  const type = (await getOptionsStorage().list("note-type")).find((t: any) => t.data?.entityTypes?.includes("worker"));
+  const type = (await getOptionsStorage().list("note-type")).find((t: any) => t.data?.contextIds?.includes("worker"));
   if (!workers[0] || !workers[1] || !staff || !type) throw new Error("Route harness prerequisites unavailable");
   workerId = workers[0].id; otherWorkerId = workers[1].id; staffId = staff.id; noteTypeId = type.id;
   const options = getOptionsStorage();
@@ -93,7 +93,7 @@ describe("BAO case route integration", () => {
   });
 
   it("maps cross-entity, duplicate-note, and lifecycle validation errors", async () => {
-    const note = await storage.notes.create({ entityType: "worker", entityId: workerId, typeId: noteTypeId, subject: `${run} ordinary`, body: null, data: null, userId: staffId });
+    const note = await storage.entityNotes.create({ contextId: "worker", entityId: workerId, typeId: noteTypeId, subject: `${run} ordinary`, body: null, data: null, userId: staffId });
     const cross = await request("/api/sitespecific/bao/cases", { method: "POST", user: staffId, body: JSON.stringify({
       entityType: "worker", entityId: otherWorkerId, deadlineYmd: "2099-03-01", statusId, noteId: note.id,
     }) });

@@ -121,7 +121,6 @@ import "./components/grievance/025_make_grievance_sirius_id_not_null";
 import "./components/grievance/026_add_employer_contact_id_to_grievances";
 import "./components/grievance/027_create_grievance_status_history_drop_status_id";
 import "./components/grievance/028_replace_grievance_steps_with_denorm";
-import "./components/grievance/029_create_grievance_files";
 import "./components/grievance/030_create_options_grievance_denial_reason";
 import "./components/grievance.settlement/001_create_grievance_settlement";
 import "./components/grievance.contract/001_create_grievance_contract_sections";
@@ -195,6 +194,16 @@ import "./core/1141_create_ws_stats";
 import "./core/1142_add_comm_send_key";
 import "./core/1143_delete_web_usage_alert_scan_cron_config";
 import "./core/1144_add_users_timezone";
+// Merged from upstream main as 1071-1076 (entity files + notes -> entity_notes
+// rename). Renumbered above this fork's counter (1144) for the same reason as
+// the 1135-1144 block: upstream's numbers are below the shared
+// migrations_version here and would be silently skipped. All are idempotent.
+import "./core/1145_create_entity_files";
+import "./core/1146_rename_notes_to_entity_notes";
+import "./core/1147_rename_entity_notes_entity_type_to_context_id";
+import "./core/1148_rename_trust_provider_file_context";
+import "./core/1149_create_options_file_type";
+import "./core/1150_rename_note_type_entity_types_key";
 
 export {
   runMigrations,

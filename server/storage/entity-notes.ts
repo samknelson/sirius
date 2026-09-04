@@ -1,56 +1,51 @@
 import { getClient } from './transaction-context';
 import {
-  notes,
+  entityNotes,
   users,
   optionsNoteType,
   sitespecificBaoNotesTags,
-  optionsSitespecificBaoNotesTags,
-  type Note,
-  type InsertNote,
+  type EntityNote,
+  type InsertEntityNote,
 } from "@shared/schema";
 import { and, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { defineLoggingConfig } from "./middleware/logging";
-import { noteEntityTables, isNoteEntityTypeAvailable } from "./notes-entity-types";
+import { noteContextTables, isNoteContextAvailable } from "./entity-notes-context-tables";
 import { runInTransaction } from "./transaction-context";
 
 /** A note plus the display fields the notes tab renders alongside it. */
-export interface NoteWithDetails extends Note {
+export interface EntityNoteWithDetails extends EntityNote {
   typeName: string | null;
   authorName: string | null;
 }
 
-export interface NotesStorage {
+export interface EntityNotesStorage {
   /** Notes on one record, newest first. */
-  listByEntity(entityType: string, entityId: string): Promise<NoteWithDetails[]>;
-  get(id: string): Promise<Note | undefined>;
-  create(note: InsertNote): Promise<Note>;
-  update(id: string, note: Partial<InsertNote>): Promise<Note | undefined>;
+  listByEntity(contextId: string, entityId: string): Promise<EntityNoteWithDetails[]>;
+  get(id: string): Promise<EntityNote | undefined>;
+  create(note: InsertEntityNote): Promise<EntityNote>;
+  update(id: string, note: Partial<InsertEntityNote>): Promise<EntityNote | undefined>;
   delete(id: string): Promise<boolean>;
-  /**
-   * Does the parent record exist? `entityType` must be a registered note-able
-   * type whose owning component is enabled (see `notes-entity-types.ts`);
-   * anything else returns false so an unregistered — or currently table-less —
-   * type can never be persisted.
-   */
-  entityExists(entityType: string, entityId: string): Promise<boolean>;
   /** How many notes reference a note type (delete guard). */
   countByTypeId(typeId: string): Promise<number>;
   /**
-   * Ids of notes of one entity type whose parent record no longer exists.
-   * Drives the orphan sweep; one anti-join per registered type. Returns an
-   * empty list for a type whose table is not currently present (component off)
-   * — notes are kept, not swept, while their record type is unavailable.
+   * Ids of notes in one context whose parent record no longer exists.
+   * Drives the orphan sweep; one anti-join per registered context. Returns an
+   * empty list for a context whose table is not currently present (component
+   * off) — notes are kept, not swept, while their record type is unavailable.
+   *
+   * A per-record existence check does NOT live here: the routes ask the
+   * context's own `entityExists` (see server/services/entity-notes/registry.ts),
+   * the same way the files framework does. The table map below exists for this
+   * bulk anti-join, which cannot be expressed record by record.
    */
-  findOrphanIds(entityType: string, limit: number): Promise<string[]>;
-  /** Hard-delete notes by id (orphan sweep). Returns the number removed. */
-  deleteByIds(ids: string[]): Promise<number>;
+  findOrphanIds(contextId: string, limit: number): Promise<string[]>;
   /** Migration-only atomic note + complete BAO tag-set reconciliation. */
   reconcileForMigration(input: {
     noteId?: string;
-    note: InsertNote & { timestamp: Date };
+    note: InsertEntityNote & { timestamp: Date };
     tagIds: string[];
     loader: string;
-  }): Promise<{ note: Note; created: boolean } | null>;
+  }): Promise<{ note: EntityNote; created: boolean } | null>;
   /** Delete only when the note provenance belongs to the named loader. */
   deleteForMigration(id: string, loader: string): Promise<"deleted" | "missing">;
   /**
@@ -64,7 +59,7 @@ export interface NotesStorage {
    */
   bulkReconcileForMigration(input: {
     loader: string;
-    rows: Array<{ ref: number; noteId?: string; note: InsertNote & { timestamp: Date }; tagIds: string[] }>;
+    rows: Array<{ ref: number; noteId?: string; note: InsertEntityNote & { timestamp: Date }; tagIds: string[] }>;
   }): Promise<{
     saved: Map<number, { noteId: string; created: boolean }>;
     failed: Map<number, "missing" | "owner_mismatch" | "duplicate_provenance">;
@@ -114,7 +109,7 @@ function redactNote<T extends Record<string, any> | null | undefined>(row: T): T
 }
 
 /**
- * Logging for notes.
+ * Logging for entityNotes.
  *
  * Two things distinguish this config from the usual CRUD one:
  *   - The host entity is the note's PARENT record (the worker / employer /
@@ -124,8 +119,8 @@ function redactNote<T extends Record<string, any> | null | undefined>(row: T): T
  *   - The note body is redacted everywhere it would otherwise be persisted:
  *     logged args, before-state and after-state.
  */
-export const notesLoggingConfig = defineLoggingConfig<NotesStorage>({
-  module: 'notes',
+export const entityNotesLoggingConfig = defineLoggingConfig<EntityNotesStorage>({
+  module: 'entityNotes',
   state: { key: 'note' },
   hostEntityId: (args, result, beforeState) =>
     result?.entityId ?? beforeState?.note?.entityId ?? args[0]?.entityId,
@@ -135,40 +130,40 @@ export const notesLoggingConfig = defineLoggingConfig<NotesStorage>({
       logArgs: (args) => [redactNote(args[0])],
       after: async (args, result) => ({ note: redactNote(result) }),
       getDescription: (args, result) =>
-        `Created note on ${result?.entityType ?? args[0]?.entityType} ${result?.entityId ?? args[0]?.entityId}`,
+        `Created note on ${result?.contextId ?? args[0]?.contextId} ${result?.entityId ?? args[0]?.entityId}`,
     },
     update: {
       logArgs: (args) => [args[0], redactNote(args[1])],
       before: async (args, storage) => ({ note: redactNote(await storage.get(args[0])) }),
       after: async (args, result) => ({ note: redactNote(result) }),
       getDescription: (args, result, beforeState) =>
-        `Updated note ${args[0]} on ${result?.entityType ?? beforeState?.note?.entityType} ${result?.entityId ?? beforeState?.note?.entityId}`,
+        `Updated note ${args[0]} on ${result?.contextId ?? beforeState?.note?.contextId} ${result?.entityId ?? beforeState?.note?.entityId}`,
     },
     delete: {
       before: async (args, storage) => ({ note: redactNote(await storage.get(args[0])) }),
       getDescription: (args, result, beforeState) =>
-        `Deleted note ${args[0]} on ${beforeState?.note?.entityType} ${beforeState?.note?.entityId}`,
+        `Deleted note ${args[0]} on ${beforeState?.note?.contextId} ${beforeState?.note?.entityId}`,
     },
   },
 });
 
-export function createNotesStorage(): NotesStorage {
+export function createEntityNotesStorage(): EntityNotesStorage {
   return {
-    async listByEntity(entityType: string, entityId: string): Promise<NoteWithDetails[]> {
+    async listByEntity(contextId: string, entityId: string): Promise<EntityNoteWithDetails[]> {
       const client = getClient();
       const rows = await client
         .select({
-          note: notes,
+          note: entityNotes,
           typeName: optionsNoteType.name,
           firstName: users.firstName,
           lastName: users.lastName,
           email: users.email,
         })
-        .from(notes)
-        .leftJoin(optionsNoteType, eq(optionsNoteType.id, notes.typeId))
-        .leftJoin(users, eq(users.id, notes.userId))
-        .where(and(eq(notes.entityType, entityType), eq(notes.entityId, entityId)))
-        .orderBy(desc(notes.timestamp));
+        .from(entityNotes)
+        .leftJoin(optionsNoteType, eq(optionsNoteType.id, entityNotes.typeId))
+        .leftJoin(users, eq(users.id, entityNotes.userId))
+        .where(and(eq(entityNotes.contextId, contextId), eq(entityNotes.entityId, entityId)))
+        .orderBy(desc(entityNotes.timestamp));
 
       return rows.map((row) => ({
         ...row.note,
@@ -177,83 +172,66 @@ export function createNotesStorage(): NotesStorage {
       }));
     },
 
-    async get(id: string): Promise<Note | undefined> {
+    async get(id: string): Promise<EntityNote | undefined> {
       const client = getClient();
-      const [note] = await client.select().from(notes).where(eq(notes.id, id));
+      const [note] = await client.select().from(entityNotes).where(eq(entityNotes.id, id));
       return note;
     },
 
-    async create(note: InsertNote): Promise<Note> {
+    async create(note: InsertEntityNote): Promise<EntityNote> {
       const client = getClient();
-      const [created] = await client.insert(notes).values(note as any).returning();
+      const [created] = await client.insert(entityNotes).values(note as any).returning();
       return created;
     },
 
-    async update(id: string, note: Partial<InsertNote>): Promise<Note | undefined> {
+    async update(id: string, note: Partial<InsertEntityNote>): Promise<EntityNote | undefined> {
       const client = getClient();
       const [updated] = await client
-        .update(notes)
+        .update(entityNotes)
         .set(note as any)
-        .where(eq(notes.id, id))
+        .where(eq(entityNotes.id, id))
         .returning();
       return updated;
     },
 
     async delete(id: string): Promise<boolean> {
       const client = getClient();
-      const result = await client.delete(notes).where(eq(notes.id, id)).returning();
+      const result = await client.delete(entityNotes).where(eq(entityNotes.id, id)).returning();
       return result.length > 0;
-    },
-
-    async entityExists(entityType: string, entityId: string): Promise<boolean> {
-      const table = noteEntityTables[entityType];
-      // No table binding, or the component that owns the table is off (its
-      // tables do not exist) — the record cannot be confirmed, so refuse.
-      if (!table || !isNoteEntityTypeAvailable(entityType)) return false;
-      const client = getClient();
-      const idColumn = (table as any).id;
-      const rows = await client.select({ id: idColumn }).from(table).where(eq(idColumn, entityId)).limit(1);
-      return rows.length > 0;
     },
 
     async countByTypeId(typeId: string): Promise<number> {
       const client = getClient();
       const [row] = await client
         .select({ count: sql<number>`count(*)::int` })
-        .from(notes)
-        .where(eq(notes.typeId, typeId));
+        .from(entityNotes)
+        .where(eq(entityNotes.typeId, typeId));
       return Number(row?.count ?? 0);
     },
 
-    async findOrphanIds(entityType: string, limit: number): Promise<string[]> {
-      const table = noteEntityTables[entityType];
+    async findOrphanIds(contextId: string, limit: number): Promise<string[]> {
+      const table = noteContextTables[contextId];
       // Never anti-join against a table that may not exist: a disabled
       // component's notes are left alone rather than treated as orphans.
-      if (!table || !isNoteEntityTypeAvailable(entityType)) return [];
+      if (!table || !isNoteContextAvailable(contextId)) return [];
       const client = getClient();
       const idColumn = (table as any).id;
       const rows = await client
-        .select({ id: notes.id })
-        .from(notes)
-        .leftJoin(table, eq(idColumn, notes.entityId))
-        .where(and(eq(notes.entityType, entityType), isNull(idColumn)))
+        .select({ id: entityNotes.id })
+        .from(entityNotes)
+        .leftJoin(table, eq(idColumn, entityNotes.entityId))
+        .where(and(eq(entityNotes.contextId, contextId), isNull(idColumn)))
         .limit(limit);
       return rows.map((r) => r.id);
     },
 
-    async deleteByIds(ids: string[]): Promise<number> {
-      if (ids.length === 0) return 0;
-      const client = getClient();
-      const deleted = await client.delete(notes).where(inArray(notes.id, ids)).returning({ id: notes.id });
-      return deleted.length;
-    },
 
-    async reconcileForMigration(input): Promise<{ note: Note; created: boolean } | null> {
+    async reconcileForMigration(input): Promise<{ note: EntityNote; created: boolean } | null> {
       return runInTransaction(async () => {
         const client = getClient();
-        let current: Note | undefined;
+        let current: EntityNote | undefined;
         if (input.noteId) {
-          [current] = await client.select().from(notes).where(eq(notes.id, input.noteId));
+          [current] = await client.select().from(entityNotes).where(eq(entityNotes.id, input.noteId));
           if (!current) return null;
           const owner = (current.data as Record<string, unknown> | null)?.s1Loader;
           if (owner !== input.loader) throw new Error("migration note provenance owner mismatch");
@@ -262,9 +240,9 @@ export function createNotesStorage(): NotesStorage {
           if (sourceNid != null) {
             const adopted = await client
               .select()
-              .from(notes)
+              .from(entityNotes)
               .where(and(
-                eq(notes.entityType, "worker"),
+                eq(entityNotes.contextId, "worker"),
                 sql`data->>'s1Loader' = ${input.loader}`,
                 sql`data->'s1'->>'nid' = ${String(sourceNid)}`,
               ))
@@ -274,8 +252,8 @@ export function createNotesStorage(): NotesStorage {
           }
         }
         const [saved] = current
-          ? await client.update(notes).set(input.note as any).where(eq(notes.id, current.id)).returning()
-          : await client.insert(notes).values(input.note as any).returning();
+          ? await client.update(entityNotes).set(input.note as any).where(eq(entityNotes.id, current.id)).returning()
+          : await client.insert(entityNotes).values(input.note as any).returning();
         const uniqueTagIds = [...new Set(input.tagIds)];
         if (uniqueTagIds.length === 0) {
           await client.delete(sitespecificBaoNotesTags).where(eq(sitespecificBaoNotesTags.noteId, saved.id));
@@ -306,9 +284,9 @@ export function createNotesStorage(): NotesStorage {
         const owners = new Map<string, string | null>();
         if (updateRows.length > 0) {
           const existing = await client
-            .select({ id: notes.id, owner: sql<string | null>`data->>'s1Loader'` })
-            .from(notes)
-            .where(inArray(notes.id, updateRows.map((r) => r.noteId!)));
+            .select({ id: entityNotes.id, owner: sql<string | null>`data->>'s1Loader'` })
+            .from(entityNotes)
+            .where(inArray(entityNotes.id, updateRows.map((r) => r.noteId!)));
           for (const row of existing) owners.set(row.id, row.owner);
         }
         for (const row of updateRows) {
@@ -328,10 +306,10 @@ export function createNotesStorage(): NotesStorage {
           const adoptable = new Map<string, string[]>();
           if (nids.length > 0) {
             const candidates = await client
-              .select({ id: notes.id, nid: sql<string | null>`data->'s1'->>'nid'` })
-              .from(notes)
+              .select({ id: entityNotes.id, nid: sql<string | null>`data->'s1'->>'nid'` })
+              .from(entityNotes)
               .where(and(
-                eq(notes.entityType, "worker"),
+                eq(entityNotes.contextId, "worker"),
                 sql`data->>'s1Loader' = ${input.loader}`,
                 sql`data->'s1'->>'nid' IN (${sql.join(nids.map((n) => sql`${n}`), sql`, `)})`,
               ));
@@ -352,18 +330,18 @@ export function createNotesStorage(): NotesStorage {
         // Bulk UPDATE via a VALUES join (full-field overwrite, reconcile parity).
         if (updates.length > 0) {
           const values = updates.map(({ row, noteId }) => sql`(
-            ${noteId}, ${row.note.entityType}, ${row.note.entityId}, ${row.note.typeId},
+            ${noteId}, ${row.note.contextId}, ${row.note.entityId}, ${row.note.typeId},
             ${row.note.subject}, ${row.note.body ?? null},
             ${JSON.stringify(row.note.data ?? null)}::jsonb,
             ${row.note.timestamp.toISOString()}::timestamptz, ${row.note.userId ?? null}
           )`);
           await client.execute(sql`
-            UPDATE notes n SET
-              entity_type = v.entity_type, entity_id = v.entity_id, type_id = v.type_id,
+            UPDATE entity_notes n SET
+              context_id = v.context_id, entity_id = v.entity_id, type_id = v.type_id,
               subject = v.subject, body = v.body, data = v.data,
               timestamp = v.ts, user_id = v.user_id
             FROM (VALUES ${sql.join(values, sql`, `)})
-              AS v(id, entity_type, entity_id, type_id, subject, body, data, ts, user_id)
+              AS v(id, context_id, entity_id, type_id, subject, body, data, ts, user_id)
             WHERE n.id = v.id
           `);
           for (const { row, noteId } of updates) saved.set(row.ref, { noteId, created: false });
@@ -372,7 +350,7 @@ export function createNotesStorage(): NotesStorage {
         // Bulk INSERT with client-generated ids (deterministic ref → id mapping).
         if (inserts.length > 0) {
           const withIds = inserts.map((row) => ({ row, id: crypto.randomUUID() }));
-          await client.insert(notes).values(withIds.map(({ row, id }) => ({ ...(row.note as any), id })));
+          await client.insert(entityNotes).values(withIds.map(({ row, id }) => ({ ...(row.note as any), id })));
           for (const { row, id } of withIds) saved.set(row.ref, { noteId: id, created: true });
         }
 
@@ -406,9 +384,9 @@ export function createNotesStorage(): NotesStorage {
       if (ids.length === 0) return { deleted: 0, missing: 0 };
       const client = getClient();
       const existing = await client
-        .select({ id: notes.id, owner: sql<string | null>`data->>'s1Loader'` })
-        .from(notes)
-        .where(inArray(notes.id, ids));
+        .select({ id: entityNotes.id, owner: sql<string | null>`data->>'s1Loader'` })
+        .from(entityNotes)
+        .where(inArray(entityNotes.id, ids));
       const mismatched = existing.filter((row) => row.owner !== loader);
       if (mismatched.length > 0) {
         throw new Error(`migration note ownership verification failed for ${mismatched.length} row(s)`);
@@ -416,18 +394,18 @@ export function createNotesStorage(): NotesStorage {
       const missing = new Set(ids).size - existing.length;
       const owned = existing.map((row) => row.id);
       if (owned.length === 0) return { deleted: 0, missing };
-      const deleted = await client.delete(notes).where(inArray(notes.id, owned)).returning({ id: notes.id });
+      const deleted = await client.delete(entityNotes).where(inArray(entityNotes.id, owned)).returning({ id: entityNotes.id });
       return { deleted: deleted.length, missing };
     },
 
     async deleteForMigration(id: string, loader: string): Promise<"deleted" | "missing"> {
       const client = getClient();
-      const [row] = await client.select({ id: notes.id, data: notes.data }).from(notes).where(eq(notes.id, id));
+      const [row] = await client.select({ id: entityNotes.id, data: entityNotes.data }).from(entityNotes).where(eq(entityNotes.id, id));
       if (!row) return "missing";
       if ((row.data as Record<string, unknown> | null)?.s1Loader !== loader) {
         throw new Error("migration note ownership verification failed");
       }
-      const deleted = await client.delete(notes).where(eq(notes.id, id)).returning({ id: notes.id });
+      const deleted = await client.delete(entityNotes).where(eq(entityNotes.id, id)).returning({ id: entityNotes.id });
       return deleted.length > 0 ? "deleted" : "missing";
     },
   };

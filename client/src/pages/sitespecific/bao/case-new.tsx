@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 
-type Option = { id: string; name: string; closed?: boolean; data?: { entityTypes?: string[] } };
+type Option = { id: string; name: string; closed?: boolean; data?: { contextIds?: string[] } };
 type AssigneeContext = {
   selfId: string;
   canAssignOthers: boolean;
@@ -45,7 +45,7 @@ export default function BaoCaseNewPage() {
   const assignees = assigneeCtx?.users ?? [];
   const { data: noteTypes = [] } = useQuery<Option[]>({ queryKey: ["/api/options/note-type"] });
   const { data: tags = [] } = useQuery<Option[]>({ queryKey: ["/api/options/bao-notes-tag"] });
-  const applicableTypes = noteTypes.filter((o) => o.data?.entityTypes?.includes(entityType));
+  const applicableTypes = noteTypes.filter((o) => o.data?.contextIds?.includes(entityType));
   const appealType = caseTypes.find((t) => t.id === caseTypeId)?.workflowCode === "benefit_appeal";
   const mutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/sitespecific/bao/cases", {

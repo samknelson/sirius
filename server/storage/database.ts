@@ -154,7 +154,7 @@ import { type BaoPremiumRatesStorage, createBaoPremiumRatesStorage, baoPremiumRa
 import { type BaoPremiumFilesStorage, createBaoPremiumFilesStorage, baoPremiumFilesLoggingConfig } from "./sitespecific/bao/premium-files";
 import { type BaoWithholdingAllocationsStorage, createBaoWithholdingAllocationsStorage, baoWithholdingAllocationsLoggingConfig } from "./sitespecific/bao/withholding-allocations";
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
-import { type NotesStorage, type NoteWithDetails, createNotesStorage, notesLoggingConfig } from "./notes";
+import { type EntityNotesStorage, type EntityNoteWithDetails, createEntityNotesStorage, entityNotesLoggingConfig } from "./entity-notes";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./dispatch/worker-dnc";
 import { type WorkerDispatchDepartmentStorage, createWorkerDispatchDepartmentStorage, workerDispatchDepartmentLoggingConfig } from "./dispatch/worker-departments";
 import { type DispatchJobDepartmentStorage, createDispatchJobDepartmentStorage } from "./dispatch/job-departments";
@@ -192,10 +192,10 @@ import {
   grievanceSettlementLoggingConfig,
 } from "./grievances/grievance-settlements";
 import {
-  type GrievanceFileStorage,
-  createGrievanceFileStorage,
-  grievanceFileLoggingConfig,
-} from "./grievances/grievance-files";
+  type EntityFilesStorage,
+  createEntityFilesStorage,
+  entityFilesLoggingConfig,
+} from "./entity-files";
 import {
   type GrievanceStatusHistoryStorage,
   createGrievanceStatusHistoryStorage,
@@ -237,6 +237,7 @@ export interface IStorage {
   wizardEmployerMonthly: WizardEmployerMonthlyStorage;
   wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
   files: FileStorage;
+  entityFiles: EntityFilesStorage;
   cronJobRuns: CronJobRunStorage;
   pluginConfigs: PluginConfigStorage;
   denorm: DenormStorage;
@@ -294,7 +295,7 @@ export interface IStorage {
   freemanEdlsMigrateStaging: FreemanEdlsMigrateStagingStorage;
   t631Interviews: T631InterviewsStorage;
   workerBans: WorkerBanStorage;
-  notes: NotesStorage;
+  entityNotes: EntityNotesStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
   workerDispatchDepartments: WorkerDispatchDepartmentStorage;
   dispatchJobDepartments: DispatchJobDepartmentStorage;
@@ -347,7 +348,6 @@ export interface IStorage {
   grievanceStatusHistory: GrievanceStatusHistoryStorage;
   grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
   grievanceSettlements: GrievanceSettlementStorage;
-  grievanceFiles: GrievanceFileStorage;
   grievanceContracts: GrievanceContractStorage;
 }
 
@@ -371,6 +371,7 @@ export class DatabaseStorage implements IStorage {
   wizardEmployerMonthly: WizardEmployerMonthlyStorage;
   wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
   files: FileStorage;
+  entityFiles: EntityFilesStorage;
   cronJobRuns: CronJobRunStorage;
   pluginConfigs: PluginConfigStorage;
   denorm: DenormStorage;
@@ -428,7 +429,7 @@ export class DatabaseStorage implements IStorage {
   freemanEdlsMigrateStaging: FreemanEdlsMigrateStagingStorage;
   t631Interviews: T631InterviewsStorage;
   workerBans: WorkerBanStorage;
-  notes: NotesStorage;
+  entityNotes: EntityNotesStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
   workerDispatchDepartments: WorkerDispatchDepartmentStorage;
   dispatchJobDepartments: DispatchJobDepartmentStorage;
@@ -481,7 +482,6 @@ export class DatabaseStorage implements IStorage {
   grievanceStatusHistory: GrievanceStatusHistoryStorage;
   grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
   grievanceSettlements: GrievanceSettlementStorage;
-  grievanceFiles: GrievanceFileStorage;
   grievanceContracts: GrievanceContractStorage;
 
   constructor() {
@@ -552,6 +552,10 @@ export class DatabaseStorage implements IStorage {
     this.wizardEmployerMonthly = createWizardEmployerMonthlyStorage();
     this.wizardEmploymentStatusMappings = createWizardEmploymentStatusMappingStorage();
     this.files = withStorageLogging(createFileStorage(), fileLoggingConfig);
+    this.entityFiles = withStorageLogging(
+      createEntityFilesStorage(),
+      entityFilesLoggingConfig,
+    );
     this.cronJobRuns = createCronJobRunStorage();
     this.pluginConfigs = createPluginConfigStorage();
     // No logging for denorm - high-volume internal workflow state churn.
@@ -710,7 +714,7 @@ export class DatabaseStorage implements IStorage {
       t631InterviewsLoggingConfig,
     );
     this.workerBans = withStorageLogging(createWorkerBanStorage(), workerBanLoggingConfig);
-    this.notes = withStorageLogging(createNotesStorage(), notesLoggingConfig);
+    this.entityNotes = withStorageLogging(createEntityNotesStorage(), entityNotesLoggingConfig);
     this.workerDispatchDnc = withStorageLogging(createWorkerDispatchDncStorage(), workerDispatchDncLoggingConfig);
     this.workerDispatchDepartments = withStorageLogging(createWorkerDispatchDepartmentStorage(), workerDispatchDepartmentLoggingConfig);
     this.dispatchJobDepartments = createDispatchJobDepartmentStorage();
@@ -877,10 +881,6 @@ export class DatabaseStorage implements IStorage {
     this.grievanceSettlements = withStorageLogging(
       createGrievanceSettlementStorage(),
       grievanceSettlementLoggingConfig,
-    );
-    this.grievanceFiles = withStorageLogging(
-      createGrievanceFileStorage(),
-      grievanceFileLoggingConfig,
     );
     this.grievanceContracts = withStorageLogging(
       createGrievanceContractStorage(),

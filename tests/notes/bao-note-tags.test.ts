@@ -24,7 +24,7 @@ const created = {
 
 async function cleanup() {
   for (const id of created.noteIds) {
-    await storage.notes.delete(id).catch(() => {});
+    await storage.entityNotes.delete(id).catch(() => {});
   }
   const options = getOptionsStorage();
   for (const id of created.tagIds) {
@@ -94,8 +94,8 @@ describe("tag CRUD via unified options and note assignment cascades", () => {
     const worker = (await storage.workers.getAllWorkers())[0];
     if (!worker?.id) return ctx.skip();
 
-    const note = await storage.notes.create({
-      entityType: "worker",
+    const note = await storage.entityNotes.create({
+      contextId: "worker",
       entityId: worker.id,
       typeId: noteType.id,
       subject: `${RUN_TAG} subject`,
@@ -121,7 +121,7 @@ describe("tag CRUD via unified options and note assignment cascades", () => {
     expect(rows.map((r) => r.tagId)).toEqual([tagB.id]);
 
     // Deleting the NOTE cascades the remaining assignment away.
-    await storage.notes.delete(note.id);
+    await storage.entityNotes.delete(note.id);
     rows = await storage.baoNoteTags.listByNote(note.id);
     expect(rows).toHaveLength(0);
   });

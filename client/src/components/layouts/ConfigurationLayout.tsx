@@ -1,8 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, BookOpen, Palette } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
-import { useQuery } from "@tanstack/react-query";
 import {
   Collapsible,
   CollapsibleContent,
@@ -10,86 +8,32 @@ import {
 } from "@/components/ui/collapsible";
 import { useState, useMemo } from "react";
 import {
-  configSections,
-  getAllPoliciesNeeded,
-  getAccessibleSections,
   isPathInSection,
   findActiveItemPath,
   type NavItem,
   type NavSection,
-  type AccessContext,
 } from "@/config/navigation-registry";
+import { useAccessibleConfigSections, useConfigNavigation } from "@/hooks/useConfigNavigation";
 
 interface ConfigurationLayoutProps {
   children: React.ReactNode;
 }
 
-interface ComponentConfig {
-  componentId: string;
-  enabled: boolean;
-}
-
 export default function ConfigurationLayout({ children }: ConfigurationLayoutProps) {
   const [location] = useLocation();
-  const { hasPermission } = useAuth();
-  
+
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
-  const { data: componentConfig = [] } = useQuery<ComponentConfig[]>({
-    queryKey: ["/api/components/config"],
-    staleTime: 60000,
-  });
-
-  const isComponentEnabled = (componentId: string) => {
-    const config = componentConfig.find(c => c.componentId === componentId);
-    return config?.enabled ?? false;
-  };
-
-  const policiesNeeded = useMemo(() => getAllPoliciesNeeded(), []);
-
-  const { data: policyResults = {} } = useQuery<Record<string, { allowed: boolean }>>({
-    queryKey: ["/api/access/policies/batch", ...policiesNeeded],
-    queryFn: async () => {
-      if (policiesNeeded.length === 0) return {};
-      
-      const results: Record<string, { allowed: boolean }> = {};
-      await Promise.all(
-        policiesNeeded.map(async (policy) => {
-          try {
-            const response = await fetch(`/api/access/policies/${policy}`);
-            if (response.ok) {
-              const data = await response.json();
-              results[policy] = { allowed: data.access?.granted ?? false };
-            } else {
-              results[policy] = { allowed: false };
-            }
-          } catch {
-            results[policy] = { allowed: false };
-          }
-        })
-      );
-      return results;
-    },
-    staleTime: 30000,
-    enabled: policiesNeeded.length > 0,
-  });
-
-  const accessContext: AccessContext = useMemo(() => ({
-    hasPermission,
-    policyResults,
-    isComponentEnabled,
-  }), [hasPermission, policyResults, componentConfig]);
-
-  const accessibleSections = useMemo(
-    () => getAccessibleSections(accessContext),
-    [accessContext]
-  );
+  // Sections come resolved (the options lists are named by the registry) and
+  // already filtered by permission, policy and component.
+  const { sections } = useConfigNavigation();
+  const { sections: accessibleSections } = useAccessibleConfigSections();
 
   // The single most-specific nav item that matches the current location.
   // Highlighting is keyed off this so sub-paths (e.g. plugin-config kinds at
   // /admin/plugin-configs/:kind) light up their own item rather than the
   // generic parent, and never highlight two items at once.
-  const activeItemPath = useMemo(() => findActiveItemPath(location), [location]);
+  const activeItemPath = useMemo(() => findActiveItemPath(location, sections), [location, sections]);
 
   const isSectionActive = (section: NavSection) => isPathInSection(activeItemPath, section);
 
@@ -180,6 +124,16 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent className="ml-4 mt-2 space-y-2">
+          {section.itemsStatus === "loading" && (
+            <p className="px-3 py-2 text-sm text-muted-foreground" data-testid={`text-${section.id}-loading`}>
+              Loading…
+            </p>
+          )}
+          {section.itemsStatus === "error" && (
+            <p className="px-3 py-2 text-sm text-destructive" data-testid={`text-${section.id}-error`}>
+              Couldn't load these
+            </p>
+          )}
           {section.items.map(item => renderNavItem(item, true))}
           {section.subsections?.map(sub => renderSubsection(sub, isActive))}
         </CollapsibleContent>
@@ -213,7 +167,6 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
 
 function getSectionDisplayTitle(section: NavSection): string {
   const titleMap: Record<string, string> = {
-    "dropdown-lists": "Workers",
     "theme": "Theme",
   };
   return titleMap[section.id] || section.title;
@@ -221,7 +174,6 @@ function getSectionDisplayTitle(section: NavSection): string {
 
 function getSectionTestId(section: NavSection): string {
   const testIdMap: Record<string, string> = {
-    "dropdown-lists": "nav-config-workers",
     "user-management": "nav-config-user-management",
     "contact": "nav-config-contact",
     "employers": "nav-config-employers",

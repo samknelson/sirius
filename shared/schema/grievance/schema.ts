@@ -2,7 +2,7 @@ import { foreignKey, pgTable, varchar, text, jsonb, boolean, integer, date, time
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { workers, employers, users, denorm, bargainingUnits, contacts, files } from "../../schema";
+import { workers, employers, users, denorm, bargainingUnits, contacts } from "../../schema";
 
 /**
  * Configurable denial reasons for appeal grievances. Stored in
@@ -647,32 +647,7 @@ export type InsertGrievanceNameDenorm = z.infer<
   typeof insertGrievanceNameDenormSchema
 >;
 
-// Entity file attachments for grievances (generic entity-files framework
-// pilot). Each row links exactly one `files` row (file_id UNIQUE, cascade on
-// delete of either side) to a grievance and carries the user-editable display
-// `name` plus freeform `data` jsonb.
-export const grievanceFiles = pgTable("grievance_files", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  grievanceId: varchar("grievance_id").notNull(),
-  fileId: varchar("file_id").notNull(),
-  name: varchar("name", { length: 255 }).notNull(),
-  data: jsonb("data"),
-}, (table) => [
-  foreignKey({
-    name: "grievance_files_grievance_id_grievances_id_fk",
-    columns: [table.grievanceId],
-    foreignColumns: [grievances.id],
-  }).onDelete("cascade"),
-  foreignKey({
-    name: "grievance_files_file_id_files_id_fk",
-    columns: [table.fileId],
-    foreignColumns: [files.id],
-  }).onDelete("cascade"),
-  unique("grievance_files_file_id_unique").on(table.fileId),
-]);
-
-export const insertGrievanceFileSchema = createInsertSchema(grievanceFiles).omit({
-  id: true,
-});
-export type GrievanceFile = typeof grievanceFiles.$inferSelect;
-export type InsertGrievanceFile = z.infer<typeof insertGrievanceFileSchema>;
+// Grievance file attachments used to live in a bespoke `grievance_files`
+// join table. They now live in the shared core `entity_files` table with
+// context id "grievance" (see shared/schema.ts) — registering an area no
+// longer costs a table.
