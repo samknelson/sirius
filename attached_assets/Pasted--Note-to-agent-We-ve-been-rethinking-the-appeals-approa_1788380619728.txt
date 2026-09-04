@@ -1,0 +1,26 @@
+**Note to agent:**
+
+---
+
+We've been rethinking the appeals approach and want you to consider an alternative before going further: instead of building appeals as a subset of grievances, could it work better as an expansion of the **cases** framework? Take a look and let us know what you think — including any downsides we're not seeing.
+
+**Why we're questioning the grievances approach:** It forces a lot of irrelevant concepts on the client (complaints, remedies, employers, company representatives, a "Grievances" tab they don't use). Grievances has far more capability than appeals requires, and it feels like we might be shoehorning. Cases could be a more natural fit — an appeal typically starts from an MSR's initial member note, flowing into a generic case workflow.
+
+**What the cases version might look like:**
+
+1. **Case types** — add a notion of case types (e.g., "appeal"). We currently only have note types.
+2. **Type-specific statuses** — specific case types get specific statuses (e.g., denied, trustee review). Not all statuses apply to all types.
+3. **Status data/columns** — statuses carry a data field for custom logic: who gets notified, duration, etc.
+4. **Communication triggers** — tie statuses to event triggers that fire a chosen template (e.g., moving to "denied" sends the denial letter).
+5. **Deadlines** — infer a deadline from status + current date, with cron jobs that scan cases, close ones past deadline (e.g., 90 days after denial letter with no response), and notify.
+6. **Explicit benefit reference** — an appeal-type case would explicitly reference the benefit it's about (e.g., Kaiser), not just a tag, so granting the appeal can auto-create an exemption for the correct benefit type.
+
+**Example flow:** MSR takes a call → opens a note documenting the member's rationale → opens a case of type "appeal" → sets status to "denied," which sends the letter → subsequent appeal letters update the status and fire communications → resolution can create a benefit exemption.
+
+If this direction seems sound, much of the logic you've built for grievances could likely port over to cases rather than starting from scratch. COBRA and domestic partnership would stay as-is either way.
+
+Thoughts?
+
+---
+
+Anything else you'd like adjusted?

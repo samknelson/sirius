@@ -1,0 +1,98 @@
+I have developed a more thorough spec. Analyze the spec and determine if the current software model can support this workflow with exisisting modules and if not, what needs to change in order to do so.
+
+# S2 Appeals Case Workflow — Detailed Spec
+
+## 1. Scope & architecture
+
+- Appeals are a case type inside the grievances framework — not a standalone case-management module
+- Simpler than grievance tracking ("a lot less steps")
+- Volume is low: trustees meet once per month
+- All member-facing submissions must be written letters per SPD/legal — no portal intake
+
+## 2. Case data model
+
+**Inputs at creation** (staff-entered; Ashley is the sole operator today):
+| Field | Source | Notes |
+|---|---|---|
+| Member (worker record) | lookup | case attaches to worker |
+| Carrier / benefit | dropdown | e.g., Delta |
+| Denial reason | dropdown | taxonomy from Josh's variable-data tracker (pending) |
+| Appeal letter | file upload | required — written intake only |
+| *Proposed:* received date, assignee, notes/comments | — | mirrors grievance case pattern |
+
+**Denial reasons known so far** (partial — full taxonomy in Josh's tracker):
+- <24 consecutive months of dental coverage (Delta)
+- Lives within 20 miles of the Dental Office (Delta)
+- MLK service-area distance rules (implied; driving-distance SPD change may expand this)
+
+**Letter types**:
+1. **Denial of Benefit** — initial denial + invitation to appeal to trustees in writing
+2. **Denial of Appeal** — trustee denial; must cite the relevant SPD sections (legal requirement)
+3. **Approval letter** — blanket template, no variable reasons
+
+## 3. States & transitions
+
+```
+[Benefit Request Received]
+        │  Ashley creates case, uploads letter,
+        │  selects carrier/benefit + denial reason
+        ▼
+   ① BENEFIT DENIED  ──── system auto-fires Denial of Benefit letter
+        │
+        ├── member sends 2nd letter ──▶ ② TRUSTEE REVIEW
+        │                                    │
+        │                                    ├─ approved ─▶ ③ APPROVED (terminal)
+        │                                    │      • system fires blanket approval letter
+        │                                    │      • system auto-sets exemption on
+        │                                    │        worker's benefit record
+        │                                    │
+        │                                    └─ denied ──▶ ④ CLOSED–DENIED (terminal)
+        │                                           • system fires Denial of Appeal letter
+        │                                           • letter cites SPD sections
+        │
+        └── no 2nd letter ──▶ ⑤ CLOSED–NO APPEAL (terminal, proposed)
+```
+
+
+
+
+Grounding: the two-letter lifecycle, trustee escalation, and success/failure outcomes are as described in the Aug 10–11 meetings.
+
+## 4. Actions per state
+
+**① Benefit Denied (entry)**
+- On save: system generates and sends Denial of Benefit letter automatically (replaces the manual Lob process using Josh's tracker)
+- *Proposed:* record letter-sent timestamp; case remains open awaiting second letter
+
+**② Trustee Review**
+- Ashley uploads the member's second letter to the existing case
+- Case queued for the next monthly trustee meeting
+- Staff records trustee determination
+
+**③ Approved (terminal)**
+On a single "approve" action, the system runs through: fires the approval letter and sets the exemption start date automatically — no manual policy change. Exemption mechanics:
+- Exemption sits on the member's benefit record (e.g., "as of Aug 1, does not have to pass the start-Delta plugin"); every eligibility scan checks exemptions
+- No new policy created (departure from S1's appeals-election model)
+- Dependents inherit subscriber exemptions automatically
+
+**④ Closed–Denied (terminal)**
+- System fires Denial of Appeal letter with denial reason + SPD citations from the variable-data set
+- Case closed
+
+**⑤ Closed–No Second Appeal (proposed)**
+- ⚠️ Not discussed in meetings. Proposal: auto-close or manual close after a defined window (check SPD for the appeal deadline) if no second letter arrives. For now, do not built auto-close; will be handled manually
+
+## 5. System outputs
+
+| Trigger | Output |
+|---|---|
+| Case created | Denial of Benefit letter (auto) |
+| Trustee approval | Approval letter + auto-set exemption |
+| Trustee denial | Denial of Appeal letter w/ SPD citations |
+| Any transition (*proposed*) | Case history/audit entry, consistent with the case/comment model John is building |
+
+## 6. Migration
+
+- Existing S1 appeal elections convert to exemptions (170 Delta appeals in UNITE HERE plan alone) via bulk exemption import (employer ID + benefit)
+- Appeal elections listed among items not yet migrated as of Aug 12
+- *Proposed:* migrated exemptions carry no case record; only new appeals get cases (consistent with the "import S1 as closed" approach used for call logs

@@ -66,6 +66,13 @@ interface GrievanceFormProps {
    * appeal is always an individual case whose status lives in its history.
    */
   variant?: "grievance" | "appeal";
+  /**
+   * Noun used for labels, independent of the behavioral variant. On the BAO
+   * appeal-only surface a legacy generic record keeps the "grievance" variant
+   * (so its cardinality/class fields stay editable) but is worded as an
+   * appeal. Defaults to the variant.
+   */
+  wording?: "grievance" | "appeal";
   onCardinalityChange?: (cardinality: GrievanceCardinality) => void;
   renderWorkerSection?: (cardinality: GrievanceCardinality) => ReactNode;
   renderEmployerSection?: () => ReactNode;
@@ -78,11 +85,13 @@ export function GrievanceForm({
   isSubmitting,
   canEditSiriusId = true,
   variant = "grievance",
+  wording,
   onCardinalityChange,
   renderWorkerSection,
   renderEmployerSection,
 }: GrievanceFormProps) {
   const isAppeal = variant === "appeal";
+  const appealWording = (wording ?? variant) === "appeal";
   const { data: statuses = [] } = useQuery<OptionItem[]>({
     queryKey: ["/api/options/grievance-status"],
   });
@@ -119,7 +128,7 @@ export function GrievanceForm({
           name="siriusId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>{isAppeal ? "Appeal ID" : "Grievance ID"}</FormLabel>
+              <FormLabel>{appealWording ? "Appeal ID" : "Grievance ID"}</FormLabel>
               <FormControl>
                 <Input
                   placeholder={canEditSiriusId ? "Leave blank to auto-generate" : "Assigned automatically"}

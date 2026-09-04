@@ -85,6 +85,7 @@ function GrievanceEditContent() {
             isSubmitting={isSubmitting}
             canEditSiriusId={isAdmin}
             variant={isAppeal ? "appeal" : "grievance"}
+            wording={appealWording ? "appeal" : "grievance"}
           />
         </CardContent>
       </Card>
