@@ -7,9 +7,19 @@ type QueueOptions<T, R> = {
   delayMs: number;
   save(value: T): Promise<R>;
   onStart?: () => void;
-  onSuccess?: (result: R, value: T, isLatest: boolean) => void | Promise<void>;
-  onError?: (error: unknown, value: T, hasNewerValue: boolean) => void | Promise<void>;
-  onSettled?: () => void;
+  onSuccess?: (
+    result: R,
+    value: T,
+    isLatest: boolean,
+    isActive: () => boolean,
+  ) => void | Promise<void>;
+  onError?: (
+    error: unknown,
+    value: T,
+    hasNewerValue: boolean,
+    isActive: () => boolean,
+  ) => void | Promise<void>;
+  onSettled?: (isActive: () => boolean) => void;
 };
 
 /**
@@ -54,17 +64,21 @@ export function createLatestSaveQueue<T, R>({
     const snapshotRevision = revision;
     inFlight = true;
     onStart?.();
+    const isActive = () => !disposed;
     try {
       const result = await save(snapshot);
-      await onSuccess?.(result, snapshot, revision === snapshotRevision);
+      if (!disposed) {
+        await onSuccess?.(result, snapshot, revision === snapshotRevision, isActive);
+      }
     } catch (error) {
       const hasNewerValue = latest !== undefined && revision !== snapshotRevision;
-      await onError?.(error, snapshot, hasNewerValue);
-      // onError may intentionally preserve a newer local value for retry.
-      if (!hasNewerValue) latest = undefined;
+      if (!disposed) {
+        await onError?.(error, snapshot, hasNewerValue, isActive);
+      }
     } finally {
       inFlight = false;
-      onSettled?.();
+      if (disposed) return;
+      onSettled?.(isActive);
       if (latest !== undefined) schedule();
     }
   };

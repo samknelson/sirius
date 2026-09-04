@@ -262,7 +262,8 @@ export default function BaoDcCaseDetailPage() {
           snapshot,
         ) as Promise<AttestationResponse>,
       onStart: () => setAttestationSaving(true),
-      onSuccess: (result, _snapshot, isLatest) => {
+      onSuccess: (result, _snapshot, isLatest, isActive) => {
+        if (!isActive()) return;
         // The response already contains the authoritative case and computed
         // readiness. Merge only those fields so selector changes do not
         // trigger the expensive full bundle query after every click.
@@ -291,7 +292,7 @@ export default function BaoDcCaseDetailPage() {
           setAttestationDraft(null);
         }
       },
-      onError: async (err, snapshot, hasNewerValue) => {
+      onError: async (err, snapshot, hasNewerValue, isActive) => {
         // A failed save must not leave optimistic controls looking committed.
         // Refetch once to restore the server's complete authoritative bundle;
         // this is intentionally only on failure, never once per successful
@@ -301,6 +302,7 @@ export default function BaoDcCaseDetailPage() {
         } catch {
           // Keep the last known bundle if the recovery request also fails.
         }
+        if (!isActive()) return;
         // A click can arrive while the recovery request is in flight. Only
         // clear the draft if it is still the failed request's snapshot.
         if (!hasNewerValue && attestationDraftRef.current === snapshot) {
@@ -313,7 +315,9 @@ export default function BaoDcCaseDetailPage() {
           variant: "destructive",
         });
       },
-      onSettled: () => setAttestationSaving(false),
+      onSettled: (isActive) => {
+        if (isActive()) setAttestationSaving(false);
+      },
     });
     attestationQueueRef.current = queue;
     return () => {

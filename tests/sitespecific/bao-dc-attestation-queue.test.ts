@@ -56,6 +56,7 @@ describe("DC attestation save queue", () => {
         expect.any(Error),
         "first",
         true,
+        expect.any(Function),
       );
 
       await vi.advanceTimersByTimeAsync(10);
@@ -64,6 +65,69 @@ describe("DC attestation save queue", () => {
       second.resolve("saved");
       await Promise.resolve();
       queue.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps an edit enqueued during asynchronous failure recovery", async () => {
+    vi.useFakeTimers();
+    try {
+      const first = deferred<string>();
+      const second = deferred<string>();
+      const recovery = deferred<void>();
+      const save = vi
+        .fn<(value: string) => Promise<string>>()
+        .mockReturnValueOnce(first.promise)
+        .mockReturnValueOnce(second.promise);
+      const queue = createLatestSaveQueue({
+        delayMs: 10,
+        save,
+        onError: async () => recovery.promise,
+      });
+
+      queue.enqueue("first");
+      await vi.advanceTimersByTimeAsync(10);
+      first.reject(new Error("temporary failure"));
+      await Promise.resolve();
+      queue.enqueue("during recovery");
+      recovery.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      await vi.advanceTimersByTimeAsync(10);
+      expect(save).toHaveBeenLastCalledWith("during recovery");
+      second.resolve("saved");
+      await Promise.resolve();
+      queue.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not invoke lifecycle callbacks after disposal", async () => {
+    vi.useFakeTimers();
+    try {
+      const request = deferred<string>();
+      const save = vi.fn(() => request.promise);
+      const onSuccess = vi.fn();
+      const onSettled = vi.fn();
+      const queue = createLatestSaveQueue({
+        delayMs: 10,
+        save,
+        onSuccess,
+        onSettled,
+      });
+
+      queue.enqueue("old case");
+      await vi.advanceTimersByTimeAsync(10);
+      queue.dispose();
+      request.resolve("saved");
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(onSuccess).not.toHaveBeenCalled();
+      expect(onSettled).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
