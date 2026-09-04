@@ -39,12 +39,14 @@ type BaoDpConfig = BaseEligibilityConfig;
  *   prices to a confirmed no-charge rate under the SAME shared pricing rule
  *   the charge plugin bills with (modules/sitespecific/bao/dp-pricing.ts).
  *
- * Strict by design (per the DP business rules):
+ * The confirmed no-charge check runs FIRST: such a month needs no charge,
+ * no account and no payment. Everything else is strict by design (per the
+ * DP business rules):
  * - No DP billing account configured → ineligible (payment state unknown;
  *   a required-but-unverifiable charge never counts as paid).
- * - No charge posted for the month and the month is NOT a confirmed
- *   no-charge month (rate missing, provisional, ambiguous, or positive) →
- *   ineligible (missing charge ≠ paid; a placeholder is never "free").
+ * - No charge posted for the month (rate missing, provisional, ambiguous,
+ *   or positive-but-unbilled) → ineligible (missing charge ≠ paid; a
+ *   placeholder is never "free").
  * - Partially paid → ineligible. No grace period until the business
  *   confirms one.
  *
@@ -143,6 +145,20 @@ class BaoDpPlugin extends EligibilityPlugin<BaoDpConfig> {
       };
     }
 
+    // A CONFIRMED no-charge month (rate sheet says $0.00, not provisional,
+    // under the same shared pricing rule the biller uses) is covered without
+    // any payment — decided BEFORE the billing-account/charge checks, since
+    // no charge should exist for it and a missing account must not deny it.
+    // Anything else (missing, provisional, ambiguous, or a positive rate)
+    // falls through to the strict payment gate.
+    const noCharge = await this.findConfirmedNoChargeElection(covering, asOfYm);
+    if (noCharge) {
+      return {
+        eligible: true,
+        reason: `DP coverage for ${monthLabel} is a confirmed no-charge month (${noCharge.transitionLabel}) for domestic partner ${dependentLabel} — no payment is required`,
+      };
+    }
+
     const paymentState = await computeDpPaymentState(subscriberId);
     if (!paymentState) {
       return {
@@ -174,21 +190,8 @@ class BaoDpPlugin extends EligibilityPlugin<BaoDpConfig> {
     }
 
     if (!sawCharge) {
-      // No charge posted. The month may be a CONFIRMED no-charge month
-      // (rate sheet says $0.00, not provisional) — then nothing is owed and
-      // coverage is not payment-gated. Anything else (missing, provisional,
-      // ambiguous, or a positive rate that simply has not been billed yet)
-      // fails closed exactly as before.
-      const noCharge = await this.findConfirmedNoChargeElection(
-        covering,
-        asOfYm,
-      );
-      if (noCharge) {
-        return {
-          eligible: true,
-          reason: `DP coverage for ${monthLabel} is a confirmed no-charge month (${noCharge.transitionLabel}) for domestic partner ${dependentLabel} — no payment is required`,
-        };
-      }
+      // No charge posted and not a confirmed no-charge month: a missing
+      // required charge never counts as paid (a placeholder is never free).
       return {
         eligible: false,
         reason: `No DP charge has been posted for ${monthLabel} for domestic partner ${dependentLabel} — a missing required charge does not count as paid`,

@@ -204,6 +204,47 @@ describe("DP payment gate — confirmed no-charge months", () => {
     expect(r.reason).toContain("Family → Family with DP");
   });
 
+  it("grants a confirmed no-charge month even when no DP billing account is configured", async () => {
+    family();
+    dpConfigured = false;
+    rates = {
+      [MEDICAL]: {
+        family_to_family_dp: [{ effectiveYmd: "2026-01-01", rate: "0.00", provisional: false }],
+      },
+    };
+    const r = await evaluate();
+    expect(r.eligible).toBe(true);
+    expect(r.reason).toMatch(/confirmed no-charge month/i);
+  });
+
+  it("still requires a billing account when the month is NOT confirmed no charge", async () => {
+    family();
+    dpConfigured = false;
+    rates = {
+      [MEDICAL]: {
+        family_to_family_dp: [{ effectiveYmd: "2026-01-01", rate: "0.00", provisional: true }],
+      },
+    };
+    const r = await evaluate();
+    expect(r.eligible).toBe(false);
+    expect(r.reason).toMatch(/billing account/i);
+  });
+
+  it("grants a confirmed no-charge month even if a stale charge is still posted and unpaid", async () => {
+    // Billed before the rate was confirmed $0; the biller zeroes it on its
+    // next run, and coverage must not wait on that.
+    family();
+    rates = {
+      [MEDICAL]: {
+        family_to_family_dp: [{ effectiveYmd: "2026-01-01", rate: "0.00", provisional: false }],
+      },
+    };
+    dpEntries = [chargeEntry("100.00")];
+    dpBalance = "100";
+    const r = await evaluate();
+    expect(r.eligible).toBe(true);
+  });
+
   it("ignores ancillary (unrated) benefits when recognising a no-charge month", async () => {
     family();
     rates = {
