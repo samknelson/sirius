@@ -79,6 +79,11 @@ function formatRate(rate: string): string {
   });
 }
 
+/** A confirmed (non-provisional) $0.00 rate means "covered at no charge". */
+function isConfirmedNoCharge(rate: { rate: string; provisional: boolean }): boolean {
+  return !rate.provisional && Math.abs(Number(rate.rate)) < 0.005;
+}
+
 interface RateFormState {
   benefitId: string;
   tierTransition: BaoDpTierTransition | "";
@@ -215,9 +220,12 @@ export default function BaoDpRatesPage() {
             Domestic Partner Rates
           </h1>
           <p className="text-muted-foreground text-sm">
-            Effective-dated monthly Domestic Partner rates by benefit and coverage-tier
-            transition. Lookups use the latest rate on or before the date in question.
-            Provisional rows are placeholders, not confirmed values.
+            Effective-dated monthly Domestic Partner <strong>member charges</strong> by
+            benefit and coverage-tier transition — the amount collected from the member,
+            not the imputed-income figure (which is never charged). Lookups use the latest
+            rate on or before the date in question. A confirmed $0.00 rate means the
+            transition is covered at no charge; provisional rows are placeholders, not
+            confirmed values, and are never billed or waived.
           </p>
         </div>
         <Button onClick={openAdd} data-testid="button-add-dp-rate">
@@ -285,7 +293,7 @@ export default function BaoDpRatesPage() {
                 <TableRow>
                   <TableHead>Benefit</TableHead>
                   <TableHead>Transition</TableHead>
-                  <TableHead>Monthly Rate</TableHead>
+                  <TableHead>Monthly Member Charge</TableHead>
                   <TableHead>Effective</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -301,7 +309,7 @@ export default function BaoDpRatesPage() {
                       {BAO_DP_TIER_TRANSITION_LABELS[r.tierTransition] ?? r.tierTransition}
                     </TableCell>
                     <TableCell data-testid={`text-rate-amount-${r.id}`}>
-                      ${formatRate(r.rate)}
+                      {isConfirmedNoCharge(r) ? "No charge" : `$${formatRate(r.rate)}`}
                     </TableCell>
                     <TableCell data-testid={`text-rate-effective-${r.id}`}>
                       {formatYmd(r.effectiveYmd)}
@@ -311,6 +319,8 @@ export default function BaoDpRatesPage() {
                         <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-400">
                           Provisional
                         </Badge>
+                      ) : isConfirmedNoCharge(r) ? (
+                        <Badge variant="secondary">Confirmed — no charge</Badge>
                       ) : (
                         <Badge variant="secondary">Confirmed</Badge>
                       )}
@@ -355,9 +365,10 @@ export default function BaoDpRatesPage() {
           <DialogHeader>
             <DialogTitle>{editing ? "Edit DP Rate" : "Add DP Rate"}</DialogTitle>
             <DialogDescription>
-              Monthly rate for a benefit and coverage-tier transition, effective from the
-              given date. Mark a rate provisional when it is a placeholder rather than a
-              confirmed value.
+              Monthly member charge for a benefit and coverage-tier transition, effective
+              from the given date. Enter $0.00 for a transition confirmed as no charge.
+              Mark a rate provisional when it is a placeholder rather than a confirmed
+              value — provisional rates are never billed and never treated as free.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -384,12 +395,7 @@ export default function BaoDpRatesPage() {
               <Select
                 value={form.tierTransition}
                 onValueChange={(v) =>
-                  setForm((f) => ({
-                    ...f,
-                    tierTransition: v as BaoDpTierTransition,
-                    provisional:
-                      v === "family_to_family_dp" ? true : f.provisional,
-                  }))
+                  setForm((f) => ({ ...f, tierTransition: v as BaoDpTierTransition }))
                 }
               >
                 <SelectTrigger data-testid="select-rate-transition">
@@ -405,7 +411,7 @@ export default function BaoDpRatesPage() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Monthly Rate ($)</Label>
+              <Label>Monthly Member Charge ($)</Label>
               <Input
                 type="number"
                 min="0"
@@ -428,18 +434,12 @@ export default function BaoDpRatesPage() {
               <div className="space-y-0.5">
                 <Label>Provisional</Label>
                 <p className="text-xs text-muted-foreground">
-                  {form.tierTransition === "family_to_family_dp"
-                    ? "Family → Family with DP rates are placeholders and always provisional."
-                    : "Placeholder rate — not a confirmed value."}
+                  Placeholder rate — not a confirmed value. Never billed and never
+                  treated as no charge.
                 </p>
               </div>
               <Switch
-                checked={
-                  form.tierTransition === "family_to_family_dp"
-                    ? true
-                    : form.provisional
-                }
-                disabled={form.tierTransition === "family_to_family_dp"}
+                checked={form.provisional}
                 onCheckedChange={(checked) =>
                   setForm((f) => ({ ...f, provisional: checked }))
                 }

@@ -184,3 +184,4 @@
 - [Dashboard widget registry glob depth](dashboard-widget-registry-glob-depth.md) — client registry globs ./*/*.tsx as `<dir>:<File>`; a SHARED card must sit above the widget dirs or it registers as a phantom widget.
 - [Upstream merge playbook](upstream-merge-playbook.md) — renumber upstream core migrations above our counter (else silently skipped); keep-both splits JSDoc/JSX; run arch lint; known env-noise test failures.
 - [Migration system-zone pin](migration-timezone-pin.md) — every S1→S2 writer gated on TZ=America/Los_Angeles via ensureStagingSchema (no override); evidence in envelopes; dev shell is UTC so prefix TZ.
+- [BAO DP confirmed no-charge](bao-dp-confirmed-no-charge.md) — non-provisional $0.00 DP rate = covered free (no bill, gate waives payment); provisional/missing still fail closed; one shared pricing module.

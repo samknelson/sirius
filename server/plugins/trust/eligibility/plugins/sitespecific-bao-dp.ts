@@ -8,17 +8,21 @@ import {
 import { registerEligibilityPlugin } from "../registry";
 import { storage } from "../../../../storage/database";
 import { computeDpPaymentState } from "../../../../modules/sitespecific/bao/dp-payment-state";
+import {
+  isDpRelationTypeName,
+  priceDpMonth,
+  resolveDpTierTransition,
+} from "../../../../modules/sitespecific/bao/dp-pricing";
 import type { WorkerTrustElection } from "@shared/schema/trust/elections-schema";
+import { BAO_DP_TIER_TRANSITION_LABELS } from "@shared/schema/sitespecific/bao/schema";
 
 type BaoDpConfig = BaseEligibilityConfig;
 
-function isDpRelationTypeName(name: string | null | undefined): boolean {
-  return !!name && name.toLowerCase().includes("domestic partner");
-}
-
 /**
  * "BAO - Domestic Partner Payment" grants a DP dependent's benefit only when
- * the month's DP premium charge is fully paid.
+ * the month's DP member charge is fully paid — or the month is a CONFIRMED
+ * no-charge month on the DP rate sheet (e.g. the 2026 family → family with
+ * DP scenarios), in which case no payment is required.
  *
  * Scope: this plugin ONLY gates evaluations of a domestic-partner DEPENDENT
  * (a dependent evaluation whose worker_relations type is a
@@ -30,13 +34,19 @@ function isDpRelationTypeName(name: string | null | undefined): boolean {
  * For a DP dependent, eligible only when ALL of:
  * - the subscriber has an election active in the as-of month that covers
  *   both this benefit and the subscriber→DP relationship, and
- * - the DP charge for that (election, DP relationship, month) exists and is
- *   fully paid on the subscriber's DP ledger account.
+ * - EITHER the DP charge for that (election, DP relationship, month) exists
+ *   and is fully paid on the subscriber's DP ledger account, OR the month
+ *   prices to a confirmed no-charge rate under the SAME shared pricing rule
+ *   the charge plugin bills with (modules/sitespecific/bao/dp-pricing.ts).
  *
- * Strict by design (per the DP business rules):
+ * The confirmed no-charge check runs FIRST: such a month needs no charge,
+ * no account and no payment. Everything else is strict by design (per the
+ * DP business rules):
  * - No DP billing account configured → ineligible (payment state unknown;
  *   a required-but-unverifiable charge never counts as paid).
- * - No charge posted for the month → ineligible (missing charge ≠ paid).
+ * - No charge posted for the month (rate missing, provisional, ambiguous,
+ *   or positive-but-unbilled) → ineligible (missing charge ≠ paid; a
+ *   placeholder is never "free").
  * - Partially paid → ineligible. No grace period until the business
  *   confirms one.
  *
@@ -48,7 +58,7 @@ class BaoDpPlugin extends EligibilityPlugin<BaoDpConfig> {
     id: "sitespecific-bao-dp",
     name: "BAO - Domestic Partner Payment",
     description:
-      "Grants a domestic-partner dependent's benefit only when the month's DP premium charge exists and is fully paid on the subscriber's DP ledger account. Passes through for the subscriber and non-DP dependents — nonpayment never blocks the subscriber's own coverage.",
+      "Grants a domestic-partner dependent's benefit only when the month's DP member charge exists and is fully paid on the subscriber's DP ledger account, or the month is a confirmed no-charge month on the DP rate sheet (no payment required). Missing or provisional rates never count as free. Passes through for the subscriber and non-DP dependents — nonpayment never blocks the subscriber's own coverage.",
     requiredComponent: "sitespecific.bao",
     configSchema: {
       type: "object",
@@ -135,6 +145,24 @@ class BaoDpPlugin extends EligibilityPlugin<BaoDpConfig> {
       };
     }
 
+    // A CONFIRMED no-charge month (rate sheet says $0.00, not provisional,
+    // under the same shared pricing rule the biller uses) is covered without
+    // any payment — decided BEFORE the billing-account/charge checks, since
+    // no charge should exist for it and a missing account must not deny it.
+    // Anything else (missing, provisional, ambiguous, or a positive rate)
+    // falls through to the strict payment gate.
+    const noCharge = await this.findConfirmedNoChargeElection(
+      subscriberId,
+      covering,
+      asOfYm,
+    );
+    if (noCharge) {
+      return {
+        eligible: true,
+        reason: `DP coverage for ${monthLabel} is a confirmed no-charge month (${noCharge.transitionLabel}) for domestic partner ${dependentLabel} — no payment is required`,
+      };
+    }
+
     const paymentState = await computeDpPaymentState(subscriberId);
     if (!paymentState) {
       return {
@@ -166,6 +194,8 @@ class BaoDpPlugin extends EligibilityPlugin<BaoDpConfig> {
     }
 
     if (!sawCharge) {
+      // No charge posted and not a confirmed no-charge month: a missing
+      // required charge never counts as paid (a placeholder is never free).
       return {
         eligible: false,
         reason: `No DP charge has been posted for ${monthLabel} for domestic partner ${dependentLabel} — a missing required charge does not count as paid`,
@@ -175,6 +205,55 @@ class BaoDpPlugin extends EligibilityPlugin<BaoDpConfig> {
       eligible: false,
       reason: `DP charge for ${monthLabel} is not fully paid (${unpaidDetail}) for domestic partner ${dependentLabel}`,
     };
+  }
+
+  /**
+   * The first covering election whose month prices to a confirmed no-charge
+   * rate under the shared DP pricing rule (tier from non-DP covered lives,
+   * single rated benefit, non-provisional $0.00). Null when no covering
+   * election does — including when the rate is missing, provisional,
+   * ambiguous, or positive.
+   */
+  private async findConfirmedNoChargeElection(
+    subscriberId: string,
+    covering: WorkerTrustElection[],
+    asOfYm: string,
+  ): Promise<{ election: WorkerTrustElection; transitionLabel: string } | null> {
+    // Price from the election benefits the SUBSCRIBER actually has recorded
+    // for the month (trust WMB presence) — exactly the set the charge plugin
+    // prices from — so the gate can never waive a month billing would have
+    // skipped as missing-rate.
+    const presenceRows = await storage.trust.wmb.getWorkerBenefitPresence(subscriberId);
+    const present = new Set<string>();
+    for (const row of presenceRows) {
+      const ym = `${row.year}-${String(row.month).padStart(2, "0")}`;
+      if (ym === asOfYm) present.add(row.benefitId);
+    }
+
+    const relIds = new Set<string>();
+    for (const e of covering) for (const id of e.relationshipIds ?? []) relIds.add(id);
+    const rels = relIds.size
+      ? await storage.workerRelations.listByIdsWithType(Array.from(relIds))
+      : [];
+    const typeNameById = new Map(rels.map((r) => [r.id, r.relationTypeName ?? null]));
+
+    for (const election of covering) {
+      const transition = resolveDpTierTransition(election, (id) =>
+        typeNameById.has(id) ? typeNameById.get(id) : undefined,
+      );
+      const presentBenefitIds = (election.benefitIds ?? []).filter((b) =>
+        present.has(b),
+      );
+      if (presentBenefitIds.length === 0) continue;
+      const price = await priceDpMonth(presentBenefitIds, transition, asOfYm);
+      if (price.kind === "no_charge") {
+        return {
+          election,
+          transitionLabel: BAO_DP_TIER_TRANSITION_LABELS[transition],
+        };
+      }
+    }
+    return null;
   }
 
   private dependentLabel(

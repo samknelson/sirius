@@ -7,7 +7,7 @@ import {
 export const DP_CHARGE_PLUGIN_ID = "sitespecific-bao-dp";
 
 /**
- * Resolve the ledger account DP premiums are billed to (the "Health Fund -
+ * Resolve the ledger account DP member charges are billed to (the "Health Fund -
  * DP" account in production): the account on the first enabled global config
  * of the DP charge plugin (legacy account-nulls-last/id ordering). Never
  * hardcoded. Null when the plugin has no enabled global config or the config
@@ -43,7 +43,7 @@ export interface DpChargeMonthStatus {
   dpRelationshipId: string;
   /** The DP dependent's worker id, when recorded on the entry. */
   dpWorkerId: string | null;
-  /** Net posted charge for this (DP, month): base + adjustments. */
+  /** Net posted member charge for this (DP, month): base + adjustments. */
   netCharge: string;
   /** Portion of the net charge covered by payments (FIFO by month). */
   paidAmount: string;
@@ -64,9 +64,11 @@ export interface DpPaymentStateResult {
 }
 
 /**
- * Compute the per-month DP charge / paid / balance state for a worker from
- * the worker's DP ledger account. Returns null when no DP billing account is
- * configured — callers must treat that as "payment state unknown".
+ * Compute the per-month DP member charge / paid / balance state for a worker
+ * from the worker's DP ledger account. Returns null when no DP billing
+ * account is configured — callers must treat that as "payment state
+ * unknown". Confirmed no-charge months never post an entry, so they do not
+ * appear here and contribute nothing to the balance.
  *
  * Payment attribution: payments on the account are not allocated to specific
  * months in the ledger, so months are marked paid FIFO (oldest month first)
@@ -161,28 +163,4 @@ export async function computeDpPaymentState(
     totalPaid: totalPaid.toFixed(2),
     months,
   };
-}
-
-/**
- * Whether the DP charge for a specific (election, DP, month) is fully paid.
- * Null when no DP billing account is configured (payment state unknown).
- * False when no charge exists for the month — per the DP business rules a
- * required-but-missing charge must NOT count as paid.
- */
-export async function isDpMonthPaid(
-  workerId: string,
-  electionId: string,
-  dpRelationshipId: string,
-  month: string,
-): Promise<boolean | null> {
-  const state = await computeDpPaymentState(workerId);
-  if (!state) return null;
-  const row = state.months.find(
-    (m) =>
-      m.electionId === electionId &&
-      m.dpRelationshipId === dpRelationshipId &&
-      m.month === month,
-  );
-  if (!row) return false;
-  return row.status === "paid";
 }

@@ -1,5 +1,5 @@
 /**
- * Smoke test for the BAO Domestic Partner monthly premium charge plugin
+ * Smoke test for the BAO Domestic Partner monthly member charge plugin
  * (sitespecific-bao-dp), with all storage stubbed in-memory.
  *
  * Verifies:
@@ -346,14 +346,14 @@ async function main() {
   const r6 = await run();
   check("re-covered months get reinstating adjustments", r6.transactions.length === 3);
   check(
-    "reinstatements restore full premium",
+    "reinstatements restore full member charge",
     r6.transactions.every(
       (t) => t.amount === expectedMonthly && t.referenceType === "dp_election_adjustment",
     ),
   );
   net = netByMonth();
   check(
-    "net after reinstatement equals premium for all 4 months",
+    "net after reinstatement equals member charge for all 4 months",
     [startYm, midYm, currentYm, nextYm].every((ym) => net.get(ym) === Number(expectedMonthly)),
   );
 
