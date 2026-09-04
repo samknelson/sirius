@@ -1,0 +1,53 @@
+# Disability Credit: Post-Approval Mechanics Spec
+
+## 1. Core model: Coverage Month vs. Work Month
+
+A DC case is approved for **coverage months**. The system must translate each approved coverage month into its corresponding **work month** and insert credit hours there — never into the coverage month itself. Hours uploaded July 15 can grant October coverage (July → Aug → Sep → Oct), so the offset is 3 months per the plan’s eligibility lag.
+
+**Firm rule:** For each approved coverage month `C`, the system inserts DC hours into work month `C − 3` (per plan’s configured lag). Example (the user’s case):
+
+|Approved coverage month|Work month receiving hours|Hours inserted|
+|---|---|---|
+|October 2026|July 2026|up to 60 (see §2)|
+|November 2026|August 2026|up to 60 (see §2)|
+
+The grant amount baseline: disability credit grants ~60 hours of credited work and pays premiums from fund reserves; no employer contribution. Grant amount = the plan’s minimum eligibility hours, configured per plan, not hardcoded. (Note: the July 22 spec flagged that when a DC is approved, exactly what the system grants wasn’t confirmed as standard — the 60-hour figure appeared in examples; the Aug 28 demo confirmed the system picks up the minimum per the worker’s plan, so treat plan-minimum as the rule.)
+
+## 2. Top-off: worker has partial hours in the work month
+
+DC hours are a **top-off to the plan minimum, never a fixed block**. From the current meeting: if the employer reported 50 hours for the work month and the plan minimum is 60, insert only 10 DC hours.
+
+**Firm rules:**
+
+- `DC hours inserted = max(0, plan_minimum − employer_reported_hours)` for the work month.
+- If employer hours already meet the minimum, insert 0 hours; the coverage month should not have been grantable — surface a validation warning at approval time and do not consume a DC month from the worker’s annual balance.
+- A DC month is only debited from the worker’s balance when DC hours > 0 are actually inserted.
+
+## 3. Employer retro-reports hours after DC granted
+
+This is the auto-reconciliation rule confirmed in three separate meetings:
+
+- If DC was granted for a month and the employer subsequently reports FMLA hours meeting the threshold for that same month, the system auto-removes the DC hours and restores that month to the worker’s available balance, with an auto-generated log entry. This replaces today’s manual edit-to-zero + explanatory log note.
+- The current meeting confirmed the same for reported hours generally: employer reports 70 hours after DC was granted → remove the DC hours, return the month to the worker’s DC bank.
+
+**Firm rules:**
+
+- **Retro hours ≥ plan minimum:** remove all DC hours for that work month, restore the DC month to the worker’s annual balance, write an immutable auto-log entry on the case. Coverage for the coverage month is unaffected (now earned via employer hours).
+- **Retro hours increase but stay below minimum:** reduce DC hours so total = plan minimum (re-run the top-off calculation). The DC month remains consumed. Per the July 24 meeting: if employer later reports below threshold (active but insufficient hours), DC still applies as long as 3 FMLA months were previously paid.
+- **Late FMLA reporting takes precedence:** late employer FMLA reporting after DC already granted: DC is revoked; active hours take precedence.
+- Every automatic adjustment generates a case log entry; log notes are immutable — notes cannot be edited after posting; corrections must be new log entries referencing the original.
+
+## 4. Other post-approval effects
+1. **Continuity enforcement:** disability credit must be continuous: no coverage gaps allowed. Member cannot go uncovered for months and then retroactively invoke DC; must backfill to close the gap. Prevents adverse selection on large claims. At approval, validate that the selected coverage months are contiguous with the worker’s existing coverage; block or require backfill otherwise.
+## 5. Scenario matrix (summary)
+
+|Scenario|System behavior|
+|---|---|
+|Approve Oct + Nov 2026 coverage, worker has 0 hours in Jul/Aug|Insert 60 DC hours into Jul and Aug (fund employer); debit 2 DC months; queue scan; generate premium charges|
+|Worker has 50 hrs in Jul (min 60)|Insert 10 DC hours in Jul; still debits 1 DC month|
+|Worker already has ≥60 hrs in work month|Insert 0; warn; do not debit balance|
+|ER retro-reports 70 hrs for Jul after grant|Auto-remove Jul DC hours; restore month to bank; auto-log; coverage stands via earned hours|
+|ER retro-reports 55 hrs (below min)|Reduce DC hours to 5; month stays consumed|
+|ER retro-reports qualifying FMLA for granted month|DC revoked for that month; month restored; FMLA counts toward future eligibility|
+|Approval would create a coverage gap|Block; require backfill of gap months first|
+|Worker at 6/6 annual max|Block approval; surface maxed-out indicator; resets Jan 1|
