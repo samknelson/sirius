@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,16 +16,50 @@ import { CaseLettersCard, type CaseLetter } from "@/components/sitespecific/bao/
 import { BaoCaseDocumentsCard } from "@/components/sitespecific/bao/BaoCaseDocumentsCard";
 
 type Option = { id: string; name: string; closed?: boolean; data?: { entityTypes?: string[] } };
+type CaseTypeOption = Option & { workflowCode?: string };
+/** GET /api/sitespecific/bao/cases/:id — the server's BaoCaseDetails plus the letter record. */
 interface CaseDetail {
   id: string; entityType: string; entityId: string; entityName: string | null;
   assigneeUserId: string; assigneeName: string; statusId: string; statusName: string;
   statusClosed: boolean; createdAt: string; deadlineYmd: string;
+  caseTypeId: string; caseTypeName: string; workflowStep: string | null; benefitId: string | null;
   resolutionId: string | null; resolutionName: string | null; resolutionYmd: string | null;
+  // Benefit Appeal facts (BaoCaseAppealFacts): all null on a case that is not
+  // a benefit appeal. The citation is the text snapshotted onto the appeal at
+  // auto-denial — what the member was told — not the reason's current text.
+  benefitName: string | null;
+  denialReasonName: string | null;
+  spdCitation: string | null;
   notes: Array<{ id: string; typeId: string; typeName: string | null; subject: string; body: string | null; timestamp: string; authorName: string | null; tags?: Array<{ tagId?: string; tagName?: string; name?: string }> }>;
   letters: CaseLetter[];
   mailingAddressOnFile: boolean;
-  workflowStep?: string | null;
-  caseTypeName?: string;
+}
+
+/**
+ * The Benefit Appeal facts beside the case's generic fields: which benefit
+ * was appealed, which reason denied it, and the SPD language the member was
+ * (or will be) told. Rendered only for benefit-appeal cases, so a general
+ * case never shows an empty appeal block.
+ */
+function AppealFactsCard({ record }: { record: CaseDetail }) {
+  return (
+    <Card data-testid="card-appeal-facts">
+      <CardHeader>
+        <CardTitle>Benefit Appeal</CardTitle>
+        <CardDescription>The benefit appealed, the reason it was denied, and the SPD citation quoted in the member’s denial letter.</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4 md:grid-cols-2">
+        <div><Label>Benefit</Label><p className="text-sm" data-testid="text-appeal-benefit">{record.benefitName ?? "None configured"}</p></div>
+        <div><Label>Denial reason</Label><p className="text-sm" data-testid="text-appeal-denial-reason">{record.denialReasonName ?? "None configured"}</p></div>
+        <div className="md:col-span-2">
+          <Label>SPD citation</Label>
+          {record.spdCitation
+            ? <blockquote className="mt-1 whitespace-pre-wrap border-l-2 pl-3 text-sm italic text-muted-foreground" data-testid="text-appeal-spd-citation">{record.spdCitation}</blockquote>
+            : <p className="text-sm text-muted-foreground" data-testid="text-appeal-spd-citation">None configured</p>}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function BaoCaseDetailPage() {
@@ -34,6 +68,9 @@ export default function BaoCaseDetailPage() {
   const key = ["/api/sitespecific/bao/cases", id];
   const { data: record } = useQuery<CaseDetail>({ queryKey: key });
   const { data: statuses = [] } = useQuery<Option[]>({ queryKey: ["/api/options/bao-case-status"] });
+  // Whether this is a Benefit Appeal is the case type's workflow code (the
+  // same discriminator the New Case form uses), never a name match.
+  const { data: caseTypes = [] } = useQuery<CaseTypeOption[]>({ queryKey: ["/api/options/bao-case-type"] });
   const { data: resolutions = [] } = useQuery<Option[]>({ queryKey: ["/api/options/bao-case-resolution"] });
   const { data: noteTypes = [] } = useQuery<Option[]>({ queryKey: ["/api/options/note-type"] });
   const { data: tags = [] } = useQuery<Option[]>({ queryKey: ["/api/options/bao-notes-tag"] });
@@ -98,11 +135,12 @@ export default function BaoCaseDetailPage() {
   if (!record) return <div className="p-6">Loading…</div>;
   const nextClosed = statuses.find((s) => s.id === statusId)?.closed ?? record.statusClosed;
   const applicable = noteTypes.filter((t) => t.data?.entityTypes?.includes(record.entityType));
+  const isAppeal = caseTypes.find((t) => t.id === record.caseTypeId)?.workflowCode === "benefit_appeal";
   return (
     <div>
       <PageHeader title={`Case · ${record.entityName ?? record.entityId}`} />
       <main className="mx-auto max-w-4xl space-y-6 p-6">
-        <Card><CardHeader><CardTitle className="flex gap-2">Case Details <Badge>{record.statusName}</Badge></CardTitle></CardHeader>
+        <Card><CardHeader><CardTitle className="flex flex-wrap items-center gap-2">Case Details <Badge>{record.statusName}</Badge><Badge variant="outline" data-testid="badge-case-type">{record.caseTypeName}</Badge></CardTitle></CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
             <div><Label>Created</Label><p>{record.createdAt.slice(0, 10)}</p></div>
             <div><Label>Deadline</Label><Input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} /></div>
@@ -114,6 +152,7 @@ export default function BaoCaseDetailPage() {
             <Button onClick={() => save.mutate()} disabled={save.isPending || (nextClosed && (!resolutionId || !resolutionYmd))}>Save</Button>
           </CardContent>
         </Card>
+        {isAppeal && <AppealFactsCard record={record} />}
         <CaseLettersCard letters={record.letters ?? []} mailingAddressOnFile={record.mailingAddressOnFile ?? true} isWorkerCase={record.entityType === "worker"} />
         <BaoCaseDocumentsCard caseId={record.id} />
         {record.workflowStep === "auto_denied" && (

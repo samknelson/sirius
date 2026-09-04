@@ -192,3 +192,4 @@
 - [BAO DB suites schema bring-up](dc-test-suite-isolation.md) — never call component migration up() in beforeAll (forks deadlock, re-run DDL locks live tables); shared fixture + own workers.
 - [Notifier postal template channel](notifier-postal-template-channel.md) — one shared letter-page wrapper; sendKey hook claims at the comm insert; pre-claim sender refusals must surface as NOT_SENT, never "sent".
 - [Unwired component migration file](component-migration-unwired-file.md) — a migration file that is not registered never runs; schema that lands without one fails every fresh install, not just dev.
+- [Dev UI verification login](dev-ui-verification-login.md) — INITIAL_ADMIN_PASSWORD is not a login (unreferenced); make a throwaway local account (users+auth_identities+user_roles, hash via generate-password-hash) for browser/API checks, delete after.
