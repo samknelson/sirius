@@ -45,6 +45,7 @@ import type {
 } from "@shared/schema";
 import type { DcMonthOption } from "@shared/sitespecific/bao/dc-workflow";
 import type { DcCaseMonthState, DcMonthHistoryEntry } from "@shared/sitespecific/bao/dc-reporting";
+import { createLatestSaveQueue, type LatestSaveQueue } from "./dc-attestation-queue";
 
 /** Wait this long after the last month toggle before re-validating. */
 const PREVIEW_DEBOUNCE_MS = 300;
@@ -187,16 +188,7 @@ export default function BaoDcCaseDetailPage() {
   const [attestationDraft, setAttestationDraft] = useState<BaoDcAttestations | null>(null);
   const [attestationSaving, setAttestationSaving] = useState(false);
   const attestationDraftRef = useRef<BaoDcAttestations | null>(null);
-  const attestationRevisionRef = useRef(0);
-  const attestationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const attestationInFlightRef = useRef(false);
-
-  useEffect(
-    () => () => {
-      if (attestationTimerRef.current) clearTimeout(attestationTimerRef.current);
-    },
-    [],
-  );
+  const attestationQueueRef = useRef<LatestSaveQueue<BaoDcAttestations> | null>(null);
 
   const activeMonths = useMemo(
     () => (data?.months ?? []).filter((m) => m.status !== "removed"),
@@ -256,87 +248,85 @@ export default function BaoDcCaseDetailPage() {
       }),
   });
 
-  const flushAttestations = async () => {
-    if (attestationInFlightRef.current) return;
-    const snapshot = attestationDraftRef.current;
-    if (!snapshot) return;
+  useEffect(() => {
+    // A route change must not carry an unsaved draft from the previous case.
+    attestationDraftRef.current = null;
+    setAttestationDraft(null);
+    setAttestationSaving(false);
+    const queue = createLatestSaveQueue<BaoDcAttestations, AttestationResponse>({
+      delayMs: ATTESTATION_DEBOUNCE_MS,
+      save: (snapshot) =>
+        apiRequest(
+          "PUT",
+          `/api/sitespecific/bao/dc/cases/${caseId}/attestations`,
+          snapshot,
+        ) as Promise<AttestationResponse>,
+      onStart: () => setAttestationSaving(true),
+      onSuccess: (result, _snapshot, isLatest) => {
+        // The response already contains the authoritative case and computed
+        // readiness. Merge only those fields so selector changes do not
+        // trigger the expensive full bundle query after every click.
+        queryClient.setQueryData<Bundle>(caseKey, (old) =>
+          old
+            ? {
+                ...old,
+                case: result.case,
+                readiness: result.readiness,
+              }
+            : old,
+        );
 
-    const revision = attestationRevisionRef.current;
-    attestationInFlightRef.current = true;
-    setAttestationSaving(true);
-    try {
-      const result = (await apiRequest(
-        "PUT",
-        `/api/sitespecific/bao/dc/cases/${caseId}/attestations`,
-        snapshot,
-      )) as AttestationResponse;
+        if (result.bounced) {
+          toast({
+            title: "Case returned to draft",
+            description: "Readiness no longer passes after this change.",
+          });
+        }
 
-      // The response already contains the authoritative case and computed
-      // readiness. Merge only those fields so selector changes do not trigger
-      // the expensive full bundle query after every click.
-      queryClient.setQueryData<Bundle>(caseKey, (old) =>
-        old
-          ? {
-              ...old,
-              case: result.case,
-              readiness: result.readiness,
-            }
-          : old,
-      );
-
-      if (result.bounced) {
+        // If no click arrived while this request was in flight, the server
+        // response is now the displayed source of truth. Otherwise leave the
+        // newest local draft in place for the queued pass.
+        if (isLatest) {
+          attestationDraftRef.current = null;
+          setAttestationDraft(null);
+        }
+      },
+      onError: async (err, snapshot, hasNewerValue) => {
+        // A failed save must not leave optimistic controls looking committed.
+        // Refetch once to restore the server's complete authoritative bundle;
+        // this is intentionally only on failure, never once per successful
+        // click. Preserve a newer local draft so it can still be persisted.
+        try {
+          await queryClient.fetchQuery<Bundle>({ queryKey: caseKey });
+        } catch {
+          // Keep the last known bundle if the recovery request also fails.
+        }
+        // A click can arrive while the recovery request is in flight. Only
+        // clear the draft if it is still the failed request's snapshot.
+        if (!hasNewerValue && attestationDraftRef.current === snapshot) {
+          attestationDraftRef.current = null;
+          setAttestationDraft(null);
+        }
         toast({
-          title: "Case returned to draft",
-          description: "Readiness no longer passes after this change.",
+          title: "Could not save attestations",
+          description: getApiErrorMessage(err, "The checklist was refreshed from the server."),
+          variant: "destructive",
         });
-      }
-
-      // If no click arrived while this request was in flight, the server
-      // response is now the displayed source of truth. Otherwise leave the
-      // newest local draft in place and let the queued pass persist it.
-      if (attestationRevisionRef.current === revision) {
-        attestationDraftRef.current = null;
-        setAttestationDraft(null);
-      }
-    } catch (err) {
-      // A failed save must not leave optimistic controls looking committed.
-      // Refetch once to restore the server's complete authoritative bundle;
-      // this is intentionally only on failure, never once per successful click.
-      try {
-        await queryClient.fetchQuery<Bundle>({ queryKey: caseKey });
-      } catch {
-        // Keep the last known bundle if the recovery request also fails.
-      }
-      attestationDraftRef.current = null;
-      setAttestationDraft(null);
-      toast({
-        title: "Could not save attestations",
-        description: getApiErrorMessage(err, "The checklist was refreshed from the server."),
-        variant: "destructive",
-      });
-    } finally {
-      attestationInFlightRef.current = false;
-      setAttestationSaving(false);
-      if (attestationDraftRef.current && attestationRevisionRef.current !== revision) {
-        if (attestationTimerRef.current) clearTimeout(attestationTimerRef.current);
-        attestationTimerRef.current = setTimeout(() => {
-          attestationTimerRef.current = null;
-          void flushAttestations();
-        }, ATTESTATION_DEBOUNCE_MS);
-      }
-    }
-  };
+      },
+      onSettled: () => setAttestationSaving(false),
+    });
+    attestationQueueRef.current = queue;
+    return () => {
+      queue.dispose();
+      if (attestationQueueRef.current === queue) attestationQueueRef.current = null;
+    };
+  }, [caseId, toast]);
 
   const queueAttestationSave = (next: BaoDcAttestations) => {
     const draft = editableAttestations(next);
     attestationDraftRef.current = draft;
-    attestationRevisionRef.current += 1;
     setAttestationDraft(draft);
-    if (attestationTimerRef.current) clearTimeout(attestationTimerRef.current);
-    attestationTimerRef.current = setTimeout(() => {
-      attestationTimerRef.current = null;
-      void flushAttestations();
-    }, ATTESTATION_DEBOUNCE_MS);
+    attestationQueueRef.current?.enqueue(draft);
   };
 
   const act = useMutation({
