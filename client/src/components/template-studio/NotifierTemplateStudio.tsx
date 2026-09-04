@@ -32,6 +32,7 @@ const CHANNEL_TITLES: Record<string, string> = {
   email: "Email templates",
   sms: "SMS template",
   inapp: "In-app notification templates",
+  postal: "Postal letter template",
 };
 
 export interface NotifierTokenCatalog {
@@ -166,7 +167,7 @@ export function NotifierTemplateStudio({
       onOpenChange={onOpenChange}
       title={CHANNEL_TITLES[channel] ?? `${channel} templates`}
       description="Edit the channel's tokenized templates with a live preview. Changes apply to the config form; save the config to persist them."
-      channel={channel === "email" || channel === "sms" || channel === "inapp" ? channel : "generic"}
+       channel={channel === "email" || channel === "sms" || channel === "inapp" || channel === "postal" ? channel : "generic"}
       fields={fields}
       values={channelValues}
       onValueChange={handleValueChange}

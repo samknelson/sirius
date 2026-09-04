@@ -24,6 +24,7 @@
  * Never call a component migration's `up()` directly from a suite.
  */
 import { storage } from "../../../server/storage";
+import { getOptionsStorage } from "../../../server/modules/options-registry";
 import { tableExists } from "../../../server/storage/utils";
 import { runComponentMigrations, type Migration } from "../../../server/services/migration-runner";
 import caseManagementMigration from "../../../scripts/migrate/components/sitespecific.bao/010_create_case_management";
@@ -33,6 +34,7 @@ import dcGrantMigration from "../../../scripts/migrate/components/sitespecific.b
 import dcExtensionsMigration from "../../../scripts/migrate/components/sitespecific.bao/014_dc_extensions_and_notes_retirement";
 import caseTypesMigration from "../../../scripts/migrate/components/sitespecific.bao/015_case_types_and_workflow_rules";
 import appealTablesMigration from "../../../scripts/migrate/components/sitespecific.bao/016_benefit_appeal_tables";
+import caseCommsMigration from "../../../scripts/migrate/components/sitespecific.bao/017_create_case_comms";
 
 const COMPONENT_ID = "sitespecific.bao";
 
@@ -51,9 +53,9 @@ interface BaoSchemaSet {
   leadTable: string;
 }
 
-/** The BAO case-management tables (010) plus their case-type and Benefit Appeal amendments (015–016). */
+/** The BAO case-management tables (010) plus their case-type, Benefit Appeal and letter amendments (015–017). */
 const CASE_SCHEMA: BaoSchemaSet = {
-  migrations: [caseManagementMigration, caseTypesMigration, appealTablesMigration],
+  migrations: [caseManagementMigration, caseTypesMigration, appealTablesMigration, caseCommsMigration],
   leadTable: "sitespecific_bao_cases",
 };
 
@@ -105,6 +107,20 @@ export async function ensureBaoCaseSchema(): Promise<void> {
   await ensureBaoSchema(CASE_SCHEMA);
 }
 
+/**
+ * The "General" case type seeded by migration 015. Every case status must
+ * name its case type, so suites that create their own statuses attach them
+ * here rather than inventing a type (a status whose type disagrees with the
+ * case is rejected as CASE_TYPE_STATUS_MISMATCH).
+ */
+export async function getGeneralCaseTypeId(): Promise<string> {
+  const types = await getOptionsStorage().list("bao-case-type");
+  const general = types.find((t: any) => t.workflowCode === "general");
+  if (!general) {
+    throw new Error("BAO case-type catalogue has no 'general' workflow type — migration 015 did not seed it");
+  }
+  return general.id as string;
+}
 export async function ensureBaoDcSchema(): Promise<void> {
   await ensureBaoSchema(DC_SCHEMA);
 }

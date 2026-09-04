@@ -185,6 +185,98 @@ function checkCoreVersionCollisions(base: string | undefined): void {
   );
 }
 
+function componentVersionOf(file: string): { componentId: string; version: number } | null {
+  const m = /^scripts\/migrate\/components\/([^/]+)\/(\d+)_/.exec(file);
+  return m ? { componentId: m[1], version: parseInt(m[2], 10) } : null;
+}
+
+/**
+ * The same version-counter hazard, per component: each component keeps its
+ * own `migrationVersion` high-water mark and the runner applies only versions
+ * above it. Two branches that each add "the next number" for one component
+ * merge cleanly (different file names) and then either throw at boot
+ * ("Duplicate component migration version") or, when the other branch's
+ * number is higher, get this branch's migration silently skipped on every
+ * database that already passed it. Newly added component migrations must be
+ * numbered strictly above every version the component already has on either
+ * side of the merge, and must not collide with each other.
+ */
+function checkComponentVersionCollisions(base: string | undefined): void {
+  const newComponent = addedFiles(base)
+    .map(f => ({ file: f, id: componentVersionOf(f) }))
+    .filter((x): x is { file: string; id: { componentId: string; version: number } } => x.id !== null);
+  if (newComponent.length === 0) return;
+
+  const newSet = new Set(newComponent.map(x => x.file));
+  let tracked: string[] = [];
+  try {
+    tracked = execSync("git ls-files scripts/migrate/components", { encoding: "utf8" })
+      .split("\n").map(s => s.trim()).filter(Boolean);
+  } catch {
+    // ignore
+  }
+  let atBase: string[] = [];
+  if (base) {
+    try {
+      atBase = execSync(`git ls-tree -r --name-only ${base} scripts/migrate/components`, { encoding: "utf8" })
+        .split("\n").map(s => s.trim()).filter(Boolean);
+    } catch {
+      // base unreachable — fall back to current-tree accounting only
+    }
+  }
+  const maxExisting = new Map<string, number>();
+  for (const file of [...tracked.filter(f => !newSet.has(f)), ...atBase]) {
+    const id = componentVersionOf(file);
+    if (!id) continue;
+    maxExisting.set(id.componentId, Math.max(maxExisting.get(id.componentId) ?? 0, id.version));
+  }
+
+  const problems: string[] = [];
+  const seenNew = new Map<string, string>();
+  for (const { file, id } of newComponent) {
+    const floor = maxExisting.get(id.componentId) ?? 0;
+    if (id.version <= floor) {
+      problems.push(
+        `  - ${file}: version ${id.version} is <= the max existing ${id.componentId} migration version (${floor}).`,
+      );
+    }
+    const key = `${id.componentId}:${id.version}`;
+    const dup = seenNew.get(key);
+    if (dup) {
+      problems.push(`  - ${file}: duplicates ${id.componentId} version ${id.version} also used by new file ${dup}.`);
+    } else {
+      seenNew.set(key, file);
+    }
+  }
+
+  if (problems.length > 0) {
+    console.error(
+      [
+        "",
+        "[check-migrations] FAILED — component migration version-counter collision.",
+        "",
+        ...problems,
+        "",
+        "Why this matters: each component keeps one `migrationVersion` high-water mark",
+        "and the runner only applies versions ABOVE it. A duplicate version throws at",
+        "boot; a version at or below a number the target branch already has is",
+        "SILENTLY SKIPPED on every database whose counter has passed it — and the",
+        "schema drift gate then refuses to boot.",
+        "",
+        "Fix: renumber the new migration(s) strictly above the component's highest",
+        "existing version (and above each other), update the filename, the `version:`",
+        "field inside the file, and the import in scripts/migrate/index.ts, then re-run.",
+        "",
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
+
+  console.log(
+    `[check-migrations] component migration versions OK — ${newComponent.length} new file(s), each above its component's max existing version`,
+  );
+}
+
 function commitMessagesContain(marker: string, base: string | undefined): boolean {
   if (!base) return false;
   try {
@@ -305,6 +397,7 @@ function main(): void {
   // those escape hatches cover pure type refactors, not a mis-numbered
   // migration that would be silently skipped on deployed databases.
   checkCoreVersionCollisions(arg("base"));
+  checkComponentVersionCollisions(arg("base"));
 
   if (process.argv.includes("--skip")) {
     console.log("[check-migrations] skipped via --skip flag");

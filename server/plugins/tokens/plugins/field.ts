@@ -1,6 +1,7 @@
 import { getTableColumns } from "drizzle-orm";
 import { getTableConfig, type AnyPgTable, type PgColumn } from "drizzle-orm/pg-core";
 import { normalizeFieldName } from "@shared/tokens";
+import { isValidYmd, ymdToLocalDate } from "@shared/utils/date";
 import { registerTokenPlugin } from "../registry";
 import { memo, type TokenEntity, type TokenEvalContext } from "../types";
 import {
@@ -66,7 +67,15 @@ function formatValue(
 ): string | null {
   if (value == null || value === "") return null;
   if (value instanceof Date || isDateColumn(column)) {
-    const d = value instanceof Date ? value : new Date(String(value));
+    // A `date` column arrives as a bare calendar day ("2026-12-03"). It
+    // is a day, not an instant: build it from its parts, because
+    // `new Date("2026-12-03")` is UTC midnight and prints as the day
+    // BEFORE in every western process zone — a deadline off by one.
+    const d = value instanceof Date
+      ? value
+      : isValidYmd(value)
+        ? ymdToLocalDate(value)
+        : new Date(String(value));
     if (Number.isNaN(d.getTime())) return String(value);
     return format ? formatPhpDate(d, format) : fmtDateShort(d);
   }

@@ -85,9 +85,9 @@ const UNSANITIZED_RENDER_ALLOWLIST: Record<
       "help details are sanitized server-side under 'rich-document' — on write in server/modules/helps.ts, and on read for built-ins in server/help/system/index.ts",
   },
   "client/src/components/template-studio/TemplateStudio.tsx": {
-    sites: 2,
+    sites: 3,
     reason:
-      "preview fields are sanitized server-side under 'rich-document' by server/delivery/shape.ts, the same shaping delivery uses, so preview and delivery cannot disagree",
+      "preview fields (email body, postal letter body, generic html fields) are sanitized server-side under 'rich-document' by server/delivery/shape.ts, the same shaping delivery uses, so preview and delivery cannot disagree",
   },
   "client/src/components/ui/chart.tsx": {
     sites: 1,

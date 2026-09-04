@@ -190,3 +190,5 @@
 - [Fan-out reads: memoize promises](fanout-read-memoization.md) — N concurrent checks share one promise-memoized read context; result caches don't dedupe concurrent misses; DC DB suites one file per vitest run.
 - [DC coverage-axis month model](dc-coverage-axis-model.md) — pick/validate on coverage months, store work months; covered = WMB ∪ work-month-at-minimum; ONE month map; events snapshot coverage.
 - [BAO DB suites schema bring-up](dc-test-suite-isolation.md) — never call component migration up() in beforeAll (forks deadlock, re-run DDL locks live tables); shared fixture + own workers.
+- [Notifier postal template channel](notifier-postal-template-channel.md) — one shared letter-page wrapper; sendKey hook claims at the comm insert; pre-claim sender refusals must surface as NOT_SENT, never "sent".
+- [Unwired component migration file](component-migration-unwired-file.md) — a migration file that is not registered never runs; schema that lands without one fails every fresh install, not just dev.

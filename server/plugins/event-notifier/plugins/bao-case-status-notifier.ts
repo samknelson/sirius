@@ -4,15 +4,17 @@ import {
 } from "../../../services/event-bus";
 import { registerEventNotifier } from "../registry";
 import { templatesSchemaBlock } from "../template-schema";
-import {
-  BAO_CASE_ENTITY_KIND,
-  composeBaoCaseEntity,
-} from "../../tokens/plugins/sitespecific-bao-case";
+import { BAO_CASE_ENTITY_KIND } from "../../tokens/plugins/sitespecific-bao-case";
 import {
   type EventNotifierEventContext,
   type EventNotifierPlugin,
   type NotifierChannelTemplates,
 } from "../types";
+import {
+  assignmentChange,
+  buildBaoCaseRecord,
+  statusEntry as arrivedAt,
+} from "./bao-case-record";
 
 function payloadOf(ctx: EventNotifierEventContext): BaoCaseStatusSavedPayload {
   return ctx.payload as BaoCaseStatusSavedPayload;
@@ -49,28 +51,10 @@ function configOf(configData: unknown): BaoCaseNotifierConfig {
   };
 }
 
-/**
- * Did this committed write ARRIVE at one of the configured statuses?
- * Creation into it counts; a save that leaves the status unchanged does not.
- */
+/** Did this committed write ARRIVE at one of the configured statuses? */
 function statusEntry(payload: BaoCaseStatusSavedPayload, cfg: BaoCaseNotifierConfig): boolean {
-  if (!payload.statusId || payload.previousStatusId === undefined) return false;
-  if (!cfg.statusIds.includes(payload.statusId)) return false;
-  return payload.previousStatusId !== payload.statusId;
+  return arrivedAt(payload, cfg.statusIds);
 }
-
-/**
- * Did this committed write genuinely change the assignee? Creation counts
- * (null → assignee), so being handed a brand-new case notifies too; the
- * self-take/self-create cases are handled by actor suppression, not here.
- * Legacy emits without the assignee identity never count.
- */
-function assignmentChange(payload: BaoCaseStatusSavedPayload): boolean {
-  if (typeof payload.assigneeUserId !== "string" || !payload.assigneeUserId) return false;
-  if (payload.previousAssigneeUserId === undefined) return false;
-  return payload.previousAssigneeUserId !== payload.assigneeUserId;
-}
-
 const TITLE = `BAO case {{${ROOT}.field(name="change_summary")}} - {{${ROOT}}}`;
 const SENTENCE =
   `The BAO case for {{${ROOT}}} ` +
@@ -211,34 +195,9 @@ export const baoCaseStatusNotifier: EventNotifierPlugin = {
         kind: BAO_CASE_ENTITY_KIND,
         label: "BAO case",
         description: "The BAO case this status event is about",
-        async build(ctx) {
-          const payload = payloadOf(ctx);
-          if (!payload.row) return null;
-          // The committed case row carried on the event, plus the
-          // event-time display names and appeal facts captured in the
-          // writing transaction. Not reloaded by id: a later edit (or
-          // delete) must not rewrite the message this transition earned.
-          // `change_summary` states what THIS write did — an
-          // assignment-only save must not imply a status transition that
-          // never happened.
-          const statusMoved = payload.previousStatusId !== payload.statusId;
-          const changeSummary =
-            !statusMoved && assignmentChange(payload)
-              ? `was assigned to ${payload.assigneeName ?? "a new assignee"}`
-              : `is now ${payload.statusName}`;
-          return composeBaoCaseEntity(
-            payload.row,
-            {
-              statusName: payload.statusName,
-              entityName: payload.entityName,
-              assigneeName: payload.assigneeName ?? null,
-              benefitName: payload.benefitName ?? null,
-              denialReasonName: payload.denialReasonName ?? null,
-              spdCitation: payload.spdCitation ?? null,
-            },
-            changeSummary,
-          );
-        },
+        // The committed row + event-time names, never a reload: see
+        // buildBaoCaseRecord.
+        build: async (ctx) => buildBaoCaseRecord(payloadOf(ctx)),
       },
     ],
     defaultTemplates,

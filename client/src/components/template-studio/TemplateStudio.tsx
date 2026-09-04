@@ -1028,22 +1028,38 @@ export function TemplateStudio({
       );
     }
     if (channel === "postal") {
-      // Letter-style sheet: plain rendered text on "paper".
+      // Letter-style sheet: the letter body on "paper" (rendered as the
+      // markup it is when the field is HTML — the same sanitized output
+      // delivery wraps in the standard letter page), companion fields such
+      // as the mailing description as plain text.
       return (
         <div className="space-y-3">
           {fields.map((f) => {
             const r = pf(f.key);
+            const isHtml = f.mode === "html";
             return (
               <div key={f.key} className="space-y-1.5">
                 {fields.length > 1 && (
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{f.label}</p>
                 )}
-                <div
-                  className="rounded-sm border bg-white dark:bg-neutral-100 text-neutral-900 shadow-sm px-6 py-5 font-serif text-sm leading-relaxed whitespace-pre-wrap break-words min-h-[8rem]"
-                  data-testid={`studio-preview-postal-${f.key}`}
-                >
-                  {r?.rendered || <span className="italic text-neutral-400">(empty)</span>}
-                </div>
+                {isHtml ? (
+                  <div
+                    className="rounded-sm border bg-white dark:bg-neutral-100 text-neutral-900 shadow-sm px-8 py-6 text-sm leading-relaxed break-words min-h-[12rem] prose prose-sm max-w-none prose-p:my-0 prose-p:mb-4 prose-neutral"
+                    data-testid={`studio-preview-postal-${f.key}`}
+                    // Same provenance as the email body above: server-sanitized
+                    // by `server/delivery/shape.ts` under "rich-document".
+                    dangerouslySetInnerHTML={{
+                      __html: r?.rendered || "<p><em>(empty letter — nothing would be mailed)</em></p>",
+                    }}
+                  />
+                ) : (
+                  <div
+                    className="rounded-md border bg-background px-3 py-2 text-sm whitespace-pre-wrap break-words"
+                    data-testid={`studio-preview-postal-${f.key}`}
+                  >
+                    {r?.rendered || <span className="italic text-muted-foreground">(empty)</span>}
+                  </div>
+                )}
                 <FieldIssues field={r} />
               </div>
             );

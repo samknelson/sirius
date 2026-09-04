@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { parsePhoneNumber } from "libphonenumber-js";
-import { employers, ledgerAccounts, ledgerEa, ledgerPayments, workers, wizards, trustBenefits, trustProviders, notes, users } from "../../../schema";
+import { comm, employers, ledgerAccounts, ledgerEa, ledgerPayments, workers, wizards, trustBenefits, trustProviders, notes, users } from "../../../schema";
 import { validateSSN } from "../../../utils/ssn";
 import { toYmd } from "../../../utils/date";
 
@@ -1482,6 +1482,45 @@ export const sitespecificBaoCaseNotes = pgTable(
   ],
 );
 
+/**
+ * Letters (and their email copies) sent to the member about a case. The
+ * comm row IS the letter record — what was sent, to which address, whether
+ * the provider accepted it — so this table only says which case a comm was
+ * about and which status entry earned it. Written by the member-notice
+ * notifier's comm-created hook, after the send layer has committed the comm.
+ * `status_name` is snapshotted at send time: a later status rename must not
+ * rewrite what a letter was mailed for.
+ */
+export const sitespecificBaoCaseComms = pgTable(
+  "sitespecific_bao_case_comms",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    caseId: varchar("case_id").notNull(),
+    commId: varchar("comm_id").notNull(),
+    statusId: varchar("status_id"),
+    statusName: varchar("status_name", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (table) => [
+    unique("sitespecific_bao_case_comms_comm_uq").on(table.commId),
+    index("sitespecific_bao_case_comms_case_idx").on(table.caseId),
+    foreignKey({
+      name: "sitespecific_bao_case_comms_case_id_fkey",
+      columns: [table.caseId],
+      foreignColumns: [sitespecificBaoCases.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_case_comms_comm_id_fkey",
+      columns: [table.commId],
+      foreignColumns: [comm.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_case_comms_status_id_fkey",
+      columns: [table.statusId],
+      foreignColumns: [optionsBaoCaseStatus.id],
+    }).onDelete("set null"),
+  ],
+);
 export type OptionsBaoCaseStatus = typeof optionsBaoCaseStatus.$inferSelect;
 export type OptionsBaoCaseType = typeof optionsBaoCaseType.$inferSelect;
 export type OptionsBaoCaseResolution = typeof optionsBaoCaseResolution.$inferSelect;
@@ -1490,6 +1529,7 @@ export type BaoCase = typeof sitespecificBaoCases.$inferSelect;
 export type InsertBaoCase = typeof sitespecificBaoCases.$inferInsert;
 export type BaoCaseNote = typeof sitespecificBaoCaseNotes.$inferSelect;
 
+export type BaoAppealDetails = typeof sitespecificBaoAppealDetails.$inferSelect;
 const baoCaseEntityTypeSchema = z.enum(BAO_CASE_ENTITY_TYPES);
 const baoCaseNoteInputSchema = z.object({
   typeId: z.string().min(1),
@@ -1943,3 +1983,5 @@ export type InsertBaoDcDenialLetter = typeof sitespecificBaoDcDenialLetters.$inf
 export type BaoDcDocument = typeof sitespecificBaoDcDocuments.$inferSelect;
 export type InsertBaoDcDocument = typeof sitespecificBaoDcDocuments.$inferInsert;
 export type BaoDcEvent = typeof sitespecificBaoDcEvents.$inferSelect;
+
+export type BaoCaseComm = typeof sitespecificBaoCaseComms.$inferSelect;

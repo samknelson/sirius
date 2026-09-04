@@ -19,7 +19,7 @@
 type TemplateMode = "line" | "multiline" | "html";
 
 /** The channels a token-templated notifier can carry message templates for. */
-export type TemplateChannel = "email" | "sms" | "inapp";
+export type TemplateChannel = "email" | "sms" | "inapp" | "postal";
 
 /**
  * The template channels the SITE can actually deliver on right now.
@@ -34,7 +34,7 @@ export async function getSiteEnabledTemplateChannels(): Promise<Set<TemplateChan
   const { serviceRegistry } = await import("../../services/service-registry");
 
   const providerSupports = async (
-    category: "email" | "sms",
+    category: "email" | "sms" | "postal",
     supports: (provider: unknown) => boolean,
   ): Promise<boolean> => {
     try {
@@ -56,6 +56,13 @@ export async function getSiteEnabledTemplateChannels(): Promise<Set<TemplateChan
     )
   ) {
     enabled.add("email");
+  }
+  if (
+    await providerSupports("postal", (p) =>
+      (p as { supportsPostal?: () => boolean }).supportsPostal?.() ?? true,
+    )
+  ) {
+    enabled.add("postal");
   }
   if (
     await providerSupports("sms", (p) =>
@@ -239,6 +246,10 @@ export function templatesSchemaBlock(
           }),
         },
       ),
+      postal: channelGroup("postal", "Postal letter", {
+        bodyHtml: templateField("Letter body (HTML)", "postal.bodyHtml", "html"),
+        description: templateField("Mailing description", "postal.description"),
+      }),
     },
   };
   if (examples.length > 0) {

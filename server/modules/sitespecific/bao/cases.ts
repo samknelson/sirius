@@ -132,7 +132,14 @@ export function registerBaoCaseRoutes(
         for (const tag of tags) byNote.set(tag.noteId, [...(byNote.get(tag.noteId) ?? []), tag]);
         record.notes = record.notes.map((note) => ({ ...note, tags: byNote.get(note.id) ?? [] })) as any;
       }
-      res.json(record);
+      // The case's letter record (member notices linked to it) and whether
+      // the member even has an address to mail to — so an empty list can say
+      // WHY nothing went out.
+      const [letters, mailingAddressOnFile] = await Promise.all([
+        storage.baoCases.listLetters(record.id),
+        storage.baoCases.hasMailingAddress(record.id),
+      ]);
+      res.json({ ...record, letters, mailingAddressOnFile });
     } catch (error) {
       caseError(res, error);
     }

@@ -391,6 +391,7 @@ import "./plugins/dispatch-status-notifier";
 import "./plugins/dispatch-fore-notifier";
 import "./plugins/sitespecific-t631-interview";
 import "./plugins/bao-case-status-notifier";
+import "./plugins/bao-case-member-notice";
 import "./plugins/wc-usage-alert";
 import "./plugins/ws-usage-client-alert";
 import "./plugins/ws-usage-plugin-alert";

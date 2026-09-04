@@ -7,7 +7,7 @@ import { storage } from "../../server/storage";
 import { getOptionsStorage, getOptionsType } from "../../server/modules/options-registry";
 import { getComponentById } from "@shared/components";
 import { notes, rolePermissions, roles, sitespecificBaoCases, userRoles, users } from "@shared/schema";
-import { ensureBaoCaseSchema } from "./fixtures/bao-schema";
+import { ensureBaoCaseSchema, getGeneralCaseTypeId } from "./fixtures/bao-schema";
 
 const run = `bao-case-test-${Date.now()}`;
 let available = false;
@@ -41,8 +41,9 @@ beforeAll(async () => {
   userId = assignees[0].id;
   noteTypeId = workerType.id;
   const options = getOptionsStorage();
-  openStatusId = (await options.create("bao-case-status", { name: `${run}-open`, closed: false })).id;
-  closedStatusId = (await options.create("bao-case-status", { name: `${run}-closed`, closed: true })).id;
+  const caseTypeId = await getGeneralCaseTypeId();
+  openStatusId = (await options.create("bao-case-status", { name: `${run}-open`, closed: false, caseTypeId })).id;
+  closedStatusId = (await options.create("bao-case-status", { name: `${run}-closed`, closed: true, caseTypeId })).id;
   resolutionId = (await options.create("bao-case-resolution", { name: `${run}-resolved` })).id;
   // A second assignable staff user, created for the assignment-race coverage.
   const secondUser = await storage.users.createUser({

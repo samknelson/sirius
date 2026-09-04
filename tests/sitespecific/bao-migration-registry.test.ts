@@ -8,6 +8,7 @@ const BAO_MIGRATIONS_DIR = resolve(__dirname, "../../scripts/migrate/components/
 describe("production component migration registry", () => {
   it("includes the complete Disability Credit migration sequence", () => {
     const migrations = getComponentMigrations("sitespecific.bao");
+
     const dcMigrations = migrations
       .filter((migration) => migration.version >= 11 && migration.version <= 13)
       .map(({ version, name }) => ({ version, name }));
@@ -45,6 +46,7 @@ describe("production component migration registry", () => {
     expect(tail).toEqual([
       { version: 15, name: "case_types_and_workflow_rules" },
       { version: 16, name: "benefit_appeal_tables" },
+      { version: 17, name: "create_case_comms" },
     ]);
   });
 });

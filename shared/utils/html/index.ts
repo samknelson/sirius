@@ -32,6 +32,7 @@
  *   entities.ts  — no imports at all
  *   to-text.ts   — imports entities.ts only
  *   policies.ts  — data only, no imports
+ *   letter-page.ts — no imports at all (the standard postal letter page)
  *   sanitize.ts  — imports DOMPurify
  *
  * Import THIS BARREL by default. Code that must not load DOMPurify —
@@ -55,3 +56,4 @@ export {
   type HtmlSanitizePolicyName,
 } from "./policies";
 export { sanitizeHtml, sanitizeHtmlReportingChange } from "./sanitize";
+export { LETTER_PAGE_HTML, wrapLetterPage } from "./letter-page";

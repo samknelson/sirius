@@ -117,6 +117,11 @@ export interface NotifierChannelTemplates {
     linkUrl?: string;
     linkLabel?: string;
   };
+  postal?: {
+    /** Rich-text letter body; the sender wraps it in the standard letter page. */
+    bodyHtml: string;
+    description?: string;
+  };
 }
 
 /**
@@ -202,6 +207,24 @@ export interface NotifierTokenTemplates {
    * recipient kind).
    */
   defaultTemplates(configData?: unknown): NotifierChannelTemplates;
+  /**
+   * Optional send-once key for the messages the framework composes (see
+   * {@link NotifierMessageContent.sendKey}): a notifier whose `getMessage`
+   * the framework replaced has no other way to say "this letter, for this
+   * occurrence, goes out once". Called per (recipient, medium) after
+   * composition; a null/empty return leaves the message un-keyed. The key
+   * is scoped by the send layer to the medium and the contact, so one key
+   * covers a letter AND its email copy without either swallowing the
+   * other. Same rule as for hand-composed messages: only for an occurrence
+   * that is genuinely one thing (a status entry, a day's threshold
+   * crossing), never for an event that can honestly repeat.
+   */
+  sendKey?(
+    ctx: EventNotifierEventContext,
+    medium: NotificationMedium,
+    recipient: NotifierRecipient,
+    configData?: unknown,
+  ): string | null | undefined;
   // Preview contexts are not declared here. Named sample data comes
   // from the token plugins' `sampleSets`; a real record is named by the
   // caller and gated by the entity kind's own `previewEntity`

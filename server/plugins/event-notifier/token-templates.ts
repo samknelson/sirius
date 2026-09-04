@@ -14,6 +14,7 @@ import {
   tokenCleanerFor,
   type TokenValueCleaner,
 } from "../../delivery/shape";
+import { wrapLetterPage } from "../../../shared/utils/html/letter-page";
 
 const SERVICE = "event-notifier-token-templates";
 
@@ -68,6 +69,10 @@ export function resolveTemplates(
       linkUrl: pick(custom.inapp?.linkUrl, defaults.inapp.linkUrl),
       linkLabel: pick(custom.inapp?.linkLabel, defaults.inapp.linkLabel),
     },
+    postal: defaults.postal && {
+      bodyHtml: pick(custom.postal?.bodyHtml, defaults.postal.bodyHtml),
+      description: pick(custom.postal?.description, defaults.postal.description),
+    },
   };
 }
 
@@ -117,7 +122,7 @@ export async function composeFromTemplates(
     | Record<string, string | undefined>
     | undefined;
   const specs = NOTIFIER_CHANNEL_FIELDS[medium];
-  // Media the templates don't cover (e.g. postal) are skipped.
+  // Media the templates don't cover are skipped.
   if (!channelTemplates || !specs) return null;
 
   // Render every field with the cleaning its destination declares,
@@ -165,6 +170,17 @@ export async function composeFromTemplates(
       body: values.body,
       linkUrl: values.linkUrl || undefined,
       linkLabel: values.linkLabel || undefined,
+    };
+  }
+
+  if (medium === "postal") {
+    // The rendered, sanitized body becomes the letter FILE the postal
+    // sender hands to the provider, wrapped in the standard letter page
+    // (the same page a hand-composed letter gets). The description is the
+    // provider-facing label and what the letter list shows.
+    return {
+      file: wrapLetterPage(values.bodyHtml),
+      description: values.description || undefined,
     };
   }
 

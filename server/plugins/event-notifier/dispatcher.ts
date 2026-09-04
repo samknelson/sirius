@@ -264,10 +264,14 @@ async function deliver(
       const chosen = active.find((a) => a.isPrimary) ?? active[0];
       if (!chosen) return NOT_SENT;
       if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return NOT_SENT;
+      // The envelope needs an addressee: the provider rejects a letter with
+      // no recipient name, and the address rows carry none.
+      const contact = await storage.contacts.getContact(recipient.contactId);
       const { sendPostal } = await import("../../services/comm/senders/postal");
       const result = await sendPostal({
         contactId: recipient.contactId,
         toAddress: {
+          name: contact?.displayName ?? undefined,
           addressLine1: chosen.street,
           city: chosen.city,
           state: chosen.state,
@@ -283,6 +287,21 @@ async function deliver(
         sendKey: content.sendKey,
       });
       if (result.alreadySent) return NOT_SENT;
+      // The postal sender refuses BEFORE its claim insert when the site cannot
+      // mail at all (provider without postal support, no return address, an
+      // address the provider rejects): no comm exists, so nothing downstream
+      // (the notifier's comm hook, the flash tally) can show the letter was
+      // lost. Say so here, or a misconfigured site drops legal notices silently.
+      if (!result.success && !result.comm) {
+        logger.warn("Event-notifier postal send refused before a record was made", {
+          service: SERVICE,
+          pluginId,
+          contactId: recipient.contactId,
+          errorCode: result.errorCode,
+          error: result.error,
+        });
+        return NOT_SENT;
+      }
       return { sent: true, comm: result.comm };
     }
   } catch (error) {
@@ -540,6 +559,17 @@ async function dispatchForConfig(
           templates,
           renderCache,
         );
+        // A token-templated notifier never sees the composed message, so
+        // its send-once key is asked for separately. The sender's claim
+        // insert is the durable at-most-once boundary: a failed attempt
+        // stays recorded and a replayed event cannot send the same thing
+        // again.
+        if (content && plugin.tokenTemplates.sendKey) {
+          const sendKey = plugin.tokenTemplates.sendKey(ctx, medium, recipient, configData);
+          if (typeof sendKey === "string" && sendKey.trim() !== "") {
+            content = { ...content, sendKey: sendKey.trim() };
+          }
+        }
       } else if (plugin.getMessage) {
         content = await plugin.getMessage(medium, recipient, ctx, configData);
       }

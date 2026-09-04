@@ -4,7 +4,7 @@ import { registerBaoCaseRoutes } from "../../server/modules/sitespecific/bao/cas
 import { storage } from "../../server/storage";
 import { getOptionsStorage } from "../../server/modules/options-registry";
 import { updateComponentCache } from "../../server/services/component-cache";
-import { ensureBaoCaseSchema } from "./fixtures/bao-schema";
+import { ensureBaoCaseSchema, getGeneralCaseTypeId } from "./fixtures/bao-schema";
 
 let base = "";
 let closeServer: (() => Promise<void>) | undefined;
@@ -33,8 +33,9 @@ beforeAll(async () => {
   if (!workers[0] || !workers[1] || !staff || !type) throw new Error("Route harness prerequisites unavailable");
   workerId = workers[0].id; otherWorkerId = workers[1].id; staffId = staff.id; noteTypeId = type.id;
   const options = getOptionsStorage();
-  statusId = (await options.create("bao-case-status", { name: `${run}-open`, closed: false })).id;
-  closedStatusId = (await options.create("bao-case-status", { name: `${run}-closed`, closed: true })).id;
+  const caseTypeId = await getGeneralCaseTypeId();
+  statusId = (await options.create("bao-case-status", { name: `${run}-open`, closed: false, caseTypeId })).id;
+  closedStatusId = (await options.create("bao-case-status", { name: `${run}-closed`, closed: true, caseTypeId })).id;
   resolutionId = (await options.create("bao-case-resolution", { name: `${run}-resolution` })).id;
   const app = express();
   app.use(express.json());

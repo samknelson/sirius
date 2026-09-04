@@ -194,6 +194,10 @@ export const NOTIFIER_CHANNEL_FIELDS: Record<string, DeliveryFieldSpec[]> = {
     { key: "linkUrl", syntax: "text", safety: "relative-url", trim: true },
     { key: "linkLabel", syntax: "text", trim: true, blankWithout: "linkUrl" },
   ],
+  postal: [
+    { key: "bodyHtml", syntax: "html", trim: true, requiredForMessage: true },
+    { key: "description", syntax: "text", trim: true },
+  ],
 };
 
 /**

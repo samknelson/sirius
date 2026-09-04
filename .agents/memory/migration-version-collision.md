@@ -17,7 +17,10 @@ match contiguously.
 **Author-time guard exists:** the migration check now rejects newly added core
 migrations numbered at or below the version floor of both the current and base
 branches — run it with `--base=<target>` when merging so target-only versions
-count.
+count. The same guard covers component migrations per component id: two
+concurrent tasks each adding "the next number" for one component merge cleanly
+(different file names) and only collide at boot (duplicate version throws;
+a lower number is silently skipped). Renumber, never re-use.
 
 The core migration runner applies migrations in version order and only runs
 those with `version > migrations_version`, bumping the counter on each success.

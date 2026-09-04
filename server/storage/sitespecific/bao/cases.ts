@@ -20,12 +20,16 @@
  */
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
+  comm,
+  commEmail,
+  commPostal,
   notes,
   optionsBaoCaseResolution,
   optionsBaoCaseStatus,
   optionsBaoCaseType,
   optionsBaoAppealDenialReason,
   sitespecificBaoAppealDetails,
+  sitespecificBaoCaseComms,
   trustBenefits,
   optionsNoteType,
   rolePermissions,
@@ -34,6 +38,7 @@ import {
   sitespecificBaoCases,
   userRoles,
   users,
+  type BaoAppealDetails,
   type BaoAppealDetailsData,
   type BaoCase,
   type BaoCaseAppealFacts,
@@ -65,6 +70,19 @@ export interface BaoCaseListResult {
   total: number;
 }
 
+/**
+ * An appeal's details row with the display values a member letter needs,
+ * read together so the three always describe the same appeal: the benefit
+ * appealed (off the case), the denial reason's name, and the SPD citation
+ * snapshotted onto the appeal at auto-denial (see the header — never the
+ * option's current text). Null where the appeal has no such value — a
+ * template then renders the token's default, never a stale or borrowed value.
+ */
+export interface BaoAppealSnapshot extends BaoAppealDetails {
+  benefitName: string | null;
+  denialReasonName: string | null;
+  spdCitation: string | null;
+}
 export interface CreateBaoCaseInput {
   entityType: BaoCaseEntityType;
   entityId: string;
@@ -120,6 +138,25 @@ export interface BaoCasesStorage {
   }): Promise<BaoCaseListResult>;
   getByNoteId(noteId: string): Promise<{ caseId: string } | undefined>;
   getByNoteIds(noteIds: string[]): Promise<Map<string, string>>;
+  /** The appeal behind a case (by case id) or an appeal row by its own id. */
+  getAppeal(ref: { caseId: string } | { id: string }): Promise<BaoAppealSnapshot | undefined>;
+  /**
+   * Record a comm as sent about a case for a status entry. Idempotent per
+   * comm: a comm is about exactly one case, so a repeat link is a no-op.
+   */
+  linkComm(input: {
+    caseId: string;
+    commId: string;
+    statusId: string | null;
+    statusName: string | null;
+  }): Promise<void>;
+  /** The case's letters, newest first. */
+  listLetters(caseId: string): Promise<BaoCaseLetter[]>;
+  /**
+   * Does the case's worker have an active postal address? Answers the
+   * "no letter went out" question on case detail; false for non-worker cases.
+   */
+  hasMailingAddress(caseId: string): Promise<boolean>;
   countByStatus(statusId: string): Promise<number>;
   countByResolution(resolutionId: string): Promise<number>;
   countStatusClassificationConflicts(statusId: string, nextClosed: boolean): Promise<number>;
@@ -215,6 +252,24 @@ function mapDetail(row: DetailRow): BaoCaseDetails {
   };
 }
 
+/** Appeal details with the letter-facing display values (see BaoAppealSnapshot). */
+function appealQuery() {
+  return getClient()
+    .select({
+      appeal: sitespecificBaoAppealDetails,
+      benefitName: trustBenefits.name,
+      denialReasonName: optionsBaoAppealDenialReason.name,
+      // The citation snapshotted at auto-denial (see the header), not the option's.
+      spdCitation: sql<string | null>`NULLIF(${sitespecificBaoAppealDetails.data}->>'spdCitation', '')`,
+    })
+    .from(sitespecificBaoAppealDetails)
+    .innerJoin(cases, eq(cases.id, sitespecificBaoAppealDetails.caseId))
+    .leftJoin(trustBenefits, eq(trustBenefits.id, cases.benefitId))
+    .leftJoin(
+      optionsBaoAppealDenialReason,
+      eq(optionsBaoAppealDenialReason.id, sitespecificBaoAppealDetails.denialReasonId),
+    );
+}
 async function getStatus(statusId: string) {
   const [status] = await getClient()
     .select()
@@ -555,6 +610,80 @@ export function createBaoCasesStorage(): BaoCasesStorage {
         .where(inArray(sitespecificBaoCaseNotes.noteId, noteIds));
       return new Map(rows.map((row) => [row.noteId, row.caseId]));
     },
+
+    async getAppeal(ref) {
+      const where =
+        "caseId" in ref
+          ? eq(sitespecificBaoAppealDetails.caseId, ref.caseId)
+          : eq(sitespecificBaoAppealDetails.id, ref.id);
+      const [row] = await appealQuery().where(where).limit(1);
+      if (!row) return undefined;
+      return {
+        ...row.appeal,
+        benefitName: row.benefitName ?? null,
+        denialReasonName: row.denialReasonName ?? null,
+        spdCitation: row.spdCitation ?? null,
+      };
+    },
+
+    async linkComm(input) {
+      await getClient()
+        .insert(sitespecificBaoCaseComms)
+        .values({
+          caseId: input.caseId,
+          commId: input.commId,
+          statusId: input.statusId,
+          statusName: input.statusName,
+        })
+        .onConflictDoNothing({ target: sitespecificBaoCaseComms.commId });
+    },
+
+    async listLetters(caseId) {
+      const rows = await getClient()
+        .select({
+          link: sitespecificBaoCaseComms,
+          medium: comm.medium,
+          commStatus: comm.status,
+          sent: comm.sent,
+          postalDescription: commPostal.description,
+          emailSubject: commEmail.subject,
+        })
+        .from(sitespecificBaoCaseComms)
+        .innerJoin(comm, eq(comm.id, sitespecificBaoCaseComms.commId))
+        .leftJoin(commPostal, eq(commPostal.commId, comm.id))
+        .leftJoin(commEmail, eq(commEmail.commId, comm.id))
+        .where(eq(sitespecificBaoCaseComms.caseId, caseId))
+        .orderBy(desc(sitespecificBaoCaseComms.createdAt), desc(sitespecificBaoCaseComms.id));
+      return rows.map((row) => ({
+        id: row.link.id,
+        commId: row.link.commId,
+        medium: row.medium,
+        commStatus: row.commStatus,
+        sent: row.sent ?? null,
+        statusId: row.link.statusId ?? null,
+        statusName: row.link.statusName ?? null,
+        description: (row.medium === "email" ? row.emailSubject : row.postalDescription) ?? null,
+        createdAt: row.link.createdAt,
+      }));
+    },
+
+    async hasMailingAddress(caseId) {
+      // Same address set postal delivery draws from: the worker's contact's
+      // ACTIVE postal addresses (delivery picks the primary among them).
+      const [row] = await getClient()
+        .select({
+          onFile: sql<boolean>`EXISTS (
+            SELECT 1 FROM workers w
+            JOIN contact_postal p ON p.contact_id = w.contact_id AND p.is_active
+            WHERE ${cases.entityType} = 'worker' AND w.id = ${cases.entityId}
+          )`,
+        })
+        .from(cases)
+        .where(eq(cases.id, caseId))
+        .limit(1);
+      return Boolean(row?.onFile);
+    },
+
     async countByStatus(statusId) {
       const [row] = await getClient().select({ count: sql<number>`count(*)::int` }).from(cases).where(eq(cases.statusId, statusId));
       return Number(row?.count ?? 0);
@@ -590,4 +719,20 @@ export function createBaoCasesStorage(): BaoCasesStorage {
       });
     },
   };
+}
+
+/** One sent (or failed) member communication about a case: the letter record. */
+export interface BaoCaseLetter {
+  id: string;
+  commId: string;
+  medium: string;
+  /** The comm's own delivery status (`sending`, `sent`, `failed`, …). */
+  commStatus: string;
+  sent: Date | null;
+  /** The case status entry this was sent for, as named at send time. */
+  statusId: string | null;
+  statusName: string | null;
+  /** Postal: the mailing description; email: the subject. */
+  description: string | null;
+  createdAt: Date;
 }

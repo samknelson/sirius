@@ -37,51 +37,12 @@ import {
   refuseUnrenderedTokens,
 } from "./ComposeTemplateStudio";
 import type { ComposeTemplateTarget } from "@shared/comm-compose";
+import { wrapLetterPage } from "@shared/utils/html/letter-page";
 import { useToast } from "@/hooks/use-toast";
 import { Address } from "@/lib/entity-types";
 import { useSystemMode } from "@/lib/use-variable";
 
 type ContentMode = "template" | "compose" | "rawHtml";
-
-const DEFAULT_HTML_WRAPPER = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <style>
-    @page {
-      size: letter;
-      margin: 1in;
-    }
-    body {
-      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-      font-size: 12pt;
-      line-height: 1.5;
-      color: #333;
-      margin: 0;
-      padding: 0;
-    }
-    p {
-      margin: 0 0 1em 0;
-    }
-    .date {
-      margin-bottom: 2em;
-    }
-    .greeting {
-      margin-bottom: 1em;
-    }
-    .closing {
-      margin-top: 2em;
-    }
-  </style>
-</head>
-<body>
-{{BODY}}
-</body>
-</html>`;
-
-function wrapBodyWithHtml(body: string): string {
-  return DEFAULT_HTML_WRAPPER.replace("{{BODY}}", body);
-}
 
 interface PostalOptinResponse {
   exists: boolean;
@@ -347,7 +308,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
       payload.templateId = templateId.trim();
     } else if (contentMode === "compose") {
       if (!composeBody.trim()) return;
-      payload.file = wrapBodyWithHtml(composeBody.trim());
+      payload.file = wrapLetterPage(composeBody.trim());
     } else if (contentMode === "rawHtml") {
       if (!rawHtml.trim()) return;
       payload.file = rawHtml.trim();
