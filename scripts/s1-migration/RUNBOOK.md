@@ -46,12 +46,46 @@ What the pin covers, and how each piece is set:
 | Migration image / any migration shell | `ENV TZ=America/Los_Angeles` in the `migration` Dockerfile target; `export TZ=…` in a dev shell | the gate in every entrypoint (`ensureStagingSchema` → `assertMigrationTimeZone`) |
 | The target's in-app override (`ENV_TZ` row) | Not set by the migration. If present it must equal the pin (the app boots into it when the deployment sets no `TZ`) | the gate (`storedOverride`) |
 | DB session | The app's pool checkout hook issues `SET TIME ZONE` per session — nothing to configure | the gate (`dbSessionTimeZone`) |
-| The **web app** deployment (bao-dev/stg/prd ECS) | `TZ=America/Los_Angeles` in the task definition environment (GitHub `APP_TZ` for the deploy workflow) — **must be in place before cutover**, and before any parity read that compares timestamps | app boot log / `TZ` row in the in-app environment screen |
+| The **web app** deployment (bao-dev/stg/prd ECS) | `TZ=America/Los_Angeles` as an environment variable on the web service in **Flight Control** (the deployer of every bao-* environment — see "Where the web app's TZ is set" below), then a redeploy so a new task revision carries it — **must be in place before cutover**, and before any parity read that compares timestamps | boot log line `System time zone: America/Los_Angeles (from TZ in the environment)` / `TZ` row in the in-app environment screen showing source **environment** |
 
-Dev workspace note: the Replit dev app runs unpinned (UTC) unless its `TZ` is
-set, while every dev rehearsal loader now runs pinned. Timestamps written by a
-dev rehearsal are LA wall clocks; read them through an app that is also
-pinned (set `TZ` for the workflow) before judging a "7-hour shift".
+**Where the web app's TZ is set.** The bao-dev / bao-stg / bao-prd web
+services are deployed by Flight Control from the matching GitHub branch
+(deployments on `samknelson/sirius` are created by `flightcontrol-ops[bot]`);
+this repository holds no deploy workflow for them and the repo's GitHub
+Environments carry no variables, so there is **no** `APP_TZ`-style GitHub
+variable to set — that mechanism belongs to a different customer's pipeline.
+Set the variable in Flight Control's service configuration (project →
+environment → web service → *Environment Variables*: `TZ` =
+`America/Los_Angeles`, exactly this spelling — `US/Pacific` and friends are
+rejected by the migration gate) and trigger a deploy; Flight Control writes
+service env vars into the ECS task definition's `environment` block, and the
+migration image's own baked-in `TZ` is unaffected. Nothing in the repo can
+set it for you; the app only *reports* what it received (next paragraph).
+
+**How the app reports it.** On every boot the app logs exactly one of:
+
+- `System time zone: America/Los_Angeles (from TZ in the environment)` —
+  **the accepted state**;
+- `System time zone: <zone> (from the in-app ENV_TZ override — the
+  deployment sets no TZ)` — an `ENV_TZ` row is standing in for the
+  deployment. Tolerated by the gate only when it equals the pin, but it is
+  not the cutover state: set the deployment's `TZ` and then delete the row;
+- `System time zone: <zone> (TZ unset — using the container default)` —
+  unpinned; every timestamp the app writes is in the container's zone (UTC on
+  ECS). A no-go.
+
+The in-app environment screen shows the same fact as the `TZ` row's source
+column (`environment` vs override vs unset). Both are per-boot facts: a
+variable added in Flight Control is invisible until the next deploy.
+
+Dev workspace note: the Replit workspace pins the app the same way — a
+workspace-level `TZ=America/Los_Angeles` environment variable (shared across
+the dev and Replit-deploy environments) reaches the "Start application"
+workflow and the shell, so the dev app boots with
+`System time zone: America/Los_Angeles (from TZ in the environment)` and
+matches what every dev rehearsal loader writes. If that line ever reads
+"container default" in dev, the workspace variable was removed — restore it
+before judging a "7-hour shift".
 
 The gate never has an override flag. A run in the wrong zone fails **before
 the first write** with `MigrationTimeZoneError` naming every violation
@@ -1079,14 +1113,30 @@ pass; and final-freeze PASS after the S1 side is restored.
 ## 12. Dual-run procedure (initial load → daily sync → freeze → cutover)
 
 0. **Pin the time zone (once, before anything else)** — §1 "Time zone pin":
-   the migration image carries `TZ=America/Los_Angeles`; confirm the web
-   app's ECS task definition for the target environment carries the same
-   `TZ` (GitHub `APP_TZ`) and that the target has no conflicting `ENV_TZ`
-   override. From this point the zone is **frozen**: it stays
-   `America/Los_Angeles` through every daily sync, the final freeze, cutover
-   and for the life of the production site. Changing it later would
-   reinterpret every already-stored wall clock — there is no migration for
-   that, by design.
+   the migration image carries `TZ=America/Los_Angeles`; the web app of the
+   target environment must receive the same `TZ` from its **Flight Control**
+   service environment (not from an `ENV_TZ` row, and there is no GitHub
+   variable that does this — §1 "Where the web app's TZ is set"). Tick every
+   line of this checklist **per environment** and keep the evidence with the
+   run notes:
+
+   | # | Check | Evidence that ticks it |
+   |---|---|---|
+   | 0a | `TZ=America/Los_Angeles` is on the web service in Flight Control and a deploy has run since it was added | Flight Control service *Environment Variables* screen + the deploy that followed |
+   | 0b | The running web app took its zone from the environment | boot log (CloudWatch, the service's log group) contains `System time zone: America/Los_Angeles (from TZ in the environment)`; or the in-app environment screen's `TZ` row reads `America/Los_Angeles` with source **environment** |
+   | 0c | The target database has no conflicting `ENV_TZ` row | `select name, value from variables where name = 'ENV_TZ'` returns no row (or exactly `America/Los_Angeles`); the migration gate (`assertMigrationTimeZone`, run by every entrypoint) also refuses a mismatch — a passing bootstrap/loader envelope with `runtime.timeZone.storedOverride` null or equal to the pin is the same evidence |
+   | 0d | The migration side is pinned | any envelope from this target with `runtime.timeZone.runtimeTimeZone = America/Los_Angeles` and `dbSessionTimeZone = America/Los_Angeles` (§1 "Evidence") |
+
+   Status at the time this checklist was written (2026-09-04): the Replit dev
+   workspace is pinned (0b evidence in the dev workflow log) and no reachable
+   dev database carries an `ENV_TZ` row (0c). bao-dev / bao-stg / bao-prd
+   still need 0a done in Flight Control by an operator with dashboard access,
+   after which 0b is read from each service's boot log; their in-VPC
+   databases get 0c from the first pinned bootstrap/loader envelope. From
+   this point the zone is **frozen**: it stays `America/Los_Angeles` through
+   every daily sync, the final freeze, cutover and for the life of the
+   production site. Changing it later would reinterpret every already-stored
+   wall clock — there is no migration for that, by design.
 1. **Initial production load** — §2 bootstrap, then the §4 command sequence
    for the first full load (operator-paced, per-step triage), §6 parity.
    Okta pre-provisioning (§4.15) is DEFERRED to step 5.
@@ -1170,9 +1220,12 @@ sign-in → pre-linked worker, end to end. Everything else stays synthetic.
   report's `timeZone.runtimeTimeZone`, `timeZone.dbSessionTimeZone` and every
   fleet envelope's `runtime.timeZone.runtimeTimeZone` read
   `America/Los_Angeles`; the production web app boots with
-  `TZ=America/Los_Angeles` (its environment screen shows `TZ` from the
-  environment, not released/unset). Any other value is a no-go: fix the
-  deployment, never the data.
+  `TZ=America/Los_Angeles` from its Flight Control service environment (boot
+  log `System time zone: America/Los_Angeles (from TZ in the environment)`;
+  its environment screen shows `TZ` from the environment, not an `ENV_TZ`
+  override, not released/unset) — i.e. §12 step 0 re-ticked against the
+  production service. Any other value is a no-go: fix the deployment, never
+  the data.
 - The **activation-email wave** = §4.15 full `--execute` run at cutover, after
   the final prod load + parity PASS. It is deliberately NOT part of any
   rehearsal or automated sequence.

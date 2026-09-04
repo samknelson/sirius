@@ -88,9 +88,15 @@ mapping the two Secrets Manager ARNs to `EXTERNAL_DATABASE_URL` /
 Time zone: the image bakes in `TZ=America/Los_Angeles` (RUNBOOK §1 "Time
 zone pin"); put nothing about `TZ` in the task definition or in run-task
 overrides. The **web service's** task definition must carry
-`TZ=America/Los_Angeles` too (GitHub `APP_TZ` for the deploy workflow) before
-any parity read or cutover — the migration gate checks the database and its
-own process, but it cannot see the web task's environment.
+`TZ=America/Los_Angeles` too before any parity read or cutover — the
+migration gate checks the database and its own process, but it cannot see
+the web task's environment. The web services are deployed by Flight Control,
+so the variable is set there (project → environment → web service →
+*Environment Variables* → `TZ=America/Los_Angeles`, then deploy); there is no
+GitHub-side variable for this. Evidence is the web service's CloudWatch boot
+line `System time zone: America/Los_Angeles (from TZ in the environment)`
+or the in-app environment screen's `TZ` row with source "environment" —
+RUNBOOK §12 step 0 has the per-environment checklist.
 
 ```bash
 aws ecs register-task-definition --cli-input-json file://migration-taskdef.json --region us-west-2

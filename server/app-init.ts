@@ -192,12 +192,22 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
       const stored = await peekEnvOverride("TZ");
       if (stored) applied = applySystemTimeZone(() => stored);
     }
-    logger.info(
-      applied.configured
-        ? `System time zone: ${applied.zone}`
-        : `System time zone: ${applied.zone} (TZ unset — using the container default)`,
-      { source: "startup", timeZone: applied.zone, configured: applied.configured },
-    );
+    // Name the SOURCE, not just the zone: the S1→S2 cutover checklist
+    // (scripts/s1-migration/RUNBOOK.md §1 "Time zone pin", §12 step 0) accepts
+    // a deployment-supplied TZ as evidence and rejects the other two, so this
+    // one line has to be enough to tick or fail the item from a log alone.
+    const provenance =
+      applied.source === "environment"
+        ? "from TZ in the environment"
+        : applied.source === "override"
+          ? "from the in-app ENV_TZ override — the deployment sets no TZ"
+          : "TZ unset — using the container default";
+    logger.info(`System time zone: ${applied.zone} (${provenance})`, {
+      source: "startup",
+      timeZone: applied.zone,
+      configured: applied.configured,
+      timeZoneSource: applied.source,
+    });
   }
 
   installBaseMiddleware(app);

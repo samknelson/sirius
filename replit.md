@@ -749,7 +749,10 @@ plugin kind").
     prod query pack) — `docs/s1-migration/`; operating procedure —
     `scripts/s1-migration/RUNBOOK.md` (§1: every migration command needs
     `TZ=America/Los_Angeles` — the pinned S2 system zone — or it refuses to
-    write); operational traps — `docs/GOTCHAS.md`
+    write; this workspace pins the dev app the same way through a
+    workspace-level `TZ` environment variable — do not remove it; the
+    bao-* web services get theirs from Flight Control, §12 step 0);
+    operational traps — `docs/GOTCHAS.md`
 -   **System architecture & external dependencies** (full stack
     breakdown, system design choices, third-party libraries) —
     `docs/architecture.md`

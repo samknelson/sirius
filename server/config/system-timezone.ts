@@ -61,6 +61,14 @@ export interface AppliedSystemTimeZone {
   configured: boolean;
   /** Whether this call actually moved the process zone. */
   changed: boolean;
+  /**
+   * Where the zone came from. Carried out so the boot log and any go/no-go
+   * check can tell a DEPLOYMENT-pinned zone (`environment`) from one the
+   * in-app `ENV_TZ` row supplied (`override`) — the cutover contract requires
+   * the former, and after the write the process environment no longer
+   * remembers the difference.
+   */
+  source: "environment" | "override" | "default";
 }
 
 /**
@@ -105,7 +113,7 @@ export function applySystemTimeZone(
   const configured = fromEnvironment ?? fromStore;
 
   if (!configured) {
-    return { zone: getRuntimeTimeZone(), configured: false, changed: false };
+    return { zone: getRuntimeTimeZone(), configured: false, changed: false, source: "default" };
   }
 
   if (!isValidTimeZone(configured)) {
@@ -126,5 +134,10 @@ export function applySystemTimeZone(
   setEnvironmentVariable("TZ", configured, fromEnvironment ? "environment" : "override");
   const after = getRuntimeTimeZone();
 
-  return { zone: after, configured: true, changed: after !== before };
+  return {
+    zone: after,
+    configured: true,
+    changed: after !== before,
+    source: fromEnvironment ? "environment" : "override",
+  };
 }

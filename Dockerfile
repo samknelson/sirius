@@ -169,7 +169,9 @@ ENV NODE_ENV=production
 # The pinned S2 system zone (scripts/s1-migration/lib/timezone-contract.ts,
 # RUNBOOK §1 "Time zone pin"). Every migration process refuses to write unless
 # it runs in this zone; baking it in means an ECS command override cannot
-# forget it. The WEB app's task definition must carry the same TZ.
+# forget it. The WEB app's task definition must carry the same TZ — set on the
+# web service in Flight Control, never baked into the shared `runtime` stage
+# (other sites run this image in their own zone). RUNBOOK §12 step 0.
 ENV TZ=America/Los_Angeles
 WORKDIR /app
 USER node
