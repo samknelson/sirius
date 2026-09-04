@@ -29,12 +29,15 @@ import {
   BAO_DC_EMPLOYMENT_STATUS_CODE,
 } from "@shared/schema";
 import { pluginConfigsBenefitEligibility } from "@shared/schema";
-import dcMigration from "../../scripts/migrate/components/sitespecific.bao/011_create_disability_credit";
-import dcWorkflowMigration from "../../scripts/migrate/components/sitespecific.bao/012_dc_case_workflow";
-import dcGrantEventsMigration from "../../scripts/migrate/components/sitespecific.bao/013_dc_grant_events";
+import { ensureBaoDcSchema } from "./fixtures/bao-schema";
 import "../../server/plugins/system/cron/plugins/baoDcReleaseQueued";
 import { getCronPlugin } from "../../server/plugins/system/cron/registry";
-import { performDcCaseAction } from "../../server/services/sitespecific/bao/dc-workflow";
+import {
+  performDcCaseAction,
+  replaceDcCaseMonths,
+} from "../../server/services/sitespecific/bao/dc-workflow";
+import { deriveDcMonthHistory } from "@shared/sitespecific/bao/dc-reporting";
+import { addMonthsYmd, type Ymd } from "@shared/utils/date";
 import {
   DcGrantError,
   isCoverageMonthDue,
@@ -138,9 +141,7 @@ async function eventsOfType(type: string) {
 }
 
 beforeAll(async () => {
-  await dcMigration.up();
-  await dcWorkflowMigration.up();
-  await dcGrantEventsMigration.up();
+  await ensureBaoDcSchema();
 
   const assignees = await storage.users.getUsersWithAnyPermission(["staff", "admin"]);
   if (!assignees[0]) throw new Error("DC grant tests require one staff user");
@@ -176,14 +177,16 @@ beforeAll(async () => {
     endYmd: null,
   });
 
-  // Continued-benefit anchor: WMB coverage before the selected work months.
-  await db.insert(trustWmb).values({
-    workerId,
-    employerId,
-    benefitId,
-    year: wmbMonth.year,
-    month: wmbMonth.month,
-  });
+  // Continued-benefit anchor: WMB coverage before the selected work months,
+  // plus the coverage months that keep the case's selection continuous on
+  // the coverage axis (approval re-validates continuity): with lag 1, month
+  // A covers `cur` and month B covers cur+3, so cur−1, cur+1 and cur+2 must
+  // already be covered.
+  await db.insert(trustWmb).values(
+    [wmbMonth, addM(curYear, curMonth, -1), addM(curYear, curMonth, 1), addM(curYear, curMonth, 2)].map(
+      (m) => ({ workerId, employerId, benefitId, year: m.year, month: m.month }),
+    ),
+  );
 
   const [active] = await db
     .insert(optionsEmploymentStatus)
@@ -235,9 +238,11 @@ beforeAll(async () => {
 });
 
 let worker2Id = "";
+let worker3Id = "";
+let worker4Id = "";
 
 afterAll(async () => {
-  for (const wid of [workerId, worker2Id].filter(Boolean)) {
+  for (const wid of [workerId, worker2Id, worker3Id, worker4Id].filter(Boolean)) {
     await db.delete(workerHours).where(eq(workerHours.workerId, wid));
     await db.delete(sitespecificBaoDcEvents).where(eq(sitespecificBaoDcEvents.workerId, wid));
     await db.delete(sitespecificBaoDcCaseMonths).where(eq(sitespecificBaoDcCaseMonths.workerId, wid));
@@ -265,7 +270,7 @@ afterAll(async () => {
   await db.delete(policies).where(eq(policies.id, policyId));
   await db.delete(trustBenefits).where(eq(trustBenefits.id, benefitId));
   const { workers } = await import("@shared/schema");
-  await db.delete(workers).where(eq(workers.id, workerId));
+  await db.delete(workers).where(inArray(workers.id, [workerId, worker2Id, worker3Id, worker4Id].filter(Boolean)));
 });
 
 describe("fund/DC pseudo-employer identity", () => {
@@ -376,6 +381,11 @@ describe("approval cascade", () => {
     expect(byMonth.get(ymd(monthA))?.action).toBe("granted");
     expect(byMonth.get(ymd(monthA))?.grantedHours).toBe(40); // 120 − 80
     expect(byMonth.get(ymd(monthB))?.action).toBe("queued");
+    // Every outcome names the coverage month it continues (work + lag).
+    expect(byMonth.get(ymd(monthA))?.coverageMonthYmd).toBe(ymd(addM(monthA.year, monthA.month, 1)));
+    expect(byMonth.get(ymd(monthB))?.coverageMonthYmd).toBe(ymd(addM(monthB.year, monthB.month, 1)));
+    // Both months had a shortfall: nothing was voided.
+    expect(result.warnings).toEqual([]);
 
     expect(await dcHoursTotal(monthA)).toBe(40);
 
@@ -600,6 +610,262 @@ describe("approval fails closed without continued benefits", () => {
       .from(workerHours)
       .where(and(eq(workerHours.workerId, worker2Id), eq(workerHours.employerId, dcEmployerId)));
     expect(rows).toHaveLength(0);
+  });
+});
+
+describe("approval-time selection enforcement (coverage axis)", () => {
+  // Worker 3: WMB coverage at Jan of last year and at cur−8; election +
+  // rule shared with the main fixture (threshold 120, lag 1).
+  const capYear = curYear - 1;
+  const anchor = addM(curYear, curMonth, -8);
+  let case3Id = "";
+
+  async function setCaseMonths(workMonths: Array<{ year: number; month: number }>) {
+    await db.delete(sitespecificBaoDcCaseMonths).where(eq(sitespecificBaoDcCaseMonths.caseId, case3Id));
+    await db.insert(sitespecificBaoDcCaseMonths).values(
+      workMonths.map((m) => ({ caseId: case3Id, workerId: worker3Id, workMonthYmd: ymd(m), status: "selected" as const })),
+    );
+  }
+  async function fundHoursRows() {
+    return db
+      .select()
+      .from(workerHours)
+      .where(and(eq(workerHours.workerId, worker3Id), eq(workerHours.employerId, dcEmployerId)));
+  }
+
+  beforeAll(async () => {
+    const worker3 = await storage.workers.createWorker(`DCGrant Enforce ${run}`);
+    worker3Id = worker3.id;
+    await db.insert(workerTrustElections).values({
+      workerId: worker3Id,
+      employerId,
+      benefitIds: [benefitId],
+      startYmd: `${capYear}-01-01`,
+      endYmd: null,
+    });
+    await db.insert(trustWmb).values(
+      [{ year: capYear, month: 1 }, anchor].map((m) => ({
+        workerId: worker3Id,
+        employerId,
+        benefitId,
+        year: m.year,
+        month: m.month,
+      })),
+    );
+    const c = await storage.baoDisabilityCredit.openCase({
+      workerId: worker3Id,
+      openedYmd: ymd({ year: curYear, month: curMonth }),
+      qualifyingBasis: {
+        asOfYmd: ymd({ year: curYear, month: curMonth }),
+        conditions: ["fmla_months"],
+        fmlaMonths: [ymd(addM(curYear, curMonth, -3)), ymd(addM(curYear, curMonth, -2)), ymd(monthA)],
+      },
+    });
+    case3Id = c.id;
+    await storage.baoDisabilityCredit.addDocument({
+      parentKind: "case",
+      caseId: case3Id,
+      name: "form.pdf",
+      uploadedByUserId: userId,
+      docType: "dc_form",
+    });
+    await storage.baoDisabilityCredit.updateCaseAttestations(
+      case3Id,
+      { dcFormOnFile: true, signed: true, fields: { doctorAddress: true, doctorPhone: true, dates: true } },
+      userId,
+    );
+    // Work month cur−6 → coverage cur−5, two coverage months past the anchor.
+    await setCaseMonths([addM(curYear, curMonth, -6)]);
+    await storage.baoDisabilityCredit.transitionCase(case3Id, { to: "in_queue", actorUserId: userId });
+  });
+
+  it("blocks approval on a coverage gap, naming the gap COVERAGE months (case left queued)", async () => {
+    await expect(
+      performDcCaseAction(case3Id, "approve", { actorUserId: userId }),
+    ).rejects.toMatchObject({
+      name: "DcSelectionInvalidError",
+      validation: {
+        errors: [
+          expect.objectContaining({
+            code: "CONTINUITY_GAP",
+            // Coverage months cur−7 and cur−6 are missing between the anchor
+            // (cur−8) and the selected coverage month (cur−5) …
+            months: [ymd(addM(curYear, curMonth, -7)), ymd(addM(curYear, curMonth, -6))],
+            // … i.e. work months cur−8 and cur−7 would have to be credited.
+            workMonths: [ymd(addM(curYear, curMonth, -8)), ymd(addM(curYear, curMonth, -7))],
+          }),
+        ],
+      },
+    });
+    expect((await storage.baoDisabilityCredit.getCase(case3Id))?.status).toBe("in_queue");
+    expect(await fundHoursRows()).toHaveLength(0);
+  });
+
+  it("blocks approval when the selection would exceed the annual capacity (case left queued)", async () => {
+    // Seven continuous work months of one calendar year (coverage Feb–Aug
+    // continues the Jan anchor) — one over the limit of 6.
+    await setCaseMonths(Array.from({ length: 7 }, (_, i) => ({ year: capYear, month: i + 1 })));
+    await expect(
+      performDcCaseAction(case3Id, "approve", { actorUserId: userId }),
+    ).rejects.toMatchObject({
+      name: "DcSelectionInvalidError",
+      validation: {
+        errors: [expect.objectContaining({ code: "CAPACITY_EXCEEDED", year: capYear })],
+      },
+    });
+    expect((await storage.baoDisabilityCredit.getCase(case3Id))?.status).toBe("in_queue");
+    expect(await fundHoursRows()).toHaveLength(0);
+  });
+
+  it("approves around a month that no longer has a shortfall, naming it and consuming no annual month", async () => {
+    // Work month cur−8 (coverage cur−7) had a shortfall when selected; the
+    // employer has since reported the full minimum. cur−7 (coverage cur−6)
+    // still needs credit — and stays continuous because cur−7 coverage now
+    // counts as covered by employer hours.
+    const full = addM(curYear, curMonth, -8);
+    const credited = addM(curYear, curMonth, -7);
+    await setCaseMonths([full, credited]);
+    await storage.workerHours.upsertWorkerHours({
+      workerId: worker3Id,
+      year: full.year,
+      month: full.month,
+      day: 1,
+      employerId,
+      employmentStatusId: activeStatusId,
+      hours: 120,
+    });
+
+    const result = await performDcCaseAction(case3Id, "approve", { actorUserId: userId });
+    expect(result.case.status).toBe("approved");
+
+    expect(result.warnings).toEqual([
+      expect.objectContaining({
+        kind: "no_shortfall",
+        caseId: case3Id,
+        workMonthYmd: ymd(full),
+        coverageMonthYmd: ymd(addM(full.year, full.month, 1)),
+        qualifyingHours: 120,
+        threshold: 120,
+      }),
+    ]);
+    expect(result.warnings![0].message).toMatch(/No annual month was consumed/);
+
+    const byMonth = new Map(result.grant!.map((o) => [o.workMonthYmd, o]));
+    expect(byMonth.get(ymd(full))).toMatchObject({ action: "removed", reason: "no_shortfall" });
+    expect(byMonth.get(ymd(credited))).toMatchObject({
+      action: "granted",
+      grantedHours: 120,
+      coverageMonthYmd: ymd(addM(credited.year, credited.month, 1)),
+    });
+
+    // The voided month is out of the annual count; the credited one is in.
+    expect(
+      await storage.baoDisabilityCredit.getApplicableMonthForWorkerMonth(worker3Id, ymd(full)),
+    ).toBeUndefined();
+    expect(
+      await storage.baoDisabilityCredit.getApplicableMonthForWorkerMonth(worker3Id, ymd(credited)),
+    ).toMatchObject({ status: "granted" });
+    const fundRows = await fundHoursRows();
+    expect(fundRows.map((r) => `${r.year}-${r.month}`)).toEqual([`${credited.year}-${credited.month}`]);
+    // The immutable log carries the void with its reason.
+    const voided = (await db
+      .select()
+      .from(sitespecificBaoDcEvents)
+      .where(and(eq(sitespecificBaoDcEvents.workerId, worker3Id), eq(sitespecificBaoDcEvents.eventType, "case_month_voided" as never))));
+    expect(voided).toHaveLength(1);
+    expect(voided[0].payload).toMatchObject({ reason: "no_shortfall", workMonthYmd: ymd(full) });
+  });
+});
+
+describe("selection log snapshots the coverage month (immutable auto-log)", () => {
+  // Worker 4: WMB anchor at cur−8 (coverage); election + rule shared with
+  // the main fixture (threshold 120, lag 1).
+  const anchor = addM(curYear, curMonth, -8);
+  const workKept = addM(curYear, curMonth, -8); // coverage cur−7 continues the anchor
+  const workDropped = addM(curYear, curMonth, -7); // coverage cur−6
+  const coverageKept = addM(curYear, curMonth, -7);
+  const coverageDropped = addM(curYear, curMonth, -6);
+  let case4Id = "";
+
+  beforeAll(async () => {
+    const worker4 = await storage.workers.createWorker(`DCGrant Snapshot ${run}`);
+    worker4Id = worker4.id;
+    await db.insert(workerTrustElections).values({
+      workerId: worker4Id,
+      employerId,
+      benefitIds: [benefitId],
+      startYmd: `${curYear - 1}-01-01`,
+      endYmd: null,
+    });
+    await db.insert(trustWmb).values({
+      workerId: worker4Id,
+      employerId,
+      benefitId,
+      year: anchor.year,
+      month: anchor.month,
+    });
+    const c = await storage.baoDisabilityCredit.openCase({
+      workerId: worker4Id,
+      openedYmd: ymd({ year: curYear, month: curMonth }),
+      qualifyingBasis: {
+        asOfYmd: ymd({ year: curYear, month: curMonth }),
+        conditions: ["fmla_months"],
+        fmlaMonths: [ymd(addM(curYear, curMonth, -3)), ymd(addM(curYear, curMonth, -2)), ymd(monthA)],
+      },
+    });
+    case4Id = c.id;
+  });
+
+  async function caseEvents() {
+    return db
+      .select()
+      .from(sitespecificBaoDcEvents)
+      .where(eq(sitespecificBaoDcEvents.caseId, case4Id));
+  }
+
+  it("stamps the validated coverage month into selection and deselection events, and the log keeps it after a lag change", async () => {
+    await replaceDcCaseMonths(case4Id, [ymd(workKept), ymd(workDropped)], { actorUserId: userId });
+    const added = (await caseEvents()).filter((e) => e.eventType === "case_month_added");
+    expect(added.map((e) => e.payload)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          workMonthYmd: ymd(workKept),
+          coverageMonthYmd: ymd(coverageKept),
+          actorUserId: userId,
+        }),
+        expect.objectContaining({
+          workMonthYmd: ymd(workDropped),
+          coverageMonthYmd: ymd(coverageDropped),
+          actorUserId: userId,
+        }),
+      ]),
+    );
+    expect(added).toHaveLength(2);
+
+    // Deselect the later month (a selection can never be emptied; the
+    // validator refuses that outright).
+    await replaceDcCaseMonths(case4Id, [ymd(workKept)], { actorUserId: userId });
+    const voided = (await caseEvents()).filter((e) => e.eventType === "case_month_voided");
+    expect(voided).toHaveLength(1);
+    expect(voided[0].payload).toMatchObject({
+      workMonthYmd: ymd(workDropped),
+      coverageMonthYmd: ymd(coverageDropped),
+      reason: "deselected",
+      actorUserId: userId,
+    });
+
+    // The plan lag later changes (here: a live resolver applying lag 4). The
+    // rendered log still reads every entry from its own snapshot.
+    const months = await storage.baoDisabilityCredit.listCaseMonths(case4Id);
+    const history = deriveDcMonthHistory(await caseEvents(), months, (w) => addMonthsYmd(w as Ymd, 4));
+    expect(history).toHaveLength(3);
+    expect(history.map((e) => ({ type: e.eventType, work: e.workMonthYmd, coverage: e.coverageMonthYmd, source: e.coverageSource }))).toEqual(
+      expect.arrayContaining([
+        { type: "case_month_added", work: ymd(workKept), coverage: ymd(coverageKept), source: "event" },
+        { type: "case_month_added", work: ymd(workDropped), coverage: ymd(coverageDropped), source: "event" },
+        { type: "case_month_voided", work: ymd(workDropped), coverage: ymd(coverageDropped), source: "event" },
+      ]),
+    );
   });
 });
 

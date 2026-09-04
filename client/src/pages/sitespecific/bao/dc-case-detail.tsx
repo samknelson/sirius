@@ -26,7 +26,17 @@ import { apiRequest, getApiErrorMessage, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDebounced } from "@/hooks/use-debounced";
 import { DcDocumentsCard } from "@/components/sitespecific/bao/DcDocumentsCard";
-import { DcStatusBadge, formatYmd } from "@/components/sitespecific/bao/dc-shared";
+import {
+  DcAnnualMaxBadge,
+  DcStatusBadge,
+  describeDcMonth,
+  formatDcHoursLabel,
+  formatYmd,
+  formatYmdMonthLong,
+  formatYmdMonthShort,
+  type DcAnnualMaxView,
+} from "@/components/sitespecific/bao/dc-shared";
+import { DcMonthHistoryList, DcMonthStatesTable } from "@/components/sitespecific/bao/DcMonthStates";
 import { formatYmdMonth } from "@shared/utils/date";
 import type {
   BaoDcAttestations,
@@ -34,20 +44,10 @@ import type {
   BaoDcCaseMonth,
 } from "@shared/schema";
 import type { DcMonthOption } from "@shared/sitespecific/bao/dc-workflow";
-
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
+import type { DcCaseMonthState, DcMonthHistoryEntry } from "@shared/sitespecific/bao/dc-reporting";
 
 /** Wait this long after the last month toggle before re-validating. */
 const PREVIEW_DEBOUNCE_MS = 300;
-
-/** "2026-03-01" → "March 2026" (deterministic, no timezone parsing). */
-function formatMonthLabel(monthYmd: string): string {
-  const [y, m] = monthYmd.split("-").map(Number);
-  return `${MONTH_NAMES[(m ?? 1) - 1] ?? "?"} ${y}`;
-}
 
 type ChecklistItem = { key: string; label: string; satisfied: boolean; detail?: string };
 
@@ -69,6 +69,13 @@ type Bundle = {
   };
   attestationAuthor: { id: string; name: string } | null;
   yearUsage: Record<string, { used: number; limit: number }>;
+  /** Current-year maxed-out state (same derivation as the dashboard list). */
+  annualMax?: DcAnnualMaxView;
+  /** Per-month state (coverage month, hours, reason) for every case month. */
+  monthStates?: DcCaseMonthState[];
+  /** Chronological grant/queue/release/reconcile/void log (the auto-log). */
+  monthHistory?: DcMonthHistoryEntry[];
+  actorNames?: Record<string, string>;
   denialLetters: Array<{ id: string; letterYmd: string; expiresYmd: string }>;
   /** Advisory approval-time configuration preview for the selected months. */
   grantConfigWarnings: Array<{ workMonthYmd: string; code: string; message: string }>;
@@ -84,6 +91,58 @@ type SelectionValidation = {
   perYear: Record<string, { used: number; selected: number; limit: number; remaining: number }>;
 };
 
+type GrantOutcomeView = {
+  monthId: string;
+  caseId?: string;
+  workMonthYmd: string;
+  coverageMonthYmd?: string;
+  action: "granted" | "queued" | "removed" | "unchanged";
+  grantedHours?: number;
+  threshold?: number;
+  qualifyingHours?: number;
+  reason?: string;
+};
+
+type ApprovalWarningView = {
+  kind: string;
+  caseId: string;
+  workMonthYmd: string;
+  coverageMonthYmd: string;
+  qualifyingHours: number;
+  threshold: number;
+  message: string;
+};
+
+type ActionResult = {
+  case?: BaoDcCase;
+  nextCaseId?: string | null;
+  grant?: GrantOutcomeView[];
+  warnings?: ApprovalWarningView[];
+};
+
+function describeOutcome(o: GrantOutcomeView): string {
+  const month = describeDcMonth({
+    workMonthYmd: o.workMonthYmd,
+    coverageMonthYmd: o.coverageMonthYmd ?? null,
+  });
+  switch (o.action) {
+    case "granted":
+      return `${month}: granted ${formatDcHoursLabel(o.grantedHours ?? 0)}${
+        o.threshold !== undefined && o.qualifyingHours !== undefined
+          ? ` (${formatDcHoursLabel(o.qualifyingHours)} reported of the ${formatDcHoursLabel(o.threshold)} minimum)`
+          : ""
+      }`;
+    case "queued":
+      return `${month}: queued until ${formatYmdMonthShort(o.coverageMonthYmd ?? null)} enters the release window`;
+    case "removed":
+      return o.reason === "no_shortfall"
+        ? `${month}: not credited — hours already meet the minimum; no annual month consumed`
+        : `${month}: removed`;
+    default:
+      return `${month}: unchanged`;
+  }
+}
+
 export default function BaoDcCaseDetailPage() {
   const params = useParams<{ id: string }>();
   const caseId = params.id;
@@ -96,6 +155,7 @@ export default function BaoDcCaseDetailPage() {
   const [monthsDraft, setMonthsDraft] = useState<string[] | null>(null);
   const [actionReason, setActionReason] = useState("");
   const [nextCaseId, setNextCaseId] = useState<string | null>(null);
+  const [approval, setApproval] = useState<ActionResult | null>(null);
   const [extendOpen, setExtendOpen] = useState(false);
   const [extendReason, setExtendReason] = useState("");
 
@@ -184,10 +244,29 @@ export default function BaoDcCaseDetailPage() {
         reason: actionReason || undefined,
         expectedStatus: data?.case.status,
       }),
-    onSuccess: (result: { nextCaseId?: string | null }) => {
+    onSuccess: (result: ActionResult, action) => {
       setActionReason("");
       setNextCaseId(result?.nextCaseId ?? null);
-      toast({ title: "Case updated" });
+      if (action === "approve" && result?.grant) {
+        // Per-month outcomes (and any no-shortfall voids) are shown right
+        // here, not just "Case updated": approvers must see what was
+        // credited, what is queued, and what was voided without consuming
+        // an annual month.
+        setApproval(result);
+        const voided = result.warnings?.length ?? 0;
+        toast({
+          title: "Case approved",
+          description:
+            voided > 0
+              ? `${voided} selected month(s) needed no credit and were removed — no annual month consumed. See the approval result below.`
+              : `${result.grant.filter((g) => g.action === "granted").length} month(s) granted, ${
+                  result.grant.filter((g) => g.action === "queued").length
+                } queued.`,
+        });
+      } else {
+        setApproval(null);
+        toast({ title: "Case updated" });
+      }
       invalidate();
       queryClient.invalidateQueries({ queryKey: ["/api/sitespecific/bao/dc/queue"] });
     },
@@ -275,7 +354,7 @@ export default function BaoDcCaseDetailPage() {
             </Badge>
           )}
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex flex-wrap gap-2 items-center justify-end">
           {Object.entries(data.yearUsage)
             .sort()
             .map(([year, usage]) => (
@@ -283,6 +362,7 @@ export default function BaoDcCaseDetailPage() {
                 {year}: {usage.used} of {usage.limit} used
               </Badge>
             ))}
+          <DcAnnualMaxBadge annualMax={data.annualMax} />
         </div>
       </div>
 
@@ -335,6 +415,45 @@ export default function BaoDcCaseDetailPage() {
         </Card>
       )}
 
+      {approval?.grant && (
+        <Card
+          className="border-green-600/50 dark:border-green-500/40"
+          data-testid="card-dc-approval-result"
+        >
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              Approval result
+            </CardTitle>
+            <CardDescription>
+              What happened to each selected coverage month when this case was approved.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {(approval.warnings ?? []).map((w) => (
+              <p
+                key={w.workMonthYmd}
+                className="text-sm text-amber-700 dark:text-amber-400 flex items-start gap-2"
+                data-testid={`text-dc-approval-warning-${w.workMonthYmd.slice(0, 7)}`}
+              >
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{w.message}</span>
+              </p>
+            ))}
+            <ul className="text-sm space-y-1">
+              {approval.grant.map((o) => (
+                <li
+                  key={o.monthId}
+                  data-testid={`text-dc-approval-outcome-${o.workMonthYmd.slice(0, 7)}`}
+                >
+                  {describeOutcome(o)}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
       {data.isStaff && (data.grantConfigWarnings ?? []).length > 0 && (
         <Card
           className="border-amber-500/60 dark:border-amber-500/40"
@@ -358,7 +477,7 @@ export default function BaoDcCaseDetailPage() {
                 className="text-sm"
                 data-testid={`text-dc-grant-warning-${w.workMonthYmd.slice(0, 7)}`}
               >
-                <span className="font-medium">{formatMonthLabel(w.workMonthYmd)}:</span>{" "}
+                <span className="font-medium">Work month {formatYmdMonthLong(w.workMonthYmd)}:</span>{" "}
                 {w.message}.
               </p>
             ))}
@@ -452,54 +571,96 @@ export default function BaoDcCaseDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Months</CardTitle>
+          <CardTitle className="text-base">Coverage months</CardTitle>
           <CardDescription>
-            {isDraft
-              ? "Check the months to credit. Continuity gaps and annual capacity are checked before save; unavailable months explain why."
-              : "Months can only be changed while the case is in draft."}
+            {isDraft ? (
+              <>
+                Choose the <strong>coverage months</strong> the Fund is approving. Each
+                coverage month is earned by an earlier <strong>work month</strong> (coverage
+                month minus the plan&apos;s lag); Disability Credit hours are credited to that
+                work month under the Fund/DC employer, and only the shortfall between the hours
+                already reported and the plan minimum is added. Months whose reported hours
+                already meet the minimum need no credit and are offered as not grantable.
+                Continuity gaps and annual capacity are checked on the coverage axis before save;
+                unavailable months explain why.
+              </>
+            ) : (
+              "Months can only be changed while the case is in draft."
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div
-            role="group"
-            aria-label="Disability Credit months"
-            className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3"
-          >
-            {(data.monthOptions ?? []).map((opt) => {
-              const checked = selectedMonths.includes(opt.monthYmd);
-              const disabled = !isDraft || (!opt.selectable && !checked);
-              return (
-                <label
-                  key={opt.monthYmd}
-                  className={`flex items-start gap-2 rounded-md border p-2 text-sm ${
-                    disabled ? "opacity-60" : "hover-elevate cursor-pointer"
-                  }`}
-                  data-testid={`option-dc-month-${opt.monthYmd.slice(0, 7)}`}
-                >
-                  <Checkbox
-                    checked={checked}
-                    disabled={disabled}
-                    onCheckedChange={(v) => toggleMonth(opt.monthYmd, v === true)}
-                    aria-label={formatMonthLabel(opt.monthYmd)}
-                    data-testid={`checkbox-dc-month-${opt.monthYmd.slice(0, 7)}`}
-                  />
-                  <span className="space-y-0.5">
-                    <span className="block leading-none">{formatMonthLabel(opt.monthYmd)}</span>
-                    {opt.reason && (
-                      <span className="block text-xs text-muted-foreground">{opt.reason}</span>
-                    )}
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-          <Button
-            onClick={() => saveMonths.mutate()}
-            disabled={!isDraft || saveMonths.isPending || monthsDraft === null}
-            data-testid="button-dc-save-months"
-          >
-            Save months
-          </Button>
+          {(isDraft || (data.monthStates ?? []).length === 0) && (
+            <div
+              role="group"
+              aria-label="Disability Credit coverage months"
+              className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3"
+            >
+              {(data.monthOptions ?? []).map((opt) => {
+                const checked = selectedMonths.includes(opt.workMonthYmd);
+                const disabled = !isDraft || (!opt.selectable && !checked);
+                const label = describeDcMonth(opt);
+                return (
+                  <label
+                    key={opt.workMonthYmd}
+                    className={`flex items-start gap-2 rounded-md border p-2 text-sm ${
+                      disabled ? "opacity-60" : "hover-elevate cursor-pointer"
+                    }`}
+                    data-testid={`option-dc-month-${opt.workMonthYmd.slice(0, 7)}`}
+                  >
+                    <Checkbox
+                      checked={checked}
+                      disabled={disabled}
+                      onCheckedChange={(v) => toggleMonth(opt.workMonthYmd, v === true)}
+                      aria-label={label}
+                      data-testid={`checkbox-dc-month-${opt.workMonthYmd.slice(0, 7)}`}
+                    />
+                    <span className="space-y-0.5">
+                      {opt.coverageMonthYmd ? (
+                        <>
+                          <span className="block leading-none font-medium">
+                            {formatYmdMonthLong(opt.coverageMonthYmd)} coverage
+                          </span>
+                          <span className="block text-xs text-muted-foreground">
+                            hours credited to {formatYmdMonthShort(opt.workMonthYmd)}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="block leading-none font-medium">
+                            Work month {formatYmdMonthLong(opt.workMonthYmd)}
+                          </span>
+                          <span className="block text-xs text-muted-foreground">
+                            coverage month unresolved
+                          </span>
+                        </>
+                      )}
+                      {opt.detail && (
+                        <span
+                          className="block text-xs"
+                          data-testid={`text-dc-month-detail-${opt.workMonthYmd.slice(0, 7)}`}
+                        >
+                          {opt.detail}
+                        </span>
+                      )}
+                      {opt.reason && (
+                        <span className="block text-xs text-muted-foreground">{opt.reason}</span>
+                      )}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+          {isDraft && (
+            <Button
+              onClick={() => saveMonths.mutate()}
+              disabled={!isDraft || saveMonths.isPending || monthsDraft === null}
+              data-testid="button-dc-save-months"
+            >
+              Save months
+            </Button>
+          )}
           {isDraft && selectedMonths.length > 0 && preview.data && (
             <div
               className={`text-sm space-y-1 ${previewStale ? "opacity-60" : ""}`}
@@ -518,13 +679,37 @@ export default function BaoDcCaseDetailPage() {
               {Object.entries(preview.data.perYear).map(([year, u]) => (
                 <p key={year} className="text-muted-foreground">
                   {year}: {u.used} used + {u.selected} selected of {u.limit} ({u.remaining}{" "}
-                  remaining)
+                  remaining{u.remaining <= 0 ? " — annual maximum reached" : ""})
                 </p>
               ))}
             </div>
           )}
+          {(data.monthStates ?? []).length > 0 && (
+            <div className="space-y-2 pt-2" data-testid="section-dc-month-states">
+              <h3 className="text-sm font-medium">Month states</h3>
+              <DcMonthStatesTable states={data.monthStates ?? []} />
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {(data.monthHistory ?? []).length > 0 && (
+        <Card data-testid="card-dc-month-history">
+          <CardHeader>
+            <CardTitle className="text-base">Disability Credit log</CardTitle>
+            <CardDescription>
+              Automatically recorded, in order: every grant, queue, release, reconciliation and
+              void with the credited hours before and after. Entries cannot be edited.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DcMonthHistoryList
+              history={data.monthHistory ?? []}
+              actorNames={data.actorNames ?? {}}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {!terminal && c.status !== "approved" && (
         <Card>

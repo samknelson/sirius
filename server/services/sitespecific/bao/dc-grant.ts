@@ -163,9 +163,15 @@ export async function previewDcGrantConfigWarnings(
  * Per-worker read context for continuation resolution. Every read the
  * resolution needs is memoized here (a promise per distinct lookup, so
  * concurrent months share the in-flight read rather than racing to repeat
- * it). A context is only ever valid for reads — callers that WRITE hours
- * between resolutions (the grant cascade) must resolve each month against a
- * fresh context so no memoized row can go stale.
+ * it). A context is only ever valid for reads — never hold one across
+ * writes that change its inputs (elections, WMB rows, rule configs,
+ * employer-reported hours). Grant writes themselves are safe to span: they
+ * only add Fund/DC hours, whose employment status is employed=false and
+ * non-FMLA, so every threshold read ignores those rows, and WMB rows only
+ * change on the deferred post-commit HOURS_SAVED replay. That is why ONE
+ * context can back the picker's month map, selection validation, the
+ * approve-time re-validation and the grant cascade of a single request — so
+ * they can never disagree on a month's lag or minimum.
  */
 export interface DcContinuationContext {
   readonly workerId: string;
@@ -300,7 +306,8 @@ function addMonths(ymd: string, months: number): string {
   return partsToYmd(y, m);
 }
 
-function currentMonthYmd(): string {
+/** First day of the current month in the process zone (the site zone). */
+export function currentMonthYmd(): string {
   const now = new Date();
   return partsToYmd(now.getFullYear(), now.getMonth() + 1);
 }
@@ -463,11 +470,19 @@ export async function resolveContinuationRequirement(
   };
 }
 
-interface GrantOutcome {
+export interface GrantOutcome {
   monthId: string;
+  caseId: string;
   workMonthYmd: string;
+  /** Coverage month the work month continues (work month + plan lag). */
+  coverageMonthYmd: string;
   action: "granted" | "queued" | "removed" | "unchanged";
   grantedHours?: number;
+  /** Plan minimum and qualifying hours seen when the month was granted/voided. */
+  threshold?: number;
+  qualifyingHours?: number;
+  /** Why a month was removed instead of granted. */
+  reason?: "no_shortfall";
 }
 
 /**
@@ -514,7 +529,16 @@ async function grantMonth(
         payload: { ...snapshot, reason: "no_shortfall" },
       },
     });
-    return { monthId: month.id, workMonthYmd: month.workMonthYmd, action: "removed" };
+    return {
+      monthId: month.id,
+      caseId: month.caseId,
+      workMonthYmd: month.workMonthYmd,
+      coverageMonthYmd: requirement.coverageMonthYmd,
+      action: "removed",
+      threshold: requirement.threshold,
+      qualifyingHours,
+      reason: "no_shortfall",
+    };
   }
 
   // Canonical hours write — HOURS_SAVED emission + charge plugins + the
@@ -540,9 +564,13 @@ async function grantMonth(
   });
   return {
     monthId: month.id,
+    caseId: month.caseId,
     workMonthYmd: month.workMonthYmd,
+    coverageMonthYmd: requirement.coverageMonthYmd,
     action: "granted",
     grantedHours: shortfall,
+    threshold: requirement.threshold,
+    qualifyingHours,
   };
 }
 
@@ -552,19 +580,28 @@ async function grantMonth(
  * released FIRST when due, then each still-`selected` month of this case is
  * granted or queued, oldest first. Idempotent: already granted/removed
  * months are skipped, so re-running after a partial failure converges.
+ *
+ * Pass the request's shared `DcContinuationContext` (the one the approve
+ * action validated the selection against) so the cascade resolves every
+ * month with exactly the lag and minimum the validation saw; a cold call
+ * resolves against a fresh per-worker context.
  */
 export async function runDcGrantCascadeForCase(
   caseId: string,
   actorUserId: string,
+  sharedContext?: DcContinuationContext,
 ): Promise<GrantOutcome[]> {
   const dc = storage.baoDisabilityCredit;
   const theCase = await dc.getCase(caseId);
   if (!theCase) throw new Error("CASE_NOT_FOUND");
+  const context = sharedContext ?? createDcContinuationContext(theCase.workerId);
 
   const outcomes: GrantOutcome[] = [];
 
   // Priority: due queued months (from ANY earlier grant) release first.
-  outcomes.push(...(await releaseDueQueuedMonthsForWorker(theCase.workerId, actorUserId)));
+  outcomes.push(
+    ...(await releaseDueQueuedMonthsForWorker(theCase.workerId, actorUserId, context)),
+  );
 
   const months = (await dc.listCaseMonths(caseId))
     .filter((m) => m.status === "selected")
@@ -574,6 +611,7 @@ export async function runDcGrantCascadeForCase(
     const requirement = await resolveContinuationRequirement(
       month.workerId,
       month.workMonthYmd,
+      context,
     );
     if (!isCoverageMonthDue(requirement.coverageMonthYmd)) {
       await dc.applyMonthGrantTransition(month.id, {
@@ -593,7 +631,14 @@ export async function runDcGrantCascadeForCase(
           },
         },
       });
-      outcomes.push({ monthId: month.id, workMonthYmd: month.workMonthYmd, action: "queued" });
+      outcomes.push({
+        monthId: month.id,
+        caseId: month.caseId,
+        workMonthYmd: month.workMonthYmd,
+        coverageMonthYmd: requirement.coverageMonthYmd,
+        action: "queued",
+        threshold: requirement.threshold,
+      });
       continue;
     }
     outcomes.push(await grantMonth(month, requirement, actorUserId, "approval"));
@@ -610,6 +655,7 @@ export async function runDcGrantCascadeForCase(
 export async function releaseDueQueuedMonthsForWorker(
   workerId: string,
   actorUserId: string | null,
+  context: DcContinuationContext = createDcContinuationContext(workerId),
 ): Promise<GrantOutcome[]> {
   const dc = storage.baoDisabilityCredit;
   const queued = (await dc.listApplicableMonthsForWorker(workerId))
@@ -617,7 +663,7 @@ export async function releaseDueQueuedMonthsForWorker(
     .sort((a, b) => a.workMonthYmd.localeCompare(b.workMonthYmd));
   const outcomes: GrantOutcome[] = [];
   for (const month of queued) {
-    const requirement = await resolveContinuationRequirement(workerId, month.workMonthYmd);
+    const requirement = await resolveContinuationRequirement(workerId, month.workMonthYmd, context);
     if (!isCoverageMonthDue(requirement.coverageMonthYmd)) continue;
     outcomes.push(await grantMonth(month, requirement, actorUserId, "release"));
   }

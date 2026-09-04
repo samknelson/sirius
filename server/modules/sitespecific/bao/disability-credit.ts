@@ -18,10 +18,14 @@ import {
   computeDcEligibilityForWorker,
 } from "../../../services/sitespecific/bao/dc-eligibility";
 import {
+  currentDcUsageYear,
   getDcCaseBundle,
   getNextQueuedDcCaseId,
   performDcCaseAction,
   mutateEvidenceAndRecompute,
+  replaceDcCaseMonths,
+  resolveCoverageMonthsForCaseMonths,
+  validateDcCaseMonthSelection,
   type DcCaseAction,
 } from "../../../services/sitespecific/bao/dc-workflow";
 import { fileSystemService, FileSystemNotConfiguredError } from "../../../services/files";
@@ -36,7 +40,11 @@ import {
   getDcUpcomingPopulations,
 } from "../../../services/sitespecific/bao/dc-reporting";
 import { BAO_DC_APPROVE_PERMISSION } from "../../../storage/sitespecific/bao/dc-approver";
-import { buildDcYearUsage } from "@shared/sitespecific/bao/dc-reporting";
+import {
+  buildDcYearUsage,
+  deriveDcAnnualMaxStatus,
+  deriveDcCaseMonthStates,
+} from "@shared/sitespecific/bao/dc-reporting";
 import { DcSelectionInvalidError } from "../../../storage/sitespecific/bao/disability-credit";
 import { DcGrantError, type DcGrantErrorCode } from "../../../services/sitespecific/bao/dc-grant";
 import { logger } from "../../../logger";
@@ -223,11 +231,28 @@ export function registerBaoDisabilityCreditRoutes(
         const openCases = cases.filter((c) =>
           ["draft", "ready_for_review", "in_queue"].includes(c.status),
         );
+        // Per-case month states labelled on the coverage axis (removed
+        // months included so a reconciled-away grant stays visible), from
+        // the same month rows + event log the case detail renders.
+        const caseMonths = (
+          await Promise.all(cases.map((c) => dc.listCaseMonths(c.id)))
+        ).flat();
+        const caseEvents = (
+          await Promise.all(cases.map((c) => dc.listEventsForCase(c.id)))
+        ).flat();
+        const coverage = await resolveCoverageMonthsForCaseMonths(caseMonths);
+        const monthStates = deriveDcCaseMonthStates(
+          caseMonths,
+          caseEvents,
+          (workMonthYmd) => coverage.get(`${workerId}:${workMonthYmd}`) ?? null,
+        );
         res.json({
           eligibility,
           cases,
           hasOpenCase: openCases.length > 0,
           yearUsage,
+          annualMax: deriveDcAnnualMaxStatus(yearUsage, currentDcUsageYear()),
+          monthStates,
           isStaff: await isStaff(req),
         });
       } catch (error) {
@@ -511,7 +536,7 @@ export function registerBaoDisabilityCreditRoutes(
         });
         let months = undefined;
         if (body.months && body.months.length > 0) {
-          months = await dc.replaceCaseMonths(extension.id, body.months, {
+          months = await replaceDcCaseMonths(extension.id, body.months, {
             actorUserId: actor,
           });
         }
@@ -535,7 +560,7 @@ export function registerBaoDisabilityCreditRoutes(
     async (req: Request, res: Response) => {
       try {
         const body = monthsSchema.parse(req.body ?? {});
-        res.json(await dc.validateMonthSelectionForCase(req.params.caseId, body.months));
+        res.json(await validateDcCaseMonthSelection(req.params.caseId, body.months));
       } catch (error) {
         if (error instanceof z.ZodError) {
           res.status(400).json({ message: "Invalid request", errors: error.errors });
@@ -555,7 +580,7 @@ export function registerBaoDisabilityCreditRoutes(
     async (req: Request, res: Response) => {
       try {
         const body = monthsSchema.parse(req.body ?? {});
-        const months = await dc.replaceCaseMonths(req.params.caseId, body.months, {
+        const months = await replaceDcCaseMonths(req.params.caseId, body.months, {
           actorUserId: await actorId(req),
         });
         res.json(months);

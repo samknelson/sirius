@@ -188,3 +188,5 @@
 - [BAO DP confirmed no-charge](bao-dp-confirmed-no-charge.md) — non-provisional $0.00 DP rate = covered free (no bill, gate waives payment); provisional/missing still fail closed; one shared pricing module.
 - [BAO DP tier transition & DP's children](bao-dp-tier-transition-rule.md) — tier = member's OWN lives × DP's-children-present; DP's children = Step Child/partner's-child relation TYPE (shared leaf, pending Fund confirmation).
 - [Fan-out reads: memoize promises](fanout-read-memoization.md) — N concurrent checks share one promise-memoized read context; result caches don't dedupe concurrent misses; DC DB suites one file per vitest run.
+- [DC coverage-axis month model](dc-coverage-axis-model.md) — pick/validate on coverage months, store work months; covered = WMB ∪ work-month-at-minimum; ONE month map; events snapshot coverage.
+- [BAO DB suites schema bring-up](dc-test-suite-isolation.md) — never call component migration up() in beforeAll (forks deadlock, re-run DDL locks live tables); shared fixture + own workers.

@@ -7,7 +7,7 @@ import { storage } from "../../server/storage";
 import { getOptionsStorage, getOptionsType } from "../../server/modules/options-registry";
 import { getComponentById } from "@shared/components";
 import { notes, rolePermissions, roles, sitespecificBaoCases, userRoles, users } from "@shared/schema";
-import caseManagementMigration from "../../scripts/migrate/components/sitespecific.bao/010_create_case_management";
+import { ensureBaoCaseSchema } from "./fixtures/bao-schema";
 
 const run = `bao-case-test-${Date.now()}`;
 let available = false;
@@ -26,7 +26,7 @@ const noteIds: string[] = [];
 beforeAll(async () => {
   // Component migrations are the supported schema path. Provision the focused
   // BAO case tables rather than silently dropping coverage on a non-BAO DB.
-  await caseManagementMigration.up();
+  await ensureBaoCaseSchema();
   available = await storage.baoCases.tableExists();
   if (!available) throw new Error("BAO case migration did not create its tables");
   const workers = await storage.workers.getAllWorkers();

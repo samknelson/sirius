@@ -13,8 +13,9 @@
  *   transitions (denied/withdrawn/void) REQUIRE a reason — coded errors
  *   here, CHECK constraints in the schema. `expectedStatus` gives callers a
  *   compare-and-set guard against stale concurrent actions.
- * - Month selection is FULL-SET replace, validated in-transaction against
- *   coverage continuity and annual capacity (shared pure validator), so
+ * - Month selection is FULL-SET replace, validated in-transaction under the
+ *   worker's lock by the caller-supplied validator (the DC workflow service
+ *   runs the shared coverage-axis validator over its month map), so
  *   concurrent cases cannot over-allocate the same worker/month or year.
  * - Documents are never deleted; superseding marks them. Case history lives
  *   in the typed event log (bounce reasons ride the case_status_changed
@@ -78,7 +79,6 @@ import {
 } from "@shared/schema";
 import {
   isDcTransitionAllowed,
-  validateDcMonthSelection,
   type DcSelectionValidation,
 } from "@shared/sitespecific/bao/dc-workflow";
 import { isRetiredDisabilityStatusOption } from "@shared/sitespecific/bao/dc-eligibility";
@@ -131,6 +131,28 @@ export class DcSelectionInvalidError extends Error {
   }
 }
 
+/**
+ * What a month-selection validator resolved, handed back to the replace so
+ * the events it records carry the coverage month AS VALIDATED. The case log
+ * is the spec's immutable record: a later plan-lag or rule change must never
+ * move a historical entry, so storage stamps the snapshot into every
+ * selection/deselection event instead of leaving readers to re-derive it.
+ */
+export interface DcValidatedSelection {
+  /**
+   * Coverage month per work month, covering the target AND the currently
+   * active months (a deselected month's void needs one too); `null` = the
+   * validator could not resolve that month's lag right now.
+   */
+  coverageByWorkMonth: ReadonlyMap<string, string | null>;
+}
+
+/** The coverage month a queued/granted month row was stamped with, if any. */
+function stampedCoverageMonthOf(data: unknown): string | null {
+  const v = (data as { coverageMonthYmd?: unknown } | null)?.coverageMonthYmd;
+  return typeof v === "string" && /^\d{4}-\d{2}-01$/.test(v) ? v : null;
+}
+
 export interface BaoDcDocumentWithFile extends BaoDcDocument {
   file: File | null;
 }
@@ -175,19 +197,29 @@ export interface BaoDisabilityCreditStorage {
   listCaseMonths(caseId: string): Promise<BaoDcCaseMonth[]>;
   /**
    * FULL-SET month replace for a draft case: adds missing months, removes
-   * deselected ones (with reason), validated in-transaction for continuity,
-   * conflicts and annual capacity (DcSelectionInvalidError on failure).
+   * deselected ones (with reason). The caller's `validate` runs INSIDE the
+   * transaction, after the case row and the worker's DC lock are held, with
+   * the de-duplicated sorted target and the currently active months — it
+   * must throw (DcSelectionInvalidError / DcGrantError) to refuse, and
+   * returns the coverage months it validated with so the `case_month_added`
+   * / `case_month_voided` events record that snapshot. The DC workflow
+   * service supplies the coverage-axis validator; storage never resolves
+   * plan lag or minimums. A target month the validator left unresolved is a
+   * contract violation and throws Error("SELECTION_COVERAGE_UNRESOLVED").
    */
   replaceCaseMonths(
     caseId: string,
     workMonthYmds: string[],
-    opts: { actorUserId: string; removalReason?: string },
+    opts: {
+      actorUserId: string;
+      removalReason?: string;
+      validate: (
+        theCase: BaoDcCase,
+        targetWorkMonthYmds: string[],
+        activeWorkMonthYmds: string[],
+      ) => Promise<DcValidatedSelection>;
+    },
   ): Promise<BaoDcCaseMonth[]>;
-  /** Read-only validation preview for a proposed full-set selection. */
-  validateMonthSelectionForCase(
-    caseId: string,
-    workMonthYmds: string[],
-  ): Promise<DcSelectionValidation>;
   /** Non-removed months for a calendar year — derived usage, never stored. */
   countApplicableMonthsForWorkerYear(workerId: string, year: number): Promise<number>;
   /** All non-removed months across the worker's cases (optionally excluding one case). */
@@ -196,10 +228,22 @@ export interface BaoDisabilityCreditStorage {
     excludeCaseId?: string,
   ): Promise<BaoDcCaseMonth[]>;
   /**
-   * Months the worker already has coverage for: WMB benefit presence plus
-   * positive reported hours (first-of-month Ymds, distinct, sorted).
+   * COVERAGE months WMB shows the worker as covered for (first-of-month
+   * Ymds, distinct, sorted). One half of the coverage-axis covered set; the
+   * other half (work months already at the plan minimum) needs the plan
+   * minimum and is derived by the DC month map service.
    */
-  getCoveredMonthsForWorker(workerId: string): Promise<string[]>;
+  getWmbMonthsForWorker(workerId: string): Promise<string[]>;
+  /**
+   * Qualifying (employed or FMLA status) hours per work month for the
+   * worker, excluding `excludeEmployerId` (the Fund/DC pseudo-employer) —
+   * the SAME filters as `getQualifyingHoursForWorkerMonth`, in bulk. Map
+   * key is the first-of-month Ymd; months with no qualifying hours are absent.
+   */
+  listQualifyingHoursByMonthForWorker(
+    workerId: string,
+    excludeEmployerId: string | null,
+  ): Promise<Map<string, number>>;
 
   // Denial letters ----------------------------------------------------------
   getDenialLetter(id: string): Promise<BaoDcDenialLetter | undefined>;
@@ -474,50 +518,21 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
     }
   };
 
-  /**
-   * Inputs for selection validation, computed with tx-consistent reads. The
-   * two inputs are independent, so they are read side by side (outside a
-   * transaction each takes its own connection; inside one they simply queue
-   * on the transaction's connection).
-   */
-  const selectionInputs = async (theCase: BaoDcCase) => {
-    const client = getClient();
-    const [otherRows, covered] = await Promise.all([
-      client
-        .select()
-        .from(monthsTable)
-        .where(
-          and(
-            eq(monthsTable.workerId, theCase.workerId),
-            ne(monthsTable.caseId, theCase.id),
-            ne(monthsTable.status, "removed"),
-          ),
-        ),
-      coveredMonths(theCase.workerId),
-    ]);
-    return {
-      otherCaseMonths: otherRows.map((m) => m.workMonthYmd),
-      coveredMonths: covered,
-    };
-  };
+  const monthKey = (year: number, month: number): string =>
+    `${year}-${String(month).padStart(2, "0")}-01`;
 
-  const coveredMonths = async (workerId: string): Promise<string[]> => {
+  /** Employment-status ids whose hours qualify: employed, or an FMLA status. */
+  const qualifyingStatusIds = async (): Promise<string[]> => {
     const client = getClient();
-    const [wmbRows, hourRows] = await Promise.all([
-      client
-        .selectDistinct({ year: trustWmb.year, month: trustWmb.month })
-        .from(trustWmb)
-        .where(eq(trustWmb.workerId, workerId)),
-      client
-        .selectDistinct({ year: workerHours.year, month: workerHours.month })
-        .from(workerHours)
-        .where(and(eq(workerHours.workerId, workerId), sql`${workerHours.hours} > 0`)),
-    ]);
-    const set = new Set<string>();
-    for (const r of [...wmbRows, ...hourRows]) {
-      set.add(`${r.year}-${String(r.month).padStart(2, "0")}-01`);
-    }
-    return Array.from(set).sort();
+    const statuses = await client
+      .select({
+        id: optionsEmploymentStatus.id,
+        name: optionsEmploymentStatus.name,
+        code: optionsEmploymentStatus.code,
+        employed: optionsEmploymentStatus.employed,
+      })
+      .from(optionsEmploymentStatus);
+    return statuses.filter((s) => s.employed || isFmlaStatusRow(s)).map((s) => s.id);
   };
 
   return {
@@ -755,7 +770,15 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
     async replaceCaseMonths(
       caseId: string,
       workMonthYmds: string[],
-      opts: { actorUserId: string; removalReason?: string },
+      opts: {
+        actorUserId: string;
+        removalReason?: string;
+        validate: (
+          theCase: BaoDcCase,
+          targetWorkMonthYmds: string[],
+          activeWorkMonthYmds: string[],
+        ) => Promise<DcValidatedSelection>;
+      },
     ): Promise<BaoDcCaseMonth[]> {
       await requireTables(this);
       const target = Array.from(new Set(workMonthYmds)).sort();
@@ -775,12 +798,15 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
         const notEditable = active.filter((m) => m.status !== "selected");
         if (notEditable.length > 0) throw new Error("MONTH_NOT_EDITABLE");
 
-        const inputs = await selectionInputs(theCase);
-        const validation = validateDcMonthSelection({
-          selectedMonths: target,
-          ...inputs,
-        });
-        if (!validation.ok) throw new DcSelectionInvalidError(validation);
+        // Coverage-axis validation, under the same lock and in this tx so the
+        // other-case / hours / WMB reads it makes are consistent with the
+        // writes below. Throws to refuse; returns the coverage snapshot the
+        // events below are stamped with.
+        const validated = await opts.validate(
+          theCase,
+          target,
+          active.map((m) => m.workMonthYmd),
+        );
 
         const activeSet = new Set(active.map((m) => m.workMonthYmd));
         const targetSet = new Set(target);
@@ -802,6 +828,13 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
             dedupeKey: `case_month_voided:${removed.id}`,
             payload: {
               workMonthYmd: removed.workMonthYmd,
+              // A selected month carries no grant stamp, so the validator's
+              // snapshot is the record; null = unresolvable at this moment,
+              // which the log shows as such rather than re-deriving later.
+              coverageMonthYmd:
+                stampedCoverageMonthOf(removed.data) ??
+                validated.coverageByWorkMonth.get(removed.workMonthYmd) ??
+                null,
               reason: removed.voidReason,
               actorUserId: opts.actorUserId,
             },
@@ -810,6 +843,12 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
 
         for (const ymd of target) {
           if (activeSet.has(ymd)) continue;
+          const coverageMonthYmd = validated.coverageByWorkMonth.get(ymd) ?? null;
+          if (!coverageMonthYmd) {
+            // The validator accepted a month it did not resolve — refuse
+            // rather than record a selection entry with no coverage month.
+            throw new Error(`SELECTION_COVERAGE_UNRESOLVED:${ymd}`);
+          }
           const [created] = await client
             .insert(monthsTable)
             .values({
@@ -825,25 +864,11 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
             workerId: theCase.workerId,
             caseId,
             dedupeKey: `case_month_added:${created.id}`,
-            payload: { workMonthYmd: ymd, actorUserId: opts.actorUserId },
+            payload: { workMonthYmd: ymd, coverageMonthYmd, actorUserId: opts.actorUserId },
           });
         }
 
         return this.listCaseMonths(caseId);
-      });
-    },
-
-    async validateMonthSelectionForCase(
-      caseId: string,
-      workMonthYmds: string[],
-    ): Promise<DcSelectionValidation> {
-      await requireTables(this);
-      const theCase = await this.getCase(caseId);
-      if (!theCase) throw new Error("CASE_NOT_FOUND");
-      const inputs = await selectionInputs(theCase);
-      return validateDcMonthSelection({
-        selectedMonths: Array.from(new Set(workMonthYmds)).sort(),
-        ...inputs,
       });
     },
 
@@ -879,9 +904,40 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
         .orderBy(asc(monthsTable.workMonthYmd), asc(monthsTable.id));
     },
 
-    async getCoveredMonthsForWorker(workerId: string): Promise<string[]> {
+    async getWmbMonthsForWorker(workerId: string): Promise<string[]> {
       await requireTables(this);
-      return coveredMonths(workerId);
+      const rows = await getClient()
+        .selectDistinct({ year: trustWmb.year, month: trustWmb.month })
+        .from(trustWmb)
+        .where(eq(trustWmb.workerId, workerId));
+      return rows.map((r) => monthKey(r.year, r.month)).sort();
+    },
+
+    async listQualifyingHoursByMonthForWorker(
+      workerId: string,
+      excludeEmployerId: string | null,
+    ): Promise<Map<string, number>> {
+      await requireTables(this);
+      const statusIds = await qualifyingStatusIds();
+      const byMonth = new Map<string, number>();
+      if (statusIds.length === 0) return byMonth;
+      const conditions = [
+        eq(workerHours.workerId, workerId),
+        sql`${workerHours.hours} > 0`,
+        inArray(workerHours.employmentStatusId, statusIds),
+      ];
+      if (excludeEmployerId) conditions.push(ne(workerHours.employerId, excludeEmployerId));
+      const rows = await getClient()
+        .select({
+          year: workerHours.year,
+          month: workerHours.month,
+          hours: sql<number>`coalesce(sum(${workerHours.hours}), 0)::float`,
+        })
+        .from(workerHours)
+        .where(and(...conditions))
+        .groupBy(workerHours.year, workerHours.month);
+      for (const r of rows) byMonth.set(monthKey(r.year, r.month), Number(r.hours) || 0);
+      return byMonth;
     },
 
     async getDenialLetter(id: string): Promise<BaoDcDenialLetter | undefined> {
@@ -1308,17 +1364,7 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
       excludeEmployerId: string,
     ): Promise<number> {
       const client = getClient();
-      const statuses = await client
-        .select({
-          id: optionsEmploymentStatus.id,
-          name: optionsEmploymentStatus.name,
-          code: optionsEmploymentStatus.code,
-          employed: optionsEmploymentStatus.employed,
-        })
-        .from(optionsEmploymentStatus);
-      const qualifyingIds = statuses
-        .filter((s) => s.employed || isFmlaStatusRow(s))
-        .map((s) => s.id);
+      const qualifyingIds = await qualifyingStatusIds();
       if (qualifyingIds.length === 0) return 0;
       const rows = await client
         .select({ total: sql<string>`COALESCE(SUM(${workerHours.hours}), 0)` })
@@ -1432,6 +1478,10 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
             .returning();
           updated = rows[0];
         }
+        // Every grant-path event names its month on both axes: the caller's
+        // payload wins, else the coverage month the row was stamped with at
+        // grant/queue (reconcile events), so the log never needs re-deriving.
+        const stampedCoverage = stampedCoverageMonthOf(existing.data);
         await recordAndEmitDcEvent({
           eventType: input.event.type,
           workerId: existing.workerId,
@@ -1440,6 +1490,7 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
           payload: {
             workMonthYmd: existing.workMonthYmd,
             monthId: existing.id,
+            ...(stampedCoverage ? { coverageMonthYmd: stampedCoverage } : {}),
             ...input.event.payload,
           },
         });

@@ -20,7 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getApiErrorMessage } from "@/lib/queryClient";
-import { formatYmd } from "@/components/sitespecific/bao/dc-shared";
+import { DcMonthLabel, formatYmd } from "@/components/sitespecific/bao/dc-shared";
 import type { BaoDcCase } from "@shared/schema";
 
 type QueueRow = {
@@ -28,6 +28,8 @@ type QueueRow = {
   queuedAt: string;
   readiness?: { ready: boolean; missing: string[] };
   monthCount: number;
+  /** Non-removed months on both axes (coverage month primary). */
+  months?: Array<{ workMonthYmd: string; coverageMonthYmd: string | null; status: string }>;
   grantConfigWarnings?: Array<{ workMonthYmd: string; code: string; message: string }>;
 };
 
@@ -66,7 +68,7 @@ export default function BaoDcQueuePage() {
                 <TableRow>
                   <TableHead>Opened</TableHead>
                   <TableHead>In queue</TableHead>
-                  <TableHead>Months</TableHead>
+                  <TableHead>Coverage months</TableHead>
                   <TableHead>Readiness</TableHead>
                   <TableHead />
                 </TableRow>
@@ -76,7 +78,24 @@ export default function BaoDcQueuePage() {
                   <TableRow key={row.case.id} data-testid={`row-dc-queue-${row.case.id}`}>
                     <TableCell>{formatYmd(row.case.openedYmd)}</TableCell>
                     <TableCell>{daysSince(row.queuedAt)} day(s)</TableCell>
-                    <TableCell>{row.monthCount}</TableCell>
+                    <TableCell>
+                      {row.months && row.months.length > 0 ? (
+                        <ul className="space-y-0.5 text-sm" data-testid={`text-dc-queue-months-${row.case.id}`}>
+                          {row.months.map((m) => (
+                            <li key={m.workMonthYmd}>
+                              <DcMonthLabel
+                                workMonthYmd={m.workMonthYmd}
+                                coverageMonthYmd={m.coverageMonthYmd}
+                              />
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">
+                          {row.monthCount} month(s)
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <span className="flex flex-wrap items-center gap-1">
                         {row.readiness?.ready ? (

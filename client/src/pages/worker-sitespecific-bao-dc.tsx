@@ -35,7 +35,16 @@ import {
 import { apiRequest, getApiErrorMessage, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { BaoDcCase } from "@shared/schema";
-import { DcStatusBadge, formatYmd } from "@/components/sitespecific/bao/dc-shared";
+import type { DcCaseMonthState } from "@shared/sitespecific/bao/dc-reporting";
+import {
+  DcAnnualMaxBadge,
+  DcMonthLabel,
+  DcMonthStatusBadge,
+  DcStatusBadge,
+  formatDcHoursLabel,
+  formatYmd,
+  type DcAnnualMaxView,
+} from "@/components/sitespecific/bao/dc-shared";
 import { formatYmdMonth } from "@shared/utils/date";
 import { DcMemberCasePanel } from "@/components/sitespecific/bao/DcMemberCasePanel";
 
@@ -49,8 +58,39 @@ type WorkerDcResponse = {
   cases: BaoDcCase[];
   hasOpenCase: boolean;
   yearUsage: Record<string, { used: number; limit: number }>;
+  /** Current-year maxed-out state (same derivation as the dashboard list). */
+  annualMax?: DcAnnualMaxView;
+  /** Every case's months (coverage axis) with their current state. */
+  monthStates?: DcCaseMonthState[];
   isStaff: boolean;
 };
+
+/** Compact per-month state line for the cases table. */
+function CaseMonthSummary({ months }: { months: DcCaseMonthState[] }) {
+  if (months.length === 0) {
+    return <span className="text-sm text-muted-foreground">No months selected</span>;
+  }
+  return (
+    <ul className="space-y-1">
+      {months.map((m) => (
+        <li
+          key={m.id}
+          className="flex flex-wrap items-center gap-2 text-sm"
+          data-testid={`text-dc-case-month-${m.caseId}-${m.workMonthYmd.slice(0, 7)}`}
+        >
+          <DcMonthLabel workMonthYmd={m.workMonthYmd} coverageMonthYmd={m.coverageMonthYmd} />
+          <DcMonthStatusBadge status={m.status} />
+          {m.status === "granted" && (
+            <span className="text-muted-foreground">{formatDcHoursLabel(m.grantedHours)} credited</span>
+          )}
+          {m.status === "removed" && m.voidReason && (
+            <span className="text-muted-foreground">{m.voidReason}</span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 function WorkerDcContent() {
   const { worker } = useWorkerLayout();
@@ -260,10 +300,11 @@ function WorkerDcContent() {
             <CalendarClock className="h-5 w-5" /> Annual usage
           </CardTitle>
           <CardDescription>
-            Disability Credit months used per year (removed months excluded).
+            Disability Credit months used per calendar year of the work month
+            (removed months excluded).
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           {Object.keys(data.yearUsage).length === 0 ? (
             <p className="text-sm text-muted-foreground" data-testid="text-dc-usage-empty">
               No Disability Credit months yet.
@@ -279,6 +320,7 @@ function WorkerDcContent() {
                 ))}
             </div>
           )}
+          <DcAnnualMaxBadge annualMax={data.annualMax} />
         </CardContent>
       </Card>
 
@@ -297,6 +339,7 @@ function WorkerDcContent() {
                 <TableRow>
                   <TableHead>Opened</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Coverage months</TableHead>
                   <TableHead>Basis</TableHead>
                   <TableHead />
                 </TableRow>
@@ -307,6 +350,11 @@ function WorkerDcContent() {
                     <TableCell>{formatYmd(c.openedYmd)}</TableCell>
                     <TableCell>
                       <DcStatusBadge status={c.status} />
+                    </TableCell>
+                    <TableCell>
+                      <CaseMonthSummary
+                        months={(data.monthStates ?? []).filter((m) => m.caseId === c.id)}
+                      />
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {(c.qualifyingBasis?.conditions ?? [])

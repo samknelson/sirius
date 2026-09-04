@@ -6,9 +6,12 @@
  *   of legal transitions lives here so both sides agree).
  * - Documentation checklist: COMPUTED from current (non-superseded)
  *   documents + staff attestations. Names every missing item.
- * - Month selection validation: coverage continuity (gap months named) and
- *   per-year annual capacity across ALL of the worker's cases, including
- *   year-boundary handling.
+ * - Month selection validation on the COVERAGE axis: continuity (gap
+ *   coverage months named), already-covered / before-first-coverage rules,
+ *   and per-year annual capacity (by work month) across ALL of the worker's
+ *   cases, including year-boundary handling.
+ * - Guided picker options: every option carries the coverage month (what
+ *   the Fund approves) AND the work month (what the case stores).
  */
 import {
   BAO_DC_ANNUAL_MONTH_LIMIT,
@@ -16,7 +19,7 @@ import {
   type BaoDcCaseStatus,
   type BaoDcDocumentType,
 } from "../../schema";
-import { addMonthsYmd, type Ymd } from "../../utils/date";
+import { addMonthsYmd, formatYmdMonth, type Ymd } from "../../utils/date";
 
 // ---------------------------------------------------------------------------
 // Lifecycle transitions
@@ -146,8 +149,27 @@ export function computeDcChecklist(
 }
 
 // ---------------------------------------------------------------------------
-// Month selection
+// Month selection — the COVERAGE axis
 // ---------------------------------------------------------------------------
+//
+// The Fund approves Disability Credit for COVERAGE months; the system
+// translates each one to the WORK month that receives the credited hours
+// (coverage month − the plan's lag). The case stores the work month (the
+// DB key never changes), so every month in this section travels as a
+// `DcMonthRef` pair and:
+//
+//   - "already covered", "before first coverage" and continuity are decided
+//     on the coverage axis (a coverage month counts as covered when WMB
+//     shows it OR its work month's qualifying hours already meet the plan
+//     minimum);
+//   - annual capacity is counted by the WORK month's calendar year, exactly
+//     as the stored usage counters do;
+//   - conflicts with other cases are checked on both keys.
+//
+// Nothing here resolves lag or minimums — the server's month map derives
+// them once per worker with the grant service's own requirement resolver
+// and hands the pairs in, so the picker, the validator and the approval can
+// never disagree.
 
 const FIRST_OF_MONTH = /^\d{4}-\d{2}-01$/;
 
@@ -156,9 +178,45 @@ function monthOrdinal(ymd: Ymd): number {
   return y * 12 + (m - 1);
 }
 
+function isFirstOfMonth(ymd: unknown): ymd is Ymd {
+  return typeof ymd === "string" && FIRST_OF_MONTH.test(ymd);
+}
+
+/** Hours for display: whole numbers stay whole, fractions keep ≤2 decimals. */
+export function formatDcHours(hours: number): string {
+  return Number.isInteger(hours) ? String(hours) : String(Number(hours.toFixed(2)));
+}
+
+/** "October 2026 coverage (work month July 2026)". */
+export function describeDcMonthRef(ref: { workMonthYmd: Ymd; coverageMonthYmd: Ymd | null }): string {
+  if (!ref.coverageMonthYmd) return `work month ${formatYmdMonth(ref.workMonthYmd)} (coverage month unknown)`;
+  return `${formatYmdMonth(ref.coverageMonthYmd)} coverage (work month ${formatYmdMonth(ref.workMonthYmd)})`;
+}
+
+/** A credited month seen on both axes. */
+export interface DcMonthRef {
+  /** Stored key: first day of the work month that receives the hours. */
+  workMonthYmd: Ymd;
+  /** First day of the coverage month the credit continues (work + lag). */
+  coverageMonthYmd: Ymd;
+}
+
+/** A non-removed month on one of the worker's OTHER cases. */
+export interface DcOtherCaseMonth {
+  workMonthYmd: Ymd;
+  /**
+   * null when the lag for that month cannot be resolved: the month still
+   * consumes annual capacity and blocks its work month, but cannot take part
+   * in coverage-axis continuity.
+   */
+  coverageMonthYmd: Ymd | null;
+}
+
 export type DcSelectionErrorCode =
   | "EMPTY_SELECTION"
   | "NOT_FIRST_OF_MONTH"
+  | "UNRESOLVABLE_MONTH"
+  | "DUPLICATE_COVERAGE_MONTH"
   | "ALREADY_COVERED"
   | "CONFLICTING_CASE_MONTH"
   | "CONTINUITY_GAP"
@@ -169,14 +227,17 @@ export type DcSelectionErrorCode =
 export interface DcSelectionError {
   code: DcSelectionErrorCode;
   message: string;
+  /** Coverage months the error is about (work months for UNRESOLVABLE_MONTH). */
   months?: Ymd[];
+  /** The work months paired with `months`, where known. */
+  workMonths?: Ymd[];
   year?: number;
 }
 
 export interface DcSelectionYearUsage {
-  /** Non-removed DC months from OTHER cases in this year. */
+  /** Non-removed DC months from OTHER cases whose WORK month is in this year. */
   used: number;
-  /** Months in the proposed selection landing in this year. */
+  /** Months in the proposed selection whose WORK month is in this year. */
   selected: number;
   limit: number;
   remaining: number;
@@ -185,30 +246,46 @@ export interface DcSelectionYearUsage {
 export interface DcSelectionValidation {
   ok: boolean;
   errors: DcSelectionError[];
-  /** Continuity gap months that would have to be backfilled (named). */
+  /** Continuity gap COVERAGE months that would have to be backfilled (named). */
   gapMonths: Ymd[];
+  /** Per WORK-month calendar year. */
   perYear: Record<string, DcSelectionYearUsage>;
 }
 
 export interface DcSelectionInputs {
-  /** Proposed FULL month set for this case (first-of-month Ymds). */
-  selectedMonths: Ymd[];
+  /** Proposed FULL month set for this case, on both axes. */
+  selectedMonths: DcMonthRef[];
   /** Non-removed DC months on the worker's OTHER cases. */
-  otherCaseMonths: Ymd[];
-  /** Months the worker already has coverage for (WMB presence). */
+  otherCaseMonths: DcOtherCaseMonth[];
+  /**
+   * COVERAGE months already covered: WMB months plus the coverage months of
+   * work months whose qualifying hours already meet the plan minimum.
+   */
   coveredMonths: Ymd[];
+  /**
+   * Known work→coverage pairs for the worker (the month map), used only to
+   * name the work month alongside each gap coverage month.
+   */
+  candidateMonths?: Array<{ workMonthYmd: Ymd; coverageMonthYmd: Ymd | null }>;
   annualLimit?: number;
+}
+
+function ordinalToYmd(ordinal: number): Ymd {
+  const y = Math.floor(ordinal / 12);
+  const m = (ordinal % 12) + 1;
+  return `${y}-${String(m).padStart(2, "0")}-01`;
 }
 
 /**
  * Validate a proposed multi-month selection.
  *
- * Continuity: the selection plus existing coverage (and other-case DC
- * months) must form a continuous run — the first credited month must
- * immediately follow the worker's last covered month, or the selection must
- * backfill every gap month back to it. Violations NAME the gap months.
+ * Continuity (coverage axis): the selected coverage months plus existing
+ * coverage (and other-case DC coverage months) must form a continuous run —
+ * the first credited coverage month must immediately follow the worker's
+ * last covered month, or the selection must backfill every gap back to it.
+ * Violations NAME the gap coverage months (with their work months).
  *
- * Capacity: per calendar year (year boundaries handled independently), the
+ * Capacity (work-month calendar year, year boundaries independent): the
  * worker's non-removed DC months across all cases plus this selection must
  * not exceed the annual limit. A required backfill larger than the remaining
  * capacity therefore blocks the selection.
@@ -216,43 +293,88 @@ export interface DcSelectionInputs {
 export function validateDcMonthSelection(inputs: DcSelectionInputs): DcSelectionValidation {
   const limit = inputs.annualLimit ?? BAO_DC_ANNUAL_MONTH_LIMIT;
   const errors: DcSelectionError[] = [];
-  const selected = Array.from(new Set(inputs.selectedMonths)).sort();
-  const covered = new Set(inputs.coveredMonths);
-  const other = new Set(inputs.otherCaseMonths);
 
-  if (selected.length === 0) {
-    errors.push({ code: "EMPTY_SELECTION", message: "At least one month must be selected." });
+  if (inputs.selectedMonths.length === 0) {
+    errors.push({ code: "EMPTY_SELECTION", message: "Select at least one month." });
     return { ok: false, errors, gapMonths: [], perYear: {} };
   }
 
-  const badFormat = selected.filter((m) => !FIRST_OF_MONTH.test(m));
-  if (badFormat.length > 0) {
+  const malformed = inputs.selectedMonths.filter(
+    (m) => !isFirstOfMonth(m.workMonthYmd) || !isFirstOfMonth(m.coverageMonthYmd),
+  );
+  if (malformed.length > 0) {
     errors.push({
       code: "NOT_FIRST_OF_MONTH",
-      message: `Months must be first-of-month dates: ${badFormat.join(", ")}`,
-      months: badFormat,
+      message: `Months must be the first day of a month: ${malformed.map((m) => m.workMonthYmd).join(", ")}`,
+      months: malformed.map((m) => m.workMonthYmd),
     });
     return { ok: false, errors, gapMonths: [], perYear: {} };
   }
 
-  const alreadyCovered = selected.filter((m) => covered.has(m));
+  // One entry per work month (the stored key), ordered on the coverage axis.
+  const byWork = new Map<Ymd, DcMonthRef>();
+  for (const m of inputs.selectedMonths) byWork.set(m.workMonthYmd, m);
+  const selected = Array.from(byWork.values()).sort(
+    (a, b) => monthOrdinal(a.coverageMonthYmd) - monthOrdinal(b.coverageMonthYmd)
+      || monthOrdinal(a.workMonthYmd) - monthOrdinal(b.workMonthYmd),
+  );
+
+  const duplicateCoverage = new Map<Ymd, DcMonthRef[]>();
+  for (const m of selected) {
+    const list = duplicateCoverage.get(m.coverageMonthYmd) ?? [];
+    list.push(m);
+    duplicateCoverage.set(m.coverageMonthYmd, list);
+  }
+  const duplicates = Array.from(duplicateCoverage.values()).filter((l) => l.length > 1);
+  if (duplicates.length > 0) {
+    errors.push({
+      code: "DUPLICATE_COVERAGE_MONTH",
+      message: `Two selected work months would credit the same coverage month: ${duplicates
+        .map((l) => `${formatYmdMonth(l[0].coverageMonthYmd)} coverage (work months ${l
+          .map((m) => formatYmdMonth(m.workMonthYmd))
+          .join(", ")})`)
+        .join("; ")}`,
+      months: duplicates.map((l) => l[0].coverageMonthYmd),
+      workMonths: duplicates.flatMap((l) => l.map((m) => m.workMonthYmd)),
+    });
+  }
+
+  const covered = new Set(inputs.coveredMonths);
+  const otherWork = new Set(inputs.otherCaseMonths.map((m) => m.workMonthYmd));
+  const otherCoverage = new Set(
+    inputs.otherCaseMonths.map((m) => m.coverageMonthYmd).filter((c): c is Ymd => c !== null),
+  );
+  const workByCoverage = new Map<Ymd, Ymd>();
+  for (const c of inputs.candidateMonths ?? []) {
+    if (c.coverageMonthYmd && !workByCoverage.has(c.coverageMonthYmd)) {
+      workByCoverage.set(c.coverageMonthYmd, c.workMonthYmd);
+    }
+  }
+  const describeCoverage = (coverageMonthYmd: Ymd): string => {
+    const work = workByCoverage.get(coverageMonthYmd);
+    return work
+      ? `${formatYmdMonth(coverageMonthYmd)} (work month ${formatYmdMonth(work)})`
+      : formatYmdMonth(coverageMonthYmd);
+  };
+
+  const alreadyCovered = selected.filter((m) => covered.has(m.coverageMonthYmd));
   if (alreadyCovered.length > 0) {
     errors.push({
       code: "ALREADY_COVERED",
-      message: `Already covered — no Disability Credit needed: ${alreadyCovered.join(", ")}`,
-      months: alreadyCovered,
+      message: `Already covered — no Disability Credit needed: ${alreadyCovered
+        .map(describeDcMonthRef)
+        .join("; ")}`,
+      months: alreadyCovered.map((m) => m.coverageMonthYmd),
+      workMonths: alreadyCovered.map((m) => m.workMonthYmd),
     });
   }
 
-  // Extension-only: Disability Credit continues existing coverage — it can
-  // never establish the worker's FIRST covered month. A worker with no
-  // coverage history has nothing to extend; and no credited month may fall
-  // at or before the first established coverage month.
-  const firstCovered =
-    inputs.coveredMonths.length > 0
-      ? inputs.coveredMonths.reduce((a, b) => (a < b ? a : b))
-      : null;
-  if (!firstCovered) {
+  // Disability Credit CONTINUES coverage: a worker with no established
+  // coverage month has nothing to continue, and no credited coverage month
+  // may fall at or before the first established one.
+  const coveredOrdinals = Array.from(covered).map(monthOrdinal);
+  const firstCovered = coveredOrdinals.length > 0 ? Math.min(...coveredOrdinals) : null;
+  if (firstCovered === null) {
     errors.push({
       code: "NO_PRIOR_COVERAGE",
       message:
@@ -260,76 +382,87 @@ export function validateDcMonthSelection(inputs: DcSelectionInputs): DcSelection
     });
   } else {
     const tooEarly = selected.filter(
-      (m) => monthOrdinal(m) <= monthOrdinal(firstCovered) && !covered.has(m),
+      (m) => monthOrdinal(m.coverageMonthYmd) <= firstCovered && !covered.has(m.coverageMonthYmd),
     );
     if (tooEarly.length > 0) {
       errors.push({
         code: "BEFORE_FIRST_COVERAGE",
-        message: `Disability Credit cannot precede the worker's first established coverage month (${firstCovered.slice(0, 7)}): ${tooEarly.join(", ")}`,
-        months: tooEarly,
+        message: `At or before the worker's first established coverage month (${formatYmdMonth(
+          ordinalToYmd(firstCovered),
+        )}): ${tooEarly.map(describeDcMonthRef).join("; ")}`,
+        months: tooEarly.map((m) => m.coverageMonthYmd),
+        workMonths: tooEarly.map((m) => m.workMonthYmd),
       });
     }
   }
 
-  const conflicting = selected.filter((m) => other.has(m));
+  const conflicting = selected.filter(
+    (m) => otherWork.has(m.workMonthYmd) || otherCoverage.has(m.coverageMonthYmd),
+  );
   if (conflicting.length > 0) {
     errors.push({
       code: "CONFLICTING_CASE_MONTH",
-      message: `Held by another case for this worker: ${conflicting.join(", ")}`,
-      months: conflicting,
+      message: `Already held by another Disability Credit case for this worker: ${conflicting
+        .map(describeDcMonthRef)
+        .join("; ")}`,
+      months: conflicting.map((m) => m.coverageMonthYmd),
+      workMonths: conflicting.map((m) => m.workMonthYmd),
     });
   }
 
-  // Continuity — walk every month that must be accounted for and name holes.
-  const inUnion = (m: Ymd) => covered.has(m) || other.has(m) || selected.includes(m);
-  const allKnown = [...covered, ...other];
-  const lastCovered =
-    allKnown.length > 0 ? allKnown.reduce((a, b) => (a > b ? a : b)) : null;
-
-  const first = selected[0];
-  const last = selected[selected.length - 1];
-  let walkStart = first;
-  if (lastCovered && monthOrdinal(first) > monthOrdinal(lastCovered) + 1) {
-    walkStart = addMonthsYmd(lastCovered, 1);
-  }
+  // Continuity on the coverage axis: walk from the month after the last
+  // covered month (or from the first selected month when it lies inside
+  // existing coverage) through the last selected month; every month must be
+  // covered, a DC month on another case, or in this selection.
   const gapMonths: Ymd[] = [];
-  for (
-    let cursor = walkStart;
-    monthOrdinal(cursor) <= monthOrdinal(last);
-    cursor = addMonthsYmd(cursor, 1)
-  ) {
-    if (!inUnion(cursor)) gapMonths.push(cursor);
+  const unionCoverage = new Set<Ymd>([
+    ...covered,
+    ...otherCoverage,
+    ...selected.map((m) => m.coverageMonthYmd),
+  ]);
+  const anchorOrdinals = [...covered, ...otherCoverage].map(monthOrdinal);
+  const lastCovered = anchorOrdinals.length > 0 ? Math.max(...anchorOrdinals) : null;
+  const firstSelected = monthOrdinal(selected[0].coverageMonthYmd);
+  const lastSelected = monthOrdinal(selected[selected.length - 1].coverageMonthYmd);
+  const walkFrom = lastCovered !== null && firstSelected > lastCovered + 1 ? lastCovered + 1 : firstSelected;
+  for (let o = walkFrom; o <= lastSelected; o += 1) {
+    const ymd = ordinalToYmd(o);
+    if (!unionCoverage.has(ymd)) gapMonths.push(ymd);
   }
   if (gapMonths.length > 0) {
     errors.push({
       code: "CONTINUITY_GAP",
-      message: `Selection leaves coverage gaps — these months must be backfilled or covered: ${gapMonths.join(", ")}`,
+      message: `Selection leaves coverage gaps — these coverage months must be backfilled or covered: ${gapMonths
+        .map(describeCoverage)
+        .join(", ")}`,
       months: gapMonths,
+      workMonths: gapMonths.map((c) => workByCoverage.get(c)).filter((w): w is Ymd => w !== undefined),
     });
   }
 
-  // Capacity — per calendar year, across ALL the worker's cases.
+  // Annual capacity — by the WORK month's calendar year (year boundaries
+  // handled independently), across all of the worker's non-removed months.
   const perYear: Record<string, DcSelectionYearUsage> = {};
-  const years = new Set<number>([
-    ...selected.map((m) => Number(m.slice(0, 4))),
-    ...inputs.otherCaseMonths.map((m) => Number(m.slice(0, 4))),
-  ]);
-  for (const year of Array.from(years).sort()) {
-    const used = inputs.otherCaseMonths.filter(
-      (m) => Number(m.slice(0, 4)) === year,
-    ).length;
-    const chosen = selected.filter((m) => Number(m.slice(0, 4)) === year).length;
-    perYear[String(year)] = {
-      used,
-      selected: chosen,
-      limit,
-      remaining: Math.max(0, limit - used - chosen),
-    };
+  const usedByYear = new Map<number, number>();
+  for (const m of inputs.otherCaseMonths) {
+    const y = Number(m.workMonthYmd.slice(0, 4));
+    usedByYear.set(y, (usedByYear.get(y) ?? 0) + 1);
+  }
+  const selectedByYear = new Map<number, number>();
+  for (const m of selected) {
+    const y = Number(m.workMonthYmd.slice(0, 4));
+    selectedByYear.set(y, (selectedByYear.get(y) ?? 0) + 1);
+  }
+  const years = new Set<number>([...usedByYear.keys(), ...selectedByYear.keys()]);
+  for (const y of Array.from(years).sort()) {
+    const used = usedByYear.get(y) ?? 0;
+    const chosen = selectedByYear.get(y) ?? 0;
+    perYear[String(y)] = { used, selected: chosen, limit, remaining: Math.max(0, limit - used - chosen) };
     if (used + chosen > limit) {
       errors.push({
         code: "CAPACITY_EXCEEDED",
-        message: `${year}: ${used + chosen} Disability Credit months would exceed the annual limit of ${limit}.`,
-        year,
+        message: `${y}: ${used + chosen} Disability Credit months (counted by work month) would exceed the annual limit of ${limit}.`,
+        year: y,
       });
     }
   }
@@ -338,127 +471,214 @@ export function validateDcMonthSelection(inputs: DcSelectionInputs): DcSelection
 }
 
 // ---------------------------------------------------------------------------
-// Month options (guided picker)
+// Guided month picker options
 // ---------------------------------------------------------------------------
 
-/** Rolling option window: the current month plus this many prior months. */
+/** Picker window: this many months back from the current month … */
 export const BAO_DC_OPTION_LOOKBACK_MONTHS = 12;
-/** Months offered beyond the current month. */
+/** … and this many months forward. Active case months are always included. */
 export const BAO_DC_OPTION_FUTURE_MONTHS = 8;
-
-export type DcMonthOptionStatus =
-  | "available"
-  | "selected"
-  | "covered"
-  | "conflicting"
-  | "unavailable";
-
-export interface DcMonthOption {
-  /** First-of-month Ymd. */
-  monthYmd: Ymd;
-  status: DcMonthOptionStatus;
-  /** Whether the interface should let staff toggle this month. */
-  selectable: boolean;
-  /** Human-readable explanation for non-selectable months. */
-  reason?: string;
-}
-
-export interface DcMonthOptionInputs {
-  /** The current month (any day of it; normalized to first-of-month). */
-  nowMonthYmd: Ymd;
-  /** Months the worker already has established coverage for. */
-  coveredMonths: Ymd[];
-  /** Non-removed DC months on the worker's OTHER cases. */
-  otherCaseMonths: Ymd[];
-  /** This case's ACTIVE (non-removed) selected months. */
-  activeCaseMonths: Ymd[];
-}
 
 function firstOfMonth(ymd: Ymd): Ymd {
   return `${ymd.slice(0, 7)}-01`;
 }
 
 /**
- * Deterministic month choices for the guided Disability Credit picker.
- *
- * Window: the current month, the prior 12 months (13-month lookback) and
- * the next 8 months. Existing ACTIVE selections are always included — even
- * outside the window — so they appear checked and can be unchecked while
- * the case is a draft. Within the window, months already covered or held by
- * another case are shown but not selectable, and Disability Credit is
- * extension-only: no month at or before the worker's first established
- * coverage month is offered, and a worker with no coverage at all gets no
- * selectable months (DC can never create the first covered month).
- *
- * This is WORK-month selection only — the grant's lagged coverage-month
- * calculation stays entirely in the grant service.
+ * The work months a picker enumerates for a worker: the window around the
+ * current month plus every extra month that must be shown regardless
+ * (active months of the case being edited, months held by other cases, a
+ * proposed selection). Sorted, de-duplicated, first-of-month keys.
+ */
+export function enumerateDcCandidateWorkMonths(nowMonthYmd: Ymd, extraWorkMonths: Ymd[] = []): Ymd[] {
+  const now = firstOfMonth(nowMonthYmd);
+  const months = new Set<Ymd>();
+  for (let i = -BAO_DC_OPTION_LOOKBACK_MONTHS; i <= BAO_DC_OPTION_FUTURE_MONTHS; i += 1) {
+    months.add(addMonthsYmd(now, i));
+  }
+  for (const m of extraWorkMonths) if (isFirstOfMonth(m)) months.add(m);
+  return Array.from(months).sort();
+}
+
+/**
+ * One enumerated work month with everything the server's month map could
+ * derive for it. `coverageMonthYmd`/`threshold` are null when the plan lag
+ * or minimum could not be resolved; `unavailable` then names why.
+ */
+export interface DcMonthCandidate {
+  workMonthYmd: Ymd;
+  coverageMonthYmd: Ymd | null;
+  /** Plan minimum for the work month (the continuation threshold). */
+  threshold: number | null;
+  /** Qualifying employer/FMLA hours already reported for the work month. */
+  qualifyingHours: number;
+  unavailable?: {
+    code: string;
+    message: string;
+    /** The worker has no established coverage at or before this work month. */
+    noContinuedBenefits?: boolean;
+  };
+}
+
+/** Shortfall the grant would credit for a candidate; null when unknown. */
+export function dcCandidateShortfall(c: Pick<DcMonthCandidate, "threshold" | "qualifyingHours">): number | null {
+  if (c.threshold === null) return null;
+  return Math.max(0, c.threshold - c.qualifyingHours);
+}
+
+/**
+ * The coverage-axis covered set: WMB coverage months plus the coverage
+ * months of every candidate work month whose qualifying hours already meet
+ * the plan minimum (those months need no Disability Credit).
+ */
+export function deriveDcCoveredCoverageMonths(
+  wmbCoverageMonths: Ymd[],
+  candidates: DcMonthCandidate[],
+): Ymd[] {
+  const covered = new Set<Ymd>(wmbCoverageMonths.map(firstOfMonth));
+  for (const c of candidates) {
+    if (c.coverageMonthYmd !== null && dcCandidateShortfall(c) === 0) covered.add(c.coverageMonthYmd);
+  }
+  return Array.from(covered).sort();
+}
+
+export type DcMonthOptionStatus =
+  | "available"
+  | "selected"
+  | "covered"
+  | "not_grantable"
+  | "conflicting"
+  | "unavailable";
+
+export interface DcMonthOption {
+  /** Stored/API key — the client submits THIS for a chosen option. */
+  workMonthYmd: Ymd;
+  /** Primary label axis; null when the lag could not be resolved. */
+  coverageMonthYmd: Ymd | null;
+  status: DcMonthOptionStatus;
+  /** Whether staff may toggle this month in the picker. */
+  selectable: boolean;
+  /** Why the month is not available, or a caution for a selected month. */
+  reason?: string;
+  threshold: number | null;
+  qualifyingHours: number;
+  shortfall: number | null;
+  /** "X of Y hours reported — Disability Credit adds Z" when known. */
+  detail?: string;
+}
+
+export interface DcMonthOptionInputs {
+  /** Enumerated work months with their derived coverage data. */
+  candidates: DcMonthCandidate[];
+  /** Coverage months WMB shows as covered. */
+  wmbCoverageMonths: Ymd[];
+  /** Non-removed months on the worker's OTHER cases. */
+  otherCaseMonths: DcOtherCaseMonth[];
+  /** This case's ACTIVE (non-removed) months — work-month keys. */
+  activeCaseMonths: Ymd[];
+}
+
+function hoursDetail(c: DcMonthCandidate): string | undefined {
+  const shortfall = dcCandidateShortfall(c);
+  if (shortfall === null || c.threshold === null) return undefined;
+  const reported = `${formatDcHours(c.qualifyingHours)} of ${formatDcHours(c.threshold)} hours reported`;
+  return shortfall > 0
+    ? `${reported} — Disability Credit adds ${formatDcHours(shortfall)}`
+    : `${reported} — no Disability Credit needed`;
+}
+
+/**
+ * Guided picker options over the enumerated candidates. Each option carries
+ * both keys; the client must submit `workMonthYmd` and never translate
+ * itself. Classification, in priority order:
+ *   selected (this case's active months, with a caution when the month will
+ *   be voided at approval) → unavailable (lag/minimum unresolvable) →
+ *   conflicting (held by another case) → covered (WMB) → not_grantable
+ *   (employer hours already meet the minimum) → unavailable (no coverage to
+ *   continue / at or before first coverage) → available.
  */
 export function computeDcMonthOptions(inputs: DcMonthOptionInputs): DcMonthOption[] {
-  const now = firstOfMonth(inputs.nowMonthYmd);
-  const covered = new Set(inputs.coveredMonths);
-  const other = new Set(inputs.otherCaseMonths);
-  const active = new Set(inputs.activeCaseMonths);
-  const firstCovered =
-    inputs.coveredMonths.length > 0
-      ? inputs.coveredMonths.reduce((a, b) => (a < b ? a : b))
-      : null;
-
-  const months = new Set<Ymd>();
-  const start = addMonthsYmd(now, -BAO_DC_OPTION_LOOKBACK_MONTHS);
-  const end = addMonthsYmd(now, BAO_DC_OPTION_FUTURE_MONTHS);
-  for (
-    let cursor = start;
-    monthOrdinal(cursor) <= monthOrdinal(end);
-    cursor = addMonthsYmd(cursor, 1)
-  ) {
-    months.add(cursor);
-  }
-  for (const m of active) months.add(firstOfMonth(m));
+  const active = new Set(inputs.activeCaseMonths.map(firstOfMonth));
+  const wmb = new Set(inputs.wmbCoverageMonths.map(firstOfMonth));
+  const otherWork = new Set(inputs.otherCaseMonths.map((m) => m.workMonthYmd));
+  const otherCoverage = new Set(
+    inputs.otherCaseMonths.map((m) => m.coverageMonthYmd).filter((c): c is Ymd => c !== null),
+  );
+  const covered = deriveDcCoveredCoverageMonths(inputs.wmbCoverageMonths, inputs.candidates);
+  const firstCovered = covered.length > 0 ? monthOrdinal(covered[0]) : null;
+  const firstWmb = wmb.size > 0 ? Array.from(wmb).sort()[0] : null;
 
   const options: DcMonthOption[] = [];
-  for (const monthYmd of Array.from(months).sort()) {
-    if (active.has(monthYmd)) {
-      options.push({ monthYmd, status: "selected", selectable: true });
+  const sorted = [...inputs.candidates].sort((a, b) => a.workMonthYmd.localeCompare(b.workMonthYmd));
+  for (const c of sorted) {
+    const shortfall = dcCandidateShortfall(c);
+    const base = {
+      workMonthYmd: c.workMonthYmd,
+      coverageMonthYmd: c.coverageMonthYmd,
+      threshold: c.threshold,
+      qualifyingHours: c.qualifyingHours,
+      shortfall,
+      detail: hoursDetail(c),
+    };
+    const push = (status: DcMonthOptionStatus, selectable: boolean, reason?: string) =>
+      options.push({ ...base, status, selectable, reason });
+
+    if (active.has(c.workMonthYmd)) {
+      let reason: string | undefined;
+      if (c.unavailable) reason = c.unavailable.message;
+      else if (shortfall === 0 && c.threshold !== null) {
+        reason = `Employer hours now meet the plan minimum (${formatDcHours(c.qualifyingHours)} of ${formatDcHours(
+          c.threshold,
+        )} hours reported) — uncheck it, or it will be voided at approval and no annual month will be consumed.`;
+      }
+      push("selected", true, reason);
       continue;
     }
-    if (covered.has(monthYmd)) {
-      options.push({
-        monthYmd,
-        status: "covered",
-        selectable: false,
-        reason: "Already covered — no Disability Credit needed",
-      });
+    if (c.unavailable || c.coverageMonthYmd === null) {
+      const reason = c.unavailable?.noContinuedBenefits
+        ? firstWmb
+          ? `No coverage to continue as of this work month — the worker's first established coverage month is ${formatYmdMonth(
+              firstWmb,
+            )}.`
+          : "Disability Credit can only extend existing coverage — this worker has no established coverage month."
+        : c.unavailable?.message ?? "The plan lag for this month could not be resolved.";
+      push("unavailable", false, reason);
       continue;
     }
-    if (other.has(monthYmd)) {
-      options.push({
-        monthYmd,
-        status: "conflicting",
-        selectable: false,
-        reason: "Held by another Disability Credit case for this worker",
-      });
+    if (otherWork.has(c.workMonthYmd) || otherCoverage.has(c.coverageMonthYmd)) {
+      push("conflicting", false, "Held by another Disability Credit case for this worker.");
       continue;
     }
-    if (!firstCovered) {
-      options.push({
-        monthYmd,
-        status: "unavailable",
-        selectable: false,
-        reason:
-          "Disability Credit can only extend existing coverage — this worker has no established coverage month",
-      });
+    if (wmb.has(c.coverageMonthYmd)) {
+      push("covered", false, "Already covered — no Disability Credit needed.");
       continue;
     }
-    if (monthOrdinal(monthYmd) <= monthOrdinal(firstCovered)) {
-      options.push({
-        monthYmd,
-        status: "unavailable",
-        selectable: false,
-        reason: `At or before the worker's first established coverage month (${firstCovered.slice(0, 7)})`,
-      });
+    if (shortfall === 0 && c.threshold !== null) {
+      push(
+        "not_grantable",
+        false,
+        `Employer hours already meet the plan minimum (${formatDcHours(c.qualifyingHours)} of ${formatDcHours(
+          c.threshold,
+        )} hours reported) — no Disability Credit needed.`,
+      );
       continue;
     }
-    options.push({ monthYmd, status: "available", selectable: true });
+    if (firstCovered === null) {
+      push(
+        "unavailable",
+        false,
+        "Disability Credit can only extend existing coverage — this worker has no established coverage month.",
+      );
+      continue;
+    }
+    if (monthOrdinal(c.coverageMonthYmd) <= firstCovered) {
+      push(
+        "unavailable",
+        false,
+        `At or before the worker's first established coverage month (${formatYmdMonth(ordinalToYmd(firstCovered))}).`,
+      );
+      continue;
+    }
+    push("available", true);
   }
   return options;
 }

@@ -35,6 +35,7 @@ import {
   buildDcYearUsage,
   daysUntilYmd,
   isDcExpiryWarning,
+  isDcYearMaxedOut,
   summarizeDcGrantActivity,
   type DcNetActivityRow,
 } from "@shared/sitespecific/bao/dc-reporting";
@@ -255,6 +256,8 @@ export interface DcQueueRow {
   ageDays: number;
   readiness?: { ready: boolean; missing: string[] };
   monthCount: number;
+  /** Non-removed months on both axes (coverage month primary in the UI). */
+  months: Array<{ workMonthYmd: string; coverageMonthYmd: string | null; status: string }>;
   yearUsage: Record<string, { used: number; limit: number }>;
   /** Advisory: selected months whose approval-time grant check would fail. */
   grantConfigWarnings: Array<{ workMonthYmd: string; code: string; message: string }>;
@@ -262,9 +265,10 @@ export interface DcQueueRow {
 
 /**
  * In-queue cases, oldest first, with queue age + live readiness + balance.
- * Each case contributes only its queue summary (readiness, month count,
- * usage, batched grant-configuration preview, event log), read side by side
- * with the worker references — not the full case-page bundle.
+ * Each case contributes only its queue summary (readiness, months with
+ * their coverage months, usage, batched grant-configuration preview, event
+ * log), read side by side with the worker references — not the full
+ * case-page bundle.
  */
 export async function listDcApprovalQueue(): Promise<DcQueueRow[]> {
   const dc = storage.baoDisabilityCredit;
@@ -294,6 +298,7 @@ export async function listDcApprovalQueue(): Promise<DcQueueRow[]> {
       ),
       readiness: summary.readiness,
       monthCount: summary.monthCount,
+      months: summary.months,
       yearUsage: summary.yearUsage,
       grantConfigWarnings: summary.grantConfigWarnings,
     };
@@ -316,7 +321,7 @@ export interface DcMaxedOutRow {
 export async function listDcMaxedOutWorkers(): Promise<DcMaxedOutRow[]> {
   const dc = storage.baoDisabilityCredit;
   const usage = await dc.listApplicableMonthCountsByWorkerYear();
-  const maxed = usage.filter((u) => u.used >= BAO_DC_ANNUAL_MONTH_LIMIT);
+  const maxed = usage.filter((u) => isDcYearMaxedOut(u.used, BAO_DC_ANNUAL_MONTH_LIMIT));
   const workerIds = maxed.map((u) => u.workerId);
   const [refs, latest] = await Promise.all([
     workerRefMap(workerIds),

@@ -4,7 +4,7 @@ import { registerBaoCaseRoutes } from "../../server/modules/sitespecific/bao/cas
 import { storage } from "../../server/storage";
 import { getOptionsStorage } from "../../server/modules/options-registry";
 import { updateComponentCache } from "../../server/services/component-cache";
-import caseManagementMigration from "../../scripts/migrate/components/sitespecific.bao/010_create_case_management";
+import { ensureBaoCaseSchema } from "./fixtures/bao-schema";
 
 let base = "";
 let closeServer: (() => Promise<void>) | undefined;
@@ -26,7 +26,7 @@ async function request(path: string, init: RequestInit & { user?: string; staff?
 }
 
 beforeAll(async () => {
-  await caseManagementMigration.up();
+  await ensureBaoCaseSchema();
   const workers = await storage.workers.getAllWorkers();
   const staff = (await storage.users.getUsersWithAnyPermission(["staff", "admin"]))[0];
   const type = (await getOptionsStorage().list("note-type")).find((t: any) => t.data?.entityTypes?.includes("worker"));

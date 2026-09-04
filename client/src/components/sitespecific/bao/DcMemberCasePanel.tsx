@@ -9,13 +9,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DcDocumentsCard } from "./DcDocumentsCard";
-import { DcStatusBadge, formatYmd } from "./dc-shared";
-import { formatYmdMonth } from "@shared/utils/date";
+import { DcStatusBadge, describeDcMonth, formatYmd } from "./dc-shared";
 import type { BaoDcCase, BaoDcCaseMonth } from "@shared/schema";
+import type { DcCaseMonthState } from "@shared/sitespecific/bao/dc-reporting";
 
 type Bundle = {
   case: BaoDcCase;
   months: BaoDcCaseMonth[];
+  monthStates?: DcCaseMonthState[];
   readiness: { missing: string[]; ready: boolean };
   yearUsage: Record<string, { used: number; limit: number }>;
   denialLetters: Array<{ id: string; letterYmd: string; expiresYmd: string }>;
@@ -35,6 +36,10 @@ export function DcMemberCasePanel({ caseId }: { caseId: string }) {
   if (!data) return null;
 
   const activeMonths = data.months.filter((m) => m.status !== "removed");
+  // Coverage-axis labels: "Oct 2026 coverage — hours credited to Jul 2026".
+  const coverageByWorkMonth = new Map(
+    (data.monthStates ?? []).map((m) => [m.workMonthYmd, m.coverageMonthYmd] as const),
+  );
 
   return (
     <div className="space-y-4">
@@ -46,7 +51,14 @@ export function DcMemberCasePanel({ caseId }: { caseId: string }) {
           </CardTitle>
           <CardDescription>
             {activeMonths.length > 0
-              ? `Months: ${activeMonths.map((m) => formatYmdMonth(m.workMonthYmd)).join(", ")}`
+              ? `Coverage months: ${activeMonths
+                  .map((m) =>
+                    describeDcMonth({
+                      workMonthYmd: m.workMonthYmd,
+                      coverageMonthYmd: coverageByWorkMonth.get(m.workMonthYmd) ?? null,
+                    }),
+                  )
+                  .join("; ")}`
               : "No months selected yet — a member service representative selects months."}
           </CardDescription>
         </CardHeader>

@@ -16,12 +16,14 @@ import {
   getNextQueuedDcCaseId,
   performDcCaseAction,
   recomputeReadinessAndMaybeBounce,
+  replaceDcCaseMonths,
 } from "../../server/services/sitespecific/bao/dc-workflow";
+import {
+  buildDcWorkerMonthMap,
+  dcMonthOptionsFromMap,
+} from "../../server/services/sitespecific/bao/dc-month-map";
 import { addMonthsYmd } from "@shared/utils/date";
-import dcMigration from "../../scripts/migrate/components/sitespecific.bao/011_create_disability_credit";
-import dcWorkflowMigration from "../../scripts/migrate/components/sitespecific.bao/012_dc_case_workflow";
-import dcGrantMigration from "../../scripts/migrate/components/sitespecific.bao/013_dc_grant_events";
-import dcExtensionsMigration from "../../scripts/migrate/components/sitespecific.bao/014_dc_extensions_and_notes_retirement";
+import { ensureBaoDcSchema } from "./fixtures/bao-schema";
 import {
   evaluateDcEligibility,
   findUnreportedGapsBetweenFmlaMonths,
@@ -199,10 +201,7 @@ const caseIds: string[] = [];
 const letterIds: string[] = [];
 
 beforeAll(async () => {
-  await dcMigration.up();
-  await dcWorkflowMigration.up();
-  await dcGrantMigration.up();
-  await dcExtensionsMigration.up();
+  await ensureBaoDcSchema();
   if (!(await storage.baoDisabilityCredit.tableExists())) {
     throw new Error("DC migration did not create its tables");
   }
@@ -322,18 +321,18 @@ describe("DC case integrity", () => {
     caseIds.push(c1.id);
 
     await expect(
-      storage.baoDisabilityCredit.replaceCaseMonths(c1.id, ["2026-09-15"], { actorUserId: userId }),
+      replaceDcCaseMonths(c1.id, ["2026-09-15"], { actorUserId: userId }),
     ).rejects.toThrow();
 
-    const covered = await storage.baoDisabilityCredit.getCoveredMonthsForWorker(workerId);
-    if (covered.length === 0) {
+    // The coverage-axis rules live in the service (the storage replace only
+    // runs with a caller-supplied validator inside its transaction).
+    const map = await buildDcWorkerMonthMap({ workerId, caseId: c1.id });
+    if (map.wmbCoverageMonths.length === 0) {
       // Extension-only enforcement lives server-side: a worker with no
       // established coverage can never receive DC months, even when a
       // client bypasses the guided picker with a well-formed payload.
       await expect(
-        storage.baoDisabilityCredit.replaceCaseMonths(c1.id, ["2098-01-01"], {
-          actorUserId: userId,
-        }),
+        replaceDcCaseMonths(c1.id, ["2098-01-01"], { actorUserId: userId }),
       ).rejects.toMatchObject({
         validation: {
           errors: expect.arrayContaining([
@@ -342,23 +341,26 @@ describe("DC case integrity", () => {
         },
       });
     }
-    const pick = covered.filter((m) => m >= "2026-01-01").slice(0, 2);
-    // Without coverage data on this worker we can still exercise the removed-month
-    // semantics using validation-passing months when available.
+    // Two consecutive AVAILABLE picker options (coverage axis) — the picker
+    // and the save share one map, so what it offers must save.
+    const available = dcMonthOptionsFromMap(map, []).filter(
+      (o) => o.status === "available" && o.selectable && o.coverageMonthYmd,
+    );
+    const pair = available.find((o, i) => {
+      const next = available[i + 1];
+      return !!next && next.coverageMonthYmd === addMonthsYmd(o.coverageMonthYmd!, 1);
+    });
+    const pick = pair
+      ? [pair.workMonthYmd, addMonthsYmd(pair.workMonthYmd, 1)]
+      : [];
     if (pick.length >= 2) {
-      const months = await storage.baoDisabilityCredit.replaceCaseMonths(c1.id, pick, {
-        actorUserId: userId,
-      });
+      const months = await replaceDcCaseMonths(c1.id, pick, { actorUserId: userId });
       expect(months.filter((m) => m.status === "selected").length).toBe(pick.length);
       // Idempotent repeat: same set, no duplicate rows.
-      const again = await storage.baoDisabilityCredit.replaceCaseMonths(c1.id, pick, {
-        actorUserId: userId,
-      });
+      const again = await replaceDcCaseMonths(c1.id, pick, { actorUserId: userId });
       expect(again.filter((m) => m.status !== "removed").length).toBe(pick.length);
       // Deselect one: it becomes removed and stops counting.
-      const fewer = await storage.baoDisabilityCredit.replaceCaseMonths(c1.id, [pick[0]], {
-        actorUserId: userId,
-      });
+      const fewer = await replaceDcCaseMonths(c1.id, [pick[0]], { actorUserId: userId });
       expect(fewer.filter((m) => m.status === "removed").length).toBe(1);
       const year = Number(pick[0].slice(0, 4));
       const applicable = await storage.baoDisabilityCredit.countApplicableMonthsForWorkerYear(
@@ -648,19 +650,28 @@ describe("DC queue continuation", () => {
         .where(eq(sitespecificBaoDcCases.id, c.id));
       return c.id;
     };
-    // Exclude any queued cases that pre-exist in the shared dev database so
-    // the assertions only see this test's own two cases.
-    const baseline = (await storage.baoDisabilityCredit.listCasesByStatus("in_queue")).map(
-      (q) => q.id,
-    );
     const older = await mk("2027-05-01");
     const newer = await mk("2027-05-02");
-    const next = await getNextQueuedDcCaseId(baseline);
-    expect(next).toBe(older);
+    const ours = new Set([older, newer]);
+    // The queue is global and other suites queue cases concurrently, so the
+    // assertions must only see this test's own two cases: exclude every
+    // foreign queued case as of the moment of each call (re-snapshotting if
+    // one slipped in between the snapshot and the call).
+    const nextAmongOurs = async (finished: string[]): Promise<string | null> => {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const foreign = (await storage.baoDisabilityCredit.listCasesByStatus("in_queue"))
+          .map((q) => q.id)
+          .filter((id) => !ours.has(id));
+        const next = await getNextQueuedDcCaseId([...foreign, ...finished]);
+        if (next === null || ours.has(next)) return next;
+      }
+      throw new Error("queue kept receiving foreign cases between snapshot and call");
+    };
+    expect(await nextAmongOurs([])).toBe(older);
     // Excluding the case just finished moves on to the next one.
-    expect(await getNextQueuedDcCaseId([...baseline, older])).toBe(newer);
+    expect(await nextAmongOurs([older])).toBe(newer);
     // Empty (both excluded) → null, handled cleanly.
-    expect(await getNextQueuedDcCaseId([...baseline, older, newer])).toBeNull();
+    expect(await nextAmongOurs([older, newer])).toBeNull();
     for (const id of [older, newer]) {
       await db
         .update(sitespecificBaoDcCases)

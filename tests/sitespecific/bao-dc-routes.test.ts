@@ -26,12 +26,10 @@ import {
 } from "@shared/schema";
 import { inArray } from "drizzle-orm";
 import { formatYmdMonth } from "@shared/utils/date";
+import { replaceDcCaseMonths } from "../../server/services/sitespecific/bao/dc-workflow";
 import { updateComponentCache, isComponentEnabledSync } from "../../server/services/component-cache";
 import { initAccessControl } from "../../server/services/access-policy-evaluator";
-import dcMigration from "../../scripts/migrate/components/sitespecific.bao/011_create_disability_credit";
-import dcWorkflowMigration from "../../scripts/migrate/components/sitespecific.bao/012_dc_case_workflow";
-import dcGrantMigration from "../../scripts/migrate/components/sitespecific.bao/013_dc_grant_events";
-import dcExtensionsMigration from "../../scripts/migrate/components/sitespecific.bao/014_dc_extensions_and_notes_retirement";
+import { ensureBaoDcSchema } from "./fixtures/bao-schema";
 
 let base = "";
 let closeServer: (() => Promise<void>) | undefined;
@@ -52,10 +50,7 @@ async function request(path: string, init: RequestInit & { user?: string; staff?
 }
 
 beforeAll(async () => {
-  await dcMigration.up();
-  await dcWorkflowMigration.up();
-  await dcGrantMigration.up();
-  await dcExtensionsMigration.up();
+  await ensureBaoDcSchema();
   await updateComponentCache("sitespecific.bao", true);
   // buildContext (actorId) needs the access-control module initialized.
   initAccessControl(
@@ -69,15 +64,17 @@ beforeAll(async () => {
     storage,
     async (componentId: string) => isComponentEnabledSync(componentId),
   );
-  const workers = await storage.workers.getAllWorkers();
   const staff = (await storage.users.getUsersWithAnyPermission(["staff", "admin"]))[0];
-  if (!workers[0] || !staff) throw new Error("DC route harness prerequisites unavailable");
-  workerId = workers[0].id;
+  if (!staff) throw new Error("DC route harness prerequisites unavailable");
   staffId = staff.id;
+  const run = `dc-routes-${Date.now()}`;
+  // This suite owns its worker: cases enforce one open case per worker, so
+  // sharing a database worker with another concurrently running suite races
+  // on DUPLICATE_OPEN_CASE.
+  workerId = (await storage.workers.createWorker(`DC Routes fixture ${run}`)).id;
 
   // Designate staffId as a DC approver via a real role-permission row (the
   // same mechanism admins use), and create a plain staff user without it.
-  const run = `dc-routes-${Date.now()}`;
   const approverRole = await storage.users.createRole({
     name: `${run}-approver`,
     description: "DC approver test role",
@@ -127,6 +124,12 @@ afterAll(async () => {
   for (const id of caseIds) {
     await db.delete(sitespecificBaoDcEvents).where(eq(sitespecificBaoDcEvents.caseId, id));
     await db.delete(sitespecificBaoDcCases).where(eq(sitespecificBaoDcCases.id, id));
+  }
+  if (workerId) {
+    await db.delete(sitespecificBaoDcEvents).where(eq(sitespecificBaoDcEvents.workerId, workerId));
+    await db.delete(sitespecificBaoDcCaseMonths).where(eq(sitespecificBaoDcCaseMonths.workerId, workerId));
+    await db.delete(sitespecificBaoDcCases).where(eq(sitespecificBaoDcCases.workerId, workerId));
+    await db.delete(workersTable).where(eq(workersTable.id, workerId));
   }
   if (approverRoleId) {
     await db.delete(userRoles).where(eq(userRoles.roleId, approverRoleId)).catch(() => {});
@@ -522,9 +525,7 @@ describe("queued-case approval through the real action route (task 411)", () => 
       createdByUserId: staffId,
     });
     caseIds.push(c.id);
-    await storage.baoDisabilityCredit.replaceCaseMonths(c.id, [ymd(monthA)], {
-      actorUserId: staffId,
-    });
+    await replaceDcCaseMonths(c.id, [ymd(monthA)], { actorUserId: staffId });
     await storage.baoDisabilityCredit.addDocument({
       parentKind: "case",
       caseId: c.id,
@@ -585,8 +586,9 @@ describe("queued-case approval through the real action route (task 411)", () => 
       .returning();
     statusId = status.id;
 
-    // Both workers have an election + continued-benefit WMB anchor; only the
-    // OK worker's policy carries a continuation-threshold rule.
+    // Both workers have an election + continued-benefit WMB coverage through
+    // cur−1, so month A (coverage cur, lag 1) continues it with no gap; only
+    // the OK worker's policy carries a continuation-threshold rule.
     const wmbMonth = addM(curYear, curMonth, -2);
     for (const wid of [okWorkerId, badWorkerId]) {
       await db.insert(workerTrustElections).values({
@@ -596,13 +598,15 @@ describe("queued-case approval through the real action route (task 411)", () => 
         startYmd: `${wmbMonth.year}-01-01`,
         endYmd: null,
       });
-      await db.insert(trustWmb).values({
-        workerId: wid,
-        employerId,
-        benefitId,
-        year: wmbMonth.year,
-        month: wmbMonth.month,
-      });
+      await db.insert(trustWmb).values(
+        [wmbMonth, addM(curYear, curMonth, -1)].map((m) => ({
+          workerId: wid,
+          employerId,
+          benefitId,
+          year: m.year,
+          month: m.month,
+        })),
+      );
     }
     const [cfg] = await db
       .insert(pluginConfigs)
