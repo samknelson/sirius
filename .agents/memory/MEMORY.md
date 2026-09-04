@@ -37,7 +37,7 @@
 - [Nullable denorm scalar -> derived table](denorm-column-to-table-null-semantics.md) — replacing a nullable denorm column with a derived flagged table = "at most one" flag, not "exactly one".
 - [Derived "current" flag needs parent-row lock](derived-current-flag-row-lock.md) — clear-then-set is_current under a partial unique index races across txs.
 - [Denorm backfill is enqueue-then-recompute](denorm-backfill-enqueue-semantics.md) — backfillAllDenorm only enqueues stale rows + deletes widows; compute/write happens later in denorm_stale cron.
-- [Dual DB driver + empty-DB bootstrap](dual-db-driver-and-bootstrap.md) — app resolves EXTERNAL_DATABASE_URL (Neon) first; shell $DATABASE_URL is a stale helium PG — never verify app DB state via psql $DATABASE_URL.
+- [Dual DB driver + empty-DB bootstrap](dual-db-driver-and-bootstrap.md) — EXTERNAL_DATABASE_URL (Neon) wins when set, else pg on $DATABASE_URL; which applies has flipped over time — read the `[db] Target database` boot line first.
 - [Core migrations vs optional components](core-migrations-optional-components.md) — core migrations must tolerate optional-component tables (enabledByDefault:false) being absent.
 - [EBS pump at-most-once delivery](ebs-claim-before-emit.md) — deferred event-bus pump must claim the terminal status row (unique ON CONFLICT RETURNING) BEFORE emit.
 - [EBS scheduled-reminder pattern](ebs-scheduled-reminder-pattern.md) — "N days before/after a moving date" = denorm scheduler + notifier; encode the anchor in the entity id.
@@ -115,7 +115,7 @@
 - [Notifier token root truthfulness](notifier-token-root-truthfulness.md) — root name must BE the entity kind; advertised-but-unbuilt fields validate + preview fine and deliver blank; renames need a parsed-chain rewrite of stored templates.
 - [Shared HTML utils](shared-html-utils.md) — escape/sanitize/HTML→text live in ONE library split by dep weight (boot path imports the escape leaf, never the barrel); DOMPurify drops rel=noopener.
 - [Sanitizing signed documents](sanitizing-signed-documents.md) — hash the RAW bytes, sanitize once and submit that same string, and compare entity-decoded: byte-diff ≠ appearance-diff.
-- [Post-merge verification](post-merge-verification.md) — restart before diagnosing (lazy imports of deleted modules fail only at request time); registries throw on duplicate ids but a dropped registration boots clean.
+- [Post-merge verification](post-merge-verification.md) — restart before diagnosing; registries throw on duplicates but boot clean on absences; inherited drift-gate failure = unregistered migration/manifest gap, check who else is repairing it.
 - [Appeal grievance pattern](appeal-grievance-pattern.md) — appeals live as kind=appeal in data.appealMeta jsonb; carrier derived at read time; test DB needs all component migrations run in beforeAll.
 - [Token editing invariants](token-editing-invariants.md) — the studio is the ONLY place a tokenized string is edited; evaluation is medium-independent; cleaning is the container's job and never reads a token's surroundings.
 - [Regression-test bar](regression-test-bar.md) — never propose a follow-up test task (generic title templates push you to); bar + lint-vs-test split live in replit.md; gates fixed at lint/typecheck/migrations.

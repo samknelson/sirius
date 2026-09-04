@@ -4,7 +4,10 @@ import {
 } from "../../../services/event-bus";
 import { registerEventNotifier } from "../registry";
 import { templatesSchemaBlock } from "../template-schema";
-import { BAO_CASE_ENTITY_KIND } from "../../tokens/plugins/sitespecific-bao-case";
+import {
+  BAO_CASE_ENTITY_KIND,
+  composeBaoCaseEntity,
+} from "../../tokens/plugins/sitespecific-bao-case";
 import {
   type EventNotifierEventContext,
   type EventNotifierPlugin,
@@ -211,31 +214,30 @@ export const baoCaseStatusNotifier: EventNotifierPlugin = {
         async build(ctx) {
           const payload = payloadOf(ctx);
           if (!payload.row) return null;
-          const { sitespecificBaoCases } = await import(
-            "../../../../shared/schema/sitespecific/bao/schema"
-          );
           // The committed case row carried on the event, plus the
-          // event-time display names captured in the writing transaction.
-          // Not reloaded by id: a later edit (or delete) must not rewrite
-          // the message this transition earned. `change_summary` states
-          // what THIS write did — an assignment-only save must not imply a
-          // status transition that never happened.
+          // event-time display names and appeal facts captured in the
+          // writing transaction. Not reloaded by id: a later edit (or
+          // delete) must not rewrite the message this transition earned.
+          // `change_summary` states what THIS write did — an
+          // assignment-only save must not imply a status transition that
+          // never happened.
           const statusMoved = payload.previousStatusId !== payload.statusId;
           const changeSummary =
             !statusMoved && assignmentChange(payload)
               ? `was assigned to ${payload.assigneeName ?? "a new assignee"}`
               : `is now ${payload.statusName}`;
-          return {
-            kind: BAO_CASE_ENTITY_KIND,
-            row: {
-              ...(payload.row as unknown as Record<string, unknown>),
+          return composeBaoCaseEntity(
+            payload.row,
+            {
               statusName: payload.statusName,
               entityName: payload.entityName,
               assigneeName: payload.assigneeName ?? null,
-              changeSummary,
+              benefitName: payload.benefitName ?? null,
+              denialReasonName: payload.denialReasonName ?? null,
+              spdCitation: payload.spdCitation ?? null,
             },
-            table: sitespecificBaoCases,
-          };
+            changeSummary,
+          );
         },
       },
     ],

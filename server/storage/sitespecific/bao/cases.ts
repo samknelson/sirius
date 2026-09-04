@@ -1,3 +1,23 @@
+/**
+ * BAO case storage: generic cases plus the Benefit Appeal workflow.
+ *
+ * Benefit Appeal facts and where they come from:
+ *   - The appealed benefit is a column on the case row; its name is read
+ *     live from `trust_benefits`.
+ *   - The denial reason is an FK on the one-per-case appeal details row; its
+ *     name is read live from the option (the FK is RESTRICT, so the option
+ *     outlives every case that cites it).
+ *   - The SPD citation is a SNAPSHOT: `create` copies the reason option's
+ *     configured citation text into `sitespecific_bao_appeal_details.data`
+ *     at auto-denial time, and every read (`detailSelection`, hence the
+ *     detail endpoint, the committed status event and the case token kind)
+ *     reads that snapshot, never the option. The citation is member-facing
+ *     letter text — what the member was told must stay fixed, so editing
+ *     the reason later changes future denials only. A reason with no
+ *     citation configured snapshots null and reads back null.
+ *   `eligibilityPluginIds` on the reason is behaviour applied at approval
+ *   time, not member-facing text; it stays on the option and is not copied.
+ */
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   notes,
@@ -14,7 +34,9 @@ import {
   sitespecificBaoCases,
   userRoles,
   users,
+  type BaoAppealDetailsData,
   type BaoCase,
+  type BaoCaseAppealFacts,
   type BaoCaseEntityType,
   type InsertBaoCase,
 } from "@shared/schema";
@@ -25,7 +47,7 @@ import { assignmentForbidden } from "./case-assignment";
 import { createBaoNoteTagsStorage } from "./note-tags";
 import { tableExists } from "../../utils";
 
-export interface BaoCaseDetails extends BaoCase {
+export interface BaoCaseDetails extends BaoCase, BaoCaseAppealFacts {
   entityName: string | null;
   assigneeName: string;
   statusName: string;
@@ -34,9 +56,6 @@ export interface BaoCaseDetails extends BaoCase {
   workflowStep: string | null;
   resolutionName: string | null;
   notes?: NoteWithDetails[];
-  benefitName?: string | null;
-  denialReasonName?: string | null;
-  spdCitation?: string | null;
 }
 
 export interface BaoCaseListResult {
@@ -140,8 +159,28 @@ const detailSelection = {
   resolutionName: optionsBaoCaseResolution.name,
   benefitName: trustBenefits.name,
   denialReasonName: optionsBaoAppealDenialReason.name,
+  // The citation snapshotted at auto-denial (see the header), not the option's.
   spdCitation: sql<string | null>`${sitespecificBaoAppealDetails.data}->>'spdCitation'`,
 };
+
+/**
+ * The citation text a denial reason option carries, as stored by the
+ * options UI in `data.spdCitation`. Blank, absent or non-text → null.
+ */
+function citationOf(reasonData: unknown): string | null {
+  const raw =
+    reasonData && typeof reasonData === "object"
+      ? (reasonData as Record<string, unknown>).spdCitation
+      : undefined;
+  if (typeof raw !== "string") return null;
+  const text = raw.trim();
+  return text.length > 0 ? text : null;
+}
+
+/** What the appeal details row snapshots for a denial under this reason. */
+function appealDetailsDataFor(reason: { data: unknown }): BaoAppealDetailsData {
+  return { spdCitation: citationOf(reason.data) };
+}
 
 function detailQuery() {
   return getClient()
@@ -156,7 +195,10 @@ function detailQuery() {
     .leftJoin(optionsBaoAppealDenialReason, eq(optionsBaoAppealDenialReason.id, sitespecificBaoAppealDetails.denialReasonId));
 }
 
-function mapDetail(row: any): BaoCaseDetails {
+type DetailRow = Awaited<ReturnType<typeof detailQuery>>[number];
+
+/** The one mapping from a `detailQuery()` row to what every reader of a case sees. */
+function mapDetail(row: DetailRow): BaoCaseDetails {
   const full = [row.assigneeFirstName, row.assigneeLastName].filter(Boolean).join(" ");
   return {
     ...row.theCase,
@@ -164,7 +206,12 @@ function mapDetail(row: any): BaoCaseDetails {
     assigneeName: full || row.assigneeEmail,
     statusName: row.statusName,
     statusClosed: Boolean(row.statusClosed),
+    caseTypeName: row.caseTypeName,
+    workflowStep: row.workflowStep ?? null,
     resolutionName: row.resolutionName ?? null,
+    benefitName: row.benefitName ?? null,
+    denialReasonName: row.denialReasonName ?? null,
+    spdCitation: row.spdCitation ?? null,
   };
 }
 
@@ -175,6 +222,15 @@ async function getStatus(statusId: string) {
     .where(eq(optionsBaoCaseStatus.id, statusId))
     .limit(1);
   return status;
+}
+
+async function getDenialReason(reasonId: string) {
+  const [reason] = await getClient()
+    .select()
+    .from(optionsBaoAppealDenialReason)
+    .where(eq(optionsBaoAppealDenialReason.id, reasonId))
+    .limit(1);
+  return reason ?? null;
 }
 
 /** Shared/exclusive row locks serialize case writes with status reclassification. */
@@ -190,8 +246,10 @@ async function lockStatuses(statusIds: string[], mode: "SHARE" | "UPDATE"): Prom
 /**
  * Defer a BAO_CASE_STATUS_SAVED emit until the surrounding transaction
  * commits, so listeners never see uncommitted (or rolled-back) state. The
- * display names are captured HERE, inside the writing transaction: a later
- * edit or status rename must not rewrite what this write's notification says.
+ * display names and appeal facts are captured HERE, inside the writing
+ * transaction and through the same `detailQuery()` the detail endpoint
+ * reads, so a notification says exactly what the detail screen showed at
+ * this write: a later edit or rename must not rewrite it.
  */
 async function emitCaseStatusSaved(
   row: BaoCase,
@@ -200,21 +258,8 @@ async function emitCaseStatusSaved(
   operation: "created" | "updated",
   change: { previousAssigneeUserId: string | null; actorUserId: string | null },
 ): Promise<void> {
-  const [named] = await getClient()
-    .select({ entityName })
-    .from(cases)
-    .where(eq(cases.id, row.id))
-    .limit(1);
-  // Assignee display name, captured inside the writing transaction like the
-  // status name: a later rename must not rewrite what this write says.
-  const [assignee] = await getClient()
-    .select({ firstName: users.firstName, lastName: users.lastName, email: users.email })
-    .from(users)
-    .where(eq(users.id, row.assigneeUserId))
-    .limit(1);
-  const assigneeName = assignee
-    ? [assignee.firstName, assignee.lastName].filter(Boolean).join(" ") || assignee.email
-    : null;
+  const [detailRow] = await detailQuery().where(eq(cases.id, row.id)).limit(1);
+  const detail = detailRow ? mapDetail(detailRow) : null;
   const payload = {
     caseId: row.id,
     entityType: row.entityType,
@@ -223,10 +268,13 @@ async function emitCaseStatusSaved(
     previousStatusId,
     statusId: row.statusId,
     statusName,
-    entityName: named?.entityName ?? null,
+    entityName: detail?.entityName ?? null,
     previousAssigneeUserId: change.previousAssigneeUserId,
     assigneeUserId: row.assigneeUserId,
-    assigneeName,
+    assigneeName: detail?.assigneeName ?? null,
+    benefitName: detail?.benefitName ?? null,
+    denialReasonName: detail?.denialReasonName ?? null,
+    spdCitation: detail?.spdCitation ?? null,
     actorUserId: change.actorUserId,
     operation,
   };
@@ -280,9 +328,11 @@ export function createBaoCasesStorage(): BaoCasesStorage {
         if (caseType.workflowCode === "benefit_appeal" && status.workflowStep !== "submitted") {
           throw new Error("INVALID_INITIAL_WORKFLOW_STEP");
         }
-        const [appealReason] = input.denialReasonId
-          ? await getClient().select().from(optionsBaoAppealDenialReason).where(eq(optionsBaoAppealDenialReason.id, input.denialReasonId))
-          : [];
+        // Non-null exactly when this is a Benefit Appeal (checked above to
+        // carry a reason id); the reason drives the auto-denial below.
+        const appealReason = caseType.workflowCode === "benefit_appeal" && input.denialReasonId
+          ? await getDenialReason(input.denialReasonId)
+          : null;
         if (caseType.workflowCode === "benefit_appeal" && !appealReason) throw new Error("INVALID_APPEAL_DENIAL_REASON");
         if (input.benefitId) {
           const [benefit] = await getClient().select({ id: trustBenefits.id }).from(trustBenefits).where(and(eq(trustBenefits.id, input.benefitId), eq(trustBenefits.isActive, true)));
@@ -326,8 +376,15 @@ export function createBaoCasesStorage(): BaoCasesStorage {
           resolutionYmd: null,
         }).returning();
         await getClient().insert(sitespecificBaoCaseNotes).values({ caseId: created.id, noteId });
-        if (caseType.workflowCode === "benefit_appeal") {
-          await getClient().insert(sitespecificBaoAppealDetails).values({ caseId: created.id, denialReasonId: input.denialReasonId! });
+        if (appealReason) {
+          // Snapshot the reason's citation with the denial (see the header):
+          // the letter quotes what the member was told, not the option's
+          // current text.
+          await getClient().insert(sitespecificBaoAppealDetails).values({
+            caseId: created.id,
+            denialReasonId: appealReason.id,
+            data: appealDetailsDataFor(appealReason),
+          });
           const [autoDenied] = await getClient().select().from(optionsBaoCaseStatus)
             .where(and(eq(optionsBaoCaseStatus.caseTypeId, caseType.id), eq(optionsBaoCaseStatus.workflowStep, "auto_denied"))).limit(1);
           if (!autoDenied) throw new Error("APPEAL_AUTO_DENIED_STATUS_MISSING");

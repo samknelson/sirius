@@ -1387,7 +1387,7 @@ export const sitespecificBaoCases = pgTable(
     assigneeUserId: varchar("assignee_user_id").notNull(),
     statusId: varchar("status_id").notNull(),
     caseTypeId: varchar("case_type_id").notNull(),
-     benefitId: varchar("benefit_id"),
+    benefitId: varchar("benefit_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     deadlineYmd: date("deadline_ymd").notNull(),
     resolutionId: varchar("resolution_id"),
@@ -1425,11 +1425,34 @@ export const sitespecificBaoCases = pgTable(
   ],
 );
 
+/**
+ * What an appeal's details row snapshots at auto-denial time. The SPD
+ * citation is COPIED here from the denial reason option's configured text
+ * (`options_bao_appeal_denial_reason.data.spdCitation`): it is what the
+ * member was actually told, so a later edit of the reason changes future
+ * denials only. Null when the reason had no citation configured.
+ */
+export interface BaoAppealDetailsData {
+  spdCitation: string | null;
+}
+
+/**
+ * The appeal facts every surface reports beside an appeal case's row — the
+ * case detail endpoint, the committed status event and the case token kind
+ * all carry exactly these, so a letter renders what the detail screen shows.
+ * All null on a case that is not a benefit appeal.
+ */
+export interface BaoCaseAppealFacts {
+  benefitName: string | null;
+  denialReasonName: string | null;
+  spdCitation: string | null;
+}
+
 export const sitespecificBaoAppealDetails = pgTable("sitespecific_bao_appeal_details", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   caseId: varchar("case_id").notNull().unique(),
   denialReasonId: varchar("denial_reason_id").notNull(),
-  data: jsonb("data"),
+  data: jsonb("data").$type<BaoAppealDetailsData>(),
 }, (table) => [
   foreignKey({ name: "sitespecific_bao_appeal_details_case_id_fkey", columns: [table.caseId], foreignColumns: [sitespecificBaoCases.id] }).onDelete("cascade"),
   foreignKey({ name: "sitespecific_bao_appeal_details_denial_reason_id_fkey", columns: [table.denialReasonId], foreignColumns: [optionsBaoAppealDenialReason.id] }).onDelete("restrict"),

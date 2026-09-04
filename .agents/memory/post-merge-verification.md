@@ -38,3 +38,27 @@ kind must exist".
 against the pre-merge revision (`git show <pre>:<file> | rg 'id: "`), or compare
 the boot log's registered-plugin list across the merge — the boot log prints the
 full list per registry, which makes an absence visible in one glance.
+
+## A merged schema change can leave main unbootable — and two tasks may race to repair it
+
+Two adjacent merges left main failing the startup drift gate: one added a
+component migration file but never imported it from `scripts/migrate/index.ts`
+(the file existed, nothing registered it), the next added tables + a column to
+`shared/schema` with no migration at all and without listing the new tables in
+the component's `schemaManifest.tables`. Every task branched from that main
+inherited an app that would not boot, and two of them independently wrote the
+same repair (same migration number), which collide at merge time.
+
+**Why:** the drift gate only runs at boot, the migrations gate compares against
+a base that already contains the offence, and nothing asserts "every file
+under `scripts/migrate/components/*/` is imported".
+
+**How to apply:** when the first boot on a fresh task branch fails at
+`phase: drift-gate` naming tables you never touched, it is inherited — before
+writing the repair, check the task list for an IMPLEMENTED/IN_PROGRESS task
+that owns it ("…tables get created when the component is installed…"); if one
+exists, prefer waiting for / rebasing onto it, and if you must repair to
+proceed, make the migration idempotent (IF NOT EXISTS + pg_constraint checks)
+and say in `drift_reason` which task duplicates it so the second to land drops
+its copy (index import, file, manifest bump). Check `scripts/migrate/index.ts`
+imports every component migration file whenever one is added.

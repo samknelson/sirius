@@ -532,6 +532,17 @@ export interface BaoCaseStatusSavedPayload {
   assigneeUserId?: string;
   assigneeName?: string | null;
   /**
+   * Benefit Appeal facts as the case detail endpoint reports them at this
+   * write (the appealed benefit, the denial reason, and the SPD citation
+   * snapshotted with the denial), captured inside the writing transaction
+   * so a letter quotes what the detail screen showed. All null on a case
+   * that is not an appeal; `undefined` only on legacy emits that predate
+   * these fields.
+   */
+  benefitName?: string | null;
+  denialReasonName?: string | null;
+  spdCitation?: string | null;
+  /**
    * The effective acting user who performed this write (masquerade-aware:
    * the masqueraded identity, matching every other actor surface). Null
    * when the write had no resolvable actor (e.g. system/batch paths).
