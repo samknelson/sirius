@@ -43,7 +43,6 @@ import {
   optionsSitespecificBaoNotesTags,
   optionsWorkerBanType,
   optionsNoteType,
-  optionsGrievanceDenialReason,
   bulkMediumEnum,
 } from "@shared/schema";
 import { noteEntityTypeEnumOptions } from "@shared/notes";
@@ -95,7 +94,6 @@ export type OptionsTypeName =
   | "note-type"
   | "bao-notes-tag-type"
   | "bao-notes-tag"
-  | "grievance-denial-reason";
 
 /**
  * Field definition for dynamic form and table rendering

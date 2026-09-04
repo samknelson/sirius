@@ -2,21 +2,11 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { eq, asc } from "drizzle-orm";
 import { storage } from "../../storage";
-import { requireComponent, isComponentEnabled } from "../components";
+import { requireComponent } from "../components";
 import { buildContext, getAccessStorage } from "../../services/access-policy-evaluator";
 import {
   GRIEVANCE_CARDINALITIES,
   grievanceTimelineAdjustmentSchema,
-  APPEAL_META_KEY,
-  APPEAL_ONLY_COMPONENT,
-  APPEAL_WORKFLOW_VARIABLE,
-  appealWorkflowSettingsSchema,
-  type AppealWorkflowSettings,
-  trustBenefits,
-  trustProviders,
-  workers,
-  optionsGrievanceDenialReason,
-  optionsGrievanceStatus,
 } from "@shared/schema";
 import { getClient } from "../../storage/transaction-context";
 

@@ -12,7 +12,6 @@ import {
 import { apiRequest } from "@/lib/queryClient";
 import { useTerm } from "@/contexts/TerminologyContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { APPEAL_ONLY_COMPONENT } from "@shared/schema";
 
 interface TabAccessResponse {
   tabs: TabAccessResult[];
@@ -65,8 +64,6 @@ export function useTabAccess({
   enabled = true 
 }: UseTabAccessOptions): UseTabAccessResult {
   const term = useTerm();
-  const { hasComponent } = useAuth();
-  const appealOnly = hasComponent(APPEAL_ONLY_COMPONENT);
   
   const { data, isLoading, isError } = useQuery<TabAccessResponse>({
     queryKey: ['/api/access/tabs', entityType, entityId],
@@ -110,11 +107,7 @@ export function useTabAccess({
             ? filterAndResolve(tab.children)
             : undefined;
           
-          // BAO appeal-only surface relabels grievance tabs as appeals;
-          // otherwise apply terminology substitution if termKey is defined.
-          const label = appealOnly && tab.appealOnlyLabel
-            ? tab.appealOnlyLabel
-            : tab.termKey
+          const label = tab.termKey
               ? term(tab.termKey, { plural: tab.termPlural })
               : tab.label;
           
@@ -140,7 +133,7 @@ export function useTabAccess({
     };
 
     return filterAndResolve(tree);
-  }, [entityType, entityId, isLoading, data?.tabs, accessMap, term, appealOnly]);
+  }, [entityType, entityId, isLoading, data?.tabs, accessMap, term]);
 
   const getActiveRoot = (activeTabId: string): ResolvedTab | undefined => {
     for (const rootTab of filteredTree) {
