@@ -112,6 +112,8 @@ export const configSections: NavSection[] = [
       { path: "/config/sitespecific/bao/cobra-triggers", label: "BAO COBRA Triggers", icon: List, testId: "nav-config-bao-cobra-triggers", permission: "admin", requiresComponent: "sitespecific.bao" },
       { path: "/config/options/bao-cobra-status/list", label: "BAO COBRA Statuses", icon: List, testId: "nav-config-bao-cobra-statuses", permission: "admin", requiresComponent: "sitespecific.bao" },
       { path: "/config/options/bao-cobra-qualifying-event/list", label: "BAO COBRA Qualifying Events", icon: List, testId: "nav-config-bao-cobra-qualifying-events", permission: "admin", requiresComponent: "sitespecific.bao" },
+      { path: "/config/options/bao-case-type/list", label: "BAO Case Types", icon: List, testId: "nav-config-bao-case-types", permission: "admin", requiresComponent: "sitespecific.bao" },
+      { path: "/config/options/bao-appeal-denial-reason/list", label: "BAO Appeal Denial Reasons", icon: List, testId: "nav-config-bao-appeal-denial-reasons", permission: "admin", requiresComponent: "sitespecific.bao" },
     ],
   },
   {

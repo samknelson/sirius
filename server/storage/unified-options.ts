@@ -122,6 +122,8 @@ export interface FieldDefinition {
   /** For inputType="number": minimum accepted value (schema `minimum`). */
   min?: number;
   selectOptionsType?: OptionsTypeName;
+  /** For select-options fields whose rows come from a non-options API. */
+  selectOptionsEndpoint?: string;
   /** For inputType="multi-enum" or "enum": the allowed string values (and optional human labels). */
   enumOptions?: Array<{ value: string; label?: string }>;
   /**
@@ -213,6 +215,9 @@ export function fieldsToJsonSchema(
         prop.type = "string";
         if (f.selectOptionsType) {
           (prop as Record<string, unknown>)["x-options-resource"] = f.selectOptionsType;
+        }
+        if (f.selectOptionsEndpoint) {
+          (prop as Record<string, unknown>)["x-options-endpoint"] = f.selectOptionsEndpoint;
         }
         if (f.required) prop.minLength = 1;
         break;
@@ -781,7 +786,7 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, showInTable: true, columnHeader: "Description" },
-      { name: "eligibilityPluginIds", label: "Eligibility checks exempted on approval", inputType: "multi-enum", required: false, dataField: true, showInTable: false },
+      { name: "benefitId", label: "Benefit whose eligibility checks are exempted on approval", inputType: "select-options", required: false, dataField: true, selectOptionsEndpoint: "/api/trust-benefits", showInTable: false },
       { name: "spdCitation", label: "SPD citation", inputType: "textarea", required: false, dataField: true, showInTable: false },
     ],
   },
