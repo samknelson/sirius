@@ -44,13 +44,14 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 
 -   **`npm run lint` is the architecture-lint suite** — one entry point for
     every repo-wide architecture rule (`scripts/dev/lint.ts`). It runs all
-    twelve rules and reports **every** violation in one pass rather than
+    fifteen rules and reports **every** violation in one pass rather than
     stopping at the first, each with its own fix instructions:
     `env-registry`, `storage-encapsulation`, `denorm-declarations`,
     `html-utils`, `constraint-names`, `component-table-order`,
-    `core-migration-component-tables`, `lockfile-registry`,
-    `main-branch-files`, `carrying-branch-drift`, `maintenance-guards`,
-    `theme-color-vars`. Run one rule
+    `component-manifest-coverage`, `core-migration-component-tables`,
+    `lockfile-registry`, `main-branch-files`, `carrying-branch-drift`,
+    `maintenance-guards`, `theme-color-vars`, `date-formatting`,
+    `browser-timezone`. Run one rule
     with `npx tsx scripts/dev/lint.ts <rule-id>`, list them with `--list`.
     A new repo-wide rule is added to the `RULES` table in that file — never
     as its own workflow.
@@ -271,6 +272,19 @@ missing, extra, or mistyped.
     The counter persists across disable/enable cycles, so re-enabling a
     component whose tables were retained does NOT replay migrations it
     has already applied.
+    **A new component table needs three things, together:** the
+    `pgTable` in the component's schema module, an entry in that
+    component's `schemaManifest.tables` in `shared/components.ts` (in FK
+    creation order, with the manifest version bumped), and a component
+    migration that creates it on databases already brought up. The
+    manifest is the only thing the enable-path push and the drift gate
+    consult; a table declared in the schema module but left out of the
+    manifest is never created on an existing deployment and — because it
+    is still exported through `shared/schema.ts` — is judged a missing
+    CORE table on every deployment without it. The
+    `component-manifest-coverage` architecture-lint rule fails the build
+    when any `pgTable` in a component's schema module is missing from its
+    manifest (`npx tsx scripts/dev/lint.ts component-manifest-coverage`).
     **A core migration must never hard-depend on a component-owned
     table.** It runs on every deployment; a table in a component's
     `schemaManifest` only exists where that component is enabled, and

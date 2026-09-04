@@ -31,6 +31,8 @@ import dcMigration from "../../../scripts/migrate/components/sitespecific.bao/01
 import dcWorkflowMigration from "../../../scripts/migrate/components/sitespecific.bao/012_dc_case_workflow";
 import dcGrantMigration from "../../../scripts/migrate/components/sitespecific.bao/013_dc_grant_events";
 import dcExtensionsMigration from "../../../scripts/migrate/components/sitespecific.bao/014_dc_extensions_and_notes_retirement";
+import caseTypesMigration from "../../../scripts/migrate/components/sitespecific.bao/015_case_types_and_workflow_rules";
+import appealTablesMigration from "../../../scripts/migrate/components/sitespecific.bao/016_benefit_appeal_tables";
 
 const COMPONENT_ID = "sitespecific.bao";
 
@@ -49,9 +51,9 @@ interface BaoSchemaSet {
   leadTable: string;
 }
 
-/** The BAO case-management tables (010). */
+/** The BAO case-management tables (010) plus their case-type and Benefit Appeal amendments (015–016). */
 const CASE_SCHEMA: BaoSchemaSet = {
-  migrations: [caseManagementMigration],
+  migrations: [caseManagementMigration, caseTypesMigration, appealTablesMigration],
   leadTable: "sitespecific_bao_cases",
 };
 

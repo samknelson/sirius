@@ -86,6 +86,8 @@ import "./components/sitespecific.bao/011_create_disability_credit";
 import "./components/sitespecific.bao/012_dc_case_workflow";
 import "./components/sitespecific.bao/013_dc_grant_events";
 import "./components/sitespecific.bao/014_dc_extensions_and_notes_retirement";
+import "./components/sitespecific.bao/015_case_types_and_workflow_rules";
+import "./components/sitespecific.bao/016_benefit_appeal_tables";
 import "./components/sitespecific.freeman/001_create_crewleads";
 import "./components/sitespecific.freeman.edls_migrate/001_create_staging";
 import "./components/grievance/001_create_options_grievance_status";

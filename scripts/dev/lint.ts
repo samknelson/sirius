@@ -67,6 +67,11 @@ const RULES: Rule[] = [
     summary: "component manifest tables sort into a valid FK creation order",
   },
   {
+    id: "component-manifest-coverage",
+    script: "scripts/dev/check-component-manifest-coverage.ts",
+    summary: "every pgTable in a component's schema module is listed in its manifest",
+  },
+  {
     id: "core-migration-component-tables",
     script: "scripts/dev/check-core-migration-component-tables.ts",
     summary: "core migrations guard every component-owned table they touch",

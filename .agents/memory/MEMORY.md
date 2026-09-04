@@ -2,7 +2,7 @@
 - [In-app env overrides](env-overrides-framework.md) — env wins unless "released" (empty/`__UNSET__`); NO denylist, ALL registered vars overridable (owner decision, don't re-block); one ENV_{NAME} row per override.
 - [PUBLIC_URL single base-URL source](public-url-registry.md) — Replit domain vars are UNREGISTERED; all public-origin reads go through PUBLIC_URL (transform holds the fallback chain); external callbacks use getPublicBaseUrl.
 - [Env-var registry](env-var-registry.md) — all env reads go through getEnvironmentVariable (server/config/env-registry.ts, pure leaf); check-env-registry flags process-env even in comments.
-- [Migration version-counter collision](migration-version-collision.md) — merged low-version migrations get skipped past the shared counter.
+- [Migration version-counter collision](migration-version-collision.md) — merged low-version migrations get skipped past the shared counter; so is a migration file not imported from index.ts.
 - [Checkpointing during active merges](checkpoint-active-merge.md) — ordinary agent edits can checkpoint/reset an uncommitted merge; resolve and commit via Git before workspace edits.
 - [package-lock empty-version dedupe crash](lockfile-empty-version-dedupe.md) — fresh npm install dies with "Invalid Version:" when lockfile has nested optional platform entries lacking version.
 - [Vite HMR vs app WebSocket conflict](vite-hmr-ws-conflict.md) — app WS using `{ server, path }` aborts Vite HMR upgrades with 400 ("preview not loading").
@@ -145,7 +145,7 @@
 - [After-commit sibling history boundary](after-commit-sibling-history-boundary.md) — write an entity's history row INSIDE the save's tx (a listener records the wrong save, or none yet); order by the captured save stamp; diff the unfiltered read.
 - [Platform history re-parenting](platform-history-reparenting.md) — main gets rewritten into content-identical commits with new parents; long-lived config branches re-conflict forever — rebuild them, don't merge.
 - [Credential redaction in logs](audit-log-credential-redaction.md) — bearer-like values leak via TWO paths (storage before/after payload AND the API responsePreview key allowlist); log identifiers + hasX booleans, prove with a canary scan.
-- [Component migration/push parity](component-migration-push-parity.md) — the enable-path push leaves FKs UNNAMED (`<t>_<c>_fkey`) while keeping declared unique names; a creation migration must match, proven by snapshot-drop-migrate-compare.
+- [Component migration/push parity](component-migration-push-parity.md) — push leaves inline FKs UNNAMED, keeps `foreignKey({name})` + unique names (`.unique()` → `<t>_<c>_unique`); manifest coverage is part of parity; scratch-DB recipe inside.
 - [Send-path credential minting](send-path-credential-minting.md) — notifier links keyed by a per-entity credential need get-or-create (never set), `{record,issued}` for honest audit, and a throwing second-component check in shouldDispatch.
 - [Which logger reaches the log viewer](log-surface-console-vs-viewer.md) — app `logger` is console-only; only `storageLogger` writes winston_logs, so framework catch-and-log failures are NOT in the admin viewer.
 - [Remote schema bring-up](remote-schema-bringup.md) — shell-less target: env-var-only repairs, pure-leaf console report, fatal migration failures, drift↔migration match is textual + newest-first.

@@ -5,6 +5,15 @@ description: Why a low-version incoming migration silently does nothing after me
 
 # Migration version-counter collision (Sirius migration framework)
 
+**Same trap, different cause — an unregistered file.** A component migration
+file that exists on disk but is not imported from `scripts/migrate/index.ts`
+is not "pending": the runner stamps the highest version it knows, so once a
+later registered version runs, the unregistered one is skipped forever on
+every database past it (BAO 015 shipped that way; the only symptom was the
+boot drift gate). When adding migration N, confirm N-1 is imported too. The
+BAO registry test now asserts the on-disk files and the registered versions
+match contiguously.
+
 **Author-time guard exists:** the migration check now rejects newly added core
 migrations numbered at or below the version floor of both the current and base
 branches — run it with `--base=<target>` when merging so target-only versions
