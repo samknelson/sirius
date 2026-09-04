@@ -100,7 +100,9 @@ export default function CardcheckViewPage() {
   const canSign = allCheckboxesChecked && isRateValid;
 
   const buildDocRender = (): string => {
-    let docRender = definition?.body || "";
+    // The authored body is optional. Keep building the snapshot from the
+    // same sections shown on this page even when it is empty.
+    let docRender = definition?.body ?? "";
     
     // Include bargaining unit in the signed document if component is enabled and cardcheck has one
     if (hasComponent("bargainingunits") && bargainingUnit) {

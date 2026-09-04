@@ -199,8 +199,18 @@ export function registerCardchecksRoutes(
 
       const { docRender, esigData, signatureType, docType = "cardcheck", rate } = req.body;
 
-      if (!docRender || !esigData) {
+      if (typeof docRender !== "string" || !esigData || typeof esigData !== "object") {
         return res.status(400).json({ message: "Missing required signing data" });
+      }
+
+      const signatureValue = typeof esigData.value === "string" ? esigData.value.trim() : "";
+      const validSignature =
+        (signatureType === "typed" && esigData.type === "typed" && signatureValue.length > 0) ||
+        (signatureType === "canvas" && esigData.type === "canvas" &&
+          /^data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/]+={0,2}$/.test(signatureValue)) ||
+        (signatureType === "upload" && esigData.type === "upload" && signatureValue.length > 0);
+      if (!validSignature) {
+        return res.status(400).json({ message: "Missing or invalid signature data" });
       }
 
       // Extract fileId from esigData if signing with uploaded document
