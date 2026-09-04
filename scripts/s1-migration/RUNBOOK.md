@@ -21,6 +21,64 @@ never bulk-migrate).
 |---|---|
 | `EXTERNAL_DATABASE_URL` | The S2 **target** database. Every loader resolves `EXTERNAL_DATABASE_URL \|\| DATABASE_URL` via `shared/database-url.ts`. Neon `-pooler.` hostnames are rewritten to the direct endpoint automatically. |
 | `S1_DATABASE_URL` | The S1 MariaDB (mysql2). **Must carry an explicit port.** Beware trailing whitespace in the value — `generate.mjs` fails with `Incorrect database name 'smf_prod '`. Safe invocation: `S1_DATABASE_URL="$(printf %s "$S1_DATABASE_URL" | tr -d '[:space:]')" …` |
+| `TZ` | **`America/Los_Angeles`, always** — the pinned S2 system zone (next subsection). Baked into the `migration` image; a shell running any `scripts/s1-migration/*` command must `export TZ=America/Los_Angeles` first. Every stage/loader/verify/sync/bootstrap process refuses to write anything if it is not running in this zone. |
+
+### Time zone pin (read before the first rehearsal — never changes afterwards)
+
+S2 stores its core timestamps as `timestamp` (no zone). The wall clock in such
+a column means "wall clock in the zone the app runs in" — the app applies `TZ`
+at boot, `pg` serializes every JS Date in that zone, and every DB session is
+aligned to it. A loader is just another writer of those columns, so **loader
+and app must run in the same zone** or every migrated instant (payment
+`datetime_created`, ledger dates, comm/note timestamps, last-login, cardcheck
+signatures, `created_at` defaults) lands 7–8 hours from where the app reads it
+— silently. The fund decision, matching S1's own Drupal zone:
+
+> **The S2 system time zone is `America/Los_Angeles`.** It is pinned before
+> the first rehearsal and is **never changed** — not through cutover, not on
+> the running production site. (`scripts/s1-migration/lib/timezone-pin.ts` is
+> the single source; `lib/timezone-contract.ts` is the full contract.)
+
+What the pin covers, and how each piece is set:
+
+| Where | How it is pinned | Checked by |
+|---|---|---|
+| Migration image / any migration shell | `ENV TZ=America/Los_Angeles` in the `migration` Dockerfile target; `export TZ=…` in a dev shell | the gate in every entrypoint (`ensureStagingSchema` → `assertMigrationTimeZone`) |
+| The target's in-app override (`ENV_TZ` row) | Not set by the migration. If present it must equal the pin (the app boots into it when the deployment sets no `TZ`) | the gate (`storedOverride`) |
+| DB session | The app's pool checkout hook issues `SET TIME ZONE` per session — nothing to configure | the gate (`dbSessionTimeZone`) |
+| The **web app** deployment (bao-dev/stg/prd ECS) | `TZ=America/Los_Angeles` in the task definition environment (GitHub `APP_TZ` for the deploy workflow) — **must be in place before cutover**, and before any parity read that compares timestamps | app boot log / `TZ` row in the in-app environment screen |
+
+Dev workspace note: the Replit dev app runs unpinned (UTC) unless its `TZ` is
+set, while every dev rehearsal loader now runs pinned. Timestamps written by a
+dev rehearsal are LA wall clocks; read them through an app that is also
+pinned (set `TZ` for the workflow) before judging a "7-hour shift".
+
+The gate never has an override flag. A run in the wrong zone fails **before
+the first write** with `MigrationTimeZoneError` naming every violation
+(runtime zone, unset/implicit zone, stored-override mismatch, session
+mismatch, DST fingerprint mismatch). Fix the environment and re-run.
+
+**Evidence.** Every loader envelope carries `runtime.timeZone` and the sync
+aggregate report carries `timeZone` (runtime zone, where it came from, stored
+override, session zone, DST offsets at fixed Jan/Jul probes, node/ICU/tzdata
+versions — aggregates only, never data). `sync.ts` refuses a child envelope
+without it or with a zone other than the pin. A mismatched historical run is
+therefore diagnosable from `s1_staging.runs` alone.
+
+**User time zones are not the system zone.** S2 also has per-user display
+zones (a preference the app may honour some day). S1's `users.timezone` is
+staged as source data and counted in the stage report
+(`rawUserTables[users].userTimeZones` — empty/valid/invalid/distinct), but no
+loader reads it and nothing in the ETL or fund-calendar math consults it
+(`tests/s1-migration/timezone-pin-structure.test.ts` enforces both). Enabling
+personal zones for S2 users is a separate product decision with no migration
+impact.
+
+**S1 field semantics are unchanged** (06 §5 rulings; see
+`docs/s1-migration/03-transformations.md` "Time zone contract" for the
+category → handling table). Date-only values stay `YYYY-MM-DD` strings end to
+end; LA wall-clock values are read literally; UTC-stored values are parsed as
+explicit UTC instants; epochs become instants or LA-calendar buckets.
 
 The production run happens **inside the HIPAA boundary**. Loader/harness output is
 aggregates-only by design and safe to share; never paste raw S1 rows anywhere.
@@ -78,6 +136,8 @@ runbook step, the step command passed as a container command override:
 Task definition requirements:
 - **Env/secrets:** `EXTERNAL_DATABASE_URL` (S2 target) and `S1_DATABASE_URL`
   (S1 MariaDB) via Secrets Manager — the only two variables the scripts need.
+  `TZ=America/Los_Angeles` is baked into the image; do **not** override it in
+  `containerOverrides.environment` (the gate would refuse the run anyway).
 - **Size:** ~1–2 GB memory, 1 vCPU. Loaders are keyset-paged and benched under
   a 512 MB heap cap; 2 GB gives headroom for the ~1M-node stage step.
 - **No timeout / long-lived:** the long poles (hours, benefit-history) are
@@ -92,9 +152,16 @@ database without an explicit runbook command.
 ## 2. Target bootstrap (ONE command — no manual preconfiguration)
 
 ```bash
+export TZ=America/Los_Angeles                              # §1 time zone pin (already baked into the image)
 npx tsx scripts/s1-migration/bootstrap-target.ts          # fresh/empty target
 npx tsx scripts/s1-migration/bootstrap-target.ts --wipe   # populated target
 ```
+
+The first thing bootstrap does — before the advisory lock, before a single
+migration — is the §1 time zone gate; its log line
+`[bootstrap-target] time zone: America/Los_Angeles (source=environment, session=America/Los_Angeles)`
+is the first evidence of a correctly pinned target. An empty target has no
+`ENV_TZ` row, so on bootstrap the pin can only come from the environment.
 
 The bootstrap brings ANY target (empty, schema-only, or previously populated)
 to the exact state the loaders expect:
@@ -898,9 +965,18 @@ current open-span month), and the ruled report-only finding kinds per mode.
 UNKNOWN reject/finding classes are never forwarded — loaders fail closed on
 them (§5 fail-loud policy). Config changes are commits, reviewed like code.
 
+**Time zone first.** Before the lock, before staging, the orchestrator runs
+the §1 gate and logs `[sync] time zone: America/Los_Angeles (source=…,
+session=…, offsets std/dst=-480/-420, tzdata=…)`; the same evidence is the
+aggregate report's `timeZone` block. A wrong or unpinned zone is a FAIL with
+nothing written. Children inherit the (applied) `TZ` and re-prove it in their
+own envelopes.
+
 **Result contract (no log scraping).** Every fleet step must write the §10
 standard envelope to its `S1_RESULT_JSON_PATH` file. The orchestrator
-validates presence, schema, loader name, dry-run/force echo, and
+validates presence, schema, loader name, dry-run/force echo,
+`runtime.timeZone` (present AND equal to the pin — a loader that bypassed the
+gate, or ran in another zone, fails the run), and
 LOGIC_VERSION against `sync-config.ts` — a transform fix that bumps a
 loader's version without updating sync-config FAILS the run (the §10 bump
 rule, enforced), and a loader that exits 0 without a valid envelope fails the
@@ -1002,6 +1078,15 @@ pass; and final-freeze PASS after the S1 side is restored.
 
 ## 12. Dual-run procedure (initial load → daily sync → freeze → cutover)
 
+0. **Pin the time zone (once, before anything else)** — §1 "Time zone pin":
+   the migration image carries `TZ=America/Los_Angeles`; confirm the web
+   app's ECS task definition for the target environment carries the same
+   `TZ` (GitHub `APP_TZ`) and that the target has no conflicting `ENV_TZ`
+   override. From this point the zone is **frozen**: it stays
+   `America/Los_Angeles` through every daily sync, the final freeze, cutover
+   and for the life of the production site. Changing it later would
+   reinterpret every already-stored wall clock — there is no migration for
+   that, by design.
 1. **Initial production load** — §2 bootstrap, then the §4 command sequence
    for the first full load (operator-paced, per-step triage), §6 parity.
    Okta pre-provisioning (§4.15) is DEFERRED to step 5.
@@ -1081,6 +1166,13 @@ sign-in → pre-linked worker, end to end. Everything else stays synthetic.
 
 ### 4.17 CUTOVER (manual, runbook-only)
 
+- **Time zone evidence check (go/no-go item):** the final-freeze aggregate
+  report's `timeZone.runtimeTimeZone`, `timeZone.dbSessionTimeZone` and every
+  fleet envelope's `runtime.timeZone.runtimeTimeZone` read
+  `America/Los_Angeles`; the production web app boots with
+  `TZ=America/Los_Angeles` (its environment screen shows `TZ` from the
+  environment, not released/unset). Any other value is a no-go: fix the
+  deployment, never the data.
 - The **activation-email wave** = §4.15 full `--execute` run at cutover, after
   the final prod load + parity PASS. It is deliberately NOT part of any
   rehearsal or automated sequence.

@@ -73,7 +73,7 @@ import { db, pool as pgPool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping, advanceFingerprints, deleteMapping } from "./lib/idmap";
-import { RejectLog, pagedStaged, stagedCountOf, chunk, strOf, tidOf, targetNidOf, toYmd, throttleStorageOpLogs } from "./lib/loader-utils";
+import { RejectLog, pagedStaged, stagedCountOf, chunk, strOf, tidOf, targetNidOf, toYmd, parseUtcInstant, throttleStorageOpLogs } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
 import { buildEntityResolver, ensureLedgerAccounts } from "./lib/resolvers";
 import { AMOUNT_RE, PAYMENT_STATUS_MAP as STATUS_MAP, type S2PaymentStatus } from "./lib/parity";
@@ -121,22 +121,6 @@ const FATAL_REASONS = [
   "mapped_row_missing",
 ] as const;
 
-const DT_RE = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)$/;
-
-/** "YYYY-MM-DD HH:MM[:SS]" site-convention (stored UTC) → UTC Date.
- * Strict: the date part must be a real calendar date and the time fields in
- * range — new Date() normalization (2024-02-30 → Mar 1) must not invent
- * instants for malformed source rows; they reject instead. */
-function parseUtcInstant(raw: string): Date | null {
-  const m = raw.trim().match(DT_RE);
-  if (!m) return null;
-  if (toYmd(m[1]) !== m[1]) return null;
-  const t = m[2].length === 5 ? `${m[2]}:00` : m[2];
-  const [hh, mi, ss] = t.split(":").map(Number);
-  if (hh > 23 || mi > 59 || ss > 59) return null;
-  const d = new Date(`${m[1]}T${t}Z`);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
 
 async function main() {
   const startedAt = new Date();

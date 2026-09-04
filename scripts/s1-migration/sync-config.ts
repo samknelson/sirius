@@ -21,6 +21,8 @@
  * exact-match). Nothing unlisted can pass silently.
  */
 
+import { MIGRATION_SYSTEM_TIME_ZONE } from "./lib/timezone-pin";
+
 /** Report-only finding kinds that exist in the fleet today. A NEW kind must
  * be added here (and given a mode policy) before any profile may allow it —
  * validateSyncConfig refuses unknown kinds. */
@@ -382,7 +384,7 @@ export function validateSyncConfig(): void {
 /** Current month in America/Los_Angeles as YYYY-MM (the fund's clock — same
  * convention as the t17 loader default and getTodayYmd()). */
 export function currentLaMonth(now = new Date()): string {
-  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit" });
+  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: MIGRATION_SYSTEM_TIME_ZONE, year: "numeric", month: "2-digit" });
   const parts = fmt.formatToParts(now);
   const y = parts.find((p) => p.type === "year")?.value;
   const m = parts.find((p) => p.type === "month")?.value;

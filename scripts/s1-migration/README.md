@@ -137,7 +137,11 @@ run report prints which source was used.
 
 ## Usage
 
+Every command below refuses to run unless the process is pinned to the S2
+system zone (RUNBOOK §1 "Time zone pin"; the `migration` image bakes it in):
+
 ```bash
+export TZ=America/Los_Angeles
 npx tsx scripts/s1-migration/stage.ts --mode daily
 npx tsx scripts/s1-migration/stage.ts --mode final-freeze
 npx tsx scripts/s1-migration/stage.ts --mode daily --bundles sirius_worker,sirius_contact

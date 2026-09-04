@@ -10,6 +10,7 @@
 import { db } from "../../../server/storage/db";
 import { sql, type SQL } from "drizzle-orm";
 import { contentHashOf } from "./sync";
+import { assertMigrationTimeZone } from "./timezone-contract";
 
 /**
  * Postgres cannot represent NUL (\u0000) in text or jsonb (error 22P05) —
@@ -83,6 +84,13 @@ export interface StagedTerm {
 }
 
 export async function ensureStagingSchema(): Promise<void> {
+  // TIME ZONE GATE FIRST. This is the first call of every stage/loader/verify/
+  // sync entrypoint, which makes it the one choke point that can guarantee no
+  // migration process writes a single timestamp into the target before the
+  // process, the target's stored override and the DB session are all proven
+  // to be the pinned S2 system zone (lib/timezone-contract.ts). Throws
+  // MigrationTimeZoneError — never caught here or by callers.
+  await assertMigrationTimeZone();
   await db.execute(sql`CREATE SCHEMA IF NOT EXISTS s1_staging`);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS s1_staging.records (

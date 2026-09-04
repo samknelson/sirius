@@ -98,6 +98,16 @@ async function main() {
   const { pool } = await import("../../server/storage/db");
   const q = async (text: string, params?: unknown[]) => (await pool.query(text, params)).rows;
 
+  // --- Time zone gate: the very first thing that touches the target. -------
+  // Bootstrap writes the first timestamps this database will ever hold
+  // (migrations, seeds, component enables — via the session's now()), and its
+  // children stage + load. All of it must happen in the pinned S2 system zone
+  // (lib/timezone-contract.ts, RUNBOOK §1 "Time zone pin"). On an empty target
+  // there is no ENV_TZ row yet, so the pin can only come from the environment.
+  const { assertMigrationTimeZone } = await import("./lib/timezone-contract");
+  const tz = await assertMigrationTimeZone();
+  console.log(`[bootstrap-target] time zone: ${tz.runtimeTimeZone} (source=${tz.source}, session=${tz.dbSessionTimeZone})`);
+
   // --- 0. Single-run guard (advisory lock, session-scoped on one client) ---
   const lockClient = await pool.connect();
   const [{ got }] = (await lockClient.query(`SELECT pg_try_advisory_lock(${MIGRATION_LOCK_KEY}) AS got`)).rows;

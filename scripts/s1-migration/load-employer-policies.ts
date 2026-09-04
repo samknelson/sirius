@@ -144,6 +144,9 @@ function winnerOf<T extends { id: string; date: string; policyId: string; create
   if (history.length === 0) return null;
   return [...history].sort((a, b) => {
     if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+    // createdAt is an S2 history-row timestamp read back from storage (Date,
+    // or naive text meaning "process-zone wall clock" — same zone pg wrote it
+    // in, because the gate pinned this process). Never an S1 string.
     const ac = a.createdAt ? new Date(a.createdAt as any).getTime() : -Infinity;
     const bc = b.createdAt ? new Date(b.createdAt as any).getTime() : -Infinity;
     if (ac !== bc) return ac < bc ? 1 : -1;

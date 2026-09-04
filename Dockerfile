@@ -166,6 +166,11 @@ RUN npm prune --omit=dev
 FROM deps AS migration
 
 ENV NODE_ENV=production
+# The pinned S2 system zone (scripts/s1-migration/lib/timezone-contract.ts,
+# RUNBOOK §1 "Time zone pin"). Every migration process refuses to write unless
+# it runs in this zone; baking it in means an ECS command override cannot
+# forget it. The WEB app's task definition must carry the same TZ.
+ENV TZ=America/Los_Angeles
 WORKDIR /app
 USER node
 

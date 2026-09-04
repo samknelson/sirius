@@ -466,6 +466,16 @@ From production aggregates:
 
 The timezone item in `05-open-questions.md` is closed. This section is **mandatory reading before writing any date transform.**
 
+> **2026-09-03 — implementation contract added.** S2 now interprets every
+> no-zone `timestamp` column in its *system* zone (`TZ` at boot). The
+> migration therefore **pins the S2 system zone to `America/Los_Angeles`**
+> (the same zone this section documents for Drupal) and every migration
+> process refuses to write in any other zone. The per-field rulings below are
+> unchanged; how each category is carried into S2 against that pin — and how
+> per-*user* zones are kept out of the ETL — is in
+> [03-transformations.md → "Time zone contract"](03-transformations.md#time-zone-contract-system-zone-pin--2026-09-03)
+> and RUNBOOK §1 "Time zone pin".
+
 All 22 date fields in S1 are D7 `datetime` **string** columns — none are integer Unix timestamps. (`node.created` and `node.changed` remain integers and are timezone-independent.)
 
 Drupal site config: `date_default_timezone = America/Los_Angeles`, `configurable_timezones = 1`, `user_default_timezone = 0`.

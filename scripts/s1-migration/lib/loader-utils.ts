@@ -114,6 +114,15 @@ export function yesNo(v: string | null): boolean | null {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Date transforms. THE RULE (lib/timezone-contract.ts, 03-transformations
+// "Time zone contract"): a bare S1 string is NEVER handed to `new Date(str)`
+// or `Date.parse(str)` — both interpret a zone-less string in the HOST zone.
+// Date-only and LA-wall-clock values stay strings (calendar arithmetic goes
+// through Date.UTC on the digits); a UTC-stored value gets an explicit `Z`;
+// an epoch becomes an instant. Nothing below reads the process zone.
+// ---------------------------------------------------------------------------
+
 /** "1971-06-07 00:00:00" → "1971-06-07" (D7 wall-time datetimes, date-only).
  * Strict: the Y-M-D must be a real calendar date (2024-02-30 → null) — a
  * malformed source date must become a counted reject, not a normalized fiction. */
@@ -134,6 +143,25 @@ export function toYmd(raw: string): string | null {
 export function epochToYmd(epoch: number): string | null {
   if (!Number.isFinite(epoch) || epoch < 0 || epoch > 4102444800) return null;
   return new Date(epoch * 1000).toISOString().slice(0, 10);
+}
+
+const SITE_DT_RE = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)$/;
+
+/** "YYYY-MM-DD HH:MM[:SS]" site-convention (`tz_handling: site`, stored UTC —
+ * 06 §5) → the UTC instant it denotes, as a Date. The trailing `Z` is what
+ * makes this host-independent; storage then serializes the Date in the pinned
+ * process zone. Strict: the date part must be a real calendar date and the
+ * time fields in range — new Date() normalization (2024-02-30 → Mar 1) must
+ * not invent instants for malformed source rows; they reject instead. */
+export function parseUtcInstant(raw: string): Date | null {
+  const m = raw.trim().match(SITE_DT_RE);
+  if (!m) return null;
+  if (toYmd(m[1]) !== m[1]) return null;
+  const t = m[2].length === 5 ? `${m[2]}:00` : m[2];
+  const [hh, mi, ss] = t.split(":").map(Number);
+  if (hh > 23 || mi > 59 || ss > 59) return null;
+  const d = new Date(`${m[1]}T${t}Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 type RawStagedRow = {

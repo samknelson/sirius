@@ -287,7 +287,14 @@ function stableStringify(v: unknown): string {
   return JSON.stringify(v) ?? "null";
 }
 
-/** Date/string/null → epoch ms | null (timestamp comparisons). */
+/** Date/string/null → epoch ms | null (timestamp comparisons).
+ * Inputs are S2 `signed_date` values (a naive `timestamp` column) coming back
+ * from the driver, or the Date this loader built from an epoch. A naive column
+ * read back as text is zone-less BY DEFINITION and means "wall clock in the
+ * process zone" — which is exactly how `new Date(str)` reads it, and the same
+ * convention pg used to write it. That equivalence holds only because the
+ * gate pinned this process to the S2 system zone (lib/timezone-contract.ts);
+ * never feed an S1 source string through here. */
 function toEpoch(v: Date | string | null | undefined): number | null {
   if (v == null) return null;
   const d = v instanceof Date ? v : new Date(v);

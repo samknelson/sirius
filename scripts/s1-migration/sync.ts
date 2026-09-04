@@ -75,6 +75,7 @@ import {
   validateStageResultPayload,
   type StageResultLike,
 } from "./lib/stage-result-contract";
+import { assertMigrationTimeZone, MIGRATION_SYSTEM_TIME_ZONE } from "./lib/timezone-contract";
 import {
   FLEET,
   PROFILES,
@@ -170,6 +171,7 @@ interface EnvelopeLike {
   verify: { status: "pass" | "fail"; failures: number };
   findings: Array<{ kind: string }>;
   blockingFindings: Array<{ kind: string }>;
+  runtime: { timeZone: { runtimeTimeZone: string; dbSessionTimeZone: string | null; expected: string } | null };
 }
 
 function validateEnvelope(step: FleetStep, run: ChildRun, forcedThisRun: boolean): { env: EnvelopeLike | null; contractErrors: string[] } {
@@ -203,6 +205,15 @@ function validateEnvelope(step: FleetStep, run: ChildRun, forcedThisRun: boolean
   const v = e.verify;
   if (!v || (v.status !== "pass" && v.status !== "fail") || typeof v.failures !== "number") errs.push("verify missing/malformed");
   if (!Array.isArray(e.findings) || !Array.isArray(e.blockingFindings)) errs.push("findings/blockingFindings missing");
+  // Time zone evidence (lib/timezone-contract.ts). A fleet child is spawned
+  // with this process's environment, so it SHOULD have passed the same gate;
+  // the envelope is the proof. A missing block means the loader never ran the
+  // gate (bypassed ensureStagingSchema) — a contract violation, not a warning.
+  const tz = e.runtime?.timeZone;
+  if (!tz || typeof tz.runtimeTimeZone !== "string") errs.push("runtime.timeZone evidence missing — loader skipped the time zone gate");
+  else if (tz.runtimeTimeZone !== MIGRATION_SYSTEM_TIME_ZONE || (tz.dbSessionTimeZone != null && tz.dbSessionTimeZone !== MIGRATION_SYSTEM_TIME_ZONE)) {
+    errs.push(`loader ran in zone ${tz.runtimeTimeZone} / session ${String(tz.dbSessionTimeZone)} — pinned zone is ${MIGRATION_SYSTEM_TIME_ZONE}`);
+  }
   return { env: errs.length === 0 ? (e as EnvelopeLike) : null, contractErrors: errs };
 }
 
@@ -233,6 +244,14 @@ async function main() {
     console.log("");
   }
 
+  // --- Time zone gate (before ANY write, before staging): the process, the
+  // target's stored TZ override and the DB session must all be the pinned S2
+  // system zone. Throws MigrationTimeZoneError — a failed run with nothing
+  // written. Children inherit this process's (now applied) TZ and re-prove it
+  // in their own envelopes (validateEnvelope).
+  const timeZone = await assertMigrationTimeZone();
+  console.log(`[sync] time zone: ${timeZone.runtimeTimeZone} (source=${timeZone.source}, session=${timeZone.dbSessionTimeZone}, offsets std/dst=${timeZone.runtimeOffsets.standard}/${timeZone.runtimeOffsets.daylight}, tzdata=${timeZone.tz})`);
+
   // --- Advisory lock: one migration process per target, ever. -------------
   await ensureStagingSchema();
   const lockClient = await pgPool.connect();
@@ -255,6 +274,7 @@ async function main() {
     keepGoing: KEEP_GOING,
     openEndThrough: horizon,
     parityMonths: months,
+    timeZone, // aggregate runtime evidence — diagnose a mismatched run from s1_staging.runs alone
   };
   let writeFence: AppWriteFenceLease | undefined;
   let aggregateRunId: number | undefined;

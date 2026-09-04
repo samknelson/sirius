@@ -38,6 +38,7 @@ import { db } from "../../../server/storage/db";
 import { sql, type SQL } from "drizzle-orm";
 import { deleteMapping, getMappings, markSourceDeleted, type MappingInfo } from "./idmap";
 import type { RejectLog } from "./loader-utils";
+import { getTimeZoneEvidence, type TimeZoneEvidence } from "./timezone-contract";
 
 // ---------------------------------------------------------------------------
 // Canonical hashing
@@ -353,6 +354,12 @@ export interface LoaderResult {
   /** Existing domain detail (per-vocab stats, reject samples, ...) — nested,
    * never discarded. */
   detail: Record<string, unknown>;
+  /** Runtime evidence the gate collected (lib/timezone-contract.ts): the zone
+   * this loader process actually ran in, where it came from, the DB session
+   * zone and the DST fingerprint. Null only when the gate never ran in this
+   * process (a dev utility that skipped ensureStagingSchema). Aggregate
+   * facts only — no source data. */
+  runtime: { timeZone: TimeZoneEvidence | null };
 }
 
 export function buildLoaderResult(args: {
@@ -385,6 +392,7 @@ export function buildLoaderResult(args: {
     findings,
     blockingFindings: findings.filter((f) => !allowedFindings.has(f.kind)),
     detail: args.detail ?? {},
+    runtime: { timeZone: getTimeZoneEvidence() },
   };
 }
 

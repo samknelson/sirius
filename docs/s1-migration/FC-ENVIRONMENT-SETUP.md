@@ -85,6 +85,13 @@ Fargate, 1 vCPU / 2 GB, `awsvpc`, reusing the FC web service's
 mapping the two Secrets Manager ARNs to `EXTERNAL_DATABASE_URL` /
 `S1_DATABASE_URL`, awslogs driver → group `/sirius-migration`.
 
+Time zone: the image bakes in `TZ=America/Los_Angeles` (RUNBOOK §1 "Time
+zone pin"); put nothing about `TZ` in the task definition or in run-task
+overrides. The **web service's** task definition must carry
+`TZ=America/Los_Angeles` too (GitHub `APP_TZ` for the deploy workflow) before
+any parity read or cutover — the migration gate checks the database and its
+own process, but it cannot see the web task's environment.
+
 ```bash
 aws ecs register-task-definition --cli-input-json file://migration-taskdef.json --region us-west-2
 ```

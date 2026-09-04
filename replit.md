@@ -747,7 +747,9 @@ plugin kind").
     idempotency, VDB pension reconciliation, etc.) — `docs/architecture-decisions.md`
 -   **S1→S2 migration** (mapping spec, transformations, open questions,
     prod query pack) — `docs/s1-migration/`; operating procedure —
-    `scripts/s1-migration/RUNBOOK.md`; operational traps — `docs/GOTCHAS.md`
+    `scripts/s1-migration/RUNBOOK.md` (§1: every migration command needs
+    `TZ=America/Los_Angeles` — the pinned S2 system zone — or it refuses to
+    write); operational traps — `docs/GOTCHAS.md`
 -   **System architecture & external dependencies** (full stack
     breakdown, system design choices, third-party libraries) —
     `docs/architecture.md`

@@ -7,6 +7,7 @@
  * adopt-or-create), all through the S2 storage layer.
  */
 import { storage } from "../../../server/storage/database";
+import { MIGRATION_SYSTEM_TIME_ZONE } from "./timezone-pin";
 import { getMappings, putMapping } from "./idmap";
 import { loadStaged, type StagedNode } from "./loader-utils";
 
@@ -88,8 +89,11 @@ export function monthsBetweenInclusive(a: Ym, b: Ym): Ym[] {
   return out;
 }
 
+// Fund-calendar bucketing is done in the PINNED system zone explicitly (never
+// the host zone, even though the gate proves they are equal) — see
+// lib/timezone-contract.ts. The user-zone framework plays no part here.
 const LA_YMD = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/Los_Angeles",
+  timeZone: MIGRATION_SYSTEM_TIME_ZONE,
   year: "numeric",
   month: "2-digit",
   day: "2-digit",

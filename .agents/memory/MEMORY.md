@@ -183,3 +183,4 @@
 - [Cron tick heartbeat](cron-tick-heartbeat.md) — periodic plugin work subscribes to a shared wall-clock tick (one EventType per period), not its own cron; best-effort + level-triggered, dueness from the last LIVE SUCCESS, never a "how late" count.
 - [Dashboard widget registry glob depth](dashboard-widget-registry-glob-depth.md) — client registry globs ./*/*.tsx as `<dir>:<File>`; a SHARED card must sit above the widget dirs or it registers as a phantom widget.
 - [Upstream merge playbook](upstream-merge-playbook.md) — renumber upstream core migrations above our counter (else silently skipped); keep-both splits JSDoc/JSX; run arch lint; known env-noise test failures.
+- [Migration system-zone pin](migration-timezone-pin.md) — every S1→S2 writer gated on TZ=America/Los_Angeles via ensureStagingSchema (no override); evidence in envelopes; dev shell is UTC so prefix TZ.

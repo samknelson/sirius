@@ -18,6 +18,46 @@ Each T# is referenced from [02-mapping.md](02-mapping.md). Global rules first, t
   | **UTC** (`tz_handling: site`) — convert UTC → America/Los_Angeles | | `field_sirius_datetime`, `field_sirius_datetime_created`, `field_sirius_datetime_completed`, `field_sirius_dispatch_availdate`, `field_sirius_daterepeat`, `field_sirius_dispatch_hfe_until` |
 
   DST: `none` fields can hold nonexistent (`2026-03-08 02:30`) or ambiguous (`2026-11-01 01:30`) values — **never let the datetime library resolve them silently**; log and report affected rows. Every date transform below (T6, T13, T16–T22 date casts, and all `_value` datetime reads) must consult this table; a transform that touches a date field not listed here is a spec bug — stop and classify the field first. Validation must include a test covering both conventions and both DST edge cases (06 §9.9).
+
+### Time zone contract (system zone pin — 2026-09-03)
+
+S2 now has an explicit timezone framework, and it changes what "load a
+timestamp" means. Two distinct zones exist and must never be confused:
+
+| Zone | What it is | Who owns it | Migration role |
+|---|---|---|---|
+| **System time zone** | The zone the S2 process runs in (`TZ` at boot → `server/config/system-timezone.ts`). Every `timestamp` (no-zone) column stores the **wall clock in this zone**: `pg` serializes JS Dates in it and every DB session is aligned to it, so `now()` defaults agree. | Deployment (fund decision) | **Pinned to `America/Los_Angeles`** — the same zone S1's Drupal ran in. Every migration process runs the gate in `scripts/s1-migration/lib/timezone-contract.ts` before its first write and refuses any other zone. Single source: `lib/timezone-pin.ts`. |
+| **User time zone** | A per-person display preference (`shared/utils/timezone.ts`, policy `allowUserTimezones`, default off). Affects rendering only. | Each user, if the policy allows | **Isolated.** S1 `users.timezone` is staged and counted (stage report `userTimeZones`), never read by a loader, never consulted by ETL or fund-calendar math. Enabling personal zones for S2 users is out of scope and has no migration impact. |
+
+Why the pin: a loader is just another writer of the no-zone columns. Run it in
+UTC while the app runs in LA and every migrated instant is stored 7–8 hours
+off — nothing throws. The gate therefore requires, all at once: runtime zone
+(`Intl`) = pin, the zone configured **explicitly** (env `TZ` or the target's
+`ENV_TZ` override row — never the container default), any stored `ENV_TZ`
+override = pin, DB session `TimeZone` = pin, and the runtime's DST offset
+fingerprint (Jan/Jul probes) = the pin's. Evidence (aggregates only) rides in
+every loader envelope (`runtime.timeZone`) and the sync report (`timeZone`).
+
+How each S1 date category is handled **against the pinned zone** (the 06 §5
+rulings are unchanged; this is their implementation contract). The invariant
+behind every row: **a bare S1 string is never passed to `new Date(str)` or
+`Date.parse(str)`** — both read a zone-less string in the host zone.
+
+| S1 category | Examples | S2 target | Handling | Helper |
+|---|---|---|---|---|
+| Date-only (`none`, time part meaningless) | `field_sirius_dob`, coverage `date_start`/`date_end`, policy/rate effective dates, `skill_expire` | `date` column / `YYYY-MM-DD` in jsonb | The **string** is the value, end to end. Calendar validity via `Date.UTC` on the digits; a Date object never carries it, so no zone can move it a day. | `toYmd` |
+| LA wall clock (`none`, time part meaningful) | pay-period `field_sirius_date_start` month bucketing | month/year buckets | Read literally from the digits. The wall clock **is** the LA answer; DST gap/overlap values are kept as written and reported, never resolved. | `yearMonthOf` (t20), `toYmd` |
+| UTC-stored (`site`) | payment `field_sirius_datetime_created` | `timestamp` column | Parse as an explicit UTC instant (append `Z`) → JS Date → storage serializes its LA wall clock. The LA-pinned app reads back the same instant. | `parseUtcInstant` |
+| Epoch seconds → instant | `node.created/changed`, `users.login/access`, ledger/comm/note timestamps, cardcheck acceptance | `timestamp` column | `new Date(epoch * 1000)` — zone-independent instant; storage writes its LA wall clock. | inline |
+| Epoch seconds → fund-calendar bucket | ledger month, statement date, hours month | `YYYY-MM-DD` / month | Format in the pinned zone explicitly (`Intl` with `timeZone: MIGRATION_SYSTEM_TIME_ZONE`), never the host zone even though the gate proves them equal. | `epochToLaYmd`, `epochToLaYm`, `laStatementYmd`, `currentLaMonth` |
+| Epoch seconds → UTC calendar (ruled) | end-dating conventions off `node.changed` | `YYYY-MM-DD` | `toISOString().slice(0,10)` — UTC by ruling, documented per transform. | `epochToYmd` |
+| S2 read-backs (not S1 data) | `signed_date`, history `created_at` compared during reconcile | — | A no-zone column read back as text means "process-zone wall clock", which is how `new Date(text)` reads it **because** the process is pinned. Never route an S1 string through these comparisons. | loader-local |
+
+Boundary coverage lives in `tests/s1-migration/` (date-transforms runs in a
+deliberately hostile UTC+14 host zone; timezone-contract covers the verdict
+rules, month rollover, LA midnight, the 2026-03-08 gap and 2026-11-01 overlap,
+and a wrong-runtime-zone rejection; timezone-pin-structure proves every
+writing entrypoint is gated and no loader reads a user zone).
 - **Field-table read shape** (used by every transform, MySQL dialect): `SELECT entity_id, delta, <value cols> FROM field_data_<f> WHERE entity_type='node' AND bundle='<b>' AND deleted = 0 AND language = 'und'` — `deleted` is an **integer, compare unquoted**; include `language` explicitly (only `und` exists, but it's part of the PK); always order multi-value fields by `delta`.
 - **Load order** (FK-safe): options/taxonomy → contacts → workers → employers/companies → policies → relationships → benefits catalogue → elections → benefit-history **import** (§4.13 — N17 closed 2026-08-05, amended same day: direct import of EVERYTHING — no cutoff) + worker-month tags (keep-list ruled, N24 closed: only "Comms: Received Enrollment Packet") → hours → ledger accounts → charges → payments → files → comms/bulk → users/roles → bookmarks. (Grievances removed — descoped, 06 §4.3. **Dispatch and skills removed entirely — out of scope, 06 §4.7.**)
 

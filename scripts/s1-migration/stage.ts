@@ -58,6 +58,7 @@ import {
 } from "./lib/staging";
 import { assessCountEvidence, type CountEvidence, type StageMode } from "./lib/stage-evidence";
 import { shouldRefreshNodePayload } from "./lib/incremental-node";
+import { isValidTimeZone } from "../../shared/utils/timezone";
 import { pool as pgPool } from "../../server/storage/db";
 import type { Pool } from "mysql2/promise";
 import type { RowDataPacket } from "mysql2/promise";
@@ -242,6 +243,12 @@ interface RawTableReport {
   staged: number;
   staleRemoved: number;
   durationMs: number;
+  /** `users` only — S1 per-user display zones, validated AS SOURCE DATA
+   * (counts, never values). The USER zone is a display preference S2 may one
+   * day honour per person; it is not the SYSTEM zone the ETL runs in, and no
+   * loader reads this column (tests/s1-migration enforces that). Recorded so
+   * a future "enable personal time zones" decision has real numbers. */
+  userTimeZones?: { empty: number; valid: number; invalid: number; distinct: number };
 }
 
 /**
@@ -266,6 +273,8 @@ async function stageRawUserTables(s1: Pool, batch: number): Promise<RawTableRepo
     const s1Count = Number(cntRows[0]?.n ?? 0);
     let lastId = 1;
     let extracted = 0;
+    const userTimeZones = { empty: 0, valid: 0, invalid: 0, distinct: 0 };
+    const distinctZones = new Set<string>();
     for (;;) {
       const [rows] = await s1.query<RowDataPacket[]>(
         `SELECT uid, name, mail, created, access, login, status, timezone, data
@@ -286,9 +295,18 @@ async function stageRawUserTables(s1: Pool, batch: number): Promise<RawTableRepo
           data: r.data == null ? null : String(r.data),
         })),
       );
+      for (const r of rows) {
+        const tz = r.timezone == null ? "" : String(r.timezone).trim();
+        if (tz === "") userTimeZones.empty++;
+        else if (isValidTimeZone(tz)) {
+          userTimeZones.valid++;
+          distinctZones.add(tz);
+        } else userTimeZones.invalid++;
+      }
       extracted += rows.length;
       lastId = Number(rows[rows.length - 1].uid);
     }
+    userTimeZones.distinct = distinctZones.size;
     const staleRemoved = await deleteStaleRawUserTable("raw_users", watermark);
     reports.push({
       table: "users",
@@ -298,6 +316,7 @@ async function stageRawUserTables(s1: Pool, batch: number): Promise<RawTableRepo
       staged: await stagedRawUserTableCount("raw_users"),
       staleRemoved,
       durationMs: Date.now() - t0,
+      userTimeZones,
     });
   }
 

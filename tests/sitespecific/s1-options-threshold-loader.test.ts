@@ -20,6 +20,11 @@
  * Uses unique far-range tids and run-prefixed names; cleans staging, id_map,
  * and created options rows afterwards.
  */
+// The migration gate (scripts/s1-migration/lib/timezone-contract.ts) refuses
+// to touch staging unless the process is pinned to the S2 system zone; the
+// spawned loader inherits this environment.
+process.env.TZ = "America/Los_Angeles";
+
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
