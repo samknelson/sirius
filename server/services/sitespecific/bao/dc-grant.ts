@@ -47,6 +47,7 @@ import {
 import {
   createPolicyResolutionCache,
   resolveEmployerPolicyAsOf,
+  type PolicyResolutionStorage,
 } from "../../policy-resolution";
 import {
   resolveBaoThreshold,
@@ -54,10 +55,13 @@ import {
   toOrdinal,
   fromOrdinal,
   lastDayOfMonthYmd,
+  type BaoThresholdReads,
 } from "../../../plugins/trust/eligibility/plugins/bao-shared";
 import {
   BAO_DC_FUND_EMPLOYER_SIRIUS_ID,
   type BaoDcCaseMonth,
+  type Worker,
+  type WorkerTrustElection,
 } from "@shared/schema";
 
 const SERVICE_NAME = "bao-dc-grant";
@@ -112,33 +116,165 @@ export interface DcGrantConfigWarning {
  * problem BEFORE clicking Approve. Never throws for expected configuration
  * errors and never blocks readiness/queueing; unexpected failures are logged
  * and skipped so a broken preview can't take down the case view.
+ *
+ * Every month resolves against ONE shared per-worker context: the worker,
+ * their elections, benefit rows, member-status history, hours and the
+ * policy/rule lookups are read once and reused, so the preview costs roughly
+ * the same whether one month or twelve are selected. (The per-month result
+ * is identical to resolving each month on its own — the context only
+ * memoizes reads, it never changes what is read.)
  */
 export async function previewDcGrantConfigWarnings(
   workerId: string,
   workMonthYmds: string[],
+  sharedContext?: DcContinuationContext,
 ): Promise<DcGrantConfigWarning[]> {
-  const warnings: DcGrantConfigWarning[] = [];
-  for (const workMonthYmd of [...workMonthYmds].sort()) {
-    try {
-      await resolveContinuationRequirement(workerId, workMonthYmd);
-    } catch (error) {
-      if (error instanceof DcGrantError) {
-        warnings.push({
-          workMonthYmd,
-          code: error.code,
-          message: DC_GRANT_ERROR_DESCRIPTIONS[error.code],
-        });
-      } else {
+  const months = [...workMonthYmds].sort();
+  if (months.length === 0) return [];
+  const context =
+    sharedContext ?? createDcContinuationContext(workerId, { prefetch: true });
+  const results = await Promise.all(
+    months.map(async (workMonthYmd): Promise<DcGrantConfigWarning | null> => {
+      try {
+        await resolveContinuationRequirement(workerId, workMonthYmd, context);
+        return null;
+      } catch (error) {
+        if (error instanceof DcGrantError) {
+          return {
+            workMonthYmd,
+            code: error.code,
+            message: DC_GRANT_ERROR_DESCRIPTIONS[error.code],
+          };
+        }
         logger.warn("DC grant config preview failed unexpectedly", {
           service: SERVICE_NAME,
           workerId,
           workMonthYmd,
           error: error instanceof Error ? error.message : String(error),
         });
+        return null;
       }
+    }),
+  );
+  return results.filter((w): w is DcGrantConfigWarning => w !== null);
+}
+
+/**
+ * Per-worker read context for continuation resolution. Every read the
+ * resolution needs is memoized here (a promise per distinct lookup, so
+ * concurrent months share the in-flight read rather than racing to repeat
+ * it). A context is only ever valid for reads — callers that WRITE hours
+ * between resolutions (the grant cascade) must resolve each month against a
+ * fresh context so no memoized row can go stale.
+ */
+export interface DcContinuationContext {
+  readonly workerId: string;
+  worker(): Promise<Worker | undefined>;
+  /** Same row `storage.workerTrustElections.getActiveByWorkerAsOf` returns. */
+  activeElectionAsOf(asOfYmd: string): Promise<WorkerTrustElection | undefined>;
+  wmbRows(): Promise<Array<{ benefitId: string; year: number; month: number }>>;
+  ruleRowsForPolicy(policyId: string): Promise<unknown[]>;
+  /** Storage facade for resolveEmployerPolicyAsOf (employer reads memoized). */
+  readonly policyStorage: PolicyResolutionStorage;
+  readonly policyCache: ReturnType<typeof createPolicyResolutionCache>;
+  /** Memoized employer / member-status / hours reads for threshold resolution. */
+  readonly thresholdReads: BaoThresholdReads;
+}
+
+/** Memoize a single-argument async loader by its argument. */
+function memoize<A extends string, T>(load: (arg: A) => Promise<T>): (arg: A) => Promise<T> {
+  const cache = new Map<A, Promise<T>>();
+  return (arg) => {
+    let pending = cache.get(arg);
+    if (!pending) {
+      pending = load(arg);
+      cache.set(arg, pending);
+    }
+    return pending;
+  };
+}
+
+/**
+ * Pick the election in effect as of a date from the worker's full election
+ * list — the in-memory twin of `getActiveByWorkerAsOf` (start ≤ date, no end
+ * or end ≥ date, latest start wins).
+ */
+export function selectActiveElectionAsOf(
+  elections: WorkerTrustElection[],
+  asOfYmd: string,
+): WorkerTrustElection | undefined {
+  return elections
+    .filter((e) => e.startYmd <= asOfYmd && (e.endYmd == null || e.endYmd >= asOfYmd))
+    .sort((a, b) => b.startYmd.localeCompare(a.startYmd))[0];
+}
+
+export interface DcContinuationContextOptions {
+  /**
+   * Start the worker-scoped reads every resolution needs (worker, elections,
+   * benefit rows, member-status history) immediately, so a batch caller that
+   * is still fetching its month list has them in flight rather than paying
+   * for them afterwards. Failures surface when (and only when) a resolution
+   * awaits the read, never as stray unhandled rejections.
+   */
+  prefetch?: boolean;
+}
+
+export function createDcContinuationContext(
+  workerId: string,
+  options: DcContinuationContextOptions = {},
+): DcContinuationContext {
+  const getEmployer = memoize((employerId: string) => storage.employers.getEmployer(employerId));
+  const getWorker = memoize((id: string) => storage.workers.getWorker(id));
+  const listElections = memoize((id: string) => storage.workerTrustElections.listByWorker(id));
+  const getWmbRows = memoize(
+    (id: string) =>
+      storage.trust.wmb.getWorkerBenefits(id) as Promise<
+        Array<{ benefitId: string; year: number; month: number }>
+      >,
+  );
+  const searchRules = memoize((policyId: string) =>
+    storage.pluginConfigs.search("trust-eligibility", { policy: policyId }),
+  );
+  // The policy resolver's own cache stores RESULTS, so months resolving at
+  // the same time would all miss it together and each repeat the employer,
+  // history, policy and default-policy reads; memoizing the reads
+  // themselves makes the concurrent misses share one in-flight query each.
+  const getEmployerPolicyHistory = memoize((employerId: string) =>
+    storage.employerPolicyHistory.getEmployerPolicyHistory(employerId),
+  );
+  const getPolicyById = memoize((policyId: string) => storage.policies.getPolicyById(policyId));
+  const getVariableByName = memoize((name: string) => storage.variables.getByName(name));
+  const getWorkerMsh = memoize((id: string) => storage.workerMsh.getWorkerMsh(id));
+  const getHoursCurrent = memoize((id: string) => storage.workerHours.getWorkerHoursCurrent(id));
+  const getHoursMonthly = memoize((id: string) => storage.workerHours.getWorkerHoursMonthly(id));
+  if (options.prefetch) {
+    for (const start of [getWorker, listElections, getWmbRows, getWorkerMsh]) {
+      // The memoized promise itself still rejects for whoever awaits it; only
+      // this detached observer swallows, so an unused prefetch can't crash.
+      start(workerId).catch(() => undefined);
     }
   }
-  return warnings;
+  return {
+    workerId,
+    worker: () => getWorker(workerId),
+    activeElectionAsOf: async (asOfYmd) =>
+      selectActiveElectionAsOf(await listElections(workerId), asOfYmd),
+    wmbRows: () => getWmbRows(workerId),
+    ruleRowsForPolicy: (policyId) => searchRules(policyId),
+    policyStorage: {
+      employerPolicyHistory: { getEmployerPolicyHistory },
+      employers: { getEmployer },
+      policies: { getPolicyById },
+      variables: { getByName: getVariableByName },
+    },
+    policyCache: createPolicyResolutionCache(),
+    thresholdReads: {
+      getEmployer,
+      getWorkerMsh,
+      getWorkerHoursCurrent: getHoursCurrent,
+      getWorkerHoursMonthly: getHoursMonthly,
+    },
+  };
 }
 
 export interface DcContinuationRequirement {
@@ -182,15 +318,15 @@ export function isCoverageMonthDue(coverageMonthYmd: string, nowMonthYmd = curre
  * WMB rows. (Selected DC months are themselves uncovered by definition.)
  */
 async function resolveContinuedBenefitIds(
-  workerId: string,
+  context: DcContinuationContext,
   workMonthYmd: string,
 ): Promise<string[]> {
-  const all = await storage.trust.wmb.getWorkerBenefits(workerId);
+  const all = await context.wmbRows();
   const target = ymdToParts(workMonthYmd);
   const targetOrd = toOrdinal(target.year, target.month);
   let bestOrd: number | undefined;
   const ids = new Set<string>();
-  for (const row of all as Array<{ benefitId: string; year: number; month: number }>) {
+  for (const row of all) {
     const ord = toOrdinal(row.year, row.month);
     if (ord > targetOrd) continue;
     if (bestOrd === undefined || ord > bestOrd) {
@@ -207,36 +343,43 @@ async function resolveContinuedBenefitIds(
  * month from the trust-eligibility rules of the benefits being continued.
  * Fails coded on missing policy, no threshold-bearing rule, or conflicting
  * distinct thresholds/lags — configuration is never guessed.
+ *
+ * Reads go through `context`; the default is a fresh per-call context, i.e.
+ * every input is read live (the grant cascade relies on that, since it
+ * writes hours between months). Batch readers pass one shared context.
  */
 export async function resolveContinuationRequirement(
   workerId: string,
   workMonthYmd: string,
+  context: DcContinuationContext = createDcContinuationContext(workerId),
 ): Promise<DcContinuationRequirement> {
-  const worker = await storage.workers.getWorker(workerId);
+  if (context.workerId !== workerId) {
+    throw new Error(
+      `DC continuation context is for worker ${context.workerId}, not ${workerId}`,
+    );
+  }
+  const worker = await context.worker();
   if (!worker) throw new Error(`Worker not found: ${workerId}`);
   const { year, month } = ymdToParts(workMonthYmd);
 
   // Employer for policy + threshold resolution: active election as of the
   // work month end, falling back to the home employer (mirrors the scan).
   const monthEndYmd = lastDayOfMonthYmd(year, month);
-  const election = await storage.workerTrustElections.getActiveByWorkerAsOf(
-    workerId,
-    monthEndYmd,
-  );
+  const election = await context.activeElectionAsOf(monthEndYmd);
   const employerId: string | undefined =
     election?.employerId ?? (worker as { denormHomeEmployerId?: string | null }).denormHomeEmployerId ?? undefined;
 
   const resolved = await resolveEmployerPolicyAsOf(
-    storage,
+    context.policyStorage,
     employerId ?? null,
     workMonthYmd,
-    createPolicyResolutionCache(),
+    context.policyCache,
   );
   if (!resolved.policy) {
     throw new DcGrantError("NO_POLICY", { workerId, workMonthYmd });
   }
 
-  const benefitIds = await resolveContinuedBenefitIds(workerId, workMonthYmd);
+  const benefitIds = await resolveContinuedBenefitIds(context, workMonthYmd);
   // Fail closed: a worker with no prior covered benefit has nothing to
   // CONTINUE — granting against unrelated policy rules would invent
   // coverage. (Selection validation can admit such months, so this is the
@@ -249,9 +392,7 @@ export async function resolveContinuationRequirement(
     });
   }
 
-  const ruleRows = await storage.pluginConfigs.search("trust-eligibility", {
-    policy: resolved.policy.id,
-  });
+  const ruleRows = await context.ruleRowsForPolicy(resolved.policy.id);
 
   const candidates: Array<{ benefitId: string; threshold: number; lagMonths: number }> = [];
   for (const row of ruleRows as Array<{
@@ -270,7 +411,13 @@ export async function resolveContinuationRequirement(
 
     let threshold: number | undefined;
     if (employerId) {
-      const r = await resolveBaoThreshold(workerId, employerId, monthEndYmd, defaultThreshold);
+      const r = await resolveBaoThreshold(
+        workerId,
+        employerId,
+        monthEndYmd,
+        defaultThreshold,
+        context.thresholdReads,
+      );
       threshold = r.threshold;
       if (!r.resolved) {
         const lowest = await resolveLowestActiveEmployerThreshold(
@@ -278,6 +425,7 @@ export async function resolveContinuationRequirement(
           monthEndYmd,
           { year, month },
           defaultThreshold,
+          context.thresholdReads,
         );
         if (lowest) threshold = lowest.threshold;
       }
@@ -287,6 +435,7 @@ export async function resolveContinuationRequirement(
         monthEndYmd,
         { year, month },
         defaultThreshold,
+        context.thresholdReads,
       );
       threshold = lowest ? lowest.threshold : defaultThreshold;
     }

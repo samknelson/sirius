@@ -46,6 +46,28 @@ export function fromOrdinal(ord: number): { year: number; month: number } {
 }
 
 /**
+ * The storage reads threshold resolution depends on. Injectable so a caller
+ * resolving MANY months for one worker (the Disability Credit grant preview)
+ * can hand in memoized reads and pay for the worker's member-status history
+ * and hours once instead of once per month; the default hits storage live,
+ * so single-shot callers behave exactly as before.
+ */
+export interface BaoThresholdReads {
+  getEmployer: (employerId: string) => Promise<{ industryId?: string | null } | undefined>;
+  getWorkerMsh: (workerId: string) => Promise<any[]>;
+  getWorkerHoursCurrent: (workerId: string) => Promise<any[]>;
+  getWorkerHoursMonthly: (workerId: string) => Promise<any[]>;
+}
+
+/** Live (uncached) reads — one storage call per lookup. */
+export const liveBaoThresholdReads: BaoThresholdReads = {
+  getEmployer: (employerId) => storage.employers.getEmployer(employerId),
+  getWorkerMsh: (workerId) => storage.workerMsh.getWorkerMsh(workerId),
+  getWorkerHoursCurrent: (workerId) => storage.workerHours.getWorkerHoursCurrent(workerId),
+  getWorkerHoursMonthly: (workerId) => storage.workerHours.getWorkerHoursMonthly(workerId),
+};
+
+/**
  * Resolve the hours threshold for a worker by walking employer → industry →
  * the worker's member status in that industry as of the date → the threshold
  * stored on that member status's JSON. Falls back to `defaultThreshold` when
@@ -56,16 +78,17 @@ export async function resolveBaoThreshold(
   employerId: string | undefined,
   asOfYmd: string,
   defaultThreshold: number,
+  reads: BaoThresholdReads = liveBaoThresholdReads,
 ): Promise<{ threshold: number; resolved: boolean }> {
   if (!employerId) return { threshold: defaultThreshold, resolved: false };
 
-  const employer = await storage.employers.getEmployer(employerId);
+  const employer = await reads.getEmployer(employerId);
   const industryId = employer?.industryId;
   if (!industryId) return { threshold: defaultThreshold, resolved: false };
 
   // History is ordered by date descending, so the first row matching the
   // industry and dated on or before the as-of date is the status in effect.
-  const history = await storage.workerMsh.getWorkerMsh(workerId);
+  const history = await reads.getWorkerMsh(workerId);
   const asOf = history.find(
     (row) =>
       row.industryId === industryId &&
@@ -101,13 +124,14 @@ export async function resolveLowestActiveEmployerThreshold(
   asOfYmd: string,
   benefit: { year: number; month: number },
   defaultThreshold: number,
+  reads: BaoThresholdReads = liveBaoThresholdReads,
 ): Promise<
   { threshold: number; resolved: boolean; employerId: string } | undefined
 > {
   const benefitOrdinal = toOrdinal(benefit.year, benefit.month);
 
   // Latest hours row per employer, carrying the joined employment status.
-  const current = await storage.workerHours.getWorkerHoursCurrent(workerId);
+  const current = await reads.getWorkerHoursCurrent(workerId);
   const activeEmployerIds = new Set<string>();
   for (const row of current) {
     if (row.employerId && row.employmentStatus?.employed === true) {
@@ -117,7 +141,7 @@ export async function resolveLowestActiveEmployerThreshold(
   if (activeEmployerIds.size === 0) return undefined;
 
   // Of those, keep only employers with hours at or before the benefit month.
-  const monthlyRows = await storage.workerHours.getWorkerHoursMonthly(workerId);
+  const monthlyRows = await reads.getWorkerHoursMonthly(workerId);
   const employersWithHoursInWindow = new Set<string>();
   for (const row of monthlyRows) {
     if (!row.employerId || !activeEmployerIds.has(row.employerId)) continue;
@@ -130,19 +154,26 @@ export async function resolveLowestActiveEmployerThreshold(
   }
   if (employersWithHoursInWindow.size === 0) return undefined;
 
-  // Resolve each candidate's threshold and keep the lowest.
+  // Resolve each candidate's threshold (independent reads, side by side)
+  // and keep the lowest; ties keep the first candidate in hours order.
+  const candidates = await Promise.all(
+    Array.from(employersWithHoursInWindow, async (employerId) => {
+      const { threshold, resolved } = await resolveBaoThreshold(
+        workerId,
+        employerId,
+        asOfYmd,
+        defaultThreshold,
+        reads,
+      );
+      return { threshold, resolved, employerId };
+    }),
+  );
   let best:
     | { threshold: number; resolved: boolean; employerId: string }
     | undefined;
-  for (const employerId of employersWithHoursInWindow) {
-    const { threshold, resolved } = await resolveBaoThreshold(
-      workerId,
-      employerId,
-      asOfYmd,
-      defaultThreshold,
-    );
-    if (best === undefined || threshold < best.threshold) {
-      best = { threshold, resolved, employerId };
+  for (const candidate of candidates) {
+    if (best === undefined || candidate.threshold < best.threshold) {
+      best = candidate;
     }
   }
   return best;

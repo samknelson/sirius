@@ -73,10 +73,13 @@ async function loadEmployerEntry(
   const cached = cache.employers.get(employerId);
   if (cached) return cached;
 
-  const employer = await storage.employers.getEmployer(employerId);
-  const historyRows = employer
-    ? await storage.employerPolicyHistory.getEmployerPolicyHistory(employerId)
-    : [];
+  // The employer row and its history are independent reads — fetch them
+  // side by side; history still only counts when the employer exists.
+  const [employer, historyRowsIfEmployer] = await Promise.all([
+    storage.employers.getEmployer(employerId),
+    storage.employerPolicyHistory.getEmployerPolicyHistory(employerId),
+  ]);
+  const historyRows = employer ? historyRowsIfEmployer : [];
   const history = historyRows
     .map((row: any) => ({
       date: String(row.date).slice(0, 10),

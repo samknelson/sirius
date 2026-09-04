@@ -39,7 +39,7 @@ import {
   type DcNetActivityRow,
 } from "@shared/sitespecific/bao/dc-reporting";
 import { getDcDenialLetterValidityMonths } from "./dc-settings";
-import { getDcCaseBundle } from "./dc-workflow";
+import { getDcCaseQueueSummary } from "./dc-workflow";
 import { addMonthsYmd } from "@shared/utils/date";
 
 export interface DcWorkerRef {
@@ -260,41 +260,44 @@ export interface DcQueueRow {
   grantConfigWarnings: Array<{ workMonthYmd: string; code: string; message: string }>;
 }
 
-/** In-queue cases, oldest first, with queue age + live readiness + balance. */
+/**
+ * In-queue cases, oldest first, with queue age + live readiness + balance.
+ * Each case contributes only its queue summary (readiness, month count,
+ * usage, batched grant-configuration preview, event log), read side by side
+ * with the worker references — not the full case-page bundle.
+ */
 export async function listDcApprovalQueue(): Promise<DcQueueRow[]> {
   const dc = storage.baoDisabilityCredit;
   const cases = await dc.listCasesByStatus("in_queue");
-  const refs = await workerRefMap(cases.map((c) => c.workerId));
   const now = Date.now();
-  return Promise.all(
-    cases.map(async (c) => {
-      const [bundle, events] = await Promise.all([
-        getDcCaseBundle(c.id),
-        dc.listEventsForCase(c.id),
-      ]);
-      const queuedEvent = [...events]
-        .reverse()
-        .find(
-          (e) =>
-            e.eventType === "case_status_changed" &&
-            (e.payload as Record<string, unknown>)?.to === "in_queue",
-        );
-      const queuedAt = queuedEvent?.createdAt ?? c.createdAt;
-      return {
-        case: c,
-        worker: ref(refs, c.workerId),
-        queuedAt,
-        ageDays: Math.max(
-          0,
-          Math.floor((now - new Date(queuedAt as unknown as string).getTime()) / 86400000),
-        ),
-        readiness: bundle?.readiness,
-        monthCount: bundle?.months.filter((m) => m.status !== "removed").length ?? 0,
-        yearUsage: bundle?.yearUsage ?? {},
-        grantConfigWarnings: bundle?.grantConfigWarnings ?? [],
-      };
-    }),
-  );
+  const [refs, summaries] = await Promise.all([
+    workerRefMap(cases.map((c) => c.workerId)),
+    Promise.all(cases.map((c) => getDcCaseQueueSummary(c))),
+  ]);
+  return cases.map((c, i) => {
+    const summary = summaries[i];
+    const queuedEvent = [...summary.events]
+      .reverse()
+      .find(
+        (e) =>
+          e.eventType === "case_status_changed" &&
+          (e.payload as Record<string, unknown>)?.to === "in_queue",
+      );
+    const queuedAt = queuedEvent?.createdAt ?? c.createdAt;
+    return {
+      case: c,
+      worker: ref(refs, c.workerId),
+      queuedAt,
+      ageDays: Math.max(
+        0,
+        Math.floor((now - new Date(queuedAt as unknown as string).getTime()) / 86400000),
+      ),
+      readiness: summary.readiness,
+      monthCount: summary.monthCount,
+      yearUsage: summary.yearUsage,
+      grantConfigWarnings: summary.grantConfigWarnings,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------

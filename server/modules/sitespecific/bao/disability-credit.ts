@@ -329,19 +329,22 @@ export function registerBaoDisabilityCreditRoutes(
     requireAccess("worker.dc", workerFromCase),
     async (req: Request, res: Response) => {
       try {
-        const bundle = await getDcCaseBundle(req.params.caseId);
+        // isApprover drives which decision actions the interface offers;
+        // the actions route below enforces the same boundary server-side.
+        // The actor checks depend only on the request, so they run
+        // alongside the bundle rather than after it.
+        const [bundle, isApprover, staff] = await Promise.all([
+          getDcCaseBundle(req.params.caseId),
+          actorId(req).then((actor) =>
+            storage.users.userHasPermission(actor, BAO_DC_APPROVE_PERMISSION),
+          ),
+          isStaff(req),
+        ]);
         if (!bundle) {
           res.status(404).json({ message: "Case not found" });
           return;
         }
-        // isApprover drives which decision actions the interface offers;
-        // the actions route below enforces the same boundary server-side.
-        const actor = await actorId(req);
-        const isApprover = await storage.users.userHasPermission(
-          actor,
-          BAO_DC_APPROVE_PERMISSION,
-        );
-        res.json({ ...bundle, isStaff: await isStaff(req), isApprover });
+        res.json({ ...bundle, isStaff: staff, isApprover });
       } catch (error) {
         handleDcError(res, error);
       }

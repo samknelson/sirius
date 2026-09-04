@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDebounced } from "@/hooks/use-debounced";
 import {
   QUICKSEARCH_MIN_QUERY_LENGTH,
   type QuicksearchResponse,
@@ -31,15 +32,6 @@ const ICONS: Record<string, typeof Search> = {
 
 /** Wait this long after the last keystroke before asking the server. */
 const DEBOUNCE_MS = 250;
-
-function useDebounced(value: string, ms: number): string {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), ms);
-    return () => clearTimeout(timer);
-  }, [value, ms]);
-  return debounced;
-}
 
 /**
  * Search from anywhere.

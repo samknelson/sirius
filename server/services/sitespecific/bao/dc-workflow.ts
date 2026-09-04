@@ -26,6 +26,7 @@ import { getDcDenialLetterValidityMonths } from "./dc-settings";
 import { denialLetterExpiryYmd } from "@shared/sitespecific/bao/dc-eligibility";
 import { buildDcYearUsage } from "@shared/sitespecific/bao/dc-reporting";
 import {
+  createDcContinuationContext,
   previewDcGrantConfigWarnings,
   runDcGrantCascadeForCase,
   type DcGrantConfigWarning,
@@ -82,43 +83,77 @@ export interface DcCaseBundle {
   grantConfigWarnings: DcGrantConfigWarning[];
 }
 
+/** Statuses whose selected months still face the approval-time grant check. */
+const OPEN_STATUSES: readonly BaoDcCaseStatus[] = ["draft", "ready_for_review", "in_queue"];
+
+/**
+ * Approvers need to see WHO completed the attestations, not just that they
+ * exist — resolve the stamped user id to a display name.
+ */
+async function resolveAttestationAuthor(
+  theCase: BaoDcCase,
+): Promise<{ id: string; name: string } | null> {
+  const attestedById = theCase.attestations?.updatedByUserId;
+  if (!attestedById) return null;
+  const user = await storage.users.getUser(attestedById);
+  const name = user
+    ? [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.email
+    : attestedById;
+  return { id: attestedById, name };
+}
+
+/**
+ * Advisory grant-configuration preview: for OPEN cases, run the exact
+ * approval-time configuration check on each still-selected month so
+ * approvers see missing/conflicting benefit-rule configuration before
+ * clicking Approve. Advisory only — readiness never consults it.
+ *
+ * Takes the months as a promise so the per-worker inputs the check needs
+ * (worker, elections, benefit rows, member-status history) start loading
+ * while the month rows are still on their way, instead of after them.
+ */
+async function previewOpenCaseGrantWarnings(
+  theCase: BaoDcCase,
+  months: Promise<BaoDcCaseMonth[]>,
+): Promise<DcGrantConfigWarning[]> {
+  if (!OPEN_STATUSES.includes(theCase.status)) return [];
+  const context = createDcContinuationContext(theCase.workerId, { prefetch: true });
+  const selected = (await months)
+    .filter((m) => m.status === "selected")
+    .map((m) => m.workMonthYmd);
+  return previewDcGrantConfigWarnings(theCase.workerId, selected, context);
+}
+
 export async function getDcCaseBundle(caseId: string): Promise<DcCaseBundle | undefined> {
   const dc = storage.baoDisabilityCredit;
   const theCase = await dc.getCase(caseId);
   if (!theCase) return undefined;
-  const [months, documents, events, applicable, letters, validityMonths, covered] =
-    await Promise.all([
-      dc.listCaseMonths(caseId),
-      dc.listCaseDocumentsWithFiles(caseId),
-      dc.listEventsForCase(caseId),
-      dc.listApplicableMonthsForWorker(theCase.workerId),
-      dc.listNonVoidedDenialLettersForWorker(theCase.workerId),
-      getDcDenialLetterValidityMonths(),
-      dc.getCoveredMonthsForWorker(theCase.workerId),
-    ]);
+  // Everything below depends on nothing but the case row, so it all runs
+  // side by side — the storage reads, the attestation-author lookup and the
+  // grant-configuration preview — rather than in sequential phases.
+  const monthsPromise = dc.listCaseMonths(caseId);
+  const [
+    months,
+    documents,
+    events,
+    applicable,
+    letters,
+    validityMonths,
+    covered,
+    attestationAuthor,
+    grantConfigWarnings,
+  ] = await Promise.all([
+    monthsPromise,
+    dc.listCaseDocumentsWithFiles(caseId),
+    dc.listEventsForCase(caseId),
+    dc.listApplicableMonthsForWorker(theCase.workerId),
+    dc.listNonVoidedDenialLettersForWorker(theCase.workerId),
+    getDcDenialLetterValidityMonths(),
+    dc.getCoveredMonthsForWorker(theCase.workerId),
+    resolveAttestationAuthor(theCase),
+    previewOpenCaseGrantWarnings(theCase, monthsPromise),
+  ]);
   const readiness = computeCaseReadiness(theCase, documents, months);
-  // Approvers need to see WHO completed the attestations, not just that
-  // they exist — resolve the stamped user id to a display name.
-  let attestationAuthor: { id: string; name: string } | null = null;
-  const attestedById = theCase.attestations?.updatedByUserId;
-  if (attestedById) {
-    const user = await storage.users.getUser(attestedById);
-    const name = user
-      ? [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.email
-      : attestedById;
-    attestationAuthor = { id: attestedById, name };
-  }
-  // Advisory grant-configuration preview: for OPEN cases, run the exact
-  // approval-time configuration check on each still-selected month so
-  // approvers see missing/conflicting benefit-rule configuration before
-  // clicking Approve. Advisory only — readiness above never consults it.
-  const openStatuses: BaoDcCaseStatus[] = ["draft", "ready_for_review", "in_queue"];
-  const grantConfigWarnings = openStatuses.includes(theCase.status)
-    ? await previewDcGrantConfigWarnings(
-        theCase.workerId,
-        months.filter((m) => m.status === "selected").map((m) => m.workMonthYmd),
-      )
-    : [];
   const yearUsage = buildDcYearUsage(applicable);
   const monthOptions = computeDcMonthOptions({
     nowMonthYmd: `${new Date().toISOString().slice(0, 7)}-01`,
@@ -144,6 +179,42 @@ export async function getDcCaseBundle(caseId: string): Promise<DcCaseBundle | un
       expiresYmd: denialLetterExpiryYmd(l.letterYmd, validityMonths),
     })),
     grantConfigWarnings,
+  };
+}
+
+/** The slice of a case the approval queue (and dashboard widget) shows. */
+export interface DcCaseQueueSummary {
+  readiness: DcCaseReadiness;
+  /** Non-removed months on the case. */
+  monthCount: number;
+  yearUsage: Record<string, { used: number; limit: number }>;
+  grantConfigWarnings: DcGrantConfigWarning[];
+  events: Awaited<ReturnType<typeof storage.baoDisabilityCredit.listEventsForCase>>;
+}
+
+/**
+ * Queue-row inputs for an already-loaded case: live readiness, month count,
+ * annual usage, the batched grant-configuration preview and the event log
+ * (for the queued-at stamp). Reads only what the queue displays — never the
+ * documents' file rows, denial letters, covered months or month options the
+ * full bundle assembles for the case page — and reads it all side by side.
+ */
+export async function getDcCaseQueueSummary(theCase: BaoDcCase): Promise<DcCaseQueueSummary> {
+  const dc = storage.baoDisabilityCredit;
+  const monthsPromise = dc.listCaseMonths(theCase.id);
+  const [months, documents, applicable, events, grantConfigWarnings] = await Promise.all([
+    monthsPromise,
+    dc.listDocumentsForCase(theCase.id),
+    dc.listApplicableMonthsForWorker(theCase.workerId),
+    dc.listEventsForCase(theCase.id),
+    previewOpenCaseGrantWarnings(theCase, monthsPromise),
+  ]);
+  return {
+    readiness: computeCaseReadiness(theCase, documents, months),
+    monthCount: months.filter((m) => m.status !== "removed").length,
+    yearUsage: buildDcYearUsage(applicable),
+    grantConfigWarnings,
+    events,
   };
 }
 

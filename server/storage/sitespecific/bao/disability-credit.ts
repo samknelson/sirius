@@ -466,26 +466,47 @@ function docWithFileRow(row: {
 }
 
 export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
+  /**
+   * A positive table-existence answer is remembered for the life of the
+   * process: the component's tables are created by its migration and stay
+   * put while the app serves requests, so re-asking information_schema on
+   * EVERY storage call only added a round trip in front of the real query.
+   * A negative answer is never remembered — while the tables are absent
+   * every call keeps failing with COMPONENT_TABLE_NOT_FOUND exactly as
+   * before, and the first successful check after the migration lands flips
+   * the flag. (Dropping the tables again means disabling the component,
+   * which also stops every DC caller from reaching this storage.)
+   */
+  let tablesKnownPresent = false;
   const requireTables = async (self: BaoDisabilityCreditStorage) => {
+    if (tablesKnownPresent) return;
     if (!(await self.tableExists())) {
       throw new Error("COMPONENT_TABLE_NOT_FOUND");
     }
+    tablesKnownPresent = true;
   };
 
-  /** Inputs for selection validation, computed with tx-consistent reads. */
+  /**
+   * Inputs for selection validation, computed with tx-consistent reads. The
+   * two inputs are independent, so they are read side by side (outside a
+   * transaction each takes its own connection; inside one they simply queue
+   * on the transaction's connection).
+   */
   const selectionInputs = async (theCase: BaoDcCase) => {
     const client = getClient();
-    const otherRows = await client
-      .select()
-      .from(monthsTable)
-      .where(
-        and(
-          eq(monthsTable.workerId, theCase.workerId),
-          ne(monthsTable.caseId, theCase.id),
-          ne(monthsTable.status, "removed"),
+    const [otherRows, covered] = await Promise.all([
+      client
+        .select()
+        .from(monthsTable)
+        .where(
+          and(
+            eq(monthsTable.workerId, theCase.workerId),
+            ne(monthsTable.caseId, theCase.id),
+            ne(monthsTable.status, "removed"),
+          ),
         ),
-      );
-    const covered = await coveredMonths(theCase.workerId);
+      coveredMonths(theCase.workerId),
+    ]);
     return {
       otherCaseMonths: otherRows.map((m) => m.workMonthYmd),
       coveredMonths: covered,

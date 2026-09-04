@@ -28,3 +28,8 @@ observed case, ~85% of the side branch's unique commits were such orphaned dupli
   commits are safe to drop, and only the files the branch exists to carry actually matter.
 - Diagnose by comparing tree hashes, not commit hashes: identical tree + identical author
   and committer dates + different parents is the signature of a re-parented duplicate.
+
+**Task-environment symptom:** `origin` is the GitHub remote whose `main` can sit days behind
+the platform's rewritten main, so `check-migrations --base=origin/main` reports dozens of
+already-merged core migrations as "new" collisions. Confirm with no `--base` (uncommitted
+changes only) or `--base=main-repl/main` before treating it as a real collision.

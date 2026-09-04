@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, keepPreviousData } from "@tanstack/react-query";
 import { AlertTriangle, ArrowLeft, ArrowRight, CalendarPlus, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, getApiErrorMessage, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDebounced } from "@/hooks/use-debounced";
 import { DcDocumentsCard } from "@/components/sitespecific/bao/DcDocumentsCard";
 import { DcStatusBadge, formatYmd } from "@/components/sitespecific/bao/dc-shared";
 import { formatYmdMonth } from "@shared/utils/date";
@@ -38,6 +39,9 @@ const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
+
+/** Wait this long after the last month toggle before re-validating. */
+const PREVIEW_DEBOUNCE_MS = 300;
 
 /** "2026-03-01" → "March 2026" (deterministic, no timezone parsing). */
 function formatMonthLabel(monthYmd: string): string {
@@ -114,19 +118,26 @@ export default function BaoDcCaseDetailPage() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: caseKey });
 
+  // The validity preview is keyed off the DEBOUNCED selection: a burst of
+  // checkbox clicks asks the server once, after clicking stops, and the last
+  // answer stays on screen (keepPreviousData) until the new one arrives —
+  // so toggling months never blanks the preview or queues a request per
+  // click. The save itself always uses the live `selectedMonths`.
+  const previewMonths = useDebounced(selectedMonths, PREVIEW_DEBOUNCE_MS);
+  const previewMonthsKey = previewMonths.join(",");
   const preview = useQuery<SelectionValidation>({
-    queryKey: [
-      "/api/sitespecific/bao/dc/cases",
-      caseId,
-      "months-preview",
-      selectedMonths.join(","),
-    ],
+    queryKey: ["/api/sitespecific/bao/dc/cases", caseId, "months-preview", previewMonthsKey],
     queryFn: async () =>
       apiRequest("POST", `/api/sitespecific/bao/dc/cases/${caseId}/months/validate`, {
-        months: selectedMonths,
+        months: previewMonths,
       }),
-    enabled: Boolean(data && data.case.status === "draft" && selectedMonths.length > 0),
+    enabled: Boolean(data && data.case.status === "draft" && previewMonths.length > 0),
+    placeholderData: keepPreviousData,
   });
+  // Dim the preview while it describes an older selection (still within the
+  // debounce window, or the new answer is still loading).
+  const previewStale =
+    previewMonthsKey !== selectedMonths.join(",") || preview.isPlaceholderData || preview.isFetching;
 
   const saveMonths = useMutation({
     mutationFn: () =>
@@ -489,8 +500,12 @@ export default function BaoDcCaseDetailPage() {
           >
             Save months
           </Button>
-          {isDraft && preview.data && (
-            <div className="text-sm space-y-1" data-testid="text-dc-months-preview">
+          {isDraft && selectedMonths.length > 0 && preview.data && (
+            <div
+              className={`text-sm space-y-1 ${previewStale ? "opacity-60" : ""}`}
+              aria-busy={previewStale}
+              data-testid="text-dc-months-preview"
+            >
               {preview.data.ok ? (
                 <p className="text-green-700 dark:text-green-400">Selection is valid.</p>
               ) : (
