@@ -48,6 +48,8 @@ import {
   type BaoCaseAppealFacts,
   type BaoCaseEntityType,
   type InsertBaoCase,
+  type File,
+  type InsertFile,
 } from "@shared/schema";
 import { getClient, onAfterCommit, runInTransaction } from "../../transaction-context";
 import { eventBus, EventType } from "../../../services/event-bus";
@@ -210,7 +212,8 @@ export interface BaoCasesStorage {
     updates: Partial<typeof optionsBaoCaseStatus.$inferInsert>,
   ): Promise<typeof optionsBaoCaseStatus.$inferSelect | undefined>;
   listCaseDocuments(caseId: string): Promise<any[]>;
-  attachCaseDocument(caseId: string, file: any, uploadedByUserId: string, documentType?: string): Promise<any>;
+  /** Persist the files row AND the case-document row in one transaction. */
+  attachCaseDocument(caseId: string, file: InsertFile, uploadedByUserId: string, documentType?: string): Promise<{ document: typeof sitespecificBaoCaseDocuments.$inferSelect; file: File }>;
   recordMemberLetter(caseId: string, fileId: string, note: CreateBaoCaseInput["initialNote"], actorUserId: string): Promise<BaoCase>;
   /**
    * Record the trustees' outcome on a Benefit Appeal in Trustee Review: move
@@ -867,8 +870,16 @@ export function createBaoCasesStorage(): BaoCasesStorage {
         .orderBy(asc(sitespecificBaoCaseDocuments.createdAt));
     },
     async attachCaseDocument(caseId, file, uploadedByUserId, documentType = "other") {
-      const [row] = await getClient().insert(sitespecificBaoCaseDocuments).values({ caseId, fileId: file.id, uploadedByUserId, documentType }).returning();
-      return row;
+      // The entity-files route hands over an UNPERSISTED InsertFile; the files
+      // row and the document row are created together so a failure leaves
+      // neither (the route deletes the uploaded object on a thrown attach).
+      return runInTransaction(async () => {
+        const client = getClient();
+        const [fileRow] = await client.insert(files).values(file).returning();
+        const [document] = await client.insert(sitespecificBaoCaseDocuments)
+          .values({ caseId, fileId: fileRow.id, uploadedByUserId, documentType }).returning();
+        return { document, file: fileRow };
+      });
     },
     async recordMemberLetter(caseId, fileId, noteInput, actorUserId) {
       return runInTransaction(async () => {

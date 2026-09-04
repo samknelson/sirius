@@ -31,7 +31,7 @@ export function registerBaoCaseEntityFileContext(): void {
       async list(id) { return (await storage.baoCases.listCaseDocuments(id)).map(toRecord); },
       async get(id, attachmentId) { return (await storage.baoCases.listCaseDocuments(id)).find((r: any) => r.document.id === attachmentId) ? toRecord((await storage.baoCases.listCaseDocuments(id)).find((r: any) => r.document.id === attachmentId)) : undefined; },
       async getByFileId(id, fileId) { const r = (await storage.baoCases.listCaseDocuments(id)).find((x: any) => x.document.fileId === fileId); return r ? toRecord(r) : undefined; },
-      async attach(id, file: InsertFile) { return toRecord({ document: await storage.baoCases.attachCaseDocument(id, file, String(file.uploadedBy)), file }); },
+      async attach(id, file: InsertFile) { return toRecord(await storage.baoCases.attachCaseDocument(id, file, String(file.uploadedBy))); },
       async update() { throw new Error("BAO_CASE_DOCUMENTS_CANNOT_BE_UPDATED"); },
       async remove() { throw new Error("BAO_CASE_DOCUMENTS_CANNOT_BE_DELETED"); },
     },

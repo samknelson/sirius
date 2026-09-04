@@ -6,7 +6,7 @@ import { db } from "../../server/db";
 import { storage } from "../../server/storage";
 import { getOptionsStorage, getOptionsType } from "../../server/modules/options-registry";
 import { getComponentById } from "@shared/components";
-import { entityNotes, rolePermissions, roles, sitespecificBaoCases, userRoles, users } from "@shared/schema";
+import { entityNotes, files, rolePermissions, roles, sitespecificBaoCaseDocuments, sitespecificBaoCases, userRoles, users } from "@shared/schema";
 import { ensureBaoCaseSchema, getGeneralCaseTypeId } from "./fixtures/bao-schema";
 
 const run = `bao-case-test-${Date.now()}`;
@@ -340,6 +340,43 @@ describe("BAO transactional case invariants", () => {
       expect(record!.resolutionYmd).toBeNull();
     }
   }
+
+  it("attaches a case document by persisting the files row and the document row together", async () => {
+    if (!available) throw new Error("BAO case schema unavailable");
+    const created = await storage.baoCases.create({
+      entityType: "worker",
+      entityId: workerId,
+      deadlineYmd: "2099-01-01",
+      statusId: openStatusId,
+      assigneeUserId: userId,
+      actorUserId: userId,
+      initialNote: { typeId: noteTypeId, subject: `${run} document case` },
+    });
+    caseIds.push(created.id);
+    const detail = await storage.baoCases.get(created.id, true);
+    noteIds.push(detail!.notes![0].id);
+    // The entity-files route hands over an UNPERSISTED file (no id yet).
+    const attached = await storage.baoCases.attachCaseDocument(created.id, {
+      fileName: `${run}.pdf`,
+      storagePath: `bao-case/${created.id}/${run}.pdf`,
+      mimeType: "application/pdf",
+      size: 3,
+      uploadedBy: userId,
+      entityType: "entity-files:bao-case",
+      entityId: created.id,
+      fileSystemId: "test",
+      metadata: null,
+    }, userId);
+    try {
+      expect(attached.file.id).toBeTruthy();
+      expect(attached.document.fileId).toBe(attached.file.id);
+      const listed = await storage.baoCases.listCaseDocuments(created.id);
+      expect(listed.map((r: any) => r.document.id)).toEqual([attached.document.id]);
+    } finally {
+      await db.delete(sitespecificBaoCaseDocuments).where(eq(sitespecificBaoCaseDocuments.id, attached.document.id));
+      await db.delete(files).where(eq(files.id, attached.file.id));
+    }
+  });
 
   it("creates with an ordinary initial note and enforces one-case-per-note", async (ctx) => {
     if (!available) throw new Error("BAO case schema unavailable");

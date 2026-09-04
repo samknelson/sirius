@@ -124,6 +124,9 @@ export function registerEntityFileRoutes(app: Express, requireAuth: AuthMiddlewa
             componentEnabled: context.component
               ? await isComponentEnabled(context.component)
               : true,
+            // BAO fork extension: extra directory tokens this context expands
+            // (may include the framework token when the context redefines it).
+            tokens: context.tokens ?? [],
             config: (await getEntityFilesContextConfig(context.id)) ?? null,
           })),
         );

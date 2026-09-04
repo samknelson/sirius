@@ -23,6 +23,8 @@ interface ContextInfo {
   label: string;
   component: string | null;
   componentEnabled: boolean;
+  /** Extra directory tokens this area expands beyond the framework token. */
+  tokens: string[];
   config: { file_system: string; directory: string; allowed?: string[] } | null;
 }
 
@@ -48,6 +50,18 @@ const VARIABLE_NAME = "entity_files_config";
  * surrounding slashes and every path is relative to the filesystem's own base.
  * This is a front-end suggestion only; what gets stored is this plain string.
  */
+function contextTokens(context: ContextInfo, directoryToken: string): string {
+  const record = context.label.replace(/s$/, "").toLowerCase();
+  const extra = (context.tokens ?? []).filter((t) => t !== directoryToken);
+  if (extra.length === 0) {
+    return `Directory may embed ${directoryToken} — the id of the ${record} the files belong to.`;
+  }
+  const own = (context.tokens ?? []).includes(directoryToken)
+    ? `${directoryToken} (as this area defines it)`
+    : `${directoryToken} — the id of the ${record} the files belong to`;
+  return `Directory may embed ${own}, plus ${extra.join(", ")}.`;
+}
+
 function proposeDirectory(contextId: string, directoryToken: string): string {
   return `${contextId}/${directoryToken}`;
 }
@@ -142,9 +156,10 @@ export default function EntityFilesConfigPage() {
           conventional directory{" "}
           <code className="font-mono">&lt;area id&gt;/{DIRECTORY_TOKEN}</code> — so a grievance
           file lands in <code className="font-mono">grievance/{DIRECTORY_TOKEN}</code> — which
-          you are free to edit. <code className="font-mono">{DIRECTORY_TOKEN}</code> is the only
-          token there is, and expands to the id of the record the files hang off. Any other{" "}
-          <code className="font-mono">:token</code> is rejected on save.
+          you are free to edit. <code className="font-mono">{DIRECTORY_TOKEN}</code> expands to
+          the id of the record the files hang off; an area may list further tokens of its own
+          (shown on its card). Any other <code className="font-mono">:token</code> is rejected
+          on save.
         </p>
       </div>
 
@@ -166,7 +181,7 @@ export default function EntityFilesConfigPage() {
                   <CardDescription>
                     {context.component && !context.componentEnabled
                       ? `Component "${context.component}" is disabled — this area is currently hidden.`
-                      : `Directory may embed ${DIRECTORY_TOKEN} — the id of the ${context.label.replace(/s$/, "").toLowerCase()} the files belong to.`}
+                      : contextTokens(context, DIRECTORY_TOKEN)}
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
