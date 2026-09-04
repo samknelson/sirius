@@ -8,6 +8,7 @@ import {
   type PluginConfigBenefitEligibility,
   type PluginConfigDispatch,
   type PluginConfigDashboard,
+  type PluginConfigQuicksearch,
   type PluginConfigPaymentGateway,
   type PluginConfigEventNotifier,
   type PluginConfigCron,
@@ -23,6 +24,7 @@ import {
   createBenefitEligibilitySubsidiaryStorage,
   createDispatchSubsidiaryStorage,
   createDashboardSubsidiaryStorage,
+  createQuicksearchSubsidiaryStorage,
   createPaymentGatewaySubsidiaryStorage,
   createEventNotifierSubsidiaryStorage,
   createCronSubsidiaryStorage,
@@ -100,6 +102,7 @@ export type PluginConfigSubsidiary =
   | PluginConfigBenefitEligibility
   | PluginConfigDispatch
   | PluginConfigDashboard
+  | PluginConfigQuicksearch
   | PluginConfigPaymentGateway
   | PluginConfigEventNotifier
   | PluginConfigCron
@@ -227,6 +230,7 @@ export function createPluginConfigStorage(): PluginConfigStorage {
     "trust-eligibility": createBenefitEligibilitySubsidiaryStorage() as SubsidiaryStorage<any, any>,
     "dispatch-eligibility": createDispatchSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     dashboard: createDashboardSubsidiaryStorage() as SubsidiaryStorage<any, any>,
+    quicksearch: createQuicksearchSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     "payment-gateway": createPaymentGatewaySubsidiaryStorage() as SubsidiaryStorage<any, any>,
     "event-notifier": createEventNotifierSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     cron: createCronSubsidiaryStorage() as SubsidiaryStorage<any, any>,

@@ -266,11 +266,45 @@ function readProcessEnv(name: string): string | undefined {
 }
 
 /**
- * True when the variable is effectively set in the real process env (a
- * released value — empty or the sentinel — counts as NOT set).
+ * Where a value this process planted in its own environment came from.
+ *
+ *  - "environment": derived from what the deployment supplied (e.g. a
+ *    DATABASE_URL assembled out of separate DB_* parts). It still represents a
+ *    deployment value and must keep outranking any stored one.
+ *  - "override": read out of the in-app store and planted so that consumers
+ *    which can only read `process.env` — `Date`, `Intl`, the cron scheduler —
+ *    see it. It is NOT a deployment value and must not start behaving like one.
+ */
+export type EnvironmentValueOrigin = "environment" | "override";
+
+/**
+ * Names whose current process value this process planted from a stored in-app
+ * value.
+ *
+ * Without this the two are indistinguishable after the write, and the app
+ * frames its own value as the one thing that outranks it: the Environment page
+ * reports the variable as deployment-set, warns that the stored value is
+ * shadowed, and refuses further edits — locking the operator out of a setting
+ * they made in the app (Task #1390). Presence in the real environment is the
+ * question every one of those answers depends on, so it is answered here once.
+ */
+const plantedFromOverride = new Set<string>();
+
+/**
+ * True when the variable is effectively set in the REAL environment (a
+ * released value — empty or the sentinel — counts as NOT set, and so does a
+ * value this process planted from a stored in-app value).
  */
 export function isEnvironmentVariableSetInProcess(name: string): boolean {
-  return readProcessEnv(name) !== undefined;
+  return readProcessEnv(name) !== undefined && !plantedFromOverride.has(name);
+}
+
+/**
+ * True when the value currently in the process environment was planted by this
+ * process from a stored in-app value.
+ */
+export function isEnvironmentValuePlantedFromOverride(name: string): boolean {
+  return plantedFromOverride.has(name) && readProcessEnv(name) !== undefined;
 }
 
 /**
@@ -347,6 +381,46 @@ export function getEnvironmentVariable(name: string): string | undefined {
 }
 
 /**
+ * Read what a variable is CONFIGURED to be, as opposed to what the running
+ * process happens to be using.
+ *
+ * The two differ for exactly one case: a value this process planted in its own
+ * environment from a stored in-app value. {@link getEnvironmentVariable} must
+ * keep returning the planted value, because that is what the process is
+ * genuinely running on — Node reads `TZ` from the environment and nowhere
+ * else. But a screen showing the operator their settings, and the check for
+ * whether a change is waiting on a restart, are both asking the other
+ * question, and answering it with the planted value makes an edit look like it
+ * did nothing.
+ *
+ * So for a planted variable this reports the stored value alone — including
+ * its absence once the stored value is cleared, which is the honest answer to
+ * "what is configured?" and what makes the pending-restart comparison notice
+ * the clearing. Never throws: unlike the getter, this is for reporting, and a
+ * required-but-unset variable is a fact to display rather than an error.
+ */
+export function getConfiguredEnvironmentValue(name: string): string | undefined {
+  const decl = registry.get(name);
+  if (!decl) {
+    throw new Error(
+      `Environment variable "${name}" is not registered. Declare it with ` +
+        `registerEnvironmentVariable() (see server/config/env-registry.ts) before reading it.`,
+    );
+  }
+  const storedValue =
+    dbOverrideSource && isEnvironmentVariableOverridable(name)
+      ? dbOverrideSource(name)
+      : undefined;
+  let value: string | undefined = plantedFromOverride.has(name)
+    ? storedValue
+    : (readProcessEnv(name) ?? storedValue);
+  if (decl.transform) value = decl.transform(value);
+  const override = overrides.get(name);
+  if (override) value = override(value);
+  return value;
+}
+
+/**
  * Read a variable that is a claim the PLATFORM makes about the running
  * process — an orchestrator marker such as a task-metadata endpoint address.
  * Identical to {@link getEnvironmentVariable} except that the database
@@ -404,14 +478,31 @@ export function setEnvironmentVariableOverride(
  * Write an environment variable value into the process environment. Only for
  * registry-sanctioned boot-time writes (e.g. DATABASE_URL assembly from
  * DB_* parts). The name must be registered.
+ *
+ * `origin` is required, and deliberately not defaulted: planting a value makes
+ * it indistinguishable from one the deployment supplied, so the caller — the
+ * only code that knows where the value came from — has to say. Getting it
+ * wrong in either direction is a real defect: claim "environment" for a stored
+ * value and the app locks the operator out of its own setting; claim
+ * "override" for a deployment value and a stored one starts outranking the
+ * deployment.
  */
-export function setEnvironmentVariable(name: string, value: string): void {
+export function setEnvironmentVariable(
+  name: string,
+  value: string,
+  origin: EnvironmentValueOrigin,
+): void {
   if (!registry.has(name)) {
     throw new Error(
       `Cannot set unregistered environment variable "${name}". Register it first.`,
     );
   }
   process.env[name] = value;
+  // Last write decides: a later environment-sourced write must clear a stale
+  // "planted from a stored value" marking, or the variable stays editable in
+  // the app while the deployment is the thing actually supplying it.
+  if (origin === "override") plantedFromOverride.add(name);
+  else plantedFromOverride.delete(name);
 }
 
 export interface EnvironmentVariableInfo {
@@ -444,8 +535,10 @@ export function listEnvironmentVariables(): EnvironmentVariableInfo[] {
   return Array.from(registry.values())
     .map((d) => {
       // Presence must match the getter's fallback rule exactly: released
-      // values (empty/sentinel) read as absent everywhere.
-      const envSet = readProcessEnv(d.name) !== undefined;
+      // values (empty/sentinel) read as absent everywhere. A value this
+      // process planted from a stored one is NOT an environment value, however
+      // much it looks like one from inside process.env.
+      const envSet = isEnvironmentVariableSetInProcess(d.name);
       const overridable = isEnvironmentVariableOverridable(d.name);
       const overrideValue =
         !envSet && overridable && dbOverrideSource ? dbOverrideSource(d.name) : undefined;
@@ -512,6 +605,12 @@ export function getRawProcessEnv(): NodeJS.ProcessEnv {
 // ---------------------------------------------------------------------------
 registerEnvironmentVariables([
   { name: "NODE_ENV", description: "Runtime mode: development | production.", secret: false, category: "core", changeTakesEffect: "restart", },
+  // The system time zone. "restart" is the honest classification even though
+  // the runtime itself would pick up a mid-process change: cron jobs are
+  // already registered against the old zone by the time anyone could edit
+  // this, so applying it live would leave the app half-moved. Applied and
+  // validated at boot by server/config/system-timezone.ts.
+  { name: "TZ", description: "IANA time zone the server runs in (e.g. America/New_York). Determines how every stored timestamp is interpreted, when cron schedules fire, and where the day boundary falls. Unset means the container's zone, normally UTC. WARNING: changing this re-interprets every date already stored.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "PORT", description: "HTTP port the server listens on (default 5000).", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "DATABASE_URL", description: "PostgreSQL connection URL. Assembled from DB_* parts at boot when absent.", secret: true, category: "core", changeTakesEffect: "restart", },
   { name: "EXTERNAL_DATABASE_URL", description: "External PostgreSQL connection URL; wins over DATABASE_URL everywhere (split-brain guard, see shared/database-url.ts).", secret: true, category: "core", changeTakesEffect: "restart", },
@@ -526,6 +625,14 @@ registerEnvironmentVariables([
   { name: "DB_PASSWORD", description: "Database password (URL assembly part).", secret: true, category: "core", changeTakesEffect: "restart", },
   { name: "DB_SECRET", description: "AWS Secrets Manager DB secret: JSON blob or raw password (URL assembly part).", secret: true, category: "core", changeTakesEffect: "restart", },
   { name: "DB_SSLMODE", description: "sslmode for the assembled DATABASE_URL (default require).", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "DB_IAM_AUTH", description: "Set to 1/true to authenticate to Postgres with short-lived AWS IAM tokens instead of a password (RDS Proxy + rds-db:connect). No DB_PASSWORD/DB_SECRET is required or used.", secret: false, category: "core", changeTakesEffect: "restart", },
+  // Read by the RDS token signer under DB_IAM_AUTH. Both MUST be declared even
+  // though nothing in this app sets them: getEnvironmentVariable() throws on an
+  // unregistered name, so reading an undeclared variable is a crash, not an
+  // undefined. ECS injects AWS_REGION into every task; AWS_DEFAULT_REGION is the
+  // CLI/SDK fallback and is the one present when running locally.
+  { name: "AWS_REGION", description: "AWS region, injected by ECS. Read by the RDS IAM token signer when DB_IAM_AUTH is on; a token cannot be signed without it.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "AWS_DEFAULT_REGION", description: "Fallback AWS region (CLI/SDK convention) used by the RDS IAM token signer when AWS_REGION is absent.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "SESSION_SECRET", description: "Express session signing secret.", secret: true, category: "core", changeTakesEffect: "restart", },
   { name: "SESSION_TTL", description: "Session time-to-live in milliseconds.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "ALLOW_INSECURE_SESSION_SECRET", description: "Set to 1 to permit the fixed insecure session-secret fallback in non-prod deploys.", secret: false, category: "core", changeTakesEffect: "restart", },
@@ -533,7 +640,23 @@ registerEnvironmentVariables([
   { name: "ALLOW_DB_PUSH", description: "Set to 1 to permit scripts/db-push.ts to run (guarded: push is hazardous).", secret: false, category: "core" },
   { name: "SKIP_SCHEMA_DRIFT_CHECK", description: "Set to 1 to skip the startup schema-drift boot gate (dev escape hatch).", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "SKIP_DIST_FRESHNESS_CHECK", description: "Set to 1 to skip the stale-dist build freshness guard in production entry.", secret: false, category: "core", changeTakesEffect: "restart", },
-  { name: "EXPOSE_BOOT_ERRORS", description: "Set to 1 to render init-failure details (message + stack) on the boot failure page.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "EXPOSE_BOOT_ERRORS", description: "Set to 1 to render init-failure details (message + stack) and the bring-up report on the boot-status addresses (/health, /boot-status, /api/health, /api/boot-status) and every not-ready response. Without it those still name the boot state and blocker.", secret: false, category: "core", changeTakesEffect: "restart", },
+  // Remote diagnosis and repair for a target the operator has no shell on
+  // (Task #1301): the only levers they have are environment variables and a
+  // redeploy. BRINGUP_REPORT_ONLY is a read-only dry run;
+  // MIGRATIONS_RESUME_FROM_VERSION is a one-shot recovery that must never be
+  // inferred or left set.
+  { name: "BRINGUP_REPORT_ONLY", description: "Set to 1 to boot only far enough to print the schema bring-up report, then stop without running a migration, bootstrapping a schema, or writing any variable.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "MIGRATIONS_RESUME_FROM_VERSION", description: "ONE-SHOT RECOVERY: set the stored core migrations_version to this number at boot, so every registered migration above it runs. Lowering replays them; raising declares them applied so a replay can resume past a migration that will not re-apply. Remove it after a successful boot.", secret: false, category: "core", changeTakesEffect: "restart", },
+  // Boot deadlines (Task #1350). One image runs as two services against one
+  // database and a rollout restarts both at once, so a booting task both
+  // waits for another task's schema bring-up and can be blocked by an
+  // unreachable database. Every such wait is bounded: a task that cannot
+  // make progress must fail visibly instead of sitting in "initializing"
+  // while the load balancer keeps routing to it.
+  { name: "DB_CONNECT_TIMEOUT_MS", description: "How long a database connection checkout may take before it fails, in milliseconds (default 15000). Bounds every boot step that needs a connection.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "BRINGUP_LOCK_TIMEOUT_MS", description: "How long a booting task waits for another task's schema bring-up to finish, in milliseconds (default 300000). On expiry the boot fails with blockedOn=bringup-lock rather than waiting indefinitely. This wait cannot be disabled: any value below 1 is refused and the default is used instead — give a long migration a LARGER number.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "BRINGUP_STEP_TIMEOUT_MS", description: "Deadline for each individual schema bring-up step — classification, bootstrap, migrations, drift gate — in milliseconds (default 300000). Raise it for a legitimately long migration; 0 disables it.", secret: false, category: "core", changeTakesEffect: "restart", },
   // "reload": the filesystem registry re-parses this and drops its cached
   // providers when the "Filesystem registry" subsystem is reloaded from the
   // admin Restart & Reload page (Task #1258) — no restart needed.
@@ -554,8 +677,8 @@ registerEnvironmentVariables([
   { name: "AUTH_DEFAULT_PROVIDER", description: "Which configured auth provider is the default.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "AUTH_LOCAL_ENABLED", description: "Set to false to disable the local auth provider without editing AUTH_PROVIDER.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "AUTH_LOCAL_PEPPER", description: "Pepper concatenated to passwords before hashing for local auth.", secret: true, category: "core", changeTakesEffect: "restart", },
-  { name: "LOCAL_AUTH_EMAIL", description: "Email of the local-auth credential to seed at boot.", secret: false, category: "core", changeTakesEffect: "restart", },
-  { name: "LOCAL_AUTH_PASSWORD_HASH", description: "Password hash of the local-auth credential to seed at boot.", secret: true, category: "core", changeTakesEffect: "restart", },
+  { name: "LOCAL_AUTH_EMAIL", description: "Break-glass admin account. While set (with LOCAL_AUTH_PASSWORD_HASH), every boot guarantees a user with this email exists, is active, holds the admin permission and carries that password. Requires 'local' in AUTH_PROVIDER.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "LOCAL_AUTH_PASSWORD_HASH", description: "bcrypt hash of the LOCAL_AUTH_EMAIL account's password (scripts/oneoffs/generate-password-hash.ts). Applied on every boot; a non-bcrypt value is refused and reported rather than stored.", secret: true, category: "core", changeTakesEffect: "restart", },
   { name: "ISSUER_URL", description: "OIDC issuer URL for the Replit auth provider (legacy name).", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "REPLIT_ISSUER_URL", description: "OIDC issuer URL for the Replit auth provider.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "REPLIT_CLIENT_ID", description: "OIDC client id for the Replit auth provider.", secret: false, category: "core", changeTakesEffect: "restart", },

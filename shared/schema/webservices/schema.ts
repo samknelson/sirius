@@ -1,8 +1,9 @@
 import { sql } from "drizzle-orm";
-import { pgTable, pgEnum, text, varchar, boolean, timestamp, index, uniqueIndex, unique } from "drizzle-orm/pg-core";
+import { pgTable, pgEnum, text, varchar, boolean, timestamp, integer, date, index, uniqueIndex, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { pluginConfigs } from "../../schema";
+import { isValidYmd } from "../../utils/date";
 
 export const wsClientStatusEnum = pgEnum("ws_client_status", [
   "active",
@@ -121,3 +122,70 @@ export const insertWsClientIpRuleSchema = createInsertSchema(wsClientIpRules, {
 
 export type InsertWsClientIpRule = z.infer<typeof insertWsClientIpRuleSchema>;
 export type WsClientIpRule = typeof wsClientIpRules.$inferSelect;
+
+/**
+ * How many incoming web service calls we served, per (plugin, client,
+ * operation, day). The inbound mirror of `wc_stats`.
+ *
+ * Deliberately NOT derivable from the request log: that table answers
+ * per-request questions ("what did this partner send at 3am") and is pruned on
+ * a retention schedule, while this answers usage questions ("how much is this
+ * partner using us, and which of our services carries it") and is bounded by
+ * clients times operations times days.
+ *
+ * A row means "a call reached a service handler". Every refusal — unknown or
+ * ambiguous configuration, no grant, disabled configuration, unregistered
+ * plugin, disabled component, unknown operation, wrong verb, failed
+ * authentication, maintenance — counts nothing, because none of those did any
+ * work; they are the request log's business.
+ *
+ * The plugin, not the configuration, is "which service". Several
+ * configurations can address one plugin, and a configuration row is
+ * per-database and renameable, so it makes a poor thing to accumulate years of
+ * counts against; a plugin id is a registry constant that travels between
+ * environments and survives its plugin being retired. Operation is a registry
+ * constant for the same reason and is stored as text — a retired operation's
+ * calls must still read back.
+ *
+ * The client, by contrast, IS a record, so it is a reference. Deleting a
+ * client is a real hard delete in this app (not a status change), and its
+ * counts go with it: a usage count that cannot name whose usage it was is not
+ * worth keeping.
+ *
+ * `ymd` is a date, not a timestamp, and is the server's local day — the same
+ * helper and the same handling as the outbound counter, so the two can never
+ * disagree about what "today" means.
+ */
+export const wsStats = pgTable("ws_stats", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  pluginId: varchar("plugin_id", { length: 64 }).notNull(),
+  clientId: varchar("client_id").notNull().references(() => wsClients.id, { onDelete: "cascade" }),
+  operation: varchar("operation", { length: 64 }).notNull(),
+  ymd: date("ymd").notNull(),
+  calls: integer("calls").notNull().default(0),
+}, (table) => ({
+  // Named UNIQUE CONSTRAINT (not a unique index) so the startup drift gate
+  // sees the same object the migration creates. It is also the conflict target
+  // of the insert-or-increment, which is what stops concurrent calls losing
+  // counts. No further indexes: the row count is bounded by clients times
+  // operations times days, so a filtered read scans a small table.
+  dimensionsUnique: unique("ws_stats_plugin_client_operation_ymd_uniq").on(
+    table.pluginId,
+    table.clientId,
+    table.operation,
+    table.ymd,
+  ),
+}));
+
+export const insertWsStatsSchema = createInsertSchema(wsStats, {
+  pluginId: z.string().min(1).max(64),
+  clientId: z.string().min(1),
+  operation: z.string().min(1).max(64),
+  ymd: z.string().refine(isValidYmd, { message: "Expected a YYYY-MM-DD day" }),
+  calls: z.number().int().min(0),
+}).omit({
+  id: true,
+});
+
+export type InsertWsStats = z.infer<typeof insertWsStatsSchema>;
+export type WsStats = typeof wsStats.$inferSelect;

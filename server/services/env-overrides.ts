@@ -37,6 +37,31 @@ export function isEnvOverrideVariableName(rowName: string): boolean {
 
 let cache = new Map<string, string>();
 
+/**
+ * Read ONE override row before the cache exists, tolerating a database that
+ * cannot answer yet.
+ *
+ * The normal path installs the whole cache after the schema bring-up, which is
+ * far too late for a variable that has to be in force BEFORE the first write —
+ * `TZ` being the case this exists for: migrations and boot-time seeding write
+ * timestamps, and a zone applied afterwards cannot repair rows already
+ * written in the container's zone.
+ *
+ * Fail-soft on purpose. The variables table may not exist yet (first install)
+ * and the database may not be reachable at all; neither is this function's
+ * problem to report. Returning undefined means "no stored override to honour",
+ * and the schema bring-up that runs next raises the real failure with a far
+ * better message than a peek could.
+ */
+export async function peekEnvOverride(name: string): Promise<string | undefined> {
+  try {
+    const row = await storage.variables.getByName(envOverrideVariableName(name));
+    return typeof row?.value === "string" && row.value !== "" ? row.value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Reload the cache from all ENV_* rows in the variables table. */
 export async function refreshEnvOverrides(): Promise<void> {
   const rows = await storage.variables.getByNamePrefix(ENV_OVERRIDE_PREFIX);

@@ -10,7 +10,13 @@ import { getEffectiveUser } from "../masquerade";
 
 const crewInputSchema = insertEdlsCrewsSchema.omit({ sheetId: true });
 
-const sheetWithCrewsSchema = insertEdlsSheetsSchema.omit({ employerId: true }).extend({
+/**
+ * `notificationsEnabled` is omitted on purpose: the dedicated toggle endpoint
+ * below is the ONLY way the flag changes. It would otherwise ride in on any
+ * sheet create or edit, since both request schemas derive from the table's
+ * insert schema.
+ */
+const sheetWithCrewsSchema = insertEdlsSheetsSchema.omit({ employerId: true, notificationsEnabled: true }).extend({
   crews: z.array(crewInputSchema).min(1, "At least one crew is required"),
 });
 
@@ -689,6 +695,10 @@ export function registerEdlsSheetsRoutes(
     trashLock: z.boolean(),
   });
 
+  const notificationsEnabledSchema = z.object({
+    notificationsEnabled: z.boolean(),
+  });
+
   app.patch(
     "/api/edls/sheets/:id/trash-lock",
     requireAuth,
@@ -718,6 +728,49 @@ export function registerEdlsSheetsRoutes(
       } catch (error) {
         console.error("Failed to update trash lock:", error);
         res.status(500).json({ message: "Failed to update trash lock" });
+      }
+    }
+  );
+
+  /**
+   * The only write path for the sheet's worker-notification opt-in. Same
+   * middleware chain and the same `edls.sheet.edit` authorization as the trash
+   * lock above, which is what refuses the change on a Scheduled or Trash
+   * sheet. Unlike the trash lock this is a plain column, not a key in the
+   * sheet's `data` JSONB.
+   *
+   * Turning the flag on sends nothing by itself: the worker notifier fires on
+   * a status arrival, and a sheet that already passed its trigger status is
+   * not revisited.
+   */
+  app.patch(
+    "/api/edls/sheets/:id/notifications-enabled",
+    requireAuth,
+    edlsComponent,
+    requireAccess('edls.sheet.edit', (req) => req.params.id),
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const parsed = notificationsEnabledSchema.safeParse(req.body);
+        
+        if (!parsed.success) {
+          res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+          return;
+        }
+        
+        const existingSheet = await storage.edlsSheets.get(id);
+        if (!existingSheet) {
+          res.status(404).json({ message: "Sheet not found" });
+          return;
+        }
+        
+        const updatedSheet = await storage.edlsSheets.update(id, {
+          notificationsEnabled: parsed.data.notificationsEnabled,
+        });
+        res.json(updatedSheet);
+      } catch (error) {
+        console.error("Failed to update sheet notifications flag:", error);
+        res.status(500).json({ message: "Failed to update notifications setting" });
       }
     }
   );
@@ -811,7 +864,12 @@ export function registerEdlsSheetsRoutes(
         // Copy data but exclude trashLock (new sheet should start without protection)
         const sourceData = (sourceSheet.data as Record<string, any>) || {};
         const { trashLock: _, ...copiedData } = sourceData;
-
+        
+        // `notificationsEnabled` is deliberately not carried over either: a
+        // copy starts with worker notifications OFF whatever the source sheet
+        // had, so it is simply left off the insert and takes the column
+        // default.
+        
         const newSheetData = {
           ymd: targetDate,
           title: sourceSheet.title,

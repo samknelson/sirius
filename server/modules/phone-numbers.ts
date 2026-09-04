@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage, createCommSmsOptinStorage } from "../storage";
 import { insertPhoneNumberSchema, insertCommSmsOptinSchema } from "@shared/schema";
-import { phoneValidationService, type PhoneValidationResult } from "../services/comm/validators/phone";
+import { phoneValidationService, schedulePhoneRevalidation, type PhoneValidationResult } from "../services/comm/validators/phone";
 import { checkAccessInline } from "../services/access-policy-evaluator";
 import { z } from "zod";
 
@@ -16,38 +16,6 @@ type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Respo
 type PolicyMiddleware = (policy: any, getEntityId?: (req: Request) => string | undefined | Promise<string | undefined>) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
 const smsOptinStorage = createCommSmsOptinStorage();
-
-// Helper function to ensure comm_sms_optin record exists and has validation data
-async function ensureSmsOptinWithValidation(phoneNumber: string, validationResult: PhoneValidationResult): Promise<void> {
-  const e164Phone = validationResult.e164Format || phoneNumber;
-  
-  try {
-    const existingOptin = await smsOptinStorage.getSmsOptinByPhoneNumber(e164Phone);
-    
-    const validationData = {
-      smsPossible: validationResult.smsPossible ?? null,
-      voicePossible: validationResult.voicePossible ?? null,
-      validatedAt: new Date(),
-      validationResponse: validationResult as unknown as Record<string, unknown>,
-    };
-    
-    if (existingOptin) {
-      // Update existing record with validation data
-      await smsOptinStorage.updateSmsOptin(existingOptin.id, validationData);
-    } else {
-      // Create new record with validation data
-      await smsOptinStorage.createSmsOptin({
-        phoneNumber: e164Phone,
-        optin: false,
-        allowlist: false,
-        ...validationData,
-      });
-    }
-  } catch (error) {
-    // Log error but don't fail the phone number operation
-    console.error('Failed to create/update SMS opt-in record with validation:', error);
-  }
-}
 
 export function registerPhoneNumberRoutes(
   app: Express, 
@@ -102,6 +70,10 @@ export function registerPhoneNumberRoutes(
       const { contactId } = req.params;
       const phoneNumbers = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);
       res.json(phoneNumbers);
+      // Serve what is stored, then catch up out of band. Blocking the list on
+      // the provider would mean one external call per unvalidated number
+      // inside the page load.
+      schedulePhoneRevalidation(phoneNumbers.filter((p) => p.isActive).map((p) => p.phoneNumber));
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch phone numbers" });
     }
@@ -125,6 +97,7 @@ export function registerPhoneNumberRoutes(
     try {
       const phoneNumber = (req as any).phoneRecord;
       res.json(phoneNumber);
+      if (phoneNumber?.isActive) schedulePhoneRevalidation(phoneNumber.phoneNumber);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch phone number" });
     }
@@ -139,8 +112,10 @@ export function registerPhoneNumberRoutes(
     try {
       const { contactId } = req.params;
       
-      // Validate and format the phone number
-      const validationResult = await phoneValidationService.validateAndFormat(req.body.phoneNumber);
+      // Validate and format the phone number. `default` answers from the
+      // stored validation when it is recent enough, so re-adding a number
+      // somebody already validated costs nothing.
+      const validationResult = await phoneValidationService.validateAndFormat(req.body.phoneNumber, { revalidate: 'default' });
       
       if (!validationResult.isValid) {
         return res.status(400).json({ 
@@ -157,9 +132,6 @@ export function registerPhoneNumberRoutes(
       });
       
       const newPhoneNumber = await storage.contacts.phoneNumbers.createPhoneNumber(phoneNumberData);
-      
-      // Auto-create/update comm_sms_optin record with validation data
-      await ensureSmsOptinWithValidation(req.body.phoneNumber, validationResult);
       
       res.status(201).json(newPhoneNumber);
     } catch (error) {
@@ -195,18 +167,40 @@ export function registerPhoneNumberRoutes(
       let updateData: any = { ...req.body };
       let validationResult: PhoneValidationResult | null = null;
       
+      // The edit form posts the whole record, so the field being PRESENT is no
+      // evidence that the digits changed. Compare against what is stored and
+      // leave an unchanged number entirely alone.
+      const currentPhoneNumber = (req as any).phoneRecord as { phoneNumber: string } | undefined;
       if (req.body.phoneNumber) {
-        validationResult = await phoneValidationService.validateAndFormat(req.body.phoneNumber);
-        
-        if (!validationResult.isValid) {
-          return res.status(400).json({ 
-            message: validationResult.error || "Invalid phone number",
-            error: validationResult.error
+        const normalized = await phoneValidationService.validateAndFormat(req.body.phoneNumber, {
+          revalidate: 'never',
+        });
+        if (!normalized.isValid) {
+          return res.status(400).json({
+            message: normalized.error || "Invalid phone number",
+            error: normalized.error
           });
         }
-        
-        updateData.phoneNumber = validationResult.e164Format;
-        updateData.validationResponse = validationResult;
+
+        const unchanged = currentPhoneNumber?.phoneNumber === normalized.e164Format;
+        if (unchanged) {
+          delete updateData.phoneNumber;
+          delete updateData.validationResponse;
+        } else {
+          validationResult = await phoneValidationService.validateAndFormat(req.body.phoneNumber, {
+            revalidate: 'default',
+          });
+
+          if (!validationResult.isValid) {
+            return res.status(400).json({ 
+              message: validationResult.error || "Invalid phone number",
+              error: validationResult.error
+            });
+          }
+          
+          updateData.phoneNumber = validationResult.e164Format;
+          updateData.validationResponse = validationResult;
+        }
       }
       
       // Parse the update data, but don't require contactId since it shouldn't change
@@ -216,11 +210,6 @@ export function registerPhoneNumberRoutes(
       
       if (!updatedPhoneNumber) {
         return res.status(404).json({ message: "Phone number not found" });
-      }
-      
-      // Auto-create/update comm_sms_optin record with validation data if phone number changed
-      if (validationResult) {
-        await ensureSmsOptinWithValidation(req.body.phoneNumber, validationResult);
       }
       
       res.json(updatedPhoneNumber);
@@ -320,8 +309,9 @@ export function registerPhoneNumberRoutes(
         return res.status(404).json({ message: "Phone number not found" });
       }
       
-      // Re-validate the phone number
-      const validationResult = await phoneValidationService.validateAndFormat(phoneNumber.phoneNumber);
+      // Re-validate the phone number. The whole point of the action is to
+      // ask again, so it ignores how recent the stored answer is.
+      const validationResult = await phoneValidationService.validateAndFormat(phoneNumber.phoneNumber, { revalidate: 'always' });
       
       if (!validationResult.isValid) {
         return res.status(400).json({ 
@@ -334,9 +324,6 @@ export function registerPhoneNumberRoutes(
       const updatedPhoneNumber = await storage.contacts.phoneNumbers.updatePhoneNumber(id, {
         validationResponse: validationResult
       });
-      
-      // Update the comm_sms_optin record with validation data
-      await ensureSmsOptinWithValidation(phoneNumber.phoneNumber, validationResult);
       
       // Return the opt-in record with updated validation data
       const optinRecord = await smsOptinStorage.getSmsOptinByPhoneNumber(validationResult.e164Format || phoneNumber.phoneNumber);
@@ -463,7 +450,7 @@ export function registerPhoneNumberRoutes(
           });
         } else {
           // Create new record
-          const validationResult = await phoneValidationService.validateAndFormat(phoneNumber);
+          const validationResult = await phoneValidationService.validateAndFormat(phoneNumber, { revalidate: 'default' });
           if (!validationResult.isValid) {
             return res.status(400).json({ message: validationResult.error || "Invalid phone number" });
           }
@@ -510,7 +497,9 @@ export function registerPhoneNumberRoutes(
       try {
         const { phoneNumber } = req.params;
         
-        const validationResult = await phoneValidationService.validateAndFormat(phoneNumber);
+        // Normalization only: minting a link for a number is not a question
+        // about whether the carrier still has it.
+        const validationResult = await phoneValidationService.validateAndFormat(phoneNumber, { revalidate: 'never' });
         if (!validationResult.isValid) {
           return res.status(400).json({ message: validationResult.error || "Invalid phone number" });
         }

@@ -4,9 +4,27 @@ import { storage } from "../../storage";
 import { insertWsClientSchema, insertWsClientIpRuleSchema } from "@shared/schema";
 import { getEnvironmentVariable } from "../../config/env-registry";
 import { runInTransaction } from "../../storage/transaction-context";
+import { addDaysYmd, getTodayYmd, isValidYmd, isYmdAfter } from "@shared/utils/date";
 
 type RequireAuth = (req: Request, res: Response, next: NextFunction) => void;
 type RequirePermission = (permission: string) => (req: Request, res: Response, next: NextFunction) => void;
+
+/**
+ * The usage read's range and filters.
+ *
+ * Days are Ymd strings all the way through — the counter stores a day, not a
+ * timestamp, so nothing here has to decide what a day means.
+ */
+const statsQuerySchema = z.object({
+  start: z.string().refine(isValidYmd, { message: "Expected a YYYY-MM-DD day" }).optional(),
+  end: z.string().refine(isValidYmd, { message: "Expected a YYYY-MM-DD day" }).optional(),
+  pluginId: z.string().trim().min(1).optional(),
+  clientId: z.string().trim().min(1).optional(),
+  operation: z.string().trim().min(1).optional(),
+});
+
+/** How far back the usage read looks when the caller names no range. */
+const DEFAULT_STATS_DAYS = 30;
 
 export function registerWebServiceAdminRoutes(
   app: Express,
@@ -241,6 +259,27 @@ export function registerWebServiceAdminRoutes(
     }
   });
 
+  // === API document ===
+
+  /**
+   * The generated OpenAPI document for one client. Built by the SAME builder
+   * the swagger web service uses, so what an administrator downloads here is
+   * exactly what an integrator granted that service fetches for themselves.
+   */
+  app.get("/api/admin/ws-clients/:clientId/openapi", requireAuth, requirePermission("admin"), async (req, res) => {
+    try {
+      const client = await storage.wsClients.get(req.params.clientId);
+      if (!client) {
+        return res.status(404).json({ message: "Client not found" });
+      }
+      const { buildClientOpenApiDocument } = await import("./openapi");
+      res.json(await buildClientOpenApiDocument(client));
+    } catch (error) {
+      console.error("Failed to build WS client API document:", error);
+      res.status(500).json({ message: "Failed to build API document" });
+    }
+  });
+
   // === IP Rules ===
 
   app.get("/api/admin/ws-clients/:clientId/ip-rules", requireAuth, requirePermission("admin"), async (req, res) => {
@@ -443,6 +482,75 @@ export function registerWebServiceAdminRoutes(
         message: error instanceof Error ? error.message : "An unexpected error occurred",
         duration: Date.now() - startTime,
       });
+    }
+  });
+
+  // === Usage ===
+
+  // How many calls we served, per day and per dimension.
+  //
+  // The counts come from `ws_stats`, not from the request log: the log is
+  // per-request and pruned on a retention schedule, so it stops being able to
+  // answer "how much did this partner use us last quarter" the moment the
+  // window closes.
+  //
+  // The figures are asked for as one report rather than gathered here, because
+  // they are read as one account of the same traffic: the counter storage
+  // reads them in a single snapshot and rolls the breakdowns up from one
+  // grouped read, so a call arriving mid-request cannot land in the chart but
+  // not the totals beneath it.
+  //
+  // The filter catalogue is the deliberate exception. It says which
+  // combinations have ever been counted, not how many, so it does not have to
+  // agree with anything and is read outside that snapshot.
+  app.get("/api/admin/ws-stats", requireAuth, requirePermission("admin"), async (req, res) => {
+    const parsed = statsQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      return res
+        .status(400)
+        .json({ message: "Invalid query parameters", errors: parsed.error.issues });
+    }
+    try {
+      const end = parsed.data.end ?? getTodayYmd();
+      const start = parsed.data.start ?? addDaysYmd(end, -(DEFAULT_STATS_DAYS - 1));
+      if (isYmdAfter(start, end)) {
+        return res.status(400).json({ message: "The range starts after it ends" });
+      }
+
+      const { pluginId, clientId, operation } = parsed.data;
+      const range = { start, end, pluginId, clientId, operation };
+      const [report, dimensions, clients] = await Promise.all([
+        storage.wsStats.report(range),
+        storage.wsStats.listDimensions(),
+        storage.wsClients.getAll(),
+      ]);
+
+      // Clients are named, not numbered. A counted call always has a client
+      // that still exists — the counter's rows are removed with the client
+      // they belong to — but this stays defensive rather than asserting it,
+      // because a usage screen that throws is worse than one that shows an id.
+      const nameById = new Map(clients.map((client) => [client.id, client.name]));
+      const named = (id: string) => nameById.get(id) ?? id;
+
+      res.json({
+        start,
+        end,
+        // Only the days that have calls. The range is stated above so the
+        // caller can fill the silent days itself rather than being handed a
+        // gap it has to guess the meaning of.
+        days: report.days,
+        total: report.total,
+        byPlugin: report.byPlugin,
+        byPluginOperation: report.byPluginOperation,
+        byClient: report.byClient.map((row) => ({ ...row, clientName: named(row.clientId) })),
+        // Every combination ever counted, for the filters — read from the
+        // counts rather than the plugin registry, so an operation a release has
+        // since retired stays selectable and its calls stay accounted for.
+        dimensions: dimensions.map((row) => ({ ...row, clientName: named(row.clientId) })),
+      });
+    } catch (error) {
+      console.error("Failed to read web service call stats:", error);
+      res.status(500).json({ message: "Failed to read call stats" });
     }
   });
 }

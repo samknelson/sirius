@@ -45,7 +45,7 @@ import {
   bulkMediumEnum,
 } from "@shared/schema";
 import { noteEntityTypeEnumOptions } from "@shared/notes";
-import { defineLoggingConfig } from "./middleware/logging";
+import { defineLoggingConfig, withStorageLogging } from "./middleware/logging";
 import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
 
 /**
@@ -1219,7 +1219,12 @@ export const unifiedOptionsLoggingConfig = defineLoggingConfig<UnifiedOptionsSto
 });
 
 export function createUnifiedOptionsStorage(): UnifiedOptionsStorage {
-  return createUnifiedOptionsStorageImpl();
+  // Wrapped so every option row written through this storage — by hand on
+  // the List tab or in bulk by the JSON importer — lands in the admin log
+  // viewer as its own entry. `withStorageLogging` invokes the underlying
+  // method with `this` bound to the unwrapped implementation, so internal
+  // `this.list()` / `this.get()` calls are unaffected.
+  return withStorageLogging(createUnifiedOptionsStorageImpl(), unifiedOptionsLoggingConfig);
 }
 
 export { optionsMetadata };

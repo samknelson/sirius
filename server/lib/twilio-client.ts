@@ -1,5 +1,6 @@
 import twilio from 'twilio';
 import { getEnvironmentVariable, registerEnvironmentVariables } from "../config/env-registry";
+import { assertExternalServiceAllowed } from "../services/maintenance-flag";
 
 // changeTakesEffect: "restart". getCredentials() memoizes the resolved
 // credentials in `cachedCredentials` on first use and every send reads that
@@ -107,7 +108,15 @@ async function getCredentials() {
   throw new Error('Twilio not configured. Please set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER environment variables.');
 }
 
+/**
+ * Every Twilio operation starts here, so this is the backstop for the
+ * maintenance refusal: it runs before `getCredentials()`, which means a
+ * refusal never reads the account SID or auth token and never queries the
+ * Replit connector for them. Callers guard with their own operation name too,
+ * so the message says what was actually attempted.
+ */
 export async function getTwilioClient() {
+  assertExternalServiceAllowed("Twilio", "connect to Twilio");
   const { accountSid, authToken } = await getCredentials();
   return twilio(accountSid, authToken);
 }

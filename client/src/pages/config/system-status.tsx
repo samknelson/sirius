@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "@/lib/date-format";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";

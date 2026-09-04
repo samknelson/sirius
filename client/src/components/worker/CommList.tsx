@@ -36,7 +36,7 @@ import {
   Bell,
   Tag
 } from "lucide-react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
 import { interactionChannelLabel } from "@/lib/comm-types";
 

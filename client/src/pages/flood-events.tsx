@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Trash2, RefreshCw, Droplets, Filter } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
-import { format, formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "@/lib/date-format";
 import { useState } from "react";
 import {
   Select,

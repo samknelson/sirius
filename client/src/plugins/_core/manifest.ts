@@ -21,7 +21,10 @@ export type PluginKind =
   | "worker-ban"
   // Externally callable web services. Each config row is one addressable
   // service; the plugin declares the operations it exposes.
-  | "web-service";
+  | "web-service"
+  // Record types searchable from anywhere. Each config row names the roles
+  // its searcher is offered to — that role list is the access decision.
+  | "quicksearch";
 
 /**
  * Kinds whose `/api/plugins/:kind/manifest` returns a flat array of
@@ -196,6 +199,7 @@ export interface PluginSearchParamsByKind {
   // adapterless kinds.
   "worker-ban": BasePluginSearchParams;
   "web-service": BasePluginSearchParams;
+  quicksearch: BasePluginSearchParams;
 }
 
 /**

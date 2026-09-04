@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Settings, Trash2, Lock, Unlock, Copy } from "lucide-react";
+import { Settings, Trash2, Lock, Unlock, Copy, Bell, BellOff } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -64,6 +64,7 @@ function EdlsSheetManageContent() {
   const currentStatusOption = statusOptions.find(s => s.value === currentStatus);
   const sheetData = (sheet.data as Record<string, any>) || {};
   const hasTrashLock = !!sheetData.trashLock;
+  const notificationsEnabled = !!sheet.notificationsEnabled;
 
   const setStatusMutation = useMutation({
     mutationFn: async (newStatus: EdlsSheetStatus) => {
@@ -104,6 +105,30 @@ function EdlsSheetManageContent() {
       toast({
         title: "Failed to Update Trash Lock",
         description: getApiErrorMessage(error, "An error occurred while updating the trash lock"),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const notificationsMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      return apiRequest("PATCH", `/api/edls/sheets/${sheetId}/notifications-enabled`, {
+        notificationsEnabled: enabled,
+      });
+    },
+    onSuccess: (_data, enabled) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheetId] });
+      toast({
+        title: enabled ? "Notifications Enabled" : "Notifications Disabled",
+        description: enabled
+          ? "Workers on this sheet will be notified when it reaches a notifying status"
+          : "Workers on this sheet will not be notified",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to Update Notifications",
+        description: getApiErrorMessage(error, "An error occurred while updating notifications"),
         variant: "destructive",
       });
     },
@@ -183,13 +208,17 @@ function EdlsSheetManageContent() {
     trashLockMutation.mutate(!hasTrashLock);
   };
 
+  const handleNotificationsToggle = () => {
+    notificationsMutation.mutate(!notificationsEnabled);
+  };
+
   const availableStatuses = statusOptions.filter(s => {
     if (s.value === currentStatus) return false;
     if (s.value === "trash" && hasTrashLock) return false;
     if (s.value === "trash" && currentStatus === "lock") return false;
     return true;
   });
-  const isPending = setStatusMutation.isPending || trashLockMutation.isPending || copySheetMutation.isPending;
+  const isPending = setStatusMutation.isPending || trashLockMutation.isPending || notificationsMutation.isPending || copySheetMutation.isPending;
   const canEdit = currentStatus !== "lock" && currentStatus !== "trash";
 
   return (
@@ -265,7 +294,7 @@ function EdlsSheetManageContent() {
             )}
 
             {canEdit && (
-              <div className="pt-4">
+              <div className="pt-4 flex items-center gap-3">
                 <Button
                   variant="outline"
                   onClick={handleTrashLockToggle}
@@ -281,6 +310,26 @@ function EdlsSheetManageContent() {
                     <>
                       <Lock className="mr-2 h-4 w-4" />
                       Set trash lock
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleNotificationsToggle}
+                  disabled={notificationsMutation.isPending}
+                  data-testid={
+                    notificationsEnabled ? "action-disable-notifications" : "action-enable-notifications"
+                  }
+                >
+                  {notificationsEnabled ? (
+                    <>
+                      <BellOff className="mr-2 h-4 w-4" />
+                      Disable notifications
+                    </>
+                  ) : (
+                    <>
+                      <Bell className="mr-2 h-4 w-4" />
+                      Enable notifications
                     </>
                   )}
                 </Button>

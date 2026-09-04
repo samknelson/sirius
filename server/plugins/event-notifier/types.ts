@@ -54,16 +54,40 @@ export interface NotifierMessageContent {
   templateId?: string;
   description?: string;
   mergeVariables?: Record<string, string>;
+  /**
+   * Optional send-once key (see `comm.sendKey`): "this message, for this
+   * recipient, on this channel, is this one specific thing". The dispatcher
+   * checks it before spending the recipient's anti-flood budget and hands it
+   * to the sender, whose insert is what actually claims it — so a repeating
+   * scan re-composing the same message delivers it exactly once.
+   *
+   * Only for messages that ARE one identifiable occurrence. A notifier whose
+   * event can honestly happen twice must leave this unset, or the second
+   * occurrence is silently swallowed.
+   */
+  sendKey?: string;
 }
 
 /**
  * Context handed to a notifier for a single fired event. `event` is the bus
  * event type and `payload` is its (untyped here) payload — the notifier
  * narrows it against the event-bus `EventPayloadMap`.
+ *
+ * The configuration identity is part of the context because a fired event is
+ * dispatched once per enabled configuration: without it two configurations of
+ * the same notifier watching the same thing cannot tell their own event from
+ * the other's, and neither can build a key that is its own. It is optional
+ * only so the few places that build a context outside a dispatch (template
+ * preview replaying past events) need not invent one; inside a dispatch the
+ * dispatcher always sets it.
  */
 export interface EventNotifierEventContext {
   event: EventType;
   payload: unknown;
+  /** `plugin_configs.id` of the configuration being dispatched for. */
+  configId?: string;
+  /** That configuration's admin-visible name. */
+  configName?: string | null;
 }
 
 /**

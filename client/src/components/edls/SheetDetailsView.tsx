@@ -1,5 +1,5 @@
 import { formatYmd } from "@shared/utils/date";
-import { Calendar, Users, FileText, Clock, MapPin, Lock, User, UserX, Building, ClipboardList, Layers, Factory, UserCheck } from "lucide-react";
+import { Calendar, Users, FileText, Clock, MapPin, Lock, User, UserX, Building, ClipboardList, Layers, Factory, UserCheck, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,6 +35,14 @@ export interface AssignmentWithWorker {
   commId?: string | null;
   /** That communication's delivery status; absent in snapshot payloads. */
   commStatus?: string | null;
+  /**
+   * The worker's own answer, given from their public schedule link: true
+   * accepted, false declined, null not answered yet. Optional because
+   * snapshots captured before the field existed carry no such key — those
+   * render as unanswered rather than failing. Display only: nothing on this
+   * screen writes it.
+   */
+  accepted?: boolean | null;
   worker: {
     id: string;
     siriusId: number | null;
@@ -404,6 +412,48 @@ export function SheetDetailsView({
                                   commStatus={assignment.commStatus}
                                   workerName={formatWorkerName(assignment.worker)}
                                 />
+                              )}
+                              {/*
+                                The worker's own answer, display only: staff
+                                have no way to set, change, or clear it from
+                                here. Unanswered assignments show neither
+                                icon.
+                              */}
+                              {assignment.accepted === true && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span
+                                      tabIndex={0}
+                                      className="inline-flex items-center"
+                                      aria-label="Worker accepted"
+                                      data-testid={`icon-accepted-${assignment.id}`}
+                                    >
+                                      <ThumbsUp
+                                        className="h-4 w-4 text-green-600 dark:text-green-500 shrink-0"
+                                        aria-hidden="true"
+                                      />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Worker accepted</TooltipContent>
+                                </Tooltip>
+                              )}
+                              {assignment.accepted === false && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span
+                                      tabIndex={0}
+                                      className="inline-flex items-center"
+                                      aria-label="Worker declined"
+                                      data-testid={`icon-declined-${assignment.id}`}
+                                    >
+                                      <ThumbsDown
+                                        className="h-4 w-4 text-red-600 dark:text-red-500 shrink-0"
+                                        aria-hidden="true"
+                                      />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Worker declined</TooltipContent>
+                                </Tooltip>
                               )}
                               {isOutOfPopulation && (
                                 <Tooltip>

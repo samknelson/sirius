@@ -9,6 +9,7 @@ import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
 import { resolveLinkedWorkerId } from "./auth/worker-link";
 import { registerVariableRoutes } from "./modules/system/variables";
+import { buildTimeZoneContext } from "./modules/system/timezone";
 import { registerAuthSettingsRoutes } from "./modules/auth-settings";
 import { registerEnvRoutes } from "./modules/system/env";
 import { registerDenormRoutes } from "./modules/system/denorm";
@@ -62,6 +63,7 @@ import { registerCronJobRoutes } from "./modules/system/cron";
 import { registerEventBusIntrospectRoutes } from "./modules/dev/event-bus-introspect";
 import { registerEbsInspectionRoutes } from "./modules/system/ebs";
 import { registerSystemInfoRoutes } from "./modules/system/system-info";
+import { registerWcCacheAdminRoutes } from "./modules/system/wc-cache";
 import { registerEligibilityPluginRoutes } from "./modules/eligibility-plugins";
 import { registerTwilioRoutes } from "./modules/twilio";
 import { registerEmailConfigRoutes } from "./modules/email-config";
@@ -137,6 +139,7 @@ import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
 import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
 import { registerFreemanCrewleadsRoutes } from "./modules/sitespecific/freeman/crewleads";
+import { registerFreemanEdlsMigrateRoutes } from "./modules/sitespecific/freeman/edls-migrate/routes";
 import { registerT631InterviewsRoutes } from "./modules/sitespecific/t631/interviews";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
 import { registerSnapshotsRoutes } from "./modules/snapshots";
@@ -151,9 +154,10 @@ import { registerCompaniesRoutes } from "./modules/employers/companies";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
 import { addressValidationService } from "./services/comm/validators/address";
-import { phoneValidationService } from "./services/comm/validators/phone";
+import { phoneValidationService, DEFAULT_REVALIDATE_AFTER_DAYS } from "./services/comm/validators/phone";
 import { serviceRegistry } from "./services/service-registry";
 import { isAuthenticated } from "./auth";
+import { sendIfMaintenanceRefusal } from "./services/maintenance-flag";
 
 // Authentication middleware
 const requireAuth = isAuthenticated;
@@ -257,8 +261,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           lastName: dbUser.lastName,
           profileImageUrl: dbUser.profileImageUrl,
           isActive: dbUser.isActive,
-          workerId: workerId
+          workerId: workerId,
+          timezone: dbUser.timezone ?? null,
         },
+        // Both halves of the display-zone decision, published together: the
+        // client resolves which zone to render dates in from these plus its
+        // own runtime zone (resolveEffectiveTimeZone in shared/utils/timezone).
+        // Sent here rather than fetched separately so no screen can paint a
+        // date before it knows which zone to paint it in.
+        timezone: await buildTimeZoneContext(dbUser.timezone),
         permissions: userPermissions.map((p) => p.key),
         components: enabledComponents,
         masquerade: session.masqueradeUserId
@@ -384,6 +395,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   const { registerSystemStatusRoutes } = await import("./modules/system/status");
   registerSystemStatusRoutes(app, requireAuth);
 
+  // Quicksearch — the search-from-anywhere endpoint. Which searchers run is
+  // decided server-side from the caller's roles, never from the request.
+  const { registerQuicksearchRoutes } = await import("./modules/system/quicksearch");
+  registerQuicksearchRoutes(app, requireAuth);
+
   // Register bookmark routes
   registerBookmarkRoutes(app, requireAuth, requirePermission);
 
@@ -448,6 +464,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Read-only admin system info (database source) routes
   registerSystemInfoRoutes(app);
+  // Register web client cache viewer routes (admin): what we asked third
+  // parties, what they answered, and a per-entry force-expire.
+  registerWcCacheAdminRoutes(app);
 
   // Charge plugin configs are served by the unified generic config routes
   // (registerPluginsConfigRoutes); the bespoke charge route was removed in
@@ -1636,6 +1655,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
               "line_type_intelligence",
               "caller_name",
             ],
+            revalidateAfterDays:
+              twilioValidation.revalidateAfterDays ?? DEFAULT_REVALIDATE_AFTER_DAYS,
           },
           fallback: {
             useLocalOnTwilioFailure:
@@ -1660,6 +1681,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       
       if (!mode || (mode !== "local" && mode !== "twilio")) {
         return res.status(400).json({ message: "Invalid validation mode. Must be 'local' or 'twilio'." });
+      }
+
+      let revalidateAfterDays: number | undefined;
+      if (twilio?.revalidateAfterDays !== undefined && twilio.revalidateAfterDays !== null) {
+        revalidateAfterDays = Number(twilio.revalidateAfterDays);
+        if (!Number.isInteger(revalidateAfterDays) || revalidateAfterDays < 1) {
+          return res.status(400).json({ message: "Revalidation interval must be a whole number of days, at least 1." });
+        }
       }
       
       // Store local-specific settings in the local provider
@@ -1689,6 +1718,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         ],
         useLocalOnTwilioFailure: fallback?.useLocalOnTwilioFailure ?? existingTwilioValidation.useLocalOnTwilioFailure ?? true,
         logValidationAttempts: fallback?.logValidationAttempts ?? existingTwilioValidation.logValidationAttempts ?? true,
+        // How long a Twilio answer stays good for. Every path that formats a
+        // phone number runs through the validator, so without an age the app
+        // would pay for a lookup on each of them.
+        revalidateAfterDays: revalidateAfterDays ?? existingTwilioValidation.revalidateAfterDays ?? DEFAULT_REVALIDATE_AFTER_DAYS,
       };
       await serviceRegistry.saveProviderSettings("sms", "twilio", {
         ...twilioCurrentSettings,
@@ -1721,6 +1754,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             "line_type_intelligence",
             "caller_name",
           ],
+          revalidateAfterDays:
+            twilioValidation.revalidateAfterDays ?? DEFAULT_REVALIDATE_AFTER_DAYS,
         },
         fallback: {
           useLocalOnTwilioFailure: twilioValidation.useLocalOnTwilioFailure ?? true,
@@ -1751,6 +1786,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       res.json(result);
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       res.status(500).json({
         success: false,
         error: "Failed to geocode address",
@@ -1997,6 +2033,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register Freeman Crew Leads routes
   registerFreemanCrewleadsRoutes(app, requireAuth, requirePermission, requireAccess);
+
+  // Register Freeman EDLS migration routes
+  registerFreemanEdlsMigrateRoutes(app, requireAuth, requirePermission);
+
   registerT631InterviewsRoutes(app, requireAuth, requirePermission, requireAccess);
 
   // Register HTA routes

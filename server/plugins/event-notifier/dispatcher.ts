@@ -152,6 +152,35 @@ async function deliver(
 ): Promise<DeliveryOutcome> {
   const { storage } = await import("../../storage");
   try {
+    // Send-once check FIRST, ahead of every destination lookup and — the part
+    // that matters — ahead of the anti-flood budget. A scan that re-raises the
+    // same crossing every few hours would otherwise spend a recipient's budget
+    // on messages the send layer refuses anyway, throttling the real ones.
+    // Read-side only: the sender's insert is what actually claims the key, so
+    // a failure here is logged and ignored rather than dropping the message.
+    if (content.sendKey) {
+      try {
+        const { hasSentWithKey } = await import("../../services/comm/send-key");
+        if (
+          await hasSentWithKey({
+            medium,
+            contactId: recipient.contactId,
+            sendKey: content.sendKey,
+          })
+        ) {
+          return NOT_SENT;
+        }
+      } catch (error) {
+        logger.warn("Event-notifier send-once check failed; sending anyway (fail open)", {
+          service: SERVICE,
+          pluginId,
+          medium,
+          contactId: recipient.contactId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     if (medium === "email") {
       if (!content.subject) return NOT_SENT;
       const contact = await storage.contacts.getContact(recipient.contactId);
@@ -166,7 +195,11 @@ async function deliver(
         bodyHtml: content.bodyHtml,
         userId: recipient.userId ?? undefined,
         tagIds,
+        sendKey: content.sendKey,
       });
+      // The key was claimed by an earlier send that raced this one: nothing
+      // went out here, and `result.comm` is that earlier message, not ours.
+      if (result.alreadySent) return NOT_SENT;
       return { sent: true, comm: result.comm };
     }
 
@@ -186,7 +219,9 @@ async function deliver(
         message: content.message,
         userId: recipient.userId ?? undefined,
         tagIds,
+        sendKey: content.sendKey,
       });
+      if (result.alreadySent) return NOT_SENT;
       return { sent: true, comm: result.comm };
     }
 
@@ -214,7 +249,9 @@ async function deliver(
         linkLabel: content.linkLabel,
         initiatedBy: SERVICE,
         tagIds,
+        sendKey: content.sendKey,
       });
+      if (result.alreadySent) return NOT_SENT;
       return { sent: true, comm: result.comm };
     }
 
@@ -243,7 +280,9 @@ async function deliver(
         mergeVariables: content.mergeVariables,
         userId: recipient.userId ?? undefined,
         tagIds,
+        sendKey: content.sendKey,
       });
+      if (result.alreadySent) return NOT_SENT;
       return { sent: true, comm: result.comm };
     }
   } catch (error) {
@@ -563,7 +602,6 @@ function makeHandler(event: EventType) {
       });
       return;
     }
-    const ctx: EventNotifierEventContext = { event, payload };
     const envelopes = await getEnabledConfigsForKind(KIND);
     for (const envelope of envelopes) {
       const plugin = eventNotifierRegistry.get(envelope.config.pluginId);
@@ -572,6 +610,16 @@ function makeHandler(event: EventType) {
       const subsidiary = envelope.subsidiary as { media?: string | null } | null;
       const media = parseMedia(subsidiary?.media);
       if (media.length === 0) continue;
+
+      // One context per configuration, not one per event: a plugin's gate and
+      // its message composer are both entitled to know WHICH of its
+      // configurations they are answering for.
+      const ctx: EventNotifierEventContext = {
+        event,
+        payload,
+        configId: envelope.config.id,
+        configName: envelope.config.name,
+      };
 
       try {
         await dispatchForConfig(

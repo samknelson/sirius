@@ -222,6 +222,11 @@ function rewriteConfigData(
  * notifier declares today. Idempotent; a failure on one config is logged and
  * never blocks boot (a stale template renders unknown-token markers, which is
  * bad, but refusing to start is worse).
+ *
+ * Safe when two tasks boot at once (Task #1350): the rewrite is a pure
+ * function of the stored data, so both tasks compute the same replacement,
+ * and applying it to already-rewritten data is the no-op that makes this
+ * idempotent in the first place.
  */
 export async function migrateNotifierTemplateTokens(): Promise<void> {
   const { storage } = await import("../../storage");

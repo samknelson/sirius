@@ -28,7 +28,7 @@ import {
   Tag as TagIcon,
   WifiOff,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
 import { CommWithDetails } from "@/lib/comm-types";
 import { WinstonLog } from "@/lib/system-types";
@@ -279,6 +279,19 @@ export function CommDetailContent({ commId, statusAction, renderFallback }: Comm
               </div>
             </div>
           </div>
+
+          {comm.sendKey && (
+            <div>
+              <Label className="text-muted-foreground">Send Key</Label>
+              <div
+                className="font-mono text-sm mt-1 break-all"
+                title="This message was sent at most once: a later send with the same key, to this contact, on this medium is refused."
+                data-testid="text-comm-send-key"
+              >
+                {comm.sendKey}
+              </div>
+            </div>
+          )}
 
           {comm.smsDetails?.body && (
             <div>

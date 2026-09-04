@@ -87,6 +87,7 @@ import "./components/sitespecific.bao/012_dc_case_workflow";
 import "./components/sitespecific.bao/013_dc_grant_events";
 import "./components/sitespecific.bao/014_dc_extensions_and_notes_retirement";
 import "./components/sitespecific.freeman/001_create_crewleads";
+import "./components/sitespecific.freeman.edls_migrate/001_create_staging";
 import "./components/grievance/001_create_options_grievance_status";
 import "./components/grievance/002_create_options_grievance_category";
 import "./components/grievance/003_create_grievances";
@@ -133,6 +134,8 @@ import "./components/contract/001_create_contract_tables";
 import "./components/edls/001_add_show_status";
 import "./components/edls/002_add_sheet_notes_and_change_tracking";
 import "./components/edls/003_add_assignment_comm_id";
+import "./components/edls/004_add_assignment_accepted";
+import "./components/edls/005_add_sheet_notifications_enabled";
 import "./components/worker.ratings/001_add_sirius_id_to_options_worker_ratings";
 import "./components/trust.providers.edi/001_add_sftp_client_fk";
 import "./components/trust.elections/001_add_enrollment_type";
@@ -173,6 +176,20 @@ import "./core/1131_add_trust_benefit_show_on_worker_list";
 import "./core/1132_wmb_scan_scope";
 import "./core/1133_reapply_ebs";
 import "./core/1134_add_trust_benefit_provider";
+// Merged from upstream main as 1061-1070. Renumbered above this fork's
+// counter (1134) because upstream's numbers were already below the shared
+// migrations_version on every database here and the runner would have
+// silently skipped them (see the 1117/1120 incident). All are idempotent.
+import "./core/1135_create_plugin_configs_quicksearch";
+import "./core/1136_create_wc_cache";
+import "./core/1137_backfill_wc_cache_phone_lookup";
+import "./core/1138_backfill_wc_cache_address_verification";
+import "./core/1139_create_wc_stats";
+import "./core/1140_wc_stats_ymd";
+import "./core/1141_create_ws_stats";
+import "./core/1142_add_comm_send_key";
+import "./core/1143_delete_web_usage_alert_scan_cron_config";
+import "./core/1144_add_users_timezone";
 
 export {
   runMigrations,

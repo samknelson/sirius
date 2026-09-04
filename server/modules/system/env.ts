@@ -3,12 +3,13 @@ import { storage } from "../../storage";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import {
   ENV_RELEASE_SENTINEL,
-  getEnvironmentVariable,
+  getConfiguredEnvironmentValue,
   isEnvironmentVariableOverridable,
   isEnvironmentVariableRegistered,
   isEnvironmentVariableSetInProcess,
   listEnvironmentVariables,
 } from "../../config/env-registry";
+import { shortEnvironmentValueFingerprint } from "../../config/env-value-fingerprint";
 import {
   envOverrideVariableName,
   getEnvOverrideMap,
@@ -36,15 +37,27 @@ export function registerEnvRoutes(app: Express) {
         let value: string | null = null;
         if (!v.secret && v.isSet) {
           try {
-            value = getEnvironmentVariable(v.name) ?? null;
+            // What the variable is CONFIGURED to be: for a value the app
+            // planted in its own environment from a stored one, the running
+            // process keeps using the planted value until a restart, so
+            // reading that back would show an edit made on this very page as
+            // having done nothing.
+            value = getConfiguredEnvironmentValue(v.name) ?? null;
           } catch {
             value = null;
           }
         }
+        // A secret's value never leaves the server, so an admin comparing two
+        // installations gets a digest of it instead — enough to tell "same" from
+        // "different", and nothing else. Non-secret values are shown in full, so
+        // a fingerprint would only be noise.
+        const fingerprint =
+          v.secret && v.isSet ? shortEnvironmentValueFingerprint(v.name) : null;
         return {
           ...v,
           // Never the value for secrets; effective value otherwise.
           value,
+          ...(fingerprint !== null ? { valueFingerprint: fingerprint } : {}),
           // A stale override shadowed by a real env value — surfaced so the
           // admin understands why editing is locked despite the override.
           hasShadowedOverride: v.source === "environment" && overrides.has(v.name),

@@ -44,11 +44,13 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 
 -   **`npm run lint` is the architecture-lint suite** — one entry point for
     every repo-wide architecture rule (`scripts/dev/lint.ts`). It runs all
-    seven rules and reports **every** violation in one pass rather than
+    twelve rules and reports **every** violation in one pass rather than
     stopping at the first, each with its own fix instructions:
     `env-registry`, `storage-encapsulation`, `denorm-declarations`,
     `html-utils`, `constraint-names`, `component-table-order`,
-    `lockfile-registry`. Run one rule
+    `core-migration-component-tables`, `lockfile-registry`,
+    `main-branch-files`, `carrying-branch-drift`, `maintenance-guards`,
+    `theme-color-vars`. Run one rule
     with `npx tsx scripts/dev/lint.ts <rule-id>`, list them with `--list`.
     A new repo-wide rule is added to the `RULES` table in that file — never
     as its own workflow.
@@ -184,8 +186,15 @@ landing on a deployment branch is what causes the recurring merge conflicts.
 -   The `main-branch-files` architecture-lint rule enforces the first bullet:
     on `main` it fails when any `.github/` or `deploy/` file is tracked
     (`git ls-tree`, not `git status`) and tells you to run
-    `git rm -r --cached .github deploy`. On any other branch it passes, so
-    the Freeman branches keep their copies.
+    `git rm -r --cached .github deploy`. On a Freeman branch it fails when
+    those directories have gone missing instead.
+-   The `carrying-branch-drift` architecture-lint rule catches the opposite
+    accident: a finished feature merged onto a Freeman branch because that
+    was the branch checked out when the work completed, leaving it
+    unreachable from `main`. It runs only on a Freeman branch and fails when
+    that branch changed anything outside `.github/` and `deploy/` that still
+    differs from `main`, naming the paths and the `git checkout <branch> --
+    <paths>` repair. A branch merely *behind* `main` passes.
 -   Helper script for the one-time history split: `.local/split-branches.sh`.
 -   **`bao-dev` / `bao-prd` (deployment branches) are pushed only via the
     "Push to bao-dev" / "Push to bao-prd" workflows**
@@ -262,6 +271,26 @@ missing, extra, or mistyped.
     The counter persists across disable/enable cycles, so re-enabling a
     component whose tables were retained does NOT replay migrations it
     has already applied.
+    **A core migration must never hard-depend on a component-owned
+    table.** It runs on every deployment; a table in a component's
+    `schemaManifest` only exists where that component is enabled, and
+    most components default to off. An unguarded reference throws on
+    every deployment where the component is disabled, and because the
+    runner stops at the first failure the database is left
+    half-migrated with every later migration pending behind it and the
+    app refusing to serve. Probe for the table first (an
+    `information_schema` lookup naming it, skipping with a log line
+    when it is absent — see `1015_create_plugin_configs.ts`), or put
+    the migration under the component instead. The
+    `core-migration-component-tables` architecture-lint rule enforces
+    this as part of the `lint` gate: it scans the SQL each core
+    migration executes (so a table name in a comment, a log line or
+    the description needs no guard) and demands a check that names
+    that table and is branched on before its first use — a probe for
+    some other table, or one placed after the fact, does not count.
+    Run it alone with
+    `npx tsx scripts/dev/lint.ts core-migration-component-tables`.
+
 -   `scripts/migrate/baseline/<replit-name>-<YYYYMMDD>.ts` — one-off,
     per-deployment scripts that bring a database into sync at a known
     point in time. Baselines are registered as core migrations at version
@@ -322,7 +351,7 @@ reserved for the durable tooling that the app and its checks depend on
 The rest of `scripts/` is split by who runs it and when:
 
 -   `scripts/dev/` — checks. The lint entry point (`lint.ts`) and the
-    seven architecture-lint rules it registers — every file here is
+    architecture-lint rules it registers — every file here is
     reachable from `npm run lint`. Nothing here is a behavioral test;
     those go in `tests/`. A new check is a rule in the `RULES` table of
     `lint.ts` or a case under `tests/` — never a new script here with

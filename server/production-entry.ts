@@ -14,12 +14,14 @@ import express from "express";
 import { createServer } from "http";
 import { existsSync, readdirSync, statSync } from "fs";
 import { resolve, join } from "path";
-import { bootStatus } from "./services/boot-status";
-import { getBootIdentity } from "./services/boot-identity";
+import { markBootFailed, markBootReady, markBootReportOnly } from "./services/boot-status";
+// Pure leaf, like boot-status: safe to import before DATABASE_URL exists and
+// whether or not app-init ever loaded.
+import {
+  bootStatusGate,
+  registerBootStatusRoutes,
+} from "./services/boot-status-http";
 import { getEnvironmentVariable } from "./config/env-registry";
-// Leaf import on purpose: the shared HTML barrel reaches DOMPurify (jsdom
-// under Node) and this file runs before the application exists.
-import { escapeHtml } from "../shared/utils/html/escape";
 
 /**
  * Stale-build guardrail (see task #138).
@@ -91,135 +93,39 @@ assertBuildIsFresh();
 const app = express();
 const server = createServer(app);
 
-let appReady = false;
-
 /**
  * Init-failure surfacing (permanent deployment feature).
  *
  * If the boot sequence (`startApp` → `bootstrapApp`) throws, we do NOT
  * process.exit(1): that crash-loops the ECS container and the only record of
  * the error is the container log, which operators without AWS access cannot
- * reach. Instead the process stays alive, /health reports `init-failed`
- * (still HTTP 200 so the deploy stabilizes and the task isn't cycled), and
- * the root path renders an "initialization failed" page.
+ * reach. Instead the process stays alive, the boot-status addresses report
+ * `init-failed` (still HTTP 200 so the deploy stabilizes and the task isn't
+ * cycled), and every other request answers 503 with that same truthful
+ * state instead of claiming to be starting.
  *
  * Detail exposure is gated: the full error message + stack trace are only
- * rendered when EXPOSE_BOOT_ERRORS=1 (a repo-managed env var set per
- * environment in deploy/env.<environment>.json — on for Development, off
- * for QA/Production so internals are never leaked publicly). Without the
- * flag, a generic failure page points the operator at the server logs.
+ * rendered when EXPOSE_BOOT_ERRORS=1 (set per environment — on for
+ * Development, off for QA/Production so internals are never leaked
+ * publicly). Without the flag the response still names the phase and the
+ * blocker, and points the operator at the server logs.
+ *
+ * Both the phase and the rendering live in `services/boot-status{,-http}.ts`,
+ * shared with the development entry point so the two cannot diverge.
+ *
+ * Boot-status addresses are registered FIRST: they must answer while the
+ * boot is still running or has already failed, which is the only time they
+ * matter. `/health` is the long-standing one; the `/api/…` spellings are the
+ * only ones that reach the API service through the ALB, and `/boot-status`
+ * is a spelling no load-balancer fixed-response health rule occupies.
  */
-let initError: Error | null = null;
+registerBootStatusRoutes(app);
 
-const exposeBootErrors = () => getEnvironmentVariable("EXPOSE_BOOT_ERRORS") === "1";
-
-function initFailedJson() {
-  const { bootId, startedAt } = getBootIdentity();
-  return exposeBootErrors()
-    ? {
-        status: 'init-failed',
-        driftCheck: bootStatus.driftCheck,
-        bootId,
-        startedAt,
-        error: initError!.message,
-        stack: initError!.stack,
-      }
-    : {
-        status: 'init-failed',
-        driftCheck: bootStatus.driftCheck,
-        bootId,
-        startedAt,
-        message: 'Application initialization failed. See server logs for details.',
-      };
-}
-
-app.get('/health', (_req, res) => {
-  if (initError) {
-    res.status(200).json(initFailedJson());
-    return;
-  }
-  // bootId / startedAt identify THIS process (Task #1258). The admin Restart
-  // page polls here after firing a restart and only reports success once a
-  // different bootId answers. Additive — the endpoint still always answers
-  // 200, whether starting, ready, or init-failed.
-  const { bootId, startedAt } = getBootIdentity();
-  res.status(200).json({
-    status: appReady ? 'ready' : 'starting',
-    driftCheck: bootStatus.driftCheck,
-    bootId,
-    startedAt,
-  });
-});
-
-app.use('/', (req, res, next) => {
-  if (appReady) {
-    return next();
-  }
-  
-  if (req.path === '/') {
-    const acceptHeader = req.headers.accept || '';
-    // If boot threw, render the failure on the placeholder page so it is
-    // visible in the browser (an ALB may shadow /health with its own fixed
-    // response, making the JSON there unreachable).
-    if (initError) {
-      if (acceptHeader.includes('text/html')) {
-        const detail = exposeBootErrors()
-          ? `
-              <p><strong>${escapeHtml(initError.message)}</strong></p>
-              <pre>${escapeHtml(initError.stack || '(no stack)')}</pre>`
-          : `
-              <p>The server started but the application failed to initialize.</p>
-              <p>Details are in the server logs. (Set EXPOSE_BOOT_ERRORS=1 to show them here in non-production environments.)</p>`;
-        res.status(200).set({ 'Content-Type': 'text/html' }).send(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Init failed</title>
-              <style>
-                body { font-family: system-ui, sans-serif; margin: 2rem; background: #fff; color: #111; }
-                h1 { color: #b00020; }
-                pre { background: #f5f5f5; padding: 1rem; border-radius: 6px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
-              </style>
-            </head>
-            <body>
-              <h1>Application initialization failed</h1>${detail}
-            </body>
-          </html>
-        `);
-        return;
-      }
-      res.status(200).json(initFailedJson());
-      return;
-    }
-    if (acceptHeader.includes('text/html')) {
-      res.status(200).set({ 'Content-Type': 'text/html' }).send(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Starting...</title>
-            <meta http-equiv="refresh" content="2">
-            <style>
-              body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; }
-              .loader { text-align: center; color: #666; }
-            </style>
-          </head>
-          <body>
-            <div class="loader">
-              <p>Application is starting...</p>
-              <p><small>This page will refresh automatically.</small></p>
-            </div>
-          </body>
-        </html>
-      `);
-      return;
-    } else {
-      res.status(200).json({ status: 'starting' });
-      return;
-    }
-  }
-  
-  res.status(503).json({ message: 'Application is starting, please wait...' });
-});
+// Everything else, while this process is not ready: the root path keeps
+// answering 200 and every other path answers 503 — but with a body naming
+// the ACTUAL phase (starting / init-failed / report-only), the boot
+// identity, the blocker and the drift result. Steps aside once ready.
+app.use('/', bootStatusGate);
 
 const port = parseInt(getEnvironmentVariable("PORT") || '5000', 10);
 
@@ -239,14 +145,22 @@ server.listen({
     assembleDatabaseUrl();
     const { startApp } = await import('./app-init');
     await startApp(app, server, () => {
-      appReady = true;
+      markBootReady();
       console.log(`Application fully initialized and ready`);
     });
   } catch (error) {
+    // A report-only stop is a deliberate outcome, not a crash: keep serving
+    // the report over HTTP (this deployment exists to be read, and exiting
+    // would only crash-loop the container).
+    if (error instanceof Error && error.name === 'BringUpReportOnlyStop') {
+      markBootReportOnly(error);
+      console.log(error.message);
+      return;
+    }
     console.error('Failed to initialize application:', error);
-    // Permanent init-failure mode (see comment above `initError`): capture
-    // the error and keep serving /health and the root failure page instead
-    // of exiting, so the failure is observable over HTTP.
-    initError = error instanceof Error ? error : new Error(String(error));
+    // Permanent init-failure mode (see the comment above): record the phase
+    // and keep serving the boot-status addresses instead of exiting, so the
+    // failure is observable over HTTP.
+    markBootFailed(error instanceof Error ? error : new Error(String(error)));
   }
 });

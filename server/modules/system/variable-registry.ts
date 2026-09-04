@@ -16,6 +16,10 @@ import {
 } from "../../config/env-registry";
 import { invalidateTerminologyCache, loadTerminology } from "../terminology";
 import { sanitizeHtml } from "@shared/utils/html";
+import {
+  TIMEZONE_POLICY_VARIABLE_NAME,
+  timeZonePolicySchema,
+} from "@shared/utils/timezone";
 
 /**
  * Unified per-variable registry.
@@ -148,6 +152,19 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
       invalidateTerminologyCache();
       await loadTerminology();
     },
+  },
+
+  // Site policy for personal time zones. Any authenticated user may read it
+  // because it is half of the decision every date display makes (the other
+  // half is their own zone); admins write it.
+  //
+  // Turning it OFF genuinely changes what people see rather than just hiding
+  // the picker: the resolver ignores a stored personal zone entirely, so a
+  // site that declares "everyone works in site time" gets that, instead of
+  // leaving previously saved choices quietly in force.
+  [TIMEZONE_POLICY_VARIABLE_NAME]: {
+    readTier: "authenticated",
+    schema: timeZonePolicySchema,
   },
 
   // Selected main-menu plugin id (Site Configuration → Main menu).

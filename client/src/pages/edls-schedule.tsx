@@ -1,9 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ShieldAlert } from "lucide-react";
+import { ShieldAlert, ThumbsDown, ThumbsUp } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
 import { addDaysYmd, ymdToLocalDate, type Ymd } from "@shared/utils/date";
 
 /** Number of dated sections rendered, counting today. Mirrors the endpoint's window. */
@@ -26,6 +28,12 @@ interface ScheduleAssignment {
   employer: { id: string; name: string } | null;
   showStatus: { id: string; name: string } | null;
   task: { id: string; name: string } | null;
+  /**
+   * This worker's own answer: null not answered yet, true accepted, false
+   * declined. Optional so an older payload without the field reads as
+   * unanswered rather than breaking the page.
+   */
+  accepted?: boolean | null;
   data: Record<string, unknown> | null;
 }
 
@@ -77,25 +85,132 @@ function Field({ label, value, testId }: { label: string; value: string; testId:
   );
 }
 
-function AssignmentDetails({ assignment }: { assignment: ScheduleAssignment }) {
+/**
+ * The worker's answer to one assignment.
+ *
+ * While unanswered it offers accept and decline, with the finality said up
+ * front — the choice cannot be changed from this page, and a worker reading
+ * a text on their phone should know that before they tap, not in a dialog
+ * afterwards. Once answered the buttons are gone for good and the recorded
+ * answer stands in their place.
+ *
+ * A refused answer (a stale tab, a second tap, an assignment edited out from
+ * under the page) says so plainly and re-reads the schedule, so the page
+ * never claims an answer that did not land.
+ */
+function AssignmentAnswer({
+  scheduleId,
+  assignment,
+}: {
+  scheduleId: string;
+  assignment: ScheduleAssignment;
+}) {
+  const queryClient = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+
+  const answer = useMutation({
+    mutationFn: (accepted: boolean) =>
+      apiRequest(
+        "POST",
+        `/api/public/edls/schedule/${scheduleId}/assignments/${assignment.assignmentId}/answer`,
+        { accepted },
+      ),
+    onSuccess: () => {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: [`/api/public/edls/schedule/${scheduleId}`] });
+    },
+    onError: () => {
+      setError("That answer could not be recorded. Your schedule has been refreshed below.");
+      queryClient.invalidateQueries({ queryKey: [`/api/public/edls/schedule/${scheduleId}`] });
+    },
+  });
+
+  if (assignment.accepted === true || assignment.accepted === false) {
+    const accepted = assignment.accepted;
+    const Icon = accepted ? ThumbsUp : ThumbsDown;
+    return (
+      <div
+        className={`flex items-center gap-2 text-sm font-medium ${
+          accepted ? "text-green-600 dark:text-green-500" : "text-red-600 dark:text-red-500"
+        }`}
+        data-testid={`text-answer-${assignment.assignmentId}`}
+      >
+        <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <span>You {accepted ? "accepted" : "declined"} this assignment.</span>
+      </div>
+    );
+  }
+
   return (
-    <div className="grid gap-6 md:grid-cols-2">
-      <div className="space-y-2">
-        <h3 className="text-sm font-semibold uppercase tracking-wide">Job Information</h3>
-        <Field label="Employer" value={assignment.employer?.name ?? ""} testId="text-employer" />
-        <Field label="Event" value={assignment.sheetTitle ?? ""} testId="text-event" />
-        <Field label="Event Status" value={assignment.showStatus?.name ?? ""} testId="text-event-status" />
-        <Field label="Department" value={assignment.department?.name ?? ""} testId="text-department" />
-        <Field label="Job #" value={assignment.jobGroup?.name ?? ""} testId="text-job-number" />
-        <Field label="Facility" value={assignment.facility?.name ?? ""} testId="text-facility" />
+    <div className="space-y-2">
+      <p className="text-sm text-muted-foreground" data-testid={`text-answer-finality-${assignment.assignmentId}`}>
+        Accept or decline this assignment. Your answer is final — once you choose, you cannot change
+        it here. Call your dispatcher if something changes.
+      </p>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Button
+          type="button"
+          className="w-full sm:w-auto"
+          disabled={answer.isPending}
+          onClick={() => answer.mutate(true)}
+          data-testid={`button-accept-${assignment.assignmentId}`}
+        >
+          <ThumbsUp className="h-4 w-4" aria-hidden="true" />
+          Accept
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full sm:w-auto"
+          disabled={answer.isPending}
+          onClick={() => answer.mutate(false)}
+          data-testid={`button-decline-${assignment.assignmentId}`}
+        >
+          <ThumbsDown className="h-4 w-4" aria-hidden="true" />
+          Decline
+        </Button>
       </div>
-      <div className="space-y-2">
-        <h3 className="text-sm font-semibold uppercase tracking-wide">Crew</h3>
-        <Field label="Crew" value={assignment.crewTitle ?? ""} testId="text-crew" />
-        <Field label="Task" value={assignment.task?.name ?? ""} testId="text-task" />
-        <Field label="Start Time" value={effectiveStartTime(assignment)} testId="text-start-time" />
-        <Field label="Checkin Location" value={assignment.location ?? ""} testId="text-checkin-location" />
+      {error && (
+        <p
+          className="text-sm text-destructive"
+          role="alert"
+          data-testid={`text-answer-error-${assignment.assignmentId}`}
+        >
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AssignmentDetails({
+  assignment,
+  scheduleId,
+}: {
+  assignment: ScheduleAssignment;
+  scheduleId: string;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-6 md:grid-cols-2">
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold uppercase tracking-wide">Job Information</h3>
+          <Field label="Employer" value={assignment.employer?.name ?? ""} testId="text-employer" />
+          <Field label="Event" value={assignment.sheetTitle ?? ""} testId="text-event" />
+          <Field label="Event Status" value={assignment.showStatus?.name ?? ""} testId="text-event-status" />
+          <Field label="Department" value={assignment.department?.name ?? ""} testId="text-department" />
+          <Field label="Job #" value={assignment.jobGroup?.name ?? ""} testId="text-job-number" />
+          <Field label="Facility" value={assignment.facility?.name ?? ""} testId="text-facility" />
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold uppercase tracking-wide">Crew</h3>
+          <Field label="Crew" value={assignment.crewTitle ?? ""} testId="text-crew" />
+          <Field label="Task" value={assignment.task?.name ?? ""} testId="text-task" />
+          <Field label="Start Time" value={effectiveStartTime(assignment)} testId="text-start-time" />
+          <Field label="Checkin Location" value={assignment.location ?? ""} testId="text-checkin-location" />
+        </div>
       </div>
+      <AssignmentAnswer scheduleId={scheduleId} assignment={assignment} />
     </div>
   );
 }
@@ -178,7 +293,11 @@ export default function EdlsSchedulePage() {
               </p>
             ) : (
               day.assignments.map((assignment) => (
-                <AssignmentDetails key={assignment.assignmentId} assignment={assignment} />
+                <AssignmentDetails
+                  key={assignment.assignmentId}
+                  assignment={assignment}
+                  scheduleId={id}
+                />
               ))
             )}
           </CardContent>

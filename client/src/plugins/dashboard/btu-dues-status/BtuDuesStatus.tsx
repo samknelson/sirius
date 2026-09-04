@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { DashboardPluginProps } from "../registry";
 import { useDashboardContent } from "../useDashboardContent";
-import { format } from "date-fns";
+import { format, formatLocalFields } from "@/lib/date-format";
 
 interface DuesSummary {
   hasData: boolean;
@@ -91,8 +91,8 @@ export function BtuDuesStatus(_props: DashboardPluginProps) {
             <>
               <span className="text-foreground font-medium" data-testid="text-dues-transaction-date">
                 {summary.transactionDates.length === 1
-                  ? format(new Date(summary.transactionDates[0] + 'T00:00:00'), "MMM d, yyyy")
-                  : summary.transactionDates.map(d => format(new Date(d + 'T00:00:00'), "MMM d, yyyy")).join(", ")}
+                  ? formatLocalFields(new Date(summary.transactionDates[0] + 'T00:00:00'), "MMM d, yyyy")
+                  : summary.transactionDates.map(d => formatLocalFields(new Date(d + 'T00:00:00'), "MMM d, yyyy")).join(", ")}
               </span>
               {summary.date && (
                 <span className="text-muted-foreground ml-2" data-testid="text-dues-run-date">

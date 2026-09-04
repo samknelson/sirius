@@ -49,6 +49,14 @@ export const edlsSheets = pgTable("edls_sheets", {
    * on every create and update, so no caller can forget to set it.
    */
   changed: timestamp("changed").notNull().default(sql`now()`),
+  /**
+   * Per-sheet opt-in for the worker-facing EDLS notifications. Off unless
+   * somebody turns it on for this sheet — including every sheet that already
+   * existed when the column was added — so a sheet reaching a notifier's
+   * trigger status texts nobody by default. Written only by the dedicated
+   * toggle endpoint, never by the general sheet create/update routes.
+   */
+  notificationsEnabled: boolean("notifications_enabled").notNull().default(false),
   data: jsonb("data"),
 });
 
@@ -115,6 +123,26 @@ export const edlsAssignments = pgTable("edls_assignments", {
    * is gone with it.
    */
   commId: varchar("comm_id").references(() => comm.id, { onDelete: 'set null' }),
+  /**
+   * The WORKER'S OWN ANSWER to this assignment, given from the public
+   * schedule page: null means they have not answered yet, true accepted,
+   * false declined. Written only by its own storage operation
+   * (`setAccepted`), never from a general update or a request body — nobody
+   * answers on the worker's behalf, and staff cannot set, change, or clear
+   * it.
+   *
+   * One answer only: the write is conditional on the row still being
+   * unanswered, so a stale tab, a double tap, or a replayed request is
+   * refused rather than overwriting the first answer.
+   *
+   * Answering is NOT a change to the assignment, so it leaves the receipt
+   * (`commId`) alone — otherwise every acceptance would re-text the worker at
+   * the sheet's next notifying transition. The reverse does apply: an edit to
+   * the assignment's values voids the receipt AND clears the answer, because
+   * the worker has neither been told about the assignment it just became nor
+   * agreed to it, and is asked again.
+   */
+  accepted: boolean("accepted"),
   data: jsonb("data"),
 }, (table) => [
   unique("edls_assignments_ymd_worker_id_unique").on(table.ymd, table.workerId),
@@ -125,10 +153,15 @@ export const edlsAssignments = pgTable("edls_assignments", {
  * by whatever sends the message, not assignment input a caller may set. A
  * future writer gets a dedicated storage operation rather than accepting it
  * from a request body.
+ *
+ * `accepted` is omitted for the same reason from the other side: it is the
+ * worker's own answer, set through `setAccepted` alone, so an assignment is
+ * always created unanswered.
  */
 export const insertEdlsAssignmentsSchema = createInsertSchema(edlsAssignments).omit({
   id: true,
   commId: true,
+  accepted: true,
 });
 
 export type EdlsAssignment = typeof edlsAssignments.$inferSelect;

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Upload, Plus, Clock, CheckCircle, AlertTriangle, ArrowRight } from "lucide-react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { WizardLauncher } from "@/components/wizards/WizardLauncher";
 import type { Wizard } from "@/lib/wizard-types";
 import { standardWizardStatuses } from "@/lib/wizard-types";

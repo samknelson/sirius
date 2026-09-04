@@ -429,12 +429,19 @@ async function resolveRemovedWorkers(
  * sender records a FAILED communication for every un-opted-in number it is
  * handed, and a locked sheet should not litter the comm log with one failure
  * per opted-out worker.
+ *
+ * OPT-IN PER SHEET. The sheet's own `notificationsEnabled` flag has to be on
+ * or nothing is sent, and it is off on every sheet until somebody turns it on
+ * from Manage Sheet. Turning it on is not retroactive: it takes effect at the
+ * sheet's next arrival at a trigger status, so a sheet already past that
+ * status stays silent. The staff `edls-sheet-status-notifier` ignores the
+ * flag — supervisors and assignees are told about their sheets either way.
  */
 export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
   id: "edls-sheet-worker-sms-notifier",
   name: "EDLS Sheet Worker SMS Notifier",
   description:
-    "Texts the workers assigned to an EDLS sheet, each with a link to their own schedule, when the sheet arrives at one of the selected statuses. Requires the Worker Access Tokens (worker.aat) component as well as EDLS: the link is keyed by the worker's access token, and with that component disabled this notifier texts nobody and fails with an error in the server log.",
+    "Texts the workers assigned to an EDLS sheet, each with a link to their own schedule, when the sheet arrives at one of the selected statuses. Only sheets with notifications enabled on their Manage Sheet page are sent; the flag is off on every sheet until somebody turns it on. Requires the Worker Access Tokens (worker.aat) component as well as EDLS: the link is keyed by the worker's access token, and with that component disabled this notifier texts nobody and fails with an error in the server log.",
   order: 110,
   requiredComponent: "edls",
   subscribedEvents: [EventType.EDLS_SHEET_SAVED],
@@ -473,6 +480,12 @@ export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
     // Nothing left to accept on a day that has already happened, so a
     // past-dated sheet is never worth a text. See the plugin doc comment.
     if (!isNotifiableSheetYmd(sheet?.ymd)) return false;
+    // Per-sheet opt-in, off unless somebody turned it on for THIS sheet. Read
+    // off the sheet the save event carries, not re-loaded. It sits with the
+    // cheap payload checks, deliberately BEFORE the component check below
+    // that throws: a sheet whose flag is off is a legitimate "notify nobody",
+    // not a misconfiguration, and must not be recorded as a failed config.
+    if (sheet?.notificationsEnabled !== true) return false;
 
     // This config WOULD fire — so a missing `worker.aat` is refused here,
     // loudly, and only here. Every message this notifier sends is a link

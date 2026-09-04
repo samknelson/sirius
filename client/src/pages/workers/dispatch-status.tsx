@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest, ApiError } from "@/lib/queryClient";
 import { useState } from "react";
-import { format } from "date-fns";
+import { format, formatLocalFields } from "@/lib/date-format";
 import { Calendar, Truck, Edit, Save, X, ClipboardList, HardHat, ExternalLink, Clock, DollarSign, Building2 } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
@@ -341,7 +341,7 @@ function DispatchStatusContent() {
   const handleEditSeniority = () => {
     setEditSeniorityDate(
       dispatchStatus?.seniorityDate
-        ? format(new Date(dispatchStatus.seniorityDate), "yyyy-MM-dd'T'HH:mm:ss")
+        ? formatLocalFields(new Date(dispatchStatus.seniorityDate), "yyyy-MM-dd'T'HH:mm:ss")
         : ""
     );
     setIsEditingSeniority(true);

@@ -64,7 +64,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, ArrowLeft, Plus, Trash2 } from "lucide-react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { insertEventSchema } from "@shared/schema";
 import type { Event, EventType, EventOccurrence } from "@shared/schema";
 import EventLayout, { useEventLayout } from "@/components/layouts/EventLayout";

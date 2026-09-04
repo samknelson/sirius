@@ -3,6 +3,47 @@ import { FloodEventDefinition, FloodContext } from "./types";
 import { storage } from "../storage";
 import { logger } from "../logger";
 
+/**
+ * Quicksearch rate cap.
+ *
+ * Search-as-you-type is debounced client-side, but the endpoint is reachable
+ * directly, and each request fans out into several database scans across every
+ * searcher a user's roles allow. This bounds how often one person can pay that
+ * cost. The threshold is deliberately generous — a person typing steadily for a
+ * minute must never hit it — and the check FAILS OPEN, so a flood-store problem
+ * degrades to an unthrottled search rather than a broken one.
+ *
+ * Tunable at runtime via the `flood_quicksearch` variable like every other
+ * flood event; no migration needed, and expired rows are swept by the flood cron.
+ */
+export const QUICKSEARCH_FLOOD_EVENT = "quicksearch";
+
+export const quicksearchFloodEvent: FloodEventDefinition = {
+  name: QUICKSEARCH_FLOOD_EVENT,
+  threshold: 120,
+  windowSeconds: 60,
+  getIdentifier: (context: FloodContext): string => {
+    // Authenticated-only endpoint, so the user is the bucket. The IP fallback
+    // exists so a missing session can never throw inside the rate check.
+    const id = context.userId || context.ip;
+    if (!id) {
+      throw new Error("userId or ip is required for quicksearch flood event");
+    }
+    return id;
+  },
+  resolveIdentifierName: async (identifier: string): Promise<string | null> => {
+    try {
+      const user = await storage.users.getUser(identifier);
+      if (!user) return null;
+      return user.firstName && user.lastName
+        ? `${user.firstName} ${user.lastName}`.trim()
+        : user.email || null;
+    } catch {
+      return null;
+    }
+  },
+};
+
 export const bookmarkFloodEvent: FloodEventDefinition = {
   name: "bookmark",
   threshold: 1000,
@@ -212,12 +253,49 @@ export const wmbImmediateScanWorkerFloodEvent: FloodEventDefinition = {
   },
 };
 
+/**
+ * Public EDLS schedule answer throttle: the unauthenticated endpoint a worker
+ * uses to accept or decline an assignment from the link they were texted.
+ *
+ * Bucketed by `scheduleId|ip` — the id in the schedule URL, whether or not it
+ * resolves to anybody, plus the caller's address. Per-link bucketing is the
+ * point: one worker (or someone hammering one worker's link) must not be able
+ * to consume the budget of every other worker answering their own text at the
+ * same time, which a single global or per-IP-only bucket would allow behind a
+ * shared carrier NAT.
+ *
+ * EVERY attempt is recorded, not just refused ones: unlike a failed login, a
+ * successful answer is a one-shot act, so a caller making many of them is
+ * enumerating rather than working. Defaults: 30 attempts per link+IP per 15
+ * minutes — ample for a worker answering a week of assignments and retrying —
+ * tunable via the flood-config UI (`flood_edls-schedule-answer` variable).
+ */
+export const EDLS_SCHEDULE_ANSWER_FLOOD_EVENT = "edls-schedule-answer";
+
+export const edlsScheduleAnswerFloodEvent: FloodEventDefinition = {
+  name: EDLS_SCHEDULE_ANSWER_FLOOD_EVENT,
+  threshold: 30,
+  windowSeconds: 900,
+  getIdentifier: (context: FloodContext): string => {
+    if (!context.scheduleId || !context.ip) {
+      throw new Error("scheduleId and ip are required for edls-schedule-answer flood event");
+    }
+    return `${context.scheduleId}|${context.ip}`;
+  },
+  resolveIdentifierName: async (identifier: string): Promise<string | null> => {
+    const [scheduleId] = identifier.split("|");
+    return scheduleId || null;
+  },
+};
+
 export function registerFloodEvents(): void {
+  registerFloodEvent(quicksearchFloodEvent);
   registerFloodEvent(bookmarkFloodEvent);
   registerFloodEvent(localLoginFloodEvent);
   registerFloodEvent(localPasswordChangeFloodEvent);
   registerFloodEvent(wmbImmediateScanFloodEvent);
   registerFloodEvent(wmbImmediateScanWorkerFloodEvent);
+  registerFloodEvent(edlsScheduleAnswerFloodEvent);
   for (const event of notificationFloodEvents) {
     registerFloodEvent(event);
   }

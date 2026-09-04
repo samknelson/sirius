@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronUp, Pencil, Tag, Trash2 } from "lucide-react";
-import { format, parseISO, isValid } from "date-fns";
+import { parseISO, isValid } from "date-fns";
+import { format } from "@/lib/date-format";
 import { Link } from "wouter";
 import { firstLineOf } from "./note-display";
 

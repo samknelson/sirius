@@ -43,6 +43,7 @@ import "./plugins/benefit-election-enrollment";
 import "./plugins/open-enrollment-enrollment";
 import "./plugins/life-event-enrollment";
 import "./plugins/bao-cobra-enrollment";
+import "./plugins/worker-ratings-import";
 import "./plugins/trust-provider-edi";
 
 let kindRegistered = false;

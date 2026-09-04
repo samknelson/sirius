@@ -92,6 +92,12 @@ export interface CommWithDetails {
   sent: string | null;
   received: string | null;
   data: Record<string, unknown> | null;
+  /**
+   * Caller-supplied send-once key, when the sender was given one. Shown in
+   * the comm log so "why did this not send again?" is answerable: a later
+   * send with the same key to the same contact on the same medium is refused.
+   */
+  sendKey: string | null;
   smsDetails?: CommSmsDetails | null;
   emailDetails?: CommEmailDetails | null;
   postalDetails?: CommPostalDetails | null;

@@ -133,6 +133,7 @@ import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./
 import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMapLoggingConfig } from "./sitespecific/btu/employer-map";
 import { type BtuTerritoriesStorage, createBtuTerritoriesStorage } from "./sitespecific/btu/territories";
 import { type FreemanCrewleadsStorage, createFreemanCrewleadsStorage, freemanCrewleadsLoggingConfig } from "./sitespecific/freeman/crewleads";
+import { type FreemanEdlsMigrateStagingStorage, createFreemanEdlsMigrateStagingStorage } from "./sitespecific/freeman/edls-migrate-staging";
 import { type T631InterviewsStorage, createT631InterviewsStorage, t631InterviewsLoggingConfig } from "./sitespecific/t631/interviews";
 import { type DispatchJobEmployerContactsStorage, createDispatchJobEmployerContactsStorage, dispatchJobEmployerContactsLoggingConfig } from "./dispatch/job-employer-contacts";
 import { type BtuSchoolTypesStorage, createBtuSchoolTypesStorage } from "./sitespecific/btu/school-types";
@@ -176,6 +177,9 @@ import { type RawSqlStorage, createRawSqlStorage } from "./raw-sql";
 import { type ReadOnlyStorage, createReadOnlyStorage } from "./read-only";
 import { type BtuPoliticalStorage, createBtuPoliticalStorage, btuPoliticalLoggingConfig } from "./sitespecific/btu/political";
 import { type WsClientStorage, type WsClientGrantStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsClientStorage, createWsClientGrantStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
+import { type WcCacheStorage, createWcCacheStorage } from "./wc-cache";
+import { type WcStatsStorage, createWcStatsStorage } from "./wc-stats";
+import { type WsStatsStorage, createWsStatsStorage } from "./ws-stats";
 import { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type EmployerCompanyStorage, createEmployerCompanyStorage, employerCompanyLoggingConfig } from "./employers/companies";
 import { type ContractStorage, createContractStorage, contractLoggingConfig } from "./contract";
 import { type ContactLinkStorage, createContactLinkStorage } from "./contact-links";
@@ -211,6 +215,7 @@ import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logg
 import { db } from "./db";
 import { employers, workers, contacts } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { type AdvisoryLockStorage, createAdvisoryLockStorage } from "./advisory-lock";
 
 export interface IStorage {
   variables: VariableStorage;
@@ -286,6 +291,7 @@ export interface IStorage {
   baoPremiumFiles: BaoPremiumFilesStorage;
   baoWithholdingAllocations: BaoWithholdingAllocationsStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
+  freemanEdlsMigrateStaging: FreemanEdlsMigrateStagingStorage;
   t631Interviews: T631InterviewsStorage;
   workerBans: WorkerBanStorage;
   notes: NotesStorage;
@@ -309,11 +315,15 @@ export interface IStorage {
   authIdentities: AuthIdentitiesStorage;
   workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
   rawSql: RawSqlStorage;
+  advisoryLock: AdvisoryLockStorage;
   readOnly: ReadOnlyStorage;
   wsClients: WsClientStorage;
   wsClientGrants: WsClientGrantStorage;
   wsClientCredentials: WsClientCredentialStorage;
   wsClientIpRules: WsClientIpRuleStorage;
+  wcCache: WcCacheStorage;
+  wcStats: WcStatsStorage;
+  wsStats: WsStatsStorage;
   btuPolitical: BtuPoliticalStorage;
   companies: CompanyStorage;
   employerCompanies: EmployerCompanyStorage;
@@ -415,6 +425,7 @@ export class DatabaseStorage implements IStorage {
   baoPremiumFiles: BaoPremiumFilesStorage;
   baoWithholdingAllocations: BaoWithholdingAllocationsStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
+  freemanEdlsMigrateStaging: FreemanEdlsMigrateStagingStorage;
   t631Interviews: T631InterviewsStorage;
   workerBans: WorkerBanStorage;
   notes: NotesStorage;
@@ -438,11 +449,15 @@ export class DatabaseStorage implements IStorage {
   authIdentities: AuthIdentitiesStorage;
   workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
   rawSql: RawSqlStorage;
+  advisoryLock: AdvisoryLockStorage;
   readOnly: ReadOnlyStorage;
   wsClients: WsClientStorage;
   wsClientGrants: WsClientGrantStorage;
   wsClientCredentials: WsClientCredentialStorage;
   wsClientIpRules: WsClientIpRuleStorage;
+  wcCache: WcCacheStorage;
+  wcStats: WcStatsStorage;
+  wsStats: WsStatsStorage;
   btuPolitical: BtuPoliticalStorage;
   companies: CompanyStorage;
   employerCompanies: EmployerCompanyStorage;
@@ -687,6 +702,9 @@ export class DatabaseStorage implements IStorage {
       createFreemanCrewleadsStorage(),
       freemanCrewleadsLoggingConfig,
     );
+    // Unlogged on purpose: this is a bulk copy of legacy rows into a staging
+    // table, and per-row audit entries for a sweep would bury the log.
+    this.freemanEdlsMigrateStaging = createFreemanEdlsMigrateStagingStorage();
     this.t631Interviews = withStorageLogging(
       createT631InterviewsStorage(),
       t631InterviewsLoggingConfig,
@@ -716,11 +734,15 @@ export class DatabaseStorage implements IStorage {
     this.authIdentities = createAuthIdentitiesStorage();
     this.workerDispatchEligDenorm = createWorkerDispatchEligDenormStorage();
     this.rawSql = createRawSqlStorage();
+    this.advisoryLock = createAdvisoryLockStorage();
     this.readOnly = createReadOnlyStorage();
     this.wsClients = createWsClientStorage();
     this.wsClientGrants = createWsClientGrantStorage();
     this.wsClientCredentials = createWsClientCredentialStorage();
     this.wsClientIpRules = createWsClientIpRuleStorage();
+    this.wcCache = createWcCacheStorage();
+    this.wcStats = createWcStatsStorage();
+    this.wsStats = createWsStatsStorage();
     this.btuPolitical = withStorageLogging(createBtuPoliticalStorage(), btuPoliticalLoggingConfig);
     this.companies = withStorageLogging(createCompanyStorage(), companyLoggingConfig);
     this.employerCompanies = withStorageLogging(createEmployerCompanyStorage(), employerCompanyLoggingConfig);

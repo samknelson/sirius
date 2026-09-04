@@ -3,6 +3,8 @@ import {
   getEnvironmentVariable,
   registerEnvironmentVariable,
 } from "../../../config/env-registry";
+import { isMaintenanceModeError } from "../../maintenance-flag";
+import { geocodeWithGoogle } from "../../google-geocode";
 import { 
   ParseAddressRequest, 
   ParseAddressResponse, 
@@ -159,6 +161,10 @@ class AddressValidationService {
       try {
         return await this.validateWithGoogle(address);
       } catch (error) {
+        // A maintenance refusal is not a Google outage. Falling back here
+        // would report a successful local validation and hide the fact that
+        // the configured validator never ran.
+        if (isMaintenanceModeError(error)) throw error;
         console.error("Google validation failed:", error);
         if (config.fallback.useLocalOnGoogleFailure) {
           console.log("Falling back to local validation");
@@ -254,6 +260,12 @@ class AddressValidationService {
     };
   }
 
+  /**
+   * There is no maintenance guard at the head of this method any more: the
+   * web client framework refuses the call it is about to make, and a stored
+   * geocode is not a call. The catch below rethrows a refusal so it never
+   * becomes "Google validation failed".
+   */
   private async validateWithGoogle(address: AddressInput): Promise<AddressValidationResult> {
     const config = await this.getConfig();
     const apiKey = resolveGoogleApiKey(config.google.apiKeyName);
@@ -272,16 +284,17 @@ class AddressValidationService {
         address.country
       ].filter(Boolean).join(", ");
 
-      // Use Google Places API to validate the address
-      const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addressString)}&key=${apiKey}`;
-      
-      const response = await fetch(geocodeUrl);
-      const data = await response.json();
+      // Google's geocode, shared with every other caller that asks it about
+      // an address — the civic lookup included.
+      const outcome = await geocodeWithGoogle({ address: addressString }, { apiKey });
+      const data = outcome.response;
 
-      if (data.status !== 'OK' || !data.results || data.results.length === 0) {
+      if (!data || data.status !== 'OK' || !data.results || data.results.length === 0) {
         return {
           isValid: false,
-          errors: [`Google validation failed: ${data.status} - ${data.error_message || 'No results found'}`],
+          errors: [
+            `Google validation failed: ${data?.status || outcome.error || 'no answer'} - ${data?.error_message || 'No results found'}`,
+          ],
           warnings: [],
           source: "google",
         };
@@ -351,6 +364,10 @@ class AddressValidationService {
       };
 
     } catch (error) {
+      // A refusal is not a failed validation. Wrapping it here would strip the
+      // type the routes use to answer 503, and turn "we would not ask" into
+      // "Google says no".
+      if (isMaintenanceModeError(error)) throw error;
       throw new Error(`Google validation failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -368,6 +385,8 @@ class AddressValidationService {
           structuredAddress = parseResult.structuredAddress;
           validation = parseResult.validation;
         } catch (error) {
+          // Same as validateAddress: never fall back past a refusal.
+          if (isMaintenanceModeError(error)) throw error;
           console.error("Google parsing failed:", error);
           if (config.fallback.useLocalOnGoogleFailure) {
             console.log("Falling back to local parsing");
@@ -407,6 +426,7 @@ class AddressValidationService {
         };
       }
     } catch (error) {
+      if (isMaintenanceModeError(error)) throw error;
       console.error("Address parsing error:", error);
       return {
         success: false,
@@ -466,14 +486,15 @@ class AddressValidationService {
     }
 
     try {
-      // Use Google Places API to geocode the address
-      const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(rawAddress)}&key=${apiKey}`;
-      
-      const response = await fetch(geocodeUrl);
-      const data = await response.json();
+      // The same shared geocode the validate path uses: an address parsed here
+      // and validated there is one answer, bought once.
+      const outcome = await geocodeWithGoogle({ address: rawAddress }, { apiKey });
+      const data = outcome.response;
 
-      if (data.status !== 'OK' || !data.results || data.results.length === 0) {
-        throw new Error(`Google geocoding failed: ${data.status} - ${data.error_message || 'No results found'}`);
+      if (!data || data.status !== 'OK' || !data.results || data.results.length === 0) {
+        throw new Error(
+          `Google geocoding failed: ${data?.status || outcome.error || 'no answer'} - ${data?.error_message || 'No results found'}`,
+        );
       }
 
       const result = data.results[0];
@@ -856,6 +877,9 @@ class AddressValidationService {
     validationResponse?: any;
     error?: string;
   }> {
+    // No guard at the head any more: the framework refuses the call it is
+    // about to make, and the catch below rethrows that refusal rather than
+    // letting it become `success: false`.
     const config = await this.getConfig();
     const apiKey = resolveGoogleApiKey(config.google.apiKeyName);
     
@@ -882,15 +906,13 @@ class AddressValidationService {
         };
       }
 
-      const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addressString)}&key=${apiKey}`;
-      
-      const response = await fetch(geocodeUrl);
-      const data = await response.json();
+      const outcome = await geocodeWithGoogle({ address: addressString }, { apiKey });
+      const data = outcome.response;
 
-      if (data.status !== 'OK' || !data.results || data.results.length === 0) {
+      if (!data || data.status !== 'OK' || !data.results || data.results.length === 0) {
         return {
           success: false,
-          error: `Geocoding failed: ${data.status}`,
+          error: `Geocoding failed: ${data?.status || outcome.error || 'no answer'}`,
         };
       }
 
@@ -906,6 +928,7 @@ class AddressValidationService {
       };
 
     } catch (error) {
+      if (isMaintenanceModeError(error)) throw error;
       console.error("Geocoding error:", error);
       return {
         success: false,

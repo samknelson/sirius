@@ -4,6 +4,7 @@ import {
   pluginConfigsBenefitEligibility,
   pluginConfigsDispatch,
   pluginConfigsDashboard,
+  pluginConfigsQuicksearch,
   pluginConfigsPaymentGateway,
   pluginConfigsEventNotifier,
   type PluginConfigCharge,
@@ -14,6 +15,8 @@ import {
   type InsertPluginConfigDispatch,
   type PluginConfigDashboard,
   type InsertPluginConfigDashboard,
+  type PluginConfigQuicksearch,
+  type InsertPluginConfigQuicksearch,
   type PluginConfigPaymentGateway,
   type InsertPluginConfigPaymentGateway,
   type PluginConfigEventNotifier,
@@ -291,6 +294,60 @@ export function createDashboardSubsidiaryStorage(): SubsidiaryStorage<
         out.push(
           params.roleIn.length > 0
             ? arrayOverlaps(pluginConfigsDashboard.roles, params.roleIn)
+            : sql`false`,
+        );
+      }
+      return out;
+    },
+  };
+}
+
+/**
+ * Quicksearch subsidiary — the roles a quicksearch config is offered to.
+ * Structurally identical to the dashboard subsidiary (varchar[] of role ids,
+ * admin `role` contains-filter + runtime `roleIn` overlap filter), but a
+ * separate table because the two kinds' configs are unrelated and the generic
+ * search joins exactly one subsidiary per kind.
+ */
+export function createQuicksearchSubsidiaryStorage(): SubsidiaryStorage<
+  PluginConfigQuicksearch,
+  InsertPluginConfigQuicksearch
+> {
+  return {
+    table: pluginConfigsQuicksearch,
+    async get(id) {
+      const client = getClient();
+      const [row] = await client
+        .select()
+        .from(pluginConfigsQuicksearch)
+        .where(eq(pluginConfigsQuicksearch.id, id));
+      return row || undefined;
+    },
+    async upsert(row) {
+      const client = getClient();
+      const [result] = await client
+        .insert(pluginConfigsQuicksearch)
+        .values(row)
+        .onConflictDoUpdate({
+          target: pluginConfigsQuicksearch.id,
+          set: { roles: row.roles },
+        })
+        .returning();
+      return result;
+    },
+    buildConditions(params) {
+      const out: SQL[] = [];
+      // Admin "contains this role" filter (see the dashboard namespace).
+      if (params.role !== undefined && params.role !== null) {
+        out.push(arrayContains(pluginConfigsQuicksearch.roles, [params.role]));
+      }
+      // Runtime "config's roles intersect the searcher's roles". This is the
+      // access decision for quicksearch, so an empty role set must match
+      // nothing rather than everything.
+      if (params.roleIn !== undefined) {
+        out.push(
+          params.roleIn.length > 0
+            ? arrayOverlaps(pluginConfigsQuicksearch.roles, params.roleIn)
             : sql`false`,
         );
       }

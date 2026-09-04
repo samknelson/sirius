@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch, useLocation } from "wouter";
-import { format, addDays, startOfDay } from "date-fns";
+import { addDays, startOfDay } from "date-fns";
+import { formatLocalFields } from "@/lib/date-format";
 import { formatYmd } from "@shared/utils/date";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -117,7 +118,7 @@ function getDateFilterOptions(): Array<{ value: DateFilterType; label: string; d
     const date = addDays(today, i);
     options.push({
       value: `day${i}` as DateFilterType,
-      label: `${format(date, "EEEE")} (${format(date, "d MMMM")})`,
+      label: `${formatLocalFields(date, "EEEE")} (${formatLocalFields(date, "d MMMM")})`,
       date,
     });
   }
@@ -201,18 +202,18 @@ export default function EdlsSheetsPage() {
       return { dateFrom: undefined, dateTo: undefined };
     }
     if (dateFilterType === "other" && otherDate) {
-      const dateStr = format(otherDate, "yyyy-MM-dd");
+      const dateStr = formatLocalFields(otherDate, "yyyy-MM-dd");
       return { dateFrom: dateStr, dateTo: dateStr };
     }
     if (dateFilterType === "range") {
       return {
-        dateFrom: rangeFromDate ? format(rangeFromDate, "yyyy-MM-dd") : undefined,
-        dateTo: rangeToDate ? format(rangeToDate, "yyyy-MM-dd") : undefined,
+        dateFrom: rangeFromDate ? formatLocalFields(rangeFromDate, "yyyy-MM-dd") : undefined,
+        dateTo: rangeToDate ? formatLocalFields(rangeToDate, "yyyy-MM-dd") : undefined,
       };
     }
     const option = dateFilterOptions.find(o => o.value === dateFilterType);
     if (option?.date) {
-      const dateStr = format(option.date, "yyyy-MM-dd");
+      const dateStr = formatLocalFields(option.date, "yyyy-MM-dd");
       return { dateFrom: dateStr, dateTo: dateStr };
     }
     return { dateFrom: undefined, dateTo: undefined };
@@ -532,7 +533,7 @@ export default function EdlsSheetsPage() {
                       data-testid="button-other-date"
                     >
                       <Calendar className="mr-2 h-4 w-4" />
-                      {otherDate ? format(otherDate, "PPP") : "Pick a date"}
+                      {otherDate ? formatLocalFields(otherDate, "PPP") : "Pick a date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
@@ -562,7 +563,7 @@ export default function EdlsSheetsPage() {
                         data-testid="button-date-from"
                       >
                         <Calendar className="mr-2 h-4 w-4" />
-                        {rangeFromDate ? format(rangeFromDate, "PPP") : "Start date"}
+                        {rangeFromDate ? formatLocalFields(rangeFromDate, "PPP") : "Start date"}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
@@ -588,7 +589,7 @@ export default function EdlsSheetsPage() {
                         data-testid="button-date-to"
                       >
                         <Calendar className="mr-2 h-4 w-4" />
-                        {rangeToDate ? format(rangeToDate, "PPP") : "End date"}
+                        {rangeToDate ? formatLocalFields(rangeToDate, "PPP") : "End date"}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">

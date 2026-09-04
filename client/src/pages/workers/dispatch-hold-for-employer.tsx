@@ -12,7 +12,7 @@ import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useState } from "react";
 import { Building2, Plus, Trash2, Clock } from "lucide-react";
 import type { WorkerDispatchHfe } from "@shared/schema";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 
 interface Employer {
   id: string;

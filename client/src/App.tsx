@@ -68,6 +68,7 @@ const WorkerCases = lazy(() => import("@/pages/workers/cases"));
 const EmployerCases = lazy(() => import("@/pages/employers/cases"));
 const TrustProviderCases = lazy(() => import("@/pages/trust-provider-cases"));
 const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
+const WorkerEdlsAssignments = lazy(() => import("@/pages/worker-edls-assignments"));
 const WorkerSecondShift = lazy(() => import("@/pages/worker-sitespecific-freeman-2shift"));
 const WorkerBaoBeneficiaries = lazy(() => import("@/pages/worker-sitespecific-bao-beneficiaries"));
 const WorkerBaoCobra = lazy(() => import("@/pages/worker-sitespecific-bao-cobra"));
@@ -261,6 +262,8 @@ const FloodEventsConfigPage = lazy(() => import("@/pages/flood-events-config"));
 const PostalAddressesConfigPage = lazy(() => import("@/pages/config/addresses"));
 const PhoneNumbersConfigPage = lazy(() => import("@/pages/config/phone-numbers"));
 const DynamicOptionsPage = lazy(() => import("@/pages/config/options"));
+
+const OptionsExportPage = lazy(() => import("@/pages/config/options-export"));
 const StewardSettingsPage = lazy(() => import("@/pages/config/steward-settings"));
 const EventTypesPage = lazy(() => import("@/pages/config/event-types"));
 const DispatchJobTypesPage = lazy(() => import("@/pages/config/dispatch-job-types"));
@@ -278,6 +281,7 @@ const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
 const T631FetchPage = lazy(() => import("@/pages/config/edls/t631-fetch"));
+const FreemanEdlsMigratePage = lazy(() => import("@/pages/admin/sitespecific/freeman/edls-migrate"));
 const T631MemberStatusSyncPage = lazy(() => import("@/pages/config/edls/t631-ms"));
 const BaoMemberStatusThresholdsPage = lazy(() => import("@/pages/config/trust/sitespecific/bao/thresholds"));
 const BaoEmployerRatesPage = lazy(() => import("@/pages/config/sitespecific/bao/employer-rates"));
@@ -301,12 +305,14 @@ const WorkerBaoDc = lazy(() => import("@/pages/worker-sitespecific-bao-dc"));
 const BaoCaseNew = lazy(() => import("@/pages/sitespecific/bao/case-new"));
 const BaoCaseDetail = lazy(() => import("@/pages/sitespecific/bao/case-detail"));
 const WsServicesPage = lazy(() => import("@/pages/config/ws/services"));
+const WsStatsPage = lazy(() => import("@/pages/admin/ws-stats"));
 const WsClientsPage = lazy(() => import("@/pages/config/ws/clients"));
 const WsClientSettingsPage = lazy(() => import("@/pages/config/ws/client-settings"));
 const WsClientCredentialsPage = lazy(() => import("@/pages/config/ws/client-credentials"));
 const WsClientIpRulesPage = lazy(() => import("@/pages/config/ws/client-ip-rules"));
 const WsClientTestPage = lazy(() => import("@/pages/config/ws/client-test"));
 const WsClientLogsPage = lazy(() => import("@/pages/config/ws/client-logs"));
+const WsClientSwaggerPage = lazy(() => import("@/pages/config/ws/client-swagger"));
 const SftpClientsPage = lazy(() => import("@/pages/config/sftp/clients"));
 const HelpsConfigPage = lazy(() => import("@/pages/config/helps"));
 const BusinessCalendarsPage = lazy(() => import("@/pages/config/business-calendars/index"));
@@ -354,6 +360,7 @@ const MasqueradePage = lazy(() => import("@/pages/config/masquerade"));
 const SystemModePage = lazy(() => import("@/pages/config/system-mode"));
 const AuthSettingsPage = lazy(() => import("@/pages/config/auth-settings"));
 const EnvPage = lazy(() => import("@/pages/config/env"));
+const TimeZoneConfigPage = lazy(() => import("@/pages/config/timezone"));
 const SystemStatusPage = lazy(() => import("@/pages/config/system-status"));
 const S1MigrationPage = lazy(() => import("@/pages/config/s1-migration"));
 const DefaultPolicyPage = lazy(() => import("@/pages/config/default-policy"));
@@ -375,6 +382,9 @@ const FileBrowserDetailPage = lazy(() => import("@/pages/admin/file-browser-deta
 const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
 const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
 const EbsInspectionPage = lazy(() => import("@/pages/admin/ebs"));
+const WcOverviewPage = lazy(() => import("@/pages/admin/wc-overview"));
+const WcCachePage = lazy(() => import("@/pages/admin/wc-cache"));
+const WcStatsPage = lazy(() => import("@/pages/admin/wc-stats"));
 const RestartPage = lazy(() => import("@/pages/admin/restart"));
 const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
 const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
@@ -967,9 +977,17 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/edls">
-        <ProtectedRoute tabId="edls" entityType="worker">
+        <ProtectedRoute tabId="edls-status" entityType="worker">
           <AuthenticatedLayout>
             <WorkerEdls />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/edls/assignments">
+        <ProtectedRoute tabId="edls-assignments" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerEdlsAssignments />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2752,7 +2770,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/options/:type">
+      <Route path="/config/options/:type/list">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -2760,6 +2778,31 @@ function Router() {
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/options/:type/export">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <OptionsExportPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/options/:type/import">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <OptionsImportPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Existing links and bookmarks to the plain options URL land on the list */}
+      <Route path="/config/options/:type">
+        {(params) => <Redirect to={`/config/options/${params.type}/list`} />}
       </Route>
 
       <Route path="/config/steward-settings">
@@ -2932,6 +2975,16 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/admin/sitespecific/freeman/edls/migrate">
+        <ProtectedRoute permission="admin" componentAll={["edls", "sitespecific.freeman.edls_migrate"]}>
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <FreemanEdlsMigratePage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/trust/sitespecific/bao/thresholds">
         <ProtectedRoute permission="admin" component="sitespecific.bao">
           <AuthenticatedLayout>
@@ -3096,7 +3149,17 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/services">
+      {/* Web Services - Incoming: what other people call on us. The three tabs
+          are one page, so `/admin/ws` is the page's own address and lands on
+          the default tab. The client detail pages live under the Clients tab's
+          URL because that is where you get to them from. */}
+      <Route path="/admin/ws">
+        <ProtectedRoute permission="admin">
+          <Redirect to="/admin/ws/services" />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/ws/services">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -3106,7 +3169,17 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients/:id/logs">
+      <Route path="/admin/ws/stats">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WsStatsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/ws/clients/:id/logs">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientLogsPage />
@@ -3114,7 +3187,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients/:id/test">
+      <Route path="/admin/ws/clients/:id/test">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientTestPage />
@@ -3122,7 +3195,15 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients/:id/ip-rules">
+      <Route path="/admin/ws/clients/:id/swagger">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <WsClientSwaggerPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/ws/clients/:id/ip-rules">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientIpRulesPage />
@@ -3130,7 +3211,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients/:id/credentials">
+      <Route path="/admin/ws/clients/:id/credentials">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientCredentialsPage />
@@ -3138,7 +3219,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients/:id">
+      <Route path="/admin/ws/clients/:id">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientSettingsPage />
@@ -3146,7 +3227,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients">
+      <Route path="/admin/ws/clients">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -3715,6 +3796,16 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/timezone">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <TimeZoneConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/system-status">
         <ProtectedRoute policy="admin">
           <AuthenticatedLayout>
@@ -3931,6 +4022,49 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <EbsInspectionPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Web Services - Outgoing: what we call on other people. Admin-gated
+          throughout to match the endpoints — the stored responses are whatever
+          the vendor returned. `/admin/wc` is the page's own address and lands
+          on the default tab. */}
+      <Route path="/admin/wc">
+        <ProtectedRoute permission="admin">
+          <Redirect to="/admin/wc/overview" />
+        </ProtectedRoute>
+      </Route>
+
+      {/* What we are able to call: the registry as it stands in this process. */}
+      <Route path="/admin/wc/overview">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WcOverviewPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Cached third-party responses. */}
+      <Route path="/admin/wc/cache">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WcCachePage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* How often we actually called out, per service and request type. */}
+      <Route path="/admin/wc/stats">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WcStatsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -4323,3 +4457,5 @@ function App() {
 }
 
 export default App;
+
+const OptionsImportPage = lazy(() => import("@/pages/config/options-import"));

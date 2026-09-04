@@ -33,7 +33,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import type { Policy } from "@shared/schema";

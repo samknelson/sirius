@@ -7,6 +7,18 @@ export interface Migration {
   name: string;
   description: string;
   up: () => Promise<void>;
+  /**
+   * True for a per-deployment BASELINE script (`scripts/migrate/baseline/`).
+   *
+   * Baselines are registered as core migrations in the reserved `>= 1000`
+   * range, but they are not part of the ordinary numbered sequence, and the
+   * distinction matters at boot: the empty-database bootstrap stamps
+   * `migrations_version` to the HIGHEST registered core version, so a
+   * baseline numbered above the last ordinary migration would permanently
+   * retire every ordinary migration between them. `assertBaselinesBelowCore`
+   * refuses to start in that situation.
+   */
+  baseline?: boolean;
 }
 
 const MIGRATIONS_VARIABLE_NAME = "migrations_version";
@@ -48,6 +60,58 @@ export function getAllComponentMigrations(): Map<string, Migration[]> {
   return out;
 }
 
+/** Highest version among the given migrations (0 when there are none). */
+function highestVersion(list: { version: number }[]): number {
+  return list.reduce((max, m) => Math.max(max, m.version), 0);
+}
+
+/** Highest registered ORDINARY (non-baseline) core migration version. */
+export function getHighestCoreMigrationVersion(): number {
+  return highestVersion(registeredMigrations.filter((m) => !m.baseline));
+}
+
+/** Highest registered BASELINE version (0 when none are registered). */
+export function getHighestBaselineVersion(): number {
+  return highestVersion(registeredMigrations.filter((m) => m.baseline));
+}
+
+/**
+ * Refuse to start when a baseline script is registered ABOVE the highest
+ * ordinary core migration.
+ *
+ * The empty-database bootstrap stamps `migrations_version` to the highest
+ * registered core version. If a baseline sits above the ordinary sequence,
+ * that stamp silently retires every ordinary migration below it — on a fresh
+ * database the bootstrap creates the current schema so nothing breaks, but
+ * the next ordinary migration added below the baseline would never run
+ * anywhere, and the failure mode is a drift report with no explanation. A
+ * new baseline must be numbered above the ordinary migrations that existed
+ * when it was written and BELOW any that come after; in practice that means
+ * bumping it whenever an ordinary migration overtakes it is wrong — renumber
+ * the baseline down instead.
+ */
+export function assertBaselinesBelowCore(): void {
+  const highestBaseline = getHighestBaselineVersion();
+  const highestCore = getHighestCoreMigrationVersion();
+  if (highestBaseline === 0 || highestBaseline <= highestCore) return;
+  const offenders = registeredMigrations
+    .filter((m) => m.baseline && m.version > highestCore)
+    .map((m) => `${m.version} (${m.name})`)
+    .join(", ");
+  throw new Error(
+    [
+      `Baseline migration(s) registered above the highest ordinary core migration (${highestCore}): ${offenders}.`,
+      "",
+      "The empty-database bootstrap stamps `migrations_version` to the highest",
+      "registered core version, so every ordinary migration below a higher-numbered",
+      "baseline would be permanently skipped on a freshly created database.",
+      "Renumber the baseline below the ordinary sequence (it still runs after the",
+      "migrations it was written against, because it is only applied to databases",
+      "whose stored version is below it).",
+    ].join("\n"),
+  );
+}
+
 async function getCurrentVersion(): Promise<number> {
   const variable = await storage.variables.getByName(MIGRATIONS_VARIABLE_NAME);
   if (variable && typeof variable.value === "number") {
@@ -72,7 +136,115 @@ async function setCurrentVersion(version: number): Promise<void> {
   }
 }
 
-export async function runMigrations(): Promise<{ ran: number; skipped: number; errors: string[] }> {
+/**
+ * The one-shot recovery path for a database whose `migrations_version` is
+ * stamped AHEAD of its actual schema (the empty-database bootstrap stamps
+ * the highest registered version; a restored dump or a hand-edited variable
+ * can do the same).
+ *
+ * The operator of a target with no shell can only set environment variables
+ * and redeploy, so this is their only way to make guarded migrations replay.
+ * It is NEVER inferred and NEVER defaulted: the variable names the exact
+ * version to resume FROM, and the runner then applies every registered
+ * migration above it.
+ *
+ * IT SETS THE STAMP IN EITHER DIRECTION, and both directions are one-shot
+ * recovery actions with different risks:
+ *
+ *   - LOWERING is the repair for a stamp ahead of the schema. It only helps
+ *     because the migrations it replays check for their own work first
+ *     (`IF NOT EXISTS`, or an information_schema probe that returns early).
+ *     That is a convention, not a guarantee — if one of them refuses to
+ *     re-apply, the boot stops on it by name.
+ *   - RAISING is the escape from exactly that situation: it declares the
+ *     migrations at or below the named version already applied, so the
+ *     replay resumes past the one that would not re-apply. Nothing verifies
+ *     that claim, which is why it is logged as loudly as the lowering, and
+ *     why the operator has to name the version themselves.
+ *
+ * Without the raising direction a wedged replay would need database access
+ * to undo — which is the one thing the target does not have.
+ */
+export async function applyMigrationVersionResume(
+  requestedRaw: string,
+): Promise<{ requestedVersion: number; previousVersion: number; applied: boolean }> {
+  const requestedVersion = Number(requestedRaw);
+  if (!Number.isInteger(requestedVersion) || requestedVersion < 0) {
+    throw new Error(
+      `MIGRATIONS_RESUME_FROM_VERSION must be a non-negative integer (got "${requestedRaw}"). ` +
+        "It names the core migration version to resume FROM: every registered migration " +
+        "above it re-applies on this boot.",
+    );
+  }
+
+  const previousVersion = await getCurrentVersion();
+  if (previousVersion === requestedVersion) {
+    logger.warn("MIGRATIONS_RESUME_FROM_VERSION matches the stored version — nothing to change", {
+      service: "migration-runner",
+      requestedVersion,
+      previousVersion,
+    });
+    return { requestedVersion, previousVersion, applied: false };
+  }
+
+  const lowering = requestedVersion < previousVersion;
+  await setCurrentVersion(requestedVersion);
+  logger.warn(
+    `ONE-SHOT RECOVERY: ${lowering ? "lowering" : "RAISING"} the stored core migration version on operator request`,
+    {
+      service: "migration-runner",
+      source: "startup",
+      requestedVersion,
+      previousVersion,
+      variable: "MIGRATIONS_RESUME_FROM_VERSION",
+    },
+  );
+  console.warn(
+    `[migration-runner] ONE-SHOT RECOVERY: MIGRATIONS_RESUME_FROM_VERSION=${requestedVersion} ` +
+      `${lowering ? "lowered" : "RAISED"} migrations_version from ${previousVersion} to ${requestedVersion}. ` +
+      (lowering
+        ? "Every registered core migration above that version will re-apply on this boot. "
+        : "Every registered core migration at or below that version is now treated as APPLIED and " +
+          "will never run on this database — only do this for migrations whose work is verifiably " +
+          "already present. ") +
+      "Remove the variable once the boot succeeds, or it will set the stamp again on every restart.",
+  );
+  return { requestedVersion, previousVersion, applied: true };
+}
+
+/** A core migration failed. Fatal: the boot must not continue half-migrated. */
+export class CoreMigrationFailedError extends Error {
+  constructor(
+    readonly failed: { version: number; name: string; error: string },
+    readonly remaining: Migration[],
+  ) {
+    super(
+      [
+        `Core migration ${failed.version} (${failed.name}) FAILED and stopped the boot.`,
+        "",
+        `  error: ${failed.error}`,
+        "",
+        remaining.length > 0
+          ? `Still pending behind it: ${remaining.map((m) => `${m.version} (${m.name})`).join(", ")}.`
+          : "It was the last pending migration.",
+        "The database is half-migrated; the app refuses to serve traffic against it.",
+        "Fix the cause of the error above (it is the real fault — the schema drift a",
+        "later gate would report is only its symptom) and redeploy.",
+      ].join("\n"),
+    );
+    this.name = "CoreMigrationFailedError";
+  }
+}
+
+export async function runMigrations(): Promise<{
+  ran: number;
+  skipped: number;
+  errors: string[];
+  /** Set when a migration threw; the boot must treat this as fatal. */
+  failed?: { version: number; name: string; error: string };
+  /** Pending migrations that never got a chance to run. */
+  remaining: Migration[];
+}> {
   const currentVersion = await getCurrentVersion();
   const pendingMigrations = registeredMigrations.filter(m => m.version > currentVersion);
   
@@ -81,7 +253,7 @@ export async function runMigrations(): Promise<{ ran: number; skipped: number; e
       service: "migration-runner",
       currentVersion 
     });
-    return { ran: 0, skipped: registeredMigrations.length, errors: [] };
+    return { ran: 0, skipped: registeredMigrations.length, errors: [], remaining: [] };
   }
 
   logger.info("Starting migrations", {
@@ -92,6 +264,7 @@ export async function runMigrations(): Promise<{ ran: number; skipped: number; e
 
   let ran = 0;
   const errors: string[] = [];
+  let failed: { version: number; name: string; error: string } | undefined;
 
   for (const migration of pendingMigrations) {
     try {
@@ -113,6 +286,7 @@ export async function runMigrations(): Promise<{ ran: number; skipped: number; e
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       errors.push(`Migration ${migration.version} (${migration.name}) failed: ${errorMessage}`);
+      failed = { version: migration.version, name: migration.name, error: errorMessage };
       
       logger.error(`Migration ${migration.version} failed`, {
         service: "migration-runner",
@@ -125,10 +299,14 @@ export async function runMigrations(): Promise<{ ran: number; skipped: number; e
     }
   }
 
-  return { 
-    ran, 
+  return {
+    ran,
     skipped: registeredMigrations.length - pendingMigrations.length,
-    errors 
+    errors,
+    failed,
+    remaining: failed
+      ? pendingMigrations.filter((m) => m.version > failed!.version)
+      : [],
   };
 }
 
@@ -145,6 +323,52 @@ export async function getMigrationStatus(): Promise<{
     totalMigrations: registeredMigrations.length,
     pendingMigrations
   };
+}
+
+/**
+ * Read-only snapshot of per-component migration bookkeeping for the bring-up
+ * report: which enabled schema-managing components have migrations, where
+ * their stored `migrationVersion` sits, and what is pending. Writes nothing,
+ * so it is safe in report-only mode. Requires the component cache.
+ */
+export async function collectComponentMigrationStatus(): Promise<{
+  enabledCount: number;
+  schemaManaging: {
+    componentId: string;
+    storedVersion: number | null;
+    highestVersion: number;
+    pending: { version: number; name: string }[];
+  }[];
+}> {
+  const { getAllComponents } = await import("../../shared/components");
+  const { isComponentEnabledSync } = await import("./component-cache");
+
+  let enabledCount = 0;
+  const schemaManaging: {
+    componentId: string;
+    storedVersion: number | null;
+    highestVersion: number;
+    pending: { version: number; name: string }[];
+  }[] = [];
+
+  for (const component of getAllComponents()) {
+    if (!isComponentEnabledSync(component.id)) continue;
+    enabledCount++;
+    const list = componentMigrations.get(component.id) ?? [];
+    if (!component.managesSchema && list.length === 0) continue;
+    const { state } = await readComponentSchemaState(component.id);
+    const storedVersion = state ? (state.migrationVersion ?? 0) : null;
+    schemaManaging.push({
+      componentId: component.id,
+      storedVersion,
+      highestVersion: highestVersion(list),
+      pending: list
+        .filter((m) => m.version > (storedVersion ?? 0))
+        .map((m) => ({ version: m.version, name: m.name })),
+    });
+  }
+
+  return { enabledCount, schemaManaging };
 }
 
 async function readComponentSchemaState(componentId: string): Promise<{

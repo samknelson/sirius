@@ -6,7 +6,8 @@ import { setupVite, serveStatic, log } from "./vite";
 import { logger } from "./logger";
 import { bootstrapApp } from "./app-init";
 import { getEnvironmentVariable } from "./config/env-registry";
-import { getBootIdentity } from "./services/boot-identity";
+import { markBootFailed, markBootReady, markBootReportOnly } from "./services/boot-status";
+import { bootStatusGate, registerBootStatusRoutes } from "./services/boot-status-http";
 
 // Dev-only guardrail: remove any stale `dist/` build before booting.
 // `npm run dev` (tsx server/index.ts) loads source directly and never
@@ -32,54 +33,15 @@ if (getEnvironmentVariable("NODE_ENV") !== "production") {
 
 const app = express();
 
-// Health check endpoint - must be registered BEFORE any heavy initialization
-// This allows deployment health checks to pass while the app is still starting
-let appReady = false;
-app.get('/health', (_req, res) => {
-  // bootId / startedAt identify THIS process (Task #1258). The admin Restart
-  // page polls here after firing a restart and only reports success once a
-  // different bootId answers. Additive — the endpoint still always answers
-  // 200, whether starting or ready.
-  const { bootId, startedAt } = getBootIdentity();
-  res.status(200).json({ status: appReady ? 'ready' : 'starting', bootId, startedAt });
-});
-
-// Root path handler for health checks during startup
-// Once app is ready, this falls through to the SPA handler
-app.get('/', (req, res, next) => {
-  if (appReady) {
-    // App is ready, let normal SPA handler serve the page
-    return next();
-  }
-
-  // During startup, respond based on Accept header
-  const acceptHeader = req.headers.accept || '';
-  if (acceptHeader.includes('text/html')) {
-    // Browser request during startup - serve a loading page
-    res.status(200).set({ 'Content-Type': 'text/html' }).send(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Starting...</title>
-          <meta http-equiv="refresh" content="2">
-          <style>
-            body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; }
-            .loader { text-align: center; color: #666; }
-          </style>
-        </head>
-        <body>
-          <div class="loader">
-            <p>Application is starting...</p>
-            <p><small>This page will refresh automatically.</small></p>
-          </div>
-        </body>
-      </html>
-    `);
-  } else {
-    // Health check probe - return JSON status
-    res.status(200).json({ status: 'starting' });
-  }
-});
+// Boot-status surface, registered BEFORE any heavy initialization and shared
+// verbatim with the production entry point (`server/production-entry.ts`), so
+// a boot problem presents identically in both. `/health`, `/boot-status`,
+// `/api/health` and `/api/boot-status` all answer in every phase; every other
+// request is answered by the gate until the phase is "ready", naming the
+// actual phase (starting / init-failed / report-only) rather than always
+// claiming to be starting.
+registerBootStatusRoutes(app);
+app.use('/', bootStatusGate);
 
 // Create HTTP server early for health checks
 const server = createServer(app);
@@ -99,10 +61,27 @@ server.listen({
   // sequence, routes, websocket, cron scheduler, error middleware). This is
   // the single source of truth shared with the production entry point
   // (`server/production-entry.ts` -> `startApp()` in `server/app-init.ts`).
-  // The session-expiration fix (res.headersSent guard in the error middleware
-  // and awaited provider logout) now lives inside bootstrapApp / the auth
-  // provider, so it is preserved by this consolidation.
-  await bootstrapApp(app, server);
+  try {
+    await bootstrapApp(app, server);
+  } catch (error) {
+    // BRINGUP_REPORT_ONLY=1 stops the boot on purpose after printing the
+    // bring-up report; that is not a crash. Anything else is a real init
+    // failure — and, exactly as in production, the process stays alive and
+    // serves the truth over HTTP instead of dying with an unhandled
+    // rejection that only the console ever sees.
+    if (error instanceof Error && error.name === "BringUpReportOnlyStop") {
+      markBootReportOnly(error);
+      log(error.message);
+      return;
+    }
+    markBootFailed(error instanceof Error ? error : new Error(String(error)));
+    logger.error("Application initialization failed", {
+      source: "startup",
+      error: error instanceof Error ? (error.stack ?? error.message) : String(error),
+    });
+    console.error("Failed to initialize application:", error);
+    return;
+  }
 
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
@@ -114,6 +93,6 @@ server.listen({
   }
 
   // Mark app as ready after all initialization is complete
-  appReady = true;
+  markBootReady();
   logger.info("Application fully initialized and ready", { source: "startup" });
 })();

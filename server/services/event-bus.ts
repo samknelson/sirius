@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { logger } from "../logger";
+
 import type {
   DispatchJob,
   DispatchJobFore,
@@ -70,6 +71,15 @@ export enum EventType {
   TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
   TRUST_WMB_SCAN_WORKER_COMPLETED = "trust.wmb.scan.worker.completed",
   TOS_ABSENCE_REMINDER = "tos.absence.reminder",
+  // Wall-clock heartbeats from the tick emitter cron; see CronTickPayload.
+  // One type per period so the bus routes a tick only to the handlers that
+  // asked for that period, rather than waking every subscriber every time.
+  CRON_TICK_10M = "cron.tick.10m",
+  CRON_TICK_1H = "cron.tick.1h",
+  CRON_TICK_2H = "cron.tick.2h",
+  CRON_TICK_4H = "cron.tick.4h",
+  CRON_TICK_8H = "cron.tick.8h",
+  CRON_TICK_DAY = "cron.tick.day",
   GRIEVANCE_DEADLINE_REMINDER = "grievance.deadline.reminder",
   EMPLOYER_MONTHLY = "employer.monthly",
   PLUGIN_CONFIG_SAVED = "plugin.config.saved",
@@ -653,6 +663,43 @@ export interface TrustWmbScanCompletedPayload {
 }
 
 /**
+ * The heartbeat periods the tick emitter can emit, finest first.
+ *
+ * Declared here rather than beside the emitter because the payload type needs
+ * it and the emitter needs `EventType`; keeping the vocabulary in the bus is
+ * what stops that becoming an import cycle.
+ */
+export type CronTickPeriod = "10m" | "1h" | "2h" | "4h" | "8h" | "day";
+
+/**
+ * A periodic heartbeat: "this much wall-clock time has just elapsed".
+ *
+ * Emitted by the `cron-tick-emitter` cron job, one event type per period, so
+ * a plugin that needs waking up regularly subscribes to the tick it wants
+ * instead of growing a cron job of its own. See `server/plugins/system/cron/
+ * tick.ts` for what a tick does and does not promise — in short, it is
+ * best-effort and level-triggered: a prompt to go and look at current state,
+ * never a guarantee that this instant was observed exactly once.
+ */
+export interface CronTickPayload {
+  /** Which heartbeat this is, e.g. "10m" or "day". */
+  period: CronTickPeriod;
+  /**
+   * Local wall-clock start of the period this tick stands for, as an ISO
+   * string — 12:00 for the noon hourly tick, local midnight for the daily
+   * one. A handler that records what it has already done for a period keys
+   * off this rather than off the moment the tick happened to be delivered.
+   *
+   * It is also the only honest measure of how behind a tick is: a subscriber
+   * that cares compares it against the wall clock itself. The emitter does not
+   * say how many boundaries went by unobserved, because it emits only ONE
+   * catch-up tick per period however many were missed — a count would be a
+   * number nothing is entitled to act on.
+   */
+  slotStartedAt: string;
+}
+
+/**
  * A single TOS/absence reminder that fell due. Emitted by the generic EBS pump
  * cron from an `ebs_denorm` row scheduled by the `tos_absence_reminder` denorm
  * plugin; delivered by the `tos-absence-notifier` event-notifier plugin.
@@ -766,6 +813,12 @@ export interface EventPayloadMap {
   [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
   [EventType.TRUST_WMB_SCAN_WORKER_COMPLETED]: TrustWmbScanWorkerCompletedPayload;
   [EventType.TOS_ABSENCE_REMINDER]: TosAbsenceReminderPayload;
+  [EventType.CRON_TICK_10M]: CronTickPayload;
+  [EventType.CRON_TICK_1H]: CronTickPayload;
+  [EventType.CRON_TICK_2H]: CronTickPayload;
+  [EventType.CRON_TICK_4H]: CronTickPayload;
+  [EventType.CRON_TICK_8H]: CronTickPayload;
+  [EventType.CRON_TICK_DAY]: CronTickPayload;
   [EventType.GRIEVANCE_DEADLINE_REMINDER]: GrievanceDeadlineReminderPayload;
   [EventType.EMPLOYER_MONTHLY]: EmployerMonthlyPayload;
   [EventType.PLUGIN_CONFIG_SAVED]: PluginConfigSavedPayload;

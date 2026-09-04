@@ -3,6 +3,7 @@ import { requireComponent } from "../../components";
 import { storage } from "../../../storage";
 import { getDrivingDistanceMiles } from "../../../services/driving-distance";
 import { distanceInMiles } from "@shared/utils/geocode";
+import { sendIfMaintenanceRefusal } from "../../../services/maintenance-flag";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -87,6 +88,7 @@ export function registerBaoDistanceCacheRoutes(
         }
         res.json({ scanned: rows.length, upgraded, stillStraightLine });
       } catch (error) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         console.error("Failed to rescan BAO distance cache:", error);
         res.status(500).json({ message: "Failed to rescan distance cache" });
       }

@@ -6,6 +6,8 @@ import {
   HierarchicalTab,
   getTabTreeForEntity,
   buildTabHref,
+  WS_ADMIN_ENTITY_ID,
+  WC_ADMIN_ENTITY_ID,
 } from "@shared/tabRegistry";
 import { apiRequest } from "@/lib/queryClient";
 import { useTerm } from "@/contexts/TerminologyContext";
@@ -455,6 +457,39 @@ export function useLedgerPaymentBatchTabAccess(batchId: string | undefined, enab
     entityType: 'ledger_payment_batch', 
     entityId: batchId, 
     enabled 
+  });
+}
+
+/** Tab access for an options page; the "entity id" is the options type slug. */
+export function useOptionsTabAccess(optionsType: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'options',
+    entityId: optionsType,
+    enabled,
+  });
+}
+
+/**
+ * Tab access for the incoming web services page. It is one page rather than an
+ * entity, so the id is the registry's constant.
+ */
+export function useWsTabAccess(enabled = true) {
+  return useTabAccess({
+    entityType: 'ws',
+    entityId: WS_ADMIN_ENTITY_ID,
+    enabled,
+  });
+}
+
+/**
+ * Tab access for the outgoing web services page. It is one page rather than an
+ * entity, so the id is the registry's constant.
+ */
+export function useWcTabAccess(enabled = true) {
+  return useTabAccess({
+    entityType: 'wc',
+    entityId: WC_ADMIN_ENTITY_ID,
+    enabled,
   });
 }
 

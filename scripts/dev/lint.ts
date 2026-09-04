@@ -67,6 +67,11 @@ const RULES: Rule[] = [
     summary: "component manifest tables sort into a valid FK creation order",
   },
   {
+    id: "core-migration-component-tables",
+    script: "scripts/dev/check-core-migration-component-tables.ts",
+    summary: "core migrations guard every component-owned table they touch",
+  },
+  {
     id: "lockfile-registry",
     script: "scripts/dev/check-lockfile-registry.ts",
     summary: "lockfile tarball URLs point at the public npm registry",
@@ -74,7 +79,32 @@ const RULES: Rule[] = [
   {
     id: "main-branch-files",
     script: "scripts/dev/check-main-branch-files.ts",
-    summary: "no .github/ or deploy/ files are tracked on main",
+    summary: "deployment config is tracked on carrying branches, never on main",
+  },
+  {
+    id: "carrying-branch-drift",
+    script: "scripts/dev/check-carrying-branch-drift.ts",
+    summary: "carrying branches hold no application work that is missing from main",
+  },
+  {
+    id: "maintenance-guards",
+    script: "scripts/dev/check-maintenance-guards.ts",
+    summary: "outbound vendor calls are refused during maintenance mode",
+  },
+  {
+    id: "theme-color-vars",
+    script: "scripts/dev/check-theme-color-vars.ts",
+    summary: "theme colour variables are named as-is, never wrapped in hsl()",
+  },
+  {
+    id: "date-formatting",
+    script: "scripts/dev/check-date-formatting.ts",
+    summary: "browser code formats dates through the zone-aware wrapper",
+  },
+  {
+    id: "browser-timezone",
+    script: "scripts/dev/check-browser-timezone.ts",
+    summary: "only the resolver plumbing asks what zone the browser is in",
   },
 ];
 

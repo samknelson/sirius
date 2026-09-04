@@ -9,7 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Employer } from "@shared/schema";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { WizardLauncher } from "@/components/wizards/WizardLauncher";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import type { Wizard } from "@/lib/wizard-types";
 
 function getStatusBadgeVariant(status: string): "default" | "secondary" | "destructive" | "outline" {

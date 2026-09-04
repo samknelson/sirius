@@ -8,7 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import EventLayout, { useEventLayout } from "@/components/layouts/EventLayout";
 
 function EventViewContent() {

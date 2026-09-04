@@ -11,34 +11,20 @@
  * whose effective value actually differs are reported as waiting.
  *
  * Values are hashed, never stored: many of these variables are secrets, and
- * this module only ever needs to answer "same or different".
+ * this module only ever needs to answer "same or different". The hashing
+ * itself lives in env-value-fingerprint, shared with the Environment page so
+ * one value can never produce two different digests.
  *
  * The list of variables to watch is drawn entirely from the existing
  * per-variable classification — there is no hand-maintained list here.
  */
-import { createHash } from "node:crypto";
+import { listEnvironmentVariables } from "../config/env-registry";
 import {
-  getEnvironmentVariable,
-  listEnvironmentVariables,
-} from "../config/env-registry";
-
-/** Sentinel distinguishing "unset" from a value that happens to be empty. */
-const UNSET = "\u0000unset";
+  ENV_VALUE_UNSET as UNSET,
+  fingerprintEnvironmentValue as hashValue,
+} from "../config/env-value-fingerprint";
 
 let baseline: Map<string, string> | null = null;
-
-function hashValue(name: string): string {
-  let value: string | undefined;
-  try {
-    value = getEnvironmentVariable(name);
-  } catch {
-    // A required-but-unset variable throws from the getter. Treat that the
-    // same as unset: the comparison only cares whether it changed.
-    value = undefined;
-  }
-  if (value === undefined || value === "") return UNSET;
-  return createHash("sha256").update(value).digest("hex");
-}
 
 function restartClassifiedNames(): string[] {
   return listEnvironmentVariables()

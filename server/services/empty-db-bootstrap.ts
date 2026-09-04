@@ -57,6 +57,7 @@ import {
 } from "../../scripts/migrate";
 import { logger } from "../logger";
 import { getEnvironmentVariable } from "../config/env-registry";
+import type { DatabaseState } from "./bringup-report";
 
 const NAME_SYM_DESC = "drizzle:Name";
 
@@ -172,19 +173,48 @@ function highestVersion(migrations: { version: number }[]): number {
   return migrations.reduce((max, m) => Math.max(max, m.version), 0);
 }
 
+export interface DatabaseStateInfo {
+  state: DatabaseState;
+  /** Tables in the public schema. */
+  tableNames: string[];
+}
+
+/**
+ * Classify the database the process reached: empty, partially initialized
+ * (tables present but not this app's), or initialized.
+ *
+ * Read-only, and the first thing the bring-up phase does — the report needs
+ * this even in report-only mode, where no bootstrap may run.
+ */
+export async function classifyDatabaseState(): Promise<DatabaseStateInfo> {
+  const hasVariables = await tableExists("variables");
+  const tableNames = await listAllPublicTables();
+  if (hasVariables) return { state: "initialized", tableNames };
+  if (tableNames.length > 0) return { state: "partially-initialized", tableNames };
+  return { state: "empty", tableNames };
+}
+
 /**
  * Detect an empty database and either bootstrap it (when
  * `ALLOW_EMPTY_DB_BOOTSTRAP=1`) or fail with a clear operator error.
  * Strict no-op on any database that already has a `variables` table.
+ *
+ * Returns true when this call created the schema.
+ *
+ * `known` lets the caller pass a classification it has already made (the
+ * bring-up phase always has one) so the introspection queries do not run
+ * twice.
  */
-export async function ensureEmptyDatabaseBootstrap(): Promise<void> {
-  const hasVariables = await tableExists("variables");
-  if (hasVariables) {
-    return; // Initialized database — normal startup path.
+export async function ensureEmptyDatabaseBootstrap(
+  known?: DatabaseStateInfo,
+): Promise<boolean> {
+  const classified = known ?? (await classifyDatabaseState());
+  if (classified.state === "initialized") {
+    return false; // Initialized database — normal startup path.
   }
 
-  const liveTables = await listAllPublicTables();
-  if (liveTables.length > 0) {
+  const liveTables = classified.tableNames;
+  if (classified.state === "partially-initialized") {
     throw new Error(
       [
         "This database has tables but no `variables` table, so it is neither empty nor",
@@ -376,4 +406,6 @@ export async function ensureEmptyDatabaseBootstrap(): Promise<void> {
       (c: ComponentDefinition) => c.id,
     ),
   });
+
+  return true;
 }

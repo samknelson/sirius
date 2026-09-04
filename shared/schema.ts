@@ -147,6 +147,8 @@ export {
   insertWsClientCredentialSchema,
   wsClientIpRules,
   insertWsClientIpRuleSchema,
+  wsStats,
+  insertWsStatsSchema,
   type WsClientStatus,
   type InsertWsClient,
   type WsClient,
@@ -156,7 +158,22 @@ export {
   type WsClientCredential,
   type InsertWsClientIpRule,
   type WsClientIpRule,
+  type InsertWsStats,
+  type WsStats,
 } from "./schema/webservices/schema";
+
+export {
+  wcCache,
+  wcCacheOutcomeEnum,
+  insertWcCacheSchema,
+  wcStats,
+  insertWcStatsSchema,
+  type WcCacheOutcome,
+  type InsertWcCache,
+  type WcCache,
+  type InsertWcStats,
+  type WcStats,
+} from "./schema/webclient/schema";
 
 // Session storage table for Replit Auth
 export const sessions = pgTable(
@@ -180,6 +197,17 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
   lastLogin: timestamp("last_login"),
+  /**
+   * The person's own IANA time zone, or null when they have not chosen one.
+   *
+   * DISPLAY ONLY. Nothing stored anywhere is written in this zone — it decides
+   * what a given viewer is shown and nothing else. Null does not mean "use the
+   * system zone": it means "no explicit choice", which resolves to the
+   * viewer's own runtime zone when site policy allows personal zones. See
+   * resolveEffectiveTimeZone in shared/utils/timezone.ts, which is the only
+   * place that decision is made.
+   */
+  timezone: varchar("timezone"),
   data: jsonb("data"),
 });
 
@@ -1208,6 +1236,13 @@ export {
   type FreemanCrewlead,
   type InsertFreemanCrewlead,
 } from "./schema/sitespecific/freeman/schema";
+
+export {
+  sitespecificFreemanEdlsMigrate,
+  insertFreemanEdlsMigrateSchema,
+  type FreemanEdlsMigrateRow,
+  type InsertFreemanEdlsMigrateRow,
+} from "./schema/sitespecific/freeman/edls-migrate-schema";
 
 export {
   optionsGrievanceStatus,
@@ -2282,6 +2317,21 @@ export const insertPluginConfigDashboardSchema = createInsertSchema(pluginConfig
 export type InsertPluginConfigDashboard = z.infer<typeof insertPluginConfigDashboardSchema>;
 export type PluginConfigDashboard = typeof pluginConfigsDashboard.$inferSelect;
 
+// Quicksearch subsidiary — which roles a quicksearch configuration is offered
+// to. Mirrors the dashboard subsidiary exactly (a varchar array, no FK
+// possible), and carries the same weight for quicksearch: the roles ARE the
+// access decision, so a viewer holding ANY of a config's roles may see any
+// record that config's searcher returns. Role deletion is guarded in
+// `storage.users.deleteRole` alongside the dashboard check.
+export const pluginConfigsQuicksearch = pgTable("plugin_configs_quicksearch", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+  roles: varchar("roles").array().notNull(),
+});
+
+export const insertPluginConfigQuicksearchSchema = createInsertSchema(pluginConfigsQuicksearch);
+export type InsertPluginConfigQuicksearch = z.infer<typeof insertPluginConfigQuicksearchSchema>;
+export type PluginConfigQuicksearch = typeof pluginConfigsQuicksearch.$inferSelect;
+
 // Payment-gateway subsidiary — exists primarily as a type-safe FK target so
 // other tables (e.g. ledger_accounts.gateway_config_id) can reference a
 // specific payment-gateway config without pointing at the polymorphic
@@ -2569,7 +2619,37 @@ export const comm = pgTable("comm", {
   sent: timestamp("sent"),
   received: timestamp("received"),
   data: jsonb("data"),
-});
+  /**
+   * Optional caller-supplied send key: "send this exact message at most once,
+   * ever". A repeating job (a threshold scan, a reminder sweep) hands over a
+   * key it can recompute on every run; the first send claims it and every
+   * later send with the same key, to the same contact, on the same medium is
+   * refused before anything reaches the provider.
+   *
+   * The claim is the INSERT of this row under
+   * `comm_medium_contact_id_send_key_unique`, not a read-then-write — two
+   * racing sends cannot both win. NULL is unconstrained (Postgres treats
+   * nulls as distinct), so un-keyed sends are unaffected and a contact can
+   * receive any number of them. A blank string is normalized to NULL at the
+   * insert boundary (`createComm`), because an empty string IS a value to the
+   * constraint and two unrelated un-keyed sends would collide on it.
+   *
+   * TRADE-OFF — a spent key stays spent. A keyed send that FAILS (recipient
+   * not opted in, provider outage, anything) has still consumed its key and
+   * will never be retried; the failed communication row stays in the log as
+   * the evidence of what happened. The alternative — re-opening the key when
+   * a send fails — puts the race back, because "did it fail?" is only
+   * knowable after the provider has been called. Callers that need retries
+   * must vary the key (e.g. include the attempt or the day in it).
+   */
+  sendKey: varchar("send_key"),
+}, (table) => ({
+  sendKeyUnique: unique("comm_medium_contact_id_send_key_unique").on(
+    table.medium,
+    table.contactId,
+    table.sendKey,
+  ),
+}));
 
 export const insertCommSchema = createInsertSchema(comm).omit({
   id: true,

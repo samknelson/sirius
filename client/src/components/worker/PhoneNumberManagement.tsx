@@ -20,7 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { z } from "zod";
 import { formatPhoneNumberForDisplay, validatePhoneNumber } from "@/lib/phone-utils";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { QRCodeSVG } from "qrcode.react";
 
 interface SmsOptinResponse {

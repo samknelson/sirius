@@ -144,6 +144,11 @@ export async function backfillPaymentGatewaySubsidiaries(): Promise<void> {
  * old global value onto any config that has no `paymentTypes` of its own, then
  * deletes the global so it is no longer the source of truth. Runs at boot after
  * the kind is registered; re-running is a no-op (the variable is gone).
+ *
+ * Safe when two tasks boot at once (Task #1350): both read the same legacy
+ * value and write the same list onto the same configs, so the losing write is
+ * byte-identical to the winning one, and whichever task deletes the global
+ * second simply finds it gone.
  */
 export async function backfillPaymentTypesFromGlobal(): Promise<void> {
   const { storage } = await import("../../../storage");

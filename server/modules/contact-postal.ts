@@ -4,6 +4,7 @@ import { insertContactPostalSchema } from "@shared/schema";
 import type { AddressSource } from "../storage/contacts";
 import { addressValidationService } from "../services/comm/validators/address";
 import { checkAccessInline } from "../services/access-policy-evaluator";
+import { isMaintenanceModeError } from "../services/maintenance-flag";
 
 // Type for middleware functions that we'll accept from the main routes
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -64,6 +65,10 @@ async function geocodeAddressParts(parts: {
       };
     }
   } catch (error) {
+    // "Best effort" covers a vendor that is unreachable, not a refusal this
+    // app issued: returning {} here would make maintenance mode look like an
+    // address Google simply could not place.
+    if (isMaintenanceModeError(error)) throw error;
     console.error("Server-side geocoding failed:", error);
   }
   return {};

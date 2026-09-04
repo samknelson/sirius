@@ -3,6 +3,7 @@ import { requireAccess } from "../services/access-policy-evaluator";
 import { z } from "zod";
 import { serviceRegistry } from "../services/service-registry";
 import type { EmailTransport } from "../services/comm/providers/email";
+import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
 
 export function registerEmailConfigRoutes(app: Express) {
   app.get(
@@ -30,6 +31,7 @@ export function registerEmailConfigRoutes(app: Express) {
           },
         });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({ 
           message: "Failed to get email configuration",
           error: error?.message 
@@ -53,6 +55,7 @@ export function registerEmailConfigRoutes(app: Express) {
         
         res.json(result);
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({
           success: false,
           error: error?.message || "Failed to connect to email provider",
@@ -75,6 +78,7 @@ export function registerEmailConfigRoutes(app: Express) {
         
         res.json({ success: true, defaultProvider: providerId });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         if (error instanceof z.ZodError) {
           return res.status(400).json({ message: "Invalid request", errors: error.errors });
         }
@@ -99,6 +103,7 @@ export function registerEmailConfigRoutes(app: Express) {
           defaultFromName: defaultFrom?.name,
         });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({ 
           message: "Failed to get default from address",
           error: error?.message 
@@ -133,6 +138,7 @@ export function registerEmailConfigRoutes(app: Express) {
         
         res.json({ success: true, defaultFromEmail: email, defaultFromName: name });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         if (error instanceof z.ZodError) {
           return res.status(400).json({ message: "Invalid request", errors: error.errors });
         }
@@ -170,6 +176,7 @@ export function registerEmailConfigRoutes(app: Express) {
           error: providerConfig.error,
         });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({ 
           message: "Failed to get SendGrid configuration",
           error: error?.message 
@@ -202,6 +209,7 @@ export function registerEmailConfigRoutes(app: Express) {
           details: result.details,
         });
       } catch (error: any) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         res.json({
           success: false,
           error: error?.message || "Failed to connect to SendGrid",

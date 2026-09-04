@@ -137,12 +137,12 @@ describe("registry behavior", () => {
       secret: false,
       category: "core",
     });
-    setEnvironmentVariable("TEST_ENVREG_PLAIN", "hello");
+    setEnvironmentVariable("TEST_ENVREG_PLAIN", "hello", "environment");
     expect(getEnvironmentVariable("TEST_ENVREG_PLAIN")).toBe("hello");
   });
 
   it("setEnvironmentVariable rejects unregistered names", () => {
-    expect(() => setEnvironmentVariable("TEST_ENVREG_UNREG", "x")).toThrow(
+    expect(() => setEnvironmentVariable("TEST_ENVREG_UNREG", "x", "environment")).toThrow(
       /unregistered/,
     );
   });
@@ -154,7 +154,7 @@ describe("registry behavior", () => {
       secret: true,
       category: "sitespecific.t631.client",
     });
-    setEnvironmentVariable("TEST_ENVREG_SECRET", "s3cr3t");
+    setEnvironmentVariable("TEST_ENVREG_SECRET", "s3cr3t", "environment");
     const info = listEnvironmentVariables().find(
       (v) => v.name === "TEST_ENVREG_SECRET",
     );
@@ -176,7 +176,7 @@ describe("registry behavior", () => {
       category: "core",
       transform: (v) => (v ?? "default").toUpperCase(),
     });
-    setEnvironmentVariable("TEST_ENVREG_TRANSFORM", "abc");
+    setEnvironmentVariable("TEST_ENVREG_TRANSFORM", "abc", "environment");
     expect(getEnvironmentVariable("TEST_ENVREG_TRANSFORM")).toBe("ABC");
   });
 
@@ -188,7 +188,7 @@ describe("registry behavior", () => {
       category: "core",
       transform: (v) => (v ?? "default").toUpperCase(),
     });
-    setEnvironmentVariable("TEST_ENVREG_TRANSFORM", "abc");
+    setEnvironmentVariable("TEST_ENVREG_TRANSFORM", "abc", "environment");
 
     setEnvironmentVariableOverride("TEST_ENVREG_TRANSFORM", (v) => `${v}-OVR`);
     expect(getEnvironmentVariable("TEST_ENVREG_TRANSFORM")).toBe("ABC-OVR");
@@ -208,7 +208,7 @@ describe("registry behavior", () => {
       required: true,
     });
     expect(() => getEnvironmentVariable("TEST_ENVREG_REQUIRED")).toThrow(/required/);
-    setEnvironmentVariable("TEST_ENVREG_REQUIRED", "present");
+    setEnvironmentVariable("TEST_ENVREG_REQUIRED", "present", "environment");
     expect(getEnvironmentVariable("TEST_ENVREG_REQUIRED")).toBe("present");
   });
 
@@ -244,7 +244,7 @@ describe("registry behavior", () => {
       secret: true,
       category: "core",
     });
-    setEnvironmentVariable(dynamicName, "dyn");
+    setEnvironmentVariable(dynamicName, "dyn", "environment");
     expect(getEnvironmentVariable(dynamicName)).toBe("dyn");
     const info = listEnvironmentVariables().find((v) => v.name === dynamicName);
     expect(info!.secret, "dynamic registration must be secret").toBe(true);
@@ -257,7 +257,7 @@ describe("registry behavior", () => {
       secret: false,
       category: "core",
     });
-    setEnvironmentVariable("TEST_ENVREG_PLAIN", "hello");
+    setEnvironmentVariable("TEST_ENVREG_PLAIN", "hello", "environment");
     const names = listPresentEnvironmentVariableNames((n) =>
       n.startsWith("TEST_ENVREG_"),
     );
@@ -272,7 +272,7 @@ describe("registry behavior", () => {
       secret: false,
       category: "core",
     });
-    setEnvironmentVariable("TEST_ENVREG_PLAIN", "hello");
+    setEnvironmentVariable("TEST_ENVREG_PLAIN", "hello", "environment");
     expect(getRawProcessEnv()["TEST_ENVREG_PLAIN"]).toBe("hello");
   });
 });

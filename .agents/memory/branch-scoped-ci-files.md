@@ -36,10 +36,12 @@ OAuth App here does not have by default — pushes are rejected outright.
   swaps the whole tree and churns the running dev server for no reason.
 - Verify with `git ls-tree -r --name-only <branch> -- .github deploy` per branch rather than
   trusting `git status`, which shows nothing once the files are ignored-and-untracked.
-- An architecture-lint rule now enforces the `main` half of this automatically: it is
-  branch-conditional (fails only on `main`, passes elsewhere so carrying branches keep their
-  copies) and reads the commit with `git ls-tree`, not the working tree. It catches an
-  incoming merge at task-completion time, not the pushes carrying branches make.
+- An architecture-lint rule enforces **both** halves automatically, reading the commit with
+  `git ls-tree` rather than the working tree. It is branch-conditional: on `main` tracking
+  these paths fails, on a named carrying branch losing them fails, and any other branch gets
+  no opinion. The carrying-branch half exists because the wipe happened twice and was noticed
+  only when a deploy needed the files. Adding a new deployment branch means adding it to that
+  rule's list, or it is unguarded.
 
 ## Merge direction is load-bearing: only main → branch, never branch → main
 
@@ -82,3 +84,46 @@ environment that did not explicitly check them out.
 
 **How to apply:** keep application work on `main` and treat carrying branches as
 merge-target-only. After any agent work lands on one, re-check the file count before pushing.
+
+## A carrying branch can swallow a whole feature merge
+
+Work that an agent "merged" can be reachable from the carrying branch only, never from
+`main`. Nothing surfaces it: the task reads complete, the merge commit exists, and the
+feature is simply absent from the running app.
+
+**Why:** the merge target is the branch that was checked out, and these branches are
+long-lived, so the commit sits on a line `main` never sees.
+
+**How to apply:** an architecture-lint rule now catches this on the carrying branch itself —
+it fails when the branch changed anything outside `.github/`/`deploy/` that still differs
+from `main` (three-dot diff so "behind main" passes, two-dot so the repair clears it), and it
+stays silent on `main`, where the message would be unactionable. It only fires while that
+branch is checked out, so a hand check is still worth it: test reachability, not existence
+— `git merge-base --is-ancestor <merge-commit> main`. To recover, diff the tree
+(`git diff --stat main <merge-commit>`); if the differing paths are only the feature's, copy
+them across with `git checkout <merge-commit> -- <paths>` and confirm
+`git diff main <merge-commit>` is empty. Never merge the carrying branch into `main` to
+recover work (see above).
+
+## Converging the two branches: resolve on the branch, then copy to main
+
+When the carrying branch holds application work `main` lacks AND `main` has moved on, the
+repair is ordered, not symmetric: merge `main` into the carrying branch and resolve there
+FIRST, then copy the settled files onto `main` with `git checkout <branch> -- <paths>`.
+
+**Why:** resolving the same conflict separately on each side produces two textually different
+resolutions, so the branches still differ and the next merge conflicts again on the same
+hunk. Copying the already-settled text makes both trees byte-identical, which merges cleanly
+regardless of the divergent history. Copying (never merging) is also what keeps
+`.github/`/`deploy/` off `main` — see the merge-direction section above.
+
+**How to apply:** expect the carrying-branch-drift lint rule to fail on the intermediate
+commit — that failure is accurate and clears once `main` has the same files. Finish by
+proving `git diff --name-only main <branch>` lists only `.github/` and `deploy/`, and
+rehearse the next merge in a throwaway clone under `/tmp` so the workspace is never left
+mid-merge.
+
+**Working-tree consequence:** once the directories are tracked on the carrying branch again,
+`git checkout main` DELETES the on-disk copies — correct, and better than the alternative:
+an untracked copy sitting on `main` blocks `git checkout <carrying-branch>` with "untracked
+working tree files would be overwritten".

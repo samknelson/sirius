@@ -4,7 +4,6 @@ import { usePageTitle } from "@/contexts/PageTitleContext";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -436,13 +435,10 @@ export function GenericOptionsPage({ optionsType }: GenericOptionsPageProps) {
     <div className="space-y-4">
       <Card>
         <CardHeader>
+          {/* The type's name and description are rendered by OptionsLayout
+              above the tab strip, so this header only carries the action. */}
           <div className="flex items-start justify-between">
-            <div>
-              <CardTitle data-testid="text-page-title">{definition.displayName}</CardTitle>
-              {definition.description && (
-                <CardDescription>{definition.description}</CardDescription>
-              )}
-            </div>
+            <CardTitle data-testid="text-page-title">{definition.pluralName}</CardTitle>
             <Button onClick={() => setIsAddOpen(true)} data-testid="button-add-item">
               <Plus className="mr-2 h-4 w-4" />
               Add {definition.singularName}

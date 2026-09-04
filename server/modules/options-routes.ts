@@ -1,127 +1,24 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { isNoteEntityType } from "@shared/notes";
 import { getOptionsType, getAllOptionsTypes, getOptionsStorage } from "./options-registry";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { OptionsTypeName } from "../storage/unified-options";
 import { storage } from "../storage";
 import { requireComponent, isComponentEnabled } from "./components";
 import { getComponentById } from "../../shared/components";
-import { jobTypeBullpenEnum } from "@shared/schema";
 import { logger } from "../logger";
+import {
+  buildOptionCreateData,
+  buildOptionUpdateData,
+  checkOptionDeleteGuard,
+  optionDbErrorMessage,
+  optionInUseDeleteMessage,
+  validateOptionTypeSpecificData,
+} from "./options-write-rules";
+import { registerOptionsTransferRoutes, getDisabledOptionFieldNames } from "./options-transfer";
 import {
   mergeOptionData,
   validateWorkerMsDataThreshold,
 } from "@shared/worker-ms-threshold";
-
-/**
- * Map a caught database error to a clear, user-facing message (or null if
- * unrecognized). Logs the underlying error so 500s are diagnosable.
- */
-function optionDbErrorMessage(error: any): { status: number; message: string } | null {
-  // Unique violation — name the offending field when the constraint tells us.
-  if (error?.code === "23505") {
-    const field = humanizeConstraintColumn(error);
-    return {
-      status: 400,
-      message: field
-        ? `An item with this ${field} already exists. ${field === "Sirius ID" ? "Sirius IDs must be unique." : "Please choose a different value."}`
-        : "An item with this value already exists",
-    };
-  }
-  // Not-null violation — name the missing column.
-  if (error?.code === "23502") {
-    const column = error?.column ? String(error.column) : null;
-    return {
-      status: 400,
-      message: column ? `${column.replace(/_/g, " ")} is required` : "A required field is missing",
-    };
-  }
-  // FK violation on insert/update — referenced record doesn't exist.
-  if (error?.code === "23503") {
-    return { status: 400, message: "A referenced record does not exist" };
-  }
-  return null;
-}
-
-function humanizeConstraintColumn(error: any): string | null {
-  const constraint = error?.constraint ? String(error.constraint) : "";
-  if (constraint.includes("sirius_id")) return "Sirius ID";
-  if (constraint.includes("name")) return "name";
-  if (constraint.includes("code")) return "code";
-  return null;
-}
-
-/**
- * Validate the bullpen fields inside a dispatch-job-type `data` payload
- * (dispatch.bullpen component). Returns an error message or null.
- * Enforced whenever bullpen fields are present so a direct API call cannot
- * persist an invalid combination regardless of what the UI shows.
- */
-function validateDispatchJobTypeBullpen(data: unknown): string | null {
-  if (data === null || data === undefined || typeof data !== "object") return null;
-  const d = data as Record<string, unknown>;
-  const bullpen = d.bullpen;
-  if ("bullpen" in d) {
-    if (typeof bullpen !== "string" || !(jobTypeBullpenEnum as readonly string[]).includes(bullpen)) {
-      return `bullpen must be one of: ${jobTypeBullpenEnum.join(", ")}`;
-    }
-  }
-  if (bullpen === "host" || bullpen === "shared") {
-    const eventTypeId = d.bullpenEventTypeId;
-    if (typeof eventTypeId !== "string" || eventTypeId.trim() === "") {
-      return "An event type is required when Bullpen is set to host or shared";
-    }
-  } else {
-    // Keep persisted JSON consistent: no dangling event-type reference
-    // when bullpen is "none" or absent.
-    delete d.bullpenEventTypeId;
-  }
-  return null;
-}
-
-/**
- * Validation for `worker-ban-type` writes: `data.pluginIds` must be a
- * non-empty array of registered worker-ban plugin ids. The UI already
- * constrains this via the ban-plugins widget, but a direct API call must
- * not persist unknown plugin ids. Returns an error message or null.
- */
-async function validateWorkerBanTypePlugins(data: unknown): Promise<string | null> {
-  const pluginIds = (data as { pluginIds?: unknown } | null | undefined)?.pluginIds;
-  if (!Array.isArray(pluginIds) || pluginIds.length === 0) {
-    return "At least one ban behavior is required";
-  }
-  const { workerBanPluginRegistry } = await import("../plugins/worker-bans/registry");
-  const known = new Set(workerBanPluginRegistry.listIds());
-  const unknown = pluginIds.filter((p) => typeof p !== "string" || !known.has(p));
-  if (unknown.length > 0) {
-    return `Unknown ban behavior(s): ${unknown.join(", ")}`;
-  }
-  const defaultDurationDays = (data as { defaultDurationDays?: unknown } | null | undefined)?.defaultDurationDays;
-  if (defaultDurationDays !== undefined && defaultDurationDays !== null) {
-    if (typeof defaultDurationDays !== "number" || !Number.isInteger(defaultDurationDays) || defaultDurationDays < 1) {
-      return "Default duration (days) must be a positive integer";
-    }
-  }
-  return null;
-}
-
-/**
- * Validation for `note-type` writes: `data.entityTypes` must be a non-empty
- * array of record types registered in the shared note-entity registry. The
- * form constrains this via a multi-select, but a direct API call must not be
- * able to declare a type for a record kind that cannot hold notes.
- */
-function validateNoteTypeEntityTypes(data: unknown): string | null {
-  const entityTypes = (data as { entityTypes?: unknown } | null | undefined)?.entityTypes;
-  if (!Array.isArray(entityTypes) || entityTypes.length === 0) {
-    return "At least one record type is required";
-  }
-  const unknown = entityTypes.filter((t) => typeof t !== "string" || !isNoteEntityType(t));
-  if (unknown.length > 0) {
-    return `Unknown record type(s): ${unknown.join(", ")}`;
-  }
-  return null;
-}
 
 /**
  * Middleware for the generic `/api/options/:type*` routes that rejects
@@ -170,26 +67,10 @@ function requireOptionTypeComponent() {
  * department "Available for dispatch?" flag when dispatch.department is off).
  */
 async function filterDefinitionFieldsByComponent(definition: any): Promise<any> {
-  const gatedComponents: string[] = Array.from(new Set(
-    (definition.fields || [])
-      .map((f: any) => f.requiredComponent)
-      .filter((c: unknown): c is string => typeof c === 'string'),
-  ));
-  if (gatedComponents.length === 0) return definition;
-
-  const disabled = new Set<string>();
-  for (const componentId of gatedComponents) {
-    if (!(await isComponentEnabled(componentId))) {
-      disabled.add(componentId);
-    }
-  }
-  if (disabled.size === 0) return definition;
-
-  const removedNames = new Set<string>(
-    (definition.fields || [])
-      .filter((f: any) => f.requiredComponent && disabled.has(f.requiredComponent))
-      .map((f: any) => f.name),
-  );
+  // Same gating the export/import tools apply, so a field hidden from the
+  // form is also invisible and untouchable through the JSON tools.
+  const removedNames = await getDisabledOptionFieldNames(definition.type as OptionsTypeName);
+  if (removedNames.size === 0) return definition;
 
   const schema = definition.schema ? { ...definition.schema } : definition.schema;
   if (schema?.properties) {
@@ -213,6 +94,11 @@ async function filterDefinitionFieldsByComponent(definition: any): Promise<any> 
 }
 
 export function registerConsolidatedOptionsRoutes(app: Express) {
+  // Export / import routes. Registered FIRST so their literal path segments
+  // (`export`, `import/preview`, `import/apply`) match before the generic
+  // `/api/options/:type/:id` route swallows them.
+  registerOptionsTransferRoutes(app, requireOptionTypeComponent());
+
   // GET /api/options - List all available options types
   app.get("/api/options", requireAccess('authenticated'), async (req: Request, res: Response) => {
     try {
@@ -331,6 +217,127 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
     },
   );
 
+  // Usage-alert dimensions. The three web service usage alert notifiers let an
+  // admin pick what to watch: an outgoing service (and optionally one of its
+  // request types), an incoming service plugin (and optionally one of its
+  // operations), or an incoming client. Read-only, admin-only — the usage
+  // dashboard cards these alerts mirror are admin-gated too.
+  //
+  // The registry-backed lists come from the registries, NOT from what the
+  // counters happen to have seen: a service nobody has called yet is exactly
+  // the one an admin most wants a first alert on, and a list built from
+  // counted rows could not offer it. Register BEFORE the generic
+  // `/api/options/:type` so these match first.
+  app.get(
+    "/api/options/wc-service",
+    requireAccess('admin'),
+    async (_req: Request, res: Response) => {
+      try {
+        const { listWcRequests } = await import("../services/webclient");
+        const services = Array.from(
+          new Set(listWcRequests().map((b) => b.service)),
+        ).sort((a, b) => a.localeCompare(b));
+        res.json(services.map((service) => ({ id: service, name: service })));
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch outgoing services" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/options/wc-request-type",
+    requireAccess('admin'),
+    async (_req: Request, res: Response) => {
+      try {
+        const { listWcRequests } = await import("../services/webclient");
+        // A request type is only unique within its service ("lookup" belongs
+        // to more than one), so the option is the bare request type and the
+        // label names the services that have one, letting the admin see which
+        // service to pair it with.
+        const servicesByType = new Map<string, string[]>();
+        for (const behavior of listWcRequests()) {
+          const services = servicesByType.get(behavior.requestType) ?? [];
+          if (!services.includes(behavior.service)) services.push(behavior.service);
+          servicesByType.set(behavior.requestType, services);
+        }
+        const options = Array.from(servicesByType.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([requestType, services]) => ({
+            id: requestType,
+            name: `${requestType} (${services.sort().join(", ")})`,
+          }));
+        res.json(options);
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch outgoing request types" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/options/ws-service-plugin",
+    requireAccess('admin'),
+    async (_req: Request, res: Response) => {
+      try {
+        const { webServiceRegistry } = await import("../plugins/web-service/registry");
+        const plugins = await webServiceRegistry.listEnabledAsync();
+        res.json(
+          plugins
+            .map((p) => ({ id: p.id, name: p.name }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch web service plugins" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/options/ws-operation",
+    requireAccess('admin'),
+    async (_req: Request, res: Response) => {
+      try {
+        const { webServiceRegistry } = await import("../plugins/web-service/registry");
+        const plugins = await webServiceRegistry.listEnabledAsync();
+        // Same as request types: an operation name is unique within its
+        // plugin, so the label names the plugins offering it.
+        const pluginsByOperation = new Map<string, string[]>();
+        for (const plugin of plugins) {
+          for (const operation of plugin.operations) {
+            const owners = pluginsByOperation.get(operation.name) ?? [];
+            if (!owners.includes(plugin.name)) owners.push(plugin.name);
+            pluginsByOperation.set(operation.name, owners);
+          }
+        }
+        const options = Array.from(pluginsByOperation.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([operation, owners]) => ({
+            id: operation,
+            name: `${operation} (${owners.sort().join(", ")})`,
+          }));
+        res.json(options);
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch web service operations" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/options/ws-client",
+    requireAccess('admin'),
+    async (_req: Request, res: Response) => {
+      try {
+        const clients = await storage.wsClients.getAll();
+        res.json(
+          clients
+            .map((c) => ({ id: c.id, name: c.name }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch web service clients" });
+      }
+    },
+  );
+
   // GET /api/options/:type - List all items of a specific options type
   app.get("/api/options/:type", requireAccess('authenticated'), requireOptionTypeComponent(), async (req: Request, res: Response) => {
     try {
@@ -378,55 +385,15 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
         return res.status(404).json({ message: `Unknown options type: ${type}` });
       }
       
-      for (const field of config.requiredFields) {
-        if (req.body[field] === undefined || req.body[field] === null || req.body[field] === '') {
-          return res.status(400).json({ message: `${field} is required` });
-        }
+      const built = buildOptionCreateData(config, req.body);
+      if ('error' in built) {
+        return res.status(400).json({ message: built.error });
       }
-      
-      const data: Record<string, any> = {};
-      for (const field of config.requiredFields) {
-        const value = typeof req.body[field] === 'string' ? req.body[field].trim() : req.body[field];
-        data[field] = value;
-      }
-      for (const field of config.optionalFields) {
-        if (req.body[field] !== undefined) {
-          const value = typeof req.body[field] === 'string' ? req.body[field].trim() : req.body[field];
-          // Skip empty strings for optional fields to let database defaults apply
-          if (value !== '') {
-            data[field] = value;
-          }
-        }
-      }
+      const { data } = built;
 
-      // Enforce fixed-value (enum) fields server-side so a direct API call
-      // cannot persist a value outside the allowed set.
-      for (const [field, allowed] of Object.entries(config.enumConstraints)) {
-        const value = data[field];
-        if (value !== undefined && value !== null && !allowed.includes(value)) {
-          return res.status(400).json({ message: `${field} must be one of: ${allowed.join(', ')}` });
-        }
-      }
-
-      if (type === "dispatch-job-type") {
-        const bullpenError = validateDispatchJobTypeBullpen(data.data);
-        if (bullpenError) {
-          return res.status(400).json({ message: bullpenError });
-        }
-      }
-
-      if (type === "note-type") {
-        const entityTypeError = validateNoteTypeEntityTypes(data.data);
-        if (entityTypeError) {
-          return res.status(400).json({ message: entityTypeError });
-        }
-      }
-
-      if (type === "worker-ban-type") {
-        const pluginError = await validateWorkerBanTypePlugins(data.data);
-        if (pluginError) {
-          return res.status(400).json({ message: pluginError });
-        }
+      const validationError = await validateOptionTypeSpecificData(type, data.data);
+      if (validationError) {
+        return res.status(400).json({ message: validationError });
       }
       if (type === "bao-case-status" && data.closed !== undefined && typeof data.closed !== "boolean") {
         return res.status(400).json({ message: "closed must be a boolean" });
@@ -470,53 +437,20 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
         return res.status(404).json({ message: `Unknown options type: ${type}` });
       }
       
-      const updates: Record<string, any> = {};
-      const allFields = [...config.requiredFields, ...config.optionalFields];
-      
-      for (const field of allFields) {
-        if (req.body[field] !== undefined) {
-          const value = typeof req.body[field] === 'string' ? req.body[field].trim() : req.body[field];
-          if (config.requiredFields.includes(field) && (value === null || value === '')) {
-            return res.status(400).json({ message: `${field} cannot be empty` });
-          }
-          // Skip empty strings for optional fields to let database defaults/current values remain
-          if (config.optionalFields.includes(field) && value === '') {
-            continue;
-          }
-          updates[field] = value;
-        }
+      const built = buildOptionUpdateData(config, req.body);
+      if ('error' in built) {
+        return res.status(400).json({ message: built.error });
       }
+      const { updates } = built;
       
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ message: "No valid fields to update" });
       }
 
-      // Enforce fixed-value (enum) fields server-side on update too.
-      for (const [field, allowed] of Object.entries(config.enumConstraints)) {
-        const value = updates[field];
-        if (value !== undefined && value !== null && !allowed.includes(value)) {
-          return res.status(400).json({ message: `${field} must be one of: ${allowed.join(', ')}` });
-        }
-      }
-
-      if (type === "dispatch-job-type" && updates.data !== undefined) {
-        const bullpenError = validateDispatchJobTypeBullpen(updates.data);
-        if (bullpenError) {
-          return res.status(400).json({ message: bullpenError });
-        }
-      }
-
-      if (type === "note-type" && updates.data !== undefined) {
-        const entityTypeError = validateNoteTypeEntityTypes(updates.data);
-        if (entityTypeError) {
-          return res.status(400).json({ message: entityTypeError });
-        }
-      }
-
-      if (type === "worker-ban-type" && updates.data !== undefined) {
-        const pluginError = await validateWorkerBanTypePlugins(updates.data);
-        if (pluginError) {
-          return res.status(400).json({ message: pluginError });
+      if (updates.data !== undefined) {
+        const validationError = await validateOptionTypeSpecificData(type, updates.data);
+        if (validationError) {
+          return res.status(400).json({ message: validationError });
         }
       }
 
@@ -618,68 +552,9 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
         return res.status(404).json({ message: `Unknown options type: ${type}` });
       }
 
-      // A grievance status that is referenced by any timeline-template step
-      // cannot be deleted — the step stores status ids as plain arrays (no FK),
-      // so we guard the delete here to avoid orphaning those references.
-      if (type === "grievance-status") {
-        const referenced = await storage.grievanceTimelineTemplates.isStatusReferenced(id);
-        if (referenced) {
-          return res.status(409).json({
-            message:
-              "This status is used by a grievance timeline template and cannot be deleted. Remove it from all timeline steps first.",
-          });
-        }
-      }
-
-      // A note type still used by any note cannot be deleted. The FK is ON
-      // DELETE RESTRICT so the database would refuse anyway; this pre-check
-      // turns that into a message that says what to do about it.
-      if (type === "note-type") {
-        const inUse = await storage.notes.countByTypeId(id);
-        if (inUse > 0) {
-          return res.status(409).json({
-            message: `This note type is used by ${inUse} note${inUse === 1 ? "" : "s"} and cannot be deleted. Retype or delete those notes first.`,
-          });
-        }
-      }
-
-      // A note tag type with tags under it cannot be deleted — the FK would
-      // cascade the tags (and their note assignments) away silently, so we
-      // guard here and tell the admin what to remove first.
-      if (type === "bao-notes-tag-type") {
-        const tags = await getOptionsStorage().list("bao-notes-tag");
-        const inUse = tags.filter((t: any) => t.tagTypeId === id).length;
-        if (inUse > 0) {
-          return res.status(409).json({
-            message: `This tag type has ${inUse} tag${inUse === 1 ? "" : "s"} under it and cannot be deleted. Delete or re-type those tags first.`,
-          });
-        }
-      }
-
-      // A worker ban type referenced by any ban cannot be deleted —
-      // `worker_bans.type` is a soft reference (no FK), so guard here to
-      // avoid orphaning bans onto an unknown (unenforced) type.
-      if (type === "worker-ban-type") {
-        const allBans = await storage.workerBans.getAll();
-        if (allBans.some((ban) => ban.type === id)) {
-          return res.status(409).json({
-            message:
-              "This ban type is used by one or more worker bans and cannot be deleted. Remove or retype those bans first.",
-          });
-        }
-      }
-
-      if (type === "bao-case-status") {
-        const inUse = await storage.baoCases.countByStatus(id);
-        if (inUse > 0) {
-          return res.status(409).json({ message: "This BAO case status is in use and cannot be deleted." });
-        }
-      }
-      if (type === "bao-case-resolution") {
-        const inUse = await storage.baoCases.countByResolution(id);
-        if (inUse > 0) {
-          return res.status(409).json({ message: "This BAO case resolution is in use and cannot be deleted." });
-        }
+      const blocked = await checkOptionDeleteGuard(type, id);
+      if (blocked) {
+        return res.status(blocked.status).json({ message: blocked.message });
       }
 
       const deleted = await config.delete(id);
@@ -694,9 +569,7 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       // row (e.g. a grievance role assigned to people on a grievance).
       // Surface a clear 409 instead of an opaque 500.
       if (error?.code === "23503") {
-        return res.status(409).json({
-          message: `This ${config?.name ?? "option"} is in use and cannot be deleted. Remove it from everything that references it first.`,
-        });
+        return res.status(409).json({ message: optionInUseDeleteMessage(config?.name) });
       }
       res.status(500).json({ message: `Failed to delete option` });
     }

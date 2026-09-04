@@ -1,6 +1,7 @@
 import { lookupDistricts, type CensusDistrictInfo } from "./census-geocoder";
 import type { BtuPoliticalStorage } from "../storage/sitespecific/btu/political";
 import { getEnvironmentVariable, registerEnvironmentVariables } from "../config/env-registry";
+import { geocodeWithGoogle } from "./google-geocode";
 
 // changeTakesEffect: "immediate" for both. Each key is read through the
 // registry inside the function that makes the outbound call, once per lookup,
@@ -9,6 +10,7 @@ registerEnvironmentVariables([
   { name: "GOOGLE_CIVICS_API_KEY", description: "Google API key for geocoding in civic-official lookups.", secret: true, category: "sitespecific.btu.political", changeTakesEffect: "immediate", },
   { name: "OPEN_STATES_API_KEY", description: "OpenStates API key for state-legislator lookups.", secret: true, category: "sitespecific.btu.political", changeTakesEffect: "immediate", },
 ]);
+import { registerUncachedWcRequest, wcUncachedRequest } from "./webclient";
 
 export interface CivicOfficial {
   name: string;
@@ -47,20 +49,6 @@ interface GeocodingResult {
   lat: number;
   lng: number;
   formattedAddress: string;
-}
-
-interface GoogleGeocodingResponse {
-  status: string;
-  results?: {
-    formatted_address?: string;
-    geometry?: {
-      location?: {
-        lat?: number;
-        lng?: number;
-      };
-    };
-  }[];
-  error_message?: string;
 }
 
 interface OpenStatesLink {
@@ -106,20 +94,32 @@ interface OpenStatesResponse {
   results?: OpenStatesPerson[];
 }
 
+/**
+ * Address → coordinates, through the shared Google geocode request.
+ *
+ * Shared with the comm address validator on purpose: it is the same question
+ * to the same vendor, so an address geocoded there is free here and the other
+ * way round. Only the key differs — this lookup is billed to the civic key —
+ * and a key decides who pays, not what the answer is, so it stays out of the
+ * request key.
+ *
+ * There is no maintenance guard here any more: the framework refuses the call
+ * it is about to make, and a stored answer is not a call. During maintenance
+ * an address we have already geocoded still resolves, and one we have not
+ * raises the refusal from inside `geocodeWithGoogle`.
+ */
 async function geocodeAddress(address: string): Promise<GeocodingResult> {
   const apiKey = getEnvironmentVariable("GOOGLE_CIVICS_API_KEY");
   if (!apiKey) {
     throw new Error("GOOGLE_CIVICS_API_KEY environment variable is not set");
   }
 
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
-  const response = await fetch(url);
+  const outcome = await geocodeWithGoogle({ address }, { apiKey });
+  const data = outcome.response;
 
-  if (!response.ok) {
-    throw new CivicApiError(`Geocoding request failed (${response.status})`, response.status);
+  if (!data) {
+    throw new CivicApiError(outcome.error || "Geocoding request failed", 502);
   }
-
-  const data: GoogleGeocodingResponse = await response.json();
 
   if (data.status === "ZERO_RESULTS") {
     throw new CivicApiError("Could not find the specified address. Please check the address and try again.", 400);
@@ -242,27 +242,52 @@ function parseOpenStatesResponse(data: OpenStatesResponse): CivicOfficial[] {
 }
 
 async function callOpenStates(lat: number, lng: number): Promise<CivicOfficial[]> {
-  const openStatesKey = getEnvironmentVariable("OPEN_STATES_API_KEY");
-  if (!openStatesKey) {
-    throw new Error("OPEN_STATES_API_KEY environment variable is not set");
-  }
+  // The status code on a CivicApiError decides what the caller's route answers
+  // with, so the thrown error is carried back out as itself rather than
+  // rebuilt from its message.
+  let thrown: unknown;
 
-  const url = `https://v3.openstates.org/people.geo?lat=${lat}&lng=${lng}&apikey=${openStatesKey}`;
-  const response = await fetch(url);
+  const { value, error } = await wcUncachedRequest<CivicOfficial[]>({
+    service: "OpenStates",
+    requestType: OPEN_STATES_LOOKUP,
+    fetch: async () => {
+      try {
+        const openStatesKey = getEnvironmentVariable("OPEN_STATES_API_KEY");
+        if (!openStatesKey) {
+          throw new Error("OPEN_STATES_API_KEY environment variable is not set");
+        }
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    if (response.status === 429) {
-      throw new CivicApiError("Open States API rate limit exceeded. Please try again later.", 429);
-    }
-    if (response.status === 401 || response.status === 403) {
-      throw new CivicApiError("Open States API key is invalid or unauthorized.", 403);
-    }
-    throw new CivicApiError(`Open States API error (${response.status}): ${errorBody}`, response.status);
-  }
+        const url = `https://v3.openstates.org/people.geo?lat=${lat}&lng=${lng}&apikey=${openStatesKey}`;
+        const response = await fetch(url);
 
-  const data: OpenStatesResponse = await response.json();
-  return parseOpenStatesResponse(data);
+        if (!response.ok) {
+          const errorBody = await response.text();
+          if (response.status === 429) {
+            throw new CivicApiError("Open States API rate limit exceeded. Please try again later.", 429);
+          }
+          if (response.status === 401 || response.status === 403) {
+            throw new CivicApiError("Open States API key is invalid or unauthorized.", 403);
+          }
+          throw new CivicApiError(`Open States API error (${response.status}): ${errorBody}`, response.status);
+        }
+
+        const data: OpenStatesResponse = await response.json();
+        return { answered: true, value: parseOpenStatesResponse(data) };
+      } catch (err) {
+        thrown = err;
+        return {
+          answered: false,
+          error: err instanceof Error ? err.message : "Open States lookup failed",
+        };
+      }
+    },
+  });
+
+  if (value) return value;
+  if (thrown !== undefined) throw thrown;
+  // Never asked: the writable-database gate stopped it. A lookup nobody can
+  // record is a failure, not an empty list of officials.
+  throw new CivicApiError(error || "Open States was not asked.", 503);
 }
 
 export async function lookupRepresentatives(address: string, options?: LookupOptions): Promise<CivicLookupResult> {
@@ -325,3 +350,15 @@ export async function lookupRepresentatives(address: string, options?: LookupOpt
     cachedOfficialIds: null,
   };
 }
+
+/**
+ * The state-legislator lookup.
+ *
+ * Uncached here because its answer already has a home: the caller writes the
+ * officials it returns into the district cache, keyed by census district, and
+ * a second cache of the same answer keyed by coordinates would age separately
+ * from the first. It needs a writable database for that reason — the lookup is
+ * rate-limited and metered, and spending a call whose answer cannot be written
+ * into the district cache means spending it again on the next request.
+ */
+const OPEN_STATES_LOOKUP = "lookup-legislators";

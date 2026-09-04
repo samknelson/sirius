@@ -181,6 +181,11 @@ export function initializePermissions(): void {
       module: 'core'
     },
     {
+      key: 'workers.ssn',
+      description: 'Search for a worker by Social Security Number (the number itself is never displayed)',
+      module: 'core'
+    },
+    {
       key: 'worker',
       description: 'Worker role - can view and manage their own worker profile',
       module: 'core'

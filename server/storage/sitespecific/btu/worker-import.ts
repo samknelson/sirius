@@ -17,6 +17,7 @@ import { sitespecificBtuEmployerMap } from "@shared/schema/sitespecific/btu/sche
 import { eq, and, sql, inArray, not } from "drizzle-orm";
 import { storage } from "../../index";
 import { createUnifiedOptionsStorage } from "../../unified-options";
+import { schedulePhoneRevalidation } from "../../../services/comm/validators/phone";
 import { log } from "../../../logger";
 
 const BPS_EMPLOYEE_ID_TYPE_NAME = "BPS Employee ID";
@@ -258,11 +259,15 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
       });
       
       if (data.phone) {
-        await storage.contacts.phoneNumbers.createPhoneNumber({
+        const created = await storage.contacts.phoneNumbers.createPhoneNumber({
           contactId: contact.id,
           phoneNumber: data.phone,
           isPrimary: true,
         });
+        // Validate the number once, off the import's critical path: a
+        // thousand-worker file would otherwise become a thousand sequential
+        // external calls. Re-importing the same number is free thereafter.
+        schedulePhoneRevalidation(created.phoneNumber);
       }
       
       if (data.address1 && data.city && data.state && data.zip) {
@@ -327,16 +332,18 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
 
         if (primaryPhone) {
           if (primaryPhone.phoneNumber !== data.phone) {
-            await storage.contacts.phoneNumbers.updatePhoneNumber(primaryPhone.id, {
+            const updated = await storage.contacts.phoneNumbers.updatePhoneNumber(primaryPhone.id, {
               phoneNumber: data.phone,
             });
+            if (updated) schedulePhoneRevalidation(updated.phoneNumber);
           }
         } else {
-          await storage.contacts.phoneNumbers.createPhoneNumber({
+          const created = await storage.contacts.phoneNumbers.createPhoneNumber({
             contactId: worker.contactId,
             phoneNumber: data.phone,
             isPrimary: true,
           });
+          schedulePhoneRevalidation(created.phoneNumber);
         }
       }
 

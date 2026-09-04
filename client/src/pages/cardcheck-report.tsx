@@ -34,7 +34,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { FileCheck, Download, Filter, Users, Search, X, ArrowUpDown, AlertTriangle, Ban, ShieldAlert, Pen, Upload, FileText } from "lucide-react";
-import { format } from "date-fns";
+import { format, formatLocalFields } from "@/lib/date-format";
 import { Link } from "wouter";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -791,7 +791,7 @@ export default function CardcheckReport() {
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  Terminated since {item.currentTerminationDate ? format(new Date(item.currentTerminationDate + "T00:00:00"), "MMM d, yyyy") : "unknown date"}
+                                  Terminated since {item.currentTerminationDate ? formatLocalFields(new Date(item.currentTerminationDate + "T00:00:00"), "MMM d, yyyy") : "unknown date"}
                                 </TooltipContent>
                               </Tooltip>
                             )}

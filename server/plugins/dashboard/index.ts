@@ -178,3 +178,6 @@ import "./plugins/my-shops";
 import "./plugins/benefit-summary";
 import "./plugins/system-status";
 import "./plugins/bao-dc-summary";
+import "./plugins/wc-usage";
+import "./plugins/ws-usage-byplugin";
+import "./plugins/ws-usage-byclient";

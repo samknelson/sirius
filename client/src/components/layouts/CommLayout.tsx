@@ -2,7 +2,7 @@ import { createContext, useContext, ReactNode } from "react";
 import { ArrowLeft, MessageSquare, Phone, Mail, Mailbox, Bell, AlertCircle } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";

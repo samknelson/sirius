@@ -293,22 +293,34 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     for (const plugin of this.list()) {
       if (!plugin.client) continue;
       try {
-        const existing = await storage.pluginConfigs.getByKindAndPlugin(
-          "dashboard",
-          plugin.id,
+        // "None exists, so create one" cannot be made atomic here: a plugin is
+        // ALLOWED to have several configs (admins add them deliberately), so
+        // there is no unique key to conflict on. With two tasks booting
+        // against one database (Task #1350) the unserialized version seeds the
+        // same widget twice and the duplicate is permanent and user-visible.
+        // A transaction-scoped advisory lock makes the pair one turn: the
+        // second task's SELECT runs after the first task's INSERT commits.
+        await storage.advisoryLock.withTransactionLock(
+          `dashboard-config-seed:${plugin.id}`,
+          async () => {
+            const existing = await storage.pluginConfigs.getByKindAndPlugin(
+              "dashboard",
+              plugin.id,
+            );
+            if (existing.length > 0) return;
+            await storage.pluginConfigs.create({
+              pluginKind: "dashboard",
+              pluginId: plugin.id,
+              enabled: this.defaultEnabled(plugin),
+              name: null,
+              ordering: 0,
+              data: plugin.defaultSettings ?? {},
+            });
+            logger.info(`Seeded default dashboard config for ${plugin.id}`, {
+              service: SERVICE,
+            });
+          },
         );
-        if (existing.length > 0) continue;
-        await storage.pluginConfigs.create({
-          pluginKind: "dashboard",
-          pluginId: plugin.id,
-          enabled: this.defaultEnabled(plugin),
-          name: null,
-          ordering: 0,
-          data: plugin.defaultSettings ?? {},
-        });
-        logger.info(`Seeded default dashboard config for ${plugin.id}`, {
-          service: SERVICE,
-        });
       } catch (error) {
         logger.error(`Failed to seed default dashboard config for ${plugin.id}`, {
           service: SERVICE,
@@ -403,35 +415,41 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     const handled = new Set<string>();
     for (const plugin of plugins) {
       try {
-        const existing = await storage.pluginConfigs.getByKindAndPlugin("dashboard", plugin.id);
-        if (existing.length > 0) {
-          handled.add(plugin.id);
-          continue;
-        }
-        const enabledVar = await storage.variables.getByName(`dashboard_plugin_${plugin.id}`);
-        const settingsVar = await storage.variables.getByName(
-          `dashboard_plugin_${plugin.id}_settings`,
+        // Same turn-taking as seedDefaultConfigs, and deliberately the SAME
+        // lock name: this backfill and that seeder both answer "does this
+        // plugin have a config row yet?", so they must serialize against each
+        // other too, not just against another copy of themselves (Task #1350).
+        await storage.advisoryLock.withTransactionLock(
+          `dashboard-config-seed:${plugin.id}`,
+          async () => {
+            const existing = await storage.pluginConfigs.getByKindAndPlugin("dashboard", plugin.id);
+            if (existing.length > 0) return;
+            const enabledVar = await storage.variables.getByName(`dashboard_plugin_${plugin.id}`);
+            const settingsVar = await storage.variables.getByName(
+              `dashboard_plugin_${plugin.id}_settings`,
+            );
+            let data: unknown = settingsVar ? settingsVar.value : undefined;
+            const hasLegacy = !!enabledVar || !!settingsVar;
+            if (!hasLegacy && plugin.migrateLegacySettings) {
+              const migrated = await plugin.migrateLegacySettings();
+              if (migrated && typeof migrated === "object" && Object.keys(migrated).length > 0) {
+                data = migrated;
+              }
+            }
+            if (data !== undefined || enabledVar) {
+              const enabled = enabledVar ? Boolean(enabledVar.value) : this.defaultEnabled(plugin);
+              await storage.pluginConfigs.create({
+                pluginKind: "dashboard",
+                pluginId: plugin.id,
+                enabled,
+                name: null,
+                ordering: 0,
+                data: data ?? {},
+              });
+              logger.info(`Backfilled dashboard plugin config for ${plugin.id}`, { service: SERVICE });
+            }
+          },
         );
-        let data: unknown = settingsVar ? settingsVar.value : undefined;
-        const hasLegacy = !!enabledVar || !!settingsVar;
-        if (!hasLegacy && plugin.migrateLegacySettings) {
-          const migrated = await plugin.migrateLegacySettings();
-          if (migrated && typeof migrated === "object" && Object.keys(migrated).length > 0) {
-            data = migrated;
-          }
-        }
-        if (data !== undefined || enabledVar) {
-          const enabled = enabledVar ? Boolean(enabledVar.value) : this.defaultEnabled(plugin);
-          await storage.pluginConfigs.create({
-            pluginKind: "dashboard",
-            pluginId: plugin.id,
-            enabled,
-            name: null,
-            ordering: 0,
-            data: data ?? {},
-          });
-          logger.info(`Backfilled dashboard plugin config for ${plugin.id}`, { service: SERVICE });
-        }
         handled.add(plugin.id);
       } catch (error) {
         logger.error(`Failed to backfill dashboard plugin config for ${plugin.id}`, {

@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Clock, ChevronRight, Calendar } from "lucide-react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { CronJob } from "@/lib/cron-types";
 
 function StatusBadge({ status }: { status: string }) {

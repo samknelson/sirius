@@ -105,7 +105,19 @@ async function authenticateWithCredentials(
     }
   }
 
-  await storage.wsClientCredentials.recordUsage(credential.id);
+  // The "last used" stamp is bookkeeping, not an input to any decision made
+  // here, so it must never fail a credential that has already proven itself.
+  // Any write can fail transiently, and this one is attempted on every single
+  // authenticated call — turning that into a 500 would reject a valid caller
+  // over a timestamp.
+  try {
+    await storage.wsClientCredentials.recordUsage(credential.id);
+  } catch (error) {
+    logger.warn('Failed to record web service credential usage', {
+      credentialId: credential.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   return { success: true, client, credential };
 }

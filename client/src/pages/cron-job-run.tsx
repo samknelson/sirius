@@ -11,7 +11,7 @@ import { queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CronJobLayout, useCronJobLayout } from "@/components/layouts/CronJobLayout";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { CronJobRun as CronJobRunType } from "@/lib/cron-types";
 
 interface CronJobOutputData {

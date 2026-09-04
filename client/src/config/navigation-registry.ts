@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
   CreditCard, Activity, Wallet, Settings, Shield, Key, KeyRound, FileText,
-  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, CalendarClock, GraduationCap, Truck, Network, School, Tag, RefreshCw, Radio, HelpCircle, FolderOpen, Terminal, Power, type LucideIcon
+  Building2, Cloud, Database, Clock, Zap, Server, MessageSquare, Calendar, CalendarClock, GraduationCap, Truck, Network, School, Tag, RefreshCw, Radio, HelpCircle, FolderOpen, Terminal, Power, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -46,6 +46,7 @@ export const configSections: NavSection[] = [
       { path: "/config/auth-settings", label: "Auth Settings", icon: KeyRound, testId: "nav-config-auth-settings", permission: "admin" },
       { path: "/config/system-status", label: "System Status", icon: Activity, testId: "nav-config-system-status", permission: "admin" },
       { path: "/config/env", label: "Environment", icon: Terminal, testId: "nav-config-env", permission: "admin" },
+      { path: "/config/timezone", label: "Time Zone", icon: Clock, testId: "nav-config-timezone", permission: "admin" },
       { path: "/config/twilio", label: "SMS Providers", icon: MessageSquare, testId: "nav-config-sms", permission: "admin" },
       { path: "/config/email", label: "Email Providers", icon: MessageSquare, testId: "nav-config-email", permission: "admin" },
       { path: "/config/postal", label: "Postal Providers", icon: MessageSquare, testId: "nav-config-postal", permission: "admin" },
@@ -84,8 +85,8 @@ export const configSections: NavSection[] = [
     items: [
       { path: "/trust-benefits", label: "Trust Benefits", icon: Heart, testId: "nav-trust-benefits", permission: "staff" },
       { path: "/admin/plugin-configs/trust-eligibility", label: "Eligibility Plugins", icon: Zap, testId: "nav-config-trust-eligibility-plugins", permission: "admin" },
-      { path: "/config/options/trust-benefit-type", label: "Trust Benefit Types", icon: List, testId: "nav-config-trust-benefit-types", permission: "admin" },
-      { path: "/config/options/trust-provider-type", label: "Provider Contact Types", icon: List, testId: "nav-config-provider-contact-types", permission: "admin" },
+      { path: "/config/options/trust-benefit-type/list", label: "Trust Benefit Types", icon: List, testId: "nav-config-trust-benefit-types", permission: "admin" },
+      { path: "/config/options/trust-provider-type/list", label: "Provider Contact Types", icon: List, testId: "nav-config-provider-contact-types", permission: "admin" },
       { path: "/config/trust/providers/user-settings", label: "Provider User Settings", icon: Settings, testId: "nav-config-users-trust-provider-settings", permission: "admin" },
       { path: "/config/trust/sitespecific/bao/thresholds", label: "Member Status Thresholds", icon: Clock, testId: "nav-config-bao-thresholds", permission: "admin", requiresComponent: "sitespecific.bao" },
       { path: "/config/trust/open-enrollment-windows", label: "Open Enrollment Windows", icon: CalendarClock, testId: "nav-config-open-enrollment-windows", permission: "admin", requiresComponent: "trust.elections" },
@@ -97,9 +98,9 @@ export const configSections: NavSection[] = [
     description: "Employer-related configuration",
     icon: Building2,
     items: [
-      { path: "/config/options/employer-type", label: "Employer Types", icon: List, testId: "nav-config-employer-types", permission: "admin" },
-      { path: "/config/options/department", label: "Departments", icon: List, testId: "nav-config-departments", permission: "admin" },
-      { path: "/config/options/employer-contact-type", label: "Employer Contact Types", icon: List, testId: "nav-config-employer-contact-types", permission: "admin" },
+      { path: "/config/options/employer-type/list", label: "Employer Types", icon: List, testId: "nav-config-employer-types", permission: "admin" },
+      { path: "/config/options/department/list", label: "Departments", icon: List, testId: "nav-config-departments", permission: "admin" },
+      { path: "/config/options/employer-contact-type/list", label: "Employer Contact Types", icon: List, testId: "nav-config-employer-contact-types", permission: "admin" },
       { path: "/config/employers/user-settings", label: "Employer User Settings", icon: Settings, testId: "nav-config-users-employer-settings", permission: "admin" },
       { path: "/config/sitespecific/bao/employer-rates", label: "BAO Employer Rates", icon: List, testId: "nav-config-bao-employer-rates", permission: "admin", requiresComponent: "sitespecific.bao" },
       { path: "/config/sitespecific/bao/rate-sources", label: "BAO Rate Sources", icon: List, testId: "nav-config-bao-rate-sources", permission: "admin", requiresComponent: "sitespecific.bao" },
@@ -109,8 +110,8 @@ export const configSections: NavSection[] = [
       { path: "/config/sitespecific/bao/premium-rates", label: "BAO Premium Rates", icon: List, testId: "nav-config-bao-premium-rates", permission: "admin", requiresComponent: "sitespecific.bao" },
       { path: "/config/sitespecific/bao/premium-files", label: "BAO Premium Files", icon: List, testId: "nav-config-bao-premium-files", permission: "staff", requiresComponent: "sitespecific.bao" },
       { path: "/config/sitespecific/bao/cobra-triggers", label: "BAO COBRA Triggers", icon: List, testId: "nav-config-bao-cobra-triggers", permission: "admin", requiresComponent: "sitespecific.bao" },
-      { path: "/config/options/bao-cobra-status", label: "BAO COBRA Statuses", icon: List, testId: "nav-config-bao-cobra-statuses", permission: "admin", requiresComponent: "sitespecific.bao" },
-      { path: "/config/options/bao-cobra-qualifying-event", label: "BAO COBRA Qualifying Events", icon: List, testId: "nav-config-bao-cobra-qualifying-events", permission: "admin", requiresComponent: "sitespecific.bao" },
+      { path: "/config/options/bao-cobra-status/list", label: "BAO COBRA Statuses", icon: List, testId: "nav-config-bao-cobra-statuses", permission: "admin", requiresComponent: "sitespecific.bao" },
+      { path: "/config/options/bao-cobra-qualifying-event/list", label: "BAO COBRA Qualifying Events", icon: List, testId: "nav-config-bao-cobra-qualifying-events", permission: "admin", requiresComponent: "sitespecific.bao" },
     ],
   },
   {
@@ -120,7 +121,7 @@ export const configSections: NavSection[] = [
     icon: Phone,
     items: [
       { path: "/config/addresses", label: "Postal Addresses", icon: MapPin, testId: "nav-config-addresses", permission: "admin" },
-      { path: "/config/options/gender", label: "Gender Options", icon: List, testId: "nav-config-gender-options", permission: "admin" },
+      { path: "/config/options/gender/list", label: "Gender Options", icon: List, testId: "nav-config-gender-options", permission: "admin" },
     ],
   },
   {
@@ -129,21 +130,20 @@ export const configSections: NavSection[] = [
     description: "Configurable dropdown options",
     icon: List,
     items: [
-      { path: "/config/options/worker-id-type", label: "Worker ID Types", icon: List, testId: "nav-config-worker-id-types", permission: "admin" },
-      { path: "/config/options/worker-ws", label: "Worker Work Statuses", icon: List, testId: "nav-config-worker-work-statuses", permission: "admin" },
-      { path: "/config/options/worker-ms", label: "Worker Member Statuses", icon: List, testId: "nav-config-worker-member-statuses", permission: "admin" },
-      { path: "/config/options/skill", label: "Skill Options", icon: List, testId: "nav-config-skill-options", permission: "admin", requiresComponent: "worker.skills" },
-      { path: "/config/options/certification", label: "Certifications", icon: FileText, testId: "nav-config-certification-options", permission: "admin", requiresComponent: "worker.certifications" },
-      { path: "/config/options/classification", label: "Classifications", icon: List, testId: "nav-config-classification-options", permission: "admin" },
-      { path: "/config/options/industry", label: "Industries", icon: List, testId: "nav-config-industry-options", permission: "admin" },
-      { path: "/config/options/worker-rating", label: "Rating Types", icon: List, testId: "nav-config-rating-options", permission: "admin", requiresComponent: "worker.ratings" },
-      { path: "/config/options/worker-relation-type", label: "Relationship Types", icon: List, testId: "nav-config-worker-relation-types", permission: "admin", requiresComponent: "worker.relations" },
-      { path: "/config/options/employment-status", label: "Employment Statuses", icon: List, testId: "nav-config-employment-statuses", permission: "admin" },
-      { path: "/config/options/comm-tag", label: "Comm Tags", icon: Tag, testId: "nav-config-comm-tags", permission: "admin" },
-      { path: "/config/options/call-reason", label: "Call Reasons", icon: List, testId: "nav-config-call-reasons", permission: "admin" },
-      { path: "/config/options/note-type", label: "Note Types", icon: List, testId: "nav-config-note-types", permission: "admin" },
-      { path: "/config/options/bao-notes-tag-type", label: "Note Tag Types", icon: List, testId: "nav-config-bao-notes-tag-types", permission: "admin", requiresComponent: "sitespecific.bao" },
-      { path: "/config/options/bao-notes-tag", label: "Note Tags", icon: Tag, testId: "nav-config-bao-notes-tags", permission: "admin", requiresComponent: "sitespecific.bao" },
+      { path: "/config/options/worker-id-type/list", label: "Worker ID Types", icon: List, testId: "nav-config-worker-id-types", permission: "admin" },
+      { path: "/config/options/worker-ws/list", label: "Worker Work Statuses", icon: List, testId: "nav-config-worker-work-statuses", permission: "admin" },
+      { path: "/config/options/worker-ms/list", label: "Worker Member Statuses", icon: List, testId: "nav-config-worker-member-statuses", permission: "admin" },
+      { path: "/config/options/skill/list", label: "Skill Options", icon: List, testId: "nav-config-skill-options", permission: "admin", requiresComponent: "worker.skills" },
+      { path: "/config/options/certification/list", label: "Certifications", icon: FileText, testId: "nav-config-certification-options", permission: "admin", requiresComponent: "worker.certifications" },
+      { path: "/config/options/classification/list", label: "Classifications", icon: List, testId: "nav-config-classification-options", permission: "admin" },
+      { path: "/config/options/industry/list", label: "Industries", icon: List, testId: "nav-config-industry-options", permission: "admin" },
+      { path: "/config/options/worker-rating/list", label: "Rating Types", icon: List, testId: "nav-config-rating-options", permission: "admin", requiresComponent: "worker.ratings" },
+      { path: "/config/options/worker-relation-type/list", label: "Relationship Types", icon: List, testId: "nav-config-worker-relation-types", permission: "admin", requiresComponent: "worker.relations" },
+      { path: "/config/options/employment-status/list", label: "Employment Statuses", icon: List, testId: "nav-config-employment-statuses", permission: "admin" },
+      { path: "/config/options/comm-tag/list", label: "Comm Tags", icon: Tag, testId: "nav-config-comm-tags", permission: "admin" },
+      { path: "/config/options/note-type/list", label: "Note Types", icon: List, testId: "nav-config-note-types", permission: "admin" },
+      { path: "/config/options/bao-notes-tag-type/list", label: "Note Tag Types", icon: List, testId: "nav-config-bao-notes-tag-types", permission: "admin", requiresComponent: "sitespecific.bao" },
+      { path: "/config/options/bao-notes-tag/list", label: "Note Tags", icon: Tag, testId: "nav-config-bao-notes-tags", permission: "admin", requiresComponent: "sitespecific.bao" },
       { path: "/config/steward-settings", label: "Steward", icon: Users, testId: "nav-config-steward-settings", permission: "admin", requiresComponent: "worker.steward" },
       { path: "/config/workers/ban", label: "Ban Notifications", icon: Shield, testId: "nav-config-workers-ban", permission: "admin", requiresComponent: "worker.ban" },
       { path: "/config/workers/tos", label: "Time Off Sick", icon: Calendar, testId: "nav-config-workers-tos", permission: "admin", requiresComponent: "worker.tos" },
@@ -167,7 +167,7 @@ export const configSections: NavSection[] = [
     icon: Truck,
     items: [
       { path: "/config/dispatch-job-types", label: "Job Types", icon: List, testId: "nav-config-dispatch-job-types", permission: "admin", requiresComponent: "dispatch" },
-      { path: "/config/options/worker-ban-type", label: "Worker Ban Types", icon: List, testId: "nav-config-worker-ban-types", permission: "admin", requiresComponent: "dispatch" },
+      { path: "/config/options/worker-ban-type/list", label: "Worker Ban Types", icon: List, testId: "nav-config-worker-ban-types", permission: "admin", requiresComponent: "dispatch" },
       { path: "/admin/plugin-configs/dispatch-eligibility", label: "Eligibility Plugins", icon: Zap, testId: "nav-config-dispatch-eligibility-plugins", permission: "admin" },
       { path: "/config/dispatch/backfill", label: "Eligibility Backfill", icon: RefreshCw, testId: "nav-config-dispatch-backfill", permission: "admin", requiresComponent: "dispatch" },
       { path: "/config/dispatch/dnc", label: "Do Not Call", icon: Phone, testId: "nav-config-dispatch-dnc", permission: "admin", requiresComponent: "dispatch.dnc" },
@@ -195,13 +195,13 @@ export const configSections: NavSection[] = [
     description: "Grievance tracking configuration",
     icon: FileText,
     items: [
-      { path: "/config/options/grievance-status", label: "Status Options", icon: List, testId: "nav-config-grievance-status-options", permission: "admin", requiresComponent: "grievance" },
-      { path: "/config/options/grievance-category", label: "Category Options", icon: List, testId: "nav-config-grievance-category-options", permission: "admin", requiresComponent: "grievance" },
-      { path: "/config/options/grievance-step", label: "Step Options", icon: List, testId: "nav-config-grievance-step-options", permission: "admin", requiresComponent: "grievance" },
-      { path: "/config/options/grievance-complaint", label: "Complaint Options", icon: List, testId: "nav-config-grievance-complaint-options", permission: "admin", requiresComponent: "grievance" },
-      { path: "/config/options/grievance-remedy", label: "Remedy Options", icon: List, testId: "nav-config-grievance-remedy-options", permission: "admin", requiresComponent: "grievance" },
-      { path: "/config/options/grievance-role", label: "Role Options", icon: List, testId: "nav-config-grievance-role-options", permission: "admin", requiresComponent: "grievance" },
-      { path: "/config/options/grievance-settlement-type", label: "Settlement Types", icon: List, testId: "nav-config-grievance-settlement-type-options", permission: "admin", requiresComponent: "grievance.settlement" },
+      { path: "/config/options/grievance-status/list", label: "Status Options", icon: List, testId: "nav-config-grievance-status-options", permission: "admin", requiresComponent: "grievance" },
+      { path: "/config/options/grievance-category/list", label: "Category Options", icon: List, testId: "nav-config-grievance-category-options", permission: "admin", requiresComponent: "grievance" },
+      { path: "/config/options/grievance-step/list", label: "Step Options", icon: List, testId: "nav-config-grievance-step-options", permission: "admin", requiresComponent: "grievance" },
+      { path: "/config/options/grievance-complaint/list", label: "Complaint Options", icon: List, testId: "nav-config-grievance-complaint-options", permission: "admin", requiresComponent: "grievance" },
+      { path: "/config/options/grievance-remedy/list", label: "Remedy Options", icon: List, testId: "nav-config-grievance-remedy-options", permission: "admin", requiresComponent: "grievance" },
+      { path: "/config/options/grievance-role/list", label: "Role Options", icon: List, testId: "nav-config-grievance-role-options", permission: "admin", requiresComponent: "grievance" },
+      { path: "/config/options/grievance-settlement-type/list", label: "Settlement Types", icon: List, testId: "nav-config-grievance-settlement-type-options", permission: "admin", requiresComponent: "grievance.settlement" },
       { path: "/grievance-timeline-templates", label: "Timeline Templates", icon: List, testId: "nav-config-grievance-timeline-templates", permission: "admin", requiresComponent: "grievance" },
     ],
   },
@@ -226,19 +226,23 @@ export const configSections: NavSection[] = [
     items: [
       { path: "/config/edls/settings", label: "Settings", icon: Settings, testId: "nav-config-edls-settings", permission: "admin", requiresComponent: "edls" },
       { path: "/config/edls/tasks", label: "Tasks", icon: List, testId: "nav-config-edls-tasks", permission: "admin", requiresComponent: "edls" },
-      { path: "/config/options/edls-show-status", label: "Show Statuses", icon: List, testId: "nav-config-edls-show-statuses", permission: "admin", requiresComponent: "edls" },
+      { path: "/config/options/edls-show-status/list", label: "Show Statuses", icon: List, testId: "nav-config-edls-show-statuses", permission: "admin", requiresComponent: "edls" },
       { path: "/config/edls/t631-fetch", label: "Teamsters 631 Fetch", icon: Zap, testId: "nav-config-edls-t631-fetch", permission: "admin", requiresComponents: ["edls", "sitespecific.t631.client"] },
       { path: "/config/edls/t631-ms", label: "Teamsters 631 MS", icon: List, testId: "nav-config-edls-t631-ms", permission: "admin", requiresComponents: ["edls", "sitespecific.t631.client"] },
+      { path: "/admin/sitespecific/freeman/edls/migrate", label: "Freeman Migration", icon: Server, testId: "nav-config-edls-freeman-migrate", permission: "admin", requiresComponents: ["edls", "sitespecific.freeman.edls_migrate"] },
     ],
   },
   {
+    // Both directions of third-party traffic, named by direction. Each item is
+    // one tabbed page, so the sidebar stops at the page and the tabs take it
+    // from there rather than the sidebar listing every view of both.
     id: "webservices",
     title: "Web Services",
-    description: "External API access and client management",
+    description: "Calls other people make to us, and calls we make to them",
     icon: Network,
     items: [
-      { path: "/config/ws/services", label: "Services", icon: Package, testId: "nav-config-ws-services", permission: "admin" },
-      { path: "/config/ws/clients", label: "Clients", icon: Key, testId: "nav-config-ws-clients", permission: "admin" },
+      { path: "/admin/ws", label: "Incoming", icon: Network, testId: "nav-config-ws", permission: "admin" },
+      { path: "/admin/wc", label: "Outgoing", icon: Cloud, testId: "nav-config-wc", permission: "admin" },
     ],
   },
 ];

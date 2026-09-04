@@ -21,6 +21,8 @@
  * Exits 0 on pass, 1 on failure.
  */
 import { execSync } from "node:child_process";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const SCHEMA_PREFIX = /^shared\/schema(\.ts|\/)/;
 const CORE_MIGRATION_PREFIX = /^scripts\/migrate\/core\//;
@@ -193,6 +195,111 @@ function commitMessagesContain(marker: string, base: string | undefined): boolea
   }
 }
 
+/**
+ * Core migration versions live in ONE numbering space (`migrations_version`
+ * is a single high-water mark, and baseline scripts are registered as core
+ * migrations too). Two migrations sharing a version means the runner applies
+ * whichever sorts first and then stamps past the other, which never runs
+ * again anywhere — a silent, permanent skip whose only symptom is a schema
+ * drift report months later.
+ *
+ * Three core migrations share version 2 from before this check existed. They
+ * are grandfathered by name; nothing else may collide.
+ */
+const GRANDFATHERED_DUPLICATE_VERSIONS: Record<number, string[]> = {
+  2: [
+    "002_wizard_employment_status_mappings.ts",
+    "002_create_ledger_table.ts",
+    "002_drop_replit_user_id.ts",
+  ],
+};
+
+/** The `version:` of the registered migration, resolving a local const. */
+function migrationVersionOf(source: string): number | null {
+  const direct = source.match(/^\s*version:\s*(\d+)\s*,/m);
+  if (direct) return Number(direct[1]);
+  const viaConst = source.match(/^\s*version:\s*([A-Za-z_$][\w$]*)\s*,/m);
+  if (viaConst) {
+    const decl = source.match(
+      new RegExp(`const\\s+${viaConst[1]}\\s*(?::\\s*number\\s*)?=\\s*(\\d+)`),
+    );
+    if (decl) return Number(decl[1]);
+  }
+  return null;
+}
+
+function checkCoreVersionsUnique(): void {
+  const dirs = ["scripts/migrate/core", "scripts/migrate/baseline"];
+  const byVersion = new Map<number, string[]>();
+  const unresolved: string[] = [];
+
+  for (const dir of dirs) {
+    let entries: string[];
+    try {
+      entries = readdirSync(dir).filter((f) => f.endsWith(".ts"));
+    } catch {
+      continue;
+    }
+    for (const file of entries) {
+      const version = migrationVersionOf(readFileSync(join(dir, file), "utf8"));
+      if (version === null) {
+        unresolved.push(`${dir}/${file}`);
+        continue;
+      }
+      const list = byVersion.get(version) ?? [];
+      list.push(file);
+      byVersion.set(version, list);
+    }
+  }
+
+  if (unresolved.length > 0) {
+    console.error(
+      [
+        "",
+        "[check-migrations] FAILED — could not read the version of these migration file(s):",
+        ...unresolved.map((f) => `  - ${f}`),
+        "",
+        "Every core/baseline migration must declare `version: <number>,` (or a local",
+        "`const X = <number>` referenced by it) so duplicate versions can be detected.",
+        "",
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
+
+  const collisions: string[] = [];
+  for (const [version, files] of byVersion) {
+    if (files.length < 2) continue;
+    const allowed = GRANDFATHERED_DUPLICATE_VERSIONS[version];
+    if (allowed && files.every((f) => allowed.includes(f))) continue;
+    collisions.push(`  version ${version}: ${files.sort().join(", ")}`);
+  }
+
+  if (collisions.length > 0) {
+    console.error(
+      [
+        "",
+        "[check-migrations] FAILED — duplicate core migration version(s).",
+        "",
+        ...collisions,
+        "",
+        "`migrations_version` is a single high-water mark: once the runner stamps a",
+        "version, every migration at or below it is retired. A second migration sharing",
+        "a version therefore never runs on any database that already passed it, and the",
+        "only symptom is a schema drift report with no explanation.",
+        "",
+        "Renumber the new migration to the next unused version.",
+        "",
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
+
+  console.log(
+    `[check-migrations] core migration versions unique (${byVersion.size} version(s)) — OK`,
+  );
+}
+
 function main(): void {
   // The version-collision guard runs even with --skip / [skip-migration-check]:
   // those escape hatches cover pure type refactors, not a mis-numbered
@@ -203,6 +310,10 @@ function main(): void {
     console.log("[check-migrations] skipped via --skip flag");
     process.exit(0);
   }
+
+  // Runs on EVERY invocation, not only when shared/schema* changed: a
+  // duplicate version is a hazard whether or not the schema moved with it.
+  checkCoreVersionsUnique();
 
   const base = arg("base");
   const files = changedFiles(base);

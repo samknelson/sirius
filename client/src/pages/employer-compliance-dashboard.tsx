@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { Building2, Loader2, Send, AlertCircle, Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";

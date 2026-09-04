@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { DispatchLayout, useDispatchLayout } from "@/components/layouts/DispatchLayout";

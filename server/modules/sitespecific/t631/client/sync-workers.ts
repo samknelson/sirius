@@ -1,4 +1,5 @@
 import { storage, createCommSmsOptinStorage } from "../../../../storage";
+import { schedulePhoneRevalidation } from "../../../../services/comm/validators/phone";
 import { logger, storageLogger } from "../../../../logger";
 import { getOptionsType } from "../../../options-registry";
 
@@ -320,6 +321,8 @@ async function mirrorWorkerPhone(opts: {
       isPrimary: true,
       isActive: true,
     });
+    // Validate the new number once, off the sync's critical path.
+    schedulePhoneRevalidation(e164);
     result.phonesCreated++;
     detail("created_phone", `created ${e164}`);
   }

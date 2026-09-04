@@ -46,7 +46,7 @@ import {
   ChevronRight,
   ExternalLink
 } from "lucide-react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 
 interface MonthStatus {
   id: string;

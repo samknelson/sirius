@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, FileSignature, Calendar, Hash, Shield, FileText, Download, User, Mail, Key, AlertTriangle, CheckCircle2 } from "lucide-react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 
 async function computeSha256(text: string): Promise<string> {
   const encoder = new TextEncoder();

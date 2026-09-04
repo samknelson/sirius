@@ -3,11 +3,29 @@ import { sql } from "drizzle-orm";
 import { registerMigration, type Migration } from "../../../server/services/migration-runner";
 import { logger } from "../../../server/logger";
 
+async function tableExists(name: string): Promise<boolean> {
+  const result = await db.execute(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = ${name}
+    )
+  `);
+  return result.rows?.[0]?.exists === true || result.rows?.[0]?.exists === 't';
+}
+
 /**
  * Add `is_primary` boolean (NOT NULL, default false) to `dispatches`, plus a
  * partial unique index enforcing that a worker can have at most ONE accepted
  * primary dispatch at a time. Existing rows default to false; nothing is
  * backfilled as primary.
+ *
+ * `dispatches` belongs to the OPTIONAL `dispatch` component's schema manifest,
+ * so it is absent on any deployment that never enabled dispatch. A core
+ * migration runs everywhere, and the runner stops the boot on the first
+ * failure — so the table reference has to be guarded. When the component is
+ * later enabled, schema-push creates the table from the current Drizzle
+ * definition (which already declares this column and index), so skipping here
+ * loses nothing.
  */
 async function up(): Promise<void> {
   // `dispatches` is owned by the optional `dispatch` component. Core

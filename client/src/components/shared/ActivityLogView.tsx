@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { WinstonLog } from "@/lib/system-types";
 
 interface ActivityLogViewProps {

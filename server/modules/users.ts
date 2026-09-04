@@ -8,6 +8,8 @@ import {
   assignRoleSchema,
   assignPermissionSchema
 } from "@shared/schema";
+import { userTimeZoneInputSchema } from "@shared/utils/timezone";
+import { buildTimeZoneContext, getTimeZonePolicy } from "./system/timezone";
 import { requireAccess, clearAccessCache } from "../services/access-policy-evaluator";
 import { checkClerkConflict, provisionClerkAccount } from "../services/clerk-provisioning";
 import {
@@ -33,6 +35,65 @@ export function registerUserRoutes(
   requireAuth: AuthMiddleware, 
   requirePermission: PermissionMiddleware
 ) {
+  // Self-service time zone.
+  //
+  // Registered before the /api/users/:userId/* routes below so the literal
+  // "me" segment can never be captured as a user id.
+  //
+  // These act on the EFFECTIVE user: while masquerading, the masqueraded
+  // person is the actor everywhere in this app, and their display preference
+  // is what is being read and written. That is the established convention, not
+  // an oversight.
+
+  // GET /api/users/me/timezone - the caller's own zone plus the two facts
+  // needed to interpret it (the system zone and whether policy honours a
+  // personal one). Returned together because a client that has one without
+  // the others cannot decide anything.
+  app.get("/api/users/me/timezone", requireAuth, async (req, res) => {
+    try {
+      const { dbUser } = await getEffectiveUser(req.session as any, req.user as any);
+      if (!dbUser) return res.status(404).json({ message: "User not found" });
+      res.json(await buildTimeZoneContext(dbUser.timezone));
+    } catch (error) {
+      console.error("Failed to fetch time zone settings:", error);
+      res.status(500).json({ message: "Failed to fetch time zone settings" });
+    }
+  });
+
+  // PUT /api/users/me/timezone - set or clear the caller's own zone.
+  //
+  // Refused outright when site policy says everyone uses site time: storing a
+  // preference that the resolver is going to ignore would leave the person
+  // with a saved setting that does nothing, and would quietly take effect
+  // later if an admin ever flipped the policy back.
+  app.put("/api/users/me/timezone", requireAuth, async (req, res) => {
+    try {
+      const { dbUser } = await getEffectiveUser(req.session as any, req.user as any);
+      if (!dbUser) return res.status(404).json({ message: "User not found" });
+
+      const policy = await getTimeZonePolicy();
+      if (!policy.allowUserTimezones) {
+        return res.status(403).json({
+          message:
+            "This site displays all dates and times in the site's time zone. Personal time zones are turned off.",
+        });
+      }
+
+      const parsed = userTimeZoneInputSchema.safeParse((req.body ?? {}).timezone);
+      if (!parsed.success) {
+        return res.status(400).json({
+          message: parsed.error.errors[0]?.message ?? "Invalid time zone",
+        });
+      }
+
+      await storage.users.updateUser(dbUser.id, { timezone: parsed.data });
+      res.json(await buildTimeZoneContext(parsed.data));
+    } catch (error) {
+      console.error("Failed to save time zone:", error);
+      res.status(500).json({ message: "Failed to save time zone" });
+    }
+  });
+
   // Admin routes for user management
   
   // GET /api/admin/users/search - Search users by email (staff+)

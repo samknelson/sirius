@@ -879,6 +879,22 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "sitespecific.freeman.edls_migrate",
+    name: "Freeman EDLS Migration",
+    description: "Migration of EDLS data from Freeman's legacy system",
+    enabledByDefault: false,
+    category: "site-specific",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/sitespecific/freeman/edls-migrate-schema.ts",
+      // A staging table only: it holds legacy rows as fetched and has no
+      // foreign keys into EDLS, so it is not a schema dependency.
+      tables: ["sitespecific_freeman_edls_migrate"]
+    },
+    dependsOnComponents: ["edls"]
+  },
+  {
     id: "sitespecific.t631.client",
     name: "Teamsters 631 Client",
     description: "Client connection to the Teamsters 631 site",
