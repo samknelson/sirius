@@ -10,6 +10,7 @@ import { trustBenefitEligibilityExemptions } from "@shared/schema";
 import { and, eq, gte, isNull, lte, or } from "drizzle-orm";
 import { storage } from "../../../storage/database";
 import { logger } from "../../../logger";
+import { isMaintenanceModeError } from "../../../services/maintenance-flag";
 import { getEnabledComponentIds } from "../../../modules/components";
 
 /**
@@ -390,6 +391,10 @@ export async function evaluateEligibilityRules(
         break;
       }
     } catch (error) {
+      // A maintenance refusal is not a verdict about the worker. Turning it
+      // into "ineligible" would let a scan run during maintenance record a
+      // loss of eligibility that nothing about the worker justifies.
+      if (isMaintenanceModeError(error)) throw error;
       logger.error(`Error evaluating eligibility plugin: ${rule.pluginKey}`, {
         service: 'eligibility-executor',
         error: error instanceof Error ? error.message : String(error),
