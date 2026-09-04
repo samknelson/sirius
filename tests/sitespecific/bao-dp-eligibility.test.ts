@@ -98,6 +98,17 @@ let rates: Record<
       refId === ELECTION && cfgId === DP_CONFIG_ID ? dpEntries : [],
   },
 };
+// Subscriber WMB presence for the as-of month (benefit ids). Default: every
+// election benefit present, like a normally covered month.
+let presentBenefits: string[];
+(storage as any).trust = {
+  wmb: {
+    getWorkerBenefitPresence: async (workerId: string) =>
+      workerId === SUB
+        ? presentBenefits.map((benefitId) => ({ benefitId, year: 2026, month: 7 }))
+        : [],
+  },
+};
 (storage as any).baoDpRates = {
   async getEffectiveRate(benefitId: string, transition: string, asOfYmd: string) {
     const list = rates[benefitId]?.[transition] ?? [];
@@ -132,6 +143,7 @@ beforeEach(() => {
   dpEntries = [];
   dpBalance = "0";
   rates = {};
+  presentBenefits = [MEDICAL, DENTAL];
 });
 
 describe("DP payment gate — scope and paid-charge paths", () => {
@@ -243,6 +255,27 @@ describe("DP payment gate — confirmed no-charge months", () => {
     dpBalance = "100";
     const r = await evaluate();
     expect(r.eligible).toBe(true);
+  });
+
+  it("prices only from benefits the subscriber actually has that month: rated medical absent → fail closed (matches billing)", async () => {
+    family();
+    rates = {
+      [MEDICAL]: {
+        family_to_family_dp: [{ effectiveYmd: "2026-01-01", rate: "0.00", provisional: false }],
+      },
+    };
+    // Medical not present for July; only dental is. Billing would find no
+    // rated present benefit and skip — the gate must not waive either, for
+    // the dental evaluation or the medical one.
+    presentBenefits = [DENTAL];
+    expect((await evaluate(ctx({ benefitId: DENTAL }))).eligible).toBe(false);
+    expect((await evaluate(ctx({ benefitId: MEDICAL }))).eligible).toBe(false);
+    // Converse: medical present, dental absent → medical prices to no charge.
+    presentBenefits = [MEDICAL];
+    expect((await evaluate(ctx({ benefitId: MEDICAL }))).eligible).toBe(true);
+    // No presence at all → fail closed.
+    presentBenefits = [];
+    expect((await evaluate()).eligible).toBe(false);
   });
 
   it("ignores ancillary (unrated) benefits when recognising a no-charge month", async () => {

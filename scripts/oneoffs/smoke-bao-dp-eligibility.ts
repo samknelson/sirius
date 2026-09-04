@@ -84,6 +84,12 @@ const DP_ACCOUNT_ID = "acct-dp";
 // Rate sheet: a CONFIRMED (non-provisional) $0.00 rate under the shared
 // pricing rule waives payment for the month; anything else fails closed.
 let rates: Record<string, Array<{ effectiveYmd: string; rate: string; provisional?: boolean }>> = {};
+(storage as any).trust = {
+  wmb: {
+    getWorkerBenefitPresence: async (workerId: string) =>
+      workerId === SUB ? [{ benefitId: BENEFIT, year: 2026, month: 7 }] : [],
+  },
+};
 (storage as any).baoDpRates = {
   getEffectiveRate: async (benefitId: string, transition: string, asOfYmd: string) =>
     benefitId === BENEFIT

@@ -151,7 +151,11 @@ class BaoDpPlugin extends EligibilityPlugin<BaoDpConfig> {
     // no charge should exist for it and a missing account must not deny it.
     // Anything else (missing, provisional, ambiguous, or a positive rate)
     // falls through to the strict payment gate.
-    const noCharge = await this.findConfirmedNoChargeElection(covering, asOfYm);
+    const noCharge = await this.findConfirmedNoChargeElection(
+      subscriberId,
+      covering,
+      asOfYm,
+    );
     if (noCharge) {
       return {
         eligible: true,
@@ -211,9 +215,21 @@ class BaoDpPlugin extends EligibilityPlugin<BaoDpConfig> {
    * ambiguous, or positive.
    */
   private async findConfirmedNoChargeElection(
+    subscriberId: string,
     covering: WorkerTrustElection[],
     asOfYm: string,
   ): Promise<{ election: WorkerTrustElection; transitionLabel: string } | null> {
+    // Price from the election benefits the SUBSCRIBER actually has recorded
+    // for the month (trust WMB presence) — exactly the set the charge plugin
+    // prices from — so the gate can never waive a month billing would have
+    // skipped as missing-rate.
+    const presenceRows = await storage.trust.wmb.getWorkerBenefitPresence(subscriberId);
+    const present = new Set<string>();
+    for (const row of presenceRows) {
+      const ym = `${row.year}-${String(row.month).padStart(2, "0")}`;
+      if (ym === asOfYm) present.add(row.benefitId);
+    }
+
     const relIds = new Set<string>();
     for (const e of covering) for (const id of e.relationshipIds ?? []) relIds.add(id);
     const rels = relIds.size
@@ -225,11 +241,11 @@ class BaoDpPlugin extends EligibilityPlugin<BaoDpConfig> {
       const transition = resolveDpTierTransition(election, (id) =>
         typeNameById.has(id) ? typeNameById.get(id) : undefined,
       );
-      const price = await priceDpMonth(
-        election.benefitIds ?? [],
-        transition,
-        asOfYm,
+      const presentBenefitIds = (election.benefitIds ?? []).filter((b) =>
+        present.has(b),
       );
+      if (presentBenefitIds.length === 0) continue;
+      const price = await priceDpMonth(presentBenefitIds, transition, asOfYm);
       if (price.kind === "no_charge") {
         return {
           election,
