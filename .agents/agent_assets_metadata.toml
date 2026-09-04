@@ -6,6 +6,7 @@ id = "VzSJuf7rPOFZRNff6EQEn"
 uri = "file://exports/wizard-plugin-framework-spike.pdf"
 type = "pdf"
 title = "Wizard plugin framework spike — plan"
+logical_id = "22d00eaf-6265-4c27-8bfa-9f35870a99a1"
 
 [[outputs]]
 id = "yev97dvP--EioqbRBm0Ie"
@@ -13,6 +14,7 @@ uri = "file://docs/s1-rehearsal-reject-triage.xlsx"
 type = "table"
 title = "S1 Rehearsal Reject Triage"
 description = "56 triage rows across 18 loaders — sorted largest-count-first, with dropdown validations, trend data, run history, and instructions."
+logical_id = "b2f68691-3432-4e36-826e-a61b701d9532"
 
 [[outputs]]
 id = "g36etJfs66BokrwqsQLtH"
@@ -20,6 +22,7 @@ uri = "file://attached_assets/s1-daily-rehearsal-cloudshell-19c10b22.sh"
 type = "unspecified"
 title = "Corrected incremental S1 daily rehearsal launcher"
 description = "Pinned to 680a2495 with the bounded T17 anchor scan; keeps independent-failure collection and removes fleet-wide --force-reconcile."
+logical_id = "9844c303-7596-404e-91b5-87f3dc1f4749"
 
 [[outputs]]
 id = "4QY_r14le8jv-9J2wMYAz"
@@ -27,6 +30,7 @@ uri = "file://attached_assets/s1-rebuild-and-daily-rehearsal-cloudshell-1f24ef08
 type = "unspecified"
 title = "S1 clean rebuild and daily rehearsal launcher"
 description = "CloudShell script that stops web traffic, atomically wipes and bootstraps the rehearsal target, launches the full daily sync, waits for its write fence, and safely restores read access."
+logical_id = "c9267fa5-ae81-4f64-a4ac-03ca4c37b6c7"
 
 [[outputs]]
 id = "673RFgBy5pCLQ4REhDki6"
@@ -34,6 +38,7 @@ uri = "file://attached_assets/s1-worker-duplicate-merge-preflight.sql"
 type = "unspecified"
 title = "S1 worker duplicate merge preflight"
 description = "Read-only SQL preflight for the 21 confirmed duplicate-worker merges plus the approved source-missing worker cascade check. Run the entire file in one database session."
+logical_id = "3e49caed-d330-4427-b413-ceb8ec3db52d"
 
 [[outputs]]
 id = "IQVn0AM3OSnbv3l9-B_ae"
@@ -41,6 +46,7 @@ uri = "file://attached_assets/s1-worker-duplicate-collision-preflight.sql"
 type = "unspecified"
 title = "Corrected S1 worker collision preflight"
 description = "Corrected read-only SQL with PostgreSQL-safe CTE names. First run ROLLBACK in the aborted console, then run this entire file in one database session."
+logical_id = "991e83bf-68ed-488f-87fb-7d4c4f9ec472"
 
 [[outputs]]
 id = "j7k7eQ1wt8oP2LzCWP9nG"
@@ -48,6 +54,7 @@ uri = "file://attached_assets/s1-worker-wmb-authority-preflight.sql"
 type = "unspecified"
 title = "S1 WMB authority preflight"
 description = "Read-only SQL for the 12 WMB collision groups. It checks current T17 source authority and counts wb-anchor and ledger references that the final merge must preserve."
+logical_id = "b16c31a1-689b-495c-b745-78fb8b76eaa8"
 
 [[outputs]]
 id = "GszNbdLurTou2bfgTWdzB"
@@ -55,6 +62,7 @@ uri = "file://attached_assets/s1-worker-wmb-relation-authority-preflight.sql"
 type = "unspecified"
 title = "S1 WMB relation-authority fallback"
 description = "Read-only fallback for targets without T17 desired-span scratch. It validates direct relation id_map authority and inventories WMB anchor and ledger references."
+logical_id = "47fbe3c8-02b1-4abc-b17b-eb82cf0f07ea"
 
 [[outputs]]
 id = "43PTqOwHs1H2-0Frj7Jzo"
@@ -62,6 +70,7 @@ uri = "file://attached_assets/s1-worker-wmb-staged-source-authority-preflight.sq
 type = "unspecified"
 title = "Final T17-equivalent WMB authority preflight"
 description = "Read-only SQL that excludes source records exactly as T17 rejects them, reports those rejects separately, and returns stale/canonical/third provenance for every valid overlap month."
+logical_id = "9ac01a85-09d0-4b23-a138-99c86469d8e4"
 
 [[outputs]]
 id = "g7IbJBsvrFdKVYZCUzfV2"
@@ -69,6 +78,7 @@ uri = "file://attached_assets/s1-worker-duplicate-merge-transaction-rehearsal.sq
 type = "unspecified"
 title = "Corrected S1 duplicate-worker merge rehearsal"
 description = "Rollback-only transaction rehearsal with the integer/text SID postcheck mismatch corrected."
+logical_id = "0d4b8d5d-e8eb-4b0d-9b18-5bdb215c8d55"
 
 [[outputs]]
 id = "Yqm-h4mmtqA8HDIC6rZmv"
@@ -76,6 +86,7 @@ uri = "file://attached_assets/s1-worker-duplicate-merge-commit.sql"
 type = "unspecified"
 title = "DESTRUCTIVE — S1 duplicate-worker merge commit"
 description = "Permanently applies the transaction that passed the rollback rehearsal. The mutation and validation body is identical; only the outcome label and final ROLLBACK→COMMIT differ."
+logical_id = "17490b52-0b08-4c5b-8fd9-afa4232192a4"
 
 [[outputs]]
 id = "JtFMfMO3h_KbWbFCthaTX"
@@ -83,6 +94,7 @@ uri = "file://attached_assets/s1-ssn-owner-transfer-inventory.sql"
 type = "unspecified"
 title = "Corrected SSN Transfer Inventory"
 description = "Uses a normal transaction for its temporary FK inventory table, then rolls back all changes. No persistent writes and no SSN disclosure."
+logical_id = "a0e909d8-f291-4e57-bae3-543a2a213b88"
 
 [[outputs]]
 id = "omFPdb6Ev4JK13UfpPufI"
@@ -90,6 +102,7 @@ uri = "file://attached_assets/s1-ssn-owner-transfer-rollback.sql"
 type = "unspecified"
 title = "2. SSN Transfer Rollback Rehearsal"
 description = "Executes the guarded SSN transfer and proves the post-state, then always rolls back. Must return READY_TO_COMMIT."
+logical_id = "78325b92-8ae6-4d6c-a8f8-b29e70554df4"
 
 [[outputs]]
 id = "65yX6P30GHjYnShb8x4Ly"
@@ -97,6 +110,7 @@ uri = "file://attached_assets/s1-ssn-owner-transfer-commit.sql"
 type = "unspecified"
 title = "3. SSN Transfer Commit"
 description = "Guarded destructive variant with the same mutation body as the rollback rehearsal; transfers the SSN and commits."
+logical_id = "b32f2816-9755-4a65-b380-d25c2b0d1a35"
 
 [[outputs]]
 id = "tIfgeVwSVW1TdY7jGhI0a"
@@ -104,6 +118,7 @@ uri = "file://attached_assets/s1-ssn-owner-transfer-verify.sql"
 type = "unspecified"
 title = "4. SSN Transfer Verification"
 description = "Read-only post-commit verification. Expected final status: PASS."
+logical_id = "a27748f1-514a-4127-a20d-8a3089593b2b"
 
 [[outputs]]
 id = "af_bkA7JypKt8qSujO6et"
@@ -111,6 +126,7 @@ uri = "file://scripts/oneoffs/s1-t16-benefit-unmapped-target.sql"
 type = "unspecified"
 title = "Corrected T16 target investigation"
 description = "Corrected read-only PostgreSQL investigation; fixes the election_nid ORDER BY error."
+logical_id = "d317543e-dbfd-4c6d-965e-19f392c6550d"
 
 [[outputs]]
 id = "sDnMm1hBc2RUYFPVFUJo2"
@@ -118,6 +134,7 @@ uri = "file://scripts/oneoffs/s1-t16-benefit-unmapped-source.sql"
 type = "unspecified"
 title = "T16 benefit-unmapped source investigation"
 description = "Read-only MariaDB investigation for S1: benefit node presence and all live election field references to benefit nid 2457521."
+logical_id = "35f1ff62-d04b-4bee-93a6-5b4437f71f02"
 
 [[outputs]]
 id = "xbinQ9TRoMNxkm2qEBs4N"
@@ -125,6 +142,7 @@ uri = "file://scripts/oneoffs/s1-t16-benefit-unmapped-source-context.sql"
 type = "unspecified"
 title = "T16 benefit cleanup safety preflight"
 description = "Read-only S1 query confirming every affected election retains another valid benefit before any orphan-reference cleanup."
+logical_id = "cc88e3dd-d892-4f65-bbf5-df67b697bb35"
 
 [[outputs]]
 id = "tVVva96NiXhB0YlPfpXYO"
@@ -132,6 +150,7 @@ uri = "file://scripts/oneoffs/s1-remove-stale-election-benefit-2457521.sql"
 type = "unspecified"
 title = "Remove stale election benefit 2457521 references"
 description = "Single guarded, idempotent MariaDB cleanup script. Deletes only remaining current election references and matching current-revision rows; commits only after exact post-checks."
+logical_id = "0e8b32d1-bdfd-4ded-8f01-72fe0c430856"
 
 [[outputs]]
 id = "I3bDCMfBhDxf-HkqZ-j91"
@@ -139,6 +158,7 @@ uri = "file://scripts/oneoffs/s1-drush-remove-stale-election-benefit-2457521.php
 type = "unspecified"
 title = "S1 Drush cleanup for stale benefit references"
 description = "Drupal 7 Drush script; dry-run by default, explicit --apply required. Uses node_save, preserves historical revisions, and rolls back on guard or post-check failure."
+logical_id = "4d52a54c-6ed5-44e9-ac07-48e3cf862ebc"
 
 [[outputs]]
 id = "JnfqYrd9pB6KMEJ4tOlID"
@@ -146,3 +166,26 @@ uri = "file://attached_assets/s1-no-restage-log-notes-cloudshell.sh"
 type = "unspecified"
 title = "Corrected log-notes-only ECS launcher"
 description = "Runs only load-log-notes.ts against existing staging while holding the migration advisory lock and application write fence. No restaging, full fleet, force reconcile, or Docker build."
+logical_id = "3969e25f-99a0-457f-899d-4c091799558e"
+
+[[outputs]]
+id = "_bErE5EWaHFe8umKz_YbY"
+uri = "file://reports/deployment-branch-divergence.md"
+type = "text"
+title = "Deployment branch divergence report"
+description = "Branch tips, merge bases, remote-only commits, the 16 safety-blocking files, and complete tip-to-tip file differences for bao-stg and bao-replit-main."
+logical_id = "05894aa0-ecfb-4e1b-98c1-775e14fb80b0"
+
+[[outputs]]
+id = "1RrAjz7knI2wL3Um8H3FN"
+uri = "file://reports/bao-replit-main-remote-only.patch"
+type = "unspecified"
+title = "bao-replit-main remote-only patch"
+description = "Complete binary-safe patch of bao-replit-main's remote-only changes since its merge base with current main, for manual review."
+logical_id = "6415bf77-a9a0-477b-9c58-ac073619803a"
+content_hash = "sha256:a720b871c1b49fe8ef57e93864fc959967349762ba1b4eef5a58a781ebf00df7"
+size = 71171
+mtime_ms = 1788555457339
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:8a1a98ac-267a-49fc-bedd-c98aa4f89294/6415bf77-a9a0-477b-9c58-ac073619803a/56604eb2-4cf0-4d10-a737-763848c78f43"
+storage_version_token = "1788555469522637"
+content_type = "application/octet-stream"

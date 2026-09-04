@@ -1,0 +1,1621 @@
+diff --git a/client/src/App.tsx b/client/src/App.tsx
+index 94311014b3296fad49dbc8c5bdee800c9196ddfd..3049fb828b37248cb7c2d623b4eef80de6fd2bca 100644
+--- a/client/src/App.tsx
++++ b/client/src/App.tsx
+@@ -116,7 +116,6 @@ const Grievances = lazy(() => import("@/pages/grievances"));
+ const WorkerGrievances = lazy(() => import("@/pages/worker-grievances"));
+ const EmployerGrievances = lazy(() => import("@/pages/employer-grievances"));
+ const GrievancesAdd = lazy(() => import("@/pages/grievances-add"));
+-const GrievancesAppealAdd = lazy(() => import("@/pages/grievances-appeal-add"));
+ const GrievanceView = lazy(() => import("@/pages/grievance-view"));
+ const GrievanceEdit = lazy(() => import("@/pages/grievance-edit"));
+ const GrievanceStatusHistory = lazy(() => import("@/pages/grievance-status-history"));
+@@ -655,14 +654,6 @@ function Router() {
+         </ProtectedRoute>
+       </Route>
+ 
+-      <Route path="/grievances/appeal">
+-        <ProtectedRoute permission="staff" component="grievance">
+-          <AuthenticatedLayout>
+-            <GrievancesAppealAdd />
+-          </AuthenticatedLayout>
+-        </ProtectedRoute>
+-      </Route>
+-
+       <Route path="/grievances/add">
+         <ProtectedRoute permission="staff" component="grievance">
+           <AuthenticatedLayout>
+diff --git a/client/src/hooks/useTabAccess.ts b/client/src/hooks/useTabAccess.ts
+index cb31db9c6280a82eecec7f336d67757766c322ec..8110329ffe64a024aa366340a1ce56b4f60d7ae4 100644
+--- a/client/src/hooks/useTabAccess.ts
++++ b/client/src/hooks/useTabAccess.ts
+@@ -12,7 +12,6 @@ import {
+ import { apiRequest } from "@/lib/queryClient";
+ import { useTerm } from "@/contexts/TerminologyContext";
+ import { useAuth } from "@/contexts/AuthContext";
+-import { APPEAL_ONLY_COMPONENT } from "@shared/schema";
+ 
+ interface TabAccessResponse {
+   tabs: TabAccessResult[];
+@@ -65,8 +64,6 @@ export function useTabAccess({
+   enabled = true 
+ }: UseTabAccessOptions): UseTabAccessResult {
+   const term = useTerm();
+-  const { hasComponent } = useAuth();
+-  const appealOnly = hasComponent(APPEAL_ONLY_COMPONENT);
+   
+   const { data, isLoading, isError } = useQuery<TabAccessResponse>({
+     queryKey: ['/api/access/tabs', entityType, entityId],
+@@ -110,11 +107,7 @@ export function useTabAccess({
+             ? filterAndResolve(tab.children)
+             : undefined;
+           
+-          // BAO appeal-only surface relabels grievance tabs as appeals;
+-          // otherwise apply terminology substitution if termKey is defined.
+-          const label = appealOnly && tab.appealOnlyLabel
+-            ? tab.appealOnlyLabel
+-            : tab.termKey
++          const label = tab.termKey
+               ? term(tab.termKey, { plural: tab.termPlural })
+               : tab.label;
+           
+@@ -140,7 +133,7 @@ export function useTabAccess({
+     };
+ 
+     return filterAndResolve(tree);
+-  }, [entityType, entityId, isLoading, data?.tabs, accessMap, term, appealOnly]);
++  }, [entityType, entityId, isLoading, data?.tabs, accessMap, term]);
+ 
+   const getActiveRoot = (activeTabId: string): ResolvedTab | undefined => {
+     for (const rootTab of filteredTree) {
+diff --git a/client/src/pages/grievances-add.tsx b/client/src/pages/grievances-add.tsx
+index c500a29fed03ecafceea9fdbed0697786d8615ba..00eba4d314d47a11a19b2606543804b698d80800 100644
+--- a/client/src/pages/grievances-add.tsx
++++ b/client/src/pages/grievances-add.tsx
+@@ -1,6 +1,5 @@
+ import { FileText } from "lucide-react";
+-import { Link, Redirect, useLocation } from "wouter";
+-import { APPEAL_ONLY_COMPONENT } from "@shared/schema";
++import { Link, useLocation } from "wouter";
+ import { Button } from "@/components/ui/button";
+ import { Card, CardContent } from "@/components/ui/card";
+ import { PageHeader } from "@/components/layout/PageHeader";
+@@ -23,18 +22,11 @@ export default function GrievancesAdd() {
+   const { hasPermission, hasComponent } = useAuth();
+   const isAdmin = hasPermission("admin");
+   const showBargainingUnit = hasComponent("bargainingunits");
+-  // Appeal-only (BAO) surface: there is no generic Add Grievance path — the
+-  // server rejects generic creation, so send staff to the appeal intake.
+-  const appealOnly = hasComponent(APPEAL_ONLY_COMPONENT);
+   const [isSubmitting, setIsSubmitting] = useState(false);
+   const [cardinality, setCardinality] = useState<GrievanceCardinality>("individual");
+   const [staged, setStaged] = useState<SectionWorker[]>([]);
+   const [stagedEmployerId, setStagedEmployerId] = useState<string | null>(null);
+ 
+-  if (appealOnly) {
+-    return <Redirect to="/grievances/appeal" replace />;
+-  }
+-
+   const tabs = [
+     { id: "list", label: "List", href: "/grievances" },
+     { id: "add", label: "Add", href: "/grievances/add" },
+diff --git a/client/src/pages/grievances-appeal-add.tsx b/client/src/pages/grievances-appeal-add.tsx
+deleted file mode 100644
+index 09641039c1e34ff6b0acfc7bb45be7a839ae57fa..0000000000000000000000000000000000000000
+--- a/client/src/pages/grievances-appeal-add.tsx
++++ /dev/null
+@@ -1,354 +0,0 @@
+-import { useState } from "react";
+-import { Gavel } from "lucide-react";
+-import { Link, useLocation } from "wouter";
+-import { useForm } from "react-hook-form";
+-import { zodResolver } from "@hookform/resolvers/zod";
+-import { z } from "zod";
+-import { useQuery } from "@tanstack/react-query";
+-import { Button } from "@/components/ui/button";
+-import { Card, CardContent } from "@/components/ui/card";
+-import { Alert, AlertDescription } from "@/components/ui/alert";
+-import {
+-  Form,
+-  FormControl,
+-  FormField,
+-  FormItem,
+-  FormLabel,
+-  FormMessage,
+-} from "@/components/ui/form";
+-import {
+-  Select,
+-  SelectContent,
+-  SelectItem,
+-  SelectTrigger,
+-  SelectValue,
+-} from "@/components/ui/select";
+-import { PageHeader } from "@/components/layout/PageHeader";
+-import { GrievanceWorkerSection, type SectionWorker, type WorkerSearchHit } from "@/components/grievances/grievance-worker-section";
+-import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
+-import { useToast } from "@/hooks/use-toast";
+-import { useAuth } from "@/contexts/AuthContext";
+-import { APPEAL_ONLY_COMPONENT } from "@shared/schema";
+-
+-interface OptionItem {
+-  id: string;
+-  name: string;
+-}
+-
+-interface BenefitItem {
+-  id: string;
+-  name: string;
+-  providerId: string | null;
+-  providerName: string | null;
+-}
+-
+-// In appeal-only (BAO) mode the initial status comes from the configured
+-// appeal workflow settings, so the form neither shows nor validates it.
+-const appealFormSchema = z.object({
+-  categoryId: z.string().uuid("Please select a category"),
+-  statusId: z.string().optional(),
+-  benefitId: z.string().uuid("Please select a benefit"),
+-  denialReasonId: z.string().uuid("Please select a denial reason"),
+-});
+-
+-type AppealFormValues = z.infer<typeof appealFormSchema>;
+-
+-export default function GrievancesAppealAdd() {
+-  const [, navigate] = useLocation();
+-  const { toast } = useToast();
+-  const { hasComponent } = useAuth();
+-  const appealOnly = hasComponent(APPEAL_ONLY_COMPONENT);
+-  const [isSubmitting, setIsSubmitting] = useState(false);
+-  const [worker, setWorker] = useState<SectionWorker | null>(null);
+-
+-  const { data: categories = [] } = useQuery<OptionItem[]>({
+-    queryKey: ["/api/options/grievance-category"],
+-  });
+-  const { data: statuses = [] } = useQuery<OptionItem[]>({
+-    queryKey: ["/api/options/grievance-status"],
+-  });
+-  const { data: benefits = [], isLoading: benefitsLoading } = useQuery<BenefitItem[]>({
+-    queryKey: ["/api/grievances/appeal/benefits"],
+-  });
+-  const { data: denialReasons = [], isLoading: reasonsLoading } = useQuery<OptionItem[]>({
+-    queryKey: ["/api/options/grievance-denial-reason"],
+-  });
+-
+-  const form = useForm<AppealFormValues>({
+-    resolver: zodResolver(appealFormSchema),
+-    defaultValues: { categoryId: "", statusId: "", benefitId: "", denialReasonId: "" },
+-  });
+-
+-  const selectedBenefitId = form.watch("benefitId");
+-  const selectedBenefit = benefits.find((b) => b.id === selectedBenefitId);
+-
+-  const addWorker = (hit: WorkerSearchHit) => {
+-    setWorker({ workerId: hit.id, siriusId: hit.siriusId, displayName: hit.displayName, primary: true });
+-  };
+-  const removeWorker = () => setWorker(null);
+-
+-  const handleSubmit = async (values: AppealFormValues) => {
+-    if (!worker) {
+-      toast({ title: "A worker is required for an appeal", variant: "destructive" });
+-      return;
+-    }
+-    if (!appealOnly && !values.statusId) {
+-      form.setError("statusId", { message: "Please select a status" });
+-      return;
+-    }
+-    setIsSubmitting(true);
+-    try {
+-      const created = await apiRequest("POST", "/api/grievances/appeal", {
+-        categoryId: values.categoryId,
+-        // Appeal-only mode: the server applies the configured Submitted
+-        // status and timeline template — the client never picks a status.
+-        ...(appealOnly ? {} : { statusId: values.statusId }),
+-        workerId: worker.workerId,
+-        benefitId: values.benefitId,
+-        denialReasonId: values.denialReasonId,
+-      });
+-      await queryClient.invalidateQueries({ queryKey: ["/api/grievances"] });
+-      toast({
+-        title: "Appeal created",
+-        description: "Upload the appeal letter on the Files tab.",
+-      });
+-      navigate(`/grievance/${created.id}/files`);
+-    } catch (error: any) {
+-      toast({
+-        title: "Failed to create appeal",
+-        description: getApiErrorMessage(error, "Please try again."),
+-        variant: "destructive",
+-      });
+-    } finally {
+-      setIsSubmitting(false);
+-    }
+-  };
+-
+-  const tabs = appealOnly
+-    ? [
+-        { id: "list", label: "List", href: "/grievances" },
+-        { id: "appeal", label: "Add Appeal", href: "/grievances/appeal" },
+-      ]
+-    : [
+-        { id: "list", label: "List", href: "/grievances" },
+-        { id: "add", label: "Add Grievance", href: "/grievances/add" },
+-        { id: "appeal", label: "Add Appeal", href: "/grievances/appeal" },
+-      ];
+-
+-  const noDenialReasons = !reasonsLoading && denialReasons.length === 0;
+-
+-  return (
+-    <div className="bg-background text-foreground min-h-screen">
+-      <PageHeader
+-        title="Add Appeal"
+-        icon={<Gavel className="text-primary-foreground" size={16} />}
+-        backLink={{
+-          href: "/grievances",
+-          label: appealOnly ? "Back to Appeals" : "Back to Grievances",
+-        }}
+-      />
+-
+-      <div className="bg-card border-b border-border">
+-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+-          <div className="flex items-center space-x-2 py-3">
+-            {tabs.map((tab) => (
+-              <Link key={tab.id} href={tab.href}>
+-                <Button
+-                  variant={tab.id === "appeal" ? "default" : "outline"}
+-                  size="sm"
+-                  data-testid={`button-grievances-${tab.id}`}
+-                >
+-                  {tab.label}
+-                </Button>
+-              </Link>
+-            ))}
+-          </div>
+-        </div>
+-      </div>
+-
+-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+-        {noDenialReasons && (
+-          <Alert className="mb-6" data-testid="alert-no-denial-reasons">
+-            <AlertDescription>
+-              No denial reasons are configured. Go to{" "}
+-              <Link href="/config/options/grievance-denial-reason" className="underline">
+-                Options → Appeal Denial Reasons
+-              </Link>{" "}
+-              and add at least one before recording an appeal.
+-            </AlertDescription>
+-          </Alert>
+-        )}
+-
+-        <Card>
+-          <CardContent className="pt-6 max-w-2xl">
+-            <Form {...form}>
+-              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+-
+-                {/* Worker — required, single */}
+-                <div>
+-                  <label className="text-sm font-medium mb-2 block">
+-                    Worker <span className="text-destructive">*</span>
+-                  </label>
+-                  <GrievanceWorkerSection
+-                    cardinality="individual"
+-                    workers={worker ? [worker] : []}
+-                    onAdd={addWorker}
+-                    onRemove={removeWorker}
+-                    onSetPrimary={() => {}}
+-                    busy={isSubmitting}
+-                  />
+-                  {!worker && (
+-                    <p className="text-sm text-muted-foreground mt-1" data-testid="text-worker-required">
+-                      Select the worker who filed the appeal.
+-                    </p>
+-                  )}
+-                </div>
+-
+-                {/* Category */}
+-                <FormField
+-                  control={form.control}
+-                  name="categoryId"
+-                  render={({ field }) => (
+-                    <FormItem>
+-                      <FormLabel>Category</FormLabel>
+-                      <Select onValueChange={field.onChange} value={field.value}>
+-                        <FormControl>
+-                          <SelectTrigger data-testid="select-appeal-category">
+-                            <SelectValue placeholder="Select a category" />
+-                          </SelectTrigger>
+-                        </FormControl>
+-                        <SelectContent>
+-                          {categories.map((c) => (
+-                            <SelectItem key={c.id} value={c.id} data-testid={`option-category-${c.id}`}>
+-                              {c.name}
+-                            </SelectItem>
+-                          ))}
+-                        </SelectContent>
+-                      </Select>
+-                      <FormMessage />
+-                    </FormItem>
+-                  )}
+-                />
+-
+-                {/* Initial Status — appeal-only mode applies the configured
+-                    Submitted status and timeline template automatically. */}
+-                {appealOnly ? (
+-                  <p className="text-sm text-muted-foreground" data-testid="text-appeal-defaults-note">
+-                    The appeal will start in the configured Submitted status and
+-                    automatically receive the appeal timeline template.
+-                  </p>
+-                ) : (
+-                  <FormField
+-                    control={form.control}
+-                    name="statusId"
+-                    render={({ field }) => (
+-                      <FormItem>
+-                        <FormLabel>Initial Status</FormLabel>
+-                        <Select onValueChange={field.onChange} value={field.value}>
+-                          <FormControl>
+-                            <SelectTrigger data-testid="select-appeal-status">
+-                              <SelectValue placeholder="Select a status" />
+-                            </SelectTrigger>
+-                          </FormControl>
+-                          <SelectContent>
+-                            {statuses.map((s) => (
+-                              <SelectItem key={s.id} value={s.id} data-testid={`option-status-${s.id}`}>
+-                                {s.name}
+-                              </SelectItem>
+-                            ))}
+-                          </SelectContent>
+-                        </Select>
+-                        <FormMessage />
+-                      </FormItem>
+-                    )}
+-                  />
+-                )}
+-
+-                {/* Benefit (denied) */}
+-                <FormField
+-                  control={form.control}
+-                  name="benefitId"
+-                  render={({ field }) => (
+-                    <FormItem>
+-                      <FormLabel>Denied Benefit</FormLabel>
+-                      <Select onValueChange={field.onChange} value={field.value} disabled={benefitsLoading}>
+-                        <FormControl>
+-                          <SelectTrigger data-testid="select-appeal-benefit">
+-                            <SelectValue placeholder={benefitsLoading ? "Loading…" : "Select a benefit"} />
+-                          </SelectTrigger>
+-                        </FormControl>
+-                        <SelectContent>
+-                          {benefits.map((b) => (
+-                            <SelectItem key={b.id} value={b.id} data-testid={`option-benefit-${b.id}`}>
+-                              {b.name}
+-                              {b.providerName ? ` — ${b.providerName}` : ""}
+-                            </SelectItem>
+-                          ))}
+-                        </SelectContent>
+-                      </Select>
+-                      {selectedBenefit && (
+-                        <p className="text-sm text-muted-foreground" data-testid="text-benefit-carrier">
+-                          Carrier:{" "}
+-                          <span className="font-medium">
+-                            {selectedBenefit.providerName ?? "No carrier on file"}
+-                          </span>
+-                        </p>
+-                      )}
+-                      <FormMessage />
+-                    </FormItem>
+-                  )}
+-                />
+-
+-                {/* Denial Reason */}
+-                <FormField
+-                  control={form.control}
+-                  name="denialReasonId"
+-                  render={({ field }) => (
+-                    <FormItem>
+-                      <FormLabel>Denial Reason</FormLabel>
+-                      <Select onValueChange={field.onChange} value={field.value} disabled={reasonsLoading || noDenialReasons}>
+-                        <FormControl>
+-                          <SelectTrigger data-testid="select-appeal-denial-reason">
+-                            <SelectValue placeholder={reasonsLoading ? "Loading…" : noDenialReasons ? "No reasons configured" : "Select a denial reason"} />
+-                          </SelectTrigger>
+-                        </FormControl>
+-                        <SelectContent>
+-                          {denialReasons.map((r) => (
+-                            <SelectItem key={r.id} value={r.id} data-testid={`option-denial-reason-${r.id}`}>
+-                              {r.name}
+-                            </SelectItem>
+-                          ))}
+-                        </SelectContent>
+-                      </Select>
+-                      <FormMessage />
+-                    </FormItem>
+-                  )}
+-                />
+-
+-                <p className="text-sm text-muted-foreground" data-testid="text-letter-note">
+-                  After saving, upload the appeal letter on the <strong>Files</strong> tab of the
+-                  new grievance.
+-                </p>
+-
+-                <div className="flex items-center gap-3">
+-                  <Button
+-                    type="submit"
+-                    disabled={isSubmitting || noDenialReasons}
+-                    data-testid="button-submit-appeal"
+-                  >
+-                    {isSubmitting ? "Creating…" : "Create Appeal"}
+-                  </Button>
+-                  <Link href="/grievances">
+-                    <Button type="button" variant="outline" data-testid="button-cancel-appeal">
+-                      Cancel
+-                    </Button>
+-                  </Link>
+-                </div>
+-              </form>
+-            </Form>
+-          </CardContent>
+-        </Card>
+-      </main>
+-    </div>
+-  );
+-}
+diff --git a/scripts/migrate/components/grievance/030_create_options_grievance_denial_reason.ts b/scripts/migrate/components/grievance/030_create_options_grievance_denial_reason.ts
+deleted file mode 100644
+index 4f34f57470a782b630474100c14c63fe2fab9ea8..0000000000000000000000000000000000000000
+--- a/scripts/migrate/components/grievance/030_create_options_grievance_denial_reason.ts
++++ /dev/null
+@@ -1,61 +0,0 @@
+-import { db } from "../../../../server/db";
+-import { sql } from "drizzle-orm";
+-import { registerComponentMigration, type Migration } from "../../../../server/services/migration-runner";
+-import { logger } from "../../../../server/logger";
+-
+-const COMPONENT_ID = "grievance";
+-
+-/**
+- * Create `options_grievance_denial_reason` — configurable denial reasons
+- * for the S2 appeals intake flow. Each appeal grievance stores the selected
+- * denial reason id in `grievances.data.appealMeta.denialReasonId`.
+- *
+- * Shape mirrors `options_grievance_status` (name unique, description, sirius_id
+- * unique, sequence for ordering, data jsonb). Idempotent: skips create when
+- * the table already exists.
+- */
+-async function up(): Promise<void> {
+-  const result = await db.execute(sql`
+-    SELECT EXISTS (
+-      SELECT 1 FROM information_schema.tables
+-      WHERE table_schema = 'public' AND table_name = 'options_grievance_denial_reason'
+-    ) AS exists
+-  `);
+-  const exists =
+-    result.rows?.[0]?.exists === true || result.rows?.[0]?.exists === "t";
+-
+-  if (exists) {
+-    logger.info("options_grievance_denial_reason already exists, skipping create", {
+-      service: "migration-grievance-030",
+-    });
+-    return;
+-  }
+-
+-  await db.execute(sql`
+-    CREATE TABLE options_grievance_denial_reason (
+-      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+-      name varchar(255) NOT NULL,
+-      description text,
+-      sirius_id varchar UNIQUE,
+-      sequence integer NOT NULL DEFAULT 0,
+-      data jsonb,
+-      CONSTRAINT options_grievance_denial_reason_name_unique UNIQUE (name)
+-    )
+-  `);
+-
+-  logger.info("Created options_grievance_denial_reason table", {
+-    service: "migration-grievance-030",
+-  });
+-}
+-
+-const migration: Migration = {
+-  version: 30,
+-  name: "create_options_grievance_denial_reason",
+-  description:
+-    "Create options_grievance_denial_reason — configurable denial-reason options for S2 appeal grievances (name unique, description, sirius_id unique, sequence, data jsonb). Idempotent.",
+-  up,
+-};
+-
+-registerComponentMigration(COMPONENT_ID, migration);
+-
+-export default migration;
+diff --git a/scripts/migrate/index.ts b/scripts/migrate/index.ts
+index c71c8b2a82e8f0e94f3af39d93c611f2040bb3e3..85284733faf9f11fdf568d7512d24320cfe4b6f8 100644
+--- a/scripts/migrate/index.ts
++++ b/scripts/migrate/index.ts
+@@ -117,7 +117,6 @@ import "./components/grievance/026_add_employer_contact_id_to_grievances";
+ import "./components/grievance/027_create_grievance_status_history_drop_status_id";
+ import "./components/grievance/028_replace_grievance_steps_with_denorm";
+ import "./components/grievance/029_create_grievance_files";
+-import "./components/grievance/030_create_options_grievance_denial_reason";
+ import "./components/grievance.settlement/001_create_grievance_settlement";
+ import "./components/grievance.contract/001_create_grievance_contract_sections";
+ import "./components/grievance.contract/002_create_grievance_contracts";
+diff --git a/server/modules/grievances/grievances.ts b/server/modules/grievances/grievances.ts
+index 00572a7635f9998829ac38f1caa908f7bd2b85e4..f5feb115bf8b2625d527624bee3f1a5612eeceaa 100644
+--- a/server/modules/grievances/grievances.ts
++++ b/server/modules/grievances/grievances.ts
+@@ -2,21 +2,11 @@ import type { Express, Request, Response, NextFunction } from "express";
+ import { z } from "zod";
+ import { eq, asc } from "drizzle-orm";
+ import { storage } from "../../storage";
+-import { requireComponent, isComponentEnabled } from "../components";
++import { requireComponent } from "../components";
+ import { buildContext, getAccessStorage } from "../../services/access-policy-evaluator";
+ import {
+   GRIEVANCE_CARDINALITIES,
+   grievanceTimelineAdjustmentSchema,
+-  APPEAL_META_KEY,
+-  APPEAL_ONLY_COMPONENT,
+-  APPEAL_WORKFLOW_VARIABLE,
+-  appealWorkflowSettingsSchema,
+-  type AppealWorkflowSettings,
+-  trustBenefits,
+-  trustProviders,
+-  workers,
+-  optionsGrievanceDenialReason,
+-  optionsGrievanceStatus,
+ } from "@shared/schema";
+ import { getClient } from "../../storage/transaction-context";
+ 
+diff --git a/server/modules/system/variable-registry.ts b/server/modules/system/variable-registry.ts
+index d8f58a8ab55a5a9790d6d16e100a4e64d05ea026..5ec0a5fe5f9f0b0a5dd07495a729c486445e4f7a 100644
+--- a/server/modules/system/variable-registry.ts
++++ b/server/modules/system/variable-registry.ts
+@@ -2,7 +2,6 @@ import type { Request } from "express";
+ import { z } from "zod";
+ import type { InsertVariable } from "@shared/schema";
+ import { TERMINOLOGY_VARIABLE_NAME, terminologySchema, TERM_REGISTRY } from "@shared/terminology";
+-import { APPEAL_WORKFLOW_VARIABLE, appealWorkflowSettingsSchema } from "@shared/schema";
+ import { buildContext, checkAccess } from "../../services/access-policy-evaluator";
+ import { isComponentEnabled } from "../components";
+ import { dispatchEbaSettingsSchema } from "../dispatch/eba-config";
+@@ -75,17 +74,6 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
+   // Staff-readable, gated by the grievance component (deadline coloring)
+   "grievance.deadline_thresholds": { readTier: "staff", component: "grievance" },
+ 
+-  // BAO appeal workflow settings: initial (Submitted) status + default
+-  // timeline template applied to every new appeal. Staff-readable so the
+-  // intake form can surface configuration problems; admin-written through
+-  // the Variables UI. Gated by the BAO component that turns on the
+-  // appeal-only surface.
+-  [APPEAL_WORKFLOW_VARIABLE]: {
+-    readTier: "staff",
+-    component: "sitespecific.bao",
+-    schema: appealWorkflowSettingsSchema,
+-  },
+-
+   // Dispatch-owned settings (component-gated in both directions)
+   dispatch_eba_settings: {
+     readTier: "authenticated",
+diff --git a/server/storage/grievances/grievances.ts b/server/storage/grievances/grievances.ts
+index 1e2c2adf56e4b8256191e884335efc53e45b2245..488dda3c5f347a2aa826c04c70f17918d6029a5b 100644
+--- a/server/storage/grievances/grievances.ts
++++ b/server/storage/grievances/grievances.ts
+@@ -146,8 +146,6 @@ export interface GrievanceWithDetails extends Grievance {
+ export interface GrievanceSearchFilters {
+   workerId?: string;
+   employerId?: string;
+-  /** When "appeal", return only grievances that carry an appealMeta payload. */
+-  kind?: "appeal";
+ }
+ 
+ export interface GrievanceStorage {
+@@ -294,11 +292,6 @@ export function createGrievanceStorage(): GrievanceStorage {
+           ),
+         );
+       }
+-      if (filters.kind === "appeal") {
+-        // Filter to grievances whose data jsonb carries appealMeta.kind = "appeal".
+-        conditions.push(sql`${grievances.data}->'appealMeta'->>'kind' = 'appeal'`);
+-      }
+-
+       const baseQuery = client
+         .select({
+           id: grievances.id,
+diff --git a/server/storage/unified-options.ts b/server/storage/unified-options.ts
+index b8552d619a2c00a28437bb82fe534f7739f37c75..497e6a0a6d10acae6dca3a0bd90a91f889fd18ef 100644
+--- a/server/storage/unified-options.ts
++++ b/server/storage/unified-options.ts
+@@ -43,7 +43,6 @@ import {
+   optionsSitespecificBaoNotesTags,
+   optionsWorkerBanType,
+   optionsNoteType,
+-  optionsGrievanceDenialReason,
+   bulkMediumEnum,
+ } from "@shared/schema";
+ import { noteEntityTypeEnumOptions } from "@shared/notes";
+@@ -95,7 +94,6 @@ export type OptionsTypeName =
+   | "note-type"
+   | "bao-notes-tag-type"
+   | "bao-notes-tag"
+-  | "grievance-denial-reason";
+ 
+ /**
+  * Field definition for dynamic form and table rendering
+diff --git a/shared/components.ts b/shared/components.ts
+index ed0b443ae5e8154d269b077b2f9ac74b3881eb78..51a1887e727fabbbd583610ca5ec0cc797e75f3e 100644
+--- a/shared/components.ts
++++ b/shared/components.ts
+@@ -233,7 +233,7 @@ export const componentRegistry: ComponentDefinition[] = [
+     schemaManifest: {
+       version: 17,
+       schemaPath: "./shared/schema/grievance/schema.ts",
+-      tables: ["options_grievance_status", "options_grievance_category", "options_grievance_steps", "options_grievance_complaints", "options_grievance_remedies", "options_grievance_roles", "options_grievance_denial_reason", "grievances", "grievance_workers", "grievance_employers", "grievance_users", "grievance_complaints", "grievance_remedies", "grievance_steps_denorm", "grievance_timeline_templates", "grievance_timeline_template_steps", "grievance_name_denorm", "grievance_status_history", "grievance_files"]
++      tables: ["options_grievance_status", "options_grievance_category", "options_grievance_steps", "options_grievance_complaints", "options_grievance_remedies", "options_grievance_roles", "grievances", "grievance_workers", "grievance_employers", "grievance_users", "grievance_complaints", "grievance_remedies", "grievance_steps_denorm", "grievance_timeline_templates", "grievance_timeline_template_steps", "grievance_name_denorm", "grievance_status_history", "grievance_files"]
+     }
+   },
+   {
+diff --git a/shared/schema.ts b/shared/schema.ts
+index 3078e58a381cd8c413c90ea4b6d98d5034ade598..fd6ba2e9d927fc93c51308882cd88b47c2e58167 100644
+--- a/shared/schema.ts
++++ b/shared/schema.ts
+@@ -1325,18 +1325,6 @@ export {
+   type GrievanceTimelineAdjustment,
+   TIMELINE_ADJUSTMENT_DATA_KEY,
+   readTimelineAdjustment,
+-  optionsGrievanceDenialReason,
+-  insertOptionsGrievanceDenialReasonSchema,
+-  type OptionsGrievanceDenialReason,
+-  type InsertOptionsGrievanceDenialReason,
+-  appealMetaSchema,
+-  appealWorkflowSettingsSchema,
+-  type AppealWorkflowSettings,
+-  APPEAL_ONLY_COMPONENT,
+-  APPEAL_WORKFLOW_VARIABLE,
+-  type AppealMeta,
+-  APPEAL_META_KEY,
+-  readAppealMeta,
+ } from "./schema/grievance/schema";
+ 
+ export {
+diff --git a/shared/schema/grievance/schema.ts b/shared/schema/grievance/schema.ts
+index d755ed11621a222742cf096f71bf930c99ac3ca8..c034c0f7299c23337b90bbb98156153a9a036091 100644
+--- a/shared/schema/grievance/schema.ts
++++ b/shared/schema/grievance/schema.ts
+@@ -4,93 +4,6 @@ import { createInsertSchema } from "drizzle-zod";
+ import { z } from "zod";
+ import { workers, employers, users, denorm, bargainingUnits, contacts, files } from "../../schema";
+ 
+-/**
+- * Configurable denial reasons for appeal grievances. Stored in
+- * `options_grievance_denial_reason`; referenced as `denialReasonId` inside the
+- * `data.appealMeta` jsonb payload on a grievance row. Owned by the `grievance`
+- * component — the appeal intake flow will surface a configuration warning when
+- * no denial reasons have been created yet.
+- */
+-export const optionsGrievanceDenialReason = pgTable("options_grievance_denial_reason", {
+-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+-  name: varchar("name", { length: 255 }).notNull().unique(),
+-  description: text("description"),
+-  siriusId: varchar("sirius_id").unique(),
+-  sequence: integer("sequence").notNull().default(0),
+-  data: jsonb("data"),
+-});
+-
+-export const insertOptionsGrievanceDenialReasonSchema = createInsertSchema(
+-  optionsGrievanceDenialReason,
+-).omit({ id: true });
+-
+-export type OptionsGrievanceDenialReason = typeof optionsGrievanceDenialReason.$inferSelect;
+-export type InsertOptionsGrievanceDenialReason = z.infer<
+-  typeof insertOptionsGrievanceDenialReasonSchema
+->;
+-
+-/**
+- * Appeal-specific metadata stored in `grievances.data.appealMeta`.
+- * The `kind: "appeal"` discriminant distinguishes appeal grievances from
+- * ordinary ones in the list and detail views without an extra DB column.
+- */
+-export const appealMetaSchema = z.object({
+-  kind: z.literal("appeal"),
+-  /** The trust benefit that was denied (references `trust_benefits.id`). */
+-  benefitId: z.string().uuid(),
+-  /**
+-   * The configured denial reason (references
+-   * `options_grievance_denial_reason.id`).
+-   */
+-  denialReasonId: z.string().uuid(),
+-});
+-
+-export type AppealMeta = z.infer<typeof appealMetaSchema>;
+-
+-/** Key used to store appeal metadata inside `grievances.data`. */
+-export const APPEAL_META_KEY = "appealMeta" as const;
+-
+-/**
+- * Component whose enablement switches the grievance module into the
+- * appeal-only product surface (BAO deployments): generic grievance creation
+- * is rejected server-side and hidden client-side, and appeal intake applies
+- * the configured appeal workflow defaults instead of asking staff for an
+- * initial status.
+- */
+-export const APPEAL_ONLY_COMPONENT = "sitespecific.bao" as const;
+-
+-/**
+- * Variables-row name holding the BAO appeal workflow settings (validated by
+- * `appealWorkflowSettingsSchema` in the variable registry). Edited through
+- * the admin Variables UI; read server-side by the appeal intake route.
+- */
+-export const APPEAL_WORKFLOW_VARIABLE = "sitespecific.bao.appeal_workflow" as const;
+-
+-/**
+- * BAO appeal workflow settings: the status every new appeal starts in (the
+- * configured "Submitted" status) and the timeline template automatically
+- * assigned to new appeals. Both are ids into existing grievance tables;
+- * existence is re-checked at intake time so a stale configuration fails
+- * loudly rather than silently creating a malformed appeal.
+- */
+-export const appealWorkflowSettingsSchema = z.object({
+-  /** `options_grievance_status.id` every new appeal starts in. */
+-  initialStatusId: z.string().uuid("initialStatusId must be a status id"),
+-  /** `grievance_timeline_templates.id` assigned to every new appeal. */
+-  timelineTemplateId: z.string().uuid("timelineTemplateId must be a timeline template id"),
+-});
+-
+-export type AppealWorkflowSettings = z.infer<typeof appealWorkflowSettingsSchema>;
+-
+-/** Read and validate appeal metadata from a raw `data` jsonb value. */
+-export function readAppealMeta(data: unknown): AppealMeta | null {
+-  if (!data || typeof data !== "object") return null;
+-  const raw = (data as Record<string, unknown>)[APPEAL_META_KEY];
+-  if (raw === undefined || raw === null) return null;
+-  const parsed = appealMetaSchema.safeParse(raw);
+-  return parsed.success ? parsed.data : null;
+-}
+-
+ export const optionsGrievanceStatus = pgTable("options_grievance_status", {
+   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+   name: varchar("name", { length: 255 }).notNull().unique(),
+diff --git a/shared/tabRegistry.ts b/shared/tabRegistry.ts
+index 0395b2392a4ca59fb8a17b16e23c847fe17d29e2..e1711e63b1b81b002d370afa67bca3a6c1fee20e 100644
+--- a/shared/tabRegistry.ts
++++ b/shared/tabRegistry.ts
+@@ -23,12 +23,6 @@ export interface TabDefinition {
+   termKey?: string;
+   /** Whether to use plural form for terminology substitution */
+   termPlural?: boolean;
+-  /**
+-   * Label used instead of `label` when the BAO appeal-only surface is active
+-   * (sitespecific.bao component enabled): grievance surfaces are presented as
+-   * appeals without a global Terminology rename.
+-   */
+-  appealOnlyLabel?: string;
+   /**
+    * For a parent tab, navigate to its first ACCESSIBLE child instead of its
+    * own hrefTemplate. Use this when the parent's hrefTemplate points at a child
+@@ -240,7 +234,7 @@ export const workerTabTree: HierarchicalTab[] = [
+     ]
+   },
+   { id: 'vdb-pension', label: 'VDB Pension', hrefTemplate: '/workers/{id}/vdb-pension', permission: 'staff', component: 'sitespecific.gbhet.pension' },
+-  { id: 'grievances', label: 'Grievances', hrefTemplate: '/workers/{id}/grievances', permission: 'staff', component: 'grievance', appealOnlyLabel: 'Appeals' },
++  { id: 'grievances', label: 'Grievances', hrefTemplate: '/workers/{id}/grievances', permission: 'staff', component: 'grievance' },
+   { id: 'notes', label: 'Notes', hrefTemplate: '/workers/{id}/notes', permission: 'staff' },
+   { id: 'cases', label: 'Cases', hrefTemplate: '/workers/{id}/cases', permission: 'staff', component: 'sitespecific.bao' },
+   { id: 'logs', label: 'Logs', hrefTemplate: '/workers/{id}/logs', permission: 'staff' },
+@@ -275,7 +269,7 @@ export const employerTabTree: HierarchicalTab[] = [
+     ]
+   },
+   { id: 'dispatch', label: 'Dispatch', hrefTemplate: '/employers/{id}/dispatch', permission: 'staff', component: 'dispatch' },
+-  { id: 'grievances', label: 'Grievances', hrefTemplate: '/employers/{id}/grievances', permission: 'staff', component: 'grievance', appealOnlyLabel: 'Appeals' },
++  { id: 'grievances', label: 'Grievances', hrefTemplate: '/employers/{id}/grievances', permission: 'staff', component: 'grievance' },
+   { id: 'school-attributes', label: 'School Attributes', hrefTemplate: '/employers/{id}/school-attributes', policyId: 'employer.steward.view', component: 'sitespecific.btu' },
+   { id: 'sitespecific-bao-immediate-eligibility', label: 'Immediate Eligibility', hrefTemplate: '/employers/{id}/sitespecific-bao-immediate-eligibility', permission: 'staff', component: 'sitespecific.bao' },
+ ];
+diff --git a/tests/grievances/appeal-intake.test.ts b/tests/grievances/appeal-intake.test.ts
+deleted file mode 100644
+index e4c349a8fb507ee962651562c36c26db1e45488f..0000000000000000000000000000000000000000
+--- a/tests/grievances/appeal-intake.test.ts
++++ /dev/null
+@@ -1,726 +0,0 @@
+-/**
+- * S2 Appeals — grievance route integration tests.
+- *
+- * Covers:
+- *   1. Component + authorization gating (appeal routes honour the same gates as
+- *      ordinary grievance routes)
+- *   2. Successful appeal creation: worker linked, appealMeta stored, status
+- *      history written, response includes appeal data
+- *   3. Input validation: missing/invalid fields each produce 400
+- *   4. Reference validation: unknown worker / benefit / denial-reason / status
+- *      each produce 400
+- *   5. `kind=appeal` search filter returns only appeal grievances
+- *   6. Benefits endpoint returns active benefits with provider name
+- *   7. Ordinary (non-appeal) grievance creation is unaffected
+- */
+-import express from "express";
+-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+-import { registerGrievanceRoutes } from "../../server/modules/grievances/grievances";
+-import { storage } from "../../server/storage";
+-import { getOptionsStorage } from "../../server/modules/options-registry";
+-import { updateComponentCache } from "../../server/services/component-cache";
+-// Import all grievance component migrations so the tables are present in the
+-// test database (they are idempotent and only create tables when absent).
+-import "../../scripts/migrate/components/grievance/001_create_options_grievance_status";
+-import "../../scripts/migrate/components/grievance/002_create_options_grievance_category";
+-import "../../scripts/migrate/components/grievance/003_create_grievances";
+-import "../../scripts/migrate/components/grievance/004_add_cardinality_to_grievances";
+-import "../../scripts/migrate/components/grievance/005_add_primary_to_grievance_workers";
+-import "../../scripts/migrate/components/grievance/006_add_class_description_to_grievances";
+-import "../../scripts/migrate/components/grievance/007_add_sirius_id_and_open_to_options_grievance_status";
+-import "../../scripts/migrate/components/grievance/008_add_sequence_to_options_grievance_status";
+-import "../../scripts/migrate/components/grievance/009_create_options_grievance_steps";
+-import "../../scripts/migrate/components/grievance/010_create_grievance_steps";
+-import "../../scripts/migrate/components/grievance/011_create_grievance_timeline_templates";
+-import "../../scripts/migrate/components/grievance/012_add_sequence_to_grievance_timeline_template_steps";
+-import "../../scripts/migrate/components/grievance/013_add_timeline_template_id_to_grievances";
+-import "../../scripts/migrate/components/grievance/014_create_options_grievance_complaints";
+-import "../../scripts/migrate/components/grievance/015_create_options_grievance_remedies";
+-import "../../scripts/migrate/components/grievance/016_create_grievance_complaints";
+-import "../../scripts/migrate/components/grievance/017_create_grievance_remedies";
+-import "../../scripts/migrate/components/grievance/018_drop_complaint_remedy_from_grievances";
+-import "../../scripts/migrate/components/grievance/019_create_options_grievance_roles";
+-import "../../scripts/migrate/components/grievance/020_create_grievance_users";
+-import "../../scripts/migrate/components/grievance/021_add_sirius_id_to_grievances";
+-import "../../scripts/migrate/components/grievance/022_create_grievance_name_denorm";
+-import "../../scripts/migrate/components/grievance/023_grievance_sirius_id_unique_constraint";
+-import "../../scripts/migrate/components/grievance/024_add_bargaining_unit_id_to_grievances";
+-import "../../scripts/migrate/components/grievance/025_make_grievance_sirius_id_not_null";
+-import "../../scripts/migrate/components/grievance/026_add_employer_contact_id_to_grievances";
+-import "../../scripts/migrate/components/grievance/027_create_grievance_status_history_drop_status_id";
+-import "../../scripts/migrate/components/grievance/028_replace_grievance_steps_with_denorm";
+-import "../../scripts/migrate/components/grievance/029_create_grievance_files";
+-import denialReasonMigration from "../../scripts/migrate/components/grievance/030_create_options_grievance_denial_reason";
+-import { getComponentMigrations } from "../../server/services/migration-runner";
+-
+-// After all imports above run, the component migrations are registered and we
+-// can run them all in order inside beforeAll.
+-
+-const run = `appeal-test-${Date.now()}`;
+-
+-let base = "";
+-let closeServer: (() => Promise<void>) | undefined;
+-let workerId = "";
+-let staffId = "";
+-let categoryId = "";
+-let statusId = "";
+-let benefitId = "";
+-let denialReasonId = "";
+-// The deployment's real BAO component state, captured at file start and
+-// restored at file end. The non-BAO describes below require it off.
+-let fileOriginalBaoEnabled = false;
+-
+-async function request(
+-  path: string,
+-  init: RequestInit & { user?: string; staff?: boolean } = {},
+-) {
+-  const headers = new Headers(init.headers as HeadersInit | undefined);
+-  if (init.user) headers.set("x-user", init.user);
+-  if (init.staff === false) headers.set("x-staff", "0");
+-  if (init.body && !headers.has("content-type"))
+-    headers.set("content-type", "application/json");
+-  return fetch(`${base}${path}`, { ...init, headers });
+-}
+-
+-beforeAll(async () => {
+-  // Run all registered grievance component migrations in order (each is
+-  // idempotent: they skip creation when the table already exists).
+-  const grievanceMigrations = getComponentMigrations("grievance").sort((a, b) => a.version - b.version);
+-  for (const mig of grievanceMigrations) {
+-    await mig.up();
+-  }
+-
+-  // Ensure grievance component is enabled.
+-  await updateComponentCache("grievance", true);
+-
+-  // Force a non-BAO baseline for the generic-grievance suites; the BAO
+-  // describe toggles it on for itself and returns to this baseline. The
+-  // deployment's original state is restored in the file-level afterAll.
+-  const componentsVariable = await storage.variables.getByName("components");
+-  fileOriginalBaoEnabled = Boolean((componentsVariable?.value as any)?.["sitespecific.bao"]);
+-  await updateComponentCache("sitespecific.bao", false);
+-
+-  // Resolve prerequisites from the real database.
+-  const allWorkers = await storage.workers.getAllWorkers();
+-  const allStaff = await storage.users.getUsersWithAnyPermission(["staff", "admin"]);
+-  if (!allWorkers[0] || !allStaff[0]) {
+-    throw new Error("appeal-intake.test: prerequisites unavailable — need at least one worker and one staff user");
+-  }
+-  workerId = allWorkers[0].id;
+-  staffId = allStaff[0].id;
+-
+-  const options = getOptionsStorage();
+-  categoryId = (await options.create("grievance-category", { name: `${run}-cat` })).id;
+-  statusId = (await options.create("grievance-status", { name: `${run}-status`, isOpen: true })).id;
+-  denialReasonId = (await options.create("grievance-denial-reason", { name: `${run}-denial-reason` })).id;
+-
+-  // Create an active trust benefit. We use the raw options storage rather than
+-  // the trust-benefit storage so the test doesn't need the trust component
+-  // enabled — the appeal route only needs the row to exist.
+-  const { db } = await import("../../server/db");
+-  const { sql } = await import("drizzle-orm");
+-  // Insert an active trust_benefit row directly.
+-  const benefitResult = await db.execute(
+-    sql`INSERT INTO trust_benefits (id, name, is_active)
+-        VALUES (gen_random_uuid(), ${`${run}-benefit`}, true)
+-        RETURNING id`,
+-  );
+-  const benefit = benefitResult.rows?.[0];
+-  if (!benefit) throw new Error("appeal-intake.test: failed to insert test benefit");
+-  benefitId = (benefit as any).id as string;
+-
+-  // Build the express app.
+-  const app = express();
+-  app.use(express.json());
+-
+-  const requireAuth: any = (req: any, res: any, next: any) => {
+-    if (!req.header("x-user"))
+-      return res.status(401).json({ message: "auth required" });
+-    // Minimal session needed for buildContext / masquerade check.
+-    req.session = { masqueradeUserId: req.header("x-user") };
+-    next();
+-  };
+-  const requireAccess: any =
+-    () => (req: any, res: any, next: any) =>
+-      req.header("x-staff") === "0"
+-        ? res.status(403).json({ message: "staff required" })
+-        : next();
+-
+-  registerGrievanceRoutes(app, requireAuth, requireAccess);
+-
+-  const server = await new Promise<any>((resolve) => {
+-    const s = app.listen(0, "127.0.0.1", () => resolve(s));
+-  });
+-  base = `http://127.0.0.1:${server.address().port}`;
+-  closeServer = () =>
+-    new Promise((resolve, reject) =>
+-      server.close((e: Error) => (e ? reject(e) : resolve())),
+-    );
+-});
+-
+-afterAll(async () => {
+-  await closeServer?.();
+-  // Restore the deployment's real BAO state (shared dev database).
+-  await updateComponentCache("sitespecific.bao", fileOriginalBaoEnabled).catch(() => {});
+-  const options = getOptionsStorage();
+-  await options.delete("grievance-category", categoryId).catch(() => {});
+-  await options.delete("grievance-status", statusId).catch(() => {});
+-  await options.delete("grievance-denial-reason", denialReasonId).catch(() => {});
+-  // Remove the test benefit row.
+-  if (benefitId) {
+-    const { db } = await import("../../server/db");
+-    const { sql } = await import("drizzle-orm");
+-    await db
+-      .execute(sql`DELETE FROM trust_benefits WHERE id = ${benefitId}`)
+-      .catch(() => {});
+-  }
+-});
+-
+-// ---------------------------------------------------------------------------
+-// 1. Authorization / component gating
+-// ---------------------------------------------------------------------------
+-
+-describe("appeal route authorization", () => {
+-  it("rejects unauthenticated requests to the appeal intake endpoint", async () => {
+-    const res = await request("/api/grievances/appeal", { method: "POST" });
+-    expect(res.status).toBe(401);
+-  });
+-
+-  it("rejects non-staff authenticated requests", async () => {
+-    const res = await request("/api/grievances/appeal", {
+-      method: "POST",
+-      user: staffId,
+-      staff: false,
+-    });
+-    expect(res.status).toBe(403);
+-  });
+-
+-  it("rejects unauthenticated requests to the appeal/benefits endpoint", async () => {
+-    const res = await request("/api/grievances/appeal/benefits");
+-    expect(res.status).toBe(401);
+-  });
+-
+-  it("disabling the grievance component blocks appeal routes", async () => {
+-    await updateComponentCache("grievance", false);
+-    const res = await request("/api/grievances/appeal", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({
+-        categoryId, statusId, workerId, benefitId, denialReasonId,
+-      }),
+-    });
+-    expect(res.status).toBe(403);
+-    await updateComponentCache("grievance", true);
+-  });
+-});
+-
+-// ---------------------------------------------------------------------------
+-// 2. Successful appeal creation
+-// ---------------------------------------------------------------------------
+-
+-describe("successful appeal creation", () => {
+-  it("creates an individual grievance with appealMeta and links the worker", async () => {
+-    const res = await request("/api/grievances/appeal", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({ categoryId, statusId, workerId, benefitId, denialReasonId }),
+-    });
+-    expect(res.status).toBe(201);
+-    const body = await res.json();
+-
+-    // The grievance is an individual appeal.
+-    expect(body.cardinality).toBe("individual");
+-
+-    // Appeal metadata is stored in data.appealMeta.
+-    expect(body.data?.appealMeta?.kind).toBe("appeal");
+-    expect(body.data?.appealMeta?.benefitId).toBe(benefitId);
+-    expect(body.data?.appealMeta?.denialReasonId).toBe(denialReasonId);
+-
+-    // The worker is linked.
+-    const workers = body.workers ?? [];
+-    expect(workers.some((w: any) => w.workerId === workerId)).toBe(true);
+-
+-    // The grievance is returned with a category.
+-    expect(body.categoryId).toBe(categoryId);
+-
+-    // The grievance has an id that can be fetched.
+-    const fetchRes = await request(`/api/grievances/${body.id}`, { user: staffId });
+-    expect(fetchRes.status).toBe(200);
+-    const fetched = await fetchRes.json();
+-    expect(fetched.data?.appealMeta?.kind).toBe("appeal");
+-  }, 20_000);
+-});
+-
+-// ---------------------------------------------------------------------------
+-// 3. Input validation
+-// ---------------------------------------------------------------------------
+-
+-describe("appeal intake input validation", () => {
+-  it("rejects missing required fields", async () => {
+-    const res = await request("/api/grievances/appeal", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({}),
+-    });
+-    expect(res.status).toBe(400);
+-  });
+-
+-  it("rejects non-UUID benefitId", async () => {
+-    const res = await request("/api/grievances/appeal", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({
+-        categoryId, statusId, workerId,
+-        benefitId: "not-a-uuid",
+-        denialReasonId,
+-      }),
+-    });
+-    expect(res.status).toBe(400);
+-  });
+-
+-  it("rejects non-UUID denialReasonId", async () => {
+-    const res = await request("/api/grievances/appeal", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({
+-        categoryId, statusId, workerId, benefitId,
+-        denialReasonId: "not-a-uuid",
+-      }),
+-    });
+-    expect(res.status).toBe(400);
+-  });
+-});
+-
+-// ---------------------------------------------------------------------------
+-// 4. Reference validation
+-// ---------------------------------------------------------------------------
+-
+-const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
+-
+-describe("appeal intake reference validation", () => {
+-  it("returns 400 when worker does not exist", async () => {
+-    const res = await request("/api/grievances/appeal", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({
+-        categoryId, statusId,
+-        workerId: ZERO_UUID,
+-        benefitId, denialReasonId,
+-      }),
+-    });
+-    expect(res.status).toBe(400);
+-    expect((await res.json()).message).toMatch(/worker/i);
+-  });
+-
+-  it("returns 400 when benefit does not exist", async () => {
+-    const res = await request("/api/grievances/appeal", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({
+-        categoryId, statusId, workerId,
+-        benefitId: ZERO_UUID,
+-        denialReasonId,
+-      }),
+-    });
+-    expect(res.status).toBe(400);
+-    expect((await res.json()).message).toMatch(/benefit/i);
+-  });
+-
+-  it("returns 400 when denial reason does not exist", async () => {
+-    const res = await request("/api/grievances/appeal", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({
+-        categoryId, statusId, workerId, benefitId,
+-        denialReasonId: ZERO_UUID,
+-      }),
+-    });
+-    expect(res.status).toBe(400);
+-    expect((await res.json()).message).toMatch(/denial reason/i);
+-  });
+-
+-  it("returns 400 when status does not exist", async () => {
+-    const res = await request("/api/grievances/appeal", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({
+-        categoryId,
+-        statusId: ZERO_UUID,
+-        workerId, benefitId, denialReasonId,
+-      }),
+-    });
+-    expect(res.status).toBe(400);
+-    expect((await res.json()).message).toMatch(/status/i);
+-  });
+-});
+-
+-// ---------------------------------------------------------------------------
+-// 5. kind=appeal search filter
+-// ---------------------------------------------------------------------------
+-
+-describe("kind=appeal search filter", () => {
+-  it("returns only appeal grievances when kind=appeal is specified", async () => {
+-    // Create one appeal.
+-    const appealRes = await request("/api/grievances/appeal", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({ categoryId, statusId, workerId, benefitId, denialReasonId }),
+-    });
+-    expect(appealRes.status).toBe(201);
+-    const appeal = await appealRes.json();
+-
+-    // Create a plain grievance.
+-    const plainRes = await request("/api/grievances", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({ categoryId, cardinality: "individual" }),
+-    });
+-    expect(plainRes.status).toBe(201);
+-    const plain = await plainRes.json();
+-
+-    // Search with kind=appeal.
+-    const filterRes = await request("/api/grievances?kind=appeal", { user: staffId });
+-    expect(filterRes.status).toBe(200);
+-    const filtered = await filterRes.json();
+-    const ids = filtered.map((g: any) => g.id);
+-    expect(ids).toContain(appeal.id);
+-    expect(ids).not.toContain(plain.id);
+-
+-    // Search without filter returns both.
+-    const allRes = await request("/api/grievances", { user: staffId });
+-    const all = await allRes.json();
+-    const allIds = all.map((g: any) => g.id);
+-    expect(allIds).toContain(appeal.id);
+-    expect(allIds).toContain(plain.id);
+-  }, 20_000);
+-});
+-
+-// ---------------------------------------------------------------------------
+-// 6. /appeal/benefits endpoint
+-// ---------------------------------------------------------------------------
+-
+-describe("appeal/benefits endpoint", () => {
+-  it("returns active benefits with provider name fields", async () => {
+-    const res = await request("/api/grievances/appeal/benefits", { user: staffId });
+-    expect(res.status).toBe(200);
+-    const body = await res.json();
+-    expect(Array.isArray(body)).toBe(true);
+-    // Our test benefit should be in the list.
+-    const found = body.find((b: any) => b.id === benefitId);
+-    expect(found).toBeDefined();
+-    expect(typeof found.name).toBe("string");
+-    // providerName may be null when no provider is linked — that's OK.
+-    expect("providerName" in found).toBe(true);
+-  }, 10_000);
+-});
+-
+-// ---------------------------------------------------------------------------
+-// 7. Ordinary grievance creation is unaffected
+-// ---------------------------------------------------------------------------
+-
+-describe("ordinary grievance creation unaffected", () => {
+-  it("can still create a plain individual grievance without appeal fields", async () => {
+-    const res = await request("/api/grievances", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({ categoryId, cardinality: "individual" }),
+-    });
+-    expect(res.status).toBe(201);
+-    const body = await res.json();
+-    // Must NOT have appealMeta.
+-    expect(body.data?.appealMeta).toBeUndefined();
+-  }, 10_000);
+-});
+-
+-// ---------------------------------------------------------------------------
+-// 8. Current-status refresh (server side of the edit-card sync)
+-// ---------------------------------------------------------------------------
+-
+-describe("current status refresh after status-history write", () => {
+-  it("detail and list reflect the newly current status immediately", async () => {
+-    // Create an appeal (non-BAO path: explicit statusId).
+-    const createRes = await request("/api/grievances/appeal", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({ categoryId, statusId, workerId, benefitId, denialReasonId }),
+-    });
+-    expect(createRes.status).toBe(201);
+-    const appeal = await createRes.json();
+-
+-    // Add a second, newer status via the status-history endpoint (the same
+-    // call the edit card's Save makes — server stamps "now").
+-    const options = getOptionsStorage();
+-    const second = await options.create("grievance-status", {
+-      name: `${run}-status-refresh`,
+-      isOpen: false,
+-    });
+-    try {
+-      const histRes = await request(`/api/grievances/${appeal.id}/status-history`, {
+-        method: "POST",
+-        user: staffId,
+-        body: JSON.stringify({ statusId: second.id }),
+-      });
+-      expect(histRes.status).toBe(201);
+-
+-      // Detail endpoint now reports the new current status.
+-      const detail = await (await request(`/api/grievances/${appeal.id}`, { user: staffId })).json();
+-      expect(detail.statusId).toBe(second.id);
+-      expect(detail.statusName).toBe(`${run}-status-refresh`);
+-
+-      // List endpoint also reflects it.
+-      const list = await (await request(`/api/grievances?kind=appeal`, { user: staffId })).json();
+-      const row = list.find((g: any) => g.id === appeal.id);
+-      expect(row?.statusId).toBe(second.id);
+-
+-      // History has both entries and the newest is current.
+-      const history = await (
+-        await request(`/api/grievances/${appeal.id}/status-history`, { user: staffId })
+-      ).json();
+-      const current = history.find((h: any) => h.isCurrent);
+-      expect(current?.statusId).toBe(second.id);
+-      expect(history.filter((h: any) => h.statusId === statusId).length).toBe(1);
+-    } finally {
+-      await options.delete("grievance-status", second.id).catch(() => {});
+-    }
+-  }, 20_000);
+-});
+-
+-// ---------------------------------------------------------------------------
+-// 9. BAO appeal-only mode
+-// ---------------------------------------------------------------------------
+-
+-describe("BAO appeal-only mode", () => {
+-  const BAO = "sitespecific.bao";
+-  const VARIABLE = "sitespecific.bao.appeal_workflow";
+-  let submittedStatusId = "";
+-  let closedStatusId = "";
+-  let stepOptionId = "";
+-  let templateId = "";
+-  let variableId = "";
+-  let originalBaoEnabled = false;
+-  let stashedSettings: unknown = null;
+-  let stashedSettingsId = "";
+-
+-  beforeAll(async () => {
+-    // Capture the deployment's real BAO state so we can restore it — this
+-    // suite runs against the shared dev database and must not clobber it.
+-    const componentsVariable = await storage.variables.getByName("components");
+-    originalBaoEnabled = Boolean((componentsVariable?.value as any)?.[BAO]);
+-
+-    // Stash any real appeal-workflow settings so the "missing settings" test
+-    // starts from a clean slate; restored in afterAll.
+-    const existingSettings = await storage.variables.getByName(VARIABLE);
+-    if (existingSettings) {
+-      stashedSettings = existingSettings.value;
+-      stashedSettingsId = existingSettings.id;
+-      await storage.variables.delete(existingSettings.id);
+-    }
+-
+-    const options = getOptionsStorage();
+-    submittedStatusId = (
+-      await options.create("grievance-status", { name: `${run}-submitted`, isOpen: true })
+-    ).id;
+-    closedStatusId = (
+-      await options.create("grievance-status", { name: `${run}-closed`, isOpen: false })
+-    ).id;
+-    stepOptionId = (
+-      await options.create("grievance-step", { name: `${run}-step`, actor: "union" })
+-    ).id;
+-
+-    const template = await storage.grievanceTimelineTemplates.create({
+-      title: `${run}-appeal-template`,
+-    } as any);
+-    templateId = template.id;
+-    await storage.grievanceTimelineTemplates.createStep({
+-      templateId,
+-      stepId: stepOptionId,
+-      fromStatuses: [submittedStatusId],
+-      toStatuses: [closedStatusId],
+-      days: 30,
+-      dayType: "calendar",
+-    } as any);
+-
+-    await updateComponentCache(BAO, true);
+-  });
+-
+-  afterAll(async () => {
+-    // Always restore the deployment's original state: these tests run
+-    // against the shared dev database.
+-    await updateComponentCache(BAO, originalBaoEnabled);
+-    if (variableId) await storage.variables.delete(variableId).catch(() => {});
+-    if (stashedSettingsId) {
+-      // Restore the deployment's real appeal-workflow settings.
+-      await storage.variables
+-        .create({ name: VARIABLE, value: stashedSettings } as any)
+-        .catch(() => {});
+-    }
+-    if (templateId) await storage.grievanceTimelineTemplates.delete(templateId).catch(() => {});
+-    const options = getOptionsStorage();
+-    await options.delete("grievance-step", stepOptionId).catch(() => {});
+-    await options.delete("grievance-status", submittedStatusId).catch(() => {});
+-    await options.delete("grievance-status", closedStatusId).catch(() => {});
+-  });
+-
+-  it("rejects generic grievance creation with 403", async () => {
+-    const res = await request("/api/grievances", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({ categoryId, cardinality: "individual" }),
+-    });
+-    expect(res.status).toBe(403);
+-    expect((await res.json()).message).toMatch(/appeal-only/i);
+-  });
+-
+-  it("refuses appeal intake with an actionable error when settings are missing", async () => {
+-    const res = await request("/api/grievances/appeal", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({ categoryId, workerId, benefitId, denialReasonId }),
+-    });
+-    expect(res.status).toBe(409);
+-    expect((await res.json()).message).toMatch(/appeal workflow settings/i);
+-  });
+-
+-  it("applies the configured initial status and timeline template to new appeals", async () => {
+-    const variable = await storage.variables.create({
+-      name: VARIABLE,
+-      value: { initialStatusId: submittedStatusId, timelineTemplateId: templateId },
+-    } as any);
+-    variableId = variable.id;
+-
+-    // No statusId in the body: the configuration supplies it.
+-    const res = await request("/api/grievances/appeal", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({ categoryId, workerId, benefitId, denialReasonId }),
+-    });
+-    expect(res.status).toBe(201);
+-    const appeal = await res.json();
+-
+-    // Configured Submitted status became the current status via history.
+-    const detail = await (await request(`/api/grievances/${appeal.id}`, { user: staffId })).json();
+-    expect(detail.statusId).toBe(submittedStatusId);
+-    expect(detail.timelineTemplateId).toBe(templateId);
+-    expect(detail.data?.appealMeta?.kind).toBe("appeal");
+-
+-    const history = await (
+-      await request(`/api/grievances/${appeal.id}/status-history`, { user: staffId })
+-    ).json();
+-    expect(history.length).toBe(1);
+-    expect(history[0].statusId).toBe(submittedStatusId);
+-    expect(history[0].isCurrent).toBe(true);
+-
+-    // Timeline computation: the plugin derives a started (uncompleted) step
+-    // occurrence from the appeal's status history + assigned template.
+-    const { grievanceTimelinePlugin } = await import(
+-      "../../server/plugins/system/denorm/plugins/grievanceTimeline"
+-    );
+-    const payload = await grievanceTimelinePlugin.compute(appeal.id);
+-    expect(payload.rows.length).toBe(1);
+-    const rowStep = payload.rows[0];
+-    expect(rowStep.stepId).toBe(stepOptionId);
+-    expect(rowStep.completedYmd).toBeNull();
+-    expect(rowStep.isCurrent).toBe(true);
+-    // Due date = started + 30 calendar days.
+-    const started = new Date(`${rowStep.startedYmd}T00:00:00Z`);
+-    const due = new Date(`${rowStep.dueYmd}T00:00:00Z`);
+-    expect((due.getTime() - started.getTime()) / 86_400_000).toBe(30);
+-  }, 30_000);
+-
+-  it("stale configuration (deleted template) yields an actionable conflict", async () => {
+-    // Point the settings at a template that no longer exists.
+-    await storage.variables.update(variableId, {
+-      value: {
+-        initialStatusId: submittedStatusId,
+-        timelineTemplateId: ZERO_UUID,
+-      },
+-    } as any);
+-    const res = await request("/api/grievances/appeal", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({ categoryId, workerId, benefitId, denialReasonId }),
+-    });
+-    expect(res.status).toBe(409);
+-    expect((await res.json()).message).toMatch(/timeline template/i);
+-    // Restore valid settings.
+-    await storage.variables.update(variableId, {
+-      value: { initialStatusId: submittedStatusId, timelineTemplateId: templateId },
+-    } as any);
+-  });
+-
+-  it("worker-scoped list with kind=appeal hides legacy generic grievances", async () => {
+-    // A legacy generic grievance can predate BAO enablement. Create one via
+-    // the generic route with BAO briefly off (the route is 403 in BAO mode).
+-    await updateComponentCache(BAO, false);
+-    const legacyRes = await request("/api/grievances", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({ categoryId, cardinality: "individual" }),
+-    });
+-    expect(legacyRes.status).toBe(201);
+-    const legacy = await legacyRes.json();
+-    const linkRes = await request(`/api/grievances/${legacy.id}/workers`, {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({ workerId }),
+-    });
+-    expect(linkRes.status).toBe(201);
+-    await updateComponentCache(BAO, true);
+-
+-    // An appeal for the same worker via the BAO intake path.
+-    const appealRes = await request("/api/grievances/appeal", {
+-      method: "POST",
+-      user: staffId,
+-      body: JSON.stringify({ categoryId, workerId, benefitId, denialReasonId }),
+-    });
+-    expect(appealRes.status).toBe(201);
+-    const appeal = await appealRes.json();
+-
+-    // The worker tab's BAO query (workerId + kind=appeal) shows only appeals.
+-    const filtered = await (
+-      await request(`/api/grievances?workerId=${workerId}&kind=appeal`, { user: staffId })
+-    ).json();
+-    expect(filtered.some((g: any) => g.id === appeal.id)).toBe(true);
+-    expect(filtered.some((g: any) => g.id === legacy.id)).toBe(false);
+-
+-    // Without the kind filter the legacy record is still reachable (data is
+-    // hidden from the appeal surface, not lost).
+-    const unfiltered = await (
+-      await request(`/api/grievances?workerId=${workerId}`, { user: staffId })
+-    ).json();
+-    expect(unfiltered.some((g: any) => g.id === legacy.id)).toBe(true);
+-  }, 30_000);
+-
+-  it("non-BAO behavior is restored when the component is disabled", async () => {
+-    await updateComponentCache(BAO, false);
+-    try {
+-      // Generic creation works again.
+-      const generic = await request("/api/grievances", {
+-        method: "POST",
+-        user: staffId,
+-        body: JSON.stringify({ categoryId, cardinality: "individual" }),
+-      });
+-      expect(generic.status).toBe(201);
+-
+-      // Appeal intake requires an explicit statusId again.
+-      const noStatus = await request("/api/grievances/appeal", {
+-        method: "POST",
+-        user: staffId,
+-        body: JSON.stringify({ categoryId, workerId, benefitId, denialReasonId }),
+-      });
+-      expect(noStatus.status).toBe(400);
+-
+-      const withStatus = await request("/api/grievances/appeal", {
+-        method: "POST",
+-        user: staffId,
+-        body: JSON.stringify({ categoryId, statusId, workerId, benefitId, denialReasonId }),
+-      });
+-      expect(withStatus.status).toBe(201);
+-      const appeal = await withStatus.json();
+-      // No template auto-assignment outside BAO mode.
+-      expect(appeal.timelineTemplateId ?? null).toBeNull();
+-    } finally {
+-      await updateComponentCache(BAO, true);
+-    }
+-  }, 30_000);
+-});
+diff --git a/tests/grievances/appeal-presentation.test.tsx b/tests/grievances/appeal-presentation.test.tsx
+deleted file mode 100644
+index 9f46e9c8f059925bc8075b81d4c04734acd89c2b..0000000000000000000000000000000000000000
+--- a/tests/grievances/appeal-presentation.test.tsx
++++ /dev/null
+@@ -1,72 +0,0 @@
+-/**
+- * BAO appeal-only presentation invariants (UI level, static markup):
+- *
+- *   - a LEGACY GENERIC grievance opened on the BAO surface is WORDED as an
+- *     appeal ("Appeal ID") while KEEPING generic form behavior (the
+- *     cardinality choice stays editable so legacy class data is never
+- *     coerced),
+- *   - the true appeal variant hides the generic creation choices entirely,
+- *   - outside BAO the generic form keeps grievance wording,
+- *   - the worker and employer tab registries carry the appeal-only label the
+- *     tab renderer swaps in when the BAO component is enabled.
+- */
+-import { describe, expect, it, vi } from "vitest";
+-import { renderToStaticMarkup } from "react-dom/server";
+-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+-
+-// The form reads component flags through useAuth; presentation tests control
+-// them directly instead of standing up the whole auth provider.
+-const hasComponentMock = vi.fn((_id: string) => false);
+-vi.mock("@/contexts/AuthContext", () => ({
+-  useAuth: () => ({ hasComponent: hasComponentMock }),
+-}));
+-
+-import { GrievanceForm } from "@/components/grievances/grievance-form";
+-import { getTabTreeForEntity } from "@shared/tabRegistry";
+-import { APPEAL_ONLY_COMPONENT } from "@shared/schema";
+-
+-function renderForm(props: Partial<Parameters<typeof GrievanceForm>[0]> = {}) {
+-  const client = new QueryClient({
+-    defaultOptions: { queries: { retry: false, enabled: false } },
+-  });
+-  return renderToStaticMarkup(
+-    <QueryClientProvider client={client}>
+-      <GrievanceForm onSubmit={() => {}} submitLabel="Save" {...props} />
+-    </QueryClientProvider>,
+-  );
+-}
+-
+-describe("BAO appeal presentation", () => {
+-  it("words a legacy generic record as an appeal while keeping generic behavior", () => {
+-    // A legacy generic grievance opened by direct URL on the BAO surface:
+-    // wording follows the surface, behavior follows the record.
+-    const html = renderForm({ variant: "grievance", wording: "appeal" });
+-    expect(html).toContain("Appeal ID");
+-    expect(html).not.toContain("Grievance ID");
+-    // Generic behavior preserved: cardinality stays visible and editable.
+-    expect(html).toContain("Cardinality");
+-  });
+-
+-  it("hides generic creation choices on the true appeal variant", () => {
+-    const html = renderForm({ variant: "appeal" });
+-    expect(html).toContain("Appeal ID");
+-    expect(html).not.toContain("Cardinality");
+-    expect(html).not.toContain(">Status<");
+-  });
+-
+-  it("keeps grievance wording outside BAO", () => {
+-    const html = renderForm({ variant: "grievance" });
+-    expect(html).toContain("Grievance ID");
+-    expect(html).not.toContain("Appeal ID");
+-  });
+-
+-  it("declares the appeal-only label on the worker and employer grievance tabs", () => {
+-    for (const entity of ["worker", "employer"] as const) {
+-      const tab = getTabTreeForEntity(entity).find((t) => t.id === "grievances");
+-      expect(tab, `${entity} grievances tab`).toBeTruthy();
+-      expect(tab!.label).toBe("Grievances");
+-      expect(tab!.appealOnlyLabel).toBe("Appeals");
+-    }
+-    void APPEAL_ONLY_COMPONENT; // documented pairing: the renderer keys the swap on this component
+-  });
+-});
