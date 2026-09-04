@@ -100,6 +100,7 @@ export const optionsTypeRegistry: Record<string, OptionsTypeConfig> = {
   "bao-case-status": createTypeConfig("bao-case-status"),
   "bao-case-type": createTypeConfig("bao-case-type"),
   "bao-case-resolution": createTypeConfig("bao-case-resolution"),
+  "bao-appeal-denial-reason": createTypeConfig("bao-appeal-denial-reason"),
   "bao-notes-tag-type": createTypeConfig("bao-notes-tag-type"),
   "bao-notes-tag": createTypeConfig("bao-notes-tag"),
   "worker-ban-type": createTypeConfig("worker-ban-type"),
