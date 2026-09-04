@@ -1332,12 +1332,33 @@ export type InsertBaoNoteTagAssignment =
 export const BAO_CASE_ENTITY_TYPES = ["worker", "employer", "trust_provider"] as const;
 export type BaoCaseEntityType = (typeof BAO_CASE_ENTITY_TYPES)[number];
 
+export const BAO_CASE_WORKFLOW_CODES = ["general", "benefit_appeal"] as const;
+export type BaoCaseWorkflowCode = (typeof BAO_CASE_WORKFLOW_CODES)[number];
+export const BAO_CASE_WORKFLOW_STEPS = {
+  general: [],
+  benefit_appeal: ["submitted", "auto_denied", "trustee_review", "approved", "denied", "no_response"],
+} as const;
+
+export const optionsBaoCaseType = pgTable("options_bao_case_type", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull().unique(),
+  description: text("description"),
+  sequence: integer("sequence").notNull().default(0),
+  workflowCode: varchar("workflow_code", { length: 64 }).notNull().unique().$type<BaoCaseWorkflowCode>(),
+  data: jsonb("data"),
+});
+
 export const optionsBaoCaseStatus = pgTable("options_bao_case_status", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: varchar("name", { length: 255 }).notNull().unique(),
   description: text("description"),
   closed: boolean("closed").notNull().default(false),
   sequence: integer("sequence").notNull().default(0),
+  caseTypeId: varchar("case_type_id").notNull(),
+  durationDays: integer("duration_days"),
+  workflowStep: varchar("workflow_step", { length: 64 }),
+  defaultResolutionId: varchar("default_resolution_id"),
+  requiresOutreachNote: boolean("requires_outreach_note").notNull().default(false),
   data: jsonb("data"),
 });
 
@@ -1357,6 +1378,7 @@ export const sitespecificBaoCases = pgTable(
     entityId: varchar("entity_id").notNull(),
     assigneeUserId: varchar("assignee_user_id").notNull(),
     statusId: varchar("status_id").notNull(),
+    caseTypeId: varchar("case_type_id").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     deadlineYmd: date("deadline_ymd").notNull(),
     resolutionId: varchar("resolution_id"),
@@ -1419,6 +1441,7 @@ export const sitespecificBaoCaseNotes = pgTable(
 );
 
 export type OptionsBaoCaseStatus = typeof optionsBaoCaseStatus.$inferSelect;
+export type OptionsBaoCaseType = typeof optionsBaoCaseType.$inferSelect;
 export type OptionsBaoCaseResolution = typeof optionsBaoCaseResolution.$inferSelect;
 export type BaoCase = typeof sitespecificBaoCases.$inferSelect;
 export type InsertBaoCase = typeof sitespecificBaoCases.$inferInsert;
@@ -1438,6 +1461,7 @@ export const createBaoCaseRequestSchema = z.object({
   entityId: z.string().min(1),
   deadlineYmd: ymdString,
   statusId: z.string().min(1),
+  caseTypeId: z.string().min(1).optional(),
   assigneeUserId: z.string().min(1).optional(),
   noteId: z.string().min(1).optional(),
   initialNote: baoCaseNoteInputSchema.optional(),
@@ -1465,6 +1489,7 @@ export const listBaoCasesQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
   sort: z.enum(["created", "deadline"]).default("deadline"),
   direction: z.enum(["asc", "desc"]).default("asc"),
+  caseTypeId: z.string().min(1).optional(),
 });
 
 /** One eligible upload as shown in the payment "Upload source" picker. */

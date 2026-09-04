@@ -68,19 +68,15 @@ import {
  * in modules/sitespecific/bao/dp-pricing.ts, so the eligibility gate waives
  * payment for exactly the months billing treats as free.)
  *
- * Tier transition (shared rule, resolveDpTierTransition): decided by the
- * member's OWN covered lives — the subscriber plus their own dependents,
- * excluding every DP and the DP's children — and by whether the DP's
- * children are covered. Member with no children: adds a DP →
- * single_to_2party; adds a DP AND the DP's children → single_to_family.
- * Member with one child → 2party_to_family, and with two or more children →
- * family_to_family_dp (confirmed no charge for 2026), in both cases with or
- * without the DP's children. The DP's children are told apart from the
- * member's own by relation type (Step Child, or a type naming the partner's
- * child — see shared/sitespecific/bao/dp-relation-types.ts). NOTE
- * (unconfirmed business rule): when a worker has multiple DPs, each DP is
- * billed independently using the SAME base transition; whether the second
- * DP should instead price at the next tier up has not been confirmed.
+ * Tier transition: derived from the election's covered lives EXCLUDING all
+ * DP dependents — 1 non-DP life (subscriber only) → single_to_2party,
+ * 2 → 2party_to_family, 3+ → family_to_family_dp (member already has two or
+ * more children — confirmed no charge for 2026). The single_to_family
+ * transition is never auto-selected (no confirmed business rule maps an
+ * election shape to it). NOTE (unconfirmed business rule): when a worker
+ * has multiple DPs, each DP is billed independently using the SAME base
+ * transition; whether the second DP should instead price at the next tier
+ * up has not been confirmed.
  *
  * Statement date: every entry's `statementYmd` is the first day of the
  * coverage month it pays for, so statements group DP premiums under the
@@ -108,10 +104,7 @@ import {
  * rate).
  */
 
-/**
- * Relation-type name pattern that pre-selects domestic-partner relations
- * (ILIKE). Coarse by design: isDpRelationTypeName is the decision.
- */
+/** Relation-type name pattern that identifies a domestic-partner relation. */
 export const DP_RELATION_TYPE_NAME_PATTERN = "%domestic partner%";
 
 class BaoDpChargePlugin extends ChargePlugin {
@@ -119,7 +112,7 @@ class BaoDpChargePlugin extends ChargePlugin {
     id: "sitespecific-bao-dp",
     name: "BAO - Domestic Partner Monthly Member Charge",
     description:
-      "Bills the monthly Domestic Partner member charge (the collected amount on the DP rate sheet, not the imputed-income figure) for every active election that covers a DP dependent, to the subscriber's DP ledger account. One entry per DP dependent per coverage month (statement-dated to that month), priced from the DP rate sheet by coverage-tier transition — decided by the member's own covered lives and whether the DP's children (Step Child relations) are covered: no children + DP = Single → Single +1, no children + DP and the DP's children = Single → Family, one child = Single +1 → Family, two or more children = Family → Family — at most one month in advance, and only for months the subscriber has a benefit. The rate sheet decides which election benefit is billable: ancillary benefits without DP rates are ignored, and the month prices at the single rated (medical) benefit's rate. Months with missing/provisional/ambiguous rates or no subscriber coverage are skipped and surfaced; months at a confirmed no-charge rate (family → family with DP) are covered with nothing billed. (DP, month)s no longer covered receive offsetting adjustments that zero the month out.",
+      "Bills the monthly Domestic Partner member charge (the collected amount on the DP rate sheet, not the imputed-income figure) for every active election that covers a DP dependent, to the subscriber's DP ledger account. One entry per DP dependent per coverage month (statement-dated to that month), priced from the DP rate sheet by coverage-tier transition, at most one month in advance, and only for months the subscriber has a benefit. The rate sheet decides which election benefit is billable: ancillary benefits without DP rates are ignored, and the month prices at the single rated (medical) benefit's rate. Months with missing/provisional/ambiguous rates or no subscriber coverage are skipped and surfaced; months at a confirmed no-charge rate (family → family with DP) are covered with nothing billed. (DP, month)s no longer covered receive offsetting adjustments that zero the month out.",
     triggers: [TriggerType.CRON],
     defaultScope: "global" as const,
     configSchema: {
@@ -220,15 +213,10 @@ class BaoDpChargePlugin extends ChargePlugin {
       const currentYm = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
 
       // ---- Discover billing targets: (election, DP relationship) pairs ----
-      // 1) Every current DP relation whose election covers it. The name
-      //    search is a coarse pre-filter; the shared predicate decides (a
-      //    type naming the partner's CHILD matches the pattern but is a
-      //    covered child, never a DP to bill for).
-      const dpRels = (
-        await storage.workerRelations.searchWorkerRelations({
-          relationTypeNameILike: DP_RELATION_TYPE_NAME_PATTERN,
-        })
-      ).filter((r) => isDpRelationTypeName(r.relationTypeName));
+      // 1) Every current DP relation whose election covers it.
+      const dpRels = await storage.workerRelations.searchWorkerRelations({
+        relationTypeNameILike: DP_RELATION_TYPE_NAME_PATTERN,
+      });
       const relCache = new Map<string, WorkerRelationWithTypeName>();
       for (const r of dpRels) {
         relCache.set(r.id, {

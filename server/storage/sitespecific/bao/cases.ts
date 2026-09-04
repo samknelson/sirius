@@ -3,6 +3,7 @@ import {
   notes,
   optionsBaoCaseResolution,
   optionsBaoCaseStatus,
+  optionsBaoCaseType,
   optionsNoteType,
   rolePermissions,
   roles,
@@ -26,6 +27,8 @@ export interface BaoCaseDetails extends BaoCase {
   assigneeName: string;
   statusName: string;
   statusClosed: boolean;
+  caseTypeName: string;
+  workflowStep: string | null;
   resolutionName: string | null;
   notes?: NoteWithDetails[];
 }
@@ -42,6 +45,7 @@ export interface CreateBaoCaseInput {
   entityId: string;
   deadlineYmd: string;
   statusId: string;
+  caseTypeId?: string;
   assigneeUserId: string;
   noteId?: string;
   initialNote?: {
@@ -80,6 +84,7 @@ export interface BaoCasesStorage {
     entityType?: BaoCaseEntityType;
     entityId?: string;
     assigneeUserId?: string;
+    caseTypeId?: string;
     closed: boolean;
     page: number;
     pageSize: number;
@@ -122,6 +127,8 @@ const detailSelection = {
   assigneeEmail: users.email,
   statusName: optionsBaoCaseStatus.name,
   statusClosed: optionsBaoCaseStatus.closed,
+  caseTypeName: optionsBaoCaseType.name,
+  workflowStep: optionsBaoCaseStatus.workflowStep,
   resolutionName: optionsBaoCaseResolution.name,
 };
 
@@ -131,6 +138,7 @@ function detailQuery() {
     .from(cases)
     .innerJoin(users, eq(users.id, cases.assigneeUserId))
     .innerJoin(optionsBaoCaseStatus, eq(optionsBaoCaseStatus.id, cases.statusId))
+    .innerJoin(optionsBaoCaseType, eq(optionsBaoCaseType.id, cases.caseTypeId))
     .leftJoin(optionsBaoCaseResolution, eq(optionsBaoCaseResolution.id, cases.resolutionId));
 }
 
@@ -250,6 +258,12 @@ export function createBaoCasesStorage(): BaoCasesStorage {
         const status = await getStatus(input.statusId);
         if (!status) throw new Error("INVALID_STATUS");
         if (status.closed) throw new Error("INITIAL_STATUS_CLOSED");
+        const [caseType] = await getClient().select().from(optionsBaoCaseType)
+          .where(eq(optionsBaoCaseType.id, input.caseTypeId ?? status.caseTypeId));
+        if (!caseType || status.caseTypeId !== caseType.id) throw new Error("CASE_TYPE_STATUS_MISMATCH");
+        if (caseType.workflowCode === "benefit_appeal" && status.workflowStep !== "submitted") {
+          throw new Error("INVALID_INITIAL_WORKFLOW_STEP");
+        }
 
         let noteId = input.noteId;
         if (noteId) {
@@ -279,8 +293,9 @@ export function createBaoCasesStorage(): BaoCasesStorage {
         const [created] = await getClient().insert(cases).values({
           entityType: input.entityType,
           entityId: input.entityId,
-          deadlineYmd: input.deadlineYmd,
+          deadlineYmd: status.durationDays == null ? input.deadlineYmd : sql`CURRENT_DATE + ${status.durationDays}::int`,
           statusId: input.statusId,
+          caseTypeId: caseType.id,
           assigneeUserId: input.assigneeUserId,
           resolutionId: null,
           resolutionYmd: null,
@@ -343,22 +358,48 @@ export function createBaoCasesStorage(): BaoCasesStorage {
         const status = await getStatus(nextStatusId);
         if (!status) throw new Error("INVALID_STATUS");
         const previousStatus = await getStatus(existing.statusId);
+        if (status.caseTypeId !== existing.caseTypeId) throw new Error("CASE_TYPE_STATUS_MISMATCH");
+        if (updates.statusId && updates.statusId !== existing.statusId) {
+          const [caseType] = await getClient().select().from(optionsBaoCaseType)
+            .where(eq(optionsBaoCaseType.id, existing.caseTypeId));
+          if (caseType?.workflowCode === "benefit_appeal") {
+            const steps = ["submitted", "auto_denied", "trustee_review", "approved", "denied", "no_response"];
+            const from = steps.indexOf(previousStatus?.workflowStep ?? "");
+            const to = steps.indexOf(status.workflowStep ?? "");
+            if (from < 0 || to !== from + 1) throw new Error("INVALID_WORKFLOW_TRANSITION");
+          }
+        }
         const assignee = updates.assigneeUserId ?? existing.assigneeUserId;
         if (!(await this.isAssignableUser(assignee))) throw new Error("INVALID_ASSIGNEE");
 
         const nextResolutionId = updates.resolutionId !== undefined ? updates.resolutionId : existing.resolutionId;
         const nextResolutionYmd = updates.resolutionYmd !== undefined ? updates.resolutionYmd : existing.resolutionYmd;
         if (status.closed) {
-          if (!nextResolutionId || !nextResolutionYmd) throw new Error("RESOLUTION_REQUIRED");
+          const resolutionId = nextResolutionId ?? status.defaultResolutionId;
+          if (!resolutionId || !nextResolutionYmd) throw new Error("RESOLUTION_REQUIRED");
           const [resolution] = await getClient().select({ id: optionsBaoCaseResolution.id })
-            .from(optionsBaoCaseResolution).where(eq(optionsBaoCaseResolution.id, nextResolutionId));
+            .from(optionsBaoCaseResolution).where(eq(optionsBaoCaseResolution.id, resolutionId));
           if (!resolution) throw new Error("INVALID_RESOLUTION");
+          if (status.requiresOutreachNote) {
+            const [outreach] = await getClient().select({ id: notes.id })
+              .from(sitespecificBaoCaseNotes)
+              .innerJoin(notes, eq(notes.id, sitespecificBaoCaseNotes.noteId))
+              .innerJoin(optionsNoteType, eq(optionsNoteType.id, notes.typeId))
+              .where(and(
+                eq(sitespecificBaoCaseNotes.caseId, id),
+                sql`COALESCE((${optionsNoteType.data}->>'memberOutreach')::boolean, false)`,
+              )).limit(1);
+            if (!outreach) throw new Error("OUTREACH_NOTE_REQUIRED");
+          }
         } else if (!previousStatus?.closed && (nextResolutionId || nextResolutionYmd)) {
           throw new Error("OPEN_CASE_RESOLUTION");
         }
         const normalized = status.closed
-          ? updates
+          ? { ...updates, resolutionId: nextResolutionId ?? status.defaultResolutionId }
           : { ...updates, resolutionId: null, resolutionYmd: null };
+        if (status.durationDays != null && updates.statusId && updates.statusId !== existing.statusId) {
+          (normalized as any).deadlineYmd = sql`CURRENT_DATE + ${status.durationDays}::int`;
+        }
         const [updated] = await getClient().update(cases).set(normalized).where(eq(cases.id, id)).returning();
         await emitCaseStatusSaved(updated, existing.statusId, status.name, "updated", {
           previousAssigneeUserId: existing.assigneeUserId,
@@ -394,6 +435,7 @@ export function createBaoCasesStorage(): BaoCasesStorage {
       if (input.entityType) conditions.push(eq(cases.entityType, input.entityType));
       if (input.entityId) conditions.push(eq(cases.entityId, input.entityId));
       if (input.assigneeUserId) conditions.push(eq(cases.assigneeUserId, input.assigneeUserId));
+      if (input.caseTypeId) conditions.push(eq(cases.caseTypeId, input.caseTypeId));
       const where = and(...conditions);
       const [{ count }] = await getClient().select({ count: sql<number>`count(*)::int` })
         .from(cases).innerJoin(optionsBaoCaseStatus, eq(optionsBaoCaseStatus.id, cases.statusId)).where(where);

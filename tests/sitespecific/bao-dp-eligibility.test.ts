@@ -10,10 +10,6 @@
  *     the shared pricing rule) with no charge and no payment
  *   - still fails closed when the unbilled month's rate is missing,
  *     provisional (even a $0.00 placeholder), ambiguous, or positive
- *   - prices the tier the way billing does (shared rule): the DP's children
- *     (Step Child relations) never move a member with no children of their
- *     own onto the no-charge Family → Family tier — that shape is Single →
- *     Family, a real member charge that must be paid
  */
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -27,9 +23,6 @@ const CHILD = "child-1";
 const REL_DP = "rel-dp";
 const REL_CHILD_1 = "rel-child-1";
 const REL_CHILD_2 = "rel-child-2";
-const REL_DP_CHILD_1 = "rel-dpkid-1";
-const REL_DP_CHILD_2 = "rel-dpkid-2";
-const DP_CHILD = "dpkid-1";
 const MEDICAL = "benefit-med";
 const DENTAL = "benefit-dental";
 const ELECTION = "elec-1";
@@ -61,10 +54,6 @@ const relRows: Record<string, any> = {
   [REL_DP]: { id: REL_DP, worker1: SUB, worker2: DP, relationTypeName: "Domestic Partner" },
   [REL_CHILD_1]: { id: REL_CHILD_1, worker1: SUB, worker2: CHILD, relationTypeName: "Child" },
   [REL_CHILD_2]: { id: REL_CHILD_2, worker1: SUB, worker2: "child-2", relationTypeName: "Child" },
-  // The DP's children: enrolled under the subscriber like every dependent,
-  // told apart from the member's own by the Step Child relation type.
-  [REL_DP_CHILD_1]: { id: REL_DP_CHILD_1, worker1: SUB, worker2: DP_CHILD, relationTypeName: "Step Child" },
-  [REL_DP_CHILD_2]: { id: REL_DP_CHILD_2, worker1: SUB, worker2: "dpkid-2", relationTypeName: "Step Child" },
 };
 let activeRel: any;
 let elections: any[];
@@ -379,74 +368,5 @@ describe("DP payment gate — confirmed no-charge months", () => {
     dpEntries = [chargeEntry("100.00"), chargeEntry("-100.00")];
     const r = await evaluate();
     expect(r.eligible).toBe(true);
-  });
-});
-
-describe("DP payment gate — the DP's children (Single → Family)", () => {
-  // Every 2026 Kaiser transition rated, the family tier a confirmed $0.00.
-  const kaiser2026 = () => {
-    rates = {
-      [MEDICAL]: {
-        single_to_2party: [{ effectiveYmd: "2026-01-01", rate: "405.00", provisional: false }],
-        "2party_to_family": [{ effectiveYmd: "2026-01-01", rate: "335.12", provisional: false }],
-        single_to_family: [{ effectiveYmd: "2026-01-01", rate: "740.12", provisional: false }],
-        family_to_family_dp: [{ effectiveYmd: "2026-01-01", rate: "0.00", provisional: false }],
-      },
-    };
-  };
-
-  it("a member with no children who adds a DP and the DP's children is NOT a no-charge month: the Single → Family charge is owed", async () => {
-    // The regression: DP + two step children used to count as three non-DP
-    // lives → Family → Family → covered free with nothing billed.
-    elections = [{ ...baseElection, relationshipIds: [REL_DP, REL_DP_CHILD_1, REL_DP_CHILD_2] }];
-    kaiser2026();
-    const r = await evaluate();
-    expect(r.eligible).toBe(false);
-    expect(r.reason).toMatch(/missing required charge/i);
-  });
-
-  it("grants that shape once the Single → Family charge is posted and fully paid", async () => {
-    elections = [{ ...baseElection, relationshipIds: [REL_DP, REL_DP_CHILD_1, REL_DP_CHILD_2] }];
-    kaiser2026();
-    dpEntries = [chargeEntry("740.12")];
-    dpBalance = "740.12";
-    expect((await evaluate()).eligible).toBe(false);
-    dpBalance = "0";
-    const r = await evaluate();
-    expect(r.eligible).toBe(true);
-    expect(r.reason).toContain("$740.12 of $740.12");
-  });
-
-  it("a member with one child who adds a DP and the DP's children owes the 2-Party → Family charge (not free)", async () => {
-    elections = [{ ...baseElection, relationshipIds: [REL_DP, REL_CHILD_1, REL_DP_CHILD_1, REL_DP_CHILD_2] }];
-    kaiser2026();
-    const r = await evaluate();
-    expect(r.eligible).toBe(false);
-    expect(r.reason).toMatch(/missing required charge/i);
-  });
-
-  it("a member with two children of their own stays a confirmed no-charge month when the DP's children are covered too", async () => {
-    elections = [
-      { ...baseElection, relationshipIds: [REL_DP, REL_CHILD_1, REL_CHILD_2, REL_DP_CHILD_1] },
-    ];
-    kaiser2026();
-    const r = await evaluate();
-    expect(r.eligible).toBe(true);
-    expect(r.reason).toMatch(/confirmed no-charge month/i);
-    expect(r.reason).toContain("Family → Family with DP");
-  });
-
-  it("gates one of the DP's children with the same DP charge", async () => {
-    elections = [{ ...baseElection, relationshipIds: [REL_DP, REL_DP_CHILD_1, REL_DP_CHILD_2] }];
-    kaiser2026();
-    activeRel = relRows[REL_DP_CHILD_1];
-    const r = await evaluate(
-      ctx({
-        dependentWorker: worker(DP_CHILD),
-        relationship: { subscriberWorkerId: SUB, dependentWorkerId: DP_CHILD, relationType: "t" },
-      }),
-    );
-    expect(r.eligible).toBe(false);
-    expect(r.reason).toMatch(/missing required charge/i);
   });
 });

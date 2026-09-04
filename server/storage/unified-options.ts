@@ -36,6 +36,7 @@ import {
   optionsBaoCobraStatus,
   optionsBaoCobraQualifyingEvent,
   optionsBaoCaseStatus,
+  optionsBaoCaseType,
   optionsBaoCaseResolution,
   optionsSitespecificBaoNotesTagTypes,
   optionsSitespecificBaoNotesTags,
@@ -88,6 +89,7 @@ export type OptionsTypeName =
   | "worker-ban-type"
   | "bao-cobra-qualifying-event"
   | "bao-case-status"
+  | "bao-case-type"
   | "bao-case-resolution"
   | "note-type"
   | "bao-notes-tag-type"
@@ -718,13 +720,31 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     orderByColumn: "sequence" as const,
     loggingModule: "options.baoCaseStatus",
     requiredFields: ["name"],
-    optionalFields: ["description", "closed", "sequence", "data"],
+    optionalFields: ["description", "closed", "sequence", "caseTypeId", "durationDays", "workflowStep", "defaultResolutionId", "requiresOutreachNote", "data"],
     supportsSequencing: true,
     requiredComponent: "sitespecific.bao",
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, showInTable: true, columnHeader: "Description" },
       { name: "closed", label: "Closed", inputType: "checkbox", required: false, helperText: "Closed cases appear in Historical views and require resolution details", showInTable: true, columnHeader: "Closed" },
+    ],
+  },
+  "bao-case-type": {
+    table: optionsBaoCaseType,
+    displayName: "BAO Case Types",
+    description: "Workflow types for BAO cases.",
+    singularName: "Case Type",
+    pluralName: "Case Types",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.baoCaseType",
+    requiredFields: ["name", "workflowCode"],
+    optionalFields: ["description", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "sitespecific.bao",
+    fields: [
+      { name: "name", label: "Name", inputType: "text", required: true, showInTable: true, columnHeader: "Name" },
+      { name: "workflowCode", label: "Workflow code", inputType: "enum", required: true, showInTable: true, columnHeader: "Workflow", enumOptions: [{ value: "general", label: "General" }, { value: "benefit_appeal", label: "Benefit Appeal" }] },
+      { name: "description", label: "Description", inputType: "textarea", required: false, showInTable: true, columnHeader: "Description" },
     ],
   },
   "bao-case-resolution": {

@@ -14,6 +14,7 @@ interface CaseRow {
   assigneeName: string;
   statusName: string;
   statusClosed: boolean;
+  caseTypeName: string;
   createdAt: string;
   deadlineYmd: string;
   resolutionName: string | null;
@@ -31,6 +32,8 @@ export default function CaseListPanel({
   const [view, setView] = useState<"active" | "historical">("active");
   const [scope, setScope] = useState<"my" | "all">("my");
   const [page, setPage] = useState(1);
+  const [caseTypeId, setCaseTypeId] = useState("");
+  const { data: caseTypes = [] } = useQuery<Array<{ id: string; name: string }>>({ queryKey: ["/api/options/bao-case-type"] });
   const params = new URLSearchParams({
     view,
     scope: entityScoped ? "all" : scope,
@@ -43,6 +46,7 @@ export default function CaseListPanel({
     params.set("entityType", entityType);
     params.set("entityId", entityId);
   }
+  if (caseTypeId) params.set("caseTypeId", caseTypeId);
   const { data, isLoading } = useQuery<{ items: CaseRow[]; total: number }>({
     queryKey: ["/api/sitespecific/bao/cases", params.toString()],
     queryFn: async () => {
@@ -67,6 +71,10 @@ export default function CaseListPanel({
             <SelectTrigger className="w-36" data-testid="select-case-view"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="active">Active</SelectItem><SelectItem value="historical">Historical</SelectItem></SelectContent>
           </Select>
+          <Select value={caseTypeId || "all"} onValueChange={(v) => { setCaseTypeId(v === "all" ? "" : v); setPage(1); }}>
+            <SelectTrigger className="w-40"><SelectValue placeholder="All types" /></SelectTrigger>
+            <SelectContent><SelectItem value="all">All types</SelectItem>{caseTypes.map((t) => <SelectItem value={t.id} key={t.id}>{t.name}</SelectItem>)}</SelectContent>
+          </Select>
           <Link href={`/bao/cases/new${entityScoped ? `?entityType=${entityType}&entityId=${entityId}` : ""}`}>
             <Button data-testid="button-add-bao-case">New Case</Button>
           </Link>
@@ -82,6 +90,7 @@ export default function CaseListPanel({
                 <div className="grid cursor-pointer gap-2 py-3 hover:bg-muted/50 md:grid-cols-6" data-testid={`row-bao-case-${item.id}`}>
                   {!entityScoped && <span className="font-medium">{item.entityName ?? item.entityId}</span>}
                   <Badge variant={item.statusClosed ? "outline" : "secondary"}>{item.statusName}</Badge>
+                  <Badge variant="outline">{item.caseTypeName}</Badge>
                   <span>{item.assigneeName}</span>
                   <span>Created {item.createdAt.slice(0, 10)}</span>
                   <span>Due {item.deadlineYmd}</span>

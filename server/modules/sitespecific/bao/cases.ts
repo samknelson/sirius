@@ -35,6 +35,10 @@ function caseError(res: Response, error: any) {
     RESOLUTION_REQUIRED: [409, "Closing a case requires a resolution and resolution date"],
     OPEN_CASE_RESOLUTION: [409, "An open case cannot retain resolution information"],
     ASSIGN_OTHERS_FORBIDDEN: [403, "You can only assign BAO cases to yourself"],
+    CASE_TYPE_STATUS_MISMATCH: [409, "The selected status does not belong to this case type"],
+    OUTREACH_NOTE_REQUIRED: [409, "Closing this case requires a member-outreach note"],
+    INVALID_INITIAL_WORKFLOW_STEP: [409, "Benefit Appeal cases must start in Submitted"],
+    INVALID_WORKFLOW_TRANSITION: [409, "That status is not the next step in this case workflow"],
   };
   if (error?.code === "23505" || error?.cause?.code === "23505") {
     return res.status(409).json({ message: "This note already belongs to a BAO case" });
@@ -91,6 +95,7 @@ export function registerBaoCaseRoutes(
         entityType: parsed.entityType,
         entityId: parsed.entityId,
         assigneeUserId: parsed.scope === "my" ? actor : undefined,
+        caseTypeId: parsed.caseTypeId,
         closed: parsed.view === "historical",
         page: parsed.page,
         pageSize: parsed.pageSize,

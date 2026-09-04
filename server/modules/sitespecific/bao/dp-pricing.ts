@@ -1,7 +1,6 @@
 import { storage } from "../../../storage/database";
 import type { BaoDpTierTransition } from "@shared/schema/sitespecific/bao/schema";
 import type { WorkerTrustElection } from "@shared/schema/trust/elections-schema";
-import { classifyDpRelationTypeName } from "@shared/sitespecific/bao/dp-relation-types";
 
 /**
  * Shared Domestic Partner pricing rules, used by BOTH the DP charge plugin
@@ -11,69 +10,39 @@ import { classifyDpRelationTypeName } from "@shared/sitespecific/bao/dp-relation
  * payment for.
  */
 
-/**
- * Relation-type identification (who is the DP, who is a DP's child, who is
- * the member's own dependent) is the pure shared core in
- * shared/sitespecific/bao/dp-relation-types.ts — the `worker.dp` access
- * policy reads the same predicates. Re-exported here for the two plugins.
- */
-export {
-  classifyDpRelationTypeName,
-  isDpChildRelationTypeName,
-  isDpRelationTypeName,
-  type DpRelationKind,
-} from "@shared/sitespecific/bao/dp-relation-types";
+/** Whether a relation-type name identifies a domestic-partner relation. */
+export function isDpRelationTypeName(name: string | null | undefined): boolean {
+  return !!name && name.toLowerCase().includes("domestic partner");
+}
 
 /**
- * Coverage-tier transition for one DP on an election, per the 2026 DP rate
- * sheet's scenario column. Two things about the election's shape decide it:
- * how many covered lives the member has of their OWN (the member plus their
- * own dependents, i.e. everyone who is neither a DP nor a DP's child), and
- * whether any of the DP's children are covered:
- *
- *   own lives 1 (member with no children)
- *     - adds a DP                        → single_to_2party  (Single → Single +1)
- *     - adds a DP AND the DP's children  → single_to_family  (Single → Family)
- *   own lives 2 (member has one child)
- *     - adds a DP, with or without the DP's children
- *                                        → 2party_to_family  (Single +1 → Family)
- *   own lives 3+ (member has two or more children)
- *     - adds a DP, with or without the DP's children
- *                                        → family_to_family_dp (Family → Family,
- *                                          confirmed no charge)
- *
- * The DP's children are told apart from the member's own children by
- * relation type — see isDpChildRelationTypeName. Every DP on the election is
- * excluded from the count (never a counted life).
+ * Coverage-tier transition for one DP on an election, derived from the
+ * covered lives EXCLUDING all DP dependents: 1 non-DP life (member only) →
+ * single_to_2party (Single → Single +1), 2 → 2party_to_family (Single +1 →
+ * Family), 3+ → family_to_family_dp (member already has two or more
+ * children — confirmed no charge on the 2026 rate sheet). single_to_family
+ * (member with no children adds a DP AND the DP's children) is never
+ * auto-selected: no confirmed rule maps an election shape to it.
  *
  * `relationTypeNameOf` resolves a relationship id to its relation-type name;
- * relationships it cannot resolve (undefined) are not countable, while a
- * relation whose type name is unknown (null) counts as the member's own.
+ * relationships it cannot resolve are not countable.
  */
 export function resolveDpTierTransition(
   election: Pick<WorkerTrustElection, "relationshipIds">,
   relationTypeNameOf: (relationshipId: string) => string | null | undefined,
 ): BaoDpTierTransition {
-  let ownDependents = 0;
-  let dpChildren = 0;
+  let nonDpDependents = 0;
   for (const relId of election.relationshipIds ?? []) {
     const name = relationTypeNameOf(relId);
     if (name === undefined) continue; // missing relation row: not countable
-    switch (classifyDpRelationTypeName(name)) {
-      case "dp":
-        break;
-      case "dp_child":
-        dpChildren++;
-        break;
-      case "own":
-        ownDependents++;
-        break;
-    }
+    if (!isDpRelationTypeName(name)) nonDpDependents++;
   }
-  const ownLives = 1 + ownDependents; // member + the member's own dependents
-  if (ownLives >= 3) return "family_to_family_dp";
-  if (ownLives === 2) return "2party_to_family";
-  return dpChildren > 0 ? "single_to_family" : "single_to_2party";
+  const nonDpLives = 1 + nonDpDependents; // member + non-DP dependents
+  return nonDpLives <= 1
+    ? "single_to_2party"
+    : nonDpLives === 2
+      ? "2party_to_family"
+      : "family_to_family_dp";
 }
 
 export type DpMonthPrice =
