@@ -45,3 +45,17 @@ rethrow `MaintenanceModeError` (the eligibility executor's catch-all did not).
 order: `npm run check` → `npm run lint` → migrations-merge check → restart app
 and confirm `/health` `driftCheck: passed` + migration log → targeted vitest →
 commit on `main` only. Never push `bao-*` from this step.
+
+## Never `git stash` during a merge
+Once every conflict is staged, `git stash` succeeds (before that it refuses
+with "needs merge"), swallowing the resolved tree and deleting `MERGE_HEAD`.
+Recovery: `git merge --no-commit --no-ff origin/main`, then
+`git read-tree -u --reset stash@{0}` (worktree+index == stash tree), re-run
+check/lint, commit, `git stash drop`. Keep diagnostic commands stash-free.
+
+## Notes → entity-notes rename (Sept 2026)
+Upstream renamed `notes`→`entity_notes`, `entity_type`→`context_id`,
+note-type `data.entityTypes`→`data.contextIds`, `/api/notes`→`/api/entity-notes`.
+BAO component migrations 009/010/014 resolve the table name at run time
+(`coreNotesTable()`), because fresh installs run the core rename first while
+existing DBs ran the component migrations before it.

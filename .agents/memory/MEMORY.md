@@ -195,3 +195,5 @@
 - [Server-fed nav sections](nav-section-fed-by-server-registry.md) — a nav group whose items come from a server registry must feed the path helpers too, and say "loading/couldn't load" rather than render empty.
 - [Polymorphic child cleanup](polymorphic-child-cleanup.md) — FK-less children of a deleted record: after-commit per-entity event + daily sweep calling ONE routine; per-record deletes only (bulk logs nothing).
 - [Context-filtered picker resend](context-filtered-picker-resend.md) — seed a scoped picker from the OFFERED set and omit the field when the control isn't rendered; resending a de-scoped id 400s unrelated edits.
+- [Entity-files adapter is a fork extension](entity-files-adapter-fork-extension.md) — upstream is shared-table only; re-add the opt-in adapter on every merge; context tokens beat :entity-id; attach persists files row.
+- [Never git stash mid-merge](upstream-merge-playbook.md) — once conflicts are staged, stash succeeds, drops MERGE_HEAD; recover via merge --no-commit + read-tree -u --reset stash@{0}.
