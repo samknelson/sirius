@@ -21,6 +21,12 @@
  *     placeholder still fails closed
  *   - the confirmed 2026 member-charge values (never the imputed-income
  *     column) bill for every plan/transition, effective 2026-01-01 only
+ *   - the coverage-tier transition follows the rate sheet's scenarios: the
+ *     DP's children (Step Child relations) are told apart from the member's
+ *     own, so a member with no children who adds a DP and the DP's children
+ *     bills Single → Family (never 2-Party → Family, never free), and the
+ *     no-charge Family → Family tier is reached only by a member who already
+ *     has two or more children of their own
  */
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -37,6 +43,11 @@ import {
   DP_RATES_2026,
   DP_RATES_2026_EFFECTIVE_YMD,
 } from "../../server/modules/sitespecific/bao/dp-rates-2026";
+import {
+  classifyDpRelationTypeName,
+  isDpRelationTypeName,
+  resolveDpTierTransition,
+} from "../../server/modules/sitespecific/bao/dp-pricing";
 
 // ---------- In-memory stubs ----------
 
@@ -478,6 +489,182 @@ describe("confirmed no-charge months (family → family with DP)", () => {
   });
 });
 
+describe("coverage-tier transition (rate sheet scenarios)", () => {
+  // Shape helper: the election covers the DP plus `own` of the member's own
+  // children and `dpKids` of the DP's children (Step Child relations).
+  function transitionFor(own: number, dpKids: number, dpChildType = "Step Child") {
+    const names = new Map<string, string>([["rel-dp", "Domestic Partner"]]);
+    for (let i = 0; i < own; i++) names.set(`rel-own-${i}`, "Child");
+    for (let i = 0; i < dpKids; i++) names.set(`rel-dpkid-${i}`, dpChildType);
+    return resolveDpTierTransition(
+      { relationshipIds: Array.from(names.keys()) },
+      (id) => names.get(id),
+    );
+  }
+
+  it("derives every rate-sheet scenario from (member's own children) × (DP's children present)", () => {
+    // Member with no children: adds a DP / adds a DP and the DP's children.
+    expect(transitionFor(0, 0)).toBe("single_to_2party");
+    expect(transitionFor(0, 1)).toBe("single_to_family");
+    expect(transitionFor(0, 2)).toBe("single_to_family");
+    // Member has one child: with or without the DP's children.
+    expect(transitionFor(1, 0)).toBe("2party_to_family");
+    expect(transitionFor(1, 1)).toBe("2party_to_family");
+    expect(transitionFor(1, 3)).toBe("2party_to_family");
+    // Member has two or more children of their OWN: no charge, with or
+    // without the DP's children.
+    expect(transitionFor(2, 0)).toBe("family_to_family_dp");
+    expect(transitionFor(2, 2)).toBe("family_to_family_dp");
+    expect(transitionFor(3, 1)).toBe("family_to_family_dp");
+  });
+
+  it("never lets the DP's children alone reach the no-charge family tier", () => {
+    // The regression: DP + two of the DP's children used to count as three
+    // non-DP lives → family_to_family_dp → covered free.
+    expect(transitionFor(0, 2)).not.toBe("family_to_family_dp");
+    expect(transitionFor(0, 5)).toBe("single_to_family");
+  });
+
+  it("identifies the DP's children by relation type — Step Child or a type naming the partner's child", () => {
+    for (const name of ["Step Child", "Stepchild", "step-child", "Domestic Partner's Child", "DP Child"]) {
+      expect(classifyDpRelationTypeName(name)).toBe("dp_child");
+      expect(isDpRelationTypeName(name)).toBe(false);
+      expect(transitionFor(0, 1, name)).toBe("single_to_family");
+    }
+    expect(classifyDpRelationTypeName("Domestic Partner")).toBe("dp");
+    for (const name of ["Child", "Adult Child", "Grandchild", "Handicapped Dependent", "Spouse", null]) {
+      expect(classifyDpRelationTypeName(name)).toBe("own");
+    }
+  });
+
+  it("leaves unresolvable relationship ids out of the count", () => {
+    const t = resolveDpTierTransition(
+      { relationshipIds: ["rel-dp", "rel-gone-1", "rel-gone-2"] },
+      (id) => (id === "rel-dp" ? "Domestic Partner" : undefined),
+    );
+    expect(t).toBe("single_to_2party");
+  });
+});
+
+describe("the DP's children (Single → Family)", () => {
+  const DP_CHILD_RELS = ["rel-dpkid-1", "rel-dpkid-2"];
+  const OWN_CHILD_RELS = ["rel-child-1", "rel-child-2"];
+
+  function cover(ownChildren: number, dpChildren: number) {
+    for (const id of OWN_CHILD_RELS.slice(0, ownChildren)) {
+      relations.push({
+        id,
+        worker1: SUBSCRIBER,
+        worker2: `w-${id}`,
+        relationType: "type-child",
+        relationTypeName: "Child",
+        startYmd: `${startYm}-01`,
+        endYmd: null,
+      });
+    }
+    for (const id of DP_CHILD_RELS.slice(0, dpChildren)) {
+      relations.push({
+        id,
+        worker1: SUBSCRIBER,
+        worker2: `w-${id}`,
+        relationType: "type-step-child",
+        relationTypeName: "Step Child",
+        startYmd: `${startYm}-01`,
+        endYmd: null,
+      });
+    }
+    elections[0].relationshipIds = [
+      DP_REL,
+      ...OWN_CHILD_RELS.slice(0, ownChildren),
+      ...DP_CHILD_RELS.slice(0, dpChildren),
+    ];
+  }
+
+  beforeEach(() => {
+    // Every transition rated at its confirmed 2026 Kaiser member charge.
+    rates = {
+      [MEDICAL]: {
+        single_to_2party: [{ effectiveYmd: "2020-01-01", rate: "405.00" }],
+        "2party_to_family": [{ effectiveYmd: "2020-01-01", rate: "335.12" }],
+        single_to_family: [{ effectiveYmd: "2020-01-01", rate: "740.12" }],
+        family_to_family_dp: [
+          { effectiveYmd: "2020-01-01", rate: "0.00", provisional: false },
+        ],
+      },
+    };
+  });
+
+  it("bills a member with no children who adds a DP and the DP's children at the Single → Family charge", async () => {
+    cover(0, 2);
+    const r = await run();
+    expect(r.transactions).toHaveLength(3);
+    for (const t of r.transactions) {
+      expect(t.amount).toBe("740.12");
+      expect(t.metadata?.dpTierTransition).toBe("single_to_family");
+    }
+    expect(r.message).not.toContain("confirmed no-charge");
+  });
+
+  it("bills the same shape with one of the DP's children at Single → Family too", async () => {
+    cover(0, 1);
+    const r = await run();
+    expect(r.transactions).toHaveLength(3);
+    for (const t of r.transactions) expect(t.amount).toBe("740.12");
+  });
+
+  it("bills a member with one child at 2-Party → Family whether or not the DP's children are covered", async () => {
+    cover(1, 2);
+    const r = await run();
+    expect(r.transactions).toHaveLength(3);
+    for (const t of r.transactions) {
+      expect(t.amount).toBe("335.12");
+      expect(t.metadata?.dpTierTransition).toBe("2party_to_family");
+    }
+  });
+
+  it("reaches the no-charge Family → Family tier only when the member already has two children of their own", async () => {
+    cover(2, 2);
+    const r = await run();
+    expect(r.transactions).toHaveLength(0);
+    expect(r.message).toContain("confirmed no-charge");
+    expect(entries).toHaveLength(0);
+  });
+
+  it("re-tiers a previously free month once the shape is known to be Single → Family (no-charge net was zero, so the month bills)", async () => {
+    // Under the old count-only rule this shape was a no-charge month with
+    // nothing posted; the corrected rule bills it like any unbilled month.
+    cover(0, 2);
+    await run();
+    const net = netByMonth();
+    for (const ym of [startYm, midYm, currentYm]) expect(net.get(ym)).toBe(740.12);
+    // Idempotent afterwards.
+    const r2 = await run();
+    expect(r2.transactions).toHaveLength(0);
+  });
+
+  it("never bills a relation typed as the partner's CHILD as if it were a second DP", async () => {
+    // The plugin discovers DPs by a coarse "%domestic partner%" name search;
+    // a "Domestic Partner's Child" type matches that search but is one of
+    // the DP's children, so exactly one DP is billed — at Single → Family.
+    relations.push({
+      id: "rel-dp-child-named",
+      worker1: SUBSCRIBER,
+      worker2: "w-dp-child-named",
+      relationType: "type-dp-child",
+      relationTypeName: "Domestic Partner's Child",
+      startYmd: `${startYm}-01`,
+      endYmd: null,
+    });
+    elections[0].relationshipIds = [DP_REL, "rel-dp-child-named"];
+    const r = await run();
+    expect(r.transactions).toHaveLength(3);
+    for (const t of r.transactions) {
+      expect(t.amount).toBe("740.12");
+      expect(t.metadata?.dpRelationshipId).toBe(DP_REL);
+    }
+  });
+});
+
 describe("confirmed 2026 member charges (rate sheet)", () => {
   // The imputed-income column must never be billed.
   const IMPUTED_INCOME = ["843.74", "698.12", "1541.91", "607.55", "430.08", "1037.63", "177.52", "144.96", "322.49"];
@@ -511,33 +698,32 @@ describe("confirmed 2026 member charges (rate sheet)", () => {
   for (const plan of PLANS) {
     for (const t of PAID_TRANSITIONS) {
       it(`bills ${plan} ${t} at $${DP_RATES_2026[plan][t].rate} for 2026 months (and not before)`, async () => {
-        // Shape the election for the transition under test.
-        const shapes: Record<string, string[]> = {
+        // Shape the election for the transition under test: the member's
+        // own child is a Child relation, the DP's child a Step Child one.
+        const shapes: Record<string, Array<{ id: string; typeName: string }>> = {
           single_to_2party: [],
-          "2party_to_family": ["rel-child-1"],
-          single_to_family: [],
+          "2party_to_family": [{ id: "rel-child-1", typeName: "Child" }],
+          single_to_family: [{ id: "rel-dpkid-1", typeName: "Step Child" }],
         };
-        for (const id of shapes[t]) {
+        for (const { id, typeName } of shapes[t]) {
           relations.push({
             id,
             worker1: SUBSCRIBER,
             worker2: `w-${id}`,
-            relationType: "type-child",
-            relationTypeName: "Child",
+            relationType: `type-${typeName.toLowerCase().replace(/\s+/g, "-")}`,
+            relationTypeName: typeName,
             startYmd: "2025-01-01",
             endYmd: null,
           });
         }
-        elections[0].relationshipIds = [DP_REL, ...shapes[t]];
+        elections[0].relationshipIds = [DP_REL, ...shapes[t].map((s) => s.id)];
         elections[0].startYmd = "2025-12-01";
         relations[0].startYmd = "2025-12-01";
-        // Only the transition under test is rated (single_to_family is
-        // never auto-derived, so drive it through the rate sheet directly
-        // by rating it under the derived transition's key).
-        const derived = t === "single_to_family" ? "single_to_2party" : t;
+        // Only the transition under test is rated, under its OWN key: the
+        // shape must derive exactly this transition or the month is skipped.
         rates = {
           [MEDICAL]: {
-            [derived]: [
+            [t]: [
               {
                 effectiveYmd: DP_RATES_2026_EFFECTIVE_YMD,
                 rate: DP_RATES_2026[plan][t].rate,

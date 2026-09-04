@@ -51,6 +51,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   BAO_DP_TIER_TRANSITIONS,
   BAO_DP_TIER_TRANSITION_LABELS,
+  BAO_DP_TIER_TRANSITION_SCENARIOS,
   type BaoDpRateWithBenefit,
   type BaoDpTierTransition,
 } from "@shared/schema/sitespecific/bao/schema";
@@ -227,6 +228,21 @@ export default function BaoDpRatesPage() {
             transition is covered at no charge; provisional rows are placeholders, not
             confirmed values, and are never billed or waived.
           </p>
+          <ul
+            className="text-muted-foreground text-sm mt-2 space-y-0.5"
+            data-testid="list-dp-transition-scenarios"
+          >
+            {BAO_DP_TIER_TRANSITIONS.map((t) => (
+              <li key={t} data-testid={`text-dp-transition-scenario-${t}`}>
+                <strong>{BAO_DP_TIER_TRANSITION_LABELS[t]}</strong> —{" "}
+                {BAO_DP_TIER_TRANSITION_SCENARIOS[t]}
+              </li>
+            ))}
+            <li>
+              The DP's children are the dependents enrolled as <strong>Step Child</strong>;
+              every other non-DP dependent counts as the member's own.
+            </li>
+          </ul>
         </div>
         <Button onClick={openAdd} data-testid="button-add-dp-rate">
           <Plus size={16} className="mr-2" />
@@ -409,6 +425,14 @@ export default function BaoDpRatesPage() {
                   ))}
                 </SelectContent>
               </Select>
+              {form.tierTransition && (
+                <p
+                  className="text-xs text-muted-foreground"
+                  data-testid="text-rate-transition-scenario"
+                >
+                  {BAO_DP_TIER_TRANSITION_SCENARIOS[form.tierTransition]}
+                </p>
+              )}
             </div>
             <div className="space-y-1">
               <Label>Monthly Member Charge ($)</Label>

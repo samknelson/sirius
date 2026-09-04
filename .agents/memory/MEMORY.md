@@ -185,3 +185,4 @@
 - [Upstream merge playbook](upstream-merge-playbook.md) — renumber upstream core migrations above our counter (else silently skipped); keep-both splits JSDoc/JSX; run arch lint; known env-noise test failures.
 - [Migration system-zone pin](migration-timezone-pin.md) — every S1→S2 writer gated on TZ=America/Los_Angeles via ensureStagingSchema (no override); evidence in envelopes; dev shell is UTC so prefix TZ.
 - [BAO DP confirmed no-charge](bao-dp-confirmed-no-charge.md) — non-provisional $0.00 DP rate = covered free (no bill, gate waives payment); provisional/missing still fail closed; one shared pricing module.
+- [BAO DP tier transition & DP's children](bao-dp-tier-transition-rule.md) — tier = member's OWN lives × DP's-children-present; DP's children = Step Child/partner's-child relation TYPE (shared leaf, pending Fund confirmation).

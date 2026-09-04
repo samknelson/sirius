@@ -433,7 +433,7 @@ await makeVocab('sirius_election_type', [
 // sirius_ids attached (C/SP/SC/DP/QMSCO/G/AC/RP/H + the ES term the loader
 // rewrites to EX per the fund ruling).
 const RELTYPES = [
-  ['Child','C'],['Spouse','SP'],['Step Child','SC'],['Domestic Partner','DP'],
+  ['Child','C'],['Spouse','SP'],['Step Child','SC'],['DP Child','DPC'],['Domestic Partner','DP'],
   ['QMSCO','QMSCO'],['Grandchild','G'],['Adult Child','AC'],['Responsible Party','RP'],
   ['Handicapped Dependent','H'],['Ex Spouse','ES'],
 ];

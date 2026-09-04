@@ -4,7 +4,9 @@
  *
  * Verifies:
  *   - one charge per (DP, covered month), priced from the DP rate sheet at
- *     the tier transition derived from non-DP covered lives; the rate sheet
+ *     the tier transition derived from the member's own covered lives (the
+ *     DP's children — Step Child relations — are told apart; see the shared
+ *     dp-pricing module); the rate sheet
  *     decides WHICH benefit is billable (ancillary benefits without DP
  *     rates are ignored; multiple rated benefits = ambiguous, refused)
  *   - statementYmd anchored to the coverage month (first of month)

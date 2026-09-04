@@ -1,9 +1,8 @@
 import { definePolicy, registerPolicy, type PolicyContext } from '../index';
-
-/** Case-insensitive check for a domestic-partner relation-type name. */
-function isDpRelationTypeName(name: string | null | undefined): boolean {
-  return !!name && name.toLowerCase().includes('domestic partner');
-}
+// The one shared reading of "this relation type is the domestic partner"
+// (a type naming the partner's CHILD is not) — the same predicate DP billing
+// and the DP payment gate price with.
+import { isDpRelationTypeName } from '../../sitespecific/bao/dp-relation-types';
 
 /**
  * Access to a worker's Domestic Partner (DP) screen.

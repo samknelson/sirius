@@ -9,6 +9,7 @@ import { registerEligibilityPlugin } from "../registry";
 import { storage } from "../../../../storage/database";
 import { computeDpPaymentState } from "../../../../modules/sitespecific/bao/dp-payment-state";
 import {
+  classifyDpRelationTypeName,
   isDpRelationTypeName,
   priceDpMonth,
   resolveDpTierTransition,
@@ -29,7 +30,11 @@ type BaoDpConfig = BaseEligibilityConfig;
  * "domestic partner" type). It passes through — never blocks — for:
  * - the subscriber's own evaluation (nonpayment must never remove the
  *   subscriber's coverage), and
- * - non-DP dependents (spouse, child, etc.).
+ * - non-DP dependents (spouse, child, etc.) — including the DP's own
+ *   children (Step Child relations), even though they only raise the tier
+ *   the DP is priced at. NOTE (unconfirmed business rule): whether the DP's
+ *   children should ALSO be gated on the DP charge being paid has not been
+ *   confirmed; until it is, only the DP is.
  *
  * For a DP dependent, eligible only when ALL of:
  * - the subscriber has an election active in the as-of month that covers
@@ -117,7 +122,8 @@ class BaoDpPlugin extends EligibilityPlugin<BaoDpConfig> {
     const [relWithType] = await storage.workerRelations.listByIdsWithType([
       rel.id,
     ]);
-    if (!isDpRelationTypeName(relWithType?.relationTypeName)) {
+    const relationKind = classifyDpRelationTypeName(relWithType?.relationTypeName);
+    if (relationKind === "own") {
       return {
         eligible: true,
         reason: `DP payment gate applies only to domestic-partner dependents (relationship is ${relWithType?.relationTypeName ?? "unknown"})`,
@@ -143,6 +149,26 @@ class BaoDpPlugin extends EligibilityPlugin<BaoDpConfig> {
         eligible: false,
         reason: `No active election covers this benefit for domestic partner ${dependentLabel} in ${monthLabel}`,
       };
+    }
+
+    // A DP Child is gated by the same DP charge as its partner. Elections
+    // store subscriber-rooted relation ids, so resolve the DP relation from
+    // the election rather than treating the child's relation as the charge
+    // target.
+    const coveringRelationIds = Array.from(
+      new Set(covering.flatMap((e) => e.relationshipIds ?? [])),
+    );
+    const coveringRelations = await storage.workerRelations.listByIdsWithType(
+      coveringRelationIds,
+    );
+    const dpRelationIdByElection = new Map<string, string>();
+    for (const election of covering) {
+      const dpRelation = coveringRelations.find(
+        (candidate) =>
+          (election.relationshipIds ?? []).includes(candidate.id) &&
+          isDpRelationTypeName(candidate.relationTypeName),
+      );
+      if (dpRelation) dpRelationIdByElection.set(election.id, dpRelation.id);
     }
 
     // A CONFIRMED no-charge month (rate sheet says $0.00, not provisional,
@@ -179,7 +205,10 @@ class BaoDpPlugin extends EligibilityPlugin<BaoDpConfig> {
       const row = paymentState.months.find(
         (m) =>
           m.electionId === election.id &&
-          m.dpRelationshipId === rel.id &&
+          m.dpRelationshipId ===
+            (relationKind === "dp_child"
+              ? dpRelationIdByElection.get(election.id)
+              : rel.id) &&
           m.month === asOfYm,
       );
       if (!row) continue;
@@ -209,10 +238,10 @@ class BaoDpPlugin extends EligibilityPlugin<BaoDpConfig> {
 
   /**
    * The first covering election whose month prices to a confirmed no-charge
-   * rate under the shared DP pricing rule (tier from non-DP covered lives,
-   * single rated benefit, non-provisional $0.00). Null when no covering
-   * election does — including when the rate is missing, provisional,
-   * ambiguous, or positive.
+   * rate under the shared DP pricing rule (tier from the member's own
+   * covered lives and whether the DP's children are covered, single rated
+   * benefit, non-provisional $0.00). Null when no covering election does —
+   * including when the rate is missing, provisional, ambiguous, or positive.
    */
   private async findConfirmedNoChargeElection(
     subscriberId: string,

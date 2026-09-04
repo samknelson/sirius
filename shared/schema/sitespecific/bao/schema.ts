@@ -880,6 +880,23 @@ export const BAO_DP_TIER_TRANSITION_LABELS: Record<BaoDpTierTransition, string> 
   family_to_family_dp: "Family → Family with DP",
 };
 
+/**
+ * Which election shape each transition prices — the rate sheet's scenario
+ * column, and exactly the rule the shared DP pricing module derives the
+ * transition with (server/modules/sitespecific/bao/dp-pricing.ts). "The
+ * DP's children" are the dependents enrolled under a Step Child relation
+ * (or a type naming the partner's child); every other non-DP dependent is
+ * one of the member's own.
+ */
+export const BAO_DP_TIER_TRANSITION_SCENARIOS: Record<BaoDpTierTransition, string> = {
+  single_to_2party: "Member with no children adds a DP",
+  "2party_to_family":
+    "Member has one child and adds a DP, with or without the DP's child/children",
+  single_to_family: "Member with no children adds a DP and the DP's child/children",
+  family_to_family_dp:
+    "Member has two or more children and adds a DP, with or without the DP's child/children",
+};
+
 export const sitespecificBaoDpRates = pgTable(
   "sitespecific_bao_dp_rates",
   {
