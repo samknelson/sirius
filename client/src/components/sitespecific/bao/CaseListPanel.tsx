@@ -14,11 +14,14 @@ interface CaseRow {
   assigneeName: string;
   statusName: string;
   statusClosed: boolean;
+  caseTypeId: string;
   caseTypeName: string;
   createdAt: string;
   deadlineYmd: string;
   resolutionName: string | null;
   resolutionYmd: string | null;
+  benefitName: string | null;
+  denialReasonName: string | null;
   data?: { autoClosedReason?: string };
 }
 
@@ -34,7 +37,7 @@ export default function CaseListPanel({
   const [scope, setScope] = useState<"my" | "all">("my");
   const [page, setPage] = useState(1);
   const [caseTypeId, setCaseTypeId] = useState("");
-  const { data: caseTypes = [] } = useQuery<Array<{ id: string; name: string }>>({ queryKey: ["/api/options/bao-case-type"] });
+  const { data: caseTypes = [] } = useQuery<Array<{ id: string; name: string; workflowCode?: string }>>({ queryKey: ["/api/options/bao-case-type"] });
   const params = new URLSearchParams({
     view,
     scope: entityScoped ? "all" : scope,
@@ -92,6 +95,12 @@ export default function CaseListPanel({
                   {!entityScoped && <span className="font-medium">{item.entityName ?? item.entityId}</span>}
                   <Badge variant={item.statusClosed ? "outline" : "secondary"}>{item.statusName}</Badge>
                   <Badge variant="outline">{item.caseTypeName}</Badge>
+                  {caseTypes.find((caseType) => caseType.id === item.caseTypeId)?.workflowCode === "benefit_appeal" && (
+                    <span className="text-sm text-muted-foreground">
+                      Benefit: {item.benefitName ?? "None configured"}
+                      <span className="hidden lg:inline"> · Denial reason: {item.denialReasonName ?? "None configured"}</span>
+                    </span>
+                  )}
                    {item.data?.autoClosedReason === "deadline_lapsed" && <Badge variant="outline">Closed automatically (deadline lapsed)</Badge>}
                   <span>{item.assigneeName}</span>
                   <span>Created {item.createdAt.slice(0, 10)}</span>
