@@ -66,6 +66,9 @@ let categoryId = "";
 let statusId = "";
 let benefitId = "";
 let denialReasonId = "";
+// The deployment's real BAO component state, captured at file start and
+// restored at file end. The non-BAO describes below require it off.
+let fileOriginalBaoEnabled = false;
 
 async function request(
   path: string,
@@ -89,6 +92,13 @@ beforeAll(async () => {
 
   // Ensure grievance component is enabled.
   await updateComponentCache("grievance", true);
+
+  // Force a non-BAO baseline for the generic-grievance suites; the BAO
+  // describe toggles it on for itself and returns to this baseline. The
+  // deployment's original state is restored in the file-level afterAll.
+  const componentsVariable = await storage.variables.getByName("components");
+  fileOriginalBaoEnabled = Boolean((componentsVariable?.value as any)?.["sitespecific.bao"]);
+  await updateComponentCache("sitespecific.bao", false);
 
   // Resolve prerequisites from the real database.
   const allWorkers = await storage.workers.getAllWorkers();
@@ -150,6 +160,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await closeServer?.();
+  // Restore the deployment's real BAO state (shared dev database).
+  await updateComponentCache("sitespecific.bao", fileOriginalBaoEnabled).catch(() => {});
   const options = getOptionsStorage();
   await options.delete("grievance-category", categoryId).catch(() => {});
   await options.delete("grievance-status", statusId).catch(() => {});
@@ -418,4 +430,297 @@ describe("ordinary grievance creation unaffected", () => {
     // Must NOT have appealMeta.
     expect(body.data?.appealMeta).toBeUndefined();
   }, 10_000);
+});
+
+// ---------------------------------------------------------------------------
+// 8. Current-status refresh (server side of the edit-card sync)
+// ---------------------------------------------------------------------------
+
+describe("current status refresh after status-history write", () => {
+  it("detail and list reflect the newly current status immediately", async () => {
+    // Create an appeal (non-BAO path: explicit statusId).
+    const createRes = await request("/api/grievances/appeal", {
+      method: "POST",
+      user: staffId,
+      body: JSON.stringify({ categoryId, statusId, workerId, benefitId, denialReasonId }),
+    });
+    expect(createRes.status).toBe(201);
+    const appeal = await createRes.json();
+
+    // Add a second, newer status via the status-history endpoint (the same
+    // call the edit card's Save makes — server stamps "now").
+    const options = getOptionsStorage();
+    const second = await options.create("grievance-status", {
+      name: `${run}-status-refresh`,
+      isOpen: false,
+    });
+    try {
+      const histRes = await request(`/api/grievances/${appeal.id}/status-history`, {
+        method: "POST",
+        user: staffId,
+        body: JSON.stringify({ statusId: second.id }),
+      });
+      expect(histRes.status).toBe(201);
+
+      // Detail endpoint now reports the new current status.
+      const detail = await (await request(`/api/grievances/${appeal.id}`, { user: staffId })).json();
+      expect(detail.statusId).toBe(second.id);
+      expect(detail.statusName).toBe(`${run}-status-refresh`);
+
+      // List endpoint also reflects it.
+      const list = await (await request(`/api/grievances?kind=appeal`, { user: staffId })).json();
+      const row = list.find((g: any) => g.id === appeal.id);
+      expect(row?.statusId).toBe(second.id);
+
+      // History has both entries and the newest is current.
+      const history = await (
+        await request(`/api/grievances/${appeal.id}/status-history`, { user: staffId })
+      ).json();
+      const current = history.find((h: any) => h.isCurrent);
+      expect(current?.statusId).toBe(second.id);
+      expect(history.filter((h: any) => h.statusId === statusId).length).toBe(1);
+    } finally {
+      await options.delete("grievance-status", second.id).catch(() => {});
+    }
+  }, 20_000);
+});
+
+// ---------------------------------------------------------------------------
+// 9. BAO appeal-only mode
+// ---------------------------------------------------------------------------
+
+describe("BAO appeal-only mode", () => {
+  const BAO = "sitespecific.bao";
+  const VARIABLE = "sitespecific.bao.appeal_workflow";
+  let submittedStatusId = "";
+  let closedStatusId = "";
+  let stepOptionId = "";
+  let templateId = "";
+  let variableId = "";
+  let originalBaoEnabled = false;
+  let stashedSettings: unknown = null;
+  let stashedSettingsId = "";
+
+  beforeAll(async () => {
+    // Capture the deployment's real BAO state so we can restore it — this
+    // suite runs against the shared dev database and must not clobber it.
+    const componentsVariable = await storage.variables.getByName("components");
+    originalBaoEnabled = Boolean((componentsVariable?.value as any)?.[BAO]);
+
+    // Stash any real appeal-workflow settings so the "missing settings" test
+    // starts from a clean slate; restored in afterAll.
+    const existingSettings = await storage.variables.getByName(VARIABLE);
+    if (existingSettings) {
+      stashedSettings = existingSettings.value;
+      stashedSettingsId = existingSettings.id;
+      await storage.variables.delete(existingSettings.id);
+    }
+
+    const options = getOptionsStorage();
+    submittedStatusId = (
+      await options.create("grievance-status", { name: `${run}-submitted`, isOpen: true })
+    ).id;
+    closedStatusId = (
+      await options.create("grievance-status", { name: `${run}-closed`, isOpen: false })
+    ).id;
+    stepOptionId = (
+      await options.create("grievance-step", { name: `${run}-step`, actor: "union" })
+    ).id;
+
+    const template = await storage.grievanceTimelineTemplates.create({
+      title: `${run}-appeal-template`,
+    } as any);
+    templateId = template.id;
+    await storage.grievanceTimelineTemplates.createStep({
+      templateId,
+      stepId: stepOptionId,
+      fromStatuses: [submittedStatusId],
+      toStatuses: [closedStatusId],
+      days: 30,
+      dayType: "calendar",
+    } as any);
+
+    await updateComponentCache(BAO, true);
+  });
+
+  afterAll(async () => {
+    // Always restore the deployment's original state: these tests run
+    // against the shared dev database.
+    await updateComponentCache(BAO, originalBaoEnabled);
+    if (variableId) await storage.variables.delete(variableId).catch(() => {});
+    if (stashedSettingsId) {
+      // Restore the deployment's real appeal-workflow settings.
+      await storage.variables
+        .create({ name: VARIABLE, value: stashedSettings } as any)
+        .catch(() => {});
+    }
+    if (templateId) await storage.grievanceTimelineTemplates.delete(templateId).catch(() => {});
+    const options = getOptionsStorage();
+    await options.delete("grievance-step", stepOptionId).catch(() => {});
+    await options.delete("grievance-status", submittedStatusId).catch(() => {});
+    await options.delete("grievance-status", closedStatusId).catch(() => {});
+  });
+
+  it("rejects generic grievance creation with 403", async () => {
+    const res = await request("/api/grievances", {
+      method: "POST",
+      user: staffId,
+      body: JSON.stringify({ categoryId, cardinality: "individual" }),
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).message).toMatch(/appeal-only/i);
+  });
+
+  it("refuses appeal intake with an actionable error when settings are missing", async () => {
+    const res = await request("/api/grievances/appeal", {
+      method: "POST",
+      user: staffId,
+      body: JSON.stringify({ categoryId, workerId, benefitId, denialReasonId }),
+    });
+    expect(res.status).toBe(409);
+    expect((await res.json()).message).toMatch(/appeal workflow settings/i);
+  });
+
+  it("applies the configured initial status and timeline template to new appeals", async () => {
+    const variable = await storage.variables.create({
+      name: VARIABLE,
+      value: { initialStatusId: submittedStatusId, timelineTemplateId: templateId },
+    } as any);
+    variableId = variable.id;
+
+    // No statusId in the body: the configuration supplies it.
+    const res = await request("/api/grievances/appeal", {
+      method: "POST",
+      user: staffId,
+      body: JSON.stringify({ categoryId, workerId, benefitId, denialReasonId }),
+    });
+    expect(res.status).toBe(201);
+    const appeal = await res.json();
+
+    // Configured Submitted status became the current status via history.
+    const detail = await (await request(`/api/grievances/${appeal.id}`, { user: staffId })).json();
+    expect(detail.statusId).toBe(submittedStatusId);
+    expect(detail.timelineTemplateId).toBe(templateId);
+    expect(detail.data?.appealMeta?.kind).toBe("appeal");
+
+    const history = await (
+      await request(`/api/grievances/${appeal.id}/status-history`, { user: staffId })
+    ).json();
+    expect(history.length).toBe(1);
+    expect(history[0].statusId).toBe(submittedStatusId);
+    expect(history[0].isCurrent).toBe(true);
+
+    // Timeline computation: the plugin derives a started (uncompleted) step
+    // occurrence from the appeal's status history + assigned template.
+    const { grievanceTimelinePlugin } = await import(
+      "../../server/plugins/system/denorm/plugins/grievanceTimeline"
+    );
+    const payload = await grievanceTimelinePlugin.compute(appeal.id);
+    expect(payload.rows.length).toBe(1);
+    const rowStep = payload.rows[0];
+    expect(rowStep.stepId).toBe(stepOptionId);
+    expect(rowStep.completedYmd).toBeNull();
+    expect(rowStep.isCurrent).toBe(true);
+    // Due date = started + 30 calendar days.
+    const started = new Date(`${rowStep.startedYmd}T00:00:00Z`);
+    const due = new Date(`${rowStep.dueYmd}T00:00:00Z`);
+    expect((due.getTime() - started.getTime()) / 86_400_000).toBe(30);
+  }, 30_000);
+
+  it("stale configuration (deleted template) yields an actionable conflict", async () => {
+    // Point the settings at a template that no longer exists.
+    await storage.variables.update(variableId, {
+      value: {
+        initialStatusId: submittedStatusId,
+        timelineTemplateId: ZERO_UUID,
+      },
+    } as any);
+    const res = await request("/api/grievances/appeal", {
+      method: "POST",
+      user: staffId,
+      body: JSON.stringify({ categoryId, workerId, benefitId, denialReasonId }),
+    });
+    expect(res.status).toBe(409);
+    expect((await res.json()).message).toMatch(/timeline template/i);
+    // Restore valid settings.
+    await storage.variables.update(variableId, {
+      value: { initialStatusId: submittedStatusId, timelineTemplateId: templateId },
+    } as any);
+  });
+
+  it("worker-scoped list with kind=appeal hides legacy generic grievances", async () => {
+    // A legacy generic grievance can predate BAO enablement. Create one via
+    // the generic route with BAO briefly off (the route is 403 in BAO mode).
+    await updateComponentCache(BAO, false);
+    const legacyRes = await request("/api/grievances", {
+      method: "POST",
+      user: staffId,
+      body: JSON.stringify({ categoryId, cardinality: "individual" }),
+    });
+    expect(legacyRes.status).toBe(201);
+    const legacy = await legacyRes.json();
+    const linkRes = await request(`/api/grievances/${legacy.id}/workers`, {
+      method: "POST",
+      user: staffId,
+      body: JSON.stringify({ workerId }),
+    });
+    expect(linkRes.status).toBe(201);
+    await updateComponentCache(BAO, true);
+
+    // An appeal for the same worker via the BAO intake path.
+    const appealRes = await request("/api/grievances/appeal", {
+      method: "POST",
+      user: staffId,
+      body: JSON.stringify({ categoryId, workerId, benefitId, denialReasonId }),
+    });
+    expect(appealRes.status).toBe(201);
+    const appeal = await appealRes.json();
+
+    // The worker tab's BAO query (workerId + kind=appeal) shows only appeals.
+    const filtered = await (
+      await request(`/api/grievances?workerId=${workerId}&kind=appeal`, { user: staffId })
+    ).json();
+    expect(filtered.some((g: any) => g.id === appeal.id)).toBe(true);
+    expect(filtered.some((g: any) => g.id === legacy.id)).toBe(false);
+
+    // Without the kind filter the legacy record is still reachable (data is
+    // hidden from the appeal surface, not lost).
+    const unfiltered = await (
+      await request(`/api/grievances?workerId=${workerId}`, { user: staffId })
+    ).json();
+    expect(unfiltered.some((g: any) => g.id === legacy.id)).toBe(true);
+  }, 30_000);
+
+  it("non-BAO behavior is restored when the component is disabled", async () => {
+    await updateComponentCache(BAO, false);
+    try {
+      // Generic creation works again.
+      const generic = await request("/api/grievances", {
+        method: "POST",
+        user: staffId,
+        body: JSON.stringify({ categoryId, cardinality: "individual" }),
+      });
+      expect(generic.status).toBe(201);
+
+      // Appeal intake requires an explicit statusId again.
+      const noStatus = await request("/api/grievances/appeal", {
+        method: "POST",
+        user: staffId,
+        body: JSON.stringify({ categoryId, workerId, benefitId, denialReasonId }),
+      });
+      expect(noStatus.status).toBe(400);
+
+      const withStatus = await request("/api/grievances/appeal", {
+        method: "POST",
+        user: staffId,
+        body: JSON.stringify({ categoryId, statusId, workerId, benefitId, denialReasonId }),
+      });
+      expect(withStatus.status).toBe(201);
+      const appeal = await withStatus.json();
+      // No template auto-assignment outside BAO mode.
+      expect(appeal.timelineTemplateId ?? null).toBeNull();
+    } finally {
+      await updateComponentCache(BAO, true);
+    }
+  }, 30_000);
 });

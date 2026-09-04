@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GrievanceLayout, useGrievanceLayout } from "@/components/layouts/GrievanceLayout";
+import { GrievanceLayout, useGrievanceLayout, isAppealRecord, useAppealPresentation } from "@/components/layouts/GrievanceLayout";
 import { GrievanceForm, type GrievanceFormValues } from "@/components/grievances/grievance-form";
 import { GrievanceWorkerManager } from "@/components/grievances/grievance-worker-section";
 import { GrievanceEmployerManager } from "@/components/grievances/grievance-employer-section";
@@ -30,16 +30,24 @@ function GrievanceEditContent() {
   const isAdmin = hasPermission("admin");
   const showBargainingUnit = hasComponent("bargainingunits");
   const showContract = hasComponent("grievance.contract");
+  // Appeals reuse the grievance record but are always individual cases; the
+  // form hides the generic creation choices and labels the record an appeal.
+  // Form BEHAVIOR (hidden fields, forced individual cardinality) follows the
+  // record's own metadata so a legacy generic record on the BAO surface keeps
+  // its cardinality/class data intact; WORDING follows the surface.
+  const isAppeal = isAppealRecord(grievance);
+  const appealWording = useAppealPresentation(grievance);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (values: GrievanceFormValues) => {
     setIsSubmitting(true);
     try {
-      const isClass = values.cardinality === "class";
+      const cardinality = isAppeal ? "individual" : values.cardinality;
+      const isClass = cardinality === "class";
       await apiRequest("PATCH", `/api/grievances/${grievance.id}`, {
         siriusId: values.siriusId?.trim() ? values.siriusId.trim() : null,
         classDescription: isClass && values.classDescription?.trim() ? values.classDescription.trim() : null,
-        cardinality: values.cardinality,
+        cardinality,
         categoryId: values.categoryId,
         ...(showBargainingUnit
           ? { bargainingUnitId: values.bargainingUnitId ? values.bargainingUnitId : null }
@@ -47,11 +55,11 @@ function GrievanceEditContent() {
       });
       await queryClient.invalidateQueries({ queryKey: ["/api/grievances"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/grievances", grievance.id] });
-      toast({ title: "Grievance updated" });
+      toast({ title: appealWording ? "Appeal updated" : "Grievance updated" });
       navigate(`/grievance/${grievance.id}`);
     } catch (error: any) {
       toast({
-        title: "Failed to update grievance",
+        title: appealWording ? "Failed to update appeal" : "Failed to update grievance",
         description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
@@ -76,6 +84,7 @@ function GrievanceEditContent() {
             submitLabel="Save Changes"
             isSubmitting={isSubmitting}
             canEditSiriusId={isAdmin}
+            variant={isAppeal ? "appeal" : "grievance"}
           />
         </CardContent>
       </Card>
@@ -167,6 +176,14 @@ function GrievanceStatusCard({
   const { toast } = useToast();
   const [selectedStatusId, setSelectedStatusId] = useState<string>(currentStatusId ?? "");
   const [isSaving, setIsSaving] = useState(false);
+
+  // After a status save, the grievance query is invalidated and refetched;
+  // sync the selection with the refreshed current status so the card (and
+  // its disabled Save button) reflects the newly current status instead of
+  // the value captured at first render.
+  useEffect(() => {
+    setSelectedStatusId(currentStatusId ?? "");
+  }, [currentStatusId]);
 
   const { data: statuses = [] } = useQuery<StatusOption[]>({
     queryKey: ["/api/options/grievance-status"],

@@ -50,6 +50,38 @@ export type AppealMeta = z.infer<typeof appealMetaSchema>;
 /** Key used to store appeal metadata inside `grievances.data`. */
 export const APPEAL_META_KEY = "appealMeta" as const;
 
+/**
+ * Component whose enablement switches the grievance module into the
+ * appeal-only product surface (BAO deployments): generic grievance creation
+ * is rejected server-side and hidden client-side, and appeal intake applies
+ * the configured appeal workflow defaults instead of asking staff for an
+ * initial status.
+ */
+export const APPEAL_ONLY_COMPONENT = "sitespecific.bao" as const;
+
+/**
+ * Variables-row name holding the BAO appeal workflow settings (validated by
+ * `appealWorkflowSettingsSchema` in the variable registry). Edited through
+ * the admin Variables UI; read server-side by the appeal intake route.
+ */
+export const APPEAL_WORKFLOW_VARIABLE = "sitespecific.bao.appeal_workflow" as const;
+
+/**
+ * BAO appeal workflow settings: the status every new appeal starts in (the
+ * configured "Submitted" status) and the timeline template automatically
+ * assigned to new appeals. Both are ids into existing grievance tables;
+ * existence is re-checked at intake time so a stale configuration fails
+ * loudly rather than silently creating a malformed appeal.
+ */
+export const appealWorkflowSettingsSchema = z.object({
+  /** `options_grievance_status.id` every new appeal starts in. */
+  initialStatusId: z.string().uuid("initialStatusId must be a status id"),
+  /** `grievance_timeline_templates.id` assigned to every new appeal. */
+  timelineTemplateId: z.string().uuid("timelineTemplateId must be a timeline template id"),
+});
+
+export type AppealWorkflowSettings = z.infer<typeof appealWorkflowSettingsSchema>;
+
 /** Read and validate appeal metadata from a raw `data` jsonb value. */
 export function readAppealMeta(data: unknown): AppealMeta | null {
   if (!data || typeof data !== "object") return null;

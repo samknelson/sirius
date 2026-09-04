@@ -27,6 +27,8 @@ import {
 import { PageHeader } from "@/components/layout/PageHeader";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { APPEAL_ONLY_COMPONENT } from "@shared/schema";
 
 interface AppealMeta {
   kind: "appeal";
@@ -51,12 +53,16 @@ function isAppeal(g: GrievanceListItem): boolean {
 export default function Grievances() {
   const [location] = useLocation();
   const { toast } = useToast();
+  const { hasComponent } = useAuth();
+  // Appeal-only (BAO) surface: appeals are the only case type, so the list
+  // shows appeals exclusively and offers no generic Add Grievance path.
+  const appealOnly = hasComponent(APPEAL_ONLY_COMPONENT);
   const [deleteTarget, setDeleteTarget] = useState<GrievanceListItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [kindFilter, setKindFilter] = useState<"all" | "appeal">("all");
 
   const queryKey =
-    kindFilter === "appeal"
+    appealOnly || kindFilter === "appeal"
       ? ["/api/grievances", { kind: "appeal" }]
       : ["/api/grievances"];
 
@@ -64,11 +70,16 @@ export default function Grievances() {
     queryKey,
   });
 
-  const tabs = [
-    { id: "list", label: "List", href: "/grievances" },
-    { id: "add", label: "Add", href: "/grievances/add" },
-    { id: "appeal", label: "Add Appeal", href: "/grievances/appeal" },
-  ];
+  const tabs = appealOnly
+    ? [
+        { id: "list", label: "List", href: "/grievances" },
+        { id: "appeal", label: "Add Appeal", href: "/grievances/appeal" },
+      ]
+    : [
+        { id: "list", label: "List", href: "/grievances" },
+        { id: "add", label: "Add", href: "/grievances/add" },
+        { id: "appeal", label: "Add Appeal", href: "/grievances/appeal" },
+      ];
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -76,11 +87,11 @@ export default function Grievances() {
     try {
       await apiRequest("DELETE", `/api/grievances/${deleteTarget.id}`);
       await queryClient.invalidateQueries({ queryKey: ["/api/grievances"] });
-      toast({ title: "Grievance deleted" });
+      toast({ title: isAppeal(deleteTarget) ? "Appeal deleted" : "Grievance deleted" });
       setDeleteTarget(null);
     } catch (error: any) {
       toast({
-        title: "Failed to delete grievance",
+        title: `Failed to delete ${deleteTarget && isAppeal(deleteTarget) ? "appeal" : "grievance"}`,
         description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
@@ -92,8 +103,14 @@ export default function Grievances() {
   return (
     <div className="bg-background text-foreground min-h-screen">
       <PageHeader
-        title="Grievances"
-        icon={<FileText className="text-primary-foreground" size={16} />}
+        title={appealOnly ? "Appeals" : "Grievances"}
+        icon={
+          appealOnly ? (
+            <Gavel className="text-primary-foreground" size={16} />
+          ) : (
+            <FileText className="text-primary-foreground" size={16} />
+          )
+        }
       />
 
       <div className="bg-card border-b border-border">
@@ -117,37 +134,46 @@ export default function Grievances() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Button
-              variant={kindFilter === "all" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setKindFilter("all")}
-              data-testid="button-filter-all"
-            >
-              All
-            </Button>
-            <Button
-              variant={kindFilter === "appeal" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setKindFilter("appeal")}
-              data-testid="button-filter-appeals"
-            >
-              <Gavel size={14} className="mr-1" />
-              Appeals
-            </Button>
+            {!appealOnly && (
+              <>
+                <Button
+                  variant={kindFilter === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setKindFilter("all")}
+                  data-testid="button-filter-all"
+                >
+                  All
+                </Button>
+                <Button
+                  variant={kindFilter === "appeal" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setKindFilter("appeal")}
+                  data-testid="button-filter-appeals"
+                >
+                  <Gavel size={14} className="mr-1" />
+                  Appeals
+                </Button>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Link href="/grievances/appeal">
-              <Button variant="outline" data-testid="button-add-appeal">
+              <Button
+                variant={appealOnly ? "default" : "outline"}
+                data-testid="button-add-appeal"
+              >
                 <Gavel size={16} className="mr-2" />
                 Add Appeal
               </Button>
             </Link>
-            <Link href="/grievances/add">
-              <Button data-testid="button-add-grievance">
-                <Plus size={16} className="mr-2" />
-                Add Grievance
-              </Button>
-            </Link>
+            {!appealOnly && (
+              <Link href="/grievances/add">
+                <Button data-testid="button-add-grievance">
+                  <Plus size={16} className="mr-2" />
+                  Add Grievance
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
 
@@ -161,7 +187,7 @@ export default function Grievances() {
               </div>
             ) : grievances.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground" data-testid="text-no-grievances">
-                No grievances found.
+                {appealOnly ? "No appeals found." : "No grievances found."}
               </div>
             ) : (
               <Table>
@@ -180,7 +206,7 @@ export default function Grievances() {
                       <TableCell className="font-medium" data-testid={`text-grievance-id-${g.id}`}>
                         <div className="flex items-center gap-2">
                           {g.siriusId || "—"}
-                          {isAppeal(g) && (
+                          {!appealOnly && isAppeal(g) && (
                             <Badge variant="outline" className="text-xs" data-testid={`badge-appeal-${g.id}`}>
                               <Gavel size={10} className="mr-1" />
                               Appeal
@@ -231,10 +257,13 @@ export default function Grievances() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this grievance?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Delete this {deleteTarget && isAppeal(deleteTarget) ? "appeal" : "grievance"}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently remove the grievance and all of its worker and employer links.
-              This action cannot be undone.
+              This will permanently remove the{" "}
+              {deleteTarget && isAppeal(deleteTarget) ? "appeal" : "grievance"} and all of its
+              worker and employer links. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

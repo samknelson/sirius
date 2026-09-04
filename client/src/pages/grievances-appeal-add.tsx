@@ -27,6 +27,8 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { GrievanceWorkerSection, type SectionWorker, type WorkerSearchHit } from "@/components/grievances/grievance-worker-section";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { APPEAL_ONLY_COMPONENT } from "@shared/schema";
 
 interface OptionItem {
   id: string;
@@ -40,9 +42,11 @@ interface BenefitItem {
   providerName: string | null;
 }
 
+// In appeal-only (BAO) mode the initial status comes from the configured
+// appeal workflow settings, so the form neither shows nor validates it.
 const appealFormSchema = z.object({
   categoryId: z.string().uuid("Please select a category"),
-  statusId: z.string().uuid("Please select a status"),
+  statusId: z.string().optional(),
   benefitId: z.string().uuid("Please select a benefit"),
   denialReasonId: z.string().uuid("Please select a denial reason"),
 });
@@ -52,6 +56,8 @@ type AppealFormValues = z.infer<typeof appealFormSchema>;
 export default function GrievancesAppealAdd() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { hasComponent } = useAuth();
+  const appealOnly = hasComponent(APPEAL_ONLY_COMPONENT);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [worker, setWorker] = useState<SectionWorker | null>(null);
 
@@ -86,11 +92,17 @@ export default function GrievancesAppealAdd() {
       toast({ title: "A worker is required for an appeal", variant: "destructive" });
       return;
     }
+    if (!appealOnly && !values.statusId) {
+      form.setError("statusId", { message: "Please select a status" });
+      return;
+    }
     setIsSubmitting(true);
     try {
       const created = await apiRequest("POST", "/api/grievances/appeal", {
         categoryId: values.categoryId,
-        statusId: values.statusId,
+        // Appeal-only mode: the server applies the configured Submitted
+        // status and timeline template — the client never picks a status.
+        ...(appealOnly ? {} : { statusId: values.statusId }),
         workerId: worker.workerId,
         benefitId: values.benefitId,
         denialReasonId: values.denialReasonId,
@@ -112,11 +124,16 @@ export default function GrievancesAppealAdd() {
     }
   };
 
-  const tabs = [
-    { id: "list", label: "List", href: "/grievances" },
-    { id: "add", label: "Add Grievance", href: "/grievances/add" },
-    { id: "appeal", label: "Add Appeal", href: "/grievances/appeal" },
-  ];
+  const tabs = appealOnly
+    ? [
+        { id: "list", label: "List", href: "/grievances" },
+        { id: "appeal", label: "Add Appeal", href: "/grievances/appeal" },
+      ]
+    : [
+        { id: "list", label: "List", href: "/grievances" },
+        { id: "add", label: "Add Grievance", href: "/grievances/add" },
+        { id: "appeal", label: "Add Appeal", href: "/grievances/appeal" },
+      ];
 
   const noDenialReasons = !reasonsLoading && denialReasons.length === 0;
 
@@ -125,7 +142,10 @@ export default function GrievancesAppealAdd() {
       <PageHeader
         title="Add Appeal"
         icon={<Gavel className="text-primary-foreground" size={16} />}
-        backLink={{ href: "/grievances", label: "Back to Grievances" }}
+        backLink={{
+          href: "/grievances",
+          label: appealOnly ? "Back to Appeals" : "Back to Grievances",
+        }}
       />
 
       <div className="bg-card border-b border-border">
@@ -210,31 +230,39 @@ export default function GrievancesAppealAdd() {
                   )}
                 />
 
-                {/* Initial Status */}
-                <FormField
-                  control={form.control}
-                  name="statusId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Initial Status</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-appeal-status">
-                            <SelectValue placeholder="Select a status" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {statuses.map((s) => (
-                            <SelectItem key={s.id} value={s.id} data-testid={`option-status-${s.id}`}>
-                              {s.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {/* Initial Status — appeal-only mode applies the configured
+                    Submitted status and timeline template automatically. */}
+                {appealOnly ? (
+                  <p className="text-sm text-muted-foreground" data-testid="text-appeal-defaults-note">
+                    The appeal will start in the configured Submitted status and
+                    automatically receive the appeal timeline template.
+                  </p>
+                ) : (
+                  <FormField
+                    control={form.control}
+                    name="statusId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Initial Status</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-appeal-status">
+                              <SelectValue placeholder="Select a status" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {statuses.map((s) => (
+                              <SelectItem key={s.id} value={s.id} data-testid={`option-status-${s.id}`}>
+                                {s.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 {/* Benefit (denied) */}
                 <FormField
