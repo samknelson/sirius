@@ -7,7 +7,7 @@ const DP_CHARGE_PLUGIN_ID = "sitespecific-bao-dp";
 /**
  * BAO Domestic Partner monthly billing cron.
  *
- * Runs ONLY the BAO DP monthly premium charge plugin (every enabled config
+ * Runs ONLY the BAO DP monthly member charge plugin (every enabled config
  * of it): one ledger charge per (DP dependent, coverage month) of each
  * active election covering a DP, at most one coverage month in advance,
  * plus offsetting adjustments for (DP, month)s that fell out of coverage
@@ -25,7 +25,7 @@ registerCronPlugin({
     id: "bao-dp-billing",
     name: "BAO - Domestic Partner Monthly Billing",
     description:
-      "Bills Domestic Partner monthly premiums for active elections that cover a DP dependent (one ledger charge per DP per coverage month, priced from the DP rate sheet by coverage-tier transition, at most one month in advance, only for months the subscriber has a benefit) and posts offsetting adjustments for months no longer covered. Skipped months (missing/provisional rates, missing subscriber coverage) are surfaced in the run summary.",
+      "Bills Domestic Partner monthly member charges (the collected amount from the DP rate sheet) for active elections that cover a DP dependent (one ledger charge per DP per coverage month, priced from the DP rate sheet by coverage-tier transition, at most one month in advance, only for months the subscriber has a benefit) and posts offsetting adjustments for months no longer covered. Skipped months (missing/provisional rates, missing subscriber coverage) and confirmed no-charge months are surfaced in the run summary.",
     requiredComponent: "sitespecific.bao",
     singleton: true,
   },

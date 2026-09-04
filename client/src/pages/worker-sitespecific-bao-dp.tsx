@@ -131,11 +131,13 @@ function WorkerDpContent() {
     <div className="space-y-6">
       <Alert data-testid="alert-dp-coverage-note">
         <Info className="h-4 w-4" />
-        <AlertTitle>About domestic partner premiums</AlertTitle>
+        <AlertTitle>About domestic partner member charges</AlertTitle>
         <AlertDescription>
-          Unpaid domestic partner premiums affect only the domestic partner's coverage —
-          they do not affect your own benefits. A coverage month must be paid before it
-          begins for the domestic partner to be covered that month.
+          The monthly member charge is the amount collected from you for domestic partner
+          coverage. Unpaid member charges affect only the domestic partner's coverage —
+          they do not affect your own benefits. A coverage month with a charge must be
+          paid before it begins for the domestic partner to be covered that month; months
+          confirmed as no charge are not billed and need no payment.
         </AlertDescription>
       </Alert>
 
@@ -144,7 +146,7 @@ function WorkerDpContent() {
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2">
               <HeartHandshake className="h-5 w-5 text-primary" />
-              <CardTitle>Domestic Partner Premiums</CardTitle>
+              <CardTitle>Domestic Partner Member Charges</CardTitle>
             </div>
             {data.eaId && owesMoney && (
               <Button asChild data-testid="button-dp-pay">
@@ -156,8 +158,8 @@ function WorkerDpContent() {
             )}
           </div>
           <CardDescription>
-            Monthly premiums billed to the domestic partner account, and their payment
-            status.
+            Monthly member charges billed to the domestic partner account, and their
+            payment status.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -187,7 +189,7 @@ function WorkerDpContent() {
 
           {state.months.length === 0 ? (
             <p className="text-sm text-muted-foreground" data-testid="text-dp-no-charges">
-              No domestic partner premiums have been billed yet.
+              No domestic partner member charges have been billed yet.
             </p>
           ) : (
             <Table data-testid="table-dp-months">
@@ -195,7 +197,7 @@ function WorkerDpContent() {
                 <TableRow>
                   <TableHead>Coverage month</TableHead>
                   <TableHead>Domestic partner</TableHead>
-                  <TableHead className="text-right">Premium</TableHead>
+                  <TableHead className="text-right">Member charge</TableHead>
                   <TableHead className="text-right">Paid</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>

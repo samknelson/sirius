@@ -8,17 +8,21 @@ import {
 import { registerEligibilityPlugin } from "../registry";
 import { storage } from "../../../../storage/database";
 import { computeDpPaymentState } from "../../../../modules/sitespecific/bao/dp-payment-state";
+import {
+  isDpRelationTypeName,
+  priceDpMonth,
+  resolveDpTierTransition,
+} from "../../../../modules/sitespecific/bao/dp-pricing";
 import type { WorkerTrustElection } from "@shared/schema/trust/elections-schema";
+import { BAO_DP_TIER_TRANSITION_LABELS } from "@shared/schema/sitespecific/bao/schema";
 
 type BaoDpConfig = BaseEligibilityConfig;
 
-function isDpRelationTypeName(name: string | null | undefined): boolean {
-  return !!name && name.toLowerCase().includes("domestic partner");
-}
-
 /**
  * "BAO - Domestic Partner Payment" grants a DP dependent's benefit only when
- * the month's DP premium charge is fully paid.
+ * the month's DP member charge is fully paid — or the month is a CONFIRMED
+ * no-charge month on the DP rate sheet (e.g. the 2026 family → family with
+ * DP scenarios), in which case no payment is required.
  *
  * Scope: this plugin ONLY gates evaluations of a domestic-partner DEPENDENT
  * (a dependent evaluation whose worker_relations type is a
@@ -30,13 +34,17 @@ function isDpRelationTypeName(name: string | null | undefined): boolean {
  * For a DP dependent, eligible only when ALL of:
  * - the subscriber has an election active in the as-of month that covers
  *   both this benefit and the subscriber→DP relationship, and
- * - the DP charge for that (election, DP relationship, month) exists and is
- *   fully paid on the subscriber's DP ledger account.
+ * - EITHER the DP charge for that (election, DP relationship, month) exists
+ *   and is fully paid on the subscriber's DP ledger account, OR the month
+ *   prices to a confirmed no-charge rate under the SAME shared pricing rule
+ *   the charge plugin bills with (modules/sitespecific/bao/dp-pricing.ts).
  *
  * Strict by design (per the DP business rules):
  * - No DP billing account configured → ineligible (payment state unknown;
  *   a required-but-unverifiable charge never counts as paid).
- * - No charge posted for the month → ineligible (missing charge ≠ paid).
+ * - No charge posted for the month and the month is NOT a confirmed
+ *   no-charge month (rate missing, provisional, ambiguous, or positive) →
+ *   ineligible (missing charge ≠ paid; a placeholder is never "free").
  * - Partially paid → ineligible. No grace period until the business
  *   confirms one.
  *
@@ -48,7 +56,7 @@ class BaoDpPlugin extends EligibilityPlugin<BaoDpConfig> {
     id: "sitespecific-bao-dp",
     name: "BAO - Domestic Partner Payment",
     description:
-      "Grants a domestic-partner dependent's benefit only when the month's DP premium charge exists and is fully paid on the subscriber's DP ledger account. Passes through for the subscriber and non-DP dependents — nonpayment never blocks the subscriber's own coverage.",
+      "Grants a domestic-partner dependent's benefit only when the month's DP member charge exists and is fully paid on the subscriber's DP ledger account, or the month is a confirmed no-charge month on the DP rate sheet (no payment required). Missing or provisional rates never count as free. Passes through for the subscriber and non-DP dependents — nonpayment never blocks the subscriber's own coverage.",
     requiredComponent: "sitespecific.bao",
     configSchema: {
       type: "object",
@@ -166,6 +174,21 @@ class BaoDpPlugin extends EligibilityPlugin<BaoDpConfig> {
     }
 
     if (!sawCharge) {
+      // No charge posted. The month may be a CONFIRMED no-charge month
+      // (rate sheet says $0.00, not provisional) — then nothing is owed and
+      // coverage is not payment-gated. Anything else (missing, provisional,
+      // ambiguous, or a positive rate that simply has not been billed yet)
+      // fails closed exactly as before.
+      const noCharge = await this.findConfirmedNoChargeElection(
+        covering,
+        asOfYm,
+      );
+      if (noCharge) {
+        return {
+          eligible: true,
+          reason: `DP coverage for ${monthLabel} is a confirmed no-charge month (${noCharge.transitionLabel}) for domestic partner ${dependentLabel} — no payment is required`,
+        };
+      }
       return {
         eligible: false,
         reason: `No DP charge has been posted for ${monthLabel} for domestic partner ${dependentLabel} — a missing required charge does not count as paid`,
@@ -175,6 +198,43 @@ class BaoDpPlugin extends EligibilityPlugin<BaoDpConfig> {
       eligible: false,
       reason: `DP charge for ${monthLabel} is not fully paid (${unpaidDetail}) for domestic partner ${dependentLabel}`,
     };
+  }
+
+  /**
+   * The first covering election whose month prices to a confirmed no-charge
+   * rate under the shared DP pricing rule (tier from non-DP covered lives,
+   * single rated benefit, non-provisional $0.00). Null when no covering
+   * election does — including when the rate is missing, provisional,
+   * ambiguous, or positive.
+   */
+  private async findConfirmedNoChargeElection(
+    covering: WorkerTrustElection[],
+    asOfYm: string,
+  ): Promise<{ election: WorkerTrustElection; transitionLabel: string } | null> {
+    const relIds = new Set<string>();
+    for (const e of covering) for (const id of e.relationshipIds ?? []) relIds.add(id);
+    const rels = relIds.size
+      ? await storage.workerRelations.listByIdsWithType(Array.from(relIds))
+      : [];
+    const typeNameById = new Map(rels.map((r) => [r.id, r.relationTypeName ?? null]));
+
+    for (const election of covering) {
+      const transition = resolveDpTierTransition(election, (id) =>
+        typeNameById.has(id) ? typeNameById.get(id) : undefined,
+      );
+      const price = await priceDpMonth(
+        election.benefitIds ?? [],
+        transition,
+        asOfYm,
+      );
+      if (price.kind === "no_charge") {
+        return {
+          election,
+          transitionLabel: BAO_DP_TIER_TRANSITION_LABELS[transition],
+        };
+      }
+    }
+    return null;
   }
 
   private dependentLabel(

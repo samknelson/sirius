@@ -1,6 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { requireComponent } from "../../components";
-import { DP_PLACEHOLDER_MUST_BE_PROVISIONAL } from "../../../storage/sitespecific/bao/dp-rates";
 import { storage } from "../../../storage";
 import {
   createBaoDpRateRequestSchema,
@@ -125,12 +124,6 @@ export function registerBaoDpRatesRoutes(
         if (error.code === "23503") {
           return res.status(400).json({ message: "Unknown benefit" });
         }
-        if (error.message === DP_PLACEHOLDER_MUST_BE_PROVISIONAL) {
-          return res.status(400).json({
-            message:
-              "Family \u2192 Family with DP rates are placeholders and must remain provisional",
-          });
-        }
         console.error("Failed to create DP rate:", error);
         res.status(500).json({ message: "Failed to create DP rate" });
       }
@@ -172,12 +165,6 @@ export function registerBaoDpRatesRoutes(
         }
         if (error.code === "23503") {
           return res.status(400).json({ message: "Unknown benefit" });
-        }
-        if (error.message === DP_PLACEHOLDER_MUST_BE_PROVISIONAL) {
-          return res.status(400).json({
-            message:
-              "Family \u2192 Family with DP rates are placeholders and must remain provisional",
-          });
         }
         console.error("Failed to update DP rate:", error);
         res.status(500).json({ message: "Failed to update DP rate" });

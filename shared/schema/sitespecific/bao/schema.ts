@@ -644,7 +644,7 @@ export const sitespecificBaoCobraRates = pgTable(
     coveredLivesTier: varchar("covered_lives_tier")
       .notNull()
       .$type<BaoCobraCoveredLivesTier>(),
-    /** Monthly rate in dollars. */
+    /** Monthly member charge in dollars (confirmed $0.00 = no charge). */
     rate: numeric("rate", { precision: 10, scale: 2 }).notNull(),
     effectiveYmd: date("effective_ymd").notNull(),
     data: jsonb("data"),
@@ -858,9 +858,11 @@ export type UpdateBaoCobraCaseRequest = z.infer<
 // COBRA rates above — no explicit end dates, no fallback when nothing
 // applies).
 //
-// The `family → family with DP` transition has no confirmed business rule
-// yet: its rows are stored as configurable PLACEHOLDERS flagged provisional,
-// surfaced as such in the UI, and never inferred from the other rates.
+// `rate` is the MONTHLY MEMBER CHARGE — the amount the Fund collects from
+// the member — never the imputed-income figure on the rate sheet (which is
+// not charged). A confirmed (non-provisional) $0.00 rate means "covered at
+// no charge" (the 2026 family → family with DP scenarios); a PROVISIONAL row
+// is a placeholder that billing and eligibility treat as a missing rate.
 // ---------------------------------------------------------------------------
 
 export const BAO_DP_TIER_TRANSITIONS = [
@@ -886,13 +888,12 @@ export const sitespecificBaoDpRates = pgTable(
     tierTransition: varchar("tier_transition")
       .notNull()
       .$type<BaoDpTierTransition>(),
-    /** Monthly rate in dollars. */
+    /** Monthly member charge in dollars (confirmed $0.00 = no charge). */
     rate: numeric("rate", { precision: 10, scale: 2 }).notNull(),
     effectiveYmd: date("effective_ymd").notNull(),
     /**
-     * Provisional/placeholder flag. Provisional rows (all
-     * family_to_family_dp rows today) are configurable placeholders —
-     * never presented as confirmed values.
+     * Provisional/placeholder flag. Provisional rows are placeholders —
+     * never presented as confirmed values and never billed or waived.
      */
     provisional: boolean("provisional").notNull().default(false),
     data: jsonb("data"),

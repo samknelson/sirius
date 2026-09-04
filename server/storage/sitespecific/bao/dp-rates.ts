@@ -45,14 +45,6 @@ export interface BaoDpRatesStorage {
   tableExists(): Promise<boolean>;
 }
 
-/**
- * Error message thrown when a family_to_family_dp row would end up
- * non-provisional. That transition has no confirmed business rule; its rows
- * are placeholders and must never be presented as confirmed values.
- */
-export const DP_PLACEHOLDER_MUST_BE_PROVISIONAL =
-  "DP_PLACEHOLDER_MUST_BE_PROVISIONAL";
-
 const tableName = getTableName(sitespecificBaoDpRates);
 const rates = sitespecificBaoDpRates;
 
@@ -135,21 +127,8 @@ export function createBaoDpRatesStorage(): BaoDpRatesStorage {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      if (
-        entry.tierTransition === "family_to_family_dp" &&
-        entry.provisional === false
-      ) {
-        throw new Error(DP_PLACEHOLDER_MUST_BE_PROVISIONAL);
-      }
       const client = getClient();
-      const results = await client
-        .insert(rates)
-        .values(
-          entry.tierTransition === "family_to_family_dp"
-            ? { ...entry, provisional: true }
-            : entry,
-        )
-        .returning();
+      const results = await client.insert(rates).values(entry).returning();
       return results[0];
     },
 
@@ -166,20 +145,9 @@ export function createBaoDpRatesStorage(): BaoDpRatesStorage {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
       const client = getClient();
-      const existing = await this.get(id);
-      if (!existing) return undefined;
-      const finalTransition = record.tierTransition ?? existing.tierTransition;
-      const finalProvisional = record.provisional ?? existing.provisional;
-      if (finalTransition === "family_to_family_dp" && !finalProvisional) {
-        throw new Error(DP_PLACEHOLDER_MUST_BE_PROVISIONAL);
-      }
       const results = await client
         .update(rates)
-        .set(
-          finalTransition === "family_to_family_dp"
-            ? { ...record, provisional: true }
-            : record,
-        )
+        .set(record)
         .where(eq(rates.id, id))
         .returning();
       return results[0];

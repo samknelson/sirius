@@ -16,9 +16,19 @@ import type { BaoDpTierTransition } from "@shared/schema/sitespecific/bao/schema
 import type { Ledger, ChargePluginConfig } from "@shared/schema";
 import type { WorkerTrustElection } from "@shared/schema/trust/elections-schema";
 import type { WorkerRelationWithTypeName } from "../../../../storage/workers/relations";
+import {
+  isDpRelationTypeName,
+  priceDpMonth,
+  resolveDpTierTransition,
+} from "../../../../modules/sitespecific/bao/dp-pricing";
 
 /**
- * Domestic Partner (DP) monthly premium charge plugin.
+ * Domestic Partner (DP) monthly member charge plugin.
+ *
+ * Terminology: the amount billed is the MONTHLY MEMBER CHARGE from the DP
+ * rate sheet — the amount the Fund collects from the member (the 48% tax on
+ * imputed income it pays on the member's behalf). The larger imputed-income
+ * figure on the rate sheet is NOT charged and is never represented here.
  *
  * Runs on the CRON trigger. For every active election that covers a
  * domestic-partner dependent, it bills the SUBSCRIBER's DP ledger account
@@ -47,14 +57,21 @@ import type { WorkerRelationWithTypeName } from "../../../../storage/workers/rel
  * rather than billed at a guessed price:
  *   - no present benefit has a rate row (billed on a later run once real
  *     rates exist)
- *   - the only applicable rate is provisional or zero/negative
+ *   - the only applicable rate is provisional or negative
  *   - MORE THAN ONE present benefit has an applicable rate row (ambiguous —
  *     never summed or picked arbitrarily, so the subscriber is never
  *     double-billed)
+ * A CONFIRMED (non-provisional) $0.00 rate is different: the month is
+ * covered at no charge. Nothing is posted, the month is surfaced as
+ * no-charge in the run summary, and any previously billed net for that
+ * month is zeroed by an offsetting adjustment. (Shared pricing rules live
+ * in modules/sitespecific/bao/dp-pricing.ts, so the eligibility gate waives
+ * payment for exactly the months billing treats as free.)
  *
  * Tier transition: derived from the election's covered lives EXCLUDING all
  * DP dependents — 1 non-DP life (subscriber only) → single_to_2party,
- * 2 → 2party_to_family, 3+ → family_to_family_dp. The single_to_family
+ * 2 → 2party_to_family, 3+ → family_to_family_dp (member already has two or
+ * more children — confirmed no charge for 2026). The single_to_family
  * transition is never auto-selected (no confirmed business rule maps an
  * election shape to it). NOTE (unconfirmed business rule): when a worker
  * has multiple DPs, each DP is billed independently using the SAME base
@@ -90,16 +107,12 @@ import type { WorkerRelationWithTypeName } from "../../../../storage/workers/rel
 /** Relation-type name pattern that identifies a domestic-partner relation. */
 export const DP_RELATION_TYPE_NAME_PATTERN = "%domestic partner%";
 
-function isDpRelationTypeName(name: string | null | undefined): boolean {
-  return !!name && name.toLowerCase().includes("domestic partner");
-}
-
 class BaoDpChargePlugin extends ChargePlugin {
   readonly metadata: ChargePluginMetadata = {
     id: "sitespecific-bao-dp",
-    name: "BAO - Domestic Partner Monthly Premium",
+    name: "BAO - Domestic Partner Monthly Member Charge",
     description:
-      "Bills the monthly Domestic Partner premium for every active election that covers a DP dependent, to the subscriber's DP ledger account. One entry per DP dependent per coverage month (statement-dated to that month), priced from the DP rate sheet by coverage-tier transition, at most one month in advance, and only for months the subscriber has a benefit. The rate sheet decides which election benefit is billable: ancillary benefits without DP rates are ignored, and the month prices at the single rated (medical) benefit's rate. Months with missing/provisional/ambiguous rates or no subscriber coverage are skipped and surfaced. (DP, month)s no longer covered receive offsetting adjustments that zero the month out.",
+      "Bills the monthly Domestic Partner member charge (the collected amount on the DP rate sheet, not the imputed-income figure) for every active election that covers a DP dependent, to the subscriber's DP ledger account. One entry per DP dependent per coverage month (statement-dated to that month), priced from the DP rate sheet by coverage-tier transition, at most one month in advance, and only for months the subscriber has a benefit. The rate sheet decides which election benefit is billable: ancillary benefits without DP rates are ignored, and the month prices at the single rated (medical) benefit's rate. Months with missing/provisional/ambiguous rates or no subscriber coverage are skipped and surfaced; months at a confirmed no-charge rate (family → family with DP) are covered with nothing billed. (DP, month)s no longer covered receive offsetting adjustments that zero the month out.",
     triggers: [TriggerType.CRON],
     defaultScope: "global" as const,
     configSchema: {
@@ -129,27 +142,15 @@ class BaoDpChargePlugin extends ChargePlugin {
     })} ${y}`;
   }
 
-  /**
-   * Coverage-tier transition for one DP on an election, derived from the
-   * covered lives EXCLUDING all DP dependents. single_to_family is never
-   * auto-selected (no confirmed rule maps to it).
-   */
+  /** Coverage-tier transition for one DP on an election (shared rule). */
   private resolveTierTransition(
     relationsById: Map<string, WorkerRelationWithTypeName>,
     election: WorkerTrustElection,
   ): BaoDpTierTransition {
-    let nonDpDependents = 0;
-    for (const relId of election.relationshipIds ?? []) {
+    return resolveDpTierTransition(election, (relId) => {
       const rel = relationsById.get(relId);
-      if (!rel) continue; // missing relation row: not countable
-      if (!isDpRelationTypeName(rel.relationTypeName)) nonDpDependents++;
-    }
-    const nonDpLives = 1 + nonDpDependents; // subscriber + non-DP dependents
-    return nonDpLives <= 1
-      ? "single_to_2party"
-      : nonDpLives === 2
-        ? "2party_to_family"
-        : "family_to_family_dp";
+      return rel ? (rel.relationTypeName ?? null) : undefined;
+    });
   }
 
   /**
@@ -184,72 +185,6 @@ class BaoDpChargePlugin extends ChargePlugin {
       window.add(ym);
     }
     return window;
-  }
-
-  /**
-   * Price a coverage month from the DP rate sheet. The rate sheet decides
-   * which present benefit is billable: present benefits WITHOUT an
-   * applicable rate row (ancillary dental/vision/life/prescription/EAP/AD&D)
-   * are ignored, and the month prices at the single rated (medical)
-   * benefit's effective rate. Fail-closed results:
-   *   - "missing_rate": no present benefit has an applicable rate row, or
-   *     the single applicable rate is provisional or zero/negative
-   *   - "ambiguous_rates": more than one present benefit has an applicable
-   *     rate row — never summed or picked arbitrarily
-   */
-  private async priceMonth(
-    presentBenefitIds: string[],
-    transition: BaoDpTierTransition,
-    ym: string,
-  ): Promise<
-    | {
-        ok: true;
-        amount: string;
-        benefitId: string;
-        lineRates: Record<string, string>;
-      }
-    | { ok: false; reason: "missing_rate" | "ambiguous_rates"; ratedBenefitIds: string[] }
-  > {
-    const asOfYmd = `${ym}-01`;
-    const rated: Array<{ benefitId: string; rate: string; provisional: boolean }> =
-      [];
-    for (const benefitId of presentBenefitIds) {
-      const rate = await storage.baoDpRates.getEffectiveRate(
-        benefitId,
-        transition,
-        asOfYmd,
-      );
-      if (!rate) continue; // no DP rate for this benefit (ancillary) — ignore
-      rated.push({
-        benefitId,
-        rate: rate.rate,
-        provisional: !!rate.provisional,
-      });
-    }
-    if (rated.length === 0) {
-      return { ok: false, reason: "missing_rate", ratedBenefitIds: [] };
-    }
-    if (rated.length > 1) {
-      return {
-        ok: false,
-        reason: "ambiguous_rates",
-        ratedBenefitIds: rated.map((r) => r.benefitId),
-      };
-    }
-    const [only] = rated;
-    if (only.provisional || Number(only.rate) <= 0) {
-      return {
-        ok: false,
-        reason: "missing_rate",
-        ratedBenefitIds: [only.benefitId],
-      };
-    }
-    return {
-      ok: true,
-      amount: Number(only.rate).toFixed(2),
-      benefitId: only.benefitId,
-      lineRates: { [only.benefitId]: only.rate },
-    };
   }
 
   async execute(
@@ -409,6 +344,7 @@ class BaoDpChargePlugin extends ChargePlugin {
       let charged = 0;
       let reversed = 0;
       let skippedMissingRate = 0;
+      let noChargeMonths = 0;
       let skippedAmbiguousRate = 0;
       let skippedNoCoverage = 0;
 
@@ -482,16 +418,51 @@ class BaoDpChargePlugin extends ChargePlugin {
               : [];
           const isCovered = window.has(ym) && presentBenefitIds.length > 0;
 
+          // Post one offsetting adjustment that zeroes the month's net.
+          const reverseMonth = (
+            reason: "coverage_reversal" | "no_charge_reversal",
+            label: string,
+          ) => {
+            const netStr = netTotal.toFixed(2);
+            const offset = (-netTotal).toFixed(2);
+            transactions.push({
+              chargePlugin: this.metadata.id,
+              chargePluginKey: `${config.id}:${ea.id}:${target.electionId}:${dpRelId}:${ym}:adj:${Date.now()}`,
+              chargePluginConfigId: config.id,
+              accountId: config.account!,
+              entityType: "worker",
+              entityId: workerId,
+              amount: offset,
+              description: `${label}: ${this.monthLabel(ym)} ($${netStr} → $0.00)`,
+              transactionDate,
+              statementYmd,
+              referenceType: "dp_election_adjustment",
+              referenceId: target.electionId,
+              metadata: {
+                pluginId: this.metadata.id,
+                pluginConfigId: config.id,
+                electionId: target.electionId,
+                workerId,
+                dpRelationshipId: dpRelId,
+                dpWorkerId,
+                billingMonth: ym,
+                adjustmentType: reason,
+                originalAmount: netStr,
+                newAmount: "0.00",
+              },
+            });
+            reversed++;
+          };
+
           if (isCovered) {
             if (!election || !transition) continue; // unreachable when covered
-            const price = await this.priceMonth(
-              presentBenefitIds,
-              transition,
-              ym,
-            );
-            if (!price.ok) {
+            const price = await priceDpMonth(presentBenefitIds, transition, ym);
+            if (price.kind === "missing_rate" || price.kind === "ambiguous_rates") {
+              // Fail closed: never billed at a guessed price, never treated
+              // as free. Already-billed months are left alone (verifyEntry
+              // surfaces drift).
               if (!hasEntries) {
-                if (price.reason === "ambiguous_rates") {
+                if (price.kind === "ambiguous_rates") {
                   skippedAmbiguousRate++;
                   logger.warn(
                     "Skipping DP billing month - multiple rated benefits (ambiguous)",
@@ -522,6 +493,18 @@ class BaoDpChargePlugin extends ChargePlugin {
               continue;
             }
 
+            if (price.kind === "no_charge") {
+              // Confirmed no-charge month (e.g. family → family with DP):
+              // covered, nothing owed. No base entry is ever posted; a
+              // previously billed nonzero net is zeroed so no balance is
+              // left standing against a month that is confirmed free.
+              noChargeMonths++;
+              if (hasEntries && Math.abs(netTotal) >= 0.005) {
+                reverseMonth("no_charge_reversal", "DP Member Charge Reversal (confirmed no charge)");
+              }
+              continue;
+            }
+
             const baseMetadata = {
               pluginId: this.metadata.id,
               pluginConfigId: config.id,
@@ -543,7 +526,7 @@ class BaoDpChargePlugin extends ChargePlugin {
                 entityType: "worker",
                 entityId: workerId,
                 amount: price.amount,
-                description: `DP Premium: ${this.monthLabel(ym)} ($${price.amount})`,
+                description: `DP Member Charge: ${this.monthLabel(ym)} ($${price.amount})`,
                 transactionDate,
                 statementYmd,
                 referenceType: "dp_election",
@@ -563,7 +546,7 @@ class BaoDpChargePlugin extends ChargePlugin {
                 entityType: "worker",
                 entityId: workerId,
                 amount: price.amount,
-                description: `DP Premium Reinstated: ${this.monthLabel(ym)} ($${netStr} → $${price.amount})`,
+                description: `DP Member Charge Reinstated: ${this.monthLabel(ym)} ($${netStr} → $${price.amount})`,
                 transactionDate,
                 statementYmd,
                 referenceType: "dp_election_adjustment",
@@ -584,35 +567,7 @@ class BaoDpChargePlugin extends ChargePlugin {
             // (DP, month) no longer covered — election ended/canceled, DP
             // removed, relationship ended, or subscriber lost the benefit:
             // zero out the month's net.
-            const netStr = netTotal.toFixed(2);
-            const offset = (-netTotal).toFixed(2);
-            transactions.push({
-              chargePlugin: this.metadata.id,
-              chargePluginKey: `${config.id}:${ea.id}:${target.electionId}:${dpRelId}:${ym}:adj:${Date.now()}`,
-              chargePluginConfigId: config.id,
-              accountId: config.account,
-              entityType: "worker",
-              entityId: workerId,
-              amount: offset,
-              description: `DP Premium Reversal: ${this.monthLabel(ym)} ($${netStr} → $0.00)`,
-              transactionDate,
-              statementYmd,
-              referenceType: "dp_election_adjustment",
-              referenceId: target.electionId,
-              metadata: {
-                pluginId: this.metadata.id,
-                pluginConfigId: config.id,
-                electionId: target.electionId,
-                workerId,
-                dpRelationshipId: dpRelId,
-                dpWorkerId,
-                billingMonth: ym,
-                adjustmentType: "coverage_reversal",
-                originalAmount: netStr,
-                newAmount: "0.00",
-              },
-            });
-            reversed++;
+            reverseMonth("coverage_reversal", "DP Member Charge Reversal");
           } else if (window.has(ym) && !isCovered && !hasEntries) {
             // In the coverage window but the subscriber has no benefit for
             // the month yet — surfaced, never billed.
@@ -631,8 +586,11 @@ class BaoDpChargePlugin extends ChargePlugin {
         skippedNoCoverage
           ? `${skippedNoCoverage} month(s) skipped for missing subscriber coverage`
           : null,
+        noChargeMonths
+          ? `${noChargeMonths} month(s) covered at a confirmed no-charge rate (nothing billed)`
+          : null,
       ].filter(Boolean);
-      const summary = `${charged} premium entr${charged === 1 ? "y" : "ies"} and ${reversed} offsetting adjustment(s) across ${targets.size} DP enrollment(s)${skippedBits.length ? ` (${skippedBits.join(", ")})` : ""}`;
+      const summary = `${charged} member charge entr${charged === 1 ? "y" : "ies"} and ${reversed} offsetting adjustment(s) across ${targets.size} DP enrollment(s)${skippedBits.length ? ` (${skippedBits.join(", ")})` : ""}`;
 
       if (cron.mode === "test") {
         return {
@@ -763,7 +721,7 @@ class BaoDpChargePlugin extends ChargePlugin {
       const discrepancies: string[] = [];
       if (benefitIds.length > 1) {
         discrepancies.push(
-          `Entry records ${benefitIds.length} rated benefits; DP premiums price from exactly one rated medical benefit`,
+          `Entry records ${benefitIds.length} rated benefits; DP member charges price from exactly one rated medical benefit`,
         );
       }
       for (const benefitId of benefitIds) {
@@ -781,6 +739,10 @@ class BaoDpChargePlugin extends ChargePlugin {
         if (rate.provisional) {
           discrepancies.push(
             `Rate for benefit ${benefitId} transition ${data.dpTierTransition} is provisional (placeholder)`,
+          );
+        } else if (Math.abs(Number(rate.rate)) < 0.005) {
+          discrepancies.push(
+            `Rate for benefit ${benefitId} transition ${data.dpTierTransition} is a confirmed no-charge rate; no member charge should be posted for this month`,
           );
         }
         expected += Number(rate.rate);

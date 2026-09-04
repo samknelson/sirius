@@ -15,6 +15,12 @@
  *   - re-runs stay idempotent; reversal and reinstatement adjustments keep
  *     reconciling against the (DP, month) net
  *   - verifyEntry re-prices under the same one-medical-benefit rule
+ *   - a CONFIRMED (non-provisional) $0.00 rate is a no-charge month: nothing
+ *     is posted, no balance is created, the run summary surfaces it, and a
+ *     previously billed net for that month is zeroed; a PROVISIONAL $0.00
+ *     placeholder still fails closed
+ *   - the confirmed 2026 member-charge values (never the imputed-income
+ *     column) bill for every plan/transition, effective 2026-01-01 only
  */
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -27,6 +33,10 @@ import {
   type CronContext,
   type LedgerTransaction,
 } from "../../server/plugins/ledger/charge/types";
+import {
+  DP_RATES_2026,
+  DP_RATES_2026_EFFECTIVE_YMD,
+} from "../../server/modules/sitespecific/bao/dp-rates-2026";
 
 // ---------- In-memory stubs ----------
 
@@ -368,4 +378,185 @@ describe("DP premium pricing by medical benefit", () => {
       multi.discrepancies.some((d) => d.includes("exactly one rated medical benefit")),
     ).toBe(true);
   });
+});
+
+describe("confirmed no-charge months (family → family with DP)", () => {
+  const CHILD_RELS = ["rel-child-1", "rel-child-2"];
+
+  function makeFamily() {
+    // Member already has two children → 3 non-DP lives → family_to_family_dp.
+    for (const [i, id] of CHILD_RELS.entries()) {
+      relations.push({
+        id,
+        worker1: SUBSCRIBER,
+        worker2: `worker-child-${i + 1}`,
+        relationType: "type-child",
+        relationTypeName: "Child",
+        startYmd: `${startYm}-01`,
+        endYmd: null,
+      });
+    }
+    elections[0].relationshipIds = [DP_REL, ...CHILD_RELS];
+  }
+
+  it("posts nothing and creates no balance for a confirmed $0.00 rate, surfacing it in the summary", async () => {
+    makeFamily();
+    rates[MEDICAL].family_to_family_dp = [
+      { effectiveYmd: "2020-01-01", rate: "0.00", provisional: false },
+    ];
+    const r = await run();
+    expect(r.transactions).toHaveLength(0);
+    expect(r.message).toContain("confirmed no-charge");
+    expect(r.message).not.toContain("missing/provisional");
+    // Re-run stays quiet: no churn, still no entries.
+    const r2 = await run();
+    expect(r2.transactions).toHaveLength(0);
+    expect(entries).toHaveLength(0);
+  });
+
+  it("still fails closed for a PROVISIONAL $0.00 placeholder (never mistaken for no charge)", async () => {
+    makeFamily();
+    rates[MEDICAL].family_to_family_dp = [
+      { effectiveYmd: "2020-01-01", rate: "0.00", provisional: true },
+    ];
+    const r = await run();
+    expect(r.transactions).toHaveLength(0);
+    expect(r.message).toContain("missing/provisional");
+    expect(r.message).not.toContain("confirmed no-charge");
+  });
+
+  it("still fails closed when the family transition has no rate row at all", async () => {
+    makeFamily();
+    const r = await run();
+    expect(r.transactions).toHaveLength(0);
+    expect(r.message).toContain("missing/provisional");
+  });
+
+  it("does not waive a confirmed positive rate: an unbilled positive month is billed, not free", async () => {
+    makeFamily();
+    rates[MEDICAL].family_to_family_dp = [
+      { effectiveYmd: "2020-01-01", rate: "12.34", provisional: false },
+    ];
+    const r = await run();
+    expect(r.transactions).toHaveLength(3);
+    for (const t of r.transactions) expect(t.amount).toBe("12.34");
+  });
+
+  it("zeroes a previously billed month whose rate is later confirmed as no charge, exactly once", async () => {
+    // Billed as single_to_2party at $400 first...
+    await run();
+    // ...then the member's shape becomes family and that rate is confirmed $0.
+    makeFamily();
+    rates[MEDICAL].family_to_family_dp = [
+      { effectiveYmd: "2020-01-01", rate: "0.00", provisional: false },
+    ];
+    const r = await run();
+    expect(r.transactions).toHaveLength(3);
+    for (const t of r.transactions) {
+      expect(t.referenceType).toBe("dp_election_adjustment");
+      expect(t.amount).toBe("-400.00");
+      expect(t.metadata?.adjustmentType).toBe("no_charge_reversal");
+    }
+    const net = netByMonth();
+    for (const ym of [startYm, midYm, currentYm]) expect(net.get(ym)).toBe(0);
+    const r2 = await run();
+    expect(r2.transactions).toHaveLength(0);
+  });
+
+  it("verifyEntry flags a posted charge for a month whose rate is a confirmed no-charge rate", async () => {
+    await run();
+    const base = entries.find((e) => e.referenceType === "dp_election")!;
+    rates[MEDICAL].single_to_2party = [
+      { effectiveYmd: "2020-01-01", rate: "0.00", provisional: false },
+    ];
+    const v = await plugin.verifyEntry(
+      { ...base, memo: null, date: new Date() } as any,
+      config,
+    );
+    expect(v.isValid).toBe(false);
+    expect(v.discrepancies.some((d) => d.includes("confirmed no-charge"))).toBe(true);
+  });
+});
+
+describe("confirmed 2026 member charges (rate sheet)", () => {
+  // The imputed-income column must never be billed.
+  const IMPUTED_INCOME = ["843.74", "698.12", "1541.91", "607.55", "430.08", "1037.63", "177.52", "144.96", "322.49"];
+
+  const PLANS = Object.keys(DP_RATES_2026);
+  const PAID_TRANSITIONS = ["single_to_2party", "2party_to_family", "single_to_family"] as const;
+
+  it("uses the member-charge column, not the imputed-income column", () => {
+    expect(DP_RATES_2026_EFFECTIVE_YMD).toBe("2026-01-01");
+    expect(DP_RATES_2026.Kaiser.single_to_2party.rate).toBe("405.00");
+    expect(DP_RATES_2026.Kaiser["2party_to_family"].rate).toBe("335.12");
+    expect(DP_RATES_2026.Kaiser.single_to_family.rate).toBe("740.12");
+    expect(DP_RATES_2026["Health Net"].single_to_2party.rate).toBe("291.62");
+    expect(DP_RATES_2026["Health Net"]["2party_to_family"].rate).toBe("206.44");
+    expect(DP_RATES_2026["Health Net"].single_to_family.rate).toBe("498.06");
+    expect(DP_RATES_2026.MLK.single_to_2party.rate).toBe("85.21");
+    expect(DP_RATES_2026.MLK["2party_to_family"].rate).toBe("69.58");
+    expect(DP_RATES_2026.MLK.single_to_family.rate).toBe("154.80");
+    for (const plan of PLANS) {
+      for (const t of PAID_TRANSITIONS) {
+        expect(IMPUTED_INCOME).not.toContain(DP_RATES_2026[plan][t].rate);
+        expect(DP_RATES_2026[plan][t].provisional).toBe(false);
+      }
+      expect(DP_RATES_2026[plan].family_to_family_dp).toEqual({
+        rate: "0.00",
+        provisional: false,
+      });
+    }
+  });
+
+  for (const plan of PLANS) {
+    for (const t of PAID_TRANSITIONS) {
+      it(`bills ${plan} ${t} at $${DP_RATES_2026[plan][t].rate} for 2026 months (and not before)`, async () => {
+        // Shape the election for the transition under test.
+        const shapes: Record<string, string[]> = {
+          single_to_2party: [],
+          "2party_to_family": ["rel-child-1"],
+          single_to_family: [],
+        };
+        for (const id of shapes[t]) {
+          relations.push({
+            id,
+            worker1: SUBSCRIBER,
+            worker2: `w-${id}`,
+            relationType: "type-child",
+            relationTypeName: "Child",
+            startYmd: "2025-01-01",
+            endYmd: null,
+          });
+        }
+        elections[0].relationshipIds = [DP_REL, ...shapes[t]];
+        elections[0].startYmd = "2025-12-01";
+        relations[0].startYmd = "2025-12-01";
+        // Only the transition under test is rated (single_to_family is
+        // never auto-derived, so drive it through the rate sheet directly
+        // by rating it under the derived transition's key).
+        const derived = t === "single_to_family" ? "single_to_2party" : t;
+        rates = {
+          [MEDICAL]: {
+            [derived]: [
+              {
+                effectiveYmd: DP_RATES_2026_EFFECTIVE_YMD,
+                rate: DP_RATES_2026[plan][t].rate,
+                provisional: DP_RATES_2026[plan][t].provisional,
+              },
+            ],
+          },
+        };
+        setPresence(["2025-12", "2026-01", "2026-02"], ALL_BENEFITS);
+        const r = await run();
+        const byMonth = new Map(
+          r.transactions.map((x) => [x.metadata?.billingMonth, x.amount]),
+        );
+        // December 2025 precedes the effective date: no rate → skipped.
+        expect(byMonth.has("2025-12")).toBe(false);
+        expect(byMonth.get("2026-01")).toBe(DP_RATES_2026[plan][t].rate);
+        expect(byMonth.get("2026-02")).toBe(DP_RATES_2026[plan][t].rate);
+        expect(r.message).toContain("missing/provisional");
+      });
+    }
+  }
 });

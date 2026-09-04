@@ -81,6 +81,16 @@ const DP_ACCOUNT_ID = "acct-dp";
   },
 };
 
+// Rate sheet: a CONFIRMED (non-provisional) $0.00 rate under the shared
+// pricing rule waives payment for the month; anything else fails closed.
+let rates: Record<string, Array<{ effectiveYmd: string; rate: string; provisional?: boolean }>> = {};
+(storage as any).baoDpRates = {
+  getEffectiveRate: async (benefitId: string, transition: string, asOfYmd: string) =>
+    benefitId === BENEFIT
+      ? (rates[transition] ?? []).filter((r) => r.effectiveYmd <= asOfYmd)[0]
+      : undefined,
+};
+
 (storage as any).ledger = {
   entries: {
     getBalancesByEntityAndAccount: async () => [{ total: dpBalance }],
@@ -171,6 +181,25 @@ async function check(name: string, c: EligibilityContext, expectEligible: boolea
   dpEntries = [chargeEntry("100.00"), chargeEntry("-100.00")];
   dpBalance = "0";
   await check("fully reversed charge", ctx(), false, "no dp charge has been posted");
+
+  // 12. Confirmed no-charge family → family month (member + 2 children + DP)
+  //     -> pass with no charge and no payment
+  const REL_CHILD_2 = "rel-child-2";
+  relRows[REL_CHILD_2] = { id: REL_CHILD_2, worker1: SUB, worker2: "child-2", relationTypeName: "Child" };
+  elections = [{ ...baseElection, relationshipIds: [REL_DP, REL_CHILD, REL_CHILD_2] }];
+  dpEntries = [];
+  dpBalance = "0";
+  rates = { family_to_family_dp: [{ effectiveYmd: "2026-01-01", rate: "0.00", provisional: false }] };
+  await check("confirmed no-charge month", ctx(), true, "confirmed no-charge month");
+
+  // 13. Provisional $0.00 placeholder -> still fail closed
+  rates = { family_to_family_dp: [{ effectiveYmd: "2026-01-01", rate: "0.00", provisional: true }] };
+  await check("provisional zero placeholder", ctx(), false, "missing required charge");
+
+  // 14. Confirmed positive rate, unbilled -> still fail closed
+  rates = { family_to_family_dp: [{ effectiveYmd: "2026-01-01", rate: "50.00", provisional: false }] };
+  await check("unbilled positive rate", ctx(), false, "missing required charge");
+  rates = {};
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
   process.exit(failures === 0 ? 0 : 1);
