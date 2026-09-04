@@ -42,12 +42,6 @@ export interface TabDefinition {
   /** Whether to use plural form for terminology substitution */
   termPlural?: boolean;
   /**
-   * Label used instead of `label` when the BAO appeal-only surface is active
-   * (sitespecific.bao component enabled): grievance surfaces are presented as
-   * appeals without a global Terminology rename.
-   */
-  appealOnlyLabel?: string;
-  /**
    * For a parent tab, navigate to its first ACCESSIBLE child instead of its
    * own hrefTemplate. Use this when the parent's hrefTemplate points at a child
    * that some audiences can't access (e.g. Accounting -> Accounts is gated by
@@ -258,7 +252,7 @@ export const workerTabTree: HierarchicalTab[] = [
     ]
   },
   { id: 'vdb-pension', label: 'VDB Pension', hrefTemplate: '/workers/{id}/vdb-pension', permission: 'staff', component: 'sitespecific.gbhet.pension' },
-  { id: 'grievances', label: 'Grievances', hrefTemplate: '/workers/{id}/grievances', permission: 'staff', component: 'grievance', appealOnlyLabel: 'Appeals' },
+  { id: 'grievances', label: 'Grievances', hrefTemplate: '/workers/{id}/grievances', permission: 'staff', component: 'grievance' },
   { id: 'notes', label: 'Notes', hrefTemplate: '/workers/{id}/notes', permission: 'staff', entityContext: { framework: 'entity-notes', contextId: 'worker' } },
   { id: 'files', label: 'Files', hrefTemplate: '/workers/{id}/files', permission: 'staff', entityContext: { framework: 'entity-files', contextId: 'worker' } },
   { id: 'cases', label: 'Cases', hrefTemplate: '/workers/{id}/cases', permission: 'staff', component: 'sitespecific.bao' },
@@ -295,7 +289,7 @@ export const employerTabTree: HierarchicalTab[] = [
     ]
   },
   { id: 'dispatch', label: 'Dispatch', hrefTemplate: '/employers/{id}/dispatch', permission: 'staff', component: 'dispatch' },
-  { id: 'grievances', label: 'Grievances', hrefTemplate: '/employers/{id}/grievances', permission: 'staff', component: 'grievance', appealOnlyLabel: 'Appeals' },
+  { id: 'grievances', label: 'Grievances', hrefTemplate: '/employers/{id}/grievances', permission: 'staff', component: 'grievance' },
   { id: 'school-attributes', label: 'School Attributes', hrefTemplate: '/employers/{id}/school-attributes', policyId: 'employer.steward.view', component: 'sitespecific.btu' },
   { id: 'sitespecific-bao-immediate-eligibility', label: 'Immediate Eligibility', hrefTemplate: '/employers/{id}/sitespecific-bao-immediate-eligibility', permission: 'staff', component: 'sitespecific.bao' },
 ];

@@ -2,21 +2,11 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { eq, asc } from "drizzle-orm";
 import { storage } from "../../storage";
-import { requireComponent, isComponentEnabled } from "../components";
+import { requireComponent } from "../components";
 import { buildContext, getAccessStorage } from "../../services/access-policy-evaluator";
 import {
   GRIEVANCE_CARDINALITIES,
   grievanceTimelineAdjustmentSchema,
-  APPEAL_META_KEY,
-  APPEAL_ONLY_COMPONENT,
-  APPEAL_WORKFLOW_VARIABLE,
-  appealWorkflowSettingsSchema,
-  type AppealWorkflowSettings,
-  trustBenefits,
-  trustProviders,
-  workers,
-  optionsGrievanceDenialReason,
-  optionsGrievanceStatus,
 } from "@shared/schema";
 import { getClient } from "../../storage/transaction-context";
 
@@ -67,54 +57,6 @@ const searchGrievancesSchema = z.object({
   employerId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
   kind: z.preprocess(emptyToUndefined, z.enum(["appeal"]).optional()),
 });
-
-/**
- * Schema for the appeal intake POST body. `statusId` is optional here because
- * in appeal-only (BAO) mode the initial status comes from the configured
- * appeal workflow settings instead of the client; outside appeal-only mode
- * the route still requires it.
- */
-const createAppealSchema = z.object({
-  categoryId: z.string().uuid("A valid category is required"),
-  statusId: z.string().uuid("A valid status is required").optional(),
-  workerId: z.string().uuid("A valid worker is required"),
-  benefitId: z.string().uuid("A valid benefit is required"),
-  denialReasonId: z.string().uuid("A valid denial reason is required"),
-});
-
-/**
- * Whether this deployment runs the appeal-only surface: the BAO component
- * selects it. When active, generic grievance creation is rejected and appeal
- * intake applies the configured appeal workflow defaults.
- */
-async function isAppealOnlyMode(): Promise<boolean> {
-  return isComponentEnabled(APPEAL_ONLY_COMPONENT);
-}
-
-/**
- * Load and validate the BAO appeal workflow settings. Returns an error string
- * (never throws) when the variable is missing or malformed so the intake
- * route can fail loudly with an actionable message.
- */
-async function loadAppealWorkflowSettings(): Promise<
-  { ok: true; settings: AppealWorkflowSettings } | { ok: false; message: string }
-> {
-  const row = await storage.variables.getByName(APPEAL_WORKFLOW_VARIABLE);
-  if (!row) {
-    return {
-      ok: false,
-      message: `Appeal workflow settings are not configured. An administrator must set the "${APPEAL_WORKFLOW_VARIABLE}" variable (initial status and timeline template) before appeals can be created.`,
-    };
-  }
-  const parsed = appealWorkflowSettingsSchema.safeParse(row.value);
-  if (!parsed.success) {
-    return {
-      ok: false,
-      message: `Appeal workflow settings are invalid. An administrator must correct the "${APPEAL_WORKFLOW_VARIABLE}" variable (initial status and timeline template).`,
-    };
-  }
-  return { ok: true, settings: parsed.data };
-}
 
 const linkWorkerSchema = z.object({ workerId: z.string().uuid("A valid worker is required") });
 const linkEmployerSchema = z.object({ employerId: z.string().uuid("A valid employer is required") });
@@ -252,15 +194,6 @@ export function registerGrievanceRoutes(
 
   app.post("/api/grievances", ...gate, async (req, res) => {
     try {
-      // Appeal-only (BAO) deployments have exactly one case type: appeals.
-      // Generic grievance creation is rejected here (not just hidden in the
-      // client) so direct API calls cannot create a second case type.
-      if (await isAppealOnlyMode()) {
-        return res.status(403).json({
-          message:
-            "Generic grievance creation is disabled: this deployment is appeal-only. Use the appeal intake (POST /api/grievances/appeal).",
-        });
-      }
       const parsed = createGrievanceSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
@@ -299,169 +232,6 @@ export function registerGrievanceRoutes(
       }
       console.error("Failed to create grievance:", error);
       res.status(500).json({ message: "Failed to create grievance" });
-    }
-  });
-
-  // ---- Appeal routes (must precede /:id to avoid capture) -----------------
-
-  /**
-   * List active trust benefits with their provider name for the appeal intake
-   * form. The carrier is derived from the benefit's provider relationship; this
-   * endpoint exposes only the fields the intake form needs.
-   */
-  app.get("/api/grievances/appeal/benefits", ...gate, async (req, res) => {
-    try {
-      const client = getClient();
-      const rows = await client
-        .select({
-          id: trustBenefits.id,
-          name: trustBenefits.name,
-          providerId: trustBenefits.providerId,
-          providerName: trustProviders.name,
-        })
-        .from(trustBenefits)
-        .leftJoin(trustProviders, eq(trustBenefits.providerId, trustProviders.id))
-        .where(eq(trustBenefits.isActive, true))
-        .orderBy(asc(trustBenefits.name));
-      res.json(rows);
-    } catch (error) {
-      console.error("Failed to fetch appeal benefits:", error);
-      res.status(500).json({ message: "Failed to fetch benefits" });
-    }
-  });
-
-  /**
-   * Create an appeal grievance:
-   *  - Validates category, status, worker, benefit, and denial reason all exist.
-   *  - Derives the carrier from the benefit's provider relationship (no
-   *    separate carrier entry required).
-   *  - Creates an individual grievance with `data.appealMeta` set, links the
-   *    worker, and adds the initial status history entry.
-   *  - Returns the created grievance (including appeal metadata) so the client
-   *    can redirect straight to the detail page for letter upload.
-   */
-  app.post("/api/grievances/appeal", ...gate, async (req, res) => {
-    try {
-      const parsed = createAppealSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
-      }
-      const { categoryId, workerId, benefitId, denialReasonId } = parsed.data;
-
-      // Resolve the initial status and (in appeal-only mode) the default
-      // timeline template. Appeal-only deployments take both from the
-      // configured appeal workflow settings — staff never choose an
-      // arbitrary initial status. Other deployments keep the pre-existing
-      // behavior: the client supplies the status, no template is assigned.
-      const appealOnly = await isAppealOnlyMode();
-      let statusId: string;
-      let timelineTemplateId: string | null = null;
-      if (appealOnly) {
-        const loaded = await loadAppealWorkflowSettings();
-        if (!loaded.ok) {
-          return res.status(409).json({ message: loaded.message });
-        }
-        statusId = loaded.settings.initialStatusId;
-        timelineTemplateId = loaded.settings.timelineTemplateId;
-        const template = await storage.grievanceTimelineTemplates.get(timelineTemplateId);
-        if (!template) {
-          return res.status(409).json({
-            message:
-              "The configured appeal timeline template no longer exists. An administrator must update the appeal workflow settings.",
-          });
-        }
-      } else {
-        if (!parsed.data.statusId) {
-          return res.status(400).json({ message: "A valid status is required" });
-        }
-        statusId = parsed.data.statusId;
-      }
-
-      const client = getClient();
-
-      // Validate worker exists.
-      const [workerRow] = await client
-        .select({ id: workers.id })
-        .from(workers)
-        .where(eq(workers.id, workerId))
-        .limit(1);
-      if (!workerRow) {
-        return res.status(400).json({ message: "Worker not found" });
-      }
-
-      const [benefit] = await client
-        .select({ id: trustBenefits.id, name: trustBenefits.name, providerId: trustBenefits.providerId })
-        .from(trustBenefits)
-        .where(eq(trustBenefits.id, benefitId))
-        .limit(1);
-      if (!benefit) {
-        return res.status(400).json({ message: "Benefit not found" });
-      }
-
-      // Validate denial reason exists.
-      const [denialReason] = await client
-        .select({ id: optionsGrievanceDenialReason.id })
-        .from(optionsGrievanceDenialReason)
-        .where(eq(optionsGrievanceDenialReason.id, denialReasonId))
-        .limit(1);
-      if (!denialReason) {
-        return res.status(400).json({ message: "Denial reason not found" });
-      }
-
-      // Validate status exists. In appeal-only mode a missing status means
-      // the CONFIGURATION is stale (the client never supplied it), so answer
-      // with an actionable conflict instead of an input error.
-      const [statusRow] = await client
-        .select({ id: optionsGrievanceStatus.id })
-        .from(optionsGrievanceStatus)
-        .where(eq(optionsGrievanceStatus.id, statusId))
-        .limit(1);
-      if (!statusRow) {
-        if (appealOnly) {
-          return res.status(409).json({
-            message:
-              "The configured initial appeal status no longer exists. An administrator must update the appeal workflow settings.",
-          });
-        }
-        return res.status(400).json({ message: "Status not found" });
-      }
-
-      // Create the appeal grievance. The appeal metadata lives in `data` so no
-      // new table is required; the carrier (provider) is always derived at read
-      // time from `benefit.providerId`.
-      const appealMeta = {
-        kind: "appeal" as const,
-        benefitId,
-        denialReasonId,
-      };
-
-      const created = await storage.grievances.create({
-        categoryId,
-        cardinality: "individual",
-        timelineTemplateId,
-        data: { [APPEAL_META_KEY]: appealMeta } as unknown as null,
-      });
-
-      // Link the worker (individual grievance — storage enforces single-worker
-      // constraint transactionally).
-      const workerResult = await storage.grievances.addWorkerForGrievance(created.id, workerId);
-      if ("error" in workerResult) {
-        // The grievance was created; surface the partial-failure gracefully so
-        // the caller can navigate to the grievance and fix the worker link.
-        console.error("Failed to link worker to new appeal grievance:", workerResult.error);
-        const fresh = await storage.grievances.getWithDetails(created.id);
-        return res.status(201).json({ ...fresh, _warnings: ["Worker could not be linked — add from the grievance page"] });
-      }
-
-      // Add the initial status history entry.
-      const statusDate = new Date();
-      await storage.grievanceStatusHistory.create(created.id, { statusId, date: statusDate });
-
-      const fresh = await storage.grievances.getWithDetails(created.id);
-      res.status(201).json(fresh);
-    } catch (error: any) {
-      console.error("Failed to create appeal grievance:", error);
-      res.status(500).json({ message: "Failed to create appeal" });
     }
   });
 

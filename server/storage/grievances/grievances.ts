@@ -159,8 +159,6 @@ export interface GrievanceWithDetails extends Grievance {
 export interface GrievanceSearchFilters {
   workerId?: string;
   employerId?: string;
-  /** When "appeal", return only grievances that carry an appealMeta payload. */
-  kind?: "appeal";
 }
 
 export interface GrievanceStorage {
@@ -307,11 +305,6 @@ export function createGrievanceStorage(): GrievanceStorage {
           ),
         );
       }
-      if (filters.kind === "appeal") {
-        // Filter to grievances whose data jsonb carries appealMeta.kind = "appeal".
-        conditions.push(sql`${grievances.data}->'appealMeta'->>'kind' = 'appeal'`);
-      }
-
       const baseQuery = client
         .select({
           id: grievances.id,

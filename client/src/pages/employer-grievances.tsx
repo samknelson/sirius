@@ -1,8 +1,6 @@
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { EmployerLayout, useEmployerLayout } from "@/components/layouts/EmployerLayout";
-import { useAuth } from "@/contexts/AuthContext";
-import { APPEAL_ONLY_COMPONENT } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,16 +26,9 @@ interface GrievanceListItem {
 
 function EmployerGrievancesContent() {
   const { employer } = useEmployerLayout();
-  const { hasComponent } = useAuth();
-  // Appeal-only (BAO) surface: same policy as the worker tab — legacy generic
-  // grievances stay hidden here, and the empty state uses appeal wording.
-  const appealOnly = hasComponent(APPEAL_ONLY_COMPONENT);
 
   const { data: grievances = [], isLoading } = useQuery<GrievanceListItem[]>({
-    queryKey: [
-      "/api/grievances",
-      appealOnly ? { employerId: employer.id, kind: "appeal" } : { employerId: employer.id },
-    ],
+    queryKey: ["/api/grievances", { employerId: employer.id }],
   });
 
   return (
@@ -51,9 +42,7 @@ function EmployerGrievancesContent() {
           </div>
         ) : grievances.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground" data-testid="text-no-grievances">
-            {appealOnly
-              ? "No appeals found for this employer."
-              : "No grievances found for this employer."}
+            No grievances found for this employer.
           </div>
         ) : (
           <Table>

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, Check, X } from "lucide-react";
-import { GrievanceLayout, useGrievanceLayout, useAppealPresentation } from "@/components/layouts/GrievanceLayout";
+import { GrievanceLayout } from "@/components/layouts/GrievanceLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -91,8 +91,6 @@ function TypeSelector({
 function SettlementsContent() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
-  const { grievance } = useGrievanceLayout();
-  const isAppeal = useAppealPresentation(grievance);
 
   const settlementsKey = ["/api/grievances", id, "settlements"];
 
@@ -478,7 +476,7 @@ function SettlementsContent() {
           <AlertDialogHeader>
             <AlertDialogTitle>Remove settlement?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently remove this settlement from the {isAppeal ? "appeal" : "grievance"}.
+              This will permanently remove this settlement from the grievance.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

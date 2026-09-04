@@ -1,6 +1,5 @@
 import { FileText } from "lucide-react";
-import { Link, Redirect, useLocation } from "wouter";
-import { APPEAL_ONLY_COMPONENT } from "@shared/schema";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -23,17 +22,10 @@ export default function GrievancesAdd() {
   const { hasPermission, hasComponent } = useAuth();
   const isAdmin = hasPermission("admin");
   const showBargainingUnit = hasComponent("bargainingunits");
-  // Appeal-only (BAO) surface: there is no generic Add Grievance path — the
-  // server rejects generic creation, so send staff to the appeal intake.
-  const appealOnly = hasComponent(APPEAL_ONLY_COMPONENT);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cardinality, setCardinality] = useState<GrievanceCardinality>("individual");
   const [staged, setStaged] = useState<SectionWorker[]>([]);
   const [stagedEmployerId, setStagedEmployerId] = useState<string | null>(null);
-
-  if (appealOnly) {
-    return <Redirect to="/grievances/appeal" replace />;
-  }
 
   const tabs = [
     { id: "list", label: "List", href: "/grievances" },

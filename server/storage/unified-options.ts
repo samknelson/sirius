@@ -43,7 +43,6 @@ import {
   optionsSitespecificBaoNotesTags,
   optionsWorkerBanType,
   optionsNoteType,
-  optionsGrievanceDenialReason,
   optionsFileType,
   bulkMediumEnum,
 } from "@shared/schema";
@@ -97,7 +96,6 @@ export type OptionsTypeName =
   | "note-type"
   | "bao-notes-tag-type"
   | "bao-notes-tag"
-  | "grievance-denial-reason"
   | "file-type";
 
 /**
@@ -858,24 +856,6 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Urgent, Billing", showInTable: true, columnHeader: "Name" },
       { name: "tagTypeId", label: "Tag Type", inputType: "select-options", required: true, selectOptionsType: "bao-notes-tag-type", helperText: "The tag type this tag is organized under", showInTable: true, columnHeader: "Tag Type" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this tag", showInTable: true, columnHeader: "Description" },
-    ],
-  },
-  "grievance-denial-reason": {
-    table: optionsGrievanceDenialReason,
-    displayName: "Appeal Denial Reasons",
-    description: "Configurable denial reasons for appeal grievances. Each appeal records the reason the benefit was denied.",
-    singularName: "Denial Reason",
-    pluralName: "Denial Reasons",
-    orderByColumn: "sequence" as const,
-    loggingModule: "options.grievanceDenialReason",
-    requiredFields: ["name"],
-    optionalFields: ["description", "siriusId", "sequence", "data"],
-    supportsSequencing: true,
-    requiredComponent: "grievance",
-    fields: [
-      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Not Medically Necessary, Out-of-Network, Prior Authorization Denied", showInTable: true, columnHeader: "Name" },
-      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this denial reason", showInTable: true, columnHeader: "Description" },
-      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },
   "worker-ban-type": {

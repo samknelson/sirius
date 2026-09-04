@@ -115,7 +115,6 @@ export const optionsTypeRegistry: Record<string, OptionsTypeConfig> = {
   "bao-notes-tag": createTypeConfig("bao-notes-tag"),
   "worker-ban-type": createTypeConfig("worker-ban-type"),
   "note-type": createTypeConfig("note-type"),
-  "grievance-denial-reason": createTypeConfig("grievance-denial-reason"),
   "file-type": createTypeConfig("file-type"),
 };
 

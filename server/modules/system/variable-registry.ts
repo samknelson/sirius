@@ -2,7 +2,6 @@ import type { Request } from "express";
 import { z } from "zod";
 import type { InsertVariable } from "@shared/schema";
 import { TERMINOLOGY_VARIABLE_NAME, terminologySchema, TERM_REGISTRY } from "@shared/terminology";
-import { APPEAL_WORKFLOW_VARIABLE, appealWorkflowSettingsSchema } from "@shared/schema";
 import { buildContext, checkAccess } from "../../services/access-policy-evaluator";
 import { isComponentEnabled } from "../components";
 import { dispatchEbaSettingsSchema } from "../dispatch/eba-config";
@@ -75,17 +74,6 @@ const terminologyValueSchema = terminologySchema.transform((terms) => {
 const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
   // Staff-readable, gated by the grievance component (deadline coloring)
   "grievance.deadline_thresholds": { readTier: "staff", component: "grievance" },
-
-  // BAO appeal workflow settings: initial (Submitted) status + default
-  // timeline template applied to every new appeal. Staff-readable so the
-  // intake form can surface configuration problems; admin-written through
-  // the Variables UI. Gated by the BAO component that turns on the
-  // appeal-only surface.
-  [APPEAL_WORKFLOW_VARIABLE]: {
-    readTier: "staff",
-    component: "sitespecific.bao",
-    schema: appealWorkflowSettingsSchema,
-  },
 
   // Dispatch-owned settings (component-gated in both directions)
   dispatch_eba_settings: {

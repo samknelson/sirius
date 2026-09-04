@@ -16,7 +16,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { GrievanceLayout, useGrievanceLayout, useAppealPresentation } from "@/components/layouts/GrievanceLayout";
+import { GrievanceLayout, useGrievanceLayout } from "@/components/layouts/GrievanceLayout";
 import type {
   GrievanceTimelineAdjustment,
   GrievanceTimelineTemplateStep,
@@ -240,8 +240,6 @@ function TimelineTable({
   grievanceId: string;
   timelineTemplateId: string | null;
 }) {
-  const { grievance } = useGrievanceLayout();
-  const isAppeal = useAppealPresentation(grievance);
   const { data: steps, isLoading: stepsLoading } = useQuery<GrievanceTimelineStepItem[]>({
     queryKey: ["/api/grievances", grievanceId, "timeline-steps"],
   });
@@ -272,7 +270,7 @@ function TimelineTable({
   if (rows.length === 0) {
     return (
       <p className="text-sm text-muted-foreground" data-testid="text-no-timeline-steps">
-        No timeline steps yet. Steps appear automatically as the {isAppeal ? "appeal" : "grievance"} moves
+        No timeline steps yet. Steps appear automatically as the grievance moves
         through statuses on its timeline template. The template can be chosen on
         the Status History tab.
       </p>

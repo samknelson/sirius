@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode } from "react";
-import { FileText, Gavel, ArrowLeft } from "lucide-react";
+import { FileText, ArrowLeft } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -7,8 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useGrievanceTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
-import { useAuth } from "@/contexts/AuthContext";
-import { type GrievanceCardinality, APPEAL_ONLY_COMPONENT, APPEAL_META_KEY } from "@shared/schema";
+import { type GrievanceCardinality } from "@shared/schema";
 import {
   type GrievanceTimelineStepItem,
   useDeadlineThresholds,
@@ -95,30 +94,16 @@ export function useGrievanceLayout() {
   return context;
 }
 
-/** Whether a grievance record is an appeal (carries appeal metadata). */
+/** Recognize historical appeal-tagged grievance records without restoring the
+ * retired appeal intake/configuration surface. */
 export function isAppealRecord(grievance: Pick<GrievanceWithDetails, "data">): boolean {
-  return (grievance.data as any)?.[APPEAL_META_KEY]?.kind === "appeal";
+  return (grievance.data as any)?.appealMeta?.kind === "appeal";
 }
 
-/**
- * Whether a record should be PRESENTED as an appeal. On the BAO appeal-only
- * surface every record is called an appeal — including legacy generic
- * grievances reached by direct URL — so wording never mixes nouns. Outside
- * BAO, the record's own appeal metadata decides.
- */
-export function useAppealPresentation(
-  grievance?: Pick<GrievanceWithDetails, "data"> | null,
-): boolean {
-  const { hasComponent } = useAuth();
-  if (hasComponent(APPEAL_ONLY_COMPONENT)) return true;
-  return grievance ? isAppealRecord(grievance) : false;
-}
-
-function grievanceTitle(grievance: GrievanceWithDetails, isAppeal: boolean): string {
-  const noun = isAppeal ? "Appeal" : "Grievance";
+function grievanceTitle(grievance: GrievanceWithDetails): string {
   if (grievance.name && grievance.name.trim()) return grievance.name;
-  if (grievance.categoryName) return `${grievance.categoryName} ${noun}`;
-  return `${noun} ${grievance.id.slice(0, 8)}`;
+  if (grievance.categoryName) return `${grievance.categoryName} Grievance`;
+  return `Grievance ${grievance.id.slice(0, 8)}`;
 }
 
 /**
@@ -192,21 +177,12 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
       },
     });
 
-  const { hasComponent } = useAuth();
-  // Appeal-only (BAO) surface: every record is presented as an appeal —
-  // including legacy generic grievances reached by direct URL. Outside BAO,
-  // the record's own appeal metadata decides the noun.
-  const appealOnly = hasComponent(APPEAL_ONLY_COMPONENT);
-  const isAppeal = appealOnly || (grievance ? isAppealRecord(grievance) : false);
-  const listLabel = appealOnly ? "Back to Appeals" : "Back to Grievances";
-  const noun = isAppeal ? "Appeal" : "Grievance";
-
   const { tabs, getActiveRoot } = useGrievanceTabAccess(id || "");
 
   const activeRoot = getActiveRoot(activeTab);
   const subTabs = activeRoot?.children;
 
-  usePageTitle(grievance ? grievanceTitle(grievance, isAppeal) : undefined);
+  usePageTitle(grievance ? grievanceTitle(grievance) : undefined);
 
   const isLoading = grievanceLoading;
 
@@ -218,20 +194,16 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  {isAppeal ? (
-                    <Gavel className="text-primary-foreground" size={16} />
-                  ) : (
-                    <FileText className="text-primary-foreground" size={16} />
-                  )}
+                  <FileText className="text-primary-foreground" size={16} />
                 </div>
                 <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">{noun} Not Found</span>
+                <span className="text-muted-foreground text-sm font-medium">Grievance Not Found</span>
               </div>
               <div className="flex items-center space-x-4">
                 <Link href="/grievances">
                   <Button variant="ghost" size="sm" data-testid="button-back-to-grievances">
                     <ArrowLeft size={16} className="mr-2" />
-                    {listLabel}
+                    Back to Grievances
                   </Button>
                 </Link>
               </div>
@@ -245,13 +217,13 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
               <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
                 <FileText className="text-muted-foreground" size={32} />
               </div>
-              <h3 className="text-lg font-medium text-foreground mb-2">{noun} Not Found</h3>
+              <h3 className="text-lg font-medium text-foreground mb-2">Grievance Not Found</h3>
               <p className="text-muted-foreground text-center">
-                The {noun.toLowerCase()} you're looking for doesn't exist or has been removed.
+                The grievance you're looking for doesn't exist or has been removed.
               </p>
               <Link href="/grievances">
                 <Button className="mt-4" data-testid="button-return-to-grievances">
-                  {appealOnly ? "Return to Appeals" : "Return to Grievances"}
+                  Return to Grievances
                 </Button>
               </Link>
             </CardContent>
@@ -277,7 +249,7 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
                 <Link href="/grievances">
                   <Button variant="ghost" size="sm" data-testid="button-back-to-grievances">
                     <ArrowLeft size={16} className="mr-2" />
-                    {listLabel}
+                    Back to Grievances
                   </Button>
                 </Link>
               </div>
@@ -312,24 +284,20 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  {isAppeal ? (
-                    <Gavel className="text-primary-foreground" size={16} />
-                  ) : (
-                    <FileText className="text-primary-foreground" size={16} />
-                  )}
+                  <FileText className="text-primary-foreground" size={16} />
                 </div>
                 <h1
                   className="text-xl font-semibold text-foreground"
                   data-testid={`text-grievance-title-${grievance.id}`}
                 >
-                  {grievanceTitle(grievance, isAppeal)}
+                  {grievanceTitle(grievance)}
                 </h1>
               </div>
               <div className="flex items-center space-x-4">
                 <Link href="/grievances">
                   <Button variant="ghost" size="sm" data-testid="button-back-to-grievances">
                     <ArrowLeft size={16} className="mr-2" />
-                    {listLabel}
+                    Back to Grievances
                   </Button>
                 </Link>
               </div>

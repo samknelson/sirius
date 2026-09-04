@@ -1,36 +1,15 @@
 import { Link } from "wouter";
-import { Gavel } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   GrievanceLayout,
   useGrievanceLayout,
-  useAppealPresentation,
 } from "@/components/layouts/GrievanceLayout";
 import { GRIEVANCE_CARDINALITY_LABELS } from "@/components/grievances/grievance-form";
 import { GrievanceContractSummary } from "@/components/grievances/grievance-contract-section";
 import { GrievanceRepresentativeSummary } from "@/components/grievances/grievance-representative-section";
 import { useAuth } from "@/contexts/AuthContext";
-
-interface BenefitItem {
-  id: string;
-  name: string;
-  providerId: string | null;
-  providerName: string | null;
-}
-
-interface DenialReasonItem {
-  id: string;
-  name: string;
-}
-
-interface AppealMeta {
-  kind: "appeal";
-  benefitId: string;
-  denialReasonId: string;
-}
 
 function GrievanceDetailsContent() {
   const { grievance } = useGrievanceLayout();
@@ -38,75 +17,12 @@ function GrievanceDetailsContent() {
   const showBargainingUnit = hasComponent("bargainingunits");
   const showContract = hasComponent("grievance.contract");
 
-  const appealMeta: AppealMeta | null =
-    (grievance as any).data?.appealMeta?.kind === "appeal"
-      ? (grievance as any).data.appealMeta
-      : null;
-  // Wording follows the surface: on the BAO appeal-only surface even a legacy
-  // generic record is presented as an appeal.
-  const appealWording = useAppealPresentation(grievance);
-
-  const { data: appealBenefits = [] } = useQuery<BenefitItem[]>({
-    queryKey: ["/api/grievances/appeal/benefits"],
-    enabled: !!appealMeta,
-  });
-  const { data: denialReasons = [] } = useQuery<DenialReasonItem[]>({
-    queryKey: ["/api/options/grievance-denial-reason"],
-    enabled: !!appealMeta,
-  });
-
-  const appealBenefit = appealMeta
-    ? appealBenefits.find((b) => b.id === appealMeta.benefitId) ?? null
-    : null;
-  const appealDenialReason = appealMeta
-    ? denialReasons.find((r) => r.id === appealMeta.denialReasonId) ?? null
-    : null;
-
   const showLead = grievance.cardinality === "multiple-with-lead";
   const isSingleWorker = grievance.cardinality === "individual";
   const employerName = grievance.employers[0]?.name ?? null;
 
   return (
     <div className="space-y-6">
-      {appealMeta && (
-        <Card data-testid="card-appeal-metadata">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Gavel size={16} />
-              Appeal Details
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">Denied Benefit</label>
-                <p className="text-foreground" data-testid="text-appeal-benefit">
-                  {appealBenefit ? appealBenefit.name : (
-                    <span className="text-muted-foreground italic">Unknown benefit</span>
-                  )}
-                </p>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">Carrier</label>
-                <p className="text-foreground" data-testid="text-appeal-carrier">
-                  {appealBenefit?.providerName ?? (
-                    <span className="text-muted-foreground italic">No carrier on file</span>
-                  )}
-                </p>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">Denial Reason</label>
-                <p className="text-foreground" data-testid="text-appeal-denial-reason">
-                  {appealDenialReason ? appealDenialReason.name : (
-                    <span className="text-muted-foreground italic">Unknown reason</span>
-                  )}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       <Card>
         <CardContent className="space-y-6 pt-6">
           <div>
@@ -114,7 +30,7 @@ function GrievanceDetailsContent() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">
-                  {appealWording ? "Appeal ID" : "Grievance ID"}
+                  Grievance ID
                 </label>
                 <p className="text-foreground" data-testid="text-grievance-sirius-id">
                   {grievance.siriusId || "—"}
@@ -148,16 +64,12 @@ function GrievanceDetailsContent() {
                   )}
                 </div>
               )}
-              {/* Appeals are always individual cases — cardinality is a
-                  generic-grievance concept, so it isn't shown for them. */}
-              {!appealMeta && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-muted-foreground">Cardinality</label>
-                  <p className="text-foreground" data-testid="text-grievance-cardinality">
-                    {GRIEVANCE_CARDINALITY_LABELS[grievance.cardinality] ?? grievance.cardinality}
-                  </p>
-                </div>
-              )}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground">Cardinality</label>
+                <p className="text-foreground" data-testid="text-grievance-cardinality">
+                  {GRIEVANCE_CARDINALITY_LABELS[grievance.cardinality] ?? grievance.cardinality}
+                </p>
+              </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">Record ID</label>
                 <p className="text-foreground font-mono text-sm" data-testid="text-grievance-id">
