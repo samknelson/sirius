@@ -1,0 +1,143 @@
+Application initialization FAILED
+Initialization failed and this process will NOT recover. Waiting will not help; the deployment needs a fix and a redeploy.
+
+state	init-failed
+blocked on	drift
+drift check	failed
+boot id	1f9c2838-3481-4872-a110-1b2dbe8c59d9
+started at	2026-09-04T21:13:53.958Z
+answered at	/
+Error
+Schema drift detected at startup — refusing to boot. Checked: 104 core table(s) + 13 enabled component(s). Extra tables (in DB, not owned by core or any component manifest): - options_grievance_denial_reason To resolve: Correlation with the registered migrations (matched by migration name and description; stored migrations_version = 1150): C. NO REGISTERED MIGRATION COVERS THESE ITEMS: - extra table options_grievance_denial_reason No environment variable can repair these: nothing in the image knows how to create them. A baseline script must ship in the NEXT image (scripts/migrate/baseline/<name>-<YYYYMMDD>.ts, registered from scripts/migrate/index.ts) — see docs/baselining.md. If instead you are a developer who just changed shared/schema*, the missing piece is your own migration under scripts/migrate/core/ or components/<id>/. To inspect this deployment without letting it write anything, redeploy with BRINGUP_REPORT_ONLY=1: it prints the full bring-up report and stops before any migration, bootstrap or variable write. The runbook for a target you cannot log into is in docs/aurora.md ('Diagnosing a deployment with no shell'). (In development only, SKIP_SCHEMA_DRIFT_CHECK=1 bypasses this gate. Never set it on a deployment — it boots the app against a schema it disagrees with.)
+
+StartupSchemaDriftError: Schema drift detected at startup — refusing to boot.
+
+Checked: 104 core table(s) + 13 enabled component(s).
+
+Extra tables (in DB, not owned by core or any component manifest):
+  - options_grievance_denial_reason
+
+To resolve:
+Correlation with the registered migrations (matched by migration name and
+description; stored migrations_version = 1150):
+
+  C. NO REGISTERED MIGRATION COVERS THESE ITEMS:
+     - extra table options_grievance_denial_reason
+     No environment variable can repair these: nothing in the image knows
+     how to create them. A baseline script must ship in the NEXT image
+     (scripts/migrate/baseline/<name>-<YYYYMMDD>.ts, registered from
+     scripts/migrate/index.ts) — see docs/baselining.md. If instead you are
+     a developer who just changed shared/schema*, the missing piece is your
+     own migration under scripts/migrate/core/ or components/<id>/.
+
+  To inspect this deployment without letting it write anything, redeploy with
+  BRINGUP_REPORT_ONLY=1: it prints the full bring-up report and stops before
+  any migration, bootstrap or variable write. The runbook for a target you
+  cannot log into is in docs/aurora.md ('Diagnosing a deployment with no shell').
+
+  (In development only, SKIP_SCHEMA_DRIFT_CHECK=1 bypasses this gate. Never
+  set it on a deployment — it boots the app against a schema it disagrees with.)
+    at enforceStartupSchemaDrift (file:///app/dist/app-init.js:47185:9)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async withBootDeadline (file:///app/dist/app-init.js:46427:12)
+    at async runSchemaBringUp (file:///app/dist/app-init.js:47413:5)
+    at async bootstrapApp (file:///app/dist/app-init.js:54977:3)
+    at async startApp (file:///app/dist/app-init.js:55152:3)
+    at async Server.<anonymous> (file:///app/dist/production-entry.js:204:5)
+Schema bring-up report
+==============================================================================
+SCHEMA BRING-UP REPORT
+==============================================================================
+
+-- Database ------------------------------------------------------------------
+  host:       ep-jolly-sea-af5fz3pe.c-2.us-west-2.aws.neon.tech:5432
+  database:   neondb
+  user:       neondb_owner
+  driver:     neon (serverless/WebSocket)
+  tls:        TLS terminated by the Neon WebSocket proxy
+  url source: DATABASE_URL supplied directly
+  state:      INITIALIZED (this app's `variables` table is present)
+  tables:     175 in the public schema
+
+-- Core migrations (migrations_version) --------------------------------------
+  stored version:            1150
+  highest registered:        1150
+  highest baseline script:   1042
+  pending:                   none
+  applied this boot:         0
+
+-- Component migrations ------------------------------------------------------
+  enabled components:        21 (13 schema-managing, listed below)
+    - ledger.payment.batch: at 0 of 0 — up to date
+    - cardcheck: at 0 of 0 — up to date
+    - grievance: at 30 of 28 — up to date
+    - employer.company: at 0 of 0 — up to date
+    - worker.relations: at 0 of 0 — up to date
+    - trust.providers.edi: at 3 of 3 — up to date
+    - trust.benefits: at 2 of 2 — up to date
+    - trust.benefits.eligibility.exemptions: at 2 of 2 — up to date
+    - trust.elections: at 3 of 3 — up to date
+    - facility: at 0 of 0 — up to date
+    - sitespecific.bao: at 1145 of 1145 — up to date
+    - bulk: at 0 of 0 — up to date
+    - system.sftp.client: at 0 of 0 — up to date
+
+-- Concurrent boot (schema bring-up lock) ------------------------------------
+  outcome: SOLE — the lock was free; this task did the bring-up alone
+  waited:  10 ms for the lock
+
+-- Schema drift gate ---------------------------------------------------------
+  status: failed
+  checked: 104 core table(s) + 13 enabled component(s)
+    - extra table options_grievance_denial_reason
+  
+  Correlation with the registered migrations (matched by migration name and
+  description; stored migrations_version = 1150):
+  
+    C. NO REGISTERED MIGRATION COVERS THESE ITEMS:
+       - extra table options_grievance_denial_reason
+       No environment variable can repair these: nothing in the image knows
+       how to create them. A baseline script must ship in the NEXT image
+       (scripts/migrate/baseline/<name>-<YYYYMMDD>.ts, registered from
+       scripts/migrate/index.ts) — see docs/baselining.md. If instead you are
+       a developer who just changed shared/schema*, the missing piece is your
+       own migration under scripts/migrate/core/ or components/<id>/.
+  
+    To inspect this deployment without letting it write anything, redeploy with
+    BRINGUP_REPORT_ONLY=1: it prints the full bring-up report and stops before
+    any migration, bootstrap or variable write. The runbook for a target you
+    cannot log into is in docs/aurora.md ('Diagnosing a deployment with no shell').
+
+-- BRING-UP FAILED -----------------------------------------------------------
+  phase: drift-gate
+  Schema drift detected at startup — refusing to boot.
+  
+  Checked: 104 core table(s) + 13 enabled component(s).
+  
+  Extra tables (in DB, not owned by core or any component manifest):
+    - options_grievance_denial_reason
+  
+  To resolve:
+  Correlation with the registered migrations (matched by migration name and
+  description; stored migrations_version = 1150):
+  
+    C. NO REGISTERED MIGRATION COVERS THESE ITEMS:
+       - extra table options_grievance_denial_reason
+       No environment variable can repair these: nothing in the image knows
+       how to create them. A baseline script must ship in the NEXT image
+       (scripts/migrate/baseline/<name>-<YYYYMMDD>.ts, registered from
+       scripts/migrate/index.ts) — see docs/baselining.md. If instead you are
+       a developer who just changed shared/schema*, the missing piece is your
+       own migration under scripts/migrate/core/ or components/<id>/.
+  
+    To inspect this deployment without letting it write anything, redeploy with
+    BRINGUP_REPORT_ONLY=1: it prints the full bring-up report and stops before
+    any migration, bootstrap or variable write. The runbook for a target you
+    cannot log into is in docs/aurora.md ('Diagnosing a deployment with no shell').
+  
+    (In development only, SKIP_SCHEMA_DRIFT_CHECK=1 bypasses this gate. Never
+    set it on a deployment — it boots the app against a schema it disagrees with.)
+
+==============================================================================
+Status addresses: /health, /boot-status, /api/health, /api/boot-status — the /api/… spellings answer from the API service.
+
