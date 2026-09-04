@@ -398,6 +398,12 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       if (type === "bao-case-status" && data.closed !== undefined && typeof data.closed !== "boolean") {
         return res.status(400).json({ message: "closed must be a boolean" });
       }
+      if (type === "bao-case-status" && data.lapseStatusId) {
+        const statuses = await getOptionsStorage().list("bao-case-status");
+        const target = statuses.find((s: any) => s.id === data.lapseStatusId);
+        if (!target || target.caseTypeId !== data.caseTypeId) return res.status(400).json({ message: "Lapse status must belong to the same case type" });
+        if (target.closed && !target.defaultResolutionId) return res.status(400).json({ message: "A closed lapse status must have a default resolution" });
+      }
 
       // Member statuses: the BAO hours threshold lives at the canonical
       // nested path data.sitespecific.bao.threshold. Validate it and
@@ -452,6 +458,14 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
         if (validationError) {
           return res.status(400).json({ message: validationError });
         }
+      }
+      if (type === "bao-case-status" && updates.lapseStatusId) {
+        const current = await getOptionsStorage().get(type as OptionsTypeName, id);
+        const statuses = await getOptionsStorage().list("bao-case-status");
+        const target = statuses.find((s: any) => s.id === updates.lapseStatusId);
+        const caseTypeId = updates.caseTypeId ?? (current as any)?.caseTypeId;
+        if (!target || target.caseTypeId !== caseTypeId) return res.status(400).json({ message: "Lapse status must belong to the same case type" });
+        if (target.closed && !target.defaultResolutionId) return res.status(400).json({ message: "A closed lapse status must have a default resolution" });
       }
 
       // Member statuses: a `data` update is a DEEP MERGE into the row's

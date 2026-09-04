@@ -125,7 +125,9 @@ export interface BaoCasesStorage {
     id: string,
     updates: Partial<InsertBaoCase>,
     assignment?: BaoCaseAssignmentContext,
+    options?: { systemClose?: boolean },
   ): Promise<BaoCase>;
+  listLapsedOpenCases(todayYmd: string): Promise<Array<{ id: string; deadlineYmd: string; statusId: string; lapseStatusId: string }>>;
   addNote(caseId: string, input: CreateBaoCaseInput["initialNote"], actorUserId: string): Promise<NoteWithDetails>;
   list(input: {
     entityType?: BaoCaseEntityType;
@@ -486,7 +488,7 @@ export function createBaoCasesStorage(): BaoCasesStorage {
       return result;
     },
 
-    async updateLifecycle(id, updates, assignment) {
+    async updateLifecycle(id, updates, assignment, options) {
       return runInTransaction(async () => {
         // Serialize every mutation of this case before deriving merged state.
         // Status-row locks alone only coordinate status classification; without
@@ -521,7 +523,7 @@ export function createBaoCasesStorage(): BaoCasesStorage {
             const steps = ["submitted", "auto_denied", "trustee_review", "approved", "denied", "no_response"];
             const from = steps.indexOf(previousStatus?.workflowStep ?? "");
             const to = steps.indexOf(status.workflowStep ?? "");
-            if (from < 0 || to !== from + 1) throw new Error("INVALID_WORKFLOW_TRANSITION");
+            if (from < 0 || to !== from + 1 && !options?.systemClose) throw new Error("INVALID_WORKFLOW_TRANSITION");
           }
         }
         const assignee = updates.assigneeUserId ?? existing.assigneeUserId;
@@ -535,7 +537,7 @@ export function createBaoCasesStorage(): BaoCasesStorage {
           const [resolution] = await getClient().select({ id: optionsBaoCaseResolution.id })
             .from(optionsBaoCaseResolution).where(eq(optionsBaoCaseResolution.id, resolutionId));
           if (!resolution) throw new Error("INVALID_RESOLUTION");
-          if (status.requiresOutreachNote) {
+          if (status.requiresOutreachNote && !options?.systemClose) {
             const [outreach] = await getClient().select({ id: notes.id })
               .from(sitespecificBaoCaseNotes)
               .innerJoin(notes, eq(notes.id, sitespecificBaoCaseNotes.noteId))
@@ -550,7 +552,14 @@ export function createBaoCasesStorage(): BaoCasesStorage {
           throw new Error("OPEN_CASE_RESOLUTION");
         }
         const normalized = status.closed
-          ? { ...updates, resolutionId: nextResolutionId ?? status.defaultResolutionId }
+          ? {
+              ...updates,
+              resolutionId: nextResolutionId ?? status.defaultResolutionId,
+              ...(options?.systemClose ? {
+                resolutionYmd: nextResolutionYmd ?? sql`CURRENT_DATE`,
+                data: { ...(existing.data as Record<string, unknown> | null ?? {}), autoClosedReason: "deadline_lapsed" },
+              } : {}),
+            }
           : { ...updates, resolutionId: null, resolutionYmd: null };
         if (status.durationDays != null && updates.statusId && updates.statusId !== existing.statusId) {
           (normalized as any).deadlineYmd = sql`CURRENT_DATE + ${status.durationDays}::int`;
@@ -562,6 +571,22 @@ export function createBaoCasesStorage(): BaoCasesStorage {
         });
         return updated;
       });
+    },
+
+    async listLapsedOpenCases(todayYmd) {
+      const rows = await getClient().select({
+        id: cases.id,
+        deadlineYmd: cases.deadlineYmd,
+        statusId: cases.statusId,
+        lapseStatusId: optionsBaoCaseStatus.lapseStatusId,
+      }).from(cases)
+        .innerJoin(optionsBaoCaseStatus, eq(optionsBaoCaseStatus.id, cases.statusId))
+        .where(and(
+          eq(optionsBaoCaseStatus.closed, false),
+          sql`${cases.deadlineYmd} < ${todayYmd}::date`,
+          sql`${optionsBaoCaseStatus.lapseStatusId} IS NOT NULL`,
+        ));
+      return rows.filter((row): row is typeof row & { lapseStatusId: string } => Boolean(row.lapseStatusId));
     },
 
     async addNote(caseId, input, actorUserId) {

@@ -19,6 +19,7 @@ interface CaseRow {
   deadlineYmd: string;
   resolutionName: string | null;
   resolutionYmd: string | null;
+  data?: { autoClosedReason?: string };
 }
 
 export default function CaseListPanel({
@@ -91,6 +92,7 @@ export default function CaseListPanel({
                   {!entityScoped && <span className="font-medium">{item.entityName ?? item.entityId}</span>}
                   <Badge variant={item.statusClosed ? "outline" : "secondary"}>{item.statusName}</Badge>
                   <Badge variant="outline">{item.caseTypeName}</Badge>
+                   {item.data?.autoClosedReason === "deadline_lapsed" && <Badge variant="outline">Closed automatically (deadline lapsed)</Badge>}
                   <span>{item.assigneeName}</span>
                   <span>Created {item.createdAt.slice(0, 10)}</span>
                   <span>Due {item.deadlineYmd}</span>

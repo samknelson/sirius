@@ -33,6 +33,7 @@ interface CaseDetail {
   notes: Array<{ id: string; typeId: string; typeName: string | null; subject: string; body: string | null; timestamp: string; authorName: string | null; tags?: Array<{ tagId?: string; tagName?: string; name?: string }> }>;
   letters: CaseLetter[];
   mailingAddressOnFile: boolean;
+  data?: { autoClosedReason?: string };
 }
 
 /**
@@ -140,7 +141,7 @@ export default function BaoCaseDetailPage() {
     <div>
       <PageHeader title={`Case · ${record.entityName ?? record.entityId}`} />
       <main className="mx-auto max-w-4xl space-y-6 p-6">
-        <Card><CardHeader><CardTitle className="flex flex-wrap items-center gap-2">Case Details <Badge>{record.statusName}</Badge><Badge variant="outline" data-testid="badge-case-type">{record.caseTypeName}</Badge></CardTitle></CardHeader>
+        <Card><CardHeader><CardTitle className="flex flex-wrap items-center gap-2">Case Details <Badge>{record.statusName}</Badge><Badge variant="outline" data-testid="badge-case-type">{record.caseTypeName}</Badge>{record.data?.autoClosedReason === "deadline_lapsed" && <Badge variant="outline">Closed automatically (deadline lapsed)</Badge>}</CardTitle></CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
             <div><Label>Created</Label><p>{record.createdAt.slice(0, 10)}</p></div>
             <div><Label>Deadline</Label><Input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} /></div>

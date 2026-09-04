@@ -1358,6 +1358,7 @@ export const optionsBaoCaseStatus = pgTable("options_bao_case_status", {
   durationDays: integer("duration_days"),
   workflowStep: varchar("workflow_step", { length: 64 }),
   defaultResolutionId: varchar("default_resolution_id"),
+  lapseStatusId: varchar("lapse_status_id"),
   requiresOutreachNote: boolean("requires_outreach_note").notNull().default(false),
   data: jsonb("data"),
 });

@@ -721,13 +721,14 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     orderByColumn: "sequence" as const,
     loggingModule: "options.baoCaseStatus",
     requiredFields: ["name"],
-    optionalFields: ["description", "closed", "sequence", "caseTypeId", "durationDays", "workflowStep", "defaultResolutionId", "requiresOutreachNote", "data"],
+     optionalFields: ["description", "closed", "sequence", "caseTypeId", "durationDays", "workflowStep", "defaultResolutionId", "lapseStatusId", "requiresOutreachNote", "data"],
     supportsSequencing: true,
     requiredComponent: "sitespecific.bao",
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, showInTable: true, columnHeader: "Description" },
       { name: "closed", label: "Closed", inputType: "checkbox", required: false, helperText: "Closed cases appear in Historical views and require resolution details", showInTable: true, columnHeader: "Closed" },
+      { name: "lapseStatusId", label: "When deadline lapses, move to", inputType: "select-options", required: false, showInTable: true, columnHeader: "Lapse status" },
     ],
   },
   "bao-case-type": {
