@@ -193,3 +193,4 @@
 - [Notifier postal template channel](notifier-postal-template-channel.md) — one shared letter-page wrapper; sendKey hook claims at the comm insert; pre-claim sender refusals must surface as NOT_SENT, never "sent".
 - [Unwired component migration file](component-migration-unwired-file.md) — a migration file that is not registered never runs; schema that lands without one fails every fresh install, not just dev.
 - [Dev UI verification login](dev-ui-verification-login.md) — INITIAL_ADMIN_PASSWORD is not a login (unreferenced); make a throwaway local account (users+auth_identities+user_roles, hash via generate-password-hash) for browser/API checks, delete after.
+- [Exemption provenance contract](exemption-provenance-contract.md) — `data.source` discriminated union, storage returns a view (raw jsonb never leaves), no request-body `data`, malformed source throws, reverse lookup by jsonb containment.

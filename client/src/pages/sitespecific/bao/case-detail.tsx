@@ -14,26 +14,42 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { CaseLettersCard, type CaseLetter } from "@/components/sitespecific/bao/CaseLettersCard";
 import { BaoCaseDocumentsCard } from "@/components/sitespecific/bao/BaoCaseDocumentsCard";
+import { GrantedExemptionsCard } from "@/components/sitespecific/bao/GrantedExemptionsCard";
+import type { TrustBenefitEligibilityExemptionView } from "@shared/schema";
 
 type Option = { id: string; name: string; closed?: boolean; data?: { entityTypes?: string[] } };
 type CaseTypeOption = Option & { workflowCode?: string };
 /** GET /api/sitespecific/bao/cases/:id — the server's BaoCaseDetails plus the letter record. */
 interface CaseDetail {
   id: string; entityType: string; entityId: string; entityName: string | null;
+
   assigneeUserId: string; assigneeName: string; statusId: string; statusName: string;
+
   statusClosed: boolean; createdAt: string; deadlineYmd: string;
+
   caseTypeId: string; caseTypeName: string; workflowStep: string | null; benefitId: string | null;
+
   resolutionId: string | null; resolutionName: string | null; resolutionYmd: string | null;
   // Benefit Appeal facts (BaoCaseAppealFacts): all null on a case that is not
   // a benefit appeal. The citation is the text snapshotted onto the appeal at
   // auto-denial — what the member was told — not the reason's current text.
+
   benefitName: string | null;
+
   denialReasonName: string | null;
+
   spdCitation: string | null;
+
   notes: Array<{ id: string; typeId: string; typeName: string | null; subject: string; body: string | null; timestamp: string; authorName: string | null; tags?: Array<{ tagId?: string; tagName?: string; name?: string }> }>;
+
   letters: CaseLetter[];
+
   mailingAddressOnFile: boolean;
+  /** Exemptions this appeal's approval granted; null when the exemptions component is off. */
+
   data?: { autoClosedReason?: string };
+
+  grantedExemptions: TrustBenefitEligibilityExemptionView[] | null;
 }
 
 /**
@@ -156,6 +172,7 @@ export default function BaoCaseDetailPage() {
         {isAppeal && <AppealFactsCard record={record} />}
         <CaseLettersCard letters={record.letters ?? []} mailingAddressOnFile={record.mailingAddressOnFile ?? true} isWorkerCase={record.entityType === "worker"} />
         <BaoCaseDocumentsCard caseId={record.id} />
+        <GrantedExemptionsCard exemptions={record.grantedExemptions} workflowStep={record.workflowStep} />
         {record.workflowStep === "auto_denied" && (
           <Card><CardHeader><CardTitle>Record member letter</CardTitle></CardHeader><CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">Attach the member’s written appeal and add it to the case conversation. This moves the case to Trustee Review.</p>

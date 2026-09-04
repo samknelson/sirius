@@ -4,9 +4,11 @@ import {
   createBaoCaseRequestSchema,
   listBaoCasesQuerySchema,
   updateBaoCaseRequestSchema,
+  TRUST_EXEMPTION_SOURCE_BAO_APPEAL,
+  type TrustBenefitEligibilityExemptionView,
 } from "@shared/schema";
 import { storage } from "../../../storage";
-import { requireComponent } from "../../components";
+import { isComponentEnabled, requireComponent } from "../../components";
 import { getEffectiveUser } from "../../masquerade";
 import {
   assignmentForbidden,
@@ -19,6 +21,24 @@ type AccessMiddleware = (policy: string) => Middleware;
 async function effectiveUserId(req: Request): Promise<string | null> {
   const { dbUser } = await getEffectiveUser((req as any).session ?? {}, (req as any).user);
   return dbUser?.id ?? null;
+}
+
+const TRUST_EXEMPTIONS_COMPONENT_ID = "trust.benefits.eligibility.exemptions";
+
+/**
+ * The exemptions this case's approval granted, found through the provenance
+ * each exemption row records (`data.source` naming this case) — the case row
+ * holds no pointer of its own, so deleting an exemption later simply drops it
+ * from this list instead of leaving a dangling id behind. Null when the
+ * exemptions component is off: its table may not exist, and "none" would be
+ * a claim this deployment cannot make.
+ */
+async function grantedExemptionsOf(caseId: string): Promise<TrustBenefitEligibilityExemptionView[] | null> {
+  if (!(await isComponentEnabled(TRUST_EXEMPTIONS_COMPONENT_ID))) return null;
+  return storage.trustBenefitEligibilityExemptions.listBySource({
+    kind: TRUST_EXEMPTION_SOURCE_BAO_APPEAL,
+    caseId,
+  });
 }
 
 function caseError(res: Response, error: any) {
@@ -136,14 +156,15 @@ export function registerBaoCaseRoutes(
         for (const tag of tags) byNote.set(tag.noteId, [...(byNote.get(tag.noteId) ?? []), tag]);
         record.notes = record.notes.map((note) => ({ ...note, tags: byNote.get(note.id) ?? [] })) as any;
       }
-      // The case's letter record (member notices linked to it) and whether
-      // the member even has an address to mail to — so an empty list can say
-      // WHY nothing went out.
-      const [letters, mailingAddressOnFile] = await Promise.all([
+      // The case's letter record (member notices linked to it), whether the
+      // member even has an address to mail to — so an empty list can say WHY
+      // nothing went out — and any exemption an approved appeal granted.
+      const [letters, mailingAddressOnFile, grantedExemptions] = await Promise.all([
         storage.baoCases.listLetters(record.id),
         storage.baoCases.hasMailingAddress(record.id),
+        grantedExemptionsOf(record.id),
       ]);
-      res.json({ ...record, letters, mailingAddressOnFile });
+      res.json({ ...record, letters, mailingAddressOnFile, grantedExemptions });
     } catch (error) {
       caseError(res, error);
     }

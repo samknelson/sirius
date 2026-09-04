@@ -6,26 +6,40 @@ import {
   trustBenefits,
   createTrustBenefitEligibilityExemptionRequestSchema,
   updateTrustBenefitEligibilityExemptionRequestSchema,
+  trustBenefitEligibilityExemptionDataFor,
+  readTrustBenefitEligibilityExemptionSource,
   type TrustBenefitEligibilityExemption,
+  type TrustBenefitEligibilityExemptionSource,
+  type TrustBenefitEligibilityExemptionView,
 } from '@shared/schema';
-import { eq, and, asc, desc, type SQL } from 'drizzle-orm';
+import { eq, and, asc, desc, sql, type SQL } from 'drizzle-orm';
 import { defineLoggingConfig } from '../middleware/logging';
 
 export interface TrustBenefitEligibilityExemptionSearchParams {
   id?: string;
   subscriberWorkerId?: string;
   benefitId?: string;
+  /** Only rows whose recorded provenance (`data.source`) is this source. */
+  source?: TrustBenefitEligibilityExemptionSource;
   sort?: 'startAsc' | 'startDesc';
   limit?: number;
   offset?: number;
 }
 
+/**
+ * Every read returns `TrustBenefitEligibilityExemptionView` — the row minus
+ * its raw `data` jsonb, plus the validated provenance — see the contract on
+ * `trustBenefitEligibilityExemptionSourceSchema`. Nothing here hands the
+ * raw jsonb to a caller.
+ */
 export interface TrustBenefitEligibilityExemptionsStorage {
-  search(params: TrustBenefitEligibilityExemptionSearchParams): Promise<TrustBenefitEligibilityExemption[]>;
-  getById(id: string): Promise<TrustBenefitEligibilityExemption | undefined>;
-  listByWorker(workerId: string): Promise<TrustBenefitEligibilityExemption[]>;
-  create(workerId: string, input: unknown): Promise<TrustBenefitEligibilityExemption>;
-  update(id: string, input: unknown): Promise<TrustBenefitEligibilityExemption | undefined>;
+  search(params: TrustBenefitEligibilityExemptionSearchParams): Promise<TrustBenefitEligibilityExemptionView[]>;
+  getById(id: string): Promise<TrustBenefitEligibilityExemptionView | undefined>;
+  listByWorker(workerId: string): Promise<TrustBenefitEligibilityExemptionView[]>;
+  /** The exemptions a given originating record created, newest start first. */
+  listBySource(source: TrustBenefitEligibilityExemptionSource): Promise<TrustBenefitEligibilityExemptionView[]>;
+  create(workerId: string, input: unknown): Promise<TrustBenefitEligibilityExemptionView>;
+  update(id: string, input: unknown): Promise<TrustBenefitEligibilityExemptionView | undefined>;
   delete(id: string): Promise<boolean>;
 }
 
@@ -59,7 +73,7 @@ function emitExemptionSaved(
 }
 
 interface ExemptionBeforeState {
-  exemption: TrustBenefitEligibilityExemption | undefined;
+  exemption: TrustBenefitEligibilityExemptionView | undefined;
 }
 
 async function describeExemption(
@@ -104,12 +118,24 @@ export const trustBenefitEligibilityExemptionsLoggingConfig =
     },
   });
 
-function stripData(row: TrustBenefitEligibilityExemption): TrustBenefitEligibilityExemption {
-  if (row && typeof row === 'object' && 'data' in row) {
-    const { data: _omit, ...rest } = row as Record<string, unknown>;
-    return rest as TrustBenefitEligibilityExemption;
-  }
-  return row;
+/**
+ * The one projection from a table row to what callers see: the raw `data`
+ * jsonb is replaced by the provenance it records. Throws on a malformed
+ * `data.source` (a writer bug) rather than reading it as a manual entry.
+ */
+function toView(row: TrustBenefitEligibilityExemption): TrustBenefitEligibilityExemptionView {
+  const { data: _omit, ...rest } = row;
+  return { ...rest, source: readTrustBenefitEligibilityExemptionSource(row) };
+}
+
+/**
+ * Rows whose `data` contains exactly this provenance. Containment (`@>`)
+ * matches the stored shape while ignoring any writer-private keys beside it,
+ * mirroring what `readTrustBenefitEligibilityExemptionSource` accepts.
+ */
+function recordsSource(source: TrustBenefitEligibilityExemptionSource): SQL {
+  const stored = JSON.stringify(trustBenefitEligibilityExemptionDataFor(source));
+  return sql`${trustBenefitEligibilityExemptions.data} @> ${stored}::jsonb`;
 }
 
 async function assertWorkerExists(workerId: string): Promise<void> {
@@ -130,7 +156,7 @@ async function assertBenefitExists(benefitId: string): Promise<void> {
 
 export function createTrustBenefitEligibilityExemptionsStorage(): TrustBenefitEligibilityExemptionsStorage {
   const storage: TrustBenefitEligibilityExemptionsStorage = {
-    async search(params): Promise<TrustBenefitEligibilityExemption[]> {
+    async search(params): Promise<TrustBenefitEligibilityExemptionView[]> {
       const client = getClient();
       const conds: SQL[] = [];
       if (params.id) conds.push(eq(trustBenefitEligibilityExemptions.id, params.id));
@@ -140,6 +166,7 @@ export function createTrustBenefitEligibilityExemptionsStorage(): TrustBenefitEl
       if (params.benefitId) {
         conds.push(eq(trustBenefitEligibilityExemptions.benefitId, params.benefitId));
       }
+      if (params.source) conds.push(recordsSource(params.source));
       const where = conds.length > 0 ? and(...conds) : undefined;
       const order = params.sort === 'startAsc'
         ? asc(trustBenefitEligibilityExemptions.startYmd)
@@ -149,7 +176,7 @@ export function createTrustBenefitEligibilityExemptionsStorage(): TrustBenefitEl
       const ordered = filtered.orderBy(order);
       const limited = params.limit !== undefined ? ordered.limit(params.limit) : ordered;
       const final = params.offset !== undefined ? limited.offset(params.offset) : limited;
-      return (await final).map(stripData);
+      return (await final).map(toView);
     },
 
     async getById(id) {
@@ -159,6 +186,10 @@ export function createTrustBenefitEligibilityExemptionsStorage(): TrustBenefitEl
 
     async listByWorker(workerId) {
       return await storage.search({ subscriberWorkerId: workerId, sort: 'startDesc' });
+    },
+
+    async listBySource(source) {
+      return await storage.search({ source, sort: 'startDesc' });
     },
 
     async create(workerId, input) {
@@ -182,7 +213,7 @@ export function createTrustBenefitEligibilityExemptionsStorage(): TrustBenefitEl
           })
           .returning();
         emitExemptionSaved(created, 'created');
-        return stripData(created);
+        return toView(created);
       });
     },
 
@@ -216,7 +247,7 @@ export function createTrustBenefitEligibilityExemptionsStorage(): TrustBenefitEl
         if (parsed.endYmd !== undefined) updateValues.endYmd = parsed.endYmd;
         if (parsed.description !== undefined) updateValues.description = parsed.description;
 
-        if (Object.keys(updateValues).length === 0) return stripData(existing);
+        if (Object.keys(updateValues).length === 0) return toView(existing);
 
         const [updated] = await client
           .update(trustBenefitEligibilityExemptions)
@@ -229,7 +260,7 @@ export function createTrustBenefitEligibilityExemptionsStorage(): TrustBenefitEl
         if (existing.startYmd !== updated.startYmd || existing.endYmd !== updated.endYmd) {
           emitExemptionSaved(existing, 'updated');
         }
-        return stripData(updated);
+        return toView(updated);
       });
     },
 

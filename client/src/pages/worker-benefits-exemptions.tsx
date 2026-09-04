@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { pluginManifestQueryKey } from "@/plugins/_core";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
@@ -39,8 +40,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { Pencil, Trash2 } from "lucide-react";
-import type { TrustBenefitEligibilityExemption } from "@shared/schema";
+import type { TrustBenefitEligibilityExemptionView } from "@shared/schema";
 import { useModalSeed } from "@/hooks/use-modal-seed";
+import { ExemptionSourceLabel, exemptionSourceLabel } from "@/components/trust/ExemptionSourceLabel";
 
 interface EligibilityPlugin {
   id: string;
@@ -78,7 +80,7 @@ function ExemptionFormDialog({
   onOpenChange: (open: boolean) => void;
   mode: "create" | "edit";
   workerId: string;
-  exemption?: TrustBenefitEligibilityExemption | null;
+  exemption?: TrustBenefitEligibilityExemptionView | null;
   plugins: EligibilityPlugin[];
   benefits: TrustBenefitOption[];
   onSaved: () => void;
@@ -171,6 +173,12 @@ function ExemptionFormDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          {mode === "edit" && exemption?.source && (
+            <p className="text-sm text-muted-foreground" data-testid="text-exemption-source-note">
+              This exemption was granted by a {exemptionSourceLabel(exemption.source)}. Changing it here
+              does not change that case.
+            </p>
+          )}
           <div className="space-y-2">
             <Label htmlFor="exemption-benefit">Benefit</Label>
             <Select value={benefitId} onValueChange={setBenefitId}>
@@ -270,10 +278,17 @@ function ExemptionsContent() {
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
-  const [editingExemption, setEditingExemption] = useState<TrustBenefitEligibilityExemption | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<TrustBenefitEligibilityExemption | null>(null);
+  const [editingExemption, setEditingExemption] = useState<TrustBenefitEligibilityExemptionView | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TrustBenefitEligibilityExemptionView | null>(null);
 
-  const { data: rows = [], isLoading } = useQuery<TrustBenefitEligibilityExemption[]>({
+  // A link from elsewhere (the appeal case that granted an exemption) names the
+  // row it means with ?exemption=<id>; that row is highlighted and scrolled to.
+  const focusedId = new URLSearchParams(useSearch()).get("exemption");
+  const focusedRowRef = useCallback((node: HTMLTableRowElement | null) => {
+    node?.scrollIntoView({ block: "center" });
+  }, []);
+
+  const { data: rows = [], isLoading } = useQuery<TrustBenefitEligibilityExemptionView[]>({
     queryKey: ["/api/workers", worker.id, "benefits-exemptions"],
     queryFn: async () => {
       const res = await fetch(`/api/workers/${worker.id}/benefits/exemptions`);
@@ -315,7 +330,7 @@ function ExemptionsContent() {
     setIsFormOpen(true);
   }
 
-  function openEdit(exemption: TrustBenefitEligibilityExemption) {
+  function openEdit(exemption: TrustBenefitEligibilityExemptionView) {
     setFormMode("edit");
     setEditingExemption(exemption);
     setIsFormOpen(true);
@@ -337,6 +352,11 @@ function ExemptionsContent() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {focusedId && !isLoading && !rows.some((row) => row.id === focusedId) && (
+          <p className="mb-4 text-sm text-muted-foreground" data-testid="text-focused-exemption-missing">
+            The exemption you followed a link to is no longer on record for this worker.
+          </p>
+        )}
         {isLoading ? (
           <Skeleton className="h-32 w-full" />
         ) : rows.length === 0 ? (
@@ -352,12 +372,18 @@ function ExemptionsContent() {
                 <TableHead>Start</TableHead>
                 <TableHead>End</TableHead>
                 <TableHead>Description</TableHead>
+                <TableHead>Source</TableHead>
                 {canEdit && <TableHead className="w-[100px]"></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.map((row) => (
-                <TableRow key={row.id} data-testid={`row-exemption-${row.id}`}>
+                <TableRow
+                  key={row.id}
+                  ref={row.id === focusedId ? focusedRowRef : undefined}
+                  className={row.id === focusedId ? "bg-accent/50" : undefined}
+                  data-testid={`row-exemption-${row.id}`}
+                >
                   <TableCell data-testid={`text-benefit-${row.id}`}>{benefitName(row.benefitId)}</TableCell>
                   <TableCell data-testid={`text-plugins-${row.id}`}>
                     {row.eligibilityPlugins && row.eligibilityPlugins.length > 0 ? (
@@ -373,6 +399,9 @@ function ExemptionsContent() {
                   <TableCell data-testid={`text-start-${row.id}`}>{ymdFromValue(row.startYmd)}</TableCell>
                   <TableCell data-testid={`text-end-${row.id}`}>{ymdFromValue(row.endYmd) || "—"}</TableCell>
                   <TableCell data-testid={`text-description-${row.id}`}>{row.description || "—"}</TableCell>
+                  <TableCell>
+                    <ExemptionSourceLabel source={row.source} exemptionId={row.id} />
+                  </TableCell>
                   {canEdit && (
                     <TableCell>
                       <div className="flex items-center gap-1">
@@ -421,6 +450,11 @@ function ExemptionsContent() {
             <AlertDialogTitle>Delete exemption?</AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently remove the eligibility exemption. This action cannot be undone.
+              {deleteTarget?.source && (
+                <>
+                  {" "}The {exemptionSourceLabel(deleteTarget.source)} that granted it is not changed or reopened.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
