@@ -1,6 +1,18 @@
 import { getClient } from './transaction-context';
 import { sql } from "drizzle-orm";
 
+// Component tables are created for the lifetime of the running application.
+// Remember successful existence checks so component storage methods do not
+// pay an information_schema round trip before every real query. Missing
+// tables are deliberately not cached: a component can be enabled while the
+// process is running, and callers must retain the existing 503 behavior until
+// that happens.
+const tableExistenceCache = new Map<string, Promise<boolean>>();
+
+export function invalidateTableExists(tableName: string): void {
+  tableExistenceCache.delete(tableName);
+}
+
 export async function listAllPublicTables(): Promise<string[]> {
   const client = getClient();
   const result = await client.execute(sql`
@@ -14,15 +26,33 @@ export async function listAllPublicTables(): Promise<string[]> {
 }
 
 export async function tableExists(tableName: string): Promise<boolean> {
-  const client = getClient();
-  const result = await client.execute(sql`
-    SELECT EXISTS (
-      SELECT FROM information_schema.tables 
-      WHERE table_schema = 'public' 
-      AND table_name = ${tableName}
-    ) as exists
-  `);
-  return result.rows[0]?.exists === true;
+  const cached = tableExistenceCache.get(tableName);
+  if (cached) return cached;
+
+  const check = (async () => {
+    const client = getClient();
+    const result = await client.execute(sql`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_name = ${tableName}
+      ) as exists
+    `);
+    return result.rows[0]?.exists === true;
+  })();
+
+  const retained = check.then(
+    (exists) => {
+      if (!exists) tableExistenceCache.delete(tableName);
+      return exists;
+    },
+    (error) => {
+      tableExistenceCache.delete(tableName);
+      throw error;
+    },
+  );
+  tableExistenceCache.set(tableName, retained);
+  return retained;
 }
 
 export async function tableHasRows(tableName: string): Promise<boolean> {

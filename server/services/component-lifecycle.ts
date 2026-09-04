@@ -1,5 +1,5 @@
 import { storage } from "../storage";
-import { tableExists, tableHasRows } from "../storage/utils";
+import { tableExists, tableHasRows, invalidateTableExists } from "../storage/utils";
 import { storageLogger } from "../logger";
 import type { SchemaDriftReport } from "./component-schema-push";
 import {
@@ -548,6 +548,7 @@ export async function disableComponentSchema(
       if (exists) {
         await storage.rawSql.execute(`DROP TABLE IF EXISTS ${tableName} CASCADE`);
       }
+      invalidateTableExists(tableName);
       
       operations.push({
         success: true,

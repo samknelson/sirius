@@ -2,6 +2,7 @@ import { getComponentById } from "../../shared/components";
 import { storage } from "../storage";
 import {
   tableExists,
+  invalidateTableExists,
   getTableColumnInfo,
   getTableConstraintInfo,
   getTableIndexInfo,
@@ -114,6 +115,9 @@ export async function pushComponentSchema(componentId: string): Promise<void> {
   const orderedTables = sortTablesByDependencies(resolvedTables, componentId);
 
   for (const { tableName, tableSchema } of orderedTables) {
+    // Schema push may recreate a table that was dropped while the process
+    // stayed up; never let the request-time existence cache skip that create.
+    invalidateTableExists(tableName);
     const exists = await tableExists(tableName);
 
     if (!exists) {
