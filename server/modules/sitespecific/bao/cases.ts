@@ -38,6 +38,11 @@ function caseError(res: Response, error: any) {
     CASE_TYPE_STATUS_MISMATCH: [409, "The selected status does not belong to this case type"],
     OUTREACH_NOTE_REQUIRED: [409, "Closing this case requires a member-outreach note"],
     INVALID_INITIAL_WORKFLOW_STEP: [409, "Benefit Appeal cases must start in Submitted"],
+    APPEAL_WORKER_REQUIRED: [400, "Benefit Appeal cases must be about a worker"],
+    APPEAL_DETAILS_REQUIRED: [400, "Benefit Appeal cases require a benefit and denial reason"],
+    INVALID_APPEAL_DENIAL_REASON: [400, "Unknown appeal denial reason"],
+    INVALID_APPEAL_BENEFIT: [400, "The selected benefit is not active"],
+    APPEAL_AUTO_DENIED_STATUS_MISSING: [409, "Benefit Appeal workflow is missing its Auto-Denied status; ask an administrator to configure it"],
     INVALID_WORKFLOW_TRANSITION: [409, "That status is not the next step in this case workflow"],
   };
   if (error?.code === "23505" || error?.cause?.code === "23505") {

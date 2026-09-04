@@ -1370,6 +1370,14 @@ export const optionsBaoCaseResolution = pgTable("options_bao_case_resolution", {
   data: jsonb("data"),
 });
 
+export const optionsBaoAppealDenialReason = pgTable("options_bao_appeal_denial_reason", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull().unique(),
+  description: text("description"),
+  sequence: integer("sequence").notNull().default(0),
+  data: jsonb("data"),
+});
+
 export const sitespecificBaoCases = pgTable(
   "sitespecific_bao_cases",
   {
@@ -1379,6 +1387,7 @@ export const sitespecificBaoCases = pgTable(
     assigneeUserId: varchar("assignee_user_id").notNull(),
     statusId: varchar("status_id").notNull(),
     caseTypeId: varchar("case_type_id").notNull(),
+     benefitId: varchar("benefit_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     deadlineYmd: date("deadline_ymd").notNull(),
     resolutionId: varchar("resolution_id"),
@@ -1416,6 +1425,16 @@ export const sitespecificBaoCases = pgTable(
   ],
 );
 
+export const sitespecificBaoAppealDetails = pgTable("sitespecific_bao_appeal_details", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  caseId: varchar("case_id").notNull().unique(),
+  denialReasonId: varchar("denial_reason_id").notNull(),
+  data: jsonb("data"),
+}, (table) => [
+  foreignKey({ name: "sitespecific_bao_appeal_details_case_id_fkey", columns: [table.caseId], foreignColumns: [sitespecificBaoCases.id] }).onDelete("cascade"),
+  foreignKey({ name: "sitespecific_bao_appeal_details_denial_reason_id_fkey", columns: [table.denialReasonId], foreignColumns: [optionsBaoAppealDenialReason.id] }).onDelete("restrict"),
+]);
+
 export const sitespecificBaoCaseNotes = pgTable(
   "sitespecific_bao_case_notes",
   {
@@ -1443,6 +1462,7 @@ export const sitespecificBaoCaseNotes = pgTable(
 export type OptionsBaoCaseStatus = typeof optionsBaoCaseStatus.$inferSelect;
 export type OptionsBaoCaseType = typeof optionsBaoCaseType.$inferSelect;
 export type OptionsBaoCaseResolution = typeof optionsBaoCaseResolution.$inferSelect;
+export type OptionsBaoAppealDenialReason = typeof optionsBaoAppealDenialReason.$inferSelect;
 export type BaoCase = typeof sitespecificBaoCases.$inferSelect;
 export type InsertBaoCase = typeof sitespecificBaoCases.$inferInsert;
 export type BaoCaseNote = typeof sitespecificBaoCaseNotes.$inferSelect;
@@ -1465,6 +1485,8 @@ export const createBaoCaseRequestSchema = z.object({
   assigneeUserId: z.string().min(1).optional(),
   noteId: z.string().min(1).optional(),
   initialNote: baoCaseNoteInputSchema.optional(),
+  benefitId: z.string().min(1).optional(),
+  denialReasonId: z.string().min(1).optional(),
 }).strict().superRefine((value, ctx) => {
   if ((value.noteId ? 1 : 0) + (value.initialNote ? 1 : 0) !== 1) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Provide exactly one of noteId or initialNote" });

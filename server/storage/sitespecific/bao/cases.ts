@@ -4,6 +4,9 @@ import {
   optionsBaoCaseResolution,
   optionsBaoCaseStatus,
   optionsBaoCaseType,
+  optionsBaoAppealDenialReason,
+  sitespecificBaoAppealDetails,
+  trustBenefits,
   optionsNoteType,
   rolePermissions,
   roles,
@@ -31,6 +34,9 @@ export interface BaoCaseDetails extends BaoCase {
   workflowStep: string | null;
   resolutionName: string | null;
   notes?: NoteWithDetails[];
+  benefitName?: string | null;
+  denialReasonName?: string | null;
+  spdCitation?: string | null;
 }
 
 export interface BaoCaseListResult {
@@ -56,6 +62,8 @@ export interface CreateBaoCaseInput {
     tagIds?: string[];
   };
   actorUserId: string;
+  benefitId?: string;
+  denialReasonId?: string;
 }
 
 /**
@@ -130,6 +138,9 @@ const detailSelection = {
   caseTypeName: optionsBaoCaseType.name,
   workflowStep: optionsBaoCaseStatus.workflowStep,
   resolutionName: optionsBaoCaseResolution.name,
+  benefitName: trustBenefits.name,
+  denialReasonName: optionsBaoAppealDenialReason.name,
+  spdCitation: sql<string | null>`${sitespecificBaoAppealDetails.data}->>'spdCitation'`,
 };
 
 function detailQuery() {
@@ -139,7 +150,10 @@ function detailQuery() {
     .innerJoin(users, eq(users.id, cases.assigneeUserId))
     .innerJoin(optionsBaoCaseStatus, eq(optionsBaoCaseStatus.id, cases.statusId))
     .innerJoin(optionsBaoCaseType, eq(optionsBaoCaseType.id, cases.caseTypeId))
-    .leftJoin(optionsBaoCaseResolution, eq(optionsBaoCaseResolution.id, cases.resolutionId));
+    .leftJoin(optionsBaoCaseResolution, eq(optionsBaoCaseResolution.id, cases.resolutionId))
+    .leftJoin(trustBenefits, eq(trustBenefits.id, cases.benefitId))
+    .leftJoin(sitespecificBaoAppealDetails, eq(sitespecificBaoAppealDetails.caseId, cases.id))
+    .leftJoin(optionsBaoAppealDenialReason, eq(optionsBaoAppealDenialReason.id, sitespecificBaoAppealDetails.denialReasonId));
 }
 
 function mapDetail(row: any): BaoCaseDetails {
@@ -261,8 +275,18 @@ export function createBaoCasesStorage(): BaoCasesStorage {
         const [caseType] = await getClient().select().from(optionsBaoCaseType)
           .where(eq(optionsBaoCaseType.id, input.caseTypeId ?? status.caseTypeId));
         if (!caseType || status.caseTypeId !== caseType.id) throw new Error("CASE_TYPE_STATUS_MISMATCH");
+        if (caseType.workflowCode === "benefit_appeal" && input.entityType !== "worker") throw new Error("APPEAL_WORKER_REQUIRED");
+        if (caseType.workflowCode === "benefit_appeal" && (!input.benefitId || !input.denialReasonId)) throw new Error("APPEAL_DETAILS_REQUIRED");
         if (caseType.workflowCode === "benefit_appeal" && status.workflowStep !== "submitted") {
           throw new Error("INVALID_INITIAL_WORKFLOW_STEP");
+        }
+        const [appealReason] = input.denialReasonId
+          ? await getClient().select().from(optionsBaoAppealDenialReason).where(eq(optionsBaoAppealDenialReason.id, input.denialReasonId))
+          : [];
+        if (caseType.workflowCode === "benefit_appeal" && !appealReason) throw new Error("INVALID_APPEAL_DENIAL_REASON");
+        if (input.benefitId) {
+          const [benefit] = await getClient().select({ id: trustBenefits.id }).from(trustBenefits).where(and(eq(trustBenefits.id, input.benefitId), eq(trustBenefits.isActive, true)));
+          if (!benefit) throw new Error("INVALID_APPEAL_BENEFIT");
         }
 
         let noteId = input.noteId;
@@ -297,10 +321,24 @@ export function createBaoCasesStorage(): BaoCasesStorage {
           statusId: input.statusId,
           caseTypeId: caseType.id,
           assigneeUserId: input.assigneeUserId,
+          benefitId: input.benefitId ?? null,
           resolutionId: null,
           resolutionYmd: null,
         }).returning();
         await getClient().insert(sitespecificBaoCaseNotes).values({ caseId: created.id, noteId });
+        if (caseType.workflowCode === "benefit_appeal") {
+          await getClient().insert(sitespecificBaoAppealDetails).values({ caseId: created.id, denialReasonId: input.denialReasonId! });
+          const [autoDenied] = await getClient().select().from(optionsBaoCaseStatus)
+            .where(and(eq(optionsBaoCaseStatus.caseTypeId, caseType.id), eq(optionsBaoCaseStatus.workflowStep, "auto_denied"))).limit(1);
+          if (!autoDenied) throw new Error("APPEAL_AUTO_DENIED_STATUS_MISSING");
+          await lockStatuses([autoDenied.id], "SHARE");
+          const [denied] = await getClient().update(cases).set({
+            statusId: autoDenied.id,
+            deadlineYmd: autoDenied.durationDays == null ? created.deadlineYmd : sql`CURRENT_DATE + ${autoDenied.durationDays}::int`,
+          }).where(eq(cases.id, created.id)).returning();
+          await emitCaseStatusSaved(denied, created.statusId, autoDenied.name, "updated", { previousAssigneeUserId: created.assigneeUserId, actorUserId: input.actorUserId });
+          return denied;
+        }
         await emitCaseStatusSaved(created, null, status.name, "created", {
           previousAssigneeUserId: null,
           actorUserId: input.actorUserId ?? null,

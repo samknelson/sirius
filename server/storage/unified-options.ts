@@ -38,6 +38,7 @@ import {
   optionsBaoCaseStatus,
   optionsBaoCaseType,
   optionsBaoCaseResolution,
+  optionsBaoAppealDenialReason,
   optionsSitespecificBaoNotesTagTypes,
   optionsSitespecificBaoNotesTags,
   optionsWorkerBanType,
@@ -90,7 +91,7 @@ export type OptionsTypeName =
   | "bao-cobra-qualifying-event"
   | "bao-case-status"
   | "bao-case-type"
-  | "bao-case-resolution"
+  | "bao-case-resolution" | "bao-appeal-denial-reason"
   | "note-type"
   | "bao-notes-tag-type"
   | "bao-notes-tag"
@@ -762,6 +763,25 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, showInTable: true, columnHeader: "Description" },
+    ],
+  },
+  "bao-appeal-denial-reason": {
+    table: optionsBaoAppealDenialReason,
+    displayName: "Appeal Denial Reasons",
+    description: "Reasons used when a Benefit Appeal is automatically denied.",
+    singularName: "Appeal Denial Reason",
+    pluralName: "Appeal Denial Reasons",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.baoAppealDenialReason",
+    requiredFields: ["name"],
+    optionalFields: ["description", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "sitespecific.bao",
+    fields: [
+      { name: "name", label: "Name", inputType: "text", required: true, showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, showInTable: true, columnHeader: "Description" },
+      { name: "eligibilityPluginIds", label: "Eligibility checks exempted on approval", inputType: "multi-enum", required: false, dataField: true, showInTable: false },
+      { name: "spdCitation", label: "SPD citation", inputType: "textarea", required: false, dataField: true, showInTable: false },
     ],
   },
   "bao-notes-tag-type": {
