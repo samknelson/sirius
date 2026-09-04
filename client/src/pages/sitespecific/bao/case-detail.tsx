@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CaseLettersCard, type CaseLetter } from "@/components/sitespecific/bao/CaseLettersCard";
+import { BaoCaseDocumentsCard } from "@/components/sitespecific/bao/BaoCaseDocumentsCard";
 
 type Option = { id: string; name: string; closed?: boolean; data?: { entityTypes?: string[] } };
 interface CaseDetail {
@@ -23,6 +24,8 @@ interface CaseDetail {
   notes: Array<{ id: string; typeId: string; typeName: string | null; subject: string; body: string | null; timestamp: string; authorName: string | null; tags?: Array<{ tagId?: string; tagName?: string; name?: string }> }>;
   letters: CaseLetter[];
   mailingAddressOnFile: boolean;
+  workflowStep?: string | null;
+  caseTypeName?: string;
 }
 
 export default function BaoCaseDetailPage() {
@@ -47,6 +50,24 @@ export default function BaoCaseDetailPage() {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [tagIds, setTagIds] = useState<string[]>([]);
+  const [letterFileId, setLetterFileId] = useState("");
+  const [letterFile, setLetterFile] = useState<File | null>(null);
+  const recordLetter = useMutation({
+    mutationFn: async () => {
+      let fileId = letterFileId;
+      if (letterFile) {
+        const form = new FormData(); form.append("file", letterFile);
+        const response = await fetch(`/api/entity-files/bao-case/${id}`, { method: "POST", body: form, credentials: "include" });
+        if (!response.ok) throw new Error("Letter upload failed");
+        const uploaded = await response.json(); fileId = uploaded.fileId;
+      }
+      return apiRequest("POST", `/api/sitespecific/bao/cases/${id}/member-letter`, {
+        fileId, note: { typeId: noteTypeId, subject, body: body || null, tagIds },
+      });
+    },
+    onSuccess: () => { setLetterFile(null); setSubject(""); setBody(""); setNoteTypeId(""); invalidate(); toast({ title: "Member letter recorded" }); },
+    onError: (e: Error) => toast({ title: "Could not record member letter", description: getApiErrorMessage(e, "Please try again."), variant: "destructive" }),
+  });
   useEffect(() => {
     if (!record) return;
     setStatusId(record.statusId); setAssigneeId(record.assigneeUserId); setDeadline(record.deadlineYmd);
@@ -94,6 +115,17 @@ export default function BaoCaseDetailPage() {
           </CardContent>
         </Card>
         <CaseLettersCard letters={record.letters ?? []} mailingAddressOnFile={record.mailingAddressOnFile ?? true} isWorkerCase={record.entityType === "worker"} />
+        <BaoCaseDocumentsCard caseId={record.id} />
+        {record.workflowStep === "auto_denied" && (
+          <Card><CardHeader><CardTitle>Record member letter</CardTitle></CardHeader><CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">Attach the member’s written appeal and add it to the case conversation. This moves the case to Trustee Review.</p>
+            <Input type="file" onChange={(e) => setLetterFile(e.target.files?.[0] ?? null)} />
+            <Select value={noteTypeId} onValueChange={setNoteTypeId}><SelectTrigger><SelectValue placeholder="Note type" /></SelectTrigger><SelectContent>{applicable.map((t) => <SelectItem value={t.id} key={t.id}>{t.name}</SelectItem>)}</SelectContent></Select>
+            <Input placeholder="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
+            <Textarea placeholder="Body" value={body} onChange={(e) => setBody(e.target.value)} />
+            <Button disabled={!letterFile || !noteTypeId || !subject.trim() || recordLetter.isPending} onClick={() => recordLetter.mutate()}>Record member letter</Button>
+          </CardContent></Card>
+        )}
         <Card><CardHeader><CardTitle>Conversation</CardTitle></CardHeader><CardContent className="space-y-4">
           {record.notes.map((note) => <div key={note.id} className="rounded border p-3"><div className="font-medium">{note.subject}</div><div className="text-xs text-muted-foreground">{note.typeName} · {note.timestamp.slice(0, 16).replace("T", " ")}{note.authorName ? ` · ${note.authorName}` : ""}</div>{note.body && <p className="mt-2 whitespace-pre-wrap">{note.body}</p>}{(note.tags?.length ?? 0) > 0 && <div className="mt-2 flex flex-wrap gap-1">{note.tags!.map((tag, i) => <Badge variant="outline" key={tag.tagId ?? i}>{tag.tagName ?? tag.name}</Badge>)}</div>}</div>)}
           <div className="space-y-2 border-t pt-4"><Label>Add comment</Label><Select value={noteTypeId} onValueChange={setNoteTypeId}><SelectTrigger><SelectValue placeholder="Note type" /></SelectTrigger><SelectContent>{applicable.map((t) => <SelectItem value={t.id} key={t.id}>{t.name}</SelectItem>)}</SelectContent></Select><Input placeholder="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} /><Textarea value={body} onChange={(e) => setBody(e.target.value)} />{tags.length > 0 && <div className="flex flex-wrap gap-3 rounded border p-3">{tags.map((tag) => <label key={tag.id} className="flex items-center gap-2 text-sm"><Checkbox checked={tagIds.includes(tag.id)} onCheckedChange={(checked) => setTagIds((old) => checked ? [...new Set([...old, tag.id])] : old.filter((tagId) => tagId !== tag.id))} />{tag.name}</label>)}</div>}<Button disabled={!noteTypeId || !subject.trim() || addNote.isPending} onClick={() => addNote.mutate()}>Add Comment</Button></div>

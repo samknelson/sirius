@@ -44,6 +44,10 @@ function caseError(res: Response, error: any) {
     INVALID_APPEAL_BENEFIT: [400, "The selected benefit is not active"],
     APPEAL_AUTO_DENIED_STATUS_MISSING: [409, "Benefit Appeal workflow is missing its Auto-Denied status; ask an administrator to configure it"],
     INVALID_WORKFLOW_TRANSITION: [409, "That status is not the next step in this case workflow"],
+    LETTER_WRONG_STATE: [409, "This appeal is not awaiting a member letter"],
+    MEMBER_LETTER_ALREADY_RECORDED: [409, "A member letter has already been recorded"],
+    CASE_DOCUMENT_NOT_FOUND: [404, "Case document not found"],
+    TRUSTEE_REVIEW_STATUS_MISSING: [409, "Trustee Review is not configured"],
   };
   if (error?.code === "23505" || error?.cause?.code === "23505") {
     return res.status(409).json({ message: "This note already belongs to a BAO case" });
@@ -205,5 +209,13 @@ export function registerBaoCaseRoutes(
     } catch (error) {
       caseError(res, error);
     }
+  });
+  app.post("/api/sitespecific/bao/cases/:id/member-letter", ...gate, async (req, res) => {
+    try {
+      const actor = await effectiveUserId(req);
+      if (!actor) return res.status(401).json({ message: "Effective user not found" });
+      const updated = await storage.baoCases.recordMemberLetter(req.params.id, req.body?.fileId, req.body?.note, actor);
+      res.json(updated);
+    } catch (error) { caseError(res, error); }
   });
 }

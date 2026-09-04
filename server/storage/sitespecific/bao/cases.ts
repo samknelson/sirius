@@ -30,6 +30,8 @@ import {
   optionsBaoAppealDenialReason,
   sitespecificBaoAppealDetails,
   sitespecificBaoCaseComms,
+  sitespecificBaoCaseDocuments,
+  files,
   trustBenefits,
   optionsNoteType,
   rolePermissions,
@@ -164,6 +166,9 @@ export interface BaoCasesStorage {
     statusId: string,
     updates: Partial<typeof optionsBaoCaseStatus.$inferInsert>,
   ): Promise<typeof optionsBaoCaseStatus.$inferSelect | undefined>;
+  listCaseDocuments(caseId: string): Promise<any[]>;
+  attachCaseDocument(caseId: string, file: any, uploadedByUserId: string, documentType?: string): Promise<any>;
+  recordMemberLetter(caseId: string, fileId: string, note: CreateBaoCaseInput["initialNote"], actorUserId: string): Promise<BaoCase>;
 }
 
 const cases = sitespecificBaoCases;
@@ -715,6 +720,39 @@ export function createBaoCasesStorage(): BaoCasesStorage {
           .set(updates)
           .where(eq(optionsBaoCaseStatus.id, statusId))
           .returning();
+        return updated;
+      });
+    },
+    async listCaseDocuments(caseId) {
+      return getClient().select({ document: sitespecificBaoCaseDocuments, file: files })
+        .from(sitespecificBaoCaseDocuments).innerJoin(files, eq(files.id, sitespecificBaoCaseDocuments.fileId))
+        .where(eq(sitespecificBaoCaseDocuments.caseId, caseId))
+        .orderBy(asc(sitespecificBaoCaseDocuments.createdAt));
+    },
+    async attachCaseDocument(caseId, file, uploadedByUserId, documentType = "other") {
+      const [row] = await getClient().insert(sitespecificBaoCaseDocuments).values({ caseId, fileId: file.id, uploadedByUserId, documentType }).returning();
+      return row;
+    },
+    async recordMemberLetter(caseId, fileId, noteInput, actorUserId) {
+      return runInTransaction(async () => {
+        const [existing] = await getClient().select().from(cases).where(eq(cases.id, caseId)).for("update");
+        if (!existing) throw new Error("CASE_NOT_FOUND");
+        const [appealType] = await getClient().select().from(optionsBaoCaseType).where(eq(optionsBaoCaseType.id, existing.caseTypeId));
+        const [current] = await getClient().select().from(optionsBaoCaseStatus).where(eq(optionsBaoCaseStatus.id, existing.statusId));
+        if (appealType?.workflowCode !== "benefit_appeal" || current?.workflowStep !== "auto_denied") throw new Error("LETTER_WRONG_STATE");
+        const prior = await getClient().select({ id: sitespecificBaoCaseDocuments.id }).from(sitespecificBaoCaseDocuments).where(and(eq(sitespecificBaoCaseDocuments.caseId, caseId), eq(sitespecificBaoCaseDocuments.documentType, "member_letter"))).limit(1);
+        if (prior.length) throw new Error("MEMBER_LETTER_ALREADY_RECORDED");
+        if (!noteInput) throw new Error("INITIAL_NOTE_REQUIRED");
+        await assertNoteType(noteInput.typeId, existing.entityType);
+        const note = await noteStorage.create({ entityType: existing.entityType, entityId: existing.entityId, typeId: noteInput.typeId, subject: noteInput.subject, body: noteInput.body ?? null, data: noteInput.data ?? null, userId: actorUserId });
+        await getClient().insert(sitespecificBaoCaseNotes).values({ caseId, noteId: note.id });
+        const [document] = await getClient().update(sitespecificBaoCaseDocuments).set({ documentType: "member_letter" }).where(and(eq(sitespecificBaoCaseDocuments.caseId, caseId), eq(sitespecificBaoCaseDocuments.fileId, fileId))).returning();
+        if (!document) throw new Error("CASE_DOCUMENT_NOT_FOUND");
+        const [next] = await getClient().select().from(optionsBaoCaseStatus).where(and(eq(optionsBaoCaseStatus.caseTypeId, existing.caseTypeId), eq(optionsBaoCaseStatus.workflowStep, "trustee_review"))).limit(1);
+        if (!next) throw new Error("TRUSTEE_REVIEW_STATUS_MISSING");
+        await lockStatuses([existing.statusId, next.id], "SHARE");
+        const [updated] = await getClient().update(cases).set({ statusId: next.id, deadlineYmd: next.durationDays == null ? existing.deadlineYmd : sql`CURRENT_DATE + ${next.durationDays}::int` }).where(eq(cases.id, caseId)).returning();
+        await emitCaseStatusSaved(updated, existing.statusId, next.name, "updated", { previousAssigneeUserId: existing.assigneeUserId, actorUserId });
         return updated;
       });
     },

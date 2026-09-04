@@ -933,7 +933,7 @@ export const componentRegistry: ComponentDefinition[] = [
     ],
     managesSchema: true,
     schemaManifest: {
-      version: 17,
+      version: 18,
       schemaPath: "./shared/schema/sitespecific/bao/schema.ts",
       tables: [
         "sitespecific_bao_employer_immediate_eligibility",
@@ -961,6 +961,7 @@ export const componentRegistry: ComponentDefinition[] = [
         "sitespecific_bao_appeal_details",
         "sitespecific_bao_case_notes",
         "sitespecific_bao_case_comms",
+        "sitespecific_bao_case_documents",
         "sitespecific_bao_dc_cases",
         "sitespecific_bao_dc_case_months",
         "sitespecific_bao_dc_denial_letters",

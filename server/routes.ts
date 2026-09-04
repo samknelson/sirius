@@ -126,6 +126,7 @@ import { registerBaoRateSourcesRoutes } from "./modules/sitespecific/bao/rate-so
 import { registerBaoCobraRoutes } from "./modules/sitespecific/bao/cobra";
 import { registerBaoDisabilityCreditRoutes } from "./modules/sitespecific/bao/disability-credit";
 import { registerBaoDcEntityFileContext } from "./modules/sitespecific/bao/dc-files-context";
+import { registerBaoCaseEntityFileContext } from "./modules/sitespecific/bao/case-files-context";
 import { registerBaoCaseRoutes } from "./modules/sitespecific/bao/cases";
 import { registerBaoDpRatesRoutes } from "./modules/sitespecific/bao/dp-rates";
 import { registerBaoDistanceCacheRoutes } from "./modules/sitespecific/bao/distance-cache";
@@ -336,6 +337,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Entity file attachments framework: register contexts, then the generic routes
   registerGrievanceEntityFileContext();
   registerBaoDcEntityFileContext();
+  registerBaoCaseEntityFileContext();
   wireEntityFilesFileReadAccess();
   registerEntityFileRoutes(app, requireAuth);
 

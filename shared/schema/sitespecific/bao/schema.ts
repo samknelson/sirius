@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { parsePhoneNumber } from "libphonenumber-js";
-import { comm, employers, ledgerAccounts, ledgerEa, ledgerPayments, workers, wizards, trustBenefits, trustProviders, notes, users } from "../../../schema";
+import { comm, employers, files, ledgerAccounts, ledgerEa, ledgerPayments, workers, wizards, trustBenefits, trustProviders, notes, users } from "../../../schema";
 import { validateSSN } from "../../../utils/ssn";
 import { toYmd } from "../../../utils/date";
 
@@ -1479,6 +1479,26 @@ export const sitespecificBaoCaseNotes = pgTable(
       columns: [table.noteId],
       foreignColumns: [notes.id],
     }).onDelete("restrict"),
+  ],
+);
+
+/** Files attached to any BAO case. Documents are retained, never deleted. */
+export const sitespecificBaoCaseDocuments = pgTable(
+  "sitespecific_bao_case_documents",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    caseId: varchar("case_id").notNull(),
+    fileId: varchar("file_id").notNull(),
+    documentType: varchar("document_type", { length: 64 }).notNull().default("other"),
+    uploadedByUserId: varchar("uploaded_by_user_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (table) => [
+    index("sitespecific_bao_case_documents_case_idx").on(table.caseId),
+    unique("sitespecific_bao_case_documents_file_uq").on(table.fileId),
+    foreignKey({ name: "sitespecific_bao_case_documents_case_id_fkey", columns: [table.caseId], foreignColumns: [sitespecificBaoCases.id] }).onDelete("cascade"),
+    foreignKey({ name: "sitespecific_bao_case_documents_file_id_fkey", columns: [table.fileId], foreignColumns: [files.id] }).onDelete("cascade"),
+    foreignKey({ name: "sitespecific_bao_case_documents_uploaded_by_fkey", columns: [table.uploadedByUserId], foreignColumns: [users.id] }).onDelete("restrict"),
   ],
 );
 
