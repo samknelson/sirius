@@ -1,0 +1,88 @@
+# S2 Appeals on Notes/Cases — Build Spec (v3, Sep 4)
+
+## 0. Architecture decision & context
+
+- **Discard the grievances-based appeals work.** Grievances carry irrelevant structure (complaints, remedies, employer/company rep fields, cardinality) and would expose a “Grievances” tab to a client that doesn’t use that concept.
+- **Build appeals as a case type on the existing case framework**, which is a bundler on top of the core notes module — notes serve as the case’s comment thread.
+- Case/workflow logic stays **site-specific to BAO** for now; do not generalize to core.
+
+## 1. Existing infra you’re building on
+
+**Notes (core, live):**
+
+- Lightweight core module; legacy S1 logs imported as notes (import-once, never update on resync)
+- Imported note subjects: `Imported Note [user: display name]`; author mapped to S2 user where possible, display-name fallback
+- Note tags: site-specific BAO tables — a tags/options table + a note-tag join table
+
+**Cases (site-specific BAO, live):**
+
+- Created from a note when an issue is unresolved at point of contact; the originating note is the first note in the case
+- Targets: workers, employers, or providers
+- Statuses: Open, Urgent, Closed/Resolved, Abandoned (priority folded into status)
+- Fields: assignee (defaults to creator), deadline, notes list
+- Rules: cases can’t close without a member-outreach note attached; resolution date auto-fills on close
+- UX conventions from the case-model design: open-case count on worker search, filter by open cases, per-MSR dashboard cards of assigned case counts
+
+## 2. Framework enhancements required (from Sep 2 decision)
+
+1. **Case types** — add a case-type concept (only note types exist today). First type: `Benefit Appeal`.
+2. **Status metadata columns** — extend statuses with:
+    - who to notify on entering each status
+    - duration/deadline (auto-set from status + current date)
+    - event triggers that fire templated communications
+3. **Auto-close cron** — close cases whose status deadline lapses (e.g., 90-day member response window)
+4. **Explicit benefit reference on cases** — not a tag. Granting requires knowing the exact benefit (Kaiser, MLK, etc.). Behavior: when an appeal-type case hits the approval status, read the benefit reference and create the exemption.
+
+## 3. Appeal case definition
+
+**Creation** (any staff; MSRs are the front door):
+
+- Trigger: member calls with a benefit request; the call opens a note, the note spawns a case of type `Appeal`
+- Inputs: worker, benefit (explicit reference per §2.4), denial reason (dropdown; taxonomy pending from Josh’s tracker + Kristen’s plain-English SPD writeup due Sep 9)
+- Appeal categories: `Benefit Appeal` now; `Claims Appeal` later (tracked in the same system, different type/category; claims appeals have no eligibility-engine effect)
+
+**Statuses & transitions** (workflow agreed Sep 2):
+
+|Status|Entry|Automated actions|Exit|
+|---|---|---|---|
+|`Submitted`|staff creates case from note|—|automatic → Auto-Denied|
+|`Auto-Denied`|automatic on creation|fire Lob benefit-denial letter (event trigger); set response deadline from status metadata|member’s written letter uploaded → Trustee Review; deadline lapse → auto-close (cron)|
+|`Trustee Review`|staff uploads member’s written appeal letter (a note + file reference on the case)|notify per status metadata|trustee outcome entered per case|
+|`Approved` (terminal)|trustee approval|read benefit reference → create exemption on worker’s benefit record; fire blanket approval letter|—|
+|`Closed–Denied` (terminal)|trustee denial|fire denial-of-appeal letter via Lob citing SPD sections|—|
+|`Closed–No Response` (terminal)|cron on deadline lapse|—|—|
+
+**Business rules (settled):**
+
+- First appeal is always auto-denied — trustee review legally requires a documented denial per the SPD; no exceptions
+- Member writes **one** letter total (the trustee appeal); any written form accepted in practice
+- No portal intake in v1 (written-letter requirement; legal review of electronic submission pending)
+- Exemptions: no new policy; exemption on the benefit record checked by every eligibility scan; dependents inherit subscriber exemptions; exemptions don’t expire and revocation never reopens a case
+- The exemption-creation logic must be shared with the bulk exemption import tool (employer ID + benefit); grandfathered groups and the driving-distance transition use bulk exemptions with **no case created**
+- Member-outreach-note-before-close rule applies (framework-level)
+- Trustee outcomes entered per case, not batch
+
+## 4. Letters (via Lob + token templates)
+
+|Letter|Trigger|Content|
+|---|---|---|
+|Benefit denial|case creation (Auto-Denied)|denial reason + SPD citation + how to appeal in writing|
+|Approval|Approved status|blanket template, no variable reasons|
+|Denial of appeal|Closed–Denied|denial reason + SPD section citations (legally required)|
+
+Sent letters are represented by the resulting comm record, not a separate letter record.
+
+## 5. Adjacent-workflow boundaries
+
+- **Disability credit:** likely a future case type; don’t block on it
+- **COBRA:** keep separate (volume would flood the case list; distinct financial logic)
+- **Domestic partnership:** not a case
+- Key COBRA/disability milestones should still surface in the worker’s note narrative
+- Open design question (non-blocking): master dashboard across case types vs. per-type screens
+
+## 6. Blocked inputs / TODOs
+
+1. **Deadline values** — response-window durations come from the SPD; Kristen’s plain-English writeup due **Sep 9** (life insurance has a separate timeframe). Build the deadline mechanism now with configurable values.
+2. **Denial-reason taxonomy** — Josh’s variable-data tracker. Build the dropdown as config-driven; seed with the known reasons (<24 consecutive months dental; within 20 miles of Dental Office; MLK service-area distance).
+3. **Electronic submission legality** — pending legal; no portal work until confirmed.
+4. Luis is testing Notes/Cases/DP in staging this week — expect feedback that may adjust case UX.

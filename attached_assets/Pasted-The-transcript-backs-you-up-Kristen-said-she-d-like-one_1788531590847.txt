@@ -1,0 +1,92 @@
+The transcript backs you up — Kristen said she'd like "one system that's tracking all of it," and the agreement was "we would have a benefit appeal and a claims appeal" as appeal types, with claims appeals addable later. Here's the rewritten spec.
+
+# S2 Appeals Workflow — Spec v2 (post Sep 2 meeting)
+
+## 1. Scope & architecture
+
+- Appeals are a case type with **appeal categories**: `Benefit Appeal` (v1 build) and `Claims Appeal` (later)
+  - One system tracks all appeal types (Kristen's requirement); they differ in effect: benefit appeals impact the eligibility engine and grant exemptions, claims appeals are tracking/note-taking (e.g., doula, MLK claims the fund adjudicates directly)
+  - Carrier-handled claims appeals (e.g., Kaiser plan denials) stay outside the system
+- Built on the grievances framework, simpler with fewer steps
+- Purpose: operationalize the benefit-denial letters that aren't going out today, and memorialize verbal denials
+
+## 2. Intake
+
+- **Trigger: member's verbal request** — member calls an MSR (or emails Luis, etc.) asking for a benefit they're ineligible for
+- MSR verbally denies, tells the member two things at once: (a) an official denial letter is coming, (b) if you disagree, send us something in writing — no need to wait for our letter
+- MSR opens the appeal case on the member's behalf: selects worker, benefit requested, denial reason
+- **Permissions:** any staff (per prior decision; MSRs confirmed as the front door)
+- **No portal self-service in v1** — legal requires a written submission; the "tiny hurdle" is intentional. Portal-generated PDF deferred pending legal confirmation on electronic submission
+- **One member letter total** — lawyers confirmed workers don't write twice; the single written letter is the trustee appeal
+
+## 3. Case fields
+
+| Field | Notes |
+|---|---|
+| Worker | lookup |
+| Appeal category | Benefit / Claims (claims later) |
+| Benefit requested | dropdown; ⚠️ Kristen asked whether a write-in is needed when the ask doesn't fit — for benefit appeals every deniable benefit exists in the system, so dropdown suffices; revisit for claims appeals |
+| Denial reason | dropdown; taxonomy from Josh's variable-data tracker + Kristen's plain-English SPD writeup (due Sep 9) |
+| Appeal letter | uploaded when the member's written appeal arrives (any written form — email, photo of handwriting — accepted in practice) |
+
+**Known denial reasons** (partial): <24 consecutive months of dental coverage (Delta); lives within 20 miles of the Dental Office; distance/service-area rules incl. MLK (driving-distance change pending)
+
+## 4. States & transitions
+
+```
+member calls MSR (verbal request + verbal denial)
+        │  MSR opens case: worker, benefit, denial reason
+        ▼
+  ① SUBMITTED
+        │  automatic
+        ▼
+  ② AUTO-DENIED ──── system triggers Lob benefit-denial letter
+        │              (letter cites SPD reason + how to appeal in writing)
+        │
+        ├── member's written letter arrives (staff uploads) ──▶ ③ TRUSTEE REVIEW
+        │                                                           │
+        │                                                           ├─ approved ─▶ ④ APPROVED (terminal)
+        │                                                           │     • exemption auto-set on benefit record
+        │                                                           │     • blanket approval letter sent
+        │                                                           │
+        │                                                           └─ denied ──▶ ⑤ CLOSED–DENIED (terminal)
+        │                                                                 • denial letter auto-sent via Lob,
+        │                                                                   citing SPD sections
+        │
+        └── no letter within SPD deadline ──▶ ⑥ CLOSED–NO RESPONSE (terminal)
+                                                  ⚠️ deadline TBD from SPD (varies by
+                                                  benefit; life insurance differs)
+```
+
+Grounding: statuses and transitions as walked through in today's demo ("submitted… auto denied… trustee review… approved… closed denied"); approval/exemption mechanics.
+
+## 5. Actions & outputs per state
+
+- **Submitted → Auto-Denied:** automatic on case creation; fires Lob benefit-denial letter. First appeal is *always* denied — trustee review legally requires a documented initial denial per the SPD
+- **Trustee Review:** case queued for monthly trustee meeting; outcomes entered **per case** (prior decision)
+- **Approved (terminal):** single action fires the blanket approval letter and auto-sets the exemption (start date) on the worker's benefit record — no manual policy change; eligibility scans check exemptions; dependents inherit subscriber exemptions
+- **Closed–Denied (terminal):** auto-sends Denial of Appeal letter via Lob with SPD citations
+- **Terminal means terminal:** exemptions don't expire, and revocation never reopens a case (prior decision)
+
+## 6. Letters
+
+1. **Benefit denial letter** — auto via Lob at case creation; official written "no" + how to appeal to trustees in writing
+2. **Approval letter** — blanket template, no variable reasons
+3. **Denial of appeal letter** — variable data: denial reason + SPD section citations (legally required)
+
+Variable data sourced from Josh's tracker.
+
+## 7. Out of scope / related mechanisms
+
+- **Bulk exemptions** (grandfathered groups, driving-distance SPD transition) bypass the appeals workflow entirely — separate bulk mechanism, no case created (prior decision). Exemption-setting logic should be shared between the appeals workflow and the bulk exemption import tool (employer ID + benefit; dependents inherit)
+- **Migration:** S1 appeal elections (170 Delta/UNITE HERE alone) convert to exemptions via bulk import; no case records for migrated exemptions
+- Claims appeals category: design after benefit appeals ship
+
+## 8. Open items
+
+1. **Appeal deadline / no-response timeout** — "it's all in the SPD"; timelines are complex and vary (life insurance differs). Kristen sharing the SPD section and a plain-English appeals rules writeup by **Wed Sep 9**; Kristen + Josh doing an SPD review session this week
+2. **Electronic submission legality** — does email/portal-generated PDF satisfy the written requirement? Emails are accepted in practice today; needs legal confirmation before any portal intake
+3. **Denial-reason taxonomy** — Josh's tracker still outstanding
+4. **Claims appeal fields** — write-in benefit field, whether outcomes need any system effect beyond tracking
+
+**Coverage note:** Built from today's S2 Transition notes + transcript (primary), the Aug 10/11 transcripts, and Aug 7–24 S2 co-work meetings. Status names and the `Closed–No Response` state are proposals consistent with today's walkthrough; the timeout value and letter templates await Kristen's Sep 9 SPD writeup and Josh's tracker.
