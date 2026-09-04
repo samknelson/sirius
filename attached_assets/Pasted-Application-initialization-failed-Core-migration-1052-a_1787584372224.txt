@@ -1,0 +1,65 @@
+Application initialization failed
+Core migration 1052 (add_dispatch_is_primary) FAILED and stopped the boot. error: relation "dispatches" does not exist Still pending behind it: 1053 (create_help), 1054 (options_event_type_sirius_id_nullable), 1055 (files_file_system_id), 1056 (create_options_worker_ban_type), 1057 (create_options_note_type), 1058 (create_notes), 1059 (ledger_accounts_sirius_id), 1060 (ws_bundles_to_grants). The database is half-migrated; the app refuses to serve traffic against it. Fix the cause of the error above (it is the real fault — the schema drift a later gate would report is only its symptom) and redeploy.
+
+CoreMigrationFailedError: Core migration 1052 (add_dispatch_is_primary) FAILED and stopped the boot.
+
+  error: relation "dispatches" does not exist
+
+Still pending behind it: 1053 (create_help), 1054 (options_event_type_sirius_id_nullable), 1055 (files_file_system_id), 1056 (create_options_worker_ban_type), 1057 (create_options_note_type), 1058 (create_notes), 1059 (ledger_accounts_sirius_id), 1060 (ws_bundles_to_grants).
+The database is half-migrated; the app refuses to serve traffic against it.
+Fix the cause of the error above (it is the real fault — the schema drift a
+later gate would report is only its symptom) and redeploy.
+    at runSchemaBringUp (file:///app/dist/app-init.js:37113:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async bootstrapApp (file:///app/dist/app-init.js:41693:3)
+    at async startApp (file:///app/dist/app-init.js:41842:3)
+    at async Server.<anonymous> (file:///app/dist/production-entry.js:191:5)
+Schema bring-up report
+==============================================================================
+SCHEMA BRING-UP REPORT
+==============================================================================
+
+-- Database ------------------------------------------------------------------
+  host:       fm-fls-rds-uat-use2.cluster-ctaggyay66yi.us-east-2.rds.amazonaws.com:5432
+  database:   heliumdb
+  user:       dbadmin
+  driver:     pg (node-postgres/TCP)
+  tls:        encrypted, certificate NOT verified
+  url source: assembled from DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_SECRET parts
+  state:      INITIALIZED (this app's `variables` table is present)
+  tables:     92 in the public schema
+
+-- Core migrations (migrations_version) --------------------------------------
+  stored version:            1051
+  highest registered:        1060
+  highest baseline script:   1042
+  pending (9):
+    - 1052  add_dispatch_is_primary
+    - 1053  create_help
+    - 1054  options_event_type_sirius_id_nullable
+    - 1055  files_file_system_id
+    - 1056  create_options_worker_ban_type
+    - 1057  create_options_note_type
+    - 1058  create_notes
+    - 1059  ledger_accounts_sirius_id
+    - 1060  ws_bundles_to_grants
+  applied this boot:         0
+
+-- Component migrations ------------------------------------------------------
+  (component cache was not loaded)
+
+-- Schema drift gate ---------------------------------------------------------
+  status: not-run
+
+-- BRING-UP FAILED -----------------------------------------------------------
+  phase: core-migrations
+  Core migration 1052 (add_dispatch_is_primary) FAILED and stopped the boot.
+  
+    error: relation "dispatches" does not exist
+  
+  Still pending behind it: 1053 (create_help), 1054 (options_event_type_sirius_id_nullable), 1055 (files_file_system_id), 1056 (create_options_worker_ban_type), 1057 (create_options_note_type), 1058 (create_notes), 1059 (ledger_accounts_sirius_id), 1060 (ws_bundles_to_grants).
+  The database is half-migrated; the app refuses to serve traffic against it.
+  Fix the cause of the error above (it is the real fault — the schema drift a
+  later gate would report is only its symptom) and redeploy.
+
+==============================================================================
