@@ -1,0 +1,68 @@
+S2 has two timezones: "System" and "User".
+
+I. SYSTEM
+
+The system time zone is controlled by the environment variable "tz".
+This can be set externally in the container, or (if it's not set)
+internally by the application. It drives everything. Storage layer
+calls, log timestamps, everything in the database is interpreted in
+this timezone.
+
+In the database:
+
+Most columns store a simple "wall clock" string; "2026-06-05
+22:15:00". The meaning of that string is interpreted according to the
+"tz" environment variable. So that string means 10:15 PM in whatever
+timezone the system is using.
+
+Some columns have the "ymd" naming convention; those columns also
+store a bare string, e.g. "2026-06-05 00:00:00". That means "June 5",
+with no timezone.
+
+If you change the timezone of a site, the meaning of the data in those
+columns will change. If you write "2026-06-05 22:15:00" in UTC, then
+switch to PST, then it will assume that you meant 10:15 PM in Los
+Angeles. So changing the timezone affects the meaning of the data.
+
+Generally, the timezone should be set once when the site is deployed
+and never altered. If you really need to change the timezone of a
+running site, you should decide which date columns to explicitly
+update using a oneoff script. But it'll be ugly.
+
+II. USER
+
+There is a setting, "Personal Time Zones", that allows users to have
+their own time zones. The default is "no".
+
+If "Personal Time Zones" is "No" (or unset), then everybody everywhere
+uses the system time zone.
+
+If it's "On", then users can set their own time zone at any time
+(stored in the user table.)
+
+If they haven't set their own time zone, then we use the browser time
+zone (usually accurate to wherever you happen to be connecting from.)
+
+I imagine that most of your sites will set "personal time zones" to
+"off", so this is moot.
+
+III. UX
+
+There is a clock in the top right of the page. It always shows the
+current user time (which is, usually, the same as the system time).
+Click it to see the details or to change your user time zone (if
+enabled).
+
+There is an admin-only configuration page to see all the details and
+change the environment variable.
+
+Throughout the site, times and dates are usually displayed in user
+time. But we may need to be careful and use judgement. For instance,
+we'd want to show YMD fields in system time. If a BAO benefit expires
+on June 5 (PST), and the user is in a place where "2026-06-05 00:00:00
+PST" occurs on June 4th, then we have to decide whether to say that
+the benefit expires on June 4 or June 5. When in doubt, the safest
+thing is to show both dates and the timezone.
+
+Let me know issues you encounter. I'm closing this case, open new
+cases if you find issues.
