@@ -239,6 +239,69 @@ describe("DC route stage boundaries", () => {
     expect(body.code).toBe("DC_FORM_ATTESTATION_REQUIRES_FORM");
   });
 
+  it("returns the authoritative case and readiness from an attestation save", async () => {
+    const id = await makeCase("draft");
+    const res = await request(`/api/sitespecific/bao/dc/cases/${id}/attestations`, {
+      method: "PUT",
+      user: staffId,
+      body: JSON.stringify({
+        dcFormOnFile: false,
+        signed: true,
+        restrictionsNoted: false,
+        fields: { doctorAddress: true, doctorPhone: false, dates: true },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.bounced).toBe(false);
+    expect(body.case.id).toBe(id);
+    expect(body.case.attestations.signed).toBe(true);
+    expect(body.case.attestations.fields).toEqual({
+      doctorAddress: true,
+      doctorPhone: false,
+      dates: true,
+    });
+    expect(body.readiness.ready).toBe(false);
+    expect(
+      body.readiness.checklist.items.find((item: { key: string }) => item.key === "form_signed")
+        .satisfied,
+    ).toBe(true);
+  });
+
+  it("returns the bounce and computed readiness when an attestation breaks queued readiness", async () => {
+    const id = await makeCase("in_queue");
+    const res = await request(`/api/sitespecific/bao/dc/cases/${id}/attestations`, {
+      method: "PUT",
+      user: staffId,
+      body: JSON.stringify({
+        dcFormOnFile: false,
+        signed: true,
+        restrictionsNoted: false,
+        fields: { doctorAddress: true, doctorPhone: true, dates: true },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.bounced).toBe(true);
+    expect(body.case.status).toBe("draft");
+    expect(body.readiness.ready).toBe(false);
+    expect(body.readiness.missing).toContain("DC form on file");
+  });
+
+  it("leaves authoritative attestations unchanged when a save is rejected", async () => {
+    const id = await makeCase("approved");
+    const before = await storage.baoDisabilityCredit.getCase(id);
+    const res = await request(`/api/sitespecific/bao/dc/cases/${id}/attestations`, {
+      method: "PUT",
+      user: staffId,
+      body: JSON.stringify({ signed: true }),
+    });
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe("CASE_NOT_EDITABLE");
+    const after = await storage.baoDisabilityCredit.getCase(id);
+    expect(after?.attestations).toEqual(before?.attestations);
+  });
+
   it("queue/next returns null on an empty (or fully excluded) queue", async () => {
     const queued = await storage.baoDisabilityCredit.listCasesByStatus("in_queue");
     const params = new URLSearchParams();
