@@ -12,7 +12,7 @@ import {
   type TrustBenefitEligibilityExemptionSource,
   type TrustBenefitEligibilityExemptionView,
 } from '@shared/schema';
-import { eq, and, asc, desc, sql, type SQL } from 'drizzle-orm';
+import { eq, and, asc, desc, isNull, sql, type SQL } from 'drizzle-orm';
 import { defineLoggingConfig } from '../middleware/logging';
 
 export interface TrustBenefitEligibilityExemptionSearchParams {
@@ -24,6 +24,29 @@ export interface TrustBenefitEligibilityExemptionSearchParams {
   sort?: 'startAsc' | 'startDesc';
   limit?: number;
   offset?: number;
+}
+
+/** A programmatic, never-ending exemption grant (see `grantOpenEnded`). */
+export interface GrantOpenEndedExemptionInput {
+  subscriberWorkerId: string;
+  benefitId: string;
+  /** Checks to waive; duplicates and order are ignored. */
+  eligibilityPlugins: string[];
+  /** First day the exemption applies (YYYY-MM-DD). */
+  startYmd: string;
+  description: string | null;
+  /** Recorded in the row's `data.source` so provenance can be shown. */
+  source: TrustBenefitEligibilityExemptionSource;
+}
+
+export interface GrantOpenEndedExemptionResult {
+  exemption: TrustBenefitEligibilityExemptionView;
+  /**
+   * False when an equivalent open-ended exemption (same worker, benefit and
+   * check set, starting on or before the requested day) already existed and
+   * was reused instead of duplicated.
+   */
+  created: boolean;
 }
 
 /**
@@ -41,6 +64,28 @@ export interface TrustBenefitEligibilityExemptionsStorage {
   create(workerId: string, input: unknown): Promise<TrustBenefitEligibilityExemptionView>;
   update(id: string, input: unknown): Promise<TrustBenefitEligibilityExemptionView | undefined>;
   delete(id: string): Promise<boolean>;
+  /**
+   * Idempotently grant a never-ending exemption on behalf of a process (a
+   * trustee-approved appeal, a bulk import). Joins the caller's transaction
+   * when one is open, so a caller can make the grant and its own record
+   * commit or roll back together. Serialized per worker + benefit with an
+   * advisory transaction lock, so two concurrent grants of the same request
+   * still yield one row.
+   */
+  grantOpenEnded(input: GrantOpenEndedExemptionInput): Promise<GrantOpenEndedExemptionResult>;
+}
+
+const YMD_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/** The check set an exemption waives, in a canonical order-free form. */
+function normalizePluginSet(ids: readonly string[]): string[] {
+  return [...new Set(ids.map((id) => id.trim()).filter(Boolean))].sort();
+}
+
+function samePluginSet(a: readonly string[], b: readonly string[]): boolean {
+  const left = normalizePluginSet(a);
+  const right = normalizePluginSet(b);
+  return left.length === right.length && left.every((id, i) => id === right[i]);
 }
 
 export class TrustBenefitEligibilityExemptionValidationError extends Error {
@@ -113,6 +158,26 @@ export const trustBenefitEligibilityExemptionsLoggingConfig =
           const r = (beforeState as ExemptionBeforeState | undefined)?.exemption;
           if (!r) return 'Deleted eligibility exemption';
           return `Deleted eligibility exemption for ${await describeExemption(r.subscriberWorkerId, r.startYmd)}`;
+        },
+      },
+      // Non-conventional name: no synthesized hooks, so args[0] (the grant
+      // input, not an id) is never handed to the getter. A reused grant is
+      // logged too — the audit trail shows the appeal that leaned on an
+      // existing exemption.
+      grantOpenEnded: {
+        getEntityId: (_args, result: GrantOpenEndedExemptionResult | undefined) =>
+          result?.exemption?.id || 'new exemption',
+        getHostEntityId: (args, result: GrantOpenEndedExemptionResult | undefined) =>
+          result?.exemption?.subscriberWorkerId
+          ?? (args[0] as GrantOpenEndedExemptionInput | undefined)?.subscriberWorkerId,
+        after: async (_args, result: GrantOpenEndedExemptionResult | undefined) =>
+          ({ exemption: result?.exemption, created: result?.created }),
+        getDescription: async (args, result: GrantOpenEndedExemptionResult | undefined) => {
+          const input = args[0] as GrantOpenEndedExemptionInput | undefined;
+          const verb = result?.created ? 'Granted' : 'Reused';
+          return `${verb} open-ended eligibility exemption (${input?.source?.kind ?? 'unknown source'}) for ${
+            await describeExemption(result?.exemption?.subscriberWorkerId ?? input?.subscriberWorkerId, result?.exemption?.startYmd)
+          }`;
         },
       },
     },
@@ -272,6 +337,61 @@ export function createTrustBenefitEligibilityExemptionsStorage(): TrustBenefitEl
         .returning();
       if (deleted) emitExemptionSaved(deleted, 'deleted');
       return !!deleted;
+    },
+
+    async grantOpenEnded(input) {
+      const eligibilityPlugins = normalizePluginSet(input.eligibilityPlugins);
+      if (eligibilityPlugins.length === 0) {
+        throw new TrustBenefitEligibilityExemptionValidationError(
+          'eligibilityPlugins',
+          'At least one eligibility check is required',
+        );
+      }
+      if (!YMD_PATTERN.test(input.startYmd)) {
+        throw new TrustBenefitEligibilityExemptionValidationError('startYmd', 'startYmd must be YYYY-MM-DD');
+      }
+      return await runInTransaction(async () => {
+        const client = getClient();
+        // The reuse check below is check-then-insert: serialize grants for
+        // this worker + benefit for the rest of the transaction so two
+        // concurrent identical grants cannot both miss and both insert.
+        const lockKey = `trust-exemption-grant:${input.subscriberWorkerId}:${input.benefitId}`;
+        await client.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
+        await assertWorkerExists(input.subscriberWorkerId);
+        await assertBenefitExists(input.benefitId);
+
+        const open = await client
+          .select()
+          .from(trustBenefitEligibilityExemptions)
+          .where(and(
+            eq(trustBenefitEligibilityExemptions.subscriberWorkerId, input.subscriberWorkerId),
+            eq(trustBenefitEligibilityExemptions.benefitId, input.benefitId),
+            isNull(trustBenefitEligibilityExemptions.endYmd),
+          ))
+          .orderBy(asc(trustBenefitEligibilityExemptions.startYmd));
+        // An open-ended exemption waiving exactly these checks from a day no
+        // later than the requested one already covers the request forever:
+        // granting again would only duplicate it.
+        const covering = open.find((row) =>
+          samePluginSet(row.eligibilityPlugins, eligibilityPlugins) && row.startYmd <= input.startYmd,
+        );
+        if (covering) return { exemption: toView(covering), created: false };
+
+        const [created] = await client
+          .insert(trustBenefitEligibilityExemptions)
+          .values({
+            subscriberWorkerId: input.subscriberWorkerId,
+            benefitId: input.benefitId,
+            eligibilityPlugins,
+            startYmd: input.startYmd,
+            endYmd: null,
+            description: input.description,
+            data: trustBenefitEligibilityExemptionDataFor(input.source),
+          })
+          .returning();
+        emitExemptionSaved(created, 'created');
+        return { exemption: toView(created), created: true };
+      });
     },
   };
   return storage;

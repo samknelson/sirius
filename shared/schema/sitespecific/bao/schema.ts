@@ -1339,6 +1339,13 @@ export const BAO_CASE_WORKFLOW_STEPS = {
   benefit_appeal: ["submitted", "auto_denied", "trustee_review", "approved", "denied", "no_response"],
 } as const;
 
+/**
+ * The two trustee outcomes of a Benefit Appeal. Each names the workflow step
+ * of the status the outcome lands on; a case only reaches these steps through
+ * the Approve/Deny actions (which grant the exemption, take the closing note
+ * and close the case in one transaction), never through a direct status edit.
+ */
+export const BAO_APPEAL_OUTCOME_STEPS = ["approved", "denied"] as const;
 export const optionsBaoCaseType = pgTable("options_bao_case_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: varchar("name", { length: 255 }).notNull().unique(),
@@ -1435,6 +1442,13 @@ export const sitespecificBaoCases = pgTable(
  */
 export interface BaoAppealDetailsData {
   spdCitation: string | null;
+  /**
+   * The eligibility exemption the trustees' approval granted (or reused),
+   * linked when the case moves to Approved. Absent until then and on denied
+   * appeals. The exemption row records the same link in reverse in its
+   * `data.source`; revoking the exemption never reopens the case.
+   */
+  exemptionId?: string | null;
 }
 
 /**
@@ -1586,6 +1600,20 @@ export const updateBaoCaseRequestSchema = z.object({
 }).strict().refine((value) => Object.keys(value).length > 0, "Provide at least one field");
 
 export const addBaoCaseNoteRequestSchema = baoCaseNoteInputSchema.strict();
+
+/**
+ * Trustee outcome requests. Both close the case on the outcome's status; the
+ * resolution defaults to that status's configured default and the resolution
+ * date to today, so a bare body is a complete request.
+ */
+export const approveBaoAppealRequestSchema = z.object({
+  /** Eligibility checks the exemption waives (at least one). */
+  eligibilityPlugins: z.array(z.string().min(1)).min(1).max(50),
+  /** First day the exemption applies; it never ends. */
+  startYmd: ymdString,
+  resolutionId: z.string().min(1).optional(),
+  resolutionYmd: ymdString.optional(),
+}).strict();
 export const listBaoCasesQuerySchema = z.object({
   entityType: baoCaseEntityTypeSchema.optional(),
   entityId: z.string().min(1).optional(),
@@ -2006,3 +2034,12 @@ export type InsertBaoDcDocument = typeof sitespecificBaoDcDocuments.$inferInsert
 export type BaoDcEvent = typeof sitespecificBaoDcEvents.$inferSelect;
 
 export type BaoCaseComm = typeof sitespecificBaoCaseComms.$inferSelect;
+
+export const denyBaoAppealRequestSchema = z.object({
+  /** Optional closing note, added to the conversation before the case closes. */
+  note: baoCaseNoteInputSchema.strict().optional(),
+  resolutionId: z.string().min(1).optional(),
+  resolutionYmd: ymdString.optional(),
+}).strict();
+
+export type BaoAppealOutcome = (typeof BAO_APPEAL_OUTCOME_STEPS)[number];

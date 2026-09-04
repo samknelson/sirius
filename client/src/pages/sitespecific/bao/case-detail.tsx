@@ -15,10 +15,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { CaseLettersCard, type CaseLetter } from "@/components/sitespecific/bao/CaseLettersCard";
 import { BaoCaseDocumentsCard } from "@/components/sitespecific/bao/BaoCaseDocumentsCard";
 import { GrantedExemptionsCard } from "@/components/sitespecific/bao/GrantedExemptionsCard";
+import { AppealOutcomeCard, type CaseStatusOption } from "@/components/sitespecific/bao/AppealOutcomeCard";
 import type { TrustBenefitEligibilityExemptionView } from "@shared/schema";
 
 type Option = { id: string; name: string; closed?: boolean; data?: { entityTypes?: string[] } };
 type CaseTypeOption = Option & { workflowCode?: string };
+/** Workflow steps reached only through the Approve/Deny actions, never a status edit. */
+const OUTCOME_STEPS = ["approved", "denied"];
 /** GET /api/sitespecific/bao/cases/:id — the server's BaoCaseDetails plus the letter record. */
 interface CaseDetail {
   id: string; entityType: string; entityId: string; entityName: string | null;
@@ -37,6 +40,8 @@ interface CaseDetail {
   benefitName: string | null;
 
   denialReasonName: string | null;
+  /** The denial reason's configured checks — what an approval exempts by default. */
+  denialReasonEligibilityPluginIds: string[];
 
   spdCitation: string | null;
 
@@ -84,7 +89,7 @@ export default function BaoCaseDetailPage() {
   const { toast } = useToast();
   const key = ["/api/sitespecific/bao/cases", id];
   const { data: record } = useQuery<CaseDetail>({ queryKey: key });
-  const { data: statuses = [] } = useQuery<Option[]>({ queryKey: ["/api/options/bao-case-status"] });
+  const { data: statuses = [] } = useQuery<CaseStatusOption[]>({ queryKey: ["/api/options/bao-case-status"] });
   // Whether this is a Benefit Appeal is the case type's workflow code (the
   // same discriminator the New Case form uses), never a name match.
   const { data: caseTypes = [] } = useQuery<CaseTypeOption[]>({ queryKey: ["/api/options/bao-case-type"] });
@@ -153,6 +158,10 @@ export default function BaoCaseDetailPage() {
   const nextClosed = statuses.find((s) => s.id === statusId)?.closed ?? record.statusClosed;
   const applicable = noteTypes.filter((t) => t.data?.entityTypes?.includes(record.entityType));
   const isAppeal = caseTypes.find((t) => t.id === record.caseTypeId)?.workflowCode === "benefit_appeal";
+  // An appeal's outcome statuses are not offered as a plain status edit (the
+  // server refuses them); the current one stays so the control reads right.
+  const statusChoices = statuses.filter((s) =>
+    s.id === record.statusId || !isAppeal || !OUTCOME_STEPS.includes(s.workflowStep ?? ""));
   return (
     <div>
       <PageHeader title={`Case · ${record.entityName ?? record.entityId}`} />
@@ -164,12 +173,15 @@ export default function BaoCaseDetailPage() {
             {canAssignOthers
               ? <div><Label>Assignee</Label><Select value={assigneeId} onValueChange={setAssigneeId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{assignees.map((a) => <SelectItem value={a.id} key={a.id}>{a.name}</SelectItem>)}</SelectContent></Select></div>
               : <div><Label>Assignee</Label><div className="flex items-center gap-2"><p className="text-sm" data-testid="text-assignee-name">{assigneeId === selfId ? "You" : record.assigneeName}</p>{selfId && assigneeId !== selfId && <Button variant="outline" size="sm" data-testid="button-take-case" onClick={() => setAssigneeId(selfId)}>Take this case</Button>}</div></div>}
-            <div><Label>Status</Label><Select value={statusId} onValueChange={setStatusId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{statuses.map((s) => <SelectItem value={s.id} key={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label>Status</Label><Select value={statusId} onValueChange={setStatusId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{statusChoices.map((s) => <SelectItem value={s.id} key={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
             {nextClosed && <><div><Label>Resolution</Label><Select value={resolutionId} onValueChange={setResolutionId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{resolutions.map((r) => <SelectItem value={r.id} key={r.id}>{r.name}</SelectItem>)}</SelectContent></Select></div><div><Label>Resolution date</Label><Input type="date" value={resolutionYmd} onChange={(e) => setResolutionYmd(e.target.value)} /></div></>}
             <Button onClick={() => save.mutate()} disabled={save.isPending || (nextClosed && (!resolutionId || !resolutionYmd))}>Save</Button>
           </CardContent>
         </Card>
         {isAppeal && <AppealFactsCard record={record} />}
+        {record.workflowStep === "trustee_review" && (
+          <AppealOutcomeCard record={record} statuses={statuses} resolutions={resolutions} noteTypes={noteTypes} tags={tags} onRecorded={invalidate} />
+        )}
         <CaseLettersCard letters={record.letters ?? []} mailingAddressOnFile={record.mailingAddressOnFile ?? true} isWorkerCase={record.entityType === "worker"} />
         <BaoCaseDocumentsCard caseId={record.id} />
         <GrantedExemptionsCard exemptions={record.grantedExemptions} workflowStep={record.workflowStep} />

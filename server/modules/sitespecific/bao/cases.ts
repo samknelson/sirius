@@ -1,7 +1,9 @@
 import type { Express, NextFunction, Request, Response } from "express";
 import {
   addBaoCaseNoteRequestSchema,
+  approveBaoAppealRequestSchema,
   createBaoCaseRequestSchema,
+  denyBaoAppealRequestSchema,
   listBaoCasesQuerySchema,
   updateBaoCaseRequestSchema,
   TRUST_EXEMPTION_SOURCE_BAO_APPEAL,
@@ -14,6 +16,8 @@ import {
   assignmentForbidden,
   BAO_CASE_ASSIGN_PERMISSION,
 } from "../../../storage/sitespecific/bao/case-assignment";
+import { approveAppeal, denyAppeal, EXEMPTIONS_COMPONENT_ID, listExemptionChecks } from "../../../services/sitespecific/bao/appeal-outcomes";
+import { TrustBenefitEligibilityExemptionValidationError } from "../../../storage/trust/eligibility-exemptions";
 
 type Middleware = (req: Request, res: Response, next: NextFunction) => any;
 type AccessMiddleware = (policy: string) => Middleware;
@@ -23,18 +27,16 @@ async function effectiveUserId(req: Request): Promise<string | null> {
   return dbUser?.id ?? null;
 }
 
-const TRUST_EXEMPTIONS_COMPONENT_ID = "trust.benefits.eligibility.exemptions";
-
 /**
  * The exemptions this case's approval granted, found through the provenance
- * each exemption row records (`data.source` naming this case) — the case row
- * holds no pointer of its own, so deleting an exemption later simply drops it
- * from this list instead of leaving a dangling id behind. Null when the
- * exemptions component is off: its table may not exist, and "none" would be
- * a claim this deployment cannot make.
+ * each exemption row records (`data.source` naming this case) — never through
+ * the id the approval stored on the appeal details, so deleting an exemption
+ * later simply drops it from this list instead of showing a dangling id. Null
+ * when the exemptions component is off: its table may not exist, and "none"
+ * would be a claim this deployment cannot make.
  */
 async function grantedExemptionsOf(caseId: string): Promise<TrustBenefitEligibilityExemptionView[] | null> {
-  if (!(await isComponentEnabled(TRUST_EXEMPTIONS_COMPONENT_ID))) return null;
+  if (!(await isComponentEnabled(EXEMPTIONS_COMPONENT_ID))) return null;
   return storage.trustBenefitEligibilityExemptions.listBySource({
     kind: TRUST_EXEMPTION_SOURCE_BAO_APPEAL,
     caseId,
@@ -68,12 +70,28 @@ function caseError(res: Response, error: any) {
     MEMBER_LETTER_ALREADY_RECORDED: [409, "A member letter has already been recorded"],
     CASE_DOCUMENT_NOT_FOUND: [404, "Case document not found"],
     TRUSTEE_REVIEW_STATUS_MISSING: [409, "Trustee Review is not configured"],
+    OUTCOME_WRONG_STATE: [409, "Only a Benefit Appeal in Trustee Review can be approved or denied"],
+    OUTCOME_STATUS_MISSING: [409, "The Benefit Appeal workflow is missing its outcome status; ask an administrator to configure it"],
+    OUTCOME_STATUS_OPEN: [409, "The Benefit Appeal outcome status is not a closed status; ask an administrator to configure it"],
+    OUTCOME_ACTION_REQUIRED: [409, "Use the Approve or Deny action to record a trustee outcome"],
+    EXEMPTION_GRANT_REQUIRED: [500, "Approval did not supply an exemption grant"],
+    EXEMPTION_CHECKS_REQUIRED: [400, "Select at least one eligibility check to exempt"],
+    UNKNOWN_ELIGIBILITY_PLUGIN: [400, "One or more selected eligibility checks are not available"],
+    EXEMPTIONS_COMPONENT_DISABLED: [409, "Approving an appeal requires the Eligibility Exemptions component to be enabled"],
   };
   if (error?.code === "23505" || error?.cause?.code === "23505") {
     return res.status(409).json({ message: "This note already belongs to a BAO case" });
   }
   const mapped = messages[error?.message];
-  if (mapped) return res.status(mapped[0]).json({ message: mapped[1] });
+  if (mapped) {
+    return res.status(mapped[0]).json({
+      message: mapped[1],
+      ...(error?.details !== undefined ? { details: error.details } : {}),
+    });
+  }
+  if (error instanceof TrustBenefitEligibilityExemptionValidationError) {
+    return res.status(400).json({ message: error.message, field: error.field });
+  }
   if (error?.name === "ZodError") {
     return res.status(400).json({ message: "Invalid data", errors: error.errors });
   }
@@ -110,6 +128,12 @@ export function registerBaoCaseRoutes(
     } catch (error) {
       caseError(res, error);
     }
+  });
+
+  // Eligibility checks an appeal approval may waive. Literal path: it must
+  // stay registered ahead of the /:id routes below.
+  app.get("/api/sitespecific/bao/cases/appeal-checks", ...gate, (_req, res) => {
+    res.json({ checks: listExemptionChecks() });
   });
 
   app.get("/api/sitespecific/bao/cases", ...gate, async (req, res) => {
@@ -237,6 +261,27 @@ export function registerBaoCaseRoutes(
       if (!actor) return res.status(401).json({ message: "Effective user not found" });
       const updated = await storage.baoCases.recordMemberLetter(req.params.id, req.body?.fileId, req.body?.note, actor);
       res.json(updated);
+    } catch (error) { caseError(res, error); }
+  });
+
+  // Trustee outcomes on a Benefit Appeal in Trustee Review. The worker and
+  // benefit the approval exempts come from the case row, never the body.
+  app.post("/api/sitespecific/bao/cases/:id/approve", ...gate, async (req, res) => {
+    try {
+      const parsed = approveBaoAppealRequestSchema.parse(req.body);
+      const actor = await effectiveUserId(req);
+      if (!actor) return res.status(401).json({ message: "Effective user not found" });
+      const result = await approveAppeal(req.params.id, { ...parsed, actorUserId: actor });
+      res.json(result);
+    } catch (error) { caseError(res, error); }
+  });
+  app.post("/api/sitespecific/bao/cases/:id/deny", ...gate, async (req, res) => {
+    try {
+      const parsed = denyBaoAppealRequestSchema.parse(req.body ?? {});
+      const actor = await effectiveUserId(req);
+      if (!actor) return res.status(401).json({ message: "Effective user not found" });
+      const result = await denyAppeal(req.params.id, { ...parsed, actorUserId: actor });
+      res.json(result);
     } catch (error) { caseError(res, error); }
   });
 }

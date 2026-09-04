@@ -18,7 +18,7 @@
  *   `eligibilityPluginIds` on the reason is behaviour applied at approval
  *   time, not member-facing text; it stays on the option and is not copied.
  */
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import {
   comm,
   commEmail,
@@ -40,8 +40,10 @@ import {
   sitespecificBaoCases,
   userRoles,
   users,
+  BAO_APPEAL_OUTCOME_STEPS,
   type BaoAppealDetails,
   type BaoAppealDetailsData,
+  type BaoAppealOutcome,
   type BaoCase,
   type BaoCaseAppealFacts,
   type BaoCaseEntityType,
@@ -62,6 +64,8 @@ export interface BaoCaseDetails extends BaoCase, BaoCaseAppealFacts {
   caseTypeName: string;
   workflowStep: string | null;
   resolutionName: string | null;
+  /** Appeal: the denial reason's configured checks — what an approval exempts by default. */
+  denialReasonEligibilityPluginIds: string[];
   notes?: NoteWithDetails[];
 }
 
@@ -114,6 +118,42 @@ export interface CreateBaoCaseInput {
 export interface BaoCaseAssignmentContext {
   actorUserId: string;
   canAssignOthers: boolean;
+}
+
+/** The locked appeal an approval grants its exemption for. */
+export interface BaoAppealExemptionSubject {
+  caseId: string;
+  subscriberWorkerId: string;
+  benefitId: string;
+  benefitName: string | null;
+  createdAt: Date;
+}
+
+export interface BaoAppealOutcomeInput {
+  outcome: BaoAppealOutcome;
+  actorUserId: string;
+  /** Resolution for the outcome's status; that status's configured default when omitted. */
+  resolutionId?: string | null;
+  /** Resolution date (YYYY-MM-DD); today when omitted. */
+  resolutionYmd?: string | null;
+  /** Deny: an optional closing note, linked to the case before the outreach-note rule runs. */
+  note?: CreateBaoCaseInput["initialNote"] | null;
+  /**
+   * Approve (required then): grants the exemption INSIDE the outcome's
+   * transaction — after the state checks, before the status write — for the
+   * ROW-LOCKED case's worker and benefit, so the grant and the close commit
+   * or roll back together and can never target another pair. The returned id
+   * is linked on the appeal details.
+   */
+  grantExemption?: (subject: BaoAppealExemptionSubject) => Promise<{ exemptionId: string; created: boolean }>;
+}
+
+export interface BaoAppealOutcomeResult {
+  case: BaoCase;
+  /** Approve: the exemption granted or reused; null on deny. */
+  exemptionId: string | null;
+  /** Approve: false when an equivalent exemption already existed; null on deny. */
+  exemptionCreated: boolean | null;
 }
 
 export interface BaoCasesStorage {
@@ -171,6 +211,17 @@ export interface BaoCasesStorage {
   listCaseDocuments(caseId: string): Promise<any[]>;
   attachCaseDocument(caseId: string, file: any, uploadedByUserId: string, documentType?: string): Promise<any>;
   recordMemberLetter(caseId: string, fileId: string, note: CreateBaoCaseInput["initialNote"], actorUserId: string): Promise<BaoCase>;
+  /**
+   * Record the trustees' outcome on a Benefit Appeal in Trustee Review: move
+   * it to the Approved or Closed–Denied status in one transaction with the
+   * approval's exemption grant and the denial's closing note, under the same
+   * closed-status rules as a lifecycle edit (resolution pairing, outreach
+   * note, deadline from the status) and the same status-saved event. An
+   * outcome status configured as open is refused (OUTCOME_STATUS_OPEN)
+   * before any side effect. The ONLY way into an outcome step —
+   * `updateLifecycle` refuses them.
+   */
+  recordAppealOutcome(caseId: string, input: BaoAppealOutcomeInput): Promise<BaoAppealOutcomeResult>;
 }
 
 const cases = sitespecificBaoCases;
@@ -205,7 +256,15 @@ const detailSelection = {
   denialReasonName: optionsBaoAppealDenialReason.name,
   // The citation snapshotted at auto-denial (see the header), not the option's.
   spdCitation: sql<string | null>`${sitespecificBaoAppealDetails.data}->>'spdCitation'`,
+  // Behaviour, not member-facing text: read LIVE from the reason (see the header).
+  denialReasonEligibilityPluginIds: sql<unknown>`${optionsBaoAppealDenialReason.data}->'eligibilityPluginIds'`,
 };
+
+/** The reason's configured check ids as stored by the options UI; anything else → none. */
+function pluginIdsOf(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((id): id is string => typeof id === "string" && id.trim().length > 0);
+}
 
 /**
  * The citation text a denial reason option carries, as stored by the
@@ -256,6 +315,7 @@ function mapDetail(row: DetailRow): BaoCaseDetails {
     benefitName: row.benefitName ?? null,
     denialReasonName: row.denialReasonName ?? null,
     spdCitation: row.spdCitation ?? null,
+    denialReasonEligibilityPluginIds: pluginIdsOf(row.denialReasonEligibilityPluginIds),
   };
 }
 
@@ -350,6 +410,43 @@ async function assertNoteType(typeId: string, entityType: string): Promise<void>
   if (!type || !Array.isArray((type.data as any)?.entityTypes) || !(type.data as any).entityTypes.includes(entityType)) {
     throw new Error("INVALID_NOTE_TYPE");
   }
+}
+
+/**
+ * A status that requires member outreach can only be entered once the case
+ * carries a note whose type is flagged `memberOutreach`.
+ */
+async function assertOutreachNote(caseId: string): Promise<void> {
+  const [outreach] = await getClient().select({ id: notes.id })
+    .from(sitespecificBaoCaseNotes)
+    .innerJoin(notes, eq(notes.id, sitespecificBaoCaseNotes.noteId))
+    .innerJoin(optionsNoteType, eq(optionsNoteType.id, notes.typeId))
+    .where(and(
+      eq(sitespecificBaoCaseNotes.caseId, caseId),
+      sql`COALESCE((${optionsNoteType.data}->>'memberOutreach')::boolean, false)`,
+    )).limit(1);
+  if (!outreach) throw new Error("OUTREACH_NOTE_REQUIRED");
+}
+
+/** Create a note on the case's entity and link it to the case (with its tags). */
+async function addLinkedNote(
+  theCase: Pick<BaoCase, "id" | "entityType" | "entityId">,
+  input: NonNullable<CreateBaoCaseInput["initialNote"]>,
+  actorUserId: string,
+) {
+  await assertNoteType(input.typeId, theCase.entityType);
+  const note = await noteStorage.create({
+    entityType: theCase.entityType,
+    entityId: theCase.entityId,
+    typeId: input.typeId,
+    subject: input.subject,
+    body: input.body ?? null,
+    data: input.data ?? null,
+    userId: actorUserId,
+  });
+  await getClient().insert(sitespecificBaoCaseNotes).values({ caseId: theCase.id, noteId: note.id });
+  if (input.tagIds?.length) await tagStorage.setForNote(note.id, Array.from(new Set(input.tagIds)));
+  return note;
 }
 
 export function createBaoCasesStorage(): BaoCasesStorage {
@@ -520,6 +617,16 @@ export function createBaoCasesStorage(): BaoCasesStorage {
           const [caseType] = await getClient().select().from(optionsBaoCaseType)
             .where(eq(optionsBaoCaseType.id, existing.caseTypeId));
           if (caseType?.workflowCode === "benefit_appeal") {
+            // The trustee outcomes are reached only through recordAppealOutcome,
+            // which grants the exemption / takes the closing note in the same
+            // transaction; a bare status edit would skip both. The one
+            // exception is a deadline lapse auto-closing into denied — there
+            // is nothing for it to skip — never into approved, which without
+            // its exemption would be a lie.
+            if ((BAO_APPEAL_OUTCOME_STEPS as readonly string[]).includes(status.workflowStep ?? "")
+              && !(options?.systemClose && status.workflowStep === "denied")) {
+              throw new Error("OUTCOME_ACTION_REQUIRED");
+            }
             const steps = ["submitted", "auto_denied", "trustee_review", "approved", "denied", "no_response"];
             const from = steps.indexOf(previousStatus?.workflowStep ?? "");
             const to = steps.indexOf(status.workflowStep ?? "");
@@ -537,17 +644,7 @@ export function createBaoCasesStorage(): BaoCasesStorage {
           const [resolution] = await getClient().select({ id: optionsBaoCaseResolution.id })
             .from(optionsBaoCaseResolution).where(eq(optionsBaoCaseResolution.id, resolutionId));
           if (!resolution) throw new Error("INVALID_RESOLUTION");
-          if (status.requiresOutreachNote && !options?.systemClose) {
-            const [outreach] = await getClient().select({ id: notes.id })
-              .from(sitespecificBaoCaseNotes)
-              .innerJoin(notes, eq(notes.id, sitespecificBaoCaseNotes.noteId))
-              .innerJoin(optionsNoteType, eq(optionsNoteType.id, notes.typeId))
-              .where(and(
-                eq(sitespecificBaoCaseNotes.caseId, id),
-                sql`COALESCE((${optionsNoteType.data}->>'memberOutreach')::boolean, false)`,
-              )).limit(1);
-            if (!outreach) throw new Error("OUTREACH_NOTE_REQUIRED");
-          }
+          if (status.requiresOutreachNote && !options?.systemClose) await assertOutreachNote(id);
         } else if (!previousStatus?.closed && (nextResolutionId || nextResolutionYmd)) {
           throw new Error("OPEN_CASE_RESOLUTION");
         }
@@ -779,6 +876,89 @@ export function createBaoCasesStorage(): BaoCasesStorage {
         const [updated] = await getClient().update(cases).set({ statusId: next.id, deadlineYmd: next.durationDays == null ? existing.deadlineYmd : sql`CURRENT_DATE + ${next.durationDays}::int` }).where(eq(cases.id, caseId)).returning();
         await emitCaseStatusSaved(updated, existing.statusId, next.name, "updated", { previousAssigneeUserId: existing.assigneeUserId, actorUserId });
         return updated;
+      });
+    },
+
+    async recordAppealOutcome(caseId, input) {
+      return runInTransaction(async () => {
+        // Row lock first: the state check, the grant/note and the status
+        // write all derive from this one locked row.
+        const [existing] = await getClient().select().from(cases).where(eq(cases.id, caseId)).for("update");
+        if (!existing) throw new Error("CASE_NOT_FOUND");
+        const [caseType] = await getClient().select().from(optionsBaoCaseType)
+          .where(eq(optionsBaoCaseType.id, existing.caseTypeId));
+        const current = await getStatus(existing.statusId);
+        if (caseType?.workflowCode !== "benefit_appeal" || current?.workflowStep !== "trustee_review") {
+          throw new Error("OUTCOME_WRONG_STATE");
+        }
+        const [target] = await getClient().select().from(optionsBaoCaseStatus)
+          .where(and(
+            eq(optionsBaoCaseStatus.caseTypeId, existing.caseTypeId),
+            eq(optionsBaoCaseStatus.workflowStep, input.outcome),
+          )).limit(1);
+        if (!target) throw new Error("OUTCOME_STATUS_MISSING");
+        // An outcome CLOSES the appeal. The seeded outcome statuses are closed,
+        // but an administrator can reclassify any status through the options
+        // API; landing an approval on an open status would grant the exemption
+        // and leave the case open without a resolution. Refuse the
+        // configuration before any side effect instead.
+        if (!target.closed) throw new Error("OUTCOME_STATUS_OPEN");
+        await lockStatuses([existing.statusId, target.id], "SHARE");
+
+        // The same closed-status rules a lifecycle edit enforces, resolved
+        // before the note or the grant so a configuration gap refuses cleanly.
+        const resolutionId = input.resolutionId ?? target.defaultResolutionId ?? null;
+        if (!resolutionId) throw new Error("RESOLUTION_REQUIRED");
+        const [resolution] = await getClient().select({ id: optionsBaoCaseResolution.id })
+          .from(optionsBaoCaseResolution).where(eq(optionsBaoCaseResolution.id, resolutionId));
+        if (!resolution) throw new Error("INVALID_RESOLUTION");
+        const resolutionYmd: string | SQL = input.resolutionYmd ?? sql`CURRENT_DATE`;
+
+        // Deny: the closing note joins the conversation BEFORE the outreach
+        // rule is checked, so it can be the note that satisfies it.
+        if (input.outcome === "denied" && input.note) {
+          await addLinkedNote(existing, input.note, input.actorUserId);
+        }
+        if (target.requiresOutreachNote) await assertOutreachNote(caseId);
+
+        // Approve: the exemption, granted for the locked row's worker and
+        // benefit and linked on the appeal details. The grant is idempotent
+        // (see exemptions storage), so a retried approval never duplicates.
+        let exemptionId: string | null = null;
+        let exemptionCreated: boolean | null = null;
+        if (input.outcome === "approved") {
+          if (!input.grantExemption) throw new Error("EXEMPTION_GRANT_REQUIRED");
+          if (existing.entityType !== "worker") throw new Error("APPEAL_WORKER_REQUIRED");
+          const [details] = await getClient().select().from(sitespecificBaoAppealDetails)
+            .where(eq(sitespecificBaoAppealDetails.caseId, caseId)).limit(1);
+          if (!existing.benefitId || !details) throw new Error("APPEAL_DETAILS_REQUIRED");
+          const [benefit] = await getClient().select({ name: trustBenefits.name }).from(trustBenefits)
+            .where(eq(trustBenefits.id, existing.benefitId)).limit(1);
+          const granted = await input.grantExemption({
+            caseId,
+            subscriberWorkerId: existing.entityId,
+            benefitId: existing.benefitId,
+            benefitName: benefit?.name ?? null,
+            createdAt: existing.createdAt,
+          });
+          exemptionId = granted.exemptionId;
+          exemptionCreated = granted.created;
+          const data: BaoAppealDetailsData = { ...(details.data ?? { spdCitation: null }), exemptionId };
+          await getClient().update(sitespecificBaoAppealDetails).set({ data })
+            .where(eq(sitespecificBaoAppealDetails.id, details.id));
+        }
+
+        const [updated] = await getClient().update(cases).set({
+          statusId: target.id,
+          resolutionId,
+          resolutionYmd,
+          deadlineYmd: target.durationDays == null ? existing.deadlineYmd : sql`CURRENT_DATE + ${target.durationDays}::int`,
+        }).where(eq(cases.id, caseId)).returning();
+        await emitCaseStatusSaved(updated, existing.statusId, target.name, "updated", {
+          previousAssigneeUserId: existing.assigneeUserId,
+          actorUserId: input.actorUserId,
+        });
+        return { case: updated, exemptionId, exemptionCreated };
       });
     },
   };

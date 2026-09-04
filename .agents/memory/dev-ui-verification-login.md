@@ -24,6 +24,8 @@ existing account can be logged into by an agent.
   guessing after one 401.
 - Cleanup order: rows that RESTRICT on the user (e.g. BAO cases assigned to it)
   first, then user_roles / auth_identities / users. Remove any temp password file.
+- The first browser load after a restart can take 60–120 s while Vite builds
+  the module graph; a tester's "blank /login" is that cold start, not a bug.
 
 **Why:** a first verification attempt burned time trying the admin secret
 against the seeded admin (401), and unauthenticated screenshots can't reach any

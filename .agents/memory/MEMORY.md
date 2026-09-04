@@ -189,3 +189,4 @@
 - [Unwired component migration file](component-migration-unwired-file.md) — a migration file that is not registered never runs; schema that lands without one fails every fresh install, not just dev.
 - [Dev UI verification login](dev-ui-verification-login.md) — INITIAL_ADMIN_PASSWORD is not a login (unreferenced); make a throwaway local account (users+auth_identities+user_roles, hash via generate-password-hash) for browser/API checks, delete after.
 - [Exemption provenance contract](exemption-provenance-contract.md) — `data.source` discriminated union, storage returns a view (raw jsonb never leaves), no request-body `data`, malformed source throws, reverse lookup by jsonb containment.
+- [Appeal outcome cross-component grant](appeal-outcome-cross-component-grant.md) — storage owns tx+row lock, service supplies an idempotent grant callback fed the LOCKED row; staff pickers never read the admin-only plugin manifest.
