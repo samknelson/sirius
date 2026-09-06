@@ -252,7 +252,14 @@ jobs:
         # in GitHub therefore removes it from the container on the next
         # deploy - no ratchet.
         EXTRA_ENV=$(cat app-env.json)
-        KEEP_VARS='["PORT","NODE_ENV","DB_HOST","DB_PORT","DB_NAME","DATABASE_URL"]'
+        # DB_IAM_AUTH and DB_USER are Terraform-owned (they select IAM-token auth
+        # and the Postgres role to authenticate as) and are NOT set in GitHub, so
+        # without them on the keep-list this replace strips them on the next
+        # deploy — silently reverting the services to password auth as dbadmin.
+        # That is not hypothetical: it happened on 2026-08-31 (run 33387090483,
+        # a deploy from freeman-dev), which took dev off IAM auth without any
+        # visible failure.
+        KEEP_VARS='["PORT","NODE_ENV","DB_HOST","DB_PORT","DB_NAME","DATABASE_URL","DB_IAM_AUTH","DB_USER"]'
 
         # ── UI ──────────────────────────────────────────────────────────────
         echo "Describing latest revision of task family '$UI_SERVICE'..."
