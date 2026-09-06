@@ -105,16 +105,12 @@ export function snapshotRef(
  * Snapshot row metadata as returned by the list API (no data payload).
  *
  * The revision comes from the snapshot bundle captured with the target record.
- * When the snapshot was captured, and by whom, comes from the snapshot row
- * and the current account record:
+ * When the snapshot was captured, and by whom, comes from the snapshot row:
  *
- *  - `capturedAt` is null for a snapshot the framework holds no history for.
- *    That is not an error — history is written best effort, just after the
- *    save that captured the snapshot commits.
- *  - `capturedByName` is resolved from the person's account at READ time, so a
- *    renamed user's snapshots show the current name. It is null for a capture
- *    with no signed-in user behind it (a system path), which is a real and
- *    expected state, and for a snapshot whose history names nobody.
+ *  - `capturedAt` is the snapshot row's local created_at value.
+ *  - `capturedByName` is the snapshot row's local author_name value. It is
+ *    null for a capture with no signed-in user behind it, which is a real and
+ *    expected state.
  */
 export interface SnapshotMeta {
   id: string;

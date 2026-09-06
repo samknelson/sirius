@@ -92,12 +92,10 @@ its own rows from this table and from the allowlist.
 | `sitespecific_btu_political_officials` | `created_at`, `updated_at` | Retire BTU Table Timestamps |
 | `sitespecific_btu_political_worker_reps` | `created_at` | Retire BTU Table Timestamps |
 
-Every column left here is a date and nothing else. The two that also carried a
-person are done — `snapshots.author_id` and `edls_sheets.created_by` — and both
-had records with nobody recorded. "No author" is a real state, and the seeding
-routine preserved it rather than guessing. `snapshots` carried a third column,
-`author_name`, a frozen copy of a display name, which was not seeded at all:
-snapshots show the current name.
+The process-table entries in the KEEP table below are intentionally not
+record-history columns. They are local facts owned by their process rows, and
+"no author" remains a real state for snapshots rather than a reason to invent
+one.
 
 The BTU tables belong to an optional component and do not exist where it is
 off. Their seeding migration relies on the routine's stated skip.
@@ -133,8 +131,11 @@ are listed here so the inventory is complete.
 | `entity_notes` | `timestamp` | A note's posted time, shown on the note. | no |
 | `sessions` | (all) | Cookie-keyed session store, not a record table. | no |
 | `sitespecific_btu_political_worker_reps` | `last_looked_up_at` | Freshness of a billable lookup, distinct from that table's retiring `created_at`. | no |
-| `snapshots` | `captured_at`, `captured_by` | Capture provenance for process snapshots; kept on the snapshot so excluding snapshots from record history does not erase the browser's timestamp or actor. | no |
-| `ledger_payments` | `created_at` | Payment creation time displayed and ordered by payment lists; ledger tables are intentionally excluded from record history. | `created_at` |
+| `auth_identities` | `created_at`, `updated_at` | Provider identity lifecycle timestamps; auth identities are excluded process state. | yes |
+| `worker_msh` | `created_at` | Local timestamp retained with worker member-status history; worker history is excluded process state. | yes |
+| `snapshots` | `created_at`, `author_id`, `author_name` | Capture provenance for process snapshots; kept on the snapshot so excluding snapshots from record history does not erase the browser's timestamp or actor. | yes |
+| `ledger_gateway_customers` | `created_at` | Gateway customer mapping creation time retained on excluded ledger state. | yes |
+| `ledger_payments` | `date_created` | Payment creation time displayed and ordered by payment lists; ledger tables are intentionally excluded from record history. | yes |
 | `ledger_paymentmethods` | `created_at` | Payment-method creation time displayed and ordered by payment-method lists; ledger tables are intentionally excluded from record history. | `created_at` |
 
 `entity_metadata`'s own `created_date` / `created_by` / `modified_date` /

@@ -143,7 +143,22 @@ const ALLOWLIST: Record<string, string> = {
   // table's unique (worker_id, industry_id, date) made the same tie-break
   // unreachable. See the inventory's KEEP table.
   "worker_wsh.created_at": "KEEP — tie-break ordering key for same-date work statuses",
-  "ledger_payments.created_at": "KEEP — payment creation time displayed and ordered by ledger lists",
+  "worker_msh.created_at":
+    "KEEP — local process-table capture timestamp retained for worker status history",
+  "auth_identities.created_at":
+    "KEEP — provider identity creation timestamp retained on excluded process state",
+  "auth_identities.updated_at":
+    "KEEP — provider identity update timestamp retained on excluded process state",
+  "snapshots.created_at":
+    "KEEP — snapshot capture time retained on excluded process output",
+  "snapshots.author_id":
+    "KEEP — snapshot capture actor retained on excluded process output",
+  "snapshots.author_name":
+    "KEEP — snapshot author display name retained with process output",
+  "ledger_gateway_customers.created_at":
+    "KEEP — gateway customer mapping creation time retained on excluded ledger state",
+  "ledger_payments.date_created":
+    "KEEP — payment creation time displayed and ordered by ledger lists",
   "ledger_paymentmethods.created_at":
     "KEEP — payment-method creation time displayed and ordered by payment-method lists",
 

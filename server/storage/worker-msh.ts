@@ -77,8 +77,9 @@ export function createWorkerMshStorage(
         // one worker cannot hold two member statuses for one industry on one
         // date, so the latest per industry is unambiguous. `id` remains only
         // to keep the ordering total and repeatable. (This used to tie-break
-        // on a `created_at` column that the constraint made unreachable; it
-        // was retired in migration 1099.)
+        // on a `created_at` column that the constraint makes unreachable.
+        // The local timestamp is retained for process-table compatibility,
+        // but it is not needed for this current-status ordering.
         .orderBy(desc(workerMsh.date), desc(workerMsh.id));
 
       const latestByIndustry = new Map<string, string>();

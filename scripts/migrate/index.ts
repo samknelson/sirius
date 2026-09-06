@@ -107,6 +107,8 @@ import "./core/1102_add_entity_metadata_rev";
 import "./core/1103_remove_process_entity_metadata";
 import "./core/1104_own_process_capture_provenance";
 import "./core/1105_rename_entity_metadata_table_name_to_context_id";
+import "./core/1106_restore_process_local_provenance";
+import "./core/1107_allow_unknown_process_provenance";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

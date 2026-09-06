@@ -27,16 +27,7 @@ import { dateToYmd, ymdToDateForPicker, isValidYmd } from "@shared/utils/date";
  */
 export const validate = createNoopValidator();
 
-/**
- * Join condition reaching a payment's provenance row.
- *
- * A payment no longer carries its own creation column: when it was made is
- * provenance, kept in `entity_metadata` under the payment's own id and
- * written by the storage logging middleware. The payment lists show, sort and
- * date-filter on that date, so their reads join it rather than reading a
- * column. The table name is part of the condition even though `entity_id` is
- * unique: a row naming another table is not this payment's history.
- */
+/** Ledger payment lists read their creation time from the local date_created column. */
 export type LedgerEaWithBalance = SelectLedgerEa & { balance: string };
 
 export interface LedgerEaWithAccount {
@@ -77,7 +68,7 @@ export interface LedgerPaymentStorage {
   /**
    * Payments for one EA, as the EA payments list reads them: each row carries
    * the creation date the list shows, sorts and date-filters on, joined from
-   * the ledger-owned created_at column.
+   * the ledger-owned date_created column.
    */
   getByLedgerEaId(ledgerEaId: string): Promise<LedgerPaymentWithCreatedDate[]>;
   getByAccountIdWithEntity(accountId: string): Promise<LedgerPaymentWithEntity[]>;
@@ -607,7 +598,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
     async getByLedgerEaId(ledgerEaId: string): Promise<LedgerPaymentWithCreatedDate[]> {
       const client = getClient();
       const results = await client
-        .select({ payment: ledgerPayments, createdDate: ledgerPayments.createdAt })
+        .select({ payment: ledgerPayments, createdDate: ledgerPayments.dateCreated })
         .from(ledgerPayments)
         .where(eq(ledgerPayments.ledgerEaId, ledgerEaId))
         .orderBy(desc(ledgerPayments.id));
@@ -622,7 +613,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
           payment: ledgerPayments,
           ea: ledgerEa,
           employer: employers,
-          createdDate: ledgerPayments.createdAt
+          createdDate: ledgerPayments.dateCreated
         })
         .from(ledgerPayments)
         .innerJoin(ledgerEa, eq(ledgerPayments.ledgerEaId, ledgerEa.id))
@@ -667,7 +658,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
           payment: ledgerPayments,
           ea: ledgerEa,
           employer: employers,
-          createdDate: ledgerPayments.createdAt
+          createdDate: ledgerPayments.dateCreated
         })
         .from(ledgerPayments)
         .innerJoin(ledgerEa, eq(ledgerPayments.ledgerEaId, ledgerEa.id))
@@ -2048,7 +2039,7 @@ export function createLedgerPaymentBatchAssignmentStorage(): LedgerPaymentBatchA
           payment: ledgerPayments,
           ea: ledgerEa,
           employer: employers,
-          createdDate: ledgerPayments.createdAt,
+          createdDate: ledgerPayments.dateCreated,
           assignmentId: ledgerPaymentBatchAssignments.id,
         })
         .from(ledgerPaymentBatchAssignments)

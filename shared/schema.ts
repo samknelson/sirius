@@ -241,9 +241,8 @@ export const authIdentities = pgTable(
     passwordHash: varchar("password_hash"),
     refreshToken: text("refresh_token"),
     metadata: jsonb("metadata"),
-    // No created_at/updated_at: this provider-managed row is operational
-    // state, not a directly maintained record-history subject. last_used_at
-    // stays as an operational stamp about signing in.
+    createdAt: timestamp("created_at").default(sql`now()`),
+    updatedAt: timestamp("updated_at").default(sql`now()`),
     lastUsedAt: timestamp("last_used_at"),
   },
   (table) => [
@@ -776,6 +775,7 @@ export const workerMsh = pgTable("worker_msh", {
   msId: varchar("ms_id").notNull().references(() => optionsWorkerMs.id, { onDelete: 'cascade' }),
   industryId: varchar("industry_id").notNull().references(() => optionsIndustry.id, { onDelete: 'cascade' }),
   data: jsonb("data"),
+  createdAt: timestamp("created_at").default(sql`now()`),
 }, (table) => ({
   // Declared in TABLE-column order with an explicit name (see trust_wmb's
   // constraint comment): drizzle-kit push introspects constraint columns in
@@ -880,6 +880,7 @@ export const ledgerGatewayCustomers = pgTable("ledger_gateway_customers", {
   gatewayConfigId: varchar("gateway_config_id").notNull(),
   // Opaque provider customer reference (e.g. Stripe `cus_...`).
   customerRef: text("customer_ref").notNull(),
+  createdAt: timestamp("created_at").default(sql`now()`),
 }, (table) => ({
   entityGatewayUnique: unique("ledger_gateway_customers_entity_gateway_unique").on(
     table.entityType,
@@ -895,6 +896,7 @@ export const ledgerGatewayCustomers = pgTable("ledger_gateway_customers", {
 
 export const insertLedgerGatewayCustomerSchema = createInsertSchema(ledgerGatewayCustomers).omit({
   id: true,
+  createdAt: true,
 });
 export type InsertLedgerGatewayCustomer = z.infer<typeof insertLedgerGatewayCustomerSchema>;
 export type LedgerGatewayCustomer = typeof ledgerGatewayCustomers.$inferSelect;
@@ -924,13 +926,13 @@ export const ledgerAccounts = pgTable("ledger_accounts", {
 
 export const ledgerPayments = pgTable("ledger_payments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
   status: text("status").notNull().$type<'draft' | 'canceled' | 'cleared' | 'error'>(),
   allocated: boolean("allocated").notNull().default(false),
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
   paymentType: varchar("payment_type").notNull().references(() => optionsLedgerPaymentType.id),
   ledgerEaId: varchar("ledger_ea_id").notNull().references(() => ledgerEa.id),
   details: jsonb("details"),
+  dateCreated: timestamp("date_created").default(sql`now()`),
   dateReceived: timestamp("date_received"),
   dateCleared: timestamp("date_cleared"),
   memo: text("memo"),
@@ -1734,6 +1736,7 @@ export const insertLedgerAccountSchema = createInsertSchema(ledgerAccounts).omit
 
 export const insertLedgerPaymentSchema = createInsertSchema(ledgerPayments).omit({
   id: true,
+  dateCreated: true,
 });
 
 export const insertLedgerEaSchema = createInsertSchema(ledgerEa).omit({
@@ -1982,14 +1985,7 @@ export type LedgerAccount = typeof ledgerAccounts.$inferSelect;
 export type InsertLedgerPayment = z.infer<typeof insertLedgerPaymentSchema>;
 export type LedgerPayment = typeof ledgerPayments.$inferSelect;
 
-/**
- * A payment as the payment LISTS read it: the stored row plus the date the
- * record was created. Ledger tables are process-owned and do not receive
- * entity-metadata rows, so this compatibility field is now nullable.
- *
- * The payment table no longer keeps its own creation column. Existing callers
- * may still use this field, but it is null unless another source supplies it.
- */
+/** A payment list row with the local creation date exposed under its API name. */
 export type LedgerPaymentWithCreatedDate = LedgerPayment & {
   createdDate: Date | null;
 };
@@ -2969,18 +2965,20 @@ export type Flood = typeof flood.$inferSelect;
 // entity_metadata record-history rows; capture provenance belongs here.
 export const snapshots = pgTable("snapshots", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  capturedAt: timestamp("captured_at").notNull().defaultNow(),
-  capturedBy: varchar("captured_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").default(sql`now()`),
+  authorId: varchar("author_id").references(() => users.id, { onDelete: 'set null' }),
+  authorName: text("author_name"),
   entityType: varchar("entity_type", { length: 100 }).notNull(),
   entityId: varchar("entity_id").notNull(),
   label: text("label"),
   data: jsonb("data").notNull(),
 }, (table) => ({
-  entityIdx: index("snapshots_entity_type_entity_id_idx").on(table.entityType, table.entityId),
+  entityIdx: index("snapshots_entity_type_entity_id_created_at_idx").on(table.entityType, table.entityId, table.createdAt),
 }));
 
 export const insertSnapshotSchema = createInsertSchema(snapshots).omit({
   id: true,
+  createdAt: true,
 });
 
 export type InsertSnapshot = z.infer<typeof insertSnapshotSchema>;
