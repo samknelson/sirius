@@ -138,6 +138,30 @@ function countOf(row: Record<string, unknown> | undefined, key: string): number 
   return Number(row?.[key] ?? 0);
 }
 
+export type EntityMetadataDiscriminatorColumn = "table_name" | "context_id";
+
+/**
+ * The metadata table was renamed from its physical table-name discriminator to
+ * the stable registry context id after the provenance seed migrations were
+ * authored. Historical databases can therefore expose either spelling while
+ * the migration chain is catching up.
+ */
+export function resolveEntityMetadataDiscriminatorColumn(
+  present: ReadonlySet<string>,
+): EntityMetadataDiscriminatorColumn {
+  const hasLegacy = present.has("table_name");
+  const hasCurrent = present.has("context_id");
+
+  if (hasLegacy && hasCurrent) {
+    throw new Error(
+      "entity_metadata has both table_name and context_id; refusing an ambiguous discriminator",
+    );
+  }
+  if (hasLegacy) return "table_name";
+  if (hasCurrent) return "context_id";
+  throw new Error("entity_metadata has neither table_name nor context_id");
+}
+
 export function createEntityMetadataSeedStorage(): EntityMetadataSeedStorage {
   return {
     async seedFromColumns(spec) {
@@ -211,6 +235,23 @@ export function createEntityMetadataSeedStorage(): EntityMetadataSeedStorage {
           };
         }
 
+        const metadataCatalog = await client.execute(sql`
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'entity_metadata'
+            AND column_name IN ('table_name', 'context_id')
+        `);
+        const metadataPresent = new Set(
+          (metadataCatalog.rows ?? []).map((row) =>
+            String((row as Record<string, unknown>).column_name),
+          ),
+        );
+        const metadataDiscriminator = identifier(
+          resolveEntityMetadataDiscriminatorColumn(metadataPresent),
+          "entity metadata discriminator column",
+        );
+
         const createdSource = sourceColumn(createdDateColumn, "created date column");
         const modifiedSource = sourceColumn(modifiedDateColumn, "modified date column");
         const createdBySource = sourceColumn(createdByColumn, "created by column");
@@ -235,7 +276,7 @@ export function createEntityMetadataSeedStorage(): EntityMetadataSeedStorage {
             count(*) FILTER (
               WHERE ${isRecordId} AND EXISTS (
                 SELECT 1 FROM entity_metadata m
-                WHERE m.entity_id = t."id"::text AND m.context_id <> ${contextId}
+                WHERE m.entity_id = t."id"::text AND m.${metadataDiscriminator} <> ${contextId}
               )
             ) AS held_elsewhere
           FROM ${tableSql} t
@@ -250,7 +291,7 @@ export function createEntityMetadataSeedStorage(): EntityMetadataSeedStorage {
         // the FK's ON DELETE SET NULL would have made of it anyway.
         const written = await client.execute(sql`
           INSERT INTO entity_metadata (
-            context_id, entity_id,
+            ${metadataDiscriminator}, entity_id,
             created_date, created_by,
             modified_date, modified_by
           )
@@ -281,7 +322,7 @@ export function createEntityMetadataSeedStorage(): EntityMetadataSeedStorage {
               THEN EXCLUDED.modified_by
               ELSE entity_metadata.modified_by
             END
-          WHERE entity_metadata.context_id = EXCLUDED.context_id
+          WHERE entity_metadata.${metadataDiscriminator} = EXCLUDED.${metadataDiscriminator}
             -- Update only where one of the four improvements actually applies.
             -- Without this the statement would rewrite every row with the
             -- values it already holds, and a second run would report the whole
