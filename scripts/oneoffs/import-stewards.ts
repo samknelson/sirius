@@ -1,12 +1,7 @@
 import { db } from "../../server/db";
 import { sql } from "drizzle-orm";
 import * as fs from "fs";
-import * as path from "path";
 import { parse } from "csv-parse/sync";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const BPS_EMPLOYEE_ID_TYPE = "f01cc7f8-158d-4e83-9177-5ae361c6cba6";
 
@@ -18,8 +13,14 @@ interface StewardRow {
 async function importStewards() {
   console.log("Starting steward import...");
 
-  // Read the CSV file
-  const csvPath = path.join(__dirname, "../../attached_assets/Steward_List_with_Email_Only_1768524382071.csv");
+  const csvPath = process.argv[2];
+  if (!csvPath) {
+    throw new Error(
+      "Usage: npx tsx scripts/oneoffs/import-stewards.ts <steward-csv-path>",
+    );
+  }
+
+  // Read the explicitly supplied CSV file.
   const csvContent = fs.readFileSync(csvPath, "utf-8");
 
   const records: StewardRow[] = parse(csvContent, {

@@ -88,6 +88,16 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 -   **API Routes**: `server/modules/` (feature-based modules)
 -   **Frontend Pages**: `client/src/pages/` (lazy-loaded)
 -   **UI Components**: `client/src/components/`
+-   **Public static assets**: `client/public/` (stable URLs such as
+    `/documents/example.pdf`; create this directory only when an application
+    asset is needed)
+-   **Imported frontend assets**: `client/src/assets/` (images and other files
+    imported by application code and processed by Vite)
+-   **Chat uploads**: `attached_assets/` is temporary local working storage for
+    Replit file drops and is ignored by Git; do not import application assets
+    from it
+-   **Generated frontend output**: `dist/public/` is build output and must not
+    be edited or used as a source location
 -   **Access Control Policies**: `server/modules/*/access.ts` (implied by entity-based policy architecture)
 -   **UI Theme**: `tailwind.config.ts` (implied by Tailwind CSS with "new-york" theme)
 -   **Plugin Framework**: shared base `server/plugins/_core/` (kind
