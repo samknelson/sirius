@@ -213,7 +213,10 @@ export function createAuthIdentitiesStorage(): AuthIdentitiesStorage {
 
       const [updated] = await client
         .update(authIdentities)
-        .set(data)
+        .set({
+          ...data,
+          updatedAt: new Date(),
+        })
         .where(eq(authIdentities.id, id))
         .returning();
       if (!updated) return undefined;
@@ -224,7 +227,9 @@ export function createAuthIdentitiesStorage(): AuthIdentitiesStorage {
       const client = getClient();
       await client
         .update(authIdentities)
-        .set({ lastUsedAt: new Date() })
+        .set({
+          lastUsedAt: new Date(),
+        })
         .where(eq(authIdentities.id, id));
     },
 

@@ -22,23 +22,12 @@ const SNAPSHOTS_TABLE = "snapshots";
  */
 export interface SnapshotProvenance {
   capturedAt: Date | null;
-  /** Resolved from the account at read time, so a rename shows through. */
+  /** Frozen on the snapshot row when the capture is written. */
   capturedByName: string | null;
 }
 
 /** A full snapshot row (payload included) with the history the framework holds. */
-export type SnapshotWithProvenance = Snapshot & SnapshotProvenance;
-
-function personName(row: {
-  firstName: string | null;
-  lastName: string | null;
-  email: string | null;
-}): string | null {
-  const part = (value: string | null) =>
-    typeof value === "string" && value.trim() !== "" ? value.trim() : null;
-  const full = [part(row.firstName), part(row.lastName)].filter(Boolean).join(" ");
-  return full || part(row.email);
-}
+export type SnapshotWithProvenance = Omit<Snapshot, "createdAt" | "authorId" | "authorName"> & SnapshotProvenance;
 
 export interface SnapshotsStorage {
   create(snapshot: InsertSnapshot): Promise<Snapshot>;
@@ -73,24 +62,36 @@ export interface SnapshotsStorage {
 
 export function createSnapshotsStorage(): SnapshotsStorage {
   const provenanceColumns = {
-    capturedAt: snapshots.capturedAt,
-    capturedBy: snapshots.capturedBy,
-    capturedByFirstName: users.firstName,
-    capturedByLastName: users.lastName,
-    capturedByEmail: users.email,
+    capturedAt: snapshots.createdAt,
+    capturedBy: snapshots.authorId,
+    capturedByName: snapshots.authorName,
   };
-  const newestFirst = [desc(snapshots.capturedAt), desc(snapshots.id)];
+  const newestFirst = [desc(snapshots.createdAt), desc(snapshots.id)];
 
   return {
     async create(insertSnapshot: InsertSnapshot): Promise<Snapshot> {
       const client = getClient();
       const context = getRequestContext();
+      const authorId = insertSnapshot.authorId ?? context?.userId ?? null;
+      let authorName = insertSnapshot.authorName ?? null;
+      if (authorId && authorName === null) {
+        const [author] = await client
+          .select({
+            firstName: users.firstName,
+            lastName: users.lastName,
+            email: users.email,
+          })
+          .from(users)
+          .where(eq(users.id, authorId));
+        authorName = author ? personName(author) : null;
+      }
       const [row] = await client
         .insert(snapshots)
         .values({
           ...insertSnapshot,
-          capturedAt: insertSnapshot.capturedAt ?? new Date(),
-          capturedBy: insertSnapshot.capturedBy ?? context?.userId ?? null,
+          createdAt: new Date(),
+          authorId,
+          authorName,
         })
         .returning();
       return row;
@@ -109,7 +110,6 @@ export function createSnapshotsStorage(): SnapshotsStorage {
           ...provenanceColumns,
         })
         .from(snapshots)
-        .leftJoin(users, eq(users.id, snapshots.capturedBy))
         .where(and(eq(snapshots.entityType, entityType), eq(snapshots.entityId, entityId)))
         .orderBy(...newestFirst);
       return rows.map((row) => ({
@@ -119,11 +119,7 @@ export function createSnapshotsStorage(): SnapshotsStorage {
         revision: snapshotRevisionFromValues(row.revisionSeq, row.revisionRev),
         label: row.label,
         capturedAt: row.capturedAt ? row.capturedAt.toISOString() : null,
-        capturedByName: personName({
-          firstName: row.capturedByFirstName,
-          lastName: row.capturedByLastName,
-          email: row.capturedByEmail,
-        }),
+        capturedByName: row.capturedByName,
       }));
     },
 
@@ -158,7 +154,6 @@ export function createSnapshotsStorage(): SnapshotsStorage {
           ...provenanceColumns,
         })
         .from(snapshots)
-        .leftJoin(users, eq(users.id, snapshots.capturedBy))
         .where(
           and(eq(snapshots.entityType, entityType), eq(snapshots.entityId, entityId)),
         )
@@ -180,7 +175,6 @@ export function createSnapshotsStorage(): SnapshotsStorage {
            ...provenanceColumns,
         })
         .from(snapshots)
-         .leftJoin(users, eq(users.id, snapshots.capturedBy))
         .where(eq(snapshots.id, id));
       return row ? toSnapshotWithProvenance(row) : undefined;
     },
@@ -193,6 +187,17 @@ export function createSnapshotsStorage(): SnapshotsStorage {
   };
 }
 
+function personName(row: {
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+}): string | null {
+  const part = (value: string | null) =>
+    typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+  const full = [part(row.firstName), part(row.lastName)].filter(Boolean).join(" ");
+  return full || part(row.email);
+}
+
 /** A snapshot row with its own capture provenance. */
 function toSnapshotWithProvenance(row: {
   id: string;
@@ -200,25 +205,18 @@ function toSnapshotWithProvenance(row: {
   entityId: string;
   label: string | null;
   data: unknown;
-  capturedAt: Date;
+  capturedAt: Date | null;
   capturedBy: string | null;
-  capturedByFirstName: string | null;
-  capturedByLastName: string | null;
-  capturedByEmail: string | null;
+  capturedByName: string | null;
 }): SnapshotWithProvenance {
   return {
     id: row.id,
     entityType: row.entityType,
     entityId: row.entityId,
-    capturedBy: row.capturedBy,
     label: row.label,
     data: row.data,
     capturedAt: row.capturedAt,
-    capturedByName: personName({
-      firstName: row.capturedByFirstName,
-      lastName: row.capturedByLastName,
-      email: row.capturedByEmail,
-    }),
+    capturedByName: row.capturedByName,
   };
 }
 

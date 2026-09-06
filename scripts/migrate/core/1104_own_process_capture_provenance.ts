@@ -1,27 +1,23 @@
-import { sql } from "drizzle-orm";
-import { db } from "../../../server/db";
 import { registerMigration, type Migration } from "../../../server/services/migration-runner";
+import { logger } from "../../../server/logger";
 
+/**
+ * Compatibility no-op. Migration 1103 owns the conditional repair for
+ * databases that already ran the old destructive migrations; adding
+ * now()-defaulted columns here would overwrite the meaning of historical
+ * process records on a database that did not need repair.
+ */
 async function up(): Promise<void> {
-  await db.execute(sql`
-    ALTER TABLE IF EXISTS snapshots
-      ADD COLUMN IF NOT EXISTS captured_at timestamp NOT NULL DEFAULT now(),
-      ADD COLUMN IF NOT EXISTS captured_by varchar REFERENCES users(id) ON DELETE SET NULL
-  `);
-  await db.execute(sql`
-    ALTER TABLE IF EXISTS ledger_payments
-      ADD COLUMN IF NOT EXISTS created_at timestamp NOT NULL DEFAULT now()
-  `);
-  await db.execute(sql`
-    ALTER TABLE IF EXISTS ledger_paymentmethods
-      ADD COLUMN IF NOT EXISTS created_at timestamp NOT NULL DEFAULT now()
-  `);
+  logger.info("Process-owned provenance columns were handled by migration 1103", {
+    service: "migration-1104",
+  });
 }
 
 const migration: Migration = {
   version: 1104,
   name: "own_process_capture_provenance",
-  description: "Ensure process-owned snapshot and ledger tables retain their own display provenance after metadata cleanup",
+  description:
+    "Keep process-table provenance repair conditional and data-safe; no destructive defaults.",
   up,
 };
 

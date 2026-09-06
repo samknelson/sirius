@@ -55,7 +55,10 @@ describe("record metadata UI permission gate", () => {
   });
 
   it("keeps every provenance consumer behind the shared permission-aware path", () => {
-    expect(paymentView).toContain("useRecordMetadata");
+    // Ledger payments are excluded process tables; their created date comes
+    // from the payment's local date_created column, not record metadata.
+    expect(paymentView).not.toContain("useRecordMetadata");
+    expect(paymentView).toContain("payment.dateCreated");
     expect(dispatchDetails).toContain("useRecordMetadata");
     expect(userAccount).toContain("useRecordMetadata");
     for (const source of webServicePages) {

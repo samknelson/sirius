@@ -7,7 +7,7 @@
  * can enforce the same decision without creating an import cycle.
  */
 
-/** Process-owned tables that are not covered by a name pattern. */
+/** Process-owned tables that must not receive record-history metadata. */
 export const EXCLUDED_METADATA_TABLES = [
   "auth_identities",
   "bulk_participants",
@@ -31,6 +31,9 @@ export const EXCLUDED_METADATA_TABLES = [
   "worker_dispatch_eba",
   "worker_dispatch_hfe",
   "worker_dispatch_status",
+  "ledger",
+  "ledger_ea",
+  "ledger_gateway_customers",
 ] as const;
 
 const excludedMetadataTables = new Set<string>(EXCLUDED_METADATA_TABLES);
@@ -38,14 +41,13 @@ const excludedMetadataTables = new Set<string>(EXCLUDED_METADATA_TABLES);
 /**
  * Whether a table is allowed to own an entity-metadata row.
  *
- * Ledger and denormalized tables are families, so they are rejected by name
- * rather than by an exhaustively maintained list. The explicit set covers
- * other process-owned tables whose names are not reliably distinctive.
+ * Denormalized tables are a family and are rejected by name. Ledger tables
+ * are intentionally table-specific: maintained account/payment records are
+ * eligible, while accounting entries and provider mappings are not.
  */
 export function isMetadataTableEligible(tableName: string): boolean {
   const lowerName = tableName.toLowerCase();
   return (
-    !lowerName.includes("ledger") &&
     !lowerName.includes("denorm") &&
     !excludedMetadataTables.has(lowerName)
   );

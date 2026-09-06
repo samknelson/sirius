@@ -4,14 +4,23 @@ import { isMetadataTableEligible } from "../server/storage/system/entity-metadat
 describe("entity metadata eligibility", () => {
   it.each([
     "ledger",
-    "ledger_accounts",
-    "ledger_payment_batches",
+    "ledger_ea",
+    "ledger_gateway_customers",
     "winston_logs",
     "cron_job_runs",
     "worker_msh_denorm",
     "worker_dispatch_elig_denorm_denorm_id",
   ])("rejects process table %s", (tableName) => {
     expect(isMetadataTableEligible(tableName)).toBe(false);
+  });
+
+  it.each([
+    "ledger_accounts",
+    "ledger_payment_batches",
+    "ledger_paymentmethods",
+    "ledger_payments",
+  ])("keeps maintained ledger table %s eligible", (tableName) => {
+    expect(isMetadataTableEligible(tableName)).toBe(true);
   });
 
   it.each([
