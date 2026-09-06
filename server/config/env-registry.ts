@@ -266,11 +266,45 @@ function readProcessEnv(name: string): string | undefined {
 }
 
 /**
- * True when the variable is effectively set in the real process env (a
- * released value — empty or the sentinel — counts as NOT set).
+ * Where a value this process planted in its own environment came from.
+ *
+ *  - "environment": derived from what the deployment supplied (e.g. a
+ *    DATABASE_URL assembled out of separate DB_* parts). It still represents a
+ *    deployment value and must keep outranking any stored one.
+ *  - "override": read out of the in-app store and planted so that consumers
+ *    which can only read `process.env` — `Date`, `Intl`, the cron scheduler —
+ *    see it. It is NOT a deployment value and must not start behaving like one.
+ */
+export type EnvironmentValueOrigin = "environment" | "override";
+
+/**
+ * Names whose current process value this process planted from a stored in-app
+ * value.
+ *
+ * Without this the two are indistinguishable after the write, and the app
+ * frames its own value as the one thing that outranks it: the Environment page
+ * reports the variable as deployment-set, warns that the stored value is
+ * shadowed, and refuses further edits — locking the operator out of a setting
+ * they made in the app (Task #1390). Presence in the real environment is the
+ * question every one of those answers depends on, so it is answered here once.
+ */
+const plantedFromOverride = new Set<string>();
+
+/**
+ * True when the variable is effectively set in the REAL environment (a
+ * released value — empty or the sentinel — counts as NOT set, and so does a
+ * value this process planted from a stored in-app value).
  */
 export function isEnvironmentVariableSetInProcess(name: string): boolean {
-  return readProcessEnv(name) !== undefined;
+  return readProcessEnv(name) !== undefined && !plantedFromOverride.has(name);
+}
+
+/**
+ * True when the value currently in the process environment was planted by this
+ * process from a stored in-app value.
+ */
+export function isEnvironmentValuePlantedFromOverride(name: string): boolean {
+  return plantedFromOverride.has(name) && readProcessEnv(name) !== undefined;
 }
 
 /**
@@ -347,6 +381,46 @@ export function getEnvironmentVariable(name: string): string | undefined {
 }
 
 /**
+ * Read what a variable is CONFIGURED to be, as opposed to what the running
+ * process happens to be using.
+ *
+ * The two differ for exactly one case: a value this process planted in its own
+ * environment from a stored in-app value. {@link getEnvironmentVariable} must
+ * keep returning the planted value, because that is what the process is
+ * genuinely running on — Node reads `TZ` from the environment and nowhere
+ * else. But a screen showing the operator their settings, and the check for
+ * whether a change is waiting on a restart, are both asking the other
+ * question, and answering it with the planted value makes an edit look like it
+ * did nothing.
+ *
+ * So for a planted variable this reports the stored value alone — including
+ * its absence once the stored value is cleared, which is the honest answer to
+ * "what is configured?" and what makes the pending-restart comparison notice
+ * the clearing. Never throws: unlike the getter, this is for reporting, and a
+ * required-but-unset variable is a fact to display rather than an error.
+ */
+export function getConfiguredEnvironmentValue(name: string): string | undefined {
+  const decl = registry.get(name);
+  if (!decl) {
+    throw new Error(
+      `Environment variable "${name}" is not registered. Declare it with ` +
+        `registerEnvironmentVariable() (see server/config/env-registry.ts) before reading it.`,
+    );
+  }
+  const storedValue =
+    dbOverrideSource && isEnvironmentVariableOverridable(name)
+      ? dbOverrideSource(name)
+      : undefined;
+  let value: string | undefined = plantedFromOverride.has(name)
+    ? storedValue
+    : (readProcessEnv(name) ?? storedValue);
+  if (decl.transform) value = decl.transform(value);
+  const override = overrides.get(name);
+  if (override) value = override(value);
+  return value;
+}
+
+/**
  * Read a variable that is a claim the PLATFORM makes about the running
  * process — an orchestrator marker such as a task-metadata endpoint address.
  * Identical to {@link getEnvironmentVariable} except that the database
@@ -404,14 +478,31 @@ export function setEnvironmentVariableOverride(
  * Write an environment variable value into the process environment. Only for
  * registry-sanctioned boot-time writes (e.g. DATABASE_URL assembly from
  * DB_* parts). The name must be registered.
+ *
+ * `origin` is required, and deliberately not defaulted: planting a value makes
+ * it indistinguishable from one the deployment supplied, so the caller — the
+ * only code that knows where the value came from — has to say. Getting it
+ * wrong in either direction is a real defect: claim "environment" for a stored
+ * value and the app locks the operator out of its own setting; claim
+ * "override" for a deployment value and a stored one starts outranking the
+ * deployment.
  */
-export function setEnvironmentVariable(name: string, value: string): void {
+export function setEnvironmentVariable(
+  name: string,
+  value: string,
+  origin: EnvironmentValueOrigin,
+): void {
   if (!registry.has(name)) {
     throw new Error(
       `Cannot set unregistered environment variable "${name}". Register it first.`,
     );
   }
   process.env[name] = value;
+  // Last write decides: a later environment-sourced write must clear a stale
+  // "planted from a stored value" marking, or the variable stays editable in
+  // the app while the deployment is the thing actually supplying it.
+  if (origin === "override") plantedFromOverride.add(name);
+  else plantedFromOverride.delete(name);
 }
 
 export interface EnvironmentVariableInfo {
@@ -444,8 +535,10 @@ export function listEnvironmentVariables(): EnvironmentVariableInfo[] {
   return Array.from(registry.values())
     .map((d) => {
       // Presence must match the getter's fallback rule exactly: released
-      // values (empty/sentinel) read as absent everywhere.
-      const envSet = readProcessEnv(d.name) !== undefined;
+      // values (empty/sentinel) read as absent everywhere. A value this
+      // process planted from a stored one is NOT an environment value, however
+      // much it looks like one from inside process.env.
+      const envSet = isEnvironmentVariableSetInProcess(d.name);
       const overridable = isEnvironmentVariableOverridable(d.name);
       const overrideValue =
         !envSet && overridable && dbOverrideSource ? dbOverrideSource(d.name) : undefined;
@@ -512,6 +605,12 @@ export function getRawProcessEnv(): NodeJS.ProcessEnv {
 // ---------------------------------------------------------------------------
 registerEnvironmentVariables([
   { name: "NODE_ENV", description: "Runtime mode: development | production.", secret: false, category: "core", changeTakesEffect: "restart", },
+  // The system time zone. "restart" is the honest classification even though
+  // the runtime itself would pick up a mid-process change: cron jobs are
+  // already registered against the old zone by the time anyone could edit
+  // this, so applying it live would leave the app half-moved. Applied and
+  // validated at boot by server/config/system-timezone.ts.
+  { name: "TZ", description: "IANA time zone the server runs in (e.g. America/New_York). Determines how every stored timestamp is interpreted, when cron schedules fire, and where the day boundary falls. Unset means the container's zone, normally UTC. WARNING: changing this re-interprets every date already stored.", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "PORT", description: "HTTP port the server listens on (default 5000).", secret: false, category: "core", changeTakesEffect: "restart", },
   { name: "DATABASE_URL", description: "PostgreSQL connection URL. Assembled from DB_* parts at boot when absent.", secret: true, category: "core", changeTakesEffect: "restart", },
   { name: "DATABASE_DRIVER", description: "Force the DB driver: neon | pg (auto-detected from the URL otherwise).", secret: false, category: "core", changeTakesEffect: "restart", },

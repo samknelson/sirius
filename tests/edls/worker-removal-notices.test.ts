@@ -20,7 +20,8 @@
  * No database, no server: storage and the capture-settings read are faked.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { EdlsSheet, Snapshot } from "@shared/schema";
+import type { EdlsSheet } from "@shared/schema";
+import type { SnapshotWithProvenance } from "../../server/storage/system/snapshots";
 import type { SnapshotNode } from "@shared/snapshots";
 
 const SHEET_ID = "sheet-1";
@@ -56,7 +57,7 @@ function sheetSnapshot(opts: {
   capturedAt: Date;
   status: string;
   workerIds: string[];
-}): Snapshot {
+}): SnapshotWithProvenance {
   const data: SnapshotNode = {
     version: 1,
     data: {
@@ -82,14 +83,14 @@ function sheetSnapshot(opts: {
     id: opts.id,
     entityType: "edls_sheet",
     entityId: SHEET_ID,
-    createdAt: opts.capturedAt,
+    capturedAt: opts.capturedAt,
     data,
-  } as unknown as Snapshot;
+  } as unknown as SnapshotWithProvenance;
 }
 
 interface Scenario {
   /** Every snapshot of this sheet that exists. */
-  snapshots: Snapshot[];
+  snapshots: SnapshotWithProvenance[];
   /** The sheet's roster as it stands after the save. */
   roster: string[];
   /** Workers with an assignment still waiting to be texted (no receipt). */
@@ -114,14 +115,14 @@ vi.mock("../../server/storage", () => ({
         _entityId: string,
         limit: number,
         offset = 0,
-      ): Promise<Snapshot[]> {
+      ): Promise<SnapshotWithProvenance[]> {
         // The real query's contract: one page of the entity's history in WRITE
         // order, newest first, and a short page means the history ends there.
         return [...scenario.snapshots]
           .sort(
             (a, b) =>
-              (b.createdAt as unknown as Date).getTime() -
-              (a.createdAt as unknown as Date).getTime(),
+              (b.capturedAt as unknown as Date).getTime() -
+              (a.capturedAt as unknown as Date).getTime(),
           )
           .slice(offset, offset + limit);
       },

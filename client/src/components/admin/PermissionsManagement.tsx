@@ -11,17 +11,50 @@ import { Loader2, Key, Shield, Plus, X } from 'lucide-react';
 import { useState } from 'react';
 import { Role } from '@/lib/entity-types';
 
-interface Permission {
+export interface Permission {
   key: string;
   description: string;
   module?: string;
 }
 
-interface RolePermission {
+export interface RolePermission {
   roleId: string;
   permissionKey: string;
   assignedAt: string;
   role: Role;
+}
+
+export function getPermissionsForRole(
+  roleId: string,
+  rolePermissions: RolePermission[],
+): string[] {
+  return rolePermissions
+    .filter((rolePermission) => rolePermission.roleId === roleId)
+    .map((rolePermission) => rolePermission.permissionKey);
+}
+
+export function getAvailablePermissions(
+  permissions: Permission[],
+  rolePermissions: RolePermission[],
+  selectedRoleId: string,
+): Permission[] {
+  const available = selectedRoleId
+    ? permissions.filter(
+        (permission) =>
+          !getPermissionsForRole(selectedRoleId, rolePermissions).includes(permission.key),
+      )
+    : permissions;
+
+  return [...available].sort((a, b) => a.key.localeCompare(b.key));
+}
+
+export function getAssignedRoles(
+  permissionKey: string,
+  rolePermissions: RolePermission[],
+): Role[] {
+  return rolePermissions
+    .filter((rolePermission) => rolePermission.permissionKey === permissionKey)
+    .map((rolePermission) => rolePermission.role);
 }
 
 export default function PermissionsManagement() {
@@ -103,23 +136,6 @@ export default function PermissionsManagement() {
     unassignPermissionMutation.mutate({ roleId, permissionKey });
   };
 
-  const getPermissionsForRole = (roleId: string): string[] => {
-    return rolePermissions
-      .filter(rp => rp.roleId === roleId)
-      .map(rp => rp.permissionKey);
-  };
-
-  const getAvailablePermissions = (): Permission[] => {
-    let available: Permission[];
-    if (!selectedRoleId) {
-      available = permissions;
-    } else {
-      const rolePermissionKeys = getPermissionsForRole(selectedRoleId);
-      available = permissions.filter(p => !rolePermissionKeys.includes(p.key));
-    }
-    return [...available].sort((a, b) => a.key.localeCompare(b.key));
-  };
-
   if (permissionsLoading || rolesLoading || assignmentsLoading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -174,12 +190,12 @@ export default function PermissionsManagement() {
                   <SelectValue placeholder={selectedRoleId ? "Choose a permission..." : "Select a role first..."} />
                 </SelectTrigger>
                 <SelectContent>
-                  {getAvailablePermissions().length === 0 ? (
+                  {getAvailablePermissions(permissions, rolePermissions, selectedRoleId).length === 0 ? (
                     <div className="p-2 text-sm text-muted-foreground text-center">
                       {selectedRoleId ? "All permissions are already assigned to this role" : "Select a role first"}
                     </div>
                   ) : (
-                    getAvailablePermissions().map((permission: Permission) => (
+                    getAvailablePermissions(permissions, rolePermissions, selectedRoleId).map((permission: Permission) => (
                       <SelectItem key={permission.key} value={permission.key}>
                         {permission.key} - {permission.description}
                       </SelectItem>
@@ -235,9 +251,7 @@ export default function PermissionsManagement() {
               </TableHeader>
               <TableBody>
                 {[...permissions].sort((a, b) => a.key.localeCompare(b.key)).map((permission: Permission) => {
-                  const assignedRoles = rolePermissions
-                    .filter(rp => rp.permissionKey === permission.key)
-                    .map(rp => rp.role);
+                  const assignedRoles = getAssignedRoles(permission.key, rolePermissions);
                   return (
                     <TableRow key={permission.key} data-testid={`row-permission-${permission.key}`}>
                       <TableCell className="font-medium" data-testid={`text-permission-key-${permission.key}`}>

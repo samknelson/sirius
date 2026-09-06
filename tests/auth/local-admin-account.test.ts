@@ -154,7 +154,7 @@ const h = vi.hoisted(() => {
           existing.passwordHash = passwordHash;
           existing.externalId = externalId;
           existing.email = externalId;
-          return write(existing);
+          return { identity: write(existing), created: false };
         }
         const created: FakeIdentity = {
           id: id("identity"),
@@ -165,7 +165,7 @@ const h = vi.hoisted(() => {
           passwordHash,
         };
         state.identities.push(created);
-        return write(created);
+        return { identity: write(created), created: true };
       },
     },
   };

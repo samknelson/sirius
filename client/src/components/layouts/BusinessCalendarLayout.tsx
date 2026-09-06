@@ -12,6 +12,7 @@ import type {
 import { Button } from "@/components/ui/button";
 import { useBusinessCalendarTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
 
 export interface CalendarWithRules {
   calendar: BusinessCalendar;
@@ -96,20 +97,14 @@ export function BusinessCalendarLayout({ activeTab, children }: BusinessCalendar
   return (
     <BusinessCalendarLayoutContext.Provider value={{ full, calendarId: id }}>
       <div className="px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        <div className="flex items-center gap-3 flex-wrap">
-          <Link href="/config/business-calendars">
-            <Button variant="ghost" size="icon" data-testid="button-back">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <CalendarDays className="h-6 w-6 text-muted-foreground" />
-          <h1
-            className="text-xl md:text-2xl font-bold text-foreground"
-            data-testid="heading-calendar-name"
-          >
-            {calendar.name}
-          </h1>
-        </div>
+        <RecordTitleBar
+          variant="compact"
+          icon={<CalendarDays className="h-6 w-6 text-muted-foreground" />}
+          title={calendar.name}
+          titleTestId="heading-calendar-name"
+          backLink={{ href: "/config/business-calendars", label: "Back to calendars" }}
+          recordId={calendar.id}
+        />
 
         <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
           {visibleTabs.map((tab) => {

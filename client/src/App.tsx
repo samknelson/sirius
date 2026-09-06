@@ -26,6 +26,7 @@ import RegisterPage from "@/pages/register";
 
 // Lazy-loaded pages
 const Bootstrap = lazy(() => import("@/pages/bootstrap"));
+const RecordGoPage = lazy(() => import("@/pages/record-go"));
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
 const EdlsSchedulePage = lazy(() => import("@/pages/edls-schedule"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
@@ -62,8 +63,11 @@ const WorkerDispatchEba = lazy(() => import("@/pages/workers/dispatch-eba"));
 const WorkerDispatchAsi = lazy(() => import("@/pages/workers/dispatch-asi"));
 const WorkerBans = lazy(() => import("@/pages/workers/bans"));
 const WorkerNotes = lazy(() => import("@/pages/workers/notes"));
+const WorkerFiles = lazy(() => import("@/pages/workers/files"));
 const EmployerNotes = lazy(() => import("@/pages/employers/notes"));
+const EmployerFiles = lazy(() => import("@/pages/employers/files"));
 const TrustProviderNotesPage = lazy(() => import("@/pages/trust-provider-notes"));
+const TrustProviderFilesPage = lazy(() => import("@/pages/trust-provider-files"));
 const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
 const WorkerEdlsAssignments = lazy(() => import("@/pages/worker-edls-assignments"));
 const WorkerSecondShift = lazy(() => import("@/pages/worker-sitespecific-freeman-2shift"));
@@ -117,6 +121,7 @@ const GrievanceTimeline = lazy(() => import("@/pages/grievance-timeline"));
 const GrievanceSettlements = lazy(() => import("@/pages/grievance-settlements"));
 const GrievanceFiles = lazy(() => import("@/pages/grievance-files"));
 const EntityFilesConfigPage = lazy(() => import("@/pages/config/entity-files"));
+const EntityNotesConfigPage = lazy(() => import("@/pages/config/entity-notes"));
 const GrievanceTimelineTemplatesPage = lazy(() => import("@/pages/config/grievance-timeline-templates"));
 const GrievanceTimelineTemplateView = lazy(() => import("@/pages/grievance-timeline-template-view"));
 const GrievanceTimelineTemplateEdit = lazy(() => import("@/pages/grievance-timeline-template-edit"));
@@ -251,6 +256,7 @@ const PhoneNumbersConfigPage = lazy(() => import("@/pages/config/phone-numbers")
 const DynamicOptionsPage = lazy(() => import("@/pages/config/options"));
 
 const OptionsExportPage = lazy(() => import("@/pages/config/options-export"));
+const OptionsIndexPage = lazy(() => import("@/pages/config/options-index"));
 const StewardSettingsPage = lazy(() => import("@/pages/config/steward-settings"));
 const EventTypesPage = lazy(() => import("@/pages/config/event-types"));
 const DispatchJobTypesPage = lazy(() => import("@/pages/config/dispatch-job-types"));
@@ -327,6 +333,7 @@ const MasqueradePage = lazy(() => import("@/pages/config/masquerade"));
 const SystemModePage = lazy(() => import("@/pages/config/system-mode"));
 const AuthSettingsPage = lazy(() => import("@/pages/config/auth-settings"));
 const EnvPage = lazy(() => import("@/pages/config/env"));
+const TimeZoneConfigPage = lazy(() => import("@/pages/config/timezone"));
 const SystemStatusPage = lazy(() => import("@/pages/config/system-status"));
 const DefaultPolicyPage = lazy(() => import("@/pages/config/default-policy"));
 const TwilioConfigPage = lazy(() => import("@/pages/config/twilio"));
@@ -350,6 +357,8 @@ const EbsInspectionPage = lazy(() => import("@/pages/admin/ebs"));
 const WcOverviewPage = lazy(() => import("@/pages/admin/wc-overview"));
 const WcCachePage = lazy(() => import("@/pages/admin/wc-cache"));
 const WcStatsPage = lazy(() => import("@/pages/admin/wc-stats"));
+const MetadataListPage = lazy(() => import("@/pages/admin/metadata-list"));
+const MetadataBackfillPage = lazy(() => import("@/pages/admin/metadata-backfill"));
 const RestartPage = lazy(() => import("@/pages/admin/restart"));
 const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
 const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
@@ -539,6 +548,14 @@ function Router() {
         <Route path="/edls-sched/:id" component={EdlsScheduleRoute} />
 
       {/* Protected routes */}
+      <Route path="/go">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <RecordGoPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/add">
         <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
@@ -907,6 +924,14 @@ function Router() {
         <ProtectedRoute tabId="notes" entityType="worker">
           <AuthenticatedLayout>
             <WorkerNotes />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/files">
+        <ProtectedRoute tabId="files" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerFiles />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1817,6 +1842,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/employers/:id/files">
+        <ProtectedRoute tabId="files" entityType="employer">
+          <AuthenticatedLayout>
+            <EmployerFiles />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/employers/:id/policy-history">
         <ProtectedRoute tabId="policy-history" entityType="employer">
           <AuthenticatedLayout>
@@ -2208,6 +2241,14 @@ function Router() {
         <ProtectedRoute tabId="notes" entityType="provider">
           <AuthenticatedLayout>
             <TrustProviderNotesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/provider/:id/files">
+        <ProtectedRoute tabId="files" entityType="provider">
+          <AuthenticatedLayout>
+            <TrustProviderFilesPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2617,11 +2658,33 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/entity-notes">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EntityNotesConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/phone-numbers">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PhoneNumbersConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* The index of every dropdown list. Registered before the
+          parameterized options routes so "options" isn't read as a type. */}
+      <Route path="/config/options">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <OptionsIndexPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -3499,6 +3562,16 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/timezone">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <TimeZoneConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/system-status">
         <ProtectedRoute policy="admin">
           <AuthenticatedLayout>
@@ -3748,6 +3821,37 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <WcStatsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Record history: the provenance rows themselves, and filling them in
+          for records that predate the bookkeeping. `/admin/metadata` is the
+          page's own address and lands on the default tab. */}
+      <Route path="/admin/metadata">
+        <ProtectedRoute permission="admin">
+          <Redirect to="/admin/metadata/list" />
+        </ProtectedRoute>
+      </Route>
+
+      {/* Every record history row in the system. */}
+      <Route path="/admin/metadata/list">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <MetadataListPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Filling in history for records that have none. */}
+      <Route path="/admin/metadata/backfill">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <MetadataBackfillPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

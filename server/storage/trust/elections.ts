@@ -213,6 +213,8 @@ async function describeElection(
 
 export const workerTrustElectionsLoggingConfig = defineLoggingConfig<WorkerTrustElectionsStorage>({
   module: 'worker-trust-elections',
+  table: 'worker_trust_elections',
+  hostTable: 'workers',
   state: { key: 'election' },
   getter: 'getById',
   hostEntityId: (args, result, before) =>

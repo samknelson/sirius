@@ -8,6 +8,7 @@ import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type WorkerId, type 
 import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
 import { registerVariableRoutes } from "./modules/system/variables";
+import { buildTimeZoneContext } from "./modules/system/timezone";
 import { registerAuthSettingsRoutes } from "./modules/auth-settings";
 import { registerEnvRoutes } from "./modules/system/env";
 import { registerDenormRoutes } from "./modules/system/denorm";
@@ -15,9 +16,14 @@ import { registerContactPostalRoutes } from "./modules/contact-postal";
 import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerCommRoutes } from "./modules/comm";
 import { registerGrievanceRoutes } from "./modules/grievances/grievances";
-import { registerGrievanceEntityFileContext } from "./modules/grievances/grievance-files-context";
+import { registerEntityFileContexts } from "./modules/entity-files-contexts";
 import { registerEntityFileRoutes } from "./modules/entity-files";
+import { registerEntityMetadataRoutes } from "./modules/entity-metadata";
+import { registerRecordGoRoutes } from "./modules/record-go";
 import { wireEntityFilesFileReadAccess } from "./services/entity-files/file-read-access";
+import { initEntityFilesDeleteCleanup } from "./services/entity-files/delete-cleanup";
+import { assertFileContextTablesComplete } from "./storage/entity-files-context-tables";
+import { assertEntityMetadataRecordTablesComplete } from "./storage/entity-metadata-record-tables";
 import { registerGrievanceTimelineTemplateRoutes } from "./modules/grievances/grievance-timeline-templates";
 import { registerEmployerContactRoutes } from "./modules/employers/contacts";
 import { registerTrustBenefitsRoutes } from "./modules/trust/benefits";
@@ -99,7 +105,10 @@ import { registerWorkerDispatchHfeRoutes } from "./modules/dispatch/worker-hfe";
 import { registerWorkerDispatchEbaRoutes } from "./modules/dispatch/worker-eba";
 import { registerWorkerDispatchAsiRoutes } from "./modules/dispatch/worker-asi";
 import { registerWorkerBansRoutes } from "./modules/worker-bans";
-import { registerNotesRoutes } from "./modules/notes";
+import { registerEntityNoteContexts } from "./modules/entity-notes-contexts";
+import { registerEntityNotesRoutes } from "./modules/entity-notes";
+import { assertNoteContextTablesComplete } from "./storage/entity-notes-context-tables";
+import { initEntityNotesDeleteCleanup } from "./services/entity-notes/delete-cleanup";
 import { registerWorkerSkillsRoutes } from "./modules/workers/skills";
 import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
 import { registerWorkerTrustElectionsRoutes } from "./modules/trust/elections";
@@ -136,6 +145,7 @@ import { registerTerminologyRoutes } from "./modules/terminology";
 import { registerCompaniesRoutes } from "./modules/employers/companies";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
+import { authorizeRecordGoRequest } from "./services/record-go-access";
 import { addressValidationService } from "./services/comm/validators/address";
 import { phoneValidationService, DEFAULT_REVALIDATE_AFTER_DAYS } from "./services/comm/validators/phone";
 import { serviceRegistry } from "./services/service-registry";
@@ -247,8 +257,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           lastName: dbUser.lastName,
           profileImageUrl: dbUser.profileImageUrl,
           isActive: dbUser.isActive,
-          workerId: workerId
+          workerId: workerId,
+          timezone: dbUser.timezone ?? null,
         },
+        // Both halves of the display-zone decision, published together: the
+        // client resolves which zone to render dates in from these plus its
+        // own runtime zone (resolveEffectiveTimeZone in shared/utils/timezone).
+        // Sent here rather than fetched separately so no screen can paint a
+        // date before it knows which zone to paint it in.
+        timezone: await buildTimeZoneContext(dbUser.timezone),
         permissions: userPermissions.map((p) => p.key),
         components: enabledComponents,
         masquerade: session.masqueradeUserId
@@ -312,10 +329,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register grievance routes
   registerGrievanceRoutes(app, requireAuth, requireAccess);
 
-  // Entity file attachments framework: register contexts, then the generic routes
-  registerGrievanceEntityFileContext();
+  // Entity file attachments framework: register contexts, assert each one has
+  // a table binding for the orphan sweep, subscribe the immediate cleanup that
+  // removes a deleted record's attachments, then the generic routes.
+  registerEntityFileContexts();
+  assertFileContextTablesComplete();
+  initEntityFilesDeleteCleanup();
   wireEntityFilesFileReadAccess();
   registerEntityFileRoutes(app, requireAuth);
+  registerEntityMetadataRoutes(app, requireAuth, requirePermission);
+  registerRecordGoRoutes(app, requireAuth, authorizeRecordGoRequest);
 
   // Register grievance timeline template routes
   registerGrievanceTimelineTemplateRoutes(app, requireAuth, requireAccess);
@@ -1772,7 +1795,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerWorkerBansRoutes(app, requireAuth, requireAccess);
 
   // Register notes routes (staff-only, all record types)
-  registerNotesRoutes(app, requireAuth, requireAccess);
+  // Entity notes framework: register contexts, assert each one has a table
+  // binding for the orphan sweep, then the generic routes.
+  registerEntityNoteContexts();
+  assertNoteContextTablesComplete();
+  initEntityNotesDeleteCleanup();
+  registerEntityNotesRoutes(app, requireAuth);
 
   // Register worker skills routes (handles all access control internally)
   registerWorkerSkillsRoutes(app, requireAuth, requireAccess);
@@ -1849,6 +1877,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register companies routes
   registerCompaniesRoutes(app, requireAuth);
+
+  // Every logged table must be declared in the record history registry.
+  // Asserted here, at the end of route registration, rather than beside the
+  // entity metadata routes: a logging config is recorded as it is wired, and
+  // the dispatch, ledger, contact and options modules wire theirs while
+  // registering their own routes above. Anything wired later still than this
+  // — a component's storage brought up on enable — is not visible from here
+  // and is caught the next time the process starts with that component on.
+  assertEntityMetadataRecordTablesComplete();
 
   const httpServer = existingServer || createServer(app);
 

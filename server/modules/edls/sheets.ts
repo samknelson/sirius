@@ -39,6 +39,8 @@ export function registerEdlsSheetsRoutes(
         jobGroupId,
         facilityId,
         showStatusId,
+        departmentId,
+        title,
         changedSince
       } = req.query;
       
@@ -67,6 +69,10 @@ export function registerEdlsSheetsRoutes(
           jobGroupId: jobGroupId as string | undefined,
           facilityId: facilityId as string | undefined,
           showStatusId: showStatusId as string | undefined,
+          departmentId: departmentId as string | undefined,
+          // A blank or whitespace-only title narrows nothing; treat it as absent
+          // rather than matching every sheet against '%%'.
+          title: typeof title === 'string' && title.trim() !== '' ? title.trim() : undefined,
           changedSince: changedSinceDate,
         }
       );

@@ -32,8 +32,6 @@ export function toChargeConfig(env: PluginConfigWithSubsidiary): ChargePluginCon
     employerId: subsidiary?.employerId ?? null,
     account: subsidiary?.account ?? null,
     settings: config.data,
-    createdAt: config.createdAt,
-    updatedAt: config.updatedAt,
   };
 }
 

@@ -1,4 +1,5 @@
-import type { Comm, EdlsSheet, Snapshot } from "@shared/schema";
+import type { Comm, EdlsSheet } from "@shared/schema";
+import type { SnapshotWithProvenance } from "../../../storage/system/snapshots";
 import type { SnapshotNode } from "@shared/snapshots";
 import { formatYmd, getTodayYmd, isValidYmd, isYmdBefore } from "@shared/utils/date";
 import {
@@ -282,7 +283,7 @@ async function resolveBaselineWorkerIds(
   // never be recovered, because the next baseline no longer holds the worker.
   // Pages keep the whole of a long history out of memory; the search normally
   // ends on the first one, since the previous save is the newest row.
-  const candidates: Array<{ snapshot: Snapshot; savedAt: number }> = [];
+  const candidates: Array<{ snapshot: SnapshotWithProvenance; savedAt: number }> = [];
   for (let offset = 0; candidates.length === 0; offset += BASELINE_SNAPSHOT_PAGE) {
     const page = await storage.snapshots.listRecent(
       SHEET_SNAPSHOT_ENTITY_TYPE,
@@ -301,7 +302,7 @@ async function resolveBaselineWorkerIds(
     // old enough to lack a stamp is nowhere near this save.
     for (const snapshot of page) {
       const savedAt =
-        toMillis(capturedSheetChanged(snapshot.data)) ?? toMillis(snapshot.createdAt);
+        toMillis(capturedSheetChanged(snapshot.data)) ?? toMillis(snapshot.capturedAt);
       if (savedAt === null || savedAt >= changed) continue;
       const status = capturedSheetStatus(snapshot.data);
       if (status !== null && !triggers.has(status)) continue;

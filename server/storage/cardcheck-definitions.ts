@@ -79,6 +79,7 @@ export function createCardcheckDefinitionStorage(): CardcheckDefinitionStorage {
 
 export const cardcheckDefinitionLoggingConfig: StorageLoggingConfig<CardcheckDefinitionStorage> = {
   module: 'cardcheck-definitions',
+  table: 'cardcheck_definitions',
   methods: {
     createCardcheckDefinition: {
       enabled: true,

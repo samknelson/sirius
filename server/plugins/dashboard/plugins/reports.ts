@@ -106,6 +106,7 @@ function resolveSelectedReports(
 export async function migrateReportsSettings(): Promise<void> {
   const { storage } = await import("../../../storage");
   const { logger } = await import("../../../logger");
+  const { withFrameworkWrite } = await import("../../../middleware/request-context");
   try {
     const rows = await storage.pluginConfigs.getByKindAndPlugin(
       "dashboard",
@@ -146,7 +147,11 @@ export async function migrateReportsSettings(): Promise<void> {
         reports = Array.from(union);
       }
 
-      await storage.pluginConfigs.update(row.id, { data: { reports } });
+      // Normalizing a stored shape is the framework's own doing (see
+      // `withFrameworkWrite`): no person, and no audit entry per boot.
+      await withFrameworkWrite(() =>
+        storage.pluginConfigs.update(row.id, { data: { reports } }),
+      );
       migrated++;
     }
     if (migrated > 0) {

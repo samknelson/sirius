@@ -2,6 +2,7 @@ import { logger } from "../../../logger";
 import { registerDashboardPlugin } from "../registry";
 import { storage } from "../../../storage";
 import { runInTransaction } from "../../../storage/transaction-context";
+import { withFrameworkWrite } from "../../../middleware/request-context";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { DashboardPlugin } from "../types";
 import type { DashboardPluginUiSchema } from "../types";
@@ -151,7 +152,10 @@ async function migrateWelcomeMessagesLocked(): Promise<void> {
   // atomically. Without a single transaction a partial failure (some creates
   // committed, cleanup skipped) would leave the legacy sources in place and
   // re-create duplicates on the next boot, defeating idempotency.
-  await runInTransaction(async () => {
+  // Splitting a legacy setting into its new rows is the framework's own doing
+  // (see `withFrameworkWrite`): the new configurations get their provenance
+  // stamp with no person, and the migration leaves no audit entry.
+  await withFrameworkWrite(() => runInTransaction(async () => {
     let ordering = 0;
     for (const [roleId, { message, enabled }] of byRole) {
       await storage.pluginConfigs.create({
@@ -168,7 +172,7 @@ async function migrateWelcomeMessagesLocked(): Promise<void> {
       await storage.pluginConfigs.delete(row.id);
     }
     await storage.variables.deleteByNamePrefix(LEGACY_VARIABLE_PREFIX);
-  });
+  }));
 
   logger.info(
     `Migrated welcome messages: ${byRole.size} per-message config(s) created`,

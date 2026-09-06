@@ -1,8 +1,9 @@
 import { createNoopValidator } from '../utils/validation';
-import { getClient } from '../transaction-context';
+import { getClient, onAfterCommit } from '../transaction-context';
 import { employers, type Employer, type InsertEmployer } from "@shared/schema";
 import { eq, sql, inArray, or, ilike, asc } from "drizzle-orm";
 import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
+import { eventBus, EventType } from "../../services/event-bus";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -156,6 +157,15 @@ export function createEmployerStorage(): EmployerStorage {
     async deleteEmployer(id: string): Promise<boolean> {
       const client = getClient();
       const result = await client.delete(employers).where(eq(employers.id, id)).returning();
+      if (result.length > 0) {
+        // Announce the deletion once it is durable, so the areas that hang off
+        // an employer with no foreign key (notes, file attachments) clean up
+        // now rather than waiting for their nightly sweep. Best-effort: a
+        // failed emit or handler never fails the delete.
+        onAfterCommit(() => {
+          void eventBus.emit(EventType.EMPLOYER_DELETE_AFTER, { employerId: id });
+        });
+      }
       return result.length > 0;
     }
   };
@@ -163,10 +173,14 @@ export function createEmployerStorage(): EmployerStorage {
 
 export const employerLoggingConfig = defineLoggingConfig<EmployerStorage>({
   module: 'employers',
+  table: 'employers',
   getter: 'getEmployer',
   hostEntityId: (args, result, before) => result?.id ?? before?.id ?? args[0],
   methods: {
-    createEmployer: { getEntityId: (args, result) => result?.id || args[0]?.name || 'new employer' },
+    createEmployer: {
+      getEntityId: (args, result) => result?.id || args[0]?.name || 'new employer',
+      metadataEntityId: (_args, result) => result?.id,
+    },
     updateEmployer: {},
     deleteEmployer: {},
   },

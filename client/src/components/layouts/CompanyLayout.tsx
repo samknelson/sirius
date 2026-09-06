@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode, useMemo } from "react";
-import { Building, ArrowLeft } from "lucide-react";
+import { Building } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Company } from "@shared/schema/employer/company-schema";
@@ -10,6 +10,13 @@ import { BookmarkButton } from "@/components/ui/bookmark-button";
 import { DebugRecordViewer } from "@/components/debug/DebugRecordViewer";
 import { useCompanyTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
+
+const COMPANY_BACK_LINK = {
+  href: "/companies",
+  label: "Back to Companies",
+  testId: "button-back-to-companies",
+};
 
 interface CompanyLayoutContextValue {
   company: Company;
@@ -109,30 +116,15 @@ export function CompanyLayout({ activeTab, children }: CompanyLayoutProps) {
 
   return (
     <CompanyLayoutContext.Provider value={contextValue}>
-      <section className="bg-card border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <Building className="text-primary-foreground" size={16} />
-              </div>
-              <h1 className="text-xl font-semibold text-foreground" data-testid={`text-company-name-${company.id}`}>
-                {company.name}
-              </h1>
-              <BookmarkButton entityType="company" entityId={company.id} entityName={company.name} />
-            </div>
-            <div className="flex items-center space-x-4">
-              <DebugRecordViewer record={company} entityLabel="Company" />
-              <Link href="/companies">
-                <Button variant="ghost" size="sm" data-testid="button-back-to-companies">
-                  <ArrowLeft size={16} className="mr-2" />
-                  Back to Companies
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
+      <RecordTitleBar
+        icon={<Building className="text-primary-foreground" size={16} />}
+        title={company.name}
+        titleTestId={`text-company-name-${company.id}`}
+        badges={<BookmarkButton entityType="company" entityId={company.id} entityName={company.name} />}
+        actions={<DebugRecordViewer record={company} entityLabel="Company" />}
+        backLink={COMPANY_BACK_LINK}
+        recordId={company.id}
+      />
 
       <section className="bg-card border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

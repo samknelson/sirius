@@ -4,7 +4,11 @@ import type { JsonSchema } from "@shared/json-schema-form";
 import { createUnifiedOptionsStorage } from "../../../storage/unified-options";
 import { registerQuicksearchPlugin } from "../registry";
 import { correlated, type QuicksearchDb } from "../sql";
-import type { QuicksearchContext, QuicksearchPlugin, QuicksearchResult } from "../types";
+import type {
+  QuicksearchContext,
+  QuicksearchPlugin,
+  QuicksearchPluginResult,
+} from "../types";
 
 /** Digits only. Every identifier clause reasons about digits, not formatting. */
 function digitsOf(value: string): string {
@@ -248,7 +252,7 @@ export const workerQuicksearchPlugin: QuicksearchPlugin = {
     searchSsn: "workers.ssn",
   },
 
-  async search(ctx: QuicksearchContext): Promise<QuicksearchResult[]> {
+  async search(ctx: QuicksearchContext): Promise<QuicksearchPluginResult[]> {
     const plan = planWorkerSearch(ctx.query, ctx.settings as WorkerSearchSettings);
 
     const rows = await ctx.storage.readOnly.query(async (client) =>
@@ -332,7 +336,6 @@ export const workerQuicksearchPlugin: QuicksearchPlugin = {
         id: r.id,
         title: r.displayName || `Worker #${r.siriusId}`,
         subtitle: subtitle.join(" · "),
-        href: `/workers/${r.id}`,
         matchedOn: describeMatch(flags, detail?.typeName ?? null),
       };
     });

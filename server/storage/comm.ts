@@ -128,6 +128,7 @@ export interface CommStorage {
 
 export const commLoggingConfig: StorageLoggingConfig<CommStorage> = {
   module: 'comm',
+  table: 'comm',
   methods: {
     createComm: { enabled: true },
     updateComm: {

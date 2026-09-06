@@ -20,7 +20,5 @@ export interface CronJob {
   isEnabled: boolean;
   settings?: Record<string, unknown> | null;
   defaultSettings?: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
   latestRun?: CronJobRun;
 }

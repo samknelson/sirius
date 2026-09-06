@@ -5,12 +5,16 @@ import {
   type QuicksearchGroup,
   type QuicksearchResponse,
 } from "@shared/quicksearch";
+import { recordGoHref } from "@shared/utils/record-go";
 import { storage } from "../../storage";
 import { logger } from "../../logger";
 import { checkAccess, getAccessStorage } from "../../services/access-policy-evaluator";
 import { isPluginComponentEnabledAsync } from "../_core";
 import { quicksearchPluginRegistry } from "./registry";
-import type { QuicksearchPlugin, QuicksearchResult as QuicksearchResultRow } from "./types";
+import type {
+  QuicksearchPlugin,
+  QuicksearchPluginResult as QuicksearchResultRow,
+} from "./types";
 
 const SERVICE = "quicksearch";
 
@@ -201,7 +205,10 @@ export async function runQuicksearch(
       });
       continue;
     }
-    const results = outcome.results ?? [];
+    const results = (outcome.results ?? []).map((result) => ({
+      ...result,
+      href: result.href ?? recordGoHref(result.id),
+    }));
     if (results.length === 0) continue;
     groups.push({
       configId: runnable.configId,

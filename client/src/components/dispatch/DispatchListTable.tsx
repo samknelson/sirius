@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { Eye, User, Briefcase, Mail, MessageSquare, Bell, ExternalLink, Filter, Clock } from "lucide-react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

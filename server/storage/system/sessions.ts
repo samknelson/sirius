@@ -226,6 +226,13 @@ function sessionUserId(sess: any): string | undefined {
 
 export const sessionLoggingConfig: StorageLoggingConfig<SessionStorage> = {
   module: 'sessions',
+  table: 'sessions',
+  hostTable: 'users',
+  // A session is keyed by its cookie id, not a record id, so it has no place
+  // in entity_metadata — and a store written on every request would rewrite
+  // its user's row constantly for no one's benefit. The log entries, which do
+  // carry the owning user, are the record of session activity.
+  metadataMode: 'none',
   methods: {
     deleteSession: {
       enabled: true,

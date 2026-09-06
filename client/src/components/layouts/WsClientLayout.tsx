@@ -7,7 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useWsClientTabAccess } from "@/hooks/useTabAccess";
+import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
+import type { RecordMetadataStamp } from "@/components/shared/RecordHistoryDialog";
 import type { WsClient } from "@shared/schema";
+
+/**
+ * A web service client as the admin API answers with it: the row, plus when it
+ * was created and by whom. The client table keeps no timestamp of its own any
+ * more — that is the record's history, which the endpoint reads for us so the
+ * settings tab does not have to ask a second time.
+ */
+export type WsClientRecord = WsClient & { created: RecordMetadataStamp };
 
 interface WsClientLayoutProps {
   activeTab: string;
@@ -15,7 +25,7 @@ interface WsClientLayoutProps {
 }
 
 interface WsClientLayoutContextValue {
-  client: WsClient;
+  client: WsClientRecord;
 }
 
 const WsClientLayoutContext = createContext<WsClientLayoutContextValue | null>(null);
@@ -44,7 +54,7 @@ function StatusBadge({ status }: { status: string }) {
 export function WsClientLayout({ activeTab, children }: WsClientLayoutProps) {
   const { id } = useParams<{ id: string }>();
 
-  const { data: client, isLoading: clientLoading, error: clientError } = useQuery<WsClient>({
+  const { data: client, isLoading: clientLoading, error: clientError } = useQuery<WsClientRecord>({
     queryKey: ["/api/admin/ws-clients", id],
     enabled: !!id,
   });
@@ -81,42 +91,33 @@ export function WsClientLayout({ activeTab, children }: WsClientLayoutProps) {
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
-      <div className="flex items-center justify-between mb-6">
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="breadcrumb">
-          <Link href="/admin/ws/clients" className="hover:text-foreground transition-colors">
-            Web Services - Incoming
-          </Link>
-          <ChevronRight size={16} />
-          <span className="text-foreground font-medium">
-            {client.name}
-          </span>
-        </nav>
-        <Link href="/admin/ws/clients">
-          <Button variant="ghost" size="sm" data-testid="button-back">
-            <ArrowLeft size={16} className="mr-2" />
-            Back to Clients
-          </Button>
-        </Link>
-      </div>
-
-      <div className="flex items-start gap-4 mb-6">
-        <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-primary/10">
-          <Server className="h-6 w-6 text-primary" />
-        </div>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl md:text-3xl font-bold text-foreground" data-testid="heading-client-name">
-              {client.name}
-            </h1>
-            <StatusBadge status={client.status} />
-          </div>
-          {client.description && (
+      <RecordTitleBar
+        variant="page"
+        icon={<Server className="h-6 w-6 text-primary" />}
+        title={client.name}
+        titleTestId="heading-client-name"
+        badges={<StatusBadge status={client.status} />}
+        subtitle={
+          client.description && (
             <p className="text-muted-foreground mt-1" data-testid="text-description">
               {client.description}
             </p>
-          )}
-        </div>
-      </div>
+          )
+        }
+        breadcrumb={
+          <nav className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="breadcrumb">
+            <Link href="/admin/ws/clients" className="hover:text-foreground transition-colors">
+              Web Services - Incoming
+            </Link>
+            <ChevronRight size={16} />
+            <span className="text-foreground font-medium">
+              {client.name}
+            </span>
+          </nav>
+        }
+        backLink={{ href: "/admin/ws/clients", label: "Back to Clients" }}
+        recordId={client.id}
+      />
 
       <div className="border-b border-border mb-6">
         <nav className="flex gap-6" data-testid="nav-tabs">

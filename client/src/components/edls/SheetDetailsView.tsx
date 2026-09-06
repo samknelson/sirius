@@ -177,7 +177,7 @@ export function SheetDetailsView({
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:grid-cols-2 print:gap-x-4 print:gap-y-1">
             <div className="print:flex print:items-baseline print:gap-2">
-              <h3 className="text-sm font-medium text-muted-foreground mb-1 print:mb-0 print:after:content-[':']">Title</h3>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1 print:mb-0 print:after:content-[':']">Job #</h3>
               <p className="text-foreground" data-testid="text-title">{sheet.title}</p>
             </div>
             <div className="print:flex print:items-baseline print:gap-2">

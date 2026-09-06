@@ -78,6 +78,8 @@ function emitDepartmentSaved(entry: WorkerDispatchDepartment, isDeleted?: boolea
 
 export const workerDispatchDepartmentLoggingConfig = defineLoggingConfig<WorkerDispatchDepartmentStorage>({
   module: 'worker-dispatch-department',
+  table: 'worker_dispatch_department',
+  hostTable: 'workers',
   state: { key: 'entry' },
   hostEntityId: (args, result, before) =>
     result?.workerId ?? before?.entry?.workerId ?? args[0]?.workerId,

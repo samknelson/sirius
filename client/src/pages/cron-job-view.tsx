@@ -3,7 +3,7 @@ import { useParams } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { CronJobLayout } from "@/components/layouts/CronJobLayout";
 import { CronJob, CronJobRun } from "@/lib/cron-types";
 

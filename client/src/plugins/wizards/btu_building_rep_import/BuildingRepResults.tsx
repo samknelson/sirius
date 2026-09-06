@@ -30,7 +30,7 @@ import {
   SkipForward,
   Info,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { Link } from "wouter";
 import type { WizardStepComponentProps } from "@/components/wizards/framework/types";
 

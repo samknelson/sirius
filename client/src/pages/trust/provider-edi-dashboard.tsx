@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import {
   Card,
   CardContent,

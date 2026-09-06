@@ -63,7 +63,6 @@ export interface PaginatedDispatchJobs {
 }
 
 export interface DispatchJobStorage {
-  getAll(): Promise<DispatchJob[]>;
   getPaginated(page: number, limit: number, filters?: DispatchJobFilters): Promise<PaginatedDispatchJobs>;
   get(id: string): Promise<DispatchJob | undefined>;
   getWithRelations(id: string): Promise<DispatchJobWithRelations | undefined>;
@@ -91,6 +90,8 @@ async function getJobTypeName(jobTypeId: string | null | undefined): Promise<str
 
 export const dispatchJobLoggingConfig = defineLoggingConfig<DispatchJobStorage>({
   module: 'dispatchJobs',
+  table: 'dispatch_jobs',
+  hostTable: 'employers',
   state: { key: 'job' },
   hostEntityIdField: 'employerId',
   methods: {
@@ -182,11 +183,6 @@ async function applyFacility(jobId: string, facilityId: string | null | undefine
 
 export function createDispatchJobStorage(): DispatchJobStorage {
   return {
-    async getAll(): Promise<DispatchJob[]> {
-      const client = getClient();
-      return client.select().from(dispatchJobs).orderBy(desc(dispatchJobs.createdAt));
-    },
-
     async getPaginated(page: number, limit: number, filters?: DispatchJobFilters): Promise<PaginatedDispatchJobs> {
       const client = getClient();
       const conditions: SQL[] = [];

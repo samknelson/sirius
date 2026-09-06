@@ -7,6 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useOptionsTabAccess } from "@/hooks/useTabAccess";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { BackToOptions, optionsPageTitle } from "@/components/shared/BackToOptions";
+
+export { OPTIONS_INDEX_PATH, optionsPageTitle } from "@/components/shared/BackToOptions";
 
 export interface OptionsDefinitionSummary {
   type: string;
@@ -56,7 +59,7 @@ export function OptionsLayout({ activeTab, children }: OptionsLayoutProps) {
 
   const { tabs } = useOptionsTabAccess(optionsType);
 
-  usePageTitle(definition?.displayName ?? "Options");
+  usePageTitle(definition ? optionsPageTitle(definition.displayName) : "Options");
 
   if (!auth || isLoading) {
     return (
@@ -70,7 +73,8 @@ export function OptionsLayout({ activeTab, children }: OptionsLayoutProps) {
 
   if (isError || !definition) {
     return (
-      <div className="p-6">
+      <div className="p-6 space-y-4">
+        <BackToOptions />
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-muted-foreground">
@@ -90,7 +94,8 @@ export function OptionsLayout({ activeTab, children }: OptionsLayoutProps) {
 
   if (definition.requiredComponent && !auth.hasComponent(definition.requiredComponent)) {
     return (
-      <div className="p-6">
+      <div className="p-6 space-y-4">
+        <BackToOptions />
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-muted-foreground">
@@ -112,8 +117,9 @@ export function OptionsLayout({ activeTab, children }: OptionsLayoutProps) {
     <OptionsLayoutContext.Provider value={{ optionsType, definition }}>
       <div className="p-6 space-y-6">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-foreground" data-testid="heading-options-type">
-            {definition.displayName}
+          <BackToOptions />
+          <h1 className="text-xl md:text-2xl font-bold text-foreground mt-2" data-testid="heading-options-type">
+            {optionsPageTitle(definition.displayName)}
           </h1>
           {definition.description && (
             <p className="text-sm text-muted-foreground mt-1">{definition.description}</p>

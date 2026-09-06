@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { storage } from "../../storage";
 import { insertWsClientSchema, insertWsClientIpRuleSchema } from "@shared/schema";
+import { entityMetadataStorage } from "../../storage/system/entity-metadata";
 import { getEnvironmentVariable } from "../../config/env-registry";
 import { runInTransaction } from "../../storage/transaction-context";
 import { addDaysYmd, getTodayYmd, isValidYmd, isYmdAfter } from "@shared/utils/date";
@@ -26,6 +27,55 @@ const statsQuerySchema = z.object({
 /** How far back the usage read looks when the caller names no range. */
 const DEFAULT_STATS_DAYS = 30;
 
+/**
+ * When a record was created and by whom, as these screens show it.
+ *
+ * None of the four web-service tables keeps a creation date of its own any
+ * more; the record's history does, and it also knows the person, which the old
+ * columns never did. A record with no history recorded — one made before the
+ * tables came under logging and never touched since, or one whose best-effort
+ * provenance write did not land — answers with nulls rather than a guess.
+ */
+interface CreatedStamp {
+  date: Date | null;
+  personName: string | null;
+}
+
+const NO_STAMP: CreatedStamp = { date: null, personName: null };
+
+/** One read of the history of every record a list is about to return. */
+async function canViewMetadata(req: Request): Promise<boolean> {
+  const user = req.user as any;
+  if (!user?.claims) return false;
+
+  const session = req.session as any;
+  const { getEffectiveUser } = await import("../masquerade");
+  const { dbUser } = await getEffectiveUser(session, user);
+  if (!dbUser) return false;
+
+  // Web-service pages are already admin-only. Keep that established admin
+  // access while also allowing the dedicated permission for non-admin staff.
+  const [canView, isAdmin] = await Promise.all([
+    storage.users.userHasPermission(dbUser.id, "metadata.view"),
+    storage.users.userHasPermission(dbUser.id, "admin"),
+  ]);
+  return canView || isAdmin;
+}
+
+async function createdStamps(ids: string[], req: Request): Promise<Map<string, CreatedStamp>> {
+  if (!(await canViewMetadata(req))) return new Map();
+  const views = await entityMetadataStorage.getMany(ids);
+  const stamps = new Map<string, CreatedStamp>();
+  for (const [id, view] of views) stamps.set(id, view.created);
+  return stamps;
+}
+
+/** The same, for a single record. */
+async function createdStamp(id: string, req: Request): Promise<CreatedStamp> {
+  if (!(await canViewMetadata(req))) return NO_STAMP;
+  return (await entityMetadataStorage.get(id))?.created ?? NO_STAMP;
+}
+
 export function registerWebServiceAdminRoutes(
   app: Express,
   requireAuth: RequireAuth,
@@ -49,7 +99,7 @@ export function registerWebServiceAdminRoutes(
       if (!client) {
         return res.status(404).json({ message: "Client not found" });
       }
-      res.json(client);
+      res.json({ ...client, created: await createdStamp(client.id, req) });
     } catch (error) {
       console.error("Failed to fetch WS client:", error);
       res.status(500).json({ message: "Failed to fetch client" });
@@ -107,6 +157,7 @@ export function registerWebServiceAdminRoutes(
   app.get("/api/admin/ws-clients/:clientId/credentials", requireAuth, requirePermission("admin"), async (req, res) => {
     try {
       const credentials = await storage.wsClientCredentials.getByClient(req.params.clientId);
+       const stamps = await createdStamps(credentials.map((c) => c.id), req);
       res.json(credentials.map(c => ({
         id: c.id,
         clientId: c.clientId,
@@ -115,7 +166,7 @@ export function registerWebServiceAdminRoutes(
         isActive: c.isActive,
         expiresAt: c.expiresAt,
         lastUsedAt: c.lastUsedAt,
-        createdAt: c.createdAt,
+        created: stamps.get(c.id) ?? NO_STAMP,
       })));
     } catch (error) {
       console.error("Failed to fetch WS client credentials:", error);
@@ -148,7 +199,6 @@ export function registerWebServiceAdminRoutes(
         clientSecret: result.clientSecret,
         label: result.credential.label,
         expiresAt: result.credential.expiresAt,
-        createdAt: result.credential.createdAt,
         message: "Store the clientSecret securely - it cannot be retrieved again",
       });
     } catch (error) {
@@ -285,7 +335,8 @@ export function registerWebServiceAdminRoutes(
   app.get("/api/admin/ws-clients/:clientId/ip-rules", requireAuth, requirePermission("admin"), async (req, res) => {
     try {
       const rules = await storage.wsClientIpRules.getByClient(req.params.clientId);
-      res.json(rules);
+       const stamps = await createdStamps(rules.map((r) => r.id), req);
+      res.json(rules.map((rule) => ({ ...rule, created: stamps.get(rule.id) ?? NO_STAMP })));
     } catch (error) {
       console.error("Failed to fetch WS IP rules:", error);
       res.status(500).json({ message: "Failed to fetch IP rules" });

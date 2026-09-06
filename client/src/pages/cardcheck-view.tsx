@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest, ApiError, getApiErrorMessage } from "@/lib/queryClient";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {

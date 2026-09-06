@@ -314,7 +314,7 @@ export function EdlsSheetForm({
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="title">Title *</Label>
+          <Label htmlFor="title">Job # *</Label>
           <Input
             id="title"
             data-testid="input-title"
@@ -322,7 +322,7 @@ export function EdlsSheetForm({
             onChange={(e) =>
               setFormData({ ...formData, title: e.target.value })
             }
-            placeholder="e.g., Morning Shift - January 15"
+            placeholder="e.g., 12345"
           />
         </div>
         {!initialData && (

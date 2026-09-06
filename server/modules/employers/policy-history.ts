@@ -6,7 +6,7 @@ import { z } from "zod";
 type RequireAccess = (policy: string, getEntityId?: (req: Request) => string | undefined) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
-const createSchema = insertEmployerPolicyHistorySchema.omit({ createdAt: true });
+const createSchema = insertEmployerPolicyHistorySchema;
 const updateSchema = createSchema.partial().omit({ employerId: true });
 
 export function registerEmployerPolicyHistoryRoutes(

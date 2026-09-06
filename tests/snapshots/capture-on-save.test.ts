@@ -22,6 +22,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const created: Array<{ entityType: string; entityId: string; label: string; data: unknown }> = [];
 /** What the entity looks like to the transaction doing the capture. */
 let exportedBundle: unknown = null;
+let snapshotMetadata: unknown = null;
 let exportCalls = 0;
 let captureDisabled = false;
 
@@ -55,6 +56,14 @@ vi.mock("../../server/storage", () => ({
   },
 }));
 
+vi.mock("../../server/storage/system/entity-metadata", () => ({
+  entityMetadataStorage: {
+    async getSnapshotMetadata() {
+      return snapshotMetadata;
+    },
+  },
+}));
+
 vi.mock("../../server/logger", () => ({
   logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
 }));
@@ -82,6 +91,7 @@ afterEach(() => {
   exportCalls = 0;
   captureDisabled = false;
   exportedBundle = null;
+  snapshotMetadata = null;
 });
 
 describe("snapshot capture — part of the save, not a reaction to it", () => {
@@ -95,7 +105,10 @@ describe("snapshot capture — part of the save, not a reaction to it", () => {
     await captureEntitySnapshot(EventType.EDLS_SHEET_SAVED, sheetSaved("draft", "lock"));
 
     expect(created).toHaveLength(1);
-    expect(created[0].data).toBe(exportedBundle);
+    expect(created[0].data).toEqual({
+      ...(exportedBundle as object),
+      metadata: null,
+    });
     expect(created[0].entityType).toBe("edls_sheet");
     expect(created[0].label).toBe("status: draft → lock");
   });
@@ -111,6 +124,29 @@ describe("snapshot capture — part of the save, not a reaction to it", () => {
     exportedBundle = { version: 1, data: { id: SHEET.id, crews: [] } };
     await captureEntitySnapshot(EventType.EDLS_SHEET_SAVED, sheetSaved("draft", "lock"));
     expect(created).toHaveLength(0);
+  });
+
+  it("stores target metadata aligned with the captured save", async () => {
+    exportedBundle = {
+      version: 1,
+      data: { id: SHEET.id, status: "lock", crews: [], changed: "2099-06-01T12:00:00.000Z" },
+    };
+    snapshotMetadata = {
+      seq: 42,
+      rev: 8,
+      contextId: "edls_sheet",
+      entityId: SHEET.id,
+      created: { date: "2099-05-01T12:00:00.000Z", personName: "Creator" },
+      modified: { date: "2099-06-01T12:00:00.000Z", personName: "Editor" },
+      subrecordModified: { date: null, personName: null },
+    };
+
+    await captureEntitySnapshot(EventType.EDLS_SHEET_SAVED, sheetSaved("draft", "lock"));
+
+    expect(created[0].data).toEqual({
+      ...(exportedBundle as object),
+      metadata: snapshotMetadata,
+    });
   });
 
   it("records nothing for an event nothing captures", async () => {

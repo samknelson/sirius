@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { FileText, ChevronRight, Clock, BarChart3 } from "lucide-react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { Wizard, WizardType } from "@/lib/wizard-types";
 
 interface ReportsProps {

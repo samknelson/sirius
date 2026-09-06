@@ -53,6 +53,8 @@ async function describeExemption(
 export const trustBenefitEligibilityExemptionsLoggingConfig =
   defineLoggingConfig<TrustBenefitEligibilityExemptionsStorage>({
     module: 'trust-benefit-eligibility-exemptions',
+    table: 'trust_benefit_eligibility_exemptions',
+    hostTable: 'workers',
     state: { key: 'exemption' },
     getter: 'getById',
     hostEntityId: (args, result, before) =>

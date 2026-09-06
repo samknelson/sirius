@@ -67,8 +67,8 @@ async function main() {
   const TS = Date.now();
   const mkEmployerUser = async (tag: string, contactId: string, email: string) => {
     const [u] = await run(
-      `INSERT INTO users (id, email, account_status, is_active, created_at, updated_at)
-       VALUES (gen_random_uuid(), '${email}', 'active', true, now(), now()) RETURNING *`,
+      `INSERT INTO users (id, email, account_status, is_active)
+       VALUES (gen_random_uuid(), '${email}', 'active', true) RETURNING *`,
     );
     cleanupSql.push(`DELETE FROM users WHERE id='${u.id}'`);
     await run(`INSERT INTO user_roles (user_id, role_id) VALUES ('${u.id}', '${employerRole.id}')`);

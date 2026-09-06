@@ -30,8 +30,12 @@ export interface EventStorage {
 
 export const eventLoggingConfig = defineLoggingConfig<EventStorage>({
   module: 'events',
+  table: 'events',
   methods: {
-    create: { getEntityId: (args) => args[0]?.title || 'new event' },
+    create: {
+      getEntityId: (args) => args[0]?.title || 'new event',
+      metadataEntityId: (_args, result) => result?.id,
+    },
     update: {},
     delete: {},
   },
@@ -50,9 +54,12 @@ export interface EventOccurrenceStorage {
 
 export const eventOccurrenceLoggingConfig = defineLoggingConfig<EventOccurrenceStorage>({
   module: 'eventOccurrences',
+  table: 'event_occurrences',
+  hostTable: 'events',
   methods: {
     create: {
       getEntityId: (args) => args[0]?.eventId || 'new occurrence',
+      metadataEntityId: (_args, result) => result?.id,
       getHostEntityId: (args) => args[0]?.eventId,
     },
     createMany: {
@@ -189,9 +196,12 @@ export interface EventParticipantStorage {
 
 export const eventParticipantLoggingConfig = defineLoggingConfig<EventParticipantStorage>({
   module: 'eventParticipants',
+  table: 'event_participants',
+  hostTable: 'events',
   methods: {
     create: {
       getEntityId: (args) => args[0]?.eventId || 'new participant',
+      metadataEntityId: (_args, result) => result?.id,
       getHostEntityId: (args) => args[0]?.eventId,
     },
     update: {},

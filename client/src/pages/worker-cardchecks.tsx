@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 
 interface CardcheckWithDefinition extends Cardcheck {
   definition?: CardcheckDefinition;

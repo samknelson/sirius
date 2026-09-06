@@ -84,6 +84,8 @@ export function createWorkerEdlsStorage(): WorkerEdlsStorage {
 
 export const workerEdlsLoggingConfig: StorageLoggingConfig<WorkerEdlsStorage> = {
   module: 'worker-edls',
+  table: 'worker_edls',
+  hostTable: 'workers',
   methods: {
     setActive: {
       enabled: true,

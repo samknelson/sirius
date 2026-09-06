@@ -269,6 +269,7 @@ export function createBargainingUnitStorage(): BargainingUnitStorage {
 
 export const bargainingUnitLoggingConfig: StorageLoggingConfig<BargainingUnitStorage> = {
   module: 'bargainingUnits',
+  table: 'bargaining_units',
   methods: {
     createBargainingUnit: {
       enabled: true,

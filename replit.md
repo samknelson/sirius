@@ -731,6 +731,11 @@ plugin kind").
     `docs/architecture.md`
 -   **Baselining a deployment** (procedure for a new Repl whose DB
     predates the per-component migration framework) — `docs/baselining.md`
+-   **Bespoke provenance columns** (the inventory of per-table
+    `created_at`/`created_by` columns being retired into
+    `entity_metadata`, the rule for repointing their reads, and the
+    keep list behind the `provenance-columns` lint rule) —
+    `docs/provenance-columns.md`
 -   **Aurora / plain-Postgres support** (automatic Neon-vs-pg driver
     selection, `DATABASE_DRIVER` override, `sslmode` handling, and the
     `ALLOW_EMPTY_DB_BOOTSTRAP=1` empty-database bootstrap) — `docs/aurora.md`

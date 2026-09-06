@@ -39,6 +39,7 @@ export interface DispatchJobGroupStorage {
 
 export const dispatchJobGroupLoggingConfig = defineLoggingConfig<DispatchJobGroupStorage>({
   module: 'dispatchJobGroups',
+  table: 'dispatch_job_group',
   state: { key: 'group' },
   // Legacy: before-state for update/delete is `null` when row missing, not
   // `{ group: undefined }`. Keep the explicit before hooks below to preserve

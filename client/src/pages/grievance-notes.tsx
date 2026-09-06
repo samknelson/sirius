@@ -1,9 +1,9 @@
 import { GrievanceLayout, useGrievanceLayout } from "@/components/layouts/GrievanceLayout";
-import NotesPanel from "@/components/notes/NotesPanel";
+import EntityNotesPanel from "@/components/entity-notes/EntityNotesPanel";
 
 function GrievanceNotesContent() {
   const { grievance } = useGrievanceLayout();
-  return <NotesPanel entityType="grievance" entityId={grievance.id} />;
+  return <EntityNotesPanel contextId="grievance" entityId={grievance.id} />;
 }
 
 export default function GrievanceNotes() {

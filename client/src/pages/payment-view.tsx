@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { LedgerTransactionsView } from "@/components/ledger/LedgerTransactionsView";
 import { formatAmount } from "@shared/currency";
 import { isValidYmd, ymdToDateForPicker } from "@shared/utils/date";
+import { useRecordMetadata } from "@/hooks/useRecordMetadata";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const MONTH_NAMES = [
@@ -28,6 +29,12 @@ function PaymentViewContent() {
   const { data: payment, isLoading } = useQuery<LedgerPayment>({
     queryKey: ["/api/ledger/payments", id],
   });
+
+  // When the payment was created is the record's history, not a field of the
+  // payment: the other two dates below are accounting facts someone entered,
+  // this one is a fact about the row. It is the same reading the record-history
+  // badge in this page's title bar shows.
+  const { metadata: recordMetadata, canViewMetadata } = useRecordMetadata(id);
 
   const details = (payment?.details || {}) as Record<string, unknown>;
   const proposedAllocation = (details.proposedAllocation || []) as ProposedAllocationEntry[];
@@ -100,11 +107,6 @@ function PaymentViewContent() {
         <CardContent className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Payment ID</label>
-              <p className="mt-1 font-mono text-sm" data-testid="text-payment-id">{payment.id}</p>
-            </div>
-
-            <div>
               <label className="text-sm font-medium text-muted-foreground">Amount</label>
               <p className="mt-1 font-mono text-lg font-semibold" data-testid="text-amount">
                 {formatAmount(parseFloat(payment.amount), currencyCode)}
@@ -145,12 +147,16 @@ function PaymentViewContent() {
           <div>
             <label className="text-sm font-medium text-muted-foreground">Dates</label>
             <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <p className="text-xs text-muted-foreground">Created</p>
-                <p className="mt-1" data-testid="text-date-created">
-                  {payment.dateCreated ? new Date(payment.dateCreated).toLocaleDateString() : 'N/A'}
-                </p>
-              </div>
+              {canViewMetadata && (
+                <div>
+                  <p className="text-xs text-muted-foreground">Created</p>
+                  <p className="mt-1" data-testid="text-date-created">
+                    {recordMetadata?.created.date
+                      ? new Date(recordMetadata.created.date).toLocaleDateString()
+                      : 'N/A'}
+                  </p>
+                </div>
+              )}
               <div>
                 <p className="text-xs text-muted-foreground">Received</p>
                 <p className="mt-1" data-testid="text-date-received">

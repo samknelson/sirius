@@ -3,7 +3,7 @@ import { FileText, Calendar, Hash, ExternalLink, Plus } from "lucide-react";
 import { DashboardPluginProps } from "../registry";
 import { useDashboardContent } from "../useDashboardContent";
 import { Link } from "wouter";
-import { format, formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "@/lib/date-format";
 import { WizardLauncher } from "@/components/wizards/WizardLauncher";
 
 interface ReportSummary {

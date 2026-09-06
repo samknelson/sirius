@@ -186,6 +186,8 @@ export function createTrustWmbStorage(): TrustWmbStorage {
  */
 export const trustWmbLoggingConfig: StorageLoggingConfig<TrustWmbStorage> = {
   module: 'trust.wmb',
+  table: 'trust_wmb',
+  hostTable: 'workers',
   methods: {
     createWorkerBenefit: {
       enabled: true,

@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Download, FileText, Eye } from "lucide-react";
 import { Link } from "wouter";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import type { ReactNode } from "react";
 import type { WizardStepComponentProps } from "./types";
 

@@ -11,6 +11,7 @@ import type {
   InsertLedgerEa,
   LedgerPayment,
   InsertLedgerPayment,
+  LedgerPaymentWithCreatedDate,
   LedgerPaymentWithEntity,
   Ledger,
   InsertLedger
@@ -26,6 +27,16 @@ import { dateToYmd, ymdToDateForPicker, isValidYmd } from "@shared/utils/date";
  */
 export const validate = createNoopValidator();
 
+/**
+ * Join condition reaching a payment's provenance row.
+ *
+ * A payment no longer carries its own creation column: when it was made is
+ * provenance, kept in `entity_metadata` under the payment's own id and
+ * written by the storage logging middleware. The payment lists show, sort and
+ * date-filter on that date, so their reads join it rather than reading a
+ * column. The table name is part of the condition even though `entity_id` is
+ * unique: a row naming another table is not this payment's history.
+ */
 export type LedgerEaWithBalance = SelectLedgerEa & { balance: string };
 
 export interface LedgerEaWithAccount {
@@ -63,7 +74,12 @@ export interface LedgerPaymentStorage {
   getAll(): Promise<LedgerPayment[]>;
   get(id: string): Promise<LedgerPayment | undefined>;
   getByIds(ids: string[]): Promise<LedgerPayment[]>;
-  getByLedgerEaId(ledgerEaId: string): Promise<LedgerPayment[]>;
+  /**
+   * Payments for one EA, as the EA payments list reads them: each row carries
+   * the creation date the list shows, sorts and date-filters on, joined from
+   * the ledger-owned created_at column.
+   */
+  getByLedgerEaId(ledgerEaId: string): Promise<LedgerPaymentWithCreatedDate[]>;
   getByAccountIdWithEntity(accountId: string): Promise<LedgerPaymentWithEntity[]>;
   getByAccountIdWithEntityPaginated(
     accountId: string, 
@@ -588,11 +604,15 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         .where(inArray(ledgerPayments.id, ids));
     },
 
-    async getByLedgerEaId(ledgerEaId: string): Promise<LedgerPayment[]> {
+    async getByLedgerEaId(ledgerEaId: string): Promise<LedgerPaymentWithCreatedDate[]> {
       const client = getClient();
-      return await client.select().from(ledgerPayments)
+      const results = await client
+        .select({ payment: ledgerPayments, createdDate: ledgerPayments.createdAt })
+        .from(ledgerPayments)
         .where(eq(ledgerPayments.ledgerEaId, ledgerEaId))
         .orderBy(desc(ledgerPayments.id));
+
+      return results.map(row => ({ ...row.payment, createdDate: row.createdDate }));
     },
 
     async getByAccountIdWithEntity(accountId: string): Promise<LedgerPaymentWithEntity[]> {
@@ -601,7 +621,8 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         .select({
           payment: ledgerPayments,
           ea: ledgerEa,
-          employer: employers
+          employer: employers,
+          createdDate: ledgerPayments.createdAt
         })
         .from(ledgerPayments)
         .innerJoin(ledgerEa, eq(ledgerPayments.ledgerEaId, ledgerEa.id))
@@ -617,6 +638,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
 
       return results.map(row => ({
         ...row.payment,
+        createdDate: row.createdDate,
         entityType: row.ea.entityType,
         entityId: row.ea.entityId,
         entityName: row.employer?.name || null,
@@ -644,7 +666,8 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         .select({
           payment: ledgerPayments,
           ea: ledgerEa,
-          employer: employers
+          employer: employers,
+          createdDate: ledgerPayments.createdAt
         })
         .from(ledgerPayments)
         .innerJoin(ledgerEa, eq(ledgerPayments.ledgerEaId, ledgerEa.id))
@@ -662,6 +685,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
 
       const data = results.map(row => ({
         ...row.payment,
+        createdDate: row.createdDate,
         entityType: row.ea.entityType,
         entityId: row.ea.entityId,
         entityName: row.employer?.name || null,
@@ -2024,6 +2048,7 @@ export function createLedgerPaymentBatchAssignmentStorage(): LedgerPaymentBatchA
           payment: ledgerPayments,
           ea: ledgerEa,
           employer: employers,
+          createdDate: ledgerPayments.createdAt,
           assignmentId: ledgerPaymentBatchAssignments.id,
         })
         .from(ledgerPaymentBatchAssignments)
@@ -2038,6 +2063,7 @@ export function createLedgerPaymentBatchAssignmentStorage(): LedgerPaymentBatchA
 
       return rows.map((r) => ({
         ...(r.payment as LedgerPayment),
+        createdDate: r.createdDate,
         entityType: r.ea.entityType,
         entityId: r.ea.entityId,
         entityName: r.employer?.name ?? null,
@@ -2135,8 +2161,12 @@ export function createLedgerStorage(
  */
 export const ledgerAccountLoggingConfig = defineLoggingConfig<LedgerAccountStorage>({
   module: 'ledger.accounts',
+  table: 'ledger_accounts',
   methods: {
-    create: { getEntityId: (args, result) => result?.id || args[0]?.name || 'new account' },
+    create: {
+      getEntityId: (args, result) => result?.id || args[0]?.name || 'new account',
+      metadataEntityId: (_args, result) => result?.id,
+    },
     update: {},
     delete: {},
   },
@@ -2155,9 +2185,13 @@ function formatPaymentForLog(payment: LedgerPayment | undefined): string {
 
 export const ledgerPaymentBatchLoggingConfig = defineLoggingConfig<LedgerPaymentBatchStorage>({
   module: 'ledger.paymentBatches',
+  table: 'ledger_payment_batches',
   hostEntityId: (args, result) => result?.id ?? args[0],
   methods: {
-    create: { getEntityId: (args, result) => result?.id || args[0]?.name || 'new batch' },
+    create: {
+      getEntityId: (args, result) => result?.id || args[0]?.name || 'new batch',
+      metadataEntityId: (_args, result) => result?.id,
+    },
     update: {},
     delete: {},
   },
@@ -2171,10 +2205,12 @@ export const ledgerPaymentBatchLoggingConfig = defineLoggingConfig<LedgerPayment
  */
 export const ledgerPaymentLoggingConfig: StorageLoggingConfig<LedgerPaymentStorage> = {
   module: 'ledger.payments',
+  table: 'ledger_payments',
   methods: {
     create: {
       enabled: true,
       getEntityId: (args, result) => formatPaymentForLog(result),
+      metadataEntityId: (args, result, beforeState) => result?.id ?? beforeState?.id ?? args[0],
       getHostEntityId: async (args, result) => {
         return result?.id;
       },
@@ -2185,6 +2221,7 @@ export const ledgerPaymentLoggingConfig: StorageLoggingConfig<LedgerPaymentStora
     update: {
       enabled: true,
       getEntityId: (args, result, beforeState) => formatPaymentForLog(result || beforeState),
+      metadataEntityId: (args, result, beforeState) => result?.id ?? beforeState?.id ?? args[0],
       getHostEntityId: async (args, result, beforeState) => {
         return result?.id || beforeState?.id || args[0];
       },
@@ -2198,6 +2235,7 @@ export const ledgerPaymentLoggingConfig: StorageLoggingConfig<LedgerPaymentStora
     delete: {
       enabled: true,
       getEntityId: (args, result, beforeState) => formatPaymentForLog(beforeState),
+      metadataEntityId: (args, result, beforeState) => result?.id ?? beforeState?.id ?? args[0],
       getHostEntityId: async (args, result, beforeState) => {
         return beforeState?.id || args[0];
       },

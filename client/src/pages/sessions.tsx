@@ -20,7 +20,7 @@ import { Trash2, User, Clock, RefreshCw } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
-import { format, formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "@/lib/date-format";
 import {
   AlertDialog,
   AlertDialogAction,

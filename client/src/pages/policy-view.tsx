@@ -19,12 +19,6 @@ function PolicyDetailsContent() {
               </p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Record ID</label>
-              <p className="text-foreground font-mono text-sm" data-testid="text-policy-id">
-                {policy.id}
-              </p>
-            </div>
-            <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Name</label>
               <p className="text-foreground" data-testid="text-policy-name">
                 {policy.name || <span className="text-muted-foreground italic">Not set</span>}

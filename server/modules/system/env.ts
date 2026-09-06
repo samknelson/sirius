@@ -3,7 +3,7 @@ import { storage } from "../../storage";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import {
   ENV_RELEASE_SENTINEL,
-  getEnvironmentVariable,
+  getConfiguredEnvironmentValue,
   isEnvironmentVariableOverridable,
   isEnvironmentVariableRegistered,
   isEnvironmentVariableSetInProcess,
@@ -37,7 +37,12 @@ export function registerEnvRoutes(app: Express) {
         let value: string | null = null;
         if (!v.secret && v.isSet) {
           try {
-            value = getEnvironmentVariable(v.name) ?? null;
+            // What the variable is CONFIGURED to be: for a value the app
+            // planted in its own environment from a stored one, the running
+            // process keeps using the planted value until a restart, so
+            // reading that back would show an edit made on this very page as
+            // having done nothing.
+            value = getConfiguredEnvironmentValue(v.name) ?? null;
           } catch {
             value = null;
           }

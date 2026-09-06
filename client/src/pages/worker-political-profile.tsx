@@ -27,7 +27,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Search, RefreshCw, User, Phone, Mail, Globe, ExternalLink } from "lucide-react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 
 interface PoliticalOfficial {
   id: string;

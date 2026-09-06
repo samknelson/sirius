@@ -1,73 +1,14 @@
 import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/contexts/PageTitleContext";
-import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
-import {
-  getAllPoliciesNeeded,
-  getAccessibleSections,
-  type AccessContext,
-} from "@/config/navigation-registry";
-
-interface ComponentConfig {
-  componentId: string;
-  enabled: boolean;
-}
+import { useAccessibleConfigSections } from "@/hooks/useConfigNavigation";
 
 export default function ConfigurationLandingPage() {
   usePageTitle("Configuration");
-  const { hasPermission } = useAuth();
 
-  const { data: componentConfig = [] } = useQuery<ComponentConfig[]>({
-    queryKey: ["/api/components/config"],
-    staleTime: 60000,
-  });
-
-  const isComponentEnabled = (componentId: string) => {
-    const config = componentConfig.find(c => c.componentId === componentId);
-    return config?.enabled ?? false;
-  };
-
-  const policiesNeeded = useMemo(() => getAllPoliciesNeeded(), []);
-
-  const { data: policyResults = {} } = useQuery<Record<string, { allowed: boolean }>>({
-    queryKey: ["/api/access/policies/batch", ...policiesNeeded],
-    queryFn: async () => {
-      if (policiesNeeded.length === 0) return {};
-      
-      const results: Record<string, { allowed: boolean }> = {};
-      await Promise.all(
-        policiesNeeded.map(async (policy) => {
-          try {
-            const response = await fetch(`/api/access/policies/${policy}`);
-            if (response.ok) {
-              const data = await response.json();
-              results[policy] = { allowed: data.access?.granted ?? false };
-            } else {
-              results[policy] = { allowed: false };
-            }
-          } catch {
-            results[policy] = { allowed: false };
-          }
-        })
-      );
-      return results;
-    },
-    staleTime: 30000,
-    enabled: policiesNeeded.length > 0,
-  });
-
-  const accessContext: AccessContext = useMemo(() => ({
-    hasPermission,
-    policyResults,
-    isComponentEnabled,
-  }), [hasPermission, policyResults, componentConfig]);
-
-  const accessibleSections = useMemo(
-    () => getAccessibleSections(accessContext),
-    [accessContext]
-  );
+  // The same resolved, access-filtered navigation the sidebar renders, so the
+  // two agree about what exists and what each list is called.
+  const { sections: accessibleSections } = useAccessibleConfigSections();
 
   return (
     <div className="space-y-6">
@@ -92,6 +33,16 @@ export default function ConfigurationLandingPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-1">
+                {section.itemsStatus === "loading" && (
+                  <p className="px-3 py-2 text-sm text-muted-foreground" data-testid={`text-${section.id}-loading`}>
+                    Loading…
+                  </p>
+                )}
+                {section.itemsStatus === "error" && (
+                  <p className="px-3 py-2 text-sm text-destructive" data-testid={`text-${section.id}-error`}>
+                    Couldn't load these
+                  </p>
+                )}
                 {section.items.map((item) => (
                   <Link key={item.path} href={item.path}>
                     <div

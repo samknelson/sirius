@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { logger } from "../../logger";
 import { storage } from "../../storage";
 import { runInTransaction } from "../../storage/transaction-context";
+import { withFrameworkWrite } from "../../middleware/request-context";
 import { getEffectiveUser } from "../../modules/masquerade";
 import { checkAccess } from "../../services/access-policy-evaluator";
 import { isComponentEnabled } from "../../modules/components";
@@ -308,14 +309,18 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
               plugin.id,
             );
             if (existing.length > 0) return;
-            await storage.pluginConfigs.create({
-              pluginKind: "dashboard",
-              pluginId: plugin.id,
-              enabled: this.defaultEnabled(plugin),
-              name: null,
-              ordering: 0,
-              data: plugin.defaultSettings ?? {},
-            });
+            // The framework's own doing (see `withFrameworkWrite`): the row
+            // gets its provenance stamp with no person, and no audit entry.
+            await withFrameworkWrite(() =>
+              storage.pluginConfigs.create({
+                pluginKind: "dashboard",
+                pluginId: plugin.id,
+                enabled: this.defaultEnabled(plugin),
+                name: null,
+                ordering: 0,
+                data: plugin.defaultSettings ?? {},
+              }),
+            );
             logger.info(`Seeded default dashboard config for ${plugin.id}`, {
               service: SERVICE,
             });
@@ -374,17 +379,22 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
           if (candidates.length > 0) roleIds = candidates;
         }
 
-        await runInTransaction(async () => {
-          await storage.pluginConfigs.upsertSubsidiary("dashboard", {
-            id: cfg.id,
-            roles: roleIds,
-          });
-          if (stripRoles) {
-            const data = { ...((cfg.data ?? {}) as Record<string, unknown>) };
-            delete data.roles;
-            await storage.pluginConfigs.update(cfg.id, { data });
-          }
-        });
+        // Backfilling the invariant is the framework's own doing (see
+        // `withFrameworkWrite`): stamped with no person, and no audit entry
+        // for a row nobody edited.
+        await withFrameworkWrite(() =>
+          runInTransaction(async () => {
+            await storage.pluginConfigs.upsertSubsidiary("dashboard", {
+              id: cfg.id,
+              roles: roleIds,
+            });
+            if (stripRoles) {
+              const data = { ...((cfg.data ?? {}) as Record<string, unknown>) };
+              delete data.roles;
+              await storage.pluginConfigs.update(cfg.id, { data });
+            }
+          }),
+        );
         logger.info(`Backfilled dashboard role for config ${cfg.id}`, {
           service: SERVICE,
         });
@@ -438,14 +448,19 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
             }
             if (data !== undefined || enabledVar) {
               const enabled = enabledVar ? Boolean(enabledVar.value) : this.defaultEnabled(plugin);
-              await storage.pluginConfigs.create({
-                pluginKind: "dashboard",
-                pluginId: plugin.id,
-                enabled,
-                name: null,
-                ordering: 0,
-                data: data ?? {},
-              });
+              // A legacy setting moving to its new home is the framework's own
+              // doing, not the doing of whoever set the old variable years ago
+              // (see `withFrameworkWrite`).
+              await withFrameworkWrite(() =>
+                storage.pluginConfigs.create({
+                  pluginKind: "dashboard",
+                  pluginId: plugin.id,
+                  enabled,
+                  name: null,
+                  ordering: 0,
+                  data: data ?? {},
+                }),
+              );
               logger.info(`Backfilled dashboard plugin config for ${plugin.id}`, { service: SERVICE });
             }
           },

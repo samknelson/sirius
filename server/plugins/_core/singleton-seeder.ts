@@ -8,6 +8,7 @@
 // esbuild production bundle. These symbols are only used at seed time (inside
 // the async function), so the lazy import is behavior-neutral.
 import { logger } from "../../logger";
+import { withFrameworkWrite } from "../../middleware/request-context";
 import { listPluginKinds, getPluginKind } from "./kinds";
 import { getPluginConfigAdapter } from "./config-adapter";
 
@@ -70,18 +71,24 @@ export async function bootstrapSingletonPluginConfigs(): Promise<void> {
         // mirror that here so seeded rows match route-created rows.
         base.siriusId = (flat as { siriusId?: string | null }).siriusId ?? null;
 
-        await runInTransaction(async () => {
-          // The storage layer reads singleton-ness from the plugin manifest
-          // (this plugin is `meta.singleton`), so the create call no longer
-          // needs an explicit flag.
-          const row = await storage.pluginConfigs.create(base as any);
-          if (subsidiary) {
-            await storage.pluginConfigs.upsertSubsidiary(kind, {
-              id: row.id,
-              ...subsidiary,
-            });
-          }
-        });
+        // Seeding a row a plugin needs to exist is the framework's own doing,
+        // not an administrator's: the configuration gets its provenance stamp
+        // (with no person) and no audit entry, so a restart that seeds a newly
+        // added cron job does not read as somebody having created it.
+        await withFrameworkWrite(() =>
+          runInTransaction(async () => {
+            // The storage layer reads singleton-ness from the plugin manifest
+            // (this plugin is `meta.singleton`), so the create call no longer
+            // needs an explicit flag.
+            const row = await storage.pluginConfigs.create(base as any);
+            if (subsidiary) {
+              await storage.pluginConfigs.upsertSubsidiary(kind, {
+                id: row.id,
+                ...subsidiary,
+              });
+            }
+          }),
+        );
 
         logger.info(`Seeded singleton plugin config: ${meta.id}`, {
           service: "singleton-seeder",

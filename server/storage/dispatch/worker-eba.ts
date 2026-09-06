@@ -21,6 +21,8 @@ export interface WorkerDispatchEbaStorage {
 
 export const workerDispatchEbaLoggingConfig: StorageLoggingConfig<WorkerDispatchEbaStorage> = {
   module: 'worker-dispatch-eba',
+  table: 'worker_dispatch_eba',
+  hostTable: 'workers',
   methods: {
     syncDatesForWorker: {
       enabled: true,

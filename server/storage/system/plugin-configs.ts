@@ -1,5 +1,6 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient, onAfterCommit } from '../transaction-context';
+import { defineLoggingConfig } from "../middleware/logging";
 import {
   pluginConfigs,
   type PluginConfig,
@@ -179,6 +180,67 @@ export interface PluginConfigStorage {
   search(type: string, params?: PluginConfigSearchParams): Promise<PluginConfigWithSubsidiary[]>;
 }
 
+/** How one configuration is named where a person reads the log. */
+function describeConfig(row: PluginConfig | null | undefined): string {
+  if (!row) return "plugin configuration";
+  const named = row.name ? ` "${row.name}"` : "";
+  return `${row.pluginKind} configuration ${row.pluginId}${named}`;
+}
+
+/**
+ * Audit + provenance for the unified plugin configuration table.
+ *
+ * `plugin_configs` is where component, cron, notifier, charge and dashboard
+ * settings now live, so "who turned this off" is a question about this table.
+ * Every mutation is logged and every mutation stamps the record's
+ * `entity_metadata` row: saving, enabling, disabling and reordering all arrive
+ * as `update` (there is no separate endpoint for any of them), so the log
+ * entry's `changes` is what tells the three apart.
+ *
+ * `upsertSubsidiary` has to say what it does out loud. The middleware reads
+ * create / update / delete out of a method NAME and this one is neither, so
+ * without the hooks below a subsidiary write — the relational half of the same
+ * configuration — would be logged with no before/after and no diff. It is a
+ * modification OF THE CONFIG: the subsidiary row is the config's own second
+ * half (its primary key is the config id), not a record of its own. A kind
+ * with no subsidiary namespace writes nothing at all, and is not logged.
+ */
+export const pluginConfigLoggingConfig = defineLoggingConfig<PluginConfigStorage>({
+  module: "pluginConfigs",
+  table: "plugin_configs",
+  state: { key: "config" },
+  methods: {
+    create: {
+      getDescription: (_args, result) => `Created ${describeConfig(result)}`,
+    },
+    update: {
+      getDescription: (_args, result, beforeState) =>
+        `Updated ${describeConfig(result ?? beforeState?.config)}`,
+    },
+    delete: {
+      getDescription: (_args, _result, beforeState) =>
+        `Deleted ${describeConfig(beforeState?.config)}`,
+    },
+    upsertSubsidiary: {
+      getEntityId: (args) => args[1]?.id,
+      before: async (args, storage) => {
+        const envelope = await (storage as PluginConfigStorage).getWithSubsidiary(args[1]?.id);
+        return { config: envelope?.config, subsidiary: envelope?.subsidiary ?? null };
+      },
+      after: async (_args, result, _storage, beforeState) => ({
+        config: beforeState?.config,
+        subsidiary: (result ?? null) as PluginConfigSubsidiary,
+      }),
+      // A kind without a subsidiary namespace gets `null` back and no row is
+      // written; there is nothing to report and nothing to stamp.
+      shouldLog: (_args, result) => result !== null,
+      metadataMode: "modified",
+      getDescription: (_args, _result, beforeState) =>
+        `Updated ${describeConfig(beforeState?.config)} settings`,
+    },
+  },
+});
+
 export function createPluginConfigStorage(): PluginConfigStorage {
   /**
    * Internal per-kind subsidiary namespaces, keyed by the PluginKind
@@ -314,7 +376,7 @@ export function createPluginConfigStorage(): PluginConfigStorage {
       const client = getClient();
       const [row] = await client
         .update(pluginConfigs)
-        .set({ ...configUpdate, updatedAt: new Date() })
+        .set({ ...configUpdate })
         .where(eq(pluginConfigs.id, id))
         .returning();
       if (row) emitConfigSaved(row.pluginKind, row.id, "update");

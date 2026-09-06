@@ -16,7 +16,11 @@ import { formatYmd, getTodayYmd } from "@shared/utils/date";
 import { createUnifiedOptionsStorage } from "../../../storage/unified-options";
 import { isComponentEnabledSync } from "../../../services/component-cache";
 import { registerQuicksearchPlugin } from "../registry";
-import type { QuicksearchContext, QuicksearchPlugin, QuicksearchResult } from "../types";
+import type {
+  QuicksearchContext,
+  QuicksearchPlugin,
+  QuicksearchPluginResult,
+} from "../types";
 
 /**
  * The wording the sheets list shows for a sheet's own status. Kept in step
@@ -148,7 +152,7 @@ export const edlsSheetQuicksearchPlugin: QuicksearchPlugin = {
   needsReadOnlyDb: true,
   settingsSchema,
 
-  async search(ctx: QuicksearchContext): Promise<QuicksearchResult[]> {
+  async search(ctx: QuicksearchContext): Promise<QuicksearchPluginResult[]> {
     const plan = planEdlsSheetSearch(ctx.query, ctx.settings as EdlsSheetSearchSettings);
     const contains = `%${plan.title}%`;
 
@@ -292,7 +296,6 @@ export const edlsSheetQuicksearchPlugin: QuicksearchPlugin = {
         title: row.title,
         subtitle: subtitleParts.join(" · "),
         badges: [STATUS_LABELS[row.status] ?? row.status],
-        href: `/edls/sheet/${row.id}`,
         matchedOn: describeMatch(row),
       };
     });

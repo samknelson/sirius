@@ -40,6 +40,8 @@ async function getSkillName(skillId: string): Promise<string> {
 
 export const workerSkillLoggingConfig = defineLoggingConfig<WorkerSkillStorage>({
   module: 'worker-skills',
+  table: 'worker_skills',
+  hostTable: 'workers',
   state: { key: 'workerSkill' },
   hostEntityId: (args, result, before) =>
     before?.workerSkill?.workerId ?? result?.workerId ?? args[0]?.workerId,

@@ -1,9 +1,9 @@
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
-import NotesPanel from "@/components/notes/NotesPanel";
+import EntityNotesPanel from "@/components/entity-notes/EntityNotesPanel";
 
 function WorkerNotesContent() {
   const { worker } = useWorkerLayout();
-  return <NotesPanel entityType="worker" entityId={worker.id} />;
+  return <EntityNotesPanel contextId="worker" entityId={worker.id} />;
 }
 
 export default function WorkerNotesPage() {

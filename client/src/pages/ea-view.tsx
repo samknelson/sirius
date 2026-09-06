@@ -116,12 +116,6 @@ function EAViewContent() {
         <CardContent className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Entry ID</label>
-              <p className="text-foreground font-mono text-sm" data-testid="text-entry-id">
-                {ea.id}
-              </p>
-            </div>
-            <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Account</label>
               <p className="text-foreground" data-testid="text-account-name">
                 {account?.name || ea.accountId}
