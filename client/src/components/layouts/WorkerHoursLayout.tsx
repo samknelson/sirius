@@ -9,6 +9,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { EmploymentStatus } from "@/lib/entity-types";
 import { useWorkerHoursTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
 
 interface WorkerHoursEntry {
   id: string;
@@ -78,19 +83,10 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
   if (error) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Clock className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">Hours Entry Not Found</span>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<Clock className="text-primary-foreground" size={16} />}
+          label="Hours Entry Not Found"
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -118,18 +114,9 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
   if (isLoading || !hoursEntry) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Clock className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<Clock className="text-primary-foreground" size={16} />}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -155,26 +142,17 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
   return (
     <WorkerHoursLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16 gap-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Clock className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground" data-testid="text-hours-title">
-                  {hoursHeaderTitle}
-                </h1>
-              </div>
-              <Link href={`/workers/${hoursEntry.workerId}/employment/daily`}>
-                <Button variant="ghost" size="sm" data-testid="link-back-hours-list">
-                  <ArrowLeft size={16} className="mr-2" />
-                  Back to hours list
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<Clock className="text-primary-foreground" size={16} />}
+          title={hoursHeaderTitle}
+          titleTestId="text-hours-title"
+          backLink={{
+            href: `/workers/${hoursEntry.workerId}/employment/daily`,
+            label: "Back to hours list",
+            testId: "link-back-hours-list",
+          }}
+          recordId={hoursEntry.id}
+        />
 
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

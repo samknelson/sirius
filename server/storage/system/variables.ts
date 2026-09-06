@@ -95,6 +95,7 @@ export function createVariableStorage(): VariableStorage {
 
 export const variableLoggingConfig = defineLoggingConfig<VariableStorage>({
   module: 'variables',
+  table: 'variables',
   methods: {
     create: { getEntityId: (args) => args[0]?.name },
     update: {},

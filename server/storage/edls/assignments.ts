@@ -24,6 +24,7 @@ import { getClient, runInTransaction } from "../transaction-context";
 import { createUnifiedOptionsStorage } from "../unified-options";
 import { createEdlsCrewsStorage } from "./crews";
 import { isComponentEnabledSync } from "../../services/component-cache";
+import { provenanceCreatedDate } from "../system/entity-metadata-order";
 import type { SnapshotNode } from "@shared/snapshots";
 
 /**
@@ -525,6 +526,13 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       // about the assignment as it currently stands is not a target. Editing
       // the assignment voids that receipt, which is what puts them back in
       // this result for the next send.
+      //
+      // Where a contact somehow holds more than one active primary number,
+      // the oldest one wins — the answer this read has always given. That
+      // date used to be `contact_phone.created_at`; it is now the record's
+      // provenance, seeded from that very column, so the pick is unchanged.
+      // A number whose provenance has not landed yet sorts last and the id
+      // settles any remaining tie, so the ordering stays total.
       const result = await client.execute(sql`
         SELECT
           ea.id as "assignmentId",
@@ -542,7 +550,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           WHERE p.contact_id = c.id
             AND p.is_active = true
             AND p.is_primary = true
-          ORDER BY p.created_at ASC, p.id ASC
+          ORDER BY ${provenanceCreatedDate("contact_phone", sql`p.id`)} ASC NULLS LAST, p.id ASC
           LIMIT 1
         ) ph ON true
         WHERE ec.sheet_id = ${sheetId}
@@ -1159,6 +1167,9 @@ async function getWorkerDescription(workerId: string): Promise<string> {
 
 export const edlsAssignmentsLoggingConfig = defineLoggingConfig<EdlsAssignmentsStorage>({
   module: 'edls-assignments',
+  table: 'edls_assignments',
+  hostTable: 'edls_sheets',
+  metadataTiming: 'transactional',
   // No module-level stateKey — `before` for delete/updateData augments the
   // raw assignment row with a `workerDesc` lookup, and `after` is suppressed
   // (set explicitly to undefined) so legacy logs stay byte-identical.

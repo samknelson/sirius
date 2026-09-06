@@ -1,4 +1,4 @@
-import { ymdToDateForPicker } from "@shared/utils/date";
+import { ymdToDateForPicker, formatYmd as formatYmdString, isValidYmd } from "@shared/utils/date";
 import type { GrievanceStepsDenorm } from "@shared/schema";
 import { useVariableValue } from "@/lib/use-variable";
 
@@ -65,15 +65,21 @@ export function deadlineColorClass(ymd: string, thresholds: DeadlineThresholds):
   return "text-yellow-600 dark:text-yellow-500 font-medium";
 }
 
+/**
+ * A deadline is a calendar DATE — it names the day the step is due, not a
+ * moment. Rendered straight from the Ymd, with no Date in between: putting one
+ * through `toLocaleDateString` hands it to a zone, and a zone can only move it
+ * onto the day before or after.
+ */
 export function formatYmd(ymd: string | null): string {
-  if (!ymd) return "—";
-  return ymdToDateForPicker(ymd).toLocaleDateString();
+  if (!ymd || !isValidYmd(ymd)) return "—";
+  return formatYmdString(ymd, "short");
 }
 
-/** Localized date plus a calendar-day countdown, e.g. "8/9/2026 (20 days)". */
+/** Date plus a calendar-day countdown, e.g. "Aug 9, 2026 (20 days)". */
 export function formatYmdWithCountdown(ymd: string | null): string {
-  if (!ymd) return "—";
-  const date = ymdToDateForPicker(ymd).toLocaleDateString();
+  if (!ymd || !isValidYmd(ymd)) return "—";
+  const date = formatYmdString(ymd, "short");
   const days = daysUntilYmd(ymd);
   let suffix: string;
   if (days === 0) suffix = "today";

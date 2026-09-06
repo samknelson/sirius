@@ -64,6 +64,8 @@ async function getFacilityName(facilityId: string | undefined): Promise<string> 
 // entity for these logs (args[0] is always the job id).
 export const dispatchJobFacilityLoggingConfig = defineLoggingConfig<DispatchJobFacilityStorage>({
   module: 'dispatch-job-facility',
+  table: 'dispatch_job_facility',
+  hostTable: 'dispatch_jobs',
   methods: {
     setForJob: {
       getEntityId: (args, result) => result?.id || `job ${args[0]}`,
@@ -82,6 +84,9 @@ export const dispatchJobFacilityLoggingConfig = defineLoggingConfig<DispatchJobF
       },
     },
     clearForJob: {
+      // Removes the link row, so the record it names stops existing — the
+      // name doesn't say so, so the mode does.
+      metadataMode: 'deleted',
       getEntityId: (args, _result, beforeState) => beforeState?.link?.id || `job ${args[0]}`,
       getHostEntityId: (args) => args[0],
       before: async (args, storage) => ({ link: (await storage.getByJob(args[0])) ?? null }),

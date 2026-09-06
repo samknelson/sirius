@@ -4,6 +4,11 @@ import App from "./App";
 import "./index.css";
 import { ClerkProvider, useClerk } from "@clerk/clerk-react";
 import { registerClerkSignOut } from "@/contexts/AuthContext";
+import { installTimeZoneRedirection } from "@/lib/display-timezone";
+
+// Before anything renders, so no date is ever formatted by an unredirected
+// path. A no-op for everyone whose display zone is their own browser's.
+installTimeZoneRedirection();
 
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 

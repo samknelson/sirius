@@ -15,6 +15,16 @@ A component's manifest tables only exist where that component is enabled, and mo
 - Shape the guard as probe → `if` → early return with a log line, naming the table in the probe. An architecture-lint rule in the `lint` gate enforces exactly that shape over the SQL each core migration executes. It is textual: it proves a named check is present and positioned before the first use, not that the code branches correctly, and it cannot see a Drizzle query builder or assembled SQL. Satisfying it is necessary, not sufficient.
 - Same philosophy as the baselines' skippable-error handling: `relation "..." does not exist` while touching a component table is a normal condition, not a failure.
 - Skipping costs nothing later: when the component is eventually enabled, schema-push creates its tables from the current Drizzle definition, columns and named indexes included. So the skip path only has to leave no drift — it must not "half-apply" anything.
+- For a metadata repair that seeds records and retires local columns, guard both the baseline insert and the column drop. A registered context can still name a table whose optional component is disabled.
+
+## Retiring a column that a COMPONENT migration added
+
+Two migrations, in two different series, and the split is not optional:
+
+- The data move (e.g. seeding provenance out of the doomed column) is a **core** migration, guarded so it states a reason and writes nothing where the component is off.
+- The `DROP COLUMN` belongs in the **component's own** series, not core. A deployment that enables the component later replays that series from version 0, so the earlier migration that ADDED the column runs again on a freshly pushed table; only a later migration in the same series takes it back off. A core drop would have run long before and would leave the column resurrected, and drifting.
+
+Ordering is safe by construction: at boot the core runner finishes before `runPendingComponentMigrationsAtStartup`, which finishes before the drift gate. So core-seed → component-drop → gate all happen on the one restart.
 
 ## Lifecycle trap: a CORE table with an FK to a component table
 

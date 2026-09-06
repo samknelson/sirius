@@ -24,7 +24,9 @@ async function main() {
   console.log(`Snapshots after: ${after.length}`);
   if (after.length > before.length) {
     const s = after[0];
-    console.log(`Captured: label="${s.label}" author=${s.authorName ?? "null"} at ${s.createdAt}`);
+    console.log(
+      `Captured: label="${s.label}" author=${s.capturedByName ?? "null"} at ${s.capturedAt ?? "null"}`,
+    );
     const full = await storage.snapshots.get(s.id);
     const node = full!.data as any;
     console.log(`Bundle version=${node.version} crews=${node.data.crews?.length ?? 0}`);

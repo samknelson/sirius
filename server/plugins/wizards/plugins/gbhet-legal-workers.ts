@@ -167,10 +167,17 @@ function buildGbhetValidateStep(feed: FeedWizard): WizardStepHandler {
           throw new Error(`Invalid target status ID: ${m.targetStatusId}`);
         }
       }
-      await ctx.storage.wizardEmploymentStatusMappings.upsertBatch(
-        employerId,
-        mappings,
-      );
+      // One call per mapping: each is an operator edit of its own record, and
+      // the storage layer records it — log entry and provenance — one record
+      // at a time. A batch method on the storage module could not; it would
+      // reach its own unwrapped `upsert` and be invisible.
+      for (const m of mappings) {
+        await ctx.storage.wizardEmploymentStatusMappings.upsert(
+          employerId,
+          m.sourceStatus,
+          m.targetStatusId,
+        );
+      }
       // No data merge — the client re-runs validation to clear the unmapped
       // statuses now that the mappings exist.
       return {};

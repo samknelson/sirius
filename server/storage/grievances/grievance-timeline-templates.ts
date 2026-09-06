@@ -347,6 +347,8 @@ async function describeTemplate(
 export const grievanceTimelineTemplateLoggingConfig: StorageLoggingConfig<GrievanceTimelineTemplateStorage> =
   {
     module: "grievanceTimelineTemplates",
+    table: "grievance_timeline_templates",
+    hostTable: "grievance_timeline_templates",
     methods: {
       create: {
         enabled: true,
@@ -379,6 +381,7 @@ export const grievanceTimelineTemplateLoggingConfig: StorageLoggingConfig<Grieva
       },
       createStep: {
         enabled: true,
+        table: "grievance_timeline_template_steps",
         getEntityId: (_args, result) => result?.id,
         getHostEntityId: (_args, result) => result?.templateId,
         after: async (_args, result) => result,
@@ -386,6 +389,7 @@ export const grievanceTimelineTemplateLoggingConfig: StorageLoggingConfig<Grieva
       },
       updateStep: {
         enabled: true,
+        table: "grievance_timeline_template_steps",
         getEntityId: (args) => args[1],
         getHostEntityId: (args) => args[0],
         after: async (args, result) => result,
@@ -393,6 +397,7 @@ export const grievanceTimelineTemplateLoggingConfig: StorageLoggingConfig<Grieva
       },
       deleteStep: {
         enabled: true,
+        table: "grievance_timeline_template_steps",
         getEntityId: (args) => args[1],
         getHostEntityId: (args) => args[0],
         getDescription: async () => `Removed step from timeline template`,

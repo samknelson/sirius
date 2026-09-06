@@ -3,7 +3,6 @@ import type { Server } from "http";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./vite";
 import { initializePermissions } from "@shared/permissions";
-import { assertNoteEntityTablesComplete } from "./storage/notes-entity-types";
 import { addressValidationService } from "./services/comm/validators/address";
 import { logger } from "./logger";
 import { setupAuth } from "./auth";
@@ -156,11 +155,37 @@ function installBaseMiddleware(app: Express): void {
  * the "ready" signal are intentionally left to each entry point.
  */
 export async function bootstrapApp(app: Express, server: Server): Promise<void> {
-  installBaseMiddleware(app);
+  // FIRST, before anything reads a clock or writes a row. Every naive
+  // timestamp column stores a wall-clock reading in this process's zone, so
+  // the zone has to be settled before the schema bring-up, the first
+  // migration and the first defaulted row — not merely before the app serves
+  // traffic. A zone applied afterwards cannot repair rows already written in
+  // the container's zone. Throws on an unrecognised zone name rather than
+  // letting Node silently ignore it and run the whole site in UTC.
+  //
+  // TZ may be supplied by an in-app override rather than the environment, and
+  // overrides live in the database — so this reads that ONE row directly
+  // instead of waiting for the override cache, which is not installed until
+  // after the migrations have already written timestamps. The peek is
+  // fail-soft: an unreachable or not-yet-created variables table is the schema
+  // bring-up's failure to report, not this step's.
+  {
+    const { applySystemTimeZone } = await import("./config/system-timezone");
+    let applied = applySystemTimeZone();
+    if (!applied.configured) {
+      const { peekEnvOverride } = await import("./services/env-overrides");
+      const stored = await peekEnvOverride("TZ");
+      if (stored) applied = applySystemTimeZone(() => stored);
+    }
+    logger.info(
+      applied.configured
+        ? `System time zone: ${applied.zone}`
+        : `System time zone: ${applied.zone} (TZ unset — using the container default)`,
+      { source: "startup", timeZone: applied.zone, configured: applied.configured },
+    );
+  }
 
-  // Fail fast when a note-able record type declared in shared/notes.ts has no
-  // table binding: without one the orphan sweep would silently skip its notes.
-  assertNoteEntityTablesComplete();
+  installBaseMiddleware(app);
 
   // Initialize the permission system
   initializePermissions();
@@ -234,6 +259,25 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   {
     const { initEnvOverrides } = await import("./services/env-overrides");
     await initEnvOverrides();
+
+    // Safety net, normally a no-op: the stored override was already read
+    // directly at the top of this function. It fires only if the peek could
+    // not reach the database while the bring-up could. Still safe to move the
+    // zone here — the cron scheduler has not been started and no
+    // request-serving formatter exists yet — but anything written in between
+    // is already in the old zone, which is why the early peek exists. Pooled
+    // database sessions realign on their next checkout (server/storage/db.ts).
+    {
+      const { applySystemTimeZone } = await import("./config/system-timezone");
+      const applied = applySystemTimeZone();
+      if (applied.changed) {
+        logger.warn(
+          `System time zone moved to ${applied.zone} only after the schema bring-up; ` +
+            `any timestamps written during bring-up are in the previous zone`,
+          { source: "startup", timeZone: applied.zone },
+        );
+      }
+    }
 
     // Task #1258. Refuse to boot when the reloadable-subsystem registry and
     // the per-variable change-effect classification disagree — otherwise the
@@ -309,12 +353,19 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
     const { reconcileComponentPluginConfigs } = await import(
       "./services/component-lifecycle"
     );
-    for (const component of getAllComponents()) {
-      if (!component.pluginConfigs?.length) continue;
-      if (await isComponentEnabled(component.id)) {
-        await reconcileComponentPluginConfigs(component.id, true);
+    // Self-heal, so the writes are the framework's own: stamped with no
+    // person and kept out of the audit log, unlike the same reconcile run
+    // from an administrator's enable/disable request (see the components
+    // module), which is genuinely that administrator's doing.
+    const { withFrameworkWrite } = await import("./middleware/request-context");
+    await withFrameworkWrite(async () => {
+      for (const component of getAllComponents()) {
+        if (!component.pluginConfigs?.length) continue;
+        if (await isComponentEnabled(component.id)) {
+          await reconcileComponentPluginConfigs(component.id, true);
+        }
       }
-    }
+    });
   }
   logger.info("Component-owned plugin configs reconciled", { source: "startup" });
 

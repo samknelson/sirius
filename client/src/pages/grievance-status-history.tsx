@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { format } from "date-fns";
+import { format, formatLocalFields } from "@/lib/date-format";
 import { CalendarClock, Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -80,7 +80,7 @@ interface StatusOption {
 
 /** Format a date for a `datetime-local` input (local time, minute precision). */
 function toDatetimeLocal(value: string | Date): string {
-  return format(new Date(value), "yyyy-MM-dd'T'HH:mm");
+  return formatLocalFields(new Date(value), "yyyy-MM-dd'T'HH:mm");
 }
 
 /**

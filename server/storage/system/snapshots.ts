@@ -1,8 +1,33 @@
-import { snapshots, type Snapshot, type InsertSnapshot } from "@shared/schema";
-import type { SnapshotMeta } from "@shared/snapshots";
-import { eq, and, desc, inArray, lt } from "drizzle-orm";
+import {
+  snapshots,
+  users,
+  type Snapshot,
+  type InsertSnapshot,
+} from "@shared/schema";
+import {
+  snapshotRevisionFromValues,
+  type SnapshotMeta,
+} from "@shared/snapshots";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { getClient } from "../transaction-context";
 import { defineLoggingConfig } from "../middleware/logging";
+import { getRequestContext } from "../../middleware/request-context";
+
+/** The raw table these records live in, used by the audit logging config. */
+const SNAPSHOTS_TABLE = "snapshots";
+
+/**
+ * Snapshots are process output, not user-maintained records, so their capture
+ * provenance lives on the snapshot row rather than in entity metadata.
+ */
+export interface SnapshotProvenance {
+  capturedAt: Date | null;
+  /** Frozen on the snapshot row when the capture is written. */
+  capturedByName: string | null;
+}
+
+/** A full snapshot row (payload included) with the history the framework holds. */
+export type SnapshotWithProvenance = Omit<Snapshot, "createdAt" | "authorId" | "authorName"> & SnapshotProvenance;
 
 export interface SnapshotsStorage {
   create(snapshot: InsertSnapshot): Promise<Snapshot>;
@@ -21,7 +46,7 @@ export interface SnapshotsStorage {
    * the end — a page that comes back short is the end — without holding the
    * whole history in memory at once.
    *
-   * `created_at` orders WRITES. A caller that needs to place a snapshot
+   * `capturedAt` orders WRITES. A caller that needs to place a snapshot
    * relative to a particular save should read the save's own identity out of
    * the captured bundle rather than infer it from this ordering.
    */
@@ -30,16 +55,45 @@ export interface SnapshotsStorage {
     entityId: string,
     limit: number,
     offset?: number,
-  ): Promise<Snapshot[]>;
-  get(id: string): Promise<Snapshot | undefined>;
+  ): Promise<SnapshotWithProvenance[]>;
+  get(id: string): Promise<SnapshotWithProvenance | undefined>;
   delete(id: string): Promise<boolean>;
 }
 
 export function createSnapshotsStorage(): SnapshotsStorage {
+  const provenanceColumns = {
+    capturedAt: snapshots.createdAt,
+    capturedBy: snapshots.authorId,
+    capturedByName: snapshots.authorName,
+  };
+  const newestFirst = [desc(snapshots.createdAt), desc(snapshots.id)];
+
   return {
     async create(insertSnapshot: InsertSnapshot): Promise<Snapshot> {
       const client = getClient();
-      const [row] = await client.insert(snapshots).values(insertSnapshot).returning();
+      const context = getRequestContext();
+      const authorId = insertSnapshot.authorId ?? context?.userId ?? null;
+      let authorName = insertSnapshot.authorName ?? null;
+      if (authorId && authorName === null) {
+        const [author] = await client
+          .select({
+            firstName: users.firstName,
+            lastName: users.lastName,
+            email: users.email,
+          })
+          .from(users)
+          .where(eq(users.id, authorId));
+        authorName = author ? personName(author) : null;
+      }
+      const [row] = await client
+        .insert(snapshots)
+        .values({
+          ...insertSnapshot,
+          createdAt: new Date(),
+          authorId,
+          authorName,
+        })
+        .returning();
       return row;
     },
 
@@ -50,17 +104,22 @@ export function createSnapshotsStorage(): SnapshotsStorage {
           id: snapshots.id,
           entityType: snapshots.entityType,
           entityId: snapshots.entityId,
-          createdAt: snapshots.createdAt,
-          authorId: snapshots.authorId,
-          authorName: snapshots.authorName,
           label: snapshots.label,
+          revisionSeq: sql<string | null>`${snapshots.data}->'metadata'->>'seq'`,
+          revisionRev: sql<string | null>`${snapshots.data}->'metadata'->>'rev'`,
+          ...provenanceColumns,
         })
         .from(snapshots)
         .where(and(eq(snapshots.entityType, entityType), eq(snapshots.entityId, entityId)))
-        .orderBy(desc(snapshots.createdAt));
+        .orderBy(...newestFirst);
       return rows.map((row) => ({
-        ...row,
-        createdAt: row.createdAt.toISOString(),
+        id: row.id,
+        entityType: row.entityType,
+        entityId: row.entityId,
+        revision: snapshotRevisionFromValues(row.revisionSeq, row.revisionRev),
+        label: row.label,
+        capturedAt: row.capturedAt ? row.capturedAt.toISOString() : null,
+        capturedByName: row.capturedByName,
       }));
     },
 
@@ -74,7 +133,7 @@ export function createSnapshotsStorage(): SnapshotsStorage {
         })
         .from(snapshots)
         .where(and(eq(snapshots.entityType, entityType), inArray(snapshots.entityId, entityIds)))
-        .orderBy(snapshots.entityId, desc(snapshots.createdAt), desc(snapshots.id));
+        .orderBy(snapshots.entityId, ...newestFirst);
       return new Map(rows.map((row) => [row.entityId, row.id]));
     },
 
@@ -83,23 +142,41 @@ export function createSnapshotsStorage(): SnapshotsStorage {
       entityId: string,
       limit: number,
       offset = 0,
-    ): Promise<Snapshot[]> {
+    ): Promise<SnapshotWithProvenance[]> {
       const client = getClient();
-      return client
-        .select()
+      const rows = await client
+        .select({
+          id: snapshots.id,
+          entityType: snapshots.entityType,
+          entityId: snapshots.entityId,
+          label: snapshots.label,
+          data: snapshots.data,
+          ...provenanceColumns,
+        })
         .from(snapshots)
         .where(
           and(eq(snapshots.entityType, entityType), eq(snapshots.entityId, entityId)),
         )
-        .orderBy(desc(snapshots.createdAt), desc(snapshots.id))
+        .orderBy(...newestFirst)
         .limit(limit)
         .offset(offset);
+      return rows.map(toSnapshotWithProvenance);
     },
 
-    async get(id: string): Promise<Snapshot | undefined> {
+    async get(id: string): Promise<SnapshotWithProvenance | undefined> {
       const client = getClient();
-      const [row] = await client.select().from(snapshots).where(eq(snapshots.id, id));
-      return row || undefined;
+      const [row] = await client
+        .select({
+          id: snapshots.id,
+          entityType: snapshots.entityType,
+          entityId: snapshots.entityId,
+          label: snapshots.label,
+          data: snapshots.data,
+           ...provenanceColumns,
+        })
+        .from(snapshots)
+        .where(eq(snapshots.id, id));
+      return row ? toSnapshotWithProvenance(row) : undefined;
     },
 
     async delete(id: string): Promise<boolean> {
@@ -110,9 +187,45 @@ export function createSnapshotsStorage(): SnapshotsStorage {
   };
 }
 
+function personName(row: {
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+}): string | null {
+  const part = (value: string | null) =>
+    typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+  const full = [part(row.firstName), part(row.lastName)].filter(Boolean).join(" ");
+  return full || part(row.email);
+}
+
+/** A snapshot row with its own capture provenance. */
+function toSnapshotWithProvenance(row: {
+  id: string;
+  entityType: string;
+  entityId: string;
+  label: string | null;
+  data: unknown;
+  capturedAt: Date | null;
+  capturedBy: string | null;
+  capturedByName: string | null;
+}): SnapshotWithProvenance {
+  return {
+    id: row.id,
+    entityType: row.entityType,
+    entityId: row.entityId,
+    label: row.label,
+    data: row.data,
+    capturedAt: row.capturedAt,
+    capturedByName: row.capturedByName,
+  };
+}
+
 export const snapshotsLoggingConfig = defineLoggingConfig<SnapshotsStorage>({
   module: 'snapshots',
+  table: SNAPSHOTS_TABLE,
   methods: {
+    // The audit entry still names the captured entity; capture provenance is
+    // stored on the snapshot row itself.
     create: {
       state: { fallbackId: 'new snapshot' },
       getHostEntityId: (args, result) => result?.entityId || args[0]?.entityId,

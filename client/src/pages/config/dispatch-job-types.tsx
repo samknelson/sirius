@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { useOptionsListName } from "@/hooks/useConfigNavigation";
+import { BackToOptions } from "@/components/shared/BackToOptions";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link } from "wouter";
@@ -74,7 +76,9 @@ function getIconComponent(iconName: string | undefined): LucideIcon {
 }
 
 export default function DispatchJobTypesPage() {
-  usePageTitle("Dispatch Job Types");
+  // The options registry names this list; this page does not name it again.
+  const { pluralName: listName } = useOptionsListName("dispatch-job-type");
+  usePageTitle(listName ?? "Options");
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [formIcon, setFormIcon] = useState<string>("Briefcase");
@@ -137,12 +141,13 @@ export default function DispatchJobTypesPage() {
   }
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="container mx-auto py-8 space-y-4">
+      <BackToOptions />
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div>
-              <CardTitle data-testid="title-page">Dispatch Job Types</CardTitle>
+              <CardTitle data-testid="title-page">{listName ?? "Options"}</CardTitle>
               <CardDescription>
                 Manage dispatch job types for categorizing dispatch jobs
               </CardDescription>

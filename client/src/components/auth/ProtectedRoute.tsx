@@ -6,6 +6,7 @@ import AccessDenied from './AccessDenied';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { getTabAccessRequirements, TabEntityType } from '@shared/tabRegistry';
+import { apiRequest } from '@/lib/queryClient';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -147,6 +148,23 @@ export default function ProtectedRoute({ children, permission, policy, component
     retry: 2,
   });
 
+  // A tab that shows one area of a context framework (files, notes) is hidden
+  // when an operator has switched that area off; the route behind it has to
+  // refuse for the same reason, or the page is reachable by URL. Only the
+  // server knows the setting, so ask the same endpoint the tab bar asks —
+  // same query key, so this is normally a cache hit — and fail closed while
+  // the answer is missing.
+  const needsAreaCheck = !!(tabAccess?.entityContext && resourceId);
+  const { data: tabAccessResult, isLoading: isTabAccessLoading } = useQuery<{
+    tabs: Array<{ tabId: string; granted: boolean; reason?: string }>;
+  }>({
+    queryKey: ['/api/access/tabs', entityType, resourceId],
+    queryFn: async () =>
+      apiRequest('POST', '/api/access/tabs', { entityType, entityId: resourceId }),
+    enabled: isAuthenticated && needsAreaCheck,
+    staleTime: 5 * 60 * 1000,
+  });
+
   // Show loading state while auth is not ready
   if (!authReady || isLoading) {
     return (
@@ -215,6 +233,34 @@ export default function ProtectedRoute({ children, permission, policy, component
         </Card>
       </div>
     );
+  }
+
+  // Area of a context framework switched off (or unanswerable) — same answer
+  // the hidden tab gives.
+  if (tabAccess?.entityContext) {
+    if (needsAreaCheck && isTabAccessLoading) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
+          <div className="flex items-center space-x-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-sm text-muted-foreground">Loading...</span>
+          </div>
+        </div>
+      );
+    }
+    const areaTab = tabAccessResult?.tabs?.find((t) => t.tabId === tabId);
+    if (!areaTab?.granted) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
+          <div className="text-center max-w-md p-6">
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Not Available</h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              {areaTab?.reason ?? 'This page is not available for this record.'}
+            </p>
+          </div>
+        </div>
+      );
+    }
   }
 
   // Check if required component is enabled (single component)

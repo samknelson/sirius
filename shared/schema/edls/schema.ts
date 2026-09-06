@@ -39,14 +39,20 @@ export const edlsSheets = pgTable("edls_sheets", {
   showStatusId: varchar("show_status_id").references(() => optionsEdlsShowStatus.id, { onDelete: 'set null' }),
   notes: text("notes"),
   /**
-   * Stamped once by the storage layer from the acting user at create time and
-   * never rewritten afterwards. Null for sheets written without a request
-   * context (background jobs, scripts) and for rows that predate the column.
-   */
-  createdBy: varchar("created_by").references(() => users.id, { onDelete: 'set null' }),
-  /**
-   * Timestamp of the sheet's most recent save. Refreshed by the storage layer
-   * on every create and update, so no caller can forget to set it.
+   * CHANGE WATERMARK, not provenance — business data that happens to be a
+   * timestamp, and a KEEP entry in `docs/provenance-columns.md` for that
+   * reason. Behaviour reads it: the sheet list and the Freeman passport export
+   * filter "changed since" on it, the passport export pages in its order, and
+   * the EDLS worker SMS notifier uses each save's stamp as that save's
+   * identity when it looks back through the sheet's snapshots.
+   *
+   * Refreshed by the storage layer on every create and update — from the
+   * DATABASE clock, never `new Date()` — so no caller can forget it and no two
+   * app hosts can order the same sheet's saves differently.
+   *
+   * WHO made the sheet and WHEN is a separate question, answered for every
+   * logged table by `entity_metadata`; this column is not that answer and the
+   * table no longer carries one of its own.
    */
   changed: timestamp("changed").notNull().default(sql`now()`),
   /**
@@ -61,12 +67,11 @@ export const edlsSheets = pgTable("edls_sheets", {
 });
 
 /**
- * `createdBy` / `changed` are storage-owned outputs: they are omitted here so
- * a request body can never set them (zod strips unknown keys).
+ * `changed` is a storage-owned output: it is omitted here so a request body
+ * can never set the watermark (zod strips unknown keys).
  */
 export const insertEdlsSheetsSchema = createInsertSchema(edlsSheets).omit({
   id: true,
-  createdBy: true,
   changed: true,
 }).extend({
   assignee: z.string().nullish(),

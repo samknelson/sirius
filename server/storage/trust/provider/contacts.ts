@@ -285,10 +285,13 @@ function calculateChanges(before: any, after: any): Record<string, { from: any; 
 
 export const trustProviderContactLoggingConfig: StorageLoggingConfig<TrustProviderContactStorage> = {
   module: 'trustProviderContacts',
+  table: 'trust_provider_contacts',
+  hostTable: 'trust_providers',
   methods: {
     create: {
       enabled: true,
       getEntityId: (args) => args[0]?.providerId || 'new trust provider contact',
+      metadataEntityId: (_args, result) => result?.id,
       getHostEntityId: (args, result) => result?.providerId || args[0]?.providerId,
       before: async (args, storage) => {
         const existingLinks = await storage.listByContactId(args[0]?.contactId);

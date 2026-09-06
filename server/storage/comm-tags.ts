@@ -20,9 +20,23 @@ export interface CommTagsStorage {
 
 export const commTagsLoggingConfig: StorageLoggingConfig<CommTagsStorageRef> = {
   module: 'comm-tags',
+  table: 'comm_tags',
+  hostTable: 'comm',
   methods: {
-    addTag: { enabled: true, getHostEntityId: (args) => args[0], getEntityId: (args) => args[1] },
-    removeTag: { enabled: true, getHostEntityId: (args) => args[0], getEntityId: (args) => args[1] },
+    addTag: {
+      enabled: true,
+      getHostEntityId: (args) => args[0],
+      getEntityId: (args) => args[1],
+      // The log's entity is the parent, not the row written here.
+      metadataEntityId: () => undefined,
+    },
+    removeTag: {
+      enabled: true,
+      getHostEntityId: (args) => args[0],
+      getEntityId: (args) => args[1],
+      // The log's entity is the parent, not the row written here.
+      metadataEntityId: () => undefined,
+    },
     // setTags intentionally omitted from the outer wrapper: the per-tag
     // add/remove diff lines emitted inside the method already capture
     // every meaningful change, and the high-level "user edited this

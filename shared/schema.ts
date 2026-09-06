@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { foreignKey, pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, index, uniqueIndex, numeric, check } from "drizzle-orm/pg-core";
+import { foreignKey, pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, bigserial, index, uniqueIndex, numeric, check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { isValidYmd, type Ymd } from "./utils/date";
@@ -194,9 +194,26 @@ export const users = pgTable("users", {
   profileImageUrl: varchar("profile_image_url"),
   accountStatus: varchar("account_status").default("pending").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
-  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+  /**
+   * When the account last signed in. Behaviour, not provenance: it is not a
+   * record of the account being changed, and nothing else records it.
+   *
+   * The account's own creation and last-changed stamps are NOT here — they
+   * live in `entity_metadata`, which also names the person responsible. See
+   * docs/provenance-columns.md.
+   */
   lastLogin: timestamp("last_login"),
+  /**
+   * The person's own IANA time zone, or null when they have not chosen one.
+   *
+   * DISPLAY ONLY. Nothing stored anywhere is written in this zone — it decides
+   * what a given viewer is shown and nothing else. Null does not mean "use the
+   * system zone": it means "no explicit choice", which resolves to the
+   * viewer's own runtime zone when site policy allows personal zones. See
+   * resolveEffectiveTimeZone in shared/utils/timezone.ts, which is the only
+   * place that decision is made.
+   */
+  timezone: varchar("timezone"),
   data: jsonb("data"),
 });
 
@@ -224,8 +241,8 @@ export const authIdentities = pgTable(
     passwordHash: varchar("password_hash"),
     refreshToken: text("refresh_token"),
     metadata: jsonb("metadata"),
-    createdAt: timestamp("created_at").default(sql`now()`).notNull(),
-    updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+    createdAt: timestamp("created_at").default(sql`now()`),
+    updatedAt: timestamp("updated_at").default(sql`now()`),
     lastUsedAt: timestamp("last_used_at"),
   },
   (table) => [
@@ -248,12 +265,12 @@ export type AuthIdentity = typeof authIdentities.$inferSelect;
 export type InsertAuthIdentity = typeof authIdentities.$inferInsert;
 export type AuthProviderType = (typeof authProviderTypeEnum.enumValues)[number];
 
+/** A role's own history lives in `entity_metadata`, not in a column here. */
 export const roles = pgTable("roles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull().unique(),
   description: text("description"),
   sequence: integer("sequence").notNull().default(0),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const userRoles = pgTable("user_roles", {
@@ -310,9 +327,9 @@ export const optionsWorkerBanType = pgTable("options_worker_ban_type", {
 });
 
 /**
- * Note types (unified options kind `note-type`). `data.entityTypes` holds the
- * record types a type applies to, validated against the shared note-entity
- * registry (`shared/notes.ts`) on save.
+ * Note types (unified options kind `note-type`). `data.contextIds` holds the
+ * note contexts a type applies to, validated against the note-context
+ * registry (`server/services/entity-notes/registry.ts`) on save.
  */
 export const optionsNoteType = pgTable("options_note_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -323,17 +340,36 @@ export const optionsNoteType = pgTable("options_note_type", {
 });
 
 /**
+ * File types (unified options kind `file-type`) — the notes list's twin for
+ * attachments. `data.contextIds` holds the entity-file contexts a type
+ * applies to, validated against the file-context registry
+ * (`server/services/entity-files/registry.ts`) on save.
+ *
+ * Unlike a note's type, an attachment's type is OPTIONAL: `entity_files`
+ * predates this list and an area with no types must still accept uploads.
+ */
+export const optionsFileType = pgTable("options_file_type", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  siriusId: text("sirius_id").unique(),
+  data: jsonb("data"),
+});
+
+/**
  * Staff notes attached to a record.
  *
- * `entity_type` / `entity_id` are a polymorphic pair (the house convention —
+ * `context_id` / `entity_id` are a polymorphic pair (the house convention —
  * see `files`), so there is no FK to the parent: existence is checked at the
- * API layer against the shared note-entity registry and orphans are swept by
- * the `notes_orphan_sweep` cron. `type_id` DOES have a real FK, on delete
+ * API layer against the note-context registry and orphans are swept by
+ * the `entity_notes_orphan_sweep` cron. `context_id` names the registered note
+ * context (worker, employer, …), the same spelling `entity_files` uses for
+ * its contexts. `type_id` DOES have a real FK, on delete
  * restrict, so a note type in use cannot be deleted out from under its notes.
  */
-export const notes = pgTable("notes", {
+export const entityNotes = pgTable("entity_notes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  entityType: varchar("entity_type").notNull(),
+  contextId: varchar("context_id").notNull(),
   entityId: varchar("entity_id").notNull(),
   typeId: varchar("type_id").notNull().references(() => optionsNoteType.id, { onDelete: 'restrict' }),
   subject: text("subject").notNull(),
@@ -342,8 +378,8 @@ export const notes = pgTable("notes", {
   timestamp: timestamp("timestamp").default(sql`now()`).notNull(),
   userId: varchar("user_id").references(() => users.id, { onDelete: 'set null' }),
 }, (table) => [
-  index("idx_notes_entity").on(table.entityType, table.entityId),
-  index("idx_notes_type_id").on(table.typeId),
+  index("idx_entity_notes_entity").on(table.contextId, table.entityId),
+  index("idx_entity_notes_type_id").on(table.typeId),
 ]);
 
 export const workerBans = pgTable("worker_bans", {
@@ -388,13 +424,22 @@ export const bargainingUnits = pgTable("bargaining_units", {
   data: jsonb("data"),
 });
 
+/**
+ * An employer's policy as of a date. `date` is the assignment's EFFECTIVE
+ * date — business data, and the only date this table keeps.
+ *
+ * When an entry was recorded, and by whom, is provenance and lives in
+ * `entity_metadata` like every other logged table's (the bespoke `created_at`
+ * this table used to carry was retired by migrations 1096/1097). The history
+ * page reads it from there, and so does the tiebreak that decides which of
+ * two entries sharing an effective date is the employer's current policy.
+ */
 export const employerPolicyHistory = pgTable("employer_policy_history", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   date: date("date").notNull(),
   employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
   policyId: varchar("policy_id").notNull().references(() => policies.id, { onDelete: 'cascade' }),
   data: jsonb("data"),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const employerContacts = pgTable("employer_contacts", {
@@ -704,6 +749,22 @@ export const workerWsh = pgTable("worker_wsh", {
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
   wsId: varchar("ws_id").notNull().references(() => optionsWorkerWs.id, { onDelete: 'cascade' }),
   data: jsonb("data"),
+  /**
+   * When the entry was made — kept as BUSINESS DATA, not as provenance.
+   *
+   * Unlike `worker_msh` below, this table has no unique constraint on
+   * (worker_id, date), so a worker can hold two work-status entries for the
+   * same effective date — a same-day correction. Which of the two is the
+   * worker's CURRENT work status is decided by this column: the entry made
+   * last wins (`getCurrentWorkStatusId`, the HTA inactivity scan). That answer
+   * feeds the `worker_ws` denorm and, through it, dispatch eligibility, so the
+   * ordering key has to be something the mutation itself writes — provenance
+   * is maintained best-effort and off the caller's transaction, and a lost
+   * provenance row must never be able to flip a worker's current status.
+   *
+   * See `docs/provenance-columns.md` (KEEP table). Its twin on `worker_msh`
+   * was retired in migration 1099.
+   */
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
@@ -714,7 +775,7 @@ export const workerMsh = pgTable("worker_msh", {
   msId: varchar("ms_id").notNull().references(() => optionsWorkerMs.id, { onDelete: 'cascade' }),
   industryId: varchar("industry_id").notNull().references(() => optionsIndustry.id, { onDelete: 'cascade' }),
   data: jsonb("data"),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+  createdAt: timestamp("created_at").default(sql`now()`),
 }, (table) => ({
   // Declared in TABLE-column order with an explicit name (see trust_wmb's
   // constraint comment): drizzle-kit push introspects constraint columns in
@@ -736,13 +797,11 @@ export const contactPostal = pgTable("contact_postal", {
   source: text("source").$type<'worker_self' | 'employer_feed' | 'admin' | 'import' | 'system'>().default('admin').notNull(),
   deliverabilityStatus: text("deliverability_status").$type<'unknown' | 'verified' | 'undeliverable' | 'vacant' | 'returned_mail'>().default('unknown').notNull(),
   lastVerifiedAt: timestamp("last_verified_at"),
-  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
   needsReview: boolean("needs_review").default(false).notNull(),
   validationResponse: jsonb("validation_response"),
   latitude: doublePrecision("latitude"),
   longitude: doublePrecision("longitude"),
   accuracy: text("accuracy"),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 }, (table) => ({
   chkSource: check(
     "chk_source",
@@ -769,15 +828,18 @@ export const phoneNumbers = pgTable("contact_phone", {
   isPrimary: boolean("is_primary").default(false).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   validationResponse: jsonb("validation_response"),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
+// When a bookmark was added, and by whom, is provenance: it lives in
+// `entity_metadata`, written by storage logging (see
+// `docs/provenance-columns.md`). The bookmark reads that date back through
+// the storage layer's provenance join, which is also where its newest-first
+// order comes from.
 export const bookmarks = pgTable("bookmarks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   entityType: text("entity_type").notNull(),
   entityId: varchar("entity_id").notNull(),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const ledgerPaymentMethods = pgTable("ledger_paymentmethods", {
@@ -795,7 +857,6 @@ export const ledgerPaymentMethods = pgTable("ledger_paymentmethods", {
   data: jsonb("data").default(sql`'{}'::jsonb`),
   isActive: boolean("is_active").default(true).notNull(),
   isDefault: boolean("is_default").default(false).notNull(),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 }, (table) => [
   foreignKey({
     name: "ledger_paymentmethods_gateway_config_id_plugin_configs_payment_",
@@ -818,7 +879,7 @@ export const ledgerGatewayCustomers = pgTable("ledger_gateway_customers", {
   gatewayConfigId: varchar("gateway_config_id").notNull(),
   // Opaque provider customer reference (e.g. Stripe `cus_...`).
   customerRef: text("customer_ref").notNull(),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+  createdAt: timestamp("created_at").default(sql`now()`),
 }, (table) => ({
   entityGatewayUnique: unique("ledger_gateway_customers_entity_gateway_unique").on(
     table.entityType,
@@ -870,7 +931,6 @@ export const ledgerPayments = pgTable("ledger_payments", {
   paymentType: varchar("payment_type").notNull().references(() => optionsLedgerPaymentType.id),
   ledgerEaId: varchar("ledger_ea_id").notNull().references(() => ledgerEa.id),
   details: jsonb("details"),
-  dateCreated: timestamp("date_created").default(sql`now()`).notNull(),
   dateReceived: timestamp("date_received"),
   dateCleared: timestamp("date_cleared"),
   memo: text("memo"),
@@ -929,8 +989,6 @@ export const wizardFeedMappings = pgTable("wizard_feed_mappings", {
   type: varchar("type").notNull(),
   firstRowHash: varchar("first_row_hash").notNull(),
   mapping: jsonb("mapping").notNull(),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
-  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
 }, (table) => [
   index("idx_wizard_feed_mappings_user_type_hash").on(table.userId, table.type, table.firstRowHash),
 ]);
@@ -940,8 +998,6 @@ export const wizardEmploymentStatusMappings = pgTable("wizard_employment_status_
   employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
   sourceStatus: text("source_status").notNull(),
   targetStatusId: varchar("target_status_id").notNull(),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
-  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
 }, (table) => [
   unique("idx_wizard_esm_employer_source").on(table.employerId, table.sourceStatus),
   index("idx_wizard_esm_employer").on(table.employerId),
@@ -982,6 +1038,117 @@ export const files = pgTable("files", {
 }, (table) => [
   unique("files_file_system_id_storage_path_unique").on(table.fileSystemId, table.storagePath),
 ]);
+
+/**
+ * File attachments for the generic entity-files framework.
+ *
+ * ONE shared table for every registered area (grievance, worker, employer,
+ * trust provider, …): `context_id` names the registered context and
+ * `entity_id` the record it hangs off. That pair is a soft reference — the
+ * same polymorphic shape as `notes`, with no FK to the owning entity — so
+ * registering a new area is a code registration plus operator config, never
+ * a migration.
+ *
+ * `file_id` DOES have a real FK (cascade both ways in effect: deleting the
+ * files row removes the attachment), and is UNIQUE — a files row belongs to
+ * at most one attachment. `name` is the user-editable display name served on
+ * download; `data` is freeform jsonb.
+ *
+ * `type_id` names an `options_file_type` row and is NULLABLE — an attachment
+ * may have no type, and an area whose operator has created no types uploads
+ * exactly as it did before the list existed. The FK is ON DELETE RESTRICT
+ * (same as notes), so a type in use cannot be deleted out from under its
+ * files.
+ *
+ * Every constraint and index is explicitly named because the startup drift
+ * gate compares reflected definitions against these declarations.
+ */
+export const entityFiles = pgTable("entity_files", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  contextId: varchar("context_id").notNull(),
+  entityId: varchar("entity_id").notNull(),
+  fileId: varchar("file_id").notNull(),
+  typeId: varchar("type_id"),
+  name: varchar("name", { length: 255 }).notNull(),
+  data: jsonb("data"),
+}, (table) => [
+  foreignKey({
+    name: "entity_files_file_id_files_id_fk",
+    columns: [table.fileId],
+    foreignColumns: [files.id],
+  }).onDelete("cascade"),
+  foreignKey({
+    name: "entity_files_type_id_options_file_type_id_fk",
+    columns: [table.typeId],
+    foreignColumns: [optionsFileType.id],
+  }).onDelete("restrict"),
+  unique("entity_files_file_id_unique").on(table.fileId),
+  index("idx_entity_files_entity").on(table.contextId, table.entityId),
+  index("idx_entity_files_type_id").on(table.typeId),
+]);
+
+export const insertEntityFileSchema = createInsertSchema(entityFiles).omit({
+  id: true,
+});
+export type EntityFile = typeof entityFiles.$inferSelect;
+export type InsertEntityFile = z.infer<typeof insertEntityFileSchema>;
+
+/**
+ * One row of provenance per record, for every table whose storage module
+ * emits audit logs. Maintained in-application by the storage logging
+ * middleware (`server/storage/middleware/logging.ts`) — there is no database
+ * trigger, and the contract is explicitly best effort.
+ *
+ * `entity_id` alone is unique: every id involved is a UUID, so the record's id
+ * identifies it across the whole database. `table_name` says which table that
+ * record lives in and never changes once written.
+ *
+ * `seq` is a second, sequential name for the record, assigned once at insert
+ * and never reassigned: "entity #12345" permanently means one row in one
+ * table. A record whose metadata row is deleted loses its seq with it.
+ *
+ * The `subrecord_modified_*` pair records activity on a record's children:
+ * editing a phone number stamps the phone number's own row, and — because the
+ * log entry names the contact as its host — the contact's subrecord pair.
+ */
+export const entityMetadata = pgTable("entity_metadata", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  seq: bigserial("seq", { mode: "number" }).notNull(),
+  /** Number of successful application writes to this history row. */
+  rev: integer("rev").notNull().default(1),
+  /** Stable metadata context id whose registry declaration names the table. */
+  contextId: varchar("context_id", { length: 255 }).notNull(),
+  entityId: varchar("entity_id").notNull(),
+  /** When the record was created, or when it was first observed. */
+  createdDate: timestamp("created_date"),
+  /** Only set when the creation itself was observed; null for a record we met mid-life. */
+  createdBy: varchar("created_by"),
+  modifiedDate: timestamp("modified_date"),
+  modifiedBy: varchar("modified_by"),
+  subrecordModifiedDate: timestamp("subrecord_modified_date"),
+  subrecordModifiedBy: varchar("subrecord_modified_by"),
+}, (table) => [
+  foreignKey({
+    name: "entity_metadata_created_by_users_id_fk",
+    columns: [table.createdBy],
+    foreignColumns: [users.id],
+  }).onDelete("set null"),
+  foreignKey({
+    name: "entity_metadata_modified_by_users_id_fk",
+    columns: [table.modifiedBy],
+    foreignColumns: [users.id],
+  }).onDelete("set null"),
+  foreignKey({
+    name: "entity_metadata_sub_modified_by_users_id_fk",
+    columns: [table.subrecordModifiedBy],
+    foreignColumns: [users.id],
+  }).onDelete("set null"),
+  unique("entity_metadata_seq_unique").on(table.seq),
+  unique("entity_metadata_entity_id_unique").on(table.entityId),
+  index("idx_entity_metadata_context_id").on(table.contextId),
+]);
+
+export type EntityMetadata = typeof entityMetadata.$inferSelect;
 
 export const esigStatusEnum = pgEnum("esig_status", ["pending", "signed"]);
 export const esigTypeEnum = pgEnum("esig_type", ["online", "offline", "upload"]);
@@ -1259,10 +1426,6 @@ export {
   insertGrievanceStatusHistorySchema,
   type GrievanceStatusHistory,
   type InsertGrievanceStatusHistory,
-  grievanceFiles,
-  insertGrievanceFileSchema,
-  type GrievanceFile,
-  type InsertGrievanceFile,
   grievanceTimelineAdjustmentSchema,
   type GrievanceTimelineAdjustment,
   TIMELINE_ADJUSTMENT_DATA_KEY,
@@ -1423,14 +1586,10 @@ export {
 // Zod schemas for validation
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
-  createdAt: true,
-  updatedAt: true,
 });
 
 // For Replit Auth upsert operations
 export const upsertUserSchema = createInsertSchema(users).omit({
-  createdAt: true,
-  updatedAt: true,
   lastLogin: true,
   isActive: true,
 });
@@ -1445,7 +1604,6 @@ export const createUserSchema = z.object({
 
 export const insertRoleSchema = createInsertSchema(roles).omit({
   id: true,
-  createdAt: true,
 });
 
 export const insertContactSchema = createInsertSchema(contacts).omit({
@@ -1469,7 +1627,7 @@ export const insertWorkerBanSchema = createInsertSchema(workerBans).omit({
   type: z.string().optional().nullable(),
 });
 
-export const insertNoteSchema = createInsertSchema(notes).omit({
+export const insertEntityNoteSchema = createInsertSchema(entityNotes).omit({
   id: true,
   timestamp: true,
 }).extend({
@@ -1544,22 +1702,18 @@ export const insertContactPostalSchema = createInsertSchema(contactPostal, {
   deliverabilityStatus: z.enum(['unknown', 'verified', 'undeliverable', 'vacant', 'returned_mail']).optional(),
 }).omit({
   id: true,
-  createdAt: true,
 });
 
 export const insertPhoneNumberSchema = createInsertSchema(phoneNumbers).omit({
   id: true,
-  createdAt: true,
 });
 
 export const insertBookmarkSchema = createInsertSchema(bookmarks).omit({
   id: true,
-  createdAt: true,
 });
 
 export const insertLedgerPaymentMethodSchema = createInsertSchema(ledgerPaymentMethods).omit({
   id: true,
-  createdAt: true,
 });
 
 export const ledgerAccountDataSchema = z.object({
@@ -1580,7 +1734,6 @@ export const insertLedgerAccountSchema = createInsertSchema(ledgerAccounts).omit
 
 export const insertLedgerPaymentSchema = createInsertSchema(ledgerPayments).omit({
   id: true,
-  dateCreated: true,
 });
 
 export const insertLedgerEaSchema = createInsertSchema(ledgerEa).omit({
@@ -1611,14 +1764,10 @@ export const insertWizardEmployerMonthlySchema = createInsertSchema(wizardEmploy
 
 export const insertWizardFeedMappingSchema = createInsertSchema(wizardFeedMappings).omit({
   id: true,
-  createdAt: true,
-  updatedAt: true,
 });
 
 export const insertWizardEmploymentStatusMappingSchema = createInsertSchema(wizardEmploymentStatusMappings).omit({
   id: true,
-  createdAt: true,
-  updatedAt: true,
 });
 
 export const insertWizardReportDataSchema = createInsertSchema(wizardReportData).omit({
@@ -1775,8 +1924,8 @@ export type Worker = Omit<typeof workers.$inferSelect, "data"> & {
 export type InsertWorkerBan = z.infer<typeof insertWorkerBanSchema>;
 export type WorkerBan = typeof workerBans.$inferSelect;
 
-export type InsertNote = z.infer<typeof insertNoteSchema>;
-export type Note = typeof notes.$inferSelect;
+export type InsertEntityNote = z.infer<typeof insertEntityNoteSchema>;
+export type EntityNote = typeof entityNotes.$inferSelect;
 export type OptionsNoteType = typeof optionsNoteType.$inferSelect;
 
 export type InsertEmployer = z.infer<typeof insertEmployerSchema>;
@@ -1833,6 +1982,10 @@ export type LedgerAccount = typeof ledgerAccounts.$inferSelect;
 export type InsertLedgerPayment = z.infer<typeof insertLedgerPaymentSchema>;
 export type LedgerPayment = typeof ledgerPayments.$inferSelect;
 
+/** A payment list row with its metadata creation date exposed under the API name. */
+export type LedgerPaymentWithCreatedDate = LedgerPayment & {
+  createdDate: Date | null;
+};
 export type AllocatedEntity = {
   eaId: string;
   entityType: string;
@@ -1840,7 +1993,7 @@ export type AllocatedEntity = {
   entityName: string | null;
 };
 
-export type LedgerPaymentWithEntity = LedgerPayment & {
+export type LedgerPaymentWithEntity = LedgerPaymentWithCreatedDate & {
   entityType: string;
   entityId: string;
   entityName: string | null;
@@ -2110,8 +2263,6 @@ export type ChargePluginConfig = {
   employerId: string | null;
   account: string | null;
   settings: unknown;
-  createdAt: Date;
-  updatedAt: Date;
 };
 
 // ---------------------------------------------------------------------------
@@ -2151,8 +2302,10 @@ export const pluginConfigs = pgTable("plugin_configs", {
   // with no schema/migration change.
   isSingleton: boolean("is_singleton").default(false).notNull(),
   data: jsonb("data").default(sql`'{}'::jsonb`), // kind-specific opaque settings blob
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
-  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+  // No created_at / updated_at: a configuration's provenance and change
+  // history live in `entity_metadata` and the audit log, written by the
+  // storage logging middleware (see `pluginConfigLoggingConfig`), which record
+  // who changed the row and what changed as well as when.
 }, (table) => [
   // Singleton plugin types permit exactly one config row per plugin id.
   // Non-singleton types (charge, trust-eligibility, …) legitimately have many
@@ -2171,8 +2324,6 @@ export const pluginConfigs = pgTable("plugin_configs", {
 export const insertPluginConfigSchema = createInsertSchema(pluginConfigs)
   .omit({
     id: true,
-    createdAt: true,
-    updatedAt: true,
     // Derived by the storage layer from the plugin type's manifest singleton
     // flag — never accepted from request input.
     isSingleton: true,
@@ -2807,13 +2958,15 @@ export type Flood = typeof flood.$inferSelect;
 
 // Snapshots — generic point-in-time entity copies (self-contained JSON
 // export bundles). Core table: entity types from any domain may participate.
+// Snapshots are process output and intentionally do not receive
+// entity_metadata record-history rows; capture provenance belongs here.
 export const snapshots = pgTable("snapshots", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  entityType: varchar("entity_type", { length: 100 }).notNull(),
-  entityId: varchar("entity_id").notNull(),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+  createdAt: timestamp("created_at").default(sql`now()`),
   authorId: varchar("author_id").references(() => users.id, { onDelete: 'set null' }),
   authorName: text("author_name"),
+  entityType: varchar("entity_type", { length: 100 }).notNull(),
+  entityId: varchar("entity_id").notNull(),
   label: text("label"),
   data: jsonb("data").notNull(),
 }, (table) => ({
@@ -2959,3 +3112,8 @@ export type InsertBusinessCalendarManualVacation = z.infer<typeof insertBusiness
 export type BusinessCalendarManualVacation = typeof businessCalendarManualVacation.$inferSelect;
 export type InsertBusinessCalendarManualOpen = z.infer<typeof insertBusinessCalendarManualOpenSchema>;
 export type BusinessCalendarManualOpen = typeof businessCalendarManualOpen.$inferSelect;
+
+/** A payment method plus its metadata creation date. */
+export type LedgerPaymentMethodWithCreatedDate = LedgerPaymentMethod & {
+  createdDate: Date | null;
+};

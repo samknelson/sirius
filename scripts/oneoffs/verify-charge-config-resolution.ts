@@ -23,8 +23,6 @@ function cfg(id: string, scope: string, account: string | null, employerId: stri
     employerId,
     account,
     settings: {},
-    createdAt: new Date(0),
-    updatedAt: new Date(0),
   };
 }
 

@@ -28,6 +28,15 @@ export interface RequestContext {
    * means notify normally.
    */
   suppressNotifications?: boolean;
+  /**
+   * When true, storage mutations inside this async scope are writes the
+   * framework performs on its own behalf — a boot-time backfill, a self-heal,
+   * seeding a row nobody asked for — rather than something a person did. Set
+   * programmatically via {@link withFrameworkWrite}; never set from a request
+   * header. Read by the storage logging middleware, which keeps the
+   * provenance stamp and drops the audit entry.
+   */
+  frameworkWrite?: boolean;
 }
 
 export const requestContext = new AsyncLocalStorage<RequestContext>();
@@ -83,6 +92,47 @@ export function withSystemActor<T>(fn: () => Promise<T>): Promise<T> {
     userEmail: undefined,
     originalUserId: undefined,
     originalUserEmail: undefined,
+  };
+  return requestContext.run(next, fn);
+}
+
+/**
+ * Whether the current async scope is a framework write. Read by the storage
+ * logging middleware. False when there is no ambient context, so an ordinary
+ * request, cron run or script keeps its audit entry.
+ */
+export function isFrameworkWrite(): boolean {
+  return requestContext.getStore()?.frameworkWrite === true;
+}
+
+/**
+ * Run `fn` in a nested request context marked as a framework write: the acting
+ * user is cleared (as in {@link withSystemActor}) AND storage mutations inside
+ * it produce no audit-log entry.
+ *
+ * This is for the work the framework does on its own behalf at boot —
+ * migrating a legacy setting onto its new home, re-materializing a row a
+ * component owns, seeding a config a plugin needs to exist. Two things are
+ * wrong about logging those as an ordinary edit: the row is not anyone's
+ * doing, and (because the same self-heal runs on every restart) the log
+ * viewer fills with entries no operator can act on. What the record still
+ * gets is its provenance row — the middleware stamps it with no person — so
+ * "when did this row appear" remains answerable.
+ *
+ * Scope it to the write, not to the boot step: a path that can also run inside
+ * an administrator's request must keep attributing THAT to the administrator.
+ * Failures are still logged; an error is not a restart-per-restart entry and
+ * is the one thing worth seeing.
+ */
+export function withFrameworkWrite<T>(fn: () => Promise<T>): Promise<T> {
+  const current = requestContext.getStore();
+  const next: RequestContext = {
+    ...(current ?? {}),
+    userId: undefined,
+    userEmail: undefined,
+    originalUserId: undefined,
+    originalUserEmail: undefined,
+    frameworkWrite: true,
   };
   return requestContext.run(next, fn);
 }

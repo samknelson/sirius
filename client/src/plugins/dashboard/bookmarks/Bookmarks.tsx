@@ -8,6 +8,8 @@ import type { Bookmark as BookmarkType } from "@shared/schema";
 
 interface EnrichedBookmark extends BookmarkType {
   displayName: string;
+  /** When the bookmark was added, from the record's provenance. */
+  createdDate: string | null;
 }
 
 interface BookmarksContent {
@@ -69,7 +71,9 @@ export function Bookmarks(_props: DashboardPluginProps) {
                     <Icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                     <span className="text-sm flex-1 truncate">{bookmark.displayName}</span>
                     <span className="text-xs text-muted-foreground flex-shrink-0">
-                      {new Date(bookmark.createdAt).toLocaleDateString()}
+                      {bookmark.createdDate
+                        ? new Date(bookmark.createdDate).toLocaleDateString()
+                        : ""}
                     </span>
                   </div>
                 </Link>
@@ -85,7 +89,9 @@ export function Bookmarks(_props: DashboardPluginProps) {
                 <Icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 <span className="text-sm flex-1 truncate">{bookmark.displayName}</span>
                 <span className="text-xs text-muted-foreground flex-shrink-0">
-                  {new Date(bookmark.createdAt).toLocaleDateString()}
+                  {bookmark.createdDate
+                    ? new Date(bookmark.createdDate).toLocaleDateString()
+                    : ""}
                 </span>
               </div>
             );

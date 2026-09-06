@@ -310,6 +310,49 @@ poolInstance.on("error", (err: Error) => {
   console.error("PG Pool error (idle client terminated, recovering):", err.message);
 });
 
+/**
+ * Keep every database session in the same time zone as this process.
+ *
+ * The core tables store `timestamp without time zone`, so a value's meaning
+ * comes entirely from the zone of whoever writes it — and there are TWO
+ * writers. The application writes a JavaScript Date, which the driver
+ * serializes using the PROCESS zone. A column default of `now()` is evaluated
+ * by Postgres using the SESSION zone, which starts at the server's own default
+ * (commonly GMT) and knows nothing about `TZ`. Left alone the two disagree,
+ * and rows in the same table end up offset from each other depending on which
+ * writer produced them — considerably worse than both being uniformly wrong,
+ * because no single correction fixes it.
+ *
+ * Applied per checkout rather than baked into the pool config because the zone
+ * is not known when this module is evaluated: `TZ` may come from an in-app
+ * override that is only readable once the database itself is up. Reading the
+ * live process zone here means connections opened before the override loaded
+ * are corrected on their next checkout, with no pool recycling.
+ *
+ * Cost in steady state is a property comparison; the round-trip happens only
+ * on a connection's first checkout, and again on any that predate a change.
+ */
+const APPLIED_TIME_ZONE = Symbol("sessionTimeZoneApplied");
+
+poolInstance.on("acquire", (client: any) => {
+  const desired = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  if (client[APPLIED_TIME_ZONE] === desired) return;
+  client[APPLIED_TIME_ZONE] = desired;
+  // Parameterizing is not available for SET; the value is an IANA zone name
+  // validated at boot (server/config/system-timezone.ts refuses to start on
+  // anything Intl does not recognise), and it originates from the runtime
+  // rather than from a request.
+  client.query(`SET TIME ZONE '${desired.replace(/'/g, "''")}'`).catch((error: unknown) => {
+    // Unknown state: clear the marker so the next checkout retries.
+    client[APPLIED_TIME_ZONE] = undefined;
+    console.error(
+      "[db] Failed to set session time zone; timestamps written by column " +
+        "defaults may be offset from those written by the app:",
+      error instanceof Error ? error.message : String(error),
+    );
+  });
+});
+
 // Exported as pg.Pool for the rare infrastructure consumer that needs the
 // raw pool (application code goes through the drizzle `db` / storage layer).
 // The Neon Pool is a runtime drop-in for the node-postgres API surface.

@@ -1,13 +1,24 @@
 import { createContext, useContext, ReactNode } from "react";
-import { BookOpen, ArrowLeft } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
 import { LedgerAccountWithDetails } from "@/lib/ledger-types";
 import { useLedgerAccountTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+
+const LEDGER_ACCOUNT_BACK_LINK = {
+  href: "/ledger/accounts",
+  label: "Back to Accounts",
+  testId: "button-back-to-accounts",
+};
 
 interface LedgerAccountLayoutContextValue {
   account: LedgerAccountWithDetails;
@@ -57,26 +68,11 @@ export function LedgerAccountLayout({ activeTab, children }: LedgerAccountLayout
   if (accountError) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <BookOpen className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Ledger Account Not Found</h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/ledger/accounts">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-accounts">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Accounts
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<BookOpen className="text-primary-foreground" size={16} />}
+          label="Ledger Account Not Found"
+          backLink={LEDGER_ACCOUNT_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -104,26 +100,10 @@ export function LedgerAccountLayout({ activeTab, children }: LedgerAccountLayout
   if (isLoading || !account) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <BookOpen className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/ledger/accounts">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-accounts">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Accounts
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<BookOpen className="text-primary-foreground" size={16} />}
+          backLink={LEDGER_ACCOUNT_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -148,28 +128,13 @@ export function LedgerAccountLayout({ activeTab, children }: LedgerAccountLayout
     <LedgerAccountLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
         {/* Header */}
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <BookOpen className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground" data-testid={`text-account-name-${account.id}`}>
-                  {account.name}
-                </h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/ledger/accounts">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-accounts">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Accounts
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<BookOpen className="text-primary-foreground" size={16} />}
+          title={account.name}
+          titleTestId={`text-account-name-${account.id}`}
+          backLink={LEDGER_ACCOUNT_BACK_LINK}
+          recordId={account.id}
+        />
 
         {/* Tab Navigation */}
         <div className="bg-card border-b border-border">

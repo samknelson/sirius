@@ -186,6 +186,8 @@ export function createWorkerIdStorage(): WorkerIdStorage {
  */
 export const workerIdLoggingConfig: StorageLoggingConfig<WorkerIdStorage> = {
   module: 'workerIds',
+  table: 'worker_ids',
+  hostTable: 'workers',
   methods: {
     createWorkerId: {
       enabled: true,

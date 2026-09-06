@@ -10,7 +10,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { DashboardPluginProps } from "../registry";
 import { useDashboardContent } from "../useDashboardContent";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "@/lib/date-format";
 
 interface RecentUser {
   sid: string;

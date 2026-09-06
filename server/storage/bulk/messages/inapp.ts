@@ -69,6 +69,8 @@ export function createBulkMessagesInappStorage(): BulkMessagesInappStorage {
 
 export const bulkMessagesInappLoggingConfig = defineLoggingConfig<BulkMessagesInappStorage>({
   module: 'bulkMessagesInapp',
+  table: 'bulk_messages_inapp',
+  hostTable: 'bulk_messages',
   state: { key: 'bulkMessagesInapp' },
   getter: 'getById',
   hostEntityIdField: 'bulkId',

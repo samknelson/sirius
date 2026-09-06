@@ -157,7 +157,10 @@ export function assembleDatabaseUrl(): void {
   // `password` callback that mints a token per connection.
   if (iamAuth && host && dbname && user) {
     const url = `postgresql://${encodeURIComponent(user)}@${host}:${port}/${dbname}?sslmode=${sslmode}`;
-    setEnvironmentVariable("DATABASE_URL", url);
+    // Environment-sourced: every part of this URL came from the deployment, so
+    // the assembled whole is a deployment value too and keeps outranking any
+    // stored one.
+    setEnvironmentVariable("DATABASE_URL", url, "environment");
     urlSource = "assembled-from-parts";
     console.log(
       `[db-config] Assembled password-less DATABASE_URL for IAM auth ` +
@@ -170,7 +173,8 @@ export function assembleDatabaseUrl(): void {
     const url = `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(
       password,
     )}@${host}:${port}/${dbname}?sslmode=${sslmode}`;
-    setEnvironmentVariable("DATABASE_URL", url);
+    // Environment-sourced, as above: assembled out of deployment-supplied parts.
+    setEnvironmentVariable("DATABASE_URL", url, "environment");
     // Provenance for the bring-up report: "assembled from parts" is the case
     // where a single wrong DB_* value silently points the deployment at the
     // wrong database, so the report has to say which case this was.

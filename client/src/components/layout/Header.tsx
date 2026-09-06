@@ -45,6 +45,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { AlertsBell } from "./AlertsBell";
 import { QuickSearch } from "./QuickSearch";
+import { TimeZoneClock } from "./TimeZoneClock";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -374,6 +375,7 @@ export default function Header() {
 
         {/* User menu - right side of row 1 */}
         <div className="flex items-center gap-2">
+          {user && <TimeZoneClock />}
           {user && <QuickSearch />}
           {user && <AlertsBell />}
           {user && (

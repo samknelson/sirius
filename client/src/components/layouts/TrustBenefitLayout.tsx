@@ -1,13 +1,24 @@
 import { createContext, useContext, ReactNode } from "react";
-import { Heart, ArrowLeft } from "lucide-react";
+import { Heart } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { TrustBenefit } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
 import { useTrustBenefitTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+
+const TRUST_BENEFIT_BACK_LINK = {
+  href: "/trust-benefits",
+  label: "Back to Trust Benefits",
+  testId: "button-back-to-benefits",
+};
 
 interface TrustBenefitLayoutContextValue {
   benefit: TrustBenefit;
@@ -57,27 +68,11 @@ export function TrustBenefitLayout({ activeTab, children }: TrustBenefitLayoutPr
   if (benefitError) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Heart className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">Trust Benefit Not Found</span>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/trust-benefits">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-benefits">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Trust Benefits
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<Heart className="text-primary-foreground" size={16} />}
+          label="Trust Benefit Not Found"
+          backLink={TRUST_BENEFIT_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -105,26 +100,10 @@ export function TrustBenefitLayout({ activeTab, children }: TrustBenefitLayoutPr
   if (isLoading || !benefit) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Heart className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/trust-benefits">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-benefits">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Trust Benefits
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<Heart className="text-primary-foreground" size={16} />}
+          backLink={TRUST_BENEFIT_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -149,28 +128,13 @@ export function TrustBenefitLayout({ activeTab, children }: TrustBenefitLayoutPr
     <TrustBenefitLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
         {/* Header */}
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Heart className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground" data-testid={`text-benefit-name-${benefit.id}`}>
-                  {benefit.name}
-                </h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/trust-benefits">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-benefits">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Trust Benefits
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<Heart className="text-primary-foreground" size={16} />}
+          title={benefit.name}
+          titleTestId={`text-benefit-name-${benefit.id}`}
+          backLink={TRUST_BENEFIT_BACK_LINK}
+          recordId={benefit.id}
+        />
 
         {/* Tab Navigation */}
         <div className="bg-card border-b border-border">

@@ -285,6 +285,8 @@ async function searchDispatches(criteria: SearchDispatchesCriteria): Promise<Dis
 
 export const dispatchLoggingConfig = defineLoggingConfig<DispatchStorage>({
   module: 'dispatches',
+  table: 'dispatches',
+  hostTable: 'employers',
   state: { key: 'dispatch' },
   methods: {
     create: {

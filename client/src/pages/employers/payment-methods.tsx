@@ -48,7 +48,12 @@ interface PaymentMethod {
   gatewayConfigId: string;
   isActive: boolean;
   isDefault: boolean;
-  createdAt: string;
+  /**
+   * When this method was added, from the record's history — a method keeps no
+   * such column of its own. Null for a method nothing has recorded, including
+   * one added moments ago, whose history is written just after it is saved.
+   */
+  createdDate: string | null;
   providerDetails?: {
     type: string;
     card?: {
@@ -475,6 +480,14 @@ function PaymentMethodsContent() {
                             <h4 className="font-medium">Payment Method</h4>
                             <p className="text-sm text-muted-foreground">{pm.paymentMethod}</p>
                           </>
+                        )}
+                        {pm.createdDate && (
+                          <p
+                            className="text-sm text-muted-foreground"
+                            data-testid={`text-added-${pm.id}`}
+                          >
+                            Added {new Date(pm.createdDate).toLocaleDateString()}
+                          </p>
                         )}
                       </div>
                     </div>

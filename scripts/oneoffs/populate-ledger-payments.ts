@@ -232,7 +232,6 @@ async function populateLedgerPayments() {
         amount,
         status,
         allocated: Math.random() < 0.3, // 30% allocated
-        dateCreated,
         dateReceived: dateReceived || undefined,
         dateCleared: dateCleared || undefined,
         memo,

@@ -12,9 +12,10 @@ import {
   type WsClientIpRule,
   type InsertWsClientIpRule,
 } from "@shared/schema";
-import { eq, and, desc, inArray, notInArray } from "drizzle-orm";
+import { eq, and, sql, inArray, notInArray } from "drizzle-orm";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
+import { defineLoggingConfig } from "./middleware/logging";
 
 const SALT_ROUNDS = 12;
 
@@ -32,9 +33,16 @@ export interface WsClientStorage {
  * they are added/revoked without touching credentials.
  */
 export interface WsClientGrantStorage {
-  /** Every grant held by a client, oldest first. */
+  /**
+   * Every grant held by a client, by configuration id.
+   *
+   * A grant is a membership, not an event: it is replaced wholesale by
+   * `replaceForClient` and the row keeps no creation date of its own, so
+   * there is no chronology left to order by. Configuration id is stable and
+   * says the same thing on every read.
+   */
   getByClient(clientId: string): Promise<WsClientGrant[]>;
-  /** Every client granted a given configuration. */
+  /** Every client granted a given configuration, by client id. */
   getByConfig(configId: string): Promise<WsClientGrant[]>;
   /** True when this exact client/configuration pair is granted. */
   has(clientId: string, configId: string): Promise<boolean>;
@@ -53,6 +61,7 @@ export interface CredentialCreateResult {
 }
 
 export interface WsClientCredentialStorage {
+  /** Every credential issued to a client, newest first by its recorded history. */
   getByClient(clientId: string): Promise<WsClientCredential[]>;
   get(id: string): Promise<WsClientCredential | undefined>;
   getByClientKey(clientKey: string): Promise<WsClientCredential | undefined>;
@@ -105,7 +114,7 @@ export function createWsClientStorage(): WsClientStorage {
       const client = getClient();
       const [updated] = await client
         .update(wsClients)
-        .set({ ...wsClient, updatedAt: new Date() })
+        .set(wsClient)
         .where(eq(wsClients.id, id))
         .returning();
       return updated;
@@ -129,7 +138,7 @@ export function createWsClientGrantStorage(): WsClientGrantStorage {
         .select()
         .from(wsClientGrants)
         .where(eq(wsClientGrants.clientId, clientId))
-        .orderBy(wsClientGrants.createdAt);
+        .orderBy(wsClientGrants.configId);
     },
 
     async getByConfig(configId: string): Promise<WsClientGrant[]> {
@@ -138,7 +147,7 @@ export function createWsClientGrantStorage(): WsClientGrantStorage {
         .select()
         .from(wsClientGrants)
         .where(eq(wsClientGrants.configId, configId))
-        .orderBy(wsClientGrants.createdAt);
+        .orderBy(wsClientGrants.clientId);
     },
 
     async has(clientId: string, configId: string): Promise<boolean> {
@@ -196,7 +205,7 @@ export function createWsClientGrantStorage(): WsClientGrantStorage {
         .select()
         .from(wsClientGrants)
         .where(eq(wsClientGrants.clientId, clientId))
-        .orderBy(wsClientGrants.createdAt);
+        .orderBy(wsClientGrants.configId);
     },
   };
 }
@@ -209,7 +218,13 @@ export function createWsClientCredentialStorage(): WsClientCredentialStorage {
         .select()
         .from(wsClientCredentials)
         .where(eq(wsClientCredentials.clientId, clientId))
-        .orderBy(desc(wsClientCredentials.createdAt));
+        // Newest first, from the record's provenance: the credential row no
+        // longer keeps its own creation date. A credential whose provenance
+        // was never written sorts last rather than pretending to be oldest.
+        .orderBy(
+          sql`(SELECT m.created_date FROM entity_metadata m WHERE m.entity_id = ${wsClientCredentials.id}) DESC NULLS LAST`,
+          wsClientCredentials.clientKey,
+        );
     },
 
     async get(id: string): Promise<WsClientCredential | undefined> {
@@ -376,3 +391,187 @@ export function createWsClientIpRuleStorage(): WsClientIpRuleStorage {
     },
   };
 }
+
+/**
+ * ---------------------------------------------------------------------------
+ * Storage logging for the four web-service configuration tables
+ * ---------------------------------------------------------------------------
+ *
+ * These tables hold who may call this installation from the outside, so the
+ * question people actually ask of this screen is "who let them in?". Logging
+ * answers it twice: as an entry in the admin log viewer, and — through the
+ * same middleware — as the record's provenance, which is now the only place a
+ * client, credential or IP rule's creation date lives.
+ *
+ * Two of these tables carry credential material, and the middleware persists
+ * the arguments and the before/after state of every logged call. So the
+ * credential hooks below project rather than pass through: an audit entry may
+ * name a credential and say whether a secret was set, and may never carry the
+ * secret, the hash, or the whole client key. `validateSecret` and
+ * `recordUsage` are deliberately absent — the first takes a caller's raw
+ * secret as an argument and neither is a configuration change.
+ */
+
+/** A credential as an audit entry is allowed to describe it. */
+interface RedactedCredential {
+  id: string;
+  clientId: string;
+  /** The leading fragment of the client key — enough to recognise, not to use. */
+  clientKeyPrefix: string;
+  label: string | null;
+  isActive: boolean;
+  expiresAt: Date | null;
+  lastUsedAt: Date | null;
+  /** Whether a secret is stored, never anything derived from it. */
+  hasSecret: boolean;
+}
+
+function redactCredential(row: WsClientCredential | undefined): RedactedCredential | undefined {
+  if (!row) return undefined;
+  return {
+    id: row.id,
+    clientId: row.clientId,
+    clientKeyPrefix: row.clientKey.slice(0, 8),
+    label: row.label ?? null,
+    isActive: row.isActive,
+    expiresAt: row.expiresAt ?? null,
+    lastUsedAt: row.lastUsedAt ?? null,
+    hasSecret: !!row.secretHash,
+  };
+}
+
+interface CredentialBeforeState {
+  credential?: RedactedCredential;
+}
+
+const credentialBefore = async (args: any[], storage: WsClientCredentialStorage) => ({
+  credential: redactCredential(await storage.get(args[0])),
+});
+
+const credentialLabel = (before: CredentialBeforeState | undefined) => {
+  const record = before?.credential;
+  if (!record) return 'credential';
+  return record.label
+    ? `credential "${record.label}" (${record.clientKeyPrefix}…)`
+    : `credential ${record.clientKeyPrefix}…`;
+};
+
+/**
+ * A web-service client row carries a name, a description, a status and the
+ * IP-allowlist switch — no credential material of any kind, which all lives
+ * one table over. So this config logs the row as it is; there is nothing here
+ * to project away, and a redacted copy would only imply otherwise.
+ */
+export const wsClientLoggingConfig = defineLoggingConfig<WsClientStorage>({
+  module: 'wsClients',
+  table: 'ws_clients',
+  state: { key: 'client' },
+  methods: {
+    create: { describe: { label: 'web service client', name: 'name' } },
+    update: { describe: { label: 'web service client', name: 'name' } },
+    delete: { describe: { label: 'web service client', name: 'name' } },
+  },
+});
+
+/**
+ * Grants are replaced as a set, in one call, inside the caller's transaction.
+ * That is the grain the log entry takes: it names the client whose access
+ * changed and says which configurations were granted and revoked.
+ *
+ * `metadataEntityId` therefore answers `undefined` — the call mutated any
+ * number of grant rows and none of them is "the record this happened to", so
+ * no per-grant provenance is written. What does get stamped is the client:
+ * `hostTable` makes this a sub-record touch on `ws_clients`, so the client's
+ * own history shows that its access was changed, when, and by whom.
+ */
+export const wsClientGrantLoggingConfig = defineLoggingConfig<WsClientGrantStorage>({
+  module: 'wsClientGrants',
+  table: 'ws_client_grants',
+  hostTable: 'ws_clients',
+  methods: {
+    replaceForClient: {
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      metadataEntityId: () => undefined,
+      before: async (args: any[], storage: WsClientGrantStorage) => ({
+        configIds: (await storage.getByClient(args[0])).map((g) => g.configId).sort(),
+      }),
+      after: async (_args: any[], result: WsClientGrant[] | undefined) => ({
+        configIds: (result ?? []).map((g) => g.configId).sort(),
+      }),
+      getDescription: async (_args, result: WsClientGrant[] | undefined, beforeState: any) => {
+        const had: string[] = beforeState?.configIds ?? [];
+        const now = (result ?? []).map((g) => g.configId);
+        const granted = now.filter((id) => !had.includes(id));
+        const revoked = had.filter((id) => !now.includes(id));
+        const parts: string[] = [];
+        if (granted.length > 0) parts.push(`granted ${granted.join(', ')}`);
+        if (revoked.length > 0) parts.push(`revoked ${revoked.join(', ')}`);
+        return parts.length > 0
+          ? `Changed web service access: ${parts.join('; ')}`
+          : 'Saved web service access (no change)';
+      },
+    },
+  },
+});
+
+export const wsClientCredentialLoggingConfig = defineLoggingConfig<WsClientCredentialStorage>({
+  module: 'wsClientCredentials',
+  table: 'ws_client_credentials',
+  hostTable: 'ws_clients',
+  methods: {
+    create: {
+      // The minted key and secret are the RESULT, so this is the projection
+      // that matters: the raw result carries both in the clear.
+      after: async (_args: any[], result: CredentialCreateResult | undefined) => ({
+        credential: redactCredential(result?.credential),
+      }),
+      getEntityId: (_args, result: CredentialCreateResult | undefined) => result?.credential?.id,
+      getHostEntityId: (args) => args[0],
+      getDescription: async (args, result: CredentialCreateResult | undefined) => {
+        const label = args[1] ? `"${args[1]}"` : 'credential';
+        const prefix = result?.credential ? ` (${result.credential.clientKey.slice(0, 8)}…)` : '';
+        return `Issued web service ${label}${prefix}`;
+      },
+    },
+    deactivate: {
+      before: credentialBefore,
+      after: async (_args: any[], result: boolean | undefined) => ({ changed: result === true }),
+      getEntityId: (args) => args[0],
+      getHostEntityId: (_args, _result, beforeState: CredentialBeforeState | undefined) =>
+        beforeState?.credential?.clientId,
+      getDescription: async (_args, _result, beforeState) =>
+        `Deactivated web service ${credentialLabel(beforeState)}`,
+    },
+    reactivate: {
+      before: credentialBefore,
+      after: async (_args: any[], result: boolean | undefined) => ({ changed: result === true }),
+      getEntityId: (args) => args[0],
+      getHostEntityId: (_args, _result, beforeState: CredentialBeforeState | undefined) =>
+        beforeState?.credential?.clientId,
+      getDescription: async (_args, _result, beforeState) =>
+        `Reactivated web service ${credentialLabel(beforeState)}`,
+    },
+    delete: {
+      before: credentialBefore,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (_args, _result, beforeState: CredentialBeforeState | undefined) =>
+        beforeState?.credential?.clientId,
+      getDescription: async (_args, _result, beforeState) =>
+        `Deleted web service ${credentialLabel(beforeState)}`,
+    },
+  },
+});
+
+export const wsClientIpRuleLoggingConfig = defineLoggingConfig<WsClientIpRuleStorage>({
+  module: 'wsClientIpRules',
+  table: 'ws_client_ip_rules',
+  hostTable: 'ws_clients',
+  hostEntityIdField: 'clientId',
+  state: { key: 'rule' },
+  methods: {
+    create: { describe: { label: 'web service IP rule', name: 'ipAddress' } },
+    update: { describe: { label: 'web service IP rule', name: 'ipAddress' } },
+    delete: { describe: { label: 'web service IP rule', name: 'ipAddress' } },
+  },
+});

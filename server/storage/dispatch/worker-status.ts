@@ -104,6 +104,8 @@ export interface WorkerDispatchStatusStorage {
 export const workerDispatchStatusLoggingConfig: StorageLoggingConfig<WorkerDispatchStatusStorage> =
   {
     module: "worker-dispatch-status",
+    table: 'worker_dispatch_status',
+    hostTable: 'workers',
     methods: {
       create: {
         enabled: true,

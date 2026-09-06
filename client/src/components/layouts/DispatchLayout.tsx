@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode } from "react";
-import { Send, ArrowLeft } from "lucide-react";
+import { Send } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import type { DispatchWithRelations } from "../../../../server/storage/dispatch/dispatches";
 import { useDispatchTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
 
 interface DispatchLayoutContextValue {
   dispatch: DispatchWithRelations;
@@ -111,17 +112,12 @@ export function DispatchLayout({ activeTab, children }: DispatchLayoutProps) {
     <DispatchLayoutContext.Provider value={{ dispatch, isLoading, isError }}>
       <section className="bg-background border-b border-border">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-start gap-4">
-            <Link href={backUrl}>
-              <Button variant="ghost" size="icon" data-testid="button-back">
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <div className="flex-1">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-xl md:text-2xl font-bold text-foreground" data-testid="title-dispatch">
-                  {getWorkerName(dispatch)}
-                </h1>
+          <RecordTitleBar
+            variant="compact"
+            title={getWorkerName(dispatch)}
+            titleTestId="title-dispatch"
+            badges={
+              <>
                 <Badge className={statusColors[dispatch.status] || statusColors.pending} data-testid="badge-status">
                   {formatStatus(dispatch.status)}
                 </Badge>
@@ -134,12 +130,16 @@ export function DispatchLayout({ activeTab, children }: DispatchLayoutProps) {
                     Secondary
                   </span>
                 )}
-              </div>
+              </>
+            }
+            subtitle={
               <p className="text-muted-foreground mt-1" data-testid="text-job-title">
                 {dispatch.job?.title || 'Unknown Job'}
               </p>
-            </div>
-          </div>
+            }
+            backLink={{ href: backUrl, label: "Back to Dispatches" }}
+            recordId={dispatch.id}
+          />
         </div>
       </section>
 

@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { useOptionsListName } from "@/hooks/useConfigNavigation";
+import { BackToOptions } from "@/components/shared/BackToOptions";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -95,7 +97,9 @@ const availableIcons: { name: string; Icon: LucideIcon }[] = [
 ];
 
 export default function EventTypesPage() {
-  usePageTitle("Event Types");
+  // The options registry names this list; this page does not name it again.
+  const { pluralName: listName } = useOptionsListName("event-type");
+  usePageTitle(listName ?? "Options");
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -312,12 +316,13 @@ export default function EventTypesPage() {
   }
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="container mx-auto py-8 space-y-4">
+      <BackToOptions />
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
-              <CardTitle data-testid="title-page">Event Types</CardTitle>
+              <CardTitle data-testid="title-page">{listName ?? "Options"}</CardTitle>
               <CardDescription>
                 Manage event types for categorizing in-person and virtual events
               </CardDescription>

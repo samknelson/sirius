@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import EventLayout, { useEventLayout } from "@/components/layouts/EventLayout";
 import { UserCheck, Clock, CheckCircle, XCircle } from "lucide-react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 
 interface SelfRegistration {
   id: string;

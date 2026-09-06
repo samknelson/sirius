@@ -21,11 +21,6 @@ function WorkerHoursViewContent() {
         <CardContent className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Entry ID</label>
-              <p className="mt-1 font-mono text-sm" data-testid="text-hours-id">{hoursEntry.id}</p>
-            </div>
-
-            <div>
               <label className="text-sm font-medium text-muted-foreground">Date</label>
               <p className="mt-1" data-testid="text-hours-date">
                 {getMonthName(hoursEntry.month)} {hoursEntry.day}, {hoursEntry.year}

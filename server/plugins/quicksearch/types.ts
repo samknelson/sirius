@@ -1,10 +1,13 @@
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { User } from "@shared/schema";
-import type { QuicksearchResult } from "@shared/quicksearch";
+import type {
+  QuicksearchPluginResult,
+  QuicksearchResult,
+} from "@shared/quicksearch";
 import type { storage as storageType } from "../../storage";
 import type { BasePluginMetadata } from "../_core";
 
-export type { QuicksearchResult };
+export type { QuicksearchPluginResult, QuicksearchResult };
 
 export interface QuicksearchUiSchema {
   [key: string]: any;
@@ -69,7 +72,7 @@ export interface QuicksearchPlugin extends BasePluginMetadata {
    */
   permissionGatedOptions?: Record<string, string>;
   /** Find matching records. Read-only; must never write. */
-  search(ctx: QuicksearchContext): Promise<QuicksearchResult[]>;
+  search(ctx: QuicksearchContext): Promise<QuicksearchPluginResult[]>;
 }
 
 /** Manifest entry shape for quicksearch plugins. */

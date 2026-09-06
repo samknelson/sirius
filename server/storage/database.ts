@@ -11,7 +11,7 @@ import { type TrustWmbStorage, createTrustWmbStorage, trustWmbLoggingConfig } fr
 import { type TrustWmbEventsStorage, createTrustWmbEventsStorage } from "./trust/wmb-events";
 import { type TrustProviderContactStorage, createTrustProviderContactStorage, trustProviderContactLoggingConfig } from "./trust/provider/contacts";
 import { type WorkerIdStorage, createWorkerIdStorage, workerIdLoggingConfig } from "./workers/ids";
-import { type BookmarkStorage, createBookmarkStorage } from "./bookmarks";
+import { type BookmarkStorage, createBookmarkStorage, bookmarkLoggingConfig } from "./bookmarks";
 import {
   type LedgerStorage,
   createLedgerStorage,
@@ -46,6 +46,7 @@ import {
 import {
   type WizardFeedMappingStorage,
   createWizardFeedMappingStorage,
+  wizardFeedMappingLoggingConfig,
 } from "./wizard_feed_mappings";
 import {
   type WizardEmployerMonthlyStorage,
@@ -54,6 +55,7 @@ import {
 import {
   type WizardEmploymentStatusMappingStorage,
   createWizardEmploymentStatusMappingStorage,
+  wizardEmploymentStatusMappingLoggingConfig,
 } from "./wizard-employment-status-mappings";
 import {
   type FileStorage,
@@ -67,6 +69,7 @@ import {
 import {
   type PluginConfigStorage,
   createPluginConfigStorage,
+  pluginConfigLoggingConfig,
 } from "./system/plugin-configs";
 import {
   type DenormStorage,
@@ -97,6 +100,14 @@ import {
   createEbsStorage,
 } from "./system/ebs";
 import { type LogsStorage, createLogsStorage } from "./system/logs";
+import {
+  type EntityMetadataAdminStorage,
+  createEntityMetadataAdminStorage,
+} from "./system/entity-metadata-admin";
+import {
+  type EntityMetadataSeedStorage,
+  createEntityMetadataSeedStorage,
+} from "./system/entity-metadata-seed";
 import { type WorkerWshStorage, createWorkerWshStorage, workerWshLoggingConfig } from "./worker-wsh";
 import { type WorkerMshStorage, createWorkerMshStorage, workerMshLoggingConfig } from "./worker-msh";
 import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingConfig } from "./worker-hours";
@@ -142,7 +153,7 @@ import { type BtuSchoolAttributesStorage, createBtuSchoolAttributesStorage } fro
 import { type BaoImmediateEligibilityStorage, createBaoImmediateEligibilityStorage, baoImmediateEligibilityLoggingConfig } from "./sitespecific/bao/immediate-eligibility";
 import { type BaoBeneficiariesStorage, createBaoBeneficiariesStorage, baoBeneficiariesLoggingConfig } from "./sitespecific/bao/beneficiaries";
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
-import { type NotesStorage, type NoteWithDetails, createNotesStorage, notesLoggingConfig } from "./notes";
+import { type EntityNotesStorage, type EntityNoteWithDetails, createEntityNotesStorage, entityNotesLoggingConfig } from "./entity-notes";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./dispatch/worker-dnc";
 import { type WorkerDispatchDepartmentStorage, createWorkerDispatchDepartmentStorage, workerDispatchDepartmentLoggingConfig } from "./dispatch/worker-departments";
 import { type DispatchJobDepartmentStorage, createDispatchJobDepartmentStorage } from "./dispatch/job-departments";
@@ -158,12 +169,10 @@ import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfi
 import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig } from "./edls/crews";
 import { type EdlsAssignmentsStorage, createEdlsAssignmentsStorage, edlsAssignmentsLoggingConfig } from "./edls/assignments";
 import { type WorkerEdlsStorage, createWorkerEdlsStorage, workerEdlsLoggingConfig } from "./edls/workers";
-import { type AuthIdentitiesStorage, createAuthIdentitiesStorage } from "./auth-identities";
 import { type WorkerDispatchEligDenormStorage, createWorkerDispatchEligDenormStorage } from "./dispatch/worker-elig-denorm";
 import { type RawSqlStorage, createRawSqlStorage } from "./raw-sql";
 import { type ReadOnlyStorage, createReadOnlyStorage } from "./read-only";
 import { type BtuPoliticalStorage, createBtuPoliticalStorage, btuPoliticalLoggingConfig } from "./sitespecific/btu/political";
-import { type WsClientStorage, type WsClientGrantStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsClientStorage, createWsClientGrantStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
 import { type WcCacheStorage, createWcCacheStorage } from "./wc-cache";
 import { type WcStatsStorage, createWcStatsStorage } from "./wc-stats";
 import { type WsStatsStorage, createWsStatsStorage } from "./ws-stats";
@@ -179,10 +188,10 @@ import {
   grievanceSettlementLoggingConfig,
 } from "./grievances/grievance-settlements";
 import {
-  type GrievanceFileStorage,
-  createGrievanceFileStorage,
-  grievanceFileLoggingConfig,
-} from "./grievances/grievance-files";
+  type EntityFilesStorage,
+  createEntityFilesStorage,
+  entityFilesLoggingConfig,
+} from "./entity-files";
 import {
   type GrievanceStatusHistoryStorage,
   createGrievanceStatusHistoryStorage,
@@ -203,6 +212,8 @@ import { db } from "./db";
 import { employers, workers, contacts } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { type AdvisoryLockStorage, createAdvisoryLockStorage } from "./advisory-lock";
+import { type WsClientStorage, type WsClientGrantStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsClientStorage, createWsClientGrantStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage, wsClientLoggingConfig, wsClientGrantLoggingConfig, wsClientCredentialLoggingConfig, wsClientIpRuleLoggingConfig } from "./webservices";
+import { type AuthIdentitiesStorage, createAuthIdentitiesStorage, authIdentitiesLoggingConfig } from "./auth-identities";
 
 export interface IStorage {
   variables: VariableStorage;
@@ -224,6 +235,7 @@ export interface IStorage {
   wizardEmployerMonthly: WizardEmployerMonthlyStorage;
   wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
   files: FileStorage;
+  entityFiles: EntityFilesStorage;
   cronJobRuns: CronJobRunStorage;
   pluginConfigs: PluginConfigStorage;
   denorm: DenormStorage;
@@ -234,6 +246,8 @@ export interface IStorage {
   grievanceNameDenorm: GrievanceNameDenormStorage;
   grievanceStepsDenorm: GrievanceStepsDenormStorage;
   logs: LogsStorage;
+  entityMetadataAdmin: EntityMetadataAdminStorage;
+  entityMetadataSeed: EntityMetadataSeedStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
   workerHours: WorkerHoursStorage;
@@ -269,7 +283,7 @@ export interface IStorage {
   freemanEdlsMigrateStaging: FreemanEdlsMigrateStagingStorage;
   t631Interviews: T631InterviewsStorage;
   workerBans: WorkerBanStorage;
-  notes: NotesStorage;
+  entityNotes: EntityNotesStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
   workerDispatchDepartments: WorkerDispatchDepartmentStorage;
   dispatchJobDepartments: DispatchJobDepartmentStorage;
@@ -321,7 +335,6 @@ export interface IStorage {
   grievanceStatusHistory: GrievanceStatusHistoryStorage;
   grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
   grievanceSettlements: GrievanceSettlementStorage;
-  grievanceFiles: GrievanceFileStorage;
   grievanceContracts: GrievanceContractStorage;
 }
 
@@ -345,6 +358,7 @@ export class DatabaseStorage implements IStorage {
   wizardEmployerMonthly: WizardEmployerMonthlyStorage;
   wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
   files: FileStorage;
+  entityFiles: EntityFilesStorage;
   cronJobRuns: CronJobRunStorage;
   pluginConfigs: PluginConfigStorage;
   denorm: DenormStorage;
@@ -355,6 +369,8 @@ export class DatabaseStorage implements IStorage {
   grievanceNameDenorm: GrievanceNameDenormStorage;
   grievanceStepsDenorm: GrievanceStepsDenormStorage;
   logs: LogsStorage;
+  entityMetadataAdmin: EntityMetadataAdminStorage;
+  entityMetadataSeed: EntityMetadataSeedStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
   workerHours: WorkerHoursStorage;
@@ -390,7 +406,7 @@ export class DatabaseStorage implements IStorage {
   freemanEdlsMigrateStaging: FreemanEdlsMigrateStagingStorage;
   t631Interviews: T631InterviewsStorage;
   workerBans: WorkerBanStorage;
-  notes: NotesStorage;
+  entityNotes: EntityNotesStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
   workerDispatchDepartments: WorkerDispatchDepartmentStorage;
   dispatchJobDepartments: DispatchJobDepartmentStorage;
@@ -442,7 +458,6 @@ export class DatabaseStorage implements IStorage {
   grievanceStatusHistory: GrievanceStatusHistoryStorage;
   grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
   grievanceSettlements: GrievanceSettlementStorage;
-  grievanceFiles: GrievanceFileStorage;
   grievanceContracts: GrievanceContractStorage;
 
   constructor() {
@@ -483,7 +498,10 @@ export class DatabaseStorage implements IStorage {
       createWorkerIdStorage(),
       workerIdLoggingConfig,
     );
-    this.bookmarks = createBookmarkStorage();
+    this.bookmarks = withStorageLogging(
+      createBookmarkStorage(),
+      bookmarkLoggingConfig,
+    );
     this.ledger = {
       ...createLedgerStorage(
         ledgerAccountLoggingConfig,
@@ -509,12 +527,25 @@ export class DatabaseStorage implements IStorage {
       createWizardStorage(),
       wizardLoggingConfig,
     );
-    this.wizardFeedMappings = createWizardFeedMappingStorage();
+    this.wizardFeedMappings = withStorageLogging(
+      createWizardFeedMappingStorage(),
+      wizardFeedMappingLoggingConfig,
+    );
     this.wizardEmployerMonthly = createWizardEmployerMonthlyStorage();
-    this.wizardEmploymentStatusMappings = createWizardEmploymentStatusMappingStorage();
+    this.wizardEmploymentStatusMappings = withStorageLogging(
+      createWizardEmploymentStatusMappingStorage(),
+      wizardEmploymentStatusMappingLoggingConfig,
+    );
     this.files = withStorageLogging(createFileStorage(), fileLoggingConfig);
+    this.entityFiles = withStorageLogging(
+      createEntityFilesStorage(),
+      entityFilesLoggingConfig,
+    );
     this.cronJobRuns = createCronJobRunStorage();
-    this.pluginConfigs = createPluginConfigStorage();
+    this.pluginConfigs = withStorageLogging(
+      createPluginConfigStorage(),
+      pluginConfigLoggingConfig,
+    );
     // No logging for denorm - high-volume internal workflow state churn.
     this.denorm = createDenormStorage();
     this.workerMshDenorm = createWorkerMshDenormStorage();
@@ -525,6 +556,8 @@ export class DatabaseStorage implements IStorage {
     this.grievanceNameDenorm = createGrievanceNameDenormStorage();
     this.grievanceStepsDenorm = createGrievanceStepsDenormStorage();
     this.logs = createLogsStorage();
+    this.entityMetadataAdmin = createEntityMetadataAdminStorage();
+    this.entityMetadataSeed = createEntityMetadataSeedStorage();
 
     // No logging for wmb scan queue - high-volume internal state changes
     // Actual benefit changes are logged via the benefits-scan service
@@ -629,7 +662,7 @@ export class DatabaseStorage implements IStorage {
       t631InterviewsLoggingConfig,
     );
     this.workerBans = withStorageLogging(createWorkerBanStorage(), workerBanLoggingConfig);
-    this.notes = withStorageLogging(createNotesStorage(), notesLoggingConfig);
+    this.entityNotes = withStorageLogging(createEntityNotesStorage(), entityNotesLoggingConfig);
     this.workerDispatchDnc = withStorageLogging(createWorkerDispatchDncStorage(), workerDispatchDncLoggingConfig);
     this.workerDispatchDepartments = withStorageLogging(createWorkerDispatchDepartmentStorage(), workerDispatchDepartmentLoggingConfig);
     this.dispatchJobDepartments = createDispatchJobDepartmentStorage();
@@ -649,15 +682,18 @@ export class DatabaseStorage implements IStorage {
     this.edlsAssignments = withStorageLogging(createEdlsAssignmentsStorage(), edlsAssignmentsLoggingConfig);
     this.workerEdls = withStorageLogging(createWorkerEdlsStorage(), workerEdlsLoggingConfig);
     this.snapshots = withStorageLogging(createSnapshotsStorage(), snapshotsLoggingConfig);
-    this.authIdentities = createAuthIdentitiesStorage();
+    this.authIdentities = withStorageLogging(createAuthIdentitiesStorage(), authIdentitiesLoggingConfig);
     this.workerDispatchEligDenorm = createWorkerDispatchEligDenormStorage();
     this.rawSql = createRawSqlStorage();
     this.advisoryLock = createAdvisoryLockStorage();
     this.readOnly = createReadOnlyStorage();
-    this.wsClients = createWsClientStorage();
-    this.wsClientGrants = createWsClientGrantStorage();
-    this.wsClientCredentials = createWsClientCredentialStorage();
-    this.wsClientIpRules = createWsClientIpRuleStorage();
+    this.wsClients = withStorageLogging(createWsClientStorage(), wsClientLoggingConfig);
+    this.wsClientGrants = withStorageLogging(createWsClientGrantStorage(), wsClientGrantLoggingConfig);
+    this.wsClientCredentials = withStorageLogging(
+      createWsClientCredentialStorage(),
+      wsClientCredentialLoggingConfig
+    );
+    this.wsClientIpRules = withStorageLogging(createWsClientIpRuleStorage(), wsClientIpRuleLoggingConfig);
     this.wcCache = createWcCacheStorage();
     this.wcStats = createWcStatsStorage();
     this.wsStats = createWsStatsStorage();
@@ -733,6 +769,7 @@ export class DatabaseStorage implements IStorage {
       },
       {
         module: 'comm',
+        table: 'comm',
         methods: {
           updateWithTags: {
             enabled: true,
@@ -795,10 +832,6 @@ export class DatabaseStorage implements IStorage {
     this.grievanceSettlements = withStorageLogging(
       createGrievanceSettlementStorage(),
       grievanceSettlementLoggingConfig,
-    );
-    this.grievanceFiles = withStorageLogging(
-      createGrievanceFileStorage(),
-      grievanceFileLoggingConfig,
     );
     this.grievanceContracts = withStorageLogging(
       createGrievanceContractStorage(),

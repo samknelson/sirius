@@ -1,19 +1,24 @@
 import type { Request } from "express";
 import type { File } from "@shared/schema";
-import type { InsertFile } from "@shared/schema";
 import type { PolicyContext } from "@shared/access-policies";
 
 /**
  * Generic entity file attachments framework — context registry.
  *
- * A "context" is a code-level registration that plugs one entity type into
- * the generic /api/entity-files routes. Each context supplies:
+ * A "context" (an "area" in the admin UI) is a code-level registration that
+ * plugs one entity type into the generic /api/entity-files routes. The
+ * framework supplies everything that used to be per-context boilerplate:
+ * attachment rows all live in the shared `entity_files` table keyed by the
+ * context id (see server/storage/entity-files.ts), and the one directory
+ * token `:entity-id` is expanded by the framework (see ./config.ts).
  *
- * - access control (a callback deciding view vs manage per request/entity),
- * - directory-token resolution (e.g. ":grievance-id" → the entity's id) used
- *   to expand the operator-configured directory template,
- * - a join-table adapter that persists the attachment rows for that entity
- *   (list/get/attach/update/remove against the entity's own join table).
+ * So a context declares only what is genuinely its own:
+ * - its id and label (and an optional component gate),
+ * - whether one of its entities exists,
+ * - the two access callbacks (API and file download).
+ *
+ * Registering a new area is therefore a registration here plus operator
+ * configuration — no table, no migration, no storage namespace.
  *
  * WHERE files land (which filesystem, which directory, which extensions are
  * allowed) is NOT code — it is operator configuration stored in the
@@ -22,71 +27,20 @@ import type { PolicyContext } from "@shared/access-policies";
  * until an admin configures it.
  */
 
-/** One attachment row joined with its backing files row. */
-export interface EntityFileRecord {
-  /** Join-table row id (the "attachment id" in the API). */
-  id: string;
-  entityId: string;
-  fileId: string;
-  /** User-editable display name. */
-  name: string;
-  data: unknown;
-  file: File;
-}
-
-/**
- * Join-table adapter. All row mutations happen inside the entity's own
- * storage namespace; `attach` and `remove` are transactional over BOTH the
- * join row and the files row (see e.g. storage.grievanceFiles).
- */
-export interface EntityFilesAdapter {
-  list(entityId: string): Promise<EntityFileRecord[]>;
-  get(entityId: string, attachmentId: string): Promise<EntityFileRecord | undefined>;
-  /**
-   * Look up the attachment row by its backing files-row id. Used by the
-   * generic /api/files/:id/download route to serve the user-editable
-   * display name instead of the original filename.
-   */
-  getByFileId(entityId: string, fileId: string): Promise<EntityFileRecord | undefined>;
-  /**
-   * Create the files row AND the join row in one transaction. The bytes are
-   * already uploaded by the route (bytes-first ordering: a failed insert
-   * leaves a sweepable orphan object, never a row pointing at nothing).
-   */
-  attach(entityId: string, file: InsertFile, name: string): Promise<EntityFileRecord>;
-  update(
-    entityId: string,
-    attachmentId: string,
-    updates: { name?: string; data?: unknown },
-  ): Promise<EntityFileRecord | undefined>;
-  /**
-   * Delete the join row AND the files row in ONE transaction (exceptions
-   * bubble — no partial deletes). Provider byte removal is scheduled via
-   * onAfterCommit inside the storage method; a failed byte delete leaves a
-   * sweepable orphan object.
-   */
-  remove(entityId: string, attachmentId: string): Promise<{ file: File } | undefined>;
-}
-
 export type EntityFilesVerb = "view" | "manage";
 
 export interface EntityFileContext {
   /** Stable id used in URLs and as the key in entity_files_config. */
   id: string;
-  /** Human label for the admin config page. */
+  /** Human label for the admin config page (plural: "Workers"). */
   label: string;
+  /** Human label for ONE record of this area ("Worker"), used wherever a
+   * single record kind is named — the file-type "Applies To" list. */
+  recordLabel: string;
   /** Optional component gate; when set the context 404s while disabled. */
   component?: string;
-  /**
-   * Directory-template tokens this context can resolve (e.g.
-   * [":grievance-id"]). The config page surfaces these to the operator and
-   * config validation rejects unknown tokens in the directory template.
-   */
-  tokens: string[];
   /** Whether the entity exists (drives 404s before any file work). */
   entityExists(entityId: string): Promise<boolean>;
-  /** Resolve token values for one entity (keys match `tokens`). */
-  resolveTokens(entityId: string): Promise<Record<string, string>>;
   /** Access callback: may this request view/manage this entity's files? */
   checkAccess(verb: EntityFilesVerb, entityId: string, req: Request): Promise<boolean>;
   /**
@@ -100,7 +54,6 @@ export interface EntityFileContext {
     entityId: string,
     ctx: PolicyContext,
   ): Promise<boolean>;
-  adapter: EntityFilesAdapter;
 }
 
 const contexts = new Map<string, EntityFileContext>();

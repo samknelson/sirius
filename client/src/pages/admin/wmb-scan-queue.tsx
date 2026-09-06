@@ -36,7 +36,7 @@ import {
   XCircle,
   RotateCcw,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 

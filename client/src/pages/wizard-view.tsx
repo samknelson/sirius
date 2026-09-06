@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Wand2, ArrowLeft, Trash2, AlertTriangle, Clock, FileText } from "lucide-react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { RetentionSettings } from "@/components/wizards/RetentionSettings";

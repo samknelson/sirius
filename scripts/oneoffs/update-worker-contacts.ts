@@ -105,8 +105,8 @@ async function updateWorkerContacts() {
       
       // Insert new phone number
       await db.execute(sql`
-        INSERT INTO contact_phone (id, contact_id, phone_number, is_primary, created_at)
-        VALUES (gen_random_uuid(), ${worker.contact_id}, ${phone}, true, now())
+        INSERT INTO contact_phone (id, contact_id, phone_number, is_primary)
+        VALUES (gen_random_uuid(), ${worker.contact_id}, ${phone}, true)
       `);
       updatedPhones++;
       
@@ -120,12 +120,12 @@ async function updateWorkerContacts() {
       await db.execute(sql`
         INSERT INTO contact_postal (
           id, contact_id, friendly_name, street, city, state, 
-          postal_code, country, is_primary, is_active, created_at
+          postal_code, country, is_primary, is_active
         )
         VALUES (
           gen_random_uuid(), ${worker.contact_id}, ${building.name}, ${building.street}, 
           ${building.city}, ${building.state}, ${building.zip}, 
-          'US', true, true, now()
+          'US', true, true
         )
       `);
       updatedAddresses++;

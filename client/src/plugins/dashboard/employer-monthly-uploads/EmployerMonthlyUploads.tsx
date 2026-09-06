@@ -5,7 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Building2, Calendar, ExternalLink } from "lucide-react";
 import { DashboardPluginProps } from "../registry";
 import { useDashboardContent } from "../useDashboardContent";
-import { format, subMonths } from "date-fns";
+import { subMonths } from "date-fns";
+import { format } from "@/lib/date-format";
 
 interface MyWizardType {
   name: string;

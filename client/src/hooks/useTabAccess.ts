@@ -8,6 +8,7 @@ import {
   buildTabHref,
   WS_ADMIN_ENTITY_ID,
   WC_ADMIN_ENTITY_ID,
+  RECORD_METADATA_ADMIN_ENTITY_ID,
 } from "@shared/tabRegistry";
 import { apiRequest } from "@/lib/queryClient";
 import { useTerm } from "@/contexts/TerminologyContext";
@@ -489,6 +490,18 @@ export function useWcTabAccess(enabled = true) {
   return useTabAccess({
     entityType: 'wc',
     entityId: WC_ADMIN_ENTITY_ID,
+    enabled,
+  });
+}
+
+/**
+ * Tab access for the record history admin page. It is one page rather than an
+ * entity, so the id is the registry's constant.
+ */
+export function useRecordMetadataTabAccess(enabled = true) {
+  return useTabAccess({
+    entityType: 'record_metadata',
+    entityId: RECORD_METADATA_ADMIN_ENTITY_ID,
     enabled,
   });
 }

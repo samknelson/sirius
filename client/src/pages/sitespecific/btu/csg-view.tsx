@@ -161,10 +161,6 @@ function BtuCsgViewContent() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1">
-              <label className="text-sm font-medium text-muted-foreground">Record ID</label>
-              <p className="text-foreground font-mono text-sm" data-testid="text-record-id">{record.id}</p>
-            </div>
-            <div className="space-y-1">
               <label className="text-sm font-medium text-muted-foreground">Created At</label>
               <p className="text-foreground" data-testid="text-created-at">{formatDate(record.createdAt)}</p>
             </div>

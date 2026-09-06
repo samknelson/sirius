@@ -17,7 +17,7 @@
  * readability only.
  */
 import { createHash } from "node:crypto";
-import { getEnvironmentVariable } from "./env-registry";
+import { getConfiguredEnvironmentValue } from "./env-registry";
 
 /** Sentinel distinguishing "unset" from a value that happens to be empty. */
 export const ENV_VALUE_UNSET = "\u0000unset";
@@ -30,17 +30,24 @@ export const ENV_VALUE_UNSET = "\u0000unset";
 export const ENV_FINGERPRINT_LENGTH = 12;
 
 /**
- * Full digest of a variable's effective value — the value the running
- * application actually uses, transforms and overrides included — or
- * {@link ENV_VALUE_UNSET} when it has none.
+ * Full digest of a variable's CONFIGURED value — transforms and overrides
+ * included — or {@link ENV_VALUE_UNSET} when it has none.
+ *
+ * Configured, rather than the value the process is running on, because both
+ * callers are asking about configuration: whether two installations are set up
+ * the same, and whether someone has changed a setting since this process
+ * started. The two answers differ for a value the app planted in its own
+ * environment from a stored one — reading the planted value back would report
+ * a changed or cleared setting as unchanged, which is exactly the
+ * waiting-on-a-restart case an operator has to be told about.
  */
 export function fingerprintEnvironmentValue(name: string): string {
   let value: string | undefined;
   try {
-    value = getEnvironmentVariable(name);
+    value = getConfiguredEnvironmentValue(name);
   } catch {
-    // A required-but-unset variable throws from the getter. Treat that the
-    // same as unset: every caller here only cares whether it changed.
+    // An unregistered name throws. Treat it the same as unset: every caller
+    // here only cares whether the value changed.
     value = undefined;
   }
   if (value === undefined || value === "") return ENV_VALUE_UNSET;

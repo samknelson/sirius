@@ -1,6 +1,6 @@
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Calendar, Users, MapPin, Video, Presentation, Mic, Ticket, Star, Heart, Clock, type LucideIcon } from "lucide-react";
+import { Calendar, Users, MapPin, Video, Presentation, Mic, Ticket, Star, Heart, Clock, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,6 +8,17 @@ import type { Event, EventType, EventOccurrence } from "@shared/schema";
 import { createContext, useContext } from "react";
 import { useEventTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
+
+const EVENT_BACK_LINK = {
+  href: "/events",
+  label: "Back to Events",
+  testId: "button-back-to-events",
+};
 
 const iconMap: Record<string, LucideIcon> = {
   Calendar, Users, MapPin, Video, Presentation, Mic, Ticket, Star, Heart, Clock,
@@ -73,26 +84,10 @@ export default function EventLayout({ children, activeTab }: EventLayoutProps) {
   if (isLoading || !event) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Calendar className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/events">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-events">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Events
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<Calendar className="text-primary-foreground" size={16} />}
+          backLink={EVENT_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -111,26 +106,11 @@ export default function EventLayout({ children, activeTab }: EventLayoutProps) {
   if (error) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Calendar className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Event Not Found</h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/events">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-events">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Events
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<Calendar className="text-primary-foreground" size={16} />}
+          label="Event Not Found"
+          backLink={EVENT_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -161,33 +141,18 @@ export default function EventLayout({ children, activeTab }: EventLayoutProps) {
     <EventLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
         {/* Header */}
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <IconComponent className="text-primary-foreground" size={16} />
-                </div>
-                <div>
-                  <h1 className="text-xl font-semibold text-foreground" data-testid={`text-event-name-${event.id}`}>
-                    {event.title}
-                  </h1>
-                  {eventType && (
-                    <p className="text-sm text-muted-foreground">{eventType.name}</p>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/events">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-events">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Events
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<IconComponent className="text-primary-foreground" size={16} />}
+          title={event.title}
+          titleTestId={`text-event-name-${event.id}`}
+          subtitle={
+            eventType && (
+              <p className="text-sm text-muted-foreground">{eventType.name}</p>
+            )
+          }
+          backLink={EVENT_BACK_LINK}
+          recordId={event.id}
+        />
 
         {/* Main Tab Navigation */}
         <div className="bg-card border-b border-border">

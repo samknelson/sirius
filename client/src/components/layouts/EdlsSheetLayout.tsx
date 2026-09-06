@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, ReactNode } from "react";
-import { FileSpreadsheet, ArrowLeft, Calendar, Users } from "lucide-react";
+import { FileSpreadsheet, Calendar, Users } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { formatYmd } from "@shared/utils/date";
 import type { EdlsSheet } from "@shared/schema";
 import { useEdlsSheetTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
 
 interface EdlsSheetWithRelations extends EdlsSheet {
   employer?: { id: string; name: string };
@@ -100,16 +101,11 @@ export function EdlsSheetLayout({ activeTab, children }: EdlsSheetLayoutProps) {
     <EdlsSheetLayoutContext.Provider value={{ sheet, isLoading, isError }}>
       <section className="bg-background border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-start gap-4">
-            <Link href="/edls/sheets">
-              <Button variant="ghost" size="icon" data-testid="button-back">
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <div className="flex-1">
-              <h1 className="text-xl md:text-2xl font-bold text-foreground" data-testid="title-sheet">
-                {sheet.title}
-              </h1>
+          <RecordTitleBar
+            variant="compact"
+            title={sheet.title}
+            titleTestId="title-sheet"
+            subtitle={
               <div className="flex items-center gap-4 mt-1 text-muted-foreground flex-wrap">
                 <span className="flex items-center gap-1">
                   <Calendar className="h-4 w-4" />
@@ -120,8 +116,10 @@ export function EdlsSheetLayout({ activeTab, children }: EdlsSheetLayoutProps) {
                   {sheet.workerCount} workers
                 </span>
               </div>
-            </div>
-          </div>
+            }
+            backLink={{ href: "/edls/sheets", label: "Back to Sheets" }}
+            recordId={sheet.id}
+          />
         </div>
       </section>
 

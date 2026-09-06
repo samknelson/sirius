@@ -17,7 +17,8 @@ import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useMemo, useState } from "react";
 import { Ban, Plus, Trash2, Pencil } from "lucide-react";
 import type { WorkerBan } from "@shared/schema";
-import { format, addDays, parseISO, isValid } from "date-fns";
+import { addDays, parseISO, isValid } from "date-fns";
+import { format, formatLocalFields } from "@/lib/date-format";
 
 interface BanTypeOption {
   id: string;
@@ -38,7 +39,7 @@ function defaultEndDateFor(
   if (!days || !Number.isInteger(days) || days < 1 || !startDate) return "";
   const start = parseISO(startDate);
   if (!isValid(start)) return "";
-  return format(addDays(start, days), "yyyy-MM-dd");
+  return formatLocalFields(addDays(start, days), "yyyy-MM-dd");
 }
 
 interface BanPluginManifestEntry {
@@ -252,7 +253,7 @@ function BansContent() {
   const openAddModal = () => {
     setEditingBan(null);
     const initialType = banTypes[0]?.id ?? "";
-    const initialStart = format(new Date(), "yyyy-MM-dd");
+    const initialStart = formatLocalFields(new Date(), "yyyy-MM-dd");
     setFormType(initialType);
     setFormStartDate(initialStart);
     setFormEndDate(defaultEndDateFor(typeById.get(initialType), initialStart));
@@ -265,8 +266,8 @@ function BansContent() {
   const openEditModal = (ban: WorkerBan) => {
     setEditingBan(ban);
     setFormType(ban.type && typeById.has(ban.type) ? ban.type : "");
-    setFormStartDate(ban.startDate ? format(new Date(ban.startDate), "yyyy-MM-dd") : "");
-    setFormEndDate(ban.endDate ? format(new Date(ban.endDate), "yyyy-MM-dd") : "");
+    setFormStartDate(ban.startDate ? formatLocalFields(new Date(ban.startDate), "yyyy-MM-dd") : "");
+    setFormEndDate(ban.endDate ? formatLocalFields(new Date(ban.endDate), "yyyy-MM-dd") : "");
     setEndDateTouched(true); // never auto-change an existing ban's end date
     setFormMessage(ban.message || "");
     const existingData: Record<string, string> = {};

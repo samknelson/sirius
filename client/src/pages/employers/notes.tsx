@@ -1,9 +1,9 @@
 import { EmployerLayout, useEmployerLayout } from "@/components/layouts/EmployerLayout";
-import NotesPanel from "@/components/notes/NotesPanel";
+import EntityNotesPanel from "@/components/entity-notes/EntityNotesPanel";
 
 function EmployerNotesContent() {
   const { employer } = useEmployerLayout();
-  return <NotesPanel entityType="employer" entityId={employer.id} />;
+  return <EntityNotesPanel contextId="employer" entityId={employer.id} />;
 }
 
 export default function EmployerNotesPage() {
