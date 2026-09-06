@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { rehearseProcessProvenanceMigrations } from "../../scripts/migration-contracts/process-provenance";
 
 const migration = (name: string) =>
   readFileSync(join(process.cwd(), "scripts/migrate/core", name), "utf8");
 
 describe("process-table provenance migrations", () => {
+  it("rehearses the supported migration histories", () => {
+    expect(() => rehearseProcessProvenanceMigrations()).not.toThrow();
+  });
+
   it("does not let the historical retirement versions seed or drop excluded tables", () => {
     for (const name of [
       "1083_retire_ledger_provenance_columns.ts",
