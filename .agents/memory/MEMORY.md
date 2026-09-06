@@ -155,3 +155,4 @@
 - [Context-filtered picker resend](context-filtered-picker-resend.md) — seed a scoped picker from the OFFERED set and omit the field when the control isn't rendered; resending a de-scoped id 400s unrelated edits.
 - Drizzle gotchas — [ANY(array) in raw sql](drizzle-raw-sql-any-array.md), [.unique() is a constraint not an index](drizzle-unique-constraint-vs-index.md), [.notNull() breaks autogen inserts](drizzle-notnull-breaks-autogen.md), [bare vs qualified select-list columns](drizzle-select-list-unqualified-columns.md).
 - [Retiring a bespoke timestamp column](retiring-timestamp-columns.md) — stripping an `updated_at` bump leaves empty `.set({})` (runtime throw); provenance recency ≠ row-write recency and can be NULL.
+- [Shared catalog framework](catalog-framework.md) — catalog=code-supplied, registry=DB; entries derive on READ (component filter), offer≠vocabulary, tier decided from the reader (barrel hides tier-as-argument), version needs a process id.

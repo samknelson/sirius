@@ -44,6 +44,14 @@ import { initDispatchNotifications } from "./services/dispatch/notifications";
 import "@shared/access-policies/loader";
 import { registerEntityAccessModule } from "./modules/entity-access";
 import { isComponentEnabled } from "./modules/components";
+import {
+  closeCatalogRegistration,
+  setCatalogComponentSource,
+} from "@shared/catalog";
+import {
+  getComponentCacheRevision,
+  isComponentEnabledSync,
+} from "./services/component-cache";
 
 // Helper function to redact sensitive data from responses before logging.
 // Exported so the redaction list can be asserted directly — the fields it
@@ -190,6 +198,16 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Initialize the permission system
   initializePermissions();
   logger.info("Permission system initialized with core permissions", { source: "startup" });
+
+  // Hand the shared catalog framework its view of component state. Catalogs
+  // are declared in shared/, which cannot reach the component cache, so the
+  // check is injected here. Until it is, every catalog read refuses rather
+  // than guessing enabled or disabled.
+  setCatalogComponentSource({
+    isEnabled: isComponentEnabledSync,
+    getRevision: getComponentCacheRevision,
+  });
+  logger.info("Catalog component source wired", { source: "startup" });
 
   // Initialize access control system with unified policy evaluator
   initAccessControl(
@@ -507,6 +525,12 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   logger.info("Entity access module registered", { source: "startup" });
 
   await registerRoutes(app, server);
+
+  // Startup is over, so the set of declared catalogs is final. Anything
+  // registering after this point is a module that failed to load in the
+  // startup sequence, not a late arrival to accommodate.
+  closeCatalogRegistration();
+  logger.info("Catalog registration closed", { source: "startup" });
 
   // Initialize WebSocket server for real-time notifications
   const sessionMiddleware = getSession();
