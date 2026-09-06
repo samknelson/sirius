@@ -4,10 +4,10 @@ import { logger } from "../../../server/logger";
 const SERVICE = "migration-1083";
 
 /**
- * Ledger tables are process-owned and are deliberately excluded from
- * entity_metadata. Their creation columns are the source of truth for payment
- * lists and gateway diagnostics, so this historical migration is now a
- * preservation checkpoint rather than a destructive migration.
+ * This historical migration is now a preservation checkpoint. The later
+ * compatibility migration restores metadata coverage selectively: maintained
+ * account/payment tables are eligible, while ledger, ledger_ea, and
+ * ledger_gateway_customers remain excluded.
  *
  * Keep the version registered forever. Some databases may already have
  * recorded 1083, so deleting or renumbering it would make migration history
@@ -16,7 +16,7 @@ const SERVICE = "migration-1083";
  */
 async function up(): Promise<void> {
   logger.info(
-    "Preserving ledger-owned creation columns; ledger tables are excluded from entity metadata",
+    "Preserving ledger-owned creation columns until selective ledger metadata repair",
     { service: SERVICE },
   );
 }
@@ -25,7 +25,7 @@ const migration: Migration = {
   version: 1083,
   name: "retire_ledger_provenance_columns",
   description:
-    "Preserve ledger_payments.date_created, ledger_paymentmethods.created_at and ledger_gateway_customers.created_at because ledger tables are excluded from entity metadata.",
+    "Preserve ledger provenance columns until the selective ledger metadata repair.",
   up,
 };
 

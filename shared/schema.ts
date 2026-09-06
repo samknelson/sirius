@@ -844,7 +844,6 @@ export const bookmarks = pgTable("bookmarks", {
 
 export const ledgerPaymentMethods = pgTable("ledger_paymentmethods", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
   entityType: text("entity_type").notNull(),
   entityId: varchar("entity_id").notNull(),
   paymentMethod: text("payment_method").notNull(),
@@ -932,7 +931,6 @@ export const ledgerPayments = pgTable("ledger_payments", {
   paymentType: varchar("payment_type").notNull().references(() => optionsLedgerPaymentType.id),
   ledgerEaId: varchar("ledger_ea_id").notNull().references(() => ledgerEa.id),
   details: jsonb("details"),
-  dateCreated: timestamp("date_created").default(sql`now()`),
   dateReceived: timestamp("date_received"),
   dateCleared: timestamp("date_cleared"),
   memo: text("memo"),
@@ -1736,7 +1734,6 @@ export const insertLedgerAccountSchema = createInsertSchema(ledgerAccounts).omit
 
 export const insertLedgerPaymentSchema = createInsertSchema(ledgerPayments).omit({
   id: true,
-  dateCreated: true,
 });
 
 export const insertLedgerEaSchema = createInsertSchema(ledgerEa).omit({
@@ -1985,7 +1982,7 @@ export type LedgerAccount = typeof ledgerAccounts.$inferSelect;
 export type InsertLedgerPayment = z.infer<typeof insertLedgerPaymentSchema>;
 export type LedgerPayment = typeof ledgerPayments.$inferSelect;
 
-/** A payment list row with the local creation date exposed under its API name. */
+/** A payment list row with its metadata creation date exposed under the API name. */
 export type LedgerPaymentWithCreatedDate = LedgerPayment & {
   createdDate: Date | null;
 };
@@ -3116,7 +3113,7 @@ export type BusinessCalendarManualVacation = typeof businessCalendarManualVacati
 export type InsertBusinessCalendarManualOpen = z.infer<typeof insertBusinessCalendarManualOpenSchema>;
 export type BusinessCalendarManualOpen = typeof businessCalendarManualOpen.$inferSelect;
 
-/** A payment method plus its provenance creation date — see {@link LedgerPaymentWithCreatedDate}. */
+/** A payment method plus its metadata creation date. */
 export type LedgerPaymentMethodWithCreatedDate = LedgerPaymentMethod & {
   createdDate: Date | null;
 };

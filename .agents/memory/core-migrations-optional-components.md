@@ -15,6 +15,7 @@ A component's manifest tables only exist where that component is enabled, and mo
 - Shape the guard as probe → `if` → early return with a log line, naming the table in the probe. An architecture-lint rule in the `lint` gate enforces exactly that shape over the SQL each core migration executes. It is textual: it proves a named check is present and positioned before the first use, not that the code branches correctly, and it cannot see a Drizzle query builder or assembled SQL. Satisfying it is necessary, not sufficient.
 - Same philosophy as the baselines' skippable-error handling: `relation "..." does not exist` while touching a component table is a normal condition, not a failure.
 - Skipping costs nothing later: when the component is eventually enabled, schema-push creates its tables from the current Drizzle definition, columns and named indexes included. So the skip path only has to leave no drift — it must not "half-apply" anything.
+- For a metadata repair that seeds records and retires local columns, guard both the baseline insert and the column drop. A registered context can still name a table whose optional component is disabled.
 
 ## Retiring a column that a COMPONENT migration added
 

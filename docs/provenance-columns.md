@@ -135,8 +135,15 @@ are listed here so the inventory is complete.
 | `worker_msh` | `created_at` | Local timestamp retained with worker member-status history; worker history is excluded process state. | yes |
 | `snapshots` | `created_at`, `author_id`, `author_name` | Capture provenance for process snapshots; kept on the snapshot so excluding snapshots from record history does not erase the browser's timestamp or actor. | yes |
 | `ledger_gateway_customers` | `created_at` | Gateway customer mapping creation time retained on excluded ledger state. | yes |
-| `ledger_payments` | `date_created` | Payment creation time displayed and ordered by payment lists; ledger tables are intentionally excluded from record history. | yes |
-| `ledger_paymentmethods` | `created_at` | Payment-method creation time displayed and ordered by payment-method lists; ledger tables are intentionally excluded from record history. | `created_at` |
+
+The other ledger tables have a deliberate split. `ledger`, `ledger_ea`, and
+`ledger_gateway_customers` are process/provider state and remain outside record
+history; `ledger_accounts`, `ledger_payment_batches`, `ledger_paymentmethods`,
+and `ledger_payments` are directly maintained records and use
+`entity_metadata`. Migration 1108 carries the payment and payment-method
+creation dates into metadata before removing their local columns. Existing
+accounts and batches have no trustworthy local creation date, so their
+baseline metadata rows leave the date null.
 
 `entity_metadata`'s own `created_date` / `created_by` / `modified_date` /
 `modified_by` / `subrecord_modified_*` columns are the framework itself, and

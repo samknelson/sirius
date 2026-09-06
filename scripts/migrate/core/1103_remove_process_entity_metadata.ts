@@ -210,7 +210,7 @@ async function up(): Promise<void> {
 
   const result = await db.execute(sql`
     DELETE FROM entity_metadata
-    WHERE table_name LIKE '%ledger%'
+    WHERE table_name IN ('ledger', 'ledger_ea', 'ledger_gateway_customers')
        OR table_name LIKE '%denorm%'
        OR table_name IN (${sql.join(
          EXCLUDED_METADATA_TABLES.map((tableName) => sql`${tableName}`),

@@ -25,7 +25,7 @@ function PaymentViewContent() {
   const { id } = useParams<{ id: string }>();
   const { payment: layoutPayment, paymentType } = usePaymentLayout();
 
-  const { data: payment, isLoading } = useQuery<LedgerPayment>({
+  const { data: payment, isLoading } = useQuery<LedgerPayment & { dateCreated: Date | null }>({
     queryKey: ["/api/ledger/payments", id],
   });
 

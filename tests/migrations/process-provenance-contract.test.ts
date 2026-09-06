@@ -29,7 +29,23 @@ describe("process-table provenance migrations", () => {
     expect(source).toContain("ALTER TABLE ledger_payments RENAME COLUMN created_at TO date_created");
     expect(source).toContain("UPDATE ledger_payments p");
     expect(source).toContain("DELETE FROM entity_metadata");
+    expect(source).toContain("ledger_gateway_customers");
+    expect(source).not.toContain("table_name LIKE '%ledger%'");
     expect(source).not.toMatch(/ADD COLUMN [^;]+DEFAULT now\(\)/i);
+  });
+
+  it("restores maintained ledger history without fabricating baseline dates", () => {
+    const source = migration("1108_restore_ledger_metadata.ts");
+
+    expect(source).toContain("seedFromColumns");
+    expect(source).toContain('table: "ledger_payments"');
+    expect(source).toContain('table: "ledger_paymentmethods"');
+    expect(source).toContain("'ledger_accounts'");
+    expect(source).toContain("'ledger_payment_batches'");
+    expect(source).toContain("created_date, modified_date");
+    expect(source).toContain("DROP COLUMN date_created");
+    expect(source).toContain("DROP COLUMN created_at");
+    expect(source).not.toMatch(/DEFAULT now\(\)/i);
   });
 
   it("keeps the follow-up migration non-destructive", () => {

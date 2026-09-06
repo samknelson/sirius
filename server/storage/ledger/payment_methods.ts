@@ -1,6 +1,6 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
-import { ledgerPaymentMethods } from "@shared/schema";
+import { entityMetadata, ledgerPaymentMethods } from "@shared/schema";
 import type {
   LedgerPaymentMethod,
   LedgerPaymentMethodWithCreatedDate,
@@ -33,26 +33,29 @@ export interface PaymentMethodStorage {
 /**
  * Join condition reaching a payment method's provenance row.
  *
- * A payment method no longer carries its own `created_at`: when it was added
- * is provenance, kept in `entity_metadata` under the method's own id. The
- * screen shows that date and both list reads order by it. The table name is
- * part of the condition even though `entity_id` is unique: a row naming
- * another table is not this method's history.
+ * When a method was added is provenance, kept in `entity_metadata` under the
+ * method's own id. The screen shows that date and both list reads order by it.
+ * The table name is part of the condition even though `entity_id` is unique:
+ * a row naming another table is not this method's history.
  */
 /**
  * Newest first, and a method whose provenance has not landed yet counts as the
  * newest thing there is: the stamp is written moments after the insert
  * commits, so the only rows without one are the ones just added.
  */
-const newestFirst = sql`${ledgerPaymentMethods.createdAt} DESC NULLS LAST`;
+const newestFirst = sql`${entityMetadata.createdDate} DESC NULLS LAST`;
 
 export function createPaymentMethodStorage(): PaymentMethodStorage {
   return {
     async getAll(): Promise<LedgerPaymentMethodWithCreatedDate[]> {
       const client = getClient();
       const rows = await client
-        .select({ method: ledgerPaymentMethods, createdDate: ledgerPaymentMethods.createdAt })
+        .select({ method: ledgerPaymentMethods, createdDate: entityMetadata.createdDate })
         .from(ledgerPaymentMethods)
+        .leftJoin(entityMetadata, and(
+          eq(entityMetadata.contextId, "ledger_paymentmethods"),
+          eq(entityMetadata.entityId, ledgerPaymentMethods.id),
+        ))
         .orderBy(newestFirst);
       return rows.map(row => ({ ...row.method, createdDate: row.createdDate }));
     },
@@ -67,8 +70,12 @@ export function createPaymentMethodStorage(): PaymentMethodStorage {
     async getByEntity(entityType: string, entityId: string): Promise<LedgerPaymentMethodWithCreatedDate[]> {
       const client = getClient();
       const rows = await client
-        .select({ method: ledgerPaymentMethods, createdDate: ledgerPaymentMethods.createdAt })
+        .select({ method: ledgerPaymentMethods, createdDate: entityMetadata.createdDate })
         .from(ledgerPaymentMethods)
+        .leftJoin(entityMetadata, and(
+          eq(entityMetadata.contextId, "ledger_paymentmethods"),
+          eq(entityMetadata.entityId, ledgerPaymentMethods.id),
+        ))
         .where(and(
           eq(ledgerPaymentMethods.entityType, entityType),
           eq(ledgerPaymentMethods.entityId, entityId)
@@ -142,11 +149,19 @@ export const paymentMethodLoggingConfig = defineLoggingConfig<PaymentMethodStora
   module: 'ledger.paymentMethods',
   table: 'ledger_paymentmethods',
   methods: {
-    create: { getEntityId: (args, result) => result?.id || 'new payment method' },
-    update: {},
-    delete: {},
+    create: {
+      getEntityId: (args, result) => result?.id || 'new payment method',
+      metadataEntityId: (_args, result) => result?.id,
+    },
+    update: {
+      metadataEntityId: (args, result, beforeState) => result?.id ?? beforeState?.id ?? args[0],
+    },
+    delete: {
+      metadataEntityId: (args, result, beforeState) => result?.id ?? beforeState?.id ?? args[0],
+    },
     setAsDefault: {
       getEntityId: (args) => args[0],
+      metadataEntityId: (args) => args[0],
       before: async (args, storage) => await storage.get(args[0]),
       after: async (args, result) => result,
     },
