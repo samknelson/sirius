@@ -13,6 +13,7 @@ import {
   formatRecordRevision,
   formatRecordSequence,
 } from "@shared/utils/record-sequence";
+import { formatUuidForDisplay } from "@shared/utils/uuid";
 
 /** One date/person pair as a record's history reports it. */
 export interface RecordMetadataStamp {
@@ -144,7 +145,9 @@ export function RecordHistoryDialog({
                 className="flex min-w-0 items-start justify-end gap-2 font-mono"
                 data-testid="text-record-metadata-entity-id"
               >
-                <span className="break-all text-right">{metadata.entityId}</span>
+                <span className="break-all whitespace-pre-line text-right" title={metadata.entityId}>
+                  {formatUuidForDisplay(metadata.entityId)}
+                </span>
                 <Button
                   type="button"
                   size="icon"

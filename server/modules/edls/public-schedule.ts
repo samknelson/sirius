@@ -3,6 +3,7 @@ import { z } from "zod";
 import { storage } from "../../storage";
 import { requireComponent } from "../components";
 import { addDaysYmd, getTodayYmd } from "@shared/utils/date";
+import { isUuid } from "@shared/utils/uuid";
 import { checkFlood, recordFloodEvent } from "../../flood/service";
 import { EDLS_SCHEDULE_ANSWER_FLOOD_EVENT } from "../../flood/events";
 import { logger } from "../../logger";
@@ -17,8 +18,6 @@ const PUBLIC_SHEET_STATUSES = ["lock", "reserved"];
 
 /** Number of calendar days shown, counting today. */
 const SCHEDULE_DAYS = 7;
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface PublicWorkerSchedule {
   workerName: string;
@@ -70,7 +69,7 @@ function scheduleWindow(): { startYmd: string; endYmd: string } {
 async function resolveVisibleAssignments(
   id: string,
 ): Promise<{ workerId: string; assignments: AssignmentForWorker[] } | null> {
-  if (!UUID_REGEX.test(id)) return null;
+  if (!isUuid(id)) return null;
 
   const workerId = await resolveScheduleWorkerId(id);
   if (!workerId) return null;
@@ -200,7 +199,7 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
           return;
         }
 
-        if (!UUID_REGEX.test(assignmentId)) {
+        if (!isUuid(assignmentId)) {
           denied();
           return;
         }
