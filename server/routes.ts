@@ -21,6 +21,7 @@ import { registerCatalogRoutes } from "./modules/catalogs";
 import { registerEntityFileAreasCatalog } from "./services/entity-files/catalog";
 import { registerEntityNoteAreasCatalog } from "./services/entity-notes/catalog";
 import { registerRecordHistoryAreasCatalog } from "./storage/entity-metadata-record-catalog";
+import { registerOptionsListsCatalog } from "./storage/unified-options-catalog";
 import { registerEntityFileRoutes } from "./modules/entity-files";
 import { registerEntityMetadataRoutes } from "./modules/entity-metadata";
 import { registerRecordGoRoutes } from "./modules/record-go";
@@ -370,7 +371,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register trust provider contacts routes
   registerTrustProviderContactRoutes(app, requireAuth, requirePermission);
   
-  // Register consolidated options routes (/api/options/:type)
+  // Register consolidated options routes (/api/options/:type). What lists exist
+  // and what they are called is the `options-lists` catalog, not a route here.
+  registerOptionsListsCatalog();
   registerConsolidatedOptionsRoutes(app);
   
   // Register worker IDs routes

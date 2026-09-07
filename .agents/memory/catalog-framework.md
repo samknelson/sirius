@@ -138,3 +138,37 @@ no say over an in-memory client cache.
 **How to apply:** hold the answer only for as long as the screen is open (no stale
 window, no retention after unmount). A tier that can change under a stable
 identity cannot be cached against that identity.
+
+This holds for *every* catalog, including one with no restricted tier and a
+merely signed-in audience. The tempting exemption — "same payload for everyone
+who can read it at all, so a few minutes of stale window is free" — reasons about
+the permission dimension and forgets the component one. Audience and tier say
+nothing about component state, so a held answer keeps offering a switched-off
+feature's entries, and keeps *withholding* a newly switched-on one, for the whole
+stale window. Derive-on-read is the property the framework exists for; a client
+stale window is the one place it can be silently thrown away.
+
+## Making an unfiltered inventory component-filtered changes what absence means
+
+Migrating a bespoke "what exists" endpoint onto a catalog is not a like-for-like
+move. The bespoke endpoint typically shipped the whole list plus a
+`requiredComponent` on each row and let the client filter; a catalog filters as
+it derives. The offered set ends up identical — but only for consumers that were
+already filtering.
+
+**Why:** the consumers that were *not* filtering were relying on absence being
+impossible. Two shapes to look for, both silent:
+
+- A consumer that treats a missing entry as "the answer has not arrived yet" —
+  e.g. `resolved = everyNamedItemFound(...)`. A perfectly good answer that omits
+  a switched-off feature's entry now reads as permanently loading.
+- A consumer that looks up a *label* for one specific id it already has (a page
+  title, a breadcrumb). Filtered out means no label, and it falls back to
+  something generic. Check whether the surface is reachable at all with the
+  component off — a route already guarded on the same component makes this moot.
+
+**How to apply:** before switching a consumer to the filtered read, find every
+place the old unfiltered answer was indexed by a specific id, and decide what
+absence should mean there. Then check the *routes*: the middleware that refuses a
+disabled item must keep reading the unfiltered declaration, or "switched off"
+degrades into "no such thing" and the refusal stops naming the feature to enable.

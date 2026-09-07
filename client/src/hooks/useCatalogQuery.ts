@@ -40,6 +40,13 @@ export function useCatalogQuery<T>(path: string) {
     // lost the permission that earned it — same person, same key, no second
     // trip to the server. Holding nothing once the screen is gone means the
     // next viewing is always answered by the server.
+    //
+    // This applies to every catalog, not just the ones carrying restricted
+    // detail. A catalog derives its entries on each read so that switching a
+    // component on or off takes effect immediately, and a client holding the
+    // previous answer for some minutes throws away the property the framework
+    // was built around. The answers are small, pure projections; asking again
+    // is cheaper than the two ways of being wrong about when to stop.
     staleTime: 0,
     gcTime: 0,
     queryFn: async () => {

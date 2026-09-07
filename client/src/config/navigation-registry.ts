@@ -3,6 +3,7 @@ import {
   CreditCard, Activity, Wallet, Settings, Shield, Key, KeyRound, FileText, 
   Building2, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, Tag, RefreshCw, Radio, HelpCircle, FolderOpen, NotebookPen, Terminal, Power, Cloud, History, type LucideIcon
 } from "lucide-react";
+import type { ResolvedCatalogEntry } from "@shared/catalog";
 
 export interface NavItem {
   path: string;
@@ -258,7 +259,7 @@ export const configSections: NavSection[] = [
   },
 ];
 
-/** One options list, as the server's `/api/options/catalog` describes it. */
+/** One options list, as the `options-lists` shared catalog describes it. */
 export interface OptionsCatalogEntry {
   type: string;
   name: string;
@@ -268,6 +269,38 @@ export interface OptionsCatalogEntry {
   requiredComponent?: string;
   /** Set when the list is administered on its own page, at this path. */
   bespokePath?: string;
+}
+
+/**
+ * Read the `options-lists` catalog into the shape this navigation works in.
+ *
+ * The one place the catalog's vocabulary (`id`, `component`, a `detail` bag of
+ * code-supplied extras) is turned into this file's, so nothing downstream has
+ * to know a catalog was involved.
+ *
+ * Note what is *not* re-checked here: the catalog derives its entries on read
+ * and has already dropped every list whose component is switched off. A
+ * `requiredComponent` still arrives on the entries that survive, because the
+ * nav items built from them are filtered by the same access context as every
+ * hand-written item and there is no reason for this one kind of item to be the
+ * exception.
+ */
+export function toOptionsCatalogEntries(
+  entries: readonly ResolvedCatalogEntry[],
+): OptionsCatalogEntry[] {
+  return entries.map((entry) => {
+    const { pluralName, bespokePath } = entry.detail ?? {};
+    return {
+      type: entry.id,
+      name: entry.name,
+      // A list is always declared with a plural; falling back to the singular
+      // gives a heading that reads oddly rather than one that reads "undefined".
+      pluralName: typeof pluralName === "string" ? pluralName : entry.name,
+      ...(entry.description !== undefined ? { description: entry.description } : {}),
+      ...(entry.component !== undefined ? { requiredComponent: entry.component } : {}),
+      ...(typeof bespokePath === "string" ? { bespokePath } : {}),
+    };
+  });
 }
 
 /**
@@ -342,7 +375,12 @@ export function resolveConfigSections(
         // the section says why below.
         return entry ? [{ ...item, label: entry.pluralName }] : [];
       });
-      resolved = namedItems.every(item => byType.has(item.optionsType!));
+      // Resolved when the catalog answered — not when every named item found a
+      // list. The catalog drops the lists belonging to a switched-off feature,
+      // so a named item can be legitimately absent from a perfectly good
+      // answer, and calling that "loading" would leave the section saying
+      // "Loading…" for as long as the feature stays off.
+      resolved = catalog.status === "ready";
     }
 
     return {
