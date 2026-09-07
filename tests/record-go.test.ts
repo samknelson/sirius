@@ -9,7 +9,7 @@ const { getByMetadataId, getBySequence, getByEntityId } = vi.hoisted(() => ({
   getByEntityId: vi.fn(),
 }));
 const {
-  checkAccessInline,
+  checkAccess,
   buildContext,
   employerContactGet,
   dispatchGet,
@@ -17,7 +17,7 @@ const {
   userHasPermission,
   componentEnabled,
 } = vi.hoisted(() => ({
-  checkAccessInline: vi.fn(),
+  checkAccess: vi.fn(),
   buildContext: vi.fn(),
   employerContactGet: vi.fn(),
   dispatchGet: vi.fn(),
@@ -39,7 +39,7 @@ vi.mock("../server/storage/entity-metadata-record-tables", () => ({
   ),
 }));
 vi.mock("../server/services/access-policy-evaluator", () => ({
-  checkAccessInline,
+  checkAccess,
   buildContext,
 }));
 vi.mock("../server/modules/components", () => ({
@@ -79,7 +79,7 @@ describe("record go identifier parsing and resolution", () => {
     getByMetadataId.mockReset().mockResolvedValue(undefined);
     getBySequence.mockReset().mockResolvedValue(undefined);
     getByEntityId.mockReset().mockResolvedValue(undefined);
-    checkAccessInline.mockReset().mockResolvedValue({ granted: false });
+    checkAccess.mockReset().mockResolvedValue({ granted: false });
     buildContext.mockReset().mockResolvedValue({ user: null });
     employerContactGet.mockReset().mockResolvedValue(undefined);
     dispatchGet.mockReset().mockResolvedValue(undefined);
@@ -175,7 +175,7 @@ describe("record go route", () => {
     getByMetadataId.mockReset().mockResolvedValue(undefined);
     getBySequence.mockReset().mockResolvedValue(undefined);
     getByEntityId.mockReset().mockResolvedValue(undefined);
-    checkAccessInline.mockReset().mockResolvedValue({ granted: false });
+    checkAccess.mockReset().mockResolvedValue({ granted: false });
     buildContext.mockReset().mockResolvedValue({ user: null });
     employerContactGet.mockReset().mockResolvedValue(undefined);
     dispatchGet.mockReset().mockResolvedValue(undefined);
@@ -234,10 +234,10 @@ describe("record go route", () => {
       href: "/employer-contacts/contact-id",
     };
     employerContactGet.mockResolvedValue({ employerId: "employer-id" });
-    checkAccessInline.mockResolvedValue({ granted: true });
+    checkAccess.mockResolvedValue({ granted: true });
 
     await expect(authorizeRecordGoRequest(req, resolution)).resolves.toBe(true);
-    expect(checkAccessInline).toHaveBeenCalledWith(req, "employer.manage", "employer-id");
+    expect(checkAccess).toHaveBeenCalledWith("employer.manage", null, "employer-id");
   });
 
   it("uses the employer detail policy and preserves its denial", async () => {
@@ -247,10 +247,10 @@ describe("record go route", () => {
       metadata: { ...metadata, contextId: "employers", entityId: "employer-id" },
       href: "/employers/employer-id",
     };
-    checkAccessInline.mockResolvedValue({ granted: false });
+    checkAccess.mockResolvedValue({ granted: false });
 
     await expect(authorizeRecordGoRequest(req, resolution)).resolves.toBe(false);
-    expect(checkAccessInline).toHaveBeenCalledWith(req, "employer.view", "employer-id");
+    expect(checkAccess).toHaveBeenCalledWith("employer.view", null, "employer-id");
   });
 
   it("requires the destination permission even for an admin-only user", async () => {
@@ -275,10 +275,10 @@ describe("record go route", () => {
       href: "/dispatches/dispatch-id",
     };
     dispatchGet.mockResolvedValue({ workerId: "worker-id" });
-    checkAccessInline.mockResolvedValue({ granted: true });
+    checkAccess.mockResolvedValue({ granted: true });
 
     await expect(authorizeRecordGoRequest(req, resolution)).resolves.toBe(true);
-    expect(checkAccessInline).toHaveBeenCalledWith(req, "worker.view", "worker-id");
+    expect(checkAccess).toHaveBeenCalledWith("worker.view", null, "worker-id");
   });
 
   it("denies a resolved record when its destination component is disabled", async () => {
@@ -292,7 +292,7 @@ describe("record go route", () => {
 
     await expect(authorizeRecordGoRequest(req, resolution)).resolves.toBe(false);
     expect(componentEnabled).toHaveBeenCalledWith("event");
-    expect(checkAccessInline).not.toHaveBeenCalled();
+    expect(checkAccess).not.toHaveBeenCalled();
   });
 
   it.each([
