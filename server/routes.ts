@@ -146,7 +146,7 @@ import { registerWorkerEdlsRoutes } from "./modules/edls/workers";
 import { registerEdlsPublicScheduleRoutes } from "./modules/edls/public-schedule";
 import { registerWebServiceDispatcher } from "./modules/webservices";
 import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
-import { registerTerminologyRoutes } from "./modules/terminology";
+import { registerTerminologyCatalog } from "./modules/terminology-catalog";
 import { registerCompaniesRoutes } from "./modules/employers/companies";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
@@ -501,7 +501,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerPostalConfigRoutes(app);
 
   // Register terminology routes
-  registerTerminologyRoutes(app, requireAuth, requirePermission, requireAccess);
+  // Terminology has no routes of its own: the configured wording is read and
+  // written through the generic variable routes, and what terms exist is the
+  // `terminology` catalog.
+  registerTerminologyCatalog();
 
   // Register bootstrap routes (no auth required - intentionally public for initial setup)
   registerBootstrapRoutes(app);

@@ -172,3 +172,49 @@ place the old unfiltered answer was indexed by a specific id, and decide what
 absence should mean there. Then check the *routes*: the middleware that refuses a
 disabled item must keep reading the unfiltered declaration, or "switched off"
 degrades into "no such thing" and the refusal stops naming the feature to enable.
+
+## A catalog is one projection of a declaration, not its new home
+
+Migrating a list does **not** mean every reader of the underlying declaration now
+goes through the catalog. Sort the readers first; there are three kinds, and only
+the first one moves:
+
+- **Enumeration** — "what terms/lists/areas exist", for a config screen or the
+  catalog browser. This is what a catalog is for. It moves.
+- **A synchronous compiled-in resolver** — something that renders on every page
+  and must answer without a request. Moving it onto the catalog turns a
+  render-time lookup into a fetch: the whole app blocks, or flashes raw keys
+  before the answer lands. It keeps importing the declaration directly.
+- **Stored-value validation** — deciding whether a saved key is still recognized.
+  This is interpreting stored data, so it reads the *unfiltered* declaration (see
+  "the offer is not the vocabulary"). It stays put.
+
+**Why:** the retirement bar ("delete a bespoke endpoint or a direct browser
+import") makes every remaining direct import look like unfinished work. Two of
+these three are supposed to stay, and both would break loudly-to-subtly if
+converted. Say so in the catalog file itself, or the next migration re-opens the
+question.
+
+## The detail bag is a string-key seam — close it with a type, in one file
+
+`CatalogDetail` is `Record<string, CatalogValue>`, so the declaration that writes
+`defaultSingular` and the screen that reads it back agree only by convention.
+Rename one side and **both halves still typecheck** while the screen renders a
+confident "Default:" followed by nothing.
+
+**How to apply:** declare the field names once, beside a writer and a reader, and
+put all three in the shared file both sides already import. A rename is then a
+type error rather than something a person has to notice. Two gotchas:
+
+- Use a **type alias**, not an `interface`. An interface carries no implicit index
+  signature, so it will not satisfy `Record<string, CatalogValue>` — the failure
+  is at the declaration, and it looks like the framework rejecting your shape.
+- Import `CatalogDetail` as `import type` from `shared/catalog/types`, not the
+  package barrel. Shared declaration files are often on the boot path (the
+  variable registry imports them), and a type-only import from the leaf is the
+  version that cannot drag the framework along.
+
+Have the reader return `undefined` for a malformed payload rather than asserting.
+It is unreachable while both sides go through the file — but the failure it
+guards against is a screen displaying an empty default as if it were real, which
+is worse than showing no default at all.

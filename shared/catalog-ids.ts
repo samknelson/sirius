@@ -14,3 +14,6 @@
 
 /** The configurable dropdown lists. Declared in server/storage/unified-options-catalog.ts. */
 export const OPTIONS_LISTS_CATALOG = "options-lists";
+
+/** The renameable terms. Declared in server/modules/terminology-catalog.ts. */
+export const TERMINOLOGY_CATALOG = "terminology";

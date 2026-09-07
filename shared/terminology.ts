@@ -1,4 +1,8 @@
 import { z } from "zod";
+// Type-only, and from the types module rather than the package barrel, so this
+// stays a compile-time link: nothing here pulls the catalog framework onto the
+// boot path that imports this file.
+import type { CatalogDetail } from "./catalog/types";
 
 export const termFormSchema = z.object({
   singular: z.string().min(1, "Singular form is required"),
@@ -58,6 +62,53 @@ export const TERM_REGISTRY: Record<string, TermDefinition> = {
 };
 
 export const TERMINOLOGY_VARIABLE_NAME = "site_terminology";
+
+/**
+ * The default wording, as the terminology catalog carries it.
+ *
+ * A catalog's detail payload is a loosely typed bag of JSON values, so the
+ * declaration that writes these fields and the screen that reads them back
+ * would otherwise agree only by convention: rename one side and both halves
+ * still typecheck while the screen quietly shows blank defaults. The field
+ * names are written once, here, and both directions go through the two
+ * functions below — so a rename is a type error rather than something a person
+ * has to notice.
+ *
+ * A type alias rather than an interface on purpose: an interface carries no
+ * implicit index signature and so would not satisfy the framework's
+ * `CatalogDetail`.
+ *
+ * Two flat strings rather than a nested object, matching how the options
+ * catalog carries its extra fields.
+ */
+export type TermDefaultsDetail = {
+  defaultSingular: string;
+  defaultPlural: string;
+};
+
+/** The detail payload one terminology catalog entry carries. */
+export function termDefaultsDetail(defaults: TermForm): TermDefaultsDetail {
+  return { defaultSingular: defaults.singular, defaultPlural: defaults.plural };
+}
+
+/**
+ * The default wording from a terminology catalog entry, or `undefined` when the
+ * entry does not carry it.
+ *
+ * Unreachable while both directions go through this file. It is handled rather
+ * than asserted because the alternative failure is the one worth avoiding: a
+ * screen confidently displaying "Default:" followed by nothing.
+ */
+export function readTermDefaults(
+  detail: CatalogDetail | undefined,
+): TermForm | undefined {
+  if (!detail) return undefined;
+  const { defaultSingular, defaultPlural } = detail as Partial<TermDefaultsDetail>;
+  if (typeof defaultSingular !== "string" || typeof defaultPlural !== "string") {
+    return undefined;
+  }
+  return { singular: defaultSingular, plural: defaultPlural };
+}
 
 export function getDefaultTerminology(): TerminologyDictionary {
   const defaults: TerminologyDictionary = {};
