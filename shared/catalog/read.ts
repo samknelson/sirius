@@ -207,6 +207,7 @@ function projectEntry(entry: CatalogEntry, tier: CatalogTier): ResolvedCatalogEn
 function resolveCatalog(
   definition: CatalogDefinition,
   tier: CatalogTier,
+  entries: readonly CatalogEntry[],
 ): ResolvedCatalog {
   return {
     id: definition.id,
@@ -216,7 +217,7 @@ function resolveCatalog(
       : {}),
     audience: definition.audience,
     tier,
-    entries: deriveCatalogEntries(definition).map((entry) => projectEntry(entry, tier)),
+    entries: entries.map((entry) => projectEntry(entry, tier)),
   };
 }
 
@@ -237,7 +238,76 @@ export function readCatalog(id: string, viewer: CatalogViewer): CatalogReadResul
     return { ok: false, reason: "denied", message: access.reason };
   }
 
-  return { ok: true, catalog: resolveCatalog(definition, access.tier) };
+  return {
+    ok: true,
+    catalog: resolveCatalog(definition, access.tier, deriveCatalogEntries(definition)),
+  };
+}
+
+/**
+ * Read everything a catalog *declares*, unfiltered by component state.
+ *
+ * {@link readCatalog} answers what the deployment currently offers, which is
+ * what a consumer wants. A screen that administers the declaration wants the
+ * other question: the file-area and note-area config pages list every area an
+ * administrator could configure, including one whose component is switched off,
+ * and say so on the row rather than dropping it.
+ *
+ * The tier is decided exactly as {@link readCatalog} decides it, because the
+ * payload is the same payload.
+ *
+ * What is deliberately absent is whether each entry's component is on. That is
+ * configured state, and a catalog answers what the code offers, never what it
+ * is set to. A caller that needs it asks the component registry alongside this.
+ */
+export function readCatalogDeclaration(
+  id: string,
+  viewer: CatalogViewer,
+): CatalogReadResult {
+  const definition = getCatalogDefinition(id);
+  if (!definition) {
+    return { ok: false, reason: "unknown", message: `Unknown catalog '${id}'.` };
+  }
+
+  const access = decideCatalogAccess(definition, viewer);
+  if (!access.allowed) {
+    return { ok: false, reason: "denied", message: access.reason };
+  }
+
+  return {
+    ok: true,
+    catalog: resolveCatalog(definition, access.tier, declaredEntries(definition)),
+  };
+}
+
+/**
+ * The permission names a catalog mentions, if any.
+ *
+ * A {@link CatalogViewer} answers synchronously, so a caller whose permission
+ * lookups are asynchronous has to load them before it can build one. This says
+ * which ones to load, so a route does not have to hardcode a permission name
+ * that the declaration already states — the two drift silently otherwise.
+ *
+ * Only names leave here, never a decision and never a payload.
+ */
+export function catalogPermissionNames(id: string): string[] {
+  const definition = getCatalogDefinition(id);
+  if (!definition) return [];
+
+  return Array.from(
+    new Set(
+      [definition.viewPermission, definition.restrictedPermission].filter(
+        (name): name is string => typeof name === "string" && name.length > 0,
+      ),
+    ),
+  );
+}
+
+/** Every permission name any registered catalog mentions. */
+export function allCatalogPermissionNames(): string[] {
+  return Array.from(
+    new Set(listCatalogDefinitions().flatMap((d) => catalogPermissionNames(d.id))),
+  );
 }
 
 /**
@@ -259,6 +329,9 @@ export function listCatalogsFor(viewer: CatalogViewer): CatalogSummary[] {
         : {}),
       audience: definition.audience,
       tier: access.tier,
+      // The count is of what is on offer, matching what `readCatalog` will
+      // return — not of what is declared. An index that counted declarations
+      // would promise rows the drill-in then does not show.
       entryCount: deriveCatalogEntries(definition).length,
     });
   }

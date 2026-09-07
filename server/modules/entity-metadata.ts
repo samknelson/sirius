@@ -15,6 +15,9 @@ import { storage } from "../storage";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { logger } from "../logger";
 import { recordGoHref } from "@shared/utils/record-go";
+import { readCatalogDeclaration } from "@shared/catalog";
+import { catalogViewerForCatalog } from "../services/catalog-viewer";
+import { RECORD_HISTORY_AREAS_CATALOG } from "../storage/entity-metadata-record-catalog";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => AuthMiddleware;
@@ -137,12 +140,21 @@ function registerEntityMetadataAdminRoutes(app: Express, requireAuth: AuthMiddle
    * for ninety-odd tables in one request would make the page wait on the
    * slowest of them. Each table's own count is asked for separately.
    */
-  app.get("/api/admin/entity-metadata/contexts", ...adminOnly, (_req: Request, res: Response) => {
+  app.get("/api/admin/entity-metadata/contexts", ...adminOnly, async (req: Request, res: Response) => {
+    const viewer = await catalogViewerForCatalog(req, RECORD_HISTORY_AREAS_CATALOG);
+    const declared = readCatalogDeclaration(RECORD_HISTORY_AREAS_CATALOG, viewer);
+    if (!declared.ok) {
+      return res.status(declared.reason === "unknown" ? 500 : 403).json({
+        message: declared.message,
+      });
+    }
+
     res.json({
-      contexts: listMetadataRecordContexts().map(({ contextId, label, hrefTemplate }) => ({
-        contextId,
-        label,
-        hrefTemplate,
+      contexts: declared.catalog.entries.map((entry) => ({
+        contextId: entry.id,
+        label: entry.name,
+        hrefTemplate:
+          typeof entry.detail?.hrefTemplate === "string" ? entry.detail.hrefTemplate : null,
       })),
     });
   });

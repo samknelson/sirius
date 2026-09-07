@@ -65,8 +65,11 @@ export {
 } from "./registry";
 
 export {
+  allCatalogPermissionNames,
+  catalogPermissionNames,
   getCatalogVocabulary,
   listCatalogsFor,
   listCatalogVocabularies,
   readCatalog,
+  readCatalogDeclaration,
 } from "./read";

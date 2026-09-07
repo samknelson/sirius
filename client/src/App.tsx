@@ -120,6 +120,8 @@ const GrievanceNotes = lazy(() => import("@/pages/grievance-notes"));
 const GrievanceTimeline = lazy(() => import("@/pages/grievance-timeline"));
 const GrievanceSettlements = lazy(() => import("@/pages/grievance-settlements"));
 const GrievanceFiles = lazy(() => import("@/pages/grievance-files"));
+const CatalogsConfigPage = lazy(() => import("@/pages/config/catalogs"));
+const CatalogDetailConfigPage = lazy(() => import("@/pages/config/catalog-detail"));
 const EntityFilesConfigPage = lazy(() => import("@/pages/config/entity-files"));
 const EntityNotesConfigPage = lazy(() => import("@/pages/config/entity-notes"));
 const GrievanceTimelineTemplatesPage = lazy(() => import("@/pages/config/grievance-timeline-templates"));
@@ -2643,6 +2645,28 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PostalAddressesConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* The literal index is registered before the drill-in, so it cannot be
+          matched as a catalog whose name happens to be missing. */}
+      <Route path="/config/catalogs">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <CatalogsConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/catalogs/:catalogId">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <CatalogDetailConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

@@ -97,3 +97,44 @@ serves the old answer.
 **How to apply:** the token carries a per-process identity. Tier is a **separate**
 cache-key dimension, not part of the token: one catalog answers two ways, and a
 resolved catalog reports which way it answered so a cache can key on it.
+
+## Administering a catalog is a different read from consuming it
+
+A consumer wants **the offer** — component-filtered. A screen that *administers*
+the areas a catalog declares wants **the declaration** — unfiltered — so it can
+list an area whose component is switched off and say so on the row instead of
+silently dropping it.
+
+**Why:** the file-area and note-area config pages already rendered that "component
+is disabled" line. Switching them to the filtered read would have removed rows an
+administrator is supposed to configure.
+
+**How to apply:** the declaration read still decides the tier from the reader, so
+it is not a back door. What it must never grow is a `componentEnabled` field —
+that is configured state, and putting it in the framework breaks the framework's
+own line. The endpoint asks the component registry itself and joins the two.
+
+## A sync viewer over async permissions
+
+The viewer answers synchronously; every permission check in this codebase is a
+query. So the request-level helper **preloads the permissions the catalog names**
+and closes over the answers.
+
+**Why:** the alternative — a route hardcoding the permission it thinks the catalog
+wants — drifts silently the day the declaration changes its mind.
+
+**How to apply:** ask the framework which names a catalog mentions; never
+hardcode. A viewer asked about a permission it did not preload **throws** rather
+than answering `false`, because a quiet `false` is an unexplained denial for
+someone who actually holds it.
+
+## A catalog answer is a permission decision, so a client must not keep it
+
+Keying a client cache on the viewer's identity is not enough. Same person, same
+key, permission since revoked — the cached restricted payload is served again
+with no second trip to the server, and a `private, no-cache` response header has
+no say over an in-memory client cache.
+
+**How to apply:** hold the answer only for as long as the screen is open (no stale
+window, no retention after unmount). A tier that can change under a stable
+identity cannot be cached against that identity.

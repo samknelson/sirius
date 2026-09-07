@@ -17,6 +17,10 @@ import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerCommRoutes } from "./modules/comm";
 import { registerGrievanceRoutes } from "./modules/grievances/grievances";
 import { registerEntityFileContexts } from "./modules/entity-files-contexts";
+import { registerCatalogRoutes } from "./modules/catalogs";
+import { registerEntityFileAreasCatalog } from "./services/entity-files/catalog";
+import { registerEntityNoteAreasCatalog } from "./services/entity-notes/catalog";
+import { registerRecordHistoryAreasCatalog } from "./storage/entity-metadata-record-catalog";
 import { registerEntityFileRoutes } from "./modules/entity-files";
 import { registerEntityMetadataRoutes } from "./modules/entity-metadata";
 import { registerRecordGoRoutes } from "./modules/record-go";
@@ -333,11 +337,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // a table binding for the orphan sweep, subscribe the immediate cleanup that
   // removes a deleted record's attachments, then the generic routes.
   registerEntityFileContexts();
+  registerEntityFileAreasCatalog();
   assertFileContextTablesComplete();
   initEntityFilesDeleteCleanup();
   wireEntityFilesFileReadAccess();
   registerEntityFileRoutes(app, requireAuth);
   registerEntityMetadataRoutes(app, requireAuth, requirePermission);
+
+  // Deliberately not behind `requireAuth`: a catalog that declares itself
+  // readable before sign-in has to actually be readable before sign-in, and
+  // every other one refuses an anonymous reader on its own.
+  registerCatalogRoutes(app);
   registerRecordGoRoutes(app, requireAuth, authorizeRecordGoRequest);
 
   // Register grievance timeline template routes
@@ -1798,6 +1808,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Entity notes framework: register contexts, assert each one has a table
   // binding for the orphan sweep, then the generic routes.
   registerEntityNoteContexts();
+  registerEntityNoteAreasCatalog();
   assertNoteContextTablesComplete();
   initEntityNotesDeleteCleanup();
   registerEntityNotesRoutes(app, requireAuth);
@@ -1886,6 +1897,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // — a component's storage brought up on enable — is not visible from here
   // and is caught the next time the process starts with that component on.
   assertEntityMetadataRecordTablesComplete();
+
+  // Declared after the assertion above, so the catalog can only ever be built
+  // from a registry that has just been proven complete and self-consistent.
+  registerRecordHistoryAreasCatalog();
 
   const httpServer = existingServer || createServer(app);
 
