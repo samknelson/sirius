@@ -636,9 +636,9 @@ export function computeDcMonthOptions(inputs: DcMonthOptionInputs): DcMonthOptio
     if (c.unavailable || c.coverageMonthYmd === null) {
       const reason = c.unavailable?.noContinuedBenefits
         ? firstWmb
-          ? `No coverage to continue as of this work month — the worker's first established coverage month is ${formatYmdMonth(
-              firstWmb,
-            )}.`
+          ? `${c.coverageMonthYmd ? `${formatYmdMonth(c.coverageMonthYmd)} coverage (` : ""}work month ${formatYmdMonth(
+              c.workMonthYmd,
+            )}${c.coverageMonthYmd ? ")" : ""} has no earlier established coverage to continue — the worker's first established coverage month is ${formatYmdMonth(firstWmb)}.`
           : "Disability Credit can only extend existing coverage — this worker has no established coverage month."
         : c.unavailable?.message ?? "The plan lag for this month could not be resolved.";
       push("unavailable", false, reason);

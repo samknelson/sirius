@@ -36,6 +36,10 @@ import {
   performDcCaseAction,
   replaceDcCaseMonths,
 } from "../../server/services/sitespecific/bao/dc-workflow";
+import {
+  buildDcWorkerMonthMap,
+  dcMonthOptionsFromMap,
+} from "../../server/services/sitespecific/bao/dc-month-map";
 import { deriveDcMonthHistory } from "@shared/sitespecific/bao/dc-reporting";
 import { addMonthsYmd, type Ymd } from "@shared/utils/date";
 import {
@@ -296,6 +300,9 @@ afterAll(async () => {
     await db.delete(pluginConfigs).where(inArray(pluginConfigs.id, configIds));
   }
   await db.delete(optionsEmploymentStatus).where(inArray(optionsEmploymentStatus.id, [activeStatusId, fmlaStatusId].filter(Boolean)));
+  await db
+    .delete(workerTrustElections)
+    .where(inArray(workerTrustElections.employerId, [employerId, secondEmployerId]));
   await db.delete(employers).where(inArray(employers.id, [employerId, secondEmployerId]));
   await db.delete(policies).where(eq(policies.id, policyId));
   await db.delete(trustBenefits).where(eq(trustBenefits.id, benefitId));
@@ -335,6 +342,87 @@ describe("threshold + shortfall resolution", () => {
     expect(req.lagMonths).toBe(1);
     expect(req.coverageMonthYmd).toBe(ymd(addM(monthA.year, monthA.month, 1)));
     expect(req.benefitIds).toEqual([benefitId]);
+  });
+
+  it("resolves August coverage from May work when coverage was first established in June", async () => {
+    const worker = await storage.workers.createWorker(`DC boundary ${run}`);
+    worker2Id = worker.id;
+    await db.insert(workerTrustElections).values({
+      workerId: worker2Id,
+      employerId,
+      benefitIds: [benefitId],
+      startYmd: "2026-01-01",
+      endYmd: null,
+    });
+    await db.insert(trustWmb).values([
+      { workerId: worker2Id, employerId, benefitId, year: 2026, month: 6 },
+      { workerId: worker2Id, employerId, benefitId, year: 2026, month: 7 },
+    ]);
+
+    const sharedRuleId = configIds[0];
+    await db
+      .update(pluginConfigs)
+      .set({ data: { defaultThreshold: 120, lagMonths: 3 } })
+      .where(eq(pluginConfigs.id, sharedRuleId));
+    try {
+      const req = await resolveContinuationRequirement(worker2Id, "2026-05-01");
+      expect(req).toMatchObject({
+        threshold: 120,
+        lagMonths: 3,
+        coverageMonthYmd: "2026-08-01",
+        benefitIds: [benefitId],
+      });
+      await expect(
+        resolveContinuationRequirement(worker2Id, "2026-03-01"),
+      ).rejects.toMatchObject({
+        name: "DcGrantError",
+        code: "NO_THRESHOLD_RULE",
+        details: {
+          workMonthYmd: "2026-03-01",
+          coverageMonthYmd: "2026-06-01",
+          reason: "no_continued_benefits",
+        },
+      });
+
+      const boundaryCase = await storage.baoDisabilityCredit.openCase({
+        workerId: worker2Id,
+        openedYmd: "2026-08-01",
+        qualifyingBasis: {
+          asOfYmd: "2026-08-01",
+          conditions: ["staff_exception"],
+          exceptionReason: "coverage-axis boundary regression",
+        },
+      });
+      const map = await buildDcWorkerMonthMap({
+        workerId: worker2Id,
+        caseId: boundaryCase.id,
+        extraWorkMonths: ["2026-05-01", "2026-06-01", "2026-07-01"],
+        nowMonthYmd: "2026-09-01",
+      });
+      expect(
+        dcMonthOptionsFromMap(map, []).find((o) => o.workMonthYmd === "2026-05-01"),
+      ).toMatchObject({
+        coverageMonthYmd: "2026-08-01",
+        status: "available",
+        selectable: true,
+      });
+      const saved = await replaceDcCaseMonths(
+        boundaryCase.id,
+        ["2026-05-01", "2026-06-01", "2026-07-01"],
+        { actorUserId: userId },
+      );
+      expect(
+        saved
+          .filter((m) => m.status === "selected")
+          .map((m) => m.workMonthYmd)
+          .sort(),
+      ).toEqual(["2026-05-01", "2026-06-01", "2026-07-01"]);
+    } finally {
+      await db
+        .update(pluginConfigs)
+        .set({ data: { defaultThreshold: 120, lagMonths: 1 } })
+        .where(eq(pluginConfigs.id, sharedRuleId));
+    }
   });
 
   it("counts employed + FMLA hours across employers, excluding the DC employer", async () => {

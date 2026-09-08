@@ -321,21 +321,22 @@ export function isCoverageMonthDue(coverageMonthYmd: string, nowMonthYmd = curre
 
 /**
  * The benefits whose coverage the grant continues: the worker's WMB benefit
- * set from the most recent month AT OR BEFORE the work month that has any
- * WMB rows. (Selected DC months are themselves uncovered by definition.)
+ * set from the most recent month strictly BEFORE the resulting coverage
+ * month. The credited work month may predate the worker's first coverage
+ * month, so it is not an authority for benefit identity.
  */
 async function resolveContinuedBenefitIds(
   context: DcContinuationContext,
-  workMonthYmd: string,
+  coverageMonthYmd: string,
 ): Promise<string[]> {
   const all = await context.wmbRows();
-  const target = ymdToParts(workMonthYmd);
+  const target = ymdToParts(coverageMonthYmd);
   const targetOrd = toOrdinal(target.year, target.month);
   let bestOrd: number | undefined;
   const ids = new Set<string>();
   for (const row of all) {
     const ord = toOrdinal(row.year, row.month);
-    if (ord > targetOrd) continue;
+    if (ord >= targetOrd) continue;
     if (bestOrd === undefined || ord > bestOrd) {
       bestOrd = ord;
       ids.clear();
@@ -386,22 +387,11 @@ export async function resolveContinuationRequirement(
     throw new DcGrantError("NO_POLICY", { workerId, workMonthYmd });
   }
 
-  const benefitIds = await resolveContinuedBenefitIds(context, workMonthYmd);
-  // Fail closed: a worker with no prior covered benefit has nothing to
-  // CONTINUE — granting against unrelated policy rules would invent
-  // coverage. (Selection validation can admit such months, so this is the
-  // enforcement point.)
-  if (benefitIds.length === 0) {
-    throw new DcGrantError("NO_THRESHOLD_RULE", {
-      workerId,
-      workMonthYmd,
-      reason: "no_continued_benefits",
-    });
-  }
-
   const ruleRows = await context.ruleRowsForPolicy(resolved.policy.id);
 
   const candidates: Array<{ benefitId: string; threshold: number; lagMonths: number }> = [];
+  const continuedBenefitIds = new Set<string>();
+  const consideredCoverageMonths = new Set<string>();
   for (const row of ruleRows as Array<{
     config: { pluginId?: string; data?: Record<string, unknown> };
     subsidiary: { benefit?: string } | null;
@@ -410,11 +400,17 @@ export async function resolveContinuationRequirement(
     if (!pluginId || !(pluginId in THRESHOLD_PLUGIN_LAGS)) continue;
     const benefitId = row.subsidiary?.benefit;
     if (!benefitId) continue;
-    // Restrict to the benefits being continued (non-empty — enforced above).
-    if (!benefitIds.includes(benefitId)) continue;
     const data = (row.config?.data ?? {}) as Record<string, unknown>;
     const defaultThreshold = Number(data.defaultThreshold ?? 0);
     const lagMonths = THRESHOLD_PLUGIN_LAGS[pluginId](data);
+    const coverageMonthYmd = addMonths(workMonthYmd, lagMonths);
+    consideredCoverageMonths.add(coverageMonthYmd);
+    const benefitIds = await resolveContinuedBenefitIds(context, coverageMonthYmd);
+    for (const id of benefitIds) continuedBenefitIds.add(id);
+    // A rule can only continue its own benefit as established before this
+    // rule's resulting coverage month. This prevents borrowing unrelated or
+    // future coverage while allowing a lagged work month before first WMB.
+    if (!benefitIds.includes(benefitId)) continue;
 
     let threshold: number | undefined;
     if (employerId) {
@@ -451,7 +447,15 @@ export async function resolveContinuationRequirement(
   }
 
   if (candidates.length === 0) {
-    throw new DcGrantError("NO_THRESHOLD_RULE", { workerId, workMonthYmd, benefitIds });
+    const coverageMonthYmd =
+      consideredCoverageMonths.size === 1 ? Array.from(consideredCoverageMonths)[0] : undefined;
+    throw new DcGrantError("NO_THRESHOLD_RULE", {
+      workerId,
+      workMonthYmd,
+      coverageMonthYmd,
+      benefitIds: Array.from(continuedBenefitIds),
+      ...(continuedBenefitIds.size === 0 ? { reason: "no_continued_benefits" } : {}),
+    });
   }
   const thresholds = Array.from(new Set(candidates.map((c) => c.threshold)));
   const lags = Array.from(new Set(candidates.map((c) => c.lagMonths)));

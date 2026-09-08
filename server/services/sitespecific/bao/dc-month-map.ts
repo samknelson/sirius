@@ -143,10 +143,14 @@ export async function buildDcWorkerMonthMap(
       });
     } catch (error) {
       if (!(error instanceof DcGrantError)) throw error;
+      const resolvedCoverageMonth =
+        typeof error.details?.coverageMonthYmd === "string"
+          ? error.details.coverageMonthYmd
+          : null;
       errorsByWorkMonth.set(workMonthYmd, error);
       candidates.push({
         workMonthYmd,
-        coverageMonthYmd: null,
+        coverageMonthYmd: resolvedCoverageMonth,
         threshold: null,
         qualifyingHours,
         unavailable: {
@@ -204,7 +208,7 @@ export function dcMonthRefsFromMap(
   const unresolvable: Ymd[] = [];
   for (const workMonthYmd of workMonthYmds) {
     const c = map.byWorkMonth.get(workMonthYmd);
-    if (c && c.coverageMonthYmd !== null) {
+      if (c && c.coverageMonthYmd !== null && !c.unavailable) {
       refs.push({ workMonthYmd, coverageMonthYmd: c.coverageMonthYmd });
     } else {
       unresolvable.push(workMonthYmd);
@@ -238,7 +242,10 @@ export function validateDcSelectionAgainstMap(
       message: `The plan lag or minimum could not be resolved for: ${unresolvable
         .map((w) => {
           const reason = map.byWorkMonth.get(w)?.unavailable?.message ?? "month is outside the picker";
-          return `work month ${w.slice(0, 7)} (${reason})`;
+           const coverage = map.byWorkMonth.get(w)?.coverageMonthYmd;
+           return coverage
+             ? `coverage month ${coverage.slice(0, 7)} (work month ${w.slice(0, 7)}; ${reason})`
+             : `work month ${w.slice(0, 7)} (${reason})`;
         })
         .join("; ")}`,
       months: unresolvable,

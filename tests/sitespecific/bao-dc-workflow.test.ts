@@ -455,6 +455,16 @@ describe("DC extension-only selection", () => {
     });
     expect(result.ok).toBe(true);
   });
+
+  it("accepts a continuous run beginning after June/July coverage even when August credits May work", () => {
+    const result = validateDcMonthSelection({
+      selectedMonths: refs("2026-05-01", "2026-06-01", "2026-07-01"),
+      coveredMonths: ["2026-06-01", "2026-07-01"],
+      otherCaseMonths: [],
+    });
+    expect(result.ok).toBe(true);
+    expect(result.gapMonths).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
