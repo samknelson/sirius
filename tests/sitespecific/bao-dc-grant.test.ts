@@ -49,7 +49,10 @@ import {
   runDcGrantCascadeForCase,
   releaseDueQueuedMonthsForWorker,
   reconcileDcGrantForWorkerMonth,
+  initDcGrantReconciliation,
+  stopDcGrantReconciliation,
 } from "../../server/services/sitespecific/bao/dc-grant";
+import { updateComponentCache } from "../../server/services/component-cache";
 
 const run = `bao-dc-grant-${Date.now()}`;
 
@@ -74,6 +77,7 @@ const wmbMonth = addM(curYear, curMonth, -2); // continued-benefit anchor
 let workerId = "";
 let userId = "";
 let employerId = "";
+let secondEmployerId = "";
 let policyId = "";
 let benefitId = "";
 let caseId = "";
@@ -140,8 +144,24 @@ async function eventsOfType(type: string) {
     );
 }
 
+async function waitFor<T>(
+  read: () => Promise<T>,
+  predicate: (value: T) => boolean,
+  message: string,
+): Promise<T> {
+  const deadline = Date.now() + 5_000;
+  let value = await read();
+  while (!predicate(value) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    value = await read();
+  }
+  if (!predicate(value)) throw new Error(message);
+  return value;
+}
+
 beforeAll(async () => {
   await ensureBaoDcSchema();
+  await updateComponentCache("sitespecific.bao", true);
 
   const assignees = await storage.users.getUsersWithAnyPermission(["staff", "admin"]);
   if (!assignees[0]) throw new Error("DC grant tests require one staff user");
@@ -167,6 +187,16 @@ beforeAll(async () => {
     .values({ name: `${run}-employer`, siriusId: `${run}-employer`, isActive: true, denormPolicyId: policyId } as never)
     .returning();
   employerId = employer.id;
+  const [secondEmployer] = await db
+    .insert(employers)
+    .values({
+      name: `${run}-second-employer`,
+      siriusId: `${run}-second-employer`,
+      isActive: true,
+      denormPolicyId: policyId,
+    } as never)
+    .returning();
+  secondEmployerId = secondEmployer.id;
 
   // Election → employer → policy resolution path.
   await db.insert(workerTrustElections).values({
@@ -266,7 +296,7 @@ afterAll(async () => {
     await db.delete(pluginConfigs).where(inArray(pluginConfigs.id, configIds));
   }
   await db.delete(optionsEmploymentStatus).where(inArray(optionsEmploymentStatus.id, [activeStatusId, fmlaStatusId].filter(Boolean)));
-  await db.delete(employers).where(eq(employers.id, employerId));
+  await db.delete(employers).where(inArray(employers.id, [employerId, secondEmployerId]));
   await db.delete(policies).where(eq(policies.id, policyId));
   await db.delete(trustBenefits).where(eq(trustBenefits.id, benefitId));
   const { workers } = await import("@shared/schema");
@@ -318,6 +348,15 @@ describe("threshold + shortfall resolution", () => {
       employmentStatusId: fmlaStatusId,
       hours: 20,
     });
+    await storage.workerHours.upsertWorkerHours({
+      workerId,
+      year: monthA.year,
+      month: monthA.month,
+      day: 1,
+      employerId: secondEmployerId,
+      employmentStatusId: fmlaStatusId,
+      hours: 7,
+    });
     // A DC-employer row must NOT count.
     await storage.workerHours.upsertWorkerHours({
       workerId,
@@ -339,7 +378,17 @@ describe("threshold + shortfall resolution", () => {
     await db
       .delete(workerHours)
       .where(and(eq(workerHours.workerId, workerId), eq(workerHours.employerId, dcEmployerId)));
-    expect(q).toBe(80);
+    await db
+      .delete(workerHours)
+      .where(
+        and(
+          eq(workerHours.workerId, workerId),
+          eq(workerHours.employerId, secondEmployerId),
+          eq(workerHours.year, monthA.year),
+          eq(workerHours.month, monthA.month),
+        ),
+      );
+    expect(q).toBe(87);
   });
 
   it("rejects conflicting thresholds as invalid configuration", async () => {
@@ -444,26 +493,42 @@ describe("queued release", () => {
 });
 
 describe("employer-hours reconciliation", () => {
-  it("reduces DC hours to the new shortfall when later employer hours arrive", async () => {
-    await setEmployerHours(100); // qualifying now 100+20 FMLA = 120? No: day-1 row updated 60→100 ⇒ 100+20=120
-    // 120 qualifying ⇒ shortfall 0 — that would remove. Use 90 instead:
-    await setEmployerHours(70); // 70 + 20 FMLA = 90 ⇒ new shortfall 30
-    const result = await reconcileDcGrantForWorkerMonth(workerId, ymd(monthA));
-    expect(result).toEqual({ action: "reduced", dcHours: 30 });
-    expect(await dcHoursTotal(monthA)).toBe(30);
-    expect(await eventsOfType("case_month_reconciled")).toHaveLength(1);
+  it("the real hours-saved listener keeps a below-threshold month granted and reduces it to the shortfall", async () => {
+    // 95 employer + 20 FMLA = 115 against the snapshotted 120 threshold.
+    // upsertWorkerHours emits the production HOURS_SAVED event; the listener
+    // reconciles after commit and must leave a 5-hour granted month.
+    initDcGrantReconciliation();
+    try {
+      await setEmployerHours(95);
+      await waitFor(
+        () => eventsOfType("case_month_reconciled"),
+        (events) => events.length === 1,
+        "hours-saved listener did not finish the reconciliation transition",
+      );
+      expect(await dcHoursTotal(monthA)).toBe(5);
+      const month = await storage.baoDisabilityCredit.getApplicableMonthForWorkerMonth(
+        workerId,
+        ymd(monthA),
+      );
+      expect(month?.status).toBe("granted");
+      expect(await eventsOfType("case_month_reconciled")).toHaveLength(1);
 
-    // Repeating is a no-op (already at target).
-    const again = await reconcileDcGrantForWorkerMonth(workerId, ymd(monthA));
-    expect(again.action).toBe("unchanged");
-    expect(await eventsOfType("case_month_reconciled")).toHaveLength(1);
+      // Repeating the same upload emits again, but reconciliation is a no-op and
+      // the deterministic event key prevents duplicate history.
+      await setEmployerHours(95);
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      expect(await dcHoursTotal(monthA)).toBe(5);
+      expect(await eventsOfType("case_month_reconciled")).toHaveLength(1);
+    } finally {
+      stopDcGrantReconciliation();
+    }
   });
 
   it("never grows DC back when employer hours shrink", async () => {
-    await setEmployerHours(10); // qualifying 30 ⇒ shortfall 90 > current 30
+    await setEmployerHours(10); // qualifying 30 ⇒ shortfall 90 > current 5
     const result = await reconcileDcGrantForWorkerMonth(workerId, ymd(monthA));
     expect(result.action).toBe("unchanged");
-    expect(await dcHoursTotal(monthA)).toBe(30);
+    expect(await dcHoursTotal(monthA)).toBe(5);
   });
 
   it("removes DC entirely at threshold, marks the month removed, restores capacity", async () => {
@@ -471,7 +536,7 @@ describe("employer-hours reconciliation", () => {
       workerId,
       monthA.year,
     );
-    await setEmployerHours(120); // 120 + 20 FMLA ≥ threshold ⇒ shortfall 0
+    await setEmployerHours(100); // 100 + 20 FMLA = threshold ⇒ shortfall 0
     const result = await reconcileDcGrantForWorkerMonth(workerId, ymd(monthA));
     expect(result.action).toBe("removed");
     expect(await dcHoursTotal(monthA)).toBe(0);
@@ -493,6 +558,25 @@ describe("employer-hours reconciliation", () => {
     const again = await reconcileDcGrantForWorkerMonth(workerId, ymd(monthA));
     expect(again.action).toBe("not_granted");
     expect(await dcHoursTotal(monthA)).toBe(0);
+  });
+
+  it("also removes a granted month when qualifying hours exceed the threshold", async () => {
+    const dueMonth = addM(curYear, curMonth, 0);
+    await db.insert(workerHours).values({
+      workerId,
+      year: dueMonth.year,
+      month: dueMonth.month,
+      day: 1,
+      employerId,
+      employmentStatusId: activeStatusId,
+      hours: 121,
+    });
+    const result = await reconcileDcGrantForWorkerMonth(workerId, ymd(dueMonth));
+    expect(result.action).toBe("removed");
+    expect(await dcHoursTotal(dueMonth)).toBe(0);
+    expect(
+      await storage.baoDisabilityCredit.getApplicableMonthForWorkerMonth(workerId, ymd(dueMonth)),
+    ).toBeUndefined();
   });
 
   it("persisted grant events reconcile exactly against live granted month rows", async () => {

@@ -1,0 +1,5 @@
+SSN,First Name,Last Name,Date of Birth,Employment Status,Number of Hours,Phone Number,Address 1,City,State,Postal Code
+900-48-5001,DC,Reconciliation - Below Threshold (20 + 40),1990-01-01,DEV DC Reconciliation Active,55,202-555-0101,100 Test Way,Washington,DC,20001
+900-48-5002,DC,Reconciliation - Threshold Crossing (55 + 5),1990-01-01,DEV DC Reconciliation Active,60,202-555-0102,100 Test Way,Washington,DC,20001
+900-48-5003,DC,Reconciliation - Downward Correction Stays 5,1990-01-01,DEV DC Reconciliation Active,20,202-555-0103,100 Test Way,Washington,DC,20001
+900-48-5004,DC,Reconciliation - Already Removed at 60,1990-01-01,DEV DC Reconciliation Active,60,202-555-0104,100 Test Way,Washington,DC,20001

@@ -14,7 +14,8 @@
     "db:push": "tsx scripts/db-push.ts",
     "db:push:component": "tsx scripts/db-push-component.ts",
     "demo:snapshot": "tsx scripts/demo-snapshot.ts",
-    "demo:reset": "tsx scripts/demo-reset.ts"
+    "demo:reset": "tsx scripts/demo-reset.ts",
+    "seed:bao-dc-reconciliation": "ALLOW_BAO_DC_RECONCILIATION_SEED=1 tsx scripts/oneoffs/seed-bao-dc-reconciliation.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1116.0",

@@ -858,3 +858,10 @@ export function initDcGrantReconciliation(): void {
     handler: handleHoursSaved,
   });
 }
+
+/** Test/process-lifecycle helper: unregister the reconciliation listener. */
+export function stopDcGrantReconciliation(): void {
+  if (!reconciliationHandlerId) return;
+  eventBus.off(reconciliationHandlerId);
+  reconciliationHandlerId = null;
+}
