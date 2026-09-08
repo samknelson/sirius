@@ -123,6 +123,12 @@ export interface FieldDefinition {
   /** For inputType="number": minimum accepted value (schema `minimum`). */
   min?: number;
   selectOptionsType?: OptionsTypeName;
+  /** Only offer options whose named field equals this sibling form field. */
+  selectOptionsMatchField?: string;
+  /** Exclude the row currently being edited from this options picker. */
+  selectOptionsExcludeEditing?: boolean;
+  /** Exclude closed rows that do not define a default resolution. */
+  selectOptionsRequireClosedDefault?: boolean;
   /** For select-options fields whose rows come from a non-options API. */
   selectOptionsEndpoint?: string;
   /** For inputType="multi-enum" or "enum": the allowed string values (and optional human labels). */
@@ -227,6 +233,15 @@ export function fieldsToJsonSchema(
         }
         if (f.selectOptionsEndpoint) {
           (prop as Record<string, unknown>)["x-options-endpoint"] = f.selectOptionsEndpoint;
+        }
+        if (f.selectOptionsMatchField) {
+          (prop as Record<string, unknown>)["x-options-match-field"] = f.selectOptionsMatchField;
+        }
+        if (f.selectOptionsExcludeEditing) {
+          (prop as Record<string, unknown>)["x-options-exclude-editing"] = true;
+        }
+        if (f.selectOptionsRequireClosedDefault) {
+          (prop as Record<string, unknown>)["x-options-require-closed-default"] = true;
         }
         if (f.required) prop.minLength = 1;
         break;
@@ -758,15 +773,17 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     pluralName: "Case Statuses",
     orderByColumn: "sequence" as const,
     loggingModule: "options.baoCaseStatus",
-    requiredFields: ["name"],
-     optionalFields: ["description", "closed", "sequence", "caseTypeId", "durationDays", "workflowStep", "defaultResolutionId", "lapseStatusId", "requiresOutreachNote", "data"],
+     requiredFields: ["name", "caseTypeId"],
+     optionalFields: ["description", "closed", "sequence", "durationDays", "workflowStep", "defaultResolutionId", "lapseStatusId", "requiresOutreachNote", "data"],
     supportsSequencing: true,
     requiredComponent: "sitespecific.bao",
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, showInTable: true, columnHeader: "Description" },
+      { name: "caseTypeId", label: "Case type", inputType: "select-options", selectOptionsType: "bao-case-type", required: true, showInTable: true, columnHeader: "Case type" },
       { name: "closed", label: "Closed", inputType: "checkbox", required: false, helperText: "Closed cases appear in Historical views and require resolution details", showInTable: true, columnHeader: "Closed" },
-      { name: "lapseStatusId", label: "When deadline lapses, move to", inputType: "select-options", required: false, showInTable: true, columnHeader: "Lapse status" },
+      { name: "durationDays", label: "Duration (days)", inputType: "number", min: 1, required: false, helperText: "Sets the case deadline this many days after entering this status", showInTable: true, columnHeader: "Duration" },
+      { name: "lapseStatusId", label: "When deadline lapses, move to", inputType: "select-options", selectOptionsType: "bao-case-status", selectOptionsMatchField: "caseTypeId", selectOptionsExcludeEditing: true, selectOptionsRequireClosedDefault: true, required: false, showInTable: true, columnHeader: "Lapse status" },
     ],
   },
   "bao-case-type": {

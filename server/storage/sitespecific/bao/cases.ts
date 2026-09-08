@@ -841,6 +841,10 @@ export function createBaoCasesStorage(): BaoCasesStorage {
           .where(eq(optionsBaoCaseStatus.id, statusId));
         if (!existing) return undefined;
         const nextClosed = updates.closed ?? existing.closed;
+        if (updates.caseTypeId !== undefined && updates.caseTypeId !== existing.caseTypeId) {
+          const inUse = await this.countByStatus(statusId);
+          if (inUse > 0) throw new Error("STATUS_CASE_TYPE_IN_USE");
+        }
         if (nextClosed !== existing.closed) {
           const conflicts = await this.countStatusClassificationConflicts(statusId, nextClosed);
           if (conflicts > 0) throw new Error("STATUS_CLASSIFICATION_CONFLICT");

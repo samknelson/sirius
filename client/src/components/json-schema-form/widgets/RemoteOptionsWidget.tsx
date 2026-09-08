@@ -11,6 +11,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
+import type { SchemaFormContext } from "../SchemaForm";
 
 interface OptionItem {
   id: string;
@@ -28,7 +29,7 @@ interface OptionItem {
  * "<options-type>"` the lookup that names the groups (in its own order).
  * Options whose group is unknown are listed last, ungrouped.
  */
-export function RemoteOptionsWidget(props: WidgetProps) {
+export function RemoteOptionsWidget(props: WidgetProps<unknown, never, SchemaFormContext>) {
   const {
     id,
     schema,
@@ -47,6 +48,10 @@ export function RemoteOptionsWidget(props: WidgetProps) {
   const optionsEndpoint = (schema as Record<string, unknown>)["x-options-endpoint"] as string | undefined;
   const groupBy = (schema as Record<string, unknown>)["x-options-group-by"] as string | undefined;
   const groupResource = (schema as Record<string, unknown>)["x-options-group-resource"] as string | undefined;
+  const matchField = (schema as Record<string, unknown>)["x-options-match-field"] as string | undefined;
+  const excludeEditing = (schema as Record<string, unknown>)["x-options-exclude-editing"] === true;
+  const requireClosedDefault = (schema as Record<string, unknown>)["x-options-require-closed-default"] === true;
+  const formContext = props.registry?.formContext;
   const isMulti = (schema as { type?: string }).type === "array";
   const grouped = isMulti && !!groupBy && !!groupResource;
 
@@ -100,9 +105,17 @@ export function RemoteOptionsWidget(props: WidgetProps) {
     );
   }
 
-  const list = options ?? [];
+  const list = (options ?? []).filter((option) => {
+    if (excludeEditing && option.id === formContext?.editingId) return false;
+    if (requireClosedDefault && option.closed === true && !option.defaultResolutionId) return false;
+    if (matchField) {
+      const selected = formContext?.configData?.[matchField];
+      return typeof selected === "string" && option[matchField] === selected;
+    }
+    return true;
+  });
 
-  if (list.length === 0) {
+  if (list.length === 0 && isMulti) {
     return <p className="text-sm text-muted-foreground">No options available.</p>;
   }
 

@@ -13,6 +13,7 @@ import {
   optionDbErrorMessage,
   optionInUseDeleteMessage,
   validateOptionTypeSpecificData,
+  validateBaoCaseStatusWrite,
 } from "./options-write-rules";
 import { registerOptionsTransferRoutes, getDisabledOptionFieldNames } from "./options-transfer";
 import {
@@ -417,11 +418,9 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       if (type === "bao-case-status" && data.closed !== undefined && typeof data.closed !== "boolean") {
         return res.status(400).json({ message: "closed must be a boolean" });
       }
-      if (type === "bao-case-status" && data.lapseStatusId) {
-        const statuses = await getOptionsStorage().list("bao-case-status");
-        const target = statuses.find((s: any) => s.id === data.lapseStatusId);
-        if (!target || target.caseTypeId !== data.caseTypeId) return res.status(400).json({ message: "Lapse status must belong to the same case type" });
-        if (target.closed && !target.defaultResolutionId) return res.status(400).json({ message: "A closed lapse status must have a default resolution" });
+      if (type === "bao-case-status") {
+        const error = await validateBaoCaseStatusWrite(data);
+        if (error) return res.status(400).json({ message: error });
       }
 
       // Member statuses: the BAO hours threshold lives at the canonical
@@ -478,13 +477,11 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
           return res.status(400).json({ message: validationError });
         }
       }
-      if (type === "bao-case-status" && updates.lapseStatusId) {
+      if (type === "bao-case-status") {
         const current = await getOptionsStorage().get(type as OptionsTypeName, id);
-        const statuses = await getOptionsStorage().list("bao-case-status");
-        const target = statuses.find((s: any) => s.id === updates.lapseStatusId);
-        const caseTypeId = updates.caseTypeId ?? (current as any)?.caseTypeId;
-        if (!target || target.caseTypeId !== caseTypeId) return res.status(400).json({ message: "Lapse status must belong to the same case type" });
-        if (target.closed && !target.defaultResolutionId) return res.status(400).json({ message: "A closed lapse status must have a default resolution" });
+        if (!current) return res.status(404).json({ message: `${config.name} not found` });
+        const error = await validateBaoCaseStatusWrite(updates, id, current as any);
+        if (error) return res.status(400).json({ message: error });
       }
 
       // Member statuses: a `data` update is a DEEP MERGE into the row's
@@ -525,7 +522,8 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       // BAO status classification is synchronized with case writes using the
       // status-row lock in baoCases. Do not split its conflict check from the
       // update: a case create/update otherwise could race the classification.
-      const item = type === "bao-case-status" && updates.closed !== undefined
+      const item = type === "bao-case-status" &&
+          (updates.closed !== undefined || updates.caseTypeId !== undefined)
         ? await storage.baoCases.updateStatusClassificationAtomically(id, updates)
         : await config.update(id, updates);
 
@@ -560,6 +558,11 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       if (error?.message === "STATUS_CLASSIFICATION_CONFLICT") {
         return res.status(409).json({
           message: "This classification change would invalidate existing BAO cases. Transition those cases first.",
+        });
+      }
+      if (error?.message === "STATUS_CASE_TYPE_IN_USE") {
+        return res.status(409).json({
+          message: "A BAO case status that is in use cannot change case type.",
         });
       }
       const mapped = optionDbErrorMessage(error);

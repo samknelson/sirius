@@ -156,6 +156,67 @@ export async function validateOptionTypeSpecificData(
   return null;
 }
 
+export async function validateBaoCaseStatusWrite(
+  values: Record<string, any>,
+  currentId?: string,
+  current?: Record<string, any> | null,
+): Promise<string | null> {
+  const duration = values.durationDays;
+  if (duration !== undefined && duration !== null &&
+      (typeof duration !== "number" || !Number.isInteger(duration) || duration < 1)) {
+    return "Duration must be a positive whole number of days";
+  }
+
+  const statuses = await getOptionsStorage().list("bao-case-status");
+  const nextCaseTypeId = values.caseTypeId ?? current?.caseTypeId;
+  if (currentId && values.caseTypeId !== undefined && values.caseTypeId !== current?.caseTypeId) {
+    const inUse = await storage.baoCases.countByStatus(currentId);
+    if (inUse > 0) {
+      return "A BAO case status that is in use cannot change case type";
+    }
+    const mismatchedInbound = statuses.some((status: any) =>
+      status.id !== currentId &&
+      status.lapseStatusId === currentId &&
+      status.caseTypeId !== nextCaseTypeId,
+    );
+    if (mismatchedInbound) {
+      return "A BAO case status used as a lapse destination cannot change to an incompatible case type";
+    }
+  }
+  const effectiveClosed = values.closed ?? current?.closed;
+  const effectiveDefaultResolutionId =
+    values.defaultResolutionId !== undefined
+      ? values.defaultResolutionId
+      : current?.defaultResolutionId;
+  if (currentId && effectiveClosed === true && !effectiveDefaultResolutionId) {
+    const inbound = statuses.some((status: any) =>
+      status.id !== currentId && status.lapseStatusId === currentId,
+    );
+    if (inbound) {
+      return "A status used as a lapse destination cannot be closed without a default resolution";
+    }
+  }
+
+  const lapseStatusId =
+    values.lapseStatusId !== undefined ? values.lapseStatusId : current?.lapseStatusId;
+  if (lapseStatusId === undefined || lapseStatusId === null) return null;
+  if (typeof lapseStatusId !== "string" || lapseStatusId.trim() === "") {
+    return "Lapse status must be a valid BAO case status";
+  }
+  if (currentId && lapseStatusId === currentId) {
+    return "A status cannot lapse to itself";
+  }
+
+  const target = statuses.find((status: any) => status.id === lapseStatusId);
+  if (!target || target.caseTypeId !== nextCaseTypeId) {
+    return "Lapse status must belong to the same case type";
+  }
+  if (target.closed && !target.defaultResolutionId) {
+    return "A closed lapse status must have a default resolution";
+  }
+  return null;
+}
+
 /**
  * Enforce fixed-value (enum) fields so no write path can persist a value
  * outside the allowed set.
@@ -323,6 +384,14 @@ export async function checkOptionDeleteGuard(
     const inUse = await storage.baoCases.countByStatus(id);
     if (inUse > 0) {
       return { status: 409, message: "This BAO case status is in use and cannot be deleted." };
+    }
+    const statuses = await getOptionsStorage().list("bao-case-status");
+    const inbound = statuses.filter((status: any) => status.lapseStatusId === id);
+    if (inbound.length > 0) {
+      return {
+        status: 409,
+        message: `This BAO case status is the lapse destination for ${inbound.length} other status${inbound.length === 1 ? "" : "es"} and cannot be deleted. Clear those lapse settings first.`,
+      };
     }
   }
   if (type === "bao-case-resolution") {

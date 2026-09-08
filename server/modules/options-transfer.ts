@@ -24,11 +24,13 @@ import { isComponentEnabled } from "./components";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { runInTransaction } from "../storage/transaction-context";
 import { logger } from "../logger";
+import { storage as appStorage } from "../storage";
 import {
   buildOptionCreateData,
   buildOptionUpdateData,
   checkOptionDeleteGuard,
   optionDbErrorMessage,
+  validateBaoCaseStatusWrite,
   validateOptionTypeSpecificData,
 } from "./options-write-rules";
 
@@ -641,6 +643,10 @@ export async function runOptionsImport({
         if (validationError) {
           item.errors.push(validationError);
         }
+        if (type === "bao-case-status") {
+          const statusError = await validateBaoCaseStatusWrite(built.data);
+          if (statusError) item.errors.push(statusError);
+        }
         item.payload = built.data;
         item.changes = Object.entries(built.data).map(([field, to]) => ({ field, from: null, to }));
         for (const [field, target] of Object.entries(item.pendingSelf)) {
@@ -658,6 +664,14 @@ export async function runOptionsImport({
         if (updates.data !== undefined) {
           const validationError = await validateOptionTypeSpecificData(type, updates.data);
           if (validationError) item.errors.push(validationError);
+        }
+        if (type === "bao-case-status") {
+          const statusError = await validateBaoCaseStatusWrite(
+            updates,
+            item.existing.id,
+            item.existing,
+          );
+          if (statusError) item.errors.push(statusError);
         }
         const changes: OptionsImportPlanItem["changes"] = [];
         for (const [field, to] of Object.entries(updates)) {
@@ -757,6 +771,49 @@ export async function runOptionsImport({
     }
   }
 
+  // Validate the final BAO status graph after same-file self references have
+  // been resolved symbolically. Per-row validation above cannot inspect a
+  // lapse target that this import is about to create.
+  if (type === "bao-case-status") {
+    const projected = new Map<string, Record<string, any>>(
+      existingRows.map((row) => [row.id, { ...row }]),
+    );
+    const keyByPosition = new Map<number, string>();
+    for (const item of planned) {
+      const key = item.existing?.id ?? `new:${item.position}`;
+      keyByPosition.set(item.position, key);
+      const row = { ...(item.existing ?? {}), ...item.payload };
+      const pendingTarget = item.pendingSelf.lapseStatusId;
+      if (pendingTarget !== undefined) row.lapseStatusId = `new:${pendingTarget}`;
+      projected.set(key, row);
+    }
+    const plannedByPosition = new Map(planned.map((item) => [item.position, item]));
+    for (const item of planned) {
+      const key = keyByPosition.get(item.position)!;
+      const row = projected.get(key)!;
+      const targetKey = row.lapseStatusId;
+      if (!targetKey) continue;
+      if (targetKey === key) {
+        item.errors.push("A status cannot lapse to itself");
+        continue;
+      }
+      if (typeof targetKey === "string" && targetKey.startsWith("new:")) {
+        const targetPosition = Number(targetKey.slice(4));
+        const targetPlan = plannedByPosition.get(targetPosition);
+        if (!targetPlan || targetPlan.existing || targetPlan.action !== "create") {
+          item.errors.push("Lapse status references a record that will not be created");
+          continue;
+        }
+      }
+      const target = projected.get(targetKey);
+      if (!target || target.caseTypeId !== row.caseTypeId) {
+        item.errors.push("Lapse status must belong to the same case type");
+      } else if (target.closed && !target.defaultResolutionId) {
+        item.errors.push("A closed lapse status must have a default resolution");
+      }
+    }
+  }
+
   // --- collect ------------------------------------------------------------
   const items: OptionsImportPlanItem[] = [];
   for (const entry of [...planned, ...deletions]) {
@@ -815,7 +872,23 @@ export async function runOptionsImport({
           payload[field] = createdIds.get(target) ?? null;
         }
         if (Object.keys(payload).length > 0) {
-          await config.update(item.existing.id, payload);
+          if (type === "bao-case-status") {
+            const statusError = await validateBaoCaseStatusWrite(
+              payload,
+              item.existing.id,
+              item.existing,
+            );
+            if (statusError) throw new Error(statusError);
+          }
+          if (type === "bao-case-status" &&
+              (payload.closed !== undefined || payload.caseTypeId !== undefined)) {
+            await appStorage.baoCases.updateStatusClassificationAtomically(
+              item.existing.id,
+              payload,
+            );
+          } else {
+            await config.update(item.existing.id, payload);
+          }
         }
       }
 
@@ -827,7 +900,13 @@ export async function runOptionsImport({
           fixes[field] = createdIds.get(target) ?? null;
         }
         if (Object.keys(fixes).length > 0) {
-          await config.update(createdIds.get(item.position)!, fixes);
+          const createdId = createdIds.get(item.position)!;
+          if (type === "bao-case-status") {
+            const current = await storage.get(type, createdId);
+            const statusError = await validateBaoCaseStatusWrite(fixes, createdId, current);
+            if (statusError) throw new Error(statusError);
+          }
+          await config.update(createdId, fixes);
         }
       }
 

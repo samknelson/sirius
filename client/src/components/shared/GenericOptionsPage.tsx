@@ -37,10 +37,10 @@ import {
 } from "@/components/ui/dialog";
 import { SchemaFormDialog } from "@/components/json-schema-form";
 import {
-  splitPayloadByDataField,
   type JsonSchema,
   type UiSchema,
 } from "@shared/json-schema-form";
+import { formDataToPayload } from "./options-form-payload";
 
 interface FieldDefinition {
   name: string;
@@ -166,34 +166,6 @@ function rowToFormData(
   return out;
 }
 
-/**
- * Take a flat form payload and split it into top-level columns + a
- * `data` JSONB blob using the schema's `x-data-field` markers.
- *
- * Behavioral parity with the old inline-edit form: optional text
- * fields cleared in the UI must be persisted as explicit `null` so the
- * server actually clears the column on update (dropping the key would
- * leave the previous value in place).
- */
-function formDataToPayload(
-  formData: Record<string, unknown>,
-  schema: JsonSchema,
-): Record<string, unknown> {
-  const { columnFields, dataFields } = splitPayloadByDataField(schema, formData);
-  const payload: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(columnFields)) {
-    if (typeof v === "string" && v.trim() === "") {
-      payload[k] = null;
-    } else {
-      payload[k] = v;
-    }
-  }
-  if (Object.keys(dataFields).length > 0) {
-    payload.data = dataFields;
-  }
-  return payload;
-}
-
 export function GenericOptionsPage({ optionsType }: GenericOptionsPageProps) {
   const { toast } = useToast();
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -290,7 +262,7 @@ export function GenericOptionsPage({ optionsType }: GenericOptionsPageProps) {
       formData: Record<string, unknown>;
     }) => {
       if (!definition) throw new Error("Definition not loaded");
-      const payload = formDataToPayload(formData, definition.schema);
+      const payload = formDataToPayload(formData, definition.schema, editingFormData);
       return apiRequest("PUT", `/api/options/${optionsType}/${id}`, payload);
     },
     onSuccess: () => {

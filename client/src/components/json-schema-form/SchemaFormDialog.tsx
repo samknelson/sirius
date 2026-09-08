@@ -136,7 +136,7 @@ export function SchemaFormDialog<T extends Record<string, unknown> = Record<stri
             schema={schema}
             uiSchema={uiSchema}
             formData={formData}
-            formContext={formContext}
+            formContext={{ ...formContext, configData: formData }}
             showErrorList="top"
             onChange={(e: IChangeEvent) => setFormData(e.formData as T)}
             onSubmit={(e: IChangeEvent) => onSave(e.formData as T)}

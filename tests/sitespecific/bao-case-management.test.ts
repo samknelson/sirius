@@ -25,6 +25,14 @@ import {
 import { ensureBaoCaseSchema, getGeneralCaseTypeId } from "./fixtures/bao-schema";
 import { approveBaoAppealRequestSchema, denyBaoAppealRequestSchema } from "@shared/schema";
 import { canonicalAppealResolutionName } from "../../server/storage/sitespecific/bao/cases";
+import {
+  buildOptionUpdateData,
+  checkOptionDeleteGuard,
+  validateBaoCaseStatusWrite,
+} from "../../server/modules/options-write-rules";
+import { cleanupBaoRouteOpenStatuses } from "../../scripts/s1-migration/cleanup-bao-route-open-statuses";
+import { runOptionsImport } from "../../server/modules/options-transfer";
+import { formDataToPayload } from "../../client/src/components/shared/options-form-payload";
 
 const run = `bao-case-test-${Date.now()}`;
 let available = false;
@@ -105,6 +113,304 @@ describe("BAO case registration and component ownership", () => {
   it("registers component-gated status and resolution lists", () => {
     expect(getOptionsType("bao-case-status")?.requiredComponent).toBe("sitespecific.bao");
     expect(getOptionsType("bao-case-resolution")?.requiredComponent).toBe("sitespecific.bao");
+  });
+
+  it("exposes typed deadline administration fields", () => {
+    const definition = getOptionsStorage().getDefinition("bao-case-status");
+    const duration = definition?.fields.find((field) => field.name === "durationDays");
+    const lapse = definition?.fields.find((field) => field.name === "lapseStatusId");
+    expect(duration).toMatchObject({
+      label: "Duration (days)",
+      inputType: "number",
+      min: 1,
+      showInTable: true,
+    });
+    expect(lapse).toMatchObject({
+      inputType: "select-options",
+      selectOptionsType: "bao-case-status",
+      selectOptionsMatchField: "caseTypeId",
+      selectOptionsExcludeEditing: true,
+      selectOptionsRequireClosedDefault: true,
+    });
+    expect((definition?.schema.properties?.lapseStatusId as any)?.["x-options-match-field"]).toBe("caseTypeId");
+  });
+
+  it("rejects invalid durations and incompatible lapse targets", async () => {
+    const options = getOptionsStorage();
+    const generalTypeId = await getGeneralCaseTypeId();
+    const [appealType] = await db.select().from(optionsBaoCaseType)
+      .where(eq(optionsBaoCaseType.workflowCode, "benefit_appeal")).limit(1);
+    if (!appealType) throw new Error("Benefit Appeal case type is not configured");
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const sameType = await options.create("bao-case-status", {
+      name: `${run}-lapse-same-${suffix}`,
+      caseTypeId: generalTypeId,
+      closed: false,
+    });
+    const otherType = await options.create("bao-case-status", {
+      name: `${run}-lapse-other-${suffix}`,
+      caseTypeId: appealType.id,
+      closed: false,
+    });
+    const closedWithoutResolution = await options.create("bao-case-status", {
+      name: `${run}-lapse-closed-${suffix}`,
+      caseTypeId: generalTypeId,
+      closed: true,
+    });
+    try {
+      expect(await validateBaoCaseStatusWrite({ caseTypeId: generalTypeId, durationDays: 0 }))
+        .toContain("positive whole number");
+      expect(await validateBaoCaseStatusWrite(
+        { lapseStatusId: sameType.id },
+        sameType.id,
+        sameType,
+      )).toContain("cannot lapse to itself");
+      expect(await validateBaoCaseStatusWrite({
+        caseTypeId: generalTypeId,
+        lapseStatusId: otherType.id,
+      })).toContain("same case type");
+      expect(await validateBaoCaseStatusWrite({
+        caseTypeId: generalTypeId,
+        lapseStatusId: closedWithoutResolution.id,
+      })).toContain("default resolution");
+      expect(await validateBaoCaseStatusWrite({
+        caseTypeId: generalTypeId,
+        lapseStatusId: sameType.id,
+        durationDays: 12,
+      })).toBeNull();
+      expect(await validateBaoCaseStatusWrite(
+        { caseTypeId: appealType.id },
+        sameType.id,
+        { ...sameType, lapseStatusId: closedWithoutResolution.id },
+      )).toContain("same case type");
+    } finally {
+      await options.delete("bao-case-status", sameType.id).catch(() => {});
+      await options.delete("bao-case-status", otherType.id).catch(() => {});
+      await options.delete("bao-case-status", closedWithoutResolution.id).catch(() => {});
+    }
+  });
+
+  it("protects lapse targets from ordinary deletion", async () => {
+    const options = getOptionsStorage();
+    const caseTypeId = await getGeneralCaseTypeId();
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const target = await options.create("bao-case-status", {
+      name: `${run}-delete-target-${suffix}`, caseTypeId, closed: false,
+    });
+    const source = await options.create("bao-case-status", {
+      name: `${run}-delete-source-${suffix}`, caseTypeId, closed: false, lapseStatusId: target.id,
+    });
+    try {
+      const blocked = await checkOptionDeleteGuard("bao-case-status", target.id);
+      expect(blocked).toMatchObject({ status: 409 });
+      expect(blocked?.message).toContain("lapse destination");
+      expect(await validateBaoCaseStatusWrite(
+        { closed: true },
+        target.id,
+        target,
+      )).toContain("cannot be closed without a default resolution");
+      const [appealType] = await db.select().from(optionsBaoCaseType)
+        .where(eq(optionsBaoCaseType.workflowCode, "benefit_appeal")).limit(1);
+      if (!appealType) throw new Error("Benefit Appeal case type is not configured");
+      expect(await validateBaoCaseStatusWrite(
+        { caseTypeId: appealType.id },
+        target.id,
+        target,
+      )).toContain("lapse destination cannot change");
+    } finally {
+      await options.update("bao-case-status", source.id, { lapseStatusId: null });
+      await options.delete("bao-case-status", source.id);
+      await options.delete("bao-case-status", target.id);
+    }
+  });
+
+  it("persists cleared duration and lapse controls as null", async () => {
+    const options = getOptionsStorage();
+    const config = getOptionsType("bao-case-status");
+    const definition = options.getDefinition("bao-case-status");
+    if (!config || !definition) throw new Error("BAO case status options are not registered");
+    const caseTypeId = await getGeneralCaseTypeId();
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const target = await options.create("bao-case-status", {
+      name: `${run}-clear-target-${suffix}`,
+      caseTypeId,
+      closed: false,
+    });
+    const source = await options.create("bao-case-status", {
+      name: `${run}-clear-source-${suffix}`,
+      caseTypeId,
+      closed: false,
+      durationDays: 14,
+      lapseStatusId: target.id,
+    });
+    try {
+      const payload = formDataToPayload(
+        { name: source.name, caseTypeId },
+        definition.schema,
+        {
+          name: source.name,
+          caseTypeId,
+          durationDays: source.durationDays,
+          lapseStatusId: source.lapseStatusId,
+        },
+      );
+      const built = buildOptionUpdateData(config, payload);
+      if ("error" in built) throw new Error(built.error);
+      expect(built.updates).toMatchObject({
+        durationDays: null,
+        lapseStatusId: null,
+      });
+      await options.update("bao-case-status", source.id, built.updates);
+      const persisted = await options.get("bao-case-status", source.id);
+      expect(persisted).toMatchObject({
+        durationDays: null,
+        lapseStatusId: null,
+      });
+    } finally {
+      await options.delete("bao-case-status", source.id).catch(() => {});
+      await options.delete("bao-case-status", target.id).catch(() => {});
+    }
+  });
+
+  it("prevents an in-use status from changing case type", async () => {
+    const options = getOptionsStorage();
+    const generalTypeId = await getGeneralCaseTypeId();
+    const [appealType] = await db.select().from(optionsBaoCaseType)
+      .where(eq(optionsBaoCaseType.workflowCode, "benefit_appeal")).limit(1);
+    if (!appealType) throw new Error("Benefit Appeal case type is not configured");
+    const status = await options.create("bao-case-status", {
+      name: `${run}-in-use-type-${Date.now()}`,
+      caseTypeId: generalTypeId,
+      closed: false,
+    });
+    const [theCase] = await db.insert(sitespecificBaoCases).values({
+      entityType: "worker",
+      entityId: workerId,
+      assigneeUserId: userId,
+      statusId: status.id,
+      caseTypeId: generalTypeId,
+      deadlineYmd: "2099-09-08",
+    }).returning();
+    try {
+      expect(await validateBaoCaseStatusWrite(
+        { caseTypeId: appealType.id },
+        status.id,
+        status,
+      )).toContain("in use cannot change case type");
+    } finally {
+      await db.delete(sitespecificBaoCases).where(eq(sitespecificBaoCases.id, theCase.id));
+      await options.delete("bao-case-status", status.id);
+    }
+  });
+
+  it("rejects incompatible lapse references created within one import", async () => {
+    const generalTypeId = await getGeneralCaseTypeId();
+    const [appealType] = await db.select().from(optionsBaoCaseType)
+      .where(eq(optionsBaoCaseType.workflowCode, "benefit_appeal")).limit(1);
+    if (!appealType) throw new Error("Benefit Appeal case type is not configured");
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const targetName = `${run}-import-target-${suffix}`;
+    const config = getOptionsType("bao-case-status");
+    if (!config) throw new Error("BAO case status options are not registered");
+    const result = await runOptionsImport({
+      type: "bao-case-status",
+      config,
+      dryRun: true,
+      options: { create: true, update: false, delete: false },
+      text: JSON.stringify({
+        optionsType: "bao-case-status",
+        records: [
+          {
+            name: `${run}-import-source-${suffix}`,
+            caseTypeId: generalTypeId,
+            lapseStatusId: { name: targetName },
+          },
+          {
+            name: targetName,
+            caseTypeId: appealType.id,
+            closed: false,
+          },
+        ],
+      }),
+    });
+    expect(result.applied).toBe(false);
+    expect(result.errors.map((error) => error.message))
+      .toContain("Lapse status must belong to the same case type");
+  });
+
+  it("transactionally cleans obsolete route-open statuses and is idempotent", async () => {
+    const [appealType] = await db.select().from(optionsBaoCaseType)
+      .where(eq(optionsBaoCaseType.workflowCode, "benefit_appeal")).limit(1);
+    if (!appealType) throw new Error("Benefit Appeal case type is not configured");
+    const [submitted] = await db.select().from(optionsBaoCaseStatus).where(and(
+      eq(optionsBaoCaseStatus.caseTypeId, appealType.id),
+      eq(optionsBaoCaseStatus.workflowStep, "submitted"),
+    )).limit(1);
+    if (!submitted) throw new Error("Benefit Appeal Submitted status is not configured");
+    const marker = `bao-route-open-test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const [obsolete] = await db.insert(optionsBaoCaseStatus).values({
+      name: marker,
+      caseTypeId: appealType.id,
+      closed: false,
+    }).returning();
+    const [inbound] = await db.insert(optionsBaoCaseStatus).values({
+      name: `${run}-cleanup-inbound-${Date.now()}`,
+      caseTypeId: appealType.id,
+      closed: false,
+      lapseStatusId: obsolete.id,
+    }).returning();
+    const [theCase] = await db.insert(sitespecificBaoCases).values({
+      entityType: "worker",
+      entityId: workerId,
+      assigneeUserId: userId,
+      statusId: obsolete.id,
+      caseTypeId: appealType.id,
+      deadlineYmd: "2099-09-08",
+    }).returning();
+    try {
+      const first = await cleanupBaoRouteOpenStatuses(db, `${marker}%`);
+      expect(first).toEqual({
+        obsoleteStatuses: 1,
+        movedCases: 1,
+        clearedLapseReferences: 1,
+        deletedStatuses: 1,
+      });
+      const [moved] = await db.select().from(sitespecificBaoCases)
+        .where(eq(sitespecificBaoCases.id, theCase.id)).limit(1);
+      const [cleared] = await db.select().from(optionsBaoCaseStatus)
+        .where(eq(optionsBaoCaseStatus.id, inbound.id)).limit(1);
+      expect(moved.statusId).toBe(submitted.id);
+      expect(cleared.lapseStatusId).toBeNull();
+      expect(await cleanupBaoRouteOpenStatuses(db, `${marker}%`)).toEqual({
+        obsoleteStatuses: 0,
+        movedCases: 0,
+        clearedLapseReferences: 0,
+        deletedStatuses: 0,
+      });
+    } finally {
+      await db.delete(sitespecificBaoCases).where(eq(sitespecificBaoCases.id, theCase.id));
+      await db.delete(optionsBaoCaseStatus).where(eq(optionsBaoCaseStatus.id, inbound.id));
+      await db.delete(optionsBaoCaseStatus).where(eq(optionsBaoCaseStatus.id, obsolete.id)).catch(() => {});
+    }
+  });
+
+  it("refuses cleanup when an obsolete status has the wrong case type", async () => {
+    const caseTypeId = await getGeneralCaseTypeId();
+    const marker = `bao-route-open-wrong-type-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const [obsolete] = await db.insert(optionsBaoCaseStatus).values({
+      name: marker,
+      caseTypeId,
+      closed: false,
+    }).returning();
+    try {
+      await expect(cleanupBaoRouteOpenStatuses(db, `${marker}%`))
+        .rejects.toThrow("unexpected case types");
+      const [stillThere] = await db.select().from(optionsBaoCaseStatus)
+        .where(eq(optionsBaoCaseStatus.id, obsolete.id)).limit(1);
+      expect(stillThere?.id).toBe(obsolete.id);
+    } finally {
+      await db.delete(optionsBaoCaseStatus).where(eq(optionsBaoCaseStatus.id, obsolete.id));
+    }
   });
 
   it("declares the assign-to-others permission on the BAO component", () => {
