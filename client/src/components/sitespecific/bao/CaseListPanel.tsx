@@ -22,6 +22,13 @@ interface CaseRow {
   resolutionYmd: string | null;
   benefitName: string | null;
   denialReasonName: string | null;
+  denialNoticeMailAlert: {
+    commId: string;
+    commStatus: string;
+    providerStatus: string | null;
+    errorMessage: string | null;
+    reason: "failed" | "unmailed";
+  } | null;
   data?: { autoClosedReason?: string };
 }
 
@@ -102,6 +109,13 @@ export default function CaseListPanel({
                     </span>
                   )}
                    {item.data?.autoClosedReason === "deadline_lapsed" && <Badge variant="outline">Closed automatically (deadline lapsed)</Badge>}
+                   {item.denialNoticeMailAlert && (
+                     <Badge variant="destructive" data-testid={`badge-denial-mail-alert-${item.id}`}>
+                       Denial letter {item.denialNoticeMailAlert.reason === "failed" ? "failed" : "not mailed"}
+                       {" · "}
+                       {item.denialNoticeMailAlert.providerStatus ?? item.denialNoticeMailAlert.commStatus}
+                     </Badge>
+                   )}
                   <span>{item.assigneeName}</span>
                   <span>Created {item.createdAt.slice(0, 10)}</span>
                   <span>Due {item.deadlineYmd}</span>

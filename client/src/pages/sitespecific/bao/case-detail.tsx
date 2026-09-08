@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { CaseLettersCard, type CaseLetter } from "@/components/sitespecific/bao/CaseLettersCard";
 import { BaoCaseDocumentsCard } from "@/components/sitespecific/bao/BaoCaseDocumentsCard";
 import { GrantedExemptionsCard } from "@/components/sitespecific/bao/GrantedExemptionsCard";
@@ -50,6 +51,14 @@ interface CaseDetail {
   letters: CaseLetter[];
 
   mailingAddressOnFile: boolean;
+  denialNoticeMailAlert: {
+    commId: string;
+    commStatus: string;
+    providerStatus: string | null;
+    errorMessage: string | null;
+    reason: "failed" | "unmailed";
+    createdAt: string;
+  } | null;
   /** Exemptions this appeal's approval granted; null when the exemptions component is off. */
 
   data?: { autoClosedReason?: string };
@@ -166,6 +175,30 @@ export default function BaoCaseDetailPage() {
     <div>
       <PageHeader title={`Case · ${record.entityName ?? record.entityId}`} />
       <main className="mx-auto max-w-4xl space-y-6 p-6">
+        {record.denialNoticeMailAlert && (
+          <Alert variant="destructive" data-testid="alert-denial-mail-failure">
+            <AlertTitle>
+              {record.denialNoticeMailAlert.reason === "failed"
+                ? "Denial letter mailing failed"
+                : "Denial letter has not reached mailing"}
+            </AlertTitle>
+            <AlertDescription>
+              <p>
+                This appeal remains Submitted. Communication status:{" "}
+                {record.denialNoticeMailAlert.providerStatus ?? record.denialNoticeMailAlert.commStatus}.
+                {record.denialNoticeMailAlert.errorMessage
+                  ? ` ${record.denialNoticeMailAlert.errorMessage}.`
+                  : ""}
+              </p>
+              <a
+                href={`/comm/${record.denialNoticeMailAlert.commId}`}
+                className="mt-2 inline-block font-medium underline underline-offset-2"
+              >
+                View communication
+              </a>
+            </AlertDescription>
+          </Alert>
+        )}
         <Card><CardHeader><CardTitle className="flex flex-wrap items-center gap-2">Case Details <Badge>{record.statusName}</Badge><Badge variant="outline" data-testid="badge-case-type">{record.caseTypeName}</Badge>{record.data?.autoClosedReason === "deadline_lapsed" && <Badge variant="outline">Closed automatically (deadline lapsed)</Badge>}</CardTitle></CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
             <div><Label>Created</Label><p>{record.createdAt.slice(0, 10)}</p></div>

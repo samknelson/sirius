@@ -70,7 +70,17 @@ export interface BaoCaseDetails extends BaoCase, BaoCaseAppealFacts {
   resolutionName: string | null;
   /** Appeal: the denial reason's configured checks — what an approval exempts by default. */
   denialReasonEligibilityPluginIds: string[];
+  denialNoticeMailAlert: BaoDenialNoticeMailAlert | null;
   notes?: EntityNoteWithDetails[];
+}
+
+export interface BaoDenialNoticeMailAlert {
+  commId: string;
+  commStatus: string;
+  providerStatus: string | null;
+  errorMessage: string | null;
+  reason: "failed" | "unmailed";
+  createdAt: string;
 }
 
 export interface BaoCaseListResult {
@@ -291,6 +301,50 @@ const detailSelection = {
   spdCitation: sql<string | null>`${sitespecificBaoAppealDetails.data}->>'spdCitation'`,
   // Behaviour, not member-facing text: read LIVE from the reason (see the header).
   denialReasonEligibilityPluginIds: sql<unknown>`${optionsBaoAppealDenialReason.data}->'eligibilityPluginIds'`,
+  // A Submitted appeal is deliberately held until Lob confirms mailing. Show
+  // the latest linked denial notice when it has failed immediately, or when
+  // it is still unconfirmed after 24 hours. This is read-only visibility:
+  // callbacks remain the sole path that promotes the appeal.
+  denialNoticeMailAlert: sql<BaoDenialNoticeMailAlert | null>`CASE
+    WHEN ${optionsBaoCaseType.workflowCode} = 'benefit_appeal'
+      AND ${optionsBaoCaseStatus.workflowStep} = 'submitted'
+    THEN (
+      SELECT jsonb_build_object(
+        'commId', alert_comm.id,
+        'commStatus', alert_comm.status,
+        'providerStatus', COALESCE(alert_postal.data->>'providerStatus', alert_comm.data->>'lastProviderStatus'),
+        'errorMessage', COALESCE(
+          alert_postal.data->>'errorMessage',
+          alert_comm.data->>'lastErrorMessage'
+        ),
+        'reason', CASE
+          WHEN alert_comm.status IN ('failed', 'error', 'bounced')
+            OR COALESCE(alert_postal.data->>'providerStatus', alert_comm.data->>'lastProviderStatus')
+              IN ('letter.deleted', 'letter.certified.issue')
+          THEN 'failed'
+          ELSE 'unmailed'
+        END,
+        'createdAt', alert_link.created_at
+      )
+      FROM sitespecific_bao_case_comms alert_link
+      JOIN comm alert_comm ON alert_comm.id = alert_link.comm_id
+      LEFT JOIN comm_postal alert_postal ON alert_postal.comm_id = alert_comm.id
+      JOIN options_bao_case_status alert_target ON alert_target.id = alert_link.status_id
+      WHERE alert_link.case_id = ${cases.id}
+        AND alert_comm.medium = 'postal'
+        AND alert_target.workflow_step = 'auto_denied'
+        AND COALESCE(alert_postal.data->>'mailingConfirmedAt', '') = ''
+        AND (
+          alert_comm.status IN ('failed', 'error', 'bounced')
+          OR COALESCE(alert_postal.data->>'providerStatus', alert_comm.data->>'lastProviderStatus')
+            IN ('letter.deleted', 'letter.certified.issue')
+          OR alert_link.created_at <= now() - interval '24 hours'
+        )
+      ORDER BY alert_link.created_at DESC, alert_link.id DESC
+      LIMIT 1
+    )
+    ELSE NULL
+  END`,
 };
 
 /** The reason's configured check ids as stored by the options UI; anything else → none. */
@@ -349,6 +403,7 @@ function mapDetail(row: DetailRow): BaoCaseDetails {
     denialReasonName: row.denialReasonName ?? null,
     spdCitation: row.spdCitation ?? null,
     denialReasonEligibilityPluginIds: pluginIdsOf(row.denialReasonEligibilityPluginIds),
+    denialNoticeMailAlert: row.denialNoticeMailAlert ?? null,
   };
 }
 

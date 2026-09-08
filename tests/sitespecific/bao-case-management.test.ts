@@ -920,6 +920,22 @@ describe("BAO transactional case invariants", () => {
       )[0].id,
       data: null,
     });
+    await storage.baoCases.linkComm({
+      caseId: appeal.id,
+      commId: letterComm.id,
+      statusId: autoDenied.id,
+      statusName: autoDenied.name,
+      noticeDeadlineYmd: "2026-12-03",
+    });
+    await db.update(sitespecificBaoCaseComms)
+      .set({ createdAt: sql`now() - interval '25 hours'` })
+      .where(eq(sitespecificBaoCaseComms.commId, letterComm.id));
+    expect((await storage.baoCases.get(appeal.id))?.denialNoticeMailAlert).toMatchObject({
+      commId: letterComm.id,
+      commStatus: "queued",
+      providerStatus: "letter.created",
+      reason: "unmailed",
+    });
     const eventSpy = vi.spyOn(eventBus, "emit").mockResolvedValue(undefined as any);
     try {
       await expect(storage.baoCases.updateLifecycle(appeal.id, {
@@ -982,8 +998,8 @@ describe("BAO transactional case invariants", () => {
         mailingConfirmedEvent: "letter.delivered",
       });
 
-      // No onCommCreated link was written. The signed callback reconstructs
-      // it from the durable send key and promotes without sending again.
+      // The signed callback reuses the existing link and promotes without
+      // sending again.
       expect(await db.select().from(sitespecificBaoCaseComms)
         .where(eq(sitespecificBaoCaseComms.commId, letterComm.id)))
         .toHaveLength(1);
@@ -997,6 +1013,7 @@ describe("BAO transactional case invariants", () => {
         statusId: autoDenied.id,
         workflowStep: "auto_denied",
         deadlineYmd: "2026-12-03",
+        denialNoticeMailAlert: null,
       });
       const statusEvents = eventSpy.mock.calls.filter(([event, payload]) =>
         event === EventType.BAO_CASE_STATUS_SAVED &&
