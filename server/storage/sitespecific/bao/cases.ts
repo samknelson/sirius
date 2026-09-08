@@ -132,6 +132,8 @@ export interface CreateBaoCaseInput {
 export interface BaoCaseAssignmentContext {
   actorUserId: string;
   canAssignOthers: boolean;
+  /** Server-resolved admin authority to bypass case workflow prerequisites. */
+  canOverrideWorkflow?: boolean;
 }
 
 /** The locked appeal an approval grants its exemption for. */
@@ -702,7 +704,7 @@ export function createBaoCasesStorage(): BaoCasesStorage {
         if (updates.statusId && updates.statusId !== existing.statusId) {
           const [caseType] = await getClient().select().from(optionsBaoCaseType)
             .where(eq(optionsBaoCaseType.id, existing.caseTypeId));
-          if (caseType?.workflowCode === "benefit_appeal") {
+          if (caseType?.workflowCode === "benefit_appeal" && !assignment?.canOverrideWorkflow) {
             if (status.workflowStep === "auto_denied") {
               throw new Error("MAILING_CONFIRMATION_REQUIRED");
             }
@@ -727,7 +729,7 @@ export function createBaoCasesStorage(): BaoCasesStorage {
 
         const nextResolutionId = updates.resolutionId !== undefined ? updates.resolutionId : existing.resolutionId;
         const nextResolutionYmd = updates.resolutionYmd !== undefined ? updates.resolutionYmd : existing.resolutionYmd;
-        if (status.closed) {
+        if (status.closed && !assignment?.canOverrideWorkflow) {
           const resolutionId = nextResolutionId ?? status.defaultResolutionId;
           if (!resolutionId || !nextResolutionYmd) throw new Error("RESOLUTION_REQUIRED");
           const [resolution] = await getClient().select({ id: optionsBaoCaseResolution.id })
@@ -737,13 +739,15 @@ export function createBaoCasesStorage(): BaoCasesStorage {
           // closure no longer depends on a linked outreach note. This applies
           // to ordinary lifecycle closes as well as trustee outcomes: outreach
           // may still be recorded, but it is not a prerequisite to close.
-        } else if (!previousStatus?.closed && (nextResolutionId || nextResolutionYmd)) {
+        } else if (!status.closed && !previousStatus?.closed && (nextResolutionId || nextResolutionYmd)) {
           throw new Error("OPEN_CASE_RESOLUTION");
         }
         const normalized = status.closed
           ? {
               ...updates,
-              resolutionId: nextResolutionId ?? status.defaultResolutionId,
+              ...(assignment?.canOverrideWorkflow
+                ? {}
+                : { resolutionId: nextResolutionId ?? status.defaultResolutionId }),
               ...(options?.systemClose ? {
                 resolutionYmd: nextResolutionYmd ?? sql`CURRENT_DATE`,
                 data: { ...(existing.data as Record<string, unknown> | null ?? {}), autoClosedReason: "deadline_lapsed" },

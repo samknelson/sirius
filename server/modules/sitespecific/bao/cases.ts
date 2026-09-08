@@ -112,13 +112,15 @@ export function registerBaoCaseRoutes(
     try {
       const actor = await effectiveUserId(req);
       if (!actor) return res.status(401).json({ message: "Effective user not found" });
-      const [users, canAssignOthers] = await Promise.all([
+      const [users, canAssignOthers, canOverrideWorkflow] = await Promise.all([
         storage.users.getUsersWithAnyPermission(["staff", "admin"]),
         storage.users.userHasPermission(actor, BAO_CASE_ASSIGN_PERMISSION),
+        storage.users.userHasPermission(actor, "admin"),
       ]);
       res.json({
         selfId: actor,
         canAssignOthers,
+        canOverrideWorkflow,
         users: users.filter((u) => u.isActive).map((u) => ({
           id: u.id,
           name: [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email,
@@ -231,11 +233,16 @@ export function registerBaoCaseRoutes(
       // the committed event can carry the effective acting user.
       const actor = await effectiveUserId(req);
       if (!actor) return res.status(401).json({ message: "Effective user not found" });
+      const [canAssignOthers, canOverrideWorkflow] = await Promise.all([
+        parsed.assigneeUserId
+          ? storage.users.userHasPermission(actor, BAO_CASE_ASSIGN_PERMISSION)
+          : Promise.resolve(false),
+        storage.users.userHasPermission(actor, "admin"),
+      ]);
       const assignment = {
         actorUserId: actor,
-        canAssignOthers: parsed.assigneeUserId
-          ? await storage.users.userHasPermission(actor, BAO_CASE_ASSIGN_PERMISSION)
-          : false,
+        canAssignOthers,
+        canOverrideWorkflow,
       };
       const updated = await storage.baoCases.updateLifecycle(req.params.id, parsed, assignment);
       res.json(updated);

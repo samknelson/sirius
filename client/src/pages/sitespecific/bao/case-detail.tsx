@@ -19,7 +19,7 @@ import { GrantedExemptionsCard } from "@/components/sitespecific/bao/GrantedExem
 import { AppealOutcomeCard, type CaseStatusOption } from "@/components/sitespecific/bao/AppealOutcomeCard";
 import type { TrustBenefitEligibilityExemptionView } from "@shared/schema";
 
-type Option = { id: string; name: string; closed?: boolean; data?: { contextIds?: string[] } };
+type Option = { id: string; name: string; closed?: boolean; caseTypeId?: string; data?: { contextIds?: string[] } };
 type CaseTypeOption = Option & { workflowCode?: string };
 /** Workflow steps reached only through the Approve/Deny actions, never a status edit. */
 const OUTCOME_STEPS = ["approved", "denied"];
@@ -105,8 +105,9 @@ export default function BaoCaseDetailPage() {
   const { data: resolutions = [] } = useQuery<Option[]>({ queryKey: ["/api/options/bao-case-resolution"] });
   const { data: noteTypes = [] } = useQuery<Option[]>({ queryKey: ["/api/options/note-type"] });
   const { data: tags = [] } = useQuery<Option[]>({ queryKey: ["/api/options/bao-notes-tag"] });
-  const { data: assigneeCtx } = useQuery<{ selfId: string; canAssignOthers: boolean; users: Array<{ id: string; name: string }> }>({ queryKey: ["/api/sitespecific/bao/cases/assignees"] });
+  const { data: assigneeCtx } = useQuery<{ selfId: string; canAssignOthers: boolean; canOverrideWorkflow: boolean; users: Array<{ id: string; name: string }> }>({ queryKey: ["/api/sitespecific/bao/cases/assignees"] });
   const canAssignOthers = assigneeCtx?.canAssignOthers ?? false;
+  const canOverrideWorkflow = assigneeCtx?.canOverrideWorkflow ?? false;
   const selfId = assigneeCtx?.selfId ?? "";
   const assignees = assigneeCtx?.users ?? [];
   const [statusId, setStatusId] = useState("");
@@ -151,8 +152,8 @@ export default function BaoCaseDetailPage() {
       return apiRequest("PATCH", `/api/sitespecific/bao/cases/${id}`, {
         statusId, deadlineYmd: deadline,
         ...(reassigning ? { assigneeUserId: assigneeId } : {}),
-        resolutionId: closed ? resolutionId : null,
-        resolutionYmd: closed ? resolutionYmd : null,
+        resolutionId: closed ? resolutionId || null : null,
+        resolutionYmd: closed ? resolutionYmd || null : null,
       });
     },
     onSuccess: () => { invalidate(); toast({ title: "Case updated" }); },
@@ -167,10 +168,11 @@ export default function BaoCaseDetailPage() {
   const nextClosed = statuses.find((s) => s.id === statusId)?.closed ?? record.statusClosed;
   const applicable = noteTypes.filter((t) => t.data?.contextIds?.includes(record.entityType));
   const isAppeal = caseTypes.find((t) => t.id === record.caseTypeId)?.workflowCode === "benefit_appeal";
-  // An appeal's outcome statuses are not offered as a plain status edit (the
-  // server refuses them); the current one stays so the control reads right.
+  // Admins may correct a case into any status for its type. Staff retain the
+  // ordinary appeal path, including dedicated outcome actions.
   const statusChoices = statuses.filter((s) =>
-    s.id === record.statusId || !isAppeal || !OUTCOME_STEPS.includes(s.workflowStep ?? ""));
+    s.caseTypeId === record.caseTypeId &&
+    (canOverrideWorkflow || s.id === record.statusId || !isAppeal || !OUTCOME_STEPS.includes(s.workflowStep ?? "")));
   return (
     <div>
       <PageHeader title={`Case · ${record.entityName ?? record.entityId}`} />
@@ -208,7 +210,7 @@ export default function BaoCaseDetailPage() {
               : <div><Label>Assignee</Label><div className="flex items-center gap-2"><p className="text-sm" data-testid="text-assignee-name">{assigneeId === selfId ? "You" : record.assigneeName}</p>{selfId && assigneeId !== selfId && <Button variant="outline" size="sm" data-testid="button-take-case" onClick={() => setAssigneeId(selfId)}>Take this case</Button>}</div></div>}
             <div><Label>Status</Label><Select value={statusId} onValueChange={setStatusId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{statusChoices.map((s) => <SelectItem value={s.id} key={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
             {nextClosed && <><div><Label>Resolution</Label><Select value={resolutionId} onValueChange={setResolutionId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{resolutions.map((r) => <SelectItem value={r.id} key={r.id}>{r.name}</SelectItem>)}</SelectContent></Select></div><div><Label>Resolution date</Label><Input type="date" value={resolutionYmd} onChange={(e) => setResolutionYmd(e.target.value)} /></div></>}
-            <Button onClick={() => save.mutate()} disabled={save.isPending || (nextClosed && (!resolutionId || !resolutionYmd))}>Save</Button>
+            <Button onClick={() => save.mutate()} disabled={save.isPending || (!canOverrideWorkflow && nextClosed && (!resolutionId || !resolutionYmd))}>Save</Button>
           </CardContent>
         </Card>
         {isAppeal && <AppealFactsCard record={record} />}

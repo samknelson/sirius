@@ -12,6 +12,7 @@ import {
   entityNotes,
   comm,
   commPostal,
+  BAO_APPEAL_OUTCOME_STEPS,
   files,
   optionsBaoAppealDenialReason,
   optionsBaoCaseResolution,
@@ -800,6 +801,71 @@ describe("BAO transactional case invariants", () => {
       expect(record!.resolutionYmd).toBeNull();
     }
   }
+
+  it("lets an administrator bypass appeal workflow prerequisites without bypassing case-type safety", async () => {
+    const [caseType] = await db.select().from(optionsBaoCaseType)
+      .where(eq(optionsBaoCaseType.workflowCode, "benefit_appeal")).limit(1);
+    if (!caseType) throw new Error("Benefit Appeal case type is not configured");
+    const appealStatuses = await db.select().from(optionsBaoCaseStatus)
+      .where(eq(optionsBaoCaseStatus.caseTypeId, caseType.id));
+    const submitted = appealStatuses.find((status) => status.workflowStep === "submitted");
+    const trustee = appealStatuses.find((status) => status.workflowStep === "trustee_review");
+    const outcome = appealStatuses.find((status) =>
+      (BAO_APPEAL_OUTCOME_STEPS as readonly string[]).includes(status.workflowStep ?? ""));
+    if (!submitted || !trustee || !outcome) throw new Error("Benefit Appeal statuses are not configured");
+    const [appeal] = await db.insert(sitespecificBaoCases).values({
+      entityType: "worker",
+      entityId: workerId,
+      assigneeUserId: userId,
+      statusId: submitted.id,
+      caseTypeId: caseType.id,
+      deadlineYmd: "2099-01-01",
+    }).returning();
+    const eventSpy = vi.spyOn(eventBus, "emit").mockResolvedValue(undefined as any);
+    try {
+      await expect(storage.baoCases.updateLifecycle(
+        appeal.id,
+        { statusId: trustee.id },
+        { actorUserId: userId, canAssignOthers: false },
+      )).rejects.toThrow("INVALID_WORKFLOW_TRANSITION");
+
+      const adminContext = {
+        actorUserId: userId,
+        canAssignOthers: false,
+        canOverrideWorkflow: true,
+      };
+      const trusteeUpdate = await storage.baoCases.updateLifecycle(
+        appeal.id,
+        { statusId: trustee.id },
+        adminContext,
+      );
+      expect(trusteeUpdate.statusId).toBe(trustee.id);
+
+      const outcomeUpdate = await storage.baoCases.updateLifecycle(
+        appeal.id,
+        { statusId: outcome.id },
+        adminContext,
+      );
+      expect(outcomeUpdate).toMatchObject({
+        statusId: outcome.id,
+        resolutionId: null,
+        resolutionYmd: null,
+      });
+      expect(eventSpy.mock.calls.find(([type, payload]) =>
+        type === EventType.BAO_CASE_STATUS_SAVED &&
+        (payload as any).statusId === outcome.id
+      )?.[1]).toMatchObject({ actorUserId: userId });
+
+      await expect(storage.baoCases.updateLifecycle(
+        appeal.id,
+        { statusId: openStatusId },
+        adminContext,
+      )).rejects.toThrow("CASE_TYPE_STATUS_MISMATCH");
+    } finally {
+      eventSpy.mockRestore();
+      await db.delete(sitespecificBaoCases).where(eq(sitespecificBaoCases.id, appeal.id));
+    }
+  });
 
   it("creates a benefit appeal in Submitted while initiating its Auto-Denied notice", async () => {
     const [caseType] = await db.select().from(optionsBaoCaseType)
