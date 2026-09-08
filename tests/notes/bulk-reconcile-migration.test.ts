@@ -148,4 +148,46 @@ describe("bulk migration reconcile — tag replacement and ownership", () => {
     expect(res.saved.size).toBe(0);
     expect((await storage.entityNotes.get(foreign.id))?.body).toBe("foreign body");
   });
+
+  it("recreates a cleaned-up imported note for a resolved worker and retires a missing unresolved target", async (ctx) => {
+    if (!tablesPresent) return ctx.skip();
+    const options = getOptionsStorage();
+    const noteType = (await options.list("note-type"))[0];
+    const worker = (await storage.workers.getAllWorkers())[0];
+    if (!noteType || !worker?.id) return ctx.skip();
+
+    const nid = NID_BASE + 6;
+    const first = await storage.entityNotes.bulkReconcileForMigration({
+      loader: LOADER,
+      rows: [{ ref: nid, note: migrationNote(worker, noteType.id, nid, "before cleanup") as any, tagIds: [] }],
+    });
+    const originalId = first.saved.get(nid)!.noteId;
+    created.noteIds.push(originalId);
+    expect((await storage.entityNotes.getMigrationNoteTargets([originalId])).get(originalId))
+      .toMatchObject({ contextId: "worker", owner: LOADER, workerAttached: true });
+
+    // Immediate or nightly entity-note cleanup can remove the note but not
+    // the completed source mapping. A missing target is intentionally absent
+    // from the bulk target map, so the loader can use its create path.
+    await storage.entityNotes.delete(originalId);
+    expect(await storage.entityNotes.getMigrationNoteTargets([originalId])).toEqual(new Map());
+
+    const recreated = await storage.entityNotes.bulkReconcileForMigration({
+      loader: LOADER,
+      rows: [{ ref: nid, note: migrationNote(worker, noteType.id, nid, "after cleanup") as any, tagIds: [] }],
+    });
+    const recreatedId = recreated.saved.get(nid)!.noteId;
+    created.noteIds.push(recreatedId);
+    expect(recreated.saved.get(nid)?.created).toBe(true);
+    expect(recreatedId).not.toBe(originalId);
+    expect((await storage.entityNotes.getMigrationNoteTargets([recreatedId])).get(recreatedId))
+      .toMatchObject({ contextId: "worker", owner: LOADER, workerAttached: true });
+
+    // The unresolved branch uses the same ownership-guarded bulk delete. If
+    // cleanup won the race, the missing note is still a successful retirement
+    // candidate and the caller removes its stale mapping.
+    await storage.entityNotes.delete(recreatedId);
+    await expect(storage.entityNotes.bulkDeleteForMigration([recreatedId], LOADER))
+      .resolves.toEqual({ deleted: 0, missing: 1 });
+  });
 });

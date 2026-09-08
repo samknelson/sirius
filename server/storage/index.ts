@@ -13,7 +13,13 @@ export { type GrievanceStatusHistoryStorage, type GrievanceStatusHistoryItem, cr
 export { type GrievanceContractStorage, type GrievanceContractLink, type GrievanceLinkedSection, type CatalogArticle, type CatalogSection, createGrievanceContractStorage, grievanceContractLoggingConfig } from "./grievances/grievance-contract-links";
 export { type LogsStorage, type LogsQueryParams, type LogsResult, type LogFilters, type HostEntityLogsParams, createLogsStorage } from "./system/logs";
 export { type WorkerBanStorage, createWorkerBanStorage } from "./worker-bans";
-export { type EntityNotesStorage, type EntityNoteWithDetails, createEntityNotesStorage, entityNotesLoggingConfig } from "./entity-notes";
+export {
+  type EntityNotesStorage,
+  type EntityNoteWithDetails,
+  type MigrationNoteTarget,
+  createEntityNotesStorage,
+  entityNotesLoggingConfig,
+} from "./entity-notes";
 export { type BaoCasesStorage, type BaoCaseDetails, createBaoCasesStorage } from "./sitespecific/bao/cases";
 export { type BaoDisabilityCreditStorage, createBaoDisabilityCreditStorage } from "./sitespecific/bao/disability-credit";
 export { type WsClientStorage, type WsClientGrantStorage, type WsClientCredentialStorage, type CredentialCreateResult, type WsClientIpRuleStorage, createWsClientStorage, createWsClientGrantStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";

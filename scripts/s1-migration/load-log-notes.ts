@@ -20,6 +20,7 @@ import {
   getAllMappings,
   getMappings,
   putMappings,
+  putMappingsOverwrite,
   type MappingInfo,
 } from "./lib/idmap";
 import { ensureRawUserTables } from "./lib/staging";
@@ -291,6 +292,15 @@ const COMPLETED_MAPPING_SQL = sql`EXISTS (
    WHERE m.entity = ${ID_MAP_ENTITY} AND m.s1_id = r.nid
      AND m.stub = false AND m.consumed_fingerprint IS NOT NULL
      AND m.logic_version = ${LOGIC_VERSION}
+      AND m.loader = ${LOADER}
+      AND EXISTS (
+        SELECT 1
+          FROM entity_notes n
+          JOIN workers w ON w.id = n.entity_id
+         WHERE n.id = m.s2_id
+           AND n.context_id = 'worker'
+           AND n.data->>'s1Loader' = ${LOADER}
+      )
 )`;
 
 async function immutableSkippedCount(): Promise<number> {
@@ -528,6 +538,25 @@ async function main() {
     }
   };
 
+  const cleanupDanglingImmutableMappings = async (): Promise<number> => {
+    if (DRY_RUN) return 0;
+    const result = await db.execute(sql`
+      DELETE FROM s1_staging.id_map m
+       USING s1_staging.records r
+       WHERE m.entity = ${ID_MAP_ENTITY}
+         AND m.loader = ${LOADER}
+         AND m.stub = false
+         AND m.consumed_fingerprint IS NOT NULL
+         AND m.logic_version = ${LOGIC_VERSION}
+         AND r.bundle = 'sirius_log'
+         AND r.nid = m.s1_id
+         AND ${IMMUTABLE_PREDICATE_SQL}
+         AND NOT EXISTS (SELECT 1 FROM entity_notes n WHERE n.id = m.s2_id)
+      RETURNING m.s1_id
+    `);
+    return (result as unknown as { rows: unknown[] }).rows.length;
+  };
+
   for await (const page of pagedStagedLogs()) {
     pages++;
     stagedFetched += page.length;
@@ -561,12 +590,15 @@ async function main() {
       ]);
       return { row, classification, handlerNids, resolution, creator, fingerprint };
     });
-    // ONE mapping lookup per page (covers orphan cleanup AND disposition).
+    // One mapping lookup plus one set-based target validation per page
+    // (covers orphan cleanup, immutable repair, and disposition).
     const pageMappings = await getMappings(ID_MAP_ENTITY, classificationRows.map((item) => item.row.nid));
+    const mappedNoteIds = [...new Set([...pageMappings.values()].map((mapping) => mapping.s2Id))];
+    const noteTargets = await storage.entityNotes.getMigrationNoteTargets(mappedNoteIds);
     type WriteItem = (typeof classificationRows)[number] & { existing: MappingInfo | undefined };
     const orphanDeletes: Array<{ nid: number; s2Id: string }> = [];
     const verifyTargets: Array<{ nid: number; s2Id: string; workerId: string; fingerprint: string }> = [];
-    const writes: WriteItem[] = [];
+    const writes: Array<WriteItem & { remapMissingTarget: boolean }> = [];
     for (const item of classificationRows) {
       const { row, classification, resolution, fingerprint } = item;
       inScope++;
@@ -587,8 +619,23 @@ async function main() {
         rejects.add("timestamp_missing", {}, row.nid);
         continue;
       }
-      const existing = pageMappings.get(row.nid);
-      const disposition = classifyRow(existing, fingerprint, LOGIC_VERSION, FORCE_RECONCILE);
+      const mapped = pageMappings.get(row.nid);
+      const target = mapped ? noteTargets.get(mapped.s2Id) : undefined;
+      const missingTarget = Boolean(mapped && !target);
+      // A deleted note must go through the create/adoption path. Other
+      // invalid targets stay attached to their mapping so bulk reconciliation
+      // preserves its foreign-owner fail-closed behavior.
+      const existing = missingTarget ? undefined : mapped;
+      const targetNeedsReconcile = Boolean(mapped && target && (
+        target.owner !== LOADER ||
+        target.contextId !== "worker" ||
+        !target.workerAttached
+      ));
+      const disposition = missingTarget
+        ? "new"
+        : targetNeedsReconcile
+        ? "changed"
+        : classifyRow(existing, fingerprint, LOGIC_VERSION, FORCE_RECONCILE);
       if (disposition === "unchanged") {
         fastPathSkips++;
         summary.unchanged++;
@@ -599,7 +646,7 @@ async function main() {
         summary[disposition === "new" ? "created" : "updated"]++;
         continue;
       }
-      writes.push({ ...item, existing });
+      writes.push({ ...item, existing, remapMissingTarget: missingTarget });
     }
 
     // Batched orphan cleanup (ownership-guarded set-based delete + mapping removal).
@@ -664,6 +711,7 @@ async function main() {
           rows: payload,
         }));
         const newMappings: Array<{ s1Id: number; s2Id: string; fingerprint: string | null }> = [];
+        const remappedMappings: Array<{ s1Id: number; s2Id: string }> = [];
         for (const item of writeChunk) {
           const nid = item.row.nid;
           const failure = failed.get(nid);
@@ -676,18 +724,37 @@ async function main() {
             rejects.add(item.existing ? "update_failed" : "create_failed", { reason: "not_saved" }, nid);
             continue;
           }
-          if (item.existing) summary.updated++;
+          if (item.existing && !item.remapMissingTarget) summary.updated++;
           else {
             // Fingerprint stays NULL until this row VERIFIES below — a failed
             // initial import (incl. immutable smf:notes rows) keeps its
             // mapping incomplete and stays eligible for retry.
-            newMappings.push({ s1Id: nid, s2Id: result.noteId, fingerprint: null });
+            if (item.remapMissingTarget) {
+              remappedMappings.push({ s1Id: nid, s2Id: result.noteId });
+            } else {
+              newMappings.push({ s1Id: nid, s2Id: result.noteId, fingerprint: null });
+            }
             summary.created++;
           }
           verifyTargets.push({ nid, s2Id: result.noteId, workerId: item.resolution.workerId!, fingerprint: item.fingerprint });
         }
         if (newMappings.length > 0) {
           await putMappings(ID_MAP_ENTITY, newMappings, { loader: LOADER, logicVersion: LOGIC_VERSION });
+        }
+        if (remappedMappings.length > 0) {
+          await putMappingsOverwrite(ID_MAP_ENTITY, remappedMappings, {
+            loader: LOADER,
+            logicVersion: LOGIC_VERSION,
+          });
+          // A repaired target is now owned by this loader, even if a
+          // dependent loader left the old mapping as a stub. Keep it
+          // retryable until the verification pass below succeeds.
+          await db.execute(sql`
+            UPDATE s1_staging.id_map
+               SET stub = false, consumed_fingerprint = NULL
+             WHERE entity = ${ID_MAP_ENTITY}
+               AND s1_id IN (${sql.join(remappedMappings.map((mapping) => sql`${mapping.s1Id}`), sql`, `)})
+          `);
         }
       } catch {
         for (const item of writeChunk) {
@@ -712,6 +779,7 @@ async function main() {
     );
   }
 
+  report.danglingImmutableMappingsCleaned = await cleanupDanglingImmutableMappings();
   const sweep = await sweepDeletions({
     entity: ID_MAP_ENTITY,
     loaders: [LOADER],

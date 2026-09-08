@@ -18,6 +18,12 @@ export interface EntityNoteWithDetails extends EntityNote {
   authorName: string | null;
 }
 
+export interface MigrationNoteTarget {
+  contextId: string;
+  owner: string | null;
+  workerAttached: boolean;
+}
+
 export interface EntityNotesStorage {
   /** Notes on one record, newest first. */
   listByEntity(contextId: string, entityId: string): Promise<EntityNoteWithDetails[]>;
@@ -64,6 +70,13 @@ export interface EntityNotesStorage {
     saved: Map<number, { noteId: string; created: boolean }>;
     failed: Map<number, "missing" | "owner_mismatch" | "duplicate_provenance">;
   }>;
+  /**
+   * Bulk-read migration note targets before reconciliation. Missing ids are
+   * absent from the returned map; existing rows retain enough state for the
+   * loader to distinguish a deleted note from a foreign-owned target without
+   * per-row queries.
+   */
+  getMigrationNoteTargets(ids: string[]): Promise<Map<string, MigrationNoteTarget>>;
   /**
    * Migration-only bulk delete (batched orphan cleanup / deletion sweep).
    * Fail-closed like `deleteForMigration`: any candidate whose provenance is
@@ -378,6 +391,31 @@ export function createEntityNotesStorage(): EntityNotesStorage {
         }
         return { saved, failed };
       });
+    },
+
+    async getMigrationNoteTargets(ids: string[]): Promise<Map<string, MigrationNoteTarget>> {
+      const out = new Map<string, MigrationNoteTarget>();
+      if (ids.length === 0) return out;
+      const client = getClient();
+      const rows = await client
+        .select({
+          id: entityNotes.id,
+          contextId: entityNotes.contextId,
+          owner: sql<string | null>`data->>'s1Loader'`,
+          workerAttached: sql<boolean>`EXISTS (
+            SELECT 1 FROM workers w WHERE w.id = ${entityNotes.entityId}
+          )`,
+        })
+        .from(entityNotes)
+        .where(inArray(entityNotes.id, ids));
+      for (const row of rows) {
+        out.set(row.id, {
+          contextId: row.contextId,
+          owner: row.owner,
+          workerAttached: Boolean(row.workerAttached),
+        });
+      }
+      return out;
     },
 
     async bulkDeleteForMigration(ids: string[], loader: string): Promise<{ deleted: number; missing: number }> {

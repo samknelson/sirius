@@ -403,6 +403,16 @@ SELECT count(*) AS loaded,
  WHERE m.entity = 's1_log_note';
 ```
 
+After the notes cleanup framework is enabled, an imported note can disappear
+when its worker parent is deleted or when the nightly orphan sweep catches an
+older orphan. The next ordinary loader run now validates immutable mappings in
+bulk before excluding them, recreates a missing imported note for a currently
+resolvable worker, and retires a stale mapping when the handler is unresolved.
+The run also reports `detail.danglingImmutableMappingsCleaned`; this should be
+zero after the repaired run and on its idempotent rerun. Re-run N3 after that
+pair of runs: `mapped_but_missing` must remain zero, and the rerun must again
+show `created = 0`, `updated = 0`, and no duplicate note targets.
+
 ### N5b — display-name provenance vs staged raw_users
 
 Gate: `display_name_bad = 0` (stored display name equals the staged S1
