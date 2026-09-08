@@ -3,6 +3,7 @@ import { storage } from "../storage";
 import { insertContactPostalSchema } from "@shared/schema";
 import type { AddressSource } from "../storage/contacts";
 import { addressValidationService } from "../services/comm/validators/address";
+import { isComponentEnabled } from "./components";
 
 // Type for middleware functions that we'll accept from the main routes
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -89,9 +90,13 @@ export function registerContactPostalRoutes(
       return requireAccess('employer.manage', () => employerContacts[0].employerId)(req, res, next);
     }
 
-    const facility = await storage.facilities.getByContactId(req.params.contactId);
-    if (facility) {
-      return requireAccess('facility.view', () => facility.id)(req, res, next);
+    // Facility storage is component-owned, so production databases without
+    // the facility component may not have the facilities table at all.
+    if (await isComponentEnabled("facility")) {
+      const facility = await storage.facilities.getByContactId(req.params.contactId);
+      if (facility) {
+        return requireAccess('facility.view', () => facility.id)(req, res, next);
+      }
     }
 
     return requireAccess('staff')(req, res, next);

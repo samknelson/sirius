@@ -3,6 +3,7 @@ import { storage, createCommSmsOptinStorage } from "../storage";
 import { insertPhoneNumberSchema, insertCommSmsOptinSchema } from "@shared/schema";
 import { phoneValidationService, type PhoneValidationResult } from "../services/comm/validators/phone";
 import { z } from "zod";
+import { isComponentEnabled } from "./components";
 
 const updateSmsOptinSchema = z.object({
   optin: z.boolean().optional(),
@@ -75,10 +76,13 @@ export function registerPhoneNumberRoutes(
       return requireAccess('employer.manage', () => employerContacts[0].employerId)(req, res, next);
     }
     
-    // Check if this contact belongs to a facility
-    const facility = await storage.facilities.getByContactId(req.params.contactId);
-    if (facility) {
-      return requireAccess('facility.view', () => facility.id)(req, res, next);
+    // Facility storage is component-owned, so production databases without
+    // the facility component may not have the facilities table at all.
+    if (await isComponentEnabled("facility")) {
+      const facility = await storage.facilities.getByContactId(req.params.contactId);
+      if (facility) {
+        return requireAccess('facility.view', () => facility.id)(req, res, next);
+      }
     }
     
     // Other contact types - require staff permission
