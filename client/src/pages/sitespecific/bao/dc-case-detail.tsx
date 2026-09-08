@@ -46,6 +46,10 @@ import type {
 import type { DcMonthOption } from "@shared/sitespecific/bao/dc-workflow";
 import type { DcCaseMonthState, DcMonthHistoryEntry } from "@shared/sitespecific/bao/dc-reporting";
 import { createLatestSaveQueue, type LatestSaveQueue } from "./dc-attestation-queue";
+import {
+  DC_ATTESTATION_CONTROL_ORDER,
+  DcReadinessSavingStatus,
+} from "./dc-readiness-presentation";
 
 /** Wait this long after the last month toggle before re-validating. */
 const PREVIEW_DEBOUNCE_MS = 300;
@@ -597,11 +601,7 @@ export default function BaoDcCaseDetailPage() {
                 {att.updatedAt ? ` on ${formatYmd(att.updatedAt.slice(0, 10))}` : ""}
               </span>
             )}
-            {(attestationSaving || attestationDraft) && (
-              <span className="block text-muted-foreground" data-testid="text-dc-attestation-saving">
-                Saving checklist changes…
-              </span>
-            )}
+            <DcReadinessSavingStatus pending={attestationSaving || attestationDraft !== null} />
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -620,51 +620,35 @@ export default function BaoDcCaseDetailPage() {
           ))}
           {!terminal && c.status !== "approved" && (
             <div className="pt-3 border-t mt-3 grid gap-2 sm:grid-cols-2">
-              {hasCurrentDcForm && (
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={att.dcFormOnFile === true}
-                    onCheckedChange={(v) => setAtt({ dcFormOnFile: v === true })}
-                    data-testid="checkbox-dc-att-dcFormOnFile"
-                  />
-                  DC form on file (verified against the classified document)
-                </label>
-              )}
-              {[
-                { key: "signed", label: "Form is doctor-signed", value: att.signed === true },
-                {
-                  key: "restrictionsNoted",
-                  label: "Restrictions noted (requires employer letter)",
-                  value: att.restrictionsNoted === true,
-                },
-              ].map((f) => (
-                <label key={f.key} className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={f.value}
-                    onCheckedChange={(v) => setAtt({ [f.key]: v === true } as any)}
-                    data-testid={`checkbox-dc-att-${f.key}`}
-                  />
-                  {f.label}
-                </label>
-              ))}
-              {(
-                [
-                  ["doctorAddress", "Doctor address present"],
-                  ["doctorPhone", "Doctor phone present"],
-                  ["dates", "Dates present"],
-                ] as const
-              ).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={att.fields?.[key] === true}
-                    onCheckedChange={(v) =>
-                      setAtt({ fields: { ...att.fields, [key]: v === true } })
-                    }
-                    data-testid={`checkbox-dc-att-field-${key}`}
-                  />
-                  {label}
-                </label>
-              ))}
+              {DC_ATTESTATION_CONTROL_ORDER.map((key) => {
+                if (key === "dcFormOnFile" && !hasCurrentDcForm) return null;
+                const field = ["doctorAddress", "doctorPhone", "dates"].includes(key);
+                const labels: Record<(typeof DC_ATTESTATION_CONTROL_ORDER)[number], string> = {
+                  dcFormOnFile: "DC form on file (verified against the classified document)",
+                  signed: "Form is doctor-signed",
+                  doctorAddress: "Doctor address present",
+                  doctorPhone: "Doctor phone present",
+                  dates: "Dates present",
+                  restrictionsNoted: "Restrictions noted (requires employer letter)",
+                };
+                const checked = field
+                  ? att.fields?.[key as keyof NonNullable<BaoDcAttestations["fields"]>] === true
+                  : att[key as "dcFormOnFile" | "signed" | "restrictionsNoted"] === true;
+                return (
+                  <label key={key} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(value) =>
+                        field
+                          ? setAtt({ fields: { ...att.fields, [key]: value === true } })
+                          : setAtt({ [key]: value === true })
+                      }
+                      data-testid={`checkbox-dc-att-${field ? `field-${key}` : key}`}
+                    />
+                    {labels[key]}
+                  </label>
+                );
+              })}
             </div>
           )}
         </CardContent>
