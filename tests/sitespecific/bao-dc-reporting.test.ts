@@ -5,6 +5,7 @@ import {
   isDcExpiryWarning,
   isDcGrantEvent,
   isDcRemovalEvent,
+  summarizeDcActiveGrants,
   summarizeDcGrantActivity,
   BAO_DC_EXPIRY_WARNING_DAYS,
 } from "@shared/sitespecific/bao/dc-reporting";
@@ -30,6 +31,92 @@ describe("buildDcYearUsage", () => {
   it("honours a custom limit", () => {
     const usage = buildDcYearUsage([{ workMonthYmd: "2026-03-01" }], 4);
     expect(usage["2026"]).toEqual({ used: 1, limit: 4 });
+  });
+});
+
+describe("summarizeDcActiveGrants", () => {
+  const worker = (workerId: string, name: string) => ({
+    workerId,
+    siriusId: null,
+    name,
+  });
+
+  it("consolidates months and cases into one aggregate per worker", () => {
+    const latestActivity = { eventType: "case_month_granted", at: "2026-03-02T00:00:00.000Z" };
+    const rows = summarizeDcActiveGrants([
+      {
+        worker: worker("worker-1", "Alex Able"),
+        workMonthYmd: "2025-12-01",
+        grantedHours: 20,
+        coverageMonthYmd: "2026-01-01",
+        current: false,
+        yearUsage: { used: 2, limit: 6 },
+        latestActivity,
+      },
+      {
+        worker: worker("worker-1", "Alex Able"),
+        workMonthYmd: "2026-03-01",
+        grantedHours: 30,
+        coverageMonthYmd: "2026-04-01",
+        current: true,
+        yearUsage: { used: 3, limit: 6 },
+        latestActivity,
+      },
+    ]);
+
+    expect(rows).toEqual([
+      {
+        worker: worker("worker-1", "Alex Able"),
+        grantedMonthCount: 2,
+        workMonths: ["2025-12-01", "2026-03-01"],
+        coverageMonths: ["2026-01-01", "2026-04-01"],
+        totalGrantedHours: 50,
+        current: true,
+        yearUsage: {
+          "2025": { used: 2, limit: 6 },
+          "2026": { used: 3, limit: 6 },
+        },
+        latestActivity,
+      },
+    ]);
+  });
+
+  it("keeps workers separate and orders by latest month, then name", () => {
+    const common = {
+      grantedHours: 10,
+      coverageMonthYmd: null,
+      current: true,
+      yearUsage: { used: 1, limit: 6 },
+      latestActivity: null,
+    };
+    const rows = summarizeDcActiveGrants([
+      { ...common, worker: worker("worker-z", "Zed"), workMonthYmd: "2026-01-01" },
+      { ...common, worker: worker("worker-b", "Bea"), workMonthYmd: "2026-02-01" },
+      { ...common, worker: worker("worker-a", "Ada"), workMonthYmd: "2026-02-01" },
+    ]);
+
+    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => row.worker.workerId)).toEqual([
+      "worker-a",
+      "worker-b",
+      "worker-z",
+    ]);
+  });
+
+  it("does not report a partial hours total when a month has unknown hours", () => {
+    const common = {
+      worker: worker("worker-1", "Alex Able"),
+      coverageMonthYmd: null,
+      current: true,
+      yearUsage: { used: 2, limit: 6 },
+      latestActivity: null,
+    };
+    const [summary] = summarizeDcActiveGrants([
+      { ...common, workMonthYmd: "2026-01-01", grantedHours: 10 },
+      { ...common, workMonthYmd: "2026-02-01", grantedHours: null },
+    ]);
+    expect(summary.grantedMonthCount).toBe(2);
+    expect(summary.totalGrantedHours).toBeNull();
   });
 });
 

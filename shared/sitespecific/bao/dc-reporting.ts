@@ -27,6 +27,74 @@ export function buildDcYearUsage(
   return yearUsage;
 }
 
+export interface DcActiveGrantSummaryInput {
+  worker: { workerId: string; siriusId: number | null; name: string };
+  workMonthYmd: string;
+  grantedHours: number | null;
+  coverageMonthYmd: string | null;
+  current: boolean;
+  yearUsage: { used: number; limit: number };
+  latestActivity: { eventType: string; at: string } | null;
+}
+
+export interface DcActiveGrantSummary {
+  worker: DcActiveGrantSummaryInput["worker"];
+  grantedMonthCount: number;
+  workMonths: string[];
+  coverageMonths: string[];
+  /** Null when any granted month has no hours snapshot, avoiding a misleading partial total. */
+  totalGrantedHours: number | null;
+  current: boolean;
+  yearUsage: Record<string, { used: number; limit: number }>;
+  latestActivity: DcActiveGrantSummaryInput["latestActivity"];
+}
+
+/** Consolidate granted-month rows into one deterministically ordered row per worker. */
+export function summarizeDcActiveGrants(
+  rows: DcActiveGrantSummaryInput[],
+): DcActiveGrantSummary[] {
+  const byWorker = new Map<string, DcActiveGrantSummary>();
+  for (const row of rows) {
+    const year = row.workMonthYmd.slice(0, 4);
+    const existing = byWorker.get(row.worker.workerId);
+    if (!existing) {
+      byWorker.set(row.worker.workerId, {
+        worker: row.worker,
+        grantedMonthCount: 1,
+        workMonths: [row.workMonthYmd],
+        coverageMonths: row.coverageMonthYmd ? [row.coverageMonthYmd] : [],
+        totalGrantedHours: row.grantedHours,
+        current: row.current,
+        yearUsage: { [year]: row.yearUsage },
+        latestActivity: row.latestActivity,
+      });
+      continue;
+    }
+    existing.grantedMonthCount += 1;
+    existing.workMonths.push(row.workMonthYmd);
+    if (row.coverageMonthYmd) existing.coverageMonths.push(row.coverageMonthYmd);
+    existing.totalGrantedHours =
+      existing.totalGrantedHours === null || row.grantedHours === null
+        ? null
+        : existing.totalGrantedHours + row.grantedHours;
+    existing.current ||= row.current;
+    existing.yearUsage[year] = row.yearUsage;
+  }
+
+  return Array.from(byWorker.values())
+    .map((summary) => ({
+      ...summary,
+      workMonths: summary.workMonths.sort(),
+      coverageMonths: Array.from(new Set(summary.coverageMonths)).sort(),
+    }))
+    .sort(
+      (a, b) =>
+        b.workMonths.at(-1)!.localeCompare(a.workMonths.at(-1)!) ||
+        a.worker.name.localeCompare(b.worker.name) ||
+        a.worker.workerId.localeCompare(b.worker.workerId),
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Annual maximum — ONE derivation for the dashboard's "Annual Maximum
 // Reached" list, the worker tab, the case detail and the picker preview.

@@ -36,7 +36,9 @@ import {
   daysUntilYmd,
   isDcExpiryWarning,
   isDcYearMaxedOut,
+  summarizeDcActiveGrants,
   summarizeDcGrantActivity,
+  type DcActiveGrantSummary,
   type DcNetActivityRow,
 } from "@shared/sitespecific/bao/dc-reporting";
 import { getDcDenialLetterValidityMonths } from "./dc-settings";
@@ -186,19 +188,7 @@ export async function getDcUpcomingPopulations(
 // Active grants
 // ---------------------------------------------------------------------------
 
-export interface DcActiveGrantRow {
-  worker: DcWorkerRef;
-  caseId: string;
-  workMonthYmd: string;
-  grantedHours: number | null;
-  coverageMonthYmd: string | null;
-  /** Coverage month is the current month or later. */
-  current: boolean;
-  yearUsage: { used: number; limit: number };
-  latestActivity: { eventType: string; at: string } | null;
-}
-
-export async function listDcActiveGrants(): Promise<DcActiveGrantRow[]> {
+export async function listDcActiveGrants(): Promise<DcActiveGrantSummary[]> {
   const dc = storage.baoDisabilityCredit;
   const granted = await dc.listMonthsByStatuses(["granted"]);
   const workerIds = granted.map((m) => m.workerId);
@@ -213,8 +203,8 @@ export async function listDcActiveGrants(): Promise<DcActiveGrantRow[]> {
   const latestByWorker = new Map(latest.map((e) => [e.workerId, e]));
   const nowMonth = currentMonthYmd();
 
-  return granted
-    .map((m) => {
+  return summarizeDcActiveGrants(
+    granted.map((m) => {
       const data = (m.data ?? {}) as Record<string, unknown>;
       const coverage =
         typeof data.coverageMonthYmd === "string" ? data.coverageMonthYmd : null;
@@ -222,7 +212,6 @@ export async function listDcActiveGrants(): Promise<DcActiveGrantRow[]> {
       const latestEvent = latestByWorker.get(m.workerId);
       return {
         worker: ref(refs, m.workerId),
-        caseId: m.caseId,
         workMonthYmd: m.workMonthYmd,
         grantedHours: Number.isFinite(Number(data.grantedHours))
           ? Number(data.grantedHours)
@@ -237,12 +226,8 @@ export async function listDcActiveGrants(): Promise<DcActiveGrantRow[]> {
           ? { eventType: latestEvent.eventType, at: latestEvent.createdAt.toISOString() }
           : null,
       };
-    })
-    .sort(
-      (a, b) =>
-        b.workMonthYmd.localeCompare(a.workMonthYmd) ||
-        a.worker.name.localeCompare(b.worker.name),
-    );
+    }),
+  );
 }
 
 // ---------------------------------------------------------------------------

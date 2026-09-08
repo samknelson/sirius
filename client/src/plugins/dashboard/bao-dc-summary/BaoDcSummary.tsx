@@ -21,11 +21,12 @@ interface DcSummaryContent {
   fmlaEligibleCount: number;
   activeGrants: Array<{
     worker: WorkerRef;
-    caseId: string;
-    workMonthYmd: string;
-    grantedHours: number | null;
+    grantedMonthCount: number;
+    workMonths: string[];
+    coverageMonths: string[];
+    totalGrantedHours: number | null;
     current: boolean;
-    yearUsage: { used: number; limit: number };
+    yearUsage: Record<string, { used: number; limit: number }>;
     latestActivity: { eventType: string; at: string } | null;
   }>;
   queue: Array<{
@@ -185,13 +186,16 @@ export function BaoDcSummary(_props: DashboardPluginProps) {
           <ul className="space-y-0.5" data-testid="list-dc-active-grants">
             {activeGrants.slice(0, 8).map((row) => (
               <li
-                key={`${row.caseId}-${row.workMonthYmd}`}
+                key={row.worker.workerId}
                 className="flex justify-between gap-2"
               >
                 <WorkerLink worker={row.worker} />
                 <span className="text-muted-foreground text-xs">
-                  {monthLabel(row.workMonthYmd)} · {row.grantedHours ?? "?"}h ·{" "}
-                  {row.yearUsage.used}/{row.yearUsage.limit} used
+                  {row.grantedMonthCount} month(s) · {row.totalGrantedHours ?? "?"}h total ·{" "}
+                  {Object.entries(row.yearUsage)
+                    .sort(([a], [b]) => b.localeCompare(a))
+                    .map(([year, usage]) => `${year}: ${usage.used}/${usage.limit} used`)
+                    .join(" · ")}
                 </span>
               </li>
             ))}
