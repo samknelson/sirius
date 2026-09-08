@@ -180,7 +180,7 @@ export default function BaoCaseDetailPage() {
         </Card>
         {isAppeal && <AppealFactsCard record={record} />}
         {record.workflowStep === "trustee_review" && (
-          <AppealOutcomeCard record={record} statuses={statuses} resolutions={resolutions} noteTypes={noteTypes} tags={tags} onRecorded={invalidate} />
+          <AppealOutcomeCard record={record} statuses={statuses} noteTypes={noteTypes} tags={tags} onRecorded={invalidate} />
         )}
         <CaseLettersCard letters={record.letters ?? []} mailingAddressOnFile={record.mailingAddressOnFile ?? true} isWorkerCase={record.entityType === "worker"} />
         <BaoCaseDocumentsCard caseId={record.id} />

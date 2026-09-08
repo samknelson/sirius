@@ -63,7 +63,6 @@ export interface OpenEndedExemptionGrantResult {
 export interface ExemptionCheckOption {
   id: string;
   name: string;
-  description: string;
 }
 
 /**
@@ -77,7 +76,7 @@ export function listExemptionChecks(): ExemptionCheckOption[] {
   return eligibilityPluginRegistry
     .getAllFiltered(getEnabledComponentIdsSync())
     .filter((p) => !p.metadata.hidden)
-    .map((p) => ({ id: p.id, name: p.metadata.name, description: p.metadata.description }))
+    .map((p) => ({ id: p.id, name: p.metadata.name }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -117,14 +116,12 @@ export interface ApproveAppealInput {
   actorUserId: string;
   eligibilityPlugins: string[];
   startYmd: string;
-  resolutionId?: string;
   resolutionYmd?: string;
 }
 
 export interface DenyAppealInput {
   actorUserId: string;
   note?: CreateBaoCaseInput["initialNote"];
-  resolutionId?: string;
   resolutionYmd?: string;
 }
 
@@ -146,7 +143,6 @@ export async function approveAppeal(caseId: string, input: ApproveAppealInput): 
   return storage.baoCases.recordAppealOutcome(caseId, {
     outcome: "approved",
     actorUserId: input.actorUserId,
-    resolutionId: input.resolutionId,
     resolutionYmd: input.resolutionYmd,
     grantExemption: async (subject) => {
       const source: TrustBenefitEligibilityExemptionSource = { kind: TRUST_EXEMPTION_SOURCE_BAO_APPEAL, caseId: subject.caseId };
@@ -168,7 +164,6 @@ export async function denyAppeal(caseId: string, input: DenyAppealInput): Promis
   return storage.baoCases.recordAppealOutcome(caseId, {
     outcome: "denied",
     actorUserId: input.actorUserId,
-    resolutionId: input.resolutionId,
     resolutionYmd: input.resolutionYmd,
     note: input.note,
   });

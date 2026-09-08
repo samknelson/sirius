@@ -1,13 +1,30 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { eventBus, EventType } from "../../server/services/event-bus";
 import { assignmentForbidden } from "../../server/storage/sitespecific/bao/case-assignment";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../server/db";
 import { storage } from "../../server/storage";
 import { getOptionsStorage, getOptionsType } from "../../server/modules/options-registry";
 import { getComponentById } from "@shared/components";
-import { entityNotes, files, rolePermissions, roles, sitespecificBaoCaseDocuments, sitespecificBaoCases, userRoles, users } from "@shared/schema";
+import {
+  entityNotes,
+  files,
+  optionsBaoAppealDenialReason,
+  optionsBaoCaseResolution,
+  optionsBaoCaseStatus,
+  optionsBaoCaseType,
+  rolePermissions,
+  roles,
+  sitespecificBaoAppealDetails,
+  sitespecificBaoCaseDocuments,
+  sitespecificBaoCases,
+  trustBenefits,
+  userRoles,
+  users,
+} from "@shared/schema";
 import { ensureBaoCaseSchema, getGeneralCaseTypeId } from "./fixtures/bao-schema";
+import { approveBaoAppealRequestSchema, denyBaoAppealRequestSchema } from "@shared/schema";
+import { canonicalAppealResolutionName } from "../../server/storage/sitespecific/bao/cases";
 
 const run = `bao-case-test-${Date.now()}`;
 let available = false;
@@ -43,7 +60,12 @@ beforeAll(async () => {
   const options = getOptionsStorage();
   const caseTypeId = await getGeneralCaseTypeId();
   openStatusId = (await options.create("bao-case-status", { name: `${run}-open`, closed: false, caseTypeId })).id;
-  closedStatusId = (await options.create("bao-case-status", { name: `${run}-closed`, closed: true, caseTypeId })).id;
+  closedStatusId = (await options.create("bao-case-status", {
+    name: `${run}-closed`,
+    closed: true,
+    caseTypeId,
+    requiresOutreachNote: true,
+  })).id;
   resolutionId = (await options.create("bao-case-resolution", { name: `${run}-resolved` })).id;
   // A second assignable staff user, created for the assignment-race coverage.
   const secondUser = await storage.users.createUser({
@@ -98,6 +120,131 @@ describe("BAO case registration and component ownership", () => {
       "sitespecific_bao_cases",
       "sitespecific_bao_case_notes",
     ]));
+  });
+});
+
+describe("Benefit Appeal outcome request contract", () => {
+  it("maps trustee decisions to their fixed business resolutions", () => {
+    expect(canonicalAppealResolutionName("approved")).toBe("Appeal Granted");
+    expect(canonicalAppealResolutionName("denied")).toBe("Appeal Denied");
+  });
+
+  it("keeps accepting legacy resolution overrides so the server can ignore them", () => {
+    expect(approveBaoAppealRequestSchema.parse({
+      eligibilityPlugins: ["hours"],
+      startYmd: "2026-09-01",
+      resolutionId: "wrong-resolution",
+      resolutionYmd: "2026-09-08",
+    }).resolutionId).toBe("wrong-resolution");
+    expect(denyBaoAppealRequestSchema.parse({
+      resolutionId: "wrong-resolution",
+      resolutionYmd: "2026-09-08",
+    }).resolutionId).toBe("wrong-resolution");
+  });
+
+  it("rejects malformed outcome dates", () => {
+    expect(() => denyBaoAppealRequestSchema.parse({ resolutionYmd: "09/08/2026" })).toThrow();
+  });
+
+  it("persists the canonical resolution for both outcomes regardless of status defaults", async () => {
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const [caseType] = await db.select().from(optionsBaoCaseType)
+      .where(eq(optionsBaoCaseType.workflowCode, "benefit_appeal")).limit(1);
+    if (!caseType) throw new Error("Benefit Appeal case type is not configured");
+    const [wrongResolution] = await db.insert(optionsBaoCaseResolution).values({
+      name: `${run}-wrong-${suffix}`,
+    }).returning();
+    const canonicalRows: Array<{ id: string; created: boolean }> = [];
+    for (const name of ["Appeal Granted", "Appeal Denied"]) {
+      const [existing] = await db.select({ id: optionsBaoCaseResolution.id })
+        .from(optionsBaoCaseResolution).where(eq(optionsBaoCaseResolution.name, name)).limit(1);
+      if (existing) canonicalRows.push({ id: existing.id, created: false });
+      else {
+        const [created] = await db.insert(optionsBaoCaseResolution).values({ name }).returning();
+        canonicalRows.push({ id: created.id, created: true });
+      }
+    }
+    const [trustee] = await db.select().from(optionsBaoCaseStatus)
+      .where(and(eq(optionsBaoCaseStatus.caseTypeId, caseType.id), eq(optionsBaoCaseStatus.workflowStep, "trustee_review"))).limit(1);
+    const [approved] = await db.select().from(optionsBaoCaseStatus)
+      .where(and(eq(optionsBaoCaseStatus.caseTypeId, caseType.id), eq(optionsBaoCaseStatus.workflowStep, "approved"))).limit(1);
+    const [denied] = await db.select().from(optionsBaoCaseStatus)
+      .where(and(eq(optionsBaoCaseStatus.caseTypeId, caseType.id), eq(optionsBaoCaseStatus.workflowStep, "denied"))).limit(1);
+    if (!trustee || !approved || !denied) throw new Error("Benefit Appeal outcome statuses are not configured");
+    await db.update(optionsBaoCaseStatus)
+      .set({ defaultResolutionId: wrongResolution.id, requiresOutreachNote: true })
+      .where(inArray(optionsBaoCaseStatus.id, [approved.id, denied.id]));
+    const [reason] = await db.insert(optionsBaoAppealDenialReason).values({ name: `${run}-reason-${suffix}` }).returning();
+    const benefit = await storage.trustBenefits.createTrustBenefit({ name: `${run}-benefit-${suffix}` } as any);
+    const createdCaseIds: string[] = [];
+    const eventSpy = vi.spyOn(eventBus, "emit").mockResolvedValue(undefined as any);
+    try {
+      const makeCase = async () => {
+        const [appeal] = await db.insert(sitespecificBaoCases).values({
+          entityType: "worker",
+          entityId: workerId,
+          assigneeUserId: userId,
+          statusId: trustee.id,
+          caseTypeId: caseType.id,
+          benefitId: benefit.id,
+          deadlineYmd: "2099-09-01",
+        }).returning();
+        createdCaseIds.push(appeal.id);
+        await db.insert(sitespecificBaoAppealDetails).values({
+          caseId: appeal.id,
+          denialReasonId: reason.id,
+          data: { spdCitation: null },
+        });
+        return appeal;
+      };
+      const approval = await makeCase();
+      const approvedResult = await storage.baoCases.recordAppealOutcome(approval.id, {
+        outcome: "approved",
+        actorUserId: userId,
+        resolutionYmd: "2026-09-08",
+        grantExemption: async () => ({ exemptionId: `test-exemption-${suffix}`, created: true }),
+      });
+      expect(approvedResult.case.statusId).toBe(approved.id);
+      expect(approvedResult.case.resolutionId).toBe(canonicalRows[0].id);
+
+      const denial = await makeCase();
+      await db.update(optionsBaoCaseResolution)
+        .set({ name: `${run}-temporarily-missing-denied-${suffix}` })
+        .where(eq(optionsBaoCaseResolution.id, canonicalRows[1].id));
+      try {
+        await expect(storage.baoCases.recordAppealOutcome(denial.id, {
+          outcome: "denied",
+          actorUserId: userId,
+          resolutionYmd: "2026-09-08",
+        })).rejects.toThrow("OUTCOME_RESOLUTION_MISSING");
+      } finally {
+        await db.update(optionsBaoCaseResolution)
+          .set({ name: "Appeal Denied" })
+          .where(eq(optionsBaoCaseResolution.id, canonicalRows[1].id));
+      }
+      const deniedResult = await storage.baoCases.recordAppealOutcome(denial.id, {
+        outcome: "denied",
+        actorUserId: userId,
+        resolutionYmd: "2026-09-08",
+      });
+      expect(deniedResult.case.statusId).toBe(denied.id);
+      expect(deniedResult.case.resolutionId).toBe(canonicalRows[1].id);
+    } finally {
+      eventSpy.mockRestore();
+      for (const id of createdCaseIds) await db.delete(sitespecificBaoCases).where(eq(sitespecificBaoCases.id, id));
+      await storage.trustBenefits.deleteTrustBenefit(benefit.id).catch(() => {});
+      await db.delete(optionsBaoAppealDenialReason).where(eq(optionsBaoAppealDenialReason.id, reason.id));
+      await db.update(optionsBaoCaseStatus)
+        .set({ defaultResolutionId: approved.defaultResolutionId, requiresOutreachNote: approved.requiresOutreachNote })
+        .where(eq(optionsBaoCaseStatus.id, approved.id));
+      await db.update(optionsBaoCaseStatus)
+        .set({ defaultResolutionId: denied.defaultResolutionId, requiresOutreachNote: denied.requiresOutreachNote })
+        .where(eq(optionsBaoCaseStatus.id, denied.id));
+      await db.delete(optionsBaoCaseResolution).where(eq(optionsBaoCaseResolution.id, wrongResolution.id));
+      for (const row of canonicalRows.filter((item) => item.created)) {
+        await db.delete(optionsBaoCaseResolution).where(eq(optionsBaoCaseResolution.id, row.id));
+      }
+    }
   });
 });
 
@@ -430,7 +577,7 @@ describe("BAO transactional case invariants", () => {
     expect(await storage.entityNotes.get(note.id)).toBeTruthy();
   });
 
-  it("requires resolution on close and clears it on reopen", async (ctx) => {
+  it("requires resolution on close, does not require outreach, and clears it on reopen", async (ctx) => {
     if (!available) throw new Error("BAO case schema unavailable");
     const created = await storage.baoCases.create({
       entityType: "worker", entityId: workerId,

@@ -39,7 +39,6 @@ export interface NamedOption {
 interface EligibilityPlugin {
   id: string;
   name: string;
-  description: string;
 }
 
 /** What the card needs from the case detail record. */
@@ -57,7 +56,6 @@ export interface AppealOutcomeCase {
 interface Props {
   record: AppealOutcomeCase;
   statuses: CaseStatusOption[];
-  resolutions: NamedOption[];
   noteTypes: NamedOption[];
   tags: NamedOption[];
   /** Invalidate/refetch whatever shows the case after an outcome is recorded. */
@@ -82,7 +80,7 @@ function todayYmd(): string {
  * approved) or Deny (close the case as denied, optionally with a closing
  * note). Both are server transactions; this card only collects the choices.
  */
-export function AppealOutcomeCard({ record, statuses, resolutions, noteTypes, tags, onRecorded }: Props) {
+export function AppealOutcomeCard({ record, statuses, noteTypes, tags, onRecorded }: Props) {
   const { toast } = useToast();
   const [openDialog, setOpenDialog] = useState<"approve" | "deny" | null>(null);
   const targetFor = (step: "approved" | "denied") =>
@@ -99,7 +97,6 @@ export function AppealOutcomeCard({ record, statuses, resolutions, noteTypes, ta
   const plugins = checkOptions?.checks ?? [];
   const [checks, setChecks] = useState<string[]>([]);
   const [startYmd, setStartYmd] = useState("");
-  const [approveResolutionId, setApproveResolutionId] = useState("");
   const [approveResolutionYmd, setApproveResolutionYmd] = useState("");
   const configured = record.denialReasonEligibilityPluginIds ?? [];
   const available = new Set(plugins.map((p) => p.id));
@@ -110,7 +107,6 @@ export function AppealOutcomeCard({ record, statuses, resolutions, noteTypes, ta
     () => {
       setChecks(configured.filter((id) => available.has(id)));
       setStartYmd(format(record.createdAt, "yyyy-MM-01"));
-      setApproveResolutionId(approvedStatus?.defaultResolutionId ?? "");
       setApproveResolutionYmd(todayYmd());
     },
   );
@@ -120,14 +116,12 @@ export function AppealOutcomeCard({ record, statuses, resolutions, noteTypes, ta
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [tagIds, setTagIds] = useState<string[]>([]);
-  const [denyResolutionId, setDenyResolutionId] = useState("");
   const [denyResolutionYmd, setDenyResolutionYmd] = useState("");
   useModalSeed(openDialog === "deny", `${record.id}:${deniedStatus?.id ?? ""}`, () => {
     setNoteTypeId(NO_NOTE);
     setSubject("");
     setBody("");
     setTagIds([]);
-    setDenyResolutionId(deniedStatus?.defaultResolutionId ?? "");
     setDenyResolutionYmd(todayYmd());
   });
   const applicableNoteTypes = noteTypes.filter((t) => t.data?.contextIds?.includes(record.entityType));
@@ -143,7 +137,6 @@ export function AppealOutcomeCard({ record, statuses, resolutions, noteTypes, ta
       apiRequest("POST", `/api/sitespecific/bao/cases/${record.id}/approve`, {
         eligibilityPlugins: checks,
         startYmd,
-        ...(approveResolutionId ? { resolutionId: approveResolutionId } : {}),
         ...(approveResolutionYmd ? { resolutionYmd: approveResolutionYmd } : {}),
       }),
     onSuccess: (result) => {
@@ -162,7 +155,6 @@ export function AppealOutcomeCard({ record, statuses, resolutions, noteTypes, ta
     mutationFn: () =>
       apiRequest("POST", `/api/sitespecific/bao/cases/${record.id}/deny`, {
         ...(withNote ? { note: { typeId: noteTypeId, subject, body: body || null, ...(tagIds.length ? { tagIds } : {}) } } : {}),
-        ...(denyResolutionId ? { resolutionId: denyResolutionId } : {}),
         ...(denyResolutionYmd ? { resolutionYmd: denyResolutionYmd } : {}),
       }),
     onSuccess: () => finish("Appeal denied", "The case is closed as denied."),
@@ -174,8 +166,8 @@ export function AppealOutcomeCard({ record, statuses, resolutions, noteTypes, ta
     setter((old) => (checked ? [...new Set([...old, id])] : old.filter((x) => x !== id)));
   const benefit = record.benefitName ?? "the appealed benefit";
   const member = record.entityName ?? "the member";
-  const approveDisabled = approve.isPending || checks.length === 0 || !startYmd || !approveResolutionId || !approveResolutionYmd;
-  const denyDisabled = deny.isPending || !denyResolutionId || !denyResolutionYmd || (withNote && !subject.trim());
+  const approveDisabled = approve.isPending || checks.length === 0 || !startYmd || !approveResolutionYmd;
+  const denyDisabled = deny.isPending || !denyResolutionYmd || (withNote && !subject.trim());
 
   return (
     <Card data-testid="card-appeal-outcome">
@@ -225,10 +217,7 @@ export function AppealOutcomeCard({ record, statuses, resolutions, noteTypes, ta
                         checked={checks.includes(plugin.id)}
                         onCheckedChange={(checked) => toggle(setChecks, plugin.id, checked === true)}
                       />
-                      <span>
-                        <span className="font-medium">{plugin.name}</span>
-                        {plugin.description && <span className="block text-muted-foreground">{plugin.description}</span>}
-                      </span>
+                      <span className="font-medium">{plugin.name}</span>
                     </label>
                   ))}
                 </div>
@@ -245,13 +234,6 @@ export function AppealOutcomeCard({ record, statuses, resolutions, noteTypes, ta
                 <Label htmlFor="approve-start">Exemption starts</Label>
                 <Input id="approve-start" data-testid="input-exemption-start" type="date" value={startYmd} onChange={(e) => setStartYmd(e.target.value)} />
                 <p className="mt-1 text-xs text-muted-foreground">Defaults to the first day of the month the appeal was opened. No end date.</p>
-              </div>
-              <div>
-                <Label>Resolution</Label>
-                <Select value={approveResolutionId} onValueChange={setApproveResolutionId}>
-                  <SelectTrigger data-testid="select-approve-resolution"><SelectValue placeholder="Resolution" /></SelectTrigger>
-                  <SelectContent>{resolutions.map((r) => <SelectItem value={r.id} key={r.id}>{r.name}</SelectItem>)}</SelectContent>
-                </Select>
               </div>
               <div>
                 <Label htmlFor="approve-resolution-date">Resolution date</Label>
@@ -278,13 +260,6 @@ export function AppealOutcomeCard({ record, statuses, resolutions, noteTypes, ta
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <Label>Resolution</Label>
-                <Select value={denyResolutionId} onValueChange={setDenyResolutionId}>
-                  <SelectTrigger data-testid="select-deny-resolution"><SelectValue placeholder="Resolution" /></SelectTrigger>
-                  <SelectContent>{resolutions.map((r) => <SelectItem value={r.id} key={r.id}>{r.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
               <div>
                 <Label htmlFor="deny-resolution-date">Resolution date</Label>
                 <Input id="deny-resolution-date" data-testid="input-deny-resolution-date" type="date" value={denyResolutionYmd} onChange={(e) => setDenyResolutionYmd(e.target.value)} />

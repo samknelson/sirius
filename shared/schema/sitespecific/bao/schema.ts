@@ -1603,14 +1603,15 @@ export const addBaoCaseNoteRequestSchema = baoCaseNoteInputSchema.strict();
 
 /**
  * Trustee outcome requests. Both close the case on the outcome's status; the
- * resolution defaults to that status's configured default and the resolution
- * date to today, so a bare body is a complete request.
+ * decision determines the canonical resolution; the resolution date defaults
+ * to today.
  */
 export const approveBaoAppealRequestSchema = z.object({
   /** Eligibility checks the exemption waives (at least one). */
   eligibilityPlugins: z.array(z.string().min(1)).min(1).max(50),
   /** First day the exemption applies; it never ends. */
   startYmd: ymdString,
+  /** Accepted for backward compatibility but ignored by the server. */
   resolutionId: z.string().min(1).optional(),
   resolutionYmd: ymdString.optional(),
 }).strict();
@@ -2038,6 +2039,7 @@ export type BaoCaseComm = typeof sitespecificBaoCaseComms.$inferSelect;
 export const denyBaoAppealRequestSchema = z.object({
   /** Optional closing note, added to the conversation before the case closes. */
   note: baoCaseNoteInputSchema.strict().optional(),
+  /** Accepted for backward compatibility but ignored by the server. */
   resolutionId: z.string().min(1).optional(),
   resolutionYmd: ymdString.optional(),
 }).strict();

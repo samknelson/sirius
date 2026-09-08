@@ -135,11 +135,9 @@ export interface BaoAppealExemptionSubject {
 export interface BaoAppealOutcomeInput {
   outcome: BaoAppealOutcome;
   actorUserId: string;
-  /** Resolution for the outcome's status; that status's configured default when omitted. */
-  resolutionId?: string | null;
   /** Resolution date (YYYY-MM-DD); today when omitted. */
   resolutionYmd?: string | null;
-  /** Deny: an optional closing note, linked to the case before the outreach-note rule runs. */
+  /** Deny: an optional closing note linked to the case before it closes. */
   note?: CreateBaoCaseInput["initialNote"] | null;
   /**
    * Approve (required then): grants the exemption INSIDE the outcome's
@@ -157,6 +155,10 @@ export interface BaoAppealOutcomeResult {
   exemptionId: string | null;
   /** Approve: false when an equivalent exemption already existed; null on deny. */
   exemptionCreated: boolean | null;
+}
+
+export function canonicalAppealResolutionName(outcome: BaoAppealOutcome): "Appeal Granted" | "Appeal Denied" {
+  return outcome === "approved" ? "Appeal Granted" : "Appeal Denied";
 }
 
 export interface BaoCasesStorage {
@@ -430,22 +432,6 @@ async function assertNoteType(typeId: string, entityType: string): Promise<void>
   }
 }
 
-/**
- * A status that requires member outreach can only be entered once the case
- * carries a note whose type is flagged `memberOutreach`.
- */
-async function assertOutreachNote(caseId: string): Promise<void> {
-  const [outreach] = await getClient().select({ id: entityNotes.id })
-    .from(sitespecificBaoCaseNotes)
-    .innerJoin(entityNotes, eq(entityNotes.id, sitespecificBaoCaseNotes.noteId))
-    .innerJoin(optionsNoteType, eq(optionsNoteType.id, entityNotes.typeId))
-    .where(and(
-      eq(sitespecificBaoCaseNotes.caseId, caseId),
-      sql`COALESCE((${optionsNoteType.data}->>'memberOutreach')::boolean, false)`,
-    )).limit(1);
-  if (!outreach) throw new Error("OUTREACH_NOTE_REQUIRED");
-}
-
 /** Create a note on the case's entity and link it to the case (with its tags). */
 async function addLinkedNote(
   theCase: Pick<BaoCase, "id" | "entityType" | "entityId">,
@@ -662,7 +648,10 @@ export function createBaoCasesStorage(): BaoCasesStorage {
           const [resolution] = await getClient().select({ id: optionsBaoCaseResolution.id })
             .from(optionsBaoCaseResolution).where(eq(optionsBaoCaseResolution.id, resolutionId));
           if (!resolution) throw new Error("INVALID_RESOLUTION");
-          if (status.requiresOutreachNote && !options?.systemClose) await assertOutreachNote(id);
+          // `requiresOutreachNote` remains readable legacy status metadata, but
+          // closure no longer depends on a linked outreach note. This applies
+          // to ordinary lifecycle closes as well as trustee outcomes: outreach
+          // may still be recorded, but it is not a prerequisite to close.
         } else if (!previousStatus?.closed && (nextResolutionId || nextResolutionYmd)) {
           throw new Error("OPEN_CASE_RESOLUTION");
         }
@@ -931,21 +920,19 @@ export function createBaoCasesStorage(): BaoCasesStorage {
         if (!target.closed) throw new Error("OUTCOME_STATUS_OPEN");
         await lockStatuses([existing.statusId, target.id], "SHARE");
 
-        // The same closed-status rules a lifecycle edit enforces, resolved
-        // before the note or the grant so a configuration gap refuses cleanly.
-        const resolutionId = input.resolutionId ?? target.defaultResolutionId ?? null;
-        if (!resolutionId) throw new Error("RESOLUTION_REQUIRED");
+        // Trustee decisions have canonical business resolutions independent of
+        // the target status default or anything a client may attempt to send.
+        const resolutionName = canonicalAppealResolutionName(input.outcome);
         const [resolution] = await getClient().select({ id: optionsBaoCaseResolution.id })
-          .from(optionsBaoCaseResolution).where(eq(optionsBaoCaseResolution.id, resolutionId));
-        if (!resolution) throw new Error("INVALID_RESOLUTION");
+          .from(optionsBaoCaseResolution).where(eq(optionsBaoCaseResolution.name, resolutionName)).limit(1);
+        if (!resolution) throw new Error("OUTCOME_RESOLUTION_MISSING");
+        const resolutionId = resolution.id;
         const resolutionYmd: string | SQL = input.resolutionYmd ?? sql`CURRENT_DATE`;
 
-        // Deny: the closing note joins the conversation BEFORE the outreach
-        // rule is checked, so it can be the note that satisfies it.
+        // Deny: the optional closing note joins the conversation before close.
         if (input.outcome === "denied" && input.note) {
           await addLinkedNote(existing, input.note, input.actorUserId);
         }
-        if (target.requiresOutreachNote) await assertOutreachNote(caseId);
 
         // Approve: the exemption, granted for the locked row's worker and
         // benefit and linked on the appeal details. The grant is idempotent
