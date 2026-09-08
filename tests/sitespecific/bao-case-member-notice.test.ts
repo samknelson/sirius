@@ -96,6 +96,10 @@ const { baoCaseMemberNotice, memberNoticeSendKey } = await import(
 const { baoCaseStatusNotifier } = await import(
   "../../server/plugins/event-notifier/plugins/bao-case-status-notifier"
 );
+const { registerEntityPathTokens } = await import(
+  "../../server/plugins/tokens/plugins/entity-paths"
+);
+registerEntityPathTokens();
 const { composeFromTemplates, resolveTemplates } = await import(
   "../../server/plugins/event-notifier/token-templates"
 );
@@ -130,11 +134,11 @@ const config = { statusIds: [AUTO_DENIED] };
 const recipient: NotifierRecipient = { contactId: CONTACT_ID };
 
 describe("bao_case_member_notice — when a letter fires", () => {
-  it("is BAO-gated, member-facing (not staff), postal-first with an email copy", () => {
+  it("is BAO-gated, member-facing (not staff), postal-first with email and In-App options", () => {
     expect(baoCaseMemberNotice.requiredComponent).toBe("sitespecific.bao");
     expect(baoCaseMemberNotice.staffNotification).toBeUndefined();
     expect(baoCaseMemberNotice.subscribedEvents).toEqual([EventType.BAO_CASE_STATUS_SAVED]);
-    expect(baoCaseMemberNotice.supportedMedia).toEqual(["postal", "email"]);
+    expect(baoCaseMemberNotice.supportedMedia).toEqual(["postal", "email", "inapp"]);
   });
 
   it("fires on entry into a configured status: a transition or creation into it", () => {
@@ -283,6 +287,40 @@ describe("bao_case_member_notice — at most one letter per status entry", () =>
       },
     ]);
   });
+
+  it("uses the same send-once key and case linking for an In-App notice", async () => {
+    const inappKey = baoCaseMemberNotice.tokenTemplates!.sendKey!(
+      ctx(payload()),
+      "inapp",
+      recipient,
+      config,
+    );
+    const postalKey = baoCaseMemberNotice.tokenTemplates!.sendKey!(
+      ctx(payload()),
+      "postal",
+      recipient,
+      config,
+    );
+    expect(inappKey).toBe(postalKey);
+
+    linkedComms.length = 0;
+    await baoCaseMemberNotice.onCommCreated!(
+      "inapp",
+      recipient,
+      { id: "comm-inapp", status: "sent" } as never,
+      ctx(payload()),
+      config,
+    );
+    expect(linkedComms).toEqual([
+      {
+        caseId: CASE_ID,
+        commId: "comm-inapp",
+        statusId: AUTO_DENIED,
+        statusName: "Auto-Denied",
+        noticeDeadlineYmd: "2026-12-03",
+      },
+    ]);
+  });
 });
 
 describe("bao_case_member_notice — the default letter says what it advertises", () => {
@@ -335,6 +373,23 @@ describe("bao_case_member_notice — the default letter says what it advertises"
     const [pageHead] = LETTER_PAGE_HTML.split("{{BODY}}");
     expect(file.startsWith(pageHead.trimStart().slice(0, 40))).toBe(true);
     expect(letter!.description).toBe("Benefit appeal letter — Auto-Denied — Pat Member");
+  });
+
+  it("renders the default In-App appeal status, context, and safe case link", async () => {
+    const notice = await composeFromTemplates(
+      baoCaseMemberNotice,
+      "inapp",
+      recipient,
+      await seedsFor(payload()),
+      resolveTemplates(baoCaseMemberNotice, config),
+      new Map(),
+    );
+    expect(notice).toEqual({
+      title: "Your benefit appeal — Auto-Denied",
+      body: "Your appeal regarding Medical Plan A benefits is now Auto-Denied.",
+      linkUrl: `/bao/cases/${CASE_ID}`,
+      linkLabel: "View Appeal",
+    });
   });
 
   it("still mails a letter for a case with no appeal behind it, with the appeal tokens at their defaults", async () => {

@@ -95,6 +95,11 @@ const CLOSING =
 
 const LETTER_BODY =
   GREETING + SUBJECT_LINE + STATUS_PARAGRAPH + DETERMINATION_PARAGRAPH + DEADLINE_PARAGRAPH + CLOSING;
+const INAPP_TITLE = `Your benefit appeal — {{${CASE}.field(name="status_name")}}`;
+const INAPP_BODY =
+  `Your appeal regarding {{${APPEAL}.field(name="benefit_name")}} benefits is now ` +
+  `{{${CASE}.field(name="status_name")}}.`;
+const INAPP_LINK_LABEL = "View Appeal";
 
 /**
  * Default per-channel templates. One letter shape serves every milestone
@@ -114,6 +119,12 @@ function defaultTemplates(): NotifierChannelTemplates {
       subject: `Your benefit appeal — {{${CASE}.field(name="status_name")}}`,
       bodyHtml: LETTER_BODY,
     },
+    inapp: {
+      title: INAPP_TITLE,
+      body: INAPP_BODY,
+      linkUrl: `{{${CASE}.path}}`,
+      linkLabel: INAPP_LINK_LABEL,
+    },
   };
 }
 
@@ -121,8 +132,8 @@ function defaultTemplates(): NotifierChannelTemplates {
  * Mails the member a templated letter when their case enters a configured
  * status: the benefit denial on Auto-Denied, the approval on Approved, the
  * denial of appeal on Closed–Denied — one configuration per letter, each
- * choosing the status(es) it fires on. Postal is the letter; email is an
- * optional second medium carrying the same body.
+ * choosing the status(es) it fires on. Postal is the letter; email and
+ * in-app are optional additional media.
  *
  * Recipient: the worker the case is about (their contact). Cases about an
  * employer or a provider have no member to write to and send nothing.
@@ -140,11 +151,11 @@ export const baoCaseMemberNotice: EventNotifierPlugin = {
   id: BAO_CASE_MEMBER_NOTICE_ID,
   name: "BAO Case Member Notice",
   description:
-    "Mails the member (the case's worker) a templated letter — with an optional email copy — when their case enters a chosen status.",
+    "Notifies the member (the case's worker) with a postal letter and optional email or In-App notice when their case enters a chosen status.",
   order: 105,
   requiredComponent: "sitespecific.bao",
   subscribedEvents: [EventType.BAO_CASE_STATUS_SAVED],
-  supportedMedia: ["postal", "email"],
+  supportedMedia: ["postal", "email", "inapp"],
   configSchema: {
     type: "object",
     properties: {
