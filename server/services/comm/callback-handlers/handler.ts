@@ -1,10 +1,15 @@
 import type { Request, Response } from 'express';
 import { TwilioStatusHandler } from './twilio';
 import { SendGridStatusHandler } from './sendgrid';
-import { LobStatusHandler } from './lob';
+import {
+  LobStatusHandler,
+  getLobWebhookCommId,
+  resolveLobCallbackStatus,
+} from './lob';
 import type { CommStatusHandler, CommStatusUpdate } from './index';
 import { createCommStorage, createCommSmsStorage, createCommEmailStorage, createCommPostalStorage } from '../../../storage/comm';
 import { storageLogger } from '../../../logger';
+import { runInTransaction } from '../../../storage/transaction-context';
 
 const commStorage = createCommStorage();
 const commSmsStorage = createCommSmsStorage();
@@ -62,7 +67,7 @@ export async function handleStatusCallback(
   commId: string
 ): Promise<void> {
   try {
-    const comm = await commStorage.getCommWithDetails(commId);
+    let comm = await commStorage.getCommWithDetails(commId);
     
     if (!comm) {
       console.warn(`Status callback received for unknown comm: ${commId}`);
@@ -102,85 +107,121 @@ export async function handleStatusCallback(
 
     const statusUpdate = handler.parseStatusUpdate(req);
     const providerMessageId = handler.getProviderMessageId(req);
-    
-    const previousStatus = comm.status;
-    
-    const existingData = comm.data as Record<string, unknown> || {};
-    await commStorage.updateComm(commId, {
-      status: statusUpdate.status,
-      data: {
-        ...existingData,
-        lastProviderStatus: statusUpdate.providerStatus,
-        lastStatusUpdate: statusUpdate.timestamp.toISOString(),
-        ...(statusUpdate.errorCode && { lastErrorCode: statusUpdate.errorCode }),
-        ...(statusUpdate.errorMessage && { lastErrorMessage: statusUpdate.errorMessage }),
-      },
+    let previousStatus = comm.status;
+    let appliedStatus = comm.status;
+
+    await runInTransaction(async () => {
+      await commStorage.lockComm(commId);
+      const lockedComm = await commStorage.getCommWithDetails(commId);
+      if (!lockedComm) throw new Error(`Comm record disappeared while applying callback: ${commId}`);
+      comm = lockedComm;
+      previousStatus = comm.status;
+
+      const existingData = comm.data as Record<string, unknown> || {};
+      appliedStatus = providerId === 'lob'
+        ? resolveLobCallbackStatus(
+            previousStatus,
+            statusUpdate.status,
+            typeof existingData.lastAppliedStatusUpdate === 'string'
+              ? existingData.lastAppliedStatusUpdate
+              : undefined,
+            statusUpdate.timestamp,
+          )
+        : statusUpdate.status;
+      const previousAppliedAt = typeof existingData.lastAppliedStatusUpdate === 'string'
+        ? new Date(existingData.lastAppliedStatusUpdate).getTime()
+        : Number.NEGATIVE_INFINITY;
+      const acceptedLifecycleUpdate = providerId !== 'lob'
+        || appliedStatus !== previousStatus
+        || (appliedStatus === statusUpdate.status
+          && statusUpdate.timestamp.getTime() >= previousAppliedAt);
+      const firstMailedAt = providerId === 'lob'
+        && !comm.sent
+        && ['sent', 'delivered', 'undelivered'].includes(statusUpdate.status)
+        ? statusUpdate.timestamp
+        : undefined;
+
+      await commStorage.updateComm(commId, {
+        status: appliedStatus,
+        ...(firstMailedAt && { sent: firstMailedAt }),
+        data: {
+          ...existingData,
+          lastProviderStatus: statusUpdate.providerStatus,
+          lastStatusUpdate: statusUpdate.timestamp.toISOString(),
+          ...(acceptedLifecycleUpdate && {
+            lastAppliedStatusUpdate: statusUpdate.timestamp.toISOString(),
+          }),
+          ...(statusUpdate.errorCode && { lastErrorCode: statusUpdate.errorCode }),
+          ...(statusUpdate.errorMessage && { lastErrorMessage: statusUpdate.errorMessage }),
+        },
+      });
+
+      if (comm.smsDetails) {
+        const smsData = comm.smsDetails.data as Record<string, unknown> || {};
+        await commSmsStorage.updateCommSms(comm.smsDetails.id, {
+          data: {
+            ...smsData,
+            providerStatus: statusUpdate.providerStatus,
+            lastWebhookAt: statusUpdate.timestamp.toISOString(),
+            ...(providerMessageId && { messageId: providerMessageId }),
+            ...(statusUpdate.errorCode && { errorCode: statusUpdate.errorCode }),
+            ...(statusUpdate.errorMessage && { errorMessage: statusUpdate.errorMessage }),
+          },
+        });
+      }
+
+      if (comm.emailDetails) {
+        const emailData = comm.emailDetails.data as Record<string, unknown> || {};
+        await commEmailStorage.updateCommEmail(comm.emailDetails.id, {
+          data: {
+            ...emailData,
+            providerStatus: statusUpdate.providerStatus,
+            lastWebhookAt: statusUpdate.timestamp.toISOString(),
+            ...(providerMessageId && { messageId: providerMessageId }),
+            ...(statusUpdate.errorCode && { errorCode: statusUpdate.errorCode }),
+            ...(statusUpdate.errorMessage && { errorMessage: statusUpdate.errorMessage }),
+          },
+        });
+      }
+
+      if (comm.postalDetails) {
+        const postalData = comm.postalDetails.data as Record<string, unknown> || {};
+        const rawPayload = (statusUpdate.rawPayload || {}) as Record<string, unknown>;
+        const eventBody = (rawPayload.body || {}) as Record<string, unknown>;
+        const updatedPostalData: Record<string, unknown> = {
+          ...postalData,
+          providerStatus: statusUpdate.providerStatus,
+          lastWebhookAt: statusUpdate.timestamp.toISOString(),
+          lastWebhookPayload: rawPayload,
+        };
+
+        if (providerMessageId) updatedPostalData.letterId = providerMessageId;
+        if (statusUpdate.errorCode) updatedPostalData.errorCode = statusUpdate.errorCode;
+        if (statusUpdate.errorMessage) updatedPostalData.errorMessage = statusUpdate.errorMessage;
+        if (eventBody.tracking_events) updatedPostalData.trackingEvents = eventBody.tracking_events;
+        if (eventBody.expected_delivery_date) updatedPostalData.expectedDeliveryDate = eventBody.expected_delivery_date;
+        if (eventBody.carrier) updatedPostalData.carrier = eventBody.carrier;
+        if (eventBody.tracking_number) updatedPostalData.trackingNumber = eventBody.tracking_number;
+
+        await commPostalStorage.updateCommPostal(comm.postalDetails.id, {
+          data: updatedPostalData,
+        });
+      }
     });
-
-    if (comm.smsDetails) {
-      const smsData = comm.smsDetails.data as Record<string, unknown> || {};
-      await commSmsStorage.updateCommSms(comm.smsDetails.id, {
-        data: {
-          ...smsData,
-          providerStatus: statusUpdate.providerStatus,
-          lastWebhookAt: statusUpdate.timestamp.toISOString(),
-          ...(providerMessageId && { messageId: providerMessageId }),
-          ...(statusUpdate.errorCode && { errorCode: statusUpdate.errorCode }),
-          ...(statusUpdate.errorMessage && { errorMessage: statusUpdate.errorMessage }),
-        },
-      });
-    }
-
-    if (comm.emailDetails) {
-      const emailData = comm.emailDetails.data as Record<string, unknown> || {};
-      await commEmailStorage.updateCommEmail(comm.emailDetails.id, {
-        data: {
-          ...emailData,
-          providerStatus: statusUpdate.providerStatus,
-          lastWebhookAt: statusUpdate.timestamp.toISOString(),
-          ...(providerMessageId && { messageId: providerMessageId }),
-          ...(statusUpdate.errorCode && { errorCode: statusUpdate.errorCode }),
-          ...(statusUpdate.errorMessage && { errorMessage: statusUpdate.errorMessage }),
-        },
-      });
-    }
-
-    if (comm.postalDetails) {
-      const postalData = comm.postalDetails.data as Record<string, unknown> || {};
-      const rawPayload = (statusUpdate.rawPayload || {}) as Record<string, unknown>;
-      const eventBody = (rawPayload.body || {}) as Record<string, unknown>;
-      
-      const updatedPostalData: Record<string, unknown> = {
-        ...postalData,
-        providerStatus: statusUpdate.providerStatus,
-        lastWebhookAt: statusUpdate.timestamp.toISOString(),
-        lastWebhookPayload: rawPayload,
-      };
-      
-      if (providerMessageId) updatedPostalData.letterId = providerMessageId;
-      if (statusUpdate.errorCode) updatedPostalData.errorCode = statusUpdate.errorCode;
-      if (statusUpdate.errorMessage) updatedPostalData.errorMessage = statusUpdate.errorMessage;
-      if (eventBody.tracking_events) updatedPostalData.trackingEvents = eventBody.tracking_events;
-      if (eventBody.expected_delivery_date) updatedPostalData.expectedDeliveryDate = eventBody.expected_delivery_date;
-      if (eventBody.carrier) updatedPostalData.carrier = eventBody.carrier;
-      if (eventBody.tracking_number) updatedPostalData.trackingNumber = eventBody.tracking_number;
-      
-      await commPostalStorage.updateCommPostal(comm.postalDetails.id, {
-        data: updatedPostalData,
-      });
-    }
 
     storageLogger.info(`Comm status updated: ${commId}`, {
       module: 'comm-status',
       operation: 'statusCallback',
       entity_id: commId,
       host_entity_id: comm.contactId,
-      description: `Status changed from "${previousStatus}" to "${statusUpdate.status}" (${providerId}: ${statusUpdate.providerStatus})`,
+      description: appliedStatus === previousStatus
+        ? `Status remained "${previousStatus}" (${providerId}: ${statusUpdate.providerStatus})`
+        : `Status changed from "${previousStatus}" to "${appliedStatus}" (${providerId}: ${statusUpdate.providerStatus})`,
       meta: {
         medium: comm.medium,
         providerId,
         previousStatus,
-        newStatus: statusUpdate.status,
+        newStatus: appliedStatus,
         providerStatus: statusUpdate.providerStatus,
         providerMessageId,
         ...(statusUpdate.errorCode && { errorCode: statusUpdate.errorCode }),
@@ -207,4 +248,20 @@ export async function handleStatusCallback(
     
     res.status(500).send('Internal error');
   }
+}
+
+export async function handleLobStatusCallback(req: Request, res: Response): Promise<void> {
+  const validationResult = await lobHandler.validateRequest(req);
+  if (!validationResult.valid) {
+    res.status(403).send('Forbidden');
+    return;
+  }
+
+  const commId = getLobWebhookCommId(req);
+  if (!commId) {
+    res.status(400).send('Missing communication metadata');
+    return;
+  }
+
+  await handleStatusCallback(req, res, commId);
 }

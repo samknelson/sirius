@@ -7,7 +7,7 @@ import { sendSms } from "../services/comm/senders/sms";
 import { sendEmail } from "../services/comm/senders/email";
 import { sendPostal } from "../services/comm/senders/postal";
 import { sendInapp, markInappAsRead, markAllInappAsRead } from "../services/comm/senders/inapp";
-import { handleStatusCallback } from "../services/comm/callback-handlers/handler";
+import { handleLobStatusCallback, handleStatusCallback } from "../services/comm/callback-handlers/handler";
 import { serviceRegistry } from "../services/service-registry";
 import type { PostalTransport, PostalAddress } from "../services/comm/providers/postal";
 import { verifyPostalAddress } from "../services/comm/validators/address-verification";
@@ -375,7 +375,7 @@ export function registerCommRoutes(
       }
 
       res.status(201).json({
-        message: "Postal mail sent successfully",
+        message: "Postal mail accepted and queued for mailing",
         comm: result.comm,
         commPostal: result.commPostal,
         letterId: result.letterId,
@@ -551,6 +551,10 @@ export function registerCommRoutes(
       console.error("Failed to fetch SMS opt-in status:", error);
       res.status(500).json({ message: "Failed to fetch SMS opt-in status" });
     }
+  });
+
+  app.post("/api/comm/statuscallback/lob", async (req, res) => {
+    await handleLobStatusCallback(req, res);
   });
 
   app.post("/api/comm/statuscallback/:commId", async (req, res) => {

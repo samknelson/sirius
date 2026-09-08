@@ -7,9 +7,9 @@ import type { PostalTransport, PostalAddress, SendLetterParams } from '../provid
 import { verifyPostalAddress } from '../validators/address-verification';
 import type { Comm, CommPostal } from '@shared/schema';
 import { logger } from '../../../logger';
-import { buildStatusCallbackUrl } from '../callback-handlers/url-builder';
 import { isMaintenanceModeError } from "../../maintenance-flag";
 import { ALREADY_SENT, findSentWithKey, type AlreadySentCode } from '../send-key';
+import { resolveLobCallbackStatus } from '../callback-handlers/lob';
 
 export interface SendPostalRequest {
   contactId: string;
@@ -193,7 +193,7 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
         medium: 'postal',
         contactId,
         status: 'sending',
-        sent: new Date(),
+        ...(postalTransport.id !== 'lob' && { sent: new Date() }),
         data: { initiatedBy: userId || 'system' },
         sendKey: sendKey ?? null,
       });
@@ -299,8 +299,6 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
     });
 
     try {
-      const statusCallbackUrl = buildStatusCallbackUrl(comm.id);
-      
       const sendParams: SendLetterParams = {
         to: normalizedAddress,
         from: returnAddress,
@@ -316,7 +314,6 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
         metadata: {
           commId: comm.id,
           contactId,
-          ...(statusCallbackUrl && { callback_url: statusCallbackUrl }),
         },
       };
 
@@ -347,28 +344,43 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
         };
       }
 
-      await commStorage.updateComm(comm.id, {
-        status: 'sent',
-        data: {
-          ...comm.data as object,
-          letterId: sendResult.letterId,
-          expectedDeliveryDate: sendResult.expectedDeliveryDate,
-          trackingNumber: sendResult.trackingNumber,
-        },
+      const acceptedStatus = postalTransport.id === 'lob' ? 'queued' : 'sent';
+      const accepted = await runInTransaction(async () => {
+        await commStorage.lockComm(comm.id);
+        const current = await commStorage.getCommWithDetails(comm.id);
+        if (!current) throw new Error(`Comm record disappeared after provider acceptance: ${comm.id}`);
+
+        const status = postalTransport.id === 'lob'
+          ? resolveLobCallbackStatus(current.status, acceptedStatus)
+          : acceptedStatus;
+        const updatedComm = await commStorage.updateComm(comm.id, {
+          status,
+          data: {
+            ...(current.data as object),
+            letterId: sendResult.letterId,
+            expectedDeliveryDate: sendResult.expectedDeliveryDate,
+            trackingNumber: sendResult.trackingNumber,
+          },
+        });
+
+        const currentPostal = current.postalDetails || commPostal;
+        const updatedCommPostal = await commPostalStorage.updateCommPostal(commPostal.id, {
+          lobLetterId: sendResult.letterId || null,
+          expectedDeliveryDate: sendResult.expectedDeliveryDate || null,
+          data: {
+            ...(currentPostal.data as object),
+            providerDetails: sendResult.details,
+            trackingNumber: sendResult.trackingNumber || null,
+            carrier: sendResult.carrier || null,
+          },
+        });
+        return {
+          comm: updatedComm || { ...current, status },
+          commPostal: updatedCommPostal || commPostal,
+        };
       });
 
-      await commPostalStorage.updateCommPostal(commPostal.id, {
-        lobLetterId: sendResult.letterId || null,
-        expectedDeliveryDate: sendResult.expectedDeliveryDate || null,
-        data: {
-          ...commPostal.data as object,
-          providerDetails: sendResult.details,
-          trackingNumber: sendResult.trackingNumber || null,
-          carrier: sendResult.carrier || null,
-        },
-      });
-
-      logger.info('Postal mail sent successfully', {
+      logger.info('Postal mail accepted for mailing', {
         service: 'postal-sender',
         commId: comm.id,
         letterId: sendResult.letterId,
@@ -376,8 +388,8 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
 
       return {
         success: true,
-        comm: { ...comm, status: 'sent' },
-        commPostal,
+        comm: accepted.comm,
+        commPostal: accepted.commPostal,
         letterId: sendResult.letterId,
       };
 

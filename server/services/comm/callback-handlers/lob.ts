@@ -1,11 +1,69 @@
 import type { Request } from 'express';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { CommStatusHandler, CommStatusUpdate } from './index';
+import {
+  getEnvironmentVariable,
+  registerEnvironmentVariables,
+} from '../../../config/env-registry';
+
+registerEnvironmentVariables([
+  {
+    name: 'LOB_WEBHOOK_SECRET',
+    description: 'Signing secret for the account-level Lob status webhook.',
+    secret: true,
+    category: 'core',
+    changeTakesEffect: 'immediate',
+  },
+]);
+
+const SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
+
+function headerValue(req: Request, name: string): string | undefined {
+  const value = req.get(name);
+  return value?.trim() || undefined;
+}
+
+function validDate(value: unknown): Date | undefined {
+  if (typeof value !== 'string') return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
 
 export class LobStatusHandler implements CommStatusHandler {
   readonly providerId = 'lob';
   readonly medium = 'postal' as const;
 
   async validateRequest(req: Request): Promise<{ valid: boolean; error?: string }> {
+    const secret = getEnvironmentVariable('LOB_WEBHOOK_SECRET');
+    if (!secret) return { valid: false, error: 'LOB_WEBHOOK_SECRET is not configured' };
+
+    const signature = headerValue(req, 'Lob-Signature');
+    const timestamp = headerValue(req, 'Lob-Signature-Timestamp');
+    const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+    if (!signature || !timestamp || !rawBody) {
+      return { valid: false, error: 'Missing Lob signature headers or raw request body' };
+    }
+
+    const timestampSeconds = Number(timestamp);
+    if (!Number.isFinite(timestampSeconds)) {
+      return { valid: false, error: 'Invalid Lob signature timestamp' };
+    }
+    if (Math.abs(Date.now() / 1000 - timestampSeconds) > SIGNATURE_TOLERANCE_SECONDS) {
+      return { valid: false, error: 'Lob signature timestamp is outside the allowed window' };
+    }
+
+    const expected = createHmac('sha256', secret)
+      .update(`${timestamp}.${rawBody.toString('utf8')}`)
+      .digest('hex');
+    const receivedBuffer = Buffer.from(signature, 'utf8');
+    const expectedBuffer = Buffer.from(expected, 'utf8');
+    if (
+      receivedBuffer.length !== expectedBuffer.length
+      || !timingSafeEqual(receivedBuffer, expectedBuffer)
+    ) {
+      return { valid: false, error: 'Invalid Lob webhook signature' };
+    }
+
     return { valid: true };
   }
 
@@ -74,7 +132,7 @@ export class LobStatusHandler implements CommStatusHandler {
       providerStatus: eventTypeId || 'unknown',
       errorCode: undefined,
       errorMessage,
-      timestamp: date_modified ? new Date(date_modified) : new Date(),
+      timestamp: validDate(date_created) ?? validDate(date_modified) ?? new Date(),
       rawPayload: body,
     };
   }
@@ -83,4 +141,42 @@ export class LobStatusHandler implements CommStatusHandler {
     const body = req.body || {};
     return body.body?.id || body.reference_id;
   }
+}
+
+export function getLobWebhookCommId(req: Request): string | undefined {
+  const value = req.body?.body?.metadata?.commId;
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+const LOB_STATUS_STAGE: Record<string, number> = {
+  sending: 0,
+  queued: 1,
+  sent: 2,
+  delivered: 3,
+  undelivered: 3,
+  failed: 3,
+};
+
+/**
+ * Lob callbacks can be duplicated or arrive out of order. Earlier lifecycle
+ * events may enrich provider details, but must not move the displayed status
+ * backward. Terminal outcomes are only replaced by a newer terminal event.
+ */
+export function resolveLobCallbackStatus(
+  currentStatus: string,
+  incomingStatus: CommStatusUpdate['status'],
+  currentTimestamp?: string,
+  incomingTimestamp?: Date,
+): string {
+  if (incomingStatus === 'unknown') return currentStatus;
+
+  const currentStage = LOB_STATUS_STAGE[currentStatus] ?? -1;
+  const incomingStage = LOB_STATUS_STAGE[incomingStatus] ?? -1;
+  if (incomingStage < currentStage) return currentStatus;
+  if (incomingStage > currentStage) return incomingStatus;
+  if (incomingStatus === currentStatus) return currentStatus;
+
+  const previousTime = currentTimestamp ? new Date(currentTimestamp).getTime() : Number.NEGATIVE_INFINITY;
+  const nextTime = incomingTimestamp?.getTime() ?? Number.POSITIVE_INFINITY;
+  return nextTime >= previousTime ? incomingStatus : currentStatus;
 }

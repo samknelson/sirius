@@ -233,7 +233,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
     },
     onSuccess: (_data, variables) => {
       toast({
-        title: variables.sendOffline ? "Recorded as Sent Offline" : "Postal Mail Sent",
+        title: variables.sendOffline ? "Recorded as Sent Offline" : "Postal Mail Queued",
         description: variables.sendOffline
           ? "The letter has been recorded as sent offline."
           : "Your letter has been submitted for mailing.",

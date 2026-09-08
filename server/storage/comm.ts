@@ -121,6 +121,11 @@ export interface CommStorage {
    * trimmed to absent here) can never lose and always comes back.
    */
   createComm(data: InsertComm): Promise<Comm | undefined>;
+  /**
+   * Serialize lifecycle changes for one communication. Must be called inside
+   * runInTransaction before re-reading and updating the row.
+   */
+  lockComm(id: string): Promise<void>;
   updateComm(id: string, data: Partial<InsertComm>): Promise<Comm | undefined>;
   updateWithTags(
     id: string,
@@ -356,6 +361,15 @@ export function createCommStorage(
       const client = getClient();
       const [result] = await client.update(comm).set(data).where(eq(comm.id, id)).returning();
       return result || undefined;
+    },
+
+    async lockComm(id: string): Promise<void> {
+      const client = getClient();
+      await client
+        .select({ id: comm.id })
+        .from(comm)
+        .where(eq(comm.id, id))
+        .for("update");
     },
 
     async updateWithTags(
