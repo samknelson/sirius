@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
 import { createLatestSaveQueue } from "../../client/src/pages/sitespecific/bao/dc-attestation-queue";
+import { renderToStaticMarkup } from "react-dom/server";
+import {
+  DC_ATTESTATION_CONTROL_ORDER,
+  DcReadinessSavingStatus,
+} from "../../client/src/pages/sitespecific/bao/dc-readiness-presentation";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -131,5 +137,29 @@ describe("DC attestation save queue", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("DC readiness checklist presentation", () => {
+  it("always reserves the saving status row while only announcing pending saves", () => {
+    const idle = renderToStaticMarkup(createElement(DcReadinessSavingStatus, { pending: false }));
+    const saving = renderToStaticMarkup(createElement(DcReadinessSavingStatus, { pending: true }));
+
+    expect(idle).toContain("min-h-5");
+    expect(saving).toContain("min-h-5");
+    expect(idle).toContain('role="status"');
+    expect(idle).not.toContain("Saving checklist changes");
+    expect(saving).toContain("Saving checklist changes…");
+  });
+
+  it("keeps the optional restrictions attestation after every required control", () => {
+    expect(DC_ATTESTATION_CONTROL_ORDER.at(-1)).toBe("restrictionsNoted");
+    expect(DC_ATTESTATION_CONTROL_ORDER.slice(0, -1)).toEqual([
+      "dcFormOnFile",
+      "signed",
+      "doctorAddress",
+      "doctorPhone",
+      "dates",
+    ]);
   });
 });
