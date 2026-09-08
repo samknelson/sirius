@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { useQuery, useMutation, keepPreviousData } from "@tanstack/react-query";
 import { AlertTriangle, ArrowLeft, ArrowRight, CalendarPlus, CheckCircle2, XCircle } from "lucide-react";
@@ -45,9 +45,12 @@ import type {
 } from "@shared/schema";
 import type { DcMonthOption } from "@shared/sitespecific/bao/dc-workflow";
 import type { DcCaseMonthState, DcMonthHistoryEntry } from "@shared/sitespecific/bao/dc-reporting";
+import { createLatestSaveQueue, type LatestSaveQueue } from "./dc-attestation-queue";
 
 /** Wait this long after the last month toggle before re-validating. */
 const PREVIEW_DEBOUNCE_MS = 300;
+/** Coalesce rapid readiness checklist changes into one persistence pass. */
+const ATTESTATION_DEBOUNCE_MS = 250;
 
 type ChecklistItem = { key: string; label: string; satisfied: boolean; detail?: string };
 
@@ -120,6 +123,30 @@ type ActionResult = {
   warnings?: ApprovalWarningView[];
 };
 
+type AttestationResponse = {
+  case: BaoDcCase;
+  readiness: Bundle["readiness"];
+  bounced: boolean;
+};
+
+/**
+ * Keep the request payload limited to the editable checklist facts. The
+ * server owns the audit stamp, so an older response can never be replayed as
+ * the next write's author/timestamp.
+ */
+function editableAttestations(att: BaoDcAttestations | null | undefined): BaoDcAttestations {
+  return {
+    dcFormOnFile: att?.dcFormOnFile === true,
+    signed: att?.signed === true,
+    restrictionsNoted: att?.restrictionsNoted === true,
+    fields: {
+      doctorAddress: att?.fields?.doctorAddress === true,
+      doctorPhone: att?.fields?.doctorPhone === true,
+      dates: att?.fields?.dates === true,
+    },
+  };
+}
+
 function describeOutcome(o: GrantOutcomeView): string {
   const month = describeDcMonth({
     workMonthYmd: o.workMonthYmd,
@@ -158,6 +185,10 @@ export default function BaoDcCaseDetailPage() {
   const [approval, setApproval] = useState<ActionResult | null>(null);
   const [extendOpen, setExtendOpen] = useState(false);
   const [extendReason, setExtendReason] = useState("");
+  const [attestationDraft, setAttestationDraft] = useState<BaoDcAttestations | null>(null);
+  const [attestationSaving, setAttestationSaving] = useState(false);
+  const attestationDraftRef = useRef<BaoDcAttestations | null>(null);
+  const attestationQueueRef = useRef<LatestSaveQueue<BaoDcAttestations> | null>(null);
 
   const activeMonths = useMemo(
     () => (data?.months ?? []).filter((m) => m.status !== "removed"),
@@ -217,25 +248,90 @@ export default function BaoDcCaseDetailPage() {
       }),
   });
 
-  const saveAttestations = useMutation({
-    mutationFn: (attestations: BaoDcAttestations) =>
-      apiRequest("PUT", `/api/sitespecific/bao/dc/cases/${caseId}/attestations`, attestations),
-    onSuccess: (result: { bounced?: boolean }) => {
-      if (result?.bounced) {
+  useEffect(() => {
+    // A route change must not carry an unsaved draft from the previous case.
+    attestationDraftRef.current = null;
+    setAttestationDraft(null);
+    setAttestationSaving(false);
+    const queue = createLatestSaveQueue<BaoDcAttestations, AttestationResponse>({
+      delayMs: ATTESTATION_DEBOUNCE_MS,
+      save: (snapshot) =>
+        apiRequest(
+          "PUT",
+          `/api/sitespecific/bao/dc/cases/${caseId}/attestations`,
+          snapshot,
+        ) as Promise<AttestationResponse>,
+      onStart: () => setAttestationSaving(true),
+      onSuccess: (result, _snapshot, isLatest, isActive) => {
+        if (!isActive()) return;
+        // The response already contains the authoritative case and computed
+        // readiness. Merge only those fields so selector changes do not
+        // trigger the expensive full bundle query after every click.
+        queryClient.setQueryData<Bundle>(caseKey, (old) =>
+          old
+            ? {
+                ...old,
+                case: result.case,
+                readiness: result.readiness,
+              }
+            : old,
+        );
+
+        if (result.bounced) {
+          toast({
+            title: "Case returned to draft",
+            description: "Readiness no longer passes after this change.",
+          });
+        }
+
+        // If no click arrived while this request was in flight, the server
+        // response is now the displayed source of truth. Otherwise leave the
+        // newest local draft in place for the queued pass.
+        if (isLatest) {
+          attestationDraftRef.current = null;
+          setAttestationDraft(null);
+        }
+      },
+      onError: async (err, snapshot, hasNewerValue, isActive) => {
+        // A failed save must not leave optimistic controls looking committed.
+        // Refetch once to restore the server's complete authoritative bundle;
+        // this is intentionally only on failure, never once per successful
+        // click. Preserve a newer local draft so it can still be persisted.
+        try {
+          await queryClient.fetchQuery<Bundle>({ queryKey: caseKey });
+        } catch {
+          // Keep the last known bundle if the recovery request also fails.
+        }
+        if (!isActive()) return;
+        // A click can arrive while the recovery request is in flight. Only
+        // clear the draft if it is still the failed request's snapshot.
+        if (!hasNewerValue && attestationDraftRef.current === snapshot) {
+          attestationDraftRef.current = null;
+          setAttestationDraft(null);
+        }
         toast({
-          title: "Case returned to draft",
-          description: "Readiness no longer passes after this change.",
+          title: "Could not save attestations",
+          description: getApiErrorMessage(err, "The checklist was refreshed from the server."),
+          variant: "destructive",
         });
-      }
-      invalidate();
-    },
-    onError: (err) =>
-      toast({
-        title: "Could not save attestations",
-        description: getApiErrorMessage(err, "Please try again."),
-        variant: "destructive",
-      }),
-  });
+      },
+      onSettled: (isActive) => {
+        if (isActive()) setAttestationSaving(false);
+      },
+    });
+    attestationQueueRef.current = queue;
+    return () => {
+      queue.dispose();
+      if (attestationQueueRef.current === queue) attestationQueueRef.current = null;
+    };
+  }, [caseId, toast]);
+
+  const queueAttestationSave = (next: BaoDcAttestations) => {
+    const draft = editableAttestations(next);
+    attestationDraftRef.current = draft;
+    setAttestationDraft(draft);
+    attestationQueueRef.current?.enqueue(draft);
+  };
 
   const act = useMutation({
     mutationFn: (action: string) =>
@@ -310,15 +406,15 @@ export default function BaoDcCaseDetailPage() {
   }
 
   const c = data.case;
-  const att = (c.attestations ?? {}) as BaoDcAttestations;
-  const setAtt = (patch: Partial<BaoDcAttestations>) =>
-    saveAttestations.mutate({
-      dcFormOnFile: att.dcFormOnFile,
-      signed: att.signed,
-      restrictionsNoted: att.restrictionsNoted,
-      fields: att.fields,
+  const att = (attestationDraft ?? c.attestations ?? {}) as BaoDcAttestations;
+  const setAtt = (patch: Partial<BaoDcAttestations>) => {
+    const current = attestationDraftRef.current ?? editableAttestations(c.attestations);
+    queueAttestationSave({
+      ...current,
       ...patch,
+      fields: patch.fields ? { ...current.fields, ...patch.fields } : current.fields,
     });
+  };
 
   const isDraft = c.status === "draft";
   const terminal = ["denied", "withdrawn", "void"].includes(c.status);
@@ -499,6 +595,11 @@ export default function BaoDcCaseDetailPage() {
               <span className="block" data-testid="text-dc-attestation-author">
                 Attestations completed by {data.attestationAuthor.name}
                 {att.updatedAt ? ` on ${formatYmd(att.updatedAt.slice(0, 10))}` : ""}
+              </span>
+            )}
+            {(attestationSaving || attestationDraft) && (
+              <span className="block text-muted-foreground" data-testid="text-dc-attestation-saving">
+                Saving checklist changes…
               </span>
             )}
           </CardDescription>
