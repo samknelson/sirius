@@ -1,6 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
-import { eq, asc } from "drizzle-orm";
 import { storage } from "../../storage";
 import { requireComponent } from "../components";
 import { buildContext, getAccessStorage } from "../../services/access-policy-evaluator";
@@ -55,7 +54,6 @@ const emptyToUndefined = (v: unknown) => (v === "" ? undefined : v);
 const searchGrievancesSchema = z.object({
   workerId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
   employerId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
-  kind: z.preprocess(emptyToUndefined, z.enum(["appeal"]).optional()),
 });
 
 const linkWorkerSchema = z.object({ workerId: z.string().uuid("A valid worker is required") });

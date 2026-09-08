@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GrievanceLayout, useGrievanceLayout, isAppealRecord } from "@/components/layouts/GrievanceLayout";
+import { GrievanceLayout, useGrievanceLayout } from "@/components/layouts/GrievanceLayout";
 import { GrievanceForm, type GrievanceFormValues } from "@/components/grievances/grievance-form";
 import { GrievanceWorkerManager } from "@/components/grievances/grievance-worker-section";
 import { GrievanceEmployerManager } from "@/components/grievances/grievance-employer-section";
@@ -30,20 +30,16 @@ function GrievanceEditContent() {
   const isAdmin = hasPermission("admin");
   const showBargainingUnit = hasComponent("bargainingunits");
   const showContract = hasComponent("grievance.contract");
-  // Appeals reuse the grievance record but are always individual cases; the
-  // form hides the generic creation choices and labels the record an appeal.
-  const isAppeal = isAppealRecord(grievance);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (values: GrievanceFormValues) => {
     setIsSubmitting(true);
     try {
-      const cardinality = isAppeal ? "individual" : values.cardinality;
-      const isClass = cardinality === "class";
+      const isClass = values.cardinality === "class";
       await apiRequest("PATCH", `/api/grievances/${grievance.id}`, {
         siriusId: values.siriusId?.trim() ? values.siriusId.trim() : null,
         classDescription: isClass && values.classDescription?.trim() ? values.classDescription.trim() : null,
-        cardinality,
+        cardinality: values.cardinality,
         categoryId: values.categoryId,
         ...(showBargainingUnit
           ? { bargainingUnitId: values.bargainingUnitId ? values.bargainingUnitId : null }
@@ -51,11 +47,11 @@ function GrievanceEditContent() {
       });
       await queryClient.invalidateQueries({ queryKey: ["/api/grievances"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/grievances", grievance.id] });
-      toast({ title: isAppeal ? "Appeal updated" : "Grievance updated" });
+      toast({ title: "Grievance updated" });
       navigate(`/grievance/${grievance.id}`);
     } catch (error: any) {
       toast({
-        title: isAppeal ? "Failed to update appeal" : "Failed to update grievance",
+        title: "Failed to update grievance",
         description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
@@ -80,7 +76,6 @@ function GrievanceEditContent() {
             submitLabel="Save Changes"
             isSubmitting={isSubmitting}
             canEditSiriusId={isAdmin}
-            variant={isAppeal ? "appeal" : "grievance"}
           />
         </CardContent>
       </Card>

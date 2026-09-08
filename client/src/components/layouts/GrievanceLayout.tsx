@@ -94,12 +94,6 @@ export function useGrievanceLayout() {
   return context;
 }
 
-/** Recognize historical appeal-tagged grievance records without restoring the
- * retired appeal intake/configuration surface. */
-export function isAppealRecord(grievance: Pick<GrievanceWithDetails, "data">): boolean {
-  return (grievance.data as any)?.appealMeta?.kind === "appeal";
-}
-
 function grievanceTitle(grievance: GrievanceWithDetails): string {
   if (grievance.name && grievance.name.trim()) return grievance.name;
   if (grievance.categoryName) return `${grievance.categoryName} Grievance`;

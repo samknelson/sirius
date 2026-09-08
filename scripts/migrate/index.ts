@@ -205,6 +205,9 @@ import "./core/1147_rename_entity_notes_entity_type_to_context_id";
 import "./core/1148_rename_trust_provider_file_context";
 import "./core/1149_create_options_file_type";
 import "./core/1150_rename_note_type_entity_types_key";
+// This task migration was originally numbered 1145, which is occupied by
+// the upstream entity-files migration above. Its registered version is 1151.
+import "./core/1151_delete_grievance_appeal_workflow_variable";
 
 export {
   runMigrations,

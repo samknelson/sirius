@@ -59,20 +59,6 @@ interface GrievanceFormProps {
   submitLabel: string;
   isSubmitting?: boolean;
   canEditSiriusId?: boolean;
-  /**
-   * "appeal" renders the appeal-aware variant: the record is labeled an
-   * appeal and the generic creation choices that never apply to an appeal
-   * (status picker, cardinality, class description) are not shown — an
-   * appeal is always an individual case whose status lives in its history.
-   */
-  variant?: "grievance" | "appeal";
-  /**
-   * Noun used for labels, independent of the behavioral variant. On the BAO
-   * appeal-only surface a legacy generic record keeps the "grievance" variant
-   * (so its cardinality/class fields stay editable) but is worded as an
-   * appeal. Defaults to the variant.
-   */
-  wording?: "grievance" | "appeal";
   onCardinalityChange?: (cardinality: GrievanceCardinality) => void;
   renderWorkerSection?: (cardinality: GrievanceCardinality) => ReactNode;
   renderEmployerSection?: () => ReactNode;
@@ -84,14 +70,10 @@ export function GrievanceForm({
   submitLabel,
   isSubmitting,
   canEditSiriusId = true,
-  variant = "grievance",
-  wording,
   onCardinalityChange,
   renderWorkerSection,
   renderEmployerSection,
 }: GrievanceFormProps) {
-  const isAppeal = variant === "appeal";
-  const appealWording = (wording ?? variant) === "appeal";
   const { data: statuses = [] } = useQuery<OptionItem[]>({
     queryKey: ["/api/options/grievance-status"],
   });
@@ -128,7 +110,7 @@ export function GrievanceForm({
           name="siriusId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>{appealWording ? "Appeal ID" : "Grievance ID"}</FormLabel>
+              <FormLabel>Grievance ID</FormLabel>
               <FormControl>
                 <Input
                   placeholder={canEditSiriusId ? "Leave blank to auto-generate" : "Assigned automatically"}
@@ -141,7 +123,7 @@ export function GrievanceForm({
               <p className="text-sm text-muted-foreground">
                 {canEditSiriusId
                   ? "Leave blank to auto-generate (format: year + sequence, e.g. 20260097)."
-                  : `Only admins can set the ${isAppeal ? "appeal" : "grievance"} ID; it is generated automatically.`}
+                  : "Only admins can set the grievance ID; it is generated automatically."}
               </p>
               <FormMessage />
             </FormItem>
@@ -175,7 +157,6 @@ export function GrievanceForm({
           )}
         />
 
-        {!isAppeal && (
         <FormField
           control={form.control}
           name="statusId"
@@ -202,7 +183,6 @@ export function GrievanceForm({
             </FormItem>
           )}
         />
-        )}
 
         {showBargainingUnit && (
           <FormField
@@ -239,7 +219,6 @@ export function GrievanceForm({
           />
         )}
 
-        {!isAppeal && (
         <FormField
           control={form.control}
           name="cardinality"
@@ -270,9 +249,8 @@ export function GrievanceForm({
             </FormItem>
           )}
         />
-        )}
 
-        {cardinality === "class" && !isAppeal ? (
+        {cardinality === "class" ? (
           <FormField
             control={form.control}
             name="classDescription"
