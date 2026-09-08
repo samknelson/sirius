@@ -3,7 +3,7 @@ import { TwilioStatusHandler } from './twilio';
 import { SendGridStatusHandler } from './sendgrid';
 import {
   LobStatusHandler,
-  getLobWebhookCommId,
+  isLobMailingConfirmedEvent,
   resolveLobCallbackStatus,
 } from './lob';
 import type { CommStatusHandler, CommStatusUpdate } from './index';
@@ -116,6 +116,19 @@ export async function handleStatusCallback(
       if (!lockedComm) throw new Error(`Comm record disappeared while applying callback: ${commId}`);
       comm = lockedComm;
       previousStatus = comm.status;
+      if (providerId === 'lob') {
+        const persistedLetterId =
+          comm.postalDetails?.lobLetterId
+          || (comm.postalDetails?.data as Record<string, unknown> | null)?.letterId
+          || (comm.data as Record<string, unknown> | null)?.letterId;
+        if (
+          typeof persistedLetterId !== 'string'
+          || !providerMessageId
+          || providerMessageId !== persistedLetterId
+        ) {
+          throw new Error('LOB_LETTER_ID_MISMATCH');
+        }
+      }
 
       const existingData = comm.data as Record<string, unknown> || {};
       appliedStatus = providerId === 'lob'
@@ -185,29 +198,42 @@ export async function handleStatusCallback(
       }
 
       if (comm.postalDetails) {
-        const postalData = comm.postalDetails.data as Record<string, unknown> || {};
         const rawPayload = (statusUpdate.rawPayload || {}) as Record<string, unknown>;
         const eventBody = (rawPayload.body || {}) as Record<string, unknown>;
-        const updatedPostalData: Record<string, unknown> = {
-          ...postalData,
+        const postalDataPatch: Record<string, unknown> = {
           providerStatus: statusUpdate.providerStatus,
           lastWebhookAt: statusUpdate.timestamp.toISOString(),
           lastWebhookPayload: rawPayload,
         };
 
-        if (providerMessageId) updatedPostalData.letterId = providerMessageId;
-        if (statusUpdate.errorCode) updatedPostalData.errorCode = statusUpdate.errorCode;
-        if (statusUpdate.errorMessage) updatedPostalData.errorMessage = statusUpdate.errorMessage;
-        if (eventBody.tracking_events) updatedPostalData.trackingEvents = eventBody.tracking_events;
-        if (eventBody.expected_delivery_date) updatedPostalData.expectedDeliveryDate = eventBody.expected_delivery_date;
-        if (eventBody.carrier) updatedPostalData.carrier = eventBody.carrier;
-        if (eventBody.tracking_number) updatedPostalData.trackingNumber = eventBody.tracking_number;
-
-        await commPostalStorage.updateCommPostal(comm.postalDetails.id, {
-          data: updatedPostalData,
-        });
+        if (providerMessageId) postalDataPatch.letterId = providerMessageId;
+        if (statusUpdate.errorCode) postalDataPatch.errorCode = statusUpdate.errorCode;
+        if (statusUpdate.errorMessage) postalDataPatch.errorMessage = statusUpdate.errorMessage;
+        if (eventBody.tracking_events) postalDataPatch.trackingEvents = eventBody.tracking_events;
+        if (eventBody.expected_delivery_date) postalDataPatch.expectedDeliveryDate = eventBody.expected_delivery_date;
+        if (eventBody.carrier) postalDataPatch.carrier = eventBody.carrier;
+        if (eventBody.tracking_number) postalDataPatch.trackingNumber = eventBody.tracking_number;
+        const mailingConfirmed =
+          providerId === 'lob' && isLobMailingConfirmedEvent(statusUpdate.providerStatus);
+        if (mailingConfirmed) {
+          postalDataPatch.mailingConfirmedAt = statusUpdate.timestamp.toISOString();
+          postalDataPatch.mailingConfirmedEvent = statusUpdate.providerStatus;
+        }
+        await commPostalStorage.mergeCommPostalData(
+          comm.postalDetails.id,
+          postalDataPatch,
+          mailingConfirmed,
+        );
       }
     });
+
+    if (providerId === 'lob' && isLobMailingConfirmedEvent(statusUpdate.providerStatus)) {
+      const { storage } = await import('../../../storage');
+      if (await storage.baoCases.tableExists()) {
+        await storage.baoCases.reconcileAppealNoticeComm(commId);
+        await storage.baoCases.promoteAppealAfterConfirmedMailing(commId);
+      }
+    }
 
     storageLogger.info(`Comm status updated: ${commId}`, {
       module: 'comm-status',
@@ -251,17 +277,31 @@ export async function handleStatusCallback(
 }
 
 export async function handleLobStatusCallback(req: Request, res: Response): Promise<void> {
-  const validationResult = await lobHandler.validateRequest(req);
-  if (!validationResult.valid) {
-    res.status(403).send('Forbidden');
-    return;
-  }
+  try {
+    const validationResult = await lobHandler.validateRequest(req);
+    if (!validationResult.valid) {
+      res.status(403).send('Forbidden');
+      return;
+    }
 
-  const commId = getLobWebhookCommId(req);
-  if (!commId) {
-    res.status(400).send('Missing communication metadata');
-    return;
-  }
+    const letterId = lobHandler.getProviderMessageId(req);
+    if (!letterId) {
+      res.status(400).send('Lob letter ID is required');
+      return;
+    }
 
-  await handleStatusCallback(req, res, commId);
+    const resolved = await commPostalStorage.getCommPostalByLobLetterId(letterId);
+    if (!resolved) {
+      res.status(200).send('OK');
+      return;
+    }
+    await handleStatusCallback(req, res, resolved.comm.id);
+  } catch (error) {
+    storageLogger.error('Lob static status callback failed', {
+      module: 'comm-status',
+      operation: 'resolveLobCallback',
+      description: error instanceof Error ? error.message : String(error),
+    });
+    if (!res.headersSent) res.status(500).send('Internal Server Error');
+  }
 }

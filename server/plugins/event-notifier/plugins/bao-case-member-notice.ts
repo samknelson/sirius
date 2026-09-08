@@ -18,6 +18,26 @@ function payloadOf(ctx: EventNotifierEventContext): BaoCaseStatusSavedPayload {
   return ctx.payload as BaoCaseStatusSavedPayload;
 }
 
+/**
+ * Appeal submission initiates the Auto-Denied notice before that lifecycle
+ * transition is committed. Only this member-letter plugin projects the future
+ * status; staff notifications and every other listener see the real Submitted
+ * event.
+ */
+function noticePayloadOf(ctx: EventNotifierEventContext): BaoCaseStatusSavedPayload {
+  const payload = payloadOf(ctx);
+  const target = payload.memberNoticeTarget;
+  if (!target) return payload;
+  return {
+    ...payload,
+    row: { ...payload.row, statusId: target.statusId, deadlineYmd: target.deadlineYmd },
+    previousStatusId: payload.statusId,
+    statusId: target.statusId,
+    statusName: target.statusName,
+    operation: "updated",
+  };
+}
+
 /** Root names: the entity kinds of the records a letter is about. */
 const CASE = BAO_CASE_ENTITY_KIND;
 const APPEAL = BAO_APPEAL_ENTITY_KIND;
@@ -49,8 +69,10 @@ function configOf(configData: unknown): MemberNoticeConfig {
  * second copy. The send layer scopes the key to medium + contact, so the
  * letter and its optional email copy each go out once.
  */
-export function memberNoticeSendKey(payload: Pick<BaoCaseStatusSavedPayload, "caseId" | "statusId">): string {
-  return `${BAO_CASE_MEMBER_NOTICE_ID}:${payload.caseId}:${payload.statusId}`;
+export function memberNoticeSendKey(payload: Pick<BaoCaseStatusSavedPayload, "caseId" | "statusId"> & {
+  noticeDeadlineYmd?: string | null;
+}): string {
+  return `${BAO_CASE_MEMBER_NOTICE_ID}:${payload.caseId}:${payload.statusId}:${payload.noticeDeadlineYmd ?? "none"}`;
 }
 
 const GREETING = `<p>Dear {{contact}},</p>`;
@@ -171,7 +193,7 @@ export const baoCaseMemberNotice: EventNotifierPlugin = {
         kind: BAO_CASE_ENTITY_KIND,
         label: "BAO case",
         description: "The case this letter is about",
-        build: async (ctx) => buildBaoCaseRecord(payloadOf(ctx)),
+        build: async (ctx) => buildBaoCaseRecord(noticePayloadOf(ctx)),
       },
       {
         name: APPEAL,
@@ -203,11 +225,18 @@ export const baoCaseMemberNotice: EventNotifierPlugin = {
       },
     ],
     defaultTemplates,
-    sendKey: (ctx) => memberNoticeSendKey(payloadOf(ctx)),
+    sendKey: (ctx) => {
+      const payload = noticePayloadOf(ctx);
+      return memberNoticeSendKey({
+        caseId: payload.caseId,
+        statusId: payload.statusId,
+        noticeDeadlineYmd: payload.row.deadlineYmd,
+      });
+    },
   },
 
   shouldDispatch(ctx, configData): boolean {
-    const payload = payloadOf(ctx);
+    const payload = noticePayloadOf(ctx);
     // Legacy/incomplete emits without the snapshot or transition identity:
     // skip to be safe.
     if (!payload.row || !payload.statusId || payload.previousStatusId === undefined) {
@@ -218,7 +247,7 @@ export const baoCaseMemberNotice: EventNotifierPlugin = {
 
   // The member: the worker the case is about, reached through their contact.
   async getRecipients(ctx): Promise<NotifierRecipient[]> {
-    const payload = payloadOf(ctx);
+    const payload = noticePayloadOf(ctx);
     if (payload.entityType !== "worker" || !payload.entityId) return [];
     const { storage } = await import("../../../storage");
     const worker = await storage.workers.getWorker(payload.entityId);
@@ -229,13 +258,14 @@ export const baoCaseMemberNotice: EventNotifierPlugin = {
   // Every comm the send layer handed back — including a recorded failure —
   // is this case's letter record for the status entry that earned it.
   async onCommCreated(_medium, _recipient, comm, ctx) {
-    const payload = payloadOf(ctx);
+    const payload = noticePayloadOf(ctx);
     const { storage } = await import("../../../storage");
     await storage.baoCases.linkComm({
       caseId: payload.caseId,
       commId: comm.id,
       statusId: payload.statusId ?? null,
       statusName: payload.statusName ?? null,
+      noticeDeadlineYmd: payload.row.deadlineYmd,
     });
   },
 };

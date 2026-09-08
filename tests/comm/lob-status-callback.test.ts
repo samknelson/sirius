@@ -12,6 +12,7 @@ const state = vi.hoisted(() => ({
     data: {} as Record<string, unknown>,
     postalDetails: {
       id: "postal-1",
+      lobLetterId: "ltr_test",
       data: {} as Record<string, unknown>,
     },
   },
@@ -28,7 +29,39 @@ vi.mock("../../server/storage/comm", () => ({
   }),
   createCommSmsStorage: () => ({ updateCommSms: vi.fn() }),
   createCommEmailStorage: () => ({ updateCommEmail: vi.fn() }),
-  createCommPostalStorage: () => ({ updateCommPostal: state.updatePostal }),
+  createCommPostalStorage: () => ({
+    getCommPostalByLobLetterId: async (letterId: string) =>
+      letterId === state.comm.postalDetails.lobLetterId
+        ? { commPostal: state.comm.postalDetails, comm: state.comm }
+        : undefined,
+    updateCommPostal: state.updatePostal,
+    mergeCommPostalData: async (
+      _id: string,
+      patch: Record<string, unknown>,
+      preserveMailingConfirmation: boolean,
+    ) => {
+      const existing = state.comm.postalDetails.data;
+      state.comm.postalDetails.data = {
+        ...existing,
+        ...patch,
+        ...(preserveMailingConfirmation && existing.mailingConfirmedAt
+          ? {
+              mailingConfirmedAt: existing.mailingConfirmedAt,
+              mailingConfirmedEvent: existing.mailingConfirmedEvent,
+            }
+          : {}),
+      };
+      return state.comm.postalDetails;
+    },
+  }),
+}));
+
+vi.mock("../../server/storage", () => ({
+  storage: {
+    baoCases: {
+      tableExists: async () => false,
+    },
+  },
 }));
 
 vi.mock("../../server/logger", () => ({
@@ -111,7 +144,7 @@ describe("account-level Lob status callback", () => {
     });
   });
 
-  it("resolves metadata and advances the same queued row to sent at Lob's event time", async () => {
+  it("resolves the provider letter ID and advances the same queued row to sent at Lob's event time", async () => {
     const mailedAt = "2026-09-08T12:00:00.000Z";
     const res = response();
 

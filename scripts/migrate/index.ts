@@ -91,6 +91,7 @@ import "./components/sitespecific.bao/016_benefit_appeal_tables";
 import "./components/sitespecific.bao/017_create_case_comms";
 import "./components/sitespecific.bao/018_create_case_documents";
 import "./components/sitespecific.bao/019_case_status_lapse";
+import "./components/sitespecific.bao/1146_case_comm_notice_deadline";
 import "./components/sitespecific.freeman/001_create_crewleads";
 import "./components/sitespecific.freeman.edls_migrate/001_create_staging";
 import "./components/grievance/001_create_options_grievance_status";

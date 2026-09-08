@@ -1,4 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import express, { type Request } from "express";
+import { createHmac } from "node:crypto";
 import { eventBus, EventType } from "../../server/services/event-bus";
 import { assignmentForbidden } from "../../server/storage/sitespecific/bao/case-assignment";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -8,6 +10,8 @@ import { getOptionsStorage, getOptionsType } from "../../server/modules/options-
 import { getComponentById } from "@shared/components";
 import {
   entityNotes,
+  comm,
+  commPostal,
   files,
   optionsBaoAppealDenialReason,
   optionsBaoCaseResolution,
@@ -17,6 +21,7 @@ import {
   roles,
   sitespecificBaoAppealDetails,
   sitespecificBaoCaseDocuments,
+  sitespecificBaoCaseComms,
   sitespecificBaoCases,
   trustBenefits,
   userRoles,
@@ -25,6 +30,8 @@ import {
 import { ensureBaoCaseSchema, getGeneralCaseTypeId } from "./fixtures/bao-schema";
 import { approveBaoAppealRequestSchema, denyBaoAppealRequestSchema } from "@shared/schema";
 import { canonicalAppealResolutionName } from "../../server/storage/sitespecific/bao/cases";
+import { createCommPostalStorage } from "../../server/storage/comm";
+import { registerCommRoutes } from "../../server/modules/comm";
 import {
   buildOptionUpdateData,
   checkOptionDeleteGuard,
@@ -793,6 +800,221 @@ describe("BAO transactional case invariants", () => {
       expect(record!.resolutionYmd).toBeNull();
     }
   }
+
+  it("creates a benefit appeal in Submitted while initiating its Auto-Denied notice", async () => {
+    const [caseType] = await db.select().from(optionsBaoCaseType)
+      .where(eq(optionsBaoCaseType.workflowCode, "benefit_appeal")).limit(1);
+    if (!caseType) throw new Error("Benefit Appeal case type is not configured");
+    const [submitted] = await db.select().from(optionsBaoCaseStatus).where(and(
+      eq(optionsBaoCaseStatus.caseTypeId, caseType.id),
+      eq(optionsBaoCaseStatus.workflowStep, "submitted"),
+    )).limit(1);
+    const [autoDenied] = await db.select().from(optionsBaoCaseStatus).where(and(
+      eq(optionsBaoCaseStatus.caseTypeId, caseType.id),
+      eq(optionsBaoCaseStatus.workflowStep, "auto_denied"),
+    )).limit(1);
+    if (!submitted || !autoDenied) throw new Error("Benefit Appeal statuses are not configured");
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const [reason] = await db.insert(optionsBaoAppealDenialReason).values({
+      name: `${run}-deferred-reason-${suffix}`,
+      data: { spdCitation: "Test citation" },
+    }).returning();
+    const benefit = await storage.trustBenefits.createTrustBenefit({
+      name: `${run}-deferred-benefit-${suffix}`,
+    } as any);
+    const eventSpy = vi.spyOn(eventBus, "emit").mockResolvedValue(undefined as any);
+    let createdId: string | null = null;
+    let createdNoteId: string | null = null;
+    try {
+      const created = await storage.baoCases.create({
+        entityType: "worker",
+        entityId: workerId,
+        deadlineYmd: "2099-01-01",
+        statusId: submitted.id,
+        caseTypeId: caseType.id,
+        assigneeUserId: userId,
+        actorUserId: userId,
+        benefitId: benefit.id,
+        denialReasonId: reason.id,
+        initialNote: { typeId: noteTypeId, subject: `${run} deferred appeal` },
+      });
+      createdId = created.id;
+      expect(created.statusId).toBe(submitted.id);
+      const detail = await storage.baoCases.get(created.id, true);
+      createdNoteId = detail?.notes?.[0]?.id ?? null;
+      expect(detail).toMatchObject({
+        workflowStep: "submitted",
+      });
+      const [appealDetails] = await db.select().from(sitespecificBaoAppealDetails)
+        .where(eq(sitespecificBaoAppealDetails.caseId, created.id)).limit(1);
+      expect(appealDetails).toMatchObject({ denialReasonId: reason.id });
+      const creationEvent = eventSpy.mock.calls.find(([event, payload]) =>
+        event === EventType.BAO_CASE_STATUS_SAVED &&
+        (payload as any).caseId === created.id
+      );
+      expect(creationEvent?.[1]).toMatchObject({
+        statusId: submitted.id,
+        previousStatusId: null,
+        operation: "created",
+        memberNoticeTarget: {
+          statusId: autoDenied.id,
+          statusName: autoDenied.name,
+        },
+      });
+    } finally {
+      eventSpy.mockRestore();
+      if (createdId) await db.delete(sitespecificBaoCases).where(eq(sitespecificBaoCases.id, createdId));
+      if (createdNoteId) await db.delete(entityNotes).where(eq(entityNotes.id, createdNoteId));
+      await db.delete(trustBenefits).where(eq(trustBenefits.id, benefit.id));
+      await db.delete(optionsBaoAppealDenialReason).where(eq(optionsBaoAppealDenialReason.id, reason.id));
+    }
+  });
+
+  it("promotes a Submitted appeal exactly once after an early Lob mailing confirmation is linked", async () => {
+    const [caseType] = await db.select().from(optionsBaoCaseType)
+      .where(eq(optionsBaoCaseType.workflowCode, "benefit_appeal")).limit(1);
+    if (!caseType) throw new Error("Benefit Appeal case type is not configured");
+    const [submitted] = await db.select().from(optionsBaoCaseStatus).where(and(
+      eq(optionsBaoCaseStatus.caseTypeId, caseType.id),
+      eq(optionsBaoCaseStatus.workflowStep, "submitted"),
+    )).limit(1);
+    const [autoDenied] = await db.select().from(optionsBaoCaseStatus).where(and(
+      eq(optionsBaoCaseStatus.caseTypeId, caseType.id),
+      eq(optionsBaoCaseStatus.workflowStep, "auto_denied"),
+    )).limit(1);
+    if (!submitted || !autoDenied) throw new Error("Benefit Appeal statuses are not configured");
+    const worker = await storage.workers.getWorker(workerId);
+    if (!worker?.contactId) throw new Error("Worker contact is required");
+
+    const [appeal] = await db.insert(sitespecificBaoCases).values({
+      entityType: "worker",
+      entityId: workerId,
+      assigneeUserId: userId,
+      statusId: submitted.id,
+      caseTypeId: caseType.id,
+      deadlineYmd: "2099-01-01",
+    }).returning();
+    const [letterComm] = await db.insert(comm).values({
+      medium: "postal",
+      contactId: worker.contactId,
+      status: "queued",
+      data: { letterId: "ltr_appeal_confirmation_test" },
+      sendKey: `bao_case_member_notice:${appeal.id}:${autoDenied.id}:2026-12-03`,
+    }).returning();
+    await db.insert(commPostal).values({
+      commId: letterComm.id,
+      toAddressLine1: "1 Test Way",
+      toCity: "Test",
+      toState: "CA",
+      toZip: "90001",
+      lobLetterId: "ltr_appeal_confirmation_test",
+      data: {
+        providerStatus: "letter.created",
+      },
+    });
+    await db.insert(sitespecificBaoAppealDetails).values({
+      caseId: appeal.id,
+      denialReasonId: (
+        await db.select({ id: optionsBaoAppealDenialReason.id })
+          .from(optionsBaoAppealDenialReason).limit(1)
+      )[0].id,
+      data: null,
+    });
+    const eventSpy = vi.spyOn(eventBus, "emit").mockResolvedValue(undefined as any);
+    try {
+      await expect(storage.baoCases.updateLifecycle(appeal.id, {
+        statusId: autoDenied.id,
+      })).rejects.toThrow("MAILING_CONFIRMATION_REQUIRED");
+      expect((await storage.baoCases.get(appeal.id))?.statusId).toBe(submitted.id);
+
+      const postalStorage = createCommPostalStorage();
+      const postal = await postalStorage.getCommPostalByComm(letterComm.id);
+      if (!postal) throw new Error("Postal communication was not created");
+      const webhookSecret = "test-lob-static-webhook-secret";
+      const previousSecret = process.env.LOB_WEBHOOK_SECRET;
+      process.env.LOB_WEBHOOK_SECRET = webhookSecret;
+      const app = express();
+      app.use(express.json({
+        verify: (req, _res, body) => {
+          (req as Request & { rawBody?: Buffer }).rawBody = Buffer.from(body);
+        },
+      }));
+      const pass = (_req: any, _res: any, next: any) => next();
+      registerCommRoutes(app, pass, () => pass, () => pass);
+      const server = app.listen(0);
+      try {
+        const address = server.address();
+        if (!address || typeof address === "string") throw new Error("Webhook test server did not start");
+        const rawBody = JSON.stringify({
+          id: "evt_appeal_confirmation_test",
+          event_type: { id: "letter.delivered" },
+          date_created: "2026-09-08T12:00:00.000Z",
+          date_modified: "2026-09-08T12:00:00.000Z",
+          body: { id: "ltr_appeal_confirmation_test" },
+        });
+        const timestamp = String(Math.floor(Date.now() / 1000));
+        const signature = createHmac("sha256", webhookSecret)
+          .update(`${timestamp}.`)
+          .update(rawBody)
+          .digest("hex");
+        const [response] = await Promise.all([
+          fetch(`http://127.0.0.1:${address.port}/api/comm/statuscallback/lob`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "lob-signature": signature,
+              "lob-signature-timestamp": timestamp,
+            },
+            body: rawBody,
+          }),
+          postalStorage.mergeCommPostalData(postal.id, {
+            providerStatus: "letter.returned_to_sender",
+          }, false),
+        ]);
+        expect(response.status).toBe(200);
+      } finally {
+        process.env.LOB_WEBHOOK_SECRET = previousSecret;
+        await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
+      }
+      const afterOutOfOrderCallbacks = await postalStorage.getCommPostal(postal.id);
+      expect(afterOutOfOrderCallbacks?.data).toMatchObject({
+        mailingConfirmedAt: expect.any(String),
+        mailingConfirmedEvent: "letter.delivered",
+      });
+
+      // No onCommCreated link was written. The signed callback reconstructs
+      // it from the durable send key and promotes without sending again.
+      expect(await db.select().from(sitespecificBaoCaseComms)
+        .where(eq(sitespecificBaoCaseComms.commId, letterComm.id)))
+        .toHaveLength(1);
+      await Promise.all([
+        storage.baoCases.promoteAppealAfterConfirmedMailing(letterComm.id),
+        storage.baoCases.promoteAppealAfterConfirmedMailing(letterComm.id),
+      ]);
+
+      const promoted = await storage.baoCases.get(appeal.id);
+      expect(promoted).toMatchObject({
+        statusId: autoDenied.id,
+        workflowStep: "auto_denied",
+        deadlineYmd: "2026-12-03",
+      });
+      const statusEvents = eventSpy.mock.calls.filter(([event, payload]) =>
+        event === EventType.BAO_CASE_STATUS_SAVED &&
+        (payload as any).caseId === appeal.id &&
+        (payload as any).statusId === autoDenied.id
+      );
+      expect(statusEvents).toHaveLength(1);
+      expect(statusEvents[0][1]).toMatchObject({
+        previousStatusId: submitted.id,
+        operation: "updated",
+      });
+    } finally {
+      eventSpy.mockRestore();
+      await db.delete(sitespecificBaoCaseComms).where(eq(sitespecificBaoCaseComms.commId, letterComm.id));
+      await db.delete(comm).where(eq(comm.id, letterComm.id));
+      await db.delete(sitespecificBaoCases).where(eq(sitespecificBaoCases.id, appeal.id));
+    }
+  });
 
   it("attaches a case document by persisting the files row and the document row together", async () => {
     if (!available) throw new Error("BAO case schema unavailable");

@@ -170,6 +170,53 @@ describe("bao_case_member_notice — when a letter fires", () => {
       );
     }
   });
+
+  it("projects the future Auto-Denied notice from a real Submitted creation", async () => {
+    const submitted = payload({
+      statusId: SUBMITTED,
+      statusName: "Submitted",
+      previousStatusId: null,
+      operation: "created",
+      row: {
+        ...(payload().row as object),
+        statusId: SUBMITTED,
+        deadlineYmd: "2026-11-01",
+      } as never,
+      memberNoticeTarget: {
+        statusId: AUTO_DENIED,
+        statusName: "Auto-Denied",
+        deadlineYmd: "2026-12-03",
+      },
+    });
+    expect(baoCaseMemberNotice.shouldDispatch!(ctx(submitted), config)).toBe(true);
+    expect(baoCaseStatusNotifier.shouldDispatch!(ctx(submitted), config)).toBe(false);
+    expect(baoCaseMemberNotice.tokenTemplates!.sendKey!(ctx(submitted), "postal", recipient, config))
+      .toBe(memberNoticeSendKey({
+        caseId: CASE_ID,
+        statusId: AUTO_DENIED,
+        noticeDeadlineYmd: "2026-12-03",
+      }));
+    const caseRoot = await baoCaseMemberNotice.tokenTemplates!.roots[0].build(ctx(submitted));
+    expect((caseRoot as any).row).toMatchObject({
+      statusName: "Auto-Denied",
+      deadlineYmd: "2026-12-03",
+    });
+
+    linkedComms.length = 0;
+    await baoCaseMemberNotice.onCommCreated!(
+      "postal",
+      recipient,
+      { id: "comm-submitted", status: "sent" } as never,
+      ctx(submitted),
+      config,
+    );
+    expect(linkedComms[0]).toMatchObject({
+      caseId: CASE_ID,
+      commId: "comm-submitted",
+      statusId: AUTO_DENIED,
+      statusName: "Auto-Denied",
+    });
+  });
 });
 
 describe("bao_case_member_notice — who receives it", () => {
@@ -192,13 +239,29 @@ describe("bao_case_member_notice — at most one letter per status entry", () =>
     const first = baoCaseMemberNotice.tokenTemplates!.sendKey!(ctx(payload()), "postal", recipient, config);
     const replay = baoCaseMemberNotice.tokenTemplates!.sendKey!(ctx(payload()), "postal", recipient, config);
     expect(first).toBe(replay);
-    expect(first).toBe(memberNoticeSendKey({ caseId: CASE_ID, statusId: AUTO_DENIED }));
+    expect(first).toBe(memberNoticeSendKey({
+      caseId: CASE_ID,
+      statusId: AUTO_DENIED,
+      noticeDeadlineYmd: "2026-12-03",
+    }));
   });
 
   it("gives a later status entry — and another case — a key of its own", () => {
-    const denied = memberNoticeSendKey({ caseId: CASE_ID, statusId: AUTO_DENIED });
-    expect(memberNoticeSendKey({ caseId: CASE_ID, statusId: APPROVED })).not.toBe(denied);
-    expect(memberNoticeSendKey({ caseId: "case-2", statusId: AUTO_DENIED })).not.toBe(denied);
+    const denied = memberNoticeSendKey({
+      caseId: CASE_ID,
+      statusId: AUTO_DENIED,
+      noticeDeadlineYmd: "2026-12-03",
+    });
+    expect(memberNoticeSendKey({
+      caseId: CASE_ID,
+      statusId: APPROVED,
+      noticeDeadlineYmd: "2026-12-03",
+    })).not.toBe(denied);
+    expect(memberNoticeSendKey({
+      caseId: "case-2",
+      statusId: AUTO_DENIED,
+      noticeDeadlineYmd: "2026-12-03",
+    })).not.toBe(denied);
   });
 
   it("records every comm the send layer hands back against the case and the status it was for", async () => {
@@ -211,7 +274,13 @@ describe("bao_case_member_notice — at most one letter per status entry", () =>
       config,
     );
     expect(linkedComms).toEqual([
-      { caseId: CASE_ID, commId: "comm-1", statusId: AUTO_DENIED, statusName: "Auto-Denied" },
+      {
+        caseId: CASE_ID,
+        commId: "comm-1",
+        statusId: AUTO_DENIED,
+        statusName: "Auto-Denied",
+        noticeDeadlineYmd: "2026-12-03",
+      },
     ]);
   });
 });

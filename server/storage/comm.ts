@@ -1,6 +1,6 @@
 import { getClient, runInTransaction } from './transaction-context';
 import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, commPostalOptin, commInapp, commInteraction, optionsCallReason, contacts, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin, type CommPostal, type InsertCommPostal, type CommPostalOptin, type InsertCommPostalOptin, type CommInapp, type InsertCommInapp, type CommInteraction, type InsertCommInteraction, type OptionsCommTag } from "@shared/schema";
-import { eq, desc, and, SQL, inArray } from "drizzle-orm";
+import { eq, desc, and, SQL, inArray, sql } from "drizzle-orm";
 import { phoneValidationService } from "../services/comm/validators/phone";
 import { storageLogger } from "../logger";
 import { createCommTagsStorage, type CommTagsStorage } from "./comm-tags";
@@ -817,6 +817,7 @@ export interface CommPostalStorage {
   getCommPostalByLobLetterId(lobLetterId: string): Promise<CommPostalWithComm | undefined>;
   createCommPostal(data: InsertCommPostal): Promise<CommPostal>;
   updateCommPostal(id: string, data: Partial<InsertCommPostal>): Promise<CommPostal | undefined>;
+  mergeCommPostalData(id: string, patch: Record<string, unknown>, preserveMailingConfirmation: boolean): Promise<CommPostal | undefined>;
   deleteCommPostal(id: string): Promise<boolean>;
 }
 
@@ -858,6 +859,23 @@ export function createCommPostalStorage(): CommPostalStorage {
     async updateCommPostal(id: string, data: Partial<InsertCommPostal>): Promise<CommPostal | undefined> {
       const client = getClient();
       const [result] = await client.update(commPostal).set(data).where(eq(commPostal.id, id)).returning();
+      return result || undefined;
+    },
+
+    async mergeCommPostalData(id, patch, preserveMailingConfirmation) {
+      const monotonicPatch = preserveMailingConfirmation
+        ? sql`jsonb_strip_nulls(${JSON.stringify(patch)}::jsonb) ||
+            CASE WHEN COALESCE(${commPostal.data}->>'mailingConfirmedAt', '') <> ''
+              THEN jsonb_build_object(
+                'mailingConfirmedAt', ${commPostal.data}->>'mailingConfirmedAt',
+                'mailingConfirmedEvent', ${commPostal.data}->>'mailingConfirmedEvent'
+              )
+              ELSE '{}'::jsonb
+            END`
+        : sql`jsonb_strip_nulls(${JSON.stringify(patch)}::jsonb)`;
+      const [result] = await getClient().update(commPostal).set({
+        data: sql`COALESCE(${commPostal.data}, '{}'::jsonb) || ${monotonicPatch}`,
+      }).where(eq(commPostal.id, id)).returning();
       return result || undefined;
     },
 

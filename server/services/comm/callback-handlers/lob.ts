@@ -17,9 +17,30 @@ registerEnvironmentVariables([
 ]);
 
 const SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
+const MAILING_CONFIRMED_EVENTS = new Set([
+  'letter.mailed',
+  'letter.in_transit',
+  'letter.in_local_area',
+  'letter.processed_for_delivery',
+  'letter.delivered',
+  'letter.re-routed',
+  'letter.certified.mailed',
+  'letter.certified.in_transit',
+  'letter.certified.in_local_area',
+  'letter.certified.processed_for_delivery',
+  'letter.certified.delivered',
+  'letter.certified.re-routed',
+  'letter.certified.pickup_available',
+]);
+
+export function isLobMailingConfirmedEvent(providerStatus: string): boolean {
+  return MAILING_CONFIRMED_EVENTS.has(providerStatus);
+}
 
 function headerValue(req: Request, name: string): string | undefined {
-  const value = req.get(name);
+  const value = typeof req.get === 'function'
+    ? req.get(name)
+    : (req as Request & { header?: (headerName: string) => string | undefined }).header?.(name);
   return value?.trim() || undefined;
 }
 
@@ -141,11 +162,6 @@ export class LobStatusHandler implements CommStatusHandler {
     const body = req.body || {};
     return body.body?.id || body.reference_id;
   }
-}
-
-export function getLobWebhookCommId(req: Request): string | undefined {
-  const value = req.body?.body?.metadata?.commId;
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 const LOB_STATUS_STAGE: Record<string, number> = {

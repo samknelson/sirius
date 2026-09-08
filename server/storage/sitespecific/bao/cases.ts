@@ -19,6 +19,7 @@
  *   time, not member-facing text; it stays on the option and is not copied.
  */
 import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import {
   comm,
   commEmail,
@@ -198,7 +199,18 @@ export interface BaoCasesStorage {
     commId: string;
     statusId: string | null;
     statusName: string | null;
+    noticeDeadlineYmd: string | null;
   }): Promise<void>;
+  /**
+   * Rebuild a missing Auto-Denied notice link from the durable member-notice
+   * send key. This repairs a failed post-send hook without sending again.
+   */
+  reconcileAppealNoticeComm(commId: string): Promise<void>;
+  /**
+   * Idempotently move a Submitted benefit appeal to the linked Auto-Denied
+   * status once its Lob postal record contains durable mailing confirmation.
+   */
+  promoteAppealAfterConfirmedMailing(commId: string): Promise<BaoCase | undefined>;
   /** The case's letters, newest first. */
   listLetters(caseId: string): Promise<BaoCaseLetter[]>;
   /**
@@ -231,6 +243,7 @@ export interface BaoCasesStorage {
 }
 
 const cases = sitespecificBaoCases;
+const targetStatus = alias(optionsBaoCaseStatus, "reconcile_target_status");
 const noteStorage = createEntityNotesStorage();
 
 /**
@@ -399,6 +412,7 @@ async function emitCaseStatusSaved(
   statusName: string,
   operation: "created" | "updated",
   change: { previousAssigneeUserId: string | null; actorUserId: string | null },
+  memberNoticeTarget?: { statusId: string; statusName: string; deadlineYmd: string },
 ): Promise<void> {
   const [detailRow] = await detailQuery().where(eq(cases.id, row.id)).limit(1);
   const detail = detailRow ? mapDetail(detailRow) : null;
@@ -419,6 +433,7 @@ async function emitCaseStatusSaved(
     spdCitation: detail?.spdCitation ?? null,
     actorUserId: change.actorUserId,
     operation,
+    ...(memberNoticeTarget ? { memberNoticeTarget } : {}),
   };
   onAfterCommit(() => {
     void eventBus.emit(EventType.BAO_CASE_STATUS_SAVED, payload);
@@ -552,12 +567,24 @@ export function createBaoCasesStorage(): BaoCasesStorage {
             .where(and(eq(optionsBaoCaseStatus.caseTypeId, caseType.id), eq(optionsBaoCaseStatus.workflowStep, "auto_denied"))).limit(1);
           if (!autoDenied) throw new Error("APPEAL_AUTO_DENIED_STATUS_MISSING");
           await lockStatuses([autoDenied.id], "SHARE");
-          const [denied] = await getClient().update(cases).set({
-            statusId: autoDenied.id,
-            deadlineYmd: autoDenied.durationDays == null ? created.deadlineYmd : sql`CURRENT_DATE + ${autoDenied.durationDays}::int`,
-          }).where(eq(cases.id, created.id)).returning();
-          await emitCaseStatusSaved(denied, created.statusId, autoDenied.name, "updated", { previousAssigneeUserId: created.assigneeUserId, actorUserId: input.actorUserId });
-          return denied;
+          const [noticeDeadline] = await getClient().select({
+            deadlineYmd: autoDenied.durationDays == null
+              ? sql<string>`${created.deadlineYmd}::date`
+              : sql<string>`CURRENT_DATE + ${autoDenied.durationDays}::int`,
+          }).from(optionsBaoCaseStatus).where(eq(optionsBaoCaseStatus.id, autoDenied.id)).limit(1);
+          await emitCaseStatusSaved(
+            created,
+            null,
+            status.name,
+            "created",
+            { previousAssigneeUserId: null, actorUserId: input.actorUserId },
+            {
+              statusId: autoDenied.id,
+              statusName: autoDenied.name,
+              deadlineYmd: noticeDeadline.deadlineYmd,
+            },
+          );
+          return created;
         }
         await emitCaseStatusSaved(created, null, status.name, "created", {
           previousAssigneeUserId: null,
@@ -621,6 +648,9 @@ export function createBaoCasesStorage(): BaoCasesStorage {
           const [caseType] = await getClient().select().from(optionsBaoCaseType)
             .where(eq(optionsBaoCaseType.id, existing.caseTypeId));
           if (caseType?.workflowCode === "benefit_appeal") {
+            if (status.workflowStep === "auto_denied") {
+              throw new Error("MAILING_CONFIRMATION_REQUIRED");
+            }
             // The trustee outcomes are reached only through recordAppealOutcome,
             // which grants the exemption / takes the closing note in the same
             // transaction; a bare status edit would skip both. The one
@@ -768,8 +798,141 @@ export function createBaoCasesStorage(): BaoCasesStorage {
           commId: input.commId,
           statusId: input.statusId,
           statusName: input.statusName,
+            noticeDeadlineYmd: input.noticeDeadlineYmd,
         })
         .onConflictDoNothing({ target: sitespecificBaoCaseComms.commId });
+      await this.promoteAppealAfterConfirmedMailing(input.commId);
+    },
+
+    async reconcileAppealNoticeComm(commId) {
+      await runInTransaction(async () => {
+        const [message] = await getClient()
+          .select({ medium: comm.medium, sendKey: comm.sendKey })
+          .from(comm)
+          .where(eq(comm.id, commId))
+          .for("update");
+        if (!message || message.medium !== "postal" || !message.sendKey) return;
+        const [existingLink] = await getClient()
+          .select({ commId: sitespecificBaoCaseComms.commId })
+          .from(sitespecificBaoCaseComms)
+          .where(eq(sitespecificBaoCaseComms.commId, commId))
+          .limit(1);
+        if (existingLink) return;
+
+        const match = /^bao_case_member_notice:([^:]+):([^:]+):(\d{4}-\d{2}-\d{2})$/
+          .exec(message.sendKey);
+        if (!match) return;
+        const [, caseId, intendedStatusId, noticeDeadlineYmd] = match;
+        const [candidate] = await getClient()
+          .select({
+            caseTypeWorkflow: optionsBaoCaseType.workflowCode,
+            currentStep: optionsBaoCaseStatus.workflowStep,
+            intendedCaseTypeId: targetStatus.caseTypeId,
+            intendedStep: targetStatus.workflowStep,
+            intendedName: targetStatus.name,
+            caseTypeId: cases.caseTypeId,
+            appealId: sitespecificBaoAppealDetails.id,
+          })
+          .from(cases)
+          .innerJoin(optionsBaoCaseType, eq(optionsBaoCaseType.id, cases.caseTypeId))
+          .innerJoin(optionsBaoCaseStatus, eq(optionsBaoCaseStatus.id, cases.statusId))
+          .innerJoin(
+            targetStatus,
+            eq(targetStatus.id, intendedStatusId),
+          )
+          .leftJoin(
+            sitespecificBaoAppealDetails,
+            eq(sitespecificBaoAppealDetails.caseId, cases.id),
+          )
+          .where(eq(cases.id, caseId))
+          .limit(1);
+        if (
+          !candidate ||
+          candidate.caseTypeWorkflow !== "benefit_appeal" ||
+          candidate.currentStep !== "submitted" ||
+          candidate.intendedCaseTypeId !== candidate.caseTypeId ||
+          candidate.intendedStep !== "auto_denied" ||
+          !candidate.appealId
+        ) {
+          return;
+        }
+        await getClient()
+          .insert(sitespecificBaoCaseComms)
+          .values({
+            caseId,
+            commId,
+            statusId: intendedStatusId,
+            statusName: candidate.intendedName,
+            noticeDeadlineYmd,
+          })
+          .onConflictDoNothing({ target: sitespecificBaoCaseComms.commId });
+      });
+    },
+
+    async promoteAppealAfterConfirmedMailing(commId) {
+      return runInTransaction(async () => {
+        const [linked] = await getClient()
+          .select({
+            caseId: sitespecificBaoCaseComms.caseId,
+            intendedStatusId: sitespecificBaoCaseComms.statusId,
+            noticeDeadlineYmd: sitespecificBaoCaseComms.noticeDeadlineYmd,
+            medium: comm.medium,
+            commData: comm.data,
+            lobLetterId: commPostal.lobLetterId,
+            postalData: commPostal.data,
+          })
+          .from(sitespecificBaoCaseComms)
+          .innerJoin(comm, eq(comm.id, sitespecificBaoCaseComms.commId))
+          .leftJoin(commPostal, eq(commPostal.commId, comm.id))
+          .where(eq(sitespecificBaoCaseComms.commId, commId))
+          .limit(1);
+        if (!linked || linked.medium !== "postal" || !linked.intendedStatusId) return undefined;
+        const postalData = linked.postalData as Record<string, unknown> | null;
+        const commData = linked.commData as Record<string, unknown> | null;
+        const providerLetterId = linked.lobLetterId ?? postalData?.letterId ?? commData?.letterId;
+        if (
+          typeof providerLetterId !== "string" ||
+          !providerLetterId.startsWith("ltr_") ||
+          typeof postalData?.mailingConfirmedAt !== "string"
+        ) {
+          return undefined;
+        }
+
+        const [existing] = await getClient().select().from(cases)
+          .where(eq(cases.id, linked.caseId)).for("update");
+        if (!existing) return undefined;
+
+        const [caseType] = await getClient().select().from(optionsBaoCaseType)
+          .where(eq(optionsBaoCaseType.id, existing.caseTypeId)).limit(1);
+        const [current] = await getClient().select().from(optionsBaoCaseStatus)
+          .where(eq(optionsBaoCaseStatus.id, existing.statusId)).limit(1);
+        const [target] = await getClient().select().from(optionsBaoCaseStatus)
+          .where(eq(optionsBaoCaseStatus.id, linked.intendedStatusId)).limit(1);
+        const [appeal] = await getClient().select({ id: sitespecificBaoAppealDetails.id })
+          .from(sitespecificBaoAppealDetails)
+          .where(eq(sitespecificBaoAppealDetails.caseId, existing.id)).limit(1);
+        if (
+          caseType?.workflowCode !== "benefit_appeal" ||
+          !appeal ||
+          current?.workflowStep !== "submitted" ||
+          target?.caseTypeId !== existing.caseTypeId ||
+          target.workflowStep !== "auto_denied"
+        ) {
+          return undefined;
+        }
+
+        await lockStatuses([existing.statusId, target.id], "SHARE");
+        const [updated] = await getClient().update(cases).set({
+          statusId: target.id,
+          deadlineYmd: linked.noticeDeadlineYmd ?? existing.deadlineYmd,
+        }).where(and(eq(cases.id, existing.id), eq(cases.statusId, existing.statusId))).returning();
+        if (!updated) return undefined;
+        await emitCaseStatusSaved(updated, existing.statusId, target.name, "updated", {
+          previousAssigneeUserId: existing.assigneeUserId,
+          actorUserId: null,
+        });
+        return updated;
+      });
     },
 
     async listLetters(caseId) {

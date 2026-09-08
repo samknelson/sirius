@@ -1534,6 +1534,7 @@ export const sitespecificBaoCaseComms = pgTable(
     commId: varchar("comm_id").notNull(),
     statusId: varchar("status_id"),
     statusName: varchar("status_name", { length: 255 }),
+    noticeDeadlineYmd: date("notice_deadline_ymd"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
   (table) => [

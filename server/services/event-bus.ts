@@ -585,6 +585,16 @@ export interface BaoCaseStatusSavedPayload {
    */
   actorUserId?: string | null;
   operation: "created" | "updated";
+  /**
+   * A member notice may be initiated for a future lifecycle status while the
+   * case remains in the status represented above. Used by benefit-appeal
+   * submission to mail the Auto-Denied notice before Lob confirms mailing.
+   */
+  memberNoticeTarget?: {
+    statusId: string;
+    statusName: string;
+    deadlineYmd: string;
+  };
 }
 
 /**
