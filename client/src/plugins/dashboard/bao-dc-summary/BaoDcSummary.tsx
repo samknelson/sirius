@@ -19,6 +19,7 @@ type WorkerRef = { workerId: string; siriusId: number | null; name: string };
 interface DcSummaryContent {
   /** Linked count only — the complete list lives on its own page. */
   fmlaEligibleCount: number;
+  draftCount: number;
   activeGrants: Array<{
     worker: WorkerRef;
     grantedMonthCount: number;
@@ -43,14 +44,6 @@ interface DcSummaryContent {
     used: number;
     limit: number;
     latestActivity: { eventType: string; at: string } | null;
-  }>;
-  netActivity: Array<{
-    workMonthYmd: string;
-    grants: number;
-    removals: number;
-    net: number;
-    currentlyGranted: number;
-    reconciled: boolean;
   }>;
 }
 
@@ -132,8 +125,7 @@ export function BaoDcSummary(_props: DashboardPluginProps) {
   }
   if (!data) return null;
 
-  const { fmlaEligibleCount, activeGrants, queue, maxedOut, netActivity } = data;
-  const recentNet = netActivity.slice(-6);
+  const { fmlaEligibleCount, draftCount, activeGrants, queue, maxedOut } = data;
 
   return (
     <Card data-testid="card-dashboard-bao-dc-summary">
@@ -157,6 +149,20 @@ export function BaoDcSummary(_props: DashboardPluginProps) {
           <Button asChild variant="outline" size="sm">
             <Link href="/bao/dc/fmla-eligible" data-testid="link-dc-fmla-eligible">
               View the complete list
+            </Link>
+          </Button>
+        </div>
+
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <h4 className="text-sm font-medium">Draft Cases</h4>
+            <Badge variant="secondary" data-testid="badge-dc-draft-count">
+              {draftCount}
+            </Badge>
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/bao/dc/drafts" data-testid="link-dc-drafts">
+              View draft queue
             </Link>
           </Button>
         </div>
@@ -212,22 +218,6 @@ export function BaoDcSummary(_props: DashboardPluginProps) {
                 <WorkerLink worker={row.worker} />
                 <span className="text-muted-foreground text-xs">
                   {row.year}: {row.used}/{row.limit}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Section>
-
-        <Section title="Net grant activity (recent months)" count={recentNet.length}>
-          <ul className="space-y-0.5" data-testid="list-dc-net-activity">
-            {recentNet.map((row) => (
-              <li key={row.workMonthYmd} className="flex justify-between gap-2">
-                <span>{monthLabel(row.workMonthYmd)}</span>
-                <span className="text-muted-foreground text-xs flex items-center gap-1">
-                  +{row.grants} / −{row.removals} = {row.net}
-                  {!row.reconciled && (
-                    <Badge variant="destructive">mismatch</Badge>
-                  )}
                 </span>
               </li>
             ))}

@@ -248,6 +248,57 @@ export interface DcQueueRow {
   grantConfigWarnings: Array<{ workMonthYmd: string; code: string; message: string }>;
 }
 
+export interface DcDraftQueueRow {
+  case: BaoDcCase;
+  worker: DcWorkerRef;
+  openedAt: Date | string;
+  ageDays: number;
+  latestActivity: { eventType: string; at: string } | null;
+}
+
+/**
+ * Every draft case, oldest first. Drafts remain separate even when a worker
+ * has more than one open case so each unfinished workflow is actionable.
+ */
+export async function listDcDraftQueue(): Promise<DcDraftQueueRow[]> {
+  const dc = storage.baoDisabilityCredit;
+  const cases = await dc.listCasesByStatus("draft");
+  const now = Date.now();
+  const [refs, latestEvents] = await Promise.all([
+    workerRefMap(cases.map((c) => c.workerId)),
+    Promise.all(
+      cases.map(async (c) => {
+        const events = await dc.listEventsForCase(c.id);
+        return events.length > 0 ? events[events.length - 1] : null;
+      }),
+    ),
+  ]);
+
+  return cases
+    .map((c, i) => {
+      const openedAt = c.createdAt;
+      const latest = latestEvents[i];
+      return {
+        case: c,
+        worker: ref(refs, c.workerId),
+        openedAt,
+        ageDays: Math.max(
+          0,
+          Math.floor((now - new Date(openedAt as unknown as string).getTime()) / 86400000),
+        ),
+        latestActivity: latest
+          ? { eventType: latest.eventType, at: latest.createdAt.toISOString() }
+          : null,
+      };
+    })
+    .sort(
+      (a, b) =>
+        new Date(a.openedAt as unknown as string).getTime() -
+          new Date(b.openedAt as unknown as string).getTime() ||
+        a.case.id.localeCompare(b.case.id),
+    );
+}
+
 /**
  * In-queue cases, oldest first, with queue age + live readiness + balance.
  * Each case contributes only its queue summary (readiness, months with

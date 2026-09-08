@@ -4,9 +4,9 @@ import {
   getDcUpcomingPopulations,
   listDcActiveGrants,
   listDcApprovalQueue,
+  listDcDraftQueue,
   listDcMaxedOutWorkers,
   listDcUploadReviewFindings,
-  getDcNetGrantActivity,
 } from "../../../services/sitespecific/bao/dc-reporting";
 
 /**
@@ -20,7 +20,7 @@ import {
  * them are unchanged and still used elsewhere.
  *
  * Actions:
- *  - (default)      fmla count + queue + active grants + max-out + net
+ *  - (default)      fmla count + draft count + queue + active grants + max-out
  *  - upload-review  the heavier upload-anomaly scan, loaded on demand
  */
 export const baoDcSummaryPlugin: DashboardPlugin = {
@@ -34,22 +34,22 @@ export const baoDcSummaryPlugin: DashboardPlugin = {
   content: {
     // Default (no-action) content — the main dashboard payload.
     "": async () => {
-      const [populations, activeGrants, queue, maxedOut, netActivity] =
+      const [populations, drafts, activeGrants, queue, maxedOut] =
         await Promise.all([
           getDcUpcomingPopulations(),
+          listDcDraftQueue(),
           listDcActiveGrants(),
           listDcApprovalQueue(),
           listDcMaxedOutWorkers(),
-          getDcNetGrantActivity(),
         ]);
       // Only the COUNT ships to the dashboard — the full list has its own
       // linked page backed by the same reporting service.
       return {
         fmlaEligibleCount: populations.fmlaEligible.length,
+        draftCount: drafts.length,
         activeGrants,
         queue,
         maxedOut,
-        netActivity,
       };
     },
     "upload-review": async () => ({

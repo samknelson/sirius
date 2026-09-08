@@ -187,6 +187,7 @@ describe("DC route stage boundaries", () => {
       [`/api/sitespecific/bao/dc/cases/${id}/months`, { method: "PUT", body: JSON.stringify({ months: [] }) }],
       [`/api/sitespecific/bao/dc/cases/${id}/extend`, { method: "POST", body: JSON.stringify({ reason: "x" }) }],
       [`/api/sitespecific/bao/dc/queue`, {}],
+      [`/api/sitespecific/bao/dc/drafts`, {}],
       [`/api/sitespecific/bao/dc/queue/next`, {}],
     ];
     for (const [path, init] of memberCalls) {
@@ -313,6 +314,24 @@ describe("DC route stage boundaries", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect("nextCaseId" in body).toBe(true);
+  });
+
+  it("returns every draft and excludes non-draft cases from the staff draft queue", async () => {
+    const draftA = await makeCase("draft");
+    const queued = await makeCase("in_queue");
+    const draftB = await makeCase("draft");
+    const res = await request("/api/sitespecific/bao/dc/drafts", { user: staffId });
+    expect(res.status).toBe(200);
+    const rows = await res.json();
+    const ids = rows.map((row: any) => row.case.id);
+    expect(ids).toContain(draftA);
+    expect(ids).toContain(draftB);
+    expect(ids).not.toContain(queued);
+    expect(rows.filter((row: any) => [draftA, draftB].includes(row.case.id))).toHaveLength(2);
+    expect(rows.find((row: any) => row.case.id === draftA).worker.workerId).toBe(workerId);
+    expect(rows.find((row: any) => row.case.id === draftA).ageDays).toEqual(
+      expect.any(Number),
+    );
   });
 });
 

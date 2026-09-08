@@ -37,6 +37,7 @@ import {
 import { insertFileSchema } from "@shared/schema";
 import {
   listDcApprovalQueue,
+  listDcDraftQueue,
   getDcUpcomingPopulations,
 } from "../../../services/sitespecific/bao/dc-reporting";
 import { BAO_DC_APPROVE_PERMISSION } from "../../../storage/sitespecific/bao/dc-approver";
@@ -725,6 +726,21 @@ export function registerBaoDisabilityCreditRoutes(
           res.status(400).json({ message: "Invalid request", errors: error.errors });
           return;
         }
+        handleDcError(res, error);
+      }
+    },
+  );
+
+  // Draft queue — STAFF; complete list, oldest first.
+  app.get(
+    "/api/sitespecific/bao/dc/drafts",
+    requireAuth,
+    componentMiddleware,
+    requireAccess("staff"),
+    async (_req: Request, res: Response) => {
+      try {
+        res.json(await listDcDraftQueue());
+      } catch (error) {
         handleDcError(res, error);
       }
     },
