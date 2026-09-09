@@ -214,6 +214,7 @@ import { eq } from "drizzle-orm";
 import { type AdvisoryLockStorage, createAdvisoryLockStorage } from "./advisory-lock";
 import { type WsClientStorage, type WsClientGrantStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsClientStorage, createWsClientGrantStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage, wsClientLoggingConfig, wsClientGrantLoggingConfig, wsClientCredentialLoggingConfig, wsClientIpRuleLoggingConfig } from "./webservices";
 import { type AuthIdentitiesStorage, createAuthIdentitiesStorage, authIdentitiesLoggingConfig } from "./auth-identities";
+import { type LetterTemplateStorage, createLetterTemplateStorage, letterTemplateLoggingConfig } from "./letter-templates";
 
 export interface IStorage {
   variables: VariableStorage;
@@ -332,6 +333,7 @@ export interface IStorage {
   commTags: CommTagsStorage;
   comm: CommStorage;
   grievances: GrievanceStorage;
+  letterTemplates: LetterTemplateStorage;
   grievanceStatusHistory: GrievanceStatusHistoryStorage;
   grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
   grievanceSettlements: GrievanceSettlementStorage;
@@ -455,6 +457,7 @@ export class DatabaseStorage implements IStorage {
   commTags: CommTagsStorage;
   comm: CommStorage;
   grievances: GrievanceStorage;
+  letterTemplates: LetterTemplateStorage;
   grievanceStatusHistory: GrievanceStatusHistoryStorage;
   grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
   grievanceSettlements: GrievanceSettlementStorage;
@@ -706,6 +709,10 @@ export class DatabaseStorage implements IStorage {
       sftpClientDestinationLoggingConfig
     );
     this.businessCalendars = createBusinessCalendarStorage();
+    this.letterTemplates = withStorageLogging(
+      createLetterTemplateStorage(),
+      letterTemplateLoggingConfig,
+    );
     this.helps = createHelpStorage();
     this.bulkMessages = withStorageLogging(
       createBulkMessageStorage(),

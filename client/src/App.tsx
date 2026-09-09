@@ -234,6 +234,8 @@ const UserSendPostal = lazy(() => import("@/pages/admin/user-send-postal"));
 const UserSendInApp = lazy(() => import("@/pages/admin/user-send-inapp"));
 const AdminRolesPage = lazy(() => import("@/pages/admin/roles"));
 const AdminPermissionsPage = lazy(() => import("@/pages/admin/permissions"));
+const LetterTemplatesPage = lazy(() => import("@/pages/admin/letter-templates"));
+const LetterTemplateDetailPage = lazy(() => import("@/pages/admin/letter-template-detail"));
 const WmbScanQueue = lazy(() => import("@/pages/admin/wmb-scan-queue"));
 const WmbScanDetail = lazy(() => import("@/pages/admin/wmb-scan-detail"));
 const CronJobs = lazy(() => import("@/pages/cron-jobs"));
@@ -2514,6 +2516,26 @@ function Router() {
       </Route>
 
       {/* Admin user management routes - no ConfigurationLayout sidebar */}
+      <Route path="/admin/letter-templates">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <LetterTemplatesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/letter-templates/:id">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <LetterTemplateDetailPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/admin/users/list">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>

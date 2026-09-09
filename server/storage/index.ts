@@ -36,3 +36,4 @@ export { type WcStatsStorage, type WcStatsDay, type WcStatsService, type WcStats
 export { type WsStatsStorage, type WsStatsDay, type WsStatsPlugin, type WsStatsPluginOperation, type WsStatsClient, type WsStatsDimension, type WsStatsDimensionCalls, type WsStatsFilters, type WsStatsRangeParams, createWsStatsStorage } from "./ws-stats";
 export { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type EmployerCompanyStorage, createEmployerCompanyStorage, employerCompanyLoggingConfig } from "./employers/companies";
 export { type ContractStorage, createContractStorage } from "./contract";
+export { type LetterTemplateStorage, createLetterTemplateStorage, letterTemplateLoggingConfig } from "./letter-templates";

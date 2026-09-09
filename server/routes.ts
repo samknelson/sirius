@@ -89,6 +89,7 @@ import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
 import { registerEventNotifierMetaRoutes } from "./modules/event-notifier-meta";
 import { registerTokenStudioRoutes } from "./modules/token-studio";
+import { registerLetterTemplateRoutes } from "./modules/letter-templates";
 import { registerCommComposeRoutes } from "./modules/comm-compose";
 import { registerCardcheckDefinitionsRoutes } from "./modules/cardcheck-definitions";
 import { registerCardchecksRoutes } from "./modules/cardchecks";
@@ -311,6 +312,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register user management routes
   registerUserRoutes(app, requireAuth, requirePermission);
+  registerLetterTemplateRoutes(app, requireAccess);
 
   // Register employer user settings routes
   registerEmployerUserSettingsRoutes(app, requireAuth, requirePermission);
