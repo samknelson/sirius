@@ -141,6 +141,53 @@ export async function cleanupWizardAttachments(
   return { complete: failedFileIds.length === 0, failedFileIds };
 }
 
+export type DeleteWizardWithAttachmentsResult =
+  | { deleted: true; failedFileIds: [] }
+  | { deleted: false; failedFileIds: string[] };
+
+/**
+ * Delete a wizard through the attachment lifecycle's shared lock.
+ *
+ * A failed row cleanup deliberately leaves the parent in `deleting`, giving a
+ * later request a durable retry anchor. The final locked recheck prevents an
+ * attachment from appearing between cleanup and parent deletion.
+ */
+export async function deleteWizardWithAttachments(
+  wizardId: string,
+): Promise<DeleteWizardWithAttachmentsResult> {
+  await storage.advisoryLock.withTransactionLock(
+    `wizard-attachments:${wizardId}`,
+    async () => {
+      const current = await storage.wizards.getById(wizardId);
+      if (current && current.status !== "deleting") {
+        await storage.wizards.update(wizardId, { status: "deleting" });
+      }
+    },
+  );
+
+  const cleanup = await cleanupWizardAttachments(wizardId);
+  if (!cleanup.complete) {
+    return { deleted: false, failedFileIds: cleanup.failedFileIds };
+  }
+
+  const deleted = await storage.advisoryLock.withTransactionLock(
+    `wizard-attachments:${wizardId}`,
+    async () => {
+      const current = await storage.wizards.getById(wizardId);
+      if (!current || current.status !== "deleting") return false;
+      const [newRows, legacyRows] = await Promise.all([
+        storage.entityFiles.list(CONTEXT, wizardId),
+        storage.files.list({ entityType: "wizard", entityId: wizardId }),
+      ]);
+      if (newRows.length || legacyRows.length) return false;
+      return storage.wizards.delete(wizardId);
+    },
+  );
+  return deleted
+    ? { deleted: true, failedFileIds: [] }
+    : { deleted: false, failedFileIds: [] };
+}
+
 /** New attachments first, with a narrowly scoped legacy-row compatibility read. */
 export async function getWizardAttachment(fileId: string, wizardId: string): Promise<File | undefined> {
   const attached = await storage.entityFiles.getByFileId(CONTEXT, wizardId, fileId);
