@@ -10,6 +10,7 @@ import {
   type StudioField,
 } from "./TemplateStudio";
 import { useTokenContext } from "./useTokenContext";
+import { ApiError } from "@/lib/queryClient";
 import type { DeliveryFieldSpec } from "@shared/delivery-fields";
 import type {
   TokenPickerEntry,
@@ -31,6 +32,12 @@ interface TokenGraph {
   pickerEntries: TokenPickerEntry[];
 }
 
+interface LetterTemplateOption {
+  id: string;
+  name: string;
+  content: Record<string, string>;
+}
+
 export interface TokenStudioProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -41,6 +48,8 @@ export interface TokenStudioProps {
   fields: StudioField[];
   values: Record<string, string>;
   onValueChange: (key: string, value: string) => void;
+  /** Atomically replace the declared field values when loading a saved template. */
+  onValuesChange?: (values: Record<string, string>) => void;
   /**
    * How delivery shapes each field, from the shared delivery
    * declarations. Omit for an ad-hoc tokenized field with no delivery
@@ -107,6 +116,7 @@ export function TokenStudio({
   fields,
   values,
   onValueChange,
+  onValuesChange,
   fieldSpecs,
   templateValues,
   contextId,
@@ -126,6 +136,10 @@ export function TokenStudio({
   const previewSeedsUrl =
     seedsUrl ??
     `/api/token-studio/preview-seeds?context=${encodeURIComponent(contextId)}`;
+  const templatesUrl =
+    channel === "generic"
+      ? undefined
+      : `/api/admin/letter-templates?medium=${encodeURIComponent(channel)}&context_id=${encodeURIComponent(contextId)}`;
 
   // The failure is part of the answer. Dropping it here is how a
   // request that 403s ends up looking like a host with no tokens: the
@@ -149,6 +163,22 @@ export function TokenStudio({
     queryKey: [previewSeedsUrl],
     enabled: open,
   });
+
+  const {
+    data: templates,
+    isLoading: templatesLoading,
+    error: templatesError,
+    refetch: refetchTemplates,
+  } = useQuery<LetterTemplateOption[]>({
+    queryKey: [
+      "/api/admin/letter-templates",
+      { medium: channel === "generic" ? undefined : channel, context_id: contextId },
+    ],
+    enabled: open && Boolean(templatesUrl),
+  });
+  const templatesForbidden =
+    templatesError instanceof ApiError &&
+    (templatesError.status === 401 || templatesError.status === 403);
 
   // The context is what BOTH requests are about, so its own failure is
   // the one to report on either line: a graph request refused because
@@ -185,6 +215,7 @@ export function TokenStudio({
       fields={fields}
       values={values}
       onValueChange={onValueChange}
+      onValuesChange={onValuesChange}
       fieldSpecs={fieldSpecs}
       templateValues={templateValues}
       tokens={graph?.pickerEntries ?? []}
@@ -196,6 +227,16 @@ export function TokenStudio({
       hostNotice={hostNotice}
       graphState={graphState}
       seedsState={seedsState}
+      templates={templates}
+      templatesAvailable={Boolean(templatesUrl) && !templatesForbidden}
+      templatesState={{
+        url: templatesUrl,
+        loading: templatesLoading,
+        error: templatesError,
+        retry: () => {
+          void refetchTemplates();
+        },
+      }}
     />
   );
 }

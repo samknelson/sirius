@@ -37,6 +37,10 @@ const updateInput = baseInput.partial().refine(
   (input) => Object.keys(input).length > 0,
   "At least one field is required",
 );
+const listQuery = z.object({
+  medium: z.enum(MEDIUM_NAMES).optional(),
+  context_id: z.string().trim().min(1).optional(),
+});
 
 function validateContextIds(contextIds: string[]): string | undefined {
   const offered = new Set(
@@ -114,18 +118,27 @@ export function registerLetterTemplateRoutes(
   app: Express,
   requireAccess: (policy: string) => Middleware,
 ): void {
-  const admin = requireAccess("admin");
+  const staff = requireAccess("staff");
 
-  app.get("/api/admin/letter-templates", admin, async (_req, res) => {
+  app.get("/api/admin/letter-templates", staff, async (req, res) => {
     try {
-      res.json(await storage.letterTemplates.getAll());
+      const query = listQuery.parse(req.query);
+      res.json(await storage.letterTemplates.getAll({
+        medium: query.medium,
+        contextId: query.context_id,
+      }));
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: error.errors[0]?.message ?? "Invalid letter template filters",
+        });
+      }
       console.error("Failed to list letter templates:", error);
       res.status(500).json({ message: "Failed to list letter templates" });
     }
   });
 
-  app.post("/api/admin/letter-templates", admin, async (req, res) => {
+  app.post("/api/admin/letter-templates", staff, async (req, res) => {
     try {
       const input = createInput.parse(req.body);
       const problem = validationMessage(input);
@@ -149,7 +162,7 @@ export function registerLetterTemplateRoutes(
     }
   });
 
-  app.get("/api/admin/letter-templates/:id", admin, async (req, res) => {
+  app.get("/api/admin/letter-templates/:id", staff, async (req, res) => {
     try {
       const row = await storage.letterTemplates.get(req.params.id);
       if (!row) return res.status(404).json({ message: "Letter template not found" });
@@ -160,7 +173,7 @@ export function registerLetterTemplateRoutes(
     }
   });
 
-  app.patch("/api/admin/letter-templates/:id", admin, async (req, res) => {
+  app.patch("/api/admin/letter-templates/:id", staff, async (req, res) => {
     try {
       const current = await storage.letterTemplates.get(req.params.id);
       if (!current) return res.status(404).json({ message: "Letter template not found" });
@@ -180,6 +193,17 @@ export function registerLetterTemplateRoutes(
       }
       console.error("Failed to update letter template:", error);
       res.status(500).json({ message: "Failed to update letter template" });
+    }
+  });
+
+  app.delete("/api/admin/letter-templates/:id", staff, async (req, res) => {
+    try {
+      const deleted = await storage.letterTemplates.delete(req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Letter template not found" });
+      res.status(204).end();
+    } catch (error) {
+      console.error("Failed to delete letter template:", error);
+      res.status(500).json({ message: "Failed to delete letter template" });
     }
   });
 }

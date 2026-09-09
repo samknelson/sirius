@@ -7,6 +7,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -168,6 +178,12 @@ export interface StudioSourceState {
   retry?: () => void;
 }
 
+export interface StudioLetterTemplate {
+  id: string;
+  name: string;
+  content: Record<string, string>;
+}
+
 /** The preview render route's response shape. */
 export interface StudioPreviewResult {
   /**
@@ -210,6 +226,8 @@ export interface TemplateStudioProps {
   fields: StudioField[];
   values: Record<string, string>;
   onValueChange: (key: string, value: string) => void;
+  /** Atomically replace the declared field values when available. */
+  onValuesChange?: (values: Record<string, string>) => void;
   /**
    * How DELIVERY shapes each previewed field — taken from the shared
    * delivery declarations (`@shared/delivery-fields`), never
@@ -268,6 +286,11 @@ export interface TemplateStudioProps {
    */
   graphState?: StudioSourceState;
   seedsState?: StudioSourceState;
+  /** Saved letter templates applicable to this context and medium. */
+  templates?: StudioLetterTemplate[];
+  /** False when the current author cannot list letter templates. */
+  templatesAvailable?: boolean;
+  templatesState?: StudioSourceState;
   /**
    * Something the HOST needs to say about the text on screen, shown
    * under the title.
@@ -367,8 +390,8 @@ function InappPreviewCard({
   );
 }
 
-/** Which of the right-hand column's three sections is expanded. */
-type StudioPanelId = "preview" | "seeds" | "tokens";
+/** Which of the right-hand column's sections is expanded. */
+type StudioPanelId = "preview" | "seeds" | "tokens" | "templates";
 
 /**
  * One collapsible section of the studio's right-hand column. Exactly one
@@ -662,6 +685,7 @@ export function TemplateStudio({
   fields,
   values,
   onValueChange,
+  onValuesChange,
   fieldSpecs,
   templateValues,
   tokens,
@@ -672,6 +696,9 @@ export function TemplateStudio({
   seeds,
   graphState,
   seedsState,
+  templates,
+  templatesAvailable = false,
+  templatesState,
   hostNotice,
 }: TemplateStudioProps) {
   const activeEditorRef = useRef<ActiveEditorRef | null>(null);
@@ -755,6 +782,8 @@ export function TemplateStudio({
 
   /** The expanded right-hand section; the studio always opens on the preview. */
   const [panel, setPanel] = useState<StudioPanelId>("preview");
+  const [templateToLoad, setTemplateToLoad] =
+    useState<StudioLetterTemplate | null>(null);
 
   // Both cleared during the render that opens the studio, so the seed pickers
   // never render the previous session's picks before the reset lands, and the
@@ -762,6 +791,7 @@ export function TemplateStudio({
   useModalSeed(open, null, () => {
     setChosen({});
     setPanel("preview");
+    setTemplateToLoad(null);
   });
 
   /** This root's personas-only choice — the first one it declares. */
@@ -1448,6 +1478,71 @@ export function TemplateStudio({
                 </>
               )}
             </StudioPanel>
+
+            {templatesAvailable && (
+              <StudioPanel
+                id="templates"
+                title="Templates"
+                open={panel === "templates"}
+                onOpen={() => setPanel("templates")}
+                status={
+                  templatesState?.error ? (
+                    <span
+                      className="ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium bg-destructive/10 text-destructive"
+                      data-testid="badge-studio-templates-failed"
+                    >
+                      Failed to load
+                    </span>
+                  ) : templatesState?.loading ? (
+                    <Loader2 className="ml-auto h-3 w-3 animate-spin text-muted-foreground" />
+                  ) : templates?.length ? (
+                    <span className="ml-auto text-[10px] text-muted-foreground">
+                      {templates.length}
+                    </span>
+                  ) : undefined
+                }
+              >
+                <div
+                  className="min-h-0 flex-1 overflow-y-auto px-3 pb-3"
+                  data-testid="studio-templates-panel"
+                >
+                  {templatesState?.loading ? (
+                    <p className="flex items-center gap-1.5 py-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Loading templates…
+                    </p>
+                  ) : templatesState?.error ? (
+                    <TokenRequestError
+                      what="Letter templates"
+                      error={templatesState.error}
+                      onRetry={templatesState.retry}
+                      testId="text-studio-templates-error"
+                    />
+                  ) : !templates?.length ? (
+                    <p
+                      className="py-2 text-xs text-muted-foreground"
+                      data-testid="text-studio-templates-empty"
+                    >
+                      No saved templates match this context and medium.
+                    </p>
+                  ) : (
+                    <div className="divide-y rounded-md border">
+                      {templates.map((template) => (
+                        <button
+                          key={template.id}
+                          type="button"
+                          className="block w-full px-3 py-2.5 text-left text-sm hover:bg-muted/50"
+                          onClick={() => setTemplateToLoad(template)}
+                          data-testid={`button-load-template-${template.id}`}
+                        >
+                          <span className="font-medium">{template.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </StudioPanel>
+            )}
           </div>
         </div>
 
@@ -1475,6 +1570,50 @@ export function TemplateStudio({
             Done
           </Button>
         </div>
+
+        <AlertDialog
+          open={templateToLoad !== null}
+          onOpenChange={(next) => {
+            if (!next) setTemplateToLoad(null);
+          }}
+        >
+          <AlertDialogContent data-testid="dialog-load-letter-template">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Replace the current content?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Loading “{templateToLoad?.name}” replaces every field currently
+                shown in the editor. You can continue editing after it loads.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid="button-load-template-cancel">
+                Keep current content
+              </AlertDialogCancel>
+              <AlertDialogAction
+                data-testid="button-load-template-confirm"
+                onClick={() => {
+                  if (!templateToLoad) return;
+                  const replacement = Object.fromEntries(
+                    fields.map((field) => [
+                      field.key,
+                      templateToLoad.content[field.key] ?? "",
+                    ]),
+                  );
+                  if (onValuesChange) {
+                    onValuesChange(replacement);
+                  } else {
+                    for (const [key, value] of Object.entries(replacement)) {
+                      onValueChange(key, value);
+                    }
+                  }
+                  setTemplateToLoad(null);
+                }}
+              >
+                Replace
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

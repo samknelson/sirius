@@ -151,3 +151,4 @@
 - [One shared route, many gates](shared-route-context-gate.md) — a route answering for every surface resolves its policy from the resource NAMED in the request (fail closed, no fallback, refusal must match the catalog's availability); splitting one fetch in two reorders readiness and needs two failure surfaces.
 - [Shared catalog framework](catalog-framework.md) — catalog=code-supplied, registry=DB; entries derive on READ (component filter), offer≠vocabulary, tier decided from the reader (barrel hides tier-as-argument), version needs a process id.
 - [Application-managed data columns](application-managed-data-columns.md) — generic `data` columns are extension space for site-specific/features; core admin forms must not display, edit, or overwrite them.
+- [Studio template library route](studio-template-library-route.md) — Template Studio reuses the staff CRUD list with medium/context filters; 401/403 hides Templates, never add a parallel studio route.

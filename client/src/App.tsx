@@ -2517,7 +2517,7 @@ function Router() {
 
       {/* Admin user management routes - no ConfigurationLayout sidebar */}
       <Route path="/admin/letter-templates">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <LetterTemplatesPage />
@@ -2527,7 +2527,7 @@ function Router() {
       </Route>
 
       <Route path="/admin/letter-templates/:id">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <LetterTemplateDetailPage />

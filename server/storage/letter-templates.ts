@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, arrayContains, asc, eq } from "drizzle-orm";
 import {
   letterTemplates,
   type InsertLetterTemplate,
@@ -8,21 +8,29 @@ import { getClient } from "./transaction-context";
 import { defineLoggingConfig } from "./middleware/logging";
 
 export interface LetterTemplateStorage {
-  getAll(): Promise<LetterTemplate[]>;
+  getAll(filters?: { medium?: string; contextId?: string }): Promise<LetterTemplate[]>;
   get(id: string): Promise<LetterTemplate | undefined>;
   create(input: InsertLetterTemplate): Promise<LetterTemplate>;
   update(
     id: string,
     input: Partial<InsertLetterTemplate>,
   ): Promise<LetterTemplate | undefined>;
+  delete(id: string): Promise<LetterTemplate | undefined>;
 }
 
 export function createLetterTemplateStorage(): LetterTemplateStorage {
   return {
-    async getAll() {
+    async getAll(filters = {}) {
+      const predicates = [
+        filters.medium ? eq(letterTemplates.medium, filters.medium) : undefined,
+        filters.contextId
+          ? arrayContains(letterTemplates.contextIds, [filters.contextId])
+          : undefined,
+      ].filter((predicate): predicate is NonNullable<typeof predicate> => Boolean(predicate));
       return getClient()
         .select()
         .from(letterTemplates)
+        .where(predicates.length ? and(...predicates) : undefined)
         .orderBy(asc(letterTemplates.name), asc(letterTemplates.id));
     },
 
@@ -50,6 +58,14 @@ export function createLetterTemplateStorage(): LetterTemplateStorage {
         .returning();
       return row;
     },
+
+    async delete(id) {
+      const [row] = await getClient()
+        .delete(letterTemplates)
+        .where(eq(letterTemplates.id, id))
+        .returning();
+      return row;
+    },
   };
 }
 
@@ -63,6 +79,9 @@ export const letterTemplateLoggingConfig =
         describe: { label: "letter template", name: "name", id: "id" },
       },
       update: {
+        describe: { label: "letter template", name: "name", id: "id" },
+      },
+      delete: {
         describe: { label: "letter template", name: "name", id: "id" },
       },
     },
