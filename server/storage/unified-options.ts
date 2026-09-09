@@ -782,6 +782,7 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
       { name: "description", label: "Description", inputType: "textarea", required: false, showInTable: true, columnHeader: "Description" },
       { name: "caseTypeId", label: "Case type", inputType: "select-options", selectOptionsType: "bao-case-type", required: true, showInTable: true, columnHeader: "Case type" },
       { name: "closed", label: "Closed", inputType: "checkbox", required: false, helperText: "Closed cases appear in Historical views and require resolution details", showInTable: true, columnHeader: "Closed" },
+      { name: "defaultResolutionId", label: "Default resolution when closed", inputType: "select-options", selectOptionsType: "bao-case-resolution", required: false, helperText: "For closed statuses, choose the resolution applied when a case moves here automatically", showInTable: false },
       { name: "durationDays", label: "Duration (days)", inputType: "number", min: 1, required: false, helperText: "Sets the case deadline this many days after entering this status", showInTable: true, columnHeader: "Duration" },
       { name: "lapseStatusId", label: "When deadline lapses, move to", inputType: "select-options", selectOptionsType: "bao-case-status", selectOptionsMatchField: "caseTypeId", selectOptionsExcludeEditing: true, selectOptionsRequireClosedDefault: true, required: false, showInTable: true, columnHeader: "Lapse status" },
     ],
