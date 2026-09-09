@@ -8,7 +8,7 @@ import { enforceWizardEntityAccess, enforceWizardRecordAccess } from "../plugins
 import { enforcePluginGating } from "../plugins/_core";
 import { createUnifiedOptionsStorage } from "../storage/unified-options.js";
 import { validateAgainstSchema } from "../lib/json-schema-validator";
-import { cleanupWizardAttachments, listWizardAttachments } from "../plugins/wizards/attachments";
+import { deleteWizardWithAttachments, listWizardAttachments } from "../plugins/wizards/attachments";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -480,43 +480,14 @@ export function registerWizardRoutes(
         return res.status(recordAccess.status).json({ message: recordAccess.message });
       }
 
-      // Mark under the same lock used by attachment insertion. Retries may
-      // encounter an already-deleting row and simply resume cleanup.
-      await storage.advisoryLock.withTransactionLock(
-        `wizard-attachments:${id}`,
-        async () => {
-          const current = await storage.wizards.getById(id);
-          if (!current) return;
-          if (current.status !== "deleting") {
-            await storage.wizards.update(id, { status: "deleting" });
-          }
-        },
-      );
-
-      // A row failure keeps the deleting parent as a retry anchor. Provider
-      // byte failures do not appear here because row-first cleanup logs them
-      // as recoverable orphans.
-      const cleanup = await cleanupWizardAttachments(id);
-      if (!cleanup.complete) {
+      const deletion = await deleteWizardWithAttachments(id);
+      if (!deletion.deleted && deletion.failedFileIds.length > 0) {
         return res.status(500).json({
           message: "Wizard deletion is pending file cleanup; retry deletion.",
-          failedFileIds: cleanup.failedFileIds,
+          failedFileIds: deletion.failedFileIds,
         });
       }
-      const success = await storage.advisoryLock.withTransactionLock(
-        `wizard-attachments:${id}`,
-        async () => {
-          const current = await storage.wizards.getById(id);
-          if (!current || current.status !== "deleting") return false;
-          const [newRows, legacyRows] = await Promise.all([
-            storage.entityFiles.list("wizard", id),
-            storage.files.list({ entityType: "wizard", entityId: id }),
-          ]);
-          if (newRows.length || legacyRows.length) return false;
-          return storage.wizards.delete(id);
-        },
-      );
-      if (!success) {
+      if (!deletion.deleted) {
         return res.status(409).json({ message: "Wizard deletion is pending file cleanup; retry deletion." });
       }
 

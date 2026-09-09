@@ -26,8 +26,8 @@ vi.mock("../../server/services/entity-files/config", () => ({
 
 import { storage } from "../../server/storage";
 import {
-  cleanupWizardAttachments,
   createWizardAttachment,
+  deleteWizardWithAttachments,
 } from "../../server/plugins/wizards/attachments";
 
 function deferred<T = void>() {
@@ -38,38 +38,8 @@ function deferred<T = void>() {
   return { promise, resolve };
 }
 
-async function markDeleting(wizardId: string): Promise<void> {
-  await storage.advisoryLock.withTransactionLock(
-    `wizard-attachments:${wizardId}`,
-    async () => {
-      const current = await storage.wizards.getById(wizardId);
-      if (current && current.status !== "deleting") {
-        await storage.wizards.update(wizardId, { status: "deleting" });
-      }
-    },
-  );
-}
-
-async function finishDeleting(wizardId: string): Promise<boolean> {
-  return storage.advisoryLock.withTransactionLock(
-    `wizard-attachments:${wizardId}`,
-    async () => {
-      const current = await storage.wizards.getById(wizardId);
-      if (!current || current.status !== "deleting") return false;
-      const [attachments, legacyFiles] = await Promise.all([
-        storage.entityFiles.list("wizard", wizardId),
-        storage.files.list({ entityType: "wizard", entityId: wizardId }),
-      ]);
-      if (attachments.length || legacyFiles.length) return false;
-      return storage.wizards.delete(wizardId);
-    },
-  );
-}
-
 describe.sequential("wizard attachment deletion concurrency (database)", () => {
-  const wizardId = `wizard-attachment-race-${process.pid}`;
-  const existingPath = `wizards/${wizardId}/existing.txt`;
-  const uploadedPath = `wizards/${wizardId}/racing.txt`;
+  let wizardId: string;
   let originalDeleteWithFile: typeof storage.entityFiles.deleteWithFile;
 
   beforeEach(async () => {
@@ -77,19 +47,18 @@ describe.sequential("wizard attachment deletion concurrency (database)", () => {
     provider.remove.mockReset().mockResolvedValue(undefined);
     originalDeleteWithFile = storage.entityFiles.deleteWithFile;
 
-    await storage.wizards.delete(wizardId);
-    await storage.wizards.create({
-      id: wizardId,
+    const wizard = await storage.wizards.create({
       type: "attachment-concurrency-test",
       status: "draft",
       data: {},
     });
+    wizardId = wizard.id;
     await storage.entityFiles.createWithFile(
       "wizard",
       wizardId,
       {
         fileName: "existing.txt",
-        storagePath: existingPath,
+        storagePath: `wizards/${wizardId}/existing.txt`,
         mimeType: "text/plain",
         size: 8,
         uploadedBy: "wizard-concurrency-test",
@@ -126,7 +95,7 @@ describe.sequential("wizard attachment deletion concurrency (database)", () => {
     provider.upload.mockImplementation(async () => {
       bytesPersisted.resolve();
       await releaseUpload.promise;
-      return { storagePath: uploadedPath, size: 6 };
+      return { storagePath: `wizards/${wizardId}/racing.txt`, size: 6 };
     });
 
     const upload = createWizardAttachment({
@@ -138,14 +107,6 @@ describe.sequential("wizard attachment deletion concurrency (database)", () => {
     });
     await bytesPersisted.promise;
 
-    await markDeleting(wizardId);
-    expect((await storage.wizards.getById(wizardId))?.status).toBe("deleting");
-
-    releaseUpload.resolve();
-    await expect(upload).rejects.toThrow(
-      "Wizard no longer exists and cannot accept attachments",
-    );
-
     let failOnce = true;
     storage.entityFiles.deleteWithFile = async (...args) => {
       if (failOnce) {
@@ -155,17 +116,23 @@ describe.sequential("wizard attachment deletion concurrency (database)", () => {
       return originalDeleteWithFile.apply(storage.entityFiles, args);
     };
 
-    const failedCleanup = await cleanupWizardAttachments(wizardId);
-    expect(failedCleanup).toMatchObject({ complete: false });
-    expect(failedCleanup.failedFileIds).toHaveLength(1);
+    const firstDeletion = deleteWizardWithAttachments(wizardId);
+    await expect(firstDeletion).resolves.toMatchObject({
+      deleted: false,
+      failedFileIds: expect.any(Array),
+    });
     expect((await storage.wizards.getById(wizardId))?.status).toBe("deleting");
 
+    releaseUpload.resolve();
+    await expect(upload).rejects.toThrow(
+      "Wizard no longer exists and cannot accept attachments",
+    );
+
     storage.entityFiles.deleteWithFile = originalDeleteWithFile;
-    await expect(cleanupWizardAttachments(wizardId)).resolves.toEqual({
-      complete: true,
+    await expect(deleteWizardWithAttachments(wizardId)).resolves.toEqual({
+      deleted: true,
       failedFileIds: [],
     });
-    await expect(finishDeleting(wizardId)).resolves.toBe(true);
 
     expect(await storage.wizards.getById(wizardId)).toBeUndefined();
     expect(await storage.entityFiles.list("wizard", wizardId)).toEqual([]);
