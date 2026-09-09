@@ -1,4 +1,4 @@
-import { getFieldCatalog } from "./evaluate";
+import { getTokenFieldIndex } from "./evaluate";
 import {
   ENTITY_PATH_FIELD,
   entityDeclaresLocation,
@@ -12,7 +12,7 @@ import type { TokenEntity } from "./types";
  * COVERAGE: does a seeded record actually carry every field the editor
  * offers for its kind?
  *
- * The field catalog for an entity kind is derived from the kind's table
+ * The field index for an entity kind is derived from the kind's table
  * columns plus whatever extras a plugin declares — it describes what a
  * template author is ALLOWED to write. A surface that seeds a record
  * hand-built from an event payload can easily satisfy the validator and
@@ -22,11 +22,11 @@ import type { TokenEntity } from "./types";
  *
  * This is the check that catches that gap: give it the record a surface
  * actually seeded and it names the advertised fields the record cannot
- * supply. An open catalog (no closed field list) is not checkable and
+ * supply. An open field index (no closed field list) is not checkable and
  * reports nothing.
  */
-export function missingCatalogFields(entity: TokenEntity): string[] {
-  const entry = getFieldCatalog()[entity.kind];
+export function missingIndexedFields(entity: TokenEntity): string[] {
+  const entry = getTokenFieldIndex()[entity.kind];
   if (!entry || entry.open) return [];
   return entry.names.filter((name) => {
     // A DERIVED field has no key on the row at all, so the row is the

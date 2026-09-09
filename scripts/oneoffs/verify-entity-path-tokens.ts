@@ -40,8 +40,8 @@ async function main() {
     listEntityLocationKinds,
     tabChoicesForKind,
     expandTokenType,
-    missingCatalogFields,
-    buildFieldCatalog,
+    missingIndexedFields,
+    buildTokenFieldIndex,
   } = await import("../../server/plugins/tokens");
   const { grievances, grievanceStatusHistory } = await import(
     "../../shared/schema"
@@ -71,7 +71,7 @@ async function main() {
       inputs.join(", "),
     );
   }
-  const catalog = buildFieldCatalog();
+  const catalog = buildTokenFieldIndex();
   check(
     "grievance advertises a path field",
     (catalog.grievance?.names ?? []).includes("path"),
@@ -178,7 +178,7 @@ async function main() {
     check("no unknown tokens", path.unknownTokens.length === 0);
     check(
       "coverage does not call path missing",
-      !missingCatalogFields({
+      !missingIndexedFields({
         kind: "grievance",
         row: row as unknown as Record<string, unknown>,
         table: grievances,

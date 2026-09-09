@@ -44,6 +44,9 @@ export function registerNotifierTokenContexts(): void {
         // own here would be a second one, free to disagree with the
         // template cards the admin is shown.
         media: plugin.supportedMedia.filter(isMediumName),
+        // A notifier's templates are written on its config screen, and
+        // that whole surface is admin-only.
+        access: "admin",
         ...(plugin.requiredComponent !== undefined
           ? { component: plugin.requiredComponent }
           : {}),

@@ -17,9 +17,6 @@ import { extractTokenExpressions, parseTokenChain } from "@shared/tokens";
 import {
   createTokenEvalContext,
   evaluateChain,
-  buildSegmentSpecsForRoots,
-  buildFieldCatalog,
-  buildTokenCatalogForRoots,
   validateTokenExpressionForRoots,
   describeChain,
   listTokenTreeRoots,
@@ -662,17 +659,18 @@ export function registerBulkMessageRoutes(
     }
   });
 
-  // Token catalog (picker entries) plus the segment graph the client
-  // uses for static chain validation. Both are derived live from the
-  // token plugin registry.
+  // WHAT THIS MESSAGE MAY BE PREVIEWED AGAINST — the only half of the
+  // studio's data that belongs to one message.
   //
-  // The catalog belongs to ONE message, because the studio it feeds
-  // previews against that message's OWN recipients: a bulk author is
-  // writing to a list they have already chosen, so the seeds it supplies
-  // are people who will actually receive this message rather than
+  // A bulk author is writing to a list they have already chosen, so the
+  // seeds are people who will actually receive THIS message rather than
   // whoever the author could look up. The recipients are still filtered
   // by the contact/worker read gates, like every other preview seed.
-  app.get("/api/bulk-tokens/:id", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+  //
+  // What may be WRITTEN is not per message: the token graph for bulk's
+  // roots is the same graph every other surface gets, and the studio
+  // reads it from /api/token-studio/graph for bulk's token context.
+  app.get("/api/bulk-messages/:id/preview-seeds", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
     try {
       const bulk = await storage.bulkMessages.getById(req.params.id);
       if (!bulk) {
@@ -682,8 +680,8 @@ export function registerBulkMessageRoutes(
       const { listTokenPreviewRoots } = await import(
         "../../plugins/tokens/preview-roots"
       );
-      const { buildTokenStudioContext } = await import(
-        "../../plugins/tokens/studio-context"
+      const { buildPreviewSeeds } = await import(
+        "../../plugins/tokens/preview-seeds"
       );
 
       const allParticipants = await storage.bulkParticipants.listForMessageWithRelations(
@@ -759,11 +757,8 @@ export function registerBulkMessageRoutes(
         }
       }
 
-      res.json({
-        tokens: buildTokenCatalogForRoots(rootNames),
-        segments: buildSegmentSpecsForRoots(rootNames),
-        fields: buildFieldCatalog(),
-        studioContext: await buildTokenStudioContext(
+      res.json(
+        await buildPreviewSeeds(
           { storage, req },
           {
             rootNames,
@@ -774,9 +769,9 @@ export function registerBulkMessageRoutes(
             limit: BULK_STUDIO_SEED_LIMIT,
           },
         ),
-      });
+      );
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Failed to load token catalog";
+      const message = error instanceof Error ? error.message : "Failed to load preview seeds";
       res.status(500).json({ message });
     }
   });

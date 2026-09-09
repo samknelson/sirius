@@ -35,7 +35,7 @@ async function main() {
   await loadComponentCache();
   initializeEventNotifierPluginSystem();
   initializeTokenPluginSystem();
-  const { missingCatalogFields } = await import(
+  const { missingIndexedFields } = await import(
     "../../server/plugins/tokens/root-coverage"
   );
   const { renderTokens, createTokenEvalContext } = await import(
@@ -76,7 +76,7 @@ async function main() {
     const built = await root.build(ctx);
     check(`root {{${root.name}}} builds a record`, built !== null);
     if (!built) continue;
-    const missing = missingCatalogFields(built);
+    const missing = missingIndexedFields(built);
     check(
       `root {{${root.name}}} supplies every advertised field`,
       missing.length === 0,

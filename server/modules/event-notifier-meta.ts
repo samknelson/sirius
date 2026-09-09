@@ -43,45 +43,117 @@ export function registerEventNotifierMetaRoutes(
   );
 
   /**
-   * Token catalog for a token-templated notifier's template editor:
-   * the segment graph with the notifier's event entity kind substituted
-   * for the dynamic `event` root, the schema-derived field catalog, and
-   * the notifier's default templates (shown as placeholders / reset
-   * targets). Gated like the rest of the notifier config surface.
+   * The two things a notifier's template editor needs that are the
+   * NOTIFIER'S OWN — one route each, because they are two answers to
+   * two questions and only one of them is about previewing.
+   *
+   * What may be WRITTEN is neither of them: the token graph for this
+   * notifier's roots is the same graph every other surface gets, and
+   * the editor reads it from /api/token-studio/graph for this
+   * notifier's token context.
+   *
+   * Both are gated like the rest of the notifier config surface, which
+   * is also what that context declares.
+   */
+  type LoadedNotifier =
+    | { ok: true; plugin: any; configData: unknown }
+    | { ok: false; status: number; message: string };
+
+  /**
+   * The notifier named in the path, plus the config as it stands on the
+   * admin's screen.
+   *
+   * Both answers below vary with the config being edited — the defaults
+   * because a notifier's fallback text can depend on its other settings
+   * (the T631 link target varies with recipientKind), the seeds because
+   * which recent events count as this notifier's depends on the same
+   * settings — so the editor passes it as ?config=<json>. Malformed
+   * JSON is read as "no config stated" rather than refused: the editor
+   * is mid-edit, and a generic answer beats a broken card.
+   */
+  async function loadNotifier(req: Request): Promise<LoadedNotifier> {
+    const { eventNotifierRegistry } = await import(
+      "../plugins/event-notifier/registry"
+    );
+    const plugin = eventNotifierRegistry.get(req.params.pluginId);
+    if (!plugin?.tokenTemplates) {
+      return {
+        ok: false,
+        status: 404,
+        message: "Notifier not found or not token-templated",
+      };
+    }
+    const { isPluginComponentEnabledSync } = await import("../plugins/_core");
+    if (!isPluginComponentEnabledSync(plugin)) {
+      return { ok: false, status: 404, message: "Notifier component is disabled" };
+    }
+    let configData: unknown;
+    if (typeof req.query.config === "string") {
+      try {
+        configData = JSON.parse(req.query.config);
+      } catch {
+        configData = undefined;
+      }
+    }
+    return { ok: true, plugin, configData };
+  }
+
+  /**
+   * THE NOTIFIER'S DEFAULT TEMPLATES for the config on screen: the text
+   * dispatch would fall back to for every field the admin has not
+   * overridden. The editor shows them as the effective text and reverts
+   * to them, so they are the notifier's own statement and nobody
+   * else's.
    */
   app.get(
-    "/api/event-notifier/token-catalog/:pluginId",
+    "/api/event-notifier/default-templates/:pluginId",
     requireAuth,
     requireAccess("admin"),
     async (req, res) => {
       try {
-        const { eventNotifierRegistry } = await import(
-          "../plugins/event-notifier/registry"
-        );
-        const plugin = eventNotifierRegistry.get(req.params.pluginId);
-        if (!plugin?.tokenTemplates) {
-          return res
-            .status(404)
-            .json({ message: "Notifier not found or not token-templated" });
+        const loaded = await loadNotifier(req);
+        if (!loaded.ok) {
+          return res.status(loaded.status).json({ message: loaded.message });
         }
-        const { isPluginComponentEnabledSync } = await import("../plugins/_core");
-        if (!isPluginComponentEnabledSync(plugin)) {
-          return res.status(404).json({ message: "Notifier component is disabled" });
+        res.json(loaded.plugin.tokenTemplates.defaultTemplates(loaded.configData));
+      } catch (error: any) {
+        res.status(500).json({
+          message: error.message || "Failed to load the notifier's default templates",
+        });
+      }
+    }
+  );
+
+  /**
+   * WHAT THIS NOTIFIER MAY BE PREVIEWED AGAINST.
+   *
+   * A notifier config holds no particular record — it describes events
+   * that have not happened yet — so the records it puts forward are the
+   * ones its RECENT events were about: the notifier's own root builders
+   * replayed over the event bus's in-memory buffer, as ids the kinds
+   * load and gate fresh. A root the replay found nothing for is
+   * previewed as a sample persona, with the reason said where the
+   * picker would be.
+   */
+  app.get(
+    "/api/event-notifier/preview-seeds/:pluginId",
+    requireAuth,
+    requireAccess("admin"),
+    async (req, res) => {
+      try {
+        const loaded = await loadNotifier(req);
+        if (!loaded.ok) {
+          return res.status(loaded.status).json({ message: loaded.message });
         }
-        const {
-          buildSegmentSpecsForRoots,
-          buildFieldCatalog,
-          buildTokenCatalogForRoots,
-          listTokenTreeRoots,
-        } = await import("../plugins/tokens");
+        const { plugin, configData } = loaded;
         const { tokenContextRootNames } = await import(
           "../plugins/tokens/contexts"
         );
         const { notifierTokenContextId } = await import(
           "@shared/token-contexts"
         );
-        const { buildTokenStudioContext } = await import(
-          "../plugins/tokens/studio-context"
+        const { buildPreviewSeeds } = await import(
+          "../plugins/tokens/preview-seeds"
         );
         const { buildNotifierStudioRecords, NOTIFIER_STUDIO_SEED_LIMIT } =
           await import("../plugins/event-notifier/studio-records");
@@ -89,47 +161,13 @@ export function registerEventNotifierMetaRoutes(
         // notifier's token context — its declared record roots, the
         // event envelope and the recipient contact. The editor reads the
         // same context from the `token-contexts` catalog and its config
-        // validation accepts tokens against it too, so the editor cannot
-        // offer a token that save then rejects.
+        // validation accepts tokens against it too, so a root seeded
+        // here is one the author can actually write about.
         const rootNames = tokenContextRootNames(
           notifierTokenContextId(plugin.id),
         );
-        // Defaults may depend on the config's other fields (e.g. the T631
-        // link target varies with recipientKind); the editor passes the
-        // relevant subset as ?config=<json> so placeholders match what
-        // dispatch would actually fall back to. Malformed → generic.
-        let configData: unknown;
-        if (typeof req.query.config === "string") {
-          try {
-            configData = JSON.parse(req.query.config);
-          } catch {
-            configData = undefined;
-          }
-        }
-        // No root list here: the editor reads this notifier's roots from
-        // its token context, so what this endpoint answers is what it
-        // alone knows — the tokens for those roots, the notifier's own
-        // default templates, and the records its recent events were
-        // about.
-        res.json({
-          segments: buildSegmentSpecsForRoots(rootNames),
-          fields: buildFieldCatalog(),
-          defaults: plugin.tokenTemplates.defaultTemplates(configData),
-          // Picker entries for the Template Studio token browser (the
-          // notifier's named record roots included).
-          tokens: buildTokenCatalogForRoots(rootNames),
-          // Lazy tree roots, so the picker can browse deep chains
-          // without the flat catalog enumerating them all.
-          treeRoots: listTokenTreeRoots(rootNames),
-          // What the studio may preview each of those roots as. A
-          // notifier config holds no particular record — it describes
-          // events that have not happened yet — so the records it puts
-          // forward are the ones its RECENT events were about: the
-          // notifier's own root builders replayed over the event bus's
-          // in-memory buffer, as ids the kinds load and gate fresh. A
-          // root the replay found nothing for is previewed as a sample
-          // persona, with the reason said where the picker would be.
-          studioContext: await buildTokenStudioContext(
+        res.json(
+          await buildPreviewSeeds(
             { storage, req },
             {
               rootNames,
@@ -137,11 +175,11 @@ export function registerEventNotifierMetaRoutes(
               limit: NOTIFIER_STUDIO_SEED_LIMIT,
             },
           ),
-        });
+        );
       } catch (error: any) {
         res
           .status(500)
-          .json({ message: error.message || "Failed to load token catalog" });
+          .json({ message: error.message || "Failed to load preview seeds" });
       }
     }
   );

@@ -1,4 +1,5 @@
 import type { TokenContextDeclaration } from "@shared/token-contexts";
+import { isComponentEnabledSync } from "../../services/component-cache";
 
 /**
  * THE TOKEN CONTEXT REGISTRY.
@@ -34,6 +35,13 @@ const declared = new Map<string, TokenContextDeclaration>();
 const sources: Array<() => TokenContextDeclaration[]> = [];
 
 function checkDeclaration(declaration: TokenContextDeclaration): void {
+  if (!declaration.access) {
+    throw new Error(
+      `Token context "${declaration.id}" names no access policy. A context says ` +
+        `who may write in it: the shared token-graph route is answering for ` +
+        `surfaces gated three different ways and has no gate of its own.`,
+    );
+  }
   if (declaration.rootNames.length === 0) {
     throw new Error(
       `Token context "${declaration.id}" names no roots. A context IS its root ` +
@@ -124,4 +132,58 @@ export function tokenContextRootNames(id: string): string[] {
     );
   }
   return [...context.rootNames];
+}
+
+/**
+ * THE ONE REFUSAL for "may this caller work in this context?".
+ *
+ * The shared token-graph route answers for every context, so it has no
+ * gate of its own to hang on the router; it resolves one per request
+ * from the context named. Both refusals live here rather than at the
+ * call site so that a second caller cannot invent a friendlier reading
+ * of them:
+ *
+ *  - an id this deployment does not offer is a 404, the same answer the
+ *    `token-contexts` catalog already gives the browser;
+ *  - a context that states no policy is a 403, never a pass. An
+ *    unstated gate means nobody wrote one down, and the graph is built
+ *    from every plugin in the registry, so guessing "admin" and
+ *    guessing "anyone" are both wrong.
+ */
+export type TokenContextGate =
+  | { ok: true; policyId: string }
+  | { ok: false; status: 403 | 404; message: string };
+
+export function resolveTokenContextGate(id: string): TokenContextGate {
+  const context = getTokenContext(id);
+  // A surface whose component is switched off is a surface this
+  // deployment does not have, and the catalog the client reads says so
+  // by leaving it out. The 404 below has to mean the same thing here,
+  // or a context nobody can reach through the UI is still answerable by
+  // URL — and the refusal that says "this deployment offers no such
+  // context" would be the one telling the lie.
+  //
+  // This is a check on the SURFACE, not on the tokens: what a written
+  // chain means stays component-blind (a template outlives the switch),
+  // and nothing in saving or validating a template comes through here.
+  const off =
+    context?.component !== undefined &&
+    !isComponentEnabledSync(context.component);
+  if (!context || off) {
+    return {
+      ok: false,
+      status: 404,
+      message: `This deployment offers no token context "${id}".`,
+    };
+  }
+  if (!context.access) {
+    return {
+      ok: false,
+      status: 403,
+      message:
+        `Token context "${id}" states no access policy, so there is nobody it ` +
+        `can be answered for.`,
+    };
+  }
+  return { ok: true, policyId: context.access };
 }

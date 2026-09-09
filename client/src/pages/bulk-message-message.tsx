@@ -31,7 +31,8 @@ import { MEDIUM_FIELDS, isSafeRelativePath } from "@shared/delivery-fields";
  */
 
 /** Bulk's token endpoints; the studio's own are gated differently. */
-const bulkTokenCatalogUrl = (messageId: string) => `/api/bulk-tokens/${messageId}`;
+const bulkSeedsUrl = (messageId: string) =>
+  `/api/bulk-messages/${messageId}/preview-seeds`;
 const BULK_TOKEN_TREE_URL = "/api/bulk-tokens/tree";
 
 // Field declarations are shared between the summary rows and the studio
@@ -137,7 +138,7 @@ interface FormProps {
    * author may WRITE is not per message: those roots come from bulk
    * messaging's token context, named on each studio below.
    */
-  hostCatalogUrl: string;
+  seedsUrl: string;
 }
 
 function SaveButton({
@@ -163,7 +164,7 @@ function SaveButton({
   );
 }
 
-function EmailForm({ record, onSave, isPending, hostCatalogUrl }: FormProps) {
+function EmailForm({ record, onSave, isPending, seedsUrl }: FormProps) {
   const [form, setForm] = useState({ subject: "", bodyHtml: "" });
 
   useEffect(() => {
@@ -190,7 +191,7 @@ function EmailForm({ record, onSave, isPending, hostCatalogUrl }: FormProps) {
             channel="email"
             fieldSpecs={MEDIUM_FIELDS.email}
             contextId={BULK_MESSAGE_TOKEN_CONTEXT}
-            hostCatalogUrl={hostCatalogUrl}
+            seedsUrl={seedsUrl}
             treeBaseUrl={BULK_TOKEN_TREE_URL}
             fields={EMAIL_FIELDS}
             values={form}
@@ -211,7 +212,7 @@ function EmailForm({ record, onSave, isPending, hostCatalogUrl }: FormProps) {
   );
 }
 
-function SmsForm({ record, onSave, isPending, hostCatalogUrl }: FormProps) {
+function SmsForm({ record, onSave, isPending, seedsUrl }: FormProps) {
   const [body, setBody] = useState("");
 
   useEffect(() => {
@@ -241,7 +242,7 @@ function SmsForm({ record, onSave, isPending, hostCatalogUrl }: FormProps) {
             channel="sms"
             fieldSpecs={MEDIUM_FIELDS.sms}
             contextId={BULK_MESSAGE_TOKEN_CONTEXT}
-            hostCatalogUrl={hostCatalogUrl}
+            seedsUrl={seedsUrl}
             treeBaseUrl={BULK_TOKEN_TREE_URL}
             fields={SMS_FIELDS}
             values={{ body }}
@@ -259,7 +260,7 @@ function SmsForm({ record, onSave, isPending, hostCatalogUrl }: FormProps) {
   );
 }
 
-function PostalForm({ record, onSave, isPending, hostCatalogUrl }: FormProps) {
+function PostalForm({ record, onSave, isPending, seedsUrl }: FormProps) {
   const [form, setForm] = useState({
     description: "",
     templateId: "",
@@ -294,7 +295,7 @@ function PostalForm({ record, onSave, isPending, hostCatalogUrl }: FormProps) {
             channel="postal"
             fieldSpecs={MEDIUM_FIELDS.postal}
             contextId={BULK_MESSAGE_TOKEN_CONTEXT}
-            hostCatalogUrl={hostCatalogUrl}
+            seedsUrl={seedsUrl}
             treeBaseUrl={BULK_TOKEN_TREE_URL}
             fields={POSTAL_FIELDS}
             values={{ description: form.description }}
@@ -340,7 +341,7 @@ function PostalForm({ record, onSave, isPending, hostCatalogUrl }: FormProps) {
   );
 }
 
-function InappForm({ record, onSave, isPending, hostCatalogUrl }: FormProps) {
+function InappForm({ record, onSave, isPending, seedsUrl }: FormProps) {
   const [form, setForm] = useState({
     title: "",
     body: "",
@@ -399,7 +400,7 @@ function InappForm({ record, onSave, isPending, hostCatalogUrl }: FormProps) {
             channel="inapp"
             fieldSpecs={MEDIUM_FIELDS.inapp}
             contextId={BULK_MESSAGE_TOKEN_CONTEXT}
-            hostCatalogUrl={hostCatalogUrl}
+            seedsUrl={seedsUrl}
             treeBaseUrl={BULK_TOKEN_TREE_URL}
             fields={INAPP_FIELDS}
             values={form}
@@ -528,7 +529,7 @@ function BulkMessageMessageContent() {
               record={record}
               onSave={(data) => saveMutation.mutate(data)}
               isPending={saveMutation.isPending}
-              hostCatalogUrl={bulkTokenCatalogUrl(bulkMessage.id)}
+              seedsUrl={bulkSeedsUrl(bulkMessage.id)}
             />
           )}
         </CardContent>

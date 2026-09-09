@@ -63,7 +63,7 @@ registerTokenPlugin({
     // `{{…provider}}` on its own means the provider's name — the only
     // field of the row that names it to a reader.
     defaultLeaf: "name",
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     requiredComponent: TRUST_PROVIDERS_COMPONENT,
     sampleSets: PROVIDER_SAMPLE_SETS,
     // A provider has its own page.
@@ -112,7 +112,7 @@ registerTokenPlugin({
     inputTypes: [],
     outputType: PROVIDER_CONTACT_ENTITY_KIND,
     entityTable: trustProviderContacts,
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     requiredComponent: TRUST_PROVIDERS_COMPONENT,
     entityLocation: {
       tabEntity: "provider_contact",

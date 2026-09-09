@@ -6,7 +6,7 @@ import {
   renderTokens,
   createTokenEvalContext,
   evaluateChain,
-  buildTokenCatalogForRoots,
+  buildTokenPickerEntries,
 } from "../../plugins/tokens";
 import type { TokenRootSeed } from "../../plugins/tokens/types";
 import { BULK_POSTAL_MERGE_ROOT_NAMES } from "./token-roots";
@@ -79,7 +79,7 @@ export async function deliverPostal(
   // list: a Lob template is authored outside this app, so a key that
   // stops being supplied is a hole in a letter nobody can see coming.
   const tokenMerge: Record<string, string> = {};
-  for (const entry of buildTokenCatalogForRoots(BULK_POSTAL_MERGE_ROOT_NAMES)) {
+  for (const entry of buildTokenPickerEntries(BULK_POSTAL_MERGE_ROOT_NAMES)) {
     const parsed = parseTokenChain(entry.id);
     if (!parsed.ok) continue;
     const result = await evaluateChain(parsed.segments, ctx);

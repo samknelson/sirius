@@ -182,7 +182,7 @@ export type ChainValidation =
  * marks entity types whose field set can't be enumerated — for those,
  * any raw string is accepted (same posture as date format strings).
  */
-export type TokenFieldCatalog = Record<
+export type TokenFieldIndex = Record<
   string,
   { names: string[]; open?: boolean }
 >;
@@ -204,7 +204,7 @@ export function normalizeFieldName(name: string): string {
 export function validateChain(
   segments: TokenSegment[],
   specs: TokenSegmentSpec[],
-  fields?: TokenFieldCatalog,
+  fields?: TokenFieldIndex,
 ): ChainValidation {
   let currentType = "root";
   for (const seg of segments) {
@@ -309,7 +309,7 @@ export interface TemplateTokenAnalysis {
 export function analyzeTemplateTokens(
   template: string | null | undefined,
   specs: TokenSegmentSpec[],
-  fields?: TokenFieldCatalog,
+  fields?: TokenFieldIndex,
 ): TemplateTokenAnalysis {
   const valid: string[] = [];
   const invalid: Array<{ expr: string; error: string }> = [];
@@ -330,7 +330,7 @@ export function analyzeTemplateTokens(
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Catalog entries (picker UI)
+// Picker entries (token browser UI)
 // ─────────────────────────────────────────────────────────────────
 
 /**
@@ -338,7 +338,7 @@ export function analyzeTemplateTokens(
  * text (defaults omitted); `insertText` is what gets inserted into the
  * template (always `{{id}}`).
  */
-export interface TokenCatalogEntry {
+export interface TokenPickerEntry {
   id: string;
   label: string;
   description: string;

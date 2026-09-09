@@ -1,13 +1,13 @@
 import { MAX_CHAIN_DEPTH, type TokenArgSpec } from "@shared/tokens";
 import { tokenPluginRegistry } from "./registry";
-import { buildFieldCatalog } from "./evaluate";
+import { buildTokenFieldIndex } from "./evaluate";
 import { isComponentEnabledSync } from "../../services/component-cache";
 import type { TokenEntityType, TokenPlugin } from "./types";
 
 /**
  * BROWSABLE token tree: one level at a time.
  *
- * The flat catalog (`buildTokenCatalog`) enumerates every chain up
+ * The flat picker entries (`buildTokenPickerEntries`) enumerate every chain up
  * front, which forces a depth cap and turns a rich record graph into a
  * thousand-row list. This API answers the two questions a tree picker
  * actually asks — "what roots may I start at?" and "what can I write
@@ -155,8 +155,8 @@ function argSuffix(args: Record<string, TokenArgSpec> | undefined): {
  * name does not exist for its authors: a bulk message is a list of
  * contacts, so offering it the employer root would invite a token whose
  * record the message has never heard of. The list is the surface's
- * statement about itself, so it is also the list its catalog, its
- * validation and its preview panel are built from.
+ * statement about itself, so it is also the list its picker entries,
+ * its validation and its preview panel are built from.
  *
  * A name no enabled root answers to is skipped — a root whose component
  * is off is simply not on offer.
@@ -188,13 +188,13 @@ export function listTokenTreeRoots(rootNames: string[]): TokenTreeRoot[] {
  * What can follow a chain that has arrived at `type`: its relations
  * (with their arguments), its value leaves, and its field names.
  *
- * Hidden-from-catalog plugins ARE included: hiding keeps them out of
+ * Hidden-from-picker plugins ARE included: hiding keeps them out of
  * the flat bulk-messaging list, but an author who has already navigated
  * to the type they hang off is entitled to see them.
  */
 export function expandTokenType(type: TokenEntityType): TokenTypeExpansion {
   const plugins = tokenPluginRegistry.listEnabledSync();
-  const catalog = buildFieldCatalog()[type];
+  const fieldIndex = buildTokenFieldIndex()[type];
   const children: TokenTreeChild[] = [];
 
   for (const plugin of plugins) {
@@ -234,8 +234,8 @@ export function expandTokenType(type: TokenEntityType): TokenTypeExpansion {
     }
   }
 
-  const fieldsOpen = Boolean(catalog?.open);
-  for (const name of catalog?.names ?? []) {
+  const fieldsOpen = Boolean(fieldIndex?.open);
+  for (const name of fieldIndex?.names ?? []) {
     children.push({
       kind: "field",
       segment: "field",

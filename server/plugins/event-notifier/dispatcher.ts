@@ -50,8 +50,8 @@ async function warnOnUncoveredRoot(
   try {
     // Dynamically imported: a static import would drag the token evaluator
     // onto the dispatcher's module graph for a development-only check.
-    const { missingCatalogFields } = await import("../tokens/root-coverage");
-    const missing = missingCatalogFields(entity);
+    const { missingIndexedFields } = await import("../tokens/root-coverage");
+    const missing = missingIndexedFields(entity);
     if (missing.length === 0) return;
     logger.warn(
       "Event-notifier root offers fields its record cannot supply; they render blank in delivered messages",

@@ -190,7 +190,7 @@ registerTokenPlugin({
     entityTable: workers,
     entityFields: WORKER_EXTRA_FIELDS,
     defaultLeaf: WORKER_DEFAULT_LEAF,
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
   },
   async resolve(entity, _args, ctx) {
     const c = tokenEntityOf(entity, "contact");

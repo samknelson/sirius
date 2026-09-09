@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { type TokenCatalogEntry as TokenDefinition } from "@shared/tokens";
+import { type TokenPickerEntry as TokenDefinition } from "@shared/tokens";
 import { escapeHtml, sanitizeHtml } from "@shared/utils/html";
 
 const SPECIAL_CHARACTERS = [

@@ -34,7 +34,7 @@ import {
  */
 
 /** One real record the author may seed a root with. */
-export interface TokenStudioSeedRecord {
+export interface PreviewSeedRecord {
   id: string;
   label: string;
   hint?: string;
@@ -47,7 +47,7 @@ export interface TokenStudioSeedRecord {
 }
 
 /** Why a root has no real records to pick from. */
-export type TokenStudioNoRecordsReason =
+export type PreviewSeedNoRecordsReason =
   /**
    * Nothing reached the gate: the container supplied no records for
    * this root, or the kind's component is switched off so its records
@@ -65,7 +65,7 @@ export type TokenStudioNoRecordsReason =
   | "not-previewable";
 
 /** One root, with everything the author may render it as. */
-export interface TokenStudioContextRoot {
+export interface PreviewSeedRoot {
   /** Root NAME — the segment a chain starts with (`dispatch`, `worker`). */
   name: string;
   kind: TokenEntityType;
@@ -77,10 +77,10 @@ export interface TokenStudioContextRoot {
    * caller. Empty means personas only — and {@link noRecords} says
    * which of the several reasons for that this one is.
    */
-  records: TokenStudioSeedRecord[];
+  records: PreviewSeedRecord[];
   /** Why `records` is empty; absent whenever there are records. */
   noRecords?: {
-    reason: TokenStudioNoRecordsReason;
+    reason: PreviewSeedNoRecordsReason;
     /** The container's own words for an empty list it supplied. */
     note?: string;
     /** The kind's refusal, when it cannot be previewed at all. */
@@ -88,14 +88,14 @@ export interface TokenStudioContextRoot {
   };
 }
 
-export interface TokenStudioContext {
-  roots: TokenStudioContextRoot[];
+export interface PreviewSeeds {
+  roots: PreviewSeedRoot[];
 }
 
 /** How many of a container's records one root shows. */
-export const STUDIO_CONTEXT_RECORD_LIMIT = 20;
+export const PREVIEW_SEED_RECORD_LIMIT = 20;
 
-export interface BuildTokenStudioContextOptions {
+export interface BuildPreviewSeedsOptions {
   /**
    * The COMPLETE ordered list of roots this container states, by root
    * NAME. It is the panel the author sees, top to bottom, so
@@ -126,11 +126,11 @@ export interface BuildTokenStudioContextOptions {
   limit?: number;
 }
 
-export async function buildTokenStudioContext(
+export async function buildPreviewSeeds(
   ctx: TokenPreviewContext & { storage: IStorage },
-  options: BuildTokenStudioContextOptions = {},
-): Promise<TokenStudioContext> {
-  const limit = options.limit ?? STUDIO_CONTEXT_RECORD_LIMIT;
+  options: BuildPreviewSeedsOptions = {},
+): Promise<PreviewSeeds> {
+  const limit = options.limit ?? PREVIEW_SEED_RECORD_LIMIT;
   const supplied = options.recordsByRoot ?? {};
   // A container that names no roots has said nothing to preview
   // against, which is never what it meant: the list is the panel. Since
@@ -138,7 +138,7 @@ export async function buildTokenStudioContext(
   // shipping an empty "Preview With" to the author.
   if (!options.rootNames?.length) {
     throw new Error(
-      "buildTokenStudioContext needs the complete list of roots this container states, by root name",
+      "buildPreviewSeeds needs the complete list of roots this container states, by root name",
     );
   }
 
@@ -146,7 +146,7 @@ export async function buildTokenStudioContext(
 
   const roots = await Promise.all(
     listTokenPreviewRoots(options.rootNames ?? []).map(
-      async (root): Promise<TokenStudioContextRoot> => {
+      async (root): Promise<PreviewSeedRoot> => {
         const own = supplied[root.name] ?? [];
         const gated = await filterTokenPreviewRecords(
           root.kind,
@@ -199,7 +199,7 @@ export async function buildTokenStudioContext(
 function describeNoRecords(
   gated: TokenPreviewFilterResult,
   note: string | undefined,
-): NonNullable<TokenStudioContextRoot["noRecords"]> {
+): NonNullable<PreviewSeedRoot["noRecords"]> {
   if (!gated.ok) {
     return { reason: "not-previewable", detail: gated.message };
   }

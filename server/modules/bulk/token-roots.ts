@@ -83,6 +83,10 @@ registerTokenContext({
   // Bulk authors a template per medium, all four of them; which ones a
   // given message uses is that message's own configured state.
   media: [...MEDIUM_NAMES],
+  // The gate on the bulk message screens themselves, so the shared
+  // token-graph route answers this context for exactly the people who
+  // can open the editor it is drawn in.
+  access: "bulk.edit",
 });
 
 /**

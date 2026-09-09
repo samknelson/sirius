@@ -32,12 +32,12 @@ async function main() {
   initializeTokenPluginSystem();
 
   const {
-    buildTokenCatalogForRoots,
+    buildTokenPickerEntries,
     validateTokenExpressionForRoots,
     renderTokens,
     createTokenEvalContext,
   } = await import("../../server/plugins/tokens");
-  const { missingCatalogFields } = await import(
+  const { missingIndexedFields } = await import(
     "../../server/plugins/tokens/root-coverage"
   );
   // Importing the module is what registers bulk messaging's token
@@ -83,7 +83,7 @@ async function main() {
     previewRoots.map((r) => `${r.name} (${r.label})`).join(", "),
   );
 
-  const catalog = buildTokenCatalogForRoots(bulkRootNames).map((e) => e.id);
+  const catalog = buildTokenPickerEntries(bulkRootNames).map((e) => e.id);
   check(
     "the picker offers the participant and the chains through it",
     catalog.includes("bulk_participant") &&
@@ -150,7 +150,7 @@ async function main() {
     contactId: "00000000-0000-0000-0000-000000000001",
     medium: "email",
   });
-  const missing = missingCatalogFields(sampleRow);
+  const missing = missingIndexedFields(sampleRow);
   check(
     "every advertised field is present in the seeded row",
     missing.length === 0,
@@ -260,7 +260,7 @@ async function main() {
     !BULK_POSTAL_MERGE_ROOT_NAMES.includes(BULK_PARTICIPANT_ROOT_NAME),
     BULK_POSTAL_MERGE_ROOT_NAMES.join(", "),
   );
-  const mergeKeys = buildTokenCatalogForRoots(BULK_POSTAL_MERGE_ROOT_NAMES).map(
+  const mergeKeys = buildTokenPickerEntries(BULK_POSTAL_MERGE_ROOT_NAMES).map(
     (e) => e.id,
   );
   check(

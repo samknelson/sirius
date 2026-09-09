@@ -10,9 +10,6 @@ import { composeTokenContextId } from "@shared/token-contexts";
 import { MEDIUM_FIELDS } from "@shared/delivery-fields";
 import { storage } from "../storage";
 import {
-  buildFieldCatalog,
-  buildSegmentSpecsForRoots,
-  buildTokenCatalogForRoots,
   expandTokenType,
   listTokenTreeRoots,
   registerTokenContext,
@@ -23,7 +20,7 @@ import {
   type TokenEntity,
   type TokenEntityType,
 } from "../plugins/tokens";
-import { buildTokenStudioContext } from "../plugins/tokens/studio-context";
+import { buildPreviewSeeds } from "../plugins/tokens/preview-seeds";
 import { CONTACT_ROOT_NAME } from "../plugins/tokens/plugins/contact";
 import { SYSTEM_ROOT_NAME } from "../plugins/tokens/plugins/system";
 import { WORKER_ROOT_NAME } from "../plugins/tokens/plugins/worker";
@@ -65,7 +62,7 @@ import { renderTemplatePreview } from "./template-preview";
  * surface declares them, so `{{employer_contact…}}` stays an unknown
  * token in bulk messaging and in every notifier.
  *
- * Declared at module scope because every reader below — the catalog,
+ * Declared at module scope because every reader below — the seeds,
  * the tree, the render — needs them to exist by the time it runs, and
  * they all reach them through this file.
  */
@@ -83,6 +80,16 @@ registerTokenContextRoot({
   description: "The provider contact this message is being written to",
   requiredComponent: "trust.providers",
 });
+
+/**
+ * WHO MAY COMPOSE — the gate on every route in this file, and the one
+ * each scope's token context carries so the shared token-graph route
+ * answers for the same people.
+ *
+ * A compose screen lives on a record's Communications tab, which is
+ * staff territory; there is no narrower thing to be allowed to do here.
+ */
+const COMPOSE_ACCESS_POLICY = "staff";
 
 /**
  * WHAT A COMPOSE SCREEN IS ABOUT, per scope.
@@ -113,7 +120,7 @@ interface ComposeScope {
 /**
  * The COMPLETE ordered root list for one scope — read from the scope's
  * token context, which is where it is declared (see the registrations
- * below). Every reader here goes through this: the catalog, the tree,
+ * below). Every reader here goes through this: the seeds, the tree,
  * the render and the studio the author is looking at are then all
  * reading one list.
  */
@@ -171,6 +178,7 @@ registerTokenContext({
     "A one-off message written on a worker's Communications tab, about that worker.",
   rootNames: [WORKER_ROOT_NAME, CONTACT_ROOT_NAME, SYSTEM_ROOT_NAME],
   media: [...COMPOSE_CHANNELS],
+  access: COMPOSE_ACCESS_POLICY,
 });
 
 registerTokenContext({
@@ -181,6 +189,7 @@ registerTokenContext({
     "about that employer link.",
   rootNames: [EMPLOYER_CONTACT_ROOT_NAME, CONTACT_ROOT_NAME, SYSTEM_ROOT_NAME],
   media: [...COMPOSE_CHANNELS],
+  access: COMPOSE_ACCESS_POLICY,
 });
 
 registerTokenContext({
@@ -191,6 +200,7 @@ registerTokenContext({
     "tab, about that provider link.",
   rootNames: [PROVIDER_CONTACT_ROOT_NAME, CONTACT_ROOT_NAME, SYSTEM_ROOT_NAME],
   media: [...COMPOSE_CHANNELS],
+  access: COMPOSE_ACCESS_POLICY,
   // Same gate as the provider-contact root itself: with the component
   // off there is no such screen and no such context.
   component: "trust.providers",
@@ -315,19 +325,22 @@ export function registerCommComposeRoutes(
   requireAccess: any,
 ) {
   /**
-   * The studio's catalog for one compose screen: the tokens, the
-   * segment graph and the field catalog for exactly this scope's roots,
-   * plus the single real record each seedable root is previewed
-   * against.
+   * WHAT THIS COMPOSE SCREEN MAY BE PREVIEWED AGAINST: the single real
+   * record behind each seedable root of the scope.
    *
-   * There is no picker to fill: a compose screen is about one person,
+   * There is no picker to fill — a compose screen is about one person,
    * so it supplies one record per root and the author previews against
    * the message they are actually writing.
+   *
+   * What may be WRITTEN is not this screen's to answer: the token graph
+   * for the scope's roots is the same graph every other surface gets,
+   * and the studio reads it from /api/token-studio/graph for the
+   * scope's token context.
    */
   app.get(
-    "/api/comm-compose/token-catalog",
+    "/api/comm-compose/preview-seeds",
     requireAuth,
-    requireAccess("staff"),
+    requireAccess(COMPOSE_ACCESS_POLICY),
     async (req: any, res) => {
       try {
         const target = await resolveTarget(
@@ -344,13 +357,10 @@ export function registerCommComposeRoutes(
 
         // No root list here: the studio reads the scope's roots from
         // the `token-contexts` catalog, so this endpoint answers only
-        // for what it alone knows — the tokens for those roots and the
-        // one real record each seedable root is previewed against.
-        res.json({
-          tokens: buildTokenCatalogForRoots(rootNames),
-          segments: buildSegmentSpecsForRoots(rootNames),
-          fields: buildFieldCatalog(),
-          studioContext: await buildTokenStudioContext(
+        // for what it alone knows — the one real record each seedable
+        // root is previewed against.
+        res.json(
+          await buildPreviewSeeds(
             { storage, req },
             {
               rootNames,
@@ -364,10 +374,10 @@ export function registerCommComposeRoutes(
               },
             },
           ),
-        });
+        );
       } catch (error: unknown) {
         const message =
-          error instanceof Error ? error.message : "Failed to load token catalog";
+          error instanceof Error ? error.message : "Failed to load preview seeds";
         res.status(500).json({ message });
       }
     },
@@ -379,7 +389,7 @@ export function registerCommComposeRoutes(
   app.get(
     "/api/comm-compose/tree/:scope/roots",
     requireAuth,
-    requireAccess("staff"),
+    requireAccess(COMPOSE_ACCESS_POLICY),
     (req, res) => {
       const scope = scopeFromParam(req.params.scope);
       if (!scope) {
@@ -393,7 +403,7 @@ export function registerCommComposeRoutes(
   app.get(
     "/api/comm-compose/tree/:scope/type/:type",
     requireAuth,
-    requireAccess("staff"),
+    requireAccess(COMPOSE_ACCESS_POLICY),
     (req, res) => {
       const scope = scopeFromParam(req.params.scope);
       if (!scope) {
@@ -412,7 +422,7 @@ export function registerCommComposeRoutes(
   app.get(
     "/api/comm-compose/tree/:scope/search",
     requireAuth,
-    requireAccess("staff"),
+    requireAccess(COMPOSE_ACCESS_POLICY),
     (req, res) => {
       const scope = scopeFromParam(req.params.scope);
       if (!scope) {
@@ -440,7 +450,7 @@ export function registerCommComposeRoutes(
   app.post(
     "/api/comm-compose/render",
     requireAuth,
-    requireAccess("staff"),
+    requireAccess(COMPOSE_ACCESS_POLICY),
     async (req: any, res) => {
       try {
         const { scope: scopeName, recordId, channel, values } = req.body ?? {};

@@ -49,6 +49,26 @@ export interface TokenContextDeclaration {
    * second hand-written list of its channels.
    */
   media: MediumName[];
+  /**
+   * WHO MAY WRITE IN THIS CONTEXT — the access policy id guarding the
+   * surface itself (`bulk.edit` for a bulk message, `staff` for a
+   * compose screen, `admin` for a notifier's config).
+   *
+   * Stated here because the token GRAPH — the picker entries, the
+   * segment specs, the field index — is the same everywhere and is
+   * therefore built once, in one place, for whichever context is named.
+   * That one route cannot carry one gate: it is answering for surfaces
+   * gated three different ways, so the gate has to travel with the
+   * thing being asked about. A context that names none is refused, not
+   * waved through: an unstated gate is a wiring mistake, and the only
+   * safe reading of it is "nobody".
+   *
+   * Server-side only. It is deliberately NOT published on the context's
+   * catalog entry: what a browser may do is decided by the server on
+   * every request, and shipping the policy id would invite a client to
+   * decide it instead.
+   */
+  access: string;
   /** Component that must be enabled for the surface to exist. */
   component?: string;
 }

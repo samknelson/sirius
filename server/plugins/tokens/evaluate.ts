@@ -5,8 +5,8 @@ import {
   normalizeFieldName,
   type TokenSegment,
   type TokenSegmentSpec,
-  type TokenFieldCatalog,
-  type TokenCatalogEntry,
+  type TokenFieldIndex,
+  type TokenPickerEntry,
 } from "@shared/tokens";
 import type { TokenValueCleaner } from "@shared/delivery-fields";
 import { getTableColumns } from "drizzle-orm";
@@ -44,7 +44,7 @@ function specOf(p: TokenPlugin): TokenSegmentSpec {
  * or undefined if the kind has no default leaf. Looks up the first
  * registered plugin whose outputType matches and declares a defaultLeaf.
  *
- * Component-blind, like the segment specs and the field catalog below:
+ * Component-blind, like the segment specs and the field index below:
  * what `{{…worker}}` on its own MEANS is a property of the kind, and a
  * switched-off component must not turn a stored short form into an
  * unknown token.
@@ -72,7 +72,7 @@ function getDefaultLeafForKind(kind: TokenEntityType): string | undefined {
  * property of the record, not of the surface.
  *
  * COMPONENT STATE IS NOT PART OF THIS. Only the OFFER narrows when a
- * component is switched off (the catalog, the tree, the picker); what a
+ * component is switched off (the picker entries, the tree); what a
  * written token MEANS does not, exactly as an argument's declared
  * choices keep validating while the picker stops offering the ones
  * whose component is off. Otherwise flipping a component off would
@@ -98,28 +98,28 @@ export function buildSegmentSpecsForRoots(rootNames: string[]): TokenSegmentSpec
  * Drizzle schema of each entity plugin's declared table (plus derived
  * extras). Never hardcoded — new columns are picked up automatically.
  */
-let fieldCatalogCache: TokenFieldCatalog | null = null;
-let fieldCatalogVersion = "";
+let fieldIndexCache: TokenFieldIndex | null = null;
+let fieldIndexVersion = "";
 
 /**
- * Cached field catalog. The Drizzle schema is static, but what the
- * catalog is built FROM is not: plugins can register after the first
+ * Cached field index. The Drizzle schema is static, but what the
+ * index is built FROM is not: plugins can register after the first
  * render (a notifier module declaring its named record roots), and a
  * shared root can gain merged fields. Both bump the registry version,
  * so validation (which builds fresh) and delivery (which reads this)
  * can never disagree about whether a field name exists.
  *
- * Component state is deliberately NOT in the key: the catalog no longer
+ * Component state is deliberately NOT in the key: the index no longer
  * walks only the switched-on plugins, so toggling a component cannot
  * change what it holds.
  */
-export function getFieldCatalog(): TokenFieldCatalog {
+export function getTokenFieldIndex(): TokenFieldIndex {
   const version = `${tokenRegistryVersion()}`;
-  if (!fieldCatalogCache || fieldCatalogVersion !== version) {
-    fieldCatalogCache = buildFieldCatalog();
-    fieldCatalogVersion = version;
+  if (!fieldIndexCache || fieldIndexVersion !== version) {
+    fieldIndexCache = buildTokenFieldIndex();
+    fieldIndexVersion = version;
   }
-  return fieldCatalogCache;
+  return fieldIndexCache;
 }
 
 /**
@@ -129,12 +129,12 @@ export function getFieldCatalog(): TokenFieldCatalog {
  * `{{worker.cardcheck.field(name="status")}}` must not become an
  * unknown field the day card checks are switched off.
  */
-export function buildFieldCatalog(): TokenFieldCatalog {
-  const catalog: TokenFieldCatalog = {};
+export function buildTokenFieldIndex(): TokenFieldIndex {
+  const index: TokenFieldIndex = {};
   for (const p of tokenPluginRegistry.list()) {
     const type = p.metadata.outputType;
     if (type === "value") continue;
-    const entry = (catalog[type] ??= { names: [] });
+    const entry = (index[type] ??= { names: [] });
     if (p.metadata.entityTable) {
       for (const col of Object.values(getTableColumns(p.metadata.entityTable))) {
         if (!entry.names.includes(col.name)) entry.names.push(col.name);
@@ -154,7 +154,7 @@ export function buildFieldCatalog(): TokenFieldCatalog {
       entry.open = true;
     }
   }
-  return catalog;
+  return index;
 }
 
 export interface TokenEvalContextOptions {
@@ -332,10 +332,10 @@ export async function evaluateChain(
     // unknown field of a closed entity type is an INVALID token (same
     // outcome as editor warnings/coverage), not a silent default.
     if (seg.name === "field" && args.name !== undefined) {
-      const catalog = getFieldCatalog()[currentType];
-      if (catalog && !catalog.open) {
+      const known = getTokenFieldIndex()[currentType];
+      if (known && !known.open) {
         const wanted = normalizeFieldName(args.name);
-        if (!catalog.names.some((n) => normalizeFieldName(n) === wanted)) {
+        if (!known.names.some((n: string) => normalizeFieldName(n) === wanted)) {
           return {
             status: "invalid",
             error: `'${args.name}' is not a field of ${currentType}`,
@@ -544,7 +544,7 @@ export function validateTokenExpressionForRoots(
   const v = validateChain(
     parsed.segments,
     buildSegmentSpecsForRoots(rootNames),
-    buildFieldCatalog(),
+    buildTokenFieldIndex(),
   );
   if (!v.ok) return { ok: false, error: v.error };
   return { ok: true };
@@ -597,15 +597,15 @@ export function describeChain(
  * tree API's job (`./tree`), which expands one type at a time on
  * demand and therefore has no depth limit at all.
  */
-export function buildTokenCatalogForRoots(rootNames: string[]): TokenCatalogEntry[] {
-  return buildCatalogEntries(rootNames);
+export function buildTokenPickerEntries(rootNames: string[]): TokenPickerEntry[] {
+  return buildPickerEntries(rootNames);
 }
 
-function buildCatalogEntries(rootNames: string[]): TokenCatalogEntry[] {
+function buildPickerEntries(rootNames: string[]): TokenPickerEntry[] {
   const all = tokenPluginRegistry.listEnabledSync();
-  const enabled = all.filter((p) => !p.metadata.hiddenFromCatalog);
-  const fieldCatalog = buildFieldCatalog();
-  const entries: TokenCatalogEntry[] = [];
+  const enabled = all.filter((p) => !p.metadata.hiddenFromPicker);
+  const fieldCatalog = buildTokenFieldIndex();
+  const entries: TokenPickerEntry[] = [];
 
   const emitEntityEntry = (prefix: string, scope: string, label: string, type: TokenEntityType) => {
     const fields = fieldCatalog[type];
@@ -698,7 +698,7 @@ function buildCatalogEntries(rootNames: string[]): TokenCatalogEntry[] {
     );
     if (!root) continue;
     const contextRoot = Boolean(root.metadata.contextRoot);
-    if (!contextRoot && root.metadata.hiddenFromCatalog) continue;
+    if (!contextRoot && root.metadata.hiddenFromPicker) continue;
     walk(
       name,
       name,

@@ -30,7 +30,7 @@ async function main() {
 
   const {
     validateTokenExpressionForRoots,
-    buildTokenCatalogForRoots,
+    buildTokenPickerEntries,
     renderTokens,
     createTokenEvalContext,
   } = await import("../../server/plugins/tokens");
@@ -95,7 +95,7 @@ async function main() {
     "the worker hop under a contact is insertable",
     contactChild?.kind === "relation" && contactChild.defaultLeaf === "sirius_id",
   );
-  const catalog = buildTokenCatalogForRoots(bulkRootNames);
+  const catalog = buildTokenPickerEntries(bulkRootNames);
   const short = catalog.find((e) => e.id === "worker");
   check(
     "the flat picker offers the short form",

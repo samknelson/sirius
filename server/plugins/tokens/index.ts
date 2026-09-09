@@ -32,8 +32,8 @@ export {
   evaluateChain,
   createTokenEvalContext,
   buildSegmentSpecsForRoots,
-  buildFieldCatalog,
-  buildTokenCatalogForRoots,
+  buildTokenFieldIndex,
+  buildTokenPickerEntries,
   validateTokenExpressionForRoots,
   describeChain,
 } from "./evaluate";
@@ -50,7 +50,7 @@ export {
   getTokenContext,
   tokenContextRootNames,
 } from "./contexts";
-export { missingCatalogFields } from "./root-coverage";
+export { missingIndexedFields } from "./root-coverage";
 export {
   resolveEntityPath,
   entityDeclaresLocation,
