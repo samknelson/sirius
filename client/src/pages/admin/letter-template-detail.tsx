@@ -90,25 +90,50 @@ export default function LetterTemplateDetailPage() {
     else setContextPickerOpen(true);
   };
   const titleBarProps = {
-    variant: "page" as const,
-    icon: <FileText className="h-6 w-6 text-primary" />,
+    icon: <FileText className="text-primary-foreground" size={16} />,
     backLink: { href: "/admin/letter-templates", label: "Back to Letter Templates" },
   };
-  if (template.isLoading) return <div className="space-y-6"><RecordTitleBarLoading {...titleBarProps} /><div className="h-72 animate-pulse rounded bg-muted" /></div>;
+  if (template.isLoading) return (
+    <div className="min-h-screen bg-background text-foreground">
+      <RecordTitleBarLoading {...titleBarProps} />
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <Card>
+          <CardContent className="py-14">
+            <div className="mx-auto h-32 max-w-2xl animate-pulse rounded bg-muted" />
+          </CardContent>
+        </Card>
+      </main>
+    </div>
+  );
   if (template.isError || !template.data) {
     const notFound = template.error instanceof ApiError && template.error.status === 404;
-    return <div className="space-y-6"><RecordTitleBarNotFound {...titleBarProps} label={notFound ? "Letter Template Not Found" : "Letter Template Unavailable"} /><Card><CardContent className="py-14 text-center"><TriangleAlert className="mx-auto h-8 w-8 text-destructive" /><p className="mt-3 font-medium">{notFound ? "Template not found" : "Couldn’t load this template"}</p><p className="mt-1 text-sm text-muted-foreground">{errorMessage ?? (notFound ? "This template may have been removed." : "The server did not answer successfully.")}</p><Button variant="outline" className="mt-4" onClick={() => void template.refetch()}>Retry</Button></CardContent></Card></div>;
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <RecordTitleBarNotFound {...titleBarProps} label={notFound ? "Letter Template Not Found" : "Letter Template Unavailable"} />
+        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+          <Card>
+            <CardContent className="py-14 text-center">
+              <TriangleAlert className="mx-auto h-8 w-8 text-destructive" />
+              <p className="mt-3 font-medium">{notFound ? "Template not found" : "Couldn’t load this template"}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{errorMessage ?? (notFound ? "This template may have been removed." : "The server did not answer successfully.")}</p>
+              <Button variant="outline" className="mt-4" onClick={() => void template.refetch()}>Retry</Button>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
   }
 
-  return <div className="space-y-6">
+  return <div className="min-h-screen bg-background text-foreground">
     <RecordTitleBar
       {...titleBarProps}
       title={form.name || "Untitled template"}
       titleTestId="heading-letter-template-name"
       recordId={template.data.id}
     />
-    {errorMessage && <Alert variant="destructive"><AlertDescription>{errorMessage}</AlertDescription></Alert>}
-    <div className="space-y-6">
+    <main className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+      {errorMessage && <Alert variant="destructive"><AlertDescription>{errorMessage}</AlertDescription></Alert>}
+      <div className="space-y-6">
         <Card><CardHeader><CardTitle className="text-base">Template identity</CardTitle></CardHeader><CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2 sm:col-span-2"><Label htmlFor="detail-name">Name</Label><Input id="detail-name" value={form.name} onChange={(e) => setField("name", e.target.value)} /></div>
           <div className="space-y-2"><Label htmlFor="sirius-id">Sirius ID <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id="sirius-id" value={form.siriusId} onChange={(e) => setField("siriusId", e.target.value)} /></div>
@@ -134,28 +159,29 @@ export default function LetterTemplateDetailPage() {
           <div className="space-y-2 sm:col-span-2"><Label>Token contexts</Label>{contexts.isError && <Alert variant="destructive"><AlertDescription className="flex items-center justify-between gap-3"><span>Available token contexts could not be loaded. Existing selections are unchanged.</span><Button type="button" variant="outline" size="sm" onClick={() => void contexts.refetch()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry</Button></AlertDescription></Alert>}<div className="flex flex-wrap gap-1.5 rounded-md border p-2">{form.contextIds.map((context) => <button type="button" key={context} onClick={() => setField("contextIds", form.contextIds.filter((id) => id !== context))} className="rounded border bg-muted/40 px-2 py-1 font-mono text-[11px]">{context} ×</button>)}<Select disabled={contexts.isError || contexts.isLoading} onValueChange={(value) => { if (!form.contextIds.includes(value)) setField("contextIds", [...form.contextIds, value]); }}><SelectTrigger className="h-7 w-44 border-dashed text-xs"><SelectValue placeholder={contexts.isLoading ? "Loading contexts…" : "Add context"} /></SelectTrigger><SelectContent>{contextOptions.map((c) => c && !form.contextIds.includes(c.id) && <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div></div>
         </CardContent></Card>
         <Card><CardHeader className="flex flex-row items-center justify-between gap-3"><div><CardTitle className="text-base">Delivery content</CardTitle><p className="mt-1 text-sm text-muted-foreground">Edit tokenized fields together so preview and delivery stay aligned.</p></div><Button variant="outline" size="sm" onClick={openStudio}><Maximize2 className="mr-2 h-4 w-4" />Open TokenStudio</Button></CardHeader><CardContent><div className="divide-y rounded-md border">{fieldsFor(form.medium).map((field) => <div key={field.key} className="flex items-start gap-4 px-3 py-3"><span className="w-28 shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{field.label}</span><span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm">{form.content[field.key] || <em className="text-muted-foreground">Not set</em>}</span></div>)}</div></CardContent></Card>
-    </div>
-    <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-      <Button
-        variant="destructive"
-        onClick={() => setDeleteOpen(true)}
-        disabled={remove.isPending}
-        className="sm:self-start"
-      >
-        <Trash2 className="mr-2 h-4 w-4" />
-        Delete
-      </Button>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        {dirty && <span className="text-xs text-amber-700">Unsaved changes</span>}
-        <Button
-          onClick={() => save.mutate()}
-          disabled={!form.name.trim() || !form.contextIds.length || save.isPending || !dirty}
-        >
-          {save.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-          Save changes
-        </Button>
       </div>
-    </div>
+      <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <Button
+          variant="destructive"
+          onClick={() => setDeleteOpen(true)}
+          disabled={remove.isPending}
+          className="sm:self-start"
+        >
+          <Trash2 className="mr-2 h-4 w-4" />
+          Delete
+        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          {dirty && <span className="text-xs text-amber-700">Unsaved changes</span>}
+          <Button
+            onClick={() => save.mutate()}
+            disabled={!form.name.trim() || !form.contextIds.length || save.isPending || !dirty}
+          >
+            {save.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            Save changes
+          </Button>
+        </div>
+      </div>
+    </main>
     <Dialog open={contextPickerOpen} onOpenChange={setContextPickerOpen}><DialogContent><DialogHeader><DialogTitle>Choose a token context</DialogTitle><DialogDescription>This template has multiple contexts. Select which context TokenStudio should use for this editing session.</DialogDescription></DialogHeader><Select onValueChange={(value) => { setStudioContext(value); setContextPickerOpen(false); setStudioOpen(true); }}><SelectTrigger><SelectValue placeholder="Select context" /></SelectTrigger><SelectContent>{form.contextIds.map((context) => <SelectItem key={context} value={context}>{contextOptions.find((c) => c?.id === context)?.name ?? context}</SelectItem>)}</SelectContent></Select></DialogContent></Dialog>
     <TokenStudio open={studioOpen} onOpenChange={setStudioOpen} title={`${form.name || "Letter template"} · ${mediumLabel[form.medium]}`} description="Changes are kept in this form until you save the template." channel={form.medium} contextId={studioContext} fields={fieldsFor(form.medium)} fieldSpecs={MEDIUM_FIELDS[form.medium]} values={form.content} onValueChange={(key, value) => setField("content", { ...form.content, [key]: value })} onValuesChange={(content) => setField("content", content)} />
     <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>

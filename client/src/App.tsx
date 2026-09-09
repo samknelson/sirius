@@ -2529,9 +2529,7 @@ function Router() {
       <Route path="/admin/letter-templates/:id">
         <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <LetterTemplateDetailPage />
-            </ConfigurationLayout>
+            <LetterTemplateDetailPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
