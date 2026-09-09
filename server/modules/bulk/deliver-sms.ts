@@ -7,8 +7,8 @@ import {
   mediumField,
   shapeRenderedValue,
   tokenCleanerFor,
-  undeliverableReason,
 } from "../../delivery/shape";
+import { recordBulkUndeliverable } from "./undeliverable";
 
 // By key, never by position — see `deliver-email.ts`.
 const BODY_SPEC = mediumField("sms", "body");
@@ -49,13 +49,10 @@ export async function deliverSms(
     ).output,
   );
   if (!renderedBody) {
-    // An SMS with nothing in it is not a message. Recorded against this
-    // recipient rather than handed to the provider as an empty send.
-    return {
-      success: false,
-      error: undeliverableReason("sms", ["body"]),
-      errorCode: "NO_CONTENT",
-    };
+    // An SMS with nothing in it is not a message. Recorded as a failed
+    // communication against this recipient rather than handed to the
+    // provider as an empty send.
+    return recordBulkUndeliverable("sms", messageId, contactId, ["body"], tagIds);
   }
   const result: SendSmsResult = await sendSms({
     contactId,

@@ -16,7 +16,7 @@ import { getEffectiveUser } from "./masquerade";
 import { resolveContactLinks } from "./contact-links";
 import { createCommTagsStorage } from "../storage/comm-tags";
 import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
-import { deriveEmailPlainText } from "../delivery/shape";
+import { deriveEmailPlainText, isSafeRelativePath } from "../delivery/shape";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -110,7 +110,20 @@ const sendInappSchema = z.object({
   userId: z.string().uuid("Invalid user ID"),
   title: z.string().min(1, "Title is required").max(100, "Title must be 100 characters or less"),
   body: z.string().min(1, "Body is required").max(500, "Body must be 500 characters or less"),
-  linkUrl: z.string().url("Invalid URL").optional().or(z.literal("")),
+  // The medium's own rule, not this screen's: one alerts bell opens
+  // every in-app notification and hands the address to the browser, so
+  // a link is a same-app path here exactly as it is in a bulk message
+  // or a notifier template. An absolute URL used to be accepted here
+  // alone, which is how the same link could be valid on one screen and
+  // rejected on another.
+  linkUrl: z
+    .string()
+    .max(2048)
+    .refine((value) => value.trim() === "" || isSafeRelativePath(value.trim()), {
+      message: 'Link URL must be a relative path starting with "/" (not "//" or an absolute URL)',
+    })
+    .optional()
+    .or(z.literal("")),
   linkLabel: z.string().max(50, "Link label must be 50 characters or less").optional(),
   tagIds: tagIdsSchema,
 });

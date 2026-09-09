@@ -8,8 +8,8 @@ import {
   mediumField,
   shapeRenderedValue,
   tokenCleanerFor,
-  undeliverableReason,
 } from "../../delivery/shape";
+import { recordBulkUndeliverable } from "./undeliverable";
 
 // By key, never by position: the medium's declaration is shared, and a
 // field added or reordered there must not silently rebind these.
@@ -85,12 +85,8 @@ export async function deliverEmail(
   if (!renderedSubject) {
     // A blank subject is never substituted with a stand-in: this
     // recipient's copy could not be composed, and that is recorded
-    // against them as the failure it is.
-    return {
-      success: false,
-      error: undeliverableReason("email", ["subject"]),
-      errorCode: "NO_CONTENT",
-    };
+    // against them as the failed communication it is.
+    return recordBulkUndeliverable("email", messageId, contactId, ["subject"], tagIds);
   }
   const renderedHtml = emailContent.bodyHtml
     ? await renderEmailBodyHtmlForDelivery(emailContent.bodyHtml, ctx)

@@ -9,8 +9,8 @@ import {
   authoredFieldValue,
   shapeRenderedValue,
   tokenCleanerFor,
-  undeliverableReason,
 } from "../../delivery/shape";
+import { recordBulkUndeliverable } from "./undeliverable";
 
 export async function resolveUserId(storage: IStorage, contactId: string): Promise<string | null> {
   const contact = await storage.contacts.getContact(contactId);
@@ -87,12 +87,15 @@ export async function deliverInapp(
   const rendered = await renderInappContentForDelivery(inappContent, ctx);
   if (rendered.blankRequired.length > 0) {
     // A notification with no title or no body is not a notification.
-    // Recorded against this recipient instead of sent empty.
-    return {
-      success: false,
-      error: undeliverableReason("inapp", rendered.blankRequired),
-      errorCode: "NO_CONTENT",
-    };
+    // Recorded as a failed communication against this recipient instead
+    // of sent empty.
+    return recordBulkUndeliverable(
+      "inapp",
+      messageId,
+      contactId,
+      rendered.blankRequired,
+      tagIds,
+    );
   }
   const result: SendInappResult = await sendInapp({
     contactId,

@@ -22,6 +22,7 @@ import {
   refuseUnrenderedTokens,
 } from "./ComposeTemplateStudio";
 import type { ComposeTemplateTarget } from "@shared/comm-compose";
+import { isSafeRelativePath } from "@shared/delivery-fields";
 import { useToast } from "@/hooks/use-toast";
 
 interface UserLookupResponse {
@@ -101,7 +102,13 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
 
   const handleSend = () => {
     if (!userLookup?.user?.id || !title.trim() || !body.trim()) return;
-    if (composeTarget && refuseUnrenderedTokens({ title, body }, toast)) return;
+    // Every field that goes out, including the link: a token left
+    // unrendered in a URL ships a link to "/dispatch/job/{{job.id}}".
+    if (
+      composeTarget &&
+      refuseUnrenderedTokens({ title, body, linkUrl, linkLabel }, toast)
+    )
+      return;
     sendInappMutation.mutate({
       userId: userLookup.user.id,
       title: title.trim(),
@@ -119,7 +126,7 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
     title.trim().length <= 100 &&
     body.trim().length > 0 &&
     body.trim().length <= 500 &&
-    (!linkUrl.trim() || isValidUrl(linkUrl.trim()));
+    (!linkUrl.trim() || isSafeRelativePath(linkUrl.trim()));
 
   const titleCharCount = title.length;
   const bodyCharCount = body.length;
@@ -199,6 +206,11 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
                   target={composeTarget}
                   channel="inapp"
                   title="Compose In-App Message"
+                  // The link is part of the notification, so it is
+                  // written where the rest of it is written: a link
+                  // pointing at the record this screen is about is a
+                  // token like any other, and rendering it here is what
+                  // makes it the same link the notifier would send.
                   fields={[
                     { key: "title", label: "Title", mode: "line", maxLength: 100 },
                     {
@@ -207,11 +219,15 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
                       mode: "multiline",
                       maxLength: 500,
                     },
+                    { key: "linkUrl", label: "Link URL", mode: "line" },
+                    { key: "linkLabel", label: "Link Label", mode: "line", maxLength: 50 },
                   ]}
-                  values={{ title, body }}
+                  values={{ title, body, linkUrl, linkLabel }}
                   onApply={(rendered) => {
                     setTitle(rendered.title ?? "");
                     setBody(rendered.body ?? "");
+                    setLinkUrl(rendered.linkUrl ?? "");
+                    setLinkLabel(rendered.linkLabel ?? "");
                   }}
                   testId="button-compose-inapp-template"
                 />
@@ -247,14 +263,20 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
                 <Label htmlFor="inapp-link-url">Link URL</Label>
                 <Input
                   id="inapp-link-url"
-                  type="url"
-                  placeholder="https://example.com/page"
+                  placeholder="/dispatch/job/123"
                   value={linkUrl}
                   onChange={(e) => setLinkUrl(e.target.value)}
                   data-testid="input-inapp-link-url"
                 />
-                {linkUrl.trim() && !isValidUrl(linkUrl.trim()) && (
-                  <p className="text-xs text-destructive">Please enter a valid URL</p>
+                {linkUrl.trim() && !isSafeRelativePath(linkUrl.trim()) ? (
+                  <p className="text-xs text-destructive">
+                    Enter a link inside this app, starting with "/" — the alerts bell
+                    opens it here, so an address elsewhere is dropped.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    A page in this app, starting with "/".
+                  </p>
                 )}
               </div>
 
@@ -303,13 +325,4 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
       )}
     </Card>
   );
-}
-
-function isValidUrl(urlString: string): boolean {
-  try {
-    new URL(urlString);
-    return true;
-  } catch {
-    return false;
-  }
 }
