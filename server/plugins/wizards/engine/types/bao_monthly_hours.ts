@@ -133,6 +133,32 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
   description = 'Monthly hours upload for a BAO employer';
   isMonthly = true;
 
+  /**
+   * BAO employer files commonly use slash-delimited two-digit birth years.
+   * Keep this expansion local to this wizard, then delegate to the shared
+   * parser so canonical formatting and existing formats remain unchanged.
+   */
+  protected parseDate(dateValue: unknown): string | null {
+    if (typeof dateValue === 'string') {
+      const trimmed = dateValue.trim();
+      const shortYearMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+      if (shortYearMatch) {
+        const [, month, day, shortYear] = shortYearMatch;
+        const yy = parseInt(shortYear, 10);
+        const year = yy <= 29 ? 2000 + yy : 1900 + yy;
+        return super.parseDate(`${month}/${day}/${year}`);
+      }
+    }
+
+    try {
+      return super.parseDate(dateValue);
+    } catch {
+      throw new Error(
+        `Invalid date format: ${dateValue}. Supported formats: M/D/YY, MM/DD/YY, M/D/YYYY, MM/DD/YYYY, YYYY-MM-DD, or Excel serial number`,
+      );
+    }
+  }
+
   getFields(): FeedField[] {
     const parentFields = super.getFields();
     const dropped = new Set(['benefit_1', 'benefit_2', 'benefit_3', 'benefit_4', 'benefit_5']);
@@ -152,7 +178,9 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
           return {
             ...f,
             required: true,
-            description: (f.description || f.name).replace(/\s*\(optional\)\s*$/i, ''),
+            description: f.id === 'dateOfBirth'
+              ? 'Worker date of birth (M/D/YY, MM/DD/YY, M/D/YYYY, MM/DD/YYYY, or YYYY-MM-DD)'
+              : (f.description || f.name).replace(/\s*\(optional\)\s*$/i, ''),
           };
         }
         return f;
@@ -205,12 +233,20 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
             throw new Error(`Invalid calendar date: ${rawDob}`);
           }
           // Extract the ORIGINAL components for every textual format the
-          // parser accepts (M/D/YYYY, M-D-YYYY, YYYY/MM/DD, YYYY-MM-DD) and
+          // parser accepts (M/D/YY, M/D/YYYY, M-D-YYYY, YYYY/MM/DD,
+          // YYYY-MM-DD) and
           // require them to match the normalized output exactly.
           const s = String(rawDob).trim();
           let y: number | null = null, mo = 0, d = 0;
-          let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-          if (m) { y = parseInt(m[3], 10); mo = parseInt(m[1], 10); d = parseInt(m[2], 10); }
+          let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+          if (m) {
+            const yy = parseInt(m[3], 10);
+            y = yy <= 29 ? 2000 + yy : 1900 + yy;
+            mo = parseInt(m[1], 10);
+            d = parseInt(m[2], 10);
+          } else if ((m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/))) {
+            y = parseInt(m[3], 10); mo = parseInt(m[1], 10); d = parseInt(m[2], 10);
+          }
           else if ((m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/))) {
             y = parseInt(m[1], 10); mo = parseInt(m[2], 10); d = parseInt(m[3], 10);
           }
