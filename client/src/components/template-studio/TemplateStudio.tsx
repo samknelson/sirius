@@ -692,7 +692,6 @@ export function TemplateStudio({
     [fieldSpecs, fields],
   );
   const specsJson = JSON.stringify(specs);
-  const rootNamesJson = JSON.stringify(rootNames ?? []);
 
   // Fields delivery sends VERBATIM. They are edited here like any other
   // field, but they get no token affordances: a token typed into one
@@ -745,10 +744,6 @@ export function TemplateStudio({
    * author cannot see is never claimed to have been rendered. Before the
    * context arrives the named roots are the best the studio knows.
    */
-  const previewRootNames =
-    seedRoots.length > 0 ? seedRoots.map((r) => r.name) : (rootNames ?? []);
-  const previewRootNamesJson = JSON.stringify(previewRootNames);
-
   /**
    * The author's pick per root NAME, as `record:<id>` / `sample:<id>`.
    * Only what they actually changed is kept; every root falls back to
@@ -908,7 +903,7 @@ export function TemplateStudio({
     queryKey: [
       "template-studio-preview",
       specsJson,
-      previewRootNamesJson,
+      contextId,
       contextJson,
       debouncedJson,
     ],
@@ -918,15 +913,17 @@ export function TemplateStudio({
       const body: Record<string, unknown> = {
         fields: specs,
         values: JSON.parse(debouncedJson) as Record<string, string>,
-        rootNames: previewRootNames,
       };
       if (effectiveContext) body.context = effectiveContext;
-      const res = await fetch("/api/template-studio/preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        credentials: "include",
-      });
+      const res = await fetch(
+        `/api/template-studio/preview?context=${encodeURIComponent(contextId)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          credentials: "include",
+        },
+      );
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(

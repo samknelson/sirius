@@ -74,20 +74,6 @@ function requireTokenContextAccess(requireAccess: RequireAccess) {
   };
 }
 
-/** `?roots=dispatch,event` — the named context roots the caller seeds. */
-function parseRootNames(raw: unknown): string[] {
-  const values = Array.isArray(raw) ? raw : [raw];
-  const out: string[] = [];
-  for (const value of values) {
-    if (typeof value !== "string") continue;
-    for (const name of value.split(",")) {
-      const trimmed = name.trim();
-      if (trimmed && !out.includes(trimmed)) out.push(trimmed);
-    }
-  }
-  return out;
-}
-
 type ResolvedPreviewContext =
   | { seeds?: TokenRootSeed[]; sampleSetIds?: Record<string, string> }
   | { status: number; message: string };
@@ -515,8 +501,9 @@ export function registerTokenStudioRoutes(
    *     Any caller-specific composition (a notifier's default-vs-override
    *     merge, a rich-text body flattened to plain text) has already
    *     happened on the caller's side.
-   *   `rootNames` — the named record roots those templates address
-   *     (`dispatch`, `event`); ordinary roots are always available.
+   *   `?context=…` — the token context these templates are written in.
+   *     Its declared roots are the named record roots those templates may
+   *     address; the caller cannot supply a different root list.
    *   `context` — what each root renders as, one entry per root:
    *     `{ seeds: [{ rootName, record: { kind, id } } |
    *                { rootName, sampleSetId }, …] }`.
@@ -529,10 +516,22 @@ export function registerTokenStudioRoutes(
   app.post(
     "/api/template-studio/preview",
     requireAuth,
-    requireAccess("staff"),
+    requireTokenContextAccess(requireAccess),
     async (req: Request, res: Response) => {
       try {
         const body = req.body ?? {};
+        const { tokenContextRootNames } = await import(
+          "../plugins/tokens/contexts"
+        );
+        const rootNames = tokenContextRootNames(contextIdOf(req));
+
+        if (Object.prototype.hasOwnProperty.call(body, "rootNames")) {
+          return res.status(400).json({
+            message:
+              "A preview no longer takes rootNames — name the token context in " +
+              `the request query: ${CONTEXT_REQUIRED}`,
+          });
+        }
 
         // Field declarations, validated exactly as the author-time
         // check validates the shared tables they come from.
@@ -553,8 +552,6 @@ export function registerTokenStudioRoutes(
         for (const [key, value] of Object.entries(rawValues)) {
           if (typeof value === "string") templates[key] = value;
         }
-
-        const rootNames = parseRootNames(body.rootNames);
 
         // The persona used to be chosen once for the whole render.
         // It is now per root, inside the context — refused by PRESENCE
