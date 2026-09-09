@@ -55,25 +55,73 @@ function parseDate(value: any): Date | null {
     if (!isNaN(result.getTime())) return result;
   }
 
-  str = str.replace(/\s*[-–]\s*\d{1,2}:\d{2}(:\d{2})?\s*$/, '').trim();
-  str = str.replace(/\s+\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?\s*$/i, '').trim();
+  const isoTimestamp = str.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?$/,
+  );
+  if (isoTimestamp) {
+    const year = parseInt(isoTimestamp[1], 10);
+    const month = parseInt(isoTimestamp[2], 10);
+    const day = parseInt(isoTimestamp[3], 10);
+    const hour = parseInt(isoTimestamp[4], 10);
+    const minute = parseInt(isoTimestamp[5], 10);
+    const second = isoTimestamp[6] ? parseInt(isoTimestamp[6], 10) : 0;
+    const parsed = new Date(year, month - 1, day);
+    if (
+      parsed.getFullYear() === year &&
+      parsed.getMonth() + 1 === month &&
+      parsed.getDate() === day &&
+      hour <= 23 &&
+      minute <= 59 &&
+      second <= 59 &&
+      !isNaN(Date.parse(str))
+    ) return parsed;
+    return null;
+  }
+
+  const timeSuffix = str.match(
+    /(?:\s*[-–]\s*|\s+)(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i,
+  );
+  if (timeSuffix) {
+    const hour = parseInt(timeSuffix[1], 10);
+    const minute = parseInt(timeSuffix[2], 10);
+    const second = timeSuffix[3] ? parseInt(timeSuffix[3], 10) : 0;
+    const hasMeridiem = Boolean(timeSuffix[4]);
+    if (
+      minute > 59 ||
+      second > 59 ||
+      (hasMeridiem ? hour < 1 || hour > 12 : hour > 23)
+    ) return null;
+    str = str.slice(0, timeSuffix.index).trim();
+  }
 
   const mmddyyyy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (mmddyyyy) {
     let year = parseInt(mmddyyyy[3]);
     if (year < 100) year += 2000;
-    const result = new Date(year, parseInt(mmddyyyy[1]) - 1, parseInt(mmddyyyy[2]));
-    if (!isNaN(result.getTime())) return result;
+    const month = parseInt(mmddyyyy[1]);
+    const day = parseInt(mmddyyyy[2]);
+    const result = new Date(year, month - 1, day);
+    if (
+      result.getFullYear() === year &&
+      result.getMonth() + 1 === month &&
+      result.getDate() === day
+    ) return result;
+    return null;
   }
 
   const yyyymmdd = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
   if (yyyymmdd) {
-    const result = new Date(parseInt(yyyymmdd[1]), parseInt(yyyymmdd[2]) - 1, parseInt(yyyymmdd[3]));
-    if (!isNaN(result.getTime())) return result;
+    const year = parseInt(yyyymmdd[1]);
+    const month = parseInt(yyyymmdd[2]);
+    const day = parseInt(yyyymmdd[3]);
+    const result = new Date(year, month - 1, day);
+    if (
+      result.getFullYear() === year &&
+      result.getMonth() + 1 === month &&
+      result.getDate() === day
+    ) return result;
+    return null;
   }
-
-  const fallback = new Date(str);
-  if (!isNaN(fallback.getTime())) return fallback;
 
   return null;
 }
@@ -93,6 +141,21 @@ export class BtuCardcheckImportWizard extends FeedWizard {
   isFeed = true;
   entityType = undefined;
   requiredComponent = 'sitespecific.btu';
+
+  protected parseDate(dateValue: unknown): string | null {
+    if (dateValue === null || dateValue === undefined || String(dateValue).trim() === '') {
+      return null;
+    }
+    const parsed = parseDate(dateValue);
+    if (!parsed) {
+      throw new Error(`Invalid calendar date or date format: ${dateValue}`);
+    }
+    return [
+      parsed.getFullYear(),
+      String(parsed.getMonth() + 1).padStart(2, '0'),
+      String(parsed.getDate()).padStart(2, '0'),
+    ].join('-');
+  }
 
   getSteps(): WizardStep[] {
     return [

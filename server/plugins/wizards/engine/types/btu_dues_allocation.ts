@@ -93,21 +93,78 @@ function parseDate(value: any): Date | null {
     }
   }
   
-  const str = String(value).trim();
+  let str = String(value).trim();
+
+  const isoTimestamp = str.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?$/,
+  );
+  if (isoTimestamp) {
+    const year = parseInt(isoTimestamp[1], 10);
+    const month = parseInt(isoTimestamp[2], 10);
+    const day = parseInt(isoTimestamp[3], 10);
+    const hour = parseInt(isoTimestamp[4], 10);
+    const minute = parseInt(isoTimestamp[5], 10);
+    const second = isoTimestamp[6] ? parseInt(isoTimestamp[6], 10) : 0;
+    const parsed = new Date(year, month - 1, day);
+    return (
+      parsed.getFullYear() === year &&
+      parsed.getMonth() + 1 === month &&
+      parsed.getDate() === day &&
+      hour <= 23 &&
+      minute <= 59 &&
+      second <= 59 &&
+      !isNaN(Date.parse(str))
+    ) ? parsed : null;
+  }
+
+  // Preserve payroll exports that append a time while validating the
+  // calendar portion independently instead of letting Date roll it over.
+  const timeSuffix = str.match(
+    /(?:\s*[-–]\s*|\s+)(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i,
+  );
+  if (timeSuffix) {
+    const hour = parseInt(timeSuffix[1], 10);
+    const minute = parseInt(timeSuffix[2], 10);
+    const second = timeSuffix[3] ? parseInt(timeSuffix[3], 10) : 0;
+    const hasMeridiem = Boolean(timeSuffix[4]);
+    if (
+      minute > 59 ||
+      second > 59 ||
+      (hasMeridiem ? hour < 1 || hour > 12 : hour > 23)
+    ) return null;
+    str = str.slice(0, timeSuffix.index).trim();
+  }
   
-  if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(str)) {
-    const parts = str.split('/');
-    const month = parseInt(parts[0], 10) - 1;
-    const day = parseInt(parts[1], 10);
-    let year = parseInt(parts[2], 10);
+  const mdy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (mdy) {
+    const month = parseInt(mdy[1], 10);
+    const day = parseInt(mdy[2], 10);
+    let year = parseInt(mdy[3], 10);
     if (year < 100) {
       year += year < 50 ? 2000 : 1900;
     }
-    return new Date(year, month, day);
+    const parsed = new Date(year, month - 1, day);
+    return (
+      parsed.getFullYear() === year &&
+      parsed.getMonth() + 1 === month &&
+      parsed.getDate() === day
+    ) ? parsed : null;
+  }
+
+  const ymd = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if (ymd) {
+    const year = parseInt(ymd[1], 10);
+    const month = parseInt(ymd[2], 10);
+    const day = parseInt(ymd[3], 10);
+    const parsed = new Date(year, month - 1, day);
+    return (
+      parsed.getFullYear() === year &&
+      parsed.getMonth() + 1 === month &&
+      parsed.getDate() === day
+    ) ? parsed : null;
   }
   
-  const parsed = new Date(str);
-  return isNaN(parsed.getTime()) ? null : parsed;
+  return null;
 }
 
 export class BtuDuesAllocationWizard extends FeedWizard {
@@ -117,6 +174,21 @@ export class BtuDuesAllocationWizard extends FeedWizard {
   isFeed = true;
   entityType = undefined;
   requiredComponent = 'sitespecific.btu';
+
+  protected parseDate(dateValue: unknown): string | null {
+    if (dateValue === null || dateValue === undefined || String(dateValue).trim() === '') {
+      return null;
+    }
+    const parsed = parseDate(dateValue);
+    if (!parsed) {
+      throw new Error(`Invalid calendar date or date format: ${dateValue}`);
+    }
+    return [
+      parsed.getFullYear(),
+      String(parsed.getMonth() + 1).padStart(2, '0'),
+      String(parsed.getDate()).padStart(2, '0'),
+    ].join('-');
+  }
 
   getSteps(): WizardStep[] {
     return [

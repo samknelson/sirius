@@ -237,6 +237,22 @@ export interface FeedField {
   isBenefitEligibility?: boolean; // Whether this field indicates benefit eligibility
 }
 
+function assertRealCalendarDate(
+  year: number,
+  month: number,
+  day: number,
+  originalValue: unknown,
+): void {
+  const parsed = new Date(year, month - 1, day);
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() + 1 !== month ||
+    parsed.getDate() !== day
+  ) {
+    throw new Error(`Invalid calendar date: ${originalValue}`);
+  }
+}
+
 export abstract class FeedWizard extends BaseWizard {
   isFeed: boolean = true;
 
@@ -288,6 +304,20 @@ export abstract class FeedWizard extends BaseWizard {
           value
         });
         continue;
+      }
+
+      if (field.type === 'date') {
+        try {
+          row[field.id] = this.parseDate(value);
+        } catch (error) {
+          errors.push({
+            rowIndex,
+            field: field.id,
+            message: error instanceof Error ? error.message : 'Invalid date format',
+            value,
+          });
+          continue;
+        }
       }
 
       // SSN validation using centralized utility
@@ -491,7 +521,15 @@ export abstract class FeedWizard extends BaseWizard {
     }
     
     // Already in YYYY-MM-DD format
-    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const [, year, month, day] = isoMatch;
+      assertRealCalendarDate(
+        parseInt(year, 10),
+        parseInt(month, 10),
+        parseInt(day, 10),
+        dateValue,
+      );
       return trimmed;
     }
 
@@ -502,21 +540,33 @@ export abstract class FeedWizard extends BaseWizard {
     const mdyMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (mdyMatch) {
       const [, month, day, year] = mdyMatch;
-      parsed = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      const numericYear = parseInt(year, 10);
+      const numericMonth = parseInt(month, 10);
+      const numericDay = parseInt(day, 10);
+      assertRealCalendarDate(numericYear, numericMonth, numericDay, dateValue);
+      parsed = new Date(numericYear, numericMonth - 1, numericDay);
     }
 
     // M-D-YYYY or MM-DD-YYYY
     const mdyDashMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
     if (mdyDashMatch) {
       const [, month, day, year] = mdyDashMatch;
-      parsed = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      const numericYear = parseInt(year, 10);
+      const numericMonth = parseInt(month, 10);
+      const numericDay = parseInt(day, 10);
+      assertRealCalendarDate(numericYear, numericMonth, numericDay, dateValue);
+      parsed = new Date(numericYear, numericMonth - 1, numericDay);
     }
 
     // YYYY/MM/DD
     const ymdMatch = trimmed.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
     if (ymdMatch) {
       const [, year, month, day] = ymdMatch;
-      parsed = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      const numericYear = parseInt(year, 10);
+      const numericMonth = parseInt(month, 10);
+      const numericDay = parseInt(day, 10);
+      assertRealCalendarDate(numericYear, numericMonth, numericDay, dateValue);
+      parsed = new Date(numericYear, numericMonth - 1, numericDay);
     }
 
     if (!parsed || isNaN(parsed.getTime())) {

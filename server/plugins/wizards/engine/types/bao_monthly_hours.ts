@@ -20,17 +20,6 @@ function pad2(n: number): string {
   return String(n).padStart(2, '0');
 }
 
-/** True when a YYYY-MM-DD string names a real calendar date (no rollover). */
-export function isRealCalendarYmd(ymd: string): boolean {
-  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return false;
-  const year = parseInt(m[1], 10);
-  const month = parseInt(m[2], 10);
-  const day = parseInt(m[3], 10);
-  if (month < 1 || month > 12 || day < 1) return false;
-  return day <= new Date(year, month, 0).getDate();
-}
-
 function normalizeStatus(value: string): string {
   return String(value).toLowerCase().replace(/\s+/g, '');
 }
@@ -152,7 +141,10 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
 
     try {
       return super.parseDate(dateValue);
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Invalid calendar date:')) {
+        throw error;
+      }
       throw new Error(
         `Invalid date format: ${dateValue}. Supported formats: M/D/YY, MM/DD/YY, M/D/YYYY, MM/DD/YYYY, YYYY-MM-DD, or Excel serial number`,
       );
@@ -211,58 +203,9 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
     ];
   }
 
-  /**
-   * Stricter validation: fully parse date and amount fields that would
-   * otherwise only fail during the Process step, so a run that passes
-   * Validate does not die mid-processing on data-format issues.
-   */
+  /** Validate BAO-specific amount fields before the Process step. */
   async validateRow(row: Record<string, any>, rowIndex: number, mode: 'create' | 'update'): Promise<ValidationError[]> {
     const errors = await super.validateRow(row, rowIndex, mode);
-
-    // Date of birth must actually PARSE (the parent only checks presence).
-    const rawDob = row.dateOfBirth;
-    if (rawDob !== undefined && rawDob !== null && String(rawDob).trim() !== '') {
-      try {
-        const ymd = this.parseDate(rawDob);
-        // parseDate is lenient (JS Date rolls 2/30 → 3/2 and passes
-        // YYYY-MM-DD through untouched); require a REAL calendar date whose
-        // components round-trip exactly so a rolled-over date can't be
-        // silently persisted as a different valid date.
-        if (ymd !== null) {
-          if (!isRealCalendarYmd(ymd)) {
-            throw new Error(`Invalid calendar date: ${rawDob}`);
-          }
-          // Extract the ORIGINAL components for every textual format the
-          // parser accepts (M/D/YY, M/D/YYYY, M-D-YYYY, YYYY/MM/DD,
-          // YYYY-MM-DD) and
-          // require them to match the normalized output exactly.
-          const s = String(rawDob).trim();
-          let y: number | null = null, mo = 0, d = 0;
-          let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
-          if (m) {
-            const yy = parseInt(m[3], 10);
-            y = yy <= 29 ? 2000 + yy : 1900 + yy;
-            mo = parseInt(m[1], 10);
-            d = parseInt(m[2], 10);
-          } else if ((m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/))) {
-            y = parseInt(m[3], 10); mo = parseInt(m[1], 10); d = parseInt(m[2], 10);
-          }
-          else if ((m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/))) {
-            y = parseInt(m[1], 10); mo = parseInt(m[2], 10); d = parseInt(m[3], 10);
-          }
-          if (y !== null && `${y}-${pad2(mo)}-${pad2(d)}` !== ymd) {
-            throw new Error(`Invalid calendar date: ${rawDob}`);
-          }
-        }
-      } catch (err) {
-        errors.push({
-          rowIndex,
-          field: 'dateOfBirth',
-          message: err instanceof Error ? err.message : 'Invalid date format',
-          value: rawDob,
-        });
-      }
-    }
 
     // Withholding amount must parse the same way processing parses it
     // ($ and commas allowed) and cannot be negative. Remove any parent
