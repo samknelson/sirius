@@ -77,7 +77,6 @@ export const configSections: NavSection[] = [
       { path: "/admin/file-browser", label: "File Browser", icon: FolderOpen, testId: "nav-config-file-browser", permission: "admin" },
       { path: "/config/entity-files", label: "Entity Files", icon: FolderOpen, testId: "nav-config-entity-files", permission: "admin" },
       { path: "/config/entity-notes", label: "Entity Notes", icon: NotebookPen, testId: "nav-config-entity-notes", permission: "admin" },
-      { path: "/admin/letter-templates", label: "Letter Templates", icon: FileText, testId: "nav-config-letter-templates", permission: "admin" },
       { path: "/admin/metadata", label: "Record History", icon: History, testId: "nav-config-record-metadata", permission: "admin" },
       { path: "/admin/cron-jobs", label: "Cron Jobs", icon: Clock, testId: "nav-config-cron-jobs", permission: "admin" },
       { path: "/config/sftp/clients", label: "SFTP Clients", icon: Server, testId: "nav-config-sftp-clients", permission: "admin", requiresComponent: "system.sftp.client" },
@@ -112,6 +111,7 @@ export const configSections: NavSection[] = [
       { path: "/config/email", label: "Email Providers", icon: MessageSquare, testId: "nav-config-email", permission: "admin" },
       { path: "/config/postal", label: "Postal Providers", icon: MessageSquare, testId: "nav-config-postal", permission: "admin" },
       { path: "/config/addresses", label: "Postal Addresses", icon: MapPin, testId: "nav-config-addresses", permission: "admin" },
+      { path: "/admin/letter-templates", label: "Letter Templates", icon: FileText, testId: "nav-config-letter-templates", permission: "admin" },
     ],
   },
   {
