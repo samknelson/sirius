@@ -1399,8 +1399,8 @@ export function WorkersTable({
                                   )}
                                   <p className="text-sm font-semibold text-foreground">
                                     {hasElection
-                                      ? (policyName ? `Covered by ${policyName}` : 'Active election')
-                                      : 'No active election'}
+                                      ? (policyName ? `Covered by ${policyName}` : 'Current election')
+                                      : 'No current election'}
                                   </p>
                                   {authorized && (
                                     <p className="text-sm font-semibold text-green-600">Withholding Authorized</p>

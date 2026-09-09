@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useTrustElectionTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
-import { formatYmd } from "@shared/utils";
+import { formatYmd, getDateRangeStatus } from "@shared/utils";
 
 interface WorkerWithName {
   id: string;
@@ -160,6 +160,12 @@ export function TrustElectionLayout({ activeTab, children }: TrustElectionLayout
     isLoading: false,
     isError: false,
   };
+  const electionStatus = getDateRangeStatus(election.startYmd, election.endYmd);
+  const statusPresentation = {
+    upcoming: { label: "Upcoming", variant: "outline" as const },
+    active: { label: "Active", variant: "default" as const },
+    ended: { label: "Ended", variant: "secondary" as const },
+  }[electionStatus];
 
   return (
     <TrustElectionLayoutContext.Provider value={contextValue}>
@@ -180,10 +186,10 @@ export function TrustElectionLayout({ activeTab, children }: TrustElectionLayout
                     : "Trust Election"}
                 </h1>
                 <Badge
-                  variant={election.endYmd ? "secondary" : "default"}
+                  variant={statusPresentation.variant}
                   data-testid="badge-election-status"
                 >
-                  {election.endYmd ? "Ended" : "Active"}
+                  {statusPresentation.label}
                 </Badge>
               </div>
               <div className="flex items-center space-x-4">

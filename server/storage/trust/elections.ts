@@ -17,7 +17,7 @@ import {
 } from '@shared/schema';
 import { eq, and, asc, desc, isNull, lt, lte, gte, or, ne, inArray, arrayOverlaps, sql, type SQL } from 'drizzle-orm';
 import { defineLoggingConfig, type StorageLoggingConfig } from '../middleware/logging';
-import { normalizeToDateOnly, getTodayDateOnly } from '@shared/utils';
+import { normalizeToDateOnly, getTodayDateOnly, getTodayYmd } from '@shared/utils';
 import { eventBus, EventType } from '../../services/event-bus';
 import { toYmd, addDaysYmd } from '@shared/utils/date';
 
@@ -67,8 +67,8 @@ export interface WorkerTrustElectionsStorage {
   getActiveByWorker(workerId: string): Promise<WorkerTrustElection | undefined>;
   getActiveByWorkerAsOf(workerId: string, asOfYmd: string): Promise<WorkerTrustElection | undefined>;
   /**
-   * True when the worker has any currently-active election (end date not
-   * set) that covers a Medical or Dental benefit. First-time enrollment is
+   * True when the worker has any election whose range covers today and that
+   * covers a Medical or Dental benefit. First-time enrollment is
    * only offered to workers for whom this is false — baseline AD&D/Life-only
    * workers still qualify because those benefit types are not Medical/Dental.
    */
@@ -84,8 +84,8 @@ export interface WorkerTrustElectionsStorage {
   searchViews(params: WorkerTrustElectionSearchParams): Promise<WorkerTrustElectionView[]>;
   /**
    * Batch variant of `getActiveViewByWorker`: at most one hydrated view per
-   * worker (the currently-active election with the latest start). Workers
-   * with no active election are simply absent from the result. Used by the
+   * worker (the election covering today with the latest start). Workers
+   * with no current election are simply absent from the result. Used by the
    * worker-list Membership column (authorization mode) so the policy is
    * derived the same way as everywhere else (hydrateElections).
    */
@@ -131,6 +131,17 @@ export interface MigrationElectionInput {
   relationshipIds?: string[] | null;
   enrollmentType?: EnrollmentType | null;
   data?: Record<string, unknown> | null;
+}
+
+/** Inclusive coverage predicate shared by every current/as-of election read. */
+function electionCoversAsOf(asOfYmd: string): SQL {
+  return and(
+    lte(workerTrustElections.startYmd, asOfYmd),
+    or(
+      isNull(workerTrustElections.endYmd),
+      gte(workerTrustElections.endYmd, asOfYmd),
+    ),
+  )!;
 }
 
 async function hydrateElections(rows: WorkerTrustElection[]): Promise<WorkerTrustElectionView[]> {
@@ -606,7 +617,7 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
       if (params.policyId) conds.push(eq(workerTrustElections.policyId, params.policyId));
       if (params.enrollmentType) conds.push(eq(workerTrustElections.enrollmentType, params.enrollmentType));
       if (params.activeOnly) {
-        conds.push(isNull(workerTrustElections.endYmd));
+        conds.push(electionCoversAsOf(getTodayYmd()));
       }
       const where = conds.length > 0 ? and(...conds) : undefined;
       const order = params.sort === 'startAsc'
@@ -642,11 +653,7 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
         .where(
           and(
             eq(workerTrustElections.workerId, workerId),
-            lte(workerTrustElections.startYmd, asOfYmd),
-            or(
-              isNull(workerTrustElections.endYmd),
-              gte(workerTrustElections.endYmd, asOfYmd),
-            ),
+            electionCoversAsOf(asOfYmd),
           ),
         )
         .orderBy(desc(workerTrustElections.startYmd))
