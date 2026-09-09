@@ -19,9 +19,6 @@ import {
   evaluateChain,
   validateTokenExpressionForRoots,
   describeChain,
-  listTokenTreeRoots,
-  expandTokenType,
-  searchTokenTree,
 } from "../../plugins/tokens";
 import type { TokenPreviewRecordRef } from "../../plugins/tokens/types";
 import {
@@ -776,22 +773,11 @@ export function registerBulkMessageRoutes(
     }
   });
 
-  // Browsable token tree for bulk messaging — the same lazy tree the
-  // Template Studio walks, gated for bulk authors instead of admins.
-  // The roots are bulk's own token context, read server-side: the
-  // caller cannot ask for a root bulk has not declared.
-  app.get("/api/bulk-tokens/tree/roots", requireAuth, requireAccess('bulk.edit'), (_req, res) => {
-    res.json({ roots: listTokenTreeRoots(tokenContextRootNames(BULK_MESSAGE_TOKEN_CONTEXT)) });
-  });
-
-  app.get("/api/bulk-tokens/tree/type/:type", requireAuth, requireAccess('bulk.edit'), (req, res) => {
-    res.json(expandTokenType(req.params.type));
-  });
-
-  app.get("/api/bulk-tokens/tree/search", requireAuth, requireAccess('bulk.edit'), (req, res) => {
-    const q = typeof req.query.q === "string" ? req.query.q : "";
-    res.json({ hits: searchTokenTree(tokenContextRootNames(BULK_MESSAGE_TOKEN_CONTEXT), q) });
-  });
+  // The browsable token tree is NOT served here. It is the same tree
+  // for every surface, so it is one route family scoped and gated by
+  // the token context named in the request
+  // (`/api/token-studio/tree/*?context=…`), which reads bulk's roots
+  // from bulk's own context exactly as this copy used to.
 
   // Returns per-token coverage across this message's participants:
   // for every token used in any channel template, how many distinct

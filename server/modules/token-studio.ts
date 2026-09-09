@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import type { IStorage } from "../storage";
-import type { TokenRootSeed } from "../plugins/tokens/types";
+import type { TokenEntityType, TokenRootSeed } from "../plugins/tokens/types";
 import type { TokenPreviewRoot } from "../plugins/tokens/preview-roots";
 import type { DeliveryFieldSpec } from "@shared/delivery-fields";
 
@@ -402,27 +402,35 @@ export function registerTokenStudioRoutes(
   );
 
   /**
-   * The token tree's ROOTS — one node per root the author may start a
-   * chain at, exactly the ones `?roots=` names (required, same as the
-   * catalog). The picker expands a node lazily through
-   * `/api/token-studio/tree/type/:type`, so a deep relation graph costs
-   * one small request per level instead of one giant catalog.
+   * THE BROWSABLE TOKEN TREE, for every surface there is — the same
+   * question `/api/token-studio/graph` answers, asked one level at a
+   * time so a deep relation graph costs one small request per level
+   * instead of one giant catalog.
+   *
+   * ONE FAMILY, gated exactly like the graph: the caller names its
+   * CONTEXT and the roots are that context's own statement about
+   * itself, read server-side. Bulk messaging and the compose screens
+   * used to each serve their own copy behind their own gate, which was
+   * three near-identical endpoints and three chances for one surface's
+   * picker to offer a token its save would reject.
+   *
+   * The caller cannot name roots. It could once, which let one screen
+   * browse another screen's roots — a picker offering tokens the render
+   * then refuses.
    */
   app.get(
     "/api/token-studio/tree/roots",
     requireAuth,
-    requireAccess("admin"),
+    requireTokenContextAccess(requireAccess),
     async (req, res) => {
       try {
         const { listTokenTreeRoots } = await import("../plugins/tokens");
-        const rootNames = parseRootNames(req.query.roots);
-        if (rootNames.length === 0) {
-          return res.status(400).json({
-            message:
-              "roots is required: name the roots these templates address, e.g. ?roots=contact,system",
-          });
-        }
-        res.json({ roots: listTokenTreeRoots(rootNames) });
+        const { tokenContextRootNames } = await import(
+          "../plugins/tokens/contexts"
+        );
+        res.json({
+          roots: listTokenTreeRoots(tokenContextRootNames(contextIdOf(req))),
+        });
       } catch (error: any) {
         res
           .status(500)
@@ -431,15 +439,34 @@ export function registerTokenStudioRoutes(
     },
   );
 
-  /** One level of the token tree: what an entity type offers next. */
+  /**
+   * One level of the token tree: what an entity type offers next.
+   *
+   * Scoped by the context too, by walking the graph from its roots. A
+   * type expanded in isolation answers for a graph this context cannot
+   * reach, which is the same widening `?roots=` used to allow, one hop
+   * further in.
+   */
   app.get(
     "/api/token-studio/tree/type/:type",
     requireAuth,
-    requireAccess("admin"),
+    requireTokenContextAccess(requireAccess),
     async (req, res) => {
       try {
-        const { expandTokenType } = await import("../plugins/tokens");
-        res.json(expandTokenType(req.params.type));
+        const { expandTokenType, tokenTypesReachableFrom } = await import(
+          "../plugins/tokens"
+        );
+        const { tokenContextRootNames } = await import(
+          "../plugins/tokens/contexts"
+        );
+        const rootNames = tokenContextRootNames(contextIdOf(req));
+        const type = req.params.type as TokenEntityType;
+        if (!tokenTypesReachableFrom(rootNames).has(type)) {
+          return res
+            .status(404)
+            .json({ message: "No such type in this token context" });
+        }
+        res.json(expandTokenType(type));
       } catch (error: any) {
         res
           .status(500)
@@ -449,7 +476,7 @@ export function registerTokenStudioRoutes(
   );
 
   /**
-   * Search the tree: `?roots=a,b&q=ssn`. Matches root,
+   * Search the tree: `?context=bulk_message&q=ssn`. Matches root,
    * relation and field names at any depth and returns each hit with the
    * complete token expression and its path, so the picker never has to
    * pull the whole graph down to offer search.
@@ -457,19 +484,17 @@ export function registerTokenStudioRoutes(
   app.get(
     "/api/token-studio/tree/search",
     requireAuth,
-    requireAccess("admin"),
+    requireTokenContextAccess(requireAccess),
     async (req, res) => {
       try {
         const { searchTokenTree } = await import("../plugins/tokens");
+        const { tokenContextRootNames } = await import(
+          "../plugins/tokens/contexts"
+        );
         const q = typeof req.query.q === "string" ? req.query.q : "";
-        const rootNames = parseRootNames(req.query.roots);
-        if (rootNames.length === 0) {
-          return res.status(400).json({
-            message:
-              "roots is required: name the roots these templates address, e.g. ?roots=contact,system",
-          });
-        }
-        res.json({ hits: searchTokenTree(rootNames, q) });
+        res.json({
+          hits: searchTokenTree(tokenContextRootNames(contextIdOf(req)), q),
+        });
       } catch (error: any) {
         res
           .status(500)

@@ -61,6 +61,7 @@ export {
   listTokenTreeRoots,
   expandTokenType,
   searchTokenTree,
+  tokenTypesReachableFrom,
   type TokenTreeRoot,
   type TokenTreeChild,
   type TokenTreeSearchHit,

@@ -233,8 +233,16 @@ export interface TemplateStudioProps {
   segments?: TokenSegmentSpec[];
   fieldIndex?: TokenFieldIndex;
   /**
+   * WHAT THESE TEMPLATES ARE ABOUT: the token context this surface
+   * writes in. The token browser asks for it by id and the server
+   * scopes and gates the tree from the context's own declaration, so
+   * the picker cannot browse a root this surface may not write.
+   */
+  contextId: string;
+  /**
    * Named record roots these templates address (`dispatch`, `event`,
-   * …) — the roots the token browser starts its tree at.
+   * …), read from that same context by the caller — what the preview
+   * renders against and what the diagnostics report.
    */
   rootNames?: string[];
   /**
@@ -244,8 +252,6 @@ export interface TemplateStudioProps {
    * server's own per-kind fallback.
    */
   seeds?: StudioSeeds;
-  /** Tree endpoints for this host (defaults to the studio's own). */
-  treeBaseUrl?: string;
   /**
    * How the two requests behind this studio went, reported separately
    * because they answer different questions and fail independently: the
@@ -661,9 +667,9 @@ export function TemplateStudio({
   tokens,
   segments,
   fieldIndex,
+  contextId,
   rootNames,
   seeds,
-  treeBaseUrl,
   graphState,
   seedsState,
   hostNotice,
@@ -708,35 +714,27 @@ export function TemplateStudio({
   // requests, so "failed" belongs to whichever one failed, over the
   // panel that shows it.
   const graphFailed = Boolean(graphState?.error);
-  // No "…but the segments already arrived" shortcut here. The graph and
-  // the roots are two requests now, and the graph can land first: taking
-  // its arrival as "ready" starts the tree with no roots to ask about,
-  // which the tree route refuses.
-  const graphLoading = Boolean(graphState?.loading);
   const seedsFailed = Boolean(seedsState?.error);
   const seedsLoading = Boolean(seedsState?.loading) && !seeds;
 
   /**
-   * Is the token browser browsing THIS host's tokens?
+   * Is the token browser browsing THIS surface's tokens?
    *
-   * It is when something scopes it: roots the host named itself, or a
-   * tree endpoint of its own (which scopes server-side). With neither,
-   * the scope was supposed to come from the context the graph was asked
-   * for — and until that arrives, the default tree is the whole site's
-   * token list, not this host's. Showing it would be the same lie in a
-   * different panel: a failed request reading as a usable, but foreign,
-   * token source.
+   * It is whenever the context is named, because the tree is scoped
+   * from that context SERVER-SIDE: there is no unscoped tree left to
+   * fall through to and no root list for the client to get wrong, so
+   * the browser no longer has to wait for the graph or the catalog to
+   * land before it can be trusted. A surface that names no context is
+   * the one case left — a config form whose context id was never
+   * stamped — and it has no tokens to browse rather than the site's.
    */
-  const treeScopeKnown = (rootNames?.length ?? 0) > 0 || Boolean(treeBaseUrl);
-  const tokenSourceUnknown =
-    !treeScopeKnown && (graphLoading || graphFailed);
+  const tokenSourceUnknown = !contextId;
 
-  // The tree endpoints this host is using, read from the SAME query the
+  // The tree endpoint this studio is using, read from the SAME query the
   // token browser reads, so the diagnostics report what the picker
   // actually got rather than a second opinion.
   const treeRoots = useTokenTreeRoots({
-    treeBaseUrl,
-    rootNames,
+    contextId,
     enabled: open && !tokenSourceUnknown,
   });
 
@@ -1411,28 +1409,20 @@ export function TemplateStudio({
                 ) : undefined
               }
             >
-              {/* Nothing to browse yet is not the same as nothing to
-                  browse: with the graph missing the studio does not
-                  know which tokens exist here, and the site-wide tree is
-                  not an answer to that question. */}
+              {/* Nothing to browse is not the same as a browser that
+                  cannot say what it is browsing: with no context named
+                  there is nothing to ask the tree about, and answering
+                  with the site's whole token list would be a foreign
+                  token source reading as this editor's. */}
               {tokenSourceUnknown ? (
                 <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-                  {graphFailed ? (
-                    <TokenRequestError
-                      what="This editor's tokens"
-                      error={graphState?.error}
-                      onRetry={graphState?.retry}
-                      testId="text-studio-tokens-error"
-                    />
-                  ) : (
-                    <p
-                      className="p-2 text-sm text-muted-foreground flex items-center gap-1.5"
-                      data-testid="text-studio-tokens-loading"
-                    >
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading
-                      this editor's tokens…
-                    </p>
-                  )}
+                  <p
+                    className="p-2 text-sm text-muted-foreground"
+                    data-testid="text-studio-tokens-no-context"
+                  >
+                    This editor does not say what its templates are about,
+                    so there are no tokens to browse.
+                  </p>
                 </div>
               ) : (
                 <>
@@ -1453,8 +1443,7 @@ export function TemplateStudio({
                   )}
                   <TokenTreeBrowser
                     onInsert={insertSnippet}
-                    rootNames={rootNames}
-                    treeBaseUrl={treeBaseUrl}
+                    contextId={contextId}
                     // The section header already says what this is.
                     hideHeading
                     className="min-h-0 flex-1 min-w-0 flex flex-col overflow-hidden"
@@ -1476,9 +1465,7 @@ export function TemplateStudio({
             treeRoots={treeRoots}
             treeNotAsked={
               tokenSourceUnknown
-                ? graphFailed
-                  ? "this host's roots come from its token context, and that request failed"
-                  : "waiting for the token context to say which roots this host has"
+                ? "this editor names no token context, and the tree is scoped by one"
                 : undefined
             }
             previewError={previewError}

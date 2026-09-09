@@ -279,7 +279,6 @@ export function ComposeTemplateStudio({
           fieldSpecs={MEDIUM_FIELDS[channel]}
           contextId={composeTokenContextId(target.scope)}
           seedsUrl={`/api/comm-compose/preview-seeds?scope=${encodeURIComponent(target.scope)}&recordId=${encodeURIComponent(target.recordId)}`}
-          treeBaseUrl={`/api/comm-compose/tree/${encodeURIComponent(target.scope)}`}
         />
       )}
 

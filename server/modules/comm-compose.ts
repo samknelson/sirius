@@ -10,12 +10,9 @@ import { composeTokenContextId } from "@shared/token-contexts";
 import { MEDIUM_FIELDS } from "@shared/delivery-fields";
 import { storage } from "../storage";
 import {
-  expandTokenType,
-  listTokenTreeRoots,
   registerTokenContext,
   registerTokenContextRoot,
   resolveTokenPreviewEntity,
-  searchTokenTree,
   tokenContextRootNames,
   type TokenEntity,
   type TokenEntityType,
@@ -62,9 +59,9 @@ import { renderTemplatePreview } from "./template-preview";
  * surface declares them, so `{{employer_contact…}}` stays an unknown
  * token in bulk messaging and in every notifier.
  *
- * Declared at module scope because every reader below — the seeds,
- * the tree, the render — needs them to exist by the time it runs, and
- * they all reach them through this file.
+ * Declared at module scope because every reader below — the seeds, the
+ * render — needs them to exist by the time it runs, and they all reach
+ * them through this file.
  */
 registerTokenContextRoot({
   name: EMPLOYER_CONTACT_ROOT_NAME,
@@ -120,9 +117,10 @@ interface ComposeScope {
 /**
  * The COMPLETE ordered root list for one scope — read from the scope's
  * token context, which is where it is declared (see the registrations
- * below). Every reader here goes through this: the seeds, the tree,
- * the render and the studio the author is looking at are then all
- * reading one list.
+ * below). Every reader here goes through this: the seeds, the render
+ * and the studio the author is looking at — including the shared token
+ * graph and tree routes, which read the same context by id — are then
+ * all reading one list.
  */
 function scopeRootNames(scope: ComposeScope): string[] {
   return tokenContextRootNames(composeTokenContextId(scope.name));
@@ -205,47 +203,6 @@ registerTokenContext({
   // off there is no such screen and no such context.
   component: "trust.providers",
 });
-
-/**
- * THE TREE IS SCOPED BY THE URL, NOT BY THE CALLER'S WISHES.
- *
- * Every tree route names its scope in the path, and the roots it walks
- * are that scope's declared list. The client cannot widen it: a worker
- * compose screen browsing `{{employer_contact…}}` would offer tokens
- * that its own render will refuse, which is the picker and the
- * validation disagreeing — exactly what a closed root list exists to
- * prevent.
- */
-function scopeFromParam(raw: unknown): ComposeScope | undefined {
-  return isComposeScopeName(raw) ? COMPOSE_SCOPES[raw] : undefined;
-}
-
-/**
- * Every entity type a chain rooted in this scope can arrive at.
- *
- * `expandTokenType` answers for a type in isolation, so on its own it
- * would happily expand a type this scope can never reach. Walking the
- * graph from the scope's roots is what makes "what can follow this?"
- * a question about THIS surface.
- *
- * Not cached: the walk is over in-memory registry metadata, and a cache
- * would have to be keyed on the registry version and the component
- * revision to avoid answering for a graph that has since changed.
- */
-function reachableTypes(scope: ComposeScope): Set<string> {
-  const seen = new Set<string>();
-  const queue = listTokenTreeRoots(scopeRootNames(scope)).map((root) => root.type);
-  while (queue.length > 0) {
-    const type = queue.shift() as TokenEntityType;
-    if (seen.has(type)) continue;
-    seen.add(type);
-    for (const child of expandTokenType(type).children) {
-      if (child.kind !== "relation" || !child.outputType) continue;
-      if (!seen.has(child.outputType)) queue.push(child.outputType);
-    }
-  }
-  return seen;
-}
 
 /** The scope's record and the person it is addressed to, both gated. */
 type ResolvedTarget =
@@ -383,56 +340,11 @@ export function registerCommComposeRoutes(
     },
   );
 
-  // The browsable token tree, gated for the staff who compose messages
-  // rather than for admins. Same tree the studio walks everywhere else,
-  // but bounded by the scope in the path — see `scopeFromParam`.
-  app.get(
-    "/api/comm-compose/tree/:scope/roots",
-    requireAuth,
-    requireAccess(COMPOSE_ACCESS_POLICY),
-    (req, res) => {
-      const scope = scopeFromParam(req.params.scope);
-      if (!scope) {
-        res.status(400).json({ message: "Unknown compose scope" });
-        return;
-      }
-      res.json({ roots: listTokenTreeRoots(scopeRootNames(scope)) });
-    },
-  );
-
-  app.get(
-    "/api/comm-compose/tree/:scope/type/:type",
-    requireAuth,
-    requireAccess(COMPOSE_ACCESS_POLICY),
-    (req, res) => {
-      const scope = scopeFromParam(req.params.scope);
-      if (!scope) {
-        res.status(400).json({ message: "Unknown compose scope" });
-        return;
-      }
-      const type = req.params.type as TokenEntityType;
-      if (!reachableTypes(scope).has(type)) {
-        res.status(404).json({ message: "No such type on this screen" });
-        return;
-      }
-      res.json(expandTokenType(type));
-    },
-  );
-
-  app.get(
-    "/api/comm-compose/tree/:scope/search",
-    requireAuth,
-    requireAccess(COMPOSE_ACCESS_POLICY),
-    (req, res) => {
-      const scope = scopeFromParam(req.params.scope);
-      if (!scope) {
-        res.status(400).json({ message: "Unknown compose scope" });
-        return;
-      }
-      const q = typeof req.query.q === "string" ? req.query.q : "";
-      res.json({ hits: searchTokenTree(scopeRootNames(scope), q) });
-    },
-  );
+  // The browsable token tree is NOT served here. It is the same tree
+  // for every surface, so it is one route family scoped and gated by
+  // the token context named in the request
+  // (`/api/token-studio/tree/*?context=…`), which reads each scope's
+  // roots from that scope's own context exactly as this copy used to.
 
   /**
    * THE RENDER — tokenized text in, the finished message out.

@@ -30,10 +30,11 @@ import { MEDIUM_FIELDS, isSafeRelativePath } from "@shared/delivery-fields";
  * the colour switches — stay here, where they belong.
  */
 
-/** Bulk's token endpoints; the studio's own are gated differently. */
+/** The records this message may be previewed against — bulk's alone.
+ *  What may be WRITTEN comes from its token context, so the studio's
+ *  shared graph and tree routes answer for it too. */
 const bulkSeedsUrl = (messageId: string) =>
   `/api/bulk-messages/${messageId}/preview-seeds`;
-const BULK_TOKEN_TREE_URL = "/api/bulk-tokens/tree";
 
 // Field declarations are shared between the summary rows and the studio
 // that edits them, so a field can never be editable but invisible (or
@@ -192,7 +193,6 @@ function EmailForm({ record, onSave, isPending, seedsUrl }: FormProps) {
             fieldSpecs={MEDIUM_FIELDS.email}
             contextId={BULK_MESSAGE_TOKEN_CONTEXT}
             seedsUrl={seedsUrl}
-            treeBaseUrl={BULK_TOKEN_TREE_URL}
             fields={EMAIL_FIELDS}
             values={form}
             onValueChange={(key, value) => setForm((p) => ({ ...p, [key]: value }))}
@@ -243,7 +243,6 @@ function SmsForm({ record, onSave, isPending, seedsUrl }: FormProps) {
             fieldSpecs={MEDIUM_FIELDS.sms}
             contextId={BULK_MESSAGE_TOKEN_CONTEXT}
             seedsUrl={seedsUrl}
-            treeBaseUrl={BULK_TOKEN_TREE_URL}
             fields={SMS_FIELDS}
             values={{ body }}
             onValueChange={(_key, value) => setBody(value)}
@@ -296,7 +295,6 @@ function PostalForm({ record, onSave, isPending, seedsUrl }: FormProps) {
             fieldSpecs={MEDIUM_FIELDS.postal}
             contextId={BULK_MESSAGE_TOKEN_CONTEXT}
             seedsUrl={seedsUrl}
-            treeBaseUrl={BULK_TOKEN_TREE_URL}
             fields={POSTAL_FIELDS}
             values={{ description: form.description }}
             onValueChange={(_key, value) => setForm((p) => ({ ...p, description: value }))}
@@ -401,7 +399,6 @@ function InappForm({ record, onSave, isPending, seedsUrl }: FormProps) {
             fieldSpecs={MEDIUM_FIELDS.inapp}
             contextId={BULK_MESSAGE_TOKEN_CONTEXT}
             seedsUrl={seedsUrl}
-            treeBaseUrl={BULK_TOKEN_TREE_URL}
             fields={INAPP_FIELDS}
             values={form}
             onValueChange={(key, value) => setForm((p) => ({ ...p, [key]: value }))}

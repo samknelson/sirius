@@ -83,12 +83,6 @@ export interface TokenStudioProps {
    * requests report themselves; this is for a host's.
    */
   hostNotice?: ReactNode;
-  /**
-   * Browsable-tree endpoints for this host (defaults to the studio's
-   * own). Hosts gated differently — bulk messaging — serve the same
-   * tree behind their own gate and pass it here.
-   */
-  treeBaseUrl?: string;
 }
 
 /**
@@ -118,7 +112,6 @@ export function TokenStudio({
   contextId,
   seedsUrl,
   hostNotice,
-  treeBaseUrl,
 }: TokenStudioProps) {
   const tokenContext = useTokenContext(contextId);
   const rootNames = tokenContext.context?.rootNames;
@@ -197,9 +190,9 @@ export function TokenStudio({
       tokens={graph?.pickerEntries ?? []}
       segments={graph?.segments}
       fieldIndex={graph?.fieldIndex}
+      contextId={contextId}
       rootNames={rootNames}
       seeds={seeds}
-      treeBaseUrl={treeBaseUrl}
       hostNotice={hostNotice}
       graphState={graphState}
       seedsState={seedsState}

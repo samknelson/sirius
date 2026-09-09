@@ -185,6 +185,35 @@ export function listTokenTreeRoots(rootNames: string[]): TokenTreeRoot[] {
 }
 
 /**
+ * Every entity type a chain rooted in `rootNames` can arrive at.
+ *
+ * `expandTokenType` answers for a type in isolation, so on its own it
+ * would happily expand a type these roots can never reach. Walking the
+ * graph from the roots is what makes "what can follow this?" a question
+ * about THIS surface rather than about the registry.
+ *
+ * Not cached: the walk is over in-memory registry metadata, and a cache
+ * would have to be keyed on the registry version and the component
+ * revision to avoid answering for a graph that has since changed.
+ */
+export function tokenTypesReachableFrom(
+  rootNames: string[],
+): Set<TokenEntityType> {
+  const seen = new Set<TokenEntityType>();
+  const queue = listTokenTreeRoots(rootNames).map((root) => root.type);
+  while (queue.length > 0) {
+    const type = queue.shift() as TokenEntityType;
+    if (seen.has(type)) continue;
+    seen.add(type);
+    for (const child of expandTokenType(type).children) {
+      if (child.kind !== "relation" || !child.outputType) continue;
+      if (!seen.has(child.outputType)) queue.push(child.outputType);
+    }
+  }
+  return seen;
+}
+
+/**
  * What can follow a chain that has arrived at `type`: its relations
  * (with their arguments), its value leaves, and its field names.
  *
