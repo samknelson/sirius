@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "wouter";
+import { useParams } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, Maximize2, RefreshCw, Save, TriangleAlert } from "lucide-react";
+import { FileText, Loader2, Maximize2, RefreshCw, Save, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,11 @@ import { usePageTitle } from "@/contexts/PageTitleContext";
 import { ApiError, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useCatalogQuery } from "@/hooks/useCatalogQuery";
 import { TokenStudio, type StudioField } from "@/components/template-studio/TokenStudio";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
 import { MEDIUM_FIELDS, MEDIUM_NAMES, type MediumName } from "@shared/delivery-fields";
 import { readTokenContext } from "@shared/token-contexts";
 import type { LetterTemplate } from "./letter-templates";
@@ -58,14 +63,25 @@ export default function LetterTemplateDetailPage() {
     if (form.contextIds.length === 1) { setStudioContext(form.contextIds[0]); setStudioOpen(true); }
     else setContextPickerOpen(true);
   };
-  if (template.isLoading) return <div className="space-y-4"><div className="h-8 w-64 animate-pulse rounded bg-muted" /><div className="h-72 animate-pulse rounded bg-muted" /></div>;
+  const titleBarProps = {
+    variant: "page" as const,
+    icon: <FileText className="h-6 w-6 text-primary" />,
+    backLink: { href: "/admin/letter-templates", label: "Back to Letter Templates" },
+  };
+  if (template.isLoading) return <div className="space-y-6"><RecordTitleBarLoading {...titleBarProps} /><div className="h-72 animate-pulse rounded bg-muted" /></div>;
   if (template.isError || !template.data) {
     const notFound = template.error instanceof ApiError && template.error.status === 404;
-    return <div className="space-y-4"><Link href="/admin/letter-templates" className="inline-flex items-center text-sm text-muted-foreground"><ArrowLeft className="mr-2 h-4 w-4" />Back to templates</Link><Card><CardContent className="py-14 text-center"><TriangleAlert className="mx-auto h-8 w-8 text-destructive" /><p className="mt-3 font-medium">{notFound ? "Template not found" : "Couldn’t load this template"}</p><p className="mt-1 text-sm text-muted-foreground">{errorMessage ?? (notFound ? "This template may have been removed." : "The server did not answer successfully.")}</p><Button variant="outline" className="mt-4" onClick={() => void template.refetch()}>Retry</Button></CardContent></Card></div>;
+    return <div className="space-y-6"><RecordTitleBarNotFound {...titleBarProps} label={notFound ? "Letter Template Not Found" : "Letter Template Unavailable"} /><Card><CardContent className="py-14 text-center"><TriangleAlert className="mx-auto h-8 w-8 text-destructive" /><p className="mt-3 font-medium">{notFound ? "Template not found" : "Couldn’t load this template"}</p><p className="mt-1 text-sm text-muted-foreground">{errorMessage ?? (notFound ? "This template may have been removed." : "The server did not answer successfully.")}</p><Button variant="outline" className="mt-4" onClick={() => void template.refetch()}>Retry</Button></CardContent></Card></div>;
   }
 
   return <div className="space-y-6">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-5"><div><Link href="/admin/letter-templates" className="inline-flex items-center text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="mr-1.5 h-3.5 w-3.5" />Letter templates</Link><h1 className="mt-2 text-2xl font-semibold tracking-tight">{form.name || "Untitled template"}</h1><p className="mt-1 font-mono text-xs text-muted-foreground">{id}</p></div><div className="flex items-center gap-2">{dirty && <span className="text-xs text-amber-700">Unsaved changes</span>}<Button onClick={() => save.mutate()} disabled={!form.name.trim() || !form.contextIds.length || save.isPending || !dirty}>{save.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Save changes</Button></div></div>
+    <RecordTitleBar
+      {...titleBarProps}
+      title={form.name || "Untitled template"}
+      titleTestId="heading-letter-template-name"
+      actions={<div className="flex items-center gap-2">{dirty && <span className="text-xs text-amber-700">Unsaved changes</span>}<Button onClick={() => save.mutate()} disabled={!form.name.trim() || !form.contextIds.length || save.isPending || !dirty}>{save.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Save changes</Button></div>}
+      recordId={template.data.id}
+    />
     {errorMessage && <Alert variant="destructive"><AlertDescription>{errorMessage}</AlertDescription></Alert>}
     <div className="space-y-6">
         <Card><CardHeader><CardTitle className="text-base">Template identity</CardTitle></CardHeader><CardContent className="grid gap-4 sm:grid-cols-2">
