@@ -4,10 +4,12 @@ import type { DeliverContactResult } from "./deliver";
 import { renderTokens, createTokenEvalContext } from "../../plugins/tokens";
 import type { TokenRootSeed } from "../../plugins/tokens/types";
 import {
-  BULK_CHANNEL_FIELDS,
+  MEDIUM_FIELDS,
   applyFieldEligibility,
+  authoredFieldValue,
   shapeRenderedValue,
   tokenCleanerFor,
+  undeliverableReason,
 } from "../../delivery/shape";
 
 export async function resolveUserId(storage: IStorage, contactId: string): Promise<string | null> {
@@ -19,19 +21,35 @@ export async function resolveUserId(storage: IStorage, contactId: string): Promi
 
 /**
  * Shape one bulk in-app notification for delivery, field by field, as
- * each field declares — so the tokenized fields are rendered with their
- * destination's cleaning and the link URL, which is not tokenized at
- * all, is sent exactly as stored. The template
- * studio previews through the same declarations and the same shaping
- * call, so an author sees what the recipient receives.
+ * each field declares — each rendered with its destination's cleaning,
+ * then shaped (the link is held to the same relative-path rule the
+ * notifier's links are held to, because the bell that opens it is the
+ * same bell). The template studio previews through the same
+ * declarations and the same shaping call, so an author sees what the
+ * recipient receives.
  */
 export async function renderInappContentForDelivery(
   content: { title?: string | null; body?: string | null; linkUrl?: string | null; linkLabel?: string | null },
   ctx: Parameters<typeof renderTokens>[1],
-): Promise<{ title: string; body: string; linkUrl?: string; linkLabel?: string }> {
+): Promise<{
+  title: string;
+  body: string;
+  linkUrl?: string;
+  linkLabel?: string;
+  /** Required fields that rendered blank; non-empty means: do not send. */
+  blankRequired: string[];
+}> {
+  const specs = MEDIUM_FIELDS.inapp;
   const shaped: Record<string, string> = {};
-  for (const spec of BULK_CHANNEL_FIELDS.inapp) {
-    const raw = (content as Record<string, string | null | undefined>)[spec.key] || "";
+  for (const spec of specs) {
+    // Nothing stored for an optional field means the author did not
+    // give one, and it stays absent; nothing stored for a required one
+    // is the same blank as an empty box, and is reported as that.
+    const raw = authoredFieldValue(
+      spec,
+      (content as Record<string, string | null | undefined>)[spec.key],
+    );
+    if (raw === undefined) continue;
     const clean = tokenCleanerFor(spec);
     const rendered =
       clean === null
@@ -39,12 +57,13 @@ export async function renderInappContentForDelivery(
         : (await renderTokens(raw, ctx, { strictUnknown: true, clean })).output;
     shaped[spec.key] = shapeRenderedValue(spec, rendered);
   }
-  const { values } = applyFieldEligibility(BULK_CHANNEL_FIELDS.inapp, shaped);
+  const { values, blankRequired } = applyFieldEligibility(specs, shaped);
   return {
     title: values.title,
     body: values.body,
     linkUrl: values.linkUrl || undefined,
     linkLabel: values.linkLabel || undefined,
+    blankRequired,
   };
 }
 
@@ -66,6 +85,15 @@ export async function deliverInapp(
   }
   const ctx = createTokenEvalContext(storage, contactId, { seeds });
   const rendered = await renderInappContentForDelivery(inappContent, ctx);
+  if (rendered.blankRequired.length > 0) {
+    // A notification with no title or no body is not a notification.
+    // Recorded against this recipient instead of sent empty.
+    return {
+      success: false,
+      error: undeliverableReason("inapp", rendered.blankRequired),
+      errorCode: "NO_CONTENT",
+    };
+  }
   const result: SendInappResult = await sendInapp({
     contactId,
     userId: targetUserId,

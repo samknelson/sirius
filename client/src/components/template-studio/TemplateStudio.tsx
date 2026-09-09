@@ -1000,7 +1000,7 @@ export function TemplateStudio({
       );
     }
     if (channel === "sms") {
-      const message = pf("message") ?? pf("body");
+      const message = pf("body");
       return (
         <div className="space-y-1.5">
           <SmsPreviewBubble text={message?.rendered ?? ""} />

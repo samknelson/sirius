@@ -222,7 +222,7 @@ export function templatesSchemaBlock(
         "sms",
         "SMS",
         {
-          message: templateField("Message", "sms.message", "multiline"),
+          body: templateField("Message", "sms.body", "multiline"),
         },
       ),
       inapp: channelGroup(

@@ -5,7 +5,7 @@ import {
   type ComposeRenderResponse,
   type ComposeScopeName,
 } from "@shared/comm-compose";
-import { COMPOSE_CHANNEL_FIELDS } from "@shared/delivery-fields";
+import { MEDIUM_FIELDS } from "@shared/delivery-fields";
 import { storage } from "../storage";
 import {
   buildFieldCatalog,
@@ -412,11 +412,13 @@ export function registerCommComposeRoutes(
         }
         const { scope } = target;
 
-        // The channel's field specs are the server's, from the shared
-        // delivery declarations — never the client's. A caller that
-        // could post its own specs could post `syntax: "text"` for an
-        // HTML body and have token values land unescaped.
-        const specs = COMPOSE_CHANNEL_FIELDS[channel];
+        // The medium's field specs are the server's, from the ONE
+        // shared declaration — never the client's. A caller that could
+        // post its own specs could post `syntax: "text"` for an HTML
+        // body and have token values land unescaped. A compose screen
+        // authors a subset of its medium's fields; the ones it sends no
+        // value for are simply not rendered.
+        const specs = MEDIUM_FIELDS[channel];
         const templates: Record<string, string> = {};
         for (const spec of specs) {
           const value = (values as Record<string, unknown>)[spec.key];

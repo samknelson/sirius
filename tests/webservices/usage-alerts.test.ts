@@ -231,7 +231,7 @@ describe("a usage alert notifier woken by a tick", () => {
     expect((await wakeAndCompose(notifier, "email"))?.bodyText).toContain(
       "https://example.test/admin/wc/stats",
     );
-    expect((await wakeAndCompose(notifier, "sms"))?.message).toContain(
+    expect((await wakeAndCompose(notifier, "sms"))?.body).toContain(
       "https://example.test/admin/wc/stats",
     );
     expect((await wakeAndCompose(notifier, "inapp"))?.linkUrl).toBe("/admin/wc/stats");

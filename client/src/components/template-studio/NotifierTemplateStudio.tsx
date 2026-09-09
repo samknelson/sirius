@@ -6,7 +6,7 @@ import {
   type StudioFieldMode,
   type StudioSourceState,
 } from "./TemplateStudio";
-import { NOTIFIER_CHANNEL_FIELDS } from "@shared/delivery-fields";
+import { MEDIUM_FIELDS, authoredFieldValue } from "@shared/delivery-fields";
 import type {
   TokenCatalogEntry,
   TokenFieldCatalog,
@@ -149,13 +149,20 @@ export function NotifierTemplateStudio({
   // hides still ships when the notifier declares a default for it, and
   // a required one that is blank is what makes the message
   // undeliverable, so both have to be in the preview request.
-  const deliveryFields = NOTIFIER_CHANNEL_FIELDS[channel] ?? [];
+  const deliveryFields = MEDIUM_FIELDS[channel as keyof typeof MEDIUM_FIELDS] ?? [];
   const templateValues: Record<string, string> = {};
   for (const spec of deliveryFields) {
     const override = overrideOf(spec.key);
-    templateValues[spec.key] =
+    // An optional field nobody has written a template for is left OUT
+    // of the request, exactly as delivery leaves it out of the message;
+    // a required one with nothing behind it is sent as the blank it is,
+    // which is what makes the preview say "undeliverable".
+    const authored = authoredFieldValue(
+      spec,
       edited[spec.key] ??
-      (override.trim() !== "" ? override : (defaults[spec.key] ?? ""));
+        (override.trim() !== "" ? override : defaults[spec.key]),
+    );
+    if (authored !== undefined) templateValues[spec.key] = authored;
   }
 
   if (disabled) return null;

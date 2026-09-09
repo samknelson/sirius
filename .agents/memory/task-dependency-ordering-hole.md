@@ -3,16 +3,14 @@ name: Task dependency ordering hole
 description: Why a late-planned consumer task can end up with no dependency on its prerequisites, and what to do about it.
 ---
 
-A task's `dependsOn` may only name tasks that are already **accepted** (PENDING or
-later), and dependencies **cannot be configured once the task is assigned** —
-the attempt fails outright.
+Dependencies **cannot be configured once the task is assigned** — the attempt
+fails outright. Assignment, not acceptance, is the real deadline: pointing a
+Drafts task's `dependsOn` at another Drafts task does work.
 
-Those two rules combine into a trap. Plan a chain where the last task consumes
-the output of one still sitting in Drafts, and you cannot declare the link at
-creation time. By the time the prerequisite is accepted, the consumer may already
-have been assigned, and then it is too late to declare it at all. The consumer
-gets scheduled with an empty dependency list and arrives before anything it needs
-exists.
+That single rule is still a trap. Plan a chain, hand the consumer over while a
+prerequisite is unfinished, and the link can no longer be declared at all — the
+consumer is scheduled with an empty dependency list and arrives before anything
+it needs exists.
 
 **Why:** it happened on the catalog chain — the browser task could not be pointed
 at the read-route task during planning, and was later handed over while both of

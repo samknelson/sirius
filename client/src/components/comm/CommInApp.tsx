@@ -4,8 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
-import { htmlToPlainText } from "@shared/utils/html";
+import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { 
   Bell, 
@@ -48,12 +47,13 @@ interface CommInAppProps {
 export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInAppProps) {
   const { toast } = useToast();
   const [title, setTitle] = useState("");
-  const [bodyHtml, setBodyHtml] = useState("");
+  // An in-app notification IS plain text — it is displayed as plain
+  // text, so it is written as plain text. A rich-text editor here would
+  // promise formatting no reader ever sees.
+  const [body, setBody] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
   const [tagIds, setTagIds] = useState<string[]>([]);
-
-  const derivedBody = htmlToPlainText(bodyHtml);
 
   const { data: userLookup, isLoading: isLoadingUserLookup } = useQuery<UserLookupResponse>({
     queryKey: ["/api/contacts", contactId, "user-lookup"],
@@ -82,7 +82,7 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
         description: "The notification has been sent successfully.",
       });
       setTitle("");
-      setBodyHtml("");
+      setBody("");
       setLinkUrl("");
       setLinkLabel("");
       setTagIds([]);
@@ -100,12 +100,12 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
   });
 
   const handleSend = () => {
-    if (!userLookup?.user?.id || !title.trim() || !derivedBody.trim()) return;
-    if (composeTarget && refuseUnrenderedTokens({ title, body: derivedBody }, toast)) return;
+    if (!userLookup?.user?.id || !title.trim() || !body.trim()) return;
+    if (composeTarget && refuseUnrenderedTokens({ title, body }, toast)) return;
     sendInappMutation.mutate({
       userId: userLookup.user.id,
       title: title.trim(),
-      body: derivedBody.trim(),
+      body: body.trim(),
       linkUrl: linkUrl.trim() || undefined,
       linkLabel: linkLabel.trim() || undefined,
       tagIds: tagIds.length > 0 ? tagIds : undefined,
@@ -117,12 +117,12 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
     userLookup?.user?.id &&
     title.trim().length > 0 && 
     title.trim().length <= 100 &&
-    derivedBody.trim().length > 0 &&
-    derivedBody.trim().length <= 500 &&
+    body.trim().length > 0 &&
+    body.trim().length <= 500 &&
     (!linkUrl.trim() || isValidUrl(linkUrl.trim()));
 
   const titleCharCount = title.length;
-  const bodyCharCount = derivedBody.length;
+  const bodyCharCount = body.length;
 
   return (
     <Card>
@@ -202,16 +202,16 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
                   fields={[
                     { key: "title", label: "Title", mode: "line", maxLength: 100 },
                     {
-                      key: "bodyHtml",
+                      key: "body",
                       label: "Message",
-                      mode: "html",
-                      hint: "Formatting is flattened to plain text on send.",
+                      mode: "multiline",
+                      maxLength: 500,
                     },
                   ]}
-                  values={{ title, bodyHtml }}
+                  values={{ title, body }}
                   onApply={(rendered) => {
                     setTitle(rendered.title ?? "");
-                    setBodyHtml(rendered.bodyHtml ?? "");
+                    setBody(rendered.body ?? "");
                   }}
                   testId="button-compose-inapp-template"
                 />
@@ -220,15 +220,17 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
 
             <div className="space-y-2">
               <Label htmlFor="inapp-body">Message</Label>
-              <SimpleHtmlEditor
-                value={bodyHtml}
-                onChange={setBodyHtml}
-                minHeight={140}
+              <Textarea
+                id="inapp-body"
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                rows={5}
+                maxLength={500}
                 placeholder="Type your notification message here"
                 data-testid="input-inapp-body"
               />
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-muted-foreground">In-app notifications display as plain text; formatting will be flattened on send.</p>
+                <p className="text-xs text-muted-foreground">In-app notifications display as plain text.</p>
                 <span className={`text-xs ${bodyCharCount > 500 ? 'text-destructive' : 'text-muted-foreground'}`} data-testid="text-inapp-derived-body-count">
                   {bodyCharCount}/500
                 </span>

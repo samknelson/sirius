@@ -110,6 +110,7 @@ import "./core/1105_rename_entity_metadata_table_name_to_context_id";
 import "./core/1106_restore_process_local_provenance";
 import "./core/1107_allow_unknown_process_provenance";
 import "./core/1108_restore_ledger_metadata";
+import "./core/1109_unify_medium_message_fields";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
@@ -173,6 +174,7 @@ import "./components/edls/005_add_sheet_notifications_enabled";
 import "./components/edls/006_drop_sheet_created_by";
 import "./components/worker.ratings/001_add_sirius_id_to_options_worker_ratings";
 import "./components/worker.aat/001_create_worker_aat";
+import "./components/bulk/001_drop_email_body_text";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
 // into sync with the schema BEFORE the drift gate runs. Baseline scripts

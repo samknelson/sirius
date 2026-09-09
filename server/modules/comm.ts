@@ -16,6 +16,7 @@ import { getEffectiveUser } from "./masquerade";
 import { resolveContactLinks } from "./contact-links";
 import { createCommTagsStorage } from "../storage/comm-tags";
 import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
+import { deriveEmailPlainText } from "../delivery/shape";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -57,17 +58,25 @@ const sendSmsSchema = z.object({
   sendOffline: z.boolean().optional(),
 });
 
+/**
+ * An authored email: a subject and an HTML body, and nothing else.
+ *
+ * The subject is required with the blanks taken out of it — a subject of
+ * spaces is a blank subject, and a blank subject is fatal here rather
+ * than substituted (see `MEDIUM_FIELDS.email`).
+ *
+ * There is deliberately no `bodyText`: the plain-text alternative part is
+ * DERIVED from the HTML body below, never authored, because two authored
+ * copies of one message are two things that can disagree.
+ */
 const sendEmailSchema = z.object({
   email: z.string().email("Invalid email address"),
   name: z.string().optional(),
-  subject: z.string().min(1, "Subject is required").max(500, "Subject too long"),
-  bodyText: z.string().optional(),
-  bodyHtml: z.string().optional(),
+  subject: z.string().trim().min(1, "Subject is required").max(500, "Subject too long"),
+  bodyHtml: z.string().trim().min(1, "Message body is required"),
   replyTo: z.string().email().optional(),
   tagIds: tagIdsSchema,
   sendOffline: z.boolean().optional(),
-}).refine(data => data.bodyText || data.bodyHtml, {
-  message: "Either bodyText or bodyHtml is required",
 });
 
 const postalAddressSchema = z.object({
@@ -266,7 +275,8 @@ export function registerCommRoutes(
         });
       }
 
-      const { email, name, subject, bodyText, bodyHtml, replyTo, tagIds, sendOffline } = parsed.data;
+      const { email, name, subject, bodyHtml, replyTo, tagIds, sendOffline } = parsed.data;
+      const plainText = deriveEmailPlainText(bodyHtml);
       const tagErr = await validateTagIds(tagIds);
       if (tagErr) {
         return res.status(400).json({ error: tagErr });
@@ -278,7 +288,7 @@ export function registerCommRoutes(
         toEmail: email,
         toName: name,
         subject,
-        bodyText,
+        bodyText: plainText,
         bodyHtml,
         replyTo,
         userId: user?.id,

@@ -10,8 +10,12 @@ import { isSafeRelativePath, type DeliveryFieldSpec } from "@shared/delivery-fie
  * import for "what the fields are and how to shape them".
  */
 export {
-  BULK_CHANNEL_FIELDS,
-  NOTIFIER_CHANNEL_FIELDS,
+  MEDIUM_FIELDS,
+  MEDIUM_NAMES,
+  authoredFieldValue,
+  mediumField,
+  deriveEmailPlainText,
+  undeliverableReason,
   DELIVERY_FIELD_SYNTAX,
   DELIVERY_FIELD_SAFETY,
   applyFieldEligibility,
@@ -22,6 +26,7 @@ export {
   type DeliveryFieldSafety,
   type DeliveryFieldSpec,
   type DeliveryFieldSyntax,
+  type MediumName,
   type ShapedFields,
   type TokenValueCleaner,
 } from "@shared/delivery-fields";
@@ -31,9 +36,14 @@ export {
  *
  * This is the single implementation of "what happens to a tokenized
  * string between rendering it and sending it": whitespace trimming,
- * HTML sanitizing, same-app link enforcement and empty-value fallbacks.
- * Delivery code and the template studio's preview both call it, so a
- * change here can never make the two disagree.
+ * HTML sanitizing and same-app link enforcement. Delivery code and the
+ * template studio's preview both call it, so a change here can never
+ * make the two disagree.
+ *
+ * A field that shapes down to nothing STAYS nothing. Substituting a
+ * stand-in here would hide from the author that their template rendered
+ * nothing; a required field that comes out blank is handled as the
+ * failure it is — see `applyFieldEligibility`.
  *
  * This runs on the FINISHED string. Cleaning each token's value on its
  * way in is a separate job with a separate owner — the container's
@@ -60,6 +70,5 @@ export function shapeRenderedValue(
     // padded but otherwise fine path must not preview as dropped.
     value = isSafeRelativePath(value) ? value : "";
   }
-  if (!value && spec.fallback) value = spec.fallback;
   return value;
 }

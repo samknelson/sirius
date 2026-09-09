@@ -197,9 +197,11 @@ export async function renderTemplatePreview({
 
     if (spec.tokenized === false) {
       // Delivery sends this field verbatim (its editor offers no token
-      // insertion), so previewing a substitution would be a lie.
+      // insertion), so previewing a substitution would be a lie — but
+      // it is still SHAPED on the way out, and a preview that skipped
+      // the shaping would show a value delivery goes on to drop.
       fields[spec.key] = {
-        rendered: template,
+        rendered: shapeRenderedValue(spec, template),
         unknownTokens: [],
         missingValues: [],
         emptyValues: [],

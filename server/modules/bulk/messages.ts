@@ -314,12 +314,10 @@ export function registerBulkMessageRoutes(
 
       switch (medium) {
         case 'email': {
-          // The client now sends only `bodyHtml`; derive the plain-text
-          // fallback server-side so the two stay in sync.
+          // Only what the medium declares is stored. The plain-text
+          // alternative part is derived from the HTML body at send, per
+          // recipient, so there is nothing to keep in sync here.
           const emailBody: Record<string, unknown> = { ...messageBody };
-          if (typeof emailBody.bodyHtml === 'string') {
-            emailBody.bodyText = htmlToPlainText(emailBody.bodyHtml as string);
-          }
           const existing = await storage.bulkMessagesEmail.getByBulkId(bulk.id);
           if (existing) {
             const parsed = insertBulkMessagesEmailSchema.partial().safeParse(emailBody);
@@ -810,7 +808,7 @@ export function registerBulkMessageRoutes(
 
       const templates: string[] = [];
       const email = await storage.bulkMessagesEmail.getByBulkId(bulk.id);
-      if (email) templates.push(email.subject || "", email.bodyText || "", email.bodyHtml || "");
+      if (email) templates.push(email.subject || "", email.bodyHtml || "");
       const sms = await storage.bulkMessagesSms.getByBulkId(bulk.id);
       if (sms) templates.push(sms.body || "");
       const inapp = await storage.bulkMessagesInapp.getByBulkId(bulk.id);

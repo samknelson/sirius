@@ -204,7 +204,7 @@ async function deliver(
     }
 
     if (medium === "sms") {
-      if (!content.message) return NOT_SENT;
+      if (!content.body) return NOT_SENT;
       const phones = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(
         recipient.contactId,
       );
@@ -216,7 +216,10 @@ async function deliver(
       const result = await sendSms({
         contactId: recipient.contactId,
         toPhoneNumber: chosen.phoneNumber,
-        message: content.message,
+        // The send layer names the outbound text `message`; the authored
+        // field it comes from is the medium's `body` (see
+        // `shared/delivery-fields.ts`). This is the one crossing point.
+        message: content.body,
         userId: recipient.userId ?? undefined,
         tagIds,
         sendKey: content.sendKey,
@@ -510,7 +513,7 @@ async function dispatchForConfig(
       let content: NotifierMessageContent | null = null;
       if (plugin.tokenTemplates && seeds && templates && renderCache) {
         const { composeFromTemplates } = await import("./token-templates");
-        content = await composeFromTemplates(
+        const composed = await composeFromTemplates(
           plugin,
           medium,
           recipient,
@@ -518,6 +521,25 @@ async function dispatchForConfig(
           templates,
           renderCache,
         );
+        content = composed.content;
+        if (!content && composed.blankRequired.length > 0) {
+          // The notifier meant to send this and the template produced
+          // nothing usable — a message the recipient will never get and
+          // would otherwise never be heard of again. Record it the way
+          // every other failed send is recorded.
+          const { recordUndeliverableMessage } = await import(
+            "../../services/comm/undeliverable"
+          );
+          const { undeliverableReason } = await import("../../delivery/shape");
+          await recordUndeliverableMessage({
+            medium,
+            contactId: recipient.contactId,
+            reason: undeliverableReason(medium, composed.blankRequired),
+            blankFields: composed.blankRequired,
+            source: `event-notifier:${plugin.id}`,
+            tagIds,
+          });
+        }
       } else if (plugin.getMessage) {
         content = await plugin.getMessage(medium, recipient, ctx, configData);
       }
