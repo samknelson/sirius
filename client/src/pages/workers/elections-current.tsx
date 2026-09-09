@@ -102,6 +102,16 @@ function ElectionsCurrentContent() {
     },
   });
 
+  const { data: rows = [], isLoading: isLatestElectionLoading } = useQuery<WorkerTrustElectionView[]>({
+    queryKey: ["/api/workers", worker.id, "trust-elections"],
+    queryFn: async () => {
+      const res = await fetch(`/api/workers/${worker.id}/trust-elections?sort=startDesc`);
+      if (!res.ok) throw new Error("Failed to load");
+      return res.json();
+    },
+  });
+  const latestElection = rows[0] ?? null;
+
   // First-time enrollment is only offered when the worker has no active
   // medical or dental election. The wizard's create hook enforces the same
   // gate server-side; this just reflects it in the button's enabled state.
@@ -188,7 +198,11 @@ function ElectionsCurrentContent() {
                   {lifeEventMutation.isPending ? "Starting…" : "Life Event"}
                 </Button>
               </span>
-              <Button onClick={() => setIsModalOpen(true)} data-testid="button-create-election">
+              <Button
+                onClick={() => setIsModalOpen(true)}
+                disabled={isLatestElectionLoading}
+                data-testid="button-create-election"
+              >
                 New Election
               </Button>
             </div>
@@ -259,6 +273,7 @@ function ElectionsCurrentContent() {
           onOpenChange={setIsModalOpen}
           mode="create"
           workerId={worker.id}
+          createDefaults={latestElection}
           onSaved={() => {
             queryClient.invalidateQueries({ queryKey: ["/api/workers", worker.id, "trust-elections"] });
           }}

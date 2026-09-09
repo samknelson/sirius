@@ -14,10 +14,19 @@ interface Props {
   mode: "create" | "edit";
   workerId: string;
   election?: WorkerTrustElection | null;
+  createDefaults?: WorkerTrustElection | null;
   onSaved?: (saved: WorkerTrustElection) => void;
 }
 
-export function ElectionFormDialog({ open, onOpenChange, mode, workerId, election, onSaved }: Props) {
+export function ElectionFormDialog({
+  open,
+  onOpenChange,
+  mode,
+  workerId,
+  election,
+  createDefaults,
+  onSaved,
+}: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -34,6 +43,7 @@ export function ElectionFormDialog({ open, onOpenChange, mode, workerId, electio
           mode={mode}
           workerId={workerId}
           election={election}
+          createDefaults={createDefaults}
           enabled={open}
           onSaved={(saved) => {
             onSaved?.(saved);

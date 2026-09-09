@@ -45,6 +45,19 @@ function ymdFromDate(value: string | null | undefined): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+export function getCreateElectionDefaults(
+  election: WorkerTrustElection | null | undefined,
+  startYmd = todayYmd(),
+) {
+  return {
+    employerId: election?.employerId ?? "",
+    startYmd,
+    endYmd: "",
+    benefitIds: [...(election?.benefitIds ?? [])],
+    relationshipIds: [...(election?.relationshipIds ?? [])],
+  };
+}
+
 export function invalidateElectionQueries(workerId: string, electionId?: string) {
   queryClient.invalidateQueries({ queryKey: ["/api/workers", workerId, "trust-elections"] });
   queryClient.invalidateQueries({ queryKey: ["/api/workers", workerId, "trust-elections", "current"] });
@@ -57,6 +70,7 @@ interface ElectionFormProps {
   mode: "create" | "edit";
   workerId: string;
   election?: WorkerTrustElection | null;
+  createDefaults?: WorkerTrustElection | null;
   enabled?: boolean;
   onSaved?: (saved: WorkerTrustElection) => void;
   onCancel?: () => void;
@@ -67,6 +81,7 @@ export function ElectionForm({
   mode,
   workerId,
   election,
+  createDefaults,
   enabled = true,
   onSaved,
   onCancel,
@@ -88,13 +103,14 @@ export function ElectionForm({
       setBenefitIds(election.benefitIds ?? []);
       setRelationshipIds(election.relationshipIds ?? []);
     } else if (mode === "create") {
-      setEmployerId("");
-      setStartYmd(todayYmd());
-      setEndYmd("");
-      setBenefitIds([]);
-      setRelationshipIds([]);
+      const defaults = getCreateElectionDefaults(createDefaults);
+      setEmployerId(defaults.employerId);
+      setStartYmd(defaults.startYmd);
+      setEndYmd(defaults.endYmd);
+      setBenefitIds(defaults.benefitIds);
+      setRelationshipIds(defaults.relationshipIds);
     }
-  }, [enabled, mode, election]);
+  }, [enabled, mode, election, createDefaults]);
 
   const { data: employers = [] } = useQuery<EmployerOption[]>({
     queryKey: ["/api/employers/lookup"],

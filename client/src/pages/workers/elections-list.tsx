@@ -81,6 +81,7 @@ function ElectionsListContent() {
       return res.json();
     },
   });
+  const latestElection = rows[0] ?? null;
 
   // First-time enrollment is only offered when the worker has no active
   // medical or dental election. The wizard's create hook enforces the same
@@ -128,7 +129,11 @@ function ElectionsListContent() {
                     : `Open Enrollment ${activeWindow.planYear}`}
                 </Button>
               )}
-              <Button onClick={() => setIsModalOpen(true)} data-testid="button-create-election">
+              <Button
+                onClick={() => setIsModalOpen(true)}
+                disabled={isLoading}
+                data-testid="button-create-election"
+              >
                 New Election
               </Button>
             </div>
@@ -195,6 +200,7 @@ function ElectionsListContent() {
           onOpenChange={setIsModalOpen}
           mode="create"
           workerId={worker.id}
+          createDefaults={latestElection}
           onSaved={() => {
             queryClient.invalidateQueries({ queryKey: ["/api/workers", worker.id, "trust-elections"] });
           }}
