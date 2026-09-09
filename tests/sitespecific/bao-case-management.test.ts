@@ -126,6 +126,7 @@ describe("BAO case registration and component ownership", () => {
   it("exposes typed deadline administration fields", () => {
     const definition = getOptionsStorage().getDefinition("bao-case-status");
     const duration = definition?.fields.find((field) => field.name === "durationDays");
+    const defaultResolution = definition?.fields.find((field) => field.name === "defaultResolutionId");
     const lapse = definition?.fields.find((field) => field.name === "lapseStatusId");
     expect(duration).toMatchObject({
       label: "Duration (days)",
@@ -140,7 +141,63 @@ describe("BAO case registration and component ownership", () => {
       selectOptionsExcludeEditing: true,
       selectOptionsRequireClosedDefault: true,
     });
+    expect(defaultResolution).toMatchObject({
+      label: "Default resolution when closed",
+      inputType: "select-options",
+      selectOptionsType: "bao-case-resolution",
+      required: false,
+    });
+    expect((definition?.schema.properties?.defaultResolutionId as any)?.["x-options-resource"])
+      .toBe("bao-case-resolution");
     expect((definition?.schema.properties?.lapseStatusId as any)?.["x-options-match-field"]).toBe("caseTypeId");
+  });
+
+  it("saves a resolved closed status as a valid lapse destination", async () => {
+    const options = getOptionsStorage();
+    const caseTypeId = await getGeneralCaseTypeId();
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const noResponse = await options.create("bao-case-resolution", {
+      name: `${run}-No Response-${suffix}`,
+    });
+    const closedNoResponse = await options.create("bao-case-status", {
+      name: `${run}-Closed No Response-${suffix}`,
+      caseTypeId,
+      closed: true,
+    });
+    const autoDenied = await options.create("bao-case-status", {
+      name: `${run}-Auto-Denied-${suffix}`,
+      caseTypeId,
+      closed: false,
+    });
+    try {
+      const closedUpdate = { defaultResolutionId: noResponse.id };
+      expect(await validateBaoCaseStatusWrite(
+        closedUpdate,
+        closedNoResponse.id,
+        closedNoResponse,
+      )).toBeNull();
+      await options.update("bao-case-status", closedNoResponse.id, closedUpdate);
+
+      const lapseUpdate = { lapseStatusId: closedNoResponse.id };
+      expect(await validateBaoCaseStatusWrite(
+        lapseUpdate,
+        autoDenied.id,
+        autoDenied,
+      )).toBeNull();
+      await options.update("bao-case-status", autoDenied.id, lapseUpdate);
+
+      expect(await options.get("bao-case-status", closedNoResponse.id)).toMatchObject({
+        defaultResolutionId: noResponse.id,
+      });
+      expect(await options.get("bao-case-status", autoDenied.id)).toMatchObject({
+        lapseStatusId: closedNoResponse.id,
+      });
+    } finally {
+      await options.update("bao-case-status", autoDenied.id, { lapseStatusId: null }).catch(() => {});
+      await options.delete("bao-case-status", autoDenied.id).catch(() => {});
+      await options.delete("bao-case-status", closedNoResponse.id).catch(() => {});
+      await options.delete("bao-case-resolution", noResponse.id).catch(() => {});
+    }
   });
 
   it("rejects invalid durations and incompatible lapse targets", async () => {
