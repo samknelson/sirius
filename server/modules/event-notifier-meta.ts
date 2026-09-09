@@ -74,20 +74,26 @@ export function registerEventNotifierMetaRoutes(
           buildTokenCatalogForRoots,
           listTokenTreeRoots,
         } = await import("../plugins/tokens");
-        const { notifierTokenRootNames } = await import(
-          "../plugins/event-notifier/token-roots"
+        const { tokenContextRootNames } = await import(
+          "../plugins/tokens/contexts"
+        );
+        const { notifierTokenContextId } = await import(
+          "@shared/token-contexts"
         );
         const { buildTokenStudioContext } = await import(
           "../plugins/tokens/studio-context"
         );
         const { buildNotifierStudioRecords, NOTIFIER_STUDIO_SEED_LIMIT } =
           await import("../plugins/event-notifier/studio-records");
-        // The one list this notifier's whole editor is built from: its
-        // declared record roots, the event envelope and the recipient
-        // contact (see notifierTokenRootNames). It is also the list its
-        // config validation accepts tokens against, so the editor cannot
+        // The one list this notifier's whole editor is built from: this
+        // notifier's token context — its declared record roots, the
+        // event envelope and the recipient contact. The editor reads the
+        // same context from the `token-contexts` catalog and its config
+        // validation accepts tokens against it too, so the editor cannot
         // offer a token that save then rejects.
-        const rootNames = notifierTokenRootNames(plugin.tokenTemplates.roots);
+        const rootNames = tokenContextRootNames(
+          notifierTokenContextId(plugin.id),
+        );
         // Defaults may depend on the config's other fields (e.g. the T631
         // link target varies with recipientKind); the editor passes the
         // relevant subset as ?config=<json> so placeholders match what
@@ -100,8 +106,12 @@ export function registerEventNotifierMetaRoutes(
             configData = undefined;
           }
         }
+        // No root list here: the editor reads this notifier's roots from
+        // its token context, so what this endpoint answers is what it
+        // alone knows — the tokens for those roots, the notifier's own
+        // default templates, and the records its recent events were
+        // about.
         res.json({
-          rootNames,
           segments: buildSegmentSpecsForRoots(rootNames),
           fields: buildFieldCatalog(),
           defaults: plugin.tokenTemplates.defaultTemplates(configData),

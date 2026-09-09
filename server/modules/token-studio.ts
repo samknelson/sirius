@@ -296,8 +296,11 @@ export function registerTokenStudioRoutes(
               "roots is required: name the roots these templates address, e.g. ?roots=contact,system",
           });
         }
+        // No root list comes back: the caller named the roots in the
+        // query, and it reads them from its own token context — an echo
+        // of them here would be a second answer to a question the
+        // context already settles.
         res.json({
-          rootNames,
           segments: buildSegmentSpecsForRoots(rootNames),
           fields: buildFieldCatalog(),
           tokens: buildTokenCatalogForRoots(rootNames),

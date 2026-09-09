@@ -17,3 +17,10 @@ export const OPTIONS_LISTS_CATALOG = "options-lists";
 
 /** The renameable terms. Declared in server/modules/terminology-catalog.ts. */
 export const TERMINOLOGY_CATALOG = "terminology";
+
+/**
+ * What each token-editing surface's templates are about — the roots its
+ * tokens may start from. Declared in server/modules/token-contexts-catalog.ts;
+ * every Template Studio launch names an entry of this catalog.
+ */
+export const TOKEN_CONTEXTS_CATALOG = "token-contexts";

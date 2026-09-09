@@ -147,6 +147,8 @@ import { registerEdlsPublicScheduleRoutes } from "./modules/edls/public-schedule
 import { registerWebServiceDispatcher } from "./modules/webservices";
 import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
 import { registerTerminologyCatalog } from "./modules/terminology-catalog";
+import { registerTokenContextsCatalog } from "./modules/token-contexts-catalog";
+import { registerNotifierTokenContexts } from "./plugins/event-notifier/token-contexts";
 import { registerCompaniesRoutes } from "./modules/employers/companies";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
@@ -505,6 +507,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // written through the generic variable routes, and what terms exist is the
   // `terminology` catalog.
   registerTerminologyCatalog();
+
+  // What each Template Studio surface's templates are about. The
+  // notifier family is generated from the notifier registry (one context
+  // per token-templated notifier); the fixed surfaces — bulk messaging
+  // and the compose screens — register their own from their route
+  // modules, beside the roots they name.
+  registerNotifierTokenContexts();
+  registerTokenContextsCatalog();
 
   // Register bootstrap routes (no auth required - intentionally public for initial setup)
   registerBootstrapRoutes(app);

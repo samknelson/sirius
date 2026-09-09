@@ -1,10 +1,12 @@
 import type { Express } from "express";
 import {
+  COMPOSE_CHANNELS,
   isComposeChannel,
   isComposeScopeName,
   type ComposeRenderResponse,
   type ComposeScopeName,
 } from "@shared/comm-compose";
+import { composeTokenContextId } from "@shared/token-contexts";
 import { MEDIUM_FIELDS } from "@shared/delivery-fields";
 import { storage } from "../storage";
 import {
@@ -13,9 +15,11 @@ import {
   buildTokenCatalogForRoots,
   expandTokenType,
   listTokenTreeRoots,
+  registerTokenContext,
   registerTokenContextRoot,
   resolveTokenPreviewEntity,
   searchTokenTree,
+  tokenContextRootNames,
   type TokenEntity,
   type TokenEntityType,
 } from "../plugins/tokens";
@@ -102,10 +106,19 @@ interface ComposeScope {
   kind: TokenEntityType;
   /** Root the named record seeds. */
   rootName: string;
-  /** The COMPLETE ordered root list, scope root first. */
-  rootNames: string[];
   /** Whom the message is addressed to, from the named record's row. */
   contactIdOf(row: Record<string, unknown>): string | undefined;
+}
+
+/**
+ * The COMPLETE ordered root list for one scope — read from the scope's
+ * token context, which is where it is declared (see the registrations
+ * below). Every reader here goes through this: the catalog, the tree,
+ * the render and the studio the author is looking at are then all
+ * reading one list.
+ */
+function scopeRootNames(scope: ComposeScope): string[] {
+  return tokenContextRootNames(composeTokenContextId(scope.name));
 }
 
 /** Every row these scopes name carries the addressee as `contact_id`. */
@@ -123,32 +136,65 @@ const COMPOSE_SCOPES: Record<ComposeScopeName, ComposeScope> = {
     name: "worker",
     kind: "worker",
     rootName: WORKER_ROOT_NAME,
-    rootNames: [WORKER_ROOT_NAME, CONTACT_ROOT_NAME, SYSTEM_ROOT_NAME],
     contactIdOf: contactIdColumn,
   },
   employer_contact: {
     name: "employer_contact",
     kind: EMPLOYER_CONTACT_ENTITY_KIND,
     rootName: EMPLOYER_CONTACT_ROOT_NAME,
-    rootNames: [
-      EMPLOYER_CONTACT_ROOT_NAME,
-      CONTACT_ROOT_NAME,
-      SYSTEM_ROOT_NAME,
-    ],
     contactIdOf: contactIdColumn,
   },
   provider_contact: {
     name: "provider_contact",
     kind: PROVIDER_CONTACT_ENTITY_KIND,
     rootName: PROVIDER_CONTACT_ROOT_NAME,
-    rootNames: [
-      PROVIDER_CONTACT_ROOT_NAME,
-      CONTACT_ROOT_NAME,
-      SYSTEM_ROOT_NAME,
-    ],
     contactIdOf: contactIdColumn,
   },
 };
+
+/**
+ * ONE CONTEXT PER SCOPE — the root lists themselves.
+ *
+ * Registered at module scope alongside the roots above, because every
+ * reader below reaches them through this file, and published to the
+ * screens through the `token-contexts` catalog: the compose screen
+ * names its scope's context and takes the roots from there, so the
+ * editor cannot offer a root this render would refuse.
+ *
+ * Each list is led by the record the message is really about and
+ * followed by the recipient-side roots every message has.
+ */
+registerTokenContext({
+  id: composeTokenContextId("worker"),
+  name: "Compose to a worker",
+  description:
+    "A one-off message written on a worker's Communications tab, about that worker.",
+  rootNames: [WORKER_ROOT_NAME, CONTACT_ROOT_NAME, SYSTEM_ROOT_NAME],
+  media: [...COMPOSE_CHANNELS],
+});
+
+registerTokenContext({
+  id: composeTokenContextId("employer_contact"),
+  name: "Compose to an employer contact",
+  description:
+    "A one-off message written on an employer contact's Communications tab, " +
+    "about that employer link.",
+  rootNames: [EMPLOYER_CONTACT_ROOT_NAME, CONTACT_ROOT_NAME, SYSTEM_ROOT_NAME],
+  media: [...COMPOSE_CHANNELS],
+});
+
+registerTokenContext({
+  id: composeTokenContextId("provider_contact"),
+  name: "Compose to a provider contact",
+  description:
+    "A one-off message written on a trust provider contact's Communications " +
+    "tab, about that provider link.",
+  rootNames: [PROVIDER_CONTACT_ROOT_NAME, CONTACT_ROOT_NAME, SYSTEM_ROOT_NAME],
+  media: [...COMPOSE_CHANNELS],
+  // Same gate as the provider-contact root itself: with the component
+  // off there is no such screen and no such context.
+  component: "trust.providers",
+});
 
 /**
  * THE TREE IS SCOPED BY THE URL, NOT BY THE CALLER'S WISHES.
@@ -178,7 +224,7 @@ function scopeFromParam(raw: unknown): ComposeScope | undefined {
  */
 function reachableTypes(scope: ComposeScope): Set<string> {
   const seen = new Set<string>();
-  const queue = listTokenTreeRoots(scope.rootNames).map((root) => root.type);
+  const queue = listTokenTreeRoots(scopeRootNames(scope)).map((root) => root.type);
   while (queue.length > 0) {
     const type = queue.shift() as TokenEntityType;
     if (seen.has(type)) continue;
@@ -294,10 +340,13 @@ export function registerCommComposeRoutes(
           return;
         }
         const { scope } = target;
-        const rootNames = scope.rootNames;
+        const rootNames = scopeRootNames(scope);
 
+        // No root list here: the studio reads the scope's roots from
+        // the `token-contexts` catalog, so this endpoint answers only
+        // for what it alone knows — the tokens for those roots and the
+        // one real record each seedable root is previewed against.
         res.json({
-          rootNames,
           tokens: buildTokenCatalogForRoots(rootNames),
           segments: buildSegmentSpecsForRoots(rootNames),
           fields: buildFieldCatalog(),
@@ -337,7 +386,7 @@ export function registerCommComposeRoutes(
         res.status(400).json({ message: "Unknown compose scope" });
         return;
       }
-      res.json({ roots: listTokenTreeRoots(scope.rootNames) });
+      res.json({ roots: listTokenTreeRoots(scopeRootNames(scope)) });
     },
   );
 
@@ -371,7 +420,7 @@ export function registerCommComposeRoutes(
         return;
       }
       const q = typeof req.query.q === "string" ? req.query.q : "";
-      res.json({ hits: searchTokenTree(scope.rootNames, q) });
+      res.json({ hits: searchTokenTree(scopeRootNames(scope), q) });
     },
   );
 
@@ -433,7 +482,7 @@ export function registerCommComposeRoutes(
           storage,
           fields: specs,
           templates,
-          rootNames: scope.rootNames,
+          rootNames: scopeRootNames(scope),
           contactId: target.contactId,
           seeds: [
             { name: scope.rootName, entity: target.entity },

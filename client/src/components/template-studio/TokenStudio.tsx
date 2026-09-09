@@ -8,6 +8,7 @@ import {
   type StudioContext,
   type StudioField,
 } from "./TemplateStudio";
+import { useTokenContext } from "./useTokenContext";
 import type { DeliveryFieldSpec } from "@shared/delivery-fields";
 import type {
   TokenCatalogEntry,
@@ -20,7 +21,6 @@ import type {
 export type { StudioChannel, StudioField } from "./TemplateStudio";
 
 interface TokenStudioCatalog {
-  rootNames?: string[];
   segments: TokenSegmentSpec[];
   fields?: TokenFieldCatalog;
   tokens: TokenCatalogEntry[];
@@ -28,7 +28,7 @@ interface TokenStudioCatalog {
   studioContext?: StudioContext;
 }
 
-interface TokenStudioBaseProps {
+export interface TokenStudioProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
@@ -48,6 +48,31 @@ interface TokenStudioBaseProps {
   /** Finished template strings, when they differ from the editor values. */
   templateValues?: Record<string, string>;
   /**
+   * WHAT THESE TEMPLATES ARE ABOUT: the token context this surface
+   * writes in. Its roots — the complete ordered list a token may start
+   * from — are read from the shared `token-contexts` catalog, which is
+   * the same declaration the server builds this surface's tokens, tree
+   * and save-time validation from.
+   *
+   * A launch site names the context and nothing else. It used to be
+   * able to state a root list of its own instead, which meant two
+   * answers to "what may an author write here?" and no rule about which
+   * one delivery would agree with.
+   */
+  contextId: string;
+  /**
+   * A host's OWN endpoint for the token graph and the records this
+   * surface can preview against, when it has one.
+   *
+   * Hosts gated differently from the studio's admin-only default — bulk
+   * messaging, the compose screens — serve the same graph behind their
+   * own gate, and they are also the only ones that know which real
+   * records the author may preview with. Omit for an ad-hoc tokenized
+   * field: the studio then asks its own endpoint for the context's
+   * roots, and the author previews against sample people.
+   */
+  hostCatalogUrl?: string;
+  /**
    * Browsable-tree endpoints for this host (defaults to the studio's
    * own). Hosts gated differently — bulk messaging — serve the same
    * tree behind their own gate and pass it here.
@@ -56,41 +81,13 @@ interface TokenStudioBaseProps {
 }
 
 /**
- * WHERE THE TOKENS COME FROM — and either way, somebody has to have
- * said what these templates are about.
- *
- * A host either names its roots, and the generic catalog is built for
- * exactly those, or it points at a catalog endpoint of its own, which
- * names them server-side. There is no third option where the roots go
- * unstated: the studio would then have to guess, and the only guess
- * available is "every root in the registry" — which is how an editor
- * ends up showing an author records their message has never heard of.
- */
-type TokenStudioSourceProps =
-  | {
-      /**
-       * The COMPLETE ordered list of roots these tokens may start from
-       * (`contact`, `dispatch`, `event`, …). Roots not named here do
-       * not exist for these tokens.
-       */
-      rootNames: string[];
-      catalogUrl?: undefined;
-    }
-  | {
-      rootNames?: string[];
-      /** Token catalog endpoint of this host's own, roots and all. */
-      catalogUrl: string;
-    };
-
-export type TokenStudioProps = TokenStudioBaseProps & TokenStudioSourceProps;
-
-/**
  * THE generic token-editing popup: any tokenized string field anywhere
- * can open this, with no registration step of any kind. It loads a
- * token catalog and hands it to the shared studio, which previews
- * through the single preview route — the request carries the field
- * shaping and the template text, so nothing has to be declared
- * server-side for a new field to work.
+ * can open this, with no registration step beyond naming the context it
+ * writes in. It loads that context's roots and the token graph for them
+ * and hands both to the shared studio, which previews through the
+ * single preview route — the request carries the field shaping and the
+ * template text, so nothing has to be declared server-side for a new
+ * field to work.
  *
  * A caller only needs its own host when it has editor-side logic of its
  * own (the event notifier's default-vs-override text); previewing never
@@ -107,16 +104,21 @@ export function TokenStudio({
   onValueChange,
   fieldSpecs,
   templateValues,
-  rootNames,
-  catalogUrl,
+  contextId,
+  hostCatalogUrl,
   treeBaseUrl,
 }: TokenStudioProps) {
-  const named = rootNames?.length ? rootNames : undefined;
-  // No host-supplied endpoint means the generic catalog, which is built
-  // for the roots named here — the prop types make sure there are some.
+  const tokenContext = useTokenContext(contextId);
+  const rootNames = tokenContext.context?.rootNames;
+
+  // No host-supplied endpoint means the studio's own, built for the
+  // context's roots — so it cannot be asked for until they are known.
   const url =
-    catalogUrl ??
-    `/api/token-studio/catalog?roots=${encodeURIComponent((named ?? []).join(","))}`;
+    hostCatalogUrl ??
+    (rootNames
+      ? `/api/token-studio/catalog?roots=${encodeURIComponent(rootNames.join(","))}`
+      : undefined);
+
   // The failure is part of the answer. Dropping it here is how a host
   // whose catalog request 403s ends up looking like a host with no
   // tokens: the studio can only be honest about a request it is told
@@ -127,15 +129,18 @@ export function TokenStudio({
     error,
     refetch,
   } = useQuery<TokenStudioCatalog>({
-    queryKey: [url],
-    enabled: open,
+    queryKey: [url ?? ""],
+    enabled: open && url !== undefined,
   });
 
-  // A host endpoint states its own roots in its response, so a host
-  // that has one does not have to repeat the list as a prop — and could
-  // not honestly do so where the roots are decided server-side. The
-  // prop still wins: a host that named roots meant them.
-  const roots = named ?? catalog?.rootNames;
+  // Two requests behind one line: the context that says what may be
+  // written, and the graph of what it offers. Either failing leaves the
+  // author with no tokens, so whichever failed is the one to report —
+  // the context first, because a graph request that never happened
+  // because the context is unknown would otherwise report as "still
+  // loading" forever.
+  const failed = tokenContext.error ?? error;
+  const source = tokenContext.error ? tokenContext : { url, retry: refetch };
 
   return (
     <TemplateStudio
@@ -152,15 +157,15 @@ export function TokenStudio({
       tokens={catalog?.tokens ?? []}
       segments={catalog?.segments}
       fieldCatalog={catalog?.fields}
-      rootNames={roots}
+      rootNames={rootNames}
       studioContext={catalog?.studioContext}
       treeBaseUrl={treeBaseUrl}
       catalogState={{
-        url,
-        loading: isLoading,
-        error,
+        url: source.url,
+        loading: tokenContext.loading || isLoading,
+        error: failed,
         retry: () => {
-          void refetch();
+          void source.retry();
         },
       }}
     />
@@ -175,11 +180,10 @@ export function TokenStudioButton({
   label = "Open Template Studio",
   testId = "button-open-token-studio",
   ...studioProps
-}: Omit<TokenStudioBaseProps, "open" | "onOpenChange"> &
-  TokenStudioSourceProps & {
-    label?: string;
-    testId?: string;
-  }) {
+}: Omit<TokenStudioProps, "open" | "onOpenChange"> & {
+  label?: string;
+  testId?: string;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>

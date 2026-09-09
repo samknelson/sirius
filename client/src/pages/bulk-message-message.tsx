@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Save, Mail, MessageSquare, MapPin, Bell } from "lucide-react";
 import { TokenStudioButton, type StudioField } from "@/components/template-studio/TokenStudio";
+import { BULK_MESSAGE_TOKEN_CONTEXT } from "@shared/token-contexts";
 import { TokenText } from "@/components/template-studio/TokenText";
 import { cn } from "@/lib/utils";
 import { MEDIUM_FIELDS, isSafeRelativePath } from "@shared/delivery-fields";
@@ -132,9 +133,11 @@ interface FormProps {
   isPending: boolean;
   /**
    * This message's own token catalog — the studio previews against the
-   * recipients of THIS message, so the catalog is per message.
+   * recipients of THIS message, so the catalog is per message. What an
+   * author may WRITE is not per message: those roots come from bulk
+   * messaging's token context, named on each studio below.
    */
-  catalogUrl: string;
+  hostCatalogUrl: string;
 }
 
 function SaveButton({
@@ -160,7 +163,7 @@ function SaveButton({
   );
 }
 
-function EmailForm({ record, onSave, isPending, catalogUrl }: FormProps) {
+function EmailForm({ record, onSave, isPending, hostCatalogUrl }: FormProps) {
   const [form, setForm] = useState({ subject: "", bodyHtml: "" });
 
   useEffect(() => {
@@ -186,7 +189,8 @@ function EmailForm({ record, onSave, isPending, catalogUrl }: FormProps) {
             title="Email message"
             channel="email"
             fieldSpecs={MEDIUM_FIELDS.email}
-            catalogUrl={catalogUrl}
+            contextId={BULK_MESSAGE_TOKEN_CONTEXT}
+            hostCatalogUrl={hostCatalogUrl}
             treeBaseUrl={BULK_TOKEN_TREE_URL}
             fields={EMAIL_FIELDS}
             values={form}
@@ -207,7 +211,7 @@ function EmailForm({ record, onSave, isPending, catalogUrl }: FormProps) {
   );
 }
 
-function SmsForm({ record, onSave, isPending, catalogUrl }: FormProps) {
+function SmsForm({ record, onSave, isPending, hostCatalogUrl }: FormProps) {
   const [body, setBody] = useState("");
 
   useEffect(() => {
@@ -236,7 +240,8 @@ function SmsForm({ record, onSave, isPending, catalogUrl }: FormProps) {
             title="SMS message"
             channel="sms"
             fieldSpecs={MEDIUM_FIELDS.sms}
-            catalogUrl={catalogUrl}
+            contextId={BULK_MESSAGE_TOKEN_CONTEXT}
+            hostCatalogUrl={hostCatalogUrl}
             treeBaseUrl={BULK_TOKEN_TREE_URL}
             fields={SMS_FIELDS}
             values={{ body }}
@@ -254,7 +259,7 @@ function SmsForm({ record, onSave, isPending, catalogUrl }: FormProps) {
   );
 }
 
-function PostalForm({ record, onSave, isPending, catalogUrl }: FormProps) {
+function PostalForm({ record, onSave, isPending, hostCatalogUrl }: FormProps) {
   const [form, setForm] = useState({
     description: "",
     templateId: "",
@@ -288,7 +293,8 @@ function PostalForm({ record, onSave, isPending, catalogUrl }: FormProps) {
             title="Postal letter"
             channel="postal"
             fieldSpecs={MEDIUM_FIELDS.postal}
-            catalogUrl={catalogUrl}
+            contextId={BULK_MESSAGE_TOKEN_CONTEXT}
+            hostCatalogUrl={hostCatalogUrl}
             treeBaseUrl={BULK_TOKEN_TREE_URL}
             fields={POSTAL_FIELDS}
             values={{ description: form.description }}
@@ -334,7 +340,7 @@ function PostalForm({ record, onSave, isPending, catalogUrl }: FormProps) {
   );
 }
 
-function InappForm({ record, onSave, isPending, catalogUrl }: FormProps) {
+function InappForm({ record, onSave, isPending, hostCatalogUrl }: FormProps) {
   const [form, setForm] = useState({
     title: "",
     body: "",
@@ -392,7 +398,8 @@ function InappForm({ record, onSave, isPending, catalogUrl }: FormProps) {
             title="In-app notification"
             channel="inapp"
             fieldSpecs={MEDIUM_FIELDS.inapp}
-            catalogUrl={catalogUrl}
+            contextId={BULK_MESSAGE_TOKEN_CONTEXT}
+            hostCatalogUrl={hostCatalogUrl}
             treeBaseUrl={BULK_TOKEN_TREE_URL}
             fields={INAPP_FIELDS}
             values={form}
@@ -521,7 +528,7 @@ function BulkMessageMessageContent() {
               record={record}
               onSave={(data) => saveMutation.mutate(data)}
               isPending={saveMutation.isPending}
-              catalogUrl={bulkTokenCatalogUrl(bulkMessage.id)}
+              hostCatalogUrl={bulkTokenCatalogUrl(bulkMessage.id)}
             />
           )}
         </CardContent>

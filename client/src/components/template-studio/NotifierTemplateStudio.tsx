@@ -6,6 +6,7 @@ import {
   type StudioFieldMode,
   type StudioSourceState,
 } from "./TemplateStudio";
+import { useTokenContext } from "./useTokenContext";
 import { MEDIUM_FIELDS, authoredFieldValue } from "@shared/delivery-fields";
 import type {
   TokenCatalogEntry,
@@ -35,8 +36,6 @@ const CHANNEL_TITLES: Record<string, string> = {
 };
 
 export interface NotifierTokenCatalog {
-  /** Named record roots this notifier's templates may address. */
-  rootNames: string[];
   segments: TokenSegmentSpec[];
   fields?: TokenFieldCatalog;
   defaults?: Record<string, Record<string, string>>;
@@ -60,6 +59,13 @@ export interface NotifierTemplateStudioProps {
    * absent catalog is still loading or failed.
    */
   catalogState?: StudioSourceState;
+  /**
+   * This notifier's token context — the roots its templates may be
+   * written about. Stamped into the config schema at registration and
+   * read here from the shared `token-contexts` catalog, so the roots the
+   * editor offers are the ones the server validates a save against.
+   */
+  contextId: string;
   /** The full live config data (for preview + reading current templates). */
   configData: Record<string, unknown>;
   /** Writes one template field back into the host form's config data. */
@@ -83,10 +89,12 @@ export function NotifierTemplateStudio({
   schemaRows,
   catalog,
   catalogState,
+  contextId,
   configData,
   updateConfigData,
   disabled,
 }: NotifierTemplateStudioProps) {
+  const tokenContext = useTokenContext(contextId);
   // ── Fields & values (channel group of data.templates) ─────────────────────
   const defaults = catalog?.defaults?.[channel] ?? {};
 
@@ -185,10 +193,25 @@ export function NotifierTemplateStudio({
       segments={catalog?.segments}
       fieldCatalog={catalog?.fields}
       // The notifier's own records first; the event envelope and the
-      // ordinary roots (contact, system…) after them.
-      rootNames={catalog?.rootNames ?? []}
+      // ordinary roots (contact, system…) after them — the context's
+      // list, which is the one the save is validated against.
+      rootNames={tokenContext.context?.rootNames ?? []}
       studioContext={catalog?.studioContext}
-      catalogState={catalogState}
+      // Two requests behind one line: the context that says what may be
+      // written, and this notifier's catalog. Whichever failed is the
+      // one the author needs to see.
+      catalogState={
+        tokenContext.error
+          ? {
+              url: tokenContext.url,
+              error: tokenContext.error,
+              retry: tokenContext.retry,
+            }
+          : {
+              ...catalogState,
+              loading: Boolean(catalogState?.loading) || tokenContext.loading,
+            }
+      }
     />
   );
 }

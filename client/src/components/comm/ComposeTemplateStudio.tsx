@@ -16,6 +16,7 @@ import { TokenStudio, type StudioField } from "@/components/template-studio/Toke
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { MEDIUM_FIELDS } from "@shared/delivery-fields";
+import { composeTokenContextId } from "@shared/token-contexts";
 import type {
   ComposeChannel,
   ComposeRenderResponse,
@@ -276,7 +277,8 @@ export function ComposeTemplateStudio({
           values={draft}
           onValueChange={editDraft}
           fieldSpecs={MEDIUM_FIELDS[channel]}
-          catalogUrl={`/api/comm-compose/token-catalog?scope=${encodeURIComponent(target.scope)}&recordId=${encodeURIComponent(target.recordId)}`}
+          contextId={composeTokenContextId(target.scope)}
+          hostCatalogUrl={`/api/comm-compose/token-catalog?scope=${encodeURIComponent(target.scope)}&recordId=${encodeURIComponent(target.recordId)}`}
           treeBaseUrl={`/api/comm-compose/tree/${encodeURIComponent(target.scope)}`}
         />
       )}

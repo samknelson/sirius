@@ -7,6 +7,9 @@ import {
   BULK_PARTICIPANT_ROOT_NAME,
 } from "../../plugins/tokens/plugins/bulk-participant";
 import { registerTokenContextRoot } from "../../plugins/tokens/context-roots";
+import { registerTokenContext } from "../../plugins/tokens/contexts";
+import { BULK_MESSAGE_TOKEN_CONTEXT } from "@shared/token-contexts";
+import { MEDIUM_NAMES } from "@shared/delivery-fields";
 
 /**
  * Bulk messaging's OWN token root: the send this render is for.
@@ -51,9 +54,13 @@ const BULK_RECIPIENT_ROOT_NAMES = [
 ];
 
 /**
- * The roots a bulk message's tokens may start from — the whole list,
- * stated here once so the catalog, the browsable tree, the static
- * validation and the coverage check cannot drift apart.
+ * BULK MESSAGING'S TOKEN CONTEXT — what a bulk message is about.
+ *
+ * The roots are stated here once, as the surface's context, so the
+ * editor, the catalog route, the browsable tree, the static validation
+ * and the coverage check all read the same list and cannot drift apart.
+ * The client reads it too, from the `token-contexts` catalog, which is
+ * why the message page no longer carries a root list of its own.
  *
  * A bulk message is delivered one PARTICIPANT at a time — a recipient
  * and the medium they are being written to by — so the participant
@@ -63,11 +70,20 @@ const BULK_RECIPIENT_ROOT_NAMES = [
  * on beside it, both because every existing template is written in
  * terms of them and because "the person this is going to" is the
  * shorter, plainer way to say the same thing.
+ *
+ * Registered at module scope, beside the participant root above,
+ * because every reader below reaches it through this file.
  */
-export const BULK_TOKEN_ROOT_NAMES = [
-  BULK_PARTICIPANT_ROOT_NAME,
-  ...BULK_RECIPIENT_ROOT_NAMES,
-];
+registerTokenContext({
+  id: BULK_MESSAGE_TOKEN_CONTEXT,
+  name: "Bulk message",
+  description:
+    "One message written once and delivered to many recipients, a send at a time.",
+  rootNames: [BULK_PARTICIPANT_ROOT_NAME, ...BULK_RECIPIENT_ROOT_NAMES],
+  // Bulk authors a template per medium, all four of them; which ones a
+  // given message uses is that message's own configured state.
+  media: [...MEDIUM_NAMES],
+});
 
 /**
  * The roots behind the merge variables a postal send hands to Lob.

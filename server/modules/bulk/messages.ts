@@ -32,7 +32,9 @@ import {
   BULK_PARTICIPANT_ROOT_NAME,
   composeBulkParticipantEntity,
 } from "../../plugins/tokens/plugins/bulk-participant";
-import { BULK_TOKEN_ROOT_NAMES } from "./token-roots";
+import "./token-roots";
+import { tokenContextRootNames } from "../../plugins/tokens/contexts";
+import { BULK_MESSAGE_TOKEN_CONTEXT } from "@shared/token-contexts";
 
 /**
  * How many of a message's sends the studio previews against.
@@ -728,11 +730,12 @@ export function registerBulkMessageRoutes(
       }
 
       // A bulk message is ABOUT the sends it is going to make, so it
-      // states exactly the roots it has records for (see
-      // BULK_TOKEN_ROOT_NAMES) — the same list its tree, its validation
-      // and its coverage check use. `system` is in that list and
-      // seedless, so it is browsable but never appears in the seed panel.
-      const rootNames = BULK_TOKEN_ROOT_NAMES;
+      // states exactly the roots it has records for — its token context
+      // (see ./token-roots), the same list the editor, the tree, the
+      // validation and the coverage check read. `system` is in that list
+      // and seedless, so it is browsable but never appears in the seed
+      // panel.
+      const rootNames = tokenContextRootNames(BULK_MESSAGE_TOKEN_CONTEXT);
       const recordsByRoot: Record<string, TokenPreviewRecordRef[]> = {};
       // Why a supplied list is empty is something only this message
       // knows, and "there is nobody to preview against" is the honest
@@ -780,10 +783,10 @@ export function registerBulkMessageRoutes(
 
   // Browsable token tree for bulk messaging — the same lazy tree the
   // Template Studio walks, gated for bulk authors instead of admins.
-  // The roots are bulk's own declared list, fixed server-side: the
+  // The roots are bulk's own token context, read server-side: the
   // caller cannot ask for a root bulk has not declared.
   app.get("/api/bulk-tokens/tree/roots", requireAuth, requireAccess('bulk.edit'), (_req, res) => {
-    res.json({ roots: listTokenTreeRoots(BULK_TOKEN_ROOT_NAMES) });
+    res.json({ roots: listTokenTreeRoots(tokenContextRootNames(BULK_MESSAGE_TOKEN_CONTEXT)) });
   });
 
   app.get("/api/bulk-tokens/tree/type/:type", requireAuth, requireAccess('bulk.edit'), (req, res) => {
@@ -792,7 +795,7 @@ export function registerBulkMessageRoutes(
 
   app.get("/api/bulk-tokens/tree/search", requireAuth, requireAccess('bulk.edit'), (req, res) => {
     const q = typeof req.query.q === "string" ? req.query.q : "";
-    res.json({ hits: searchTokenTree(BULK_TOKEN_ROOT_NAMES, q) });
+    res.json({ hits: searchTokenTree(tokenContextRootNames(BULK_MESSAGE_TOKEN_CONTEXT), q) });
   });
 
   // Returns per-token coverage across this message's participants:
@@ -817,10 +820,12 @@ export function registerBulkMessageRoutes(
       if (postal) templates.push(postal.description || "");
 
       // Only cover expressions that parse + validate against the roots
-      // bulk declares; invalid ones are surfaced by the editor's warnings.
+      // bulk's context declares — the same list the editor offered;
+      // invalid ones are surfaced by the editor's warnings.
+      const bulkRootNames = tokenContextRootNames(BULK_MESSAGE_TOKEN_CONTEXT);
       const tokenIds = Array.from(new Set(
         templates.flatMap((t) => extractTokenExpressions(t))
-          .filter((expr) => validateTokenExpressionForRoots(expr, BULK_TOKEN_ROOT_NAMES).ok)
+          .filter((expr) => validateTokenExpressionForRoots(expr, bulkRootNames).ok)
       ));
 
       // Coverage is measured per SEND, because that is what delivery

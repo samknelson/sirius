@@ -40,9 +40,18 @@ async function main() {
   const { missingCatalogFields } = await import(
     "../../server/plugins/tokens/root-coverage"
   );
-  const { BULK_TOKEN_ROOT_NAMES, BULK_POSTAL_MERGE_ROOT_NAMES } = await import(
+  // Importing the module is what registers bulk messaging's token
+  // context; its roots are then read the way every reader reads them.
+  const { BULK_POSTAL_MERGE_ROOT_NAMES } = await import(
     "../../server/modules/bulk/token-roots"
   );
+  const { tokenContextRootNames } = await import(
+    "../../server/plugins/tokens/contexts"
+  );
+  const { BULK_MESSAGE_TOKEN_CONTEXT } = await import(
+    "../../shared/token-contexts"
+  );
+  const bulkRootNames = tokenContextRootNames(BULK_MESSAGE_TOKEN_CONTEXT);
   const {
     BULK_PARTICIPANT_ROOT_NAME,
     BULK_PARTICIPANT_FIELDS,
@@ -52,18 +61,18 @@ async function main() {
   console.log("\n--- declared roots ---");
   check(
     "bulk leads with the participant root",
-    BULK_TOKEN_ROOT_NAMES[0] === BULK_PARTICIPANT_ROOT_NAME,
-    BULK_TOKEN_ROOT_NAMES.join(", "),
+    bulkRootNames[0] === BULK_PARTICIPANT_ROOT_NAME,
+    bulkRootNames.join(", "),
   );
   check(
     "the recipient-side roots stay on offer",
-    ["contact", "worker", "system"].every((n) => BULK_TOKEN_ROOT_NAMES.includes(n)),
+    ["contact", "worker", "system"].every((n) => bulkRootNames.includes(n)),
   );
 
   const { listTokenPreviewRoots } = await import(
     "../../server/plugins/tokens/preview-roots"
   );
-  const previewRoots = listTokenPreviewRoots(BULK_TOKEN_ROOT_NAMES);
+  const previewRoots = listTokenPreviewRoots(bulkRootNames);
   const participantRoot = previewRoots.find(
     (r) => r.name === BULK_PARTICIPANT_ROOT_NAME,
   );
@@ -74,7 +83,7 @@ async function main() {
     previewRoots.map((r) => `${r.name} (${r.label})`).join(", "),
   );
 
-  const catalog = buildTokenCatalogForRoots(BULK_TOKEN_ROOT_NAMES).map((e) => e.id);
+  const catalog = buildTokenCatalogForRoots(bulkRootNames).map((e) => e.id);
   check(
     "the picker offers the participant and the chains through it",
     catalog.includes("bulk_participant") &&
@@ -95,7 +104,7 @@ async function main() {
     'worker.field(name="job_title")',
   ];
   for (const expr of valid) {
-    const result = validateTokenExpressionForRoots(expr, BULK_TOKEN_ROOT_NAMES);
+    const result = validateTokenExpressionForRoots(expr, bulkRootNames);
     check(`valid in bulk: {{${expr}}}`, result.ok, result.ok ? undefined : result.error);
   }
 
@@ -108,7 +117,7 @@ async function main() {
     'bulk_participant.field(name="id")',
   ];
   for (const expr of refused) {
-    const result = validateTokenExpressionForRoots(expr, BULK_TOKEN_ROOT_NAMES);
+    const result = validateTokenExpressionForRoots(expr, bulkRootNames);
     check(`refused in bulk: {{${expr}}}`, !result.ok);
   }
 
@@ -117,10 +126,10 @@ async function main() {
   // {{bulk_participant.contact.worker}} is as writable as {{worker}}.
   // The participant root inherits that, rather than inventing a default
   // of its own.
-  const bareWorker = validateTokenExpressionForRoots("worker", BULK_TOKEN_ROOT_NAMES);
+  const bareWorker = validateTokenExpressionForRoots("worker", bulkRootNames);
   const bareHoppedWorker = validateTokenExpressionForRoots(
     "bulk_participant.contact.worker",
-    BULK_TOKEN_ROOT_NAMES,
+    bulkRootNames,
   );
   check(
     "a bare worker chain behaves the same however it is reached",
@@ -217,7 +226,7 @@ async function main() {
               '{{bulk_participant}} / {{contact.field(name="display_name")}} / ' +
               '{{worker.field(name="sirius_id")}}',
           },
-          rootNames: BULK_TOKEN_ROOT_NAMES,
+          rootNames: bulkRootNames,
           seeds: [
             {
               name: BULK_PARTICIPANT_ROOT_NAME,

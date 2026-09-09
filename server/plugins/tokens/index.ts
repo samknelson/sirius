@@ -43,6 +43,13 @@ export {
   getTokenContextRoot,
   type TokenContextRootDeclaration,
 } from "./context-roots";
+export {
+  registerTokenContext,
+  registerTokenContextSource,
+  listTokenContexts,
+  getTokenContext,
+  tokenContextRootNames,
+} from "./contexts";
 export { missingCatalogFields } from "./root-coverage";
 export {
   resolveEntityPath,

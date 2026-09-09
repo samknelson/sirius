@@ -43,7 +43,16 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
   const schemaAny = schema as Record<string, unknown>;
 
   const channel = (schemaAny["x-token-channel"] as string) ?? "";
-  const catalogUrl = (schemaAny["x-token-catalog-url"] as string) ?? "";
+  // Both stamped into this group at registration, from the id the
+  // notifier is actually registered under: the notifier whose defaults
+  // and preview records this card fetches, and the token context whose
+  // roots its Template Studio writes about. Neither is hand-written, so
+  // neither can drift from the notifier they name.
+  const pluginId = (schemaAny["x-token-plugin-id"] as string) ?? "";
+  const contextId = (schemaAny["x-token-context-id"] as string) ?? "";
+  const catalogUrl = pluginId
+    ? `/api/event-notifier/token-catalog/${encodeURIComponent(pluginId)}`
+    : "";
   const title = (schemaAny.title as string) || channel;
   // Marked by the server when this notifier can't actually deliver on
   // this channel (not in its supportedMedia, or the site has the channel
@@ -117,7 +126,26 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
   const hasOverride = rows.some((r) => overrideOf(r.key).trim() !== "");
 
   const [studioOpen, setStudioOpen] = useState(false);
-  const canEdit = !!channel && !!catalogUrl && !!updateConfigData && !isDisabled;
+  /**
+   * Why this medium cannot be edited, when the reason is a WIRING fault
+   * rather than a read-only form.
+   *
+   * Both ids are stamped into the group at registration, so an absent
+   * one means the schema this card was handed is not a token-templated
+   * notifier's — and the author has to be told that. Hiding Edit on its
+   * own would leave a card that looks ordinary, offers no way in and
+   * says nothing, which is the same screen a notifier with nothing to
+   * customize would produce.
+   */
+  const wiringFault = !pluginId
+    ? "This medium's config schema does not name the notifier its templates belong to, so its defaults and preview records can't be loaded."
+    : !contextId
+      ? "This medium's config schema does not name a token context, so there is nothing to say what these templates are written about."
+      : undefined;
+  // `wiringFault` covers both ids, and the catalog URL is built from one
+  // of them, so it is the whole of "this card is wired up".
+  const canEdit =
+    !!channel && !wiringFault && !!updateConfigData && !isDisabled;
 
   /** Clear every field in this medium — back to the notifier defaults. */
   const revert = () => {
@@ -176,6 +204,14 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
             Edit
           </Button>
         )}
+        {wiringFault && !isDisabled && (
+          <span
+            className="max-w-[28rem] text-xs text-destructive"
+            data-testid={`editor-unavailable-${channel}`}
+          >
+            Can't open the Template Studio. {wiringFault}
+          </span>
+        )}
       </div>
 
       <div className="divide-y">
@@ -218,6 +254,7 @@ export function NotifierChannelTemplatesField(props: FieldProps) {
           channel={channel}
           schemaRows={rows}
           catalog={catalog}
+          contextId={contextId}
           // This field owns the catalog request, so it is the only one
           // that can tell the studio a missing catalog FAILED rather
           // than being empty.
