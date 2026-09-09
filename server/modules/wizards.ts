@@ -4,11 +4,11 @@ import { storage } from "../storage";
 import { insertWizardSchema, wizardDataSchema, type WizardData } from "@shared/schema";
 import { requireAccess, buildContext, checkAccess, getAccessStorage } from "../services/access-policy-evaluator";
 import { wizardPluginRegistry } from "../plugins/wizards";
-import { enforceWizardEntityAccess } from "../plugins/wizards/entity-access";
+import { enforceWizardEntityAccess, enforceWizardRecordAccess } from "../plugins/wizards/entity-access";
 import { enforcePluginGating } from "../plugins/_core";
 import { createUnifiedOptionsStorage } from "../storage/unified-options.js";
-import { fileSystemService } from "../services/files/index.js";
 import { validateAgainstSchema } from "../lib/json-schema-validator";
+import { cleanupWizardAttachments, listWizardAttachments } from "../plugins/wizards/attachments";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -254,33 +254,9 @@ export function registerWizardRoutes(
       if (!wizard) {
         return res.status(404).json({ message: "Wizard not found" });
       }
-
-      const context = await buildContext(req as any);
-      const adminAccess = await checkAccess('admin', context.user);
-
-      if (!adminAccess.granted) {
-        if (!wizard.entityId) {
-          return res.status(403).json({ message: "Access denied" });
-        }
-        // Entity-typed framework wizards scope by their declared entity
-        // policy (e.g. worker.cobra for COBRA self-service); legacy and
-        // employer wizards keep the employer.mine check.
-        const viewPlugin = wizardPluginRegistry.get(wizard.type);
-        if (viewPlugin?.entityType) {
-          const scoped = await enforceWizardEntityAccess(
-            viewPlugin,
-            wizard.entityId,
-            req as any,
-          );
-          if (!scoped.ok) {
-            return res.status(scoped.status).json({ message: scoped.message });
-          }
-        } else {
-          const employerAccess = await checkAccess('employer.mine', context.user, wizard.entityId);
-          if (!employerAccess.granted) {
-            return res.status(403).json({ message: "Access denied" });
-          }
-        }
+      const recordAccess = await enforceWizardRecordAccess(id, req as any);
+      if (!recordAccess.ok) {
+        return res.status(recordAccess.status).json({ message: recordAccess.message });
       }
 
       // Framework (plugin-based) wizards carry a computed manifest so the
@@ -411,29 +387,9 @@ export function registerWizardRoutes(
       if (!existing) {
         return res.status(404).json({ message: "Wizard not found" });
       }
-
-      const patchCtx = await buildContext(req as any);
-      const patchAdmin = await checkAccess('admin', patchCtx.user);
-      if (!patchAdmin.granted) {
-        if (!existing.entityId) {
-          return res.status(403).json({ message: "Access denied" });
-        }
-        const patchPlugin = wizardPluginRegistry.get(existing.type);
-        if (patchPlugin?.entityType) {
-          const scoped = await enforceWizardEntityAccess(
-            patchPlugin,
-            existing.entityId,
-            req as any,
-          );
-          if (!scoped.ok) {
-            return res.status(scoped.status).json({ message: scoped.message });
-          }
-        } else {
-          const empAccess = await checkAccess('employer.mine', patchCtx.user, existing.entityId);
-          if (!empAccess.granted) {
-            return res.status(403).json({ message: "Access denied" });
-          }
-        }
+      const recordAccess = await enforceWizardRecordAccess(id, req as any);
+      if (!recordAccess.ok) {
+        return res.status(recordAccess.status).json({ message: recordAccess.message });
       }
 
       const validatedData = insertWizardSchema.partial().parse(req.body);
@@ -498,6 +454,9 @@ export function registerWizardRoutes(
       }
       
       const wizard = await storage.wizards.update(id, validatedData);
+      if (!wizard) {
+        return res.status(409).json({ message: "Wizard is being deleted and cannot be updated" });
+      }
       res.json(wizard);
     } catch (error) {
       if (error instanceof Error && error.name === "ZodError") {
@@ -516,50 +475,49 @@ export function registerWizardRoutes(
       if (!existing) {
         return res.status(404).json({ message: "Wizard not found" });
       }
-
-      const delCtx = await buildContext(req as any);
-      const delAdmin = await checkAccess('admin', delCtx.user);
-      if (!delAdmin.granted) {
-        if (!existing.entityId) {
-          return res.status(403).json({ message: "Access denied" });
-        }
-        const delPlugin = wizardPluginRegistry.get(existing.type);
-        if (delPlugin?.entityType) {
-          const scoped = await enforceWizardEntityAccess(
-            delPlugin,
-            existing.entityId,
-            req as any,
-          );
-          if (!scoped.ok) {
-            return res.status(scoped.status).json({ message: scoped.message });
-          }
-        } else {
-          const empAccess = await checkAccess('employer.mine', delCtx.user, existing.entityId);
-          if (!empAccess.granted) {
-            return res.status(403).json({ message: "Access denied" });
-          }
-        }
+      const recordAccess = await enforceWizardRecordAccess(id, req as any);
+      if (!recordAccess.ok) {
+        return res.status(recordAccess.status).json({ message: recordAccess.message });
       }
 
-      // Delete all associated files from object storage
-      const wizardFiles = await storage.files.list({ entityType: 'wizard', entityId: id });
-      
-      for (const file of wizardFiles) {
-        try {
-          // Delete ordering: row first, object second — a failed object
-          // delete leaves a sweepable orphan, never a dangling row.
-          await storage.files.delete(file.id);
-          await fileSystemService.remove(file.fileSystemId, file.storagePath);
-        } catch (error) {
-          console.error(`Failed to delete file ${file.id}:`, error);
-          // Continue with deletion even if file deletion fails
-        }
-      }
+      // Mark under the same lock used by attachment insertion. Retries may
+      // encounter an already-deleting row and simply resume cleanup.
+      await storage.advisoryLock.withTransactionLock(
+        `wizard-attachments:${id}`,
+        async () => {
+          const current = await storage.wizards.getById(id);
+          if (!current) return;
+          if (current.status !== "deleting") {
+            await storage.wizards.update(id, { status: "deleting" });
+          }
+        },
+      );
 
-      // Delete the wizard record
-      const success = await storage.wizards.delete(id);
+      // A row failure keeps the deleting parent as a retry anchor. Provider
+      // byte failures do not appear here because row-first cleanup logs them
+      // as recoverable orphans.
+      const cleanup = await cleanupWizardAttachments(id);
+      if (!cleanup.complete) {
+        return res.status(500).json({
+          message: "Wizard deletion is pending file cleanup; retry deletion.",
+          failedFileIds: cleanup.failedFileIds,
+        });
+      }
+      const success = await storage.advisoryLock.withTransactionLock(
+        `wizard-attachments:${id}`,
+        async () => {
+          const current = await storage.wizards.getById(id);
+          if (!current || current.status !== "deleting") return false;
+          const [newRows, legacyRows] = await Promise.all([
+            storage.entityFiles.list("wizard", id),
+            storage.files.list({ entityType: "wizard", entityId: id }),
+          ]);
+          if (newRows.length || legacyRows.length) return false;
+          return storage.wizards.delete(id);
+        },
+      );
       if (!success) {
-        return res.status(404).json({ message: "Wizard not found" });
+        return res.status(409).json({ message: "Wizard deletion is pending file cleanup; retry deletion." });
       }
 
       res.status(204).send();
@@ -578,35 +536,11 @@ export function registerWizardRoutes(
         return res.status(404).json({ message: "Wizard not found" });
       }
 
-      // Get wizard type to determine entityType
-      const wizardType = wizardPluginRegistry.get(wizard.type);
-      if (!wizardType) {
-        return res.status(400).json({ message: "Invalid wizard type" });
-      }
-
-      // Build context for policy evaluation
-      const context = await buildContext(req);
-      
-      // Check if user is admin first (admins can access all wizards)
-      const adminResult = await checkAccess('admin', context.user);
-      if (adminResult.granted) {
+      const scoped = await enforceWizardRecordAccess(id, req);
+      if (scoped.ok) {
         req.wizard = wizard; // Attach wizard to request for use in handler
         return next();
       }
-
-      // For entity-specific wizards, check entity-based access
-      if (wizardType.entityType && wizard.entityId) {
-        // Check appropriate entity policy based on entity type
-        const policyId = wizardType.entityType === 'employer' ? 'employer.view' : 'worker.self';
-        const result = await checkAccess(policyId, context.user, wizard.entityId);
-        
-        if (result.granted) {
-          req.wizard = wizard; // Attach wizard to request for use in handler
-          return next();
-        }
-      }
-
-      // Access denied
       return res.status(403).json({ message: "Access denied" });
     } catch (error) {
       console.error("Error checking wizard access:", error);
@@ -621,11 +555,9 @@ export function registerWizardRoutes(
       try {
         const { id } = req.params;
         
-        const allFiles = await storage.files.list();
-        const files = allFiles.filter(
-          (file) => (file.metadata as any)?.wizardId === id,
-        );
-        res.json(files);
+        // Preserve the existing endpoint response shape while avoiding an
+        // unscoped files metadata scan.
+        res.json(await listWizardAttachments(id));
       } catch (error) {
         res.status(500).json({ message: "Failed to fetch files" });
       }

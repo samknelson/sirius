@@ -9,7 +9,7 @@ import { executeChargePlugins, TriggerType, DuesImportSavedContext } from '../..
 import { scanWorkerMemberStatus } from '../../../../services/btu-member-status-scan.js';
 import { parse as parseCSV } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
-import { fileSystemService } from '../../../../services/files/index.js';
+import { downloadWizardAttachment } from '../../attachments.js';
 import { logger } from '../../../../logger.js';
 import { workerIds, cardchecks, workers, contacts, bargainingUnits, employers } from '@shared/schema';
 import { eq, sql } from 'drizzle-orm';
@@ -297,7 +297,7 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       throw new Error('File not found');
     }
 
-    const buffer = await fileSystemService.download(file.fileSystemId, file.storagePath);
+    const buffer = await downloadWizardAttachment(file.id, wizardId);
 
     let rawRows: any[] = [];
     if (file.mimeType === 'text/csv') {

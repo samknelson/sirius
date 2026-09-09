@@ -2,8 +2,7 @@ import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { PDFDocument } from "pdf-lib";
 import { registerWizardPlugin } from "../registry";
 import type { WizardPlugin, WizardStepContext } from "../types";
-import { fileSystemService } from "../../../services/files";
-import { insertFileSchema } from "@shared/schema";
+import { createWizardAttachment, transferWizardAttachment } from "../attachments";
 import { logger } from "../../../logger";
 import { sendInapp } from "../../../services/comm/senders/inapp";
 import { sendEmail } from "../../../services/comm/senders/email";
@@ -390,31 +389,18 @@ export const btuCardcheckScrapeImportPlugin: WizardPlugin = {
               const combinedPdfBytes = fetched.value;
 
               const fileName = `cardcheck_scrape_${nid}.pdf`;
-              const uploadResult = await fileSystemService.upload({
+              const pdfFileRecord = await createWizardAttachment({
+                wizardId: ctx.wizardId,
                 fileName,
-                fileContent: Buffer.from(combinedPdfBytes),
+                bytes: Buffer.from(combinedPdfBytes),
                 mimeType: "application/pdf",
-                fileSystemId: "private",
-              });
-
-              const pdfFileRecord = await ctx.storage.files.create(
-                insertFileSchema.parse({
-                  fileName,
-                  storagePath: uploadResult.storagePath,
-                  mimeType: "application/pdf",
-                  size: uploadResult.size,
-                  uploadedBy: userId,
-                  entityType: "esig",
-                  entityId: null,
-                  fileSystemId: "private",
-                  metadata: {
+                uploadedBy: userId,
+                metadata: {
                     nid,
                     cardcheckId: cardcheck.id,
-                    wizardId: ctx.wizardId,
                     importType: "btu_cardcheck_scrape_import",
-                  },
-                }),
-              );
+                },
+              });
 
               const signedDate = cardcheck.signedDate || new Date();
               const esig = await ctx.storage.esigs.createEsig({
@@ -435,11 +421,9 @@ export const btuCardcheckScrapeImportPlugin: WizardPlugin = {
                 docFileId: pdfFileRecord.id,
               });
 
-              if (pdfFileRecord.id) {
-                await ctx.storage.files.update(pdfFileRecord.id, {
-                  entityId: esig.id,
-                });
-              }
+              await transferWizardAttachment(pdfFileRecord.id, ctx.wizardId, {
+                entityType: "esig", entityId: esig.id,
+              });
 
               await ctx.storage.cardchecks.updateCardcheck(cardcheck.id, {
                 esigId: esig.id,

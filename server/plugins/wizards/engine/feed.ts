@@ -4,7 +4,10 @@ import type { InsertFile, File } from '@shared/schema';
 import { parse as parseCSV } from 'csv-parse/sync';
 import { stringify as stringifyCSV } from 'csv-stringify/sync';
 import * as XLSX from 'xlsx';
-import { fileSystemService } from '../../../services/files/index.js';
+import {
+  createWizardAttachment, downloadWizardAttachment, listWizardAttachments,
+  removeWizardAttachment, getWizardAttachment,
+} from '../attachments.js';
 import { parseSSN, validateSSN } from '@shared/utils/ssn';
 import { logger } from '../../../logger.js';
 import {
@@ -560,7 +563,9 @@ export abstract class FeedWizard extends BaseWizard {
       throw new Error('No uploaded file found');
     }
 
-    const file = await storage.files.getById(fileId);
+    // Resolve scoped ownership before consulting the process cache: a file id
+    // from another wizard must never reuse already-parsed bytes.
+    const file = await getWizardAttachment(fileId, wizardId);
     if (!file) {
       throw new Error('File not found');
     }
@@ -571,7 +576,7 @@ export abstract class FeedWizard extends BaseWizard {
     let rawRows: any[][] | undefined = getCachedParsedRows(file.id);
     if (!rawRows) {
       const t0 = Date.now();
-      const buffer = await fileSystemService.download(file.fileSystemId, file.storagePath);
+      const buffer = await downloadWizardAttachment(file.id, wizardId);
       const tParse = Date.now();
 
       if (file.mimeType === 'text/csv') {
@@ -1137,29 +1142,13 @@ export abstract class FeedWizard extends BaseWizard {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
     const resultsFileName = `${baseName}-results-${timestamp}.csv`;
 
-    // Upload to object storage in same folder as wizard attachments
-    const customPath = `wizards/${wizardId}/${Date.now()}_${resultsFileName}`;
-    const uploadResult = await fileSystemService.upload({
-      fileName: resultsFileName,
-      fileContent: csvBuffer,
-      mimeType: 'text/csv',
-      fileSystemId: 'private',
-      customPath
-    });
-
-    // Use the same uploadedBy as the original file
-    const uploadedBy = originalFile.uploadedBy;
-
-    // Create file record attached to wizard
-    const resultsFile = await storage.files.create({
+    const resultsFile = await createWizardAttachment({
+      wizardId,
       fileName: resultsFileName,
       mimeType: 'text/csv',
-      size: uploadResult.size,
-      storagePath: uploadResult.storagePath,
-      uploadedBy,
-      entityType: 'wizard',
-      entityId: wizardId,
-      fileSystemId: 'private'
+      bytes: csvBuffer,
+      uploadedBy: originalFile.uploadedBy,
+      metadata: { purpose: "feed-results" },
     });
 
     return resultsFile.id;
@@ -1254,26 +1243,16 @@ export abstract class FeedWizard extends BaseWizard {
       throw new Error('Invalid file type. Only CSV and XLSX files are supported.');
     }
 
-    // Normalize metadata to handle null/string cases
-    const existingMetadata = typeof fileData.metadata === 'object' && fileData.metadata !== null 
-      ? fileData.metadata 
-      : {};
-
-    // Create the file record with wizard association
-    const file = await storage.files.create({
-      fileName: fileData.fileName,
-      storagePath: fileData.storagePath,
-      mimeType: fileData.mimeType,
-      size: fileData.size,
-      uploadedBy: fileData.uploadedBy,
-      entityType: fileData.entityType,
-      entityId: fileData.entityId,
-      fileSystemId: fileData.fileSystemId,
-      metadata: {
-        ...existingMetadata,
-        wizardId
-      }
-    });
+    // New framework uploads have already atomically created the files +
+    // entity_files rows. Keep their id stable when writing wizard state;
+    // legacy rows remain readable through the scoped fallback.
+    const existing = (fileData as any).id
+      ? await getWizardAttachment((fileData as any).id, wizardId)
+      : undefined;
+    if (!existing) {
+      throw new Error("Feed uploads must be created through createWizardAttachment");
+    }
+    const file = existing;
 
     // Update wizard data to store the file ID
     const wizard = await storage.wizards.getById(wizardId);
@@ -1317,11 +1296,7 @@ export abstract class FeedWizard extends BaseWizard {
    * @returns Array of file records
    */
   async getAssociatedFiles(wizardId: string): Promise<File[]> {
-    const allFiles = await storage.files.list();
-    return allFiles.filter((file) => {
-      const metadata = file.metadata as any;
-      return metadata?.wizardId === wizardId;
-    });
+    return listWizardAttachments(wizardId);
   }
 
   /**
@@ -1330,19 +1305,7 @@ export abstract class FeedWizard extends BaseWizard {
    * @param wizardId The wizard instance ID for verification
    */
   async deleteAssociatedFile(fileId: string, wizardId: string): Promise<boolean> {
-    const file = await storage.files.getById(fileId);
-    
-    if (!file) {
-      return false;
-    }
-
-    const metadata = file.metadata as any;
-    if (metadata?.wizardId !== wizardId) {
-      throw new Error('File is not associated with this wizard');
-    }
-
-    // Delete from database (storage middleware handles object storage cleanup)
-    const deleted = await storage.files.delete(fileId);
+    const deleted = await removeWizardAttachment(fileId, wizardId);
     
     if (deleted) {
       // Update wizard data to remove the file ID

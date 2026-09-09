@@ -54,8 +54,12 @@ const policy = definePolicy({
     // Entity-files attachments: the owning context's access callback is the
     // single authority (mirrors the retired per-context download route).
     // Generic shortcuts below must NOT bypass it; unset resolver fails closed.
-    if (fileEntityType?.startsWith(ENTITY_FILES_PREFIX)) {
-      const contextId = fileEntityType.slice(ENTITY_FILES_PREFIX.length);
+    if (fileEntityType?.startsWith(ENTITY_FILES_PREFIX) || fileEntityType === "wizard") {
+      // Legacy wizard rows retain their old discriminator but use the same
+      // authoritative resolver as new entity-files:wizard attachments.
+      const contextId = fileEntityType === "wizard"
+        ? "wizard"
+        : fileEntityType.slice(ENTITY_FILES_PREFIX.length);
       if (!entityFilesReadAccessResolver || !fileEntityId) {
         return { granted: false, reason: 'Entity-files access resolver unavailable' };
       }
@@ -96,15 +100,6 @@ const policy = definePolicy({
         }
       }
 
-      if (entityType === 'wizard') {
-        const wizard = await ctx.storage.wizards?.getById?.(entityId);
-        if (wizard?.entityId) {
-          const hasWizardAccess = await ctx.checkPolicy('employer.mine', wizard.entityId);
-          if (hasWizardAccess) {
-            return { granted: true, reason: 'Has access to associated wizard' };
-          }
-        }
-      }
     }
     
     return { granted: false, reason: 'No access to this file' };

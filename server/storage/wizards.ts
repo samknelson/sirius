@@ -1,7 +1,7 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { wizards, wizardReportData, wizardEmployerMonthly, type Wizard, type InsertWizard, type WizardReportData, type InsertWizardReportData } from "@shared/schema";
-import { eq, and, desc, or } from "drizzle-orm";
+import { eq, and, desc, or, ne } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { db } from './db';
 import { runInTransaction } from './transaction-context';
@@ -175,7 +175,11 @@ export function createWizardStorage(): WizardStorage {
       const [wizard] = await client
         .update(wizards)
         .set(updates)
-        .where(eq(wizards.id, id))
+        .where(
+          updates.status === "deleting"
+            ? eq(wizards.id, id)
+            : and(eq(wizards.id, id), ne(wizards.status, "deleting")),
+        )
         .returning();
       return wizard || undefined;
     },

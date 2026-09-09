@@ -1,6 +1,8 @@
 import type { Request } from "express";
 import { storage } from "../storage";
 import { buildContext, checkAccess } from "../services/access-policy-evaluator";
+import { checkWizardRecordAccess } from "../plugins/wizards/entity-access";
+import { isComponentEnabled } from "./components";
 import {
   registerEntityFileContext,
   type EntityFileContext,
@@ -36,6 +38,23 @@ function staffOnly(): Pick<EntityFileContext, "checkAccess" | "checkPolicyAccess
 }
 
 export function registerEntityFileContexts(): void {
+  registerEntityFileContext({
+    id: "wizard",
+    label: "Wizards",
+    recordLabel: "Wizard",
+    async entityExists(id) { return Boolean(await storage.wizards.getById(id)); },
+    async checkAccess(_verb, id, req) {
+      const context = await buildContext(req);
+      return (await checkWizardRecordAccess(id, async (policy, entityId) =>
+        (await checkAccess(policy, context.user, entityId)).granted,
+        (componentId) => isComponentEnabled(componentId))).ok;
+    },
+    async checkPolicyAccess(_verb, id, ctx) {
+      return (await checkWizardRecordAccess(id, (policy, entityId) =>
+        ctx.checkPolicy(policy, entityId),
+        (componentId) => ctx.isComponentEnabled(componentId))).ok;
+    },
+  });
   // Grievances — staff-only, and gated on the `grievance` component.
   registerEntityFileContext({
     id: "grievance",

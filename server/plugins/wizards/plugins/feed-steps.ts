@@ -1,8 +1,8 @@
 import { parse as parseCSV } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import type { FeedWizard, FeedField } from "../engine/feed";
-import { fileSystemService } from "../../../services/files";
 import { getEffectiveUser } from "../../../modules/masquerade";
+import { createWizardAttachment } from "../attachments";
 import type {
   WizardStepHandler,
   WizardStepContext,
@@ -145,27 +145,18 @@ export function buildUploadStep(
       const { dbUser } = await getEffectiveUser(session, user);
       if (!dbUser) throw new Error("User not found");
 
-      const customPath = `wizards/${ctx.wizardId}/${Date.now()}_${file.originalname}`;
-      const uploadResult = await fileSystemService.upload({
-        fileName: file.originalname,
-        fileContent: file.buffer,
-        mimeType: file.mimetype,
-        fileSystemId: "private",
-        customPath,
-      });
+       const stored = await createWizardAttachment({
+         wizardId: ctx.wizardId,
+         fileName: file.originalname,
+         bytes: file.buffer,
+         mimeType: file.mimetype,
+         uploadedBy: dbUser.id,
+         metadata: { wizardType: ctx.wizard.type, purpose: "feed-upload" },
+       });
 
       // associateFile creates the file row (via storage) AND writes
       // uploadedFileId onto wizard.data while clearing downstream step data.
-      await feed.associateFile(ctx.wizardId, {
-        fileName: file.originalname,
-        storagePath: uploadResult.storagePath,
-        mimeType: file.mimetype,
-        size: file.size,
-        uploadedBy: dbUser.id,
-        entityType: "wizard",
-        entityId: ctx.wizardId,
-        fileSystemId: "private",
-      });
+       await feed.associateFile(ctx.wizardId, stored as any);
 
       const rows = parseFileToRows(file.buffer, file.mimetype);
       return {

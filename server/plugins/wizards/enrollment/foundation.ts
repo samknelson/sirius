@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import type {
   WizardPlugin,
   WizardStepContext,
@@ -10,7 +9,6 @@ import type {
   WizardUpdateResult,
 } from "../types";
 import type { Wizard } from "@shared/schema";
-import { insertFileSchema } from "@shared/schema";
 import type { EnrollmentType } from "@shared/schema";
 import { parseSSN } from "@shared/utils/ssn";
 import {
@@ -19,7 +17,7 @@ import {
 } from "../../trust/eligibility/executor";
 import type { EligibilityRule } from "../../trust/eligibility/types";
 import { checkAccessInline } from "../../../services/access-policy-evaluator";
-import { objectStorageService } from "../../../services/objectStorage";
+import { createWizardAttachment } from "../attachments";
 import { logger } from "../../../logger";
 import type { storage as StorageType } from "../../../storage";
 
@@ -358,9 +356,8 @@ export async function lookupDependent(
 /* ------------------------------------------------------------------ */
 
 /**
- * Store an uploaded wizard file in private object storage and register
- * it in the files table. Used by both the dependent supporting-document
- * upload and the uploaded-signature path.
+ * Store an uploaded wizard file through the configured Wizards Entity Files
+ * area. Used by both the dependent supporting-document upload and signature.
  */
 export async function storeWizardFile(
   ctx: WizardStepContext,
@@ -377,29 +374,14 @@ export async function storeWizardFile(
   const userId = (ctx.req.user as any)?.dbUser?.id;
   if (!userId) throw new Error("Not authenticated");
 
-  const fileUuid = crypto.randomUUID();
-  const extension = file.originalname.split(".").pop() || "";
-  const storageName = extension ? `${fileUuid}.${extension}` : fileUuid;
-  const uploadResult = await objectStorageService.uploadFile({
-    fileName: storageName,
-    fileContent: file.buffer,
-    mimeType: file.mimetype,
-    accessLevel: "private",
-    customPath: `private/${folder}/${storageName}`,
-  });
-
-  const validated = insertFileSchema.parse({
+  const created = await createWizardAttachment({
+    wizardId: ctx.wizardId,
     fileName: file.originalname,
-    storagePath: uploadResult.storagePath,
+    bytes: file.buffer,
     mimeType: file.mimetype,
-    size: uploadResult.size,
     uploadedBy: userId,
-    entityType: "wizard",
-    entityId: ctx.wizardId,
-    accessLevel: "private",
     metadata: { wizardType, purpose: folder },
   });
-  const created = await ctx.storage.files.create(validated);
   return { fileId: created.id, fileName: created.fileName };
 }
 

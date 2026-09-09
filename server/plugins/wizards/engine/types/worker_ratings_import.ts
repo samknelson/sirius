@@ -20,7 +20,7 @@ import {
 } from '../base.js';
 import { storage } from '../../../../storage/index.js';
 import { createUnifiedOptionsStorage } from '../../../../storage/unified-options.js';
-import { fileSystemService } from '../../../../services/files/index.js';
+import { downloadWizardAttachment } from '../../attachments.js';
 import { parse as parseCSV } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
 
@@ -411,10 +411,7 @@ export class WorkerRatingsImportWizard extends FeedWizard {
       throw new Error('File not found');
     }
 
-    const buffer = await fileSystemService.download(
-      file.fileSystemId,
-      file.storagePath,
-    );
+    const buffer = await downloadWizardAttachment(file.id, wizardId);
 
     let rawRows: any[] = [];
     if (file.mimeType === 'text/csv') {

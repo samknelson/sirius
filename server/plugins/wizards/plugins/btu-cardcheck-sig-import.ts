@@ -1,9 +1,8 @@
 import AdmZip from "adm-zip";
 import { registerWizardPlugin } from "../registry";
 import type { WizardPlugin, WizardStepContext } from "../types";
-import { fileSystemService } from "../../../services/files";
 import { createBtuWorkerImportStorage } from "../../../storage/sitespecific/btu/worker-import";
-import { insertFileSchema } from "@shared/schema";
+import { createWizardAttachment, downloadWizardAttachment, transferWizardAttachment } from "../attachments";
 
 /**
  * Extract the leading name parts + BPS employee id from a signature PDF
@@ -90,25 +89,14 @@ export const btuCardcheckSigImportPlugin: WizardPlugin = {
         }
         const userId = resolveUserId(ctx);
 
-        const uploadResult = await fileSystemService.upload({
+        const fileRecord = await createWizardAttachment({
+          wizardId: ctx.wizardId,
           fileName: file.originalname,
-          fileContent: file.buffer,
+          bytes: file.buffer,
           mimeType: "application/zip",
-          fileSystemId: "private",
-        });
-
-        const validatedData = insertFileSchema.parse({
-          fileName: file.originalname,
-          storagePath: uploadResult.storagePath,
-          mimeType: "application/zip",
-          size: uploadResult.size,
           uploadedBy: userId,
-          entityType: "wizard",
-          entityId: ctx.wizardId,
-          fileSystemId: "private",
           metadata: { wizardType: "btu_cardcheck_sig_import" },
         });
-        const fileRecord = await ctx.storage.files.create(validatedData);
 
         const zip = new AdmZip(file.buffer);
         const pdfFiles: PdfFile[] = [];
@@ -129,7 +117,6 @@ export const btuCardcheckSigImportPlugin: WizardPlugin = {
         return {
           data: {
             uploadedFileId: fileRecord.id,
-            zipStoragePath: uploadResult.storagePath,
             pdfFiles,
             totalFiles: pdfFiles.length,
             filesWithBpsId: pdfFiles.filter((f) => f.bpsId !== null).length,
@@ -256,10 +243,10 @@ export const btuCardcheckSigImportPlugin: WizardPlugin = {
       },
       run: async (ctx: WizardStepContext) => {
         const data = (ctx.wizard.data as any) || {};
-        const zipStoragePath = data.zipStoragePath;
+        const uploadedFileId = data.uploadedFileId;
         const cardcheckDefinitionId = data.cardcheckDefinitionId;
         const previewData: PreviewData | undefined = data.previewData;
-        if (!zipStoragePath || !cardcheckDefinitionId || !previewData) {
+        if (!uploadedFileId || !cardcheckDefinitionId || !previewData) {
           throw new Error(
             "Missing required data. Complete upload, configure, and preview steps first.",
           );
@@ -270,7 +257,7 @@ export const btuCardcheckSigImportPlugin: WizardPlugin = {
         }
         const userId = resolveUserId(ctx);
 
-        const zipBuffer = await fileSystemService.download("private", zipStoragePath);
+        const zipBuffer = await downloadWizardAttachment(uploadedFileId, ctx.wizardId);
         const zip = new AdmZip(zipBuffer);
         const btuStorage = createBtuWorkerImportStorage();
 
@@ -318,30 +305,17 @@ export const btuCardcheckSigImportPlugin: WizardPlugin = {
             }
 
             const pdfBuffer = pdfEntry.getData();
-            const pdfUploadResult = await fileSystemService.upload({
+            const pdfFileRecord = await createWizardAttachment({
+              wizardId: ctx.wizardId,
               fileName: matchedFile.filename,
-              fileContent: pdfBuffer,
+              bytes: pdfBuffer,
               mimeType: "application/pdf",
-              fileSystemId: "private",
-            });
-
-            const pdfFileRecord = await ctx.storage.files.create(
-              insertFileSchema.parse({
-                fileName: matchedFile.filename,
-                storagePath: pdfUploadResult.storagePath,
-                mimeType: "application/pdf",
-                size: pdfUploadResult.size,
-                uploadedBy: userId,
-                entityType: "esig",
-                entityId: null,
-                fileSystemId: "private",
-                metadata: {
+              uploadedBy: userId,
+              metadata: {
                   bpsId: matchedFile.bpsId,
-                  wizardId: ctx.wizardId,
                   importType: "btu_cardcheck_sig_import",
-                },
-              }),
-            );
+              },
+            });
 
             const esig = await ctx.storage.esigs.createEsig({
               userId,
@@ -360,11 +334,9 @@ export const btuCardcheckSigImportPlugin: WizardPlugin = {
               docFileId: pdfFileRecord.id,
             });
 
-            if (pdfFileRecord.id) {
-              await ctx.storage.files.update(pdfFileRecord.id, {
-                entityId: esig.id,
-              });
-            }
+            await transferWizardAttachment(pdfFileRecord.id, ctx.wizardId, {
+              entityType: "esig", entityId: esig.id,
+            });
 
             const worker = await btuStorage.findWorkerByBpsEmployeeId(
               matchedFile.bpsId,

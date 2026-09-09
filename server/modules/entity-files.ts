@@ -20,6 +20,7 @@ import { storage } from "../storage";
 import { insertFileSchema } from "@shared/schema";
 import { logger } from "../logger";
 import { z } from "zod";
+import { createWizardAttachmentRecord } from "../plugins/wizards/attachments";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
@@ -208,6 +209,23 @@ export function registerEntityFileRoutes(app: Express, requireAuth: AuthMiddlewa
         const uploaderId = accessContext.user?.id;
         if (!uploaderId) {
           return res.status(401).json({ message: "Could not determine the current user for this upload. Please sign in again." });
+        }
+        // Wizard uploads must share the wizard deletion advisory lock and
+        // locked parent recheck used by every internal wizard producer.
+        if (context.id === "wizard") {
+          const displayName =
+            typeof req.body?.name === "string" && req.body.name.trim()
+              ? req.body.name.trim().slice(0, 255)
+              : req.file.originalname.slice(0, 255);
+          const record = await createWizardAttachmentRecord({
+            wizardId: req.params.entityId,
+            fileName: req.file.originalname,
+            bytes: req.file.buffer,
+            mimeType: req.file.mimetype,
+            uploadedBy: uploaderId,
+            displayName,
+          });
+          return res.status(201).json(record);
         }
 
         // Throws when the stored template names a token the framework does

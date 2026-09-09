@@ -1,4 +1,4 @@
-import { workers, employers, trustProviders, grievances } from "@shared/schema";
+import { workers, employers, trustProviders, grievances, wizards } from "@shared/schema";
 import {
   getEntityFileContext,
   listEntityFileContexts,
@@ -21,6 +21,7 @@ import type { PgTable, TableConfig } from "drizzle-orm/pg-core";
  * per-record callback can express, so the table itself has to be nameable.
  */
 export const fileContextTables: Record<string, PgTable<TableConfig>> = {
+  wizard: wizards,
   worker: workers,
   employer: employers,
   trust_provider: trustProviders,

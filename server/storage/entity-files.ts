@@ -83,6 +83,11 @@ export interface EntityFilesStorage {
     entityId: string,
     attachmentId: string,
   ): Promise<{ attachment: EntityFile; file: File } | undefined>;
+  /** Detach a file from an Entity Files parent while retaining its bytes/row. */
+  transferFileOwnership(
+    contextId: string, entityId: string, fileId: string,
+    owner: { entityType: string; entityId: string | null },
+  ): Promise<File | undefined>;
 }
 
 function rowToRecord(row: {
@@ -269,6 +274,21 @@ export function createEntityFilesStorage(): EntityFilesStorage {
             });
         });
         return { attachment, file: fileRow };
+      });
+    },
+    async transferFileOwnership(contextId, entityId, fileId, owner) {
+      return runInTransaction(async () => {
+        const client = getClient();
+        const [attachment] = await client.delete(entityFiles)
+          .where(and(scope(contextId, entityId), eq(entityFiles.fileId, fileId)))
+          .returning();
+        if (!attachment) return undefined;
+        const [file] = await client.update(files)
+          .set(owner)
+          .where(eq(files.id, fileId))
+          .returning();
+        if (!file) throw new Error(`Attachment ${attachment.id} pointed at missing file ${fileId}`);
+        return file;
       });
     },
   };
