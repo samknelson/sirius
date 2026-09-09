@@ -4,8 +4,9 @@
  * Fixtures (dev DB, deleted afterwards): subscriber + spouse dependent +
  * child dependent. Asserts row layout (SUB/DEP, relationship codes,
  * subscriber SSN carried on every row, members keep their OWN address —
- * no fallback), and file assembly: H header record, CSV column header,
- * detail rows, T trailer with subscriber/dependent counts.
+ * no fallback), and exact file assembly: file-definition header, H record,
+ * blank separator, member-data header, ordered detail rows, and T trailer
+ * with subscriber/dependent counts.
  *
  * Usage: npx tsx scripts/oneoffs/smoke-edi-dentwell.ts
  */
@@ -94,12 +95,22 @@ async function main() {
     check("child: relcode 19; blank address stays blank", cRow.relationshipCode === "19" && cRow.street === "" && cRow.city === "", cRow);
 
     const lines = assembleEdiFileLines(plugin, rows, ctx);
-    check("file: H + column header + 3 details + T", lines.length === 6, lines);
-    check("file: H record carries as-of date", lines[0] === "H,,20260715", lines[0]);
-    check("file: column header", lines[1].startsWith("Record Type,SubscriberNumber,MemberType,"), lines[1]);
-    check("file: detail rows start with E", lines[2].startsWith("E,987654321,SUB,") && lines[3].startsWith("E,987654321,DEP,"), lines[2]);
-    check("file: 19 columns per detail row", lines[2].split(",").length === 19, lines[2]);
-    check("file: T trailer counts 1 sub / 2 deps", lines[5] === "T,1,2", lines[5]);
+    const memberHeader = plugin.encodeCsvHeaderRow!(ctx);
+    const detailLines = rows.map((row) => plugin.encodeRow(row, ctx));
+    const expectedLines = [
+      "Record Type,Group ID,Report Date",
+      "H,,20260715",
+      "",
+      memberHeader,
+      ...detailLines,
+      "T,1,2",
+    ];
+    check("file: exact ordered preamble, details, and trailer", JSON.stringify(lines) === JSON.stringify(expectedLines), lines);
+    check("file: blank row separates H record from member header", lines[2] === "" && lines[3] === memberHeader, lines.slice(0, 4));
+    check("file: details remain ordered SUB then DEP rows", lines[4] === detailLines[0] && lines[5] === detailLines[1] && lines[6] === detailLines[2], lines.slice(4, 7));
+    check("file: detail rows start with E", lines[4].startsWith("E,987654321,SUB,") && lines[5].startsWith("E,987654321,DEP,"), lines[4]);
+    check("file: 19 columns per detail row", lines[4].split(",").length === 19, lines[4]);
+    check("file: T trailer counts 1 sub / 2 deps", lines[7] === "T,1,2", lines[7]);
     check("filename", /^DENTWELL_\d{8}\.csv$/.test(plugin.buildFilename(ctx)));
   } finally {
     await cleanup(created);

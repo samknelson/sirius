@@ -20,14 +20,15 @@ import {
  * SMF — Dentwell (LA Dental Center) eligibility CSV.
  *
  * Port of the legacy PHP generator (Sirius_Smf_Report_Edi_Dentwell): a CSV
- * with a header row plus file-level header ("H") and trailer ("T") records —
- * one "E" detail row per subscriber and covered dependent for every worker
- * holding a monthly benefit record (trust_wmb) for the configured benefit in
- * the as-of month.
+ * with a file-definition row, file-level header ("H"), blank separator,
+ * member-data header, and trailer ("T") records — one "E" detail row per
+ * subscriber and covered dependent for every worker holding a monthly benefit
+ * record (trust_wmb) for the configured benefit in the as-of month.
  *
  * Legacy notes carried over:
  *  - SubscriberNumber is always the SUBSCRIBER's SSN.
  *  - Members carry their OWN address/phone/email (no subscriber fallback).
+ *  - Preamble: file-definition columns, H record, then one blank row.
  *  - Header record: H,<group id (blank)>,<as-of date YYYYMMDD>.
  *  - Trailer record: T,<subscriber count>,<dependent count>.
  */
@@ -181,9 +182,13 @@ registerTrustProviderEdiPlugin({
     return encodeCsvHeaderRow(CSV_FIELDS);
   },
 
-  // Legacy "H" header record: H,<group id (blank)>,<as-of date YYYYMMDD>.
+  // Dentwell preamble: file-definition columns, H record, then a blank row.
   encodeFileHeader(ctx: TrustProviderEdiContext) {
-    return ["H", "", ymdCompact(readAsOfYmd(ctx))].map(csvEscape).join(",");
+    return [
+      ["Record Type", "Group ID", "Report Date"].map(csvEscape).join(","),
+      ["H", "", ymdCompact(readAsOfYmd(ctx))].map(csvEscape).join(","),
+      "",
+    ];
   },
 
   // Legacy "T" trailer record: T,<subscriber count>,<dependent count>.
