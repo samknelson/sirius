@@ -66,6 +66,23 @@ describe("medium field declarations", () => {
     expect(mediumField("inapp", "linkUrl").safety).toBe("relative-url");
   });
 
+  it("agrees with delivery when a surface omits a required field entirely", () => {
+    // What preview and the composing surfaces do with a template map:
+    // normalize each declared field through authoredFieldValue, then
+    // judge only what came back. An omitted subject has to land as
+    // undeliverable, because that is what delivery does with it — the
+    // two disagreeing is how a message previews fine and never arrives.
+    const supplied: Record<string, string> = { bodyHtml: "<p>Hello.</p>" };
+    const normalized: Record<string, string> = {};
+    for (const spec of MEDIUM_FIELDS.email) {
+      const value = authoredFieldValue(spec, supplied[spec.key]);
+      if (value !== undefined) normalized[spec.key] = value;
+    }
+    const shaped = applyFieldEligibility(MEDIUM_FIELDS.email, normalized);
+    expect(shaped.deliverable).toBe(false);
+    expect(shaped.blankRequired).toEqual(["subject"]);
+  });
+
   it("names each medium's fields once", () => {
     expect(MEDIUM_FIELDS.sms.map((f) => f.key)).toEqual(["body"]);
     // No authored plain-text part: it is derived from the HTML body at
