@@ -91,6 +91,8 @@ its own rows from this table and from the allowlist.
 | `sitespecific_btu_csg` | `created_at`, `updated_at` | Retire BTU Table Timestamps |
 | `sitespecific_btu_political_officials` | `created_at`, `updated_at` | Retire BTU Table Timestamps |
 | `sitespecific_btu_political_worker_reps` | `created_at` | Retire BTU Table Timestamps |
+| `sitespecific_bao_cases`, `sitespecific_bao_case_documents`, `sitespecific_bao_case_comms` | `created_at` | Retire BAO Case Timestamps |
+| `sitespecific_bao_dc_cases`, `sitespecific_bao_dc_case_months`, `sitespecific_bao_dc_denial_letters`, `sitespecific_bao_dc_documents`, `sitespecific_bao_dc_events` | `created_at` | Retire BAO DC Timestamps |
 
 The process-table entries in the KEEP table below are intentionally not
 record-history columns. They are local facts owned by their process rows, and

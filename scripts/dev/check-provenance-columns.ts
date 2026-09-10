@@ -167,6 +167,14 @@ const ALLOWLIST: Record<string, string> = {
   "sitespecific_btu_political_officials.created_at": "RETIRE — Retire BTU Table Timestamps",
   "sitespecific_btu_political_officials.updated_at": "RETIRE — Retire BTU Table Timestamps",
   "sitespecific_btu_political_worker_reps.created_at": "RETIRE — Retire BTU Table Timestamps",
+  "sitespecific_bao_cases.created_at": "RETIRE — Retire BAO Case Timestamps",
+  "sitespecific_bao_case_documents.created_at": "RETIRE — Retire BAO Case Timestamps",
+  "sitespecific_bao_case_comms.created_at": "RETIRE — Retire BAO Case Timestamps",
+  "sitespecific_bao_dc_cases.created_at": "RETIRE — Retire BAO DC Timestamps",
+  "sitespecific_bao_dc_case_months.created_at": "RETIRE — Retire BAO DC Timestamps",
+  "sitespecific_bao_dc_denial_letters.created_at": "RETIRE — Retire BAO DC Timestamps",
+  "sitespecific_bao_dc_documents.created_at": "RETIRE — Retire BAO DC Timestamps",
+  "sitespecific_bao_dc_events.created_at": "RETIRE — Retire BAO DC Timestamps",
 };
 
 export interface ProvenanceColumn {

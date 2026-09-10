@@ -18,6 +18,7 @@ import {
   workers,
 } from "@shared/schema";
 import { ensureBaoDcSchema } from "../../tests/sitespecific/fixtures/bao-schema";
+import { getEnvironmentVariable } from "../../server/config/env-registry";
 
 const MARKER = "dev-seed:bao-dc-reconciliation:v1";
 const WORK_MONTH = "2026-05-01";
@@ -77,15 +78,20 @@ const scenarios: Scenario[] = [
 ];
 
 async function assertDevelopmentTarget() {
-  if (process.env.REPLIT_DEPLOYMENT === "1" || process.env.NODE_ENV === "production") {
+  if (
+    getEnvironmentVariable("REPLIT_DEPLOYMENT") === "1" ||
+    getEnvironmentVariable("NODE_ENV") === "production"
+  ) {
     throw new Error("Refusing to seed Disability Credit reconciliation data in a deployment");
   }
-  if (process.env.ALLOW_BAO_DC_RECONCILIATION_SEED !== "1") {
+  if (getEnvironmentVariable("ALLOW_BAO_DC_RECONCILIATION_SEED") !== "1") {
     throw new Error(
       "Explicit opt-in required: run npm run seed:bao-dc-reconciliation in a development workspace",
     );
   }
-  const rawUrl = process.env.EXTERNAL_DATABASE_URL || process.env.DATABASE_URL;
+  const rawUrl =
+    getEnvironmentVariable("EXTERNAL_DATABASE_URL") ||
+    getEnvironmentVariable("DATABASE_URL");
   if (!rawUrl) throw new Error("No database URL is configured");
   const hostname = new URL(rawUrl).hostname;
   if (!ALLOWED_DATABASE_HOSTS.has(hostname)) {
