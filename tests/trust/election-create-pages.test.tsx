@@ -113,9 +113,14 @@ const olderElection = {
   startYmd: "2024-01-01",
 };
 
+type TestElection = Omit<typeof newestElection, "endYmd"> & {
+  endYmd: string | null;
+};
+
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
-let electionHistory: typeof newestElection[] = [];
+let electionHistory: TestElection[] = [];
+let currentElection: TestElection | null = newestElection;
 let requestedUrls: string[] = [];
 
 function json(data: unknown): Response {
@@ -202,13 +207,14 @@ async function openElectionDialog(): Promise<void> {
 
 beforeEach(() => {
   electionHistory = [newestElection, olderElection];
+  currentElection = newestElection;
   requestedUrls = [];
   apiRequest.mockReset();
   apiRequest.mockResolvedValue({ ...newestElection, id: "created" });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     requestedUrls.push(url);
-    if (url.includes("/trust-elections/current")) return json(newestElection);
+    if (url.includes("/trust-elections/current")) return json(currentElection);
     if (url.includes("/trust-elections/first-time-eligibility")) return json({ eligible: true });
     if (url.includes("/trust-elections/life-event-eligibility")) return json({ eligible: true });
     if (url.includes("/trust-elections")) return json(electionHistory);
@@ -310,4 +316,36 @@ it("submits only carried-forward employer, benefits, relationships, and fresh da
   expect(submitted).not.toHaveProperty("policyId");
   expect(submitted).not.toHaveProperty("enrollmentType");
   expect(submitted).not.toHaveProperty("data");
+});
+
+it("labels past, current-boundary, and future elections consistently", async () => {
+  const today = todayYmd();
+  electionHistory = [
+    { ...newestElection, id: "future", startYmd: "2999-01-01", endYmd: null },
+    { ...newestElection, id: "current", startYmd: today, endYmd: today },
+    { ...newestElection, id: "past", startYmd: "2000-01-01", endYmd: "2000-12-31" },
+  ];
+
+  await renderPage(ElectionsListPage);
+
+  await waitFor(() => {
+    expect(byTestId("badge-status-future").textContent).toBe("Upcoming");
+    expect(byTestId("badge-status-current").textContent).toBe("Active");
+    expect(byTestId("badge-status-past").textContent).toBe("Ended");
+  });
+});
+
+it("shows no Current Election when the API excludes an open future election", async () => {
+  electionHistory = [
+    { ...newestElection, id: "future", startYmd: "2999-01-01", endYmd: null },
+    { ...newestElection, id: "past", startYmd: "2000-01-01", endYmd: "2000-12-31" },
+  ];
+  currentElection = null;
+
+  await renderPage(ElectionsCurrentPage);
+
+  await waitFor(() => {
+    expect(byTestId("text-no-current-election").textContent).toContain("No current election");
+    expect(container?.querySelector('[data-testid="card-current-election"]')).toBeNull();
+  });
 });

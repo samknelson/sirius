@@ -173,6 +173,22 @@ export function isYmdInRange(ymd: Ymd, start: Ymd | null, end: Ymd | null): bool
   return true;
 }
 
+export type DateRangeStatus = 'upcoming' | 'active' | 'ended';
+
+/**
+ * Classify an inclusive date-only range as of a date. An absent end is open,
+ * not automatically active: its start must still have arrived.
+ */
+export function getDateRangeStatus(
+  startYmd: Ymd,
+  endYmd: Ymd | null | undefined,
+  asOfYmd: Ymd = getTodayYmd(),
+): DateRangeStatus {
+  if (isYmdAfter(startYmd, asOfYmd)) return 'upcoming';
+  if (endYmd && isYmdBefore(endYmd, asOfYmd)) return 'ended';
+  return 'active';
+}
+
 /**
  * Convert a Ymd to a Date at LOCAL midnight. Builds the Date from already-split
  * components (never `new Date(ymd)`), so there is no UTC drift.

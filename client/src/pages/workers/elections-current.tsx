@@ -209,7 +209,7 @@ function ElectionsCurrentContent() {
           )}
         </div>
         <CardDescription>
-          The worker's currently active trust election. Creating a new election will end-date this one automatically.
+          The worker's trust election whose coverage includes today. Creating a new election will end-date an open one automatically.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -262,7 +262,7 @@ function ElectionsCurrentContent() {
           </div>
         ) : (
           <div className="text-center py-6 text-muted-foreground" data-testid="text-no-current-election">
-            No active election for this worker.
+            No current election for this worker.
           </div>
         )}
       </CardContent>

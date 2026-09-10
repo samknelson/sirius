@@ -12,6 +12,13 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ElectionFormDialog } from "@/components/trust/ElectionFormDialog";
 import type { WorkerTrustElectionView } from "@shared/schema";
+import { getDateRangeStatus } from "@shared/utils";
+
+const electionStatusPresentation = {
+  upcoming: { label: "Upcoming", variant: "outline" as const },
+  active: { label: "Active", variant: "default" as const },
+  ended: { label: "Ended", variant: "secondary" as const },
+};
 
 function ElectionsListContent() {
   const { worker } = useWorkerLayout();
@@ -162,11 +169,15 @@ function ElectionsListContent() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row) => (
+              {rows.map((row) => {
+                const status = electionStatusPresentation[
+                  getDateRangeStatus(row.startYmd, row.endYmd)
+                ];
+                return (
                 <TableRow key={row.id} data-testid={`row-election-${row.id}`}>
                   <TableCell>
-                    <Badge variant={row.endYmd ? "secondary" : "default"} data-testid={`badge-status-${row.id}`}>
-                      {row.endYmd ? "Ended" : "Active"}
+                    <Badge variant={status.variant} data-testid={`badge-status-${row.id}`}>
+                      {status.label}
                     </Badge>
                   </TableCell>
                   <TableCell data-testid={`text-employer-${row.id}`}>{row.employerName ?? "Unknown employer"}</TableCell>
@@ -188,7 +199,8 @@ function ElectionsListContent() {
                     </Link>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         )}

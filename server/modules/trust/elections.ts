@@ -92,7 +92,8 @@ export function registerWorkerTrustElectionsRoutes(
     },
   );
 
-  // Get current (active) election for a worker — visible to anyone with worker.view
+  // Get the election whose inclusive coverage range contains today — visible
+  // to anyone with worker.view.
   app.get(
     "/api/workers/:id/trust-elections/current",
     requireAuth,
@@ -109,7 +110,7 @@ export function registerWorkerTrustElectionsRoutes(
   );
 
   // First-time enrollment eligibility for a worker (staff-only).
-  // First-time enrollment is only offered when the worker has NO active
+  // First-time enrollment is only offered when the worker has NO current
   // election covering a Medical or Dental benefit. Baseline AD&D/Life-only
   // workers still qualify. The wizard's create hook enforces the same gate
   // server-side; this endpoint drives the launch button's enabled state.
@@ -145,7 +146,7 @@ export function registerWorkerTrustElectionsRoutes(
   );
 
   // Life-event eligibility for a worker (staff-only). A life event change is
-  // only offered when the worker HAS an active election (the inverse of
+  // only offered when the worker HAS a current election (the inverse of
   // first-time enrollment). The wizard's create hook enforces the same gate
   // server-side; this endpoint drives the launch button's enabled state.
   app.get(
