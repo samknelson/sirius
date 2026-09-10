@@ -18,6 +18,24 @@ checkable: did it come from source, or from a row?
 set to". Configured values stay on the screens that already own them. If you are
 tempted to put an effective value in a catalog entry, you want the other surface.
 
+## Executable registration can be the declaration source
+
+When a code registry holds executable objects and callbacks, its registration is
+the authoritative declaration. A catalog may project serializable metadata from
+those live registrations; do not require a second catalog-shaped declaration.
+Capability flags in the projection may derive from companion executable
+registries, while the catalog still includes every primary registration.
+
+**Why:** duplicating plugin-kind ids in server/client unions, endpoint allowlists,
+and navigation lists creates several vocabularies that drift. Replacing the
+runtime registry with catalog JSON would lose callbacks, runtime decoration,
+sorting, and gating behavior that a catalog should not own.
+
+**How to apply:** register each kind once in the executable registry, derive the
+catalog on every read, assert that companion registrations do not point at an
+unknown kind, and let each consumer filter on projected capabilities such as
+`configurable`.
+
 ## Entries derive on read, always
 
 The declaration holds an `entries()` **function**, called on every read, and

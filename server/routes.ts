@@ -22,6 +22,7 @@ import { registerEntityFileAreasCatalog } from "./services/entity-files/catalog"
 import { registerEntityNoteAreasCatalog } from "./services/entity-notes/catalog";
 import { registerRecordHistoryAreasCatalog } from "./storage/entity-metadata-record-catalog";
 import { registerOptionsListsCatalog } from "./storage/unified-options-catalog";
+import { registerPluginKindsCatalog } from "./plugins/_core/kinds-catalog";
 import { registerEntityFileRoutes } from "./modules/entity-files";
 import { registerEntityMetadataRoutes } from "./modules/entity-metadata";
 import { registerRecordGoRoutes } from "./modules/record-go";
@@ -343,6 +344,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // removes a deleted record's attachments, then the generic routes.
   registerEntityFileContexts();
   registerEntityFileAreasCatalog();
+  registerPluginKindsCatalog();
   assertFileContextTablesComplete();
   initEntityFilesDeleteCleanup();
   wireEntityFilesFileReadAccess();

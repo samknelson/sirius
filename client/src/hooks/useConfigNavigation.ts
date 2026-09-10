@@ -13,6 +13,7 @@ import type { ResolvedCatalog } from "@shared/catalog";
 import { OPTIONS_LISTS_CATALOG } from "@shared/catalog-ids";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCatalogQuery } from "@/hooks/useCatalogQuery";
+import { usePluginKindsCatalog } from "@/hooks/usePluginKindsCatalog";
 
 interface ComponentConfig {
   componentId: string;
@@ -111,18 +112,40 @@ export function useConfigNavigation(): {
   isLoading: boolean;
   isError: boolean;
 } {
-  const { entries, isLoading, isError } = useOptionsCatalog();
+  const { hasPermission } = useAuth();
+  const options = useOptionsCatalog();
+  const pluginKinds = usePluginKindsCatalog(hasPermission("admin"));
 
   const sections = useMemo(
     () =>
       resolveConfigSections(
-        { entries, status: isLoading ? "loading" : isError ? "error" : "ready" },
+        {
+          options: {
+            entries: options.entries,
+            status: options.isLoading ? "loading" : options.isError ? "error" : "ready",
+          },
+          pluginKinds: {
+            entries: pluginKinds.kinds,
+            status: pluginKinds.isLoading ? "loading" : pluginKinds.isError ? "error" : "ready",
+          },
+        },
         configSections,
       ),
-    [entries, isLoading, isError],
+    [
+      options.entries,
+      options.isLoading,
+      options.isError,
+      pluginKinds.kinds,
+      pluginKinds.isLoading,
+      pluginKinds.isError,
+    ],
   );
 
-  return { sections, isLoading, isError };
+  return {
+    sections,
+    isLoading: options.isLoading || pluginKinds.isLoading,
+    isError: options.isError || pluginKinds.isError,
+  };
 }
 
 /**

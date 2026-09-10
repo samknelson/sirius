@@ -688,8 +688,8 @@ the shared `GET /api/plugins/:kind/manifest` endpoint
 the bar a new kind has to reach.* Each also registers a
 `registerPluginConfigAdapter()` (`server/plugins/_core/config-adapter.ts`),
 so its per-instance configs live in `plugin_configs` via
-`server/storage/system/plugin-configs.ts`, it appears in the
-`GET /api/plugins/kinds` index, and it is administered at
+`server/storage/system/plugin-configs.ts`, it appears as configurable in the
+Plugin Kinds catalog, and it is administered at
 `/admin/plugin-configs/:kind`:
 
     charge, dashboard, dispatch-eligibility, trust-eligibility,
@@ -719,10 +719,7 @@ kind):
 3.  `server/plugins/<area>/<kind>/index.ts` — the `registerPluginKind()`
     call plus side-effect imports of each plugin, wired into
     `server/app-init.ts`.
-4.  `server/plugins/_core/types.ts` and
-    `client/src/plugins/_core/manifest.ts` — the `PluginKind` unions
-    (the client file also carries `PluginSearchParamsByKind`).
-5.  Config-backed kinds only: the `registerPluginConfigAdapter()` call,
+4.  Config-backed kinds only: the `registerPluginConfigAdapter()` call,
     a subsidiary table + storage namespace in
     `server/storage/system/plugin-configs*.ts` if the kind carries
     relational dimensions, and a migration for it (see the migration

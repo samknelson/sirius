@@ -36,26 +36,3 @@ export interface BasePluginMetadata {
    */
   singleton?: boolean;
 }
-
-/**
- * Registered plugin kinds. Adding a new kind is just adding a string
- * here and calling `registerPluginKind` with its registry + formatter.
- */
-export type PluginKind =
-  | "dashboard"
-  | "dispatch-eligibility"
-  | "charge"
-  | "trust-eligibility"
-  | "client-injection"
-  | "payment-gateway"
-  | "event-notifier"
-  | "cron"
-  | "denorm"
-  | "data-retention"
-  | "menu"
-  | "system-status"
-  | "trust-provider-edi"
-  | "worker-ban"
-  | "token"
-  | "web-service"
-  | "quicksearch";

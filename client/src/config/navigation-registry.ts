@@ -4,6 +4,7 @@ import {
   Building2, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, Tag, RefreshCw, Radio, HelpCircle, FolderOpen, NotebookPen, Terminal, Power, Cloud, History, type LucideIcon
 } from "lucide-react";
 import type { ResolvedCatalogEntry } from "@shared/catalog";
+import type { PluginKindSummary } from "@/plugins/_core";
 
 export interface NavItem {
   path: string;
@@ -23,12 +24,10 @@ export interface NavItem {
 }
 
 /**
- * Where a section's items come from, when they are not written down here.
- * `options-catalog` = one item per unified-options list, named by the options
- * registry (the server's `/api/options/catalog`), which is the single source
- * of truth for what those lists are called.
+ * Where a section's items come from, when they are not all written down here.
+ * Dynamic entries are projections of shared catalogs.
  */
-export type NavItemSource = "options-catalog";
+export type NavItemSource = "options-catalog" | "plugin-kinds-catalog";
 
 export interface NavSection {
   id: string;
@@ -36,8 +35,8 @@ export interface NavSection {
   description: string;
   icon: LucideIcon;
   /**
-   * The section's items. Empty in the registry when `itemsFrom` is set — call
-   * `resolveConfigSections` to fill them in before rendering.
+   * Static section items. A dynamic source may replace or append to these;
+   * call `resolveConfigSections` before rendering.
    */
   items: NavItem[];
   /** Set when the items are resolved at render time instead of listed here. */
@@ -91,11 +90,8 @@ export const configSections: NavSection[] = [
     icon: Puzzle,
     items: [
       { path: "/admin/plugin-configs", label: "Plugins", icon: Puzzle, testId: "nav-config-plugins", permission: "admin" },
-      { path: "/admin/plugin-configs/dashboard", label: "Dashboard Plugins", icon: Puzzle, testId: "nav-config-dashboard-plugins", permission: "admin" },
-      { path: "/admin/plugin-configs/charge", label: "Charge Plugins", icon: Zap, testId: "nav-ledger-charge-plugins", permission: "admin" },
-      { path: "/admin/plugin-configs/dispatch-eligibility", label: "Eligibility Plugins", icon: Zap, testId: "nav-config-dispatch-eligibility-plugins", permission: "admin" },
-      { path: "/admin/plugin-configs/trust-eligibility", label: "Eligibility Plugins", icon: Zap, testId: "nav-config-trust-eligibility-plugins", permission: "admin" },
     ],
+    itemsFrom: "plugin-kinds-catalog",
   },
   {
     id: "theme",
@@ -342,6 +338,17 @@ export function optionsCatalogNavItem(entry: OptionsCatalogEntry): NavItem {
   };
 }
 
+export function pluginKindCatalogNavItem(entry: PluginKindSummary): NavItem {
+  return {
+    path: `/admin/plugin-configs/${entry.kind}`,
+    label: entry.label,
+    icon: Puzzle,
+    testId: `nav-config-plugin-kind-${entry.kind}`,
+    permission: "admin",
+    requiresComponent: entry.requiredComponent,
+  };
+}
+
 /**
  * An item leading to an options list that is administered on its own page. It
  * carries the page's own access gate — which can be stricter than the list's —
@@ -361,10 +368,13 @@ export function bespokeOptionsNavItem(
  * lists that do exist.
  */
 export function resolveConfigSections(
-  catalog: { entries: OptionsCatalogEntry[]; status: "loading" | "error" | "ready" },
+  catalogs: {
+    options: { entries: OptionsCatalogEntry[]; status: "loading" | "error" | "ready" };
+    pluginKinds: { entries: PluginKindSummary[]; status: "loading" | "error" | "ready" };
+  },
   sections: NavSection[] = configSections,
 ): NavSection[] {
-  const byType = new Map(catalog.entries.map(entry => [entry.type, entry]));
+  const byType = new Map(catalogs.options.entries.map(entry => [entry.type, entry]));
 
   const resolveSection = (section: NavSection): NavSection => {
     const namedItems = section.items.filter(item => item.optionsType);
@@ -373,9 +383,19 @@ export function resolveConfigSections(
     let items: NavItem[];
     let resolved: boolean;
 
+    let sourceStatus: "loading" | "error" | "ready" = catalogs.options.status;
     if (section.itemsFrom === "options-catalog") {
-      items = listedOptionsCatalogEntries(catalog.entries).map(optionsCatalogNavItem);
-      resolved = catalog.status === "ready";
+      items = listedOptionsCatalogEntries(catalogs.options.entries).map(optionsCatalogNavItem);
+      resolved = catalogs.options.status === "ready";
+    } else if (section.itemsFrom === "plugin-kinds-catalog") {
+      sourceStatus = catalogs.pluginKinds.status;
+      items = [
+        ...section.items,
+        ...catalogs.pluginKinds.entries
+          .filter((entry) => entry.configurable)
+          .map(pluginKindCatalogNavItem),
+      ];
+      resolved = catalogs.pluginKinds.status === "ready";
     } else {
       items = section.items.flatMap(item => {
         if (!item.optionsType) return [item];
@@ -389,7 +409,7 @@ export function resolveConfigSections(
       // so a named item can be legitimately absent from a perfectly good
       // answer, and calling that "loading" would leave the section saying
       // "Loading…" for as long as the feature stays off.
-      resolved = catalog.status === "ready";
+      resolved = catalogs.options.status === "ready";
     }
 
     return {
@@ -398,7 +418,7 @@ export function resolveConfigSections(
       itemsStatus: isDynamic
         ? resolved
           ? "ready"
-          : catalog.status === "error"
+          : sourceStatus === "error"
             ? "error"
             : "loading"
         : section.itemsStatus,

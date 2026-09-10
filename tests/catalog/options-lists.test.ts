@@ -196,7 +196,13 @@ describe("options lists catalog", () => {
     const withheld = named.items.find((item) => item.optionsType)!.optionsType!;
 
     const resolved = resolveConfigSections(
-      { entries: entries.filter((entry) => entry.type !== withheld), status: "ready" },
+      {
+        options: {
+          entries: entries.filter((entry) => entry.type !== withheld),
+          status: "ready",
+        },
+        pluginKinds: { entries: [], status: "ready" },
+      },
       [named],
     );
 

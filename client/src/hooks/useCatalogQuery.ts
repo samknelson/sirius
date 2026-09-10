@@ -28,7 +28,7 @@ export function catalogQueryKey(viewerId: string, path: string): readonly unknow
  * Deliberately not the shared default fetcher: that one derives the URL from
  * the query key, and this key carries the viewer as well as the path.
  */
-export function useCatalogQuery<T>(path: string) {
+export function useCatalogQuery<T>(path: string, enabled = true) {
   const { user } = useAuth();
   const viewerId = user?.id ?? "anonymous";
 
@@ -49,6 +49,7 @@ export function useCatalogQuery<T>(path: string) {
     // is cheaper than the two ways of being wrong about when to stop.
     staleTime: 0,
     gcTime: 0,
+    enabled,
     queryFn: async () => {
       const response = await fetch(path, { credentials: "include" });
       if (!response.ok) {

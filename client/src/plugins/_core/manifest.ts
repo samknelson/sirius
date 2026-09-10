@@ -5,25 +5,9 @@
  * Every client caller MUST go through these helpers so the URL and
  * query-key shape stay consistent across the codebase.
  */
-export type PluginKind =
-  | "dashboard"
-  | "dispatch-eligibility"
-  | "charge"
-  | "trust-eligibility"
-  | "client-injection"
-  | "payment-gateway"
-  | "event-notifier"
-  | "denorm"
-  // Worker-ban behaviors: manifest-only kind (no config adapter — plugins
-  // are singletons; admin configuration lives on the Worker Ban Types
-  // options page).
-  | "worker-ban"
-  // Externally callable web services. Each config row is one addressable
-  // service; the plugin declares the operations it exposes.
-  | "web-service"
-  // Record types searchable from anywhere. Each config row names the roles
-  // its searcher is offered to — that role list is the access decision.
-  | "quicksearch";
+import type { ResolvedCatalogEntry } from "@shared/catalog";
+
+export type PluginKind = string;
 
 /**
  * Kinds whose `/api/plugins/:kind/manifest` returns a flat array of
@@ -36,24 +20,26 @@ export type PluginKind =
 export type ArrayManifestPluginKind = PluginKind;
 
 /**
- * One configurable plugin kind as returned by `GET /api/plugins/kinds`.
- * The server owns the list (and the human-readable label) so the client
- * never duplicates the set of kinds. Drives the admin index page at
- * `/admin/plugin-configs`.
+ * The client-facing projection of one Plugin Kinds catalog entry.
  */
 export interface PluginKindSummary {
-  kind: ArrayManifestPluginKind;
+  kind: string;
   label: string;
   description?: string;
+  requiredComponent?: string;
+  configurable: boolean;
 }
 
-/** Stable URL + query-key for the configurable-kinds index endpoint. */
-export function pluginKindsUrl(): string {
-  return "/api/plugins/kinds";
-}
-
-export function pluginKindsQueryKey(): readonly unknown[] {
-  return [pluginKindsUrl()];
+export function toPluginKindSummaries(
+  entries: readonly ResolvedCatalogEntry[],
+): PluginKindSummary[] {
+  return entries.map((entry) => ({
+    kind: entry.id,
+    label: entry.name,
+    ...(entry.description !== undefined ? { description: entry.description } : {}),
+    ...(entry.component !== undefined ? { requiredComponent: entry.component } : {}),
+    configurable: entry.detail?.configurable === true,
+  }));
 }
 
 export function pluginManifestUrl(kind: PluginKind): string {
@@ -162,59 +148,18 @@ export function pluginConfigsMetaQueryKey(
   return [pluginConfigsMetaUrl(kind)];
 }
 
-/** Base search filters every kind accepts (mirrors `baseSearchSchemaShape`). */
-export interface BasePluginSearchParams {
-  pluginId?: string;
-  enabled?: boolean;
-}
-
-/**
- * Per-kind search-param shapes. Each entry mirrors the kind's adapter
- * `searchParamsSchema` on the server, so a caller passing the wrong filter
- * for a kind fails at compile time. Keep this in lockstep with the adapters
- * registered in `server/plugins/**` (Task #353).
- */
-export interface PluginSearchParamsByKind {
-  dashboard: BasePluginSearchParams;
-  "dispatch-eligibility": BasePluginSearchParams & { jobType?: string | null };
-  charge: BasePluginSearchParams & {
-    scope?: string;
-    employerId?: string | null;
-    account?: string | null;
-  };
-  "trust-eligibility": BasePluginSearchParams & {
-    policy?: string | null;
-    benefit?: string | null;
-    appliesTo?: string | null;
-  };
-  "client-injection": BasePluginSearchParams;
-  "payment-gateway": BasePluginSearchParams;
-  "event-notifier": BasePluginSearchParams;
-  denorm: BasePluginSearchParams;
-  // No config adapter on the server (manifest-only kind); listed so the
-  // PluginKind union stays a valid key set. The generic admin page never
-  // reaches config search for it because /api/plugins/kinds omits
-  // adapterless kinds.
-  "worker-ban": BasePluginSearchParams;
-  "web-service": BasePluginSearchParams;
-  quicksearch: BasePluginSearchParams;
-}
-
 /**
  * Search plugin configs for a kind via `POST /api/plugins/:kind/configs/search`.
  * Filters are passed in the request body; every field is optional and the
  * server validates them against the kind's adapter `searchParamsSchema`.
  * Returns the hydrated (flat) config envelopes. Throws on non-2xx.
  *
- * `K` is the plugin kind, which selects the allowed filter shape from
- * {@link PluginSearchParamsByKind} at compile time; `T` types the parsed rows.
+ * The server-owned config adapter validates the filter fields for the selected
+ * kind. `T` types the parsed rows.
  */
-export async function pluginSearch<
-  K extends keyof PluginSearchParamsByKind,
-  T = unknown,
->(
-  kind: K,
-  params: PluginSearchParamsByKind[K] = {} as PluginSearchParamsByKind[K],
+export async function pluginSearch<T = unknown>(
+  kind: string,
+  params: Record<string, unknown> = {},
 ): Promise<T[]> {
   const res = await fetch(`${pluginConfigsUrl(kind)}/search`, {
     method: "POST",
