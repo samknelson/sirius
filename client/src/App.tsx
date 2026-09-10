@@ -1037,7 +1037,7 @@ function Router() {
       </Route>
 
       <Route path="/worker-certification/:id">
-        <ProtectedRoute component="worker.certifications">
+        <ProtectedRoute tabId="view" entityType="worker_certification">
           <AuthenticatedLayout>
             <WorkerCertificationView />
           </AuthenticatedLayout>
@@ -1045,7 +1045,7 @@ function Router() {
       </Route>
 
       <Route path="/worker-certification/:id/edit">
-        <ProtectedRoute component="worker.certifications" permission="staff">
+        <ProtectedRoute tabId="edit" entityType="worker_certification">
           <AuthenticatedLayout>
             <WorkerCertificationView defaultTab="edit" />
           </AuthenticatedLayout>
