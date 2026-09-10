@@ -1,11 +1,16 @@
 import { ReactNode, createContext, useContext } from "react";
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ChevronRight, Server } from "lucide-react";
-import { Loader2 } from "lucide-react";
+import { Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
+import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
 import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useSftpClientDestinationTabAccess } from "@/hooks/useTabAccess";
@@ -19,6 +24,11 @@ interface SftpClientLayoutProps {
 interface SftpClientLayoutContextValue {
   destination: SftpClientDestination;
 }
+
+const SFTP_CLIENTS_BACK_LINK = {
+  href: "/config/sftp/clients",
+  label: "Back to SFTP Clients",
+};
 
 const SftpClientLayoutContext = createContext<SftpClientLayoutContextValue | null>(null);
 
@@ -44,81 +54,96 @@ export function SftpClientLayout({ activeTab, children }: SftpClientLayoutProps)
 
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" data-testid="loader-destination" />
-        </div>
+      <div className="bg-background text-foreground min-h-screen">
+        <RecordTitleBarLoading
+          icon={<Server className="text-primary-foreground" size={16} />}
+          backLink={SFTP_CLIENTS_BACK_LINK}
+        />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <Card>
+            <CardContent
+              className="flex flex-col items-center justify-center py-12"
+              data-testid="loader-destination"
+            >
+              <Skeleton className="h-16 w-16 rounded-full mb-4" />
+              <Skeleton className="h-6 w-48 mb-2" />
+              <Skeleton className="h-4 w-64" />
+            </CardContent>
+          </Card>
+        </main>
       </div>
     );
   }
 
   if (error || !destination) {
     return (
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
-        <div className="text-center py-12">
-          <p className="text-destructive mb-4">Destination not found or failed to load.</p>
-          <Link href="/config/sftp/clients">
-            <Button variant="outline">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to SFTP Clients
-            </Button>
-          </Link>
-        </div>
+      <div className="bg-background text-foreground min-h-screen">
+        <RecordTitleBarNotFound
+          icon={<Server className="text-primary-foreground" size={16} />}
+          label="SFTP Client Not Found"
+          backLink={SFTP_CLIENTS_BACK_LINK}
+        />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                <Server className="text-muted-foreground" size={32} />
+              </div>
+              <h3 className="text-lg font-medium text-foreground mb-2">SFTP Client Not Found</h3>
+              <p className="text-muted-foreground text-center">
+                The SFTP client you're looking for doesn't exist or could not be loaded.
+              </p>
+              <Link href={SFTP_CLIENTS_BACK_LINK.href}>
+                <Button className="mt-4">Return to SFTP Clients</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </main>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-6xl">
-      <RecordTitleBar
-        variant="page"
-        icon={<Server className="h-6 w-6 text-primary" />}
-        title={destination.name}
-        titleTestId="heading-destination-name"
-        badges={
-          <Badge variant={destination.active ? "default" : "secondary"} data-testid="badge-status">
-            {destination.active ? "Active" : "Inactive"}
-          </Badge>
-        }
-        subtitle={
-          <>
-            {destination.description && (
-              <p className="text-muted-foreground mt-1" data-testid="text-description">
-                {destination.description}
-              </p>
-            )}
-            {destination.siriusId && (
-              <p className="text-sm text-muted-foreground mt-1">
-                Sirius ID: <span className="font-medium">{destination.siriusId}</span>
-              </p>
-            )}
-          </>
-        }
-        breadcrumb={
-          <nav className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="breadcrumb">
-            <Link href="/config/sftp/clients" className="hover:text-foreground transition-colors">
-              SFTP Clients
-            </Link>
-            <ChevronRight size={16} />
-            <span className="text-foreground font-medium">
-              {destination.name}
-            </span>
-          </nav>
-        }
-        backLink={{ href: "/config/sftp/clients", label: "Back to SFTP Clients" }}
-        recordId={destination.id}
-      />
+    <SftpClientLayoutContext.Provider value={{ destination }}>
+      <div className="bg-background text-foreground min-h-screen">
+        <RecordTitleBar
+          icon={<Server className="text-primary-foreground" size={16} />}
+          title={destination.name}
+          titleTestId="heading-destination-name"
+          badges={
+            <Badge variant={destination.active ? "default" : "secondary"} data-testid="badge-status">
+              {destination.active ? "Active" : "Inactive"}
+            </Badge>
+          }
+          subtitle={
+            <>
+              {destination.description && (
+                <p className="text-sm text-muted-foreground" data-testid="text-description">
+                  {destination.description}
+                </p>
+              )}
+              {destination.siriusId && (
+                <p className="text-sm text-muted-foreground">
+                  Sirius ID: <span className="font-medium">{destination.siriusId}</span>
+                </p>
+              )}
+            </>
+          }
+          backLink={SFTP_CLIENTS_BACK_LINK}
+          recordId={destination.id}
+        />
 
-      <EntityTabNavigation
-        tabs={mainTabs}
-        activeTab={activeTab}
-        testIdPrefix="tab-"
-        primaryTestId="nav-tabs"
-      />
+        <EntityTabNavigation
+          tabs={mainTabs}
+          activeTab={activeTab}
+          testIdPrefix="tab-"
+          primaryTestId="nav-tabs"
+        />
 
-      <SftpClientLayoutContext.Provider value={{ destination }}>
-        {children}
-      </SftpClientLayoutContext.Provider>
-    </div>
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {children}
+        </main>
+      </div>
+    </SftpClientLayoutContext.Provider>
   );
 }
