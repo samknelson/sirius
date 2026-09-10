@@ -385,10 +385,13 @@ describe("bao_case_member_notice — the default letter says what it advertises"
       new Map(),
     );
     expect(notice).toEqual({
-      title: "Your benefit appeal — Auto-Denied",
-      body: "Your appeal regarding Medical Plan A benefits is now Auto-Denied.",
-      linkUrl: `/bao/cases/${CASE_ID}`,
-      linkLabel: "View Appeal",
+      content: {
+        title: "Your benefit appeal — Auto-Denied",
+        body: "Your appeal regarding Medical Plan A benefits is now Auto-Denied.",
+        linkUrl: `/bao/cases/${CASE_ID}`,
+        linkLabel: "View Appeal",
+      },
+      blankRequired: [],
     });
   });
 
@@ -419,7 +422,7 @@ describe("bao_case_member_notice — the default letter says what it advertises"
       { postal: { bodyHtml: "   ", description: "x" } },
       new Map(),
     );
-    expect(blank).toBeNull();
+    expect(blank).toEqual({ content: null, blankRequired: ["bodyHtml"] });
     const email = await composeFromTemplates(
       baoCaseMemberNotice,
       "email",
