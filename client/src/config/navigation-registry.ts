@@ -81,7 +81,6 @@ export const configSections: NavSection[] = [
       { path: "/admin/cron-jobs", label: "Cron Jobs", icon: Clock, testId: "nav-config-cron-jobs", permission: "admin" },
       { path: "/config/sftp/clients", label: "SFTP Clients", icon: Server, testId: "nav-config-sftp-clients", permission: "admin", requiresComponent: "system.sftp.client" },
       { path: "/config/business-calendars", label: "Business Calendars", icon: Calendar, testId: "nav-config-business-calendars", permission: "admin" },
-      { path: "/config/helps", label: "Help Text", icon: HelpCircle, testId: "nav-config-helps", permission: "admin" },
       { path: "/admin/debug/event-bus", label: "Event Bus", icon: Radio, testId: "nav-admin-debug-event-bus", permission: "admin", requiresComponent: "debug" },
       { path: "/admin/ebs", label: "Event Scheduler", icon: Calendar, testId: "nav-config-ebs", permission: "admin" },
       { path: "/admin/restart", label: "Restart & Reload", icon: Power, testId: "nav-config-restart", permission: "admin" },
@@ -95,6 +94,7 @@ export const configSections: NavSection[] = [
     items: [
       { path: "/config/site", label: "Site Information", icon: Globe, testId: "nav-config-site", permission: "admin" },
       { path: "/config/terminology", label: "Terminology", icon: Globe, testId: "nav-config-terminology", permission: "admin" },
+      { path: "/config/helps", label: "Help Text", icon: HelpCircle, testId: "nav-config-helps", permission: "admin" },
       { path: "/admin/plugin-configs/dashboard", label: "Dashboard Plugins", icon: Puzzle, testId: "nav-config-dashboard-plugins", permission: "admin" },
     ],
   },
