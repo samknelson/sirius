@@ -12,6 +12,7 @@ to loader audit sampling makes a sample rate of zero erase all imported record
 history, while larger rates produce arbitrary partial coverage.
 
 **How to apply:** decide sampling before the method call, skip only the
-expensive audit path, and run metadata maintenance after every successful
+post-state/description/audit-row path, retain any pre-read needed by metadata
+entity or host resolution, and run metadata maintenance after every successful
 mutation with the normal transaction/after-commit timing. Sampled failures may
 remain owned by the loader's reject log.

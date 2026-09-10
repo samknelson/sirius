@@ -192,6 +192,7 @@ export const workerIdLoggingConfig: StorageLoggingConfig<WorkerIdStorage> = {
     createWorkerId: {
       enabled: true,
       getEntityId: (args) => args[0]?.workerId || 'new worker ID',
+      metadataEntityId: (_args, result) => result?.id,
       getHostEntityId: (args, result) => result?.workerId || args[0]?.workerId, // Worker ID is the host
       after: async (args, result, storage) => {
         return result; // Capture created worker ID

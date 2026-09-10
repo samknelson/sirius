@@ -35,7 +35,7 @@ vi.mock("../../server/logger", () => ({
   },
 }));
 
-const { withStorageLogging } = await import("../../server/storage/middleware/logging");
+const { setStorageLogSampling, withStorageLogging } = await import("../../server/storage/middleware/logging");
 
 describe("transactional entity metadata logging", () => {
   beforeEach(() => {
@@ -43,6 +43,7 @@ describe("transactional entity metadata logging", () => {
     recordSubrecordTouch.mockReset();
     recordDeletion.mockReset();
     afterCommit.mockReset();
+    setStorageLogSampling(null);
   });
 
   it("writes metadata before the save returns instead of queuing it after commit", async () => {
@@ -141,5 +142,79 @@ describe("transactional entity metadata logging", () => {
     });
     expect(recordMutation).not.toHaveBeenCalled();
     expect(afterCommit).not.toHaveBeenCalled();
+  });
+
+  it("keeps child and parent metadata when a create audit row is sampled out", async () => {
+    setStorageLogSampling(0);
+    const storage = withStorageLogging(
+      {
+        async create() {
+          return { id: "child-1", parentId: "parent-1" };
+        },
+      },
+      {
+        module: "sampled-create-test",
+        table: "sampled_children",
+        hostTable: "sampled_parents",
+        metadataTiming: "transactional",
+        methods: {
+          create: {
+            getEntityId: (_args, result) => result?.parentId,
+            metadataEntityId: (_args, result) => result?.id,
+            getHostEntityId: (_args, result) => result?.parentId,
+          },
+        },
+      },
+    );
+
+    await storage.create();
+
+    expect(recordMutation).toHaveBeenCalledWith(expect.objectContaining({
+      tableName: "sampled_children",
+      entityId: "child-1",
+      created: true,
+    }));
+    expect(recordSubrecordTouch).toHaveBeenCalledWith(expect.objectContaining({
+      tableName: "sampled_parents",
+      entityId: "parent-1",
+    }));
+  });
+
+  it("keeps the parent touch when a delete audit row is sampled out", async () => {
+    setStorageLogSampling(0);
+    const storage = withStorageLogging(
+      {
+        async get(id: string) {
+          return { id, parentId: "parent-1" };
+        },
+        async delete(_id: string) {
+          return true;
+        },
+      },
+      {
+        module: "sampled-delete-test",
+        table: "sampled_children",
+        hostTable: "sampled_parents",
+        metadataTiming: "transactional",
+        methods: {
+          delete: {
+            before: async (args, rawStorage) => rawStorage.get(args[0]),
+            getEntityId: (args) => args[0],
+            getHostEntityId: (_args, _result, beforeState) => beforeState?.parentId,
+          },
+        },
+      },
+    );
+
+    await storage.delete("child-1");
+
+    expect(recordDeletion).toHaveBeenCalledWith({
+      tableName: "sampled_children",
+      entityId: "child-1",
+    });
+    expect(recordSubrecordTouch).toHaveBeenCalledWith(expect.objectContaining({
+      tableName: "sampled_parents",
+      entityId: "parent-1",
+    }));
   });
 });

@@ -920,7 +920,9 @@ export function withStorageLogging<T extends Record<string, any>>(
       let error: any;
 
       try {
-        if (!skipAudit && hooks.before) {
+        // Metadata entity/host resolvers may need the pre-state even when the
+        // audit row itself is sampled out (especially child deletes).
+        if (hooks.before) {
           beforeState = await hooks.before(args, storage);
         }
 
