@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useSftpClientDestinationTabAccess } from "@/hooks/useTabAccess";
 import type { SftpClientDestination } from "@shared/schema/system/sftp-client-schema";
@@ -108,27 +109,12 @@ export function SftpClientLayout({ activeTab, children }: SftpClientLayoutProps)
         recordId={destination.id}
       />
 
-      <div className="border-b border-border mb-6">
-        <nav className="flex gap-6" data-testid="nav-tabs">
-          {mainTabs.map((tab) => {
-            const isActive = tab.id === activeTab;
-            return (
-              <Link
-                key={tab.id}
-                href={tab.href}
-                className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-                  isActive
-                    ? "border-primary text-primary font-medium"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
-                data-testid={`tab-${tab.id}`}
-              >
-                {tab.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
+      <EntityTabNavigation
+        tabs={mainTabs}
+        activeTab={activeTab}
+        testIdPrefix="tab-"
+        primaryTestId="nav-tabs"
+      />
 
       <SftpClientLayoutContext.Provider value={{ destination }}>
         {children}

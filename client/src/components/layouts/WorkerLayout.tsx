@@ -16,6 +16,7 @@ import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { useAccessCheck } from "@/hooks/use-access-check";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 import {
   RecordTitleBar,
   RecordTitleBarLoading,
@@ -298,68 +299,13 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
           recordId={worker.id}
         />
 
-        {/* Main Tab Navigation - rendered dynamically from registry */}
-        <div className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-wrap items-center gap-2 py-3">
-              {mainTabs.map((tab) => {
-                const isActive = tab.id === activeRoot?.id;
-                return isActive ? (
-                  <Button
-                    key={tab.id}
-                    variant="default"
-                    size="sm"
-                    data-testid={`button-worker-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                ) : (
-                  <Link key={tab.id} href={tab.href}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      data-testid={`button-worker-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Sub-Tab Navigation - rendered dynamically when parent has children */}
-        {subTabs && subTabs.length > 0 && (
-          <div className="bg-muted/30 border-b border-border">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex flex-wrap items-center gap-2 py-2 pl-4">
-                {subTabs.map((tab) => (
-                  tab.id === activeTab ? (
-                    <Button
-                      key={tab.id}
-                      variant="secondary"
-                      size="sm"
-                      data-testid={`button-worker-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  ) : (
-                    <Link key={tab.id} href={tab.href}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        data-testid={`button-worker-${tab.id}`}
-                      >
-                        {tab.label}
-                      </Button>
-                    </Link>
-                  )
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+        <EntityTabNavigation
+          tabs={mainTabs}
+          activeTab={activeTab}
+          activeRootId={activeRoot?.id}
+          subTabs={subTabs}
+          testIdPrefix="button-worker-"
+        />
 
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

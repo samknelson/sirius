@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useDispatchJobGroupTabAccess } from "@/hooks/useTabAccess";
 import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 import type { DispatchJobGroup } from "@shared/schema";
 
 interface DispatchJobGroupLayoutProps {
@@ -106,27 +107,12 @@ export function DispatchJobGroupLayout({ activeTab, children }: DispatchJobGroup
         recordId={group.id}
       />
 
-      <div className="border-b border-border mb-6">
-        <nav className="flex gap-6" data-testid="nav-tabs">
-          {mainTabs.map((tab) => {
-            const isTabActive = tab.id === activeTab;
-            return (
-              <Link
-                key={tab.id}
-                href={tab.href}
-                className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-                  isTabActive
-                    ? "border-primary text-primary font-medium"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
-                data-testid={`tab-${tab.id}`}
-              >
-                {tab.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
+      <EntityTabNavigation
+        tabs={mainTabs}
+        activeTab={activeTab}
+        testIdPrefix="tab-"
+        primaryTestId="nav-tabs"
+      />
 
       <DispatchJobGroupLayoutContext.Provider value={{ group }}>
         {children}

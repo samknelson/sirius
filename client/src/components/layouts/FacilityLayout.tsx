@@ -5,6 +5,7 @@ import { ArrowLeft, ChevronRight, Building, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useFacilityTabAccess } from "@/hooks/useTabAccess";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
 import type { Facility, Contact } from "@shared/schema";
 
@@ -94,51 +95,17 @@ export function FacilityLayout({ activeTab, children }: FacilityLayoutProps) {
         recordId={facility.id}
       />
 
-      <div className="border-b border-border mb-2">
-        <nav className="flex gap-6 flex-wrap" data-testid="nav-tabs">
-          {mainTabs.map((tab) => {
-            const isTabActive = tab.id === activeRoot?.id;
-            return (
-              <Link
-                key={tab.id}
-                href={tab.href}
-                className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-                  isTabActive
-                    ? "border-primary text-primary font-medium"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
-                data-testid={`tab-${tab.id}`}
-              >
-                {tab.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
-
-      {subTabs && subTabs.length > 0 && (
-        <div className="border-b border-border mb-6 bg-muted/30 -mx-1 px-1">
-          <nav className="flex gap-4 flex-wrap py-2 pl-2" data-testid="nav-subtabs">
-            {subTabs.map((tab) => {
-              const isSubActive = tab.id === activeTab;
-              return (
-                <Link
-                  key={tab.id}
-                  href={tab.href}
-                  className={`text-sm transition-colors ${
-                    isSubActive
-                      ? "text-primary font-medium"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                  data-testid={`subtab-${tab.id}`}
-                >
-                  {tab.label}
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
-      )}
+      <EntityTabNavigation
+        tabs={mainTabs}
+        activeTab={activeTab}
+        activeRootId={activeRoot?.id}
+        subTabs={subTabs}
+        appearance="underline"
+        testIdPrefix="tab-"
+        secondaryTestIdPrefix="subtab-"
+        primaryTestId="nav-tabs"
+        secondaryTestId="nav-subtabs"
+      />
       {(!subTabs || subTabs.length === 0) && <div className="mb-6" />}
 
       <FacilityLayoutContext.Provider value={{ facility }}>

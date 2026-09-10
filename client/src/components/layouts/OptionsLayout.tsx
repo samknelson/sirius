@@ -1,13 +1,13 @@
 import { createContext, useContext, ReactNode } from "react";
 import { Ban, HelpCircle, Loader2 } from "lucide-react";
-import { Link, useParams } from "wouter";
+import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useOptionsTabAccess } from "@/hooks/useTabAccess";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { BackToOptions, optionsPageTitle } from "@/components/shared/BackToOptions";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 
 export { OPTIONS_INDEX_PATH, optionsPageTitle } from "@/components/shared/BackToOptions";
 
@@ -126,27 +126,11 @@ export function OptionsLayout({ activeTab, children }: OptionsLayoutProps) {
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
-          {tabs.map((tab) => {
-            const isActive = tab.id === activeTab;
-            return isActive ? (
-              <Button
-                key={tab.id}
-                variant="default"
-                size="sm"
-                data-testid={`button-options-tab-${tab.id}`}
-              >
-                {tab.label}
-              </Button>
-            ) : (
-              <Link key={tab.id} href={tab.href}>
-                <Button variant="outline" size="sm" data-testid={`button-options-tab-${tab.id}`}>
-                  {tab.label}
-                </Button>
-              </Link>
-            );
-          })}
-        </div>
+        <EntityTabNavigation
+          tabs={tabs}
+          activeTab={activeTab}
+          testIdPrefix="button-options-tab-"
+        />
 
         {children}
       </div>

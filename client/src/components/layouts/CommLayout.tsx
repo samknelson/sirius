@@ -3,7 +3,6 @@ import { MessageSquare, Phone, Mail, Mailbox, Bell, AlertCircle } from "lucide-r
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "@/lib/date-format";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCommTabAccess } from "@/hooks/useTabAccess";
@@ -15,6 +14,7 @@ import {
   RecordTitleBarLoading,
   RecordTitleBarNotFound,
 } from "@/components/shared/RecordTitleBar";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 
 interface CommLayoutContextValue {
   comm: CommWithDetails;
@@ -172,34 +172,7 @@ export function CommLayout({ activeTab, children }: CommLayoutProps) {
           recordId={comm.id}
         />
 
-        <div className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-wrap items-center gap-2 py-3">
-              {tabs.map((tab) =>
-                tab.id === activeTab ? (
-                  <Button
-                    key={tab.id}
-                    variant="default"
-                    size="sm"
-                    data-testid={`button-comm-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                ) : (
-                  <Link key={tab.id} href={tab.href}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      data-testid={`button-comm-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  </Link>
-                ),
-              )}
-            </div>
-          </div>
-        </div>
+        <EntityTabNavigation tabs={tabs} activeTab={activeTab} testIdPrefix="button-comm-" />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">{children}</main>
       </div>

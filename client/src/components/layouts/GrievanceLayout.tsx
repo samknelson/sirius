@@ -12,6 +12,7 @@ import {
 } from "@/components/shared/RecordTitleBar";
 import { useGrievanceTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 import { type GrievanceCardinality } from "@shared/schema";
 import {
   type GrievanceTimelineStepItem,
@@ -260,67 +261,13 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
           recordId={grievance.id}
         />
 
-        <div className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-wrap items-center gap-2 py-3">
-              {tabs.map((tab) => {
-                const isActive = tab.id === (activeRoot?.id ?? activeTab);
-                return isActive ? (
-                  <Button
-                    key={tab.id}
-                    variant="default"
-                    size="sm"
-                    data-testid={`button-grievance-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                ) : (
-                  <Link key={tab.id} href={tab.href}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      data-testid={`button-grievance-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Sub-Tab Navigation - rendered when the active root tab has children */}
-        {subTabs && subTabs.length > 0 && (
-          <div className="bg-muted/30 border-b border-border">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex flex-wrap items-center gap-2 py-2 pl-4">
-                {subTabs.map((tab) =>
-                  tab.id === activeTab ? (
-                    <Button
-                      key={tab.id}
-                      variant="secondary"
-                      size="sm"
-                      data-testid={`button-grievance-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  ) : (
-                    <Link key={tab.id} href={tab.href}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        data-testid={`button-grievance-${tab.id}`}
-                      >
-                        {tab.label}
-                      </Button>
-                    </Link>
-                  )
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        <EntityTabNavigation
+          tabs={tabs}
+          activeTab={activeTab}
+          activeRootId={activeRoot?.id}
+          subTabs={subTabs}
+          testIdPrefix="button-grievance-"
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
           <GrievanceSummaryBox grievance={grievance} />

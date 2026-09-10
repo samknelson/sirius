@@ -1,7 +1,6 @@
-import { useParams, Link } from "wouter";
+import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Users } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import type { BargainingUnit } from "@shared/schema";
@@ -13,6 +12,7 @@ import {
   RecordTitleBarLoading,
   RecordTitleBarNotFound,
 } from "@/components/shared/RecordTitleBar";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 
 const BARGAINING_UNIT_BACK_LINK = {
   href: "/bargaining-units",
@@ -114,35 +114,11 @@ export default function BargainingUnitLayout({ children, activeTab }: Bargaining
           recordId={bargainingUnit.id}
         />
 
-        <div className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-wrap items-center gap-2 py-3">
-              {mainTabs.map((tab) => {
-                const isActive = tab.id === activeTab;
-                return isActive ? (
-                  <Button
-                    key={tab.id}
-                    variant="default"
-                    size="sm"
-                    data-testid={`button-bargaining-unit-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                ) : (
-                  <Link key={tab.id} href={tab.href}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      data-testid={`button-bargaining-unit-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+        <EntityTabNavigation
+          tabs={mainTabs}
+          activeTab={activeTab}
+          testIdPrefix="button-bargaining-unit-"
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {children}

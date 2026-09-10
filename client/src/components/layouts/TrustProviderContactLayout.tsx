@@ -1,9 +1,9 @@
-import { useParams, Link, useLocation } from "wouter";
+import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 import { Users } from "lucide-react";
 import { createContext, useContext } from "react";
 import { useProviderContactTabAccess } from "@/hooks/useTabAccess";
@@ -70,8 +70,6 @@ interface TrustProviderContactLayoutProps {
 
 export function TrustProviderContactLayout({ children, activeTab }: TrustProviderContactLayoutProps) {
   const { id } = useParams<{ id: string }>();
-  const [location] = useLocation();
-
   const { data: trustProviderContact, isLoading } = useQuery<TrustProviderContact>({
     queryKey: ["/api/trust-provider-contacts", id],
   });
@@ -149,68 +147,13 @@ export function TrustProviderContactLayout({ children, activeTab }: TrustProvide
         recordId={trustProviderContact.id}
       />
 
-      {/* Tab Navigation */}
-      <section className="bg-card border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap items-center gap-2 py-3">
-            {mainTabs.map((tab) => {
-              const isActive = tab.id === activeTab || (tab.id === "comm" && isCommSubTab);
-              return isActive ? (
-                <Button
-                  key={tab.id}
-                  variant="default"
-                  size="sm"
-                  data-testid={`button-contact-${tab.id}`}
-                >
-                  {tab.label}
-                </Button>
-              ) : (
-                <Link key={tab.id} href={tab.href}>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    data-testid={`button-contact-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* Comm Sub-Tab Navigation */}
-      {showCommSubTabs && (
-        <div className="bg-muted/30 border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-wrap items-center gap-2 py-2 pl-4">
-              {commSubTabs.map((tab) => (
-                tab.id === activeTab ? (
-                  <Button
-                    key={tab.id}
-                    variant="secondary"
-                    size="sm"
-                    data-testid={`button-contact-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                ) : (
-                  <Link key={tab.id} href={tab.href}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      data-testid={`button-contact-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  </Link>
-                )
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      <EntityTabNavigation
+        tabs={mainTabs}
+        activeTab={activeTab}
+        activeRootId={isCommSubTab ? "comm" : activeTab}
+        subTabs={showCommSubTabs ? commSubTabs : undefined}
+        testIdPrefix="button-contact-"
+      />
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

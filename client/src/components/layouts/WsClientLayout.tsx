@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useWsClientTabAccess } from "@/hooks/useTabAccess";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 import {
   RecordTitleBar,
   RecordTitleBarLoading,
@@ -146,31 +147,12 @@ export function WsClientLayout({ activeTab, children }: WsClientLayoutProps) {
           recordId={client.id}
         />
 
-        <div className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <nav className="flex flex-wrap items-center gap-2 py-3" data-testid="nav-tabs">
-              {mainTabs.map((tab) => {
-                const isActive = tab.id === activeTab;
-                return isActive ? (
-                  <Button
-                    key={tab.id}
-                    variant="default"
-                    size="sm"
-                    data-testid={`tab-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                ) : (
-                  <Link key={tab.id} href={tab.href}>
-                    <Button variant="outline" size="sm" data-testid={`tab-${tab.id}`}>
-                      {tab.label}
-                    </Button>
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
-        </div>
+        <EntityTabNavigation
+          tabs={mainTabs}
+          activeTab={activeTab}
+          testIdPrefix="tab-"
+          primaryTestId="nav-tabs"
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {children}

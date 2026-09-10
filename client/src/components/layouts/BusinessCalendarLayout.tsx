@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { useBusinessCalendarTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 
 export interface CalendarWithRules {
   calendar: BusinessCalendar;
@@ -106,31 +107,11 @@ export function BusinessCalendarLayout({ activeTab, children }: BusinessCalendar
           recordId={calendar.id}
         />
 
-        <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
-          {visibleTabs.map((tab) => {
-            const isActive = tab.id === activeTab;
-            return isActive ? (
-              <Button
-                key={tab.id}
-                variant="default"
-                size="sm"
-                data-testid={`button-calendar-tab-${tab.id}`}
-              >
-                {tab.label}
-              </Button>
-            ) : (
-              <Link key={tab.id} href={tab.href}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  data-testid={`button-calendar-tab-${tab.id}`}
-                >
-                  {tab.label}
-                </Button>
-              </Link>
-            );
-          })}
-        </div>
+        <EntityTabNavigation
+          tabs={visibleTabs}
+          activeTab={activeTab}
+          testIdPrefix="button-calendar-tab-"
+        />
 
         {children}
       </div>

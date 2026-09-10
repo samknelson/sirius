@@ -10,6 +10,7 @@ import type { DispatchWithRelations } from "../../../../server/storage/dispatch/
 import { useDispatchTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 
 interface DispatchLayoutContextValue {
   dispatch: DispatchWithRelations;
@@ -143,35 +144,11 @@ export function DispatchLayout({ activeTab, children }: DispatchLayoutProps) {
         </div>
       </section>
 
-      <section className="bg-card border-b border-border">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap items-center gap-2 py-3">
-            {tabs.map((tab) => {
-              const isActive = tab.id === activeTab;
-              return isActive ? (
-                <Button
-                  key={tab.id}
-                  variant="default"
-                  size="sm"
-                  data-testid={`button-tab-${tab.id}`}
-                >
-                  {tab.label}
-                </Button>
-              ) : (
-                <Link key={tab.id} href={tab.href}>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    data-testid={`button-tab-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      </section>
+       <EntityTabNavigation
+         tabs={tabs}
+         activeTab={activeTab}
+         testIdPrefix="button-tab-"
+       />
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {children}
