@@ -23,6 +23,11 @@ export interface WorkerWshStorage {
    * (by date, then createdAt, then id; null if none). This is the source of
    * truth the `worker_ws` denorm plugin reads when recomputing
    * `worker_wsh_denorm`.
+   *
+   * `createdAt` is load-bearing here, not decoration: nothing stops a worker
+   * holding two entries for one effective date, and the entry made LAST is the
+   * current one. That is why the column survived the provenance retirement its
+   * `worker_msh` twin went through — see `docs/provenance-columns.md`.
    */
   getCurrentWorkStatusId(workerId: string): Promise<string | null>;
   createWorkerWsh(data: { workerId: string; date: string; wsId: string; data?: any }): Promise<WorkerWsh>;
@@ -151,6 +156,8 @@ export function createWorkerWshStorage(
 
 export const workerWshLoggingConfig: StorageLoggingConfig<WorkerWshStorage> = {
   module: 'worker-wsh',
+  table: 'worker_wsh',
+  hostTable: 'workers',
   methods: {
     createWorkerWsh: {
       enabled: true,

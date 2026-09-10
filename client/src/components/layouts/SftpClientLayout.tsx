@@ -5,6 +5,7 @@ import { ArrowLeft, ChevronRight, Server } from "lucide-react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useSftpClientDestinationTabAccess } from "@/hooks/useTabAccess";
 import type { SftpClientDestination } from "@shared/schema/system/sftp-client-schema";
@@ -68,49 +69,44 @@ export function SftpClientLayout({ activeTab, children }: SftpClientLayoutProps)
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
-      <div className="flex items-center justify-between mb-6">
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="breadcrumb">
-          <Link href="/config/sftp/clients" className="hover:text-foreground transition-colors">
-            SFTP Clients
-          </Link>
-          <ChevronRight size={16} />
-          <span className="text-foreground font-medium">
-            {destination.name}
-          </span>
-        </nav>
-        <Link href="/config/sftp/clients">
-          <Button variant="ghost" size="sm" data-testid="button-back">
-            <ArrowLeft size={16} className="mr-2" />
-            Back to SFTP Clients
-          </Button>
-        </Link>
-      </div>
-
-      <div className="flex items-start gap-4 mb-6">
-        <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-primary/10">
-          <Server className="h-6 w-6 text-primary" />
-        </div>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-foreground" data-testid="heading-destination-name">
+      <RecordTitleBar
+        variant="page"
+        icon={<Server className="h-6 w-6 text-primary" />}
+        title={destination.name}
+        titleTestId="heading-destination-name"
+        badges={
+          <Badge variant={destination.active ? "default" : "secondary"} data-testid="badge-status">
+            {destination.active ? "Active" : "Inactive"}
+          </Badge>
+        }
+        subtitle={
+          <>
+            {destination.description && (
+              <p className="text-muted-foreground mt-1" data-testid="text-description">
+                {destination.description}
+              </p>
+            )}
+            {destination.siriusId && (
+              <p className="text-sm text-muted-foreground mt-1">
+                Sirius ID: <span className="font-medium">{destination.siriusId}</span>
+              </p>
+            )}
+          </>
+        }
+        breadcrumb={
+          <nav className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="breadcrumb">
+            <Link href="/config/sftp/clients" className="hover:text-foreground transition-colors">
+              SFTP Clients
+            </Link>
+            <ChevronRight size={16} />
+            <span className="text-foreground font-medium">
               {destination.name}
-            </h1>
-            <Badge variant={destination.active ? "default" : "secondary"} data-testid="badge-status">
-              {destination.active ? "Active" : "Inactive"}
-            </Badge>
-          </div>
-          {destination.description && (
-            <p className="text-muted-foreground mt-1" data-testid="text-description">
-              {destination.description}
-            </p>
-          )}
-          {destination.siriusId && (
-            <p className="text-sm text-muted-foreground mt-1">
-              Sirius ID: <span className="font-medium">{destination.siriusId}</span>
-            </p>
-          )}
-        </div>
-      </div>
+            </span>
+          </nav>
+        }
+        backLink={{ href: "/config/sftp/clients", label: "Back to SFTP Clients" }}
+        recordId={destination.id}
+      />
 
       <div className="border-b border-border mb-6">
         <nav className="flex gap-6" data-testid="nav-tabs">

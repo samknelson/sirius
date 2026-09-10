@@ -197,7 +197,7 @@ export const trustElectionEnrollmentNotifier: EventNotifierPlugin = {
         };
       case "sms":
         return {
-          message: `${body} Review: ${absoluteUrl}`,
+          body: `${body} Review: ${absoluteUrl}`,
         };
       default:
         return null;

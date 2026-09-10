@@ -52,6 +52,14 @@ import {
   createS1WriteFenceMiddleware,
   installS1WriteFenceHandlerTracking,
 } from "./middleware/s1-write-fence";
+import {
+  closeCatalogRegistration,
+  setCatalogComponentSource,
+} from "@shared/catalog";
+import {
+  getComponentCacheRevision,
+  isComponentEnabledSync,
+} from "./services/component-cache";
 
 // Helper function to redact sensitive data from responses before logging.
 // Exported so the redaction list can be asserted directly — the fields it
@@ -225,6 +233,16 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   initializePermissions();
   logger.info("Permission system initialized with core permissions", { source: "startup" });
 
+  // Hand the shared catalog framework its view of component state. Catalogs
+  // are declared in shared/, which cannot reach the component cache, so the
+  // check is injected here. Until it is, every catalog read refuses rather
+  // than guessing enabled or disabled.
+  setCatalogComponentSource({
+    isEnabled: isComponentEnabledSync,
+    getRevision: getComponentCacheRevision,
+  });
+  logger.info("Catalog component source wired", { source: "startup" });
+
   // Initialize access control system with unified policy evaluator
   initAccessControl(
     // Access control storage interface
@@ -387,12 +405,19 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
     const { reconcileComponentPluginConfigs } = await import(
       "./services/component-lifecycle"
     );
-    for (const component of getAllComponents()) {
-      if (!component.pluginConfigs?.length) continue;
-      if (await isComponentEnabled(component.id)) {
-        await reconcileComponentPluginConfigs(component.id, true);
+    // Self-heal, so the writes are the framework's own: stamped with no
+    // person and kept out of the audit log, unlike the same reconcile run
+    // from an administrator's enable/disable request (see the components
+    // module), which is genuinely that administrator's doing.
+    const { withFrameworkWrite } = await import("./middleware/request-context");
+    await withFrameworkWrite(async () => {
+      for (const component of getAllComponents()) {
+        if (!component.pluginConfigs?.length) continue;
+        if (await isComponentEnabled(component.id)) {
+          await reconcileComponentPluginConfigs(component.id, true);
+        }
       }
-    }
+    });
   }
   logger.info("Component-owned plugin configs reconciled", { source: "startup" });
 
@@ -562,6 +587,12 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   logger.info("Entity access module registered", { source: "startup" });
 
   await registerRoutes(app, server);
+
+  // Startup is over, so the set of declared catalogs is final. Anything
+  // registering after this point is a module that failed to load in the
+  // startup sequence, not a late arrival to accommodate.
+  closeCatalogRegistration();
+  logger.info("Catalog registration closed", { source: "startup" });
 
   // Initialize WebSocket server for real-time notifications
   const sessionMiddleware = getSession();

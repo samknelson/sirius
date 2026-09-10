@@ -328,6 +328,8 @@ async function resolveContractIdFromArticle(
 
 export const contractLoggingConfig: StorageLoggingConfig<ContractStorage> = {
   module: 'contracts',
+  table: 'contracts',
+  hostTable: 'contracts',
   methods: {
     createContract: {
       enabled: true,
@@ -350,6 +352,7 @@ export const contractLoggingConfig: StorageLoggingConfig<ContractStorage> = {
     },
     createArticle: {
       enabled: true,
+      table: 'contract_articles',
       getEntityId: (args, result) => result?.id || 'new article',
       getHostEntityId: (args, result) => result?.contractId,
       getDescription: async (args, result) =>
@@ -357,12 +360,14 @@ export const contractLoggingConfig: StorageLoggingConfig<ContractStorage> = {
     },
     updateArticle: {
       enabled: true,
+      table: 'contract_articles',
       getEntityId: (args) => args[0],
       getHostEntityId: (args, result) => result?.contractId,
       getDescription: async (args, result) => `Updated Article "${result?.name || 'Unknown'}"`,
     },
     moveArticle: {
       enabled: true,
+      table: 'contract_articles',
       getEntityId: (args) => args[0],
       // Capture the article before the reorder so the log rolls up under the
       // parent contract (the result is the sibling list, not the moved row).
@@ -373,6 +378,7 @@ export const contractLoggingConfig: StorageLoggingConfig<ContractStorage> = {
     },
     deleteArticle: {
       enabled: true,
+      table: 'contract_articles',
       getEntityId: (args) => args[0],
       // Capture the article before deletion so the log rolls up under the
       // parent contract instead of the now-gone article id.
@@ -383,6 +389,7 @@ export const contractLoggingConfig: StorageLoggingConfig<ContractStorage> = {
     },
     createSection: {
       enabled: true,
+      table: 'contract_sections',
       getEntityId: (args, result) => result?.id || 'new section',
       // Resolve the owning contract up front so the log is keyed to the
       // contract, not the intermediate article (durable across article delete).
@@ -395,6 +402,7 @@ export const contractLoggingConfig: StorageLoggingConfig<ContractStorage> = {
     },
     updateSection: {
       enabled: true,
+      table: 'contract_sections',
       getEntityId: (args) => args[0],
       // Resolve the owning contract (via the section's article) before update so
       // the log is keyed to the contract for durable roll-up.
@@ -411,6 +419,7 @@ export const contractLoggingConfig: StorageLoggingConfig<ContractStorage> = {
     },
     moveSection: {
       enabled: true,
+      table: 'contract_sections',
       getEntityId: (args) => args[0],
       // Capture the section (and its owning contract) before the reorder so the
       // log rolls up under the contract (the result is the sibling list).
@@ -427,6 +436,7 @@ export const contractLoggingConfig: StorageLoggingConfig<ContractStorage> = {
     },
     deleteSection: {
       enabled: true,
+      table: 'contract_sections',
       getEntityId: (args) => args[0],
       // Capture the section (and its owning contract) before deletion so the log
       // rolls up under the contract instead of the now-gone section/article id.

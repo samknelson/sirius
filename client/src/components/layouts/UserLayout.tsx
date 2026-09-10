@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode } from "react";
-import { UserCircle, ArrowLeft } from "lucide-react";
+import { UserCircle } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Contact } from "@shared/schema";
@@ -8,6 +8,17 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
+
+const USER_BACK_LINK = {
+  href: "/admin/users/list",
+  label: "Back to Users",
+  testId: "button-back-to-users",
+};
 
 interface UserDetails {
   id: string;
@@ -16,7 +27,6 @@ interface UserDetails {
   lastName: string | null;
   profileImageUrl: string | null;
   isActive: boolean;
-  createdAt: string;
   lastLogin?: string;
 }
 
@@ -89,27 +99,11 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
   if (userError) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <UserCircle className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">User Not Found</span>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/admin/users/list">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-users">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Users
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<UserCircle className="text-primary-foreground" size={16} />}
+          label="User Not Found"
+          backLink={USER_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -136,26 +130,10 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
   if (isLoading || !user) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <UserCircle className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/admin/users/list">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-users">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Users
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<UserCircle className="text-primary-foreground" size={16} />}
+          backLink={USER_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -193,28 +171,13 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
   return (
     <UserLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <UserCircle className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground" data-testid={`text-user-name-${user.id}`}>
-                  {displayName}
-                </h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/admin/users/list">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-users">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Users
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<UserCircle className="text-primary-foreground" size={16} />}
+          title={displayName}
+          titleTestId={`text-user-name-${user.id}`}
+          backLink={USER_BACK_LINK}
+          recordId={user.id}
+        />
 
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

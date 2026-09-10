@@ -26,12 +26,6 @@ function BargainingUnitViewContent() {
                 {bargainingUnit.siriusId}
               </p>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Internal ID</label>
-              <p className="text-foreground font-mono text-sm" data-testid="text-internal-id">
-                {bargainingUnit.id}
-              </p>
-            </div>
           </div>
         </div>
 

@@ -477,6 +477,8 @@ async function getAssignmentDetails(assignmentId: string) {
 
 export const workerStewardAssignmentLoggingConfig: StorageLoggingConfig<WorkerStewardAssignmentStorage> = {
   module: 'worker-steward-assignments',
+  table: 'worker_steward_assignments',
+  hostTable: 'workers',
   methods: {
     createAssignment: {
       enabled: true,

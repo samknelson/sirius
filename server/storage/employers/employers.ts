@@ -205,10 +205,14 @@ export function createEmployerStorage(): EmployerStorage {
 
 export const employerLoggingConfig = defineLoggingConfig<EmployerStorage>({
   module: 'employers',
+  table: 'employers',
   getter: 'getEmployer',
   hostEntityId: (args, result, before) => result?.id ?? before?.id ?? args[0],
   methods: {
-    createEmployer: { getEntityId: (args, result) => result?.id || args[0]?.name || 'new employer' },
+    createEmployer: {
+      getEntityId: (args, result) => result?.id || args[0]?.name || 'new employer',
+      metadataEntityId: (_args, result) => result?.id,
+    },
     updateEmployer: {},
     deleteEmployer: {},
   },

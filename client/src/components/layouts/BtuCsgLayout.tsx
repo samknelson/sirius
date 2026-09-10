@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode } from "react";
-import { FileWarning, ArrowLeft } from "lucide-react";
+import { FileWarning } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useBtuCsgTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
+
+const BTU_CSG_BACK_LINK = {
+  href: "/sitespecific/btu/csgs",
+  label: "Back to List",
+  testId: "button-back-to-list",
+};
 
 interface BtuCsgRecord {
   id: string;
@@ -85,26 +96,11 @@ export function BtuCsgLayout({ activeTab, children }: BtuCsgLayoutProps) {
   if (recordError) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16 gap-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <FileWarning className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Record Not Found</h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/sitespecific/btu/csgs">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-list">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to List
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<FileWarning className="text-primary-foreground" size={16} />}
+          label="Record Not Found"
+          backLink={BTU_CSG_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -131,26 +127,10 @@ export function BtuCsgLayout({ activeTab, children }: BtuCsgLayoutProps) {
   if (isLoading || !record) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16 gap-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <FileWarning className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/sitespecific/btu/csgs">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-list">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to List
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<FileWarning className="text-primary-foreground" size={16} />}
+          backLink={BTU_CSG_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -176,33 +156,18 @@ export function BtuCsgLayout({ activeTab, children }: BtuCsgLayoutProps) {
   return (
     <BtuCsgLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16 gap-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <FileWarning className="text-primary-foreground" size={16} />
-                </div>
-                <div className="flex items-center gap-3">
-                  <h1 className="text-xl font-semibold text-foreground" data-testid={`text-csg-name-${record.id}`}>
-                    {displayName}
-                  </h1>
-                  <Badge variant={STATUS_COLORS[record.status] || "secondary"}>
-                    {record.status.replace("_", " ")}
-                  </Badge>
-                </div>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/sitespecific/btu/csgs">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-list">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to List
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<FileWarning className="text-primary-foreground" size={16} />}
+          title={displayName}
+          titleTestId={`text-csg-name-${record.id}`}
+          badges={
+            <Badge variant={STATUS_COLORS[record.status] || "secondary"}>
+              {record.status.replace("_", " ")}
+            </Badge>
+          }
+          backLink={BTU_CSG_BACK_LINK}
+          recordId={record.id}
+        />
 
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

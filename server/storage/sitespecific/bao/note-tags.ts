@@ -110,6 +110,7 @@ export function createBaoNoteTagsStorage(): BaoNoteTagsStorage {
  */
 export const baoNoteTagsLoggingConfig = defineLoggingConfig<BaoNoteTagsStorage>({
   module: 'bao.noteTags',
+  table: 'sitespecific_bao_notes_tags',
   methods: {
     setForNote: {
       getEntityId: (args) => args[0],

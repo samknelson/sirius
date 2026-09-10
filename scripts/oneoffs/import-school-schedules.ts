@@ -1,5 +1,4 @@
 import fs from 'fs';
-import path from 'path';
 import { db } from '../../server/db';
 import { employers } from '../../shared/schema';
 import { sitespecificBtuSchoolAttributes } from '../../shared/schema/sitespecific/btu/schema';
@@ -51,8 +50,7 @@ async function findEmployerByName(name: string): Promise<{ id: string; name: str
   return null;
 }
 
-async function importSchoolSchedules(dryRun: boolean = true): Promise<ImportResult[]> {
-  const jsonPath = path.join(process.cwd(), 'attached_assets/parsed-school-schedules.json');
+async function importSchoolSchedules(jsonPath: string, dryRun: boolean = true): Promise<ImportResult[]> {
   const content = fs.readFileSync(jsonPath, 'utf-8');
   const schools: SchoolScheduleData[] = JSON.parse(content);
   
@@ -141,6 +139,12 @@ async function importSchoolSchedules(dryRun: boolean = true): Promise<ImportResu
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = !args.includes('--execute');
+  const jsonPath = args.find((arg) => arg !== '--execute');
+  if (!jsonPath) {
+    throw new Error(
+      'Usage: npx tsx scripts/oneoffs/import-school-schedules.ts <schedules-json-path> [--execute]',
+    );
+  }
   
   console.log('\n========================================');
   console.log('  School Schedule Import Tool');
@@ -151,7 +155,7 @@ async function main() {
     console.log('Add --execute flag to perform the actual import.\n');
   }
   
-  const results = await importSchoolSchedules(dryRun);
+  const results = await importSchoolSchedules(jsonPath, dryRun);
   
   const created = results.filter(r => r.status === 'created');
   const updated = results.filter(r => r.status === 'updated');
@@ -193,7 +197,7 @@ async function main() {
   
   if (dryRun && (created.length > 0 || updated.length > 0)) {
     console.log('\n\nTo execute the import, run:');
-    console.log('  npx tsx scripts/oneoffs/import-school-schedules.ts --execute\n');
+    console.log(`  npx tsx scripts/oneoffs/import-school-schedules.ts ${jsonPath} --execute\n`);
   }
   
   process.exit(0);

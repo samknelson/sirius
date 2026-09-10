@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { getOptionsType, getAllOptionsTypes, getOptionsStorage } from "./options-registry";
+import { getOptionsType, getOptionsStorage } from "./options-registry";
 import { requireAccess } from "../services/access-policy-evaluator";
-import { OptionsTypeName, getOptionsCatalog } from "../storage/unified-options";
+import { OptionsTypeName } from "../storage/unified-options";
 import { storage } from "../storage";
 import { requireComponent, isComponentEnabled } from "./components";
 import { getComponentById } from "../../shared/components";
@@ -100,33 +100,12 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
   // `/api/options/:type/:id` route swallows them.
   registerOptionsTransferRoutes(app, requireOptionTypeComponent());
 
-  // GET /api/options - List all available options types
-  app.get("/api/options", requireAccess('authenticated'), async (req: Request, res: Response) => {
-    try {
-      res.json({ types: getAllOptionsTypes() });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch options types" });
-    }
-  });
-
-  // GET /api/options/catalog - Name + description of every options type.
-  //
-  // Deliberately the lightest gate on this router: it answers "what dropdown
-  // lists exist and what are they called" — category names, no contents and no
-  // configuration — so any signed-in user may ask. The screens built on it
-  // (the config navigation, the options index) stay admin-only through their
-  // own route gates. Component gating is not applied here; each entry carries
-  // its `requiredComponent` so callers gate exactly as they do for the rest of
-  // the navigation, and the per-type routes still refuse a disabled list.
-  //
-  // NOTE: must stay ahead of the generic `/api/options/:type` route below.
-  app.get("/api/options/catalog", requireAccess('authenticated'), async (req: Request, res: Response) => {
-    try {
-      res.json(getOptionsCatalog());
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch options catalog" });
-    }
-  });
+  // "What dropdown lists exist and what are they called" is no longer answered
+  // here. It is the `options-lists` shared catalog, served at
+  // /api/catalogs/options-lists, and this router had two answers to it — a bare
+  // `/api/options` list of identifiers that nothing asked for, and an
+  // `/api/options/catalog` that had to be kept ahead of `/:type` to avoid being
+  // read as a list named "catalog".
 
   // GET /api/options/definitions - Get all options resource definitions (for dynamic UI)
   app.get("/api/options/definitions", requireAccess('authenticated'), async (req: Request, res: Response) => {

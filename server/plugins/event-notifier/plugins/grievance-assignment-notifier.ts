@@ -171,7 +171,7 @@ export const grievanceAssignmentNotifier: EventNotifierPlugin = {
         };
       case "sms":
         return {
-          message: absoluteUrl ? `${body} View: ${absoluteUrl}` : body,
+          body: absoluteUrl ? `${body} View: ${absoluteUrl}` : body,
         };
       default:
         return null;

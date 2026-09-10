@@ -42,7 +42,7 @@ registerTokenPlugin({
     inputTypes: [],
     outputType: EMPLOYER_CONTACT_ENTITY_KIND,
     entityTable: employerContacts,
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     // The link has its own page — the employer-contact tabs.
     entityLocation: {
       tabEntity: "employer_contact",

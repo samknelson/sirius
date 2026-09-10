@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { SnapshotMeta } from "@shared/snapshots";
 import { getSnapshotRenderer } from "./renderers";
+import { SnapshotRevision } from "./SnapshotRevision";
 
 interface SnapshotDetail extends SnapshotMeta {
   decoded: unknown;
@@ -17,7 +18,14 @@ interface SnapshotBrowserProps {
   entityId: string;
 }
 
-function formatTimestamp(iso: string): string {
+/**
+ * When the snapshot was captured, from the record's history. A snapshot the
+ * history says nothing about still lists — it exists, and hiding it would be
+ * the bigger lie — so the row says the time is not recorded rather than
+ * inventing one.
+ */
+function formatTimestamp(iso: string | null): string {
+  if (!iso) return "Time not recorded";
   const date = new Date(iso);
   return date.toLocaleString(undefined, {
     year: "numeric",
@@ -34,6 +42,10 @@ function formatTimestamp(iso: string): string {
  * selecting one opens the detail view with older/newer navigation and a
  * back-to-list link. The selected snapshot renders through the client
  * renderer registry for its entity type.
+ *
+ * Timestamp and author both come from the record's history rather than from
+ * the snapshot row, so the person's name is whatever their account says now,
+ * and a capture with no signed-in user behind it simply names nobody.
  */
 export function SnapshotBrowser({ entityType, entityId }: SnapshotBrowserProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -112,7 +124,7 @@ export function SnapshotBrowser({ entityType, entityId }: SnapshotBrowserProps) 
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium" data-testid={`text-snapshot-timestamp-${snapshot.id}`}>
-                          {formatTimestamp(snapshot.createdAt)}
+                          {formatTimestamp(snapshot.capturedAt)}
                         </span>
                         {snapshot.label && (
                           <Badge variant="secondary" data-testid={`badge-snapshot-label-${snapshot.id}`}>
@@ -120,14 +132,18 @@ export function SnapshotBrowser({ entityType, entityId }: SnapshotBrowserProps) 
                           </Badge>
                         )}
                       </div>
-                      {snapshot.authorName && (
+                      {snapshot.capturedByName && (
                         <div className="flex items-center gap-1 text-sm text-muted-foreground">
                           <User className="h-3 w-3" />
                           <span data-testid={`text-snapshot-author-${snapshot.id}`}>
-                            {snapshot.authorName}
+                            {snapshot.capturedByName}
                           </span>
                         </div>
                       )}
+                    <SnapshotRevision
+                      revision={snapshot.revision}
+                      testId={`badge-snapshot-revision-${snapshot.id}`}
+                    />
                     </div>
                   </div>
                   <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -161,7 +177,7 @@ export function SnapshotBrowser({ entityType, entityId }: SnapshotBrowserProps) 
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-medium" data-testid="text-snapshot-timestamp">
-                {formatTimestamp(selected.createdAt)}
+                {formatTimestamp(selected.capturedAt)}
               </span>
               {selected.label && (
                 <Badge variant="secondary" data-testid="badge-snapshot-label">
@@ -169,12 +185,13 @@ export function SnapshotBrowser({ entityType, entityId }: SnapshotBrowserProps) 
                 </Badge>
               )}
             </div>
-            {selected.authorName && (
+            {selected.capturedByName && (
               <div className="flex items-center gap-1 text-sm text-muted-foreground">
                 <User className="h-3 w-3" />
-                <span data-testid="text-snapshot-author">{selected.authorName}</span>
+                <span data-testid="text-snapshot-author">{selected.capturedByName}</span>
               </div>
             )}
+            <SnapshotRevision revision={selected.revision} testId="badge-snapshot-revision" />
           </div>
         </div>
         <div className="flex items-center gap-2">

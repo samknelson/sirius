@@ -378,6 +378,8 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
 export const grievanceStatusHistoryLoggingConfig: StorageLoggingConfig<GrievanceStatusHistoryStorage> =
   {
     module: "grievanceStatusHistory",
+    table: 'grievance_status_history',
+    hostTable: 'grievances',
     methods: {
       create: {
         enabled: true,

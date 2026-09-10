@@ -958,6 +958,8 @@ export function createWorkerHoursStorage(
 
 export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> = {
   module: 'worker-hours',
+  table: 'worker_hours',
+  hostTable: 'workers',
   // NOTE: bulkUpsertWorkerHoursMigration is intentionally ABSENT here — the
   // migration bulk path records aggregate-safe operational evidence (loader
   // run report + s1_staging.runs) instead of one audit snapshot per migrated

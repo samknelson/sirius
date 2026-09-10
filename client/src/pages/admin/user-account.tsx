@@ -22,10 +22,56 @@ import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { Loader2, UserCheck, UserX, Shield, KeyRound, Trash2 } from 'lucide-react';
 import { UserLayout, useUserLayout } from '@/components/layouts/UserLayout';
+import { useRecordMetadata } from '@/hooks/useRecordMetadata';
 import { Role } from '@/lib/entity-types';
+import { format } from '@/lib/date-format';
+import type {
+  RecordMetadataStamp,
+} from '@/components/shared/RecordHistoryDialog';
 
 interface ProvidersResponse {
   providers: { type: string; isDefault: boolean }[];
+}
+
+/**
+ * One of the account's stamps, as the record's history reports it.
+ *
+ * The account row carries no dates of its own — when it was created and when
+ * it last changed are provenance, and provenance also knows who did it where
+ * the system was watching. Everything this shows therefore comes from the same
+ * place the record history dialog in the title bar reads, and says plainly
+ * when there is nothing recorded rather than showing an invented date.
+ */
+function AccountStamp({
+  label,
+  stamp,
+  state,
+  testId,
+}: {
+  label: string;
+  stamp: RecordMetadataStamp | null;
+  state: 'loading' | 'error' | 'ready';
+  testId: string;
+}) {
+  return (
+    <div>
+      <Label className="text-sm font-medium text-muted-foreground">{label}</Label>
+      <p data-testid={testId}>
+        {state === 'loading'
+          ? 'Loading…'
+          : state === 'error'
+            ? "This account's history could not be read."
+            : stamp?.date
+              ? format(new Date(stamp.date), 'MMM d, yyyy h:mm a')
+              : 'Not recorded'}
+      </p>
+      {state === 'ready' && stamp?.date && (
+        <p className="text-sm text-muted-foreground" data-testid={`${testId}-by`}>
+          {stamp.personName ?? 'person not recorded'}
+        </p>
+      )}
+    </div>
+  );
 }
 
 function UserAccountContent() {
@@ -39,6 +85,12 @@ function UserAccountContent() {
   const { data: providersData } = useQuery<ProvidersResponse>({
     queryKey: ['/api/auth/providers'],
   });
+
+  const {
+    metadata: history,
+    state: historyState,
+    canViewMetadata,
+  } = useRecordMetadata(user.id);
   const localEnabled = !!providersData?.providers?.some((p) => p.type === 'local');
 
   const [newPassword, setNewPassword] = useState('');
@@ -250,10 +302,22 @@ function UserAccountContent() {
                 {user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.firstName || user.lastName || 'Not provided'}
               </p>
             </div>
-            <div>
-              <Label className="text-sm font-medium text-muted-foreground">Created At</Label>
-              <p data-testid="text-created">{new Date(user.createdAt).toLocaleDateString()}</p>
-            </div>
+            {canViewMetadata && (
+              <>
+                <AccountStamp
+                  label="Created"
+                  stamp={history?.created ?? null}
+                  state={historyState.status}
+                  testId="text-created"
+                />
+                <AccountStamp
+                  label="Last Changed"
+                  stamp={history?.modified ?? null}
+                  state={historyState.status}
+                  testId="text-updated"
+                />
+              </>
+            )}
             <div>
               <Label className="text-sm font-medium text-muted-foreground">Last Login</Label>
               <p data-testid="text-lastlogin">

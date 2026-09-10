@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { formatYmd } from "@shared/utils/date";
+import { format } from "@/lib/date-format";
+import { useRecordMetadata } from "@/hooks/useRecordMetadata";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DispatchJobLayout, useDispatchJobLayout } from "@/components/layouts/DispatchJobLayout";
@@ -53,6 +55,11 @@ function formatTime12h(time: string): string {
 function DispatchJobDetailsContent() {
   const { job } = useDispatchJobLayout();
   const jobData = job.data as DispatchJobData | null;
+
+  // When the job was created, and by whom, comes from the record's history —
+  // the same reading the history badge at the top of this page opens, so the
+  // two cannot show different creation dates for one job.
+  const { state: created, canViewMetadata } = useRecordMetadata(job.id);
 
   const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
     queryKey: ["/api/components/config"],
@@ -217,12 +224,31 @@ function DispatchJobDetailsContent() {
               </div>
             </div>
           )}
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-1">Created</h3>
-            <p className="text-foreground" data-testid="text-created">
-              {new Date(job.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-            </p>
-          </div>
+          {canViewMetadata && (
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Created</h3>
+              <div data-testid="text-created">
+                {created.status === "loading" ? (
+                  <p className="text-muted-foreground">Loading…</p>
+                ) : created.status === "error" ? (
+                  <p className="text-muted-foreground">
+                    This job's history could not be read.
+                  </p>
+                ) : created.metadata?.created.date ? (
+                  <>
+                    <p className="text-foreground">
+                      {format(new Date(created.metadata.created.date), "MMMM d, yyyy")}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {created.metadata.created.personName ?? "person not recorded"}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-muted-foreground">Not recorded</p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
         {job.description && (
           <div>

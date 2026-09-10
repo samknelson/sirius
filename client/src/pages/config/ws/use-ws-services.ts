@@ -43,7 +43,6 @@ export interface WsClientGrant {
   id: string;
   clientId: string;
   configId: string;
-  createdAt: string;
 }
 
 /** Every web service configuration the current admin can see. */

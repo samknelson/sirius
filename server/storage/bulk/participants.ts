@@ -199,6 +199,8 @@ export function createBulkParticipantStorage(): BulkParticipantStorage {
 
 export const bulkParticipantLoggingConfig = defineLoggingConfig<BulkParticipantStorage>({
   module: 'bulkParticipants',
+  table: 'bulk_participants',
+  hostTable: 'bulk_messages',
   state: { key: 'bulkParticipant' },
   getter: 'getById',
   hostEntityIdField: 'messageId',

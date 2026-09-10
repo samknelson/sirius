@@ -47,7 +47,6 @@ export const dispatchJobs = pgTable("dispatch_jobs", {
   startTime: time("start_time"),
   endTime: time("end_time"),
   data: jsonb("data"),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const insertDispatchJobTypeSchema = createInsertSchema(optionsDispatchJobType).omit({
@@ -56,7 +55,6 @@ export const insertDispatchJobTypeSchema = createInsertSchema(optionsDispatchJob
 
 export const insertDispatchJobSchema = createInsertSchema(dispatchJobs).omit({
   id: true,
-  createdAt: true,
 }).extend({
   startYmd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD format"),
 });
@@ -88,7 +86,6 @@ export const dispatches = pgTable("dispatches", {
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   commIds: varchar("comm_ids").array(),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 }, (table) => ({
   // Hard constraint: a worker can have at most ONE accepted primary dispatch.
   // The status comparison must be declared with explicit ::text casts so the
@@ -101,7 +98,6 @@ export const dispatches = pgTable("dispatches", {
 
 export const insertDispatchSchema = createInsertSchema(dispatches).omit({
   id: true,
-  createdAt: true,
   // isPrimary is intentionally not settable through the normal insert/update
   // API paths for now — it is read-only in the UX.
   isPrimary: true,

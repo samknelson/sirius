@@ -16,6 +16,8 @@ export interface WorkerDispatchAsiStorage {
 
 export const workerDispatchAsiLoggingConfig: StorageLoggingConfig<WorkerDispatchAsiStorage> = {
   module: 'worker-dispatch-asi',
+  table: 'worker_dispatch_asi',
+  hostTable: 'workers',
   methods: {
     upsertByWorker: {
       enabled: true,

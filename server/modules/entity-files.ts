@@ -5,10 +5,12 @@ import { isComponentEnabled } from "./components";
 import { fileSystemService, listFileSystemConfigs, FileSystemNotConfiguredError } from "../services/files";
 import {
   getEntityFileContext,
-  listEntityFileContexts,
   type EntityFileContext,
   type EntityFilesVerb,
 } from "../services/entity-files/registry";
+import { readCatalogDeclaration } from "@shared/catalog";
+import { catalogViewerForCatalog } from "../services/catalog-viewer";
+import { ENTITY_FILE_AREAS_CATALOG } from "../services/entity-files/catalog";
 import {
   getEntityFilesContextConfig,
   resolveUsableContextConfig,
@@ -115,21 +117,36 @@ export function registerEntityFileRoutes(app: Express, requireAuth: AuthMiddlewa
     "/api/entity-files/contexts",
     requireAuth,
     requireAccess("admin"),
-    async (_req, res) => {
+    async (req, res) => {
       try {
+        // The declaration, not the offer: this page configures areas, so it
+        // lists one whose component is switched off and says so on the row,
+        // rather than dropping it. Whether each component is on is asked
+        // separately — that is configured state, which a catalog never reports.
+        const viewer = await catalogViewerForCatalog(req, ENTITY_FILE_AREAS_CATALOG);
+        const declared = readCatalogDeclaration(ENTITY_FILE_AREAS_CATALOG, viewer);
+        if (!declared.ok) {
+          return res.status(declared.reason === "unknown" ? 500 : 403).json({
+            message: declared.message,
+          });
+        }
+
         const contexts = await Promise.all(
-          listEntityFileContexts().map(async (context) => ({
-            id: context.id,
-            label: context.label,
-            component: context.component ?? null,
-            componentEnabled: context.component
-              ? await isComponentEnabled(context.component)
-              : true,
-            // BAO fork extension: extra directory tokens this context expands
-            // (may include the framework token when the context redefines it).
-            tokens: context.tokens ?? [],
-            config: (await getEntityFilesContextConfig(context.id)) ?? null,
-          })),
+          declared.catalog.entries.map(async (entry) => {
+            const context = getEntityFileContext(entry.id);
+            return {
+              id: entry.id,
+              label: entry.name,
+              component: entry.component ?? null,
+              componentEnabled: entry.component
+                ? await isComponentEnabled(entry.component)
+                : true,
+              // BAO fork extension: extra directory tokens this context expands
+              // (may include the framework token when the context redefines it).
+              tokens: context?.tokens ?? [],
+              config: (await getEntityFilesContextConfig(entry.id)) ?? null,
+            };
+          }),
         );
         const fileSystems = listFileSystemConfigs().map((fs) => ({
           id: fs.id,

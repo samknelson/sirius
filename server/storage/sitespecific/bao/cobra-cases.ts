@@ -551,6 +551,7 @@ export function createBaoCobraCasesStorage(): BaoCobraCasesStorage {
 
 export const baoCobraCasesLoggingConfig: StorageLoggingConfig<BaoCobraCasesStorage> = {
   module: 'sitespecific.bao.cobra-cases',
+  table: 'sitespecific_bao_cobra_cases',
   methods: {
     create: {
       enabled: true,

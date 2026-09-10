@@ -162,6 +162,7 @@ export function createBaoPremiumRatesStorage(): BaoPremiumRatesStorage {
 
 export const baoPremiumRatesLoggingConfig: StorageLoggingConfig<BaoPremiumRatesStorage> = {
   module: 'sitespecific.bao.premium-rates',
+  table: 'sitespecific_bao_premium_rates',
   methods: {
     create: {
       enabled: true,

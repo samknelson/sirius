@@ -69,6 +69,8 @@ export function createBulkMessagesSmsStorage(): BulkMessagesSmsStorage {
 
 export const bulkMessagesSmsLoggingConfig = defineLoggingConfig<BulkMessagesSmsStorage>({
   module: 'bulkMessagesSms',
+  table: 'bulk_messages_sms',
+  hostTable: 'bulk_messages',
   state: { key: 'bulkMessagesSms' },
   getter: 'getById',
   hostEntityIdField: 'bulkId',

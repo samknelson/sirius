@@ -32,6 +32,7 @@ import { format } from "@/lib/date-format";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
 import { CommWithDetails } from "@/lib/comm-types";
 import { WinstonLog } from "@/lib/system-types";
+import { recordGoHref } from "@shared/utils/record-go";
 
 const getLevelColor = (level: string | null) => {
   if (!level) return "default";
@@ -602,7 +603,15 @@ export function CommDetailContent({ commId, statusAction, renderFallback }: Comm
                 </div>
                 <div className="col-span-2">
                   <Label className="text-muted-foreground">Entity ID</Label>
-                  <div className="font-mono text-sm" data-testid="text-log-entity-id">{selectedLog.entityId || "—"}</div>
+                  <div className="font-mono text-sm" data-testid="text-log-entity-id">
+                    {selectedLog.entityId ? (
+                      <a href={recordGoHref(selectedLog.entityId)} className="text-primary underline">
+                        {selectedLog.entityId}
+                      </a>
+                    ) : (
+                      "—"
+                    )}
+                  </div>
                 </div>
               </div>
 

@@ -69,6 +69,8 @@ export function createBulkMessagesPostalStorage(): BulkMessagesPostalStorage {
 
 export const bulkMessagesPostalLoggingConfig = defineLoggingConfig<BulkMessagesPostalStorage>({
   module: 'bulkMessagesPostal',
+  table: 'bulk_messages_postal',
+  hostTable: 'bulk_messages',
   state: { key: 'bulkMessagesPostal' },
   getter: 'getById',
   hostEntityIdField: 'bulkId',

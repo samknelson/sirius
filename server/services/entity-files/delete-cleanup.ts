@@ -11,7 +11,7 @@ import { deleteFilesForRecord } from "./cleanup";
  * record's attachments — or the bytes they point at. This subscriber is the
  * FIRST of the two layers that do: it reacts to the record's own
  * `<entity>.delete.after` event and removes the attachments right away. The
- * nightly `files_orphan_sweep` cron is the second layer, catching whatever
+ * nightly `entity_files_orphan_sweep` cron is the second layer, catching whatever
  * this one missed (a crash, a handler error, a delete path that predates the
  * event). Both call the same routine (./cleanup.ts), so there is one
  * definition of "remove this record's files".

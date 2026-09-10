@@ -142,11 +142,17 @@ function registerEventNotifierKind(): void {
         if (templates && typeof templates === "object") {
           const { extractTokenExpressions } = await import("@shared/tokens");
           const { validateTokenExpressionForRoots } = await import("../tokens");
-          const { notifierTokenRootNames } = await import("./token-roots");
-          // The SAME list the editor is built from, so a token the token
-          // browser offered can never be rejected here — and one it never
-          // offered (an employer picked out of thin air) is refused.
-          const rootNames = notifierTokenRootNames(plugin.tokenTemplates.roots);
+          const { tokenContextRootNames } = await import("../tokens/contexts");
+          const { notifierTokenContextId } = await import(
+            "@shared/token-contexts"
+          );
+          // The SAME list the editor is built from — this notifier's
+          // token context — so a token the token browser offered can
+          // never be rejected here, and one it never offered (an
+          // employer picked out of thin air) is refused.
+          const rootNames = tokenContextRootNames(
+            notifierTokenContextId(plugin.id),
+          );
           const errors: string[] = [];
           for (const [channel, fields] of Object.entries(
             templates as Record<string, unknown>,
@@ -326,6 +332,7 @@ function registerEventNotifierKind(): void {
  */
 export async function backfillEventNotifierSubsidiaries(): Promise<void> {
   const { storage } = await import("../../storage");
+  const { withFrameworkWrite } = await import("../../middleware/request-context");
   const configs = await storage.pluginConfigs.getByKind("event-notifier");
   for (const cfg of configs) {
     try {
@@ -336,10 +343,14 @@ export async function backfillEventNotifierSubsidiaries(): Promise<void> {
       const legacy = Array.isArray(data.media)
         ? (data.media as string[]).filter((m) => typeof m === "string")
         : [];
-      await storage.pluginConfigs.upsertSubsidiary("event-notifier", {
-        id: cfg.id,
-        media: legacy.length > 0 ? legacy.join(",") : null,
-      });
+      // Backfilling a missing subsidiary row is the framework's own doing
+      // (see `withFrameworkWrite`): no person, and no audit entry per boot.
+      await withFrameworkWrite(() =>
+        storage.pluginConfigs.upsertSubsidiary("event-notifier", {
+          id: cfg.id,
+          media: legacy.length > 0 ? legacy.join(",") : null,
+        }),
+      );
       logger.info(`Backfilled event-notifier subsidiary for config ${cfg.id}`, {
         service: "event-notifier-plugins",
       });

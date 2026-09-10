@@ -141,12 +141,14 @@ import "./components/edls/002_add_sheet_notes_and_change_tracking";
 import "./components/edls/003_add_assignment_comm_id";
 import "./components/edls/004_add_assignment_accepted";
 import "./components/edls/005_add_sheet_notifications_enabled";
+import "./components/edls/006_drop_sheet_created_by";
 import "./components/worker.ratings/001_add_sirius_id_to_options_worker_ratings";
 import "./components/trust.providers.edi/001_add_sftp_client_fk";
 import "./components/trust.elections/001_add_enrollment_type";
 import "./components/trust.elections/002_create_open_enrollment_windows";
 import "./components/trust.elections/003_policy_id_nullable";
 import "./components/worker.aat/001_create_worker_aat";
+import "./components/bulk/001_drop_email_body_text";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
 // into sync with the schema BEFORE the drift gate runs. Baseline scripts
@@ -208,6 +210,42 @@ import "./core/1150_rename_note_type_entity_types_key";
 // This task migration was originally numbered 1145, which is occupied by
 // the upstream entity-files migration above. Its registered version is 1151.
 import "./core/1151_delete_grievance_appeal_workflow_variable";
+// Merged from upstream main as 1077-1110. Renumbered above this fork's
+// counter (1151) so initialized databases do not silently skip them.
+import "./core/1152_create_entity_metadata";
+import "./core/1153_rename_orphan_sweep_cron_ids";
+import "./core/1154_seed_plugin_config_provenance";
+import "./core/1155_drop_plugin_config_timestamps";
+import "./core/1156_seed_wizard_mapping_provenance";
+import "./core/1157_drop_wizard_mapping_timestamps";
+import "./core/1158_retire_ledger_provenance_columns";
+import "./core/1159_seed_snapshot_provenance";
+import "./core/1160_drop_snapshot_author_columns";
+import "./core/1161_seed_ws_client_provenance";
+import "./core/1162_drop_ws_client_timestamps";
+import "./core/1163_seed_contact_provenance";
+import "./core/1164_drop_contact_timestamps";
+import "./core/1165_retire_auth_identity_timestamps";
+import "./core/1166_seed_edls_sheet_provenance";
+import "./core/1167_seed_dispatch_provenance";
+import "./core/1168_drop_dispatch_created_at";
+import "./core/1169_seed_users_roles_provenance";
+import "./core/1170_drop_users_roles_timestamps";
+import "./core/1171_seed_policy_history_provenance";
+import "./core/1172_drop_policy_history_created_at";
+import "./core/1173_seed_worker_status_history_provenance";
+import "./core/1174_drop_worker_msh_created_at";
+import "./core/1175_seed_bookmark_provenance";
+import "./core/1176_drop_bookmarks_created_at";
+import "./core/1177_add_entity_metadata_rev";
+import "./core/1178_remove_process_entity_metadata";
+import "./core/1179_own_process_capture_provenance";
+import "./core/1180_rename_entity_metadata_table_name_to_context_id";
+import "./core/1181_restore_process_local_provenance";
+import "./core/1182_allow_unknown_process_provenance";
+import "./core/1183_restore_ledger_metadata";
+import "./core/1184_unify_medium_message_fields";
+import "./core/1185_create_letter_templates";
 
 export {
   runMigrations,

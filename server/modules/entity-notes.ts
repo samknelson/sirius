@@ -6,10 +6,12 @@ import { isComponentEnabled } from "./components";
 import { resolveEntityContextAvailability } from "./entity-contexts";
 import {
   getEntityNoteContext,
-  listEntityNoteContexts,
   type EntityNoteContext,
   type EntityNotesVerb,
 } from "../services/entity-notes/registry";
+import { readCatalogDeclaration } from "@shared/catalog";
+import { catalogViewerForCatalog } from "../services/catalog-viewer";
+import { ENTITY_NOTE_AREAS_CATALOG } from "../services/entity-notes/catalog";
 import { getEntityNotesContextConfig } from "../services/entity-notes/config";
 import { logger } from "../logger";
 
@@ -139,18 +141,31 @@ export function registerEntityNotesRoutes(app: Express, requireAuth: AuthMiddlew
     "/api/entity-notes/contexts",
     requireAuth,
     requireAccess("admin"),
-    async (_req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       try {
+        // The declaration, not the offer — see the twin endpoint in
+        // ./entity-files.ts for why a config page wants every declared area.
+        const viewer = await catalogViewerForCatalog(req, ENTITY_NOTE_AREAS_CATALOG);
+        const declared = readCatalogDeclaration(ENTITY_NOTE_AREAS_CATALOG, viewer);
+        if (!declared.ok) {
+          return res.status(declared.reason === "unknown" ? 500 : 403).json({
+            message: declared.message,
+          });
+        }
+
         const contexts = await Promise.all(
-          listEntityNoteContexts().map(async (context) => ({
-            id: context.id,
-            label: context.label,
-            recordLabel: context.recordLabel,
-            component: context.component ?? null,
-            componentEnabled: context.component
-              ? await isComponentEnabled(context.component)
+          declared.catalog.entries.map(async (entry) => ({
+            id: entry.id,
+            label: entry.name,
+            recordLabel:
+              typeof entry.detail?.recordLabel === "string"
+                ? entry.detail.recordLabel
+                : entry.name,
+            component: entry.component ?? null,
+            componentEnabled: entry.component
+              ? await isComponentEnabled(entry.component)
               : true,
-            enabled: (await getEntityNotesContextConfig(context.id)) !== undefined,
+            enabled: (await getEntityNotesContextConfig(entry.id)) !== undefined,
           })),
         );
         res.json({ contexts });

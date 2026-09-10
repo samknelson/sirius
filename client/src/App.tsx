@@ -26,6 +26,7 @@ import RegisterPage from "@/pages/register";
 
 // Lazy-loaded pages
 const Bootstrap = lazy(() => import("@/pages/bootstrap"));
+const RecordGoPage = lazy(() => import("@/pages/record-go"));
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
 const EdlsSchedulePage = lazy(() => import("@/pages/edls-schedule"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
@@ -127,6 +128,8 @@ const GrievanceNotes = lazy(() => import("@/pages/grievance-notes"));
 const GrievanceTimeline = lazy(() => import("@/pages/grievance-timeline"));
 const GrievanceSettlements = lazy(() => import("@/pages/grievance-settlements"));
 const GrievanceFiles = lazy(() => import("@/pages/grievance-files"));
+const CatalogsConfigPage = lazy(() => import("@/pages/config/catalogs"));
+const CatalogDetailConfigPage = lazy(() => import("@/pages/config/catalog-detail"));
 const EntityFilesConfigPage = lazy(() => import("@/pages/config/entity-files"));
 const EntityNotesConfigPage = lazy(() => import("@/pages/config/entity-notes"));
 const GrievanceTimelineTemplatesPage = lazy(() => import("@/pages/config/grievance-timeline-templates"));
@@ -241,6 +244,8 @@ const UserSendInApp = lazy(() => import("@/pages/admin/user-send-inapp"));
 const UserLogCall = lazy(() => import("@/pages/admin/user-log-call"));
 const AdminRolesPage = lazy(() => import("@/pages/admin/roles"));
 const AdminPermissionsPage = lazy(() => import("@/pages/admin/permissions"));
+const LetterTemplatesPage = lazy(() => import("@/pages/admin/letter-templates"));
+const LetterTemplateDetailPage = lazy(() => import("@/pages/admin/letter-template-detail"));
 const WmbScanQueue = lazy(() => import("@/pages/admin/wmb-scan-queue"));
 const WmbScanDetail = lazy(() => import("@/pages/admin/wmb-scan-detail"));
 const CronJobs = lazy(() => import("@/pages/cron-jobs"));
@@ -390,6 +395,8 @@ const EbsInspectionPage = lazy(() => import("@/pages/admin/ebs"));
 const WcOverviewPage = lazy(() => import("@/pages/admin/wc-overview"));
 const WcCachePage = lazy(() => import("@/pages/admin/wc-cache"));
 const WcStatsPage = lazy(() => import("@/pages/admin/wc-stats"));
+const MetadataListPage = lazy(() => import("@/pages/admin/metadata-list"));
+const MetadataBackfillPage = lazy(() => import("@/pages/admin/metadata-backfill"));
 const RestartPage = lazy(() => import("@/pages/admin/restart"));
 const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
 const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
@@ -580,6 +587,14 @@ function Router() {
         <Route path="/edls-sched/:id" component={EdlsScheduleRoute} />
 
       {/* Protected routes */}
+      <Route path="/go">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <RecordGoPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/add">
         <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
@@ -2615,6 +2630,24 @@ function Router() {
       </Route>
 
       {/* Admin user management routes - no ConfigurationLayout sidebar */}
+      <Route path="/admin/letter-templates">
+        <ProtectedRoute permission="staff">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <LetterTemplatesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/letter-templates/:id">
+        <ProtectedRoute permission="staff">
+          <AuthenticatedLayout>
+            <LetterTemplateDetailPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/admin/users/list">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -2766,6 +2799,28 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PostalAddressesConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* The literal index is registered before the drill-in, so it cannot be
+          matched as a catalog whose name happens to be missing. */}
+      <Route path="/config/catalogs">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <CatalogsConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/catalogs/:catalogId">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <CatalogDetailConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -4113,6 +4168,37 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <WcStatsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Record history: the provenance rows themselves, and filling them in
+          for records that predate the bookkeeping. `/admin/metadata` is the
+          page's own address and lands on the default tab. */}
+      <Route path="/admin/metadata">
+        <ProtectedRoute permission="admin">
+          <Redirect to="/admin/metadata/list" />
+        </ProtectedRoute>
+      </Route>
+
+      {/* Every record history row in the system. */}
+      <Route path="/admin/metadata/list">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <MetadataListPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Filling in history for records that have none. */}
+      <Route path="/admin/metadata/backfill">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <MetadataBackfillPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

@@ -176,6 +176,8 @@ function describeInterview(row?: {
  */
 export const t631InterviewsLoggingConfig = defineLoggingConfig<T631InterviewsStorage>({
   module: "sitespecific.t631.interviews",
+  table: "sitespecific_t631_job_interviews",
+  hostTable: "workers",
   state: { key: "interview" },
   hostEntityIdField: "workerId",
   methods: {

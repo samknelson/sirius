@@ -75,10 +75,13 @@ async function getDelinquentDaysForBu(bargainingUnitId: string | null): Promise<
 
 async function getCurrentMemberStatusCode(workerId: string, industryId: string, statusMap: Map<string, { id: string; code: string }>): Promise<string | null> {
   const client = getClient();
+  // Date alone settles which entry is current: unique (worker_id,
+  // industry_id, date) means one worker cannot hold two member statuses for
+  // one industry on one date. `id` only keeps the ordering total.
   const result = await client.execute(sql`
     SELECT ms_id FROM worker_msh
     WHERE worker_id = ${workerId} AND industry_id = ${industryId}
-    ORDER BY date DESC, created_at DESC NULLS LAST, id DESC
+    ORDER BY date DESC, id DESC
     LIMIT 1
   `);
   if (result.rows.length === 0) return null;
@@ -252,7 +255,7 @@ export async function scanAllWorkers(mode: "live" | "test"): Promise<BulkScanRes
     SELECT DISTINCT ON (worker_id) worker_id, ms_id
     FROM worker_msh
     WHERE industry_id = ${industryId}
-    ORDER BY worker_id, date DESC, created_at DESC NULLS LAST, id DESC
+    ORDER BY worker_id, date DESC, id DESC
   `);
   for (const row of mshResult.rows as any[]) {
     const code = [...statusMap.entries()].find(([, s]) => s.id === row.ms_id)?.[0] || null;

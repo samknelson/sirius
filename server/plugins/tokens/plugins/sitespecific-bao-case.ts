@@ -140,7 +140,6 @@ registerTokenPlugin({
     // `{{sitespecific_bao_case}}` on its own means who the case is about —
     // the one fact that identifies a case to a staff reader.
     defaultLeaf: "entity_name",
-    hiddenFromCatalog: true,
     requiredComponent: COMPONENT,
     sampleSets: BAO_CASE_SAMPLE_SETS,
     // The case's own detail page, declared once via the shared tab registry.

@@ -7,7 +7,7 @@ import {
   type EntityNote,
   type InsertEntityNote,
 } from "@shared/schema";
-import { and, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, getTableName, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { defineLoggingConfig } from "./middleware/logging";
 import { noteContextTables, isNoteContextAvailable } from "./entity-notes-context-tables";
 import { runInTransaction } from "./transaction-context";
@@ -132,8 +132,23 @@ function redactNote<T extends Record<string, any> | null | undefined>(row: T): T
  *   - The note body is redacted everywhere it would otherwise be persisted:
  *     logged args, before-state and after-state.
  */
+/**
+ * The table a note's host record lives in. A note's parent is polymorphic —
+ * its context names the record type — so the binding comes from the context
+ * registry, reached lazily because that registry sits above storage.
+ */
+async function noteHostTable(contextId: unknown): Promise<string | undefined> {
+  if (typeof contextId !== "string") return undefined;
+  const { noteContextTables } = await import("./entity-notes-context-tables");
+  const table = noteContextTables[contextId];
+  return table ? getTableName(table) : undefined;
+}
+
 export const entityNotesLoggingConfig = defineLoggingConfig<EntityNotesStorage>({
   module: 'entityNotes',
+  table: 'entity_notes',
+  hostTable: (args, result, beforeState) =>
+    noteHostTable(result?.contextId ?? beforeState?.note?.contextId ?? args[0]?.contextId),
   state: { key: 'note' },
   hostEntityId: (args, result, beforeState) =>
     result?.entityId ?? beforeState?.note?.entityId ?? args[0]?.entityId,

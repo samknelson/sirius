@@ -77,12 +77,6 @@ function AccountDetailsContent() {
               </p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Account ID</label>
-              <p className="text-foreground font-mono text-sm" data-testid="text-account-id">
-                {account.id}
-              </p>
-            </div>
-            <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Sirius ID</label>
               <p className="text-foreground" data-testid="text-account-sirius-id">
                 {account.siriusId ?? (

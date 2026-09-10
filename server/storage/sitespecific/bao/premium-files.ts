@@ -273,6 +273,7 @@ export function createBaoPremiumFilesStorage(): BaoPremiumFilesStorage {
 
 export const baoPremiumFilesLoggingConfig: StorageLoggingConfig<BaoPremiumFilesStorage> = {
   module: 'sitespecific.bao.premium-files',
+  table: 'sitespecific_bao_premium_files',
   methods: {
     generate: {
       enabled: true,

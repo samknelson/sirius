@@ -15,6 +15,7 @@ The frontend is built with React 18, TypeScript, Vite, Shadcn/ui (based on Radix
 -   **Event Bus System**: A typed publish/subscribe event bus facilitates inter-service communication.
 -   **Cron Job System**: Provides a framework for scheduling periodic tasks.
 -   **Migration Framework**: Manages database schema changes with a versioned migration system.
+-   **Record Provenance**: `entity_metadata` holds one created/modified/subrecord-modified stamp per record, written by the storage logging middleware. It is the single answer to "when was this made, and by whom"; the bespoke per-table `created_at`/`created_by` columns that predate it are being retired (`docs/provenance-columns.md`).
 
 # External Dependencies
 

@@ -203,6 +203,9 @@ export function createEdlsCrewsStorage(): EdlsCrewsStorage {
 
 export const edlsCrewsLoggingConfig = defineLoggingConfig<EdlsCrewsStorage>({
   module: 'edls-crews',
+  table: 'edls_crews',
+  hostTable: 'edls_sheets',
+  metadataTiming: 'transactional',
   // No module-level stateKey — update/delete `before` is the raw crew row
   // (legacy shape) and the create/createMany `after` hooks wrap the result
   // explicitly so the emitted log payloads stay byte-identical.
@@ -225,6 +228,9 @@ export const edlsCrewsLoggingConfig = defineLoggingConfig<EdlsCrewsStorage>({
       }),
     },
     createMany: {
+      // The bulk log has no real crew id to own metadata, but its rows still
+      // change the sheet's subrecord history.
+      metadataHostTouch: true,
       getEntityId: () => 'bulk create',
       getHostEntityId: (args, result) => result?.[0]?.sheetId || args[0]?.[0]?.sheetId,
       getDescription: async (args, result) => {
@@ -260,6 +266,8 @@ export const edlsCrewsLoggingConfig = defineLoggingConfig<EdlsCrewsStorage>({
       // default `storage.get(args[0])` before-fetch and the default
       // delete getEntityId.
       getEntityId: () => 'bulk delete',
+      // The log's entity is the parent, not the row written here.
+      metadataEntityId: () => undefined,
       getHostEntityId: (args) => args[0],
       before: undefined,
       getDescription: async (_args, result) =>

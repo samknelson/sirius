@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode, useMemo } from "react";
-import { Briefcase, ArrowLeft, Play } from "lucide-react";
+import { Briefcase, Play } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import type { DispatchJobWithRelations } from "../../../../server/storage/dispatch/jobs";
 import { useDispatchJobTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
 
 interface DispatchJobLayoutContextValue {
   job: DispatchJobWithRelations;
@@ -109,17 +110,12 @@ export function DispatchJobLayout({ activeTab, children }: DispatchJobLayoutProp
     <DispatchJobLayoutContext.Provider value={{ job, isLoading, isError }}>
       <section className="bg-background border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-start gap-4">
-            <Link href="/dispatch/jobs">
-              <Button variant="ghost" size="icon" data-testid="button-back">
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <div className="flex-1">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-xl md:text-2xl font-bold text-foreground" data-testid="title-job">
-                  {job.title}
-                </h1>
+          <RecordTitleBar
+            variant="compact"
+            title={job.title}
+            titleTestId="title-job"
+            badges={
+              <>
                 <Badge className={statusColors[job.status]} data-testid="badge-status">
                   {job.status}
                 </Badge>
@@ -129,13 +125,17 @@ export function DispatchJobLayout({ activeTab, children }: DispatchJobLayoutProp
                     Running
                   </Badge>
                 )}
-              </div>
+              </>
+            }
+            subtitle={
               <p className="text-muted-foreground mt-1">
                 {job.employer?.name}
                 {job.jobType && ` - ${job.jobType.name}`}
               </p>
-            </div>
-          </div>
+            }
+            backLink={{ href: "/dispatch/jobs", label: "Back to Jobs" }}
+            recordId={job.id}
+          />
         </div>
       </section>
 

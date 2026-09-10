@@ -18,6 +18,7 @@ import { resolveContactLinks } from "./contact-links";
 import { createCommTagsStorage } from "../storage/comm-tags";
 import { createUnifiedOptionsStorage } from "../storage/unified-options";
 import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
+import { deriveEmailPlainText, isSafeRelativePath } from "../delivery/shape";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -68,17 +69,25 @@ const sendSmsSchema = z.object({
   sendOffline: z.boolean().optional(),
 });
 
+/**
+ * An authored email: a subject and an HTML body, and nothing else.
+ *
+ * The subject is required with the blanks taken out of it — a subject of
+ * spaces is a blank subject, and a blank subject is fatal here rather
+ * than substituted (see `MEDIUM_FIELDS.email`).
+ *
+ * There is deliberately no `bodyText`: the plain-text alternative part is
+ * DERIVED from the HTML body below, never authored, because two authored
+ * copies of one message are two things that can disagree.
+ */
 const sendEmailSchema = z.object({
   email: z.string().email("Invalid email address"),
   name: z.string().optional(),
-  subject: z.string().min(1, "Subject is required").max(500, "Subject too long"),
-  bodyText: z.string().optional(),
-  bodyHtml: z.string().optional(),
+  subject: z.string().trim().min(1, "Subject is required").max(500, "Subject too long"),
+  bodyHtml: z.string().trim().min(1, "Message body is required"),
   replyTo: z.string().email().optional(),
   tagIds: tagIdsSchema,
   sendOffline: z.boolean().optional(),
-}).refine(data => data.bodyText || data.bodyHtml, {
-  message: "Either bodyText or bodyHtml is required",
 });
 
 const postalAddressSchema = z.object({
@@ -112,7 +121,20 @@ const sendInappSchema = z.object({
   userId: z.string().uuid("Invalid user ID"),
   title: z.string().min(1, "Title is required").max(100, "Title must be 100 characters or less"),
   body: z.string().min(1, "Body is required").max(500, "Body must be 500 characters or less"),
-  linkUrl: z.string().url("Invalid URL").optional().or(z.literal("")),
+  // The medium's own rule, not this screen's: one alerts bell opens
+  // every in-app notification and hands the address to the browser, so
+  // a link is a same-app path here exactly as it is in a bulk message
+  // or a notifier template. An absolute URL used to be accepted here
+  // alone, which is how the same link could be valid on one screen and
+  // rejected on another.
+  linkUrl: z
+    .string()
+    .max(2048)
+    .refine((value) => value.trim() === "" || isSafeRelativePath(value.trim()), {
+      message: 'Link URL must be a relative path starting with "/" (not "//" or an absolute URL)',
+    })
+    .optional()
+    .or(z.literal("")),
   linkLabel: z.string().max(50, "Link label must be 50 characters or less").optional(),
   tagIds: tagIdsSchema,
 });
@@ -277,7 +299,8 @@ export function registerCommRoutes(
         });
       }
 
-      const { email, name, subject, bodyText, bodyHtml, replyTo, tagIds, sendOffline } = parsed.data;
+      const { email, name, subject, bodyHtml, replyTo, tagIds, sendOffline } = parsed.data;
+      const plainText = deriveEmailPlainText(bodyHtml);
       const tagErr = await validateTagIds(tagIds);
       if (tagErr) {
         return res.status(400).json({ error: tagErr });
@@ -289,7 +312,7 @@ export function registerCommRoutes(
         toEmail: email,
         toName: name,
         subject,
-        bodyText,
+        bodyText: plainText,
         bodyHtml,
         replyTo,
         userId: user?.id,

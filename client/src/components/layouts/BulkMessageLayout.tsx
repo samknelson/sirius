@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useBulkMessageTabAccess } from "@/hooks/useTabAccess";
+import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
 import type { BulkMessage } from "@shared/schema/bulk/schema";
 
 interface BulkMessageLayoutProps {
@@ -88,33 +89,13 @@ export function BulkMessageLayout({ activeTab, children }: BulkMessageLayoutProp
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
-      <div className="flex items-center justify-between mb-6">
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="breadcrumb-bulk-message">
-          <Link href="/bulk/list" className="hover:text-foreground transition-colors">
-            Bulk Messages
-          </Link>
-          <ChevronRight size={16} />
-          <span className="text-foreground font-medium">
-            {bulkMessage.name}
-          </span>
-        </nav>
-        <Link href="/bulk/list">
-          <Button variant="ghost" size="sm" data-testid="button-back-to-bulk-list">
-            <ArrowLeft size={16} className="mr-2" />
-            Back to List
-          </Button>
-        </Link>
-      </div>
-
-      <div className="flex items-start gap-4 mb-6">
-        <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-primary/10">
-          <Megaphone className="h-6 w-6 text-primary" />
-        </div>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-foreground" data-testid="heading-bulk-message-name">
-              {bulkMessage.name}
-            </h1>
+      <RecordTitleBar
+        variant="page"
+        icon={<Megaphone className="h-6 w-6 text-primary" />}
+        title={bulkMessage.name}
+        titleTestId="heading-bulk-message-name"
+        badges={
+          <>
             <Badge variant={statusVariants[bulkMessage.status] || "secondary"} data-testid="badge-bulk-status">
               {bulkMessage.status}
             </Badge>
@@ -128,9 +109,22 @@ export function BulkMessageLayout({ activeTab, children }: BulkMessageLayoutProp
                 Offline
               </Badge>
             )}
-          </div>
-        </div>
-      </div>
+          </>
+        }
+        breadcrumb={
+          <nav className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="breadcrumb-bulk-message">
+            <Link href="/bulk/list" className="hover:text-foreground transition-colors">
+              Bulk Messages
+            </Link>
+            <ChevronRight size={16} />
+            <span className="text-foreground font-medium">
+              {bulkMessage.name}
+            </span>
+          </nav>
+        }
+        backLink={{ href: "/bulk/list", label: "Back to List", testId: "button-back-to-bulk-list" }}
+        recordId={bulkMessage.id}
+      />
 
       <div className="border-b border-border mb-6">
         <nav className="flex gap-6" data-testid="nav-bulk-message-tabs">

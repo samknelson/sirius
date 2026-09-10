@@ -18,7 +18,7 @@ import {
   type EdlsCrew,
   type InsertEdlsCrew
 } from "@shared/schema";
-import { eq, ne, desc, sql, and, gte, lte, type SQL } from "drizzle-orm";
+import { eq, ne, desc, sql, and, gte, lte, ilike, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { defineLoggingConfig } from "../middleware/logging";
 import { getClient, runInTransaction, onAfterCommit } from "../transaction-context";
@@ -27,6 +27,7 @@ import { logger } from "../../logger";
 import { storage } from "../index";
 import { isComponentEnabledSync } from "../../services/component-cache";
 import { getRequestContext } from "../../middleware/request-context";
+import { entityMetadataStorage } from "../system/entity-metadata";
 import type { SnapshotNode } from "@shared/snapshots";
 import {
   getEdlsPassportExportPage,
@@ -41,16 +42,6 @@ import {
  */
 function jobGroupsEnabled(): boolean {
   return isComponentEnabledSync("dispatch.job_group");
-}
-
-/**
- * The effective acting user for the current request, or null when there is no
- * request context at all (background jobs, scripts, tests). Masquerading is
- * already resolved by the context middleware, so a masqueraded user is
- * attributed as the actor — the house convention everywhere else.
- */
-function getActingUserId(): string | null {
-  return getRequestContext()?.userId ?? null;
 }
 
 export interface EdlsSheetWithCrews extends EdlsSheet {
@@ -141,6 +132,12 @@ export interface EdlsSheetsFilterOptions {
   jobGroupId?: string;
   facilityId?: string;
   showStatusId?: string;
+  departmentId?: string;
+  /**
+   * Case-insensitive "contains" match on the sheet title (the job number).
+   * A blank string is not a filter — the caller is expected to drop it.
+   */
+  title?: string;
   /**
    * Only sheets whose `changed` timestamp is at or after this instant — i.e.
    * sheets created or edited since that point in time.
@@ -197,6 +194,18 @@ export interface EdlsSheetsStorage {
  * they run, which only holds if the entry commits with the save.
  */
 async function emitSheetSaved(sheet: EdlsSheet, previousStatus: string | null): Promise<void> {
+  // Sheet history is part of the save transaction so the snapshot can read
+  // the exact revision that its export represents. The logging wrapper opts
+  // out for this root method; crew/assignment wrappers contribute their
+  // transactional subrecord touches before this final root mutation.
+  await entityMetadataStorage.recordMutation({
+    tableName: "edls_sheets",
+    entityId: sheet.id,
+    at: new Date(),
+    actorId: getRequestContext()?.userId ?? null,
+    created: previousStatus === null,
+  });
+
   const payload = {
     sheetId: sheet.id,
     previousStatus,
@@ -255,6 +264,15 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       }
       if (filters?.showStatusId) {
         conditions.push(eq(edlsSheets.showStatusId, filters.showStatusId));
+      }
+      if (filters?.departmentId) {
+        conditions.push(eq(edlsSheets.departmentId, filters.departmentId));
+      }
+      if (filters?.title) {
+        // `ilike` needs the wildcards escaped, or a title containing % or _
+        // would match far more than the caller typed.
+        const pattern = `%${filters.title.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+        conditions.push(ilike(edlsSheets.title, pattern));
       }
       if (filters?.changedSince) {
         conditions.push(gte(edlsSheets.changed, filters.changedSince));
@@ -478,17 +496,17 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       
       return runInTransaction(async () => {
         const client = getClient();
-        // `createdBy` / `changed` are storage-owned: the creator is stamped
-        // once here from the acting user (null when there is no request
-        // context, e.g. a background job or script) and `changed` is
-        // refreshed on every save so no caller can forget it.
+        // `changed` is storage-owned: refreshed on every save so no caller can
+        // forget it, and stamped by the DATABASE rather than by `new Date()`.
+        // See the note on `update` below: consumers order it against
+        // timestamps the database wrote, and two clocks would order wrongly.
         //
-        // `changed` is stamped by the DATABASE, not by `new Date()`. See the
-        // note on `update` below: consumers order it against timestamps the
-        // database wrote, and two clocks would order wrongly.
+        // Who created the sheet is NOT recorded here. That is provenance, and
+        // this table is logged, so the framework stamps it in
+        // `entity_metadata` from the acting user.
         const [sheet] = await client
           .insert(edlsSheets)
-          .values({ ...insertSheet, createdBy: getActingUserId(), changed: sql`now()` })
+          .values({ ...insertSheet, changed: sql`now()` })
           .returning();
         
         const crewsWithSheetId = crews.map((c, index) => {
@@ -524,7 +542,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         
         // Update the sheet. `changed` is refreshed on every save — including a
         // crews-only save, where no sheet column changes — so no caller can
-        // forget it. The creator is stamped once at create and never rewritten.
+        // forget it.
         //
         // The stamp comes from the DATABASE (`now()`), deliberately not from
         // `new Date()` on the app host. It is not just a display value: it is
@@ -604,12 +622,15 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
 
 export const edlsSheetsLoggingConfig = defineLoggingConfig<EdlsSheetsStorage>({
   module: 'edls-sheets',
+  table: 'edls_sheets',
   // Note: no module-level stateKey — `before` for update/delete stores the raw
   // sheet row (legacy shape). The explicit `after` hooks on create/update
   // wrap the result as `{ sheet, crews, metadata }` to preserve byte-identical
   // log payloads.
   methods: {
     create: {
+      // emitSheetSaved records the root row before snapshot capture.
+      metadataMode: 'none',
       state: { fallbackId: 'new sheet' },
       getHostEntityId: (_args, result) => result?.id,
       getDescription: async (args, result) => {
@@ -629,6 +650,8 @@ export const edlsSheetsLoggingConfig = defineLoggingConfig<EdlsSheetsStorage>({
       }),
     },
     update: {
+      // emitSheetSaved records the root row after all child mutations.
+      metadataMode: 'none',
       getHostEntityId: (args) => args[0],
       getDescription: async (_args, result, beforeState) => {
         const title = result?.title || beforeState?.title || 'Untitled';

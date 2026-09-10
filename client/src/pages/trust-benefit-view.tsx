@@ -29,12 +29,6 @@ function TrustBenefitDetailsContent() {
               </p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Record ID</label>
-              <p className="text-foreground font-mono text-sm" data-testid="text-benefit-id">
-                {benefit.id}
-              </p>
-            </div>
-            <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Benefit Type</label>
               <p className="text-foreground flex items-center gap-2" data-testid="text-benefit-type-field">
                 {(() => {

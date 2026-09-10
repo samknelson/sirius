@@ -2,17 +2,48 @@ import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import {
   employerPolicyHistory,
+  entityMetadata,
   policies,
+  users,
   type EmployerPolicyHistory,
 } from "@shared/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { StorageLoggingConfig } from "../middleware/logging";
 import { parseYmdParts } from '@shared/utils/date';
+import { sortPolicyHistoryEntries } from './policy-history-order';
 
 /**
  * Stub validator - add validation logic here when needed
  */
 export const validate = createNoopValidator<{ employerId: string; date: string; policyId: string; data?: any }, EmployerPolicyHistory>();
+
+/** The raw table these entries live in, as provenance rows name it. */
+const TABLE_NAME = 'employer_policy_history';
+
+/**
+ * Join condition for an entry's provenance row.
+ *
+ * `entity_id` is unique across the whole table, but the table name is matched
+ * too: a row naming a different table would be provenance for someone else's
+ * record, and this join must produce nothing rather than the wrong answer.
+ */
+const provenanceJoin = and(
+  eq(entityMetadata.entityId, employerPolicyHistory.id),
+  eq(entityMetadata.contextId, TABLE_NAME),
+);
+/**
+ * Display name of the person a provenance row names: "First Last", falling
+ * back to whichever half exists, then the email, then nobody.
+ */
+function personNameFrom(
+  firstName: string | null,
+  lastName: string | null,
+  email: string | null,
+): string | null {
+  const full = [firstName, lastName].filter((part) => part && part.trim() !== "").join(" ");
+  if (full) return full;
+  return email ?? null;
+}
 
 export interface EmployerPolicyHistoryStorage {
   getEmployerPolicyHistory(employerId: string): Promise<any[]>;
@@ -26,14 +57,34 @@ export interface EmployerPolicyHistoryStorage {
 export function createEmployerPolicyHistoryStorage(
   updateEmployerPolicy: (employerId: string, denormPolicyId: string | null) => Promise<any>
 ): EmployerPolicyHistoryStorage {
-  async function syncEmployerCurrentPolicy(employerId: string): Promise<void> {
+  /**
+   * Denormalize the employer's current policy: the first entry in the order
+   * the history page shows.
+   *
+   * `justCreatedId` names an entry inserted by the caller's own transaction,
+   * whose provenance cannot exist yet — see `comparePolicyHistoryEntries`,
+   * which is the one place that order is decided, so that what is written here
+   * and what the page displays cannot part company. Every entry is fetched
+   * rather than the top one, because the order is decided in memory; an
+   * employer's policy history is a handful of rows.
+   */
+  async function syncEmployerCurrentPolicy(
+    employerId: string,
+    justCreatedId?: string,
+  ): Promise<void> {
     const client = getClient();
-    const [mostRecent] = await client
-      .select()
+    const entries = await client
+      .select({
+        id: employerPolicyHistory.id,
+        date: employerPolicyHistory.date,
+        policyId: employerPolicyHistory.policyId,
+        recordedAt: entityMetadata.createdDate,
+      })
       .from(employerPolicyHistory)
-      .where(eq(employerPolicyHistory.employerId, employerId))
-      .orderBy(desc(employerPolicyHistory.date), sql`${employerPolicyHistory.createdAt} DESC NULLS LAST`, desc(employerPolicyHistory.id))
-      .limit(1);
+      .leftJoin(entityMetadata, provenanceJoin)
+      .where(eq(employerPolicyHistory.employerId, employerId));
+
+    const [mostRecent] = sortPolicyHistoryEntries(entries, justCreatedId);
 
     await updateEmployerPolicy(employerId, mostRecent?.policyId || null);
   }
@@ -48,15 +99,29 @@ export function createEmployerPolicyHistoryStorage(
           employerId: employerPolicyHistory.employerId,
           policyId: employerPolicyHistory.policyId,
           data: employerPolicyHistory.data,
-          createdAt: employerPolicyHistory.createdAt,
           policy: policies,
+          // When the entry was recorded, and by whom — the record's own
+          // history, which is where this lives now that the table has no
+          // `created_at` of its own. Null for an entry whose provenance row
+          // has not landed (or was lost): the page says so rather than
+          // showing a date nobody stands behind.
+          recordedAt: entityMetadata.createdDate,
+          recordedByFirstName: users.firstName,
+          recordedByLastName: users.lastName,
+          recordedByEmail: users.email,
         })
         .from(employerPolicyHistory)
         .leftJoin(policies, eq(employerPolicyHistory.policyId, policies.id))
-        .where(eq(employerPolicyHistory.employerId, employerId))
-        .orderBy(desc(employerPolicyHistory.date));
+        .leftJoin(entityMetadata, provenanceJoin)
+        .leftJoin(users, eq(users.id, entityMetadata.createdBy))
+        .where(eq(employerPolicyHistory.employerId, employerId));
 
-      return results;
+      return sortPolicyHistoryEntries(results).map(
+        ({ recordedByFirstName, recordedByLastName, recordedByEmail, ...entry }) => ({
+          ...entry,
+          recordedByName: personNameFrom(recordedByFirstName, recordedByLastName, recordedByEmail),
+        }),
+      );
     },
 
     async getAllEmployerPolicyHistory(): Promise<any[]> {
@@ -84,7 +149,10 @@ export function createEmployerPolicyHistoryStorage(
         .values(data)
         .returning();
       
-      await syncEmployerCurrentPolicy(data.employerId);
+      // The entry that was just written is named to the sync: it is the newest
+      // there is, but its provenance is not written until this transaction
+      // commits, so nothing in the database says so yet.
+      await syncEmployerCurrentPolicy(data.employerId, created.id);
       
       return created;
     },
@@ -125,6 +193,8 @@ export function createEmployerPolicyHistoryStorage(
 
 export const employerPolicyHistoryLoggingConfig: StorageLoggingConfig<EmployerPolicyHistoryStorage> = {
   module: 'employer-policy-history',
+  table: 'employer_policy_history',
+  hostTable: 'employers',
   methods: {
     createEmployerPolicyHistory: {
       enabled: true,

@@ -306,6 +306,7 @@ export function createBaoWithholdingAllocationsStorage(): BaoWithholdingAllocati
 
 export const baoWithholdingAllocationsLoggingConfig: StorageLoggingConfig<BaoWithholdingAllocationsStorage> = {
   module: "sitespecific.bao.withholding-allocations",
+  table: "sitespecific_bao_withholding_allocations",
   methods: {
     consume: {
       enabled: true,

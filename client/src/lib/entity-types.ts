@@ -3,7 +3,6 @@ export interface Role {
   name: string;
   description: string | null;
   sequence?: number;
-  createdAt?: string;
 }
 
 export interface Address {

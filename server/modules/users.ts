@@ -170,8 +170,6 @@ export function registerUserRoutes(
         profileImageUrl: user.profileImageUrl,
         accountStatus: user.accountStatus,
         isActive: user.isActive,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
         lastLogin: user.lastLogin,
       });
     } catch (error) {
@@ -194,7 +192,10 @@ export function registerUserRoutes(
         profileImageUrl: user.profileImageUrl,
         accountStatus: user.accountStatus,
         isActive: user.isActive,
-        createdAt: user.createdAt,
+        // When the account was created, as the record's history tells it.
+        // The list sorts on this, so it is sent with the list rather than
+        // asked for per row.
+        createdDate: user.createdDate,
         lastLogin: user.lastLogin,
         roles: user.roles
       }));
@@ -241,8 +242,7 @@ export function registerUserRoutes(
         firstName: updatedUser?.firstName || user.firstName,
         lastName: updatedUser?.lastName || user.lastName,
         accountStatus: updatedUser?.accountStatus || user.accountStatus,
-        isActive: updatedUser?.isActive ?? user.isActive, 
-        createdAt: updatedUser?.createdAt || user.createdAt 
+        isActive: updatedUser?.isActive ?? user.isActive,
       };
       if (clerkResult.warning) {
         responseData.clerkWarning = clerkResult.warning;
@@ -277,7 +277,6 @@ export function registerUserRoutes(
         profileImageUrl: user.profileImageUrl,
         accountStatus: user.accountStatus,
         isActive: user.isActive, 
-        createdAt: user.createdAt,
         lastLogin: user.lastLogin
       });
     } catch (error) {
@@ -339,7 +338,6 @@ export function registerUserRoutes(
         firstName: user.firstName,
         lastName: user.lastName,
         isActive: user.isActive, 
-        createdAt: user.createdAt,
         lastLogin: user.lastLogin
       });
     } catch (error) {

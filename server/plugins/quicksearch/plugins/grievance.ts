@@ -3,7 +3,11 @@ import { contacts, workers } from "@shared/schema";
 import { grievances, grievanceWorkers } from "@shared/schema/grievance/schema";
 import { registerQuicksearchPlugin } from "../registry";
 import { correlated, type QuicksearchDb } from "../sql";
-import type { QuicksearchContext, QuicksearchPlugin, QuicksearchResult } from "../types";
+import type {
+  QuicksearchContext,
+  QuicksearchPlugin,
+  QuicksearchPluginResult,
+} from "../types";
 
 /**
  * A grievance sirius id starts with the filing date, so a short numeric string
@@ -126,7 +130,7 @@ export const grievanceQuicksearchPlugin: QuicksearchPlugin = {
   requiredPolicy: "staff",
   needsReadOnlyDb: true,
 
-  async search(ctx: QuicksearchContext): Promise<QuicksearchResult[]> {
+  async search(ctx: QuicksearchContext): Promise<QuicksearchPluginResult[]> {
     const plan = planGrievanceSearch(ctx.query);
 
     const rows = await ctx.storage.readOnly.query(async (client) =>
@@ -150,7 +154,6 @@ export const grievanceQuicksearchPlugin: QuicksearchPlugin = {
         id: row.id,
         title: row.siriusId,
         subtitle: subtitleParts.join(" · ") || null,
-        href: `/grievance/${row.id}`,
         matchedOn: describeMatch(row),
       };
     });

@@ -1,6 +1,6 @@
 import { useParams, Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Shield } from "lucide-react";
+import { Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,6 +8,17 @@ import type { TrustProvider } from "@shared/schema";
 import { createContext, useContext, useMemo } from "react";
 import { useProviderTabAccess, ResolvedTab } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
+
+const TRUST_PROVIDER_BACK_LINK = {
+  href: "/trust/providers",
+  label: "Back to Providers",
+  testId: "button-back-to-providers",
+};
 
 interface TrustProviderLayoutContextValue {
   provider: TrustProvider | undefined;
@@ -67,26 +78,10 @@ export default function TrustProviderLayout({ children, activeTab }: TrustProvid
   if (isLoading || !provider) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Shield className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/trust/providers">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-providers">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Providers
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<Shield className="text-primary-foreground" size={16} />}
+          backLink={TRUST_PROVIDER_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -104,26 +99,11 @@ export default function TrustProviderLayout({ children, activeTab }: TrustProvid
   if (error) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Shield className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Trust Provider Not Found</h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/trust/providers">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-providers">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Providers
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<Shield className="text-primary-foreground" size={16} />}
+          label="Trust Provider Not Found"
+          backLink={TRUST_PROVIDER_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -148,28 +128,13 @@ export default function TrustProviderLayout({ children, activeTab }: TrustProvid
     <TrustProviderLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
         {/* Header */}
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Shield className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground" data-testid={`text-provider-name-${provider.id}`}>
-                  {provider.name}
-                </h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/trust/providers">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-providers">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Providers
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<Shield className="text-primary-foreground" size={16} />}
+          title={provider.name}
+          titleTestId={`text-provider-name-${provider.id}`}
+          backLink={TRUST_PROVIDER_BACK_LINK}
+          recordId={provider.id}
+        />
 
         {/* Main Tab Navigation - rendered dynamically from registry */}
         <div className="bg-card border-b border-border">

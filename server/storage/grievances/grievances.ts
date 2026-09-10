@@ -1260,6 +1260,8 @@ async function describeGrievance(
  */
 export const grievanceLoggingConfig: StorageLoggingConfig<GrievanceStorage> = {
   module: "grievances",
+  table: "grievances",
+  hostTable: "grievances",
   methods: {
     create: {
       enabled: true,
@@ -1292,12 +1294,18 @@ export const grievanceLoggingConfig: StorageLoggingConfig<GrievanceStorage> = {
     },
     addWorkerForGrievance: {
       enabled: true,
+      table: "grievance_workers",
+      // The log's entity is the parent, not the row written here.
+      metadataEntityId: () => undefined,
       getEntityId: (args) => args[1],
       getHostEntityId: (args) => args[0],
       getDescription: async () => `Linked worker to grievance`,
     },
     updateWorker: {
       enabled: true,
+      table: "grievance_workers",
+      // The log's entity is the parent, not the row written here.
+      metadataEntityId: () => undefined,
       getEntityId: (args) => args[1],
       getHostEntityId: (args) => args[0],
       after: async (_args, result) => result,
@@ -1305,12 +1313,18 @@ export const grievanceLoggingConfig: StorageLoggingConfig<GrievanceStorage> = {
     },
     removeWorker: {
       enabled: true,
+      table: "grievance_workers",
+      // The log's entity is the parent, not the row written here.
+      metadataEntityId: () => undefined,
       getEntityId: (args) => args[1],
       getHostEntityId: (args) => args[0],
       getDescription: async () => `Unlinked worker from grievance`,
     },
     addEmployer: {
       enabled: true,
+      table: "grievance_employers",
+      // The log's entity is the parent, not the row written here.
+      metadataEntityId: () => undefined,
       getEntityId: (args) => args[1],
       getHostEntityId: (args) => args[0],
       after: async (_args, result) => result,
@@ -1318,12 +1332,17 @@ export const grievanceLoggingConfig: StorageLoggingConfig<GrievanceStorage> = {
     },
     removeEmployer: {
       enabled: true,
+      table: "grievance_employers",
+      // The log's entity is the parent, not the row written here.
+      metadataEntityId: () => undefined,
       getEntityId: (args) => args[1],
       getHostEntityId: (args) => args[0],
       getDescription: async () => `Unlinked employer from grievance`,
     },
     addUser: {
       enabled: true,
+      table: "grievance_users",
+      metadataMode: "created",
       getEntityId: (_args, result) => result?.id,
       getHostEntityId: (args) => args[0],
       after: async (_args, result) => result,
@@ -1331,6 +1350,7 @@ export const grievanceLoggingConfig: StorageLoggingConfig<GrievanceStorage> = {
     },
     updateUser: {
       enabled: true,
+      table: "grievance_users",
       getEntityId: (args) => args[1],
       getHostEntityId: (args) => args[0],
       after: async (_args, result) => result,
@@ -1338,12 +1358,16 @@ export const grievanceLoggingConfig: StorageLoggingConfig<GrievanceStorage> = {
     },
     removeUser: {
       enabled: true,
+      table: "grievance_users",
+      metadataMode: "deleted",
       getEntityId: (args) => args[1],
       getHostEntityId: (args) => args[0],
       getDescription: async () => `Removed user from grievance`,
     },
     addComplaint: {
       enabled: true,
+      table: "grievance_complaints",
+      metadataMode: "created",
       getEntityId: (_args, result) => result?.id,
       getHostEntityId: (args) => args[0],
       after: async (_args, result) => result,
@@ -1351,6 +1375,7 @@ export const grievanceLoggingConfig: StorageLoggingConfig<GrievanceStorage> = {
     },
     updateComplaint: {
       enabled: true,
+      table: "grievance_complaints",
       getEntityId: (args) => args[1],
       getHostEntityId: (args) => args[0],
       after: async (_args, result) => result,
@@ -1358,12 +1383,16 @@ export const grievanceLoggingConfig: StorageLoggingConfig<GrievanceStorage> = {
     },
     removeComplaint: {
       enabled: true,
+      table: "grievance_complaints",
+      metadataMode: "deleted",
       getEntityId: (args) => args[1],
       getHostEntityId: (args) => args[0],
       getDescription: async () => `Removed complaint from grievance`,
     },
     addRemedy: {
       enabled: true,
+      table: "grievance_remedies",
+      metadataMode: "created",
       getEntityId: (_args, result) => result?.id,
       getHostEntityId: (args) => args[0],
       after: async (_args, result) => result,
@@ -1371,6 +1400,7 @@ export const grievanceLoggingConfig: StorageLoggingConfig<GrievanceStorage> = {
     },
     updateRemedy: {
       enabled: true,
+      table: "grievance_remedies",
       getEntityId: (args) => args[1],
       getHostEntityId: (args) => args[0],
       after: async (_args, result) => result,
@@ -1378,6 +1408,8 @@ export const grievanceLoggingConfig: StorageLoggingConfig<GrievanceStorage> = {
     },
     removeRemedy: {
       enabled: true,
+      table: "grievance_remedies",
+      metadataMode: "deleted",
       getEntityId: (args) => args[1],
       getHostEntityId: (args) => args[0],
       getDescription: async () => `Removed remedy from grievance`,

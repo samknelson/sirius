@@ -20,13 +20,17 @@ async function main() {
 
     const pepper = "test-pepper";
     const hash1 = await bcrypt.hash("password-one" + pepper, 12);
-    const id1 = await storage.authIdentities.upsertLocalPasswordHash(user.id, email.toUpperCase(), hash1);
+    const first = await storage.authIdentities.upsertLocalPasswordHash(user.id, email.toUpperCase(), hash1);
+    const id1 = first.identity;
+    if (!first.created) throw new Error("create path did not report creating the identity");
     if (id1.externalId !== email.toLowerCase()) throw new Error("externalId not lowercased");
     if (id1.providerType !== "local") throw new Error("wrong providerType");
     console.log("PASS create path, externalId lowercased");
 
     const hash2 = await bcrypt.hash("password-two" + pepper, 12);
-    const id2 = await storage.authIdentities.upsertLocalPasswordHash(user.id, email, hash2);
+    const second = await storage.authIdentities.upsertLocalPasswordHash(user.id, email, hash2);
+    const id2 = second.identity;
+    if (second.created) throw new Error("update path reported a creation");
     if (id2.id !== id1.id) throw new Error("update path created a new row");
     if (id2.passwordHash !== hash2) throw new Error("hash not replaced");
     console.log("PASS update path, same row, hash replaced");

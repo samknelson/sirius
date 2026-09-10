@@ -118,6 +118,8 @@ const entityId = (args: any[], result: WorkerAat | undefined, before: unknown) =
 
 export const workerAatLoggingConfig = defineLoggingConfig<WorkerAatStorage>({
   module: 'worker-aat',
+  table: 'worker_aat',
+  hostTable: 'workers',
   state: { key: 'record' },
   methods: {
     ensureAccessUuid: {

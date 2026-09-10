@@ -18,10 +18,18 @@ import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerCommRoutes } from "./modules/comm";
 import { registerGrievanceRoutes } from "./modules/grievances/grievances";
 import { registerEntityFileContexts } from "./modules/entity-files-contexts";
+import { registerCatalogRoutes } from "./modules/catalogs";
+import { registerEntityFileAreasCatalog } from "./services/entity-files/catalog";
+import { registerEntityNoteAreasCatalog } from "./services/entity-notes/catalog";
+import { registerRecordHistoryAreasCatalog } from "./storage/entity-metadata-record-catalog";
+import { registerOptionsListsCatalog } from "./storage/unified-options-catalog";
 import { registerEntityFileRoutes } from "./modules/entity-files";
+import { registerEntityMetadataRoutes } from "./modules/entity-metadata";
+import { registerRecordGoRoutes } from "./modules/record-go";
 import { wireEntityFilesFileReadAccess } from "./services/entity-files/file-read-access";
 import { initEntityFilesDeleteCleanup } from "./services/entity-files/delete-cleanup";
 import { assertFileContextTablesComplete } from "./storage/entity-files-context-tables";
+import { assertEntityMetadataRecordTablesComplete } from "./storage/entity-metadata-record-tables";
 import { registerGrievanceTimelineTemplateRoutes } from "./modules/grievances/grievance-timeline-templates";
 import { registerEmployerContactRoutes } from "./modules/employers/contacts";
 import { registerTrustBenefitsRoutes } from "./modules/trust/benefits";
@@ -83,6 +91,7 @@ import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
 import { registerEventNotifierMetaRoutes } from "./modules/event-notifier-meta";
 import { registerTokenStudioRoutes } from "./modules/token-studio";
+import { registerLetterTemplateRoutes } from "./modules/letter-templates";
 import { registerCommComposeRoutes } from "./modules/comm-compose";
 import { registerCardcheckDefinitionsRoutes } from "./modules/cardcheck-definitions";
 import { registerCardchecksRoutes } from "./modules/cardchecks";
@@ -155,10 +164,13 @@ import { registerWorkerEdlsRoutes } from "./modules/edls/workers";
 import { registerEdlsPublicScheduleRoutes } from "./modules/edls/public-schedule";
 import { registerWebServiceDispatcher } from "./modules/webservices";
 import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
-import { registerTerminologyRoutes } from "./modules/terminology";
+import { registerTerminologyCatalog } from "./modules/terminology-catalog";
+import { registerTokenContextsCatalog } from "./modules/token-contexts-catalog";
+import { registerNotifierTokenContexts } from "./plugins/event-notifier/token-contexts";
 import { registerCompaniesRoutes } from "./modules/employers/companies";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
+import { authorizeRecordGoRequest } from "./services/record-go-access";
 import { addressValidationService } from "./services/comm/validators/address";
 import { phoneValidationService, DEFAULT_REVALIDATE_AFTER_DAYS } from "./services/comm/validators/phone";
 import { serviceRegistry } from "./services/service-registry";
@@ -314,6 +326,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register user management routes
   registerUserRoutes(app, requireAuth, requirePermission);
+  registerLetterTemplateRoutes(app, requireAccess);
 
   // Register employer user settings routes
   registerEmployerUserSettingsRoutes(app, requireAuth, requirePermission);
@@ -346,10 +359,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerEntityFileContexts();
   registerBaoDcEntityFileContext();
   registerBaoCaseEntityFileContext();
+  registerEntityFileAreasCatalog();
   assertFileContextTablesComplete();
   initEntityFilesDeleteCleanup();
   wireEntityFilesFileReadAccess();
   registerEntityFileRoutes(app, requireAuth);
+  registerEntityMetadataRoutes(app, requireAuth, requirePermission);
+
+  // Deliberately not behind `requireAuth`: a catalog that declares itself
+  // readable before sign-in has to actually be readable before sign-in, and
+  // every other one refuses an anonymous reader on its own.
+  registerCatalogRoutes(app);
+  registerRecordGoRoutes(app, requireAuth, authorizeRecordGoRequest);
 
   // Register grievance timeline template routes
   registerGrievanceTimelineTemplateRoutes(app, requireAuth, requireAccess);
@@ -371,7 +392,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register trust provider contacts routes
   registerTrustProviderContactRoutes(app, requireAuth, requirePermission);
   
-  // Register consolidated options routes (/api/options/:type)
+  // Register consolidated options routes (/api/options/:type). What lists exist
+  // and what they are called is the `options-lists` catalog, not a route here.
+  registerOptionsListsCatalog();
   registerConsolidatedOptionsRoutes(app);
   
   // Register worker IDs routes
@@ -505,7 +528,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerPostalConfigRoutes(app);
 
   // Register terminology routes
-  registerTerminologyRoutes(app, requireAuth, requirePermission, requireAccess);
+  // Terminology has no routes of its own: the configured wording is read and
+  // written through the generic variable routes, and what terms exist is the
+  // `terminology` catalog.
+  registerTerminologyCatalog();
+
+  // What each Template Studio surface's templates are about. The
+  // notifier family is generated from the notifier registry (one context
+  // per token-templated notifier); the fixed surfaces — bulk messaging
+  // and the compose screens — register their own from their route
+  // modules, beside the roots they name.
+  registerNotifierTokenContexts();
+  registerTokenContextsCatalog();
 
   // Register bootstrap routes (no auth required - intentionally public for initial setup)
   registerBootstrapRoutes(app);
@@ -1989,6 +2023,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Entity notes framework: register contexts, assert each one has a table
   // binding for the orphan sweep, then the generic routes.
   registerEntityNoteContexts();
+  registerEntityNoteAreasCatalog();
   assertNoteContextTablesComplete();
   initEntityNotesDeleteCleanup();
   registerEntityNotesRoutes(app, requireAuth);
@@ -2082,6 +2117,19 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register companies routes
   registerCompaniesRoutes(app, requireAuth);
+
+  // Every logged table must be declared in the record history registry.
+  // Asserted here, at the end of route registration, rather than beside the
+  // entity metadata routes: a logging config is recorded as it is wired, and
+  // the dispatch, ledger, contact and options modules wire theirs while
+  // registering their own routes above. Anything wired later still than this
+  // — a component's storage brought up on enable — is not visible from here
+  // and is caught the next time the process starts with that component on.
+  assertEntityMetadataRecordTablesComplete();
+
+  // Declared after the assertion above, so the catalog can only ever be built
+  // from a registry that has just been proven complete and self-consistent.
+  registerRecordHistoryAreasCatalog();
 
   const httpServer = existingServer || createServer(app);
 

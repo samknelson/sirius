@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { contacts, comm } from "../../schema";
+import { isSafeRelativePath } from "../../delivery-fields";
 
 export const bulkMediumEnum = pgEnum("bulk_medium", ["sms", "email", "inapp", "postal"]);
 
@@ -41,7 +42,9 @@ export const bulkMessagesEmail = pgTable("bulk_messages_email", {
   fromName: varchar("from_name"),
   replyTo: text("reply_to"),
   subject: text("subject"),
-  bodyText: text("body_text"),
+  // No plain-text column: the plain-text alternative part of an email is
+  // DERIVED from the HTML body at send (see `deriveEmailPlainText`), per
+  // recipient, so it is never authored and never stored.
   bodyHtml: text("body_html"),
   data: jsonb("data"),
 });
@@ -105,9 +108,26 @@ export const bulkMessagesInapp = pgTable("bulk_messages_inapp", {
   data: jsonb("data"),
 });
 
-export const insertBulkMessagesInappSchema = createInsertSchema(bulkMessagesInapp).omit({
-  id: true,
-});
+export const insertBulkMessagesInappSchema = createInsertSchema(bulkMessagesInapp)
+  .omit({
+    id: true,
+  })
+  .extend({
+    // The same rule the event notifier enforces on its in-app link, for
+    // the same reason: one bell opens both, and it hands the address to
+    // the browser. A token may follow the leading "/" but may not
+    // replace it — what the token RENDERS to is checked again at send,
+    // where an unsafe link is dropped.
+    linkUrl: z
+      .string()
+      .max(2048)
+      .refine((value) => value.trim() === "" || isSafeRelativePath(value.trim()), {
+        message:
+          'Link URL must be a relative path starting with "/" (not "//" or an absolute URL)',
+      })
+      .nullable()
+      .optional(),
+  });
 
 export type BulkMessagesInapp = typeof bulkMessagesInapp.$inferSelect;
 export type InsertBulkMessagesInapp = z.infer<typeof insertBulkMessagesInappSchema>;

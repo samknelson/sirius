@@ -247,12 +247,32 @@ export function createWizardStorage(): WizardStorage {
   };
 }
 
+/**
+ * Only the wizard record itself is logged.
+ *
+ * The report-data methods below (`saveReportData`, `deleteReportData`,
+ * `deleteReportDataById`) are deliberately absent, and that is the decision
+ * about `wizard_report_data`: its rows are bulk output of a run, written one
+ * per result row — thousands for a single import — and read back only as the
+ * run's result set. They are not records anyone edits, so there is nothing to
+ * ask "who changed this?" about, and putting them in the framework would turn
+ * one wizard run into one log entry and one provenance row per row of output.
+ * The run itself is already logged, on the wizard, which is the grain that
+ * answers the question a person actually asks.
+ *
+ * `wizard_report_data.created_at` therefore stays. It is not provenance: the
+ * data-retention purge reads it to decide which output has outlived its
+ * wizard's retention setting, and it is the order the rows are read back in.
+ * See `docs/provenance-columns.md` (KEEP), same call as `ebs_status`.
+ */
 export const wizardLoggingConfig: StorageLoggingConfig<WizardStorage> = {
   module: 'wizards',
+  table: 'wizards',
   methods: {
     create: {
       enabled: true,
       getEntityId: (args) => args[0]?.type || 'new wizard',
+      metadataEntityId: (_args, result) => result?.id,
       getHostEntityId: (args, result) => {
         return result?.entityId || null;
       },

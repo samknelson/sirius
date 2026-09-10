@@ -5,6 +5,7 @@ import {
   roles,
   userRoles,
   rolePermissions,
+  entityMetadata,
   pluginConfigsDashboard,
   pluginConfigsQuicksearch,
   type User,
@@ -17,7 +18,11 @@ import {
   type AssignRole,
   type AssignPermission,
 } from "@shared/schema";
-import { permissionRegistry, type PermissionDefinition } from "@shared/permissions";
+import {
+  initializePermissions,
+  permissionRegistry,
+  type PermissionDefinition,
+} from "@shared/permissions";
 import { eq, and, sql, inArray, ilike, exists, count, arrayContains } from "drizzle-orm";
 import { esigs } from "@shared/schema";
 import { runInTransaction } from './transaction-context';
@@ -66,7 +71,12 @@ export interface UserStorage {
   deleteUser(id: string): Promise<boolean>;
   deleteUserAccount(id: string): Promise<boolean>;
   getAllUsers(): Promise<User[]>;
-  getAllUsersWithRoles(): Promise<(User & { roles: Role[] })[]>;
+  /**
+   * Every user with their roles, and when the account was created as the
+   * record's history tells it (`createdDate`, null when nothing recorded it).
+   * The accounts themselves no longer carry that date.
+   */
+  getAllUsersWithRoles(): Promise<(User & { roles: Role[]; createdDate: Date | null })[]>;
   searchUsers(query: string, roleIds?: string[], limit?: number): Promise<(User & { roles: Role[] })[]>;
   userHasAnyRole(userId: string, roleIds: string[]): Promise<boolean>;
   hasAnyUsers(): Promise<boolean>;
@@ -141,7 +151,6 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
             firstName: userData.firstName,
             lastName: userData.lastName,
             profileImageUrl: userData.profileImageUrl,
-            updatedAt: new Date(),
           },
         })
         .returning();
@@ -201,7 +210,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
       const client = getClient();
       const result = await client
         .update(users)
-        .set({ email: retiredEmail, updatedAt: new Date() })
+        .set({ email: retiredEmail })
         .where(and(
           eq(users.id, id),
           eq(users.isActive, false),
@@ -269,7 +278,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
       return client.select().from(users);
     },
 
-    async getAllUsersWithRoles(): Promise<(User & { roles: Role[] })[]> {
+    async getAllUsersWithRoles(): Promise<(User & { roles: Role[]; createdDate: Date | null })[]> {
       const client = getClient();
       const allUsers = await client.select().from(users);
       
@@ -280,7 +289,6 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
           roleName: roles.name,
           roleDescription: roles.description,
           roleSequence: roles.sequence,
-          roleCreatedAt: roles.createdAt,
         })
         .from(userRoles)
         .innerJoin(roles, eq(userRoles.roleId, roles.id));
@@ -294,14 +302,25 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
           name: row.roleName,
           description: row.roleDescription,
           sequence: row.roleSequence,
-          createdAt: row.roleCreatedAt,
         });
         return acc;
       }, {} as Record<string, Role[]>);
-      
+
+      // When each account came into being, from the record's history — the
+      // accounts themselves no longer carry the date. Null for an account
+      // nothing has recorded, which the caller has to be able to show.
+      const createdRows = await client
+        .select({ entityId: entityMetadata.entityId, createdDate: entityMetadata.createdDate })
+        .from(entityMetadata)
+        .where(eq(entityMetadata.contextId, "users"));
+      const createdByUser = new Map(
+        createdRows.map((row) => [row.entityId, row.createdDate]),
+      );
+
       return allUsers.map(user => ({
         ...user,
-        roles: rolesByUser[user.id] || []
+        roles: rolesByUser[user.id] || [],
+        createdDate: createdByUser.get(user.id) ?? null,
       }));
     },
 
@@ -359,7 +378,6 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
           roleName: roles.name,
           roleDescription: roles.description,
           roleSequence: roles.sequence,
-          roleCreatedAt: roles.createdAt,
         })
         .from(userRoles)
         .innerJoin(roles, eq(userRoles.roleId, roles.id))
@@ -372,7 +390,6 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
           name: row.roleName,
           description: row.roleDescription,
           sequence: row.roleSequence,
-          createdAt: row.roleCreatedAt,
         });
         return acc;
       }, {} as Record<string, Role[]>);
@@ -421,7 +438,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
       const client = getClient();
       const [user] = await client
         .update(users)
-        .set({ data, updatedAt: new Date() })
+        .set({ data })
         .where(eq(users.id, id))
         .returning();
       return user || undefined;
@@ -510,16 +527,22 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
       return role || undefined;
     },
 
-    // Permission operations (using registry)
+    // Permission operations (using registry). Core permissions are initialized
+    // here as a defensive boundary for callers that read the catalog before
+    // the full application bootstrap has completed. Component permissions are
+    // still added by the shared bootstrap after its component cache is ready.
     async getAllPermissions(): Promise<PermissionDefinition[]> {
+      initializePermissions();
       return permissionRegistry.getAll();
     },
 
     async getPermissionByKey(key: string): Promise<PermissionDefinition | undefined> {
+      initializePermissions();
       return permissionRegistry.getByKey(key);
     },
 
     permissionExists(key: string): boolean {
+      initializePermissions();
       return permissionRegistry.exists(key);
     },
 
@@ -550,7 +573,6 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
           name: roles.name,
           description: roles.description,
           sequence: roles.sequence,
-          createdAt: roles.createdAt,
         })
         .from(userRoles)
         .innerJoin(roles, eq(userRoles.roleId, roles.id))
@@ -570,8 +592,6 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
           profileImageUrl: users.profileImageUrl,
           accountStatus: users.accountStatus,
           isActive: users.isActive,
-          createdAt: users.createdAt,
-          updatedAt: users.updatedAt,
           lastLogin: users.lastLogin,
           timezone: users.timezone,
           data: users.data,
@@ -585,6 +605,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     // Role-Permission assignment operations
     async assignPermissionToRole(assignment: AssignPermission): Promise<RolePermission> {
       const client = getClient();
+      initializePermissions();
       if (!permissionRegistry.exists(assignment.permissionKey)) {
         throw new Error(`Permission '${assignment.permissionKey}' does not exist in the registry`);
       }
@@ -598,6 +619,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
 
     async assignPermissionsToRoleBulk(roleId: string, permissionKeys: string[]): Promise<RolePermission[]> {
       const client = getClient();
+      initializePermissions();
       if (permissionKeys.length === 0) {
         return [];
       }
@@ -644,6 +666,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
 
     async getRolePermissions(roleId: string): Promise<PermissionDefinition[]> {
       const client = getClient();
+      initializePermissions();
       const result = await client
         .select({
           permissionKey: rolePermissions.permissionKey,
@@ -664,7 +687,6 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
           name: roles.name,
           description: roles.description,
           sequence: roles.sequence,
-          createdAt: roles.createdAt,
         })
         .from(rolePermissions)
         .innerJoin(roles, eq(rolePermissions.roleId, roles.id))
@@ -685,7 +707,6 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
             name: roles.name,
             description: roles.description,
             sequence: roles.sequence,
-            createdAt: roles.createdAt,
           }
         })
         .from(rolePermissions)
@@ -703,6 +724,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     // Authorization helpers
     async getUserPermissions(userId: string): Promise<PermissionDefinition[]> {
       const client = getClient();
+      initializePermissions();
       const result = await client
         .select({
           permissionKey: rolePermissions.permissionKey,
@@ -743,8 +765,6 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
           profileImageUrl: users.profileImageUrl,
           accountStatus: users.accountStatus,
           isActive: users.isActive,
-          createdAt: users.createdAt,
-          updatedAt: users.updatedAt,
           lastLogin: users.lastLogin,
           timezone: users.timezone,
           data: users.data,
@@ -785,8 +805,6 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
           profileImageUrl: users.profileImageUrl,
           accountStatus: users.accountStatus,
           isActive: users.isActive,
-          createdAt: users.createdAt,
-          updatedAt: users.updatedAt,
           lastLogin: users.lastLogin,
           data: users.data,
           timezone: users.timezone,
@@ -819,9 +837,11 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
  */
 export const userLoggingConfig = defineLoggingConfig<UserStorage>({
   module: 'users',
+  table: 'users',
   methods: {
     createUser: {
       getEntityId: (args) => args[0]?.email || 'new user',
+      metadataEntityId: (_args, result) => result?.id,
       getHostEntityId: (_args, result) => result?.id, // User ID is the host
     },
     updateUser: {
@@ -874,13 +894,16 @@ export const userLoggingConfig = defineLoggingConfig<UserStorage>({
     },
     createRole: {
       enabled: true,
+      table: 'roles',
       getEntityId: (args) => args[0]?.name || 'new role',
+      metadataEntityId: (_args, result) => result?.id,
       after: async (args, result, storage) => {
         return result; // Capture created role
       }
     },
     updateRole: {
       enabled: true,
+      table: 'roles',
       getEntityId: (args) => args[0], // Role ID
       before: async (args, storage) => {
         return await storage.getRole(args[0]); // Current state
@@ -904,6 +927,7 @@ export const userLoggingConfig = defineLoggingConfig<UserStorage>({
     },
     deleteRole: {
       enabled: true,
+      table: 'roles',
       getEntityId: (args) => args[0], // Role ID
       before: async (args, storage) => {
         return await storage.getRole(args[0]); // Capture what's being deleted
@@ -911,6 +935,7 @@ export const userLoggingConfig = defineLoggingConfig<UserStorage>({
     },
     updateRoleSequence: {
       enabled: true,
+      table: 'roles',
       getEntityId: (args) => args[0], // Role ID
       before: async (args, storage) => {
         return await storage.getRole(args[0]); // Current state
@@ -921,6 +946,10 @@ export const userLoggingConfig = defineLoggingConfig<UserStorage>({
     },
     assignRoleToUser: {
       enabled: true,
+      table: 'user_roles',
+      hostTable: 'users',
+      // The log's entity is the parent, not the row written here.
+      metadataEntityId: () => undefined,
       getEntityId: (args) => args[0]?.userId || 'user',
       getHostEntityId: (args, result) => result?.userId || args[0]?.userId, // User ID is the host
       after: async (args, result, storage) => {
@@ -937,6 +966,10 @@ export const userLoggingConfig = defineLoggingConfig<UserStorage>({
     },
     unassignRoleFromUser: {
       enabled: true,
+      table: 'user_roles',
+      hostTable: 'users',
+      // The log's entity is the parent, not the row written here.
+      metadataEntityId: () => undefined,
       getEntityId: (args) => args[0], // User ID
       getHostEntityId: (args) => args[0], // User ID is the host
       before: async (args, storage) => {
@@ -956,6 +989,9 @@ export const userLoggingConfig = defineLoggingConfig<UserStorage>({
     },
     assignPermissionToRole: {
       enabled: true,
+      table: 'role_permissions',
+      // The log's entity is the parent, not the row written here.
+      metadataEntityId: () => undefined,
       getEntityId: (args) => args[0]?.roleId || 'role',
       after: async (args, result, storage) => {
         return result; // Capture permission assignment
@@ -969,6 +1005,9 @@ export const userLoggingConfig = defineLoggingConfig<UserStorage>({
     },
     unassignPermissionFromRole: {
       enabled: true,
+      table: 'role_permissions',
+      // The log's entity is the parent, not the row written here.
+      metadataEntityId: () => undefined,
       getEntityId: (args) => args[0], // Role ID
       before: async (args, storage) => {
         // Capture the permissions before removal

@@ -107,6 +107,11 @@ const RULES: Rule[] = [
     summary: "browser code formats dates through the zone-aware wrapper",
   },
   {
+    id: "provenance-columns",
+    script: "scripts/dev/check-provenance-columns.ts",
+    summary: "no new bespoke created/modified column outside the documented keep list",
+  },
+  {
     id: "browser-timezone",
     script: "scripts/dev/check-browser-timezone.ts",
     summary: "only the resolver plumbing asks what zone the browser is in",

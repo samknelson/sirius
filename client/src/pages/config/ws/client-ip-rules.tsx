@@ -14,16 +14,13 @@ import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Plus, Shield, Trash2, Network } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { WsClientLayout, useWsClientLayout } from "@/components/layouts/WsClientLayout";
+import { RecordCreatedStamp } from "@/components/shared/RecordCreatedStamp";
+import { RecordMetadataAccess } from "@/components/shared/RecordMetadataAccess";
+import type { RecordMetadataStamp } from "@/components/shared/RecordHistoryDialog";
 import type { WsClientIpRule } from "@shared/schema";
 
-function formatDate(dateStr: string | null | undefined): string {
-  if (!dateStr) return "—";
-  try {
-    return new Date(dateStr).toLocaleString();
-  } catch {
-    return dateStr;
-  }
-}
+/** An IP rule as the admin API answers with it: the row plus its created stamp. */
+type WsClientIpRuleRecord = WsClientIpRule & { created: RecordMetadataStamp };
 
 function IpRulesContent() {
   const params = useParams<{ id: string }>();
@@ -32,10 +29,10 @@ function IpRulesContent() {
   const { client } = useWsClientLayout();
 
   const [isCreateIpOpen, setIsCreateIpOpen] = useState(false);
-  const [deleteIpTarget, setDeleteIpTarget] = useState<WsClientIpRule | null>(null);
+  const [deleteIpTarget, setDeleteIpTarget] = useState<WsClientIpRuleRecord | null>(null);
   const [ipForm, setIpForm] = useState({ ipAddress: "", description: "" });
 
-  const { data: ipRules = [], isLoading: ipRulesLoading } = useQuery<WsClientIpRule[]>({
+  const { data: ipRules = [], isLoading: ipRulesLoading } = useQuery<WsClientIpRuleRecord[]>({
     queryKey: ["/api/admin/ws-clients", params.id, "ip-rules"],
     enabled: !!params.id,
   });
@@ -112,7 +109,9 @@ function IpRulesContent() {
                   <TableHead>IP Address</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Added</TableHead>
+                  <RecordMetadataAccess adminBypass>
+                    <TableHead>Added</TableHead>
+                  </RecordMetadataAccess>
                   <TableHead className="w-[80px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -134,9 +133,11 @@ function IpRulesContent() {
                         <Badge variant="secondary">Inactive</Badge>
                       )}
                     </TableCell>
-                    <TableCell className="text-sm" data-testid={`text-ip-created-${rule.id}`}>
-                      {formatDate(rule.createdAt as unknown as string)}
-                    </TableCell>
+                    <RecordMetadataAccess adminBypass>
+                      <TableCell className="text-sm">
+                        <RecordCreatedStamp stamp={rule.created} testId={`text-ip-created-${rule.id}`} />
+                      </TableCell>
+                    </RecordMetadataAccess>
                     <TableCell>
                       <Button
                         variant="ghost"

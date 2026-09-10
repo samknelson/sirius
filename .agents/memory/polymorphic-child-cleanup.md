@@ -44,3 +44,17 @@ and report `{ deleted, failed[] }` rather than aborting the batch.
 - A new sweep gets its own cron plugin id; a cron id is persisted as a
   singleton config row, so folding a second sweep into an existing id retires
   the operator's ability to schedule them separately.
+- RENAMING a cron plugin id is a data change, never code-only: the id is the
+  persisted `plugin_configs.plugin_id` (schedule + enabled flag) and the
+  `cron_job_runs.job_name` of every past run. Without a migration carrying
+  both, the old row goes dead (boot warns "no plugin registered") and the
+  renamed job reseeds on its default schedule with no history. Leave the
+  stored per-row `name` alone — it is operator-editable, and the admin list
+  shows the registered display name beside it.
+- A sweep whose target table comes from DATA (a `table_name` column) cannot
+  use a context→table map. It must judge the name itself — plain lowercase
+  identifier, the table exists, and its `id` column actually holds record ids
+  (check the declared type AND sample real values). A table keyed by
+  something else joins against nothing, so every one of its rows looks
+  orphaned; refuse and report it instead. Keep that judgment in a
+  dependency-free leaf so it can be tested without a database.

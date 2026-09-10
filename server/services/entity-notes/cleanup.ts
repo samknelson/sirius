@@ -4,7 +4,7 @@ import { logger } from "../../logger";
 /**
  * Removal of notes, one note at a time — the ONE definition of "remove these
  * notes", shared by the immediate cleanup that runs when a record is deleted
- * (./delete-cleanup.ts) and by the nightly `notes_orphan_sweep` cron.
+ * (./delete-cleanup.ts) and by the nightly `entity_notes_orphan_sweep` cron.
  *
  * Individual, never bulk: every removal goes through
  * `storage.entityNotes.delete`, which is the logged storage method, so the

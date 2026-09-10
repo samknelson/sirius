@@ -1,13 +1,24 @@
 import { createContext, useContext, ReactNode } from "react";
-import { FileText, ArrowLeft } from "lucide-react";
+import { FileText } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Policy } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
 import { usePolicyTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+
+const POLICY_BACK_LINK = {
+  href: "/config/policies",
+  label: "Back to Policies",
+  testId: "button-back-to-policies",
+};
 
 interface PolicyLayoutContextValue {
   policy: Policy;
@@ -56,27 +67,11 @@ export function PolicyLayout({ activeTab, children }: PolicyLayoutProps) {
   if (policyError) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <FileText className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">Policy Not Found</span>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/config/policies">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-policies">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Policies
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<FileText className="text-primary-foreground" size={16} />}
+          label="Policy Not Found"
+          backLink={POLICY_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -103,26 +98,10 @@ export function PolicyLayout({ activeTab, children }: PolicyLayoutProps) {
   if (isLoading || !policy) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <FileText className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/config/policies">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-policies">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Policies
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<FileText className="text-primary-foreground" size={16} />}
+          backLink={POLICY_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -146,28 +125,13 @@ export function PolicyLayout({ activeTab, children }: PolicyLayoutProps) {
   return (
     <PolicyLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <FileText className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground" data-testid={`text-policy-name-${policy.id}`}>
-                  {policy.name || policy.siriusId}
-                </h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/config/policies">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-policies">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Policies
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<FileText className="text-primary-foreground" size={16} />}
+          title={policy.name || policy.siriusId}
+          titleTestId={`text-policy-name-${policy.id}`}
+          backLink={POLICY_BACK_LINK}
+          recordId={policy.id}
+        />
 
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

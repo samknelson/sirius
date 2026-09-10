@@ -12,6 +12,22 @@ export { type EntityFilesStorage, type EntityFileWithFile, createEntityFilesStor
 export { type GrievanceStatusHistoryStorage, type GrievanceStatusHistoryItem, createGrievanceStatusHistoryStorage, grievanceStatusHistoryLoggingConfig } from "./grievances/grievance-status-history";
 export { type GrievanceContractStorage, type GrievanceContractLink, type GrievanceLinkedSection, type CatalogArticle, type CatalogSection, createGrievanceContractStorage, grievanceContractLoggingConfig } from "./grievances/grievance-contract-links";
 export { type LogsStorage, type LogsQueryParams, type LogsResult, type LogFilters, type HostEntityLogsParams, createLogsStorage } from "./system/logs";
+export {
+  type EntityMetadataAdminStorage,
+  type MetadataListRow,
+  type MetadataListQuery,
+  type MetadataListResult,
+  type MetadataSortColumn,
+  type MetadataContextCount,
+  type MetadataBackfillResult,
+  createEntityMetadataAdminStorage,
+} from "./system/entity-metadata-admin";
+export {
+  type EntityMetadataSeedStorage,
+  type ProvenanceSeedSpec,
+  type ProvenanceSeedResult,
+  createEntityMetadataSeedStorage,
+} from "./system/entity-metadata-seed";
 export { type WorkerBanStorage, createWorkerBanStorage } from "./worker-bans";
 export {
   type EntityNotesStorage,
@@ -28,3 +44,4 @@ export { type WcStatsStorage, type WcStatsDay, type WcStatsService, type WcStats
 export { type WsStatsStorage, type WsStatsDay, type WsStatsPlugin, type WsStatsPluginOperation, type WsStatsClient, type WsStatsDimension, type WsStatsDimensionCalls, type WsStatsFilters, type WsStatsRangeParams, createWsStatsStorage } from "./ws-stats";
 export { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type EmployerCompanyStorage, createEmployerCompanyStorage, employerCompanyLoggingConfig } from "./employers/companies";
 export { type ContractStorage, createContractStorage } from "./contract";
+export { type LetterTemplateStorage, createLetterTemplateStorage, letterTemplateLoggingConfig } from "./letter-templates";

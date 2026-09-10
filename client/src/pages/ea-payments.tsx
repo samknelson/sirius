@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
-import { type LedgerPayment, type LedgerPaymentType } from "@shared/schema";
+import { type LedgerPaymentWithCreatedDate, type LedgerPaymentType } from "@shared/schema";
 import { Plus, DollarSign, Download, ArrowUpDown, Filter, X, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useState, useMemo } from "react";
@@ -40,7 +40,7 @@ function formatStatementPeriods(details: Record<string, unknown> | null, fallbac
 
 const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
 
-type SortField = "amount" | "dateCreated" | "dateReceived" | "dateCleared";
+type SortField = "amount" | "createdDate" | "dateReceived" | "dateCleared";
 type SortDirection = "asc" | "desc";
 function EAPaymentsContent() {
   const { id } = useParams<{ id: string }>();
@@ -67,7 +67,7 @@ function EAPaymentsContent() {
   const [sortField, setSortField] = useState<SortField>("dateCleared");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
-  const { data: payments, isLoading } = useQuery<LedgerPayment[]>({
+  const { data: payments, isLoading } = useQuery<LedgerPaymentWithCreatedDate[]>({
     queryKey: ["/api/ledger/payments/ea", id],
   });
 
@@ -127,13 +127,13 @@ function EAPaymentsContent() {
     // Date filters
     if (filterDateCreatedFrom) {
       const from = new Date(filterDateCreatedFrom);
-      result = result.filter(p => p.dateCreated && new Date(p.dateCreated) >= from);
+      result = result.filter(p => p.createdDate && new Date(p.createdDate) >= from);
     }
 
     if (filterDateCreatedTo) {
       const to = new Date(filterDateCreatedTo);
       to.setHours(23, 59, 59, 999);
-      result = result.filter(p => p.dateCreated && new Date(p.dateCreated) <= to);
+      result = result.filter(p => p.createdDate && new Date(p.createdDate) <= to);
     }
 
     if (filterDateReceivedFrom) {
@@ -167,9 +167,9 @@ function EAPaymentsContent() {
       if (sortField === "amount") {
         aValue = parseFloat(a.amount);
         bValue = parseFloat(b.amount);
-      } else if (sortField === "dateCreated") {
-        aValue = a.dateCreated ? new Date(a.dateCreated).getTime() : null;
-        bValue = b.dateCreated ? new Date(b.dateCreated).getTime() : null;
+      } else if (sortField === "createdDate") {
+        aValue = a.createdDate ? new Date(a.createdDate).getTime() : null;
+        bValue = b.createdDate ? new Date(b.createdDate).getTime() : null;
       } else if (sortField === "dateReceived") {
         aValue = a.dateReceived ? new Date(a.dateReceived).getTime() : null;
         bValue = b.dateReceived ? new Date(b.dateReceived).getTime() : null;
@@ -197,8 +197,8 @@ function EAPaymentsContent() {
             return sortDirection === "asc" ? aReceivedTime - bReceivedTime : bReceivedTime - aReceivedTime;
           }
           if (aReceivedTime === null && bReceivedTime === null) {
-            const aCreatedTime = a.dateCreated ? new Date(a.dateCreated).getTime() : null;
-            const bCreatedTime = b.dateCreated ? new Date(b.dateCreated).getTime() : null;
+            const aCreatedTime = a.createdDate ? new Date(a.createdDate).getTime() : null;
+            const bCreatedTime = b.createdDate ? new Date(b.createdDate).getTime() : null;
             
             if (aCreatedTime !== null && bCreatedTime !== null) {
               return sortDirection === "asc" ? aCreatedTime - bCreatedTime : bCreatedTime - aCreatedTime;
@@ -276,7 +276,7 @@ function EAPaymentsContent() {
         "Statement Period": formatStatementPeriods(details),
         Merchant: (typeof details?.merchant === "string" ? details.merchant : "") || "",
         "Check/Transaction Number": (typeof details?.checkTransactionNumber === "string" ? details.checkTransactionNumber : "") || "",
-        "Date Created": payment.dateCreated ? new Date(payment.dateCreated).toLocaleDateString() : "",
+        "Date Created": payment.createdDate ? new Date(payment.createdDate).toLocaleDateString() : "",
         "Date Received": payment.dateReceived ? new Date(payment.dateReceived).toLocaleDateString() : "",
         "Date Cleared": payment.dateCleared ? new Date(payment.dateCleared).toLocaleDateString() : "",
         Allocated: payment.allocated ? "Yes" : "No",
@@ -580,7 +580,7 @@ function EAPaymentsContent() {
                       variant="ghost"
                       size="sm"
                       className="-ml-3 h-8"
-                      onClick={() => handleSort("dateCreated")}
+                      onClick={() => handleSort("createdDate")}
                       data-testid="sort-date-created"
                     >
                       Date Created
@@ -638,7 +638,7 @@ function EAPaymentsContent() {
                         {(typeof details?.merchant === "string" ? details.merchant : null) || "-"}
                       </TableCell>
                       <TableCell data-testid={`text-date-created-${payment.id}`}>
-                        {payment.dateCreated ? new Date(payment.dateCreated).toLocaleDateString() : "-"}
+                        {payment.createdDate ? new Date(payment.createdDate).toLocaleDateString() : "-"}
                       </TableCell>
                       <TableCell data-testid={`text-date-received-${payment.id}`}>
                         {payment.dateReceived ? new Date(payment.dateReceived).toLocaleDateString() : "-"}

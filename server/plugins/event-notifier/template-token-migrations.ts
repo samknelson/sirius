@@ -4,6 +4,7 @@ import {
   type TokenSegment,
 } from "@shared/tokens";
 import { logger } from "../../logger";
+import { withFrameworkWrite } from "../../middleware/request-context";
 
 const SERVICE = "event-notifier-plugins";
 
@@ -249,7 +250,12 @@ export async function migrateNotifierTemplateTokens(): Promise<void> {
       const next = rewriteConfigData(cfg.data, rewrite);
       if (!next) continue;
       try {
-        await storage.pluginConfigs.update(cfg.id, { data: next });
+        // Rewriting a stored template to today's token roots is the
+        // framework's own doing (see `withFrameworkWrite`), not an edit by
+        // whoever wrote the template: no person, and no audit entry per boot.
+        await withFrameworkWrite(() =>
+          storage.pluginConfigs.update(cfg.id, { data: next }),
+        );
         logger.info("Migrated custom template tokens to the current roots", {
           service: SERVICE,
           pluginId: rewrite.pluginId,

@@ -7,7 +7,7 @@ import {
   type File,
   type InsertFile,
 } from "@shared/schema";
-import { eq, and, asc, count, isNull } from "drizzle-orm";
+import { eq, and, asc, count, getTableName, isNull } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { fileSystemService } from "../services/files";
 import { logger } from "../logger";
@@ -294,8 +294,23 @@ export function createEntityFilesStorage(): EntityFilesStorage {
   };
 }
 
+/**
+ * The table an attachment's host record lives in. Like a note, a file's
+ * parent is polymorphic — its context names the record type — so the binding
+ * comes from the context registry, reached lazily because that registry sits
+ * above storage.
+ */
+async function fileHostTable(contextId: unknown): Promise<string | undefined> {
+  if (typeof contextId !== "string") return undefined;
+  const { fileContextTables } = await import("./entity-files-context-tables");
+  const table = fileContextTables[contextId];
+  return table ? getTableName(table) : undefined;
+}
+
 export const entityFilesLoggingConfig: StorageLoggingConfig<EntityFilesStorage> = {
   module: "entityFiles",
+  table: "entity_files",
+  hostTable: (args) => fileHostTable(args[0]),
   methods: {
     createWithFile: {
       enabled: true,

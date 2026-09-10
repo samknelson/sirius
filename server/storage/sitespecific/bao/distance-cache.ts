@@ -136,6 +136,7 @@ export function createBaoDistanceCacheStorage(): BaoDistanceCacheStorage {
 
 export const baoDistanceCacheLoggingConfig: StorageLoggingConfig<BaoDistanceCacheStorage> = {
   module: "sitespecific.bao.distance-cache",
+  table: "sitespecific_bao_distance_cache",
   methods: {
     upsert: {
       enabled: true,

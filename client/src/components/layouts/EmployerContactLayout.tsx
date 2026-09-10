@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode } from "react";
-import { Users, ArrowLeft } from "lucide-react";
+import { Users } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEmployerContactTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
 
 interface EmployerContactDetail {
   id: string;
@@ -130,28 +131,17 @@ export function EmployerContactLayout({ activeTab, children }: EmployerContactLa
   return (
     <EmployerContactLayoutContext.Provider value={contextValue}>
       {/* Entity Header */}
-      <section className="bg-card border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <Users className="text-primary-foreground" size={16} />
-              </div>
-              <h1 className="text-xl font-semibold text-foreground" data-testid={`text-contact-name-${employerContact.id}`}>
-                {employer?.name ? `${employer.name} :: ${employerContact.contact.displayName}` : employerContact.contact.displayName}
-              </h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Link href={`/employers/${employerContact.employerId}`}>
-                <Button variant="ghost" size="sm" data-testid="button-back-to-employer">
-                  <ArrowLeft size={16} className="mr-2" />
-                  Back to Employer
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
+      <RecordTitleBar
+        icon={<Users className="text-primary-foreground" size={16} />}
+        title={employer?.name ? `${employer.name} :: ${employerContact.contact.displayName}` : employerContact.contact.displayName}
+        titleTestId={`text-contact-name-${employerContact.id}`}
+        backLink={{
+          href: `/employers/${employerContact.employerId}`,
+          label: "Back to Employer",
+          testId: "button-back-to-employer",
+        }}
+        recordId={employerContact.id}
+      />
 
       {/* Tab Navigation */}
       <section className="bg-card border-b border-border">

@@ -161,6 +161,7 @@ export function createBaoCobraRatesStorage(): BaoCobraRatesStorage {
 
 export const baoCobraRatesLoggingConfig: StorageLoggingConfig<BaoCobraRatesStorage> = {
   module: 'sitespecific.bao.cobra-rates',
+  table: 'sitespecific_bao_cobra_rates',
   methods: {
     create: {
       enabled: true,

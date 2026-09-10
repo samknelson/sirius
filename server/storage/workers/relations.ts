@@ -231,6 +231,8 @@ function emitWorkerRelationSaved(
 
 export const workerRelationsLoggingConfig = defineLoggingConfig<WorkerRelationsStorage>({
   module: 'worker-relations',
+  table: 'worker_relations',
+  hostTable: 'workers',
   state: { key: 'relation' },
   hostEntityId: (args, result, before) =>
     (before as WorkerRelationsBeforeState | undefined)?.relation?.worker1

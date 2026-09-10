@@ -6,7 +6,6 @@ export interface User {
   profileImageUrl?: string | null;
   accountStatus?: string;
   isActive: boolean;
-  createdAt?: string;
   lastLogin?: string;
   workerId?: string | null;
   /**

@@ -1,17 +1,9 @@
 import { useMemo, useState } from "react";
-import {
-  TemplateStudio,
-  type StudioContext,
-  type StudioField,
-  type StudioFieldMode,
-  type StudioSourceState,
-} from "./TemplateStudio";
-import { NOTIFIER_CHANNEL_FIELDS } from "@shared/delivery-fields";
-import type {
-  TokenCatalogEntry,
-  TokenFieldCatalog,
-  TokenSegmentSpec,
-} from "@shared/tokens";
+import { useQuery } from "@tanstack/react-query";
+import type { StudioField, StudioFieldMode } from "./TemplateStudio";
+import { TokenRequestError } from "./TokenTreeBrowser";
+import { TokenStudio } from "./TokenStudio";
+import { MEDIUM_FIELDS, authoredFieldValue } from "@shared/delivery-fields";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Channel field spec: one template field as derived from the JSON Schema.
@@ -35,16 +27,14 @@ const CHANNEL_TITLES: Record<string, string> = {
   postal: "Postal letter template",
 };
 
-export interface NotifierTokenCatalog {
-  /** Named record roots this notifier's templates may address. */
-  rootNames: string[];
-  segments: TokenSegmentSpec[];
-  fields?: TokenFieldCatalog;
-  defaults?: Record<string, Record<string, string>>;
-  tokens?: TokenCatalogEntry[];
-  /** What each of those roots may be previewed as. */
-  studioContext?: StudioContext;
-}
+/**
+ * A notifier's default templates, per medium: the text delivery falls
+ * back to for a field the admin has not overridden. Answered for the
+ * config as it stands on screen, because a default can depend on the
+ * notifier's other settings.
+ */
+export type NotifierDefaultTemplates = Record<string, Record<string, string>>;
+
 export interface NotifierTemplateStudioProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -54,13 +44,30 @@ export interface NotifierTemplateStudioProps {
    *  Drives which editors appear and in what order — single source of truth shared with
    *  the config form's channel-templates RJSF field. */
   schemaRows: ChannelFieldSpec[];
-  catalog: NotifierTokenCatalog | undefined;
   /**
-   * How the catalog request above went. The parent field owns that
-   * query, so it is the only one that can tell the studio whether an
-   * absent catalog is still loading or failed.
+   * Where this notifier's default templates come from, for the config on
+   * screen — the same request the card behind this studio makes, so
+   * asking it here is a cache read rather than a second round trip.
+   *
+   * Asked HERE rather than handed over as data because the merge below
+   * is the whole of what this host does, and a merge against defaults
+   * that never arrived produces blank text that looks authored. Owning
+   * the request is what lets this say so.
    */
-  catalogState?: StudioSourceState;
+  defaultsUrl: string;
+  /**
+   * Where this notifier's preview records come from — the records its
+   * recent events were about, for the config on screen. Passed through
+   * to the studio, which owns the request.
+   */
+  seedsUrl: string;
+  /**
+   * This notifier's token context — the roots its templates may be
+   * written about. Stamped into the config schema at registration and
+   * read here from the shared `token-contexts` catalog, so the roots the
+   * editor offers are the ones the server validates a save against.
+   */
+  contextId: string;
   /** The full live config data (for preview + reading current templates). */
   configData: Record<string, unknown>;
   /** Writes one template field back into the host form's config data. */
@@ -82,15 +89,26 @@ export function NotifierTemplateStudio({
   onOpenChange,
   channel,
   schemaRows,
-  catalog,
-  catalogState,
+  defaultsUrl,
+  seedsUrl,
+  contextId,
   configData,
   updateConfigData,
   disabled,
 }: NotifierTemplateStudioProps) {
-  // ── Fields & values (channel group of data.templates) ─────────────────────
-  const defaults = catalog?.defaults?.[channel] ?? {};
+  // ── This notifier's defaults ──────────────────────────────────────────────
+  const {
+    data: defaultTemplates,
+    isLoading: defaultsLoading,
+    error: defaultsError,
+    refetch: refetchDefaults,
+  } = useQuery<NotifierDefaultTemplates>({
+    queryKey: [defaultsUrl],
+    enabled: open,
+  });
+  const defaults = defaultTemplates?.[channel] ?? {};
 
+  // ── Fields & values (channel group of data.templates) ─────────────────────
   const templates =
     (configData.templates as Record<string, Record<string, unknown>> | undefined) ?? {};
   /** The stored override for a field ("" when the default applies). */
@@ -125,8 +143,8 @@ export function NotifierTemplateStudio({
   // when one exists, otherwise the resolved default. `edited` tracks the
   // in-studio text so a field the user is clearing doesn't snap back to the
   // default mid-edit; the component remounts on each open, so seeding is
-  // fresh every time (and picks up late-arriving catalog defaults until the
-  // user touches a field).
+  // fresh every time (and picks up late-arriving defaults until the user
+  // touches a field).
   const [edited, setEdited] = useState<Record<string, string>>({});
   const channelValues: Record<string, string> = {};
   for (const f of fields) {
@@ -150,24 +168,55 @@ export function NotifierTemplateStudio({
   // hides still ships when the notifier declares a default for it, and
   // a required one that is blank is what makes the message
   // undeliverable, so both have to be in the preview request.
-  const deliveryFields = NOTIFIER_CHANNEL_FIELDS[channel] ?? [];
+  const deliveryFields = MEDIUM_FIELDS[channel as keyof typeof MEDIUM_FIELDS] ?? [];
   const templateValues: Record<string, string> = {};
   for (const spec of deliveryFields) {
     const override = overrideOf(spec.key);
-    templateValues[spec.key] =
+    // An optional field nobody has written a template for is left OUT
+    // of the request, exactly as delivery leaves it out of the message;
+    // a required one with nothing behind it is sent as the blank it is,
+    // which is what makes the preview say "undeliverable".
+    const authored = authoredFieldValue(
+      spec,
       edited[spec.key] ??
-      (override.trim() !== "" ? override : (defaults[spec.key] ?? ""));
+        (override.trim() !== "" ? override : defaults[spec.key]),
+    );
+    if (authored !== undefined) templateValues[spec.key] = authored;
   }
 
   if (disabled) return null;
 
   return (
-    <TemplateStudio
+    <TokenStudio
       open={open}
       onOpenChange={onOpenChange}
       title={CHANNEL_TITLES[channel] ?? `${channel} templates`}
       description="Edit the channel's tokenized templates with a live preview. Changes apply to the config form; save the config to persist them."
-       channel={channel === "email" || channel === "sms" || channel === "inapp" || channel === "postal" ? channel : "generic"}
+      channel={channel === "email" || channel === "sms" || channel === "inapp" || channel === "postal" ? channel : "generic"}
+      // Every editor below shows "the override, or the notifier's
+      // default", and the preview is composed the same way. Without the
+      // defaults that reads as a field nobody has written — so the one
+      // thing this host fetches reports itself here.
+      hostNotice={
+        defaultsError ? (
+          <TokenRequestError
+            what="This notifier's default text"
+            error={defaultsError}
+            onRetry={() => {
+              void refetchDefaults();
+            }}
+            testId="text-studio-defaults-error"
+          />
+        ) : defaultsLoading ? (
+          <span
+            className="text-xs text-muted-foreground"
+            data-testid="text-studio-defaults-loading"
+          >
+            Loading this notifier's default text — fields it would fill
+            are blank until it arrives.
+          </span>
+        ) : undefined
+      }
       fields={fields}
       values={channelValues}
       onValueChange={handleValueChange}
@@ -175,14 +224,14 @@ export function NotifierTemplateStudio({
       // text delivery would send — composed above, not on the server.
       fieldSpecs={deliveryFields}
       templateValues={templateValues}
-      tokens={catalog?.tokens ?? []}
-      segments={catalog?.segments}
-      fieldCatalog={catalog?.fields}
-      // The notifier's own records first; the event envelope and the
-      // ordinary roots (contact, system…) after them.
-      rootNames={catalog?.rootNames ?? []}
-      studioContext={catalog?.studioContext}
-      catalogState={catalogState}
+      // What may be WRITTEN here is not this host's to answer: the
+      // studio reads it from this notifier's token context — its own
+      // record roots, the event envelope and the ordinary roots
+      // (contact, system…) — which is the list the save is validated
+      // against. What may be PREVIEWED against is this notifier's own,
+      // so its endpoint is handed over.
+      contextId={contextId}
+      seedsUrl={seedsUrl}
     />
   );
 }

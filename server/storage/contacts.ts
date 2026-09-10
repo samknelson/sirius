@@ -1,8 +1,12 @@
 import { getClient, onAfterCommit } from './transaction-context';
 import { eventBus, EventType } from '../services/event-bus';
 import { contacts, contactPostal, phoneNumbers, optionsGender, trustProviderContacts, employerContacts, type Contact, type InsertContact, type ContactPostal, type InsertContactPostal, type PhoneNumber, type InsertPhoneNumber } from "@shared/schema";
-import { eq, and, desc, sql, or, ilike, inArray, isNull } from "drizzle-orm";
+import { eq, and, ne, desc, sql, or, ilike, inArray, isNull } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
+import { provenanceModifiedDate } from "./system/entity-metadata-order";
+import { entityMetadataStorage } from "./system/entity-metadata";
+import { runOutsideTransaction } from "./transaction-context";
+import { getRequestContext } from "../middleware/request-context";
 import { 
   type ValidationError,
   createStorageValidator
@@ -175,12 +179,19 @@ export interface AddressStorage {
   deleteContactPostal(id: string): Promise<boolean>;
   setAddressAsPrimary(addressId: string, contactId: string): Promise<ContactPostal | undefined>;
   findMatchingAddress(contactId: string, street: string, city: string, state: string, postalCode: string, country?: string): Promise<ContactPostal | undefined>;
+  /**
+   * Three outcomes, and the caller is told which: a new address (`isNew`), a
+   * matched address the call also changed (`changed` — promoted to primary,
+   * re-sourced, or given the coordinates it lacked), or a matched address
+   * nothing was written to (neither). The record's history is written from
+   * this answer, so an outcome that wrote nothing must not claim otherwise.
+   */
   createOrMatchAddress(
     contactId: string,
     addressData: { street: string; city: string; state: string; postalCode: string; country: string },
     source: AddressSource,
     metadata?: { friendlyName?: string; latitude?: number; longitude?: number; accuracy?: string },
-  ): Promise<{ address: ContactPostal; isNew: boolean }>;
+  ): Promise<{ address: ContactPostal; isNew: boolean; changed: boolean }>;
   listActiveMissingCoordinates(): Promise<ContactPostal[]>;
   markUndeliverable(addressId: string): Promise<ContactPostal | undefined>;
   updateDeliverabilityStatus(addressId: string, status: DeliverabilityStatus, lastVerifiedAt?: Date): Promise<ContactPostal | undefined>;
@@ -258,6 +269,91 @@ export interface ContactsStorage {
 }
 
 // Create Address Storage implementation
+/**
+ * Report a change to addresses OTHER than the record the logged storage
+ * method is about.
+ *
+ * The logging middleware maintains one provenance row per call: the record
+ * the method names. A primary-flag flip reaches a contact's other addresses
+ * in the same save, and the middleware cannot see those — so the code that
+ * makes the change says so itself. This is not decoration: the
+ * replacement-primary choice below asks provenance which address changed most
+ * recently, and before the bespoke `updated_at` column was retired the same
+ * statement bumped it on every row it touched. An address that quietly lost
+ * its primary flag must not look untouched.
+ *
+ * Same discipline as the middleware's own write: scheduled by the COMMIT (a
+ * flip that rolls back never happened), run outside the caller's transaction
+ * on its own connection, and best effort — provenance never costs the save.
+ * The person is the effective actor the log entry would name.
+ */
+function recordAddressChanges(addressIds: string[]): void {
+  if (addressIds.length === 0) return;
+  const at = new Date();
+  const actorId = getRequestContext()?.userId ?? null;
+  onAfterCommit(() => {
+    setImmediate(() => {
+      void runOutsideTransaction(async () => {
+        for (const entityId of addressIds) {
+          try {
+            await entityMetadataStorage.recordMutation({
+              tableName: "contact_postal",
+              entityId,
+              at,
+              actorId,
+            });
+          } catch (error) {
+            console.error("Error recording address provenance:", error);
+          }
+        }
+      });
+    });
+  });
+}
+
+/**
+ * Take the primary flag off a contact's addresses, optionally sparing one,
+ * and report the rows it actually reached.
+ *
+ * Every "unset the other primary" statement goes through here rather than
+ * being written out at each call site, so none of them can forget that the
+ * rows they flip have a history of their own. Narrowed to rows that hold the
+ * flag: setting `false` on an address that was already not primary is not a
+ * change, and must not be reported as one.
+ */
+async function clearPrimaryAddresses(
+  contactId: string,
+  options?: { except?: string },
+): Promise<void> {
+  const conditions = [
+    eq(contactPostal.contactId, contactId),
+    eq(contactPostal.isPrimary, true),
+  ];
+  if (options?.except) {
+    conditions.push(ne(contactPostal.id, options.except));
+  }
+  const flipped = await getClient()
+    .update(contactPostal)
+    .set({ isPrimary: false })
+    .where(and(...conditions))
+    .returning({ id: contactPostal.id });
+  recordAddressChanges(flipped.map(row => row.id));
+}
+
+/**
+ * Give the primary flag to one address and report the change.
+ *
+ * For the flows that promote a REPLACEMENT — a sibling the caller's method is
+ * not about, so the middleware files no provenance for it.
+ */
+async function promoteAddressToPrimary(addressId: string): Promise<void> {
+  await getClient()
+    .update(contactPostal)
+    .set({ isPrimary: true })
+    .where(eq(contactPostal.id, addressId));
+  recordAddressChanges([addressId]);
+}
+
 export function createAddressStorage(): AddressStorage {
   return {
     async getAllContactPostal(): Promise<ContactPostal[]> {
@@ -281,10 +377,7 @@ export function createAddressStorage(): AddressStorage {
       addressValidate.validateOrThrow(data);
 
       if (data.isPrimary) {
-        await client
-          .update(contactPostal)
-          .set({ isPrimary: false, updatedAt: new Date() })
-          .where(eq(contactPostal.contactId, data.contactId));
+        await clearPrimaryAddresses(data.contactId);
       }
 
       const [address] = await client
@@ -327,15 +420,19 @@ export function createAddressStorage(): AddressStorage {
           throw new Error("Cannot override a worker-reported primary address. Only a worker_self address can replace it.");
         }
 
-        await client
-          .update(contactPostal)
-          .set({ isPrimary: false, updatedAt: new Date() })
-          .where(and(eq(contactPostal.contactId, currentAddress.contactId), eq(contactPostal.isPrimary, true)));
+        await clearPrimaryAddresses(currentAddress.contactId, { except: id });
+      }
+
+      // An update naming no fields writes nothing. It used to write
+      // `updated_at` and nothing else; with that column gone there is no
+      // statement left to run, and the caller still gets the record back.
+      if (Object.keys(sanitized).length === 0) {
+        return currentAddress;
       }
 
       const [address] = await client
         .update(contactPostal)
-        .set({ ...sanitized, updatedAt: new Date() })
+        .set(sanitized)
         .where(eq(contactPostal.id, id))
         .returning();
 
@@ -367,22 +464,30 @@ export function createAddressStorage(): AddressStorage {
       const wasPrimary = currentAddress.isPrimary;
       const [updated] = await client
         .update(contactPostal)
-        .set({ isActive: false, isPrimary: false, updatedAt: new Date() })
+        .set({ isActive: false, isPrimary: false })
         .where(eq(contactPostal.id, id))
         .returning();
       if (!updated) return false;
 
       if (wasPrimary) {
+        // Recency comes from the record's provenance now that the table keeps
+        // no `updated_at` of its own. It is the same question asked of the
+        // framework the rest of the app reads, with one honest difference: a
+        // bulk statement that swept every row of this contact is not a change
+        // to any one address, so "most recently changed" means the record
+        // someone actually edited. Ordered in SQL, with the id as a tiebreak,
+        // so an address whose provenance has not landed does not jump the
+        // queue.
         const remaining = await client.select().from(contactPostal)
-          .where(and(eq(contactPostal.contactId, currentAddress.contactId), eq(contactPostal.isActive, true)));
+          .where(and(eq(contactPostal.contactId, currentAddress.contactId), eq(contactPostal.isActive, true)))
+          .orderBy(sql`${provenanceModifiedDate("contact_postal", contactPostal.id)} DESC NULLS LAST, ${contactPostal.id} ASC`);
         const deliverable = remaining
-          .filter(a => !TERMINAL_DELIVERABILITY_STATUSES.includes(a.deliverabilityStatus as DeliverabilityStatus))
-          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-        // Worker_self priority then recency: pick most-recently-updated worker_self if any, else most-recent overall.
+          .filter(a => !TERMINAL_DELIVERABILITY_STATUSES.includes(a.deliverabilityStatus as DeliverabilityStatus));
+        // Worker_self priority then recency: pick most-recently-changed worker_self if any, else most-recent overall.
         const workerSelf = deliverable.find(a => a.source === "worker_self");
         const best = workerSelf || deliverable[0];
         if (best) {
-          await client.update(contactPostal).set({ isPrimary: true, updatedAt: new Date() }).where(eq(contactPostal.id, best.id));
+          await promoteAddressToPrimary(best.id);
         }
         // The primary address was deactivated (and possibly replaced by a
         // promoted successor) — the contact's primary situation changed.
@@ -412,14 +517,11 @@ export function createAddressStorage(): AddressStorage {
         throw new Error("Cannot override a worker-reported primary address. Only a worker_self address can replace it.");
       }
 
-      await client
-        .update(contactPostal)
-        .set({ isPrimary: false, updatedAt: new Date() })
-        .where(eq(contactPostal.contactId, contactId));
+      await clearPrimaryAddresses(contactId, { except: addressId });
 
       const [address] = await client
         .update(contactPostal)
-        .set({ isPrimary: true, updatedAt: new Date() })
+        .set({ isPrimary: true })
         .where(and(eq(contactPostal.id, addressId), eq(contactPostal.contactId, contactId)))
         .returning();
 
@@ -460,7 +562,7 @@ export function createAddressStorage(): AddressStorage {
       );
 
       if (existing) {
-        const matchUpdates: Partial<InsertContactPostal> & { updatedAt: Date } = { updatedAt: new Date() };
+        const matchUpdates: Partial<InsertContactPostal> = {};
 
         // Only allow promotion to primary if matched address is itself deliverable.
         const matchedIsTerminal = TERMINAL_DELIVERABILITY_STATUSES.includes(existing.deliverabilityStatus as DeliverabilityStatus);
@@ -468,10 +570,7 @@ export function createAddressStorage(): AddressStorage {
         if (source === "worker_self") {
           matchUpdates.source = "worker_self";
           if (!existing.isPrimary && !matchedIsTerminal) {
-            await getClient()
-              .update(contactPostal)
-              .set({ isPrimary: false, updatedAt: new Date() })
-              .where(and(eq(contactPostal.contactId, contactId), eq(contactPostal.isPrimary, true)));
+            await clearPrimaryAddresses(contactId, { except: existing.id });
             matchUpdates.isPrimary = true;
           }
         }
@@ -490,6 +589,14 @@ export function createAddressStorage(): AddressStorage {
           matchUpdates.accuracy = metadata.accuracy;
         }
 
+        // A match that changes nothing writes nothing. This used to be
+        // impossible — every match bumped `updated_at`, so the set was never
+        // empty — and re-saving an address the contact already has is now
+        // exactly that: no change to record.
+        if (Object.keys(matchUpdates).length === 0) {
+          return { address: existing, isNew: false, changed: false };
+        }
+
         const [updated] = await getClient()
           .update(contactPostal)
           .set(matchUpdates)
@@ -506,7 +613,7 @@ export function createAddressStorage(): AddressStorage {
         ) {
           emitContactEligibilitySaved(contactId, 'address');
         }
-        return { address: updated, isNew: false };
+        return { address: updated, isNew: false, changed: true };
       }
 
       const allAddresses = await this.getContactPostalByContact(contactId);
@@ -551,7 +658,7 @@ export function createAddressStorage(): AddressStorage {
         ...(metadata?.accuracy ? { accuracy: metadata.accuracy } : {}),
       });
 
-      return { address, isNew: true };
+      return { address, isNew: true, changed: true };
     },
 
     async listActiveMissingCoordinates(): Promise<ContactPostal[]> {
@@ -579,16 +686,20 @@ export function createAddressStorage(): AddressStorage {
         .update(contactPostal)
         .set({
           deliverabilityStatus: statusToSet,
-          updatedAt: new Date(),
           ...(currentAddress.isPrimary ? { isPrimary: false } : {}),
         })
         .where(eq(contactPostal.id, addressId))
         .returning();
 
       if (currentAddress.isPrimary) {
+        // Most-recently-changed first, read from provenance now that the
+        // table keeps no `updated_at` of its own — the same ordering
+        // `deleteContactPostal` uses to choose a replacement primary, for the
+        // same reason. The id keeps the order total when two rows share a
+        // stamp or have none yet.
         const allAddresses = await client.select().from(contactPostal)
           .where(eq(contactPostal.contactId, currentAddress.contactId))
-          .orderBy(desc(contactPostal.updatedAt));
+          .orderBy(sql`${provenanceModifiedDate("contact_postal", contactPostal.id)} DESC NULLS LAST, ${contactPostal.id} ASC`);
 
         const nextBest = allAddresses.find(a =>
           a.id !== addressId
@@ -597,15 +708,8 @@ export function createAddressStorage(): AddressStorage {
         );
 
         if (nextBest) {
-          await client
-            .update(contactPostal)
-            .set({ isPrimary: false, updatedAt: new Date() })
-            .where(eq(contactPostal.contactId, currentAddress.contactId));
-
-          await client
-            .update(contactPostal)
-            .set({ isPrimary: true, updatedAt: new Date() })
-            .where(eq(contactPostal.id, nextBest.id));
+          await clearPrimaryAddresses(currentAddress.contactId, { except: nextBest.id });
+          await promoteAddressToPrimary(nextBest.id);
         }
         // The primary address was demoted (and possibly replaced) — the
         // contact's primary-address situation changed.
@@ -617,9 +721,8 @@ export function createAddressStorage(): AddressStorage {
 
     async updateDeliverabilityStatus(addressId: string, status: DeliverabilityStatus, lastVerifiedAt?: Date): Promise<ContactPostal | undefined> {
       const client = getClient();
-      const updateFields: Partial<InsertContactPostal> & { updatedAt: Date } = {
+      const updateFields: Partial<InsertContactPostal> = {
         deliverabilityStatus: status,
-        updatedAt: new Date(),
       };
       if (lastVerifiedAt) {
         updateFields.lastVerifiedAt = lastVerifiedAt;
@@ -1133,10 +1236,13 @@ function formatAddressForLog(address: any): string {
  */
 export const addressLoggingConfig: StorageLoggingConfig<AddressStorage> = {
   module: 'contacts.addresses',
+  table: 'contact_postal',
+  hostTable: 'contacts',
   methods: {
     createContactPostal: {
       enabled: true,
       getEntityId: (args) => args[0]?.contactId || 'new address',
+      metadataEntityId: (_args, result) => result?.id,
       getHostEntityId: (args, result) => result?.contactId,
       after: async (args, result) => {
         return result;
@@ -1144,6 +1250,33 @@ export const addressLoggingConfig: StorageLoggingConfig<AddressStorage> = {
       getDescription: async (args, result) => {
         const address = result;
         return `Created address: ${formatAddressForLog(address)}`;
+      }
+    },
+    // Contact and worker screens do not call `createContactPostal` — they
+    // call this. An internal `this.` call does not pass through the wrapper,
+    // so without an entry here an address created from those screens produced
+    // no log entry and no provenance row: the record's history began the
+    // first time somebody edited it, and nobody was named as its author.
+    //
+    // Each of the method's three outcomes is recorded as what it was. Only a
+    // real insert is a creation — a created stamp on a matched address would
+    // name whoever re-saved an address the contact already had as the person
+    // who first entered it. A match the call changed (promoted to primary,
+    // re-sourced, given coordinates) is a modification like any other, and a
+    // match that wrote nothing is not an event at all.
+    createOrMatchAddress: {
+      enabled: true,
+      shouldLog: (_args, result) => result?.isNew === true || result?.changed === true,
+      metadataMode: (_args, result) => (result?.isNew ? 'created' : 'modified'),
+      getEntityId: (args, result) => result?.address?.id || args[0],
+      metadataEntityId: (_args, result) => result?.address?.id,
+      getHostEntityId: (args, result) => result?.address?.contactId || args[0],
+      after: async (_args, result) => {
+        return result?.address;
+      },
+      getDescription: async (_args, result) => {
+        const verb = result?.isNew ? 'Created' : 'Updated';
+        return `${verb} address: ${formatAddressForLog(result?.address)}`;
       }
     },
     updateContactPostal: {
@@ -1203,6 +1336,48 @@ export const addressLoggingConfig: StorageLoggingConfig<AddressStorage> = {
       getDescription: async (args, result) => {
         return `Set address as primary: ${formatAddressForLog(result)}`;
       }
+    },
+    // Deliverability is a change to the address like any other, and it is the
+    // one the replacement-primary choice above cares most about: it is what
+    // takes an address out of the running. Both of these write the record, so
+    // both belong in its history — and in its provenance, which is where that
+    // choice now reads recency from.
+    markUndeliverable: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args, result, beforeState) => {
+        return result?.contactId || beforeState?.contactId;
+      },
+      before: async (args, storage) => {
+        return await storage.getContactPostal(args[0]);
+      },
+      after: async (args, result) => {
+        return result;
+      },
+      getDescription: async (args, result, beforeState) => {
+        const address = result || beforeState;
+        return `Marked address undeliverable: ${formatAddressForLog(address)}`;
+      }
+    },
+    updateDeliverabilityStatus: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args, result, beforeState) => {
+        return result?.contactId || beforeState?.contactId;
+      },
+      before: async (args, storage) => {
+        return await storage.getContactPostal(args[0]);
+      },
+      after: async (args, result) => {
+        return result;
+      },
+      getDescription: async (args, result, beforeState) => {
+        const address = result || beforeState;
+        const previous = beforeState?.deliverabilityStatus;
+        const next = args[1];
+        const change = previous && previous !== next ? `${previous} → ${next}` : next;
+        return `Address deliverability ${change}: ${formatAddressForLog(address)}`;
+      }
     }
   }
 };
@@ -1231,10 +1406,13 @@ function formatPhoneNumberForLog(phoneNumber: any): string {
  */
 export const phoneNumberLoggingConfig: StorageLoggingConfig<PhoneNumberStorage> = {
   module: 'contacts.phoneNumbers',
+  table: 'contact_phone',
+  hostTable: 'contacts',
   methods: {
     createPhoneNumber: {
       enabled: true,
       getEntityId: (args) => args[0]?.contactId || 'new phone number',
+      metadataEntityId: (_args, result) => result?.id,
       getHostEntityId: (args, result) => result?.contactId,
       after: async (args, result) => {
         return result;
@@ -1306,6 +1484,7 @@ export const phoneNumberLoggingConfig: StorageLoggingConfig<PhoneNumberStorage> 
 
 export const contactLoggingConfig: StorageLoggingConfig<ContactStorage> = {
   module: 'contacts',
+  table: 'contacts',
   methods: {
     createContact: {
       enabled: true,

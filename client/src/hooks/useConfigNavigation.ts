@@ -5,11 +5,14 @@ import {
   getAccessibleSections,
   getAllPoliciesNeeded,
   resolveConfigSections,
+  toOptionsCatalogEntries,
   type AccessContext,
   type NavSection,
-  type OptionsCatalogEntry,
 } from "@/config/navigation-registry";
+import type { ResolvedCatalog } from "@shared/catalog";
+import { OPTIONS_LISTS_CATALOG } from "@shared/catalog-ids";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCatalogQuery } from "@/hooks/useCatalogQuery";
 
 interface ComponentConfig {
   componentId: string;
@@ -68,19 +71,28 @@ export function useNavAccessContext(): AccessContext {
 }
 
 /**
- * The options registry's catalog: every dropdown list, with the name it is
- * known by everywhere — including the lists administered on their own page,
- * which carry a `bespokePath`. Shared by the config navigation and the options
- * index so both call the same lists by the same names.
+ * Every dropdown list, with the name it is known by everywhere — including the
+ * lists administered on their own page, which carry a `bespokePath`. Shared by
+ * the config navigation and the options index so both call the same lists by
+ * the same names.
+ *
+ * Read from the `options-lists` shared catalog rather than a route of its own.
+ * The catalog filters by component state as it derives, so a list belonging to
+ * a switched-off feature is simply not here — one fewer place to remember the
+ * gate, and a toggle takes effect without a restart.
  */
 export function useOptionsCatalog() {
-  const query = useQuery<OptionsCatalogEntry[]>({
-    queryKey: ["/api/options/catalog"],
-    staleTime: 300000,
-  });
+  const query = useCatalogQuery<{ catalog: ResolvedCatalog }>(
+    `/api/catalogs/${OPTIONS_LISTS_CATALOG}`,
+  );
+
+  const entries = useMemo(
+    () => toOptionsCatalogEntries(query.data?.catalog.entries ?? []),
+    [query.data],
+  );
 
   return {
-    entries: query.data ?? [],
+    entries,
     isLoading: query.isLoading,
     isError: query.isError,
   };

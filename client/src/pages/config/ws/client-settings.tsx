@@ -15,6 +15,8 @@ import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Shield, Network } from "lucide-react";
 import { WsClientLayout, useWsClientLayout } from "@/components/layouts/WsClientLayout";
+import { RecordCreatedStamp } from "@/components/shared/RecordCreatedStamp";
+import { RecordMetadataAccess } from "@/components/shared/RecordMetadataAccess";
 import {
   useWsServiceConfigs,
   useWsClientGrants,
@@ -22,15 +24,6 @@ import {
   wsServiceLabel,
   wsServiceAddress,
 } from "./use-ws-services";
-
-function formatDate(dateStr: string | null | undefined): string {
-  if (!dateStr) return "—";
-  try {
-    return new Date(dateStr).toLocaleString();
-  } catch {
-    return dateStr;
-  }
-}
 
 function StatusBadge({ status }: { status: string }) {
   const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -271,12 +264,14 @@ function SettingsContent() {
                 )}
               </p>
             </div>
-            <div>
-              <Label className="text-muted-foreground">Created</Label>
-              <p className="text-sm" data-testid="text-created">
-                {formatDate(client.createdAt as unknown as string)}
-              </p>
-            </div>
+            <RecordMetadataAccess adminBypass>
+              <div>
+                <Label className="text-muted-foreground">Created</Label>
+                <p className="text-sm">
+                  <RecordCreatedStamp stamp={client.created} testId="text-created" />
+                </p>
+              </div>
+            </RecordMetadataAccess>
           </div>
         </CardContent>
       </Card>

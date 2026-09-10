@@ -158,7 +158,7 @@ export function createUsageAlertNotifier(
           };
         case "sms":
           return {
-            message: `${bodyText} ${absoluteUrl(spec.statsPath)}`,
+            body: `${bodyText} ${absoluteUrl(spec.statsPath)}`,
             sendKey,
           };
         case "inapp":

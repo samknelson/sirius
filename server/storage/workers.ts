@@ -24,6 +24,7 @@ import {
 } from "./utils/validation";
 import { parseSSN, validateSSN } from "@shared/utils/ssn";
 import { isComponentEnabledSync } from "../services/component-cache";
+import { provenanceCreatedDate } from "./system/entity-metadata-order";
 import { eventBus, EventType } from "../services/event-bus";
 
 export const ssnValidate = createAsyncStorageValidator<{ ssn: string | null; workerId?: string; allowSsaRuleInvalid?: boolean }, never, { ssn: string | null }>(
@@ -632,18 +633,27 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
     LEFT JOIN worker_wsh_denorm wwd ON wwd.worker_id = w.id
     LEFT JOIN options_worker_ws ws ON ws.id = wwd.ws_id
     ${bargainingUnitJoin}
+    -- Primary first, then oldest, for both laterals. "Oldest" now comes from
+    -- the record's provenance created date — seeded from the retired
+    -- created_at columns these used to read — so each list row shows the same
+    -- number and address it did before. A record whose provenance has not
+    -- landed sorts last rather than first, and the id keeps the order total.
     LEFT JOIN LATERAL (
-      SELECT phone_number, is_primary
-      FROM contact_phone
-      WHERE contact_id = c.id
-      ORDER BY is_primary DESC NULLS LAST, created_at ASC
+      SELECT cp.phone_number, cp.is_primary
+      FROM contact_phone cp
+      WHERE cp.contact_id = c.id
+      ORDER BY cp.is_primary DESC NULLS LAST,
+        ${provenanceCreatedDate("contact_phone", sql`cp.id`)} ASC NULLS LAST,
+        cp.id ASC
       LIMIT 1
     ) p ON true
     LEFT JOIN LATERAL (
-      SELECT id, friendly_name, street, city, state, postal_code, country, is_primary
-      FROM contact_postal
-      WHERE contact_id = c.id AND is_active = true
-      ORDER BY is_primary DESC NULLS LAST, created_at ASC
+      SELECT cpo.id, cpo.friendly_name, cpo.street, cpo.city, cpo.state, cpo.postal_code, cpo.country, cpo.is_primary
+      FROM contact_postal cpo
+      WHERE cpo.contact_id = c.id AND cpo.is_active = true
+      ORDER BY cpo.is_primary DESC NULLS LAST,
+        ${provenanceCreatedDate("contact_postal", sql`cpo.id`)} ASC NULLS LAST,
+        cpo.id ASC
       LIMIT 1
     ) a ON true
     WHERE 1=1 ${allConditions}
@@ -1256,7 +1266,11 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       const client = getClient();
       // Same lateral pick as every other SMS pre-filter in the app: the
       // active primary number, oldest first as the tiebreak, so this read and
-      // the send layer agree on the number the message goes to.
+      // the send layer agree on the number the message goes to. "Oldest" is
+      // the record's provenance created date, seeded from the retired
+      // `contact_phone.created_at`, so the number picked is the one this read
+      // has always picked; a number with no provenance yet sorts last and the
+      // id settles the rest.
       const result = await client.execute(sql`
         SELECT
           w.id as "workerId",
@@ -1270,7 +1284,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           WHERE p.contact_id = c.id
             AND p.is_active = true
             AND p.is_primary = true
-          ORDER BY p.created_at ASC, p.id ASC
+          ORDER BY ${provenanceCreatedDate("contact_phone", sql`p.id`)} ASC NULLS LAST, p.id ASC
           LIMIT 1
         ) ph ON true
         WHERE w.id IN (${sql.join(workerIdsList.map((id) => sql`${id}`), sql`, `)})
@@ -1554,6 +1568,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
  */
 export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
   module: 'workers',
+  table: 'workers',
   methods: {
     createWorker: {
       enabled: true,

@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode, useMemo } from "react";
-import { Building2, ArrowLeft } from "lucide-react";
+import { Building2 } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Employer } from "@shared/schema";
@@ -10,6 +10,13 @@ import { BookmarkButton } from "@/components/ui/bookmark-button";
 import { DebugRecordViewer } from "@/components/debug/DebugRecordViewer";
 import { useEmployerTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
+
+const EMPLOYER_BACK_LINK = {
+  href: "/employers",
+  label: "Back to Employers",
+  testId: "button-back-to-employers",
+};
 
 interface EmployerLayoutContextValue {
   employer: Employer;
@@ -113,30 +120,15 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
   return (
     <EmployerLayoutContext.Provider value={contextValue}>
       {/* Entity Header */}
-      <section className="bg-card border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <Building2 className="text-primary-foreground" size={16} />
-              </div>
-              <h1 className="text-xl font-semibold text-foreground" data-testid={`text-employer-name-${employer.id}`}>
-                {employer.name}
-              </h1>
-              <BookmarkButton entityType="employer" entityId={employer.id} entityName={employer.name} />
-            </div>
-            <div className="flex items-center space-x-4">
-              <DebugRecordViewer record={employer} entityLabel="Employer" />
-              <Link href="/employers">
-                <Button variant="ghost" size="sm" data-testid="button-back-to-employers">
-                  <ArrowLeft size={16} className="mr-2" />
-                  Back to Employers
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
+      <RecordTitleBar
+        icon={<Building2 className="text-primary-foreground" size={16} />}
+        title={employer.name}
+        titleTestId={`text-employer-name-${employer.id}`}
+        badges={<BookmarkButton entityType="employer" entityId={employer.id} entityName={employer.name} />}
+        actions={<DebugRecordViewer record={employer} entityLabel="Employer" />}
+        backLink={EMPLOYER_BACK_LINK}
+        recordId={employer.id}
+      />
 
       {/* Main Tab Navigation - rendered dynamically from registry */}
       <section className="bg-card border-b border-border">

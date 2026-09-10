@@ -53,6 +53,8 @@ async function getEmployerName(employerId: string): Promise<string> {
 
 export const workerDispatchHfeLoggingConfig: StorageLoggingConfig<WorkerDispatchHfeStorage> = {
   module: 'worker-dispatch-hfe',
+  table: 'worker_dispatch_hfe',
+  hostTable: 'workers',
   methods: {
     create: {
       enabled: true,

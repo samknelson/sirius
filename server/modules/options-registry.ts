@@ -70,60 +70,34 @@ function createTypeConfig(type: OptionsTypeName): OptionsTypeConfig {
   };
 }
 
-export const optionsTypeRegistry: Record<string, OptionsTypeConfig> = {
-  "department": createTypeConfig("department"),
-  "employer-type": createTypeConfig("employer-type"),
-  "employer-contact-type": createTypeConfig("employer-contact-type"),
-  "worker-id-type": createTypeConfig("worker-id-type"),
-  "gender": createTypeConfig("gender"),
-  "trust-benefit-type": createTypeConfig("trust-benefit-type"),
-  "trust-provider-type": createTypeConfig("trust-provider-type"),
-  "worker-ws": createTypeConfig("worker-ws"),
-  "employment-status": createTypeConfig("employment-status"),
-  "event-type": createTypeConfig("event-type"),
-  "dispatch-job-type": createTypeConfig("dispatch-job-type"),
-  "ledger-payment-type": createTypeConfig("ledger-payment-type"),
-  "skill": createTypeConfig("skill"),
-  "edls-task": createTypeConfig("edls-task"),
-  "edls-show-status": createTypeConfig("edls-show-status"),
-  "certification": createTypeConfig("certification"),
-  "worker-rating": createTypeConfig("worker-rating"),
-  "classification": createTypeConfig("classification"),
-  "industry": createTypeConfig("industry"),
-  "worker-ms": createTypeConfig("worker-ms"),
-  "worker-relation-type": createTypeConfig("worker-relation-type"),
-  "comm-tag": createTypeConfig("comm-tag"),
-  "call-reason": createTypeConfig("call-reason"),
-  "grievance-status": createTypeConfig("grievance-status"),
-  "grievance-category": createTypeConfig("grievance-category"),
-  "grievance-step": createTypeConfig("grievance-step"),
-  "grievance-complaint": createTypeConfig("grievance-complaint"),
-  "grievance-remedy": createTypeConfig("grievance-remedy"),
-  "grievance-role": createTypeConfig("grievance-role"),
-  "grievance-settlement-type": createTypeConfig("grievance-settlement-type"),
-  // BAO option types: these were historically missing from this explicit map
-  // even though their metadata existed, which left the generic /api/options
-  // routes returning 404 for them (the cobra pair) — every metadata entry
-  // must ALSO be registered here for the API to serve it.
-  "bao-cobra-status": createTypeConfig("bao-cobra-status"),
-  "bao-cobra-qualifying-event": createTypeConfig("bao-cobra-qualifying-event"),
-  "bao-case-status": createTypeConfig("bao-case-status"),
-  "bao-case-type": createTypeConfig("bao-case-type"),
-  "bao-case-resolution": createTypeConfig("bao-case-resolution"),
-  "bao-appeal-denial-reason": createTypeConfig("bao-appeal-denial-reason"),
-  "bao-notes-tag-type": createTypeConfig("bao-notes-tag-type"),
-  "bao-notes-tag": createTypeConfig("bao-notes-tag"),
-  "worker-ban-type": createTypeConfig("worker-ban-type"),
-  "note-type": createTypeConfig("note-type"),
-  "file-type": createTypeConfig("file-type"),
-};
+/**
+ * Every declared options list, keyed by type.
+ *
+ * The keys are `optionsMetadata`'s keys and are not written out again here.
+ * They used to be: a hand-kept object literal of all 32 identifiers, sitting
+ * beside the metadata that already named them, where adding a list meant
+ * declaring it twice and forgetting the second one meant the list existed but
+ * had no routes.
+ */
+export const optionsTypeRegistry: Record<string, OptionsTypeConfig> =
+  Object.fromEntries(
+    (Object.keys(optionsMetadata) as OptionsTypeName[]).map((type) => [
+      type,
+      createTypeConfig(type),
+    ]),
+  );
 
+/**
+ * The declared config for a type, or undefined if no such list is declared.
+ *
+ * Unfiltered by component state, and that is the point: a caller has to be able
+ * to tell a list that is switched off from a list that does not exist. The
+ * component gate on the options routes reads this, finds the `requiredComponent`
+ * of a list it can see is real, and refuses it as disabled — where reading a
+ * component-filtered source would have left the same list looking unknown.
+ */
 export function getOptionsType(type: string): OptionsTypeConfig | undefined {
   return optionsTypeRegistry[type];
-}
-
-export function getAllOptionsTypes(): string[] {
-  return Object.keys(optionsTypeRegistry);
 }
 
 export function getOptionsStorage(): UnifiedOptionsStorage {

@@ -115,7 +115,12 @@ export type TabEntityType =
    * The outgoing web services page. A single admin page, not a row, so the
    * entity id is the constant {@link WC_ADMIN_ENTITY_ID}.
    */
-  | 'wc';
+  | 'wc'
+  /**
+   * The record history admin page. A single admin page, not a row, so the
+   * entity id is the constant {@link RECORD_METADATA_ADMIN_ENTITY_ID}.
+   */
+  | 'record_metadata';
 
 /**
  * Tab check request for batch access evaluation
@@ -793,6 +798,22 @@ export const wcTabTree: HierarchicalTab[] = [
   { id: 'wc-cache', label: 'Cache', hrefTemplate: '/admin/wc/cache', permission: 'admin' },
   { id: 'wc-stats', label: 'Stats', hrefTemplate: '/admin/wc/stats', permission: 'admin' },
 ];
+
+/**
+ * Record history across the whole system: browsing what has been recorded, and
+ * filling it in for records that predate the bookkeeping.
+ *
+ * Like the web services pages this is one admin page rather than an entity, so
+ * the hrefs carry no `{id}` and callers pass the page's constant id. Both tabs
+ * are admin-only: one is every record in the system with the times and people
+ * attached to it, and the other writes.
+ */
+export const RECORD_METADATA_ADMIN_ENTITY_ID = 'admin';
+
+export const recordMetadataTabTree: HierarchicalTab[] = [
+  { id: 'record-metadata-list', label: 'History', hrefTemplate: '/admin/metadata/list', permission: 'admin' },
+  { id: 'record-metadata-backfill', label: 'Fill In', hrefTemplate: '/admin/metadata/backfill', permission: 'admin' },
+];
 /**
  * Entity tab trees by type
  */
@@ -834,6 +855,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   options: optionsTabTree,
   ws: wsTabTree,
   wc: wcTabTree,
+  record_metadata: recordMetadataTabTree,
 };
 
 /**

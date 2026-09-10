@@ -1,7 +1,8 @@
 import { eventBus, EventType, type EventPayloadMap } from "../event-bus";
 import { storage } from "../../storage";
-import { getRequestContext } from "../../middleware/request-context";
 import { logger } from "../../logger";
+import { entityMetadataStorage } from "../../storage/system/entity-metadata";
+import type { SnapshotNode, SnapshotRecordMetadata } from "@shared/snapshots";
 
 const SERVICE_NAME = "snapshot-capture";
 
@@ -29,7 +30,13 @@ interface SnapshotCaptureAdapter<E extends keyof EventPayloadMap> {
    * Produce the self-contained export bundle (a SnapshotNode). Runs inside the
    * saving transaction, so it reads the entity exactly as that save left it.
    */
-  exportEntity: (payload: EventPayloadMap[E]) => Promise<unknown | undefined>;
+  exportEntity: (payload: EventPayloadMap[E]) => Promise<SnapshotNode | undefined>;
+  /**
+   * Read the target record's metadata for this save. This is separate from
+   * exportEntity because record history is maintained by the logging layer and
+   * is intentionally not part of the entity export payload.
+   */
+  getMetadata: (payload: EventPayloadMap[E]) => Promise<SnapshotRecordMetadata | null>;
 }
 
 const adapters: SnapshotCaptureAdapter<any>[] = [
@@ -45,6 +52,8 @@ const adapters: SnapshotCaptureAdapter<any>[] = [
         ? `status: → ${payload.newStatus}`
         : `status: ${payload.previousStatus} → ${payload.newStatus}`,
     exportEntity: (payload) => storage.edlsSheets.export(payload.sheetId),
+    getMetadata: async (payload) =>
+      entityMetadataStorage.getSnapshotMetadata(payload.sheetId),
   },
 ];
 
@@ -71,25 +80,6 @@ export async function isSnapshotCaptureActive(event: string): Promise<boolean> {
       { service: SERVICE_NAME },
     );
     return true;
-  }
-}
-
-/**
- * Resolve the acting user from the ambient request context. The author is
- * the EFFECTIVE user (masquerade target), matching how the rest of the app
- * attributes actions performed while masquerading.
- */
-async function resolveAuthor(): Promise<{ authorId: string | null; authorName: string | null }> {
-  const context = getRequestContext();
-  const userId = context?.userId ?? null;
-  if (!userId) return { authorId: null, authorName: null };
-  try {
-    const user = await storage.users.getUser(userId);
-    if (!user) return { authorId: userId, authorName: null };
-    const name = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || null;
-    return { authorId: userId, authorName: name };
-  } catch {
-    return { authorId: userId, authorName: null };
   }
 }
 
@@ -138,14 +128,16 @@ export async function captureEntitySnapshot<E extends keyof EventPayloadMap>(
     return;
   }
 
-  const { authorId, authorName } = await resolveAuthor();
+  const metadata = await adapter.getMetadata(payload);
+
+  // The snapshot storage stamps its own capture time and effective actor (or
+  // null for a system capture). This is deliberately separate from record
+  // history because snapshots are process output.
   const snapshot = await storage.snapshots.create({
     entityType: adapter.entityType,
     entityId,
-    authorId,
-    authorName,
     label: adapter.getLabel(payload),
-    data: bundle,
+    data: { ...bundle, metadata },
   });
   logger.info(
     `Captured snapshot ${snapshot.id} of ${adapter.entityType} ${entityId} [${snapshot.label}]`,

@@ -2,7 +2,7 @@ import { createNoopValidator } from './utils/validation';
 import { getClient, onAfterCommit } from './transaction-context';
 import { eventBus, EventType } from "../services/event-bus";
 import { logger } from "../logger";
-import { ledgerAccounts, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
+import { entityMetadata, ledgerAccounts, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
 import { ledgerPaymentBatches, ledgerPaymentBatchAssignments } from "@shared/schema/ledger/payment-batch/schema";
 import type { LedgerPaymentBatch, InsertLedgerPaymentBatch, LedgerPaymentBatchAssignment } from "@shared/schema/ledger/payment-batch/schema";
 import type { 
@@ -12,6 +12,7 @@ import type {
   InsertLedgerEa,
   LedgerPayment,
   InsertLedgerPayment,
+  LedgerPaymentWithCreatedDate,
   LedgerPaymentWithEntity,
   Ledger,
   InsertLedger
@@ -27,6 +28,7 @@ import { dateToYmd, ymdToDateForPicker, isValidYmd } from "@shared/utils/date";
  */
 export const validate = createNoopValidator();
 
+/** Ledger payment lists read their creation time from entity metadata. */
 export type LedgerEaWithBalance = SelectLedgerEa & { balance: string };
 
 export interface LedgerEaWithAccount {
@@ -62,9 +64,14 @@ export interface LedgerPaymentTypeStorage {
 
 export interface LedgerPaymentStorage {
   getAll(): Promise<LedgerPayment[]>;
-  get(id: string): Promise<LedgerPayment | undefined>;
+  get(id: string): Promise<(LedgerPayment & { dateCreated: Date | null }) | undefined>;
   getByIds(ids: string[]): Promise<LedgerPayment[]>;
-  getByLedgerEaId(ledgerEaId: string): Promise<LedgerPayment[]>;
+  /**
+   * Payments for one EA, as the EA payments list reads them: each row carries
+   * the creation date the list shows, sorts and date-filters on, joined from
+   * the entity_metadata created_date column.
+   */
+  getByLedgerEaId(ledgerEaId: string): Promise<LedgerPaymentWithCreatedDate[]>;
   getByAccountIdWithEntity(accountId: string): Promise<LedgerPaymentWithEntity[]>;
   getByAccountIdWithEntityPaginated(
     accountId: string, 
@@ -615,11 +622,18 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         .orderBy(desc(ledgerPayments.id));
     },
 
-    async get(id: string): Promise<LedgerPayment | undefined> {
+    async get(id: string): Promise<(LedgerPayment & { dateCreated: Date | null }) | undefined> {
       const client = getClient();
-      const [payment] = await client.select().from(ledgerPayments)
+      const [row] = await client.select({
+        payment: ledgerPayments,
+        createdDate: entityMetadata.createdDate,
+      }).from(ledgerPayments)
+        .leftJoin(entityMetadata, and(
+          eq(entityMetadata.contextId, "ledger_payments"),
+          eq(entityMetadata.entityId, ledgerPayments.id),
+        ))
         .where(eq(ledgerPayments.id, id));
-      return payment || undefined;
+      return row ? { ...row.payment, dateCreated: row.createdDate } : undefined;
     },
 
     async getByIds(ids: string[]): Promise<LedgerPayment[]> {
@@ -629,11 +643,19 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         .where(inArray(ledgerPayments.id, ids));
     },
 
-    async getByLedgerEaId(ledgerEaId: string): Promise<LedgerPayment[]> {
+    async getByLedgerEaId(ledgerEaId: string): Promise<LedgerPaymentWithCreatedDate[]> {
       const client = getClient();
-      return await client.select().from(ledgerPayments)
+      const results = await client
+        .select({ payment: ledgerPayments, createdDate: entityMetadata.createdDate })
+        .from(ledgerPayments)
+        .leftJoin(entityMetadata, and(
+          eq(entityMetadata.contextId, "ledger_payments"),
+          eq(entityMetadata.entityId, ledgerPayments.id),
+        ))
         .where(eq(ledgerPayments.ledgerEaId, ledgerEaId))
         .orderBy(desc(ledgerPayments.id));
+
+      return results.map(row => ({ ...row.payment, createdDate: row.createdDate }));
     },
 
     async getByAccountIdWithEntity(accountId: string): Promise<LedgerPaymentWithEntity[]> {
@@ -642,10 +664,15 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         .select({
           payment: ledgerPayments,
           ea: ledgerEa,
-          employer: employers
+          employer: employers,
+           createdDate: entityMetadata.createdDate
         })
         .from(ledgerPayments)
         .innerJoin(ledgerEa, eq(ledgerPayments.ledgerEaId, ledgerEa.id))
+        .leftJoin(entityMetadata, and(
+          eq(entityMetadata.contextId, "ledger_payments"),
+          eq(entityMetadata.entityId, ledgerPayments.id),
+        ))
         .leftJoin(
           employers,
           and(
@@ -658,6 +685,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
 
       return results.map(row => ({
         ...row.payment,
+        createdDate: row.createdDate,
         entityType: row.ea.entityType,
         entityId: row.ea.entityId,
         entityName: row.employer?.name || null,
@@ -685,10 +713,15 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         .select({
           payment: ledgerPayments,
           ea: ledgerEa,
-          employer: employers
+          employer: employers,
+          createdDate: entityMetadata.createdDate
         })
         .from(ledgerPayments)
         .innerJoin(ledgerEa, eq(ledgerPayments.ledgerEaId, ledgerEa.id))
+        .leftJoin(entityMetadata, and(
+          eq(entityMetadata.contextId, "ledger_payments"),
+          eq(entityMetadata.entityId, ledgerPayments.id),
+        ))
         .leftJoin(
           employers,
           and(
@@ -703,6 +736,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
 
       const data = results.map(row => ({
         ...row.payment,
+        createdDate: row.createdDate,
         entityType: row.ea.entityType,
         entityId: row.ea.entityId,
         entityName: row.employer?.name || null,
@@ -2367,11 +2401,16 @@ export function createLedgerPaymentBatchAssignmentStorage(): LedgerPaymentBatchA
           payment: ledgerPayments,
           ea: ledgerEa,
           employer: employers,
+          createdDate: entityMetadata.createdDate,
           assignmentId: ledgerPaymentBatchAssignments.id,
         })
         .from(ledgerPaymentBatchAssignments)
         .innerJoin(ledgerPayments, eq(ledgerPaymentBatchAssignments.paymentId, ledgerPayments.id))
         .innerJoin(ledgerEa, eq(ledgerPayments.ledgerEaId, ledgerEa.id))
+        .leftJoin(entityMetadata, and(
+          eq(entityMetadata.contextId, "ledger_payments"),
+          eq(entityMetadata.entityId, ledgerPayments.id),
+        ))
         .leftJoin(
           employers,
           and(eq(ledgerEa.entityType, "employer"), eq(ledgerEa.entityId, employers.id)),
@@ -2381,6 +2420,7 @@ export function createLedgerPaymentBatchAssignmentStorage(): LedgerPaymentBatchA
 
       return rows.map((r) => ({
         ...(r.payment as LedgerPayment),
+        createdDate: r.createdDate,
         entityType: r.ea.entityType,
         entityId: r.ea.entityId,
         entityName: r.employer?.name ?? null,
@@ -2478,10 +2518,18 @@ export function createLedgerStorage(
  */
 export const ledgerAccountLoggingConfig = defineLoggingConfig<LedgerAccountStorage>({
   module: 'ledger.accounts',
+  table: 'ledger_accounts',
   methods: {
-    create: { getEntityId: (args, result) => result?.id || args[0]?.name || 'new account' },
-    update: {},
-    delete: {},
+    create: {
+      getEntityId: (args, result) => result?.id || args[0]?.name || 'new account',
+      metadataEntityId: (_args, result) => result?.id,
+    },
+    update: {
+      metadataEntityId: (args, result, beforeState) => result?.id ?? beforeState?.id ?? args[0],
+    },
+    delete: {
+      metadataEntityId: (args, result, beforeState) => result?.id ?? beforeState?.id ?? args[0],
+    },
   },
 });
 
@@ -2498,11 +2546,19 @@ function formatPaymentForLog(payment: LedgerPayment | undefined): string {
 
 export const ledgerPaymentBatchLoggingConfig = defineLoggingConfig<LedgerPaymentBatchStorage>({
   module: 'ledger.paymentBatches',
+  table: 'ledger_payment_batches',
   hostEntityId: (args, result) => result?.id ?? args[0],
   methods: {
-    create: { getEntityId: (args, result) => result?.id || args[0]?.name || 'new batch' },
-    update: {},
-    delete: {},
+    create: {
+      getEntityId: (args, result) => result?.id || args[0]?.name || 'new batch',
+      metadataEntityId: (_args, result) => result?.id,
+    },
+    update: {
+      metadataEntityId: (args, result, beforeState) => result?.id ?? beforeState?.id ?? args[0],
+    },
+    delete: {
+      metadataEntityId: (args, result, beforeState) => result?.id ?? beforeState?.id ?? args[0],
+    },
   },
 });
 
@@ -2514,10 +2570,12 @@ export const ledgerPaymentBatchLoggingConfig = defineLoggingConfig<LedgerPayment
  */
 export const ledgerPaymentLoggingConfig: StorageLoggingConfig<LedgerPaymentStorage> = {
   module: 'ledger.payments',
+  table: 'ledger_payments',
   methods: {
     create: {
       enabled: true,
       getEntityId: (args, result) => formatPaymentForLog(result),
+      metadataEntityId: (args, result, beforeState) => result?.id ?? beforeState?.id ?? args[0],
       getHostEntityId: async (args, result) => {
         return result?.id;
       },
@@ -2528,6 +2586,7 @@ export const ledgerPaymentLoggingConfig: StorageLoggingConfig<LedgerPaymentStora
     update: {
       enabled: true,
       getEntityId: (args, result, beforeState) => formatPaymentForLog(result || beforeState),
+      metadataEntityId: (args, result, beforeState) => result?.id ?? beforeState?.id ?? args[0],
       getHostEntityId: async (args, result, beforeState) => {
         return result?.id || beforeState?.id || args[0];
       },
@@ -2541,6 +2600,7 @@ export const ledgerPaymentLoggingConfig: StorageLoggingConfig<LedgerPaymentStora
     delete: {
       enabled: true,
       getEntityId: (args, result, beforeState) => formatPaymentForLog(beforeState),
+      metadataEntityId: (args, result, beforeState) => result?.id ?? beforeState?.id ?? args[0],
       getHostEntityId: async (args, result, beforeState) => {
         return beforeState?.id || args[0];
       },

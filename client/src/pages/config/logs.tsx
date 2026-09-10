@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "@/lib/date-format";
+import { recordGoHref } from "@shared/utils/record-go";
 
 interface LogEntry {
   id: number;
@@ -246,6 +247,15 @@ export default function LogsPage() {
                         {formatDistanceToNow(new Date(log.timestamp), { addSuffix: true })}
                       </TableCell>
                       <TableCell className="max-w-md truncate" data-testid={`text-description-${log.id}`}>
+                        {log.entityId?.trim() && (
+                          <a
+                            href={recordGoHref(log.entityId)}
+                            className="mr-2 text-primary underline-offset-4 hover:underline"
+                            data-testid={`link-log-record-${log.id}`}
+                          >
+                            View record
+                          </a>
+                        )}
                         {log.description || log.message}
                       </TableCell>
                       <TableCell className="text-sm" data-testid={`text-module-${log.id}`}>
@@ -344,7 +354,17 @@ export default function LogsPage() {
                 </div>
                 <div className="col-span-2">
                   <p className="text-sm font-medium">Entity ID</p>
-                  <p className="text-sm text-muted-foreground">{selectedLog.entityId || "N/A"}</p>
+                  {selectedLog.entityId?.trim() ? (
+                    <a
+                      href={recordGoHref(selectedLog.entityId)}
+                      className="text-sm font-mono text-primary underline-offset-4 hover:underline"
+                      data-testid="link-log-entity-id"
+                    >
+                      {selectedLog.entityId}
+                    </a>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">N/A</p>
+                  )}
                 </div>
               </div>
 

@@ -5,7 +5,7 @@ import { logger } from "../../logger";
  * Removal of file attachments, one attachment at a time — the ONE definition
  * of "remove these attachments", shared by the immediate cleanup that runs
  * when a record is deleted (./delete-cleanup.ts) and by the nightly
- * `files_orphan_sweep` cron.
+ * `entity_files_orphan_sweep` cron.
  *
  * Individual, never bulk: every removal goes through
  * `storage.entityFiles.deleteWithFile`, which is the logged storage method and

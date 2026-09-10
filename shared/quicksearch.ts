@@ -34,6 +34,14 @@ export interface QuicksearchResult {
   matchedOn?: string;
 }
 
+/**
+ * One record returned by a plugin before the runner supplies the default
+ * record-go destination. Plugins may provide an intentional custom route.
+ */
+export type QuicksearchPluginResult = Omit<QuicksearchResult, "href"> & {
+  href?: string;
+};
+
 /** The results one enabled configuration produced. */
 export interface QuicksearchGroup {
   /** The owning `plugin_configs` row id. */

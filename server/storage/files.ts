@@ -49,10 +49,12 @@ export interface FileStorage {
 
 export const fileLoggingConfig = defineLoggingConfig<FileStorage>({
   module: 'files',
+  table: 'files',
   getter: 'getById',
   methods: {
     create: {
       getEntityId: (args) => args[0]?.fileName || 'new file',
+      metadataEntityId: (_args, result) => result?.id,
       getHostEntityId: (args) => args[0]?.entityId,
     },
     // Note: legacy update/delete configs called `storage.getById(args[0])`

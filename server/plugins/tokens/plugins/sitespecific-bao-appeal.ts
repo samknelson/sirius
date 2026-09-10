@@ -75,7 +75,6 @@ registerTokenPlugin({
     // `{{sitespecific_bao_appeal}}` on its own names the benefit appealed —
     // the one fact a member reading a letter about it needs first.
     defaultLeaf: "benefit_name",
-    hiddenFromCatalog: true,
     requiredComponent: COMPONENT,
     sampleSets: BAO_APPEAL_SAMPLE_SETS,
     // An appeal has no page of its own: it is read on its case's detail page.

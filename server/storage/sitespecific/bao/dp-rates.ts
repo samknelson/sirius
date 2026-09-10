@@ -169,6 +169,7 @@ export function createBaoDpRatesStorage(): BaoDpRatesStorage {
 
 export const baoDpRatesLoggingConfig: StorageLoggingConfig<BaoDpRatesStorage> = {
   module: 'sitespecific.bao.dp-rates',
+  table: 'sitespecific_bao_dp_rates',
   methods: {
     create: {
       enabled: true,

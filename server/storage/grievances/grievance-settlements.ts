@@ -242,6 +242,8 @@ export function createGrievanceSettlementStorage(): GrievanceSettlementStorage {
 
 export const grievanceSettlementLoggingConfig: StorageLoggingConfig<GrievanceSettlementStorage> = {
   module: "grievanceSettlements",
+  table: 'grievance_settlements',
+  hostTable: 'grievances',
   methods: {
     create: {
       enabled: true,

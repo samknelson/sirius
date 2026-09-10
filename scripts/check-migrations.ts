@@ -23,6 +23,7 @@
 import { execSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { rehearseProcessProvenanceMigrations } from "./migration-contracts/process-provenance";
 
 const SCHEMA_PREFIX = /^shared\/schema(\.ts|\/)/;
 const CORE_MIGRATION_PREFIX = /^scripts\/migrate\/core\//;
@@ -392,6 +393,16 @@ function checkCoreVersionsUnique(): void {
   );
 }
 
+function checkMigrationContracts(): void {
+  try {
+    rehearseProcessProvenanceMigrations();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
+  console.log("[check-migrations] process-provenance migration rehearsal — OK");
+}
+
 function main(): void {
   // The version-collision guard runs even with --skip / [skip-migration-check]:
   // those escape hatches cover pure type refactors, not a mis-numbered
@@ -407,6 +418,7 @@ function main(): void {
   // Runs on EVERY invocation, not only when shared/schema* changed: a
   // duplicate version is a hazard whether or not the schema moved with it.
   checkCoreVersionsUnique();
+  checkMigrationContracts();
 
   const base = arg("base");
   const files = changedFiles(base);

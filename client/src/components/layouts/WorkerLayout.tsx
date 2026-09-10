@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode, useMemo } from "react";
-import { User, ArrowLeft, CalendarOff } from "lucide-react";
+import { User, CalendarOff } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Worker, Contact, WorkerTos } from "@shared/schema";
@@ -16,6 +16,17 @@ import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { useAccessCheck } from "@/hooks/use-access-check";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
+
+const WORKER_BACK_LINK = {
+  href: "/workers",
+  label: "Back to Workers",
+  testId: "button-back-to-workers",
+};
 
 interface WorkerLayoutContextValue {
   worker: Worker;
@@ -212,27 +223,11 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
   if (workerError) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <User className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">Worker Not Found</span>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/workers">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-workers">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Workers
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<User className="text-primary-foreground" size={16} />}
+          label="Worker Not Found"
+          backLink={WORKER_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -259,26 +254,10 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
   if (isLoading || !worker) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <User className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/workers">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-workers">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Workers
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<User className="text-primary-foreground" size={16} />}
+          backLink={WORKER_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -304,31 +283,20 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     <WorkerLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
         {/* Header */}
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <User className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground" data-testid={`text-worker-name-${worker.id}`}>
-                  {contact?.displayName || `Worker ${worker.id.slice(0, 8)}`}
-                </h1>
-                <BookmarkButton entityType="worker" entityId={worker.id} entityName={contact?.displayName || `Worker ${worker.id.slice(0, 8)}`} />
-                <WorkerEdlsBadge workerId={worker.id} />
-              </div>
-              <div className="flex items-center space-x-4">
-                <DebugRecordViewer record={worker} entityLabel="Worker" />
-                <Link href="/workers">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-workers">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Workers
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<User className="text-primary-foreground" size={16} />}
+          title={contact?.displayName || `Worker ${worker.id.slice(0, 8)}`}
+          titleTestId={`text-worker-name-${worker.id}`}
+          badges={
+            <>
+              <BookmarkButton entityType="worker" entityId={worker.id} entityName={contact?.displayName || `Worker ${worker.id.slice(0, 8)}`} />
+              <WorkerEdlsBadge workerId={worker.id} />
+            </>
+          }
+          actions={<DebugRecordViewer record={worker} entityLabel="Worker" />}
+          backLink={WORKER_BACK_LINK}
+          recordId={worker.id}
+        />
 
         {/* Main Tab Navigation - rendered dynamically from registry */}
         <div className="bg-card border-b border-border">

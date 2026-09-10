@@ -10,7 +10,7 @@ import { deleteNotesForRecord } from "./cleanup";
  * pair and no foreign key, so nothing in the database removes a deleted
  * record's notes. This subscriber is the FIRST of the two layers that do:
  * it reacts to the record's own `<entity>.delete.after` event and removes the
- * notes right away. The nightly `notes_orphan_sweep` cron is the second layer,
+ * notes right away. The nightly `entity_notes_orphan_sweep` cron is the second layer,
  * catching whatever this one missed (a crash, a handler error, a delete path
  * that predates the event). Both call the same routine (./cleanup.ts), so
  * there is one definition of "remove this record's notes".

@@ -111,7 +111,7 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess, composeTarget 
 
   const handleSend = () => {
     if (!selectedPhone || !message.trim()) return;
-    if (composeTarget && refuseUnrenderedTokens({ message }, toast)) return;
+    if (composeTarget && refuseUnrenderedTokens({ body: message }, toast)) return;
     sendSmsMutation.mutate({
       phoneNumber: selectedPhone.phoneNumber,
       message: message.trim(),
@@ -121,7 +121,7 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess, composeTarget 
 
   const handleSendOffline = () => {
     if (!selectedPhone || !message.trim()) return;
-    if (composeTarget && refuseUnrenderedTokens({ message }, toast)) return;
+    if (composeTarget && refuseUnrenderedTokens({ body: message }, toast)) return;
     sendSmsMutation.mutate({
       phoneNumber: selectedPhone.phoneNumber,
       message: message.trim(),
@@ -300,10 +300,10 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess, composeTarget 
                       channel="sms"
                       title="Compose SMS"
                       fields={[
-                        { key: "message", label: "Message", mode: "multiline", maxLength: 1600 },
+                        { key: "body", label: "Message", mode: "multiline", maxLength: 1600 },
                       ]}
-                      values={{ message }}
-                      onApply={(rendered) => setMessage(rendered.message ?? "")}
+                      values={{ body: message }}
+                      onApply={(rendered) => setMessage(rendered.body ?? "")}
                       testId="button-compose-sms-template"
                     />
                   )}

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useDispatchJobGroupTabAccess } from "@/hooks/useTabAccess";
+import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
 import type { DispatchJobGroup } from "@shared/schema";
 
 interface DispatchJobGroupLayoutProps {
@@ -75,42 +76,35 @@ export function DispatchJobGroupLayout({ activeTab, children }: DispatchJobGroup
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
-      <div className="flex items-center justify-between mb-6">
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="breadcrumb">
-          <Link href="/dispatch/job_groups" className="hover:text-foreground transition-colors">
-            Job Groups
-          </Link>
-          <ChevronRight size={16} />
-          <span className="text-foreground font-medium">
-            {group.name}
-          </span>
-        </nav>
-        <Link href="/dispatch/job_groups">
-          <Button variant="ghost" size="sm" data-testid="button-back">
-            <ArrowLeft size={16} className="mr-2" />
-            Back to Job Groups
-          </Button>
-        </Link>
-      </div>
-
-      <div className="flex items-start gap-4 mb-6">
-        <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-primary/10">
-          <Layers className="h-6 w-6 text-primary" />
-        </div>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-foreground" data-testid="heading-group-name">
-              {group.name}
-            </h1>
-            <Badge variant={active ? "default" : "secondary"} data-testid="badge-status">
-              {active ? "Active" : "Inactive"}
-            </Badge>
-          </div>
+      <RecordTitleBar
+        variant="page"
+        icon={<Layers className="h-6 w-6 text-primary" />}
+        title={group.name}
+        titleTestId="heading-group-name"
+        badges={
+          <Badge variant={active ? "default" : "secondary"} data-testid="badge-status">
+            {active ? "Active" : "Inactive"}
+          </Badge>
+        }
+        subtitle={
           <p className="text-muted-foreground mt-1">
             {group.startYmd} to {group.endYmd}
           </p>
-        </div>
-      </div>
+        }
+        breadcrumb={
+          <nav className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="breadcrumb">
+            <Link href="/dispatch/job_groups" className="hover:text-foreground transition-colors">
+              Job Groups
+            </Link>
+            <ChevronRight size={16} />
+            <span className="text-foreground font-medium">
+              {group.name}
+            </span>
+          </nav>
+        }
+        backLink={{ href: "/dispatch/job_groups", label: "Back to Job Groups" }}
+        recordId={group.id}
+      />
 
       <div className="border-b border-border mb-6">
         <nav className="flex gap-6" data-testid="nav-tabs">

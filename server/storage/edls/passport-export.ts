@@ -26,6 +26,7 @@ import {
   optionsEdlsTasks,
   dispatchJobGroups,
   facilities,
+  entityMetadata,
 } from "@shared/schema";
 import { and, asc, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -42,6 +43,9 @@ const SCHEDULED_STATUS = "lock";
 
 /** Entity type used by the snapshot capture service for EDLS sheets. */
 const SHEET_SNAPSHOT_ENTITY_TYPE = "edls_sheet";
+
+/** Table the sheet's provenance row is filed under in `entity_metadata`. */
+const SHEET_TABLE_NAME = "edls_sheets";
 
 /** Sirius id of the worker id type carrying the Freeman employee number. */
 const FREEMAN_EIN_ID_TYPE_SIRIUS_ID = "freeman_ein";
@@ -249,7 +253,20 @@ export async function getEdlsPassportExportPage(
     .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id))
     .leftJoin(optionsEdlsShowStatus, eq(edlsSheets.showStatusId, optionsEdlsShowStatus.id))
     .leftJoin(supervisorUsers, eq(edlsSheets.supervisor, supervisorUsers.id))
-    .leftJoin(creatorUsers, eq(edlsSheets.createdBy, creatorUsers.id))
+    // Who created a sheet is provenance: the sheet table does not carry it,
+    // `entity_metadata` answers it for every logged table. The row is joined
+    // on the record id (its `entity_id` is unique across tables; the table
+    // name is named anyway so the join says what it is reading), and it may be
+    // absent — a sheet whose creation nobody observed exports a null creator,
+    // exactly as a null `created_by` did.
+    .leftJoin(
+      entityMetadata,
+      and(
+        eq(entityMetadata.entityId, edlsSheets.id),
+        eq(entityMetadata.contextId, SHEET_TABLE_NAME),
+      ),
+    )
+    .leftJoin(creatorUsers, eq(entityMetadata.createdBy, creatorUsers.id))
     .$dynamic();
 
   const joinedQuery = withJobGroups

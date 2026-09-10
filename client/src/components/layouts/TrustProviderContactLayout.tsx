@@ -4,10 +4,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import { createContext, useContext } from "react";
 import { useProviderContactTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
 
 interface Contact {
   id: string;
@@ -131,35 +132,23 @@ export function TrustProviderContactLayout({ children, activeTab }: TrustProvide
   return (
     <TrustProviderContactContext.Provider value={{ trustProviderContact, provider, isLoading }}>
       {/* Entity Header */}
-      <section className="bg-card border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <Users className="text-primary-foreground" size={16} />
-              </div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-semibold text-foreground" data-testid="text-contact-name">
-                  {provider?.name ? `${provider.name} :: ${trustProviderContact.contact.displayName}` : trustProviderContact.contact.displayName}
-                </h1>
-                {trustProviderContact.contactType && (
-                  <Badge variant="secondary" data-testid="badge-contact-type">
-                    {trustProviderContact.contactType.name}
-                  </Badge>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Link href={provider ? `/trust/provider/${provider.id}/contacts` : "/trust/providers"}>
-                <Button variant="ghost" size="sm" data-testid="button-back">
-                  <ArrowLeft size={16} className="mr-2" />
-                  Back to {provider ? "Provider" : "Providers"}
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
+      <RecordTitleBar
+        icon={<Users className="text-primary-foreground" size={16} />}
+        title={provider?.name ? `${provider.name} :: ${trustProviderContact.contact.displayName}` : trustProviderContact.contact.displayName}
+        titleTestId="text-contact-name"
+        badges={
+          trustProviderContact.contactType && (
+            <Badge variant="secondary" data-testid="badge-contact-type">
+              {trustProviderContact.contactType.name}
+            </Badge>
+          )
+        }
+        backLink={{
+          href: provider ? `/trust/provider/${provider.id}/contacts` : "/trust/providers",
+          label: `Back to ${provider ? "Provider" : "Providers"}`,
+        }}
+        recordId={trustProviderContact.id}
+      />
 
       {/* Tab Navigation */}
       <section className="bg-card border-b border-border">

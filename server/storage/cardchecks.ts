@@ -1169,6 +1169,8 @@ async function getDefinitionName(definitionId: string): Promise<string> {
 
 export const cardcheckLoggingConfig: StorageLoggingConfig<CardcheckStorage> = {
   module: 'cardchecks',
+  table: 'cardchecks',
+  hostTable: 'workers',
   methods: {
     createCardcheck: {
       enabled: true,

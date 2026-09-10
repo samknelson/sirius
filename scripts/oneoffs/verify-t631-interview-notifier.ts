@@ -110,8 +110,8 @@ async function main(): Promise<void> {
   const staffEmail = `staff.${FIXTURE_TAG}@example.com`;
   const staffContactId = await mkContact("staff", staffEmail);
   const staffUserRes = await db.execute(sql`
-    INSERT INTO users (id, email, account_status, is_active, created_at, updated_at)
-    VALUES (${`fixture-${FIXTURE_TAG}`}, ${staffEmail}, 'active', true, now(), now()) RETURNING id
+    INSERT INTO users (id, email, account_status, is_active)
+    VALUES (${`fixture-${FIXTURE_TAG}`}, ${staffEmail}, 'active', true) RETURNING id
   `);
   const staffUserId = (staffUserRes.rows[0] as any).id as string;
   cleanup.push(async () => {
@@ -131,8 +131,8 @@ async function main(): Promise<void> {
   // Plain (non-staff) user for validateConfig rejection.
   const plainEmail = `plain.${FIXTURE_TAG}@example.com`;
   const plainUserRes = await db.execute(sql`
-    INSERT INTO users (id, email, account_status, is_active, created_at, updated_at)
-    VALUES (${`fixture-plain-${FIXTURE_TAG}`}, ${plainEmail}, 'active', true, now(), now()) RETURNING id
+    INSERT INTO users (id, email, account_status, is_active)
+    VALUES (${`fixture-plain-${FIXTURE_TAG}`}, ${plainEmail}, 'active', true) RETURNING id
   `);
   const plainUserId = (plainUserRes.rows[0] as any).id as string;
   cleanup.push(async () => {

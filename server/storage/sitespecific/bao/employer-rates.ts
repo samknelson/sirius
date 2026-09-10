@@ -235,6 +235,7 @@ export function createBaoEmployerRatesStorage(): BaoEmployerRatesStorage {
 
 export const baoEmployerRatesLoggingConfig: StorageLoggingConfig<BaoEmployerRatesStorage> = {
   module: 'sitespecific.bao.employer-rates',
+  table: 'sitespecific_bao_employer_rates',
   methods: {
     bulkUpsert: {
       enabled: true,

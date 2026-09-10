@@ -17,8 +17,6 @@ export const wsClients = pgTable("ws_clients", {
   description: text("description"),
   status: wsClientStatusEnum("status").default("active").notNull(),
   ipAllowlistEnabled: boolean("ip_allowlist_enabled").default(false).notNull(),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
-  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
 }, (table) => ({
   statusIdx: index("ws_clients_status_idx").on(table.status),
 }));
@@ -28,8 +26,6 @@ export const insertWsClientSchema = createInsertSchema(wsClients, {
   description: z.string().optional().nullable(),
 }).omit({
   id: true,
-  createdAt: true,
-  updatedAt: true,
 });
 
 export type WsClientStatus = (typeof wsClientStatusEnum.enumValues)[number];
@@ -49,7 +45,6 @@ export const wsClientGrants = pgTable("ws_client_grants", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   clientId: varchar("client_id").notNull().references(() => wsClients.id, { onDelete: "cascade" }),
   configId: varchar("config_id").notNull().references(() => pluginConfigs.id, { onDelete: "cascade" }),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 }, (table) => ({
   clientIdIdx: index("ws_client_grants_client_id_idx").on(table.clientId),
   configIdIdx: index("ws_client_grants_config_id_idx").on(table.configId),
@@ -63,7 +58,6 @@ export const insertWsClientGrantSchema = createInsertSchema(wsClientGrants, {
   configId: z.string().min(1),
 }).omit({
   id: true,
-  createdAt: true,
 });
 
 export type InsertWsClientGrant = z.infer<typeof insertWsClientGrantSchema>;
@@ -78,7 +72,6 @@ export const wsClientCredentials = pgTable("ws_client_credentials", {
   isActive: boolean("is_active").default(true).notNull(),
   expiresAt: timestamp("expires_at"),
   lastUsedAt: timestamp("last_used_at"),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 }, (table) => ({
   clientIdIdx: index("ws_client_credentials_client_id_idx").on(table.clientId),
   clientKeyIdx: uniqueIndex("ws_client_credentials_client_key_idx").on(table.clientKey),
@@ -93,7 +86,6 @@ export const insertWsClientCredentialSchema = createInsertSchema(wsClientCredent
 }).omit({
   id: true,
   lastUsedAt: true,
-  createdAt: true,
 });
 
 export type InsertWsClientCredential = z.infer<typeof insertWsClientCredentialSchema>;
@@ -105,7 +97,6 @@ export const wsClientIpRules = pgTable("ws_client_ip_rules", {
   ipAddress: varchar("ip_address", { length: 45 }).notNull(),
   description: text("description"),
   isActive: boolean("is_active").default(true).notNull(),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 }, (table) => ({
   clientIdIdx: index("ws_client_ip_rules_client_id_idx").on(table.clientId),
   clientIpIdx: uniqueIndex("ws_client_ip_rules_client_ip_idx").on(table.clientId, table.ipAddress),
@@ -117,7 +108,6 @@ export const insertWsClientIpRuleSchema = createInsertSchema(wsClientIpRules, {
   description: z.string().optional().nullable(),
 }).omit({
   id: true,
-  createdAt: true,
 });
 
 export type InsertWsClientIpRule = z.infer<typeof insertWsClientIpRuleSchema>;

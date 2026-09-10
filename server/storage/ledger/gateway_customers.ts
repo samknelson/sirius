@@ -59,10 +59,36 @@ export function createGatewayCustomerStorage(): GatewayCustomerStorage {
 
 /**
  * Logging configuration for gateway-customer mapping operations.
+ *
+ * `upsert` is the only way a mapping is ever written, so it is also the only
+ * place a mapping's creation can be observed — and it is not named like a
+ * create, so nothing about the name says which of the two it did. The mode is
+ * therefore decided per call, from whether a mapping was already there: the
+ * insert that first links an entity to a provider customer is that record's
+ * creation and stamps whoever caused it, while the repair of a stale reference
+ * is a modification and leaves the original creator alone.
+ *
+ * Both happen on a vendor round-trip — the mapping is written as a side effect
+ * of asking the provider for a customer — so the acting person is whoever's
+ * request set that off, and may be nobody at all when the work has no request
+ * behind it.
  */
 export const gatewayCustomerLoggingConfig = defineLoggingConfig<GatewayCustomerStorage>({
   module: 'ledger.gatewayCustomers',
+  table: 'ledger_gateway_customers',
   methods: {
-    upsert: { getEntityId: (args, result) => result?.id || 'new gateway customer' },
+    upsert: {
+      getEntityId: (args, result) => result?.id || 'new gateway customer',
+      before: async (args, storage) => {
+        const mapping = args[0] as InsertLedgerGatewayCustomer | undefined;
+        if (!mapping) return undefined;
+        return await storage.get(
+          mapping.entityType,
+          mapping.entityId,
+          mapping.gatewayConfigId,
+        );
+      },
+      metadataMode: (_args, _result, beforeState) => (beforeState ? 'modified' : 'created'),
+    },
   },
 });

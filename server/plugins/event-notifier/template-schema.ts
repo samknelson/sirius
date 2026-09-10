@@ -16,6 +16,8 @@
  * template at runtime (see `pick()` in token-templates.ts).
  */
 
+import { notifierTokenContextId } from "@shared/token-contexts";
+
 type TemplateMode = "line" | "multiline" | "html";
 
 /** The channels a token-templated notifier can carry message templates for. */
@@ -130,15 +132,16 @@ export function hideUndeliverableTemplateChannels(
 }
 
 /**
- * Name the notifier every template card in `configSchema` belongs to, so
- * the card can fetch that notifier's token catalog.
+ * Name the notifier every template card in `configSchema` belongs to —
+ * the plugin the card fetches defaults and preview records for, and the
+ * token context whose roots its Template Studio offers.
  *
  * Called once per notifier at registration, from the id the notifier is
- * actually registered under. It is deliberately NOT something a plugin
- * passes in: the catalog endpoint looks the notifier up by this id, and
- * a hand-written copy that drifts from the real one 404s — leaving the
- * Template Studio with no tokens, no defaults and no preview roots, with
- * nothing anywhere saying why.
+ * actually registered under. Neither is something a plugin passes in:
+ * the catalog endpoint looks the notifier up by this id and the context
+ * is generated from it, so a hand-written copy that drifts from the real
+ * one leaves the Template Studio with no tokens, no defaults and no
+ * preview roots, with nothing anywhere saying why.
  */
 export function stampNotifierTemplateIds(
   configSchema: Record<string, unknown> | undefined,
@@ -155,8 +158,7 @@ export function stampNotifierTemplateIds(
   for (const group of Object.values(groups)) {
     if (group["x-widget"] !== "notifier-channel-templates") continue;
     group["x-token-plugin-id"] = pluginId;
-    group["x-token-catalog-url"] =
-      `/api/event-notifier/token-catalog/${encodeURIComponent(pluginId)}`;
+    group["x-token-context-id"] = notifierTokenContextId(pluginId);
     stamped++;
   }
   return stamped;
@@ -229,7 +231,7 @@ export function templatesSchemaBlock(
         "sms",
         "SMS",
         {
-          message: templateField("Message", "sms.message", "multiline"),
+          body: templateField("Message", "sms.body", "multiline"),
         },
       ),
       inapp: channelGroup(

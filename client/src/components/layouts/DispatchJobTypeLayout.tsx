@@ -1,6 +1,6 @@
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Briefcase, Truck, HardHat, Wrench, Clock, Calendar, ClipboardList, Package, MapPin, Users, type LucideIcon } from "lucide-react";
+import { Briefcase, Truck, HardHat, Wrench, Clock, Calendar, ClipboardList, Package, MapPin, Users, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,6 +8,17 @@ import type { DispatchJobType, JobTypeData } from "@shared/schema";
 import { createContext, useContext } from "react";
 import { useDispatchJobTypeTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
+
+const DISPATCH_JOB_TYPE_BACK_LINK = {
+  href: "/config/dispatch-job-types",
+  label: "Back to Job Types",
+  testId: "button-back-to-job-types",
+};
 
 const iconMap: Record<string, LucideIcon> = {
   Briefcase, Truck, HardHat, Wrench, Clock, Calendar, ClipboardList, Package, MapPin, Users,
@@ -53,26 +64,11 @@ export default function DispatchJobTypeLayout({ children, activeTab }: DispatchJ
   if (error) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Briefcase className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Job Type Not Found</h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/config/dispatch-job-types">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-job-types">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Job Types
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<Briefcase className="text-primary-foreground" size={16} />}
+          label="Job Type Not Found"
+          backLink={DISPATCH_JOB_TYPE_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -90,26 +86,10 @@ export default function DispatchJobTypeLayout({ children, activeTab }: DispatchJ
   if (isLoading || !jobType) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Briefcase className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/config/dispatch-job-types">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-job-types">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Job Types
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<Briefcase className="text-primary-foreground" size={16} />}
+          backLink={DISPATCH_JOB_TYPE_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -133,28 +113,13 @@ export default function DispatchJobTypeLayout({ children, activeTab }: DispatchJ
   return (
     <DispatchJobTypeLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <IconComponent className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground" data-testid={`text-job-type-name-${jobType.id}`}>
-                  {jobType.name}
-                </h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/config/dispatch-job-types">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-job-types">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Job Types
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<IconComponent className="text-primary-foreground" size={16} />}
+          title={jobType.name}
+          titleTestId={`text-job-type-name-${jobType.id}`}
+          backLink={DISPATCH_JOB_TYPE_BACK_LINK}
+          recordId={jobType.id}
+        />
 
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

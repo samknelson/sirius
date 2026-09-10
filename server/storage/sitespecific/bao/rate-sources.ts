@@ -280,6 +280,7 @@ export function createBaoRateSourcesStorage(): BaoRateSourcesStorage {
 
 export const baoRateSourcesLoggingConfig: StorageLoggingConfig<BaoRateSourcesStorage> = {
   module: 'sitespecific.bao.rate-sources',
+  table: 'sitespecific_bao_rate_sources',
   methods: {
     create: {
       enabled: true,

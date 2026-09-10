@@ -80,6 +80,8 @@ export function createEsigStorage(): EsigStorage {
 
 export const esigLoggingConfig: StorageLoggingConfig<EsigStorage> = {
   module: 'esigs',
+  table: 'esigs',
+  hostTable: 'users',
   methods: {
     createEsig: {
       enabled: true,

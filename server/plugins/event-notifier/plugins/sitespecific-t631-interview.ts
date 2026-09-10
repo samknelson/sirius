@@ -113,7 +113,7 @@ function defaultTemplates(configData?: unknown): NotifierChannelTemplates {
       bodyHtml: `<p>${SENTENCE}</p>` + `<p><a href="${url}">${label}</a></p>`,
     },
     sms: {
-      message: `${SENTENCE} View: ${url}`,
+      body: `${SENTENCE} View: ${url}`,
     },
     inapp: {
       title: TITLE,

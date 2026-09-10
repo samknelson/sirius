@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode } from "react";
-import { Vote, ArrowLeft } from "lucide-react";
+import { Vote } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { WorkerTrustElectionView } from "@shared/schema";
@@ -9,6 +9,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useTrustElectionTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
 import { formatYmd, getDateRangeStatus } from "@shared/utils";
 
 interface WorkerWithName {
@@ -81,31 +86,20 @@ export function TrustElectionLayout({ activeTab, children }: TrustElectionLayout
   const backHref = election
     ? `/workers/${election.workerId}/elections/list`
     : "/workers";
+  const electionBackLink = {
+    href: backHref,
+    label: "Back to worker elections",
+    testId: "button-back-to-elections",
+  };
 
   if (electionError) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Vote className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">Trust Election Not Found</span>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href={backHref}>
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-elections">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to worker elections
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<Vote className="text-primary-foreground" size={16} />}
+          label="Trust Election Not Found"
+          backLink={electionBackLink}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -127,18 +121,9 @@ export function TrustElectionLayout({ activeTab, children }: TrustElectionLayout
   if (electionLoading || !election) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Vote className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<Vote className="text-primary-foreground" size={16} />}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -170,39 +155,25 @@ export function TrustElectionLayout({ activeTab, children }: TrustElectionLayout
   return (
     <TrustElectionLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Vote className="text-primary-foreground" size={16} />
-                </div>
-                <h1
-                  className="text-xl font-semibold text-foreground"
-                  data-testid={`text-election-title-${election.id}`}
-                >
-                  {workerName
-                    ? `Election - ${workerName} - ${formatYmd(election.startYmd)}`
-                    : "Trust Election"}
-                </h1>
-                <Badge
-                  variant={statusPresentation.variant}
-                  data-testid="badge-election-status"
-                >
-                  {statusPresentation.label}
-                </Badge>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href={backHref}>
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-elections">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to worker elections
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<Vote className="text-primary-foreground" size={16} />}
+          title={
+            workerName
+              ? `Election - ${workerName} - ${formatYmd(election.startYmd)}`
+              : "Trust Election"
+          }
+          titleTestId={`text-election-title-${election.id}`}
+          badges={
+            <Badge
+              variant={statusPresentation.variant}
+              data-testid="badge-election-status"
+            >
+              {statusPresentation.label}
+            </Badge>
+          }
+          backLink={electionBackLink}
+          recordId={election.id}
+        />
 
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

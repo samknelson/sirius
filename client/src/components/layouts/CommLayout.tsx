@@ -1,6 +1,6 @@
 import { createContext, useContext, ReactNode } from "react";
-import { ArrowLeft, MessageSquare, Phone, Mail, Mailbox, Bell, AlertCircle } from "lucide-react";
-import { Link, useParams, useLocation } from "wouter";
+import { MessageSquare, Phone, Mail, Mailbox, Bell, AlertCircle } from "lucide-react";
+import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "@/lib/date-format";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,11 @@ import { useCommTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { CommWithDetails } from "@/lib/comm-types";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
 
 interface CommLayoutContextValue {
   comm: CommWithDetails;
@@ -75,7 +80,6 @@ function recipientFor(comm: CommWithDetails): string | null {
 
 export function CommLayout({ activeTab, children }: CommLayoutProps) {
   const { commId } = useParams<{ commId: string }>();
-  const [, navigate] = useLocation();
 
   const { data: comm, isLoading, error } = useQuery<CommWithDetails>({
     queryKey: ["/api/comm", commId],
@@ -90,21 +94,10 @@ export function CommLayout({ activeTab, children }: CommLayoutProps) {
   if (error) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <MessageSquare className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">
-                  Communication Not Found
-                </span>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<MessageSquare className="text-primary-foreground" size={16} />}
+          label="Communication Not Found"
+        />
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
@@ -127,18 +120,7 @@ export function CommLayout({ activeTab, children }: CommLayoutProps) {
   if (isLoading || !comm) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <MessageSquare className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading icon={<MessageSquare className="text-primary-foreground" size={16} />} />
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
@@ -158,46 +140,37 @@ export function CommLayout({ activeTab, children }: CommLayoutProps) {
   return (
     <CommLayoutContext.Provider value={{ comm }}>
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16 gap-3">
-              <div className="flex items-center space-x-3 min-w-0">
-                {comm.contactMainLink && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => navigate(comm.contactMainLink!.url)}
-                    data-testid="button-comm-back"
-                    aria-label={`Back to ${comm.contactMainLink.label}`}
-                    title={`Back to ${comm.contactMainLink.label}`}
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                  </Button>
-                )}
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0">
-                  {mediumIcon(comm.medium)}
-                </div>
-                <div className="min-w-0">
-                  <h1
-                    className="text-xl font-semibold text-foreground truncate"
-                    data-testid={`text-comm-title-${comm.id}`}
-                  >
-                    {mediumLabel(comm.medium)} Communication
-                    {recipient ? <span className="text-muted-foreground font-normal"> · {recipient}</span> : null}
-                  </h1>
-                  {sentLabel && (
-                    <p
-                      className="text-xs text-muted-foreground font-mono"
-                      data-testid={`text-comm-sent-${comm.id}`}
-                    >
-                      Sent {sentLabel}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={mediumIcon(comm.medium)}
+          title={
+            <>
+              {mediumLabel(comm.medium)} Communication
+              {recipient ? <span className="text-muted-foreground font-normal"> · {recipient}</span> : null}
+            </>
+          }
+          titleTestId={`text-comm-title-${comm.id}`}
+          subtitle={
+            sentLabel && (
+              <p
+                className="text-xs text-muted-foreground font-mono"
+                data-testid={`text-comm-sent-${comm.id}`}
+              >
+                Sent {sentLabel}
+              </p>
+            )
+          }
+          backLink={
+            comm.contactMainLink
+              ? {
+                  href: comm.contactMainLink.url,
+                  label: `Back to ${comm.contactMainLink.label}`,
+                  testId: "button-comm-back",
+                  placement: "leading",
+                }
+              : undefined
+          }
+          recordId={comm.id}
+        />
 
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

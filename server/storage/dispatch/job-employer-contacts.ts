@@ -61,6 +61,8 @@ async function getContactName(contactId: string | undefined): Promise<string> {
 export const dispatchJobEmployerContactsLoggingConfig =
   defineLoggingConfig<DispatchJobEmployerContactsStorage>({
     module: "dispatch-job-employer-contacts",
+    table: 'dispatch_job_employer_contacts',
+    hostTable: 'dispatch_jobs',
     methods: {
       create: {
         getEntityId: (_args, result) => result?.id,

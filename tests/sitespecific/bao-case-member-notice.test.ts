@@ -354,7 +354,7 @@ describe("bao_case_member_notice — the default letter says what it advertises"
       new Map(),
     );
     expect(letter).not.toBeNull();
-    const file = letter!.file!;
+    const file = letter!.content!.file!;
     for (const expected of [
       "Dear Pat Member",
       "Medical Plan A",
@@ -372,7 +372,7 @@ describe("bao_case_member_notice — the default letter says what it advertises"
     // hand-composed letter gets.
     const [pageHead] = LETTER_PAGE_HTML.split("{{BODY}}");
     expect(file.startsWith(pageHead.trimStart().slice(0, 40))).toBe(true);
-    expect(letter!.description).toBe("Benefit appeal letter — Auto-Denied — Pat Member");
+    expect(letter!.content!.description).toBe("Benefit appeal letter — Auto-Denied — Pat Member");
   });
 
   it("renders the default In-App appeal status, context, and safe case link", async () => {
@@ -404,9 +404,9 @@ describe("bao_case_member_notice — the default letter says what it advertises"
       resolveTemplates(baoCaseMemberNotice, config),
       new Map(),
     );
-    expect(letter?.file).toContain("Auto-Denied");
-    expect(letter?.file).not.toContain("Medical Plan A");
-    expect(letter?.file).not.toMatch(/\{\{|unknown token/);
+    expect(letter?.content?.file).toContain("Auto-Denied");
+    expect(letter?.content?.file).not.toContain("Medical Plan A");
+    expect(letter?.content?.file).not.toMatch(/\{\{|unknown token/);
   });
 
   it("mails nothing when the letter body is blank, and carries the email copy's subject", async () => {
@@ -428,7 +428,7 @@ describe("bao_case_member_notice — the default letter says what it advertises"
       resolveTemplates(baoCaseMemberNotice, config),
       new Map(),
     );
-    expect(email?.subject).toBe("Your benefit appeal — Auto-Denied");
-    expect(email?.bodyHtml).toContain("Medical Plan A");
+    expect(email?.content?.subject).toBe("Your benefit appeal — Auto-Denied");
+    expect(email?.content?.bodyHtml).toContain("Medical Plan A");
   });
 });

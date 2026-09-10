@@ -138,6 +138,8 @@ function emitForeSaved(
 
 export const dispatchJobForeLoggingConfig = defineLoggingConfig<DispatchJobForeStorage>({
   module: 'dispatch-job-fore',
+  table: 'dispatch_job_fore',
+  hostTable: 'workers',
   state: { key: 'fore' },
   hostEntityId: (args, result, before) =>
     result?.workerId ?? before?.fore?.workerId ?? args[0]?.workerId,

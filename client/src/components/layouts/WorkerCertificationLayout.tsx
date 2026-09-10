@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode } from "react";
-import { Award, ArrowLeft } from "lucide-react";
+import { Award } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
 import type { WorkerCertification, OptionsCertification, Worker, Contact } from "@shared/schema";
+
+const WORKERS_BACK_LINK = {
+  href: "/workers",
+  label: "Back to Workers",
+  testId: "button-back-to-workers",
+};
 
 interface WorkerCertificationWithDetails extends WorkerCertification {
   certification?: OptionsCertification | null;
@@ -72,27 +83,11 @@ export function WorkerCertificationLayout({ activeTab, children }: WorkerCertifi
   if (certError) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Award className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">Certification Not Found</span>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/workers">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-workers">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Workers
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<Award className="text-primary-foreground" size={16} />}
+          label="Certification Not Found"
+          backLink={WORKERS_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -119,26 +114,10 @@ export function WorkerCertificationLayout({ activeTab, children }: WorkerCertifi
   if (isLoading || !certification) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Award className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/workers">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-workers">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Workers
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<Award className="text-primary-foreground" size={16} />}
+          backLink={WORKERS_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -166,31 +145,18 @@ export function WorkerCertificationLayout({ activeTab, children }: WorkerCertifi
   return (
     <WorkerCertificationLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Award className="text-primary-foreground" size={16} />
-                </div>
-                <div>
-                  <h1 className="text-xl font-semibold text-foreground" data-testid={`text-certification-name-${certification.id}`}>
-                    {certificationName}
-                  </h1>
-                  <p className="text-sm text-muted-foreground">{workerName}</p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href={backUrl}>
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-certifications">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Certifications
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<Award className="text-primary-foreground" size={16} />}
+          title={certificationName}
+          titleTestId={`text-certification-name-${certification.id}`}
+          subtitle={<p className="text-sm text-muted-foreground">{workerName}</p>}
+          backLink={{
+            href: backUrl,
+            label: "Back to Certifications",
+            testId: "button-back-to-certifications",
+          }}
+          recordId={certification.id}
+        />
 
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

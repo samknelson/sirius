@@ -8,10 +8,13 @@ import type {
 } from "./types";
 import type { TokenRootSeed } from "../tokens/types";
 import {
-  NOTIFIER_CHANNEL_FIELDS,
+  MEDIUM_FIELDS,
   applyFieldEligibility,
+  authoredFieldValue,
+  deriveEmailPlainText,
   shapeRenderedValue,
   tokenCleanerFor,
+  type MediumName,
   type TokenValueCleaner,
 } from "../../delivery/shape";
 import { wrapLetterPage } from "../../../shared/utils/html/letter-page";
@@ -61,7 +64,7 @@ export function resolveTemplates(
       bodyHtml: pick(custom.email?.bodyHtml, defaults.email.bodyHtml),
     },
     sms: defaults.sms && {
-      message: pick(custom.sms?.message, defaults.sms.message),
+      body: pick(custom.sms?.body, defaults.sms.body),
     },
     inapp: defaults.inapp && {
       title: pick(custom.inapp?.title, defaults.inapp.title),
@@ -75,6 +78,25 @@ export function resolveTemplates(
     },
   };
 }
+
+/**
+ * What composing one (recipient, medium) message produced.
+ *
+ * `content` is null in two very different situations, and the caller
+ * must tell them apart: `blankRequired` empty means this medium simply
+ * has no templates (a notifier that does not do SMS), which is nothing
+ * at all; `blankRequired` non-empty means the message WAS meant to go
+ * out and rendered to nothing usable, which is a failure the caller
+ * records.
+ */
+export interface ComposedMessage {
+  content: NotifierMessageContent | null;
+  /** Required fields that rendered blank — see {@link ComposedMessage}. */
+  blankRequired: string[];
+}
+
+/** This medium is not one this notifier composes for. */
+const NOT_COMPOSED: ComposedMessage = { content: null, blankRequired: [] };
 
 /**
  * Compose the message for one (recipient, medium) pair by rendering the
@@ -91,7 +113,7 @@ export async function composeFromTemplates(
   seeds: TokenRootSeed[],
   templates: NotifierChannelTemplates,
   cache: Map<string, unknown>,
-): Promise<NotifierMessageContent | null> {
+): Promise<ComposedMessage> {
   const { storage } = await import("../../storage");
   const { renderTokens, createTokenEvalContext } = await import("../tokens");
 
@@ -121,9 +143,9 @@ export async function composeFromTemplates(
   const channelTemplates = templates[medium as keyof NotifierChannelTemplates] as
     | Record<string, string | undefined>
     | undefined;
-  const specs = NOTIFIER_CHANNEL_FIELDS[medium];
+  const specs = MEDIUM_FIELDS[medium as MediumName];
   // Media the templates don't cover are skipped.
-  if (!channelTemplates || !specs) return null;
+  if (!channelTemplates || !specs) return NOT_COMPOSED;
 
   // Render every field with the cleaning its destination declares,
   // then shape it exactly as the template studio previews it: trimming,
@@ -132,10 +154,13 @@ export async function composeFromTemplates(
   // and companion-field suppression all live in the shared shaping step.
   const shaped: Record<string, string> = {};
   for (const spec of specs) {
-    const template = channelTemplates[spec.key];
-    const rendered = typeof template === "string"
-      ? await render(template, tokenCleanerFor(spec))
-      : "";
+    // A field this notifier holds no template for is left OUT, not
+    // rendered as an empty string: "there is no link" and "the link
+    // rendered to nothing" are different answers, and only the shared
+    // declaration decides which of the two a missing key means.
+    const template = authoredFieldValue(spec, channelTemplates[spec.key]);
+    if (template === undefined) continue;
+    const rendered = await render(template, tokenCleanerFor(spec));
     shaped[spec.key] = shapeRenderedValue(spec, rendered);
     if (spec.safety === "relative-url" && rendered.trim() && !shaped[spec.key]) {
       // Alert UIs hand non-relative links to window.open, so a rendered
@@ -149,27 +174,36 @@ export async function composeFromTemplates(
       });
     }
   }
-  const { values, deliverable } = applyFieldEligibility(specs, shaped);
-  if (!deliverable) return null;
+  const { values, deliverable, blankRequired } = applyFieldEligibility(specs, shaped);
+  // Not a skip: the notifier meant to send this and the template
+  // produced nothing usable. The caller records it as a failure, naming
+  // the fields, so an operator can see it happened.
+  if (!deliverable) return { content: null, blankRequired };
 
   if (medium === "email") {
-    // bodyText derives from the sanitized HTML so both parts agree.
-    const { htmlToPlainText } = await import("../../../shared/utils/html/to-text");
     return {
-      subject: values.subject,
-      bodyHtml: values.bodyHtml,
-      bodyText: htmlToPlainText(values.bodyHtml),
+      content: {
+        subject: values.subject,
+        bodyHtml: values.bodyHtml ?? "",
+        // The plain-text part is made from the delivered HTML, never
+        // authored, so both parts of the email say the same thing.
+        bodyText: deriveEmailPlainText(values.bodyHtml ?? ""),
+      },
+      blankRequired: [],
     };
   }
 
-  if (medium === "sms") return { message: values.message };
+  if (medium === "sms") return { content: { body: values.body }, blankRequired: [] };
 
   if (medium === "inapp") {
     return {
-      title: values.title,
-      body: values.body,
-      linkUrl: values.linkUrl || undefined,
-      linkLabel: values.linkLabel || undefined,
+      content: {
+        title: values.title,
+        body: values.body,
+        linkUrl: values.linkUrl || undefined,
+        linkLabel: values.linkLabel || undefined,
+      },
+      blankRequired: [],
     };
   }
 
@@ -179,10 +213,13 @@ export async function composeFromTemplates(
     // (the same page a hand-composed letter gets). The description is the
     // provider-facing label and what the letter list shows.
     return {
-      file: wrapLetterPage(values.bodyHtml),
-      description: values.description || undefined,
+      content: {
+        file: wrapLetterPage(values.bodyHtml),
+        description: values.description || undefined,
+      },
+      blankRequired: [],
     };
   }
 
-  return null;
+  return NOT_COMPOSED;
 }

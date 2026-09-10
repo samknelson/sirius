@@ -166,6 +166,11 @@ export function initializePermissions(): void {
       module: 'core'
     },
     {
+      key: 'metadata.view',
+      description: 'View record history metadata and provenance',
+      module: 'core'
+    },
+    {
       key: 'users.view',
       description: 'View user accounts and profiles',
       module: 'core'

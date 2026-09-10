@@ -444,8 +444,6 @@ async function createSnapshot(sheetId: string, data: unknown, label: string) {
     entityId: sheetId,
     label,
     data,
-    authorId: null,
-    authorName: "verification script",
   });
   createdSnapshotIds.push(row.id);
   return row;

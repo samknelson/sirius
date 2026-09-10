@@ -2,7 +2,10 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { isComponentEnabledSync } from "../services/component-cache";
-import type { SnapshotNode } from "@shared/snapshots";
+import {
+  snapshotRevisionFromNode,
+  type SnapshotNode,
+} from "@shared/snapshots";
 import { decodeEdlsSheetSnapshot } from "./edls/snapshot-decode";
 
 /**
@@ -93,9 +96,12 @@ export function registerSnapshotsRoutes(app: Express, requireAuth: any) {
           id: snapshot.id,
           entityType: snapshot.entityType,
           entityId: snapshot.entityId,
-          createdAt: snapshot.createdAt,
-          authorId: snapshot.authorId,
-          authorName: snapshot.authorName,
+          revision: snapshotRevisionFromNode(snapshot.data),
+          // From the record's history, not the row: null date = no history
+          // written for this capture, null name = a system capture or a
+          // deleted account (see `SnapshotMeta`).
+          capturedAt: snapshot.capturedAt ? snapshot.capturedAt.toISOString() : null,
+          capturedByName: snapshot.capturedByName,
           label: snapshot.label,
           decoded,
         });

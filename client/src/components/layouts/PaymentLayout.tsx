@@ -3,9 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { LedgerPayment, LedgerPaymentType } from "@shared/schema";
-import { ArrowLeft, CreditCard } from "lucide-react";
+import { CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
 import { getPaymentTitle } from "@/lib/payment-utils";
 import { useLedgerPaymentTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -57,19 +62,10 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
   if (paymentError) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <CreditCard className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">Payment Not Found</span>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<CreditCard className="text-primary-foreground" size={16} />}
+          label="Payment Not Found"
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -91,18 +87,7 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
   if (isLoading || !payment) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <CreditCard className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading icon={<CreditCard className="text-primary-foreground" size={16} />} />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -130,28 +115,21 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
   return (
     <PaymentLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <CreditCard className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground" data-testid="text-payment-title">
-                  {paymentTitle}
-                </h1>
-              </div>
-              {payment.ledgerEaId && (
-                <Link href={`/ea/${payment.ledgerEaId}/payments`}>
-                  <Button variant="ghost" size="sm" data-testid="link-ea-payments">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to payments
-                  </Button>
-                </Link>
-              )}
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<CreditCard className="text-primary-foreground" size={16} />}
+          title={paymentTitle}
+          titleTestId="text-payment-title"
+          backLink={
+            payment.ledgerEaId
+              ? {
+                  href: `/ea/${payment.ledgerEaId}/payments`,
+                  label: "Back to payments",
+                  testId: "link-ea-payments",
+                }
+              : undefined
+          }
+          recordId={payment.id}
+        />
 
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

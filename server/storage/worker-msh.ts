@@ -6,7 +6,7 @@ import {
   optionsIndustry,
   type WorkerMsh,
 } from "@shared/schema";
-import { eq, desc, sql, inArray } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 import { eventBus, EventType } from "../services/event-bus";
 import { logger } from "../logger";
@@ -70,11 +70,17 @@ export function createWorkerMshStorage(
           date: workerMsh.date,
           msId: workerMsh.msId,
           industryId: workerMsh.industryId,
-          createdAt: workerMsh.createdAt,
         })
         .from(workerMsh)
         .where(eq(workerMsh.workerId, workerId))
-        .orderBy(desc(workerMsh.date), sql`${workerMsh.createdAt} DESC NULLS LAST`, desc(workerMsh.id));
+        // Date alone settles it: unique (worker_id, industry_id, date) means
+        // one worker cannot hold two member statuses for one industry on one
+        // date, so the latest per industry is unambiguous. `id` remains only
+        // to keep the ordering total and repeatable. (This used to tie-break
+        // on a `created_at` column that the constraint makes unreachable.
+        // The local timestamp is retained for process-table compatibility,
+        // but it is not needed for this current-status ordering.
+        .orderBy(desc(workerMsh.date), desc(workerMsh.id));
 
       const latestByIndustry = new Map<string, string>();
       for (const entry of allEntries) {
@@ -95,11 +101,13 @@ export function createWorkerMshStorage(
           msId: workerMsh.msId,
         })
         .from(workerMsh)
+        // Same tie-breaking as getCurrentMemberStatusIds: date decides, and
+        // the unique (worker_id, industry_id, date) constraint guarantees it
+        // can decide on its own.
         .orderBy(
           workerMsh.workerId,
           workerMsh.industryId,
           desc(workerMsh.date),
-          sql`${workerMsh.createdAt} DESC NULLS LAST`,
           desc(workerMsh.id),
         )
         .as("latest");
@@ -188,6 +196,8 @@ export function createWorkerMshStorage(
 
 export const workerMshLoggingConfig: StorageLoggingConfig<WorkerMshStorage> = {
   module: 'worker-msh',
+  table: 'worker_msh',
+  hostTable: 'workers',
   methods: {
     createWorkerMsh: {
       enabled: true,

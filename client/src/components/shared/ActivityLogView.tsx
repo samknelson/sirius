@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import { format } from "@/lib/date-format";
 import { WinstonLog } from "@/lib/system-types";
+import { recordGoHref } from "@shared/utils/record-go";
 
 interface ActivityLogViewProps {
   hostEntityId: string;
@@ -260,7 +261,15 @@ export function ActivityLogView({ hostEntityId, title = "Activity Logs", endpoin
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Entity ID</Label>
-                  <p className="font-mono text-sm">{selectedLog.entityId || "—"}</p>
+                  <p className="font-mono text-sm">
+                    {selectedLog.entityId ? (
+                      <a href={recordGoHref(selectedLog.entityId)} className="text-primary underline">
+                        {selectedLog.entityId}
+                      </a>
+                    ) : (
+                      "—"
+                    )}
+                  </p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Source</Label>

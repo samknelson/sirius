@@ -11,7 +11,7 @@ import { type TrustWmbStorage, createTrustWmbStorage, trustWmbLoggingConfig } fr
 import { type TrustWmbEventsStorage, createTrustWmbEventsStorage } from "./trust/wmb-events";
 import { type TrustProviderContactStorage, createTrustProviderContactStorage, trustProviderContactLoggingConfig } from "./trust/provider/contacts";
 import { type WorkerIdStorage, createWorkerIdStorage, workerIdLoggingConfig } from "./workers/ids";
-import { type BookmarkStorage, createBookmarkStorage } from "./bookmarks";
+import { type BookmarkStorage, createBookmarkStorage, bookmarkLoggingConfig } from "./bookmarks";
 import {
   type LedgerStorage,
   createLedgerStorage,
@@ -46,6 +46,7 @@ import {
 import {
   type WizardFeedMappingStorage,
   createWizardFeedMappingStorage,
+  wizardFeedMappingLoggingConfig,
 } from "./wizard_feed_mappings";
 import {
   type WizardEmployerMonthlyStorage,
@@ -54,6 +55,7 @@ import {
 import {
   type WizardEmploymentStatusMappingStorage,
   createWizardEmploymentStatusMappingStorage,
+  wizardEmploymentStatusMappingLoggingConfig,
 } from "./wizard-employment-status-mappings";
 import {
   type FileStorage,
@@ -67,6 +69,7 @@ import {
 import {
   type PluginConfigStorage,
   createPluginConfigStorage,
+  pluginConfigLoggingConfig,
 } from "./system/plugin-configs";
 import {
   type DenormStorage,
@@ -97,6 +100,14 @@ import {
   createEbsStorage,
 } from "./system/ebs";
 import { type LogsStorage, createLogsStorage } from "./system/logs";
+import {
+  type EntityMetadataAdminStorage,
+  createEntityMetadataAdminStorage,
+} from "./system/entity-metadata-admin";
+import {
+  type EntityMetadataSeedStorage,
+  createEntityMetadataSeedStorage,
+} from "./system/entity-metadata-seed";
 import { type WorkerWshStorage, createWorkerWshStorage, workerWshLoggingConfig } from "./worker-wsh";
 import { type WorkerMshStorage, createWorkerMshStorage, workerMshLoggingConfig } from "./worker-msh";
 import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingConfig } from "./worker-hours";
@@ -171,12 +182,10 @@ import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfi
 import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig } from "./edls/crews";
 import { type EdlsAssignmentsStorage, createEdlsAssignmentsStorage, edlsAssignmentsLoggingConfig } from "./edls/assignments";
 import { type WorkerEdlsStorage, createWorkerEdlsStorage, workerEdlsLoggingConfig } from "./edls/workers";
-import { type AuthIdentitiesStorage, createAuthIdentitiesStorage } from "./auth-identities";
 import { type WorkerDispatchEligDenormStorage, createWorkerDispatchEligDenormStorage } from "./dispatch/worker-elig-denorm";
 import { type RawSqlStorage, createRawSqlStorage } from "./raw-sql";
 import { type ReadOnlyStorage, createReadOnlyStorage } from "./read-only";
 import { type BtuPoliticalStorage, createBtuPoliticalStorage, btuPoliticalLoggingConfig } from "./sitespecific/btu/political";
-import { type WsClientStorage, type WsClientGrantStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsClientStorage, createWsClientGrantStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
 import { type WcCacheStorage, createWcCacheStorage } from "./wc-cache";
 import { type WcStatsStorage, createWcStatsStorage } from "./wc-stats";
 import { type WsStatsStorage, createWsStatsStorage } from "./ws-stats";
@@ -216,6 +225,9 @@ import { db } from "./db";
 import { employers, workers, contacts } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { type AdvisoryLockStorage, createAdvisoryLockStorage } from "./advisory-lock";
+import { type WsClientStorage, type WsClientGrantStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsClientStorage, createWsClientGrantStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage, wsClientLoggingConfig, wsClientGrantLoggingConfig, wsClientCredentialLoggingConfig, wsClientIpRuleLoggingConfig } from "./webservices";
+import { type AuthIdentitiesStorage, createAuthIdentitiesStorage, authIdentitiesLoggingConfig } from "./auth-identities";
+import { type LetterTemplateStorage, createLetterTemplateStorage, letterTemplateLoggingConfig } from "./letter-templates";
 
 export interface IStorage {
   variables: VariableStorage;
@@ -248,6 +260,8 @@ export interface IStorage {
   grievanceNameDenorm: GrievanceNameDenormStorage;
   grievanceStepsDenorm: GrievanceStepsDenormStorage;
   logs: LogsStorage;
+  entityMetadataAdmin: EntityMetadataAdminStorage;
+  entityMetadataSeed: EntityMetadataSeedStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
   workerHours: WorkerHoursStorage;
@@ -345,6 +359,7 @@ export interface IStorage {
   commTags: CommTagsStorage;
   comm: CommStorage;
   grievances: GrievanceStorage;
+  letterTemplates: LetterTemplateStorage;
   grievanceStatusHistory: GrievanceStatusHistoryStorage;
   grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
   grievanceSettlements: GrievanceSettlementStorage;
@@ -382,6 +397,8 @@ export class DatabaseStorage implements IStorage {
   grievanceNameDenorm: GrievanceNameDenormStorage;
   grievanceStepsDenorm: GrievanceStepsDenormStorage;
   logs: LogsStorage;
+  entityMetadataAdmin: EntityMetadataAdminStorage;
+  entityMetadataSeed: EntityMetadataSeedStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
   workerHours: WorkerHoursStorage;
@@ -479,6 +496,7 @@ export class DatabaseStorage implements IStorage {
   commTags: CommTagsStorage;
   comm: CommStorage;
   grievances: GrievanceStorage;
+  letterTemplates: LetterTemplateStorage;
   grievanceStatusHistory: GrievanceStatusHistoryStorage;
   grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
   grievanceSettlements: GrievanceSettlementStorage;
@@ -522,7 +540,10 @@ export class DatabaseStorage implements IStorage {
       createWorkerIdStorage(),
       workerIdLoggingConfig,
     );
-    this.bookmarks = createBookmarkStorage();
+    this.bookmarks = withStorageLogging(
+      createBookmarkStorage(),
+      bookmarkLoggingConfig,
+    );
     this.ledger = {
       ...createLedgerStorage(
         ledgerAccountLoggingConfig,
@@ -548,16 +569,25 @@ export class DatabaseStorage implements IStorage {
       createWizardStorage(),
       wizardLoggingConfig,
     );
-    this.wizardFeedMappings = createWizardFeedMappingStorage();
+    this.wizardFeedMappings = withStorageLogging(
+      createWizardFeedMappingStorage(),
+      wizardFeedMappingLoggingConfig,
+    );
     this.wizardEmployerMonthly = createWizardEmployerMonthlyStorage();
-    this.wizardEmploymentStatusMappings = createWizardEmploymentStatusMappingStorage();
+    this.wizardEmploymentStatusMappings = withStorageLogging(
+      createWizardEmploymentStatusMappingStorage(),
+      wizardEmploymentStatusMappingLoggingConfig,
+    );
     this.files = withStorageLogging(createFileStorage(), fileLoggingConfig);
     this.entityFiles = withStorageLogging(
       createEntityFilesStorage(),
       entityFilesLoggingConfig,
     );
     this.cronJobRuns = createCronJobRunStorage();
-    this.pluginConfigs = createPluginConfigStorage();
+    this.pluginConfigs = withStorageLogging(
+      createPluginConfigStorage(),
+      pluginConfigLoggingConfig,
+    );
     // No logging for denorm - high-volume internal workflow state churn.
     this.denorm = createDenormStorage();
     this.workerMshDenorm = createWorkerMshDenormStorage();
@@ -568,6 +598,8 @@ export class DatabaseStorage implements IStorage {
     this.grievanceNameDenorm = createGrievanceNameDenormStorage();
     this.grievanceStepsDenorm = createGrievanceStepsDenormStorage();
     this.logs = createLogsStorage();
+    this.entityMetadataAdmin = createEntityMetadataAdminStorage();
+    this.entityMetadataSeed = createEntityMetadataSeedStorage();
 
     // No logging for wmb scan queue - high-volume internal state changes
     // Actual benefit changes are logged via the benefits-scan service
@@ -735,15 +767,18 @@ export class DatabaseStorage implements IStorage {
     this.edlsAssignments = withStorageLogging(createEdlsAssignmentsStorage(), edlsAssignmentsLoggingConfig);
     this.workerEdls = withStorageLogging(createWorkerEdlsStorage(), workerEdlsLoggingConfig);
     this.snapshots = withStorageLogging(createSnapshotsStorage(), snapshotsLoggingConfig);
-    this.authIdentities = createAuthIdentitiesStorage();
+    this.authIdentities = withStorageLogging(createAuthIdentitiesStorage(), authIdentitiesLoggingConfig);
     this.workerDispatchEligDenorm = createWorkerDispatchEligDenormStorage();
     this.rawSql = createRawSqlStorage();
     this.advisoryLock = createAdvisoryLockStorage();
     this.readOnly = createReadOnlyStorage();
-    this.wsClients = createWsClientStorage();
-    this.wsClientGrants = createWsClientGrantStorage();
-    this.wsClientCredentials = createWsClientCredentialStorage();
-    this.wsClientIpRules = createWsClientIpRuleStorage();
+    this.wsClients = withStorageLogging(createWsClientStorage(), wsClientLoggingConfig);
+    this.wsClientGrants = withStorageLogging(createWsClientGrantStorage(), wsClientGrantLoggingConfig);
+    this.wsClientCredentials = withStorageLogging(
+      createWsClientCredentialStorage(),
+      wsClientCredentialLoggingConfig
+    );
+    this.wsClientIpRules = withStorageLogging(createWsClientIpRuleStorage(), wsClientIpRuleLoggingConfig);
     this.wcCache = createWcCacheStorage();
     this.wcStats = createWcStatsStorage();
     this.wsStats = createWsStatsStorage();
@@ -756,6 +791,10 @@ export class DatabaseStorage implements IStorage {
       sftpClientDestinationLoggingConfig
     );
     this.businessCalendars = createBusinessCalendarStorage();
+    this.letterTemplates = withStorageLogging(
+      createLetterTemplateStorage(),
+      letterTemplateLoggingConfig,
+    );
     this.helps = createHelpStorage();
     this.bulkMessages = withStorageLogging(
       createBulkMessageStorage(),
@@ -819,6 +858,7 @@ export class DatabaseStorage implements IStorage {
       },
       {
         module: 'comm',
+        table: 'comm',
         methods: {
           updateWithTags: {
             enabled: true,

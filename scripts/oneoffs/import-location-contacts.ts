@@ -29,8 +29,15 @@ function normalizeSchoolName(name: string): string {
 async function importLocations() {
   console.log("Starting location contacts import...\n");
 
-  // Read and parse CSV
-  const csvContent = fs.readFileSync("attached_assets/btu-locations_1765395360897.csv", "utf-8");
+  const csvPath = process.argv[2];
+  if (!csvPath) {
+    throw new Error(
+      "Usage: npx tsx scripts/oneoffs/import-location-contacts.ts <locations-csv-path>",
+    );
+  }
+
+  // Read and parse the explicitly supplied CSV.
+  const csvContent = fs.readFileSync(csvPath, "utf-8");
   const rows: LocationRow[] = parse(csvContent, {
     columns: true,
     skip_empty_lines: true,

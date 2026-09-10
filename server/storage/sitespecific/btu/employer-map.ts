@@ -208,6 +208,7 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
 
 export const btuEmployerMapLoggingConfig: StorageLoggingConfig<BtuEmployerMapStorage> = {
   module: 'btu-employer-map',
+  table: 'sitespecific_btu_employer_map',
   methods: {
     create: {
       enabled: true,

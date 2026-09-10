@@ -86,9 +86,9 @@ function EmployerDetailsContent() {
               </p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Sirius ID / Record ID</label>
+              <label className="text-sm font-medium text-muted-foreground">Sirius ID</label>
               <p className="text-foreground font-mono text-sm" data-testid="text-employer-ids">
-                {employer.siriusId || "—"} / {employer.id}
+                {employer.siriusId || "—"}
               </p>
             </div>
             <div className="space-y-2">

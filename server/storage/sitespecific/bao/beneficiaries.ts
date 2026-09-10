@@ -61,6 +61,7 @@ export function createBaoBeneficiariesStorage(
 
 export const baoBeneficiariesLoggingConfig: StorageLoggingConfig<BaoBeneficiariesStorage> = {
   module: "sitespecific.bao.beneficiaries",
+  table: "workers",
   methods: {
     set: {
       enabled: true,

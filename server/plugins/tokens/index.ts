@@ -32,8 +32,8 @@ export {
   evaluateChain,
   createTokenEvalContext,
   buildSegmentSpecsForRoots,
-  buildFieldCatalog,
-  buildTokenCatalogForRoots,
+  buildTokenFieldIndex,
+  buildTokenPickerEntries,
   validateTokenExpressionForRoots,
   describeChain,
 } from "./evaluate";
@@ -43,7 +43,14 @@ export {
   getTokenContextRoot,
   type TokenContextRootDeclaration,
 } from "./context-roots";
-export { missingCatalogFields } from "./root-coverage";
+export {
+  registerTokenContext,
+  registerTokenContextSource,
+  listTokenContexts,
+  getTokenContext,
+  tokenContextRootNames,
+} from "./contexts";
+export { missingIndexedFields } from "./root-coverage";
 export {
   resolveEntityPath,
   entityDeclaresLocation,
@@ -54,6 +61,7 @@ export {
   listTokenTreeRoots,
   expandTokenType,
   searchTokenTree,
+  tokenTypesReachableFrom,
   type TokenTreeRoot,
   type TokenTreeChild,
   type TokenTreeSearchHit,
