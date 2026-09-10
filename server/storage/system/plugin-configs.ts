@@ -579,3 +579,41 @@ export function createPluginConfigStorage(): PluginConfigStorage {
     },
   };
 }
+
+/**
+ * Replace raw bulk loops with transactional calls through the already-wrapped
+ * per-record methods, so every base and subsidiary mutation receives the same
+ * audit and entity-metadata treatment as an individual save.
+ */
+export function withAuditedPluginConfigBulkOperations(
+  storage: PluginConfigStorage,
+): PluginConfigStorage {
+  return {
+    ...storage,
+    async bulkCreateWithSubsidiary(type, rows) {
+      if (rows.length === 0) return [];
+      return runInTransaction(async () => {
+        const created: PluginConfig[] = [];
+        for (const { base, subsidiary } of rows) {
+          const row = await storage.create(base);
+          if (subsidiary) {
+            await storage.upsertSubsidiary(type, { ...subsidiary, id: row.id });
+          }
+          created.push(row);
+        }
+        return created;
+      });
+    },
+    async bulkUpdate(updates) {
+      if (updates.length === 0) return [];
+      return runInTransaction(async () => {
+        const updated: PluginConfig[] = [];
+        for (const { id, patch } of updates) {
+          const row = await storage.update(id, patch);
+          if (row) updated.push(row);
+        }
+        return updated;
+      });
+    },
+  };
+}

@@ -910,11 +910,9 @@ export function withStorageLogging<T extends Record<string, any>>(
     const opKey = `${config.module}.${String(key)}`;
 
     wrappedStorage[key] = async function(...args: any[]) {
-      // Migration-mode sampling: skip the ENTIRE logging path (before-state
-      // fetch, hooks, console + winston_logs write) for sampled-out calls.
-      if (sampledOut(opKey)) {
-        return method.apply(storage, args);
-      }
+      // Migration-mode sampling suppresses the expensive audit path, but a
+      // successful mutation still maintains complete entity provenance.
+      const skipAudit = sampledOut(opKey);
 
       let beforeState: any;
       let afterState: any;
@@ -922,7 +920,7 @@ export function withStorageLogging<T extends Record<string, any>>(
       let error: any;
 
       try {
-        if (hooks.before) {
+        if (!skipAudit && hooks.before) {
           beforeState = await hooks.before(args, storage);
         }
 
@@ -941,7 +939,7 @@ export function withStorageLogging<T extends Record<string, any>>(
           return result;
         }
 
-        if (hooks.after) {
+        if (!skipAudit && hooks.after) {
           afterState = await hooks.after(args, result, storage, beforeState);
         }
 
@@ -1043,7 +1041,7 @@ export function withStorageLogging<T extends Record<string, any>>(
         // it against nobody because the scope cleared the actor; the log
         // viewer is spared an entry per boot for a self-heal no operator did
         // or can act on. Failures still log — that path is below.
-        if (isFrameworkWrite()) return result;
+        if (isFrameworkWrite() || skipAudit) return result;
 
         // Defer all logging work (including potentially expensive async lookups) to avoid blocking the main operation
         setImmediate(async () => {
@@ -1091,6 +1089,10 @@ export function withStorageLogging<T extends Record<string, any>>(
         return result;
       } catch (err) {
         error = err;
+
+        // Sampled loader failures are reported by the loader's RejectLog and
+        // intentionally skip storage audit logging.
+        if (skipAudit) throw err;
 
         const details: Record<string, any> = {
           args: methodConfig.logArgs ? methodConfig.logArgs(args) : args,
