@@ -20,7 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getApiErrorMessage } from "@/lib/queryClient";
-import { DcMonthLabel, formatYmd } from "@/components/sitespecific/bao/dc-shared";
+import { DcMonthLabel, formatYmd, sortDcMonths } from "@/components/sitespecific/bao/dc-shared";
 import type { BaoDcCase } from "@shared/schema";
 
 type QueueRow = {
@@ -28,7 +28,7 @@ type QueueRow = {
   queuedAt: string;
   readiness?: { ready: boolean; missing: string[] };
   monthCount: number;
-  /** Non-removed months on both axes (coverage month primary). */
+   /** Non-removed months on both axes. */
   months?: Array<{ workMonthYmd: string; coverageMonthYmd: string | null; status: string }>;
   grantConfigWarnings?: Array<{ workMonthYmd: string; code: string; message: string }>;
 };
@@ -68,7 +68,7 @@ export default function BaoDcQueuePage() {
                 <TableRow>
                   <TableHead>Opened</TableHead>
                   <TableHead>In queue</TableHead>
-                  <TableHead>Coverage months</TableHead>
+                  <TableHead>DC months</TableHead>
                   <TableHead>Readiness</TableHead>
                   <TableHead />
                 </TableRow>
@@ -81,9 +81,10 @@ export default function BaoDcQueuePage() {
                     <TableCell>
                       {row.months && row.months.length > 0 ? (
                         <ul className="space-y-0.5 text-sm" data-testid={`text-dc-queue-months-${row.case.id}`}>
-                          {row.months.map((m) => (
+                          {sortDcMonths(row.months.filter((m) => m.status !== "removed")).map((m, index) => (
                             <li key={m.workMonthYmd}>
                               <DcMonthLabel
+                                monthNumber={index + 1}
                                 workMonthYmd={m.workMonthYmd}
                                 coverageMonthYmd={m.coverageMonthYmd}
                               />

@@ -28,12 +28,15 @@ import { useDebounced } from "@/hooks/use-debounced";
 import { DcDocumentsCard } from "@/components/sitespecific/bao/DcDocumentsCard";
 import {
   DcAnnualMaxBadge,
+  DcMonthLabel,
   DcStatusBadge,
   describeDcMonth,
   formatDcHoursLabel,
   formatYmd,
   formatYmdMonthLong,
   formatYmdMonthShort,
+  numberDcMonths,
+  sortDcMonths,
   type DcAnnualMaxView,
 } from "@/components/sitespecific/bao/dc-shared";
 import { DcMonthHistoryList, DcMonthStatesTable } from "@/components/sitespecific/bao/DcMonthStates";
@@ -151,11 +154,11 @@ function editableAttestations(att: BaoDcAttestations | null | undefined): BaoDcA
   };
 }
 
-function describeOutcome(o: GrantOutcomeView): string {
+function describeOutcome(o: GrantOutcomeView, monthNumber?: number): string {
   const month = describeDcMonth({
     workMonthYmd: o.workMonthYmd,
     coverageMonthYmd: o.coverageMonthYmd ?? null,
-  });
+  }, monthNumber);
   switch (o.action) {
     case "granted":
       return `${month}: granted ${formatDcHoursLabel(o.grantedHours ?? 0)}${
@@ -202,6 +205,23 @@ export default function BaoDcCaseDetailPage() {
     () =>
       monthsDraft ?? activeMonths.map((m) => m.workMonthYmd).slice().sort(),
     [monthsDraft, activeMonths],
+  );
+  const selectedMonthNumbers = useMemo(
+    () => numberDcMonths(selectedMonths),
+    [selectedMonths],
+  );
+  const monthOptions = useMemo(
+    () => sortDcMonths(data?.monthOptions ?? []),
+    [data?.monthOptions],
+  );
+  const approvalOutcomes = useMemo(
+    () =>
+      sortDcMonths(approval?.grant ?? []),
+    [approval],
+  );
+  const approvalOutcomeNumbers = useMemo(
+    () => numberDcMonths(approvalOutcomes.filter((outcome) => outcome.action !== "removed").map((outcome) => outcome.workMonthYmd)),
+    [approvalOutcomes],
   );
 
   const toggleMonth = (monthYmd: string, checked: boolean) => {
@@ -541,12 +561,12 @@ export default function BaoDcCaseDetailPage() {
               </p>
             ))}
             <ul className="text-sm space-y-1">
-              {approval.grant.map((o) => (
+              {approvalOutcomes.map((o) => (
                 <li
                   key={o.monthId}
                   data-testid={`text-dc-approval-outcome-${o.workMonthYmd.slice(0, 7)}`}
                 >
-                  {describeOutcome(o)}
+                  {describeOutcome(o, approvalOutcomeNumbers.get(o.workMonthYmd))}
                 </li>
               ))}
             </ul>
@@ -656,18 +676,18 @@ export default function BaoDcCaseDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Coverage months</CardTitle>
+          <CardTitle className="text-base">DC months</CardTitle>
           <CardDescription>
             {isDraft ? (
               <>
-                Choose the <strong>coverage months</strong> the Fund is approving. Each
-                coverage month is earned by an earlier <strong>work month</strong> (coverage
-                month minus the plan&apos;s lag); Disability Credit hours are credited to that
-                work month under the Fund/DC employer, and only the shortfall between the hours
-                already reported and the plan minimum is added. Months whose reported hours
-                already meet the minimum need no credit and are offered as not grantable.
-                Continuity gaps and annual capacity are checked on the coverage axis before save;
-                unavailable months explain why.
+                Choose the <strong>DC months</strong> the Fund is approving. The picker is
+                ordered by <strong>work month</strong>, where Disability Credit hours are
+                credited, and labels show the work month first. Each coverage month is earned by
+                an earlier <strong>work month</strong> (coverage month minus the plan&apos;s lag);
+                only the shortfall between the hours already reported and the plan minimum is
+                added. Months whose reported hours already meet the minimum need no credit and are
+                offered as not grantable. Continuity gaps and annual capacity are checked on the
+                coverage axis before save; unavailable months explain why.
               </>
             ) : (
               "Months can only be changed while the case is in draft."
@@ -678,13 +698,16 @@ export default function BaoDcCaseDetailPage() {
           {(isDraft || (data.monthStates ?? []).length === 0) && (
             <div
               role="group"
-              aria-label="Disability Credit coverage months"
+              aria-label="Disability Credit months"
               className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3"
             >
-              {(data.monthOptions ?? []).map((opt) => {
+              {monthOptions.map((opt) => {
                 const checked = selectedMonths.includes(opt.workMonthYmd);
                 const disabled = !isDraft || (!opt.selectable && !checked);
-                const label = describeDcMonth(opt);
+                const monthNumber = checked
+                  ? selectedMonthNumbers.get(opt.workMonthYmd)
+                  : undefined;
+                const label = describeDcMonth(opt, monthNumber);
                 return (
                   <label
                     key={opt.workMonthYmd}
@@ -701,25 +724,12 @@ export default function BaoDcCaseDetailPage() {
                       data-testid={`checkbox-dc-month-${opt.workMonthYmd.slice(0, 7)}`}
                     />
                     <span className="space-y-0.5">
-                      {opt.coverageMonthYmd ? (
-                        <>
-                          <span className="block leading-none font-medium">
-                            {formatYmdMonthLong(opt.coverageMonthYmd)} coverage
-                          </span>
-                          <span className="block text-xs text-muted-foreground">
-                            hours credited to {formatYmdMonthShort(opt.workMonthYmd)}
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="block leading-none font-medium">
-                            Work month {formatYmdMonthLong(opt.workMonthYmd)}
-                          </span>
-                          <span className="block text-xs text-muted-foreground">
-                            coverage month unresolved
-                          </span>
-                        </>
-                      )}
+                      <DcMonthLabel
+                        className="block leading-snug font-medium"
+                        workMonthYmd={opt.workMonthYmd}
+                        coverageMonthYmd={opt.coverageMonthYmd}
+                        monthNumber={monthNumber}
+                      />
                       {opt.detail && (
                         <span
                           className="block text-xs"

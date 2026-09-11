@@ -12,11 +12,13 @@ import {
   DcMonthStatusBadge,
   formatDcHoursLabel,
   formatYmdMonthShort,
+  numberDcMonths,
+  sortDcMonths,
 } from "./dc-shared";
 
 /**
- * Per-month state for a case after (and before) approval: coverage month
- * first, the work month that receives the hours second, then what the
+ * Per-month state for a case after (and before) approval: work month
+ * first, the resulting coverage month second, then what the
  * month is doing now — granted with its hours, queued for a coverage month
  * still ahead of the release window, or removed with the reason and the
  * hours it previously carried.
@@ -30,6 +32,7 @@ export function DcMonthStatesTable({
   emptyText?: string;
   testIdPrefix?: string;
 }) {
+  const numbers = numberDcMonths(states.filter((m) => m.status !== "removed").map((m) => m.workMonthYmd));
   if (states.length === 0) {
     return (
       <p className="text-sm text-muted-foreground" data-testid={`text-${testIdPrefix}-empty`}>
@@ -41,19 +44,17 @@ export function DcMonthStatesTable({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Coverage month</TableHead>
-          <TableHead>Hours credited to</TableHead>
+          <TableHead>DC month → coverage</TableHead>
           <TableHead>State</TableHead>
           <TableHead>Detail</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {states.map((m) => (
+        {sortDcMonths(states).map((m) => (
           <TableRow key={m.id} data-testid={`row-${testIdPrefix}-${m.workMonthYmd.slice(0, 7)}`}>
-            <TableCell className="font-medium">
-              {m.coverageMonthYmd ? formatYmdMonthShort(m.coverageMonthYmd) : "Unresolved"}
+            <TableCell className="font-medium min-w-40 whitespace-normal">
+              <DcMonthLabel {...m} monthNumber={m.status === "removed" ? undefined : numbers.get(m.workMonthYmd)} />
             </TableCell>
-            <TableCell>{formatYmdMonthShort(m.workMonthYmd)}</TableCell>
             <TableCell>
               <DcMonthStatusBadge status={m.status} />
             </TableCell>

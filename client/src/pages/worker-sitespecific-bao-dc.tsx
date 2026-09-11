@@ -43,6 +43,8 @@ import {
   DcStatusBadge,
   formatDcHoursLabel,
   formatYmd,
+  sortDcMonths,
+  numberDcMonths,
   type DcAnnualMaxView,
 } from "@/components/sitespecific/bao/dc-shared";
 import { formatYmdMonth } from "@shared/utils/date";
@@ -67,18 +69,20 @@ type WorkerDcResponse = {
 
 /** Compact per-month state line for the cases table. */
 function CaseMonthSummary({ months }: { months: DcCaseMonthState[] }) {
+  const numbers = numberDcMonths(months.filter((m) => m.status !== "removed").map((m) => m.workMonthYmd));
   if (months.length === 0) {
     return <span className="text-sm text-muted-foreground">No months selected</span>;
   }
   return (
     <ul className="space-y-1">
-      {months.map((m) => (
+      {sortDcMonths(months).map((m) => (
         <li
           key={m.id}
           className="flex flex-wrap items-center gap-2 text-sm"
           data-testid={`text-dc-case-month-${m.caseId}-${m.workMonthYmd.slice(0, 7)}`}
         >
-          <DcMonthLabel workMonthYmd={m.workMonthYmd} coverageMonthYmd={m.coverageMonthYmd} />
+          <DcMonthLabel workMonthYmd={m.workMonthYmd} coverageMonthYmd={m.coverageMonthYmd}
+            monthNumber={m.status === "removed" ? undefined : numbers.get(m.workMonthYmd)} />
           <DcMonthStatusBadge status={m.status} />
           {m.status === "granted" && (
             <span className="text-muted-foreground">{formatDcHoursLabel(m.grantedHours)} credited</span>
@@ -339,7 +343,7 @@ function WorkerDcContent() {
                 <TableRow>
                   <TableHead>Opened</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Coverage months</TableHead>
+                  <TableHead>DC months</TableHead>
                   <TableHead>Basis</TableHead>
                   <TableHead />
                 </TableRow>

@@ -9,7 +9,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DcDocumentsCard } from "./DcDocumentsCard";
-import { DcStatusBadge, describeDcMonth, formatYmd } from "./dc-shared";
+import { DcStatusBadge, describeDcMonth, formatYmd, sortDcMonths } from "./dc-shared";
 import type { BaoDcCase, BaoDcCaseMonth } from "@shared/schema";
 import type { DcCaseMonthState } from "@shared/sitespecific/bao/dc-reporting";
 
@@ -35,8 +35,7 @@ export function DcMemberCasePanel({ caseId }: { caseId: string }) {
   if (isLoading) return <Skeleton className="h-40 w-full" />;
   if (!data) return null;
 
-  const activeMonths = data.months.filter((m) => m.status !== "removed");
-  // Coverage-axis labels: "Oct 2026 coverage — hours credited to Jul 2026".
+  const activeMonths = sortDcMonths(data.months.filter((m) => m.status !== "removed"));
   const coverageByWorkMonth = new Map(
     (data.monthStates ?? []).map((m) => [m.workMonthYmd, m.coverageMonthYmd] as const),
   );
@@ -51,12 +50,12 @@ export function DcMemberCasePanel({ caseId }: { caseId: string }) {
           </CardTitle>
           <CardDescription>
             {activeMonths.length > 0
-              ? `Coverage months: ${activeMonths
-                  .map((m) =>
+              ? `DC months: ${activeMonths
+                  .map((m, index) =>
                     describeDcMonth({
                       workMonthYmd: m.workMonthYmd,
                       coverageMonthYmd: coverageByWorkMonth.get(m.workMonthYmd) ?? null,
-                    }),
+                    }, index + 1),
                   )
                   .join("; ")}`
               : "No months selected yet — a member service representative selects months."}

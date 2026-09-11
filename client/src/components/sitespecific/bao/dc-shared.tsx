@@ -49,9 +49,7 @@ export function formatYmd(ymd: string | null | undefined): string {
 }
 
 // ---------------------------------------------------------------------------
-// Coverage-axis month labelling — every surface that lists a case's months
-// shows the COVERAGE month first and the work month (where the credit hours
-// land) second, exactly as the Fund reasons about Disability Credit.
+// Presentation order is work month first; eligibility remains coverage-based.
 // ---------------------------------------------------------------------------
 
 /** "Oct 2026" — short month label for dense tables/badges. */
@@ -75,43 +73,41 @@ export function formatYmdMonthLong(ymd: string | null | undefined): string {
   return `${months[m - 1]} ${y}`;
 }
 
-/**
- * One-line coverage-first label: "Oct 2026 coverage — hours credited to
- * Jul 2026". When the coverage month is unknown (plan lag unresolved) the
- * work month is named alone with that caveat.
- */
+/** Sort a copy: never change the stored keys or eligibility ordering. */
+export function sortDcMonths<T extends { workMonthYmd: string }>(months: readonly T[]): T[] {
+  return [...months].sort((a, b) => a.workMonthYmd.localeCompare(b.workMonthYmd));
+}
+
+/** Pass only the current selection for ONE case, never history or annual usage. */
+export function numberDcMonths(workMonths: readonly string[]): Map<string, number> {
+  return new Map([...new Set(workMonths)].sort().map((month, index) => [month, index + 1]));
+}
+
+/** Identical wording for visible pairs and accessible checkbox names. */
 export function describeDcMonth(month: {
   workMonthYmd: string;
   coverageMonthYmd: string | null;
-}): string {
-  if (!month.coverageMonthYmd) {
-    return `Work month ${formatYmdMonthShort(month.workMonthYmd)} (coverage month unresolved)`;
-  }
-  return `${formatYmdMonthShort(month.coverageMonthYmd)} coverage — hours credited to ${formatYmdMonthShort(month.workMonthYmd)}`;
+}, monthNumber?: number): string {
+  const coverage = month.coverageMonthYmd
+    ? `${formatYmdMonthLong(month.coverageMonthYmd)} coverage`
+    : "coverage unresolved";
+  return `${monthNumber === undefined ? "" : `${monthNumber}. `}${formatYmdMonthLong(month.workMonthYmd)} DC → ${coverage}`;
 }
 
 export function DcMonthLabel({
   workMonthYmd,
   coverageMonthYmd,
   className,
+  monthNumber,
 }: {
   workMonthYmd: string;
   coverageMonthYmd: string | null;
   className?: string;
+  monthNumber?: number;
 }) {
   return (
     <span className={className} data-testid={`text-dc-month-label-${workMonthYmd.slice(0, 7)}`}>
-      {coverageMonthYmd ? (
-        <>
-          <span className="font-medium">{formatYmdMonthShort(coverageMonthYmd)} coverage</span>
-          <span className="text-muted-foreground"> · hours to {formatYmdMonthShort(workMonthYmd)}</span>
-        </>
-      ) : (
-        <>
-          <span className="font-medium">Work month {formatYmdMonthShort(workMonthYmd)}</span>
-          <span className="text-muted-foreground"> · coverage month unresolved</span>
-        </>
-      )}
+      {describeDcMonth({ workMonthYmd, coverageMonthYmd }, monthNumber)}
     </span>
   );
 }
