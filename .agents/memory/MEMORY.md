@@ -117,6 +117,7 @@
 - [Storage logging wrapper semantics](storage-logging-wrapper-semantics.md) — a dormant logging config logs nothing; wrapping the impl at its factory is safe (internal this.* calls bypass the wrapper) and gives bulk paths per-record audit entries for free.
 - [Storage audit sampling](storage-audit-sampling.md) — loader sampling may suppress audit hooks and rows, but successful mutations must still maintain complete entity metadata.
 - [Standalone storage shutdown](standalone-storage-shutdown.md) — migration scripts must drain deferred metadata and DB-backed logs before closing NeonPool, or shutdown can crash after successful work.
+- [Migration image storage budget](migration-image-storage-budget.md) — the migration target installs prod deps plus isolated tsx; never inherit the full web dev-dependency stage on constrained builders.
 - [Relaying a remote system's answer](relayed-remote-answer.md) — redact the credential out of RELAYED content (bodies/headers/errors), not just our own request; envelope flag decides success, never HTTP 200.
 - [Legacy raw-table reads](legacy-rawdata-table-reads.md) — a service that can't count/filter makes a refusal look like end-of-table; parse fail-closed, buffer the whole read before writing, and get field-table names from the field config, never by guessing.
 - [Quicksearch role-as-access](quicksearch-role-as-access.md) — a config's role list IS the decision (no per-record checks); sensitive clauses gated by the framework; pure clause planners; cmdk needs shouldFilter={false}.

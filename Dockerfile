@@ -4,15 +4,13 @@
 # Sirius — production Docker image
 # ----------------------------------------------------------------------------
 # Multi-stage build:
-#   1. deps      — installs all deps (incl. the toolchain for native modules
-#                  like bcrypt) and copies the source tree.
-#   2. builder   — builds the Vite client and the esbuild server bundle,
-#                  then prunes dev dependencies.
-#   3. migration — fat one-off image (full source + all node_modules + tsx)
-#                  for the S1 migration inside the prod boundary; build with
-#                  `docker build --target migration ...`. Never serves traffic.
-#   4. runtime   — a lean image with only production node_modules + dist/
-#                  (the default target).
+#   1. deps           — installs the full web build toolchain and source.
+#   2. builder        — builds the Vite client and esbuild server bundle,
+#                       then prunes dev dependencies.
+#   3. migration-deps — installs production dependencies plus an isolated tsx
+#                       runner, without the large web build toolchain.
+#   4. migration      — one-off S1 migration image; never serves traffic.
+#   5. runtime        — lean web image with production node_modules + dist/.
 #
 # IMPORTANT: this build intentionally does NOT run `npm run build` directly,
 # because that script begins with `npm run db:push`, which contacts a live
@@ -76,8 +74,7 @@
 
 
 # ----------------------------------------------------------------------------
-# Stage 1: deps — full dependency install + source copy, shared by both the
-# production builder and the migration image.
+# Stage 1: deps — full dependency install + source copy for the web builder.
 # ----------------------------------------------------------------------------
 FROM node:20-bookworm-slim AS deps
 
@@ -145,12 +142,43 @@ RUN npm prune --omit=dev
 
 
 # ----------------------------------------------------------------------------
-# Stage 3: migration — one-off S1→S2 migration image (NOT the web app)
+# Stage 3: migration dependencies
 # ----------------------------------------------------------------------------
-# A fat image for running scripts/s1-migration/* inside the HIPAA boundary as
-# a long-lived one-off process (e.g. an ECS one-off task in the same VPC as
-# the target DB). Unlike `runtime` it keeps the full source tree, ALL
-# node_modules (tsx is a devDependency), and no web server is started.
+# The migration scripts need the application's production packages plus tsx,
+# but they do not need Vite, Vitest, TypeScript, Tailwind, or the rest of the
+# web build toolchain. Keeping this stage independent from `deps` avoids
+# materializing the multi-gigabyte development tree on constrained builders.
+# ----------------------------------------------------------------------------
+FROM node:20-bookworm-slim AS migration-deps
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g npm@11
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN sed -i 's#http://package-firewall\.replit\.local/npm/#https://registry.npmjs.org/#g' package-lock.json \
+    && npm ci --omit=dev \
+    && TSX_VERSION="$(node -p "require('./package-lock.json').packages['node_modules/tsx'].version")" \
+    && npm install --prefix /opt/migration-tools --no-package-lock --omit=dev "tsx@${TSX_VERSION}" \
+    && mkdir -p node_modules/.bin \
+    && ln -s /opt/migration-tools/node_modules/.bin/tsx node_modules/.bin/tsx \
+    && test -x node_modules/.bin/tsx \
+    && npm cache clean --force
+
+COPY . .
+
+
+# ----------------------------------------------------------------------------
+# Stage 4: migration — one-off S1→S2 migration image (NOT the web app)
+# ----------------------------------------------------------------------------
+# An image for running scripts/s1-migration/* inside the HIPAA boundary as a
+# long-lived one-off process (e.g. an ECS one-off task in the same VPC as the
+# target DB). Unlike `runtime` it keeps the TypeScript source tree and the tsx
+# runner, and no web server is started.
 #
 # BUILD (only this target — skips the vite/esbuild build entirely):
 #   docker build --target migration -t sirius-migration:latest .
@@ -166,7 +194,7 @@ RUN npm prune --omit=dev
 # IP. Prove DNS and read-only DB reachability first with:
 #     npx tsx scripts/s1-migration/preflight-private-connectivity.ts
 # ----------------------------------------------------------------------------
-FROM deps AS migration
+FROM migration-deps AS migration
 
 ENV NODE_ENV=production
 # The pinned S2 system zone (scripts/s1-migration/lib/timezone-contract.ts,
@@ -186,7 +214,7 @@ CMD ["node", "-e", "console.error('sirius-migration: pass a runbook command, e.g
 
 
 # ----------------------------------------------------------------------------
-# Stage 4: runtime
+# Stage 5: runtime
 # ----------------------------------------------------------------------------
 FROM node:20-bookworm-slim AS runtime
 
