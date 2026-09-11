@@ -53,6 +53,25 @@ export function resolveDatabaseUrl(env: EnvLike = process.env): ResolvedDatabase
 }
 
 /**
+ * Return the connection URL used by the Neon serverless driver. Its own pool
+ * must bypass Neon's transaction-mode pooler so session settings work.
+ * Kept here so connectivity checks resolve the same effective hostname as the
+ * application pool rather than validating only the configured alias.
+ */
+export function rewriteNeonPoolerUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.includes("-pooler.") && parsed.hostname.endsWith(".neon.tech")) {
+      parsed.hostname = parsed.hostname.replace("-pooler.", ".");
+      return parsed.toString();
+    }
+    return url;
+  } catch {
+    return url;
+  }
+}
+
+/**
  * Human-readable target banner: `host/dbname (from SOURCE)`.
  * Never includes credentials. Every DB consumer prints this through the
  * same function so the CI check can compare the banners verbatim.

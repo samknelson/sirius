@@ -95,6 +95,13 @@ loaders against ANY target (fresh branch or production), ensure:
   contact roles/terms.
 
 **Operational preconditions**
+- **Production network proof:** before Phase 1 and after any task-definition,
+  image, subnet, security-group, route, DNS, endpoint, or secret-target change,
+  launch `preflight-private-connectivity.ts` as an ECS one-off with the exact
+  production task definition and private network configuration. It verifies
+  private DNS plus read-only connectivity to S1 and S2 without printing
+  hostnames, addresses, credentials, database names, or rows. See
+  `docs/s1-migration/FC-ENVIRONMENT-SETUP.md`.
 - **Charge plugins:** the hours loader writes `worker_hours` through storage,
   which can trigger hour-driven charge plugins. On production, run T20 with
   `--migration-mode` — every write then runs inside a

@@ -179,6 +179,13 @@ Task definition requirements:
   with health checks), and disable any scheduler-imposed stop.
 - Run steps **sequentially** (one task at a time) per the §3 load order;
   bootstrap/seed concurrency is refused by an advisory lock anyway.
+- **Production network:** launch in private subnets of production VPC
+  `vpc-08bed2ce763bc0b15`, with the approved migration security groups and
+  `assignPublicIp=DISABLED`. S1 is reached through production VPC peering;
+  public-disabled Neon is reached through PrivateLink/private DNS. Required
+  ECR, S3, Secrets Manager, and CloudWatch Logs endpoints or NAT egress must
+  exist for task startup. The exact command and sanitized evidence contract
+  are in `docs/s1-migration/FC-ENVIRONMENT-SETUP.md`.
 
 Running the image with no command prints usage and exits — nothing touches a
 database without an explicit runbook command.
@@ -1065,7 +1072,10 @@ state; loader-level exact verification is the convergence gate for those):
   emergency-repair semantics; recorded PROMINENTLY (console banner +
   top-level `forceReconcile: true` + per-step echo in the report).
 - `--skip-stage` — re-run gates/loaders against staging as-is (mid-fleet
-  retry without the ~25-min restage).
+  retry without the ~25-min restage). It is safe only when retrying the same
+  source observation after a loader/fleet failure, no newer source changes
+  need discovery, and the prior stage evidence passed. It is never a date/time
+  checkpoint and never valid for a new daily or final-freeze observation.
 - `--keep-going` — collect every loader's result instead of aborting at the
   first failed step (the run still fails; use for fleet-wide triage).
 
@@ -1096,6 +1106,15 @@ One sync per target, ever remains enforced by the migration advisory lock.
 Failed runs are safely re-runnable (§7): loaders are idempotent reconcilers and
 fingerprints only advance after each loader's verify pass.
 
+Daily sync accepts no operator-supplied "since" timestamp. Staging performs a
+complete source identity/change-marker scan, rebuilds changed/new/overlap
+payloads, and reconciles deletes from the complete identity set. Each loader
+compares staged fingerprints with its last verified consumed fingerprint.
+Only a successful loader verification advances that fingerprint. Therefore a
+failed stage discovers nothing, a failed loader retains its previous
+fingerprint and resumes on rerun, and later source edits are discovered by the
+next complete staging scan rather than by operator bookkeeping.
+
 **Rehearsal proof** (throwaway DB; never the shared dev DB):
 `npx tsx scripts/s1-migration/dev/smoke-stage-optimization.ts` proves the
 daily/freeze evidence matrix, same-second refresh protection, deterministic
@@ -1110,7 +1129,7 @@ converging through one daily sync with all three finding kinds surfaced;
 final-freeze BLOCKED by the retained deletions while fleet + parity gates
 pass; and final-freeze PASS after the S1 side is restored.
 
-## 12. Dual-run procedure (initial load → daily sync → freeze → cutover)
+## 12. Production phases and go/no-go procedure
 
 0. **Pin the time zone (once, before anything else)** — §1 "Time zone pin":
    the migration image carries `TZ=America/Los_Angeles`; the web app of the
@@ -1137,10 +1156,22 @@ pass; and final-freeze PASS after the S1 side is restored.
    every daily sync, the final freeze, cutover and for the life of the
    production site. Changing it later would reinterpret every already-stored
    wall clock — there is no migration for that, by design.
-1. **Initial production load** — §2 bootstrap, then the §4 command sequence
-   for the first full load (operator-paced, per-step triage), §6 parity.
-   Okta pre-provisioning (§4.15) is DEFERRED to step 5.
-2. **Daily sync + triage (~1 month)** — once per day, operator-invoked from
+1. **Phase 1: snapshot restore + one frozen full load** — restore the approved
+   frozen S1 snapshot on the production peering path; create the read-only
+   source user; explicitly repoint `S1_DATABASE_URL` to that restore and
+   `EXTERNAL_DATABASE_URL` to production Neon. Launch
+   `preflight-private-connectivity.ts` from the exact production task
+   definition/network and retain its sanitized PASS evidence. Stop app traffic,
+   run §2 bootstrap and the §4 full command sequence exactly once, then §6
+   validation against the frozen S1 source and the accepted rehearsal baseline.
+   Keep the temporary restore until the Phase 1 evidence is accepted; retire it
+   only under the infrastructure retention procedure. Okta pre-provisioning
+   (§4.15) is deferred to Phase 3.
+2. **Phase 2: live daily sync + triage (~1 month)** — explicitly repoint
+   `S1_DATABASE_URL` from the temporary restore to the approved live read-only
+   S1 endpoint, leave `EXTERNAL_DATABASE_URL` on production Neon, and repeat
+   the private-connectivity preflight before the first run. Once per day,
+   operator-invoked from
    inside the production boundary (§1; no cron, no app-hosted automation):
    `npx tsx scripts/s1-migration/sync.ts --mode daily`. Read the aggregate
    report (console or `s1_staging.runs`). Triage rules:
@@ -1155,15 +1186,47 @@ pass; and final-freeze PASS after the S1 side is restored.
      a forgotten bump cannot pass silently.
    - Out-of-band S2 damage suspected → one `--force-reconcile` run (recorded
      in the report), then investigate how S2 got touched during shadow.
-3. **S1 freeze** — the fund stops writing to S1; confirm quiesce (§4.0
+   There is no operator timestamp: the complete identity scans and
+   verification-gated consumed fingerprints described in §11 determine what
+   changed. Use `--skip-stage` only for a same-observation fleet retry under
+   the §11 safety rule.
+3. **Phase 3: final freeze and manual cutover** — the fund stops writing to S1;
+   confirm quiesce (§4.0
    freeze checklist / final crawl).
-4. **Final-freeze sync** — `npx tsx scripts/s1-migration/sync.ts --mode
+4. Run `npx tsx scripts/s1-migration/sync.ts --mode
    final-freeze`. Must be FULLY green: every loader's verify/reject gate,
    zero unresolved report-only findings, balance parity at 0¢, all ruled
    months at 0% disagreement. This is the final data movement of the
    migration.
 5. **Okta provisioning → canary → cutover** — §4.15 → §4.16 → §4.17
    (manual, unchanged by the sync command).
+
+### Production go/no-go evidence (sanitized)
+
+Record PASS/FAIL, timestamp, task ARN/revision, and image digest. Never record
+URLs, credentials, hostnames, IP addresses, database names, or source rows.
+
+- [ ] Exact production task definition and private subnets/security groups in
+  `vpc-08bed2ce763bc0b15`; public IP disabled.
+- [ ] Private-connectivity preflight exit 0: both DNS checks report
+  `allPrivate=true`, and both read-only database probes are reachable.
+- [ ] Image digest matches the approved frozen commit.
+- [ ] Migration and web runtime/session timezone evidence is
+  `America/Los_Angeles`; no conflicting target override.
+- [ ] Secret targets were independently confirmed: correct S1 lifecycle
+  endpoint (Phase 1 restore or Phase 2/3 live source) and production S2 target;
+  expected target schema/migration revision is present.
+- [ ] Traffic mode/write fencing matches the phase; write-fence preflight has
+  passed before the first wet sync.
+- [ ] Phase 1 source snapshot/freeze evidence is recorded; Phase 3 live S1
+  freeze remains active through final staging, fleet, and parity.
+- [ ] Every reject allowance is the reviewed production profile; every
+  unexpected reject and report-only finding has a recorded disposition.
+- [ ] Source counts, S2 loader verification, rehearsal-baseline comparison,
+  balance parity (0¢), and ruled month parity (0%) pass.
+- [ ] Final-freeze aggregate is fully green with zero unresolved findings.
+- [ ] Okta dry-run/canary, activation-wave approval, staff handling, DNS,
+  monitoring, rollback ownership, and manual cutover prerequisites are ready.
 
 ### 4.15 (continued) Okta pre-provisioning commands
 

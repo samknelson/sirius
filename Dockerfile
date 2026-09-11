@@ -162,6 +162,9 @@ RUN npm prune --omit=dev
 #     -e S1_DATABASE_URL="mysql://...:3306/..." \
 #     sirius-migration:latest \
 #     npx tsx scripts/s1-migration/bootstrap-target.ts
+# Production ECS tasks use private subnets in the production VPC with no public
+# IP. Prove DNS and read-only DB reachability first with:
+#     npx tsx scripts/s1-migration/preflight-private-connectivity.ts
 # ----------------------------------------------------------------------------
 FROM deps AS migration
 

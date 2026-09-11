@@ -23,7 +23,11 @@ import pg from 'pg';
 import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres';
 import ws from "ws";
 import * as schema from "@shared/schema";
-import { resolveDatabaseUrl, describeDatabaseTarget } from "@shared/database-url";
+import {
+  resolveDatabaseUrl,
+  describeDatabaseTarget,
+  rewriteNeonPoolerUrl,
+} from "@shared/database-url";
 import { getEnvironmentVariable } from "../config/env-registry";
 import { getDatabaseUrlSource, isIamAuth } from "../config/assemble-database-url";
 import { recordDatabaseIdentity, type BringUpDatabaseIdentity } from "../services/bringup-report";
@@ -40,40 +44,6 @@ const databaseUrl = resolvedDatabaseUrl.url;
 console.log(`[db] Target database: ${describeDatabaseTarget(resolvedDatabaseUrl)}`);
 
 type DriverKind = "neon" | "pg";
-
-/**
- * The Neon serverless WebSocket driver connects directly to Neon's compute
- * endpoint and manages its own connection pool — it does NOT benefit from
- * Neon's PgBouncer pooler (the `-pooler.` subdomain). Moreover, the pooler
- * runs in transaction mode and blocks session-level startup parameters
- * (including `search_path`), which breaks the app because Neon defaults
- * `search_path` to `''` (empty) rather than the Postgres standard `public`.
- *
- * When the URL targets the pooler, silently rewrite it to the direct endpoint
- * so that:
- *   1. `ALTER DATABASE <db> SET search_path TO public` (run once on new Neon
- *      databases) is honoured by the direct connection.
- *   2. The serverless driver's own pooling kicks in instead of PgBouncer.
- *
- * The rewrite is transparent: `ep-<id>-pooler.<region>.aws.neon.tech` →
- * `ep-<id>.<region>.aws.neon.tech`.  URLs already targeting the direct
- * endpoint pass through unchanged.
- */
-function rewriteNeonPoolerUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname.includes("-pooler.") && parsed.hostname.endsWith(".neon.tech")) {
-      const directHost = parsed.hostname.replace("-pooler.", ".");
-      parsed.hostname = directHost;
-      const rewritten = parsed.toString();
-      console.log("[db] Neon pooler URL detected; rewriting to direct endpoint for serverless driver.");
-      return rewritten;
-    }
-    return url;
-  } catch {
-    return url;
-  }
-}
 
 function detectDriver(url: string): DriverKind {
   const override = getEnvironmentVariable("DATABASE_DRIVER");
@@ -242,6 +212,9 @@ let effectiveDatabaseUrl = databaseUrl;
 if (driverKind === "neon") {
   neonConfig.webSocketConstructor = ws;
   const neonUrl = rewriteNeonPoolerUrl(databaseUrl);
+  if (neonUrl !== databaseUrl) {
+    console.log("[db] Neon pooler URL detected; rewriting to direct endpoint for serverless driver.");
+  }
   effectiveDatabaseUrl = neonUrl;
   poolInstance = new NeonPool({ connectionString: neonUrl, connectionTimeoutMillis });
   dbInstance = drizzleNeon({ client: poolInstance as NeonPool, schema });
