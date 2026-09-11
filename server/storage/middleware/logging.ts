@@ -707,6 +707,30 @@ function resolveHooks<T extends Record<string, any>>(
  */
 let storageLogSampleEvery: number | null = null;
 const storageLogSampleCounts = new Map<string, number>();
+const pendingDeferredStorageWork = new Set<Promise<void>>();
+
+function scheduleDeferredStorageWork(work: () => Promise<void>): void {
+  let pending: Promise<void>;
+  pending = new Promise<void>((resolve) => {
+    setImmediate(async () => {
+      try {
+        await work();
+      } catch (error) {
+        console.error("Unexpected error in deferred storage work:", error);
+      } finally {
+        resolve();
+      }
+    });
+  });
+  pendingDeferredStorageWork.add(pending);
+  void pending.finally(() => pendingDeferredStorageWork.delete(pending));
+}
+
+export async function flushDeferredStorageWork(): Promise<void> {
+  while (pendingDeferredStorageWork.size > 0) {
+    await Promise.allSettled([...pendingDeferredStorageWork]);
+  }
+}
 
 export function setStorageLogSampling(sampleEvery: number | null): void {
   storageLogSampleEvery =
@@ -1026,7 +1050,7 @@ export function withStorageLogging<T extends Record<string, any>>(
           }
         } else {
           onAfterCommit(() => {
-            setImmediate(async () => {
+            scheduleDeferredStorageWork(async () => {
               try {
                 await runOutsideTransaction(maintain);
               } catch (metadataError) {
@@ -1046,7 +1070,7 @@ export function withStorageLogging<T extends Record<string, any>>(
         if (isFrameworkWrite() || skipAudit) return result;
 
         // Defer all logging work (including potentially expensive async lookups) to avoid blocking the main operation
-        setImmediate(async () => {
+        scheduleDeferredStorageWork(async () => {
           try {
             const context = getRequestContext();
 
@@ -1110,7 +1134,7 @@ export function withStorageLogging<T extends Record<string, any>>(
         }
 
         // Defer error logging to avoid blocking the error throw
-        setImmediate(async () => {
+        scheduleDeferredStorageWork(async () => {
           try {
             const context = getRequestContext();
             

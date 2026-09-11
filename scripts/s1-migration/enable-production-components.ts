@@ -20,6 +20,7 @@ import {
   PRODUCTION_COMPONENT_IDS,
 } from "./lib/production-baseline";
 import { acquireMigrationSeedLock } from "./lib/migration-lock";
+import { drainStorageSideEffects } from "../../server/storage/drain-storage-side-effects";
 
 async function main() {
   const lockClient = await acquireMigrationSeedLock(pool);
@@ -104,11 +105,13 @@ async function main() {
 
 main()
   .then(async () => {
+    await drainStorageSideEffects();
     await pool.end();
     console.log("DONE");
   })
   .catch(async (error) => {
     console.error(error);
+    await drainStorageSideEffects().catch(() => undefined);
     await pool.end().catch(() => undefined);
     process.exit(1);
   });

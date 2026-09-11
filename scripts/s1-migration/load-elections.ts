@@ -62,6 +62,7 @@ import {
 } from "../../server/middleware/request-context";
 import { ENROLLMENT_TYPES, type EnrollmentType } from "../../shared/schema/trust/elections-schema";
 import { db, pool as pgPool } from "../../server/storage/db";
+import { drainStorageSideEffects } from "../../server/storage/drain-storage-side-effects";
 import { sql } from "drizzle-orm";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping, advanceFingerprints } from "./lib/idmap";
@@ -713,6 +714,7 @@ async function main() {
         `Resolve them or acknowledge per run via --allow-findings.`,
     );
   }
+  await drainStorageSideEffects();
   await pgPool.end();
   process.exit(loaderExitCode(result));
 }

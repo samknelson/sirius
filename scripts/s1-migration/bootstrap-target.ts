@@ -37,6 +37,7 @@ import { spawnSync } from "child_process";
 import { getEnvironmentVariable, getRawProcessEnv, setEnvironmentVariable } from "./lib/script-env";
 import path from "path";
 import { resolveDatabaseUrl, describeDatabaseTarget } from "../../shared/database-url";
+import { drainStorageSideEffects } from "../../server/storage/drain-storage-side-effects";
 
 const WIPE = process.argv.includes("--wipe");
 const KEEP_STAGING = process.argv.includes("--keep-staging");
@@ -309,6 +310,7 @@ async function main() {
   } finally {
     // Clear the marker this process set for its children.
     delete getRawProcessEnv().S1_BOOTSTRAP_LOCK_HELD;
+    await drainStorageSideEffects();
     lockClient.release(); // parent lock spans every synchronous child seed
     await pool.end();
   }
