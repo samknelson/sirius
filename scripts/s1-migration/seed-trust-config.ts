@@ -207,6 +207,8 @@ async function main() {
     console.error(`FAIL: ${missing} staged node(s) have no title — cannot carry over. nids: ${[...providers.titleMissingNids, ...benefits.titleMissingNids].join(",")}`);
   }
   lockClient?.release();
+  const { drainStorageSideEffects } = await import("../../server/storage/drain-storage-side-effects");
+  await drainStorageSideEffects();
   await pool.end();
   process.exit(loaderExitCode(result));
 }

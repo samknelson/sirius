@@ -13,6 +13,7 @@ import { runInTransaction } from "../../server/storage/transaction-context";
 import { withNotificationsSuppressed } from "../../server/middleware/request-context";
 import { POLICY_SIRIUS_IDS } from "./lib/production-baseline";
 import { acquireMigrationSeedLock } from "./lib/migration-lock";
+import { drainStorageSideEffects } from "../../server/storage/drain-storage-side-effects";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import {
   buildLoaderResult,
@@ -167,9 +168,13 @@ async function main() {
 }
 
 main()
-  .then(() => pool.end())
+  .then(async () => {
+    await drainStorageSideEffects();
+    await pool.end();
+  })
   .catch(async (error) => {
     console.error(`FATAL ${(error as Error).name}: ${String((error as Error).message ?? error).split("\n")[0]}`);
+    await drainStorageSideEffects().catch(() => undefined);
     await pool.end().catch(() => undefined);
     process.exit(1);
   });

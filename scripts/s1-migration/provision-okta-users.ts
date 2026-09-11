@@ -14,6 +14,7 @@
  * activation email). Output is aggregates + opaque ids only (HIPAA-safe).
  */
 import { pool as pgPool } from "../../server/storage/db";
+import { drainStorageSideEffects } from "../../server/storage/drain-storage-side-effects";
 import { getEnvironmentVariable } from "./lib/script-env";
 import { recordRun, ensureStagingSchema } from "./lib/staging";
 import { provisionMigratedUsers, type OktaAdminClient } from "./lib/okta-provision";
@@ -84,6 +85,7 @@ async function main() {
   console.log(JSON.stringify(summary, null, 2));
   if (!dryRun) await recordRun(startedAt, { script: "t27-provision-okta-users", only: ONLY?.length ?? 0 }, summary);
 
+  await drainStorageSideEffects();
   await pgPool.end();
   process.exit(report.failures.length > 0 || report.ambiguousOkta.length > 0 ? 1 : 0);
 }

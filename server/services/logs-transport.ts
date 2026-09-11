@@ -1,6 +1,14 @@
 import Transport from "winston-transport";
 import { createLogsStorage, type LogInsertData } from "../storage/system/logs";
 
+const pendingLogWrites = new Set<Promise<void>>();
+
+export async function flushPendingLogWrites(): Promise<void> {
+  while (pendingLogWrites.size > 0) {
+    await Promise.allSettled([...pendingLogWrites]);
+  }
+}
+
 interface LogsTransportInfo {
   level: string;
   message: string;
@@ -36,38 +44,43 @@ export class LogsTransport extends Transport {
     super(opts);
   }
 
-  async log(info: LogsTransportInfo, callback: () => void): Promise<void> {
+  log(info: LogsTransportInfo, callback: () => void): void {
     setImmediate(() => {
       this.emit("logged", info);
     });
 
-    try {
-      const { level, message, timestamp, source, module, operation, 
-              entity_id, host_entity_id, description, 
-              user_id, user_email, ip_address, ...rest } = info;
-      
-      const meta = Object.keys(rest).length > 0 ? rest : null;
+    const write = (async () => {
+      try {
+        const { level, message, timestamp, source, module, operation,
+                entity_id, host_entity_id, description,
+                user_id, user_email, ip_address, ...rest } = info;
 
-      const data: LogInsertData = {
-        level,
-        message,
-        source: source || null,
-        meta,
-        module: module || null,
-        operation: operation || null,
-        entityId: entity_id || null,
-        hostEntityId: host_entity_id || null,
-        description: description || null,
-        userId: user_id || null,
-        userEmail: user_email || null,
-        ipAddress: ip_address || null,
-      };
+        const meta = Object.keys(rest).length > 0 ? rest : null;
 
-      await this.logsStorage.create(data);
-    } catch (error) {
-      console.error("[LogsTransport] Failed to write log:", error);
-    }
+        const data: LogInsertData = {
+          level,
+          message,
+          source: source || null,
+          meta,
+          module: module || null,
+          operation: operation || null,
+          entityId: entity_id || null,
+          hostEntityId: host_entity_id || null,
+          description: description || null,
+          userId: user_id || null,
+          userEmail: user_email || null,
+          ipAddress: ip_address || null,
+        };
 
-    callback();
+        await this.logsStorage.create(data);
+      } catch (error) {
+        console.error("[LogsTransport] Failed to write log:", error);
+      } finally {
+        callback();
+      }
+    })();
+
+    pendingLogWrites.add(write);
+    void write.finally(() => pendingLogWrites.delete(write));
   }
 }

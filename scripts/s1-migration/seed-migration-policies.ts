@@ -47,6 +47,7 @@
  */
 import { pool as pgPool } from "../../server/storage/db";
 import { storage } from "../../server/storage/database";
+import { drainStorageSideEffects } from "../../server/storage/drain-storage-side-effects";
 
 const NEW_POLICIES = [
   // Core fund policies. Historically seeded "at DB setup time" — but an
@@ -109,6 +110,7 @@ async function main() {
         `of the pair — refusing to guess which row existing mappings point at. ` +
         `Resolve manually, then re-run. Nothing was written.`,
     );
+    await drainStorageSideEffects();
     await pgPool.end();
     process.exit(1);
   }
@@ -116,6 +118,7 @@ async function main() {
     const updated = await storage.policies.updatePolicy(rRow.id, { siriusId: "UH", name: "Unite Here Plan" });
     if (!updated) {
       console.error(`FAIL: in-place rename of policy id=${rRow.id} (R → UH) updated no row.`);
+      await drainStorageSideEffects();
       await pgPool.end();
       process.exit(1);
     }
@@ -145,11 +148,14 @@ async function main() {
 
   const final = await storage.policies.getAllPolicies();
   console.log(JSON.stringify({ created, skipped, renamedFromR, totalPolicies: final.length, policies: final.map((p) => ({ id: p.id, siriusId: p.siriusId, name: p.name })) }, null, 2));
+  await drainStorageSideEffects();
   await pgPool.end();
   process.exit(0);
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   console.error(err);
+  await drainStorageSideEffects().catch(() => undefined);
+  await pgPool.end().catch(() => undefined);
   process.exit(1);
 });

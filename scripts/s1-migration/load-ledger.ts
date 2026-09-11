@@ -67,6 +67,7 @@ import {
   withChargePluginsSuppressed,
 } from "../../server/middleware/request-context";
 import { db, pool as pgPool } from "../../server/storage/db";
+import { drainStorageSideEffects } from "../../server/storage/drain-storage-side-effects";
 import { sql } from "drizzle-orm";
 import { ensureStagingSchema, recordRun, pagedRawLedger, stagedRawLedgerCount, ensureRawLedgerTable } from "./lib/staging";
 import { ensureIdMap, getMappings, putMappings, deleteMapping, remapMapping, advanceFingerprints, clearFingerprints, type MappingInfo } from "./lib/idmap";
@@ -676,6 +677,7 @@ async function main() {
   emitLoaderResult(result);
   if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, allowedRejects: ALLOWED_REJECTS, forceReconcile: FORCE_RECONCILE }, result as unknown as Record<string, unknown>);
 
+  await drainStorageSideEffects();
   await pgPool.end();
   const code = loaderExitCode(result);
   if (code !== 0 && result.rejectGate.status === "fail") {

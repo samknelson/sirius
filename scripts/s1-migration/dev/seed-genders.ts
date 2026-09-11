@@ -14,6 +14,7 @@
 import { createUnifiedOptionsStorage } from "../../../server/storage/unified-options";
 import { withNotificationsSuppressed } from "../../../server/middleware/request-context";
 import { pool } from "../../../server/storage/db";
+import { drainStorageSideEffects } from "../../../server/storage/drain-storage-side-effects";
 
 async function main() {
   const options = createUnifiedOptionsStorage();
@@ -28,6 +29,7 @@ async function main() {
     created++;
   }
   console.log(JSON.stringify({ seeded: created, present: NAMES.length - created }));
+  await drainStorageSideEffects();
   await pool.end();
 }
 main().catch((e) => { console.error(e); process.exit(1); });

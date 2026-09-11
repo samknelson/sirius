@@ -231,11 +231,15 @@ async function main() {
 
 main()
   .then(async () => {
+    const { drainStorageSideEffects } = await import("../../server/storage/drain-storage-side-effects");
+    await drainStorageSideEffects();
     await pool.end();
     console.log("DONE");
   })
   .catch(async (error) => {
     console.error(error);
+    const { drainStorageSideEffects } = await import("../../server/storage/drain-storage-side-effects");
+    await drainStorageSideEffects().catch(() => undefined);
     await pool.end().catch(() => undefined);
     process.exit(1);
   });
