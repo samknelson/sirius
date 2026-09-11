@@ -710,6 +710,7 @@ export function WorkersTable({
     const exportFilters = externalAppliedFilters ?? filters;
     if (exportNameId) params.set('nameIdSearch', exportNameId);
     if (exportContact) params.set('contactSearch', exportContact);
+    params.set('sortBy', sortBy);
     params.set('sortOrder', sortOrder);
     if (exportFilters.employerId !== 'all') params.set('employerId', exportFilters.employerId);
     if (exportFilters.employerTypeId !== 'all') params.set('employerTypeId', exportFilters.employerTypeId);

@@ -151,6 +151,7 @@ export interface PaginatedWorkersResult {
 export interface WorkersExportParams {
   nameIdSearch?: string;
   contactSearch?: string;
+  sortBy?: 'lastName' | 'firstName' | 'employer';
   sortOrder?: 'asc' | 'desc';
   employerId?: string;
   employerTypeId?: string;
@@ -160,6 +161,7 @@ export interface WorkersExportParams {
   jobTitle?: string;
   memberStatusId?: string;
   representativeId?: string;
+  includeBenefits?: boolean;
 }
 
 export interface WorkersPaginationParams {
@@ -217,7 +219,12 @@ export interface WorkerStorage {
   searchWorkers(query: string, limit?: number): Promise<WorkerSearchResult>;
   getWorkersWithDetails(): Promise<WorkerWithDetails[]>;
   getWorkersWithDetailsPaginated(params: WorkersPaginationParams): Promise<PaginatedWorkersResult>;
-  getWorkersForExport(params: WorkersExportParams): Promise<WorkerWithDetails[]>;
+  /**
+   * Read one bounded, deterministically ordered export batch. The offset is
+   * deliberately owned by the export caller so it can stop between batches
+   * when the response client disconnects.
+   */
+  getWorkersForExportBatch(params: WorkersExportParams, offset: number, limit: number): Promise<WorkerWithDetails[]>;
   getAllMatchingContactIds(params: Omit<WorkersPaginationParams, 'page' | 'pageSize' | 'sortField'>): Promise<string[]>;
   getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]>;
   getContactExportDataByIds(workerIdsList: string[]): Promise<WorkerContactExportRow[]>;
@@ -321,8 +328,11 @@ interface InternalSearchParams {
   jobTitle?: string;
   memberStatusId?: string;
   representativeId?: string;
+  includeBenefits?: boolean;
   page?: number;
   pageSize?: number;
+  exportOffset?: number;
+  exportLimit?: number;
 }
 
 interface InternalSearchResult {
@@ -501,6 +511,7 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
   const allConditions = sql`${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition} ${multipleEmployersCondition} ${jobTitleCondition} ${memberStatusCondition} ${representativeCondition}`;
 
   const isPaginated = params.page !== undefined && params.pageSize !== undefined;
+  const isExportBatch = params.exportOffset !== undefined && params.exportLimit !== undefined;
   let total: number | undefined;
 
   if (isPaginated) {
@@ -517,15 +528,15 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
 
   let orderByClause;
   if (sortBy === 'firstName') {
-    orderByClause = sql`ORDER BY c.given ${orderDirection}, c.family ${orderDirection}`;
+    orderByClause = sql`ORDER BY c.given ${orderDirection}, c.family ${orderDirection}, w.id ${orderDirection}`;
   } else if (sortBy === 'employer') {
     orderByClause = sql`ORDER BY (
       SELECT MIN(e.name) FROM employers e
       JOIN worker_employment_denorm wed ON e.id = wed.employer_id
       WHERE wed.worker_id = w.id
-    ) ${orderDirection} NULLS LAST, c.family ${orderDirection}, c.given ${orderDirection}`;
+    ) ${orderDirection} NULLS LAST, c.family ${orderDirection}, c.given ${orderDirection}, w.id ${orderDirection}`;
   } else {
-    orderByClause = sql`ORDER BY c.family ${orderDirection}, c.given ${orderDirection}`;
+    orderByClause = sql`ORDER BY c.family ${orderDirection}, c.given ${orderDirection}, w.id ${orderDirection}`;
   }
 
   const bargainingUnitColumns = bargainingUnitsEnabled
@@ -536,7 +547,7 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
     ? sql`LEFT JOIN bargaining_units bu ON w.bargaining_unit_id = bu.id`
     : sql``;
 
-  const benefitColumns = benefitsEnabled
+  const benefitColumns = benefitsEnabled && params.includeBenefits !== false
     ? sql`
         COALESCE(
           (
@@ -596,6 +607,8 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
 
   const paginationClause = isPaginated
     ? sql`LIMIT ${params.pageSize} OFFSET ${(params.page! - 1) * params.pageSize!}`
+    : isExportBatch
+      ? sql`LIMIT ${params.exportLimit} OFFSET ${params.exportOffset}`
     : sql``;
 
   const result = await client.execute(sql`
@@ -788,10 +801,11 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       };
     },
 
-    async getWorkersForExport(params: WorkersExportParams): Promise<WorkerWithDetails[]> {
+    async getWorkersForExportBatch(params: WorkersExportParams, offset: number, limit: number): Promise<WorkerWithDetails[]> {
       const { rows } = await _searchWorkers({
         nameIdSearch: params.nameIdSearch,
         contactSearch: params.contactSearch,
+        sortBy: params.sortBy,
         sortOrder: params.sortOrder,
         employerId: params.employerId,
         employerTypeId: params.employerTypeId,
@@ -801,6 +815,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         jobTitle: params.jobTitle,
         memberStatusId: params.memberStatusId,
         representativeId: params.representativeId,
+        includeBenefits: params.includeBenefits,
+        exportOffset: offset,
+        exportLimit: limit,
       });
       return rows;
     },

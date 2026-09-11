@@ -32,7 +32,7 @@ export interface WorkerIdStorage {
   updateWorkerId(id: string, workerId: Partial<InsertWorkerId>): Promise<WorkerId | undefined>;
   deleteWorkerId(id: string): Promise<boolean>;
   getShowOnListsIdTypes(): Promise<ShowOnListsIdType[]>;
-  getWorkerIdsForListByWorkerIds(workerIdsList: string[]): Promise<WorkerIdForList[]>;
+  getWorkerIdsForListByWorkerIds(workerIdsList: string[], showOnListsTypes?: ShowOnListsIdType[]): Promise<WorkerIdForList[]>;
   getWorkerIdsByTypeForWorkerIds(typeId: string, workerIdsList: string[]): Promise<{ workerId: string; value: string }[]>;
   getWorkerIdByTypeAndValue(typeId: string, value: string): Promise<WorkerId | undefined>;
   /**
@@ -137,12 +137,12 @@ export function createWorkerIdStorage(): WorkerIdStorage {
       return results;
     },
 
-    async getWorkerIdsForListByWorkerIds(workerIdsList: string[]): Promise<WorkerIdForList[]> {
+    async getWorkerIdsForListByWorkerIds(workerIdsList: string[], showOnListsTypes?: ShowOnListsIdType[]): Promise<WorkerIdForList[]> {
       if (workerIdsList.length === 0) return [];
       const client = getClient();
-      const showOnListsTypes = await this.getShowOnListsIdTypes();
-      if (showOnListsTypes.length === 0) return [];
-      const typeIds = showOnListsTypes.map(t => t.id);
+      const idTypes = showOnListsTypes ?? await this.getShowOnListsIdTypes();
+      if (idTypes.length === 0) return [];
+      const typeIds = idTypes.map(t => t.id);
       const results = await client
         .select({
           workerId: workerIds.workerId,

@@ -39,8 +39,8 @@ import { registerTrustProviderEdiDashboardRoutes } from "./modules/trust/provide
 import { registerConsolidatedOptionsRoutes } from "./modules/options-routes";
 import { getOptionsType } from "./modules/options-registry";
 import { registerWorkerIdsRoutes } from "./modules/workers/ids";
+import { registerWorkerExportRoute } from "./modules/workers/export";
 import { registerAddressValidationRoutes } from "./modules/address-validation";
-import { buildContentDisposition } from "./utils/content-disposition";
 import {
   registerMasqueradeRoutes,
   getEffectiveUser,
@@ -815,167 +815,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // GET /api/workers/export - Export workers to CSV with filters
-  app.get("/api/workers/export", requireAuth, requirePermission("staff"), async (req, res) => {
-    try {
-      const nameIdSearch = typeof req.query.nameIdSearch === 'string' ? req.query.nameIdSearch : undefined;
-      const contactSearch = typeof req.query.contactSearch === 'string' ? req.query.contactSearch : undefined;
-      const sortOrderParam = req.query.sortOrder as string;
-      const sortOrder = sortOrderParam === 'desc' ? 'desc' : 'asc';
-      
-      // Filter parameters
-      const employerId = typeof req.query.employerId === 'string' && req.query.employerId !== 'all' ? req.query.employerId : undefined;
-      const employerTypeId = typeof req.query.employerTypeId === 'string' && req.query.employerTypeId !== 'all' ? req.query.employerTypeId : undefined;
-      const bargainingUnitId = typeof req.query.bargainingUnitId === 'string' && req.query.bargainingUnitId !== 'all' ? req.query.bargainingUnitId : undefined;
-      const benefitId = typeof req.query.benefitId === 'string' && req.query.benefitId !== 'all' ? req.query.benefitId : undefined;
-      const contactStatusParam = req.query.contactStatus as string;
-      const validContactStatuses = ['all', 'has_email', 'missing_email', 'has_phone', 'missing_phone', 'has_address', 'missing_address', 'complete', 'incomplete'];
-      const contactStatus = validContactStatuses.includes(contactStatusParam) ? contactStatusParam as any : 'all';
-      const jobTitle = typeof req.query.jobTitle === 'string' && req.query.jobTitle.trim() ? req.query.jobTitle.trim() : undefined;
-      const memberStatusId = typeof req.query.memberStatusId === 'string' && req.query.memberStatusId !== 'all' ? req.query.memberStatusId : undefined;
-      const representativeId = typeof req.query.representativeId === 'string' && req.query.representativeId !== 'all' ? req.query.representativeId : undefined;
-      const includeBenefits = req.query.includeBenefits === 'true';
-      
-      // Get all workers matching filters
-      const workers = await storage.workers.getWorkersForExport({
-        nameIdSearch,
-        contactSearch,
-        sortOrder,
-        employerId,
-        employerTypeId,
-        bargainingUnitId,
-        benefitId,
-        contactStatus,
-        jobTitle,
-        memberStatusId,
-        representativeId,
-      });
-      
-      // Helper to format SSN
-      const formatSSN = (ssn: string | null) => {
-        if (!ssn) return '';
-        const digits = ssn.replace(/\D/g, '');
-        if (digits.length === 9) {
-          return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
-        }
-        return ssn;
-      };
-
-      const workerIdsList = workers.map(w => w.id);
-
-      const [showOnListsTypes, workerIdRecords, allEmployers, memberStatusOptions] = await Promise.all([
-        storage.workerIds.getShowOnListsIdTypes(),
-        workerIdsList.length > 0 ? storage.workerIds.getWorkerIdsForListByWorkerIds(workerIdsList) : Promise.resolve([]),
-        storage.employers.getAllEmployers(),
-        (async () => {
-          const config = getOptionsType("worker-ms");
-          return config ? config.getAll() : [];
-        })(),
-      ]);
-
-      const employerNameMap = new Map<string, string>();
-      for (const emp of allEmployers) {
-        employerNameMap.set(emp.id, emp.name);
-      }
-
-      const memberStatusNameMap = new Map<string, string>();
-      for (const ms of memberStatusOptions) {
-        memberStatusNameMap.set(ms.id, ms.name);
-      }
-
-      const workerIdMap = new Map<string, Map<string, string>>();
-      for (const wid of workerIdRecords) {
-        if (!workerIdMap.has(wid.workerId)) {
-          workerIdMap.set(wid.workerId, new Map());
-        }
-        workerIdMap.get(wid.workerId)!.set(wid.typeId, wid.value);
-      }
-
-      // Build CSV data
-      const csvData = workers.map(worker => {
-        const baseData: Record<string, string> = {
-          'First Name': worker.given || '',
-          'Middle Name': worker.middle || '',
-          'Last Name': worker.family || '',
-          'SSN': formatSSN(worker.ssn),
-        };
-
-        for (const idType of showOnListsTypes) {
-          const idValue = workerIdMap.get(worker.id)?.get(idType.id) || '';
-          baseData[idType.name] = idValue;
-        }
-
-        baseData['Job Title'] = (worker as any).denorm_job_title || '';
-        baseData['Bargaining Unit'] = (worker as any).bargaining_unit_name || '';
-
-        const msIds: string[] = (worker as any).denorm_ms_ids || [];
-        const msNames = msIds
-          .map(id => memberStatusNameMap.get(id))
-          .filter((n): n is string => !!n);
-        baseData['Member Status'] = msNames.join('; ');
-
-        const employerIds: string[] = (worker as any).denorm_employer_ids || [];
-        const empNames = employerIds
-          .map(id => employerNameMap.get(id))
-          .filter((n): n is string => !!n);
-        baseData['Employer(s)'] = empNames.join('; ');
-
-        baseData['Street'] = worker.address_street || '';
-        baseData['City'] = worker.address_city || '';
-        baseData['State'] = worker.address_state || '';
-        baseData['Postal Code'] = worker.address_postal_code || '';
-        baseData['Country'] = worker.address_country || '';
-        baseData['Email'] = worker.contact_email || '';
-        baseData['Phone Number'] = worker.phone_number || '';
-        
-        if (includeBenefits) {
-          const benefits = worker.benefits || [];
-          const benefitsString = benefits
-            .filter((b: any) => b && b.name)
-            .map((b: any) => b.name)
-            .join('; ');
-          baseData['Current Benefits'] = benefitsString;
-        }
-        
-        return baseData;
-      });
-      
-      // Define columns
-      const columns = [
-        'First Name',
-        'Middle Name',
-        'Last Name',
-        'SSN',
-        ...showOnListsTypes.map(t => t.name),
-        'Job Title',
-        'Bargaining Unit',
-        'Member Status',
-        'Employer(s)',
-        'Street',
-        'City',
-        'State',
-        'Postal Code',
-        'Country',
-        'Email',
-        'Phone Number',
-        ...(includeBenefits ? ['Current Benefits'] : [])
-      ];
-      
-      // Generate CSV
-      const csv = stringify(csvData, {
-        header: true,
-        columns
-      });
-      
-      // Send CSV response
-      const filename = `workers_export_${new Date().toISOString().split('T')[0]}.csv`;
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', buildContentDisposition('attachment', filename));
-      res.send(csv);
-    } catch (error) {
-      console.error("Failed to export workers:", error);
-      res.status(500).json({ message: "Failed to export workers" });
-    }
+  registerWorkerExportRoute(app, requireAuth, requirePermission, {
+    workers: storage.workers,
+    workerIds: storage.workerIds,
+    employers: storage.employers,
+    getMemberStatusOptions: async () => {
+      const config = getOptionsType("worker-ms");
+      return config ? config.getAll() : [];
+    },
   });
 
   const contactExportUpload = multer({
