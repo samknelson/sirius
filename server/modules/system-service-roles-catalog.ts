@@ -12,8 +12,10 @@ export function registerSystemServiceRolesCatalog(): void {
     id: SYSTEM_SERVICE_ROLES_CATALOG,
     label: "System Service Roles",
     description:
-      "The traffic classes this application can serve. This lists code capabilities, " +
-      "not the roles selected for a particular container.",
+      "The traffic classes this application can serve. Select them with the comma-separated " +
+      "SERVICE_ROLE environment variable; for example, SERVICE_ROLE=static,api-user serves " +
+      "all requests except web services. This lists code capabilities, not the roles selected " +
+      "for a particular container.",
     audience: "signed-in",
     entries: getSystemServiceRoleEntries,
   });
