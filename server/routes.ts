@@ -146,9 +146,9 @@ import { registerEdlsTosRoutes } from "./modules/edls/tos";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
 import { registerWorkerEdlsRoutes } from "./modules/edls/workers";
 import { registerEdlsPublicScheduleRoutes } from "./modules/edls/public-schedule";
-import { registerWebServiceDispatcher } from "./modules/webservices";
 import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
 import { registerTerminologyCatalog } from "./modules/terminology-catalog";
+import { registerSystemServiceRolesCatalog } from "./modules/system-service-roles-catalog";
 import { registerTokenContextsCatalog } from "./modules/token-contexts-catalog";
 import { registerNotifierTokenContexts } from "./plugins/event-notifier/token-contexts";
 import { registerCompaniesRoutes } from "./modules/employers/companies";
@@ -354,6 +354,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Deliberately not behind `requireAuth`: a catalog that declares itself
   // readable before sign-in has to actually be readable before sign-in, and
   // every other one refuses an anonymous reader on its own.
+  registerSystemServiceRolesCatalog();
   registerCatalogRoutes(app);
   registerRecordGoRoutes(app, requireAuth, authorizeRecordGoRequest);
 
@@ -1897,11 +1898,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Public (unauthenticated) worker schedule page — still gated on the `edls`
   // component like every other EDLS route.
   registerEdlsPublicScheduleRoutes(app);
-
-  // Register the single web service dispatcher (API access via client
-  // credentials); every configuration of every web-service plugin is served
-  // from here.
-  registerWebServiceDispatcher(app);
 
   // Register Web Service admin routes (clients, grants, credentials, IP rules)
   registerWebServiceAdminRoutes(app, requireAuth, requirePermission);

@@ -3,11 +3,13 @@ import { createServer } from "http";
 import { existsSync, rmSync } from "fs";
 import { resolve } from "path";
 import { setupVite, serveStatic, log } from "./vite";
-import { logger } from "./logger";
-import { bootstrapApp } from "./app-init";
 import { getEnvironmentVariable } from "./config/env-registry";
 import { markBootFailed, markBootReady, markBootReportOnly } from "./services/boot-status";
 import { bootStatusGate, registerBootStatusRoutes } from "./services/boot-status-http";
+import {
+  installServiceRoleOwnershipGuard,
+  resolveServiceRoles,
+} from "./services/service-roles";
 
 // Dev-only guardrail: remove any stale `dist/` build before booting.
 // `npm run dev` (tsx server/index.ts) loads source directly and never
@@ -32,6 +34,7 @@ if (getEnvironmentVariable("NODE_ENV") !== "production") {
 }
 
 const app = express();
+const roles = resolveServiceRoles();
 
 // Boot-status surface, registered BEFORE any heavy initialization and shared
 // verbatim with the production entry point (`server/production-entry.ts`), so
@@ -40,8 +43,9 @@ const app = express();
 // request is answered by the gate until the phase is "ready", naming the
 // actual phase (starting / init-failed / report-only) rather than always
 // claiming to be starting.
-registerBootStatusRoutes(app);
-app.use('/', bootStatusGate);
+registerBootStatusRoutes(app, roles);
+installServiceRoleOwnershipGuard(app, roles);
+app.use('/', (req, res, next) => bootStatusGate(req, res, next, roles.ids));
 
 // Create HTTP server early for health checks
 const server = createServer(app);
@@ -62,7 +66,10 @@ server.listen({
   // the single source of truth shared with the production entry point
   // (`server/production-entry.ts` -> `startApp()` in `server/app-init.ts`).
   try {
-    await bootstrapApp(app, server);
+    if (roles.has("api-user") || roles.has("api-ws")) {
+      const { bootstrapApp } = await import("./app-init");
+      await bootstrapApp(app, server, roles);
+    }
   } catch (error) {
     // BRINGUP_REPORT_ONLY=1 stops the boot on purpose after printing the
     // bring-up report; that is not a crash. Anything else is a real init
@@ -75,10 +82,6 @@ server.listen({
       return;
     }
     markBootFailed(error instanceof Error ? error : new Error(String(error)));
-    logger.error("Application initialization failed", {
-      source: "startup",
-      error: error instanceof Error ? (error.stack ?? error.message) : String(error),
-    });
     console.error("Failed to initialize application:", error);
     return;
   }
@@ -86,13 +89,15 @@ server.listen({
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
+  if (roles.has("static")) {
+    if (app.get("env") === "development") {
+      await setupVite(app, server);
+    } else {
+      serveStatic(app);
+    }
   }
 
   // Mark app as ready after all initialization is complete
   markBootReady();
-  logger.info("Application fully initialized and ready", { source: "startup" });
+  console.log(`Application fully initialized and ready (roles: ${roles.ids.join(", ")})`);
 })();

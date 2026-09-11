@@ -22,6 +22,11 @@ import {
   registerBootStatusRoutes,
 } from "./services/boot-status-http";
 import { getEnvironmentVariable } from "./config/env-registry";
+import {
+  installServiceRoleOwnershipGuard,
+  resolveServiceRoles,
+} from "./services/service-roles";
+import { serveStatic } from "./vite";
 
 /**
  * Stale-build guardrail (see task #138).
@@ -92,6 +97,7 @@ assertBuildIsFresh();
 
 const app = express();
 const server = createServer(app);
+const roles = resolveServiceRoles();
 
 /**
  * Init-failure surfacing (permanent deployment feature).
@@ -119,13 +125,14 @@ const server = createServer(app);
  * only ones that reach the API service through the ALB, and `/boot-status`
  * is a spelling no load-balancer fixed-response health rule occupies.
  */
-registerBootStatusRoutes(app);
+registerBootStatusRoutes(app, roles);
 
 // Everything else, while this process is not ready: the root path keeps
 // answering 200 and every other path answers 503 — but with a body naming
 // the ACTUAL phase (starting / init-failed / report-only), the boot
 // identity, the blocker and the drift result. Steps aside once ready.
-app.use('/', bootStatusGate);
+installServiceRoleOwnershipGuard(app, roles);
+app.use('/', (req, res, next) => bootStatusGate(req, res, next, roles.ids));
 
 const port = parseInt(getEnvironmentVariable("PORT") || '5000', 10);
 
@@ -137,17 +144,25 @@ server.listen({
   console.log(`Server listening on port ${port}, loading application...`);
   
   try {
-    // Assemble DATABASE_URL from component env vars (DB_HOST/DB_PORT/DB_NAME/
-    // DB_SECRET) before app-init loads server/storage/db.ts, which requires it
-    // at module load. No-op when DATABASE_URL is already set. See
-    // server/config/assemble-database-url.ts.
-    const { assembleDatabaseUrl } = await import('./config/assemble-database-url');
-    assembleDatabaseUrl();
-    const { startApp } = await import('./app-init');
-    await startApp(app, server, () => {
+    if (roles.has("api-user") || roles.has("api-ws")) {
+      // Assemble DATABASE_URL from component env vars (DB_HOST/DB_PORT/DB_NAME/
+      // DB_SECRET) before app-init loads server/storage/db.ts, which requires it
+      // at module load. No-op when DATABASE_URL is already set. See
+      // server/config/assemble-database-url.ts.
+      const { assembleDatabaseUrl } = await import('./config/assemble-database-url');
+      assembleDatabaseUrl();
+      const { startApp } = await import('./app-init');
+      await startApp(app, server, roles, () => {
+        markBootReady();
+        console.log(`Application fully initialized and ready (roles: ${roles.ids.join(", ")})`);
+      });
+    } else {
+      // A static-only container deliberately has no database, API routes, or
+      // application background work to initialize.
+      serveStatic(app);
       markBootReady();
-      console.log(`Application fully initialized and ready`);
-    });
+      console.log(`Static application ready (roles: ${roles.ids.join(", ")})`);
+    }
   } catch (error) {
     // A report-only stop is a deliberate outcome, not a crash: keep serving
     // the report over HTTP (this deployment exists to be read, and exiting

@@ -29,12 +29,18 @@
 #   docker run -p 5000:5000 \
 #     -e DATABASE_URL="postgres://..." \
 #     -e SESSION_SECRET="..." \
+#     -e SERVICE_ROLE="static,api-ws" \
 #     sirius:latest
 #
 # REQUIRED runtime environment variables (provide via `-e` / your deploy):
 #   - DATABASE_URL          PostgreSQL / Neon connection string (required)
 #   - PORT                  Port to listen on (optional, default 5000)
 #   - SESSION_SECRET        Express session signing secret
+#   - SERVICE_ROLE          Optional comma-separated runtime selector:
+#                           static (SPA/assets), api-user (application API),
+#                           api-ws (/api/ws). Unset runs all three roles.
+#                           This chooses behavior in this one image; it does
+#                           NOT require separate images, ports, or commands.
 #   OPTIONAL, depending on which features/components are enabled:
 #   - Clerk:        CLERK_SECRET_KEY (+ VITE_CLERK_PUBLISHABLE_KEY at build)
 #   - SendGrid:     SENDGRID_API_KEY
@@ -148,8 +154,10 @@ USER node
 
 EXPOSE 5000
 
-# Container-native health check hitting the always-on /health endpoint.
+# One container health check, routed to the status address owned by its selected
+# role. SERVICE_ROLE still selects runtime behavior only; the image, port and
+# command stay the same for every composition.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-    CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||5000)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+    CMD node -e "const r=(process.env.SERVICE_ROLE||'static,api-ws,api-user').split(',').map(x=>x.trim());const p=r.includes('static')?'/health':r.includes('api-ws')?'/api/ws/health':'/api/health';fetch('http://127.0.0.1:'+(process.env.PORT||5000)+p).then(x=>process.exit(x.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["node", "dist/production-entry.js"]

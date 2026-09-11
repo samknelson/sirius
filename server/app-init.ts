@@ -1,11 +1,9 @@
 import express, { type Request, Response, NextFunction, type Express } from "express";
 import type { Server } from "http";
-import { registerRoutes } from "./routes";
 import { serveStatic } from "./vite";
 import { initializePermissions } from "@shared/permissions";
 import { addressValidationService } from "./services/comm/validators/address";
 import { logger } from "./logger";
-import { setupAuth } from "./auth";
 import { initAccessControl, registerEntityLoader } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
@@ -20,7 +18,8 @@ import { initDispatchSeniorityReset } from "./services/dispatch/seniority-reset"
 import { runSchemaBringUp } from "./services/bringup";
 import { syncComponentPermissions } from "./services/component-permissions";
 import { initializeWebSocket } from "./services/websocket";
-import { getSession } from "./auth";
+import { registerWebServiceDispatcher } from "./modules/webservices";
+import type { ResolvedServiceRoles } from "./services/service-roles";
 
 // Side-effect imports: trigger plugin / provider / access-policy registration.
 import "./plugins/ledger/charge";
@@ -82,13 +81,15 @@ export function redactSensitiveData(data: any): any {
  * (with response redaction). Registered before the heavy init sequence so
  * requests that arrive during startup are parsed/logged consistently.
  */
-function installBaseMiddleware(app: Express): void {
+function installBaseMiddleware(app: Express, roles: ResolvedServiceRoles): void {
   // Before the parsers, deliberately: while the site is in maintenance mode
   // every web service call is refused outright, and a malformed or oversized
   // body must not be answered "your request is bad" when the real answer is
   // "the site is down". Scoped to the web service mount; the site itself stays
   // browsable during maintenance.
-  installWebServiceMaintenanceGate(app);
+  if (roles.has("api-ws")) {
+    installWebServiceMaintenanceGate(app);
+  }
 
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: false, limit: '50mb' }));
@@ -162,7 +163,11 @@ function installBaseMiddleware(app: Express): void {
  * middleware. The frontend-serving step (Vite in dev vs static in prod) and
  * the "ready" signal are intentionally left to each entry point.
  */
-export async function bootstrapApp(app: Express, server: Server): Promise<void> {
+export async function bootstrapApp(
+  app: Express,
+  server: Server,
+  roles: ResolvedServiceRoles,
+): Promise<void> {
   // FIRST, before anything reads a clock or writes a row. Every naive
   // timestamp column stores a wall-clock reading in this process's zone, so
   // the zone has to be settled before the schema bring-up, the first
@@ -193,7 +198,11 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
     );
   }
 
-  installBaseMiddleware(app);
+  installBaseMiddleware(app, roles);
+  logger.info(`Service roles resolved: ${roles.ids.join(", ")}`, {
+    source: "startup",
+    serviceRoles: roles.ids,
+  });
 
   // Initialize the permission system
   initializePermissions();
@@ -513,18 +522,27 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
     await ensureLocalAdminAccount();
   }
 
-  // Setup multi-provider auth
-  await setupAuth(app);
-  logger.info("Authentication system initialized", { source: "startup" });
+  // Browser sessions and the application API belong to api-user. Web-service
+  // credentials use their own authentication middleware and do not need this.
+  if (roles.has("api-user")) {
+    const { setupAuth } = await import("./auth");
+    await setupAuth(app);
+    logger.info("Authentication system initialized", { source: "startup" });
 
-  // Setup request context middleware (captures user and IP for logging)
+    registerEntityAccessModule(app, storage);
+    logger.info("Entity access module registered", { source: "startup" });
+  }
+
+  // Both backend roles retain request context for audit/logging behavior.
   app.use(captureRequestContext);
 
-  // Register entity access module
-  registerEntityAccessModule(app, storage);
-  logger.info("Entity access module registered", { source: "startup" });
-
-  await registerRoutes(app, server);
+  if (roles.has("api-user")) {
+    const { registerRoutes } = await import("./routes");
+    await registerRoutes(app, server);
+  }
+  if (roles.has("api-ws")) {
+    registerWebServiceDispatcher(app);
+  }
 
   // Startup is over, so the set of declared catalogs is final. Anything
   // registering after this point is a module that failed to load in the
@@ -532,20 +550,23 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   closeCatalogRegistration();
   logger.info("Catalog registration closed", { source: "startup" });
 
-  // Initialize WebSocket server for real-time notifications
-  const sessionMiddleware = getSession();
-  initializeWebSocket(server, sessionMiddleware);
-  logger.info("WebSocket server initialized", { source: "startup" });
+  // User API owns browser socket sessions and application background work.
+  // api-ws-only containers never initialize either singleton.
+  if (roles.has("api-user")) {
+    const { getSession } = await import("./auth");
+    const sessionMiddleware = getSession();
+    initializeWebSocket(server, sessionMiddleware);
+    logger.info("WebSocket server initialized", { source: "startup" });
 
-  // Start cron scheduler after routes are registered
-  try {
-    await cronScheduler.start();
-    logger.info("Cron scheduler started", { source: "startup" });
-  } catch (error) {
-    logger.error("Failed to start cron scheduler", {
-      source: "startup",
-      error: error instanceof Error ? error.message : String(error),
-    });
+    try {
+      await cronScheduler.start();
+      logger.info("Cron scheduler started", { source: "startup" });
+    } catch (error) {
+      logger.error("Failed to start cron scheduler", {
+        source: "startup",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   // Register error handling middleware AFTER routes to catch route errors
@@ -586,10 +607,17 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
  * `server/production-entry.ts`. Dev (`server/index.ts`) calls
  * `bootstrapApp` directly so it can wire up Vite instead.
  */
-export async function startApp(app: Express, server: Server, onReady: () => void): Promise<void> {
-  await bootstrapApp(app, server);
+export async function startApp(
+  app: Express,
+  server: Server,
+  roles: ResolvedServiceRoles,
+  onReady: () => void,
+): Promise<void> {
+  if (roles.has("api-user") || roles.has("api-ws")) {
+    await bootstrapApp(app, server, roles);
+  }
 
-  serveStatic(app);
+  if (roles.has("static")) serveStatic(app);
 
   onReady();
   logger.info("Application fully initialized and ready", { source: "startup" });
