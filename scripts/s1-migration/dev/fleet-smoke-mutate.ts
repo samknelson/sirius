@@ -313,11 +313,19 @@ async function apply() {
     if (!done) throw new Error("no mapped election with a start date found");
   }
 
-  // --- benefit span end-date +32 days (guaranteed month delta) ----------------
+  // --- Omada benefit span end-date +32 days (guaranteed month delta) -----------
   {
     const cands = await rows<{ nid: string }>(sql`
       SELECT r.nid FROM s1_staging.records r
-       WHERE r.bundle = 'sirius_trust_worker_benefit' AND r.fields ? 'field_sirius_date_end'
+       WHERE r.bundle = 'sirius_trust_worker_benefit'
+         AND r.fields ? 'field_sirius_date_end'
+         AND COALESCE(
+               r.fields #>> '{field_sirius_trust_benefit,target_id}',
+               r.fields #>> '{field_sirius_trust_benefit,0,target_id}',
+               r.fields #>> '{field_sirius_trust_benefit,0}',
+               CASE WHEN jsonb_typeof(r.fields -> 'field_sirius_trust_benefit') IN ('number','string')
+                    THEN r.fields ->> 'field_sirius_trust_benefit' END
+             )::bigint = 18250093
        ORDER BY r.nid
     `);
     let done = false;
@@ -332,7 +340,7 @@ async function apply() {
       done = true;
       break;
     }
-    if (!done) throw new Error("no closed benefit span with an end date found");
+    if (!done) throw new Error("no closed Omada benefit span with an end date found");
   }
 
   // --- money: raw AR edit, raw AR delete, payment node delete -----------------

@@ -296,6 +296,9 @@ Key ordering facts:
   elections/benefit-history** — the first creates
   `trust_providers`/`trust_benefits` from staged S1 nodes; the second assigns
   every target-resolved staged benefit to EC and UH without source UUIDs.
+  The policy seed is part of the automated fleet, immediately after trust
+  catalog resolution, so a benefit first observed on a later daily stage is
+  assigned on that same run.
 - **users after contacts/workers** — the T27 uid→worker pre-link resolves
   through id_map `worker`; running users first leaves every account unlinked.
 - **beneficiaries after contacts/workers** — designations resolve workers via
@@ -363,9 +366,41 @@ created (S1 has no such relation). Expect `titleMissingNids: []` and, on a
 wiped target, `created == staged` on both sides.
 
 `seed-policy-benefits.ts` resolves EC/UH by Sirius ID and benefits through the
-staged `benefit` id_map. It assigns the complete resolved set only when a
-policy has no assignment, adopts an exact existing set, and fails rather than
-overwriting a differing non-empty assignment. Other policy metadata is kept.
+staged `benefit` id_map. It appends newly staged benefits and records the IDs
+it owns in `data.s1MigrationPolicyBenefitIds`. Unrelated operator benefit IDs
+and all other policy metadata are preserved. A later run fails closed if an
+owned assignment was removed or its staged source vanished; it never silently
+replaces the whole policy assignment. The command emits the standard fleet
+envelope and supports `--dry-run`.
+
+
+### Omada checks
+
+Omada has two distinct source concepts. The provider **Omada Health** (provider
+nid `18178388`) has already appeared in sync output. That does not prove the
+benefit exists and must never be used as a benefit identity. The Omada benefit
+is `sirius_trust_benefit` nid `18250093`; at the time this guidance was added,
+that benefit node had not yet appeared in the observed production stage.
+
+For every daily stage, verify:
+
+1. If benefit nid `18250093` is present, `seed-trust-config` reports it resolved
+   to exactly one live `trust_benefits` row and id_map `benefit/18250093`
+   remains stable on the zero-churn rerun.
+2. `seed-policy-benefits` succeeds and EC/UH both contain that target ID in
+   `benefitIds` and `s1MigrationPolicyBenefitIds`, without losing operator IDs.
+3. Any S1 elections and worker-benefit spans referencing nid `18250093` flow
+   through the ordinary T16/T17 counters, and the selected month-parity reports
+   include its target benefit with zero disagreement.
+
+Before final freeze, stop if the fund expects Omada but nid `18250093` is still
+absent, unresolved, or ambiguous, or if policy ownership verification fails.
+The migration does not synthesize missing Omada elections/history.
+
+Omada eligibility rules are configured manually after the catalog and policy
+assignment are present. They are not seeded or reconciled by the migration.
+The generic elections, benefit-history, and month-parity loaders require no
+Omada-specific transform.
 
 ### 4.1 – 4.14 Loaders
 

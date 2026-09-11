@@ -533,11 +533,19 @@ for (const nm of ['Kaiser Permanente','Health Net of California','Delta Dental P
 
 // Benefit node TITLES match the dev S2 fund config trust_benefits by unique
 // case-insensitive name (T17/T16 resolveBenefitNidMap) — kills benefit_unmapped.
-const BENEFIT_NAMES = ['Kaiser','Health Net','Delta Dental','VSP','Life Insurance','MLK','Express Scripts'];
 const benefits = [];
-for (const nm of BENEFIT_NAMES) {
-  const nid = await makeNode('sirius_trust_benefit', nm);
+const BENEFIT_DEFS = [
+  ['Kaiser'], ['Health Net'], ['Delta Dental'], ['VSP'],
+  ['Life Insurance'], ['MLK'], ['Express Scripts'],
+  // Production identity supplied by the fund. This remains an ordinary S1
+  // benefit: the generic catalog/election/history loaders must carry it.
+  ['Omada', 18250093],
+];
+let omadaBenefitNid;
+for (const [nm, fixedNid] of BENEFIT_DEFS) {
+  const nid = await makeNode('sirius_trust_benefit', nm, fixedNid ? { nid: fixedNid } : {});
   benefits.push(nid);
+  if (fixedNid) omadaBenefitNid = nid;
   await fd('field_data_field_sirius_id', [{bundle:'sirius_trust_benefit', entity_id:nid, values:{field_sirius_id_value:`BEN-${nm.toUpperCase().replace(/[^A-Z]/g,'').slice(0,3)}`}}]);
 }
 
@@ -959,7 +967,10 @@ for (let i = 0; i < Math.min(40, workers.length); i++) {
   // benefits: 1-3 targets, delta order preserved (prod max delta 10)
   const nBen = 1 + (i % 3);
   const benRows = [];
-  for (let d = 0; d < nBen; d++) benRows.push({bundle:'sirius_trust_worker_election', entity_id:nid, delta:d, values:{field_sirius_trust_benefits_target_id:benefits[(i + d) % benefits.length]}});
+  for (let d = 0; d < nBen; d++) {
+    const benefit = i === 0 && d === 0 ? omadaBenefitNid : benefits[(i + d) % benefits.length];
+    benRows.push({bundle:'sirius_trust_worker_election', entity_id:nid, delta:d, values:{field_sirius_trust_benefits_target_id:benefit}});
+  }
   await fd('field_data_field_sirius_trust_benefits', benRows);
   elections[elections.length - 1].benefitNids = benRows.map(r => r.values.field_sirius_trust_benefits_target_id);
   if (nBen > 1) trap('multi_value_election_benefits');

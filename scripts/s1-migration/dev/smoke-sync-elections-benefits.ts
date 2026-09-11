@@ -52,6 +52,7 @@ const PHASE = (() => {
 
 const ELECTION_BUNDLE = "sirius_trust_worker_election";
 const SPAN_BUNDLE = "sirius_trust_worker_benefit";
+const OMADA_BENEFIT_NID = 18250093;
 /** Dev staging convention: synthetic data ends 2026-12 (RUNBOOK §6). */
 const DEV_HORIZON = "2026-12";
 const idxOf = (y: number, m: number) => y * 12 + (m - 1);
@@ -206,6 +207,15 @@ async function phaseElections(): Promise<void> {
   if (!e1.result) return;
   check("t16 run1: reject gate pass", e1.result.rejectGate.status === "pass", JSON.stringify(e1.result.rejectGate));
   check("t16 run1: verify clean", Number(e1.result.detail.verifyFailures) === 0);
+  const omadaTarget = (await getMappings("benefit", [OMADA_BENEFIT_NID])).get(OMADA_BENEFIT_NID)?.s2Id;
+  check("t16 Omada: staged benefit has one target mapping", Boolean(omadaTarget));
+  const omadaElectionCount = omadaTarget ? await oneNum(sql`
+    SELECT count(*)::int AS c
+      FROM s1_staging.id_map m
+      JOIN worker_trust_elections e ON e.id = m.s2_id
+     WHERE m.entity = 'election' AND ${omadaTarget} = ANY(e.benefit_ids)
+  `) : 0;
+  check("t16 Omada: generic election path imported coverage", omadaElectionCount > 0, `elections=${omadaElectionCount}`);
 
   const e2 = runLoader("load-elections.ts", T16_FLAGS);
   check("t16 run2: exit 0", e2.code === 0);
@@ -360,6 +370,11 @@ async function phaseBenefits(): Promise<void> {
   check("t17 run1: scratch populated", Number(d1.scratchSpans) > 0, `scratchSpans=${d1.scratchSpans}`);
   check("t17 run1: desired months computed", Number(d1.desiredMonths) > 0, `desiredMonths=${d1.desiredMonths}`);
   check("t17 run1: verify clean", Number(d1.verifyFailures) === 0, JSON.stringify(d1.verify));
+  const omadaTarget = (await getMappings("benefit", [OMADA_BENEFIT_NID])).get(OMADA_BENEFIT_NID)?.s2Id;
+  const omadaMonths = omadaTarget
+    ? await oneNum(sql`SELECT count(*)::int AS c FROM trust_wmb WHERE benefit_id = ${omadaTarget}`)
+    : 0;
+  check("t17 Omada: generic span expansion imported month rows", omadaMonths > 0, `months=${omadaMonths}`);
   console.log(`  · run1 heal: wmbBefore=${wmbBefore} created=${d1.monthsCreated} deleted=${d1.monthsDeleted} relRepaired=${d1.relRepaired} anchors=${JSON.stringify(d1.anchors)}`);
 
   // --- b2: converged zero-churn ---

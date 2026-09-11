@@ -64,8 +64,10 @@ loaders against ANY target (fresh branch or production), ensure:
   Hourly status allowlist, and materializes every current cron configuration
   disabled. `trust_providers` and `trust_benefits` are NOT preconfigured —
   `seed-trust-config.ts` derives them from staged S1 nodes after `stage.ts`,
-  then `seed-policy-benefits.ts` assigns that target-resolved benefit set to
-  EC and UH (§4.15 carry-over-as-is).
+  then the fleet's `seed-policy-benefits.ts` step additively assigns that
+  target-resolved benefit set to EC and UH (§4.15 carry-over-as-is). The
+  policy seed tracks only its owned IDs and preserves unrelated operator
+  assignments and policy metadata.
   (`copy-fund-config.ts` remains as a dev utility for id-preserving copies from
   `SOURCE_CONFIG_DATABASE_URL`, but is no longer part of the run.)
 - **Policies** — `load-policies.ts` is ADOPT-ONLY: every referenced S1 trust

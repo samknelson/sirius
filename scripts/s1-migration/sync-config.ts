@@ -75,6 +75,7 @@ export interface FleetStep {
  */
 export const FLEET: FleetStep[] = [
   { id: "seed-trust-config", script: "seed-trust-config.ts", loader: "seed-trust-config", logicVersion: 1, supportsForceReconcile: false, supportsAllowFindings: false, supportsAllowRejects: false },
+  { id: "seed-policy-benefits", script: "seed-policy-benefits.ts", loader: "seed-policy-benefits", logicVersion: 1, supportsForceReconcile: false, supportsAllowFindings: false, supportsAllowRejects: false },
   { id: "options", script: "load-options.ts", loader: "t4-options", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: false },
   { id: "contacts-workers", script: "load-contacts-workers.ts", loader: "t3t1-contacts-workers", logicVersion: 2, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
   { id: "users", script: "load-users.ts", loader: "t27-users", logicVersion: 2, supportsForceReconcile: false, supportsAllowFindings: false, supportsAllowRejects: true },
@@ -177,6 +178,7 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
     dailyAllowedFindings: ["deleted_in_s1", "source_worker_missing", "pending_retention"],
     steps: {
       "seed-trust-config": {},
+      "seed-policy-benefits": {},
       options: {},
       // §5: RULED annotation family (non-fatal by ruling; the row still
       // loads) — the standard reject gate requires the explicit allowance.
@@ -255,6 +257,7 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
     dailyAllowedFindings: ["deleted_in_s1", "source_worker_missing", "pending_retention"],
     steps: {
       "seed-trust-config": {},
+      "seed-policy-benefits": {},
       options: {},
       "contacts-workers": {
         allowRejects: [
@@ -339,6 +342,12 @@ export function validateSyncConfig(): void {
   if (pay < 0 || led < 0 || pay > led) throw new Error("sync-config: payments must run before ledger (§10)");
   if (hrs < 0 || hrs > led) throw new Error("sync-config: hours must run before ledger (payperiod crosswalk, Task 414)");
   if (pay > hrs) throw new Error("sync-config: payments must run before hours (money order payments → hours → ledger)");
+  const trust = FLEET.findIndex((s) => s.id === "seed-trust-config");
+  const policyBenefits = FLEET.findIndex((s) => s.id === "seed-policy-benefits");
+  const elections = FLEET.findIndex((s) => s.id === "elections");
+  if (trust < 0 || policyBenefits !== trust + 1 || policyBenefits > elections) {
+    throw new Error("sync-config: policy-benefit seed must run immediately after trust catalog and before elections");
+  }
   const known = new Set<string>(KNOWN_FINDING_KINDS);
   for (const [name, p] of Object.entries(PROFILES)) {
     for (const kind of p.dailyAllowedFindings) {

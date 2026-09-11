@@ -20,8 +20,6 @@
 - [ECHP quote/billing parity](echp-quote-billing-parity.md) — ECHP eligibility quote and charge reconciliation must price from the same aggregated rule source or worker is quoted one price, billed another.
 - [Plugin config route dormancy](plugin-config-route-dormancy.md) — a generic config router isn't dormant for a legacy kind if method names differ (legacy PUT vs generic PATCH); gate with an explicit deny set until cutover.
 - RJSF v6 wiring — [widget formContext](rjsf-v6-widget-formcontext.md) (read registry.formContext, no prop) + [field onChange](rjsf-custom-field-onchange.md) (`(value, [])`, id on `fieldPathId.$id`).
-- [Vite JSX generic transform](vite-jsx-generic-transform.md) — inline `<Component<Type>>` JSX crash-loops the dev server; standalone esbuild passes but Vite rejects it; type the callback prop instead.
-- [queryFn undefined overrides default fetcher](queryfn-undefined-overrides-default.md) — `queryFn: cond ? fn : undefined` kills the default fetcher; the no-fn branch never fetches and silently renders empty.
 - [Plugin config validation runs on post-toRows data](plugin-config-validation-order.md) — validate `base.data` after `toRows`, not the raw body; RJSF strips fields not in the JSON Schema (e.g. trust-eligibility appliesTo).
 - [Migration runner has no transaction](migration-runner-no-transaction.md) — up() isn't wrapped; copy-then-strip backfills must self-wrap in db.transaction or lose rows on rerun.
 - [Cross-table plugin_configs uniqueness](cross-table-uniqueness-denormalization.md) — tuple spanning base+subsidiary: denormalize base discriminator onto subsidiary + null-safe COALESCE unique index.
@@ -45,7 +43,6 @@
 - EBS deferred events — [at-most-once delivery](ebs-claim-before-emit.md) (claim the status row before emit), [scheduled reminders](ebs-scheduled-reminder-pattern.md) (denorm scheduler + anchor in the entity id), [self-notification opt-out](event-notifier-notify-self.md) (pump reminders need notifySelf:true).
 - [Denorm verify script circular import](denorm-verify-script-circular-import.md) — a standalone tsx script importing the denorm barrel crashes (PluginRegistry init); import the plugin file + backfill/recompute modules directly.
 - drizzle-kit push — [interactive rename hazard](db-push-interactive-rename-hazard.md) (never --force; use executeSql DDL) + [name/constraint hazards](drizzle-kit-push-hazards.md) (>63-char names, failed runs drop constraints).
-- [Vite devDep in prod bundle](vite-devdep-in-prod-bundle.md) — a top-level `import "vite"` on the boot path crashes the lean ECS image at module load; lazy-import dev-only deps inside the dev-only fn.
 - [ECS DATABASE_URL/SESSION_SECRET gap](ecs-database-url-secrets-gap.md) — Terraform task def gives DB parts not DATABASE_URL/SESSION_SECRET; assemble URL in code pre-app-init, gate a stable session fallback behind ALLOW_INSECURE_SESSION_SECRET.
 - [esbuild barrel init cycle](esbuild-barrel-init-cycle.md) — prod-only "Class extends value undefined" = barrel re-export cycle; storage/boot-chain code must import _core submodules directly, not the ../_core barrel; smoke-test the bundle.
 - [pg connectionString ssl override](pg-connectionstring-ssl-override.md) — pg merges parsed connectionString OVER explicit ssl; sslmode=require→ssl={} (verify on) clobbers rejectUnauthorized:false → Aurora "unable to get local issuer certificate"; strip ssl* params from the URL.
@@ -67,7 +64,6 @@
 - [Template Studio preview pattern](template-studio-host-pattern.md) — preview request is self-describing (specs+finished templates+context, no registry); callers compose their own templates; shared field tables keep preview==delivery.
 - [Token plugin framework](token-plugin-framework.md) — legacy ids must stay valid chains; audience gating fail-closed per channel; evaluator mirrors shared arg validation; test scripts import storage/database not barrel.
 - [Auth provisioning & role reconcile](auth-provisioning-reconcile.md) — auth_settings is one variables row; provider-managed roles tracked in authIdentities.metadata.managedRoleIds, never claim locally held roles.
-- [Client component smoke-render](client-component-smoke-render.md) — modal-only React components: renderToStaticMarkup via tsx from repo root + temp tsconfig with jsx:react-jsx (root sets preserve → "React is not defined").
 - [ProtectedRoute entityId extraction](protectedroute-entityid-extraction.md) — /dispatch/job/:id/* tabs with a policyId must pass entityId explicitly (URL extractor grabs "job" as the id).
 - [Template preview contexts](template-preview-subjects.md) — context is raw root JSON or an entity ref; entity refs gated per token KIND (fail closed, same id checked+loaded); persona keys belong to the kind owning the leaf.
 - [Derived registry cache versioning](derived-registry-cache-versioning.md) — caches over listEnabledSync must key on registry version + component-cache revision, else validation accepts what delivery renders as unknown.
@@ -101,7 +97,6 @@
 - [Notification receipt column](notification-receipt-column.md) — a comm-link column that gates resending must be voided in the entity's UPDATE (null-stripped value compare) and its write-back guarded by the sender's snapshot.
 - [After-commit sibling history boundary](after-commit-sibling-history-boundary.md) — write an entity's history row INSIDE the save's tx (a listener records the wrong save, or none yet); order by the captured save stamp; diff the unfiltered read.
 - [Platform history re-parenting](platform-history-reparenting.md) — main gets rewritten into content-identical commits with new parents; long-lived config branches re-conflict forever — rebuild them, don't merge.
-- [pdfmake lazy load order](pdfmake-lazy-load-order.md) — pdfmake + vfs_fonts dynamic imports must be sequential (fonts register via a global set at pdfmake's evaluation); Promise.all silently loses them.
 - [Credential redaction in logs](audit-log-credential-redaction.md) — bearer-like values leak via TWO paths (storage before/after payload AND the API responsePreview key allowlist); log identifiers + hasX booleans, prove with a canary scan.
 - [Batch-grain logging & lost chronology](logging-batch-grain-and-lost-chronology.md) — whole-set replace: `metadataEntityId: () => undefined` (NOT mode 'none', it kills the host touch); no-provenance rows reorder by a business key; redact before-state too.
 - [Storage logging hook name conventions](storage-logging-hook-name-conventions.md) — before/after state is synthesized ONLY for create*/update*/delete* names; setX/clearX/upsert get undefined beforeState, so create-vs-update descriptions silently lie.
@@ -114,7 +109,6 @@
 - [Entity-files adapter fork extension](entity-files-adapter-fork-extension.md) — BAO DC/case documents retain adapter-backed lifecycle semantics while upstream uses shared entity_files.
 - [Notifier postal templates](notifier-postal-template-channel.md) — postal is a first-class token-template channel; preserve its HTML letter wrapping when adopting shared delivery shaping.
 - [S1 loader mechanics](s1-loader-run-order.md) — loader ordering follows id-map dependencies; linked topic covers paging, observability, and prerequisites.
-- [Typecheck heap ceiling](typecheck-heap-ceiling.md) — tsc runs as two pinned processes; heap grows ~linearly with file count, and cutting drizzle out of the client half was measured at only −7%.
 - [EDLS schedule answer authority](edls-schedule-answer-authority.md) — an AAT bearer link intentionally authorizes its worker’s final EDLS accept/decline response; legacy schedule links remain read-only.
 - [Permission registry vs role tables](permission-registry-vs-role-tables.md) — getRolePermissions drops keys an uninitialized registry doesn't know (empty pre-app-init); ask getRolesWithPermission for authority questions.
 - [Break-glass admin from env](break-glass-admin-from-env.md) — LOCAL_AUTH_* is a per-boot reconciler (exists/active/admin/password); refusals must be decided BEFORE the first write, and env overrides mean in-app admins can set it too.
@@ -132,7 +126,6 @@
 - [Boot-status HTTP surface](boot-status-http-surface.md) — a not-ready answer must name its phase (starting/failed/report-only) + identity + blocker; status must answer under BOTH ALB prefixes and on a non-health spelling.
 - [One cached answer, many askers](wc-request-shared-answer-identity.md) — shared wc entry: credential out of the key, restrictions in, caller-specific echoes stripped+re-applied; no infinite window (sweep can't reclaim); free services still join the vendor guard.
 - [Splitting a tab into sub-tabs](tab-split-into-subtabs.md) — keep the old URL on one child; child id goes in BOTH activeTab and ProtectedRoute tabId; ids unique tree-wide.
-- [Theme colour vars hold whole colours](theme-color-var-convention.md) — `var(--chart-1)`, never `hsl(var(--chart-1))`; nested colour is dropped at computed-value time with zero warnings (invisible chart line).
 - [Counting served work](counting-served-work.md) — usage counters: flag at the handler boundary (never infer from status), count on `close` / log on `finish`, write outside the caller's tx.
 - [Cross-process boot serialization](cross-process-boot-serialization.md) — two services boot one image against one DB: bring-up is exclusive (session advisory lock), every other boot write must be atomic/23505-retry/xact-lock, every wait bounded.
 - [Comm send-once key](comm-send-once-key.md) — at-most-once sends: normalize the key at the storage insert (senders bypass the zod schema), the insert IS the claim, a duplicate is its own outcome, a spent key stays spent.
@@ -141,7 +134,6 @@
 - [Timezone model](timezone-model.md) — naive columns hold wall clock in the PROCESS zone (`now()` in the PG SESSION zone — set both); site zone = process.env.TZ; browser half redirects formatters (zoned Date subclass, calendar≠instant).
 - [Cron tick heartbeat](cron-tick-heartbeat.md) — periodic plugin work subscribes to a shared wall-clock tick (one EventType per period), not its own cron; best-effort + level-triggered, dueness from the last LIVE SUCCESS, never a "how late" count.
 - [Whole-job dispatch eligibility](whole-job-eligibility-without-facts.md) — job-level rule = no condition, or an `exists` on a category NO denorm plugin writes (comment it); job-type-less configs are inert.
-- [Dashboard widget registry glob depth](dashboard-widget-registry-glob-depth.md) — client registry globs ./*/*.tsx as `<dir>:<File>`; a SHARED card must sit above the widget dirs or it registers as a phantom widget.
 - [Context-framework gating](context-framework-gating.md) — presence in the config var = on; a hidden tab needs a route guard reading the same server answer; a context id rename also moves discriminators + config KEYS.
 - [Server-fed nav sections](nav-section-fed-by-server-registry.md) — a nav group whose items come from a server registry must feed the path helpers too, and say "loading/couldn't load" rather than render empty.
 - [Polymorphic child cleanup](polymorphic-child-cleanup.md) — FK-less children of a deleted record: after-commit per-entity event + daily sweep calling ONE routine; per-record deletes only (bulk logs nothing).
@@ -157,3 +149,4 @@
 - [Shared catalog framework](catalog-framework.md) — catalog=code-supplied, registry=DB; entries derive on READ (component filter), offer≠vocabulary, tier decided from the reader (barrel hides tier-as-argument), version needs a process id.
 - [Application-managed data columns](application-managed-data-columns.md) — generic `data` columns are extension space for site-specific/features; core admin forms must not display, edit, or overwrite them.
 - [Studio template library route](studio-template-library-route.md) — Template Studio reuses the staff CRUD list with medium/context filters; 401/403 hides Templates, never add a parallel studio route.
+- [Omada migration boundary](omada-migration-boundary.md) — migrate Omada catalog/policy/coverage only; eligibility rules are manually configured and never migration-seeded.

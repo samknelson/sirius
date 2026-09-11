@@ -125,6 +125,37 @@ async function syncRunsCount(): Promise<number> {
 const SYNC = "scripts/s1-migration/sync.ts";
 const MUTATE = "scripts/s1-migration/dev/fleet-smoke-mutate.ts";
 
+async function assertOmadaState(label: string): Promise<void> {
+  const rows = await targetQuery<{
+    benefit_maps: string;
+    election_maps: string;
+    month_rows: string;
+    policy_count: string;
+  }>(`
+    WITH omada AS (
+      SELECT m.s2_id
+        FROM s1_staging.id_map m
+        JOIN trust_benefits b ON b.id = m.s2_id
+       WHERE m.entity = 'benefit' AND m.s1_id = 18250093
+    )
+    SELECT
+      (SELECT count(*) FROM omada)::text AS benefit_maps,
+      (SELECT count(*) FROM s1_staging.id_map em
+        JOIN worker_trust_elections e ON e.id = em.s2_id
+       WHERE em.entity = 'election' AND (SELECT s2_id FROM omada) = ANY(e.benefit_ids))::text AS election_maps,
+      (SELECT count(*) FROM trust_wmb w WHERE w.benefit_id = (SELECT s2_id FROM omada))::text AS month_rows,
+      (SELECT count(*) FROM policies p
+        WHERE p.sirius_id IN ('EC','UH')
+          AND (p.data->'benefitIds') ? (SELECT s2_id FROM omada)
+          AND (p.data->'s1MigrationPolicyBenefitIds') ? (SELECT s2_id FROM omada))::text AS policy_count
+  `);
+  const state = rows[0];
+  expect(Number(state?.benefit_maps) === 1, `${label}: Omada source nid maps to exactly one live benefit`);
+  expect(Number(state?.election_maps) > 0, `${label}: generic elections loader carries Omada`);
+  expect(Number(state?.month_rows) > 0, `${label}: generic benefit-history loader carries Omada months`);
+  expect(Number(state?.policy_count) === 2, `${label}: EC/UH assignments include migration-owned Omada`);
+}
+
 async function phaseSetup() {
   console.log("\n═══ PHASE setup ═══");
   try {
@@ -171,6 +202,11 @@ async function phaseInitial() {
     "wet sync report records app fence acquisition through aggregate recording",
   );
   expect((r.report?.fleetTotals?.created ?? 0) > 0, "fleet created rows on initial load");
+  const policySeedInitial = (r.report?.fleet ?? []).find((s: any) => s.id === "seed-policy-benefits");
+  expect(policySeedInitial?.summary?.updated === 2, "initial sync seeds both migrated policy assignments");
+  if (r.exit === 0 && r.report?.gates?.fleet === "pass") {
+    await assertOmadaState("initial sync");
+  }
   {
     // Dev-structural baseline: synthetic staging has no keep-tag terms, so
     // packet-tags always reports its config-RULED sweep-skip finding — and
@@ -222,6 +258,14 @@ async function phaseMutate() {
   expect((fk.source_worker_missing ?? 0) >= 1, `source_worker_missing finding surfaced (got ${fk.source_worker_missing})`);
   expect((fk.pending_retention ?? 0) >= 1, `pending_retention finding surfaced (got ${fk.pending_retention})`);
   expect(r.report?.gates?.parity === "pass", "parity still PASS after convergence (money edits/deletes tracked)");
+  const policySeedMutate = (r.report?.fleet ?? []).find((s: any) => s.id === "seed-policy-benefits");
+  expect(policySeedMutate?.summary?.updated === 0, "policy-benefit seed is zero-churn on rerun");
+  const historyStep = (r.report?.fleet ?? []).find((s: any) => s.id === "benefit-history");
+  expect(
+    (historyStep?.summary?.created ?? 0) > 0 || (historyStep?.summary?.deleted ?? 0) > 0,
+    "Omada span mutation produces generic benefit-history reconciliation",
+  );
+  await assertOmadaState("post-mutation sync");
 }
 
 async function phaseModes() {
@@ -252,6 +296,9 @@ async function phaseModes() {
     );
   }
   expect(r.report?.gates?.parity === "pass", "parity PASS after restore");
+  const policySeedRestored = (r.report?.fleet ?? []).find((s: any) => s.id === "seed-policy-benefits");
+  expect(policySeedRestored?.summary?.updated === 0, "policy-benefit seed remains zero-churn after restoration");
+  await assertOmadaState("post-restore final freeze");
 }
 
 async function phaseCleanup() {
