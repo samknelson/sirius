@@ -42,11 +42,11 @@ export interface NotifierMessageContent {
   subject?: string;
   bodyText?: string;
   bodyHtml?: string;
-  // sms
-  message?: string;
+  // sms + inapp — both media call their message body `body`, the name
+  // the shared medium declaration gives it (`shared/delivery-fields.ts`).
+  body?: string;
   // inapp
   title?: string;
-  body?: string;
   linkUrl?: string;
   linkLabel?: string;
   // postal
@@ -109,7 +109,7 @@ export interface NotifierChannelTemplates {
     /** HTML body; token values are HTML-escaped on render. */
     bodyHtml: string;
   };
-  sms?: { message: string };
+  sms?: { body: string };
   inapp?: {
     title: string;
     body: string;

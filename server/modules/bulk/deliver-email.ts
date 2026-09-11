@@ -4,12 +4,17 @@ import type { DeliverContactResult } from "./deliver";
 import { renderTokens, createTokenEvalContext } from "../../plugins/tokens";
 import type { TokenRootSeed } from "../../plugins/tokens/types";
 import {
-  BULK_CHANNEL_FIELDS,
+  deriveEmailPlainText,
+  mediumField,
   shapeRenderedValue,
   tokenCleanerFor,
 } from "../../delivery/shape";
+import { recordBulkUndeliverable } from "./undeliverable";
 
-const [SUBJECT_SPEC, BODY_HTML_SPEC, BODY_TEXT_SPEC] = BULK_CHANNEL_FIELDS.email;
+// By key, never by position: the medium's declaration is shared, and a
+// field added or reordered there must not silently rebind these.
+const SUBJECT_SPEC = mediumField("email", "subject");
+const BODY_HTML_SPEC = mediumField("email", "bodyHtml");
 
 /**
  * Shape one bulk email body for delivery: render its tokens with the
@@ -32,7 +37,13 @@ export async function renderEmailBodyHtmlForDelivery(
   return shapeRenderedValue(BODY_HTML_SPEC, rendered);
 }
 
-/** Subject shaping for delivery (blank falls back, as declared). */
+/**
+ * Subject shaping for delivery.
+ *
+ * A subject can be built entirely out of tokens, so whether it is blank
+ * is only knowable here, per recipient — which is why the authoring
+ * form requiring one is not the whole check.
+ */
 export async function renderEmailSubjectForDelivery(
   subject: string,
   ctx: Parameters<typeof renderTokens>[1],
@@ -44,24 +55,6 @@ export async function renderEmailSubjectForDelivery(
     })
   ).output;
   return shapeRenderedValue(SUBJECT_SPEC, rendered);
-}
-
-/**
- * The plain-text alternative part: its own stored field, so it renders
- * and shapes through its own declaration rather than borrowing the HTML
- * body's.
- */
-export async function renderEmailBodyTextForDelivery(
-  bodyText: string,
-  ctx: Parameters<typeof renderTokens>[1],
-): Promise<string> {
-  const rendered = (
-    await renderTokens(bodyText, ctx, {
-      clean: tokenCleanerFor(BODY_TEXT_SPEC) ?? undefined,
-      strictUnknown: true,
-    })
-  ).output;
-  return shapeRenderedValue(BODY_TEXT_SPEC, rendered);
 }
 
 export async function resolveEmailAddress(storage: IStorage, contactId: string): Promise<{ address: string; name?: string } | null> {
@@ -89,9 +82,12 @@ export async function deliverEmail(
   }
   const ctx = createTokenEvalContext(storage, contactId, { seeds });
   const renderedSubject = await renderEmailSubjectForDelivery(emailContent.subject || "", ctx);
-  const renderedText = emailContent.bodyText
-    ? await renderEmailBodyTextForDelivery(emailContent.bodyText, ctx)
-    : undefined;
+  if (!renderedSubject) {
+    // A blank subject is never substituted with a stand-in: this
+    // recipient's copy could not be composed, and that is recorded
+    // against them as the failed communication it is.
+    return recordBulkUndeliverable("email", messageId, contactId, ["subject"], tagIds);
+  }
   const renderedHtml = emailContent.bodyHtml
     ? await renderEmailBodyHtmlForDelivery(emailContent.bodyHtml, ctx)
     : undefined;
@@ -100,7 +96,9 @@ export async function deliverEmail(
     toEmail: resolved.address,
     toName: resolved.name,
     subject: renderedSubject,
-    bodyText: renderedText,
+    // Derived from this recipient's rendered HTML, never authored — the
+    // two parts of the email cannot disagree.
+    bodyText: renderedHtml ? deriveEmailPlainText(renderedHtml) : undefined,
     bodyHtml: renderedHtml,
     fromEmail: emailContent.fromAddress || undefined,
     fromName: emailContent.fromName || undefined,

@@ -74,7 +74,7 @@ export const trustWmbScanNotifier: EventNotifierPlugin = {
     switch (medium) {
       case "sms":
         return {
-          message:
+          body:
             `WMB Scan for ${label} completed. ${totalProcessed} workers processed ` +
             `(${successCount} success, ${failedCount} failed). Benefits: ` +
             `${benefitsStarted} started, ${benefitsContinued} continued, ${benefitsTerminated} terminated.`,

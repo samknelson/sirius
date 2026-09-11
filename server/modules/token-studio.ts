@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import type { IStorage } from "../storage";
-import type { TokenRootSeed } from "../plugins/tokens/types";
+import type { TokenEntityType, TokenRootSeed } from "../plugins/tokens/types";
 import type { TokenPreviewRoot } from "../plugins/tokens/preview-roots";
 import type { DeliveryFieldSpec } from "@shared/delivery-fields";
 
@@ -8,8 +8,10 @@ type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => 
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
 /**
- * Template Studio endpoints: the token catalog and THE ONE preview
- * route every tokenized field renders through.
+ * Template Studio endpoints: the token GRAPH every surface writes
+ * against, the sample-persona PREVIEW SEEDS a surface with no records of
+ * its own previews with, and THE ONE preview route every tokenized field
+ * renders through.
  *
  * The preview request describes itself completely — the template text
  * to render, how each field is shaped at delivery time, and the context
@@ -22,18 +24,54 @@ type RequireAuth = (req: Request, res: Response, next: () => void) => void;
  * is a read of the record, so it is gated exactly like any other read
  * of it (see `server/plugins/tokens/preview-entities.ts`).
  */
-/** `?roots=dispatch,event` — the named context roots the caller seeds. */
-function parseRootNames(raw: unknown): string[] {
-  const values = Array.isArray(raw) ? raw : [raw];
-  const out: string[] = [];
-  for (const value of values) {
-    if (typeof value !== "string") continue;
-    for (const name of value.split(",")) {
-      const trimmed = name.trim();
-      if (trimmed && !out.includes(trimmed)) out.push(trimmed);
+/**
+ * `?context=bulk_message` — WHAT IS BEING WRITTEN, and therefore both
+ * which roots the answer covers and who may have it.
+ *
+ * The caller names a context, never a root list. The roots are the
+ * context's own statement about itself, read server-side, so a caller
+ * cannot ask this route about roots its surface does not offer.
+ */
+function contextIdOf(req: Request): string {
+  return typeof req.query.context === "string" ? req.query.context.trim() : "";
+}
+
+const CONTEXT_REQUIRED =
+  "context is required: name the token context these templates are written " +
+  "in, e.g. ?context=bulk_message";
+
+/**
+ * THE GATE, RESOLVED FROM WHAT IS BEING ASKED ABOUT.
+ *
+ * The token graph is the same for every surface, so it is built once,
+ * here, for whichever context is named — which means this route is
+ * answering for surfaces gated three different ways (bulk authors,
+ * composing staff, admins) and cannot carry one policy of its own. It
+ * takes the context's, per request.
+ *
+ * Fail closed at every step: no context named is a 400, an unknown one
+ * a 404, and one that states no policy a 403 (see
+ * `resolveTokenContextGate`, where those refusals live). Nothing here
+ * falls back to `admin` — a fallback gate would silently answer for a
+ * context whose own gate someone forgot to write down.
+ */
+function requireTokenContextAccess(requireAccess: RequireAccess) {
+  return async (req: Request, res: Response, next: () => void) => {
+    const contextId = contextIdOf(req);
+    if (!contextId) {
+      res.status(400).json({ message: CONTEXT_REQUIRED });
+      return;
     }
-  }
-  return out;
+    const { resolveTokenContextGate } = await import(
+      "../plugins/tokens/contexts"
+    );
+    const gate = resolveTokenContextGate(contextId);
+    if (!gate.ok) {
+      res.status(gate.status).json({ message: gate.message });
+      return;
+    }
+    requireAccess(gate.policyId)(req, res, next);
+  };
 }
 
 type ResolvedPreviewContext =
@@ -260,86 +298,125 @@ export function registerTokenStudioRoutes(
   storage: IStorage,
 ) {
   /**
-   * Token catalog for the generic studio. `?roots=a,b` is REQUIRED and
-   * names the complete list of roots the caller's templates may address
-   * (`contact`, `dispatch`, `event`, …), in the order its author sees
-   * them. Nothing is added implicitly: a caller that names no roots has
-   * not said what its templates are about, and answering with "every
-   * root there is" is how a surface ends up showing records it has
-   * never heard of.
+   * THE TOKEN GRAPH, for every surface there is: what may be written in
+   * the named context — the picker entries, the segment specs the
+   * client validates chains against, and the field index behind
+   * `field(name=…)`.
    *
-   * Carries the studio's own context — what each root may be previewed
-   * as — so the studio opens ready to preview, with no second request
-   * and no search box. A generic caller has no particular records in
-   * hand and this route supplies none on its behalf, so each root is
-   * previewed as a sample persona. A container that does hold records
-   * builds the context itself and passes them in.
+   * ONE ROUTE, because there is one graph. It is derived from the token
+   * plugin registry and the roots the context names, and nothing about
+   * it varies with who is asking or which screen they opened: bulk
+   * messaging, a compose screen and a notifier's config asking about the
+   * same roots must get the same answer, or an author is offered a token
+   * their save will reject. What DOES vary per surface — which real
+   * records may be previewed against — is the other half of what this
+   * used to answer, and now lives on each host's own preview-seeds
+   * route.
+   *
+   * No root list comes back: the caller named a context, and it reads
+   * that context's roots from the `token-contexts` catalog. An echo of
+   * them here would be a second answer to a question the context has
+   * already settled.
    */
   app.get(
-    "/api/token-studio/catalog",
+    "/api/token-studio/graph",
     requireAuth,
-    requireAccess("admin"),
+    requireTokenContextAccess(requireAccess),
     async (req, res) => {
       try {
         const {
           buildSegmentSpecsForRoots,
-          buildFieldCatalog,
-          buildTokenCatalogForRoots,
+          buildTokenFieldIndex,
+          buildTokenPickerEntries,
         } = await import("../plugins/tokens");
-        const { buildTokenStudioContext } = await import(
-          "../plugins/tokens/studio-context"
+        const { tokenContextRootNames } = await import(
+          "../plugins/tokens/contexts"
         );
-        const rootNames = parseRootNames(req.query.roots);
-        if (rootNames.length === 0) {
-          return res.status(400).json({
-            message:
-              "roots is required: name the roots these templates address, e.g. ?roots=contact,system",
-          });
-        }
+        const rootNames = tokenContextRootNames(contextIdOf(req));
         res.json({
-          rootNames,
           segments: buildSegmentSpecsForRoots(rootNames),
-          fields: buildFieldCatalog(),
-          tokens: buildTokenCatalogForRoots(rootNames),
-          // The roots the caller named, and only those: the seed panel
-          // is the same list as the browser, so an author cannot preview
-          // against a record their tokens can't address. No records are
-          // supplied here — see above.
-          studioContext: await buildTokenStudioContext(
-            { storage, req },
-            { rootNames },
-          ),
+          fieldIndex: buildTokenFieldIndex(),
+          pickerEntries: buildTokenPickerEntries(rootNames),
         });
       } catch (error: any) {
         res
           .status(500)
-          .json({ message: error.message || "Failed to load token catalog" });
+          .json({ message: error.message || "Failed to load the token graph" });
       }
     },
   );
 
   /**
-   * The token tree's ROOTS — one node per root the author may start a
-   * chain at, exactly the ones `?roots=` names (required, same as the
-   * catalog). The picker expands a node lazily through
-   * `/api/token-studio/tree/type/:type`, so a deep relation graph costs
-   * one small request per level instead of one giant catalog.
+   * PREVIEW SEEDS for a surface that holds no records: what each of the
+   * context's roots may be previewed as, which here is a sample persona
+   * apiece.
+   *
+   * A host that DOES know which records its author may preview against
+   * — the message's own recipients, the contact whose tab this is — has
+   * its own preview-seeds route and never asks this one. This is the
+   * answer for an ad-hoc tokenized field somewhere in the admin UI:
+   * there is no record such a field is "about", so it opens ready to
+   * preview against named sample people rather than a search box.
+   */
+  app.get(
+    "/api/token-studio/preview-seeds",
+    requireAuth,
+    requireTokenContextAccess(requireAccess),
+    async (req, res) => {
+      try {
+        const { buildPreviewSeeds } = await import(
+          "../plugins/tokens/preview-seeds"
+        );
+        const { tokenContextRootNames } = await import(
+          "../plugins/tokens/contexts"
+        );
+        // The context's roots, and only those: the seed panel is the
+        // same list as the token browser, so an author cannot preview
+        // against a record their tokens can't address.
+        res.json(
+          await buildPreviewSeeds(
+            { storage, req },
+            { rootNames: tokenContextRootNames(contextIdOf(req)) },
+          ),
+        );
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({ message: error.message || "Failed to load preview seeds" });
+      }
+    },
+  );
+
+  /**
+   * THE BROWSABLE TOKEN TREE, for every surface there is — the same
+   * question `/api/token-studio/graph` answers, asked one level at a
+   * time so a deep relation graph costs one small request per level
+   * instead of one giant catalog.
+   *
+   * ONE FAMILY, gated exactly like the graph: the caller names its
+   * CONTEXT and the roots are that context's own statement about
+   * itself, read server-side. Bulk messaging and the compose screens
+   * used to each serve their own copy behind their own gate, which was
+   * three near-identical endpoints and three chances for one surface's
+   * picker to offer a token its save would reject.
+   *
+   * The caller cannot name roots. It could once, which let one screen
+   * browse another screen's roots — a picker offering tokens the render
+   * then refuses.
    */
   app.get(
     "/api/token-studio/tree/roots",
     requireAuth,
-    requireAccess("admin"),
+    requireTokenContextAccess(requireAccess),
     async (req, res) => {
       try {
         const { listTokenTreeRoots } = await import("../plugins/tokens");
-        const rootNames = parseRootNames(req.query.roots);
-        if (rootNames.length === 0) {
-          return res.status(400).json({
-            message:
-              "roots is required: name the roots these templates address, e.g. ?roots=contact,system",
-          });
-        }
-        res.json({ roots: listTokenTreeRoots(rootNames) });
+        const { tokenContextRootNames } = await import(
+          "../plugins/tokens/contexts"
+        );
+        res.json({
+          roots: listTokenTreeRoots(tokenContextRootNames(contextIdOf(req))),
+        });
       } catch (error: any) {
         res
           .status(500)
@@ -348,15 +425,34 @@ export function registerTokenStudioRoutes(
     },
   );
 
-  /** One level of the token tree: what an entity type offers next. */
+  /**
+   * One level of the token tree: what an entity type offers next.
+   *
+   * Scoped by the context too, by walking the graph from its roots. A
+   * type expanded in isolation answers for a graph this context cannot
+   * reach, which is the same widening `?roots=` used to allow, one hop
+   * further in.
+   */
   app.get(
     "/api/token-studio/tree/type/:type",
     requireAuth,
-    requireAccess("admin"),
+    requireTokenContextAccess(requireAccess),
     async (req, res) => {
       try {
-        const { expandTokenType } = await import("../plugins/tokens");
-        res.json(expandTokenType(req.params.type));
+        const { expandTokenType, tokenTypesReachableFrom } = await import(
+          "../plugins/tokens"
+        );
+        const { tokenContextRootNames } = await import(
+          "../plugins/tokens/contexts"
+        );
+        const rootNames = tokenContextRootNames(contextIdOf(req));
+        const type = req.params.type as TokenEntityType;
+        if (!tokenTypesReachableFrom(rootNames).has(type)) {
+          return res
+            .status(404)
+            .json({ message: "No such type in this token context" });
+        }
+        res.json(expandTokenType(type));
       } catch (error: any) {
         res
           .status(500)
@@ -366,7 +462,7 @@ export function registerTokenStudioRoutes(
   );
 
   /**
-   * Search the tree: `?roots=a,b&q=ssn`. Matches root,
+   * Search the tree: `?context=bulk_message&q=ssn`. Matches root,
    * relation and field names at any depth and returns each hit with the
    * complete token expression and its path, so the picker never has to
    * pull the whole graph down to offer search.
@@ -374,19 +470,17 @@ export function registerTokenStudioRoutes(
   app.get(
     "/api/token-studio/tree/search",
     requireAuth,
-    requireAccess("admin"),
+    requireTokenContextAccess(requireAccess),
     async (req, res) => {
       try {
         const { searchTokenTree } = await import("../plugins/tokens");
+        const { tokenContextRootNames } = await import(
+          "../plugins/tokens/contexts"
+        );
         const q = typeof req.query.q === "string" ? req.query.q : "";
-        const rootNames = parseRootNames(req.query.roots);
-        if (rootNames.length === 0) {
-          return res.status(400).json({
-            message:
-              "roots is required: name the roots these templates address, e.g. ?roots=contact,system",
-          });
-        }
-        res.json({ hits: searchTokenTree(rootNames, q) });
+        res.json({
+          hits: searchTokenTree(tokenContextRootNames(contextIdOf(req)), q),
+        });
       } catch (error: any) {
         res
           .status(500)
@@ -407,8 +501,9 @@ export function registerTokenStudioRoutes(
    *     Any caller-specific composition (a notifier's default-vs-override
    *     merge, a rich-text body flattened to plain text) has already
    *     happened on the caller's side.
-   *   `rootNames` — the named record roots those templates address
-   *     (`dispatch`, `event`); ordinary roots are always available.
+   *   `?context=…` — the token context these templates are written in.
+   *     Its declared roots are the named record roots those templates may
+   *     address; the caller cannot supply a different root list.
    *   `context` — what each root renders as, one entry per root:
    *     `{ seeds: [{ rootName, record: { kind, id } } |
    *                { rootName, sampleSetId }, …] }`.
@@ -421,10 +516,22 @@ export function registerTokenStudioRoutes(
   app.post(
     "/api/template-studio/preview",
     requireAuth,
-    requireAccess("staff"),
+    requireTokenContextAccess(requireAccess),
     async (req: Request, res: Response) => {
       try {
         const body = req.body ?? {};
+        const { tokenContextRootNames } = await import(
+          "../plugins/tokens/contexts"
+        );
+        const rootNames = tokenContextRootNames(contextIdOf(req));
+
+        if (Object.prototype.hasOwnProperty.call(body, "rootNames")) {
+          return res.status(400).json({
+            message:
+              "A preview no longer takes rootNames — name the token context in " +
+              `the request query: ${CONTEXT_REQUIRED}`,
+          });
+        }
 
         // Field declarations, validated exactly as the author-time
         // check validates the shared tables they come from.
@@ -445,8 +552,6 @@ export function registerTokenStudioRoutes(
         for (const [key, value] of Object.entries(rawValues)) {
           if (typeof value === "string") templates[key] = value;
         }
-
-        const rootNames = parseRootNames(body.rootNames);
 
         // The persona used to be chosen once for the whole render.
         // It is now per root, inside the context — refused by PRESENCE

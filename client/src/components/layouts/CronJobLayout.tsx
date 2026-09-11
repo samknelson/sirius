@@ -14,6 +14,7 @@ import {
   RecordTitleBarLoading,
   RecordTitleBarNotFound,
 } from "@/components/shared/RecordTitleBar";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 
 const CRON_JOBS_BACK_LINK = {
   href: "/cron-jobs",
@@ -150,35 +151,7 @@ export function CronJobLayout({ activeTab, children }: CronJobLayoutProps) {
         />
 
         {/* Tab Navigation */}
-        <div className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-wrap items-center gap-2 py-3">
-              {tabs.map((tab) => {
-                const isActive = tab.id === activeTab;
-                return isActive ? (
-                  <Button
-                    key={tab.id}
-                    variant="default"
-                    size="sm"
-                    data-testid={`button-cron-job-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                ) : (
-                  <Link key={tab.id} href={tab.href}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      data-testid={`button-cron-job-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+        <EntityTabNavigation tabs={tabs} activeTab={activeTab} testIdPrefix="button-cron-job-" />
 
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

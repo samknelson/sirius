@@ -1,6 +1,6 @@
 import type { IStorage } from "../storage";
 import type { TokenRootSeed } from "../plugins/tokens/types";
-import type { DeliveryFieldSpec } from "@shared/delivery-fields";
+import { authoredFieldValue, type DeliveryFieldSpec } from "@shared/delivery-fields";
 
 /**
  * Rendering a tokenized template the way delivery would.
@@ -192,14 +192,21 @@ export async function renderTemplatePreview({
   const fields: Record<string, TemplateFieldPreview> = {};
 
   for (const spec of specs) {
-    const template = templates[spec.key];
-    if (typeof template !== "string") continue;
+    // A field the caller supplies no template for is either not in play
+    // (optional — the surface does not author it) or authored blank
+    // (required — the medium cannot exist without it, so an omitted
+    // subject previews exactly like an emptied one, which is what
+    // delivery does with it).
+    const template = authoredFieldValue(spec, templates[spec.key]);
+    if (template === undefined) continue;
 
     if (spec.tokenized === false) {
       // Delivery sends this field verbatim (its editor offers no token
-      // insertion), so previewing a substitution would be a lie.
+      // insertion), so previewing a substitution would be a lie — but
+      // it is still SHAPED on the way out, and a preview that skipped
+      // the shaping would show a value delivery goes on to drop.
       fields[spec.key] = {
-        rendered: template,
+        rendered: shapeRenderedValue(spec, template),
         unknownTokens: [],
         missingValues: [],
         emptyValues: [],
@@ -241,9 +248,7 @@ export async function renderTemplatePreview({
   // Only the fields this render covers count: a caller may declare more
   // fields than it supplies templates for, and a field with no template
   // is not missing — it is not in play.
-  const inPlay = specs.filter(
-    (spec) => typeof templates[spec.key] === "string",
-  );
+  const inPlay = specs.filter((spec) => spec.key in fields);
   const eligibility = applyFieldEligibility(inPlay, rendered);
   for (const key of Object.keys(fields)) {
     if (!(key in eligibility.values)) delete fields[key];

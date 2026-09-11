@@ -6,14 +6,18 @@ import {
   renderTokens,
   createTokenEvalContext,
   evaluateChain,
-  buildTokenCatalogForRoots,
+  buildTokenPickerEntries,
 } from "../../plugins/tokens";
 import type { TokenRootSeed } from "../../plugins/tokens/types";
 import { BULK_POSTAL_MERGE_ROOT_NAMES } from "./token-roots";
 import { parseTokenChain } from "@shared/tokens";
-import { BULK_CHANNEL_FIELDS, tokenCleanerFor } from "../../delivery/shape";
+import { mediumField, tokenCleanerFor } from "../../delivery/shape";
 
-const [DESCRIPTION_SPEC] = BULK_CHANNEL_FIELDS.postal;
+// By key, never by position — see `deliver-email.ts`. Bulk postal
+// authors only the description: the printed content of the letter comes
+// from the vendor's template, so the medium's optional letter body is
+// deliberately not offered here and never rendered.
+const DESCRIPTION_SPEC = mediumField("postal", "description");
 
 export async function resolvePostalAddress(storage: IStorage, contactId: string): Promise<PostalAddress | null> {
   const addresses = await storage.contacts.addresses.getContactPostalByContact(contactId);
@@ -75,7 +79,7 @@ export async function deliverPostal(
   // list: a Lob template is authored outside this app, so a key that
   // stops being supplied is a hole in a letter nobody can see coming.
   const tokenMerge: Record<string, string> = {};
-  for (const entry of buildTokenCatalogForRoots(BULK_POSTAL_MERGE_ROOT_NAMES)) {
+  for (const entry of buildTokenPickerEntries(BULK_POSTAL_MERGE_ROOT_NAMES)) {
     const parsed = parseTokenChain(entry.id);
     if (!parsed.ok) continue;
     const result = await evaluateChain(parsed.segments, ctx);

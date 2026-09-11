@@ -17,14 +17,8 @@ import { extractTokenExpressions, parseTokenChain } from "@shared/tokens";
 import {
   createTokenEvalContext,
   evaluateChain,
-  buildSegmentSpecsForRoots,
-  buildFieldCatalog,
-  buildTokenCatalogForRoots,
   validateTokenExpressionForRoots,
   describeChain,
-  listTokenTreeRoots,
-  expandTokenType,
-  searchTokenTree,
 } from "../../plugins/tokens";
 import type { TokenPreviewRecordRef } from "../../plugins/tokens/types";
 import {
@@ -32,7 +26,9 @@ import {
   BULK_PARTICIPANT_ROOT_NAME,
   composeBulkParticipantEntity,
 } from "../../plugins/tokens/plugins/bulk-participant";
-import { BULK_TOKEN_ROOT_NAMES } from "./token-roots";
+import "./token-roots";
+import { tokenContextRootNames } from "../../plugins/tokens/contexts";
+import { BULK_MESSAGE_TOKEN_CONTEXT } from "@shared/token-contexts";
 
 /**
  * How many of a message's sends the studio previews against.
@@ -314,12 +310,10 @@ export function registerBulkMessageRoutes(
 
       switch (medium) {
         case 'email': {
-          // The client now sends only `bodyHtml`; derive the plain-text
-          // fallback server-side so the two stay in sync.
+          // Only what the medium declares is stored. The plain-text
+          // alternative part is derived from the HTML body at send, per
+          // recipient, so there is nothing to keep in sync here.
           const emailBody: Record<string, unknown> = { ...messageBody };
-          if (typeof emailBody.bodyHtml === 'string') {
-            emailBody.bodyText = htmlToPlainText(emailBody.bodyHtml as string);
-          }
           const existing = await storage.bulkMessagesEmail.getByBulkId(bulk.id);
           if (existing) {
             const parsed = insertBulkMessagesEmailSchema.partial().safeParse(emailBody);
@@ -662,17 +656,18 @@ export function registerBulkMessageRoutes(
     }
   });
 
-  // Token catalog (picker entries) plus the segment graph the client
-  // uses for static chain validation. Both are derived live from the
-  // token plugin registry.
+  // WHAT THIS MESSAGE MAY BE PREVIEWED AGAINST — the only half of the
+  // studio's data that belongs to one message.
   //
-  // The catalog belongs to ONE message, because the studio it feeds
-  // previews against that message's OWN recipients: a bulk author is
-  // writing to a list they have already chosen, so the seeds it supplies
-  // are people who will actually receive this message rather than
+  // A bulk author is writing to a list they have already chosen, so the
+  // seeds are people who will actually receive THIS message rather than
   // whoever the author could look up. The recipients are still filtered
   // by the contact/worker read gates, like every other preview seed.
-  app.get("/api/bulk-tokens/:id", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+  //
+  // What may be WRITTEN is not per message: the token graph for bulk's
+  // roots is the same graph every other surface gets, and the studio
+  // reads it from /api/token-studio/graph for bulk's token context.
+  app.get("/api/bulk-messages/:id/preview-seeds", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
     try {
       const bulk = await storage.bulkMessages.getById(req.params.id);
       if (!bulk) {
@@ -682,8 +677,8 @@ export function registerBulkMessageRoutes(
       const { listTokenPreviewRoots } = await import(
         "../../plugins/tokens/preview-roots"
       );
-      const { buildTokenStudioContext } = await import(
-        "../../plugins/tokens/studio-context"
+      const { buildPreviewSeeds } = await import(
+        "../../plugins/tokens/preview-seeds"
       );
 
       const allParticipants = await storage.bulkParticipants.listForMessageWithRelations(
@@ -730,11 +725,12 @@ export function registerBulkMessageRoutes(
       }
 
       // A bulk message is ABOUT the sends it is going to make, so it
-      // states exactly the roots it has records for (see
-      // BULK_TOKEN_ROOT_NAMES) — the same list its tree, its validation
-      // and its coverage check use. `system` is in that list and
-      // seedless, so it is browsable but never appears in the seed panel.
-      const rootNames = BULK_TOKEN_ROOT_NAMES;
+      // states exactly the roots it has records for — its token context
+      // (see ./token-roots), the same list the editor, the tree, the
+      // validation and the coverage check read. `system` is in that list
+      // and seedless, so it is browsable but never appears in the seed
+      // panel.
+      const rootNames = tokenContextRootNames(BULK_MESSAGE_TOKEN_CONTEXT);
       const recordsByRoot: Record<string, TokenPreviewRecordRef[]> = {};
       // Why a supplied list is empty is something only this message
       // knows, and "there is nobody to preview against" is the honest
@@ -758,11 +754,8 @@ export function registerBulkMessageRoutes(
         }
       }
 
-      res.json({
-        tokens: buildTokenCatalogForRoots(rootNames),
-        segments: buildSegmentSpecsForRoots(rootNames),
-        fields: buildFieldCatalog(),
-        studioContext: await buildTokenStudioContext(
+      res.json(
+        await buildPreviewSeeds(
           { storage, req },
           {
             rootNames,
@@ -773,29 +766,18 @@ export function registerBulkMessageRoutes(
             limit: BULK_STUDIO_SEED_LIMIT,
           },
         ),
-      });
+      );
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Failed to load token catalog";
+      const message = error instanceof Error ? error.message : "Failed to load preview seeds";
       res.status(500).json({ message });
     }
   });
 
-  // Browsable token tree for bulk messaging — the same lazy tree the
-  // Template Studio walks, gated for bulk authors instead of admins.
-  // The roots are bulk's own declared list, fixed server-side: the
-  // caller cannot ask for a root bulk has not declared.
-  app.get("/api/bulk-tokens/tree/roots", requireAuth, requireAccess('bulk.edit'), (_req, res) => {
-    res.json({ roots: listTokenTreeRoots(BULK_TOKEN_ROOT_NAMES) });
-  });
-
-  app.get("/api/bulk-tokens/tree/type/:type", requireAuth, requireAccess('bulk.edit'), (req, res) => {
-    res.json(expandTokenType(req.params.type));
-  });
-
-  app.get("/api/bulk-tokens/tree/search", requireAuth, requireAccess('bulk.edit'), (req, res) => {
-    const q = typeof req.query.q === "string" ? req.query.q : "";
-    res.json({ hits: searchTokenTree(BULK_TOKEN_ROOT_NAMES, q) });
-  });
+  // The browsable token tree is NOT served here. It is the same tree
+  // for every surface, so it is one route family scoped and gated by
+  // the token context named in the request
+  // (`/api/token-studio/tree/*?context=…`), which reads bulk's roots
+  // from bulk's own context exactly as this copy used to.
 
   // Returns per-token coverage across this message's participants:
   // for every token used in any channel template, how many distinct
@@ -810,7 +792,7 @@ export function registerBulkMessageRoutes(
 
       const templates: string[] = [];
       const email = await storage.bulkMessagesEmail.getByBulkId(bulk.id);
-      if (email) templates.push(email.subject || "", email.bodyText || "", email.bodyHtml || "");
+      if (email) templates.push(email.subject || "", email.bodyHtml || "");
       const sms = await storage.bulkMessagesSms.getByBulkId(bulk.id);
       if (sms) templates.push(sms.body || "");
       const inapp = await storage.bulkMessagesInapp.getByBulkId(bulk.id);
@@ -819,10 +801,12 @@ export function registerBulkMessageRoutes(
       if (postal) templates.push(postal.description || "");
 
       // Only cover expressions that parse + validate against the roots
-      // bulk declares; invalid ones are surfaced by the editor's warnings.
+      // bulk's context declares — the same list the editor offered;
+      // invalid ones are surfaced by the editor's warnings.
+      const bulkRootNames = tokenContextRootNames(BULK_MESSAGE_TOKEN_CONTEXT);
       const tokenIds = Array.from(new Set(
         templates.flatMap((t) => extractTokenExpressions(t))
-          .filter((expr) => validateTokenExpressionForRoots(expr, BULK_TOKEN_ROOT_NAMES).ok)
+          .filter((expr) => validateTokenExpressionForRoots(expr, bulkRootNames).ok)
       ));
 
       // Coverage is measured per SEND, because that is what delivery

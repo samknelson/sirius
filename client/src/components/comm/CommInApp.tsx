@@ -4,8 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
-import { htmlToPlainText } from "@shared/utils/html";
+import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { 
   Bell, 
@@ -23,6 +22,7 @@ import {
   refuseUnrenderedTokens,
 } from "./ComposeTemplateStudio";
 import type { ComposeTemplateTarget } from "@shared/comm-compose";
+import { isSafeRelativePath } from "@shared/delivery-fields";
 import { useToast } from "@/hooks/use-toast";
 
 interface UserLookupResponse {
@@ -48,12 +48,13 @@ interface CommInAppProps {
 export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInAppProps) {
   const { toast } = useToast();
   const [title, setTitle] = useState("");
-  const [bodyHtml, setBodyHtml] = useState("");
+  // An in-app notification IS plain text — it is displayed as plain
+  // text, so it is written as plain text. A rich-text editor here would
+  // promise formatting no reader ever sees.
+  const [body, setBody] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
   const [tagIds, setTagIds] = useState<string[]>([]);
-
-  const derivedBody = htmlToPlainText(bodyHtml);
 
   const { data: userLookup, isLoading: isLoadingUserLookup } = useQuery<UserLookupResponse>({
     queryKey: ["/api/contacts", contactId, "user-lookup"],
@@ -82,7 +83,7 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
         description: "The notification has been sent successfully.",
       });
       setTitle("");
-      setBodyHtml("");
+      setBody("");
       setLinkUrl("");
       setLinkLabel("");
       setTagIds([]);
@@ -100,12 +101,18 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
   });
 
   const handleSend = () => {
-    if (!userLookup?.user?.id || !title.trim() || !derivedBody.trim()) return;
-    if (composeTarget && refuseUnrenderedTokens({ title, body: derivedBody }, toast)) return;
+    if (!userLookup?.user?.id || !title.trim() || !body.trim()) return;
+    // Every field that goes out, including the link: a token left
+    // unrendered in a URL ships a link to "/dispatch/job/{{job.id}}".
+    if (
+      composeTarget &&
+      refuseUnrenderedTokens({ title, body, linkUrl, linkLabel }, toast)
+    )
+      return;
     sendInappMutation.mutate({
       userId: userLookup.user.id,
       title: title.trim(),
-      body: derivedBody.trim(),
+      body: body.trim(),
       linkUrl: linkUrl.trim() || undefined,
       linkLabel: linkLabel.trim() || undefined,
       tagIds: tagIds.length > 0 ? tagIds : undefined,
@@ -117,12 +124,12 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
     userLookup?.user?.id &&
     title.trim().length > 0 && 
     title.trim().length <= 100 &&
-    derivedBody.trim().length > 0 &&
-    derivedBody.trim().length <= 500 &&
-    (!linkUrl.trim() || isValidUrl(linkUrl.trim()));
+    body.trim().length > 0 &&
+    body.trim().length <= 500 &&
+    (!linkUrl.trim() || isSafeRelativePath(linkUrl.trim()));
 
   const titleCharCount = title.length;
-  const bodyCharCount = derivedBody.length;
+  const bodyCharCount = body.length;
 
   return (
     <Card>
@@ -199,19 +206,28 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
                   target={composeTarget}
                   channel="inapp"
                   title="Compose In-App Message"
+                  // The link is part of the notification, so it is
+                  // written where the rest of it is written: a link
+                  // pointing at the record this screen is about is a
+                  // token like any other, and rendering it here is what
+                  // makes it the same link the notifier would send.
                   fields={[
                     { key: "title", label: "Title", mode: "line", maxLength: 100 },
                     {
-                      key: "bodyHtml",
+                      key: "body",
                       label: "Message",
-                      mode: "html",
-                      hint: "Formatting is flattened to plain text on send.",
+                      mode: "multiline",
+                      maxLength: 500,
                     },
+                    { key: "linkUrl", label: "Link URL", mode: "line" },
+                    { key: "linkLabel", label: "Link Label", mode: "line", maxLength: 50 },
                   ]}
-                  values={{ title, bodyHtml }}
+                  values={{ title, body, linkUrl, linkLabel }}
                   onApply={(rendered) => {
                     setTitle(rendered.title ?? "");
-                    setBodyHtml(rendered.bodyHtml ?? "");
+                    setBody(rendered.body ?? "");
+                    setLinkUrl(rendered.linkUrl ?? "");
+                    setLinkLabel(rendered.linkLabel ?? "");
                   }}
                   testId="button-compose-inapp-template"
                 />
@@ -220,15 +236,17 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
 
             <div className="space-y-2">
               <Label htmlFor="inapp-body">Message</Label>
-              <SimpleHtmlEditor
-                value={bodyHtml}
-                onChange={setBodyHtml}
-                minHeight={140}
+              <Textarea
+                id="inapp-body"
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                rows={5}
+                maxLength={500}
                 placeholder="Type your notification message here"
                 data-testid="input-inapp-body"
               />
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-muted-foreground">In-app notifications display as plain text; formatting will be flattened on send.</p>
+                <p className="text-xs text-muted-foreground">In-app notifications display as plain text.</p>
                 <span className={`text-xs ${bodyCharCount > 500 ? 'text-destructive' : 'text-muted-foreground'}`} data-testid="text-inapp-derived-body-count">
                   {bodyCharCount}/500
                 </span>
@@ -245,14 +263,20 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
                 <Label htmlFor="inapp-link-url">Link URL</Label>
                 <Input
                   id="inapp-link-url"
-                  type="url"
-                  placeholder="https://example.com/page"
+                  placeholder="/dispatch/job/123"
                   value={linkUrl}
                   onChange={(e) => setLinkUrl(e.target.value)}
                   data-testid="input-inapp-link-url"
                 />
-                {linkUrl.trim() && !isValidUrl(linkUrl.trim()) && (
-                  <p className="text-xs text-destructive">Please enter a valid URL</p>
+                {linkUrl.trim() && !isSafeRelativePath(linkUrl.trim()) ? (
+                  <p className="text-xs text-destructive">
+                    Enter a link inside this app, starting with "/" — the alerts bell
+                    opens it here, so an address elsewhere is dropped.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    A page in this app, starting with "/".
+                  </p>
                 )}
               </div>
 
@@ -301,13 +325,4 @@ export function CommInApp({ contactId, onSendSuccess, composeTarget }: CommInApp
       )}
     </Card>
   );
-}
-
-function isValidUrl(urlString: string): boolean {
-  try {
-    new URL(urlString);
-    return true;
-  } catch {
-    return false;
-  }
 }

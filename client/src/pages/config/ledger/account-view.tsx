@@ -33,7 +33,7 @@ function AccountDetailsContent() {
 
   const { data: gatewayConfigs = [], isLoading: gatewaysLoading } = useQuery<PaymentGatewayConfig[]>({
     queryKey: [...pluginConfigsQueryKey("payment-gateway"), "search"],
-    queryFn: () => pluginSearch<"payment-gateway", PaymentGatewayConfig>("payment-gateway"),
+    queryFn: () => pluginSearch<PaymentGatewayConfig>("payment-gateway"),
     enabled: !!account.gatewayConfigId,
   });
 

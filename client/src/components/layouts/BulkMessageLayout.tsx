@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useBulkMessageTabAccess } from "@/hooks/useTabAccess";
 import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 import type { BulkMessage } from "@shared/schema/bulk/schema";
 
 interface BulkMessageLayoutProps {
@@ -126,56 +127,15 @@ export function BulkMessageLayout({ activeTab, children }: BulkMessageLayoutProp
         recordId={bulkMessage.id}
       />
 
-      <div className="border-b border-border mb-6">
-        <nav className="flex gap-6" data-testid="nav-bulk-message-tabs">
-          {mainTabs.map((tab) => {
-            const isActive = tab.id === activeTab || tab.id === activeRoot?.id;
-            return (
-              <Link
-                key={tab.id}
-                href={tab.href}
-                className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-                  isActive
-                    ? "border-primary text-primary font-medium"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
-                data-testid={`tab-bulk-${tab.id}`}
-              >
-                {tab.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
-
-      {subTabs && subTabs.length > 0 && (
-        <div className="bg-muted/30 border-b border-border rounded-md mb-6">
-          <div className="flex flex-wrap items-center gap-2 py-2 px-4">
-            {subTabs.map((tab) => (
-              tab.id === activeTab ? (
-                <Button
-                  key={tab.id}
-                  variant="secondary"
-                  size="sm"
-                  data-testid={`button-bulk-${tab.id}`}
-                >
-                  {tab.label}
-                </Button>
-              ) : (
-                <Link key={tab.id} href={tab.href}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    data-testid={`button-bulk-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                </Link>
-              )
-            ))}
-          </div>
-        </div>
-      )}
+      <EntityTabNavigation
+        tabs={mainTabs}
+        activeTab={activeTab}
+        activeRootId={activeRoot?.id}
+        subTabs={subTabs}
+        testIdPrefix="tab-bulk-"
+        secondaryTestIdPrefix="button-bulk-"
+        primaryTestId="nav-bulk-message-tabs"
+      />
 
       <BulkMessageLayoutContext.Provider value={{ bulkMessage }}>
         {children}

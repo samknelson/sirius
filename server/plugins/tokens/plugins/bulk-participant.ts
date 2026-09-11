@@ -102,7 +102,7 @@ registerTokenPlugin({
     // `{{bulk_participant}}` on its own means the medium — the only
     // thing the send itself says.
     defaultLeaf: "medium",
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     sampleSets: BULK_PARTICIPANT_SAMPLE_SETS,
     /**
      * Reading a participant is reading the person it is addressed to:
@@ -160,7 +160,7 @@ registerTokenPlugin({
     inputTypes: [BULK_PARTICIPANT_ENTITY_KIND],
     outputType: "contact",
     entityTable: contacts,
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     defaultLeaf: "display_name",
   },
   async resolve(entity, _args, ctx) {

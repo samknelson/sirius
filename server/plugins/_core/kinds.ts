@@ -26,16 +26,14 @@ export interface PluginKindRegistration<TPlugin = unknown, TEntry = unknown> {
   kind: string;
   registry: PluginRegistry<TPlugin, TEntry>;
   /**
-   * Optional human-readable label for the kind, surfaced by the
-   * `/api/plugins/kinds` index endpoint (and the admin index page that
-   * consumes it). When omitted, the endpoint derives a sensible label
-   * from the kind id (e.g. "trust-eligibility" → "Trust Eligibility").
+   * Optional human-readable label for the kind, surfaced by the Plugin Kinds
+   * catalog. When omitted, the catalog derives a sensible label from the kind
+   * id (e.g. "trust-eligibility" → "Trust Eligibility").
    */
   label?: string;
   /**
-   * Optional human-readable description for the kind, surfaced by the
-   * `/api/plugins/kinds` index endpoint and shown under the title on the
-   * admin plugin-configs page. When omitted, no description is shown.
+   * Optional human-readable description for the kind, surfaced by the Plugin
+   * Kinds catalog and shown under the title on the admin plugin-configs page.
    */
   description?: string;
   /**
@@ -107,6 +105,11 @@ export function getPluginKind(kind: string): PluginKindRegistration | undefined 
 
 export function listPluginKinds(): string[] {
   return Array.from(KINDS.keys());
+}
+
+/** Every kind registration, for code-supplied projections such as catalogs. */
+export function listPluginKindRegistrations(): PluginKindRegistration[] {
+  return Array.from(KINDS.values());
 }
 
 /**

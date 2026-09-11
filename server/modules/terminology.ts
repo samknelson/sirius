@@ -1,18 +1,17 @@
-import type { Express } from "express";
 import { storage } from "../storage";
 import { 
   TERMINOLOGY_VARIABLE_NAME, 
   terminologySchema, 
   mergeTerminology,
   getDefaultTerminology,
-  TERM_REGISTRY,
   type TerminologyDictionary 
 } from "@shared/terminology";
 
-// Reads and writes of the site_terminology variable now go through the
-// generic variable routes (GET/PUT/DELETE /api/variables/by-name/
-// site_terminology), governed by the variable registry, which also runs
-// the cache-invalidation hook after writes.
+// This module registers no routes. Reads and writes of the site_terminology
+// variable go through the generic variable routes (GET/PUT/DELETE
+// /api/variables/by-name/site_terminology), governed by the variable registry,
+// which also runs the cache-invalidation hook after writes. What terms exist is
+// the `terminology` catalog, declared in ./terminology-catalog.ts.
 
 let terminologyCache: TerminologyDictionary | null = null;
 
@@ -44,23 +43,4 @@ export function getCachedTerminology(): TerminologyDictionary {
 
 export function invalidateTerminologyCache(): void {
   terminologyCache = null;
-}
-
-export function registerTerminologyRoutes(
-  app: Express,
-  requireAuth: any,
-  requirePermission: any,
-  requireAccess: any
-) {
-  // Reads go through GET /api/variables/by-name/site_terminology (public in
-  // the variable read-access registry); the client merges shared defaults.
-
-  app.get("/api/terminology/registry", requireAuth, async (req, res) => {
-    try {
-      res.json({ registry: TERM_REGISTRY });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch term registry" });
-    }
-  });
-
 }

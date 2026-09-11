@@ -1,7 +1,6 @@
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
-import { pluginKindsQueryKey, type PluginKindSummary } from "@/plugins/_core";
+import { usePluginKindsCatalog } from "@/hooks/usePluginKindsCatalog";
 import {
   Card,
   CardHeader,
@@ -13,21 +12,15 @@ import { ChevronRight, Loader2, Puzzle } from "lucide-react";
 
 /**
  * Navigation-only index for the generic plugin-config admin pages. It
- * lists every configurable plugin kind (sourced from the server via
- * `GET /api/plugins/kinds`) and links to each kind's config page at
+ * lists every configurable plugin kind from the Plugin Kinds catalog and links
+ * to each kind's config page at
  * `/admin/plugin-configs/:kind`. The set of kinds is owned by the
  * server so it is never duplicated here.
  */
 export default function PluginConfigsIndexPage() {
   usePageTitle("Plugin Configs");
 
-  const {
-    data: kinds = [],
-    isLoading,
-    isError,
-  } = useQuery<PluginKindSummary[]>({
-    queryKey: pluginKindsQueryKey(),
-  });
+  const { configurableKinds: kinds, isLoading, isError } = usePluginKindsCatalog();
 
   return (
     <div className="space-y-6">

@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useEmployerContactTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 
 interface EmployerContactDetail {
   id: string;
@@ -142,68 +143,13 @@ export function EmployerContactLayout({ activeTab, children }: EmployerContactLa
         recordId={employerContact.id}
       />
 
-      {/* Tab Navigation */}
-      <section className="bg-card border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap items-center gap-2 py-3">
-            {mainTabs.map((tab) => {
-              const isActive = tab.id === activeTab || (tab.id === "comm" && isCommSubTab);
-              return isActive ? (
-                <Button
-                  key={tab.id}
-                  variant="default"
-                  size="sm"
-                  data-testid={`button-contact-${tab.id}`}
-                >
-                  {tab.label}
-                </Button>
-              ) : (
-                <Link key={tab.id} href={tab.href}>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    data-testid={`button-contact-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* Comm Sub-Tab Navigation */}
-      {showCommSubTabs && (
-        <div className="bg-muted/30 border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-wrap items-center gap-2 py-2 pl-4">
-              {commSubTabs.map((tab) => (
-                tab.id === activeTab ? (
-                  <Button
-                    key={tab.id}
-                    variant="secondary"
-                    size="sm"
-                    data-testid={`button-contact-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                ) : (
-                  <Link key={tab.id} href={tab.href}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      data-testid={`button-contact-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  </Link>
-                )
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      <EntityTabNavigation
+        tabs={mainTabs}
+        activeTab={activeTab}
+        activeRootId={isCommSubTab ? "comm" : undefined}
+        subTabs={showCommSubTabs ? commSubTabs : undefined}
+        testIdPrefix="button-contact-"
+      />
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

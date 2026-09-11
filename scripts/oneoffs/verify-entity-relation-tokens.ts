@@ -24,7 +24,7 @@ async function main() {
     renderTokens,
     createTokenEvalContext,
     validateTokenExpressionForRoots,
-    buildTokenCatalogForRoots,
+    buildTokenPickerEntries,
   } = await import("../../server/plugins/tokens");
 
   console.log("\n--- generated entity relations ---");
@@ -79,7 +79,7 @@ async function main() {
   }
 
   console.log("\n--- catalog under the fore notifier's roots ---");
-  const catalog = buildTokenCatalogForRoots(roots);
+  const catalog = buildTokenPickerEntries(roots);
   const employerEntries = catalog.filter((e) => e.id.includes("dispatch_job.employer"));
   console.log(`  catalog entries: ${catalog.length}`);
   for (const e of employerEntries) console.log(`  ${e.insertText}  — ${e.label}`);

@@ -214,7 +214,7 @@ async function recipientsFor(s: Scenario) {
   const messages = new Map<string, string>();
   for (const recipient of recipients) {
     const content = await edlsSheetWorkerSmsNotifier.getMessage!("sms", recipient, context);
-    messages.set(recipient.contactId, content?.message ?? "");
+    messages.set(recipient.contactId, content?.body ?? "");
   }
   return { contactIds: recipients.map((r) => r.contactId), messages };
 }

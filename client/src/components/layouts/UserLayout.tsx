@@ -4,6 +4,7 @@ import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Contact } from "@shared/schema";
 import { Button } from "@/components/ui/button";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserTabAccess } from "@/hooks/useTabAccess";
@@ -179,97 +180,13 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
           recordId={user.id}
         />
 
-        <div className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-wrap items-center gap-2 py-3">
-              {mainTabs.map((tab) => {
-                const isActive = tab.id === activeTab || (tab.id === "contact" && isContactSubTab) || (tab.id === "comm" && isCommSubTab);
-                return isActive ? (
-                  <Button
-                    key={tab.id}
-                    variant="default"
-                    size="sm"
-                    data-testid={`button-user-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                ) : (
-                  <Link key={tab.id} href={tab.href}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      data-testid={`button-user-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {showContactSubTabs && (
-          <div className="bg-muted/30 border-b border-border">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex flex-wrap items-center gap-2 py-2 pl-4">
-                {contactSubTabs.map((tab) => (
-                  tab.id === activeTab ? (
-                    <Button
-                      key={tab.id}
-                      variant="secondary"
-                      size="sm"
-                      data-testid={`button-user-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  ) : (
-                    <Link key={tab.id} href={tab.href}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        data-testid={`button-user-${tab.id}`}
-                      >
-                        {tab.label}
-                      </Button>
-                    </Link>
-                  )
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showCommSubTabs && (
-          <div className="bg-muted/30 border-b border-border">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex flex-wrap items-center gap-2 py-2 pl-4">
-                {commSubTabs.map((tab) => (
-                  tab.id === activeTab ? (
-                    <Button
-                      key={tab.id}
-                      variant="secondary"
-                      size="sm"
-                      data-testid={`button-user-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  ) : (
-                    <Link key={tab.id} href={tab.href}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        data-testid={`button-user-${tab.id}`}
-                      >
-                        {tab.label}
-                      </Button>
-                    </Link>
-                  )
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+        <EntityTabNavigation
+          tabs={mainTabs}
+          activeTab={activeTab}
+          activeRootId={isContactSubTab ? "contact" : isCommSubTab ? "comm" : activeTab}
+          subTabs={showContactSubTabs ? contactSubTabs : showCommSubTabs ? commSubTabs : undefined}
+          testIdPrefix="button-user-"
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {children}

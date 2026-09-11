@@ -151,7 +151,7 @@ registerTokenPlugin({
     inputTypes: [],
     outputType: DISPATCH_JOB_ENTITY_KIND,
     entityTable: dispatchJobs,
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     requiredComponent: COMPONENT,
     defaultLeaf: "title",
     sampleSets: DISPATCH_JOB_SAMPLE_SETS,
@@ -208,7 +208,7 @@ registerTokenPlugin({
     inputTypes: [DISPATCH_FORE_ENTITY_KIND],
     outputType: DISPATCH_JOB_ENTITY_KIND,
     entityTable: dispatchJobs,
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     requiredComponent: "dispatch.fore",
   },
   async resolve(entity, _args, ctx) {
@@ -247,7 +247,7 @@ registerTokenPlugin({
     // `{{dispatch}}` on its own means the availability's human label —
     // "Available", "Not available" — the phrase that names the row.
     defaultLeaf: "status_label",
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     requiredComponent: COMPONENT,
     sampleSets: DISPATCH_WORKER_STATUS_SAMPLE_SETS,
     // No page of its own: the worker's dispatch status tab is where the
@@ -311,7 +311,7 @@ registerTokenPlugin({
     entityTable: workers,
     entityFields: WORKER_EXTRA_FIELDS,
     defaultLeaf: WORKER_DEFAULT_LEAF,
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     requiredComponent: COMPONENT,
   },
   async resolve(entity, _args, ctx) {
@@ -339,7 +339,7 @@ registerTokenPlugin({
     entityTable: workers,
     entityFields: WORKER_EXTRA_FIELDS,
     defaultLeaf: WORKER_DEFAULT_LEAF,
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     requiredComponent: "dispatch.fore",
   },
   async resolve(entity, _args, ctx) {
@@ -377,7 +377,7 @@ registerTokenPlugin({
     // "Added"/"Removed" — the phrase that names the row (worker and job
     // are their own records, reached through relations).
     defaultLeaf: "action_label",
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     requiredComponent: "dispatch.fore",
     sampleSets: DISPATCH_FORE_SAMPLE_SETS,
     // No page of its own: the job's foreperson tab lists the membership,

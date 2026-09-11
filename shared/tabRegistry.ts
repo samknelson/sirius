@@ -71,6 +71,7 @@ export interface FlatTab extends TabDefinition {
  */
 export type TabEntityType = 
   | 'worker' 
+  | 'worker_certification'
   | 'employer' 
   | 'employer_contact' 
   | 'company'
@@ -255,6 +256,14 @@ export const workerTabTree: HierarchicalTab[] = [
   { id: 'files', label: 'Files', hrefTemplate: '/workers/{id}/files', permission: 'staff', entityContext: { framework: 'entity-files', contextId: 'worker' } },
   { id: 'logs', label: 'Logs', hrefTemplate: '/workers/{id}/logs', permission: 'staff' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/workers/{id}/delete', permission: 'workers.delete' },
+];
+
+/**
+ * Worker certification entity tab tree
+ */
+export const workerCertificationTabTree: HierarchicalTab[] = [
+  { id: 'view', label: 'View', hrefTemplate: '/worker-certification/{id}', component: 'worker.certifications' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/worker-certification/{id}/edit', permission: 'staff', component: 'worker.certifications' },
 ];
 
 /**
@@ -790,6 +799,7 @@ export const recordMetadataTabTree: HierarchicalTab[] = [
  */
 export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   worker: workerTabTree,
+  worker_certification: workerCertificationTabTree,
   employer: employerTabTree,
   employer_contact: employerContactTabTree,
   company: companyTabTree,

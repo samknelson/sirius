@@ -5,6 +5,7 @@ import { ArrowLeft, ChevronRight, Package } from "lucide-react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useLedgerPaymentBatchTabAccess } from "@/hooks/useTabAccess";
 import type { LedgerPaymentBatch } from "@shared/schema/ledger/payment-batch/schema";
@@ -96,27 +97,12 @@ export function PaymentBatchLayout({ activeTab, children }: PaymentBatchLayoutPr
         recordId={batch.id}
       />
 
-      <div className="border-b border-border mb-6">
-        <nav className="flex gap-6" data-testid="nav-tabs">
-          {mainTabs.map((tab) => {
-            const isActive = tab.id === activeTab;
-            return (
-              <Link
-                key={tab.id}
-                href={tab.href}
-                className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-                  isActive
-                    ? "border-primary text-primary font-medium"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
-                data-testid={`tab-${tab.id}`}
-              >
-                {tab.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
+      <EntityTabNavigation
+        tabs={mainTabs}
+        activeTab={activeTab}
+        testIdPrefix="tab-"
+        primaryTestId="nav-tabs"
+      />
 
       <PaymentBatchLayoutContext.Provider value={{ batch }}>
         {children}

@@ -1,16 +1,16 @@
 import { createContext, useContext, ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
+import { useParams } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { LedgerPayment, LedgerPaymentType } from "@shared/schema";
 import { CreditCard } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   RecordTitleBar,
   RecordTitleBarLoading,
   RecordTitleBarNotFound,
 } from "@/components/shared/RecordTitleBar";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 import { getPaymentTitle } from "@/lib/payment-utils";
 import { useLedgerPaymentTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -131,35 +131,11 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
           recordId={payment.id}
         />
 
-        <div className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-wrap items-center gap-2 py-3">
-              {mainTabs.map((tab) => {
-                const isActive = tab.id === activeTab;
-                return isActive ? (
-                  <Button
-                    key={tab.id}
-                    variant="default"
-                    size="sm"
-                    data-testid={`button-payment-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                ) : (
-                  <Link key={tab.id} href={tab.href}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      data-testid={`button-payment-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+        <EntityTabNavigation
+          tabs={mainTabs}
+          activeTab={activeTab}
+          testIdPrefix="button-payment-"
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {children}

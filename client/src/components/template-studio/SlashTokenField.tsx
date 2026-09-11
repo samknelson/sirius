@@ -4,7 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { TokenCatalogEntry } from "@shared/tokens";
+import type { TokenPickerEntry } from "@shared/tokens";
 
 /**
  * A single-line or multi-line editor for a TOKENIZED string: typing `/`
@@ -92,7 +92,7 @@ type CommonProps = {
   value: string;
   onChange: (next: string) => void;
   /** The catalog the slash menu offers — the studio's own, always. */
-  tokens: TokenCatalogEntry[];
+  tokens: TokenPickerEntry[];
   className?: string;
   containerClassName?: string;
 };
@@ -120,7 +120,7 @@ export function SlashTokenField(props: SlashTokenFieldProps) {
 
   const isOpen = trigger !== null;
 
-  const filtered = useMemo<TokenCatalogEntry[]>(() => {
+  const filtered = useMemo<TokenPickerEntry[]>(() => {
     if (!isOpen) return [];
     const q = query.trim().toLowerCase();
     if (q) {
@@ -135,7 +135,7 @@ export function SlashTokenField(props: SlashTokenFieldProps) {
     const recentSet = new Set(recent);
     const recentTokens = recent
       .map((id) => tokens.find((t) => t.id === id))
-      .filter((t): t is TokenCatalogEntry => Boolean(t));
+      .filter((t): t is TokenPickerEntry => Boolean(t));
     const others = tokens.filter((t) => !recentSet.has(t.id));
     return [...recentTokens, ...others];
   }, [tokens, query, isOpen]);
@@ -208,7 +208,7 @@ export function SlashTokenField(props: SlashTokenFieldProps) {
     }
   };
 
-  const insertToken = (t: TokenCatalogEntry) => {
+  const insertToken = (t: TokenPickerEntry) => {
     if (trigger === null || !ref.current) return;
     const el = ref.current;
     const caret = el.selectionEnd ?? value.length;

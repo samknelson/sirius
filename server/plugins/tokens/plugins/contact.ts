@@ -127,7 +127,7 @@ registerTokenPlugin({
     inputTypes: ["worker"],
     outputType: "contact",
     entityTable: contacts,
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     defaultLeaf: "display_name",
   },
   async resolve(entity, _args, ctx) {

@@ -1120,40 +1120,10 @@ export function createUnifiedOptionsStorage(): UnifiedOptionsStorage {
 }
 
 /**
- * One entry per options type: the name the list is known by everywhere, and
- * the gating a caller needs to decide whether to offer it. Deliberately
- * lighter than `OptionsResourceDefinition` — navigation and the options index
- * need names, not field/schema payloads for 31 types.
+ * `optionsMetadata` is the one place an options list is declared, and its keys
+ * are the one list of what exists. Two things project it and neither is
+ * downstream of the other: the type registry in ../modules/options-registry.ts
+ * builds a config per key, and ./unified-options-catalog.ts publishes the
+ * descriptive half as the `options-lists` shared catalog.
  */
-export interface OptionsCatalogEntry {
-  type: OptionsTypeName;
-  name: string;
-  /** The same name for a screen that lists the records, e.g. "Event Types". */
-  pluralName: string;
-  description?: string;
-  requiredComponent?: string;
-  /** Set when the list is administered on its own page, at this path. */
-  bespokePath?: string;
-}
-
-/**
- * The registry's own answer to "what dropdown lists exist and what are they
- * called", sorted by name. Pure: no database access, no request context.
- */
-export function getOptionsCatalog(): OptionsCatalogEntry[] {
-  return (Object.keys(optionsMetadata) as OptionsTypeName[])
-    .map((type) => {
-      const metadata = optionsMetadata[type];
-      return {
-        type,
-        name: metadata.displayName,
-        pluralName: metadata.pluralName,
-        description: metadata.description,
-        requiredComponent: metadata.requiredComponent,
-        bespokePath: metadata.bespokePath,
-      };
-    })
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
 export { optionsMetadata };

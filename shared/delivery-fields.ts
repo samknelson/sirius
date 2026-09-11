@@ -2,7 +2,7 @@
  * DELIVERY FIELD DECLARATIONS.
  *
  * What a tokenized field IS, as far as sending it is concerned: which
- * fields each channel carries, and exactly how each one is shaped
+ * fields each medium carries, and exactly how each one is shaped
  * between rendering its tokens and putting it in front of a recipient.
  *
  * These are declarations about DELIVERY, so they live next to nothing
@@ -16,8 +16,9 @@
  */
 // The escape LEAF, never the html barrel: the barrel pulls DOMPurify
 // (and jsdom under Node) and this module is imported by the client and
-// by delivery code alike.
+// by delivery code alike. `to-text` is a leaf too (pure string work).
 import { escapeHtml } from "./utils/html/escape";
+import { htmlToPlainText } from "./utils/html/to-text";
 
 /**
  * How the field is WRITTEN — the syntax of the string an author types,
@@ -136,107 +137,163 @@ export interface DeliveryFieldSpec {
    * the message as undeliverable instead of showing text nobody gets.
    */
   requiredForMessage?: boolean;
-  /** What delivery substitutes when the field comes out blank. */
-  fallback?: string;
 }
 
-/**
- * The tokenized fields of each bulk-message medium.
- *
- * Bulk content is sent as authored — nothing is trimmed and no field is
- * required (an empty subject becomes "(no subject)") — so those
- * differences are declared here rather than hidden in delivery code.
- */
-export const BULK_CHANNEL_FIELDS: Record<string, DeliveryFieldSpec[]> = {
-  email: [
-    { key: "subject", syntax: "text", fallback: "(no subject)" },
-    // Authored HTML: token values are escaped, then the body is
-    // sanitized (bodies can be written through the API without passing
-    // the rich-text editor).
-    { key: "bodyHtml", syntax: "html" },
-    // The plain-text alternative part. Derived from the HTML body when
-    // a message is saved, but stored and rendered on its own — so it is
-    // its own destination, and says so.
-    { key: "bodyText", syntax: "text" },
-  ],
-  sms: [{ key: "body", syntax: "text" }],
-  postal: [{ key: "description", syntax: "text" }],
-  inapp: [
-    { key: "title", syntax: "text" },
-    { key: "body", syntax: "text" },
-    // A plain stored URL: not tokenized, so delivery sends it verbatim
-    // and the preview shows it verbatim.
-    { key: "linkUrl", syntax: "text", tokenized: false },
-    { key: "linkLabel", syntax: "text" },
-  ],
-};
+/** Every medium a message can be delivered on. Keys of {@link MEDIUM_FIELDS}. */
+export const MEDIUM_NAMES = ["email", "sms", "postal", "inapp"] as const;
+
+export type MediumName = (typeof MEDIUM_NAMES)[number];
 
 /**
- * The tokenized fields of each event-notifier channel.
+ * WHAT A MESSAGE ON EACH MEDIUM IS MADE OF — declared once, for every
+ * surface that authors one.
  *
- * - Email subjects are trimmed and required (no subject → no email);
- *   the body is escaped-then-sanitized HTML.
- * - SMS is a single trimmed, required message.
- * - In-app needs a title and a body; its link must be a same-app
- *   relative path, and the label disappears with a dropped link.
+ * Bulk messaging, the event notifier's admin templates and the one-off
+ * compose forms used to each carry their own copy of this, and the
+ * copies disagreed: the same SMS body was `message` in two of them and
+ * `body` in the third, a blank email subject was fatal in one and
+ * quietly became "(no subject)" in another. Those were never three
+ * different kinds of message — they were three descriptions of one
+ * medium, and a recipient only ever sees the medium.
+ *
+ * A field is listed here once and means the same thing everywhere: an
+ * email subject is required, an SMS body is `body`, an in-app body is
+ * plain text. What a surface may differ on is which of these fields IT
+ * authors — a surface supplies only the keys it writes, and an
+ * unsupplied OPTIONAL key is not rendered, not previewed and not
+ * required. That is how the bulk postal editor keeps offering only a
+ * description while the medium still has a letter body.
+ *
+ * What a surface may NOT do is opt out of a REQUIRED field of a medium
+ * it composes for: an email with no subject is not a shorter email, it
+ * is an email that cannot be sent. See {@link authoredFieldValue}.
  */
-export const NOTIFIER_CHANNEL_FIELDS: Record<string, DeliveryFieldSpec[]> = {
+export const MEDIUM_FIELDS: Record<MediumName, DeliveryFieldSpec[]> = {
+  /**
+   * A subject and an HTML body.
+   *
+   * The subject is trimmed and REQUIRED: an email with no subject is
+   * not sent and is recorded as a failure, never sent under a
+   * substituted stand-in — a subject built entirely out of tokens can
+   * render blank for one recipient and not another, and quietly mailing
+   * "(no subject)" hides that from the author.
+   *
+   * There is no plain-text field. An email's plain-text alternative
+   * part is DERIVED from the HTML body at send (see
+   * {@link deriveEmailPlainText}), so the two parts of one email cannot
+   * disagree with each other.
+   */
   email: [
     { key: "subject", syntax: "text", trim: true, requiredForMessage: true },
-    { key: "bodyHtml", syntax: "html" },
+    // Authored HTML: token values are escaped on the way in, then the
+    // finished body is sanitized (a body can be written through the API
+    // without passing the rich-text editor).
+    { key: "bodyHtml", syntax: "html", trim: true },
   ],
-  sms: [{ key: "message", syntax: "text", trim: true, requiredForMessage: true }],
+  /** One trimmed, required body. A text with nothing in it is not a text. */
+  sms: [{ key: "body", syntax: "text", trim: true, requiredForMessage: true }],
+  /**
+   * A letter body plus the operator-facing description of the mailing.
+   *
+   * Both are OPTIONAL, because the printed content of a letter does not
+   * have to come from here at all: it may come from a template held by
+   * the print vendor, or from a whole document the author supplies. A
+   * surface that cannot print an authored body simply does not offer
+   * one.
+   */
+  postal: [
+    { key: "body", syntax: "html", trim: true },
+    { key: "description", syntax: "text", trim: true },
+  ],
+  /**
+   * A title and a PLAIN-TEXT body — in-app notifications are displayed
+   * as text, so a rich-text editor over the body would only promise
+   * formatting the reader never sees.
+   *
+   * The link is tokenized like every other field: shipped links point
+   * at the record the notification is about ("/dispatch/job/{{…}}"), so
+   * a link that could not carry a token would be a link to nothing in
+   * particular. What it RENDERS to is checked as a same-app path — an
+   * absolute URL or a "javascript:" address is dropped, because the
+   * alerts bell hands this to the browser — and the label disappears
+   * with a link that was dropped or was never set.
+   */
   inapp: [
     { key: "title", syntax: "text", trim: true, requiredForMessage: true },
     { key: "body", syntax: "text", trim: true, requiredForMessage: true },
-    // Written as plain text, and dropped if what it renders to is not a
-    // same-app path.
     { key: "linkUrl", syntax: "text", safety: "relative-url", trim: true },
     { key: "linkLabel", syntax: "text", trim: true, blankWithout: "linkUrl" },
   ],
 };
 
 /**
- * The tokenized fields of each MANUAL COMPOSE medium — the one-off
- * message an admin writes to one person from a Communications tab.
+ * One field of one medium, BY KEY.
  *
- * A compose screen is not a template store: the author writes tokenized
- * text in the studio, the studio renders it against the record the page
- * is about, and the FINISHED text is what lands in the form and what is
- * sent. So these declarations describe the compose FORM's fields (the
- * keys the studio applies into), and they say what shaping the render
- * performs — the same shaping the send path performs on the way out,
- * which is why every field here is trimmed and required exactly where
- * the compose form's own send button requires it.
- *
- * Fields the author fills in by hand and the studio never writes — an
- * in-app link URL, a postal address, a Lob template id — are
- * deliberately absent: declaring a field here says the studio composes
- * it, and a field it does not compose has nothing to render.
+ * Delivery code that shapes a single field looks it up this way rather
+ * than by position, so a field added to or reordered in the declaration
+ * above cannot silently rebind an existing call site. Asking for a
+ * field a medium does not have is a programming error, not a blank.
  */
-export const COMPOSE_CHANNEL_FIELDS: Record<string, DeliveryFieldSpec[]> = {
-  email: [
-    { key: "subject", syntax: "text", trim: true, requiredForMessage: true },
-    // Plain text: the compose form sends `bodyText` as authored.
-    { key: "bodyText", syntax: "text", trim: true, requiredForMessage: true },
-  ],
-  sms: [{ key: "message", syntax: "text", trim: true, requiredForMessage: true }],
-  postal: [
-    // The letter body, written as HTML and wrapped in a page before it
-    // goes to the print vendor.
-    { key: "composeBody", syntax: "html", trim: true, requiredForMessage: true },
-    // The operator-facing description of the mailing. Sent with the
-    // job, not printed, and optional — a letter with no description is
-    // still mailed.
-    { key: "description", syntax: "text", trim: true },
-  ],
-  inapp: [
-    { key: "title", syntax: "text", trim: true, requiredForMessage: true },
-    // Written in the rich-text editor; flattened to plain text by the
-    // compose form on send, so token values are escaped into markup here
-    // exactly as the editor stores them.
-    { key: "bodyHtml", syntax: "html", trim: true, requiredForMessage: true },
-  ],
+export function mediumField(medium: MediumName, key: string): DeliveryFieldSpec {
+  const spec = MEDIUM_FIELDS[medium].find((f) => f.key === key);
+  if (!spec) {
+    throw new Error(`Medium '${medium}' declares no field '${key}'`);
+  }
+  return spec;
+}
+
+/**
+ * What a surface actually authored for one field, given whatever it
+ * holds for that key — the one place "the author left it out" is told
+ * apart from "the author left it empty".
+ *
+ * `undefined` means the field is NOT IN PLAY: this surface does not
+ * author it, so it is not rendered, not previewed, not required, and
+ * does not appear in the delivered message at all.
+ *
+ * A missing REQUIRED field is not treated that way. A surface composing
+ * for a medium takes on that medium's required fields, so a stored
+ * record with no subject at all and one whose subject is blank are the
+ * same message — one that cannot be sent — and both are reported as the
+ * blank they are rather than one of them being invented or skipped.
+ */
+export function authoredFieldValue(
+  spec: DeliveryFieldSpec,
+  value: string | null | undefined,
+): string | undefined {
+  if (typeof value === "string") return value;
+  return spec.requiredForMessage ? "" : undefined;
+}
+
+/**
+ * The plain-text alternative part of an email, derived from its HTML
+ * body at send. Never authored and never stored: a second authored copy
+ * of one message is a second thing that can be wrong.
+ */
+export function deriveEmailPlainText(bodyHtml: string): string {
+  return htmlToPlainText(bodyHtml);
+}
+
+/**
+ * Why a message could not be composed, in words a person reading a
+ * failed communication can act on.
+ *
+ * Every surface records the same sentence, because it is the same
+ * failure: a field the medium requires rendered blank for this
+ * recipient.
+ */
+export function undeliverableReason(medium: MediumName, blankFields: string[]): string {
+  const fields = blankFields.length > 0 ? blankFields.join(", ") : "a required field";
+  const name = MEDIUM_LABELS[medium];
+  return `Not sent: this ${name} message's ${fields} rendered blank, and a message is never sent with a substituted stand-in in place of a field it needs.`;
+}
+
+/** How each medium is named to a person reading a failed communication. */
+const MEDIUM_LABELS: Record<MediumName, string> = {
+  email: "email",
+  sms: "SMS",
+  postal: "postal",
+  inapp: "in-app",
 };
 
 /** Same-app relative path: starts with "/", not scheme-relative "//". */
@@ -253,12 +310,24 @@ export interface ShapedFields {
    * show text nobody will receive.
    */
   deliverable: boolean;
+  /**
+   * WHICH required fields came out blank. Empty when the message is
+   * deliverable. The failure is recorded against the recipient by name,
+   * so "not sent" can be answered with "the subject was blank" rather
+   * than left as a message that simply never arrived.
+   */
+  blankRequired: string[];
 }
 
 /**
  * Apply the cross-field delivery rules: a companion field disappears
  * with the field it depends on (an in-app link label follows its link
  * URL), and a blank required field means no message at all.
+ *
+ * Only the fields the caller SUPPLIED are judged. A key absent from
+ * `shaped` is one this surface does not author (see
+ * {@link authoredFieldValue}), and a field that is not in play cannot
+ * be the reason a message is undeliverable.
  */
 export function applyFieldEligibility(
   specs: DeliveryFieldSpec[],
@@ -270,11 +339,13 @@ export function applyFieldEligibility(
     if (!(spec.key in values)) continue;
     if (!values[spec.blankWithout]) delete values[spec.key];
   }
-  let deliverable = true;
+  const blankRequired: string[] = [];
   for (const spec of specs) {
-    if (spec.requiredForMessage && !values[spec.key]) deliverable = false;
+    if (!spec.requiredForMessage) continue;
+    if (!(spec.key in shaped)) continue;
+    if (!values[spec.key]) blankRequired.push(spec.key);
   }
-  return { values, deliverable };
+  return { values, deliverable: blankRequired.length === 0, blankRequired };
 }
 
 /**
@@ -320,9 +391,6 @@ export function validateDeliveryFieldSpecs(specs: unknown): string[] {
     }
     if (field.blankWithout !== undefined && typeof field.blankWithout !== "string") {
       problems.push(`field '${field.key}' has a non-string blankWithout`);
-    }
-    if (field.fallback !== undefined && typeof field.fallback !== "string") {
-      problems.push(`field '${field.key}' has a non-string fallback`);
     }
   }
   for (const raw of specs) {
