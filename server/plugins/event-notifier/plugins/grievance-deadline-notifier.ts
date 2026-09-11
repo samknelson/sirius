@@ -156,7 +156,7 @@ export const grievanceDeadlineNotifier: EventNotifierPlugin = {
         };
       case "sms":
         return {
-          message: `${body} View: ${absoluteUrl}`,
+          body: `${body} View: ${absoluteUrl}`,
         };
       default:
         return null;

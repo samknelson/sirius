@@ -196,6 +196,17 @@ export function useWorkerTabAccess(workerId: string | undefined, enabled = true)
 }
 
 /**
+ * Hook specifically for worker certification entity tabs
+ */
+export function useWorkerCertificationTabAccess(certificationId: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'worker_certification',
+    entityId: certificationId,
+    enabled,
+  });
+}
+
+/**
  * Hook specifically for employer entity tabs
  */
 export function useEmployerTabAccess(employerId: string | undefined, enabled = true) {

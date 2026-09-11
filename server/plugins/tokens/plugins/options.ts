@@ -119,7 +119,7 @@ function ensureOptionsEntityKind(target: OptionsTarget): void {
       outputType: target.kind,
       entityTable: target.table,
       defaultLeaf: "name",
-      hiddenFromCatalog: true,
+      hiddenFromPicker: true,
       requiredComponent: meta.requiredComponent,
       // Reference data is not personal data, but a preview with no record
       // has no option to show either: render an obviously-fake label, the
@@ -165,7 +165,7 @@ function registerOptionsRelation(
       // Kept out of the flat bulk-messaging catalog (one entry per
       // options table per entity would bury it); the token browser walks
       // hidden relations, so an author who navigated here still sees it.
-      hiddenFromCatalog: true,
+      hiddenFromPicker: true,
       // The options type's own component decides whether its data exists
       // at all; where it has none, the owner's gate is the honest one.
       requiredComponent: meta.requiredComponent ?? owner.requiredComponent,

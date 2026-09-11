@@ -57,7 +57,7 @@ function defaultTemplates(): NotifierChannelTemplates {
         `${LINK_URL}</a></p>`,
     },
     sms: {
-      message: `${SENTENCE} View: ${LINK_URL}`,
+      body: `${SENTENCE} View: ${LINK_URL}`,
     },
     inapp: {
       title: TITLE,

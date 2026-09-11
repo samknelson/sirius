@@ -4,9 +4,7 @@ import type {
   RecordMetadata,
   RecordHistoryState,
 } from "@/components/shared/RecordHistoryDialog";
-
-const RECORD_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { isUuid } from "@shared/utils/uuid";
 export const RECORD_METADATA_PERMISSION = "metadata.view";
 
 export function hasRecordMetadataPermission(permissions: readonly string[]): boolean {
@@ -28,7 +26,7 @@ export interface UseRecordMetadataResult {
 
 /** Whether this is a record's own id, and therefore something to ask about. */
 export function isRecordId(entityId: string | null | undefined): entityId is string {
-  return !!entityId && RECORD_ID_PATTERN.test(entityId);
+  return !!entityId && isUuid(entityId);
 }
 
 /**

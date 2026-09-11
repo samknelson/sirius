@@ -7,9 +7,7 @@
  * module below it is already a leaf (the logging middleware imports it), and
  * these rules are the part worth deciding without a database in the room.
  */
-
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { isUuid } from "@shared/utils/uuid";
 
 /**
  * The same rule as {@link isRecordId}, spelled for Postgres.
@@ -37,7 +35,7 @@ export const RECORD_ID_SQL_PATTERN =
  * dropped before it reaches the table.
  */
 export function isRecordId(value: unknown): value is string {
-  return typeof value === "string" && UUID_PATTERN.test(value);
+  return isUuid(value);
 }
 
 /**

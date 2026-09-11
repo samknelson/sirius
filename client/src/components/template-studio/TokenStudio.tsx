@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -5,13 +6,15 @@ import { Maximize2 } from "lucide-react";
 import {
   TemplateStudio,
   type StudioChannel,
-  type StudioContext,
+  type StudioSeeds,
   type StudioField,
 } from "./TemplateStudio";
+import { useTokenContext } from "./useTokenContext";
+import { ApiError } from "@/lib/queryClient";
 import type { DeliveryFieldSpec } from "@shared/delivery-fields";
 import type {
-  TokenCatalogEntry,
-  TokenFieldCatalog,
+  TokenPickerEntry,
+  TokenFieldIndex,
   TokenSegmentSpec,
 } from "@shared/tokens";
 
@@ -19,16 +22,23 @@ import type {
 // entry point into the studio's internals to name their type.
 export type { StudioChannel, StudioField } from "./TemplateStudio";
 
-interface TokenStudioCatalog {
-  rootNames?: string[];
+/**
+ * WHAT MAY BE WRITTEN in a context: the same answer for every surface
+ * writing in it, from the one route that builds it.
+ */
+interface TokenGraph {
   segments: TokenSegmentSpec[];
-  fields?: TokenFieldCatalog;
-  tokens: TokenCatalogEntry[];
-  /** What each root may be previewed as — records and personas. */
-  studioContext?: StudioContext;
+  fieldIndex?: TokenFieldIndex;
+  pickerEntries: TokenPickerEntry[];
 }
 
-interface TokenStudioBaseProps {
+interface LetterTemplateOption {
+  id: string;
+  name: string;
+  content: Record<string, string>;
+}
+
+export interface TokenStudioProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
@@ -38,6 +48,8 @@ interface TokenStudioBaseProps {
   fields: StudioField[];
   values: Record<string, string>;
   onValueChange: (key: string, value: string) => void;
+  /** Atomically replace the declared field values when loading a saved template. */
+  onValuesChange?: (values: Record<string, string>) => void;
   /**
    * How delivery shapes each field, from the shared delivery
    * declarations. Omit for an ad-hoc tokenized field with no delivery
@@ -48,49 +60,48 @@ interface TokenStudioBaseProps {
   /** Finished template strings, when they differ from the editor values. */
   templateValues?: Record<string, string>;
   /**
-   * Browsable-tree endpoints for this host (defaults to the studio's
-   * own). Hosts gated differently — bulk messaging — serve the same
-   * tree behind their own gate and pass it here.
+   * WHAT THESE TEMPLATES ARE ABOUT: the token context this surface
+   * writes in. Its roots — the complete ordered list a token may start
+   * from — are read from the shared `token-contexts` catalog, which is
+   * the same declaration the server builds this surface's tokens, tree
+   * and save-time validation from.
+   *
+   * A launch site names the context and nothing else. It used to be
+   * able to state a root list of its own instead, which meant two
+   * answers to "what may an author write here?" and no rule about which
+   * one delivery would agree with.
    */
-  treeBaseUrl?: string;
+  contextId: string;
+  /**
+   * A host's OWN endpoint for the records this surface may be previewed
+   * against, when it holds any.
+   *
+   * Only the host knows them: this message's recipients, the contact
+   * whose tab this is, the records this notifier's recent events were
+   * about. Omit for an ad-hoc tokenized field — there is no record such
+   * a field is about, so the studio asks the shared endpoint and the
+   * author previews against sample people.
+   *
+   * It is seeds ONLY. The token graph never comes from a host: it is
+   * the same everywhere and is fetched once, below, for the context.
+   */
+  seedsUrl?: string;
+  /**
+   * Something the host needs to say about the text on screen — passed
+   * straight through (see TemplateStudio's own prop). The studio's two
+   * requests report themselves; this is for a host's.
+   */
+  hostNotice?: ReactNode;
 }
 
 /**
- * WHERE THE TOKENS COME FROM — and either way, somebody has to have
- * said what these templates are about.
- *
- * A host either names its roots, and the generic catalog is built for
- * exactly those, or it points at a catalog endpoint of its own, which
- * names them server-side. There is no third option where the roots go
- * unstated: the studio would then have to guess, and the only guess
- * available is "every root in the registry" — which is how an editor
- * ends up showing an author records their message has never heard of.
- */
-type TokenStudioSourceProps =
-  | {
-      /**
-       * The COMPLETE ordered list of roots these tokens may start from
-       * (`contact`, `dispatch`, `event`, …). Roots not named here do
-       * not exist for these tokens.
-       */
-      rootNames: string[];
-      catalogUrl?: undefined;
-    }
-  | {
-      rootNames?: string[];
-      /** Token catalog endpoint of this host's own, roots and all. */
-      catalogUrl: string;
-    };
-
-export type TokenStudioProps = TokenStudioBaseProps & TokenStudioSourceProps;
-
-/**
  * THE generic token-editing popup: any tokenized string field anywhere
- * can open this, with no registration step of any kind. It loads a
- * token catalog and hands it to the shared studio, which previews
- * through the single preview route — the request carries the field
- * shaping and the template text, so nothing has to be declared
- * server-side for a new field to work.
+ * can open this, with no registration step beyond naming the context it
+ * writes in. It loads that context's roots and the token graph for them
+ * and hands both to the shared studio, which previews through the
+ * single preview route — the request carries the field shaping and the
+ * template text, so nothing has to be declared server-side for a new
+ * field to work.
  *
  * A caller only needs its own host when it has editor-side logic of its
  * own (the event notifier's default-vs-override text); previewing never
@@ -105,37 +116,94 @@ export function TokenStudio({
   fields,
   values,
   onValueChange,
+  onValuesChange,
   fieldSpecs,
   templateValues,
-  rootNames,
-  catalogUrl,
-  treeBaseUrl,
+  contextId,
+  seedsUrl,
+  hostNotice,
 }: TokenStudioProps) {
-  const named = rootNames?.length ? rootNames : undefined;
-  // No host-supplied endpoint means the generic catalog, which is built
-  // for the roots named here — the prop types make sure there are some.
-  const url =
-    catalogUrl ??
-    `/api/token-studio/catalog?roots=${encodeURIComponent((named ?? []).join(","))}`;
-  // The failure is part of the answer. Dropping it here is how a host
-  // whose catalog request 403s ends up looking like a host with no
-  // tokens: the studio can only be honest about a request it is told
-  // about.
+  const tokenContext = useTokenContext(contextId);
+  const rootNames = tokenContext.context?.rootNames;
+
+  // TWO QUESTIONS, TWO REQUESTS. What may be written here is the same
+  // for every surface writing in this context, so it comes from the one
+  // route that builds it; what may be previewed against is this host's
+  // alone. They fail independently — a host whose recipients can't be
+  // read still has a token browser — so they are asked, reported and
+  // retried independently.
+  const graphUrl = `/api/token-studio/graph?context=${encodeURIComponent(contextId)}`;
+  const previewSeedsUrl =
+    seedsUrl ??
+    `/api/token-studio/preview-seeds?context=${encodeURIComponent(contextId)}`;
+  const templatesUrl =
+    channel === "generic"
+      ? undefined
+      : `/api/admin/letter-templates?medium=${encodeURIComponent(channel)}&context_id=${encodeURIComponent(contextId)}`;
+
+  // The failure is part of the answer. Dropping it here is how a
+  // request that 403s ends up looking like a host with no tokens: the
+  // studio can only be honest about a request it is told about.
   const {
-    data: catalog,
-    isLoading,
-    error,
-    refetch,
-  } = useQuery<TokenStudioCatalog>({
-    queryKey: [url],
+    data: graph,
+    isLoading: graphLoading,
+    error: graphError,
+    refetch: refetchGraph,
+  } = useQuery<TokenGraph>({
+    queryKey: [graphUrl],
     enabled: open,
   });
 
-  // A host endpoint states its own roots in its response, so a host
-  // that has one does not have to repeat the list as a prop — and could
-  // not honestly do so where the roots are decided server-side. The
-  // prop still wins: a host that named roots meant them.
-  const roots = named ?? catalog?.rootNames;
+  const {
+    data: seeds,
+    isLoading: seedsLoading,
+    error: seedsError,
+    refetch: refetchSeeds,
+  } = useQuery<StudioSeeds>({
+    queryKey: [previewSeedsUrl],
+    enabled: open,
+  });
+
+  const {
+    data: templates,
+    isLoading: templatesLoading,
+    error: templatesError,
+    refetch: refetchTemplates,
+  } = useQuery<LetterTemplateOption[]>({
+    queryKey: [
+      "/api/admin/letter-templates",
+      { medium: channel === "generic" ? undefined : channel, context_id: contextId },
+    ],
+    enabled: open && Boolean(templatesUrl),
+  });
+  const templatesForbidden =
+    templatesError instanceof ApiError &&
+    (templatesError.status === 401 || templatesError.status === 403);
+
+  // The context is what BOTH requests are about, so its own failure is
+  // the one to report on either line: a graph request refused because
+  // this deployment offers no such context would otherwise read as a
+  // graph that is still loading, forever.
+  const graphState = tokenContext.error
+    ? { url: tokenContext.url, error: tokenContext.error, retry: tokenContext.retry }
+    : {
+        url: graphUrl,
+        loading: tokenContext.loading || graphLoading,
+        error: graphError,
+        retry: () => {
+          void refetchGraph();
+        },
+      };
+  const seedsState = tokenContext.error
+    ? { url: tokenContext.url, error: tokenContext.error, retry: tokenContext.retry }
+    : {
+        url: previewSeedsUrl,
+        loading: seedsLoading,
+        error: seedsError,
+        retry: () => {
+          void refetchSeeds();
+        },
+      };
 
   return (
     <TemplateStudio
@@ -147,20 +215,26 @@ export function TokenStudio({
       fields={fields}
       values={values}
       onValueChange={onValueChange}
+      onValuesChange={onValuesChange}
       fieldSpecs={fieldSpecs}
       templateValues={templateValues}
-      tokens={catalog?.tokens ?? []}
-      segments={catalog?.segments}
-      fieldCatalog={catalog?.fields}
-      rootNames={roots}
-      studioContext={catalog?.studioContext}
-      treeBaseUrl={treeBaseUrl}
-      catalogState={{
-        url,
-        loading: isLoading,
-        error,
+      tokens={graph?.pickerEntries ?? []}
+      segments={graph?.segments}
+      fieldIndex={graph?.fieldIndex}
+      contextId={contextId}
+      rootNames={rootNames}
+      seeds={seeds}
+      hostNotice={hostNotice}
+      graphState={graphState}
+      seedsState={seedsState}
+      templates={templates}
+      templatesAvailable={Boolean(templatesUrl) && !templatesForbidden}
+      templatesState={{
+        url: templatesUrl,
+        loading: templatesLoading,
+        error: templatesError,
         retry: () => {
-          void refetch();
+          void refetchTemplates();
         },
       }}
     />
@@ -175,11 +249,10 @@ export function TokenStudioButton({
   label = "Open Template Studio",
   testId = "button-open-token-studio",
   ...studioProps
-}: Omit<TokenStudioBaseProps, "open" | "onOpenChange"> &
-  TokenStudioSourceProps & {
-    label?: string;
-    testId?: string;
-  }) {
+}: Omit<TokenStudioProps, "open" | "onOpenChange"> & {
+  label?: string;
+  testId?: string;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>

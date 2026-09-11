@@ -27,5 +27,9 @@ edits in the wrong header of the three without ever failing to compile.
 - Wrappers keep their own page chrome. The bar variant owns its header element
   and container; the page and compact variants render inside the caller's
   container, because their surrounding layouts differ.
+- A record/entity detail route uses the default bar variant and the standard
+  `bg-background` full-page shell with constrained main content. Do not put a
+  record detail inside a configuration/list-page wrapper or substitute the
+  oversized page variant.
 - Not everything in the layouts directory is a record page: section wrappers
   and ones keyed by a type name or a job name have no record id.

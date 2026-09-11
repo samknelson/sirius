@@ -120,6 +120,8 @@ const GrievanceNotes = lazy(() => import("@/pages/grievance-notes"));
 const GrievanceTimeline = lazy(() => import("@/pages/grievance-timeline"));
 const GrievanceSettlements = lazy(() => import("@/pages/grievance-settlements"));
 const GrievanceFiles = lazy(() => import("@/pages/grievance-files"));
+const CatalogsConfigPage = lazy(() => import("@/pages/config/catalogs"));
+const CatalogDetailConfigPage = lazy(() => import("@/pages/config/catalog-detail"));
 const EntityFilesConfigPage = lazy(() => import("@/pages/config/entity-files"));
 const EntityNotesConfigPage = lazy(() => import("@/pages/config/entity-notes"));
 const GrievanceTimelineTemplatesPage = lazy(() => import("@/pages/config/grievance-timeline-templates"));
@@ -232,6 +234,8 @@ const UserSendPostal = lazy(() => import("@/pages/admin/user-send-postal"));
 const UserSendInApp = lazy(() => import("@/pages/admin/user-send-inapp"));
 const AdminRolesPage = lazy(() => import("@/pages/admin/roles"));
 const AdminPermissionsPage = lazy(() => import("@/pages/admin/permissions"));
+const LetterTemplatesPage = lazy(() => import("@/pages/admin/letter-templates"));
+const LetterTemplateDetailPage = lazy(() => import("@/pages/admin/letter-template-detail"));
 const WmbScanQueue = lazy(() => import("@/pages/admin/wmb-scan-queue"));
 const WmbScanDetail = lazy(() => import("@/pages/admin/wmb-scan-detail"));
 const CronJobs = lazy(() => import("@/pages/cron-jobs"));
@@ -1033,7 +1037,7 @@ function Router() {
       </Route>
 
       <Route path="/worker-certification/:id">
-        <ProtectedRoute component="worker.certifications">
+        <ProtectedRoute tabId="view" entityType="worker_certification">
           <AuthenticatedLayout>
             <WorkerCertificationView />
           </AuthenticatedLayout>
@@ -1041,7 +1045,7 @@ function Router() {
       </Route>
 
       <Route path="/worker-certification/:id/edit">
-        <ProtectedRoute component="worker.certifications" permission="staff">
+        <ProtectedRoute tabId="edit" entityType="worker_certification">
           <AuthenticatedLayout>
             <WorkerCertificationView defaultTab="edit" />
           </AuthenticatedLayout>
@@ -2512,6 +2516,24 @@ function Router() {
       </Route>
 
       {/* Admin user management routes - no ConfigurationLayout sidebar */}
+      <Route path="/admin/letter-templates">
+        <ProtectedRoute permission="staff">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <LetterTemplatesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/letter-templates/:id">
+        <ProtectedRoute permission="staff">
+          <AuthenticatedLayout>
+            <LetterTemplateDetailPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/admin/users/list">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -2643,6 +2665,28 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PostalAddressesConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* The literal index is registered before the drill-in, so it cannot be
+          matched as a catalog whose name happens to be missing. */}
+      <Route path="/config/catalogs">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <CatalogsConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/catalogs/:catalogId">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <CatalogDetailConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

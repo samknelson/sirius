@@ -1,15 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { getApiErrorMessage } from "@/lib/queryClient";
-import { useQuery } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Loader2, Save, RotateCcw, Type, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useTerminology } from "@/contexts/TerminologyContext";
-import { TERM_REGISTRY, type TermDefinition, type TerminologyDictionary } from "@shared/terminology";
+import { readTermDefaults, type TermForm, type TerminologyDictionary } from "@shared/terminology";
+import type { ResolvedCatalog } from "@shared/catalog";
+import { TERMINOLOGY_CATALOG } from "@shared/catalog-ids";
+import { useCatalogQuery } from "@/hooks/useCatalogQuery";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,20 +25,36 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+/**
+ * One term as this screen needs it: what to call it, what it names, and the
+ * wording the code ships. All of it comes from the `terminology` catalog —
+ * the declaration is no longer imported into the browser.
+ *
+ * `defaults` is optional because the catalog's detail payload is only as
+ * trustworthy as its declaration. It is always present in practice; when it
+ * is not, the card omits its "Default:" hints rather than showing empty ones.
+ */
+interface TermCard {
+  key: string;
+  label: string;
+  description?: string;
+  defaults?: TermForm;
+}
+
 interface TermEditorProps {
-  termKey: string;
-  definition: TermDefinition;
+  card: TermCard;
   currentSingular: string;
   currentPlural: string;
   onChange: (key: string, singular: string, plural: string) => void;
 }
 
-function TermEditor({ termKey, definition, currentSingular, currentPlural, onChange }: TermEditorProps) {
+function TermEditor({ card, currentSingular, currentPlural, onChange }: TermEditorProps) {
+  const termKey = card.key;
   return (
     <Card data-testid={`card-term-${termKey}`}>
       <CardHeader>
-        <CardTitle className="text-lg">{definition.label}</CardTitle>
-        <CardDescription>{definition.description}</CardDescription>
+        <CardTitle className="text-lg">{card.label}</CardTitle>
+        {card.description && <CardDescription>{card.description}</CardDescription>}
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -45,12 +64,14 @@ function TermEditor({ termKey, definition, currentSingular, currentPlural, onCha
               id={`${termKey}-singular`}
               value={currentSingular}
               onChange={(e) => onChange(termKey, e.target.value, currentPlural)}
-              placeholder={definition.defaults.singular}
+              placeholder={card.defaults?.singular}
               data-testid={`input-term-${termKey}-singular`}
             />
-            <p className="text-xs text-muted-foreground">
-              Default: {definition.defaults.singular}
-            </p>
+            {card.defaults && (
+              <p className="text-xs text-muted-foreground">
+                Default: {card.defaults.singular}
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor={`${termKey}-plural`}>Plural</Label>
@@ -58,12 +79,14 @@ function TermEditor({ termKey, definition, currentSingular, currentPlural, onCha
               id={`${termKey}-plural`}
               value={currentPlural}
               onChange={(e) => onChange(termKey, currentSingular, e.target.value)}
-              placeholder={definition.defaults.plural}
+              placeholder={card.defaults?.plural}
               data-testid={`input-term-${termKey}-plural`}
             />
-            <p className="text-xs text-muted-foreground">
-              Default: {definition.defaults.plural}
-            </p>
+            {card.defaults && (
+              <p className="text-xs text-muted-foreground">
+                Default: {card.defaults.plural}
+              </p>
+            )}
           </div>
         </div>
         <div className="rounded-md bg-muted p-3 space-y-1">
@@ -72,10 +95,10 @@ function TermEditor({ termKey, definition, currentSingular, currentPlural, onCha
             Preview
           </div>
           <p className="text-sm text-muted-foreground">
-            Singular: &ldquo;Assign a <strong>{currentSingular || definition.defaults.singular}</strong> to this worker&rdquo;
+            Singular: &ldquo;Assign a <strong>{currentSingular || card.defaults?.singular}</strong> to this worker&rdquo;
           </p>
           <p className="text-sm text-muted-foreground">
-            Plural: &ldquo;This worker has no <strong>{currentPlural || definition.defaults.plural}</strong>&rdquo;
+            Plural: &ldquo;This worker has no <strong>{currentPlural || card.defaults?.plural}</strong>&rdquo;
           </p>
         </div>
       </CardContent>
@@ -89,6 +112,23 @@ export default function TerminologyConfigPage() {
   const { terminology, updateTerminology, resetTerminology, isUpdating } = useTerminology();
   const [localTerms, setLocalTerms] = useState<TerminologyDictionary>({});
   const [hasChanges, setHasChanges] = useState(false);
+
+  // Which terms exist, and what the code calls them. The wording in effect is a
+  // separate matter and still comes from the terminology context.
+  const { data, isLoading, isError, error } = useCatalogQuery<{ catalog: ResolvedCatalog }>(
+    `/api/catalogs/${TERMINOLOGY_CATALOG}`,
+  );
+
+  const termCards = useMemo<TermCard[]>(
+    () =>
+      (data?.catalog.entries ?? []).map((entry) => ({
+        key: entry.id,
+        label: entry.name,
+        description: entry.description,
+        defaults: readTermDefaults(entry.detail),
+      })),
+    [data],
+  );
 
   useEffect(() => {
     setLocalTerms(terminology);
@@ -136,8 +176,6 @@ export default function TerminologyConfigPage() {
       });
     }
   };
-
-  const termKeys = Object.keys(TERM_REGISTRY);
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -189,29 +227,52 @@ export default function TerminologyConfigPage() {
         </div>
       </div>
 
-      <div className="space-y-4">
-        {termKeys.map(key => {
-          const definition = TERM_REGISTRY[key];
-          const current = localTerms[key] || terminology[key] || definition.defaults;
-          return (
-            <TermEditor
-              key={key}
-              termKey={key}
-              definition={definition}
-              currentSingular={current.singular}
-              currentPlural={current.plural}
-              onChange={handleTermChange}
-            />
-          );
-        })}
-      </div>
+      {isLoading && (
+        <div className="space-y-4" data-testid="loading-terms">
+          <Skeleton className="h-56 w-full" />
+          <Skeleton className="h-56 w-full" />
+        </div>
+      )}
 
-      {termKeys.length === 0 && (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            No configurable terms are currently defined.
-          </CardContent>
+      {isError && (
+        <Card data-testid="error-terms">
+          <CardHeader>
+            <CardTitle className="text-destructive">Couldn&apos;t load the terms</CardTitle>
+            <CardDescription>
+              {error instanceof Error ? error.message : "The request failed."}
+            </CardDescription>
+          </CardHeader>
         </Card>
+      )}
+
+      {!isLoading && !isError && (
+        <>
+          <div className="space-y-4">
+            {termCards.map(card => {
+              const current =
+                localTerms[card.key] ??
+                terminology[card.key] ??
+                card.defaults ?? { singular: "", plural: "" };
+              return (
+                <TermEditor
+                  key={card.key}
+                  card={card}
+                  currentSingular={current.singular}
+                  currentPlural={current.plural}
+                  onChange={handleTermChange}
+                />
+              );
+            })}
+          </div>
+
+          {termCards.length === 0 && (
+            <Card>
+              <CardContent className="py-8 text-center text-muted-foreground">
+                No configurable terms are currently defined.
+              </CardContent>
+            </Card>
+          )}
+        </>
       )}
     </div>
   );

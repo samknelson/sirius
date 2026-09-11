@@ -305,7 +305,7 @@ export interface TokenPluginMetadata extends BasePluginMetadata {
    */
   defaultLeaf?: string;
   /** Hide from the generated picker catalog (still evaluatable). */
-  hiddenFromCatalog?: boolean;
+  hiddenFromPicker?: boolean;
   /**
    * Set by the relation sweeps on a segment they DERIVED from a foreign
    * key, rather than one someone wrote. A sweep refuses to generate a

@@ -2674,6 +2674,28 @@ export const insertCronJobRunSchema = createInsertSchema(cronJobRuns).omit({
 export type InsertCronJobRun = z.infer<typeof insertCronJobRunSchema>;
 export type CronJobRun = typeof cronJobRuns.$inferSelect;
 
+/**
+ * Reusable tokenized message templates.
+ *
+ * `context_ids` is intentionally a soft reference to the token-context
+ * registry: contexts are declared in code rather than stored in a table, so
+ * existence is an application-boundary concern when write paths are added.
+ * `content` is the medium's authored field map (subject, body, etc.); its
+ * medium-specific shape is likewise validated by those future write paths.
+ */
+export const letterTemplates = pgTable("letter_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  contextIds: text("context_ids").array().notNull().default(sql`'{}'::text[]`),
+  content: jsonb("content").notNull().default(sql`'{}'::jsonb`),
+  medium: varchar("medium").notNull(),
+  name: text("name").notNull(),
+  siriusId: varchar("sirius_id").unique(),
+  data: jsonb("data").notNull().default(sql`'{}'::jsonb`),
+});
+
+export type LetterTemplate = typeof letterTemplates.$inferSelect;
+export type InsertLetterTemplate = typeof letterTemplates.$inferInsert;
+
 // Communications
 export const comm = pgTable("comm", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

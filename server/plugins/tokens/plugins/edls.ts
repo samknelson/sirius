@@ -72,7 +72,7 @@ registerTokenPlugin({
     // `{{sheet}}` on its own means the sheet's display title — the same
     // composed phrase the picker and the notifier use to name a sheet.
     defaultLeaf: "display_title",
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     requiredComponent: "edls",
     sampleSets: EDLS_SHEET_SAMPLE_SETS,
     // A sheet has its own page.

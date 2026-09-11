@@ -31,10 +31,11 @@ import { MAX_CHAIN_DEPTH, type TokenArgSpec } from "@shared/tokens";
  * depth stay reachable and no row has to print a record's whole column
  * list to describe itself.
  *
- * Which roots exist is decided by the surface being edited: the notifier
- * hosts name their record roots, bulk messaging names none and gets the
- * ordinary contact-side roots. Search asks the server, so a match deep
- * under a record is found without pulling the graph down.
+ * Which roots exist is decided by the token CONTEXT being written in,
+ * server-side — the same declaration the editor's typeahead and the
+ * save-time validation read — so the browser can only offer what this
+ * surface may actually write. Search asks the server too, so a match
+ * deep under a record is found without pulling the graph down.
  */
 
 // ── Server shapes (mirrors server/plugins/tokens/tree.ts) ──────────────
@@ -187,8 +188,16 @@ interface ArgDraft {
   baseDepth: number;
 }
 
-/** The studio's own tree endpoints, for a host that names none. */
-export const DEFAULT_TREE_BASE_URL = "/api/token-studio/tree";
+/**
+ * THE tree endpoints — one family for every surface there is.
+ *
+ * Each request names the token CONTEXT being written in, and the server
+ * reads that context's roots and its access policy from the one
+ * declaration both halves of the studio are built from. Hosts used to
+ * pass a tree base URL of their own, which meant the same question was
+ * answered by three routes under three different rules.
+ */
+const TREE_BASE_URL = "/api/token-studio/tree";
 
 /** The tree's roots and HOW THEY GOT HERE — loading, failed, or loaded. */
 export interface TokenTreeRootsState {
@@ -204,22 +213,17 @@ export interface TokenTreeRootsState {
 /**
  * The tree's root list, shared by the picker and the studio's
  * diagnostics. Both read the SAME query key, so asking twice costs one
- * request and the two can never disagree about what this host's tree
- * endpoint returned.
+ * request and the two can never disagree about what the tree endpoint
+ * returned.
  */
 export function useTokenTreeRoots({
-  treeBaseUrl = DEFAULT_TREE_BASE_URL,
-  rootNames,
+  contextId,
   enabled = true,
 }: {
-  treeBaseUrl?: string;
-  rootNames?: string[];
+  contextId: string;
   enabled?: boolean;
 }): TokenTreeRootsState {
-  const rootsParam = rootNames?.length ? rootNames.join(",") : "";
-  const url = rootsParam
-    ? `${treeBaseUrl}/roots?roots=${encodeURIComponent(rootsParam)}`
-    : `${treeBaseUrl}/roots`;
+  const url = `${TREE_BASE_URL}/roots?context=${encodeURIComponent(contextId)}`;
   const { data, isLoading, error, refetch } = useQuery<{ roots: TokenTreeRoot[] }>({
     queryKey: [url],
     enabled,
@@ -280,13 +284,12 @@ export function TokenRequestError({
 export interface TokenTreeBrowserProps {
   onInsert: (snippet: string) => void;
   /**
-   * Tree endpoints for the surface being edited. Each surface serves the
-   * tree behind its own gate, so the picker never reaches further than
-   * the editor it sits in.
+   * The token context being written in. It decides BOTH what this tree
+   * offers and who may browse it, server-side: the picker can therefore
+   * never reach further than the editor it sits in, and never offers a
+   * root the same context's save-time validation would reject.
    */
-  treeBaseUrl?: string;
-  /** Named record roots this surface seeds (`dispatch`, `event`, …). */
-  rootNames?: string[];
+  contextId: string;
   /**
    * Drop the browser's own "Insert a personalization token" title, for a
    * host that already titles the area it is embedded in.
@@ -297,12 +300,11 @@ export interface TokenTreeBrowserProps {
 
 export function TokenTreeBrowser({
   onInsert,
-  treeBaseUrl = DEFAULT_TREE_BASE_URL,
-  rootNames,
+  contextId,
   hideHeading,
   className,
 }: TokenTreeBrowserProps) {
-  const rootsParam = rootNames?.length ? rootNames.join(",") : "";
+  const contextParam = encodeURIComponent(contextId);
   const [stack, setStack] = useState<TreeStep[]>([]);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
@@ -332,7 +334,7 @@ export function TokenTreeBrowser({
     loading: rootsLoading,
     error: rootsError,
     retry: retryRoots,
-  } = useTokenTreeRoots({ treeBaseUrl, rootNames });
+  } = useTokenTreeRoots({ contextId });
 
   const {
     data: expansion,
@@ -340,16 +342,19 @@ export function TokenTreeBrowser({
     error: levelError,
     refetch: refetchLevel,
   } = useQuery<TokenTypeExpansion>({
-    queryKey: [`${treeBaseUrl}/type/${encodeURIComponent(current?.type ?? "")}`],
+    queryKey: [
+      `${TREE_BASE_URL}/type/${encodeURIComponent(current?.type ?? "")}` +
+        `?context=${contextParam}`,
+    ],
     enabled: Boolean(current),
   });
 
   const searchUrl = useMemo(() => {
     const params = new URLSearchParams();
-    if (rootsParam) params.set("roots", rootsParam);
+    params.set("context", contextId);
     params.set("q", query);
-    return `${treeBaseUrl}/search?${params.toString()}`;
-  }, [treeBaseUrl, rootsParam, query]);
+    return `${TREE_BASE_URL}/search?${params.toString()}`;
+  }, [contextId, query]);
   const {
     data: searchData,
     isFetching: searchFetching,

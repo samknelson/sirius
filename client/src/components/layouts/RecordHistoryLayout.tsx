@@ -1,8 +1,7 @@
 import { ReactNode } from "react";
 import { History } from "lucide-react";
-import { Link } from "wouter";
-import { Button } from "@/components/ui/button";
 import { useRecordMetadataTabAccess } from "@/hooks/useTabAccess";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 
 /**
  * The shell for the record history admin page.
@@ -32,31 +31,11 @@ export function RecordHistoryLayout({ activeTab, children }: RecordHistoryLayout
         </h1>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
-        {tabs.map((tab) => {
-          const isActive = tab.id === activeTab;
-          return isActive ? (
-            <Button
-              key={tab.id}
-              variant="default"
-              size="sm"
-              data-testid={`button-record-metadata-tab-${tab.id}`}
-            >
-              {tab.label}
-            </Button>
-          ) : (
-            <Link key={tab.id} href={tab.href}>
-              <Button
-                variant="outline"
-                size="sm"
-                data-testid={`button-record-metadata-tab-${tab.id}`}
-              >
-                {tab.label}
-              </Button>
-            </Link>
-          );
-        })}
-      </div>
+      <EntityTabNavigation
+        tabs={tabs}
+        activeTab={activeTab}
+        testIdPrefix="button-record-metadata-tab-"
+      />
 
       {children}
     </div>

@@ -17,7 +17,7 @@
  * 
  * Usage: npx tsx scripts/oneoffs/btu-signed-card-import.ts <excel-file-path>
  * 
- * Example: npx tsx scripts/oneoffs/btu-signed-card-import.ts attached_assets/Signed_Card_Checks_from_Sirius_2026-01-15_1768504464672.xlsx
+ * Example: npx tsx scripts/oneoffs/btu-signed-card-import.ts <excel-file-path>
  */
 
 import xlsx from 'xlsx';

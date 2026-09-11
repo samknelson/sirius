@@ -11,10 +11,10 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Save, Mail, MessageSquare, MapPin, Bell } from "lucide-react";
 import { TokenStudioButton, type StudioField } from "@/components/template-studio/TokenStudio";
+import { BULK_MESSAGE_TOKEN_CONTEXT } from "@shared/token-contexts";
 import { TokenText } from "@/components/template-studio/TokenText";
 import { cn } from "@/lib/utils";
-import { escapeHtml, htmlToPlainText } from "@shared/utils/html";
-import { BULK_CHANNEL_FIELDS } from "@shared/delivery-fields";
+import { MEDIUM_FIELDS, isSafeRelativePath } from "@shared/delivery-fields";
 
 /**
  * Bulk message content, one medium at a time.
@@ -30,9 +30,11 @@ import { BULK_CHANNEL_FIELDS } from "@shared/delivery-fields";
  * the colour switches — stay here, where they belong.
  */
 
-/** Bulk's token endpoints; the studio's own are gated differently. */
-const bulkTokenCatalogUrl = (messageId: string) => `/api/bulk-tokens/${messageId}`;
-const BULK_TOKEN_TREE_URL = "/api/bulk-tokens/tree";
+/** The records this message may be previewed against — bulk's alone.
+ *  What may be WRITTEN comes from its token context, so the studio's
+ *  shared graph and tree routes answer for it too. */
+const bulkSeedsUrl = (messageId: string) =>
+  `/api/bulk-messages/${messageId}/preview-seeds`;
 
 // Field declarations are shared between the summary rows and the studio
 // that edits them, so a field can never be editable but invisible (or
@@ -53,10 +55,13 @@ const POSTAL_FIELDS: StudioField[] = [
 const INAPP_FIELDS: StudioField[] = [
   { key: "title", label: "Title", mode: "line", maxLength: 100 },
   {
-    key: "bodyHtml",
+    // Plain text, because that is what an in-app notification IS — see
+    // the in-app medium in `shared/delivery-fields.ts`. A rich-text
+    // editor here would promise formatting no reader ever sees.
+    key: "body",
     label: "Body",
-    mode: "html",
-    hint: "Displayed as plain text; formatting is flattened on send. The flattened text must stay under 500 characters.",
+    mode: "multiline",
+    maxLength: 500,
   },
   { key: "linkUrl", label: "Link URL", mode: "line", maxLength: 2048 },
   { key: "linkLabel", label: "Link label", mode: "line", maxLength: 50 },
@@ -130,9 +135,11 @@ interface FormProps {
   isPending: boolean;
   /**
    * This message's own token catalog — the studio previews against the
-   * recipients of THIS message, so the catalog is per message.
+   * recipients of THIS message, so the catalog is per message. What an
+   * author may WRITE is not per message: those roots come from bulk
+   * messaging's token context, named on each studio below.
    */
-  catalogUrl: string;
+  seedsUrl: string;
 }
 
 function SaveButton({
@@ -158,7 +165,7 @@ function SaveButton({
   );
 }
 
-function EmailForm({ record, onSave, isPending, catalogUrl }: FormProps) {
+function EmailForm({ record, onSave, isPending, seedsUrl }: FormProps) {
   const [form, setForm] = useState({ subject: "", bodyHtml: "" });
 
   useEffect(() => {
@@ -176,16 +183,16 @@ function EmailForm({ record, onSave, isPending, catalogUrl }: FormProps) {
         testId="card-email-template"
         fields={EMAIL_FIELDS}
         values={form}
-        footnote="A plain-text version is generated automatically for recipients whose mail client can't display HTML."
+        footnote="A subject is required — an email without one is not sent. A plain-text version is generated automatically for recipients whose mail client can't display HTML."
         action={
           <TokenStudioButton
             label="Edit in Template Studio"
             testId="button-open-studio-email"
             title="Email message"
             channel="email"
-            fieldSpecs={BULK_CHANNEL_FIELDS.email}
-            catalogUrl={catalogUrl}
-            treeBaseUrl={BULK_TOKEN_TREE_URL}
+            fieldSpecs={MEDIUM_FIELDS.email}
+            contextId={BULK_MESSAGE_TOKEN_CONTEXT}
+            seedsUrl={seedsUrl}
             fields={EMAIL_FIELDS}
             values={form}
             onValueChange={(key, value) => setForm((p) => ({ ...p, [key]: value }))}
@@ -195,6 +202,9 @@ function EmailForm({ record, onSave, isPending, catalogUrl }: FormProps) {
       <SaveButton
         onClick={() => onSave({ subject: form.subject, bodyHtml: form.bodyHtml })}
         isPending={isPending}
+        // A blank subject is never substituted with a stand-in at send:
+        // it makes the message undeliverable, so it cannot be saved.
+        disabled={form.subject.trim().length === 0}
         label="Save Email Content"
         testId="button-save-email-message"
       />
@@ -202,7 +212,7 @@ function EmailForm({ record, onSave, isPending, catalogUrl }: FormProps) {
   );
 }
 
-function SmsForm({ record, onSave, isPending, catalogUrl }: FormProps) {
+function SmsForm({ record, onSave, isPending, seedsUrl }: FormProps) {
   const [body, setBody] = useState("");
 
   useEffect(() => {
@@ -230,9 +240,9 @@ function SmsForm({ record, onSave, isPending, catalogUrl }: FormProps) {
             testId="button-open-studio-sms"
             title="SMS message"
             channel="sms"
-            fieldSpecs={BULK_CHANNEL_FIELDS.sms}
-            catalogUrl={catalogUrl}
-            treeBaseUrl={BULK_TOKEN_TREE_URL}
+            fieldSpecs={MEDIUM_FIELDS.sms}
+            contextId={BULK_MESSAGE_TOKEN_CONTEXT}
+            seedsUrl={seedsUrl}
             fields={SMS_FIELDS}
             values={{ body }}
             onValueChange={(_key, value) => setBody(value)}
@@ -249,7 +259,7 @@ function SmsForm({ record, onSave, isPending, catalogUrl }: FormProps) {
   );
 }
 
-function PostalForm({ record, onSave, isPending, catalogUrl }: FormProps) {
+function PostalForm({ record, onSave, isPending, seedsUrl }: FormProps) {
   const [form, setForm] = useState({
     description: "",
     templateId: "",
@@ -282,9 +292,9 @@ function PostalForm({ record, onSave, isPending, catalogUrl }: FormProps) {
             testId="button-open-studio-postal"
             title="Postal letter"
             channel="postal"
-            fieldSpecs={BULK_CHANNEL_FIELDS.postal}
-            catalogUrl={catalogUrl}
-            treeBaseUrl={BULK_TOKEN_TREE_URL}
+            fieldSpecs={MEDIUM_FIELDS.postal}
+            contextId={BULK_MESSAGE_TOKEN_CONTEXT}
+            seedsUrl={seedsUrl}
             fields={POSTAL_FIELDS}
             values={{ description: form.description }}
             onValueChange={(_key, value) => setForm((p) => ({ ...p, description: value }))}
@@ -329,34 +339,32 @@ function PostalForm({ record, onSave, isPending, catalogUrl }: FormProps) {
   );
 }
 
-function InappForm({ record, onSave, isPending, catalogUrl }: FormProps) {
+function InappForm({ record, onSave, isPending, seedsUrl }: FormProps) {
   const [form, setForm] = useState({
     title: "",
-    bodyHtml: "",
+    body: "",
     linkUrl: "",
     linkLabel: "",
   });
 
   useEffect(() => {
     if (record) {
-      const existing = (record.body as string) || "";
-      // Treat already-stored plain text as plain text by escaping any HTML
-      // metacharacters before turning newlines into <br>, so legacy bodies
-      // containing "<" or "&" aren't reinterpreted as markup by the editor.
-      const escaped = escapeHtml(existing).replace(/\n/g, "<br>");
       setForm({
         title: (record.title as string) || "",
-        bodyHtml: escaped,
+        body: (record.body as string) || "",
         linkUrl: (record.linkUrl as string) || "",
         linkLabel: (record.linkLabel as string) || "",
       });
     }
   }, [record]);
 
-  // Delivery sends the FLATTENED text, so that is what the 500-character
-  // column limit applies to — not the rich-text the editor holds.
-  const derivedBody = htmlToPlainText(form.bodyHtml);
-  const overLimit = derivedBody.length > 500;
+  const overLimit = form.body.length > 500;
+  // Same rule the server enforces on save and delivery enforces on the
+  // rendered value: the alerts bell opens this in the browser, so it is
+  // a same-app path. Said here so the author finds out while writing it
+  // rather than by a link that quietly went missing.
+  const linkInvalid =
+    form.linkUrl.trim() !== "" && !isSafeRelativePath(form.linkUrl.trim());
 
   return (
     <div className="space-y-4">
@@ -370,9 +378,9 @@ function InappForm({ record, onSave, isPending, catalogUrl }: FormProps) {
               {form.title.length} / 100
             </span>
           ),
-          bodyHtml: (
+          body: (
             <span className={cn(overLimit ? "text-destructive" : "text-muted-foreground")} data-testid="text-inapp-body-count">
-              {derivedBody.length} / 500
+              {form.body.length} / 500
             </span>
           ),
           linkLabel: (
@@ -381,27 +389,18 @@ function InappForm({ record, onSave, isPending, catalogUrl }: FormProps) {
             </span>
           ),
         }}
-        footnote="In-app notifications display as plain text; formatting will be flattened on send."
+        footnote="In-app notifications display as plain text."
         action={
           <TokenStudioButton
             label="Edit in Template Studio"
             testId="button-open-studio-inapp"
             title="In-app notification"
             channel="inapp"
-            fieldSpecs={BULK_CHANNEL_FIELDS.inapp}
-            catalogUrl={catalogUrl}
-            treeBaseUrl={BULK_TOKEN_TREE_URL}
+            fieldSpecs={MEDIUM_FIELDS.inapp}
+            contextId={BULK_MESSAGE_TOKEN_CONTEXT}
+            seedsUrl={seedsUrl}
             fields={INAPP_FIELDS}
             values={form}
-            // Delivery sends a flattened plain-text `body`, not the
-            // rich-text `bodyHtml` the editor holds — flatten it here so
-            // the preview renders what is actually sent.
-            templateValues={{
-              title: form.title,
-              body: derivedBody,
-              linkUrl: form.linkUrl,
-              linkLabel: form.linkLabel,
-            }}
             onValueChange={(key, value) => setForm((p) => ({ ...p, [key]: value }))}
           />
         }
@@ -409,12 +408,12 @@ function InappForm({ record, onSave, isPending, catalogUrl }: FormProps) {
       <SaveButton
         onClick={() => onSave({
           title: form.title,
-          body: derivedBody,
+          body: form.body,
           linkUrl: form.linkUrl,
           linkLabel: form.linkLabel,
         })}
         isPending={isPending}
-        disabled={overLimit}
+        disabled={overLimit || linkInvalid}
         label="Save In-App Content"
         testId="button-save-inapp-message"
       />
@@ -527,7 +526,7 @@ function BulkMessageMessageContent() {
               record={record}
               onSave={(data) => saveMutation.mutate(data)}
               isPending={saveMutation.isPending}
-              catalogUrl={bulkTokenCatalogUrl(bulkMessage.id)}
+              seedsUrl={bulkSeedsUrl(bulkMessage.id)}
             />
           )}
         </CardContent>

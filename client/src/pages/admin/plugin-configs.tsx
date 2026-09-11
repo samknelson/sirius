@@ -7,12 +7,10 @@ import {
   pluginConfigsQueryKey,
   pluginConfigsUrl,
   pluginConfigsMetaQueryKey,
-  pluginKindsQueryKey,
   pluginSearch,
   type ArrayManifestPluginKind,
   type PluginConfigEnvelopeField,
   type PluginConfigEnvelopeFieldChoice,
-  type PluginKindSummary,
 } from "@/plugins/_core";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -92,6 +90,7 @@ import type { JsonSchema } from "@shared/json-schema-form";
 import type { IChangeEvent } from "@rjsf/core";
 import type { UiSchema } from "@rjsf/utils";
 import { SchemaForm, sortArrayTableSettings } from "@/components/json-schema-form";
+import { usePluginKindsCatalog } from "@/hooks/usePluginKindsCatalog";
 
 /**
  * Generic, kind-aware plugin-config admin page (Task #353 — additive
@@ -174,19 +173,17 @@ export default function GenericPluginConfigsPage({
   const params = useParams<{ kind: string }>();
   const kind = (kindProp ?? params.kind) as ArrayManifestPluginKind;
 
-  // The server's kinds index (/api/plugins/kinds) is the single source of truth
-  // for which kinds are configurable — it lists every kind that has a registered
-  // config adapter. Validate the URL :kind against it instead of a duplicated
-  // client-side allowlist, so any kind the server serves (cron today, anything
-  // new later) works here automatically with no client edit.
-  const { data: kinds = [], isLoading: isLoadingKinds } = useQuery<
-    PluginKindSummary[]
-  >({
-    queryKey: pluginKindsQueryKey(),
-  });
+  // The Plugin Kinds catalog is the source of truth for which kinds support
+  // stored configuration. Validate the URL against its configurable entries.
+  const {
+    configurableKinds: kinds,
+    isLoading: isLoadingKinds,
+    isError: isKindsError,
+  } =
+    usePluginKindsCatalog();
   const kindSummary = kinds.find((k) => k.kind === kind);
   const isValidKind = kindSummary !== undefined;
-  // Fall back to a prettified id when the kinds index has no match yet
+  // Fall back to a prettified id when the catalog has no match yet
   // (loading) or omits this kind, so the page never shows the raw id.
   const kindName = kindSummary?.label ?? prettifyKind(kind);
   const kindDescription = kindSummary?.description;
@@ -271,7 +268,7 @@ export default function GenericPluginConfigsPage({
     // query with no fetcher so it never requests the list and the page wrongly
     // shows "No configurations yet" until a filter is selected.
     queryFn: hasActiveFilters
-      ? () => pluginSearch<ArrayManifestPluginKind, PluginConfigRow>(kind, searchParams as any)
+      ? () => pluginSearch<PluginConfigRow>(kind, searchParams)
       : () => apiRequest("GET", pluginConfigsUrl(kind)) as Promise<PluginConfigRow[]>,
     enabled: isValidKind,
     // Keep the previous results visible while a filter change refetches so the
@@ -299,12 +296,26 @@ export default function GenericPluginConfigsPage({
 
   const labelMaps = useEnvelopeLabelMaps(envelopeFields);
 
-  // Wait for the server kinds index before judging validity, so a valid kind
+  // Wait for the catalog before judging validity, so a valid kind
   // never flashes the "unknown" message while the list is still loading.
   if (isLoadingKinds) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin" data-testid="loading-spinner" />
+      </div>
+    );
+  }
+
+  if (isKindsError) {
+    return (
+      <div className="p-6">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-center text-muted-foreground" data-testid="text-kinds-error">
+              Couldn’t load plugin kinds. Please try again.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   }

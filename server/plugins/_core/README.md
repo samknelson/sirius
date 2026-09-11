@@ -276,11 +276,9 @@ Steps:
    for your kind — `dashboard` uses all of them, the three
    admin-only kinds use just `validateConfig` today.
 
-4. **Add the kind string** to the `PluginKind` unions in both
-   `server/plugins/_core/types.ts` and
-   `client/src/plugins/_core/manifest.ts`. The manifest endpoint
-   itself needs no change — it dispatches on `:kind` via
-   `getPluginKind(kind)`.
+4. The manifest endpoint and Plugin Kinds catalog need no separate kind
+   allowlist — both dispatch and discovery derive from the
+   `registerPluginKind(...)` declaration.
 
 5. **Client-side (only if your kind ships React components)**:
    create `client/src/plugins/<kind>/registry.ts`:

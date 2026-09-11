@@ -1,7 +1,8 @@
 import type { Request } from "express";
+import type { User } from "@shared/schema";
 import { isComponentEnabled } from "../modules/components";
 import { storage } from "../storage";
-import { buildContext, checkAccessInline } from "./access-policy-evaluator";
+import { buildContext, checkAccess } from "./access-policy-evaluator";
 import {
   recordGoAccessRequirement,
   type RecordGoResolution,
@@ -18,6 +19,20 @@ export async function authorizeRecordGoRequest(
   req: Request,
   resolution: ResolvedRecordGo,
 ): Promise<boolean> {
+  const context = await buildContext(req);
+  return authorizeRecordGoUser(context.user, resolution);
+}
+
+/**
+ * Authorize a resolved record for a caller that is already represented by its
+ * effective user. Quicksearch has no Express request, but it must enforce the
+ * same context, component, permission, and relationship checks as /go before
+ * revealing that an identifier resolves to a record.
+ */
+export async function authorizeRecordGoUser(
+  user: User | null,
+  resolution: ResolvedRecordGo,
+): Promise<boolean> {
   const requirement = recordGoAccessRequirement(resolution.metadata.contextId);
   if (!requirement) return false;
   if (requirement.componentId && !(await isComponentEnabled(requirement.componentId))) {
@@ -25,9 +40,7 @@ export async function authorizeRecordGoRequest(
   }
 
   if (requirement.kind === "permission") {
-    const context = await buildContext(req);
-    return !!context.user
-      && await storage.users.userHasPermission(context.user.id, requirement.id);
+    return !!user && await storage.users.userHasPermission(user.id, requirement.id);
   }
 
   let entityId = resolution.metadata.entityId;
@@ -40,12 +53,12 @@ export async function authorizeRecordGoRequest(
   } else if (resolution.metadata.contextId === "wizards") {
     const wizard = await storage.wizards.getById(entityId);
     if (!wizard) return false;
-    const adminAccess = await checkAccessInline(req, "admin");
+    const adminAccess = await checkAccess("admin", user);
     if (adminAccess.granted) return true;
     entityId = wizard.entityId ?? "";
   }
   if (!entityId) return false;
 
-  const result = await checkAccessInline(req, requirement.id, entityId);
+  const result = await checkAccess(requirement.id, user, entityId);
   return result.granted;
 }

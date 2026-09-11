@@ -132,3 +132,4 @@ export function initializeQuicksearchPluginSystem(): void {
 import "./plugins/worker";
 import "./plugins/grievance";
 import "./plugins/edls-sheet";
+import "./plugins/go";

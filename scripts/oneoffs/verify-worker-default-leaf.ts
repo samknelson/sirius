@@ -30,16 +30,23 @@ async function main() {
 
   const {
     validateTokenExpressionForRoots,
-    buildTokenCatalogForRoots,
+    buildTokenPickerEntries,
     renderTokens,
     createTokenEvalContext,
   } = await import("../../server/plugins/tokens");
   const { listTokenTreeRoots, expandTokenType } = await import(
     "../../server/plugins/tokens/tree"
   );
-  const { BULK_TOKEN_ROOT_NAMES } = await import(
-    "../../server/modules/bulk/token-roots"
+  // Importing the module registers bulk messaging's token context; its
+  // roots are then read the way every reader reads them.
+  await import("../../server/modules/bulk/token-roots");
+  const { tokenContextRootNames } = await import(
+    "../../server/plugins/tokens/contexts"
   );
+  const { BULK_MESSAGE_TOKEN_CONTEXT } = await import(
+    "../../shared/token-contexts"
+  );
+  const bulkRootNames = tokenContextRootNames(BULK_MESSAGE_TOKEN_CONTEXT);
   const { notifierTokenRootNames } = await import(
     "../../server/plugins/event-notifier/token-roots"
   );
@@ -53,7 +60,7 @@ async function main() {
     'worker.field(name="job_title")',
     "worker.contact",
   ]) {
-    const r = validateTokenExpressionForRoots(expr, BULK_TOKEN_ROOT_NAMES);
+    const r = validateTokenExpressionForRoots(expr, bulkRootNames);
     check(`bulk: {{${expr}}}`, r.ok, r.ok ? undefined : r.error);
   }
 
@@ -74,7 +81,7 @@ async function main() {
   );
 
   console.log("\n--- the picker and the tree show it ---");
-  const treeRoots = listTokenTreeRoots(BULK_TOKEN_ROOT_NAMES);
+  const treeRoots = listTokenTreeRoots(bulkRootNames);
   const workerRoot = treeRoots.find((r) => r.name === "worker");
   check(
     "the worker tree root carries the default leaf",
@@ -88,7 +95,7 @@ async function main() {
     "the worker hop under a contact is insertable",
     contactChild?.kind === "relation" && contactChild.defaultLeaf === "sirius_id",
   );
-  const catalog = buildTokenCatalogForRoots(BULK_TOKEN_ROOT_NAMES);
+  const catalog = buildTokenPickerEntries(bulkRootNames);
   const short = catalog.find((e) => e.id === "worker");
   check(
     "the flat picker offers the short form",

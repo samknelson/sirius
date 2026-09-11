@@ -14,7 +14,7 @@
  * works on a fresh deployment where the component has never been turned on.
  *
  * Usage:
- *   npx tsx scripts/oneoffs/import-contracts-from-pdf.ts
+ *   npx tsx scripts/oneoffs/import-contracts-from-pdf.ts <whitsett-pdf-path> <nstec-pdf-path>
  */
 
 import { execFileSync } from "child_process";
@@ -44,7 +44,7 @@ interface ParsedArticle {
 
 interface ContractConfig {
   name: string;
-  file: string;
+  file?: string;
   /** Line marking the start of the real body (everything before is title/TOC). */
   bodyStart: RegExp;
   /** Name to give the leading pre-ARTICLE-1 content (preamble/agreement). */
@@ -282,7 +282,6 @@ function parse(cfg: ContractConfig, allLines: string[]): ParsedArticle[] {
 
 const WHITSETT: ContractConfig = {
   name: "M.R. Whitsett, Inc. (2015–2021)",
-  file: "attached_assets/2015-2021_MR_Whitsett-EngS_1783249265499.pdf",
   bodyStart: /^THIS AGREEMENT is made/,
   preambleName: "Agreement",
   articleTitleOnNextLine: false,
@@ -311,7 +310,6 @@ const WHITSETT: ContractConfig = {
 
 const NSTEC: ContractConfig = {
   name: "National Security Technologies LLC / NSTec (2012–2017)",
-  file: "attached_assets/NSTec_2012-2017_1783249463594.pdf",
   bodyStart: /^HOUSING, CUSTODIAL AND FOOD SERVICES AGREEMENT/,
   preambleName: "Preamble",
   articleTitleOnNextLine: true,
@@ -341,6 +339,10 @@ const NSTEC: ContractConfig = {
 // ---------------------------------------------------------------------------
 
 async function importContract(cfg: ContractConfig): Promise<void> {
+  if (!cfg.file) {
+    throw new Error(`Missing PDF path for contract "${cfg.name}".`);
+  }
+
   console.log(`\n=== ${cfg.name} ===`);
   const lines = pdfToText(cfg.file);
   const articles = parse(cfg, lines);
@@ -417,10 +419,17 @@ async function enableContractComponent(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  const [whitsettFile, nstecFile] = process.argv.slice(2);
+  if (!whitsettFile || !nstecFile) {
+    throw new Error(
+      "Usage: npx tsx scripts/oneoffs/import-contracts-from-pdf.ts <whitsett-pdf-path> <nstec-pdf-path>",
+    );
+  }
+
   await enableContractComponent();
 
-  await importContract(WHITSETT);
-  await importContract(NSTEC);
+  await importContract({ ...WHITSETT, file: whitsettFile });
+  await importContract({ ...NSTEC, file: nstecFile });
 
   console.log("\n=== Done ===");
 }

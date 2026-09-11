@@ -13,6 +13,7 @@ import {
   RecordTitleBarLoading,
   RecordTitleBarNotFound,
 } from "@/components/shared/RecordTitleBar";
+import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 
 const CONTRACT_BACK_LINK = {
   href: "/contracts",
@@ -143,50 +144,13 @@ export function ContractLayout({ activeTab, children }: ContractLayoutProps) {
           recordId={contract.id}
         />
 
-        {/* Main Tab Navigation */}
-        <div className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-wrap items-center gap-2 py-3">
-              {tabs.map((tab) => {
-                const isActive = tab.id === activeRoot?.id;
-                return isActive ? (
-                  <Button key={tab.id} variant="default" size="sm" data-testid={`button-contract-${tab.id}`}>
-                    {tab.label}
-                  </Button>
-                ) : (
-                  <Link key={tab.id} href={tab.href}>
-                    <Button variant="outline" size="sm" data-testid={`button-contract-${tab.id}`}>
-                      {tab.label}
-                    </Button>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Sub-Tab Navigation */}
-        {subTabs && subTabs.length > 0 && (
-          <div className="bg-muted/30 border-b border-border">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex flex-wrap items-center gap-2 py-2 pl-4">
-                {subTabs.map((tab) =>
-                  tab.id === activeTab ? (
-                    <Button key={tab.id} variant="secondary" size="sm" data-testid={`button-contract-${tab.id}`}>
-                      {tab.label}
-                    </Button>
-                  ) : (
-                    <Link key={tab.id} href={tab.href}>
-                      <Button variant="ghost" size="sm" data-testid={`button-contract-${tab.id}`}>
-                        {tab.label}
-                      </Button>
-                    </Link>
-                  ),
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        <EntityTabNavigation
+          tabs={tabs}
+          activeTab={activeTab}
+          activeRootId={activeRoot?.id}
+          subTabs={subTabs}
+          testIdPrefix="button-contract-"
+        />
 
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">{children}</main>

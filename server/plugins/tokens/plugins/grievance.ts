@@ -242,7 +242,7 @@ registerTokenPlugin({
     // arriving at a grievance — the notifiers' seeded root, the relation
     // below — ends the same way.
     defaultLeaf: "display_title",
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     requiredComponent: COMPONENT,
     sampleSets: GRIEVANCE_SAMPLE_SETS,
     // A grievance has its own page, so `{{grievance.path}}` and
@@ -301,7 +301,7 @@ registerTokenPlugin({
     // naming a status entry says the status ("Filed", "Arbitration"), and
     // the FK column renders the referenced option's name.
     defaultLeaf: "status_id",
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     requiredComponent: COMPONENT,
     sampleSets: GRIEVANCE_STATUS_HISTORY_SAMPLE_SETS,
     // An entry has no page of its own; the grievance's timeline is where
@@ -365,7 +365,7 @@ registerTokenPlugin({
     // hint shows the same thing). `summary` is a whole sentence about an
     // operation, not a name.
     defaultLeaf: "description",
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     requiredComponent: "grievance.settlement",
     sampleSets: GRIEVANCE_SETTLEMENT_SAMPLE_SETS,
     // No page of its own: the grievance's settlements tab is where a
@@ -432,7 +432,7 @@ registerTokenPlugin({
     outputType: GRIEVANCE_ENTITY_KIND,
     entityTable: grievances,
     entityFields: ["name", "display_title"],
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     requiredComponent: COMPONENT,
   },
   async resolve(entity, _args, ctx) {

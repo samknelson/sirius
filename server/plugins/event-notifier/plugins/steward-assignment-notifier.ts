@@ -82,7 +82,7 @@ export const stewardAssignmentNotifier: EventNotifierPlugin = {
         };
       case "sms":
         return {
-          message: body,
+          body: body,
         };
       case "postal": {
         // Compose a basic letter as HTML (the postal sender stores this as the

@@ -325,7 +325,7 @@ function registerEntityRelation(
       // relation per entity would bury it); a surface that seeds real
       // records walks the full registry, and the token browser walks
       // hidden relations, so an author still finds it.
-      hiddenFromCatalog: true,
+      hiddenFromPicker: true,
       // The target kind's own component decides whether its data exists
       // at all; where it has none, the owner's gate is the honest one.
       requiredComponent: info.requiredComponent ?? owner.requiredComponent,

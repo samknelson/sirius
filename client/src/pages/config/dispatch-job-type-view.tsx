@@ -36,7 +36,7 @@ function DispatchJobTypeViewContent() {
   const { data: configRows = [] } = useQuery<DispatchConfigRow[]>({
     queryKey: ["/api/plugins/dispatch-eligibility/configs/search", jobType.id],
     queryFn: () =>
-      pluginSearch<"dispatch-eligibility", DispatchConfigRow>("dispatch-eligibility", {
+      pluginSearch<DispatchConfigRow>("dispatch-eligibility", {
         jobType: jobType.id,
       }),
   });

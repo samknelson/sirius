@@ -50,7 +50,7 @@ registerTokenPlugin({
     // what the picker's hint shows. Worker and job are separate records,
     // reached through their relations.
     defaultLeaf: "status",
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     requiredComponent: COMPONENT,
     sampleSets: T631_INTERVIEW_SAMPLE_SETS,
     // No page of its own: the job's interviews tab lists it, reached
@@ -100,7 +100,7 @@ registerTokenPlugin({
     entityTable: workers,
     entityFields: WORKER_EXTRA_FIELDS,
     defaultLeaf: WORKER_DEFAULT_LEAF,
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     requiredComponent: COMPONENT,
   },
   async resolve(entity, _args, ctx) {
@@ -126,7 +126,7 @@ registerTokenPlugin({
     inputTypes: [T631_INTERVIEW_ENTITY_KIND],
     outputType: "dispatch_job",
     entityTable: dispatchJobs,
-    hiddenFromCatalog: true,
+    hiddenFromPicker: true,
     requiredComponent: COMPONENT,
   },
   async resolve(entity, _args, ctx) {

@@ -38,7 +38,13 @@ export function isComposeScopeName(value: unknown): value is ComposeScopeName {
   );
 }
 
-/** The media a compose screen offers. Keys of `COMPOSE_CHANNEL_FIELDS`. */
+/**
+ * The media a compose screen offers — a subset of the media declared in
+ * `shared/delivery-fields.ts`, which is where the FIELDS of each of
+ * them live. A compose screen authors only some of a medium's fields
+ * (it never writes an in-app link, for instance), so what it offers is
+ * decided by the screen, never by a second declaration of the medium.
+ */
 export const COMPOSE_CHANNELS = ["email", "sms", "postal", "inapp"] as const;
 
 export type ComposeChannel = (typeof COMPOSE_CHANNELS)[number];

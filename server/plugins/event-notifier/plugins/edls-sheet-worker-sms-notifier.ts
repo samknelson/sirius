@@ -598,9 +598,9 @@ export const edlsSheetWorkerSmsNotifier: EventNotifierPlugin = {
     const link = workerScheduleUrl(resolved.accessUuid);
     if (resolved.kind === "removed") {
       const { sheet } = payloadOf(ctx);
-      return { message: `${removedSentence(sheet.ymd)} ${link}` };
+      return { body: `${removedSentence(sheet.ymd)} ${link}` };
     }
-    return { message: `${SENTENCE} ${link}` };
+    return { body: `${SENTENCE} ${link}` };
   },
 
   /**
