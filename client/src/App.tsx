@@ -345,9 +345,9 @@ const EmailConfigPage = lazy(() => import("@/pages/config/email"));
 const PostalConfigPage = lazy(() => import("@/pages/config/postal"));
 const LogsPage = lazy(() => import("@/pages/config/logs"));
 const ComponentsConfigPage = lazy(() => import("@/pages/config/components"));
-const GatewayTestPage = lazy(() => import("@/pages/config/ledger/payment-gateway-test"));
+const GatewayTestPage = lazy(() => import("@/pages/config/ledger/wc-vendor-test"));
 const LedgerSettingsPage = lazy(() => import("@/pages/config/ledger/settings"));
-const PaymentTypesPage = lazy(() => import("@/pages/config/ledger/payment-gateway-payment-types"));
+const PaymentTypesPage = lazy(() => import("@/pages/config/ledger/wc-vendor-payment-types"));
 const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-types"));
 // Hidden, nav-less generic plugin-config admin (Task #353 foundation). Not in
 // any navigation registry; reachable only via this route for verification.
@@ -3706,7 +3706,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ledger/payment-gateways/test">
+      <Route path="/config/ledger/wc-vendors/test">
         <ProtectedRoute policy="admin" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -3716,7 +3716,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ledger/payment-gateways/payment-types">
+      <Route path="/config/ledger/wc-vendors/payment-types">
         <ProtectedRoute policy="admin" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>

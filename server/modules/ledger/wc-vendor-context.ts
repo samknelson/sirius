@@ -1,77 +1,77 @@
 import { storage } from "../../storage";
-import { getPaymentGatewayPlugin } from "../../plugins/ledger/payment-gateway";
+import { getWcVendorPlugin } from "../../plugins/ledger/wc-vendors";
 import type {
-  GatewayOperation,
-  GatewayOperationArgs,
-  GatewayOperationName,
-  GatewayOperationResult,
-  PaymentGatewayContext,
-  PaymentGatewayPlugin,
-} from "../../plugins/ledger/payment-gateway/types";
+  WcVendorOperation,
+  WcVendorOperationArgs,
+  WcVendorOperationName,
+  WcVendorOperationResult,
+  WcVendorContext,
+  WcVendorPlugin,
+} from "../../plugins/ledger/wc-vendors/types";
 import type { PluginConfig } from "@shared/schema";
 import {
   getEnvironmentVariable,
   registerEnvironmentVariable,
 } from "../../config/env-registry";
 import {
-  GatewayError,
-  GatewayRequestError,
-} from "../../plugins/ledger/payment-gateway/errors";
+  WcVendorError,
+  WcVendorRequestError,
+} from "../../plugins/ledger/wc-vendors/errors";
 
 /**
  * A gateway config resolved into everything the generic payment-methods routes
  * need to talk to the provider: the config row, the registered plugin, and a
  * ready-to-use provider context carrying the per-config API key.
  */
-export interface ResolvedGateway {
+export interface ResolvedWcVendor {
   config: PluginConfig;
-  plugin: PaymentGatewayPlugin;
-  context: PaymentGatewayContext;
+  plugin: WcVendorPlugin;
+  context: WcVendorContext;
 }
 
 /** The config, plugin or credential could not be resolved. */
-export class GatewayResolutionError extends GatewayError {
+export class WcVendorResolutionError extends WcVendorError {
   constructor(status: number, message: string) {
     super(status, message);
-    this.name = "GatewayResolutionError";
+    this.name = "WcVendorResolutionError";
   }
 }
 
 // Raised inside the kind, caught out here: a route wants one name for "the
 // provider was not reached", whatever the reason.
-export { GatewayError, GatewayRequestError };
+export { WcVendorError, WcVendorRequestError };
 
 /**
- * Turn a gateway config id into a {@link ResolvedGateway}. Resolves the
+ * Turn a gateway config id into a {@link ResolvedWcVendor}. Resolves the
  * provider API key from the secret the config names (`data.secretName`, read
  * via the env registry), so multiple configs (e.g. two Stripe accounts)
  * each use their own credentials.
  */
-export async function resolveGateway(
+export async function resolveWcVendor(
   gatewayConfigId: string,
-): Promise<ResolvedGateway> {
+): Promise<ResolvedWcVendor> {
   const config = await storage.pluginConfigs.get(gatewayConfigId);
-  if (!config || config.pluginKind !== "payment-gateway") {
-    throw new GatewayResolutionError(404, "Payment gateway configuration not found");
+  if (!config || config.pluginKind !== "wc-vendors") {
+    throw new WcVendorResolutionError(404, "Vendor configuration not found");
   }
   if (!config.enabled) {
-    throw new GatewayResolutionError(409, "Payment gateway configuration is disabled");
+    throw new WcVendorResolutionError(409, "Vendor configuration is disabled");
   }
 
-  const plugin = getPaymentGatewayPlugin(config.pluginId);
+  const plugin = getWcVendorPlugin(config.pluginId);
   if (!plugin) {
-    throw new GatewayResolutionError(
+    throw new WcVendorResolutionError(
       404,
-      `No payment gateway plugin registered for '${config.pluginId}'`,
+      `No vendor plugin registered for '${config.pluginId}'`,
     );
   }
 
   const data = (config.data ?? {}) as Record<string, unknown>;
   const secretName = typeof data.secretName === "string" ? data.secretName : "";
   if (!secretName) {
-    throw new GatewayResolutionError(
+    throw new WcVendorResolutionError(
       503,
-      "Payment gateway configuration does not name a credential secret",
+      "Vendor configuration does not name a credential secret",
     );
   }
 
@@ -81,16 +81,16 @@ export async function resolveGateway(
   // request and the credential is read here each time, never cached.
   registerEnvironmentVariable({
     name: secretName,
-    description: `Payment-gateway credential secret named by config '${config.siriusId ?? config.id}'.`,
+    description: `Vendor credential secret named by config '${config.siriusId ?? config.id}'.`,
     secret: true,
     category: "ledger",
     changeTakesEffect: "immediate",
   });
   const apiKey = getEnvironmentVariable(secretName);
   if (!apiKey && plugin.requiresSecret !== false) {
-    throw new GatewayResolutionError(
+    throw new WcVendorResolutionError(
       503,
-      `Payment gateway credential secret '${secretName}' is not set`,
+      `Vendor credential secret '${secretName}' is not set`,
     );
   }
 
@@ -106,22 +106,22 @@ export async function resolveGateway(
  * than crashing on a missing function.
  *
  * The web client framework is NOT applied here. A registered plugin's handlers
- * are already wrapped in it (see `registerPaymentGatewayPlugin`), so the
+ * are already wrapped in it (see `registerWcVendorPlugin`), so the
  * maintenance refusal, the writable-database gate and the usage count hold for
  * every route into the handler, not just this one. What this owns is the
  * resolved credential — which the handler reads and nothing else sees — and
  * the refusal below.
  */
-export async function gatewayRequest<N extends GatewayOperationName>(
-  resolved: ResolvedGateway,
+export async function wcVendorRequest<N extends WcVendorOperationName>(
+  resolved: ResolvedWcVendor,
   name: N,
-  args: GatewayOperationArgs<N>,
-): Promise<GatewayOperationResult<N>> {
-  const operation: GatewayOperation<N> | undefined = resolved.plugin.operations[name];
+  args: WcVendorOperationArgs<N>,
+): Promise<WcVendorOperationResult<N>> {
+  const operation: WcVendorOperation<N> | undefined = resolved.plugin.operations[name];
   if (!operation) {
-    throw new GatewayRequestError(
+    throw new WcVendorRequestError(
       501,
-      `Payment gateway '${resolved.plugin.name}' does not support '${name}'`,
+      `Vendor '${resolved.plugin.name}' does not support '${name}'`,
     );
   }
   return operation.run(resolved.context, args);

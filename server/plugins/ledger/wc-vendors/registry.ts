@@ -4,22 +4,22 @@ import {
   wcUncachedRequest,
 } from "../../../services/webclient/uncached";
 import { isMaintenanceModeError } from "../../../services/maintenance-flag";
-import { GatewayRequestError } from "./errors";
+import { WcVendorRequestError } from "./errors";
 import type {
-  GatewayOperation,
-  GatewayOperationMap,
-  GatewayOperationName,
-  GatewayOperationResult,
-  PaymentGatewayPlugin,
-  PaymentGatewayManifestEntry,
+  WcVendorOperation,
+  WcVendorOperationMap,
+  WcVendorOperationName,
+  WcVendorOperationResult,
+  WcVendorPlugin,
+  WcVendorManifestEntry,
 } from "./types";
 import type { WcAnswer, WcService } from "../../../services/webclient/types";
 
-export const paymentGatewayRegistry = new PluginRegistry<
-  PaymentGatewayPlugin,
-  PaymentGatewayManifestEntry
+export const wcVendorRegistry = new PluginRegistry<
+  WcVendorPlugin,
+  WcVendorManifestEntry
 >({
-  kind: "payment-gateway",
+  kind: "wc-vendors",
   getMetadata: (p) => ({
     id: p.id,
     name: p.name,
@@ -43,7 +43,7 @@ export const paymentGatewayRegistry = new PluginRegistry<
  * The handler is replaced rather than merely called from somewhere that knows
  * to use the framework, because "everything goes through the framework" has to
  * be true of the object, not of its callers. A registered plugin is handed out
- * by `getPaymentGatewayPlugin` to anything that asks, and a rule that only
+ * by `getWcVendorPlugin` to anything that asks, and a rule that only
  * holds while callers remember it is not a rule — the maintenance refusal in
  * particular is a promise about the whole process, and one forgetful caller
  * would quietly make it false. After this, reaching into `operations` and
@@ -53,8 +53,8 @@ export const paymentGatewayRegistry = new PluginRegistry<
 function onFramework(
   service: WcService,
   requestType: string,
-  declared: GatewayOperation,
-): GatewayOperation {
+  declared: WcVendorOperation,
+): WcVendorOperation {
   return {
     ...declared,
     async run(ctx, args) {
@@ -91,9 +91,9 @@ function onFramework(
       if (error !== undefined) {
         // The provider was never asked, because the answer could not be
         // recorded. The framework's own words, unedited.
-        throw new GatewayRequestError(503, error);
+        throw new WcVendorRequestError(503, error);
       }
-      return value as GatewayOperationResult<GatewayOperationName>;
+      return value as WcVendorOperationResult<WcVendorOperationName>;
     },
   };
 }
@@ -120,15 +120,15 @@ function onFramework(
  * either change something at the vendor or return a payload — customer and
  * payment-method detail — with no business in a browsable cache table.
  */
-export function registerPaymentGatewayPlugin(plugin: PaymentGatewayPlugin): void {
+export function registerWcVendorPlugin(plugin: WcVendorPlugin): void {
   const service = plugin.service;
   if (!service) {
-    // No outside system; see PaymentGatewayPlugin.service.
-    paymentGatewayRegistry.register(plugin);
+    // No outside system; see WcVendorPlugin.service.
+    wcVendorRegistry.register(plugin);
     return;
   }
 
-  const operations: Record<string, GatewayOperation> = {};
+  const operations: Record<string, WcVendorOperation> = {};
   for (const [requestType, declared] of Object.entries(plugin.operations)) {
     if (!declared) continue;
     registerUncachedWcRequest({
@@ -140,14 +140,14 @@ export function registerPaymentGatewayPlugin(plugin: PaymentGatewayPlugin): void
     operations[requestType] = onFramework(service, requestType, declared);
   }
 
-  paymentGatewayRegistry.register({
+  wcVendorRegistry.register({
     ...plugin,
-    operations: operations as GatewayOperationMap,
+    operations: operations as WcVendorOperationMap,
   });
 }
 
-export function getPaymentGatewayPlugin(
+export function getWcVendorPlugin(
   id: string,
-): PaymentGatewayPlugin | undefined {
-  return paymentGatewayRegistry.get(id);
+): WcVendorPlugin | undefined {
+  return wcVendorRegistry.get(id);
 }

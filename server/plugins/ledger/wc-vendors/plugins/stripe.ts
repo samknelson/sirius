@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import type {
-  PaymentGatewayPlugin,
-  PaymentGatewayContext,
+  WcVendorPlugin,
+  WcVendorContext,
   PaymentTypeOption,
   GatewayCustomerResult,
   GatewaySetupSession,
@@ -10,20 +10,20 @@ import type {
   GatewayConnectionTest,
   GatewayCustomerDetails,
 } from "../types";
-import { registerPaymentGatewayPlugin } from "../registry";
+import { registerWcVendorPlugin } from "../registry";
 
 /** Build a Stripe client from the per-config resolved secret. */
-function client(ctx: PaymentGatewayContext): Stripe {
+function client(ctx: WcVendorContext): Stripe {
   return new Stripe(ctx.apiKey);
 }
 
 /** Provider config data may carry a publishable key + payment types. */
-function configData(ctx: PaymentGatewayContext): Record<string, unknown> {
+function configData(ctx: WcVendorContext): Record<string, unknown> {
   const data = ctx.config.data;
   return data && typeof data === "object" ? (data as Record<string, unknown>) : {};
 }
 
-function dashboardBaseUrl(ctx: PaymentGatewayContext): string {
+function dashboardBaseUrl(ctx: WcVendorContext): string {
   return ctx.apiKey.startsWith("sk_test_")
     ? "https://dashboard.stripe.com/test"
     : "https://dashboard.stripe.com";
@@ -88,7 +88,7 @@ const SETUP_ELIGIBLE_TYPE_IDS = new Set(
 );
 
 /**
- * Stripe payment gateway. Each `payment-gateway` config row of this plugin
+ * Stripe payment gateway. Each `wc-vendors` config row of this plugin
  * names the secret holding the Stripe API credentials (stored as
  * `data.secretName`; resolved from the environment at use-time). Gated on the
  * existing `ledger.stripe` component. Provider-only — no storage/DB access.
@@ -96,7 +96,7 @@ const SETUP_ELIGIBLE_TYPE_IDS = new Set(
 // Not exported: the only supported handle on this plugin is the one the registry
 // hands out, whose operations are already on the web client framework. An
 // exported literal would be the same plugin with the refusal missing.
-const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
+const stripeWcVendorPlugin: WcVendorPlugin = {
   id: "stripe",
   name: "Stripe",
   description:
@@ -362,4 +362,4 @@ const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
   },
 };
 
-registerPaymentGatewayPlugin(stripePaymentGatewayPlugin);
+registerWcVendorPlugin(stripeWcVendorPlugin);

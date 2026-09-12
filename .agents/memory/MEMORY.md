@@ -153,3 +153,4 @@
 - [Shared catalog framework](catalog-framework.md) — catalogs are serializable code-supplied offers; executable registries may be their declaration source; derive on read, offer≠vocabulary.
 - [Application-managed data columns](application-managed-data-columns.md) — generic `data` columns are extension space for site-specific/features; core admin forms must not display, edit, or overwrite them.
 - [Studio template library route](studio-template-library-route.md) — Template Studio reuses the staff CRUD list with medium/context filters; 401/403 hides Templates, never add a parallel studio route.
+- [A plugin kind id is stored data](plugin-kind-id-is-data.md) — the id IS the plugin_kind discriminator + subsidiary table name, so renaming one is a data migration; drift gate matches FK/PK/unique STRUCTURALLY, so declared names can be fiction.

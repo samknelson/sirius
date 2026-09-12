@@ -9,7 +9,7 @@ import { loadStripe, type StripeElementsOptions } from "@stripe/stripe-js";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { PaymentGatewayAddProps } from "../registry";
+import type { WcVendorAddProps } from "../registry";
 
 interface StripeFormProps {
   onSuccess: (methodToken: string) => void;
@@ -85,7 +85,7 @@ function StripeForm({ onSuccess, onCancel }: StripeFormProps) {
 
 /**
  * Stripe "add a payment method" component, auto-discovered by the
- * payment-gateway client registry (id `stripe:StripeAddPaymentMethod`). The
+ * wc-vendors client registry (id `stripe:StripeAddPaymentMethod`). The
  * publishable key arrives from the server via `publicConfig.publishableKey`, so
  * no provider-specific env var is read on the client.
  */
@@ -94,7 +94,7 @@ export function StripeAddPaymentMethod({
   publicConfig,
   onSuccess,
   onCancel,
-}: PaymentGatewayAddProps) {
+}: WcVendorAddProps) {
   const publishableKey =
     typeof publicConfig.publishableKey === "string"
       ? publicConfig.publishableKey

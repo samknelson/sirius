@@ -24,7 +24,7 @@ import { pluginSearch, pluginConfigsQueryKey } from "@/plugins/_core/manifest";
 
 const NO_GATEWAY = "none";
 
-interface PaymentGatewayConfig {
+interface WcVendorConfig {
   id: string;
   name: string;
 }
@@ -43,9 +43,9 @@ function AccountEditContent() {
     account.gatewayConfigId ?? NO_GATEWAY
   );
 
-  const { data: gatewayConfigs = [], isLoading: gatewaysLoading } = useQuery<PaymentGatewayConfig[]>({
-    queryKey: [...pluginConfigsQueryKey("payment-gateway"), "search"],
-    queryFn: () => pluginSearch<PaymentGatewayConfig>("payment-gateway"),
+  const { data: gatewayConfigs = [], isLoading: gatewaysLoading } = useQuery<WcVendorConfig[]>({
+    queryKey: [...pluginConfigsQueryKey("wc-vendors"), "search"],
+    queryFn: () => pluginSearch<WcVendorConfig>("wc-vendors"),
   });
 
   const updateAccountMutation = useMutation({

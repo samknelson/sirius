@@ -6,24 +6,24 @@ import {
   baseSearchSchemaShape,
 } from "../../_core";
 import { logger } from "../../../logger";
-import { paymentGatewayRegistry } from "./registry";
+import { wcVendorRegistry } from "./registry";
 
 export {
-  paymentGatewayRegistry,
-  registerPaymentGatewayPlugin,
-  getPaymentGatewayPlugin,
+  wcVendorRegistry,
+  registerWcVendorPlugin,
+  getWcVendorPlugin,
 } from "./registry";
 export type * from "./types";
 
 let kindRegistered = false;
-export function registerPaymentGatewayPluginKind(): void {
+export function registerWcVendorPluginKind(): void {
   if (kindRegistered) return;
   registerPluginKind({
-    kind: "payment-gateway",
-    registry: paymentGatewayRegistry,
-    label: "Payment Gateways",
+    kind: "wc-vendors",
+    registry: wcVendorRegistry,
+    label: "Webclient Vendors",
     description:
-      "Payment gateway providers (e.g. Stripe). Each configuration names the secret that holds its API credentials.",
+      "Outside systems this site calls through the web client framework (e.g. Stripe). Each configuration names the secret that holds its API credentials.",
     // Mirror the charge kind's gating: ledger component + admin policy.
     requiredComponent: "ledger",
     requiredPolicy: "admin",
@@ -37,18 +37,18 @@ export function registerPaymentGatewayPluginKind(): void {
         ? plugin.validateConfig((config ?? {}) as Record<string, unknown>)
         : { valid: true },
   });
-  // Payment-gateway configs carry no relational dimensions of their own, but
-  // they DO get a subsidiary row in `plugin_configs_payment_gateway`. That
+  // Webclient-vendor configs carry no relational dimensions of their own, but
+  // they DO get a subsidiary row in `plugin_configs_wc_vendors`. That
   // table has no columns yet — it exists purely as a type-safe FK target so
   // other tables (e.g. `ledger_accounts.gateway_config_id`) can reference a
-  // specific gateway config instead of the polymorphic base. The adapter's
+  // specific vendor config instead of the polymorphic base. The adapter's
   // `toRows` emits an empty `subsidiary` object so the generic create/update
   // path inserts the row; a boot-time backfill covers pre-existing configs.
   // The editable `secretName` (the NAME of the secret holding the provider's
   // API credentials, never the value) still rides in `data`, mirroring how the
   // trust-eligibility adapter relocates `appliesTo` into `data`.
   registerPluginConfigAdapter({
-    pluginKind: "payment-gateway",
+    pluginKind: "wc-vendors",
     configSchema: z.object({
       ...baseConfigSchemaShape,
       secretName: z.string().min(1, "secretName is required"),
@@ -67,7 +67,7 @@ export function registerPaymentGatewayPluginKind(): void {
     }),
     toRows: (input) => ({
       base: {
-        pluginKind: "payment-gateway",
+        pluginKind: "wc-vendors",
         pluginId: input.pluginId,
         enabled: input.enabled,
         name: input.name,
@@ -86,7 +86,7 @@ export function registerPaymentGatewayPluginKind(): void {
       },
       // Empty subsidiary — the FK-target table has no columns yet. Returning an
       // (empty) object is what makes the generic CRUD path call
-      // `upsertSubsidiary("payment-gateway", { id })`, so every config has a row
+      // `upsertSubsidiary("wc-vendors", { id })`, so every config has a row
       // and stays visible through the inner-joined generic search.
       subsidiary: {},
     }),
@@ -109,17 +109,17 @@ export function registerPaymentGatewayPluginKind(): void {
 }
 
 /**
- * Idempotently ensure every payment-gateway config has a subsidiary row in
- * `plugin_configs_payment_gateway`. The generic search inner-joins that table,
+ * Idempotently ensure every wc-vendors config has a subsidiary row in
+ * `plugin_configs_wc_vendors`. The generic search inner-joins that table,
  * so a config without a row would silently vanish from listings. New configs
  * get their row from the adapter's `toRows`; this backfill covers configs that
  * existed before the subsidiary was introduced (e.g. Stripe). Runs at boot
  * after the kind is registered. Re-running is a no-op.
  */
-export async function backfillPaymentGatewaySubsidiaries(): Promise<void> {
+export async function backfillWcVendorSubsidiaries(): Promise<void> {
   const { storage } = await import("../../../storage");
   const { withFrameworkWrite } = await import("../../../middleware/request-context");
-  const configs = await storage.pluginConfigs.getByKind("payment-gateway");
+  const configs = await storage.pluginConfigs.getByKind("wc-vendors");
   for (const cfg of configs) {
     try {
       const envelope = await storage.pluginConfigs.getWithSubsidiary(cfg.id);
@@ -127,14 +127,14 @@ export async function backfillPaymentGatewaySubsidiaries(): Promise<void> {
       // Backfilling a missing subsidiary row is the framework's own doing
       // (see `withFrameworkWrite`): no person, and no audit entry per boot.
       await withFrameworkWrite(() =>
-        storage.pluginConfigs.upsertSubsidiary("payment-gateway", { id: cfg.id }),
+        storage.pluginConfigs.upsertSubsidiary("wc-vendors", { id: cfg.id }),
       );
-      logger.info(`Backfilled payment-gateway subsidiary for config ${cfg.id}`, {
-        service: "payment-gateway-plugins",
+      logger.info(`Backfilled wc-vendors subsidiary for config ${cfg.id}`, {
+        service: "wc-vendor-plugins",
       });
     } catch (error) {
-      logger.error(`Failed to backfill payment-gateway subsidiary for config ${cfg.id}`, {
-        service: "payment-gateway-plugins",
+      logger.error(`Failed to backfill wc-vendors subsidiary for config ${cfg.id}`, {
+        service: "wc-vendor-plugins",
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -171,7 +171,7 @@ export async function backfillPaymentTypesFromGlobal(): Promise<void> {
     // The legacy variable was Stripe-specific, so only seed Stripe configs that
     // do not already carry their own list. Other providers must not inherit a
     // Stripe payment-type list.
-    const configs = (await storage.pluginConfigs.getByKind("payment-gateway"))
+    const configs = (await storage.pluginConfigs.getByKind("wc-vendors"))
       .filter((cfg) => cfg.pluginId === "stripe");
     for (const cfg of configs) {
       const data = (cfg.data ?? {}) as Record<string, unknown>;
@@ -188,12 +188,12 @@ export async function backfillPaymentTypesFromGlobal(): Promise<void> {
         );
         logger.info(
           `Backfilled payment types onto gateway config ${cfg.id} from legacy global variable`,
-          { service: "payment-gateway-plugins" },
+          { service: "wc-vendor-plugins" },
         );
       } catch (error) {
         allSucceeded = false;
         logger.error(`Failed to backfill payment types for config ${cfg.id}`, {
-          service: "payment-gateway-plugins",
+          service: "wc-vendor-plugins",
           error: error instanceof Error ? error.message : String(error),
         });
       }
@@ -206,14 +206,14 @@ export async function backfillPaymentTypesFromGlobal(): Promise<void> {
   if (!allSucceeded) {
     logger.warn(
       "Keeping legacy stripe_payment_methods variable: some configs failed to backfill; will retry on next boot",
-      { service: "payment-gateway-plugins" },
+      { service: "wc-vendor-plugins" },
     );
     return;
   }
 
   await storage.variables.delete(variable.id);
   logger.info("Retired legacy stripe_payment_methods global variable", {
-    service: "payment-gateway-plugins",
+    service: "wc-vendor-plugins",
   });
 }
 

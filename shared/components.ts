@@ -161,14 +161,14 @@ export const componentRegistry: ComponentDefinition[] = [
     description: "Integration with the Stripe payment processing system",
     enabledByDefault: false,
     category: "ledger",
-    // Seed a default payment-gateway config naming the secret that holds the
+    // Seed a default wc-vendors config naming the secret that holds the
     // Stripe API credentials. Materialized on enable (and at boot for an
     // already-enabled component); admin edits to name/ordering/data are
     // preserved on re-enable. Mirrors how internationalization.weglot seeds
     // its client-injection rows.
     pluginConfigs: [
       {
-        pluginKind: "payment-gateway",
+        pluginKind: "wc-vendors",
         pluginId: "stripe",
         siriusId: "auto.ledger.stripe.default",
         name: "Stripe (Default)",
@@ -183,13 +183,13 @@ export const componentRegistry: ComponentDefinition[] = [
       "A fake payment gateway for exercising the full payment-method lifecycle without real provider credentials. Accepts a hand-typed test card and stores only its brand, expiry, and last 4 digits.",
     enabledByDefault: false,
     category: "ledger",
-    // Seed a default payment-gateway config. It names a DUMMY_GATEWAY secret to
+    // Seed a default wc-vendors config. It names a DUMMY_GATEWAY secret to
     // exercise the secret-naming path, but the dummy plugin opts out of
     // actually requiring the secret to be set (requiresSecret: false on the
     // plugin), so the gateway works whether or not the env var exists.
     pluginConfigs: [
       {
-        pluginKind: "payment-gateway",
+        pluginKind: "wc-vendors",
         pluginId: "dummy",
         siriusId: "auto.ledger.dummy_gateway.default",
         name: "Dummy (Default)",

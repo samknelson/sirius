@@ -847,8 +847,8 @@ export const ledgerPaymentMethods = pgTable("ledger_paymentmethods", {
   entityType: text("entity_type").notNull(),
   entityId: varchar("entity_id").notNull(),
   paymentMethod: text("payment_method").notNull(),
-  // Required link to the payment-gateway plugin config this method belongs to.
-  // FK targets the payment-gateway subsidiary (a type-safe FK target) rather
+  // Required link to the wc-vendors plugin config this method belongs to.
+  // FK targets the wc-vendors subsidiary (a type-safe FK target) rather
   // than the polymorphic plugin_configs id. NOT NULL — a payment method is
   // unusable without knowing its gateway. ON DELETE RESTRICT prevents deleting
   // a gateway config that still has payment methods attached.
@@ -859,9 +859,9 @@ export const ledgerPaymentMethods = pgTable("ledger_paymentmethods", {
   isDefault: boolean("is_default").default(false).notNull(),
 }, (table) => [
   foreignKey({
-    name: "ledger_paymentmethods_gateway_config_id_plugin_configs_payment_",
+    name: "ledger_paymentmethods_gateway_config_id_fkey",
     columns: [table.gatewayConfigId],
-    foreignColumns: [pluginConfigsPaymentGateway.id],
+    foreignColumns: [pluginConfigsWcVendors.id],
   }).onDelete("restrict"),
 ]);
 
@@ -872,7 +872,7 @@ export const ledgerGatewayCustomers = pgTable("ledger_gateway_customers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   entityType: text("entity_type").notNull(),
   entityId: varchar("entity_id").notNull(),
-  // FK targets the payment-gateway subsidiary (a type-safe FK target) rather
+  // FK targets the wc-vendors subsidiary (a type-safe FK target) rather
   // than the polymorphic plugin_configs base. ON DELETE RESTRICT mirrors the
   // payment-method link: a gateway config with customer mappings cannot be
   // deleted out from under them.
@@ -887,9 +887,9 @@ export const ledgerGatewayCustomers = pgTable("ledger_gateway_customers", {
     table.gatewayConfigId,
   ),
   fkGatewayConfigId: foreignKey({
-    name: "ledger_gateway_customers_gateway_config_id_plugin_configs_payme",
+    name: "ledger_gateway_customers_gateway_config_id_fkey",
     columns: [table.gatewayConfigId],
-    foreignColumns: [pluginConfigsPaymentGateway.id],
+    foreignColumns: [pluginConfigsWcVendors.id],
   }).onDelete("restrict"),
 }));
 
@@ -910,16 +910,16 @@ export const ledgerAccounts = pgTable("ledger_accounts", {
   // Optional external identifier, unique when present. NULLs don't collide
   // under Postgres UNIQUE semantics, so any number of accounts may have none.
   siriusId: varchar("sirius_id").unique(),
-  // Optional link to the payment-gateway plugin config this account uses. The
-  // FK targets the payment-gateway subsidiary (a type-safe FK target) rather
+  // Optional link to the wc-vendors plugin config this account uses. The
+  // FK targets the wc-vendors subsidiary (a type-safe FK target) rather
   // than the polymorphic plugin_configs base, and is ON DELETE SET NULL so
   // deleting the gateway config simply unlinks the account.
   gatewayConfigId: varchar("gateway_config_id"),
 }, (table) => [
   foreignKey({
-    name: "ledger_accounts_gateway_config_id_plugin_configs_payment_gatewa",
+    name: "ledger_accounts_gateway_config_id_fkey",
     columns: [table.gatewayConfigId],
-    foreignColumns: [pluginConfigsPaymentGateway.id],
+    foreignColumns: [pluginConfigsWcVendors.id],
   }).onDelete("set null"),
 ]);
 
@@ -2396,21 +2396,21 @@ export const insertPluginConfigQuicksearchSchema = createInsertSchema(pluginConf
 export type InsertPluginConfigQuicksearch = z.infer<typeof insertPluginConfigQuicksearchSchema>;
 export type PluginConfigQuicksearch = typeof pluginConfigsQuicksearch.$inferSelect;
 
-// Payment-gateway subsidiary — exists primarily as a type-safe FK target so
+// Webclient-vendor subsidiary — exists primarily as a type-safe FK target so
 // other tables (e.g. ledger_accounts.gateway_config_id) can reference a
-// specific payment-gateway config without pointing at the polymorphic
+// specific wc-vendors config without pointing at the polymorphic
 // plugin_configs base. It carries no columns of its own yet beyond the shared
-// id FK (meaningful columns may be added later). Every payment-gateway config
+// id FK (meaningful columns may be added later). Every wc-vendors config
 // gets exactly one row — created by the adapter's toRows on write and by an
 // idempotent boot-time backfill for pre-existing configs — so the generic
 // inner-joined search keeps returning them.
-export const pluginConfigsPaymentGateway = pgTable("plugin_configs_payment_gateway", {
+export const pluginConfigsWcVendors = pgTable("plugin_configs_wc_vendors", {
   id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
 });
 
-export const insertPluginConfigPaymentGatewaySchema = createInsertSchema(pluginConfigsPaymentGateway);
-export type InsertPluginConfigPaymentGateway = z.infer<typeof insertPluginConfigPaymentGatewaySchema>;
-export type PluginConfigPaymentGateway = typeof pluginConfigsPaymentGateway.$inferSelect;
+export const insertPluginConfigWcVendorsSchema = createInsertSchema(pluginConfigsWcVendors);
+export type InsertPluginConfigWcVendors = z.infer<typeof insertPluginConfigWcVendorsSchema>;
+export type PluginConfigWcVendors = typeof pluginConfigsWcVendors.$inferSelect;
 
 // Event-notifier subsidiary — hoists the per-config "active media" selection
 // out of the opaque settings blob into a real, filterable envelope column.

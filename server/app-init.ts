@@ -24,7 +24,7 @@ import type { ResolvedServiceRoles } from "./services/service-roles";
 // Side-effect imports: trigger plugin / provider / access-policy registration.
 import "./plugins/ledger/charge";
 import { registerWmbChargePluginListener } from "./plugins/ledger/charge";
-import "./plugins/ledger/payment-gateway";
+import "./plugins/ledger/wc-vendors";
 import "./plugins/trust/eligibility";
 import "./services/comm/providers";
 
@@ -402,18 +402,18 @@ export async function bootstrapApp(
   const { registerChargePluginKind } = await import("./plugins/ledger/charge");
   const { registerTrustEligibilityKind } = await import("./plugins/trust/eligibility");
   const {
-    registerPaymentGatewayPluginKind,
-    backfillPaymentGatewaySubsidiaries,
+    registerWcVendorPluginKind,
+    backfillWcVendorSubsidiaries,
     backfillPaymentTypesFromGlobal,
-  } = await import("./plugins/ledger/payment-gateway");
+  } = await import("./plugins/ledger/wc-vendors");
   const { initializeWebServiceSystem } = await import("./plugins/web-service");
   registerChargePluginKind();
   registerTrustEligibilityKind();
-  registerPaymentGatewayPluginKind();
+  registerWcVendorPluginKind();
   initializeWebServiceSystem();
-  // Every payment-gateway config needs a subsidiary row (the generic search
+  // Every wc-vendors config needs a subsidiary row (the generic search
   // inner-joins it). Backfill pre-existing configs so they don't vanish.
-  await backfillPaymentGatewaySubsidiaries();
+  await backfillWcVendorSubsidiaries();
   logger.info("Payment-gateway subsidiaries backfilled", { source: "startup" });
 
   // Wire the shared plugin-config cache's invalidation subscription before any

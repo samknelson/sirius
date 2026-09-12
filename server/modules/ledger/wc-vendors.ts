@@ -4,38 +4,38 @@ import {
   requireAccess,
   getComponentChecker,
 } from "../../services/access-policy-evaluator";
-import { getPaymentGatewayPlugin } from "../../plugins/ledger/payment-gateway";
+import { getWcVendorPlugin } from "../../plugins/ledger/wc-vendors";
 import {
-  resolveGateway,
-  gatewayRequest,
-  GatewayError,
-} from "./payment-gateway-context";
+  resolveWcVendor,
+  wcVendorRequest,
+  WcVendorError,
+} from "./wc-vendor-context";
 import { isMaintenanceModeError } from "../../services/maintenance-flag";
 
 /**
- * Provider-generic payment-gateway admin routes.
+ * Provider-generic wc-vendors admin routes.
  *
  * Exposes a connection test keyed by a gateway CONFIG id, so any provider — and
  * any number of configs (e.g. two Stripe accounts) — can be tested
  * independently using that config's own credentials. All provider knowledge
- * lives behind the payment-gateway plugin; this module stays provider-agnostic.
+ * lives behind the wc-vendors plugin; this module stays provider-agnostic.
  *
  * Access is admin-gated, plus the resolved plugin's `requiredComponent` is
  * enforced on top. Nothing here hardcodes `stripe` or `ledger.stripe`.
  */
-export function registerLedgerPaymentGatewayRoutes(app: Express): void {
-  const base = "/api/ledger/payment-gateways";
+export function registerLedgerWcVendorRoutes(app: Express): void {
+  const base = "/api/ledger/wc-vendors";
 
   // List the gateway configs available to test: enabled configs whose plugin is
   // registered and whose required component (if any) is enabled.
   app.get(base, requireAccess("admin"), async (_req: Request, res: Response) => {
     try {
-      const configs = await storage.pluginConfigs.getByKind("payment-gateway");
+      const configs = await storage.pluginConfigs.getByKind("wc-vendors");
       const checker = getComponentChecker();
       const available = [];
       for (const cfg of configs) {
         if (!cfg.enabled) continue;
-        const plugin = getPaymentGatewayPlugin(cfg.pluginId);
+        const plugin = getWcVendorPlugin(cfg.pluginId);
         if (!plugin) continue;
         if (
           plugin.requiredComponent &&
@@ -48,7 +48,7 @@ export function registerLedgerPaymentGatewayRoutes(app: Express): void {
       res.json(available);
     } catch (error: any) {
       res.status(500).json({
-        message: "Failed to fetch payment gateways",
+        message: "Failed to fetch vendors",
         error: error?.message ?? String(error),
       });
     }
@@ -56,22 +56,22 @@ export function registerLedgerPaymentGatewayRoutes(app: Express): void {
 
   // Resolve a gateway config + its registered plugin WITHOUT requiring the
   // credential secret. Editing accepted payment types must work even before a
-  // secret is configured, so we deliberately avoid `resolveGateway` (which
+  // secret is configured, so we deliberately avoid `resolveWcVendor` (which
   // resolves the API key). Also enforces the plugin's required component.
   async function resolveConfigForEditing(configId: string): Promise<
-    | { ok: true; config: Awaited<ReturnType<typeof storage.pluginConfigs.get>>; plugin: NonNullable<ReturnType<typeof getPaymentGatewayPlugin>> }
+    | { ok: true; config: Awaited<ReturnType<typeof storage.pluginConfigs.get>>; plugin: NonNullable<ReturnType<typeof getWcVendorPlugin>> }
     | { ok: false; status: number; message: string }
   > {
     const config = await storage.pluginConfigs.get(configId);
-    if (!config || config.pluginKind !== "payment-gateway") {
-      return { ok: false, status: 404, message: "Payment gateway configuration not found" };
+    if (!config || config.pluginKind !== "wc-vendors") {
+      return { ok: false, status: 404, message: "Vendor configuration not found" };
     }
-    const plugin = getPaymentGatewayPlugin(config.pluginId);
+    const plugin = getWcVendorPlugin(config.pluginId);
     if (!plugin) {
       return {
         ok: false,
         status: 404,
-        message: `No payment gateway plugin registered for '${config.pluginId}'`,
+        message: `No vendor plugin registered for '${config.pluginId}'`,
       };
     }
     if (plugin.requiredComponent) {
@@ -186,7 +186,7 @@ export function registerLedgerPaymentGatewayRoutes(app: Express): void {
     requireAccess("admin"),
     async (req: Request, res: Response) => {
       try {
-        const resolved = await resolveGateway(req.params.configId);
+        const resolved = await resolveWcVendor(req.params.configId);
 
         const component = resolved.plugin.requiredComponent;
         if (component) {
@@ -198,7 +198,7 @@ export function registerLedgerPaymentGatewayRoutes(app: Express): void {
           }
         }
 
-        const result = await gatewayRequest(resolved, "test-connection", undefined);
+        const result = await wcVendorRequest(resolved, "test-connection", undefined);
         res.json(result);
       } catch (error: any) {
         // A refusal is reported in this route's own shape, so the page shows
@@ -208,7 +208,7 @@ export function registerLedgerPaymentGatewayRoutes(app: Express): void {
             .status(error.statusCode)
             .json({ connected: false, error: { message: error.message } });
         }
-        if (error instanceof GatewayError) {
+        if (error instanceof WcVendorError) {
           return res
             .status(error.status)
             .json({ connected: false, error: { message: error.message } });

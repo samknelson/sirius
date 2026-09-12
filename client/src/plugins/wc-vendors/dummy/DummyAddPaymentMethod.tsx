@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { PaymentGatewayAddProps } from "../registry";
+import type { WcVendorAddProps } from "../registry";
 
 /** Luhn checksum validation for a string of digits. */
 function isLuhnValid(digits: string): boolean {
@@ -43,7 +43,7 @@ function formatCardNumber(raw: string): string {
 
 /**
  * Dummy gateway "add a payment method" form, auto-discovered by the client
- * payment-gateway registry (id `dummy:DummyAddPaymentMethod`). It collects a
+ * wc-vendors registry (id `dummy:DummyAddPaymentMethod`). It collects a
  * hand-typed test card, validates the number client-side with the Luhn
  * algorithm, then builds an opaque method token carrying ONLY the brand,
  * expiry, and last 4 digits (plus a random nonce) — the full PAN and the CVC
@@ -53,7 +53,7 @@ function formatCardNumber(raw: string): string {
 export function DummyAddPaymentMethod({
   onSuccess,
   onCancel,
-}: PaymentGatewayAddProps) {
+}: WcVendorAddProps) {
   const { toast } = useToast();
   const [cardNumber, setCardNumber] = useState("");
   const [expiry, setExpiry] = useState("");

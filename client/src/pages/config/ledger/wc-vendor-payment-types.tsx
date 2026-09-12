@@ -35,13 +35,13 @@ interface PaymentTypesResponse {
   selected: string[];
 }
 
-export default function PaymentGatewayPaymentTypesPage() {
+export default function WcVendorPaymentTypesPage() {
   usePageTitle("Payment Types");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const { data: gateways, isLoading: gatewaysLoading } = useQuery<GatewayConfigOption[]>({
-    queryKey: ["/api/ledger/payment-gateways"],
+    queryKey: ["/api/ledger/wc-vendors"],
   });
 
   const [selectedId, setSelectedId] = useState<string>("");
@@ -53,7 +53,7 @@ export default function PaymentGatewayPaymentTypesPage() {
   }, [gateways, selectedId]);
 
   const { data, isLoading, isFetching } = useQuery<PaymentTypesResponse>({
-    queryKey: ["/api/ledger/payment-gateways", selectedId, "payment-types"],
+    queryKey: ["/api/ledger/wc-vendors", selectedId, "payment-types"],
     enabled: !!selectedId,
   });
 
@@ -92,13 +92,13 @@ export default function PaymentGatewayPaymentTypesPage() {
     mutationFn: async (paymentTypes: string[]) => {
       return apiRequest(
         "PUT",
-        `/api/ledger/payment-gateways/${selectedId}/payment-types`,
+        `/api/ledger/wc-vendors/${selectedId}/payment-types`,
         { paymentTypes },
       );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["/api/ledger/payment-gateways", selectedId, "payment-types"],
+        queryKey: ["/api/ledger/wc-vendors", selectedId, "payment-types"],
       });
       toast({
         title: "Payment Types Updated",

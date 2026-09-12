@@ -76,7 +76,7 @@ const OUTBOUND_MODULES = [
   "server/modules/sitespecific/freeman/edls-migrate/client.ts",
   "server/modules/sitespecific/btu/scraper-import.ts",
   "server/plugins/wizards/plugins/btu-cardcheck-scrape-import.ts",
-  "server/plugins/ledger/payment-gateway/plugins/stripe.ts",
+  "server/plugins/ledger/wc-vendors/plugins/stripe.ts",
 ];
 /**
  * How an outbound call is recognized. `fetch` covers Lob, Google, OpenStates,
@@ -85,10 +85,10 @@ const OUTBOUND_MODULES = [
  * `page.goto`/`page.pdf` are how the BTU scrape reaches the site it drives.
  *
  * Stripe has no entry here, and rule 1 is therefore quiet about it. Its plugin
- * does not make its own framework request: the payment-gateway kind declares
+ * does not make its own framework request: the wc-vendors kind declares
  * operations, and registering the plugin wraps every one of its handlers in a
  * framework request. The `wcUncachedRequest` call rule 1 looks for is in
- * `server/plugins/ledger/payment-gateway/registry.ts` by design, and since
+ * `server/plugins/ledger/wc-vendors/registry.ts` by design, and since
  * delegation is only followed within a file, naming a Stripe call marker here
  * would report all nine handlers as off-framework and buy nine exemptions that
  * each say "yes it is".
@@ -268,14 +268,34 @@ function auditUnlistedVendorModules(files: string[]): Violation[] {
   return violations;
 }
 
-/** Rule 0: the list itself has to be real, or the whole check quietly passes. */
+/**
+ * Rule 0: the lists themselves have to be real, or the whole check quietly
+ * passes.
+ *
+ * Both lists are keyed by file path, so moving a module disarms whichever rule
+ * named it — and disarms it silently, because a rule with nothing to scan
+ * reports nothing. `WRAPPED_AT_REGISTRATION` is checked here for the same
+ * reason `OUTBOUND_MODULES` is: a rename that takes rule 3 offline should fail
+ * loudly rather than turn the strongest of the three rules into a no-op.
+ */
 function auditModuleList(files: Set<string>): Violation[] {
-  return OUTBOUND_MODULES.filter((m) => !files.has(m)).map((m) => ({
+  const violations: Violation[] = OUTBOUND_MODULES.filter((m) => !files.has(m)).map((m) => ({
     file: "scripts/dev/check-maintenance-guards.ts",
     line: 1,
     detail: `OUTBOUND_MODULES names "${m}", which no longer exists`,
     remedy: "Remove or rename the entry so the list keeps describing the real outbound modules.",
   }));
+  for (const m of Object.keys(WRAPPED_AT_REGISTRATION)) {
+    if (files.has(m)) continue;
+    violations.push({
+      file: "scripts/dev/check-maintenance-guards.ts",
+      line: 1,
+      detail: `WRAPPED_AT_REGISTRATION names "${m}", which no longer exists`,
+      remedy:
+        "Remove or rename the entry. Leaving it disables rule 3 for that module without any error.",
+    });
+  }
+  return violations;
 }
 
 /** The framework entry points. An outbound call must sit under one of them. */
@@ -386,8 +406,8 @@ const OFF_FRAMEWORK_FUNCTIONS: Record<string, Record<string, string>> = {
  * Modules whose vendor calls are put on the framework by the registrar that
  * registers them, not by a `wcRequest` written in the file.
  *
- * A payment gateway plugin declares handlers in an `operations` map and
- * `registerPaymentGatewayPlugin` registers the plugin with every one of those
+ * A wc-vendors plugin declares handlers in an `operations` map and
+ * `registerWcVendorPlugin` registers the plugin with every one of those
  * handlers already wrapped in a framework request. Rule 1 cannot see that: the
  * `wcUncachedRequest` call is in the registry, and delegation is only followed
  * within a file, so listing the vendor in OUTBOUND_CALLS would report every
@@ -410,7 +430,7 @@ const WRAPPED_AT_REGISTRATION: Record<
     vendorIdentifiers: string[];
   }
 > = {
-  "server/plugins/ledger/payment-gateway/plugins/stripe.ts": {
+  "server/plugins/ledger/wc-vendors/plugins/stripe.ts": {
     handlerContainer: "operations",
     handlerProperty: "run",
     vendorIdentifiers: ["Stripe", "client"],

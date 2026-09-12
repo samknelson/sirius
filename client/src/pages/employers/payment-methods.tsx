@@ -33,9 +33,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  hasPaymentGatewayComponent,
-  resolvePaymentGatewayComponent,
-} from "@/plugins/payment-gateway/registry";
+  hasWcVendorComponent,
+  resolveWcVendorComponent,
+} from "@/plugins/wc-vendors/registry";
 
 const ENTITY_TYPE = "employer";
 const PM_BASE = "/api/ledger/payment-methods";
@@ -279,8 +279,8 @@ function PaymentMethodsContent() {
   };
 
   const AddComponent =
-    addComponentId && hasPaymentGatewayComponent(addComponentId)
-      ? resolvePaymentGatewayComponent(addComponentId)
+    addComponentId && hasWcVendorComponent(addComponentId)
+      ? resolveWcVendorComponent(addComponentId)
       : null;
 
   if (isLoading) {

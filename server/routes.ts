@@ -59,7 +59,7 @@ import { registerWizardRoutes } from "./modules/wizards";
 import { registerWizardDispatcherRoutes } from "./plugins/wizards";
 import { registerFileRoutes } from "./modules/files";
 import { registerLedgerPaymentMethodRoutes } from "./modules/ledger/payment-methods";
-import { registerLedgerPaymentGatewayRoutes } from "./modules/ledger/payment-gateways";
+import { registerLedgerWcVendorRoutes } from "./modules/ledger/wc-vendors";
 import { registerLedgerAccountRoutes } from "./modules/ledger/accounts";
 import { registerLedgerEaRoutes } from "./modules/ledger/ea";
 import { registerLedgerPaymentRoutes } from "./modules/ledger/payments";
@@ -448,8 +448,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register provider-generic ledger payment-method routes
   registerLedgerPaymentMethodRoutes(app);
 
-  // Register provider-generic ledger payment-gateway admin routes (connection test)
-  registerLedgerPaymentGatewayRoutes(app);
+  // Register provider-generic ledger wc-vendors admin routes (connection test)
+  registerLedgerWcVendorRoutes(app);
 
   // Register ledger/accounts routes
   registerLedgerAccountRoutes(app);

@@ -12,13 +12,13 @@
  * HTTP status the route should return. Routes catch the base, so a new reason
  * for not reaching the vendor does not need a new catch clause.
  */
-export class GatewayError extends Error {
+export class WcVendorError extends Error {
   constructor(
     public readonly status: number,
     message: string,
   ) {
     super(message);
-    this.name = "GatewayError";
+    this.name = "WcVendorError";
   }
 }
 
@@ -26,9 +26,9 @@ export class GatewayError extends Error {
  * The plugin resolved, but the operation did not happen: the plugin does not
  * declare it, or the web client framework declined to make the call.
  */
-export class GatewayRequestError extends GatewayError {
+export class WcVendorRequestError extends WcVendorError {
   constructor(status: number, message: string) {
     super(status, message);
-    this.name = "GatewayRequestError";
+    this.name = "WcVendorRequestError";
   }
 }

@@ -1,18 +1,21 @@
 /**
- * Payment-gateway plugin kind (Task #412).
+ * Webclient-vendor plugin kind.
  *
- * A payment gateway declares a provider (e.g. Stripe) that the ledger can route
- * payments through. Each configuration row names the SECRET that holds the
- * provider's API credentials (the secret NAME, never the value) — the value is
- * resolved at use-time from the environment, mirroring how client-injection
- * resolves WEGLOT_API_KEY.
+ * A plugin of this kind declares an outside system (e.g. Stripe) that the site
+ * calls through the web client framework. Each configuration row names the
+ * SECRET that holds the vendor's API credentials (the secret NAME, never the
+ * value) — the value is resolved at use-time from the environment, mirroring
+ * how client-injection resolves WEGLOT_API_KEY.
  *
- * Beyond metadata, the plugin owns the PROVIDER-ONLY behaviour for managing
- * payment methods (create customer, create a collection session, attach, fetch
- * details, detach). These methods are pure provider API calls: they receive a
- * resolved context carrying the per-config API key and the config row, and they
- * MUST NOT touch storage or the database. All persistence (customer mappings,
- * payment-method rows) is done by the generic module via `storage.*`.
+ * Beyond metadata, the plugin owns the VENDOR-ONLY behaviour: the operations it
+ * declares are pure vendor API calls that receive a resolved context carrying
+ * the per-config API key and the config row, and they MUST NOT touch storage or
+ * the database. All persistence (e.g. customer mappings and payment-method rows
+ * for a payment vendor) is done by the calling module via `storage.*`.
+ *
+ * The payload types below named `Gateway*` describe the payment-gateway
+ * operations specifically — they are the shapes those operations exchange, not
+ * framework vocabulary, so they keep their payment names.
  *
  * This kind carries no relational dimensions, so its config lives entirely in
  * the base `plugin_configs` table; the editable `secretName` rides in `data`.
@@ -32,7 +35,7 @@ import type { WcService } from "../../../services/webclient/types";
  * Resolved per-operation context handed to every provider method. Built by the
  * generic module's credential resolver from a gateway config.
  */
-export interface PaymentGatewayContext {
+export interface WcVendorContext {
   /** Provider API secret value, resolved from `config.data.secretName`. */
   apiKey: string;
   /** The gateway config row driving this operation (carries `data`). */
@@ -157,8 +160,8 @@ export interface PaymentTypeOption {
  * An interface rather than a closed union, so a vendor that does something
  * this file has never heard of declares its own entry by merging into it:
  *
- *   declare module "…/payment-gateway/types" {
- *     interface GatewayOperations {
+ *   declare module "…/wc-vendors/types" {
+ *     interface WcVendorOperations {
  *       "send-sms": { args: { to: string; body: string }; result: { sid: string } };
  *     }
  *   }
@@ -170,7 +173,7 @@ export interface PaymentTypeOption {
  * silent about the rest, and a caller asking for one it does not declare is
  * told so.
  */
-export interface GatewayOperations {
+export interface WcVendorOperations {
   "test-connection": { args: void; result: GatewayConnectionTest };
   "create-customer": { args: CreateCustomerInput; result: GatewayCustomerResult };
   "retrieve-customer": { args: { customerRef: string }; result: { exists: boolean } };
@@ -185,14 +188,14 @@ export interface GatewayOperations {
   "detach-method": { args: { methodRef: string }; result: void };
 }
 
-export type GatewayOperationName = keyof GatewayOperations;
-export type GatewayOperationArgs<N extends GatewayOperationName> =
-  GatewayOperations[N]["args"];
-export type GatewayOperationResult<N extends GatewayOperationName> =
-  GatewayOperations[N]["result"];
+export type WcVendorOperationName = keyof WcVendorOperations;
+export type WcVendorOperationArgs<N extends WcVendorOperationName> =
+  WcVendorOperations[N]["args"];
+export type WcVendorOperationResult<N extends WcVendorOperationName> =
+  WcVendorOperations[N]["result"];
 
 /** One operation a plugin declares: how to do it, and how it must be gated. */
-export interface GatewayOperation<N extends GatewayOperationName = GatewayOperationName> {
+export interface WcVendorOperation<N extends WcVendorOperationName = WcVendorOperationName> {
   /**
    * What is being attempted, in plain words — the second half of "Stripe is
    * unavailable: the site is in maintenance mode (attempted: …)".
@@ -215,16 +218,16 @@ export interface GatewayOperation<N extends GatewayOperationName = GatewayOperat
    * persistence belongs to the calling module.
    */
   run(
-    ctx: PaymentGatewayContext,
-    args: GatewayOperationArgs<N>,
-  ): Promise<GatewayOperationResult<N>>;
+    ctx: WcVendorContext,
+    args: WcVendorOperationArgs<N>,
+  ): Promise<WcVendorOperationResult<N>>;
 }
 
-export type GatewayOperationMap = {
-  [N in GatewayOperationName]?: GatewayOperation<N>;
+export type WcVendorOperationMap = {
+  [N in WcVendorOperationName]?: WcVendorOperation<N>;
 };
 
-export interface PaymentGatewayPlugin extends BasePluginMetadata {
+export interface WcVendorPlugin extends BasePluginMetadata {
   /**
    * Whether resolving this gateway requires the named credential secret to be
    * present in the environment. Defaults to `true` (the historical behaviour:
@@ -237,7 +240,7 @@ export interface PaymentGatewayPlugin extends BasePluginMetadata {
   requiresSecret?: boolean;
   /**
    * Client component id (`"<plugin-id>:<Component>"`) for the auto-discovered
-   * add-a-payment-method form, resolved through the client payment-gateway
+   * add-a-payment-method form, resolved through the client wc-vendors
    * component registry.
    */
   addComponentId?: string;
@@ -286,21 +289,21 @@ export interface PaymentGatewayPlugin extends BasePluginMetadata {
 
   /**
    * What this plugin can do. Declared, not implemented-or-stubbed: see
-   * {@link GatewayOperations}.
+   * {@link WcVendorOperations}.
    *
    * What a plugin file writes here is the bare handler. What a caller gets
    * back from the registry is that handler already wrapped in the web client
-   * framework, because `registerPaymentGatewayPlugin` registers a plugin whose
+   * framework, because `registerWcVendorPlugin` registers a plugin whose
    * operations it has wrapped — so the refusal and the count hold however the
    * handler is reached, including by reaching into this map. Callers should
-   * still go through `gatewayRequest`, which resolves the credential to pass
+   * still go through `wcVendorRequest`, which resolves the credential to pass
    * as the context and answers for an operation the plugin does not declare,
    * but nothing about the maintenance guarantee rests on their doing so.
    */
-  operations: GatewayOperationMap;
+  operations: WcVendorOperationMap;
 }
 
-export interface PaymentGatewayManifestEntry {
+export interface WcVendorManifestEntry {
   id: string;
   name: string;
   description?: string;

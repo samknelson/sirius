@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 import type {
-  PaymentGatewayPlugin,
+  WcVendorPlugin,
   GatewayCustomerResult,
   GatewaySetupSession,
   GatewayMethodSummary,
@@ -8,7 +8,7 @@ import type {
   GatewayConnectionTest,
   GatewayCustomerDetails,
 } from "../types";
-import { registerPaymentGatewayPlugin } from "../registry";
+import { registerWcVendorPlugin } from "../registry";
 
 /**
  * Opaque method-reference format shared with the client add-form. The token
@@ -124,7 +124,7 @@ function decodeMethodRef(methodRef: string): DummyCardMeta {
  */
 // Not exported, for the same reason as the Stripe plugin: the registry is the
 // only supported handle on a gateway plugin.
-const dummyPaymentGatewayPlugin: PaymentGatewayPlugin = {
+const dummyWcVendorPlugin: WcVendorPlugin = {
   id: "dummy",
   name: "Dummy (Testing)",
   description:
@@ -277,4 +277,4 @@ const dummyPaymentGatewayPlugin: PaymentGatewayPlugin = {
   },
 };
 
-registerPaymentGatewayPlugin(dummyPaymentGatewayPlugin);
+registerWcVendorPlugin(dummyWcVendorPlugin);

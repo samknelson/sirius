@@ -52,7 +52,7 @@ export default function GatewayTestPage() {
     data: gateways,
     isLoading: gatewaysLoading,
   } = useQuery<GatewayConfigOption[]>({
-    queryKey: ["/api/ledger/payment-gateways"],
+    queryKey: ["/api/ledger/wc-vendors"],
   });
 
   const [selectedId, setSelectedId] = useState<string>("");
@@ -64,7 +64,7 @@ export default function GatewayTestPage() {
   }, [gateways, selectedId]);
 
   const { data, isLoading, error, refetch, isFetching } = useQuery<GatewayConnectionTest>({
-    queryKey: ["/api/ledger/payment-gateways", selectedId, "test"],
+    queryKey: ["/api/ledger/wc-vendors", selectedId, "test"],
     enabled: !!selectedId,
     retry: false,
   });
