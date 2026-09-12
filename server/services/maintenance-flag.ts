@@ -32,9 +32,12 @@ import type { Response } from "express";
 /**
  * The external systems this guard covers.
  *
- * Four of them are billed, and that is the original reason for the guard: an
- * SMS, an email, a letter or a metered geocode cannot be rolled back when
- * maintenance ends. The rest are here for two other reasons.
+ * Several are billed, and that is the original reason for the guard: an SMS,
+ * an email, a letter or a metered geocode cannot be rolled back when
+ * maintenance ends. Stripe is the sharpest case of the same thing — a customer
+ * created or a payment method attached during maintenance is a change to
+ * somebody's billing relationship that this database has no record of. The
+ * rest are here for two other reasons.
  *
  * "Census" is free and has no side effect at all — it is named because the web
  * client framework refuses every call it is about to make through this one
@@ -56,6 +59,7 @@ export type ExternalService =
   | "Google"
   | "Census"
   | "OpenStates"
+  | "Stripe"
   | "T631"
   | "Freeman EDLS"
   | "BTU";

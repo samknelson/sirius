@@ -23,6 +23,10 @@ import type {
   PluginConfigEnvelopeField,
   PluginValidationResult,
 } from "../../_core";
+// Type-only: the vendor vocabulary is the web client framework's, and the
+// framework's is the maintenance guard's. Naming a service here that those two
+// do not know is exactly the split this import prevents.
+import type { WcService } from "../../../services/webclient/types";
 
 /**
  * Resolved per-operation context handed to every provider method. Built by the
@@ -146,6 +150,80 @@ export interface PaymentTypeOption {
   setupEligible?: boolean;
 }
 
+/**
+ * What a plugin of this kind can be asked to do, and the shape of each
+ * operation's arguments and result.
+ *
+ * An interface rather than a closed union, so a vendor that does something
+ * this file has never heard of declares its own entry by merging into it:
+ *
+ *   declare module "…/payment-gateway/types" {
+ *     interface GatewayOperations {
+ *       "send-sms": { args: { to: string; body: string }; result: { sid: string } };
+ *     }
+ *   }
+ *
+ * Nothing here is required of a plugin. The kind used to mandate nine payment
+ * methods, which is the reason it could only ever hold payment providers: a
+ * vendor with no customers and no payment methods had to stub eight of them to
+ * register at all. A plugin now declares the operations it has and stays
+ * silent about the rest, and a caller asking for one it does not declare is
+ * told so.
+ */
+export interface GatewayOperations {
+  "test-connection": { args: void; result: GatewayConnectionTest };
+  "create-customer": { args: CreateCustomerInput; result: GatewayCustomerResult };
+  "retrieve-customer": { args: { customerRef: string }; result: { exists: boolean } };
+  "get-customer-details": { args: { customerRef: string }; result: GatewayCustomerDetails };
+  "create-setup-session": { args: { customerRef: string }; result: GatewaySetupSession };
+  "attach-method": {
+    args: { customerRef: string; methodToken: string };
+    result: void;
+  };
+  "get-method-summary": { args: { methodRef: string }; result: GatewayMethodSummary };
+  "get-method-details": { args: { methodRef: string }; result: GatewayMethodDetails };
+  "detach-method": { args: { methodRef: string }; result: void };
+}
+
+export type GatewayOperationName = keyof GatewayOperations;
+export type GatewayOperationArgs<N extends GatewayOperationName> =
+  GatewayOperations[N]["args"];
+export type GatewayOperationResult<N extends GatewayOperationName> =
+  GatewayOperations[N]["result"];
+
+/** One operation a plugin declares: how to do it, and how it must be gated. */
+export interface GatewayOperation<N extends GatewayOperationName = GatewayOperationName> {
+  /**
+   * What is being attempted, in plain words — the second half of "Stripe is
+   * unavailable: the site is in maintenance mode (attempted: …)".
+   */
+  operation: string;
+  /**
+   * Whether the vendor may be asked when the answer cannot be written down.
+   *
+   * Per operation, because the two halves of any vendor want opposite answers.
+   * Anything that creates or destroys something at the vendor must not fire
+   * when the record of it cannot be saved: a customer created and forgotten is
+   * created again next time, and a method detached but not deleted leaves a
+   * row pointing at nothing. A read, a status check or a connection test has
+   * nothing to record, and refusing one on a read-only connection would take
+   * away the diagnosis an operator is in the middle of.
+   */
+  needsWritableDatabase: boolean;
+  /**
+   * Do it. Pure provider work: no storage and no database access — all
+   * persistence belongs to the calling module.
+   */
+  run(
+    ctx: PaymentGatewayContext,
+    args: GatewayOperationArgs<N>,
+  ): Promise<GatewayOperationResult<N>>;
+}
+
+export type GatewayOperationMap = {
+  [N in GatewayOperationName]?: GatewayOperation<N>;
+};
+
 export interface PaymentGatewayPlugin extends BasePluginMetadata {
   /**
    * Whether resolving this gateway requires the named credential secret to be
@@ -191,48 +269,35 @@ export interface PaymentGatewayPlugin extends BasePluginMetadata {
   validateConfig?(data: Record<string, unknown>): PluginValidationResult;
 
   // --- Provider-only behaviour (no storage/DB access) --------------------
-  /** Test the provider connection using this config's resolved credentials. */
-  testConnection(ctx: PaymentGatewayContext): Promise<GatewayConnectionTest>;
-  /** Create a provider customer for an entity. */
-  createCustomer(
-    ctx: PaymentGatewayContext,
-    input: CreateCustomerInput,
-  ): Promise<GatewayCustomerResult>;
-  /** Verify an existing provider customer still exists (best-effort). */
-  retrieveCustomer?(
-    ctx: PaymentGatewayContext,
-    customerRef: string,
-  ): Promise<{ exists: boolean }>;
-  /** Fetch normalized provider-customer detail for the customer view. */
-  getCustomerDetails(
-    ctx: PaymentGatewayContext,
-    customerRef: string,
-  ): Promise<GatewayCustomerDetails>;
-  /** Create a session for collecting a new payment method. */
-  createSetupSession(
-    ctx: PaymentGatewayContext,
-    args: { customerRef: string },
-  ): Promise<GatewaySetupSession>;
-  /** Attach a collected method token to the provider customer. */
-  attachMethod(
-    ctx: PaymentGatewayContext,
-    args: { customerRef: string; methodToken: string },
-  ): Promise<void>;
-  /** Fetch a compact summary used to enrich the list view. */
-  getMethodSummary(
-    ctx: PaymentGatewayContext,
-    methodRef: string,
-  ): Promise<GatewayMethodSummary>;
-  /** Fetch the full provider method object for the details view. */
-  getMethodDetails(
-    ctx: PaymentGatewayContext,
-    methodRef: string,
-  ): Promise<GatewayMethodDetails>;
-  /** Detach a method from the provider customer. */
-  detachMethod(
-    ctx: PaymentGatewayContext,
-    methodRef: string,
-  ): Promise<void>;
+  /**
+   * The outside system this plugin talks to, in the vocabulary the maintenance
+   * guard and the web client framework share.
+   *
+   * Naming one puts every operation this plugin declares on the framework: the
+   * call is refused during maintenance, gated on a writable database when the
+   * operation says so, and counted on the web client usage figures.
+   *
+   * Omitting it says there is no outside system — the in-app testing gateway
+   * synthesizes every answer in-process. There is nothing to refuse, nothing to
+   * count, and no vendor to name; inventing one would put a service the site
+   * does not talk to into the one list the guard and the framework share.
+   */
+  service?: WcService;
+
+  /**
+   * What this plugin can do. Declared, not implemented-or-stubbed: see
+   * {@link GatewayOperations}.
+   *
+   * What a plugin file writes here is the bare handler. What a caller gets
+   * back from the registry is that handler already wrapped in the web client
+   * framework, because `registerPaymentGatewayPlugin` registers a plugin whose
+   * operations it has wrapped — so the refusal and the count hold however the
+   * handler is reached, including by reaching into this map. Callers should
+   * still go through `gatewayRequest`, which resolves the credential to pass
+   * as the context and answers for an operation the plugin does not declare,
+   * but nothing about the maintenance guarantee rests on their doing so.
+   */
+  operations: GatewayOperationMap;
 }
 
 export interface PaymentGatewayManifestEntry {

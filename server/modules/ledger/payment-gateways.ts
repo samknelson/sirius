@@ -7,8 +7,10 @@ import {
 import { getPaymentGatewayPlugin } from "../../plugins/ledger/payment-gateway";
 import {
   resolveGateway,
-  GatewayResolutionError,
+  gatewayRequest,
+  GatewayError,
 } from "./payment-gateway-context";
+import { isMaintenanceModeError } from "../../services/maintenance-flag";
 
 /**
  * Provider-generic payment-gateway admin routes.
@@ -196,10 +198,17 @@ export function registerLedgerPaymentGatewayRoutes(app: Express): void {
           }
         }
 
-        const result = await resolved.plugin.testConnection(resolved.context);
+        const result = await gatewayRequest(resolved, "test-connection", undefined);
         res.json(result);
       } catch (error: any) {
-        if (error instanceof GatewayResolutionError) {
+        // A refusal is reported in this route's own shape, so the page shows
+        // why the test did not run where it shows every other failure.
+        if (isMaintenanceModeError(error)) {
+          return res
+            .status(error.statusCode)
+            .json({ connected: false, error: { message: error.message } });
+        }
+        if (error instanceof GatewayError) {
           return res
             .status(error.status)
             .json({ connected: false, error: { message: error.message } });

@@ -3,7 +3,6 @@ import type {
   PaymentGatewayPlugin,
   PaymentGatewayContext,
   PaymentTypeOption,
-  CreateCustomerInput,
   GatewayCustomerResult,
   GatewaySetupSession,
   GatewayMethodSummary,
@@ -94,7 +93,10 @@ const SETUP_ELIGIBLE_TYPE_IDS = new Set(
  * `data.secretName`; resolved from the environment at use-time). Gated on the
  * existing `ledger.stripe` component. Provider-only — no storage/DB access.
  */
-export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
+// Not exported: the only supported handle on this plugin is the one the registry
+// hands out, whose operations are already on the web client framework. An
+// exported literal would be the same plugin with the refusal missing.
+const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
   id: "stripe",
   name: "Stripe",
   description:
@@ -133,200 +135,230 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
   // scope so the setup flow can share the `setupEligible` markers).
   supportedPaymentTypes: STRIPE_PAYMENT_TYPES,
 
-  async testConnection(ctx: PaymentGatewayContext): Promise<GatewayConnectionTest> {
-    try {
-      const c = client(ctx);
-      const account = await c.accounts.retrieve();
-      const balance = await c.balance.retrieve();
-      return {
-        connected: true,
-        account: {
-          id: account.id,
-          email: account.email,
-          country: account.country,
-          defaultCurrency: account.default_currency,
-          type: account.type,
-          capabilities: [
-            { label: "Charges Enabled", enabled: !!account.charges_enabled },
-            { label: "Payouts Enabled", enabled: !!account.payouts_enabled },
-            { label: "Details Submitted", enabled: !!account.details_submitted },
-          ],
-        },
-        balances: [
-          ...balance.available.map((b) => ({
-            label: "Available",
-            amount: b.amount,
-            currency: b.currency,
-          })),
-          ...balance.pending.map((b) => ({
-            label: "Pending",
-            amount: b.amount,
-            currency: b.currency,
-          })),
-        ],
-        testMode: ctx.apiKey.startsWith("sk_test_"),
-      };
-    } catch (error: any) {
-      return {
-        connected: false,
-        error: {
-          message: error.message || "Failed to connect to Stripe",
-          type: error.type,
-          code: error.code,
-        },
-      };
-    }
-  },
+  // Stripe as the maintenance guard and the web client framework name it.
+  // Declaring it is what puts every operation below on the framework.
+  service: "Stripe",
 
-  async createCustomer(
-    ctx: PaymentGatewayContext,
-    input: CreateCustomerInput,
-  ): Promise<GatewayCustomerResult> {
-    const customer = await client(ctx).customers.create({
-      name: input.name,
-      metadata: input.metadata ?? {},
-    });
-    return { customerRef: customer.id };
-  },
-
-  async retrieveCustomer(
-    ctx: PaymentGatewayContext,
-    customerRef: string,
-  ): Promise<{ exists: boolean }> {
-    try {
-      const customer = await client(ctx).customers.retrieve(customerRef);
-      return { exists: !(customer as Stripe.DeletedCustomer).deleted };
-    } catch (error: any) {
-      if (error.code === "resource_missing") {
-        return { exists: false };
-      }
-      throw error;
-    }
-  },
-
-  async getCustomerDetails(
-    ctx: PaymentGatewayContext,
-    customerRef: string,
-  ): Promise<GatewayCustomerDetails> {
-    const customer = (await client(ctx).customers.retrieve(
-      customerRef,
-    )) as Stripe.Customer | Stripe.DeletedCustomer;
-    if ((customer as Stripe.DeletedCustomer).deleted) {
-      const err: any = new Error("Customer has been deleted at Stripe");
-      err.code = "resource_missing";
-      throw err;
-    }
-    const c = customer as Stripe.Customer;
-    return {
-      id: c.id,
-      name: c.name ?? null,
-      email: c.email ?? null,
-      created: c.created ?? null,
-      currency: c.currency ?? null,
-      balance: c.balance ?? null,
-      delinquent: c.delinquent ?? null,
-      providerUrl: `${dashboardBaseUrl(ctx)}/customers/${c.id}`,
-    };
-  },
-
-  async createSetupSession(
-    ctx: PaymentGatewayContext,
-    args: { customerRef: string },
-  ): Promise<GatewaySetupSession> {
-    const data = configData(ctx);
-    const configured = Array.isArray(data.paymentTypes)
-      ? (data.paymentTypes as string[])
-      : ["card", "us_bank_account"];
-    // Only types that can be SAVED as a reusable method work on a SetupIntent.
-    // If the config carries any charge-only type (PayPal, BNPL, vouchers,
-    // single-use redirects), fail with a clear, actionable error that NAMES the
-    // offending type(s) instead of letting Stripe reject the call with an opaque
-    // 500. The Gateway Payment Types editor prevents creating this state going
-    // forward; this guard covers configs saved before that.
-    const ineligible = configured.filter((t) => !SETUP_ELIGIBLE_TYPE_IDS.has(t));
-    if (ineligible.length > 0) {
-      throw new GatewaySetupError(
-        `These payment types can't be saved as a reusable payment method: ${ineligible.join(", ")}. Remove them under Gateway Payment Types and keep a card or bank account type.`,
-      );
-    }
-    if (configured.length === 0) {
-      throw new GatewaySetupError(
-        "This gateway has no payment types that can be saved as a reusable payment method. Enable a card or bank account type under Gateway Payment Types.",
-      );
-    }
-    const paymentTypes = configured;
-
-    const setupIntent = await client(ctx).setupIntents.create({
-      customer: args.customerRef,
-      payment_method_types: paymentTypes,
-    });
-
-    // Single source of truth: the publishable key lives only in the config
-    // `data` (entered via the admin form). No environment-variable fallback.
-    const publishableKey =
-      typeof data.publishableKey === "string" ? data.publishableKey : "";
-
-    return {
-      clientSecret: setupIntent.client_secret ?? "",
-      publicConfig: {
-        publishableKey,
-        paymentTypes,
+  operations: {
+    "test-connection": {
+      operation: "test connection",
+      // Nothing is recorded, and an operator diagnosing a credential on a
+      // read-only connection is exactly who needs this to still work.
+      needsWritableDatabase: false,
+      async run(ctx): Promise<GatewayConnectionTest> {
+        try {
+          const c = client(ctx);
+          const account = await c.accounts.retrieve();
+          const balance = await c.balance.retrieve();
+          return {
+            connected: true,
+            account: {
+              id: account.id,
+              email: account.email,
+              country: account.country,
+              defaultCurrency: account.default_currency,
+              type: account.type,
+              capabilities: [
+                { label: "Charges Enabled", enabled: !!account.charges_enabled },
+                { label: "Payouts Enabled", enabled: !!account.payouts_enabled },
+                { label: "Details Submitted", enabled: !!account.details_submitted },
+              ],
+            },
+            balances: [
+              ...balance.available.map((b) => ({
+                label: "Available",
+                amount: b.amount,
+                currency: b.currency,
+              })),
+              ...balance.pending.map((b) => ({
+                label: "Pending",
+                amount: b.amount,
+                currency: b.currency,
+              })),
+            ],
+            testMode: ctx.apiKey.startsWith("sk_test_"),
+          };
+        } catch (error: any) {
+          return {
+            connected: false,
+            error: {
+              message: error.message || "Failed to connect to Stripe",
+              type: error.type,
+              code: error.code,
+            },
+          };
+        }
       },
-    };
-  },
+    },
 
-  async attachMethod(
-    ctx: PaymentGatewayContext,
-    args: { customerRef: string; methodToken: string },
-  ): Promise<void> {
-    await client(ctx).paymentMethods.attach(args.methodToken, {
-      customer: args.customerRef,
-    });
-  },
+    "create-customer": {
+      operation: "create a customer",
+      // A customer created at Stripe and not written down here is created
+      // again on the next request, leaving an orphan behind each time.
+      needsWritableDatabase: true,
+      async run(ctx, input): Promise<GatewayCustomerResult> {
+        const customer = await client(ctx).customers.create({
+          name: input.name,
+          metadata: input.metadata ?? {},
+        });
+        return { customerRef: customer.id };
+      },
+    },
 
-  async getMethodSummary(
-    ctx: PaymentGatewayContext,
-    methodRef: string,
-  ): Promise<GatewayMethodSummary> {
-    const pm = await client(ctx).paymentMethods.retrieve(methodRef);
-    return {
-      type: pm.type,
-      card: pm.card
-        ? {
-            brand: pm.card.brand,
-            last4: pm.card.last4,
-            expMonth: pm.card.exp_month,
-            expYear: pm.card.exp_year,
+    "retrieve-customer": {
+      operation: "check a customer still exists",
+      needsWritableDatabase: false,
+      async run(ctx, { customerRef }): Promise<{ exists: boolean }> {
+        try {
+          const customer = await client(ctx).customers.retrieve(customerRef);
+          return { exists: !(customer as Stripe.DeletedCustomer).deleted };
+        } catch (error: any) {
+          if (error.code === "resource_missing") {
+            return { exists: false };
           }
-        : null,
-      us_bank_account: pm.us_bank_account
-        ? {
-            bank_name: pm.us_bank_account.bank_name,
-            last4: pm.us_bank_account.last4,
-            account_holder_type: pm.us_bank_account.account_holder_type,
-            account_type: pm.us_bank_account.account_type,
-          }
-        : null,
-      billing_details: pm.billing_details,
-    };
-  },
+          throw error;
+        }
+      },
+    },
 
-  async getMethodDetails(
-    ctx: PaymentGatewayContext,
-    methodRef: string,
-  ): Promise<GatewayMethodDetails> {
-    const pm = await client(ctx).paymentMethods.retrieve(methodRef);
-    return {
-      paymentMethod: pm,
-      providerUrl: `${dashboardBaseUrl(ctx)}/payment_methods/${pm.id}`,
-    };
-  },
+    "get-customer-details": {
+      operation: "read customer details",
+      needsWritableDatabase: false,
+      async run(ctx, { customerRef }): Promise<GatewayCustomerDetails> {
+        const customer = (await client(ctx).customers.retrieve(
+          customerRef,
+        )) as Stripe.Customer | Stripe.DeletedCustomer;
+        if ((customer as Stripe.DeletedCustomer).deleted) {
+          const err: any = new Error("Customer has been deleted at Stripe");
+          err.code = "resource_missing";
+          throw err;
+        }
+        const c = customer as Stripe.Customer;
+        return {
+          id: c.id,
+          name: c.name ?? null,
+          email: c.email ?? null,
+          created: c.created ?? null,
+          currency: c.currency ?? null,
+          balance: c.balance ?? null,
+          delinquent: c.delinquent ?? null,
+          providerUrl: `${dashboardBaseUrl(ctx)}/customers/${c.id}`,
+        };
+      },
+    },
 
-  async detachMethod(
-    ctx: PaymentGatewayContext,
-    methodRef: string,
-  ): Promise<void> {
-    await client(ctx).paymentMethods.detach(methodRef);
+    "create-setup-session": {
+      operation: "start collecting a payment method",
+      // This opens a flow that ends in a stored payment method. Letting
+      // somebody type their card details knowing the result cannot be saved
+      // wastes their time and leaves a dangling SetupIntent at Stripe.
+      needsWritableDatabase: true,
+      async run(ctx, args): Promise<GatewaySetupSession> {
+        const data = configData(ctx);
+        const configured = Array.isArray(data.paymentTypes)
+          ? (data.paymentTypes as string[])
+          : ["card", "us_bank_account"];
+        // Only types that can be SAVED as a reusable method work on a
+        // SetupIntent. If the config carries any charge-only type (PayPal,
+        // BNPL, vouchers, single-use redirects), fail with a clear, actionable
+        // error that NAMES the offending type(s) instead of letting Stripe
+        // reject the call with an opaque 500. The Gateway Payment Types editor
+        // prevents creating this state going forward; this guard covers configs
+        // saved before that.
+        const ineligible = configured.filter((t) => !SETUP_ELIGIBLE_TYPE_IDS.has(t));
+        if (ineligible.length > 0) {
+          throw new GatewaySetupError(
+            `These payment types can't be saved as a reusable payment method: ${ineligible.join(", ")}. Remove them under Gateway Payment Types and keep a card or bank account type.`,
+          );
+        }
+        if (configured.length === 0) {
+          throw new GatewaySetupError(
+            "This gateway has no payment types that can be saved as a reusable payment method. Enable a card or bank account type under Gateway Payment Types.",
+          );
+        }
+        const paymentTypes = configured;
+
+        const setupIntent = await client(ctx).setupIntents.create({
+          customer: args.customerRef,
+          payment_method_types: paymentTypes,
+        });
+
+        // Single source of truth: the publishable key lives only in the config
+        // `data` (entered via the admin form). No environment-variable fallback.
+        const publishableKey =
+          typeof data.publishableKey === "string" ? data.publishableKey : "";
+
+        return {
+          clientSecret: setupIntent.client_secret ?? "",
+          publicConfig: {
+            publishableKey,
+            paymentTypes,
+          },
+        };
+      },
+    },
+
+    "attach-method": {
+      operation: "attach a payment method",
+      // The method is attached at Stripe and then recorded here; an attach
+      // that cannot be recorded is a method nobody can ever use or remove.
+      needsWritableDatabase: true,
+      async run(ctx, args): Promise<void> {
+        await client(ctx).paymentMethods.attach(args.methodToken, {
+          customer: args.customerRef,
+        });
+      },
+    },
+
+    "get-method-summary": {
+      operation: "read a payment method summary",
+      needsWritableDatabase: false,
+      async run(ctx, { methodRef }): Promise<GatewayMethodSummary> {
+        const pm = await client(ctx).paymentMethods.retrieve(methodRef);
+        return {
+          type: pm.type,
+          card: pm.card
+            ? {
+                brand: pm.card.brand,
+                last4: pm.card.last4,
+                expMonth: pm.card.exp_month,
+                expYear: pm.card.exp_year,
+              }
+            : null,
+          us_bank_account: pm.us_bank_account
+            ? {
+                bank_name: pm.us_bank_account.bank_name,
+                last4: pm.us_bank_account.last4,
+                account_holder_type: pm.us_bank_account.account_holder_type,
+                account_type: pm.us_bank_account.account_type,
+              }
+            : null,
+          billing_details: pm.billing_details,
+        };
+      },
+    },
+
+    "get-method-details": {
+      operation: "read payment method details",
+      needsWritableDatabase: false,
+      async run(ctx, { methodRef }): Promise<GatewayMethodDetails> {
+        const pm = await client(ctx).paymentMethods.retrieve(methodRef);
+        return {
+          paymentMethod: pm,
+          providerUrl: `${dashboardBaseUrl(ctx)}/payment_methods/${pm.id}`,
+        };
+      },
+    },
+
+    "detach-method": {
+      operation: "remove a payment method",
+      // Detaching at Stripe without deleting the row here leaves a stored
+      // method pointing at nothing, which the list then reports as missing.
+      needsWritableDatabase: true,
+      async run(ctx, { methodRef }): Promise<void> {
+        await client(ctx).paymentMethods.detach(methodRef);
+      },
+    },
   },
 };
 

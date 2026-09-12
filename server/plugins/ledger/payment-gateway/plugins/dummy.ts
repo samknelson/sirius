@@ -1,8 +1,6 @@
 import { randomBytes } from "crypto";
 import type {
   PaymentGatewayPlugin,
-  PaymentGatewayContext,
-  CreateCustomerInput,
   GatewayCustomerResult,
   GatewaySetupSession,
   GatewayMethodSummary,
@@ -124,7 +122,9 @@ function decodeMethodRef(methodRef: string): DummyCardMeta {
  * opts out of requiring it (`requiresSecret: false`), so the gateway resolves
  * whether or not the env var is set. Provider-only — no storage/DB access.
  */
-export const dummyPaymentGatewayPlugin: PaymentGatewayPlugin = {
+// Not exported, for the same reason as the Stripe plugin: the registry is the
+// only supported handle on a gateway plugin.
+const dummyPaymentGatewayPlugin: PaymentGatewayPlugin = {
   id: "dummy",
   name: "Dummy (Testing)",
   description:
@@ -142,113 +142,138 @@ export const dummyPaymentGatewayPlugin: PaymentGatewayPlugin = {
     },
   ],
 
-  async testConnection(_ctx: PaymentGatewayContext): Promise<GatewayConnectionTest> {
-    return {
-      connected: true,
-      account: {
-        id: "dummy_account",
-        type: "test",
-        defaultCurrency: "usd",
-        capabilities: [{ label: "Test Mode", enabled: true }],
+  // No `service`: there is no outside system here. Every answer below is
+  // synthesized in this process, so there is no call to refuse during
+  // maintenance and nothing to count on the web client figures. Naming a
+  // vendor would put a service the site does not talk to into the one list the
+  // maintenance guard and the framework share.
+  //
+  // `needsWritableDatabase` is still declared on each operation, because it
+  // describes the operation rather than the transport, and it becomes live the
+  // moment a plugin of this shape does name a service.
+
+  operations: {
+    "test-connection": {
+      operation: "test connection",
+      needsWritableDatabase: false,
+      async run(): Promise<GatewayConnectionTest> {
+        return {
+          connected: true,
+          account: {
+            id: "dummy_account",
+            type: "test",
+            defaultCurrency: "usd",
+            capabilities: [{ label: "Test Mode", enabled: true }],
+          },
+          testMode: true,
+        };
       },
-      testMode: true,
-    };
-  },
+    },
 
-  async createCustomer(
-    _ctx: PaymentGatewayContext,
-    _input: CreateCustomerInput,
-  ): Promise<GatewayCustomerResult> {
-    return { customerRef: `dummy_cus_${randomBytes(8).toString("hex")}` };
-  },
-
-  async retrieveCustomer(
-    _ctx: PaymentGatewayContext,
-    _customerRef: string,
-  ): Promise<{ exists: boolean }> {
-    // The dummy gateway never loses customers.
-    return { exists: true };
-  },
-
-  async getCustomerDetails(
-    _ctx: PaymentGatewayContext,
-    customerRef: string,
-  ): Promise<GatewayCustomerDetails> {
-    return {
-      id: customerRef,
-      name: null,
-      email: null,
-      created: Math.floor(Date.now() / 1000),
-      currency: "usd",
-      balance: 0,
-      delinquent: false,
-    };
-  },
-
-  async createSetupSession(
-    _ctx: PaymentGatewayContext,
-    _args: { customerRef: string },
-  ): Promise<GatewaySetupSession> {
-    // The client add-form collects the card itself and ignores the secret, so
-    // the session payload is purely a placeholder.
-    return {
-      clientSecret: `dummy_setup_${randomBytes(8).toString("hex")}`,
-      publicConfig: { gateway: "dummy" },
-    };
-  },
-
-  async attachMethod(
-    _ctx: PaymentGatewayContext,
-    args: { customerRef: string; methodToken: string },
-  ): Promise<void> {
-    // There is no remote provider to attach to, but this hook runs BEFORE the
-    // generic module persists the token, so it is the enforcement point: reject
-    // anything that isn't a clean brand/expiry/last4 token. This guarantees a
-    // full PAN or CVC can never be stored, even from a crafted client.
-    decodeMethodRef(args.methodToken);
-  },
-
-  async getMethodSummary(
-    _ctx: PaymentGatewayContext,
-    methodRef: string,
-  ): Promise<GatewayMethodSummary> {
-    const card = decodeMethodRef(methodRef);
-    return {
-      type: "card",
-      card: {
-        brand: card.brand,
-        last4: card.last4,
-        expMonth: card.expMonth,
-        expYear: card.expYear,
+    "create-customer": {
+      operation: "create a customer",
+      needsWritableDatabase: true,
+      async run(): Promise<GatewayCustomerResult> {
+        return { customerRef: `dummy_cus_${randomBytes(8).toString("hex")}` };
       },
-      billing_details: { name: null, email: null },
-    };
-  },
+    },
 
-  async getMethodDetails(
-    _ctx: PaymentGatewayContext,
-    methodRef: string,
-  ): Promise<GatewayMethodDetails> {
-    const card = decodeMethodRef(methodRef);
-    return {
-      paymentMethod: {
-        id: methodRef,
-        type: "card",
-        card: {
-          brand: card.brand,
-          last4: card.last4,
-          exp_month: card.expMonth,
-          exp_year: card.expYear,
-        },
+    "retrieve-customer": {
+      operation: "check a customer still exists",
+      needsWritableDatabase: false,
+      async run(): Promise<{ exists: boolean }> {
+        // The dummy gateway never loses customers.
+        return { exists: true };
       },
-    };
-  },
+    },
 
-  async detachMethod(
-    _ctx: PaymentGatewayContext,
-    _methodRef: string,
-  ): Promise<void> {
-    // Nothing to detach on a stateless dummy provider.
+    "get-customer-details": {
+      operation: "read customer details",
+      needsWritableDatabase: false,
+      async run(_ctx, { customerRef }): Promise<GatewayCustomerDetails> {
+        return {
+          id: customerRef,
+          name: null,
+          email: null,
+          created: Math.floor(Date.now() / 1000),
+          currency: "usd",
+          balance: 0,
+          delinquent: false,
+        };
+      },
+    },
+
+    "create-setup-session": {
+      operation: "start collecting a payment method",
+      needsWritableDatabase: true,
+      async run(): Promise<GatewaySetupSession> {
+        // The client add-form collects the card itself and ignores the secret,
+        // so the session payload is purely a placeholder.
+        return {
+          clientSecret: `dummy_setup_${randomBytes(8).toString("hex")}`,
+          publicConfig: { gateway: "dummy" },
+        };
+      },
+    },
+
+    "attach-method": {
+      operation: "attach a payment method",
+      needsWritableDatabase: true,
+      async run(_ctx, args): Promise<void> {
+        // There is no remote provider to attach to, but this runs BEFORE the
+        // generic module persists the token, so it is the enforcement point:
+        // reject anything that isn't a clean brand/expiry/last4 token. This
+        // guarantees a full PAN or CVC can never be stored, even from a
+        // crafted client.
+        decodeMethodRef(args.methodToken);
+      },
+    },
+
+    "get-method-summary": {
+      operation: "read a payment method summary",
+      needsWritableDatabase: false,
+      async run(_ctx, { methodRef }): Promise<GatewayMethodSummary> {
+        const card = decodeMethodRef(methodRef);
+        return {
+          type: "card",
+          card: {
+            brand: card.brand,
+            last4: card.last4,
+            expMonth: card.expMonth,
+            expYear: card.expYear,
+          },
+          billing_details: { name: null, email: null },
+        };
+      },
+    },
+
+    "get-method-details": {
+      operation: "read payment method details",
+      needsWritableDatabase: false,
+      async run(_ctx, { methodRef }): Promise<GatewayMethodDetails> {
+        const card = decodeMethodRef(methodRef);
+        return {
+          paymentMethod: {
+            id: methodRef,
+            type: "card",
+            card: {
+              brand: card.brand,
+              last4: card.last4,
+              exp_month: card.expMonth,
+              exp_year: card.expYear,
+            },
+          },
+        };
+      },
+    },
+
+    "detach-method": {
+      operation: "remove a payment method",
+      needsWritableDatabase: true,
+      async run(): Promise<void> {
+        // Nothing to detach on a stateless dummy provider.
+      },
+    },
   },
 };
 

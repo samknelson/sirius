@@ -1,6 +1,10 @@
 import { storage } from "../../storage";
 import { getPaymentGatewayPlugin } from "../../plugins/ledger/payment-gateway";
 import type {
+  GatewayOperation,
+  GatewayOperationArgs,
+  GatewayOperationName,
+  GatewayOperationResult,
   PaymentGatewayContext,
   PaymentGatewayPlugin,
 } from "../../plugins/ledger/payment-gateway/types";
@@ -9,6 +13,10 @@ import {
   getEnvironmentVariable,
   registerEnvironmentVariable,
 } from "../../config/env-registry";
+import {
+  GatewayError,
+  GatewayRequestError,
+} from "../../plugins/ledger/payment-gateway/errors";
 
 /**
  * A gateway config resolved into everything the generic payment-methods routes
@@ -21,13 +29,17 @@ export interface ResolvedGateway {
   context: PaymentGatewayContext;
 }
 
-/** Error carrying the HTTP status the route should return. */
-export class GatewayResolutionError extends Error {
-  constructor(public readonly status: number, message: string) {
-    super(message);
+/** The config, plugin or credential could not be resolved. */
+export class GatewayResolutionError extends GatewayError {
+  constructor(status: number, message: string) {
+    super(status, message);
     this.name = "GatewayResolutionError";
   }
 }
+
+// Raised inside the kind, caught out here: a route wants one name for "the
+// provider was not reached", whatever the reason.
+export { GatewayError, GatewayRequestError };
 
 /**
  * Turn a gateway config id into a {@link ResolvedGateway}. Resolves the
@@ -83,4 +95,34 @@ export async function resolveGateway(
   }
 
   return { config, plugin, context: { apiKey: apiKey ?? "", config } };
+}
+
+/**
+ * Ask a resolved gateway to do one thing.
+ *
+ * The typed door callers use: it names the operation rather than a method, so
+ * a caller says what it wants done without knowing which vendor is behind the
+ * config, and asking for something the vendor cannot do is answered rather
+ * than crashing on a missing function.
+ *
+ * The web client framework is NOT applied here. A registered plugin's handlers
+ * are already wrapped in it (see `registerPaymentGatewayPlugin`), so the
+ * maintenance refusal, the writable-database gate and the usage count hold for
+ * every route into the handler, not just this one. What this owns is the
+ * resolved credential — which the handler reads and nothing else sees — and
+ * the refusal below.
+ */
+export async function gatewayRequest<N extends GatewayOperationName>(
+  resolved: ResolvedGateway,
+  name: N,
+  args: GatewayOperationArgs<N>,
+): Promise<GatewayOperationResult<N>> {
+  const operation: GatewayOperation<N> | undefined = resolved.plugin.operations[name];
+  if (!operation) {
+    throw new GatewayRequestError(
+      501,
+      `Payment gateway '${resolved.plugin.name}' does not support '${name}'`,
+    );
+  }
+  return operation.run(resolved.context, args);
 }

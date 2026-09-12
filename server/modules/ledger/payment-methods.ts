@@ -7,9 +7,14 @@ import {
 import { getPaymentGatewayPlugin } from "../../plugins/ledger/payment-gateway";
 import {
   resolveGateway,
-  GatewayResolutionError,
+  gatewayRequest,
+  GatewayError,
   type ResolvedGateway,
 } from "./payment-gateway-context";
+import {
+  isMaintenanceModeError,
+  sendIfMaintenanceRefusal,
+} from "../../services/maintenance-flag";
 
 /**
  * Provider-generic payment-method management.
@@ -137,13 +142,12 @@ async function ensureCustomer(
   if (existing) {
     // Reuse the mapping unless the plugin can verify the provider customer is
     // gone, in which case fall through to recreate and repair the mapping.
-    if (!resolved.plugin.retrieveCustomer) {
+    if (!resolved.plugin.operations["retrieve-customer"]) {
       return existing.customerRef;
     }
-    const { exists } = await resolved.plugin.retrieveCustomer(
-      resolved.context,
-      existing.customerRef,
-    );
+    const { exists } = await gatewayRequest(resolved, "retrieve-customer", {
+      customerRef: existing.customerRef,
+    });
     if (exists) return existing.customerRef;
   }
 
@@ -152,7 +156,7 @@ async function ensureCustomer(
     throw new HttpError(404, "Entity not found");
   }
 
-  const { customerRef } = await resolved.plugin.createCustomer(resolved.context, {
+  const { customerRef } = await gatewayRequest(resolved, "create-customer", {
     name: descriptor.name,
     metadata: descriptor.metadata,
   });
@@ -185,7 +189,11 @@ async function loadOwnedMethod(
 
 /** Translate thrown errors into a JSON response. */
 function sendError(res: Response, error: unknown, fallback: string): void {
-  if (error instanceof HttpError || error instanceof GatewayResolutionError) {
+  // A maintenance refusal carries a 503 and its own explanation. It has to be
+  // recognised before the provider-status branch below, which only surfaces
+  // 4xx and would otherwise bury the explanation under a generic 500.
+  if (sendIfMaintenanceRefusal(res, error)) return;
+  if (error instanceof HttpError || error instanceof GatewayError) {
     res.status(error.status).json({ message: error.message });
     return;
   }
@@ -269,10 +277,9 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
       const customerRef = await ensureCustomer(entityType, entityId, resolved);
 
       try {
-        const customer = await resolved.plugin.getCustomerDetails(
-          resolved.context,
+        const customer = await gatewayRequest(resolved, "get-customer-details", {
           customerRef,
-        );
+        });
         res.json({ customer, providerUrl: customer.providerUrl });
       } catch (error: any) {
         if (error?.code === "resource_missing") {
@@ -316,13 +323,20 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
         }
 
         try {
-          const providerDetails = await resolved.plugin.getMethodSummary(
-            resolved.context,
-            pm.paymentMethod,
-          );
+          const providerDetails = await gatewayRequest(resolved, "get-method-summary", {
+            methodRef: pm.paymentMethod,
+          });
           enriched.push({ ...pm, providerDetails });
-        } catch {
-          enriched.push({ ...pm, providerError: "Payment method not found at provider" });
+        } catch (error) {
+          // A refusal is not a missing method. Saying "not found at provider"
+          // during maintenance would accuse the vendor of losing something we
+          // never asked it about, so report why we did not ask.
+          enriched.push({
+            ...pm,
+            providerError: isMaintenanceModeError(error)
+              ? error.message
+              : "Payment method not found at provider",
+          });
         }
       }
 
@@ -347,7 +361,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
       await assertPluginComponent(resolved);
 
       const customerRef = await ensureCustomer(entityType, entityId, resolved);
-      const session = await resolved.plugin.createSetupSession(resolved.context, {
+      const session = await gatewayRequest(resolved, "create-setup-session", {
         customerRef,
       });
 
@@ -378,7 +392,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
       await assertPluginComponent(resolved);
 
       const customerRef = await ensureCustomer(entityType, entityId, resolved);
-      await resolved.plugin.attachMethod(resolved.context, {
+      await gatewayRequest(resolved, "attach-method", {
         customerRef,
         methodToken,
       });
@@ -455,10 +469,9 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
       const resolved = await resolveMethodGateway(method.gatewayConfigId);
 
       try {
-        const details = await resolved.plugin.getMethodDetails(
-          resolved.context,
-          method.paymentMethod,
-        );
+        const details = await gatewayRequest(resolved, "get-method-details", {
+          methodRef: method.paymentMethod,
+        });
         res.json({
           paymentMethod: details.paymentMethod,
           providerUrl: details.providerUrl,
@@ -485,8 +498,15 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
 
       // Best-effort detach; still delete the row if the provider no longer has it.
       try {
-        await resolved.plugin.detachMethod(resolved.context, method.paymentMethod);
+        await gatewayRequest(resolved, "detach-method", {
+          methodRef: method.paymentMethod,
+        });
       } catch (error) {
+        // "Best effort" covers the provider having lost the method, not the
+        // site having declined to call it. Deleting the row after a refusal
+        // would strand a live method at the vendor that nothing here can
+        // reach, so let the refusal end the request instead.
+        if (isMaintenanceModeError(error)) throw error;
         console.warn(
           `Failed to detach payment method from provider: ${
             error instanceof Error ? error.message : String(error)

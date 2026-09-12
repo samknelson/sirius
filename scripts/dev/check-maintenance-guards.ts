@@ -76,12 +76,28 @@ const OUTBOUND_MODULES = [
   "server/modules/sitespecific/freeman/edls-migrate/client.ts",
   "server/modules/sitespecific/btu/scraper-import.ts",
   "server/plugins/wizards/plugins/btu-cardcheck-scrape-import.ts",
+  "server/plugins/ledger/payment-gateway/plugins/stripe.ts",
 ];
 /**
  * How an outbound call is recognized. `fetch` covers Lob, Google, OpenStates,
  * the site-specific clients and the scraper's attachment downloads;
  * `getTwilioClient` is the single door to Twilio; `sgMail.send` is SendGrid's;
  * `page.goto`/`page.pdf` are how the BTU scrape reaches the site it drives.
+ *
+ * Stripe has no entry here, and rule 1 is therefore quiet about it. Its plugin
+ * does not make its own framework request: the payment-gateway kind declares
+ * operations, and registering the plugin wraps every one of its handlers in a
+ * framework request. The `wcUncachedRequest` call rule 1 looks for is in
+ * `server/plugins/ledger/payment-gateway/registry.ts` by design, and since
+ * delegation is only followed within a file, naming a Stripe call marker here
+ * would report all nine handlers as off-framework and buy nine exemptions that
+ * each say "yes it is".
+ *
+ * What keeps Stripe honest instead is stronger than a lexical check: the
+ * registry hands out handlers that are already on the framework, so there is
+ * no way to call one that skips the refusal — not even by reaching into the
+ * plugin object. Rule 2 still does its half, confining the SDK import to the
+ * one module listed above.
  */
 const OUTBOUND_CALLS = [
   "fetch",
@@ -108,6 +124,7 @@ const VENDOR_MARKERS: { pattern: RegExp; what: string }[] = [
   },
   { pattern: /from\s+['"]@sendgrid\//, what: "the SendGrid SDK" },
   { pattern: /from\s+['"]twilio['"]/, what: "the Twilio SDK" },
+  { pattern: /from\s+['"]stripe['"]/, what: "the Stripe SDK" },
 ];
 
 /**
@@ -277,9 +294,7 @@ const FRAMEWORK_WORK_PROPERTY = "fetch";
  * the writable-database requirement have all been satisfied.
  */
 function functionsUnderFramework(sf: ts.SourceFile): Set<FunctionLike> {
-  const declared = declaredFunctions(sf);
-  const underFramework = new Set<FunctionLike>();
-  const queue: FunctionLike[] = [];
+  const roots: FunctionLike[] = [];
 
   const findCallbacks = (node: ts.Node): void => {
     if (ts.isCallExpression(node) && FRAMEWORK_CALLS.includes(calleeText(node, sf))) {
@@ -289,7 +304,7 @@ function functionsUnderFramework(sf: ts.SourceFile): Set<FunctionLike> {
           if (!prop.name || !ts.isIdentifier(prop.name)) continue;
           if (prop.name.text !== FRAMEWORK_WORK_PROPERTY) continue;
           const value = ts.isPropertyAssignment(prop) ? prop.initializer : prop;
-          if (isFunctionLike(value)) queue.push(value);
+          if (isFunctionLike(value)) roots.push(value);
         }
       }
     }
@@ -297,19 +312,38 @@ function functionsUnderFramework(sf: ts.SourceFile): Set<FunctionLike> {
   };
   findCallbacks(sf);
 
-  // Walk outward from each callback to whatever it calls, by name, until the
-  // set stops growing.
+  return functionsReachableFrom(sf, roots);
+}
+
+/**
+ * The given functions, plus everything in this file they hand the work to.
+ *
+ * The second half matters because a long operation is usually a callback that
+ * delegates — `fetch: () => this.printLetterAtLob(params)`. The delegate is
+ * still on the caller's path.
+ *
+ * By name, and therefore within one file: a delegate in another module is not
+ * found. Both rules that use this are per-file for that reason.
+ */
+function functionsReachableFrom(
+  sf: ts.SourceFile,
+  roots: FunctionLike[],
+): Set<FunctionLike> {
+  const declared = declaredFunctions(sf);
+  const reachable = new Set<FunctionLike>();
+  const queue = [...roots];
+
   while (queue.length > 0) {
     const fn = queue.pop()!;
-    if (underFramework.has(fn)) continue;
-    underFramework.add(fn);
+    if (reachable.has(fn)) continue;
+    reachable.add(fn);
 
     const visit = (node: ts.Node): void => {
       if (ts.isCallExpression(node)) {
         const callee = calleeText(node, sf);
         const bareName = callee.split(".").pop() ?? callee;
         for (const target of declared.get(bareName) ?? []) {
-          if (!underFramework.has(target)) queue.push(target);
+          if (!reachable.has(target)) queue.push(target);
         }
       }
       ts.forEachChild(node, visit);
@@ -317,7 +351,7 @@ function functionsUnderFramework(sf: ts.SourceFile): Set<FunctionLike> {
     visit(fn);
   }
 
-  return underFramework;
+  return reachable;
 }
 
 /**
@@ -347,6 +381,310 @@ const OFF_FRAMEWORK_FUNCTIONS: Record<string, Record<string, string>> = {
       `and this one follows them. Guarded by ${GUARD_FN}() until it does.`,
   },
 };
+
+/**
+ * Modules whose vendor calls are put on the framework by the registrar that
+ * registers them, not by a `wcRequest` written in the file.
+ *
+ * A payment gateway plugin declares handlers in an `operations` map and
+ * `registerPaymentGatewayPlugin` registers the plugin with every one of those
+ * handlers already wrapped in a framework request. Rule 1 cannot see that: the
+ * `wcUncachedRequest` call is in the registry, and delegation is only followed
+ * within a file, so listing the vendor in OUTBOUND_CALLS would report every
+ * handler in the file and buy one exemption per handler each saying "yes it
+ * is".
+ *
+ * Rule 3 checks the property that actually makes the wrapping total: the
+ * vendor is reachable ONLY from the handlers. A vendor call anywhere else in
+ * the file — a metadata hook like `validateConfig`, a helper nothing wraps,
+ * module top level — is not covered by the registrar and is reported.
+ */
+const WRAPPED_AT_REGISTRATION: Record<
+  string,
+  {
+    /** The object literal property holding the wrapped handlers. */
+    handlerContainer: string;
+    /** The property on each entry that is the handler. */
+    handlerProperty: string;
+    /** Identifiers that get hold of the vendor's client. */
+    vendorIdentifiers: string[];
+  }
+> = {
+  "server/plugins/ledger/payment-gateway/plugins/stripe.ts": {
+    handlerContainer: "operations",
+    handlerProperty: "run",
+    vendorIdentifiers: ["Stripe", "client"],
+  },
+};
+
+/** The handler functions declared in a `<container>: { x: { <prop>() {} } }` map. */
+function handlersInContainer(
+  sf: ts.SourceFile,
+  container: string,
+  property: string,
+): FunctionLike[] {
+  const handlers: FunctionLike[] = [];
+
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isPropertyAssignment(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === container &&
+      ts.isObjectLiteralExpression(node.initializer)
+    ) {
+      for (const entry of node.initializer.properties) {
+        if (!ts.isPropertyAssignment(entry)) continue;
+        if (!ts.isObjectLiteralExpression(entry.initializer)) continue;
+        for (const prop of entry.initializer.properties) {
+          if (!prop.name || !ts.isIdentifier(prop.name)) continue;
+          if (prop.name.text !== property) continue;
+          const value = ts.isPropertyAssignment(prop) ? prop.initializer : prop;
+          if (isFunctionLike(value)) handlers.push(value);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sf);
+  return handlers;
+}
+
+/** Rule 3: in a wrapped-at-registration module, only handlers reach the vendor. */
+function auditWrappedAtRegistration(file: string): Violation[] {
+  const spec = WRAPPED_AT_REGISTRATION[file];
+  const sf = parse(file);
+  const handlers = handlersInContainer(sf, spec.handlerContainer, spec.handlerProperty);
+
+  if (handlers.length === 0) {
+    return [
+      {
+        file,
+        line: 1,
+        detail:
+          `is listed in WRAPPED_AT_REGISTRATION but declares no ` +
+          `\`${spec.handlerContainer}\` handlers, so the rule checks nothing`,
+        remedy:
+          `Either the handlers moved — point handlerContainer/handlerProperty at where ` +
+          `they are now — or this module no longer wraps at registration, in which case ` +
+          `remove the entry and put its outbound calls under rule 1.`,
+      },
+    ];
+  }
+
+  const violations: Violation[] = [];
+
+  // Everything that can end up touching the vendor, found by working BACKWARDS:
+  // the functions that name it, then the functions that call those, and so on.
+  //
+  // Backwards rather than forwards from the handlers, because forwards answers
+  // the wrong question. That a helper CAN be reached from a handler does not
+  // mean it can ONLY be reached from one: a `sharedStripeCall()` called by both
+  // a handler and `validateConfig` is reachable from a handler, and reading
+  // forwards it looks fine, while the second caller quietly reaches Stripe with
+  // nothing wrapping it. Working backwards, that second caller is itself
+  // vendor-reaching, and it is not a handler, so it is reported.
+  const { vendorReaching, topLevel } = vendorReachingFunctions(sf, spec);
+
+  for (const { line, identifier } of topLevel) {
+    violations.push({
+      file,
+      line,
+      detail:
+        `module top level reaches the vendor (${identifier}), where nothing can wrap it`,
+      remedy:
+        `Only the \`${spec.handlerContainer}\` handlers are put on the web client framework. ` +
+        `Move the work into an operation handler, or into a helper one of them calls.`,
+    });
+  }
+
+  // The handlers, plus what they delegate to: the only functions registration
+  // puts on the framework.
+  const wrapped = functionsReachableFrom(sf, handlers);
+
+  for (const fn of vendorReaching) {
+    if (wrapped.has(fn)) continue;
+    violations.push({
+      file,
+      line: lineOf(sf, fn),
+      detail:
+        `${nameOf(fn, sf)}() reaches the vendor but is not reachable from the ` +
+        `\`${spec.handlerContainer}\` handlers, so nothing puts it on the web client framework`,
+      remedy:
+        `Registration wraps the \`${spec.handlerContainer}\` handlers and what they call, ` +
+        `and nothing else, so a call from here is not refused during maintenance and is not ` +
+        `counted. Move the work into an operation handler, or into a helper one of them calls.`,
+    });
+  }
+
+  violations.push(...auditRawPluginNotExported(sf, file, spec.handlerContainer));
+  return violations;
+}
+
+/**
+ * The functions that reach the vendor, and any mention of it outside them all.
+ *
+ * A mention counts for every function it sits inside, not just the innermost
+ * one: `validateConfig` with a `() => client(ctx)` inside it reaches the vendor
+ * just as surely as if it said so directly, and nothing calls that arrow by a
+ * name the walk could follow.
+ */
+function vendorReachingFunctions(
+  sf: ts.SourceFile,
+  spec: { vendorIdentifiers: string[] },
+): {
+  vendorReaching: Set<FunctionLike>;
+  topLevel: Array<{ line: number; identifier: string }>;
+} {
+  const declared = declaredFunctions(sf);
+  const vendorReaching = new Set<FunctionLike>();
+  const topLevel: Array<{ line: number; identifier: string }> = [];
+  /** Who calls what, by bare name, for every function the name sits inside. */
+  const callers = new Map<string, Set<FunctionLike>>();
+  const topLevelCalls = new Map<string, number>();
+  const stack: FunctionLike[] = [];
+
+  const visit = (node: ts.Node): void => {
+    const pushed = isFunctionLike(node);
+    if (pushed) stack.push(node);
+
+    // A value-position mention of the vendor. A type position (`: Stripe`)
+    // reaches nothing, and neither does the name being imported or declared.
+    if (
+      ts.isIdentifier(node) &&
+      spec.vendorIdentifiers.includes(node.text) &&
+      !ts.isTypeReferenceNode(node.parent) &&
+      !ts.isImportSpecifier(node.parent) &&
+      !ts.isImportClause(node.parent) &&
+      !(ts.isFunctionDeclaration(node.parent) && node.parent.name === node)
+    ) {
+      if (stack.length === 0) {
+        topLevel.push({ line: lineOf(sf, node), identifier: node.text });
+      }
+      for (const fn of stack) vendorReaching.add(fn);
+    }
+
+    if (ts.isCallExpression(node)) {
+      const callee = calleeText(node, sf);
+      const bareName = callee.split(".").pop() ?? callee;
+      if (stack.length === 0) {
+        if (!topLevelCalls.has(bareName)) topLevelCalls.set(bareName, lineOf(sf, node));
+      }
+      let set = callers.get(bareName);
+      if (!set) callers.set(bareName, (set = new Set()));
+      for (const fn of stack) set.add(fn);
+    }
+
+    ts.forEachChild(node, visit);
+    if (pushed) stack.pop();
+  };
+  visit(sf);
+
+  // Propagate upward: calling something that reaches the vendor reaches it too.
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const [name, fns] of callers) {
+      const targets = declared.get(name) ?? [];
+      if (!targets.some((t) => vendorReaching.has(t))) continue;
+      for (const fn of fns) {
+        if (!vendorReaching.has(fn)) {
+          vendorReaching.add(fn);
+          grew = true;
+        }
+      }
+      const line = topLevelCalls.get(name);
+      if (line !== undefined && !topLevel.some((t) => t.line === line)) {
+        topLevel.push({ line, identifier: name });
+      }
+    }
+  }
+
+  return { vendorReaching, topLevel };
+}
+
+/**
+ * The plugin object as the file writes it must not leave the file.
+ *
+ * What registration hands to the registry is a COPY whose handlers are wrapped.
+ * The literal the file declares still holds the bare ones, so exporting it
+ * would republish every operation with the refusal missing — and it would do so
+ * without naming the vendor anywhere, which is why the check above cannot see
+ * it.
+ */
+function auditRawPluginNotExported(
+  sf: ts.SourceFile,
+  file: string,
+  handlerContainer: string,
+): Violation[] {
+  const violations: Violation[] = [];
+  const remedy =
+    `The registry is the only supported handle on this plugin, and what it hands out has ` +
+    `the web client framework around every handler. An exported literal is the same plugin ` +
+    `with the maintenance refusal missing, so keep it local to this file.`;
+
+  // The names bound to a raw plugin literal in this file.
+  const raw = new Map<string, ts.VariableDeclaration>();
+  for (const statement of sf.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      const init = declaration.initializer;
+      if (!init || !ts.isObjectLiteralExpression(init)) continue;
+      if (!ts.isIdentifier(declaration.name)) continue;
+      const declares = init.properties.some(
+        (p) => p.name && ts.isIdentifier(p.name) && p.name.text === handlerContainer,
+      );
+      if (declares) raw.set(declaration.name.text, declaration);
+    }
+  }
+  if (raw.size === 0) return violations;
+
+  const report = (node: ts.Node, name: string, how: string): void => {
+    violations.push({
+      file,
+      line: lineOf(sf, node),
+      detail:
+        `${how} ${name}, whose \`${handlerContainer}\` are the handlers as written, ` +
+        `before registration wraps them`,
+      remedy,
+    });
+  };
+
+  // Every spelling of "this leaves the file": the modifier, a later named
+  // export, and a default export. Checking only the first would be a rule that
+  // asks how something is written instead of what it does.
+  for (const statement of sf.statements) {
+    if (
+      ts.isVariableStatement(statement) &&
+      statement.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+    ) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (!ts.isIdentifier(declaration.name)) continue;
+        if (raw.has(declaration.name.text)) {
+          report(declaration, declaration.name.text, "exports");
+        }
+      }
+    }
+
+    if (
+      ts.isExportDeclaration(statement) &&
+      statement.exportClause &&
+      ts.isNamedExports(statement.exportClause)
+    ) {
+      for (const specifier of statement.exportClause.elements) {
+        const local = (specifier.propertyName ?? specifier.name).text;
+        if (raw.has(local)) report(specifier, local, "exports");
+      }
+    }
+
+    if (ts.isExportAssignment(statement) && ts.isIdentifier(statement.expression)) {
+      const local = statement.expression.text;
+      if (raw.has(local)) report(statement, local, "default-exports");
+    }
+  }
+
+  return violations;
+}
 
 /** Rule 1: every outbound call in a listed module goes through the framework. */
 function auditOutboundModule(file: string): Violation[] {
@@ -400,6 +738,9 @@ export function findViolations(): Violation[] {
   const violations = auditModuleList(present);
   for (const module of OUTBOUND_MODULES) {
     if (present.has(module)) violations.push(...auditOutboundModule(module));
+  }
+  for (const module of Object.keys(WRAPPED_AT_REGISTRATION)) {
+    if (present.has(module)) violations.push(...auditWrappedAtRegistration(module));
   }
   violations.push(...auditUnlistedVendorModules(scanned));
   return violations;
