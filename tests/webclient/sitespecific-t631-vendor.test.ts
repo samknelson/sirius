@@ -16,10 +16,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  *    exactly how a credential fragment reaches a log line, so the canary below
  *    checks the value never appears in anything the plugin produces.
  *
- * The web client framework is stubbed so these run without a database: the real
- * wrapper records usage before it calls the handler. Registration is captured
- * rather than discarded so the test can also assert the framework was told
- * about every operation.
+ * These exercise the plugin's own behaviour, so they reach its handlers through
+ * the framework's internal accessor rather than through `wcRequest` — what is
+ * under test here is what the plugin does with a credential, not the cache, the
+ * refusal or the count that the framework applies around it. The framework's
+ * request registration is captured rather than discarded so the test can also
+ * assert the framework was told about every operation.
  */
 
 interface CapturedRegistration {
@@ -32,23 +34,17 @@ interface CapturedRegistration {
 const registrations: CapturedRegistration[] = [];
 
 vi.mock("../../server/services/webclient/uncached", () => ({
-  registerUncachedWcRequest: (entry: CapturedRegistration) => {
+  registerUncachedWcVendorRequest: (entry: CapturedRegistration) => {
     registrations.push(entry);
-  },
-  // Pass-through: call the handler and hand back its answer, so the plugin's
-  // own behaviour is what these tests observe.
-  wcUncachedRequest: async ({ fetch }: { fetch: () => Promise<any> }) => {
-    const answer = await fetch();
-    return answer.answered
-      ? { value: answer.value }
-      : { error: answer.error ?? "not answered" };
   },
 }));
 
 const fetchSpy = vi.fn();
 vi.stubGlobal("fetch", fetchSpy);
 
-const { getWcVendorPlugin } = await import("../../server/plugins/wc-vendors/registry");
+const { getWcVendorHandler, getWcVendorPlugin } = await import(
+  "../../server/plugins/wc-vendors/registry"
+);
 const { T631_ACTIONS, T631_PLUGIN_ID, T631_COMPONENT, T631ConfigurationError } =
   await import("../../server/plugins/wc-vendors/plugins/sitespecific-t631");
 
@@ -102,10 +98,23 @@ function plugin() {
   return found;
 }
 
+/**
+ * The plugin's own handler for one operation.
+ *
+ * Registered plugins carry only what a vendor CAN do; the runnable half lives
+ * behind this accessor, which is the framework's door and, here, the test's.
+ */
+function handler(operation: string) {
+  const found = getWcVendorHandler(T631_PLUGIN_ID, operation as any);
+  if (!found) throw new Error(`the T631 vendor registered no '${operation}' handler`);
+  return found;
+}
+
 async function runTest(apiKey: string, data?: Record<string, unknown>) {
-  const operation = plugin().operations["test-connection"];
-  if (!operation) throw new Error("the T631 vendor declares no connection test");
-  return (await operation.run(context(apiKey, data), undefined as never)) as any;
+  return (await handler("test-connection")(
+    context(apiKey, data),
+    undefined as never,
+  )) as any;
 }
 
 beforeEach(() => {
@@ -209,9 +218,9 @@ describe("an unusable T631 credential", () => {
     // Misconfiguration has always been thrown rather than dressed up as a
     // failed request, because a scheduled sync must not read it as "T631 said
     // no workers" and start deactivating people.
-    const operation = plugin().operations.sirius_edls_server_worker_list;
+    const run = handler("sirius_edls_server_worker_list");
     await expect(
-      operation!.run(context(JSON.stringify({ accessToken: "a" })), undefined as never),
+      run(context(JSON.stringify({ accessToken: "a" })), undefined as never),
     ).rejects.toBeInstanceOf(T631ConfigurationError);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -266,8 +275,8 @@ describe("a working T631 connection", () => {
 
   it("keeps the token out of the diagnostics it hands back, whole or in part", async () => {
     answerWith({ success: true, data: { tos_nodes: [] } });
-    const operation = plugin().operations.sirius_edls_server_tos_list;
-    const result: any = await operation!.run(context(credential), undefined as never);
+    const run = handler("sirius_edls_server_tos_list");
+    const result: any = await run(context(credential), undefined as never);
 
     // The real body carries the token; the diagnostics copy the admin page
     // renders, and the HTTP logger previews, must not.
@@ -293,8 +302,8 @@ describe("a working T631 connection", () => {
     answerWith({ success: true });
     const result: any = await runTest(credential);
     expect(result).toBeDefined();
-    const operation = plugin().operations.sirius_service_ping;
-    const ping: any = await operation!.run(context(credential), undefined as never);
+    const run = handler("sirius_service_ping");
+    const ping: any = await run(context(credential), undefined as never);
     expect(ping.request.headers.Authorization).toBe("Basic (redacted)");
     expectNoCredentialAnywhere(ping);
   });
@@ -306,8 +315,8 @@ describe("a working T631 connection", () => {
       { success: false, error: "rejected", echo: ["x", "emp-1", CANARY] },
       false,
     );
-    const operation = plugin().operations.sirius_edls_server_worker_list;
-    const result: any = await operation!.run(context(credential), undefined as never);
+    const run = handler("sirius_edls_server_worker_list");
+    const result: any = await run(context(credential), undefined as never);
     expect(result.success).toBe(false);
     expectNoCredentialAnywhere(result);
     // Scrubbed before parsing, so the parsed copy is clean too — not just the
@@ -319,8 +328,8 @@ describe("a working T631 connection", () => {
     fetchSpy.mockRejectedValue(
       new Error(`request failed while sending ${CANARY}`),
     );
-    const operation = plugin().operations.sirius_edls_server_worker_list;
-    const result: any = await operation!.run(context(credential), undefined as never);
+    const run = handler("sirius_edls_server_worker_list");
+    const result: any = await run(context(credential), undefined as never);
     expectNoCredentialAnywhere(result);
   });
 
@@ -338,8 +347,8 @@ describe("a working T631 connection", () => {
       }),
       text: async () => JSON.stringify({ success: true }),
     });
-    const operation = plugin().operations.sirius_service_ping;
-    const result: any = await operation!.run(context(credential), undefined as never);
+    const run = handler("sirius_service_ping");
+    const result: any = await run(context(credential), undefined as never);
     expectNoCredentialAnywhere(result);
     expect(result.response.headers["x-echo-token"]).toBe("(redacted)");
   });
@@ -355,8 +364,8 @@ describe("a working T631 connection", () => {
       headers: new Headers(),
       text: async () => "denied",
     });
-    const operation = plugin().operations.sirius_edls_server_worker_list;
-    const result: any = await operation!.run(context(credential), undefined as never);
+    const run = handler("sirius_edls_server_worker_list");
+    const result: any = await run(context(credential), undefined as never);
     expect(result.success).toBe(false);
     expect(result.error).toContain("HTTP 401");
     expectNoCredentialAnywhere(result);
@@ -379,8 +388,8 @@ describe("a working T631 connection", () => {
       headers: new Headers(),
       text: async () => JSON.stringify({ success: true, echoed: awkward }),
     });
-    const operation = plugin().operations.sirius_edls_server_tos_list;
-    const result: any = await operation!.run(
+    const run = handler("sirius_edls_server_tos_list");
+    const result: any = await run(
       context(awkwardCredential),
       undefined as never,
     );
@@ -403,8 +412,8 @@ describe("a working T631 connection", () => {
       text: async () =>
         `{"success": false, "echoed": ${JSON.stringify(awkward)}, "trunc`,
     });
-    const operation = plugin().operations.sirius_edls_server_tos_list;
-    const result: any = await operation!.run(
+    const run = handler("sirius_edls_server_tos_list");
+    const result: any = await run(
       context(
         JSON.stringify({
           accessToken: "access-token-value",
@@ -435,8 +444,8 @@ describe("a working T631 connection", () => {
       headers: new Headers(),
       text: async () => JSON.stringify({ success: true, echoed: long }),
     });
-    const operation = plugin().operations.sirius_edls_server_tos_list;
-    const result: any = await operation!.run(
+    const run = handler("sirius_edls_server_tos_list");
+    const result: any = await run(
       context(JSON.stringify({ accessToken: short, employerToken: long })),
       undefined as never,
     );
@@ -446,16 +455,16 @@ describe("a working T631 connection", () => {
 
   it("reports a remote failure as a result, not as a throw", async () => {
     answerWith({ oops: true }, false);
-    const operation = plugin().operations.sirius_dispatch_facility_dropdown;
-    const result: any = await operation!.run(context(credential), undefined as never);
+    const run = handler("sirius_dispatch_facility_dropdown");
+    const result: any = await run(context(credential), undefined as never);
     expect(result.success).toBe(false);
     expect(result.error).toContain("500");
   });
 
   it("reports a network failure as a result, not as a throw", async () => {
     fetchSpy.mockRejectedValue(new Error("ECONNREFUSED"));
-    const operation = plugin().operations.sirius_dispatch_group_search;
-    const result: any = await operation!.run(context(credential), undefined as never);
+    const run = handler("sirius_dispatch_group_search");
+    const result: any = await run(context(credential), undefined as never);
     expect(result.success).toBe(false);
     expect(result.error).toBe("ECONNREFUSED");
   });

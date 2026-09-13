@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { requireComponent } from "../../../components";
 import { z } from "zod";
 import { sendIfMaintenanceRefusal } from "../../../../services/maintenance-flag";
-import { resolveDefaultWcVendor, wcVendorRequest } from "../../../../services/webclient/wc-vendor-context";
+import { wcRequest } from "../../../../services/webclient";
 import { WcVendorError } from "../../../../plugins/wc-vendors/errors";
 import {
   T631_ACTIONS,
@@ -23,11 +23,12 @@ const VALID_ACTIONS = T631_ACTIONS;
 /**
  * Ask the remote T631 service for one action, over the site's T631 connection.
  *
- * A thin adapter over the vendor plugin, kept because every caller — four
+ * A thin adapter over the framework, kept because every caller — four
  * scheduled jobs, the status check and the two admin routes below — names an
- * action and nothing else. They have never chosen a connection, so this
- * resolves the default one for them, in the single place that decides what a
- * default is.
+ * action and nothing else. They have never chosen a connection, so naming the
+ * plugin leaves the choice to the single place that decides what a default is,
+ * and this unwraps the framework's uniform result into the diagnostics shape
+ * those callers read.
  *
  * The result contract is the plugin's and is unchanged: a remote or network
  * condition comes back as a result the diagnostics page can show, never as a
@@ -37,8 +38,16 @@ const VALID_ACTIONS = T631_ACTIONS;
  * caller reports it as the refusal it is rather than as a broken remote system.
  */
 export async function t631Fetch(action: T631Action): Promise<T631FetchResult> {
-  const resolved = await resolveDefaultWcVendor(T631_PLUGIN_ID);
-  return wcVendorRequest(resolved, action, undefined as never);
+  const result = await wcRequest({
+    vendor: { pluginId: T631_PLUGIN_ID },
+    operation: action,
+    args: undefined as never,
+  });
+  if (result.outcome === "success") return result.value as T631FetchResult;
+  // The plugin's own refusal (a misconfigured credential), unchanged, so the
+  // "not configured" test below still recognises it.
+  if (result.cause !== undefined) throw result.cause;
+  throw new WcVendorError(503, result.error ?? "T631 was not asked.");
 }
 
 /**

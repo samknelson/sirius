@@ -2,7 +2,7 @@ import { storage } from "../../storage";
 import { getComponentChecker } from "../../services/access-policy-evaluator";
 import { getWcVendorPlugin } from "../../plugins/wc-vendors";
 import type {
-  WcVendorPlugin,
+  RegisteredWcVendorPlugin,
   WcVendorOperationName,
 } from "../../plugins/wc-vendors/types";
 
@@ -33,7 +33,9 @@ export const PAYMENT_GATEWAY_OPERATIONS: readonly WcVendorOperationName[] = [
 ];
 
 /** True when the plugin declares every operation the ledger's payment flows call. */
-export function isPaymentGatewayPlugin(plugin: WcVendorPlugin): boolean {
+export function isPaymentGatewayPlugin(
+  plugin: Pick<RegisteredWcVendorPlugin, "operations">,
+): boolean {
   return PAYMENT_GATEWAY_OPERATIONS.every(
     (name) => plugin.operations[name] !== undefined,
   );

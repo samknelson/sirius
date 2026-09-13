@@ -68,6 +68,22 @@ export interface WcResult<TValue> {
   fallback?: TValue;
   /** Why the vendor did not answer, from this attempt or the remembered one. */
   error?: string;
+  /**
+   * The far end's own error object from THIS attempt, when it failed by
+   * throwing one.
+   *
+   * `error` is a sentence; this is the thing the sentence was summarised from,
+   * handed back unchanged. A caller that reads `code === "resource_missing"`
+   * to turn a provider's "no such thing" into a 404, or reads a provider's own
+   * HTTP status, is reading this object — summarising it away would silently
+   * turn every one of those into a generic failure.
+   *
+   * Never present on an answer that came from the cache: a stored row keeps
+   * the sentence, not the object. Absent whenever the request was refused or
+   * never made, which is what distinguishes "the vendor said no" from "the
+   * vendor was not asked".
+   */
+  cause?: unknown;
 }
 
 /**

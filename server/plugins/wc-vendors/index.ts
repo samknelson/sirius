@@ -7,7 +7,7 @@ import {
 } from "../_core";
 import { logger } from "../../logger";
 import { wcVendorRegistry } from "./registry";
-import type { WcVendorPlugin } from "./types";
+import type { RegisteredWcVendorPlugin } from "./types";
 
 export {
   wcVendorRegistry,
@@ -41,7 +41,7 @@ export function registerWcVendorPluginKind(): void {
     // already enforces required per-plugin fields from `configFields`; this
     // covers format checks beyond presence.
     validateConfig: (plugin, config) => {
-      const vendor = plugin as WcVendorPlugin;
+      const vendor = plugin as RegisteredWcVendorPlugin;
       const data = (config ?? {}) as Record<string, unknown>;
       const secretName =
         typeof data.secretName === "string" ? data.secretName.trim() : "";
@@ -130,14 +130,14 @@ export function registerWcVendorPluginKind(): void {
       { name: "secretName", label: "Secret Name", type: "string" },
     ],
     envelopeFieldsForPlugin: (plugin) => {
-      const requirement = (plugin as WcVendorPlugin).credential.secretName;
+      const requirement = (plugin as RegisteredWcVendorPlugin).credential.secretName;
       if (requirement === "none") return [];
       return [{
         name: "secretName",
         label: "Secret Name",
         type: "string",
         required: requirement === "required",
-        description: (plugin as WcVendorPlugin).credential.setupGuidance,
+        description: (plugin as RegisteredWcVendorPlugin).credential.setupGuidance,
       }];
     },
   });

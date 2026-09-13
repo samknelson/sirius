@@ -1,6 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const canStore = vi.hoisted(() => vi.fn());
+const getConfig = vi.hoisted(() => vi.fn());
+
+vi.mock("../../server/storage", () => ({
+  storage: {
+    pluginConfigs: {
+      get: (id: string) => getConfig(id),
+      getByKindAndPlugin: async () => [],
+    },
+  },
+}));
 
 vi.mock("../../server/storage/wc-cache", async (importOriginal) => {
   const actual =
@@ -20,12 +30,22 @@ import {
   registerWcVendorPluginKind,
 } from "../../server/plugins/wc-vendors";
 import { getPluginConfigAdapter } from "../../server/plugins/_core/config-adapter";
+import { wcRequest } from "../../server/services/webclient";
 
 registerWcVendorPluginKind();
 
 beforeEach(() => {
   canStore.mockReset();
   canStore.mockResolvedValue(true);
+  getConfig.mockReset();
+  getConfig.mockResolvedValue({
+    id: "dummy-config",
+    pluginKind: "wc-vendors",
+    pluginId: "dummy",
+    enabled: true,
+    name: "Dummy",
+    data: {},
+  });
 });
 
 function plugin(id: string) {
@@ -119,21 +139,42 @@ describe("the wc-vendor plugin contract", () => {
   });
 
   it("enforces write requirements even for an in-process vendor", async () => {
-    const dummy = plugin("dummy");
-    const write = dummy.operations["create-customer"];
-    const read = dummy.operations["test-connection"];
-    if (!write || !read) throw new Error("dummy operation is not registered");
-    const context = {
-      credential: { value: "" },
-      config: { id: "dummy", data: {} },
-    } as any;
-
     canStore.mockResolvedValue(false);
-    await expect(write.run(context, { name: "Test" })).rejects.toMatchObject({
-      status: 503,
+
+    const write = await wcRequest({
+      vendor: { configId: "dummy-config" },
+      operation: "create-customer",
+      args: { name: "Test" },
     });
-    await expect(read.run(context, undefined as never)).resolves.toMatchObject({
-      connected: true,
+    // Nothing happened and the caller is told why, in the same shape every
+    // other answer arrives in. It is not a failure of the vendor, so there is
+    // no outcome to report — only a reason there is no answer.
+    expect(write).toMatchObject({ source: "none", fresh: false });
+    expect(write.error).toContain("could not be recorded");
+    expect("outcome" in write).toBe(false);
+
+    const read = await wcRequest({
+      vendor: { configId: "dummy-config" },
+      operation: "test-connection",
+      args: undefined,
     });
+    expect(read).toMatchObject({
+      outcome: "success",
+      value: { connected: true },
+    });
+  });
+
+  it("is the only way to reach a vendor: the registry hands out no handler", () => {
+    const dummy = plugin("dummy");
+    const declaration = dummy.operations["create-customer"];
+    if (!declaration) throw new Error("dummy operation is not registered");
+    // What a registered plugin publishes is what it CAN do. A caller holding
+    // one cannot make the call itself, and so cannot skip the refusal, the
+    // write gate or the count that the framework applies around it.
+    expect(Object.keys(declaration).sort()).toEqual([
+      "description",
+      "needsWritableDatabase",
+    ]);
+    expect((declaration as Record<string, unknown>).run).toBeUndefined();
   });
 });

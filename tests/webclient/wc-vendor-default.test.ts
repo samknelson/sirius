@@ -28,9 +28,23 @@ vi.mock("../../server/storage", () => ({
   },
 }));
 
-vi.mock("../../server/plugins/wc-vendors", () => ({
+vi.mock("../../server/plugins/wc-vendors/registry", () => ({
   getWcVendorPlugin: (id: string) => getPlugin(id),
+  getWcVendorHandler: () => undefined,
 }));
+
+// Resolving a connection reads no table and makes no request, but the module
+// it lives in sits next to the ones that do. These stand in for the storage
+// the framework core imports, so this suite needs no database.
+vi.mock("../../server/storage/transaction-context", () => ({
+  runOutsideTransaction: (fn: () => unknown) => fn(),
+  runInTransaction: vi.fn(),
+}));
+vi.mock("../../server/storage/wc-cache", () => ({
+  wcCacheStorage: {},
+  wcRequestKeyHash: () => "unused",
+}));
+vi.mock("../../server/storage/wc-stats", () => ({ wcStatsStorage: {} }));
 
 vi.mock("../../server/config/env-registry", () => ({
   registerEnvironmentVariable: (definition: unknown) =>
@@ -40,10 +54,13 @@ vi.mock("../../server/config/env-registry", () => ({
 }));
 
 const {
-  resolveDefaultWcVendor,
+  describeWcVendor,
   WcVendorNoDefaultError,
   WcVendorAmbiguousDefaultError,
 } = await import("../../server/services/webclient/wc-vendor-context");
+
+/** Ask for the vendor's default connection the way a caller that never chose one does. */
+const describeDefault = (pluginId: string) => describeWcVendor({ pluginId });
 
 function config(id: string, enabled: boolean) {
   return {
@@ -81,27 +98,27 @@ describe("the default connection for a vendor", () => {
   it("is the one enabled connection", async () => {
     getEnvironmentVariable.mockReturnValue("configured-credential");
     listing([config("a", true), config("b", false)]);
-    const resolved = await resolveDefaultWcVendor("sitespecific-t631");
-    expect(resolved.config.id).toBe("a");
+    const resolved = await describeDefault("sitespecific-t631");
+    expect(resolved.configId).toBe("a");
   });
 
   it("does not exist when none is enabled, and says so", async () => {
     listing([config("a", false)]);
-    await expect(resolveDefaultWcVendor("sitespecific-t631")).rejects.toBeInstanceOf(
+    await expect(describeDefault("sitespecific-t631")).rejects.toBeInstanceOf(
       WcVendorNoDefaultError,
     );
   });
 
   it("does not exist when there are no connections at all", async () => {
     listing([]);
-    await expect(resolveDefaultWcVendor("sitespecific-t631")).rejects.toBeInstanceOf(
+    await expect(describeDefault("sitespecific-t631")).rejects.toBeInstanceOf(
       WcVendorNoDefaultError,
     );
   });
 
   it("is refused rather than guessed when several are enabled", async () => {
     listing([config("a", true), config("b", true)]);
-    const error = await resolveDefaultWcVendor("sitespecific-t631").catch((e) => e);
+    const error = await describeDefault("sitespecific-t631").catch((e: any) => e);
     expect(error).toBeInstanceOf(WcVendorAmbiguousDefaultError);
     expect(error.configIds).toEqual(["a", "b"]);
     expect(error.status).toBe(409);
@@ -109,9 +126,9 @@ describe("the default connection for a vendor", () => {
 
   it("distinguishes the two refusals, because they need different fixes", async () => {
     listing([]);
-    const none = await resolveDefaultWcVendor("sitespecific-t631").catch((e) => e);
+    const none = await describeDefault("sitespecific-t631").catch((e: any) => e);
     listing([config("a", true), config("b", true)]);
-    const many = await resolveDefaultWcVendor("sitespecific-t631").catch((e) => e);
+    const many = await describeDefault("sitespecific-t631").catch((e: any) => e);
 
     expect(none).not.toBeInstanceOf(WcVendorAmbiguousDefaultError);
     expect(none.status).toBe(503);
@@ -119,15 +136,22 @@ describe("the default connection for a vendor", () => {
   });
 });
 
+/**
+ * Credential resolution has no visible result any more: what a caller gets
+ * back is a description of the connection, deliberately without the
+ * credential on it. What IS visible is whether the connection resolved at all
+ * and what the env registry was asked for, which is the whole of the
+ * declaration's effect.
+ */
 describe("vendor credential declarations", () => {
   it("refuses a required secret that is not set", async () => {
     const cfg = config("required", true);
     getConfig.mockResolvedValue(cfg);
     getEnvironmentVariable.mockReturnValue(undefined);
 
-    const error = await import(
-      "../../server/services/webclient/wc-vendor-context"
-    ).then(({ resolveWcVendor }) => resolveWcVendor(cfg.id).catch((e) => e));
+    const error = await describeWcVendor({ configId: cfg.id }).catch(
+      (e: any) => e,
+    );
 
     expect(error.status).toBe(503);
     expect(error.message).toContain("T631_CREDENTIAL");
@@ -144,15 +168,15 @@ describe("vendor credential declarations", () => {
     });
     getEnvironmentVariable.mockReturnValue(undefined);
 
-    const { resolveWcVendor } = await import(
-      "../../server/services/webclient/wc-vendor-context"
-    );
-    const resolved = await resolveWcVendor(cfg.id);
+    const described = await describeWcVendor({ configId: cfg.id });
 
-    expect(resolved.context.credential).toEqual({
-      secretName: "T631_CREDENTIAL",
-      value: "",
-    });
+    // The connection is usable, and the secret it names was still registered
+    // and read — an unset optional credential is an empty one, not a refusal.
+    expect(described.configId).toBe(cfg.id);
+    expect(registerEnvironmentVariable).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "T631_CREDENTIAL", secret: true }),
+    );
+    expect(getEnvironmentVariable).toHaveBeenCalledWith("T631_CREDENTIAL");
   });
 
   it("does not resolve or register a secret for a credential-free vendor", async () => {
@@ -165,13 +189,22 @@ describe("vendor credential declarations", () => {
       operations: {},
     });
 
-    const { resolveWcVendor } = await import(
-      "../../server/services/webclient/wc-vendor-context"
-    );
-    const resolved = await resolveWcVendor(cfg.id);
+    const described = await describeWcVendor({ configId: cfg.id });
 
-    expect(resolved.context.credential).toEqual({ value: "" });
+    expect(described.pluginId).toBe("dummy");
     expect(registerEnvironmentVariable).not.toHaveBeenCalled();
     expect(getEnvironmentVariable).not.toHaveBeenCalled();
+  });
+
+  it("describes a connection without handing over its credential", async () => {
+    const cfg = config("described", true);
+    getConfig.mockResolvedValue(cfg);
+    getEnvironmentVariable.mockReturnValue("configured-credential");
+
+    const described = await describeWcVendor({ configId: cfg.id });
+
+    expect(JSON.stringify(described)).not.toContain("configured-credential");
+    expect(described).not.toHaveProperty("context");
+    expect(described).not.toHaveProperty("credential");
   });
 });

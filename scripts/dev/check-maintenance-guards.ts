@@ -30,6 +30,11 @@
  *      this check on its first line, and the fix is to add it to
  *      OUTBOUND_MODULES — which immediately subjects it to rule 1.
  *
+ *   4. NO SECOND DOOR TO A VENDOR HANDLER. A registered wc-vendors plugin
+ *      carries no runnable handler; the framework alone can fetch one, by
+ *      name, from the registry. Only the framework may import that lookup, or
+ *      the guarantee rule 3 rests on becomes a rule callers have to remember.
+ *
  * The US Census is the odd one out on the list: it is free and has no side
  * effect. It is here because it is a service the framework can name, and
  * everything the framework calls is refused through the one guard — so leaving
@@ -72,7 +77,6 @@ const OUTBOUND_MODULES = [
   "server/services/google-civics.ts",
   "server/services/google-geocode.ts",
   "server/services/census-geocoder.ts",
-  "server/modules/sitespecific/t631/client/fetch.ts",
   "server/modules/sitespecific/freeman/edls-migrate/client.ts",
   "server/modules/sitespecific/btu/scraper-import.ts",
   "server/plugins/wizards/plugins/btu-cardcheck-scrape-import.ts",
@@ -84,20 +88,22 @@ const OUTBOUND_MODULES = [
  * `getTwilioClient` is the single door to Twilio; `sgMail.send` is SendGrid's;
  * `page.goto`/`page.pdf` are how the BTU scrape reaches the site it drives.
  *
- * Stripe has no entry here, and rule 1 is therefore quiet about it. Its plugin
- * does not make its own framework request: the wc-vendors kind declares
- * operations, and registering the plugin wraps every one of its handlers in a
- * framework request. The `wcUncachedRequest` call rule 1 looks for is in
- * `server/plugins/wc-vendors/registry.ts` by design, and since
- * delegation is only followed within a file, naming a Stripe call marker here
- * would report all nine handlers as off-framework and buy nine exemptions that
- * each say "yes it is".
+ * A wc-vendors plugin has no entry here, and rule 1 is therefore quiet about
+ * one. Such a plugin makes no framework request of its own: it declares
+ * operations, registration keeps the runnable halves in a private map, and the
+ * framework is the only thing that can reach them. The framework request rule
+ * 1 looks for is in `server/services/webclient` by design, and since
+ * delegation is only followed within a file, naming a plugin's call marker
+ * here would report every handler as off-framework and buy one exemption per
+ * handler, each saying "yes it is".
  *
- * What keeps Stripe honest instead is stronger than a lexical check: the
- * registry hands out handlers that are already on the framework, so there is
- * no way to call one that skips the refusal — not even by reaching into the
- * plugin object. Rule 2 still does its half, confining the SDK import to the
- * one module listed above.
+ * What keeps a plugin honest instead is stronger than a lexical check: the
+ * registry hands out a plugin whose operations describe themselves and cannot
+ * be run, so there is no way to call one at all except through the framework —
+ * not even by reaching into the plugin object. Rule 3 below checks the half
+ * that is still the file's own responsibility: that the vendor is reached from
+ * the handlers and nowhere else. Rule 2 confines the SDK import to the one
+ * module listed above.
  */
 const OUTBOUND_CALLS = [
   "fetch",
@@ -135,6 +141,62 @@ const VENDOR_MARKER_EXEMPT: Record<string, string> = {
     "Imports the Twilio SDK only for twilio.validateRequest(), an offline signature " +
     "check over an INBOUND webhook. It sends nothing and reaches no network.",
 };
+
+/**
+ * Framework-only imports: the export, and the one module allowed to have it.
+ *
+ * `getWcVendorHandler` is how a request becomes an actual vendor call. Held
+ * anywhere else it is a second door — an outbound call with no maintenance
+ * refusal, no write gate and no count — and it reaches that state without
+ * naming a vendor anywhere, so rules 1 to 3 all stay quiet about it.
+ *
+ * Tests are outside `server/` and so outside this scan, deliberately: a test
+ * asserting what a handler does needs to reach one, and it is not a way
+ * production code can.
+ */
+const FRAMEWORK_ONLY_IMPORTS: { name: string; allowed: string[]; why: string }[] = [
+  {
+    name: "getWcVendorHandler",
+    allowed: ["server/services/webclient/wc-vendor-context.ts"],
+    why:
+      "it returns a vendor handler with nothing in front of it — no maintenance refusal, " +
+      "no writable-database gate and no usage count",
+  },
+];
+
+/** Rule 4: a framework-only export is imported by the framework and nobody else. */
+function auditFrameworkOnlyImports(files: string[]): Violation[] {
+  const violations: Violation[] = [];
+
+  for (const file of files) {
+    const sf = parse(file);
+    for (const rule of FRAMEWORK_ONLY_IMPORTS) {
+      if (rule.allowed.includes(file)) continue;
+      for (const statement of sf.statements) {
+        if (!ts.isImportDeclaration(statement)) continue;
+        const clause = statement.importClause;
+        if (!clause?.namedBindings || !ts.isNamedImports(clause.namedBindings)) continue;
+        // A type-only import cannot call anything.
+        if (clause.isTypeOnly) continue;
+        for (const specifier of clause.namedBindings.elements) {
+          if (specifier.isTypeOnly) continue;
+          if ((specifier.propertyName ?? specifier.name).text !== rule.name) continue;
+          violations.push({
+            file,
+            line: lineOf(sf, specifier),
+            detail: `imports ${rule.name}, which only the web client framework may hold`,
+            remedy:
+              `Make the call through wcRequest() instead: ${rule.why}. If the framework ` +
+              `itself has moved, update FRAMEWORK_ONLY_IMPORTS in ` +
+              `scripts/dev/check-maintenance-guards.ts.`,
+          });
+        }
+      }
+    }
+  }
+
+  return violations;
+}
 
 /** Only server code is gated; see the header for why client/ and scripts/ are not. */
 const SCANNED_PREFIXES = ["server/", "shared/"];
@@ -274,7 +336,7 @@ function auditUnlistedVendorModules(files: string[]): Violation[] {
  *
  * Both lists are keyed by file path, so moving a module disarms whichever rule
  * named it — and disarms it silently, because a rule with nothing to scan
- * reports nothing. `WRAPPED_AT_REGISTRATION` is checked here for the same
+ * reports nothing. `HANDLERS_ON_FRAMEWORK` is checked here for the same
  * reason `OUTBOUND_MODULES` is: a rename that takes rule 3 offline should fail
  * loudly rather than turn the strongest of the three rules into a no-op.
  */
@@ -285,12 +347,12 @@ function auditModuleList(files: Set<string>): Violation[] {
     detail: `OUTBOUND_MODULES names "${m}", which no longer exists`,
     remedy: "Remove or rename the entry so the list keeps describing the real outbound modules.",
   }));
-  for (const m of Object.keys(WRAPPED_AT_REGISTRATION)) {
+  for (const m of Object.keys(HANDLERS_ON_FRAMEWORK)) {
     if (files.has(m)) continue;
     violations.push({
       file: "scripts/dev/check-maintenance-guards.ts",
       line: 1,
-      detail: `WRAPPED_AT_REGISTRATION names "${m}", which no longer exists`,
+      detail: `HANDLERS_ON_FRAMEWORK names "${m}", which no longer exists`,
       remedy:
         "Remove or rename the entry. Leaving it disables rule 3 for that module without any error.",
     });
@@ -403,27 +465,36 @@ const OFF_FRAMEWORK_FUNCTIONS: Record<string, Record<string, string>> = {
 };
 
 /**
- * Modules whose vendor calls are put on the framework by the registrar that
- * registers them, not by a `wcRequest` written in the file.
+ * Modules whose vendor calls reach the framework by being registered as
+ * handlers, not by a `wcRequest` written in the file.
  *
- * A wc-vendors plugin declares handlers in an `operations` map and
- * `registerWcVendorPlugin` registers the plugin with every one of those
- * handlers already wrapped in a framework request. Rule 1 cannot see that: the
- * `wcUncachedRequest` call is in the registry, and delegation is only followed
- * within a file, so listing the vendor in OUTBOUND_CALLS would report every
- * handler in the file and buy one exemption per handler each saying "yes it
- * is".
+ * A wc-vendors plugin declares its operations in a map; registration keeps
+ * each runnable half in a private table the framework alone can read, and
+ * hands the registry a plugin whose operations only describe themselves. So a
+ * handler runs when and only when the framework runs it, with the refusal, the
+ * write gate and the count already applied. Rule 1 cannot see any of that: the
+ * framework request is in `server/services/webclient`, and delegation is only
+ * followed within a file, so listing the vendor in OUTBOUND_CALLS would report
+ * every handler in the file and buy one exemption per handler each saying
+ * "yes it is".
  *
- * Rule 3 checks the property that actually makes the wrapping total: the
- * vendor is reachable ONLY from the handlers. A vendor call anywhere else in
- * the file — a metadata hook like `validateConfig`, a helper nothing wraps,
- * module top level — is not covered by the registrar and is reported.
+ * Rule 3 checks the half the file itself still decides: the vendor is reached
+ * ONLY from the handlers. Registration makes a handler unreachable except
+ * through the framework, but it says nothing about the rest of the file — a
+ * vendor call in a metadata hook like `validateConfig`, in a helper no handler
+ * calls, or at module top level runs with no framework around it at all, and
+ * is reported here.
  */
-const WRAPPED_AT_REGISTRATION: Record<
+const HANDLERS_ON_FRAMEWORK: Record<
   string,
   {
-    /** The object literal property holding the wrapped handlers. */
-    handlerContainer: string;
+    /**
+     * The maps holding the handlers, by the name each is written under — a
+     * property of the plugin literal (`operations: { … }`) or a variable the
+     * literal spreads in. The first is the one the plugin literal declares,
+     * which is how the literal itself is recognized.
+     */
+    handlerContainers: string[];
     /** The property on each entry that is the handler. */
     handlerProperty: string;
     /** Identifiers that get hold of the vendor's client. */
@@ -431,36 +502,73 @@ const WRAPPED_AT_REGISTRATION: Record<
   }
 > = {
   "server/plugins/wc-vendors/plugins/stripe.ts": {
-    handlerContainer: "operations",
+    handlerContainers: ["operations"],
     handlerProperty: "run",
     vendorIdentifiers: ["Stripe", "client"],
   },
+  "server/plugins/wc-vendors/plugins/sitespecific-t631.ts": {
+    // T631 has no SDK: it reaches its remote service with a bare `fetch`, and
+    // the remote operations are written in their own map that the plugin
+    // literal spreads in, so both maps are named here.
+    handlerContainers: ["operations", "t631RemoteOperations"],
+    handlerProperty: "run",
+    vendorIdentifiers: ["fetch"],
+  },
 };
 
-/** The handler functions declared in a `<container>: { x: { <prop>() {} } }` map. */
+/**
+ * The handler functions declared in a `{ x: { <prop>() {} } }` map.
+ *
+ * A map is found by the name it is written under, whether that is a property
+ * of the plugin literal (`operations: { … }`) or a variable the literal
+ * spreads in (`const remote = { … }`). Both are the same thing to the
+ * registrar, and only one of them is a property.
+ */
 function handlersInContainer(
   sf: ts.SourceFile,
-  container: string,
+  containers: string[],
   property: string,
 ): FunctionLike[] {
   const handlers: FunctionLike[] = [];
 
-  const visit = (node: ts.Node): void => {
-    if (
-      ts.isPropertyAssignment(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === container &&
-      ts.isObjectLiteralExpression(node.initializer)
+  const collect = (map: ts.ObjectLiteralExpression): void => {
+    for (const entry of map.properties) {
+      if (!ts.isPropertyAssignment(entry)) continue;
+      if (!ts.isObjectLiteralExpression(entry.initializer)) continue;
+      for (const prop of entry.initializer.properties) {
+        if (!prop.name || !ts.isIdentifier(prop.name)) continue;
+        if (prop.name.text !== property) continue;
+        const value = ts.isPropertyAssignment(prop) ? prop.initializer : prop;
+        if (isFunctionLike(value)) handlers.push(value);
+      }
+    }
+  };
+
+  /** `{ … }`, or the same behind a `satisfies`/`as` the declaration may carry. */
+  const objectLiteral = (node: ts.Expression | undefined): ts.ObjectLiteralExpression | undefined => {
+    let current = node;
+    while (
+      current &&
+      (ts.isSatisfiesExpression(current) ||
+        ts.isAsExpression(current) ||
+        ts.isParenthesizedExpression(current))
     ) {
-      for (const entry of node.initializer.properties) {
-        if (!ts.isPropertyAssignment(entry)) continue;
-        if (!ts.isObjectLiteralExpression(entry.initializer)) continue;
-        for (const prop of entry.initializer.properties) {
-          if (!prop.name || !ts.isIdentifier(prop.name)) continue;
-          if (prop.name.text !== property) continue;
-          const value = ts.isPropertyAssignment(prop) ? prop.initializer : prop;
-          if (isFunctionLike(value)) handlers.push(value);
-        }
+      current = current.expression;
+    }
+    return current && ts.isObjectLiteralExpression(current) ? current : undefined;
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isPropertyAssignment(node) && ts.isIdentifier(node.name)) {
+      if (containers.includes(node.name.text)) {
+        const map = objectLiteral(node.initializer);
+        if (map) collect(map);
+      }
+    }
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      if (containers.includes(node.name.text)) {
+        const map = objectLiteral(node.initializer);
+        if (map) collect(map);
       }
     }
     ts.forEachChild(node, visit);
@@ -470,11 +578,12 @@ function handlersInContainer(
   return handlers;
 }
 
-/** Rule 3: in a wrapped-at-registration module, only handlers reach the vendor. */
-function auditWrappedAtRegistration(file: string): Violation[] {
-  const spec = WRAPPED_AT_REGISTRATION[file];
+/** Rule 3: in a plugin module, only registered handlers reach the vendor. */
+function auditHandlersOnFramework(file: string): Violation[] {
+  const spec = HANDLERS_ON_FRAMEWORK[file];
+  const containers = spec.handlerContainers.map((c) => `\`${c}\``).join(" / ");
   const sf = parse(file);
-  const handlers = handlersInContainer(sf, spec.handlerContainer, spec.handlerProperty);
+  const handlers = handlersInContainer(sf, spec.handlerContainers, spec.handlerProperty);
 
   if (handlers.length === 0) {
     return [
@@ -482,12 +591,12 @@ function auditWrappedAtRegistration(file: string): Violation[] {
         file,
         line: 1,
         detail:
-          `is listed in WRAPPED_AT_REGISTRATION but declares no ` +
-          `\`${spec.handlerContainer}\` handlers, so the rule checks nothing`,
+          `is listed in HANDLERS_ON_FRAMEWORK but declares no ` +
+          `${containers} handlers, so the rule checks nothing`,
         remedy:
-          `Either the handlers moved — point handlerContainer/handlerProperty at where ` +
-          `they are now — or this module no longer wraps at registration, in which case ` +
-          `remove the entry and put its outbound calls under rule 1.`,
+          `Either the handlers moved — point handlerContainers/handlerProperty at where ` +
+          `they are now — or this module no longer reaches the vendor through registered ` +
+          `handlers, in which case remove the entry and put its outbound calls under rule 1.`,
       },
     ];
   }
@@ -511,33 +620,34 @@ function auditWrappedAtRegistration(file: string): Violation[] {
       file,
       line,
       detail:
-        `module top level reaches the vendor (${identifier}), where nothing can wrap it`,
+        `module top level reaches the vendor (${identifier}), where no framework request can reach it`,
       remedy:
-        `Only the \`${spec.handlerContainer}\` handlers are put on the web client framework. ` +
+        `Only the ${containers} handlers are run by the web client framework. ` +
         `Move the work into an operation handler, or into a helper one of them calls.`,
     });
   }
 
-  // The handlers, plus what they delegate to: the only functions registration
-  // puts on the framework.
-  const wrapped = functionsReachableFrom(sf, handlers);
+  // The handlers, plus what they delegate to: the only functions the framework
+  // ever runs.
+  const registered = functionsReachableFrom(sf, handlers);
 
   for (const fn of vendorReaching) {
-    if (wrapped.has(fn)) continue;
+    if (registered.has(fn)) continue;
     violations.push({
       file,
       line: lineOf(sf, fn),
       detail:
         `${nameOf(fn, sf)}() reaches the vendor but is not reachable from the ` +
-        `\`${spec.handlerContainer}\` handlers, so nothing puts it on the web client framework`,
+        `${containers} handlers, so nothing puts it on the web client framework`,
       remedy:
-        `Registration wraps the \`${spec.handlerContainer}\` handlers and what they call, ` +
-        `and nothing else, so a call from here is not refused during maintenance and is not ` +
-        `counted. Move the work into an operation handler, or into a helper one of them calls.`,
+        `Registration hands the framework the ${containers} handlers and, through them, ` +
+        `what they call — and nothing else. A call from here is not refused during ` +
+        `maintenance and is not counted. Move the work into an operation handler, or into ` +
+        `a helper one of them calls.`,
     });
   }
 
-  violations.push(...auditRawPluginNotExported(sf, file, spec.handlerContainer));
+  violations.push(...auditRawPluginNotExported(sf, file, spec.handlerContainers));
   return violations;
 }
 
@@ -624,37 +734,50 @@ function vendorReachingFunctions(
 }
 
 /**
- * The plugin object as the file writes it must not leave the file.
+ * The runnable handlers must not leave the file.
  *
- * What registration hands to the registry is a COPY whose handlers are wrapped.
- * The literal the file declares still holds the bare ones, so exporting it
- * would republish every operation with the refusal missing — and it would do so
- * without naming the vendor anywhere, which is why the check above cannot see
- * it.
+ * What registration hands to the registry describes the operations and cannot
+ * run them; the literals the file declares still hold the real handlers. An
+ * exported one republishes every operation as something a caller can invoke
+ * directly — no refusal, no write gate, no count — and it does so without
+ * naming the vendor anywhere, which is why the check above cannot see it.
+ *
+ * Both the plugin literal and any map it spreads in are covered: a handler is
+ * just as reachable through the map it was written in.
  */
 function auditRawPluginNotExported(
   sf: ts.SourceFile,
   file: string,
-  handlerContainer: string,
+  handlerContainers: string[],
 ): Violation[] {
   const violations: Violation[] = [];
   const remedy =
-    `The registry is the only supported handle on this plugin, and what it hands out has ` +
-    `the web client framework around every handler. An exported literal is the same plugin ` +
-    `with the maintenance refusal missing, so keep it local to this file.`;
+    `The registry is the only supported handle on this plugin, and what it hands out cannot ` +
+    `be run — the framework holds the handlers. An exported literal is the same operations ` +
+    `with nothing in front of them, so keep it local to this file.`;
 
-  // The names bound to a raw plugin literal in this file.
+  // The names bound to a literal holding runnable handlers: the plugin itself,
+  // recognized by the container property it declares, and each handler map.
   const raw = new Map<string, ts.VariableDeclaration>();
   for (const statement of sf.statements) {
     if (!ts.isVariableStatement(statement)) continue;
     for (const declaration of statement.declarationList.declarations) {
-      const init = declaration.initializer;
+      let init = declaration.initializer;
+      while (
+        init &&
+        (ts.isSatisfiesExpression(init) ||
+          ts.isAsExpression(init) ||
+          ts.isParenthesizedExpression(init))
+      ) {
+        init = init.expression;
+      }
       if (!init || !ts.isObjectLiteralExpression(init)) continue;
       if (!ts.isIdentifier(declaration.name)) continue;
+      const isHandlerMap = handlerContainers.includes(declaration.name.text);
       const declares = init.properties.some(
-        (p) => p.name && ts.isIdentifier(p.name) && p.name.text === handlerContainer,
+        (p) => p.name && ts.isIdentifier(p.name) && handlerContainers.includes(p.name.text),
       );
-      if (declares) raw.set(declaration.name.text, declaration);
+      if (isHandlerMap || declares) raw.set(declaration.name.text, declaration);
     }
   }
   if (raw.size === 0) return violations;
@@ -663,9 +786,7 @@ function auditRawPluginNotExported(
     violations.push({
       file,
       line: lineOf(sf, node),
-      detail:
-        `${how} ${name}, whose \`${handlerContainer}\` are the handlers as written, ` +
-        `before registration wraps them`,
+      detail: `${how} ${name}, which holds the handlers as written, runnable by anyone`,
       remedy,
     });
   };
@@ -759,10 +880,11 @@ export function findViolations(): Violation[] {
   for (const module of OUTBOUND_MODULES) {
     if (present.has(module)) violations.push(...auditOutboundModule(module));
   }
-  for (const module of Object.keys(WRAPPED_AT_REGISTRATION)) {
-    if (present.has(module)) violations.push(...auditWrappedAtRegistration(module));
+  for (const module of Object.keys(HANDLERS_ON_FRAMEWORK)) {
+    if (present.has(module)) violations.push(...auditHandlersOnFramework(module));
   }
   violations.push(...auditUnlistedVendorModules(scanned));
+  violations.push(...auditFrameworkOnlyImports(scanned));
   return violations;
 }
 

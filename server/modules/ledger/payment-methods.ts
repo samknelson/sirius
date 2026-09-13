@@ -5,11 +5,11 @@ import {
   getComponentChecker,
 } from "../../services/access-policy-evaluator";
 import { listPaymentGatewayConfigs } from "./payment-gateway-capability";
+import { wcRequest, type WcResult } from "../../services/webclient";
 import {
-  resolveWcVendor,
-  wcVendorRequest,
+  describeWcVendor,
   WcVendorError,
-  type ResolvedWcVendor,
+  type WcVendorDescription,
 } from "../../services/webclient/wc-vendor-context";
 import {
   isMaintenanceModeError,
@@ -92,8 +92,8 @@ async function assertEntityAccess(
 }
 
 /** Non-throwing check: is the resolved plugin's required component enabled? */
-async function isPluginComponentEnabled(resolved: ResolvedWcVendor): Promise<boolean> {
-  const component = resolved.plugin.requiredComponent;
+async function isPluginComponentEnabled(gateway: WcVendorDescription): Promise<boolean> {
+  const component = gateway.requiredComponent;
   if (!component) return true;
   const checker = getComponentChecker();
   if (!checker) return false;
@@ -101,8 +101,8 @@ async function isPluginComponentEnabled(resolved: ResolvedWcVendor): Promise<boo
 }
 
 /** Enforce the resolved plugin's component gate or 403. */
-async function assertPluginComponent(resolved: ResolvedWcVendor): Promise<void> {
-  const component = resolved.plugin.requiredComponent;
+async function assertPluginComponent(gateway: WcVendorDescription): Promise<void> {
+  const component = gateway.requiredComponent;
   if (!component) return;
   const checker = getComponentChecker();
   if (!checker) {
@@ -118,10 +118,36 @@ async function assertPluginComponent(resolved: ResolvedWcVendor): Promise<void> 
  * gateway is usable and its plugin component is enabled. Centralizes the gate
  * applied by every per-method route (patch, set-default, details, delete).
  */
-async function resolveMethodGateway(gatewayConfigId: string): Promise<ResolvedWcVendor> {
-  const resolved = await resolveWcVendor(gatewayConfigId);
-  await assertPluginComponent(resolved);
-  return resolved;
+async function resolveMethodGateway(
+  gatewayConfigId: string,
+): Promise<WcVendorDescription> {
+  const gateway = await describeWcVendor({ configId: gatewayConfigId });
+  await assertPluginComponent(gateway);
+  return gateway;
+}
+
+/**
+ * The value a gateway call produced, or the reason there is none, as something
+ * this module's responder already knows how to report.
+ *
+ * The framework answers every call the same way — a result, never a throw for
+ * anything the far end did — which is what lets a caller stop caring how a
+ * vendor is implemented. These routes are the other kind of code: they turn
+ * outcomes into HTTP, and they have always done it by catching. So the
+ * translation happens here, once, and the routes below read as they did.
+ *
+ * The provider's own error object goes back up unchanged when there is one.
+ * Two routes read `code === "resource_missing"` off it to answer 404, and the
+ * responder reads a provider's 4xx status to pass the real message through;
+ * both would silently become 500s if this threw a summary instead.
+ */
+function answered<TValue>(result: WcResult<TValue>): TValue {
+  if (result.outcome === "success") return result.value as TValue;
+  if (result.cause !== undefined) throw result.cause;
+  throw new HttpError(
+    503,
+    result.error ?? "The payment gateway did not answer.",
+  );
 }
 
 /**
@@ -132,22 +158,27 @@ async function resolveMethodGateway(gatewayConfigId: string): Promise<ResolvedWc
 async function ensureCustomer(
   entityType: string,
   entityId: string,
-  resolved: ResolvedWcVendor,
+  gateway: WcVendorDescription,
 ): Promise<string> {
+  const vendor = { configId: gateway.configId };
   const existing = await storage.ledger.gatewayCustomers.get(
     entityType,
     entityId,
-    resolved.config.id,
+    gateway.configId,
   );
   if (existing) {
     // Reuse the mapping unless the plugin can verify the provider customer is
     // gone, in which case fall through to recreate and repair the mapping.
-    if (!resolved.plugin.operations["retrieve-customer"]) {
+    if (!gateway.operations.includes("retrieve-customer")) {
       return existing.customerRef;
     }
-    const { exists } = await wcVendorRequest(resolved, "retrieve-customer", {
-      customerRef: existing.customerRef,
-    });
+    const { exists } = answered(
+      await wcRequest({
+        vendor,
+        operation: "retrieve-customer",
+        args: { customerRef: existing.customerRef },
+      }),
+    );
     if (exists) return existing.customerRef;
   }
 
@@ -156,15 +187,18 @@ async function ensureCustomer(
     throw new HttpError(404, "Entity not found");
   }
 
-  const { customerRef } = await wcVendorRequest(resolved, "create-customer", {
-    name: descriptor.name,
-    metadata: descriptor.metadata,
-  });
+  const { customerRef } = answered(
+    await wcRequest({
+      vendor,
+      operation: "create-customer",
+      args: { name: descriptor.name, metadata: descriptor.metadata },
+    }),
+  );
 
   await storage.ledger.gatewayCustomers.upsert({
     entityType,
     entityId,
-    gatewayConfigId: resolved.config.id,
+    gatewayConfigId: gateway.configId,
     customerRef,
   });
 
@@ -260,15 +294,19 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
         throw new HttpError(404, "Entity not found");
       }
 
-      const resolved = await resolveWcVendor(gatewayConfigId);
-      await assertPluginComponent(resolved);
+      const gateway = await describeWcVendor({ configId: gatewayConfigId });
+      await assertPluginComponent(gateway);
 
-      const customerRef = await ensureCustomer(entityType, entityId, resolved);
+      const customerRef = await ensureCustomer(entityType, entityId, gateway);
 
       try {
-        const customer = await wcVendorRequest(resolved, "get-customer-details", {
-          customerRef,
-        });
+        const customer = answered(
+          await wcRequest({
+            vendor: { configId: gateway.configId },
+            operation: "get-customer-details",
+            args: { customerRef },
+          }),
+        );
         res.json({ customer, providerUrl: customer.providerUrl });
       } catch (error: any) {
         if (error?.code === "resource_missing") {
@@ -292,29 +330,33 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
         entityId,
       );
 
-      // Resolve each distinct gateway config once.
-      const resolvedByConfig = new Map<string, ResolvedWcVendor | null>();
+      // Describe each distinct gateway config once.
+      const gatewayByConfig = new Map<string, WcVendorDescription | null>();
       const enriched = [];
       for (const pm of methods) {
-        let resolved = resolvedByConfig.get(pm.gatewayConfigId);
-        if (resolved === undefined) {
+        let gateway = gatewayByConfig.get(pm.gatewayConfigId);
+        if (gateway === undefined) {
           try {
-            resolved = await resolveWcVendor(pm.gatewayConfigId);
+            gateway = await describeWcVendor({ configId: pm.gatewayConfigId });
           } catch {
-            resolved = null;
+            gateway = null;
           }
-          resolvedByConfig.set(pm.gatewayConfigId, resolved);
+          gatewayByConfig.set(pm.gatewayConfigId, gateway);
         }
 
-        if (!resolved || !(await isPluginComponentEnabled(resolved))) {
+        if (!gateway || !(await isPluginComponentEnabled(gateway))) {
           enriched.push({ ...pm, providerError: "Payment gateway unavailable" });
           continue;
         }
 
         try {
-          const providerDetails = await wcVendorRequest(resolved, "get-method-summary", {
-            methodRef: pm.paymentMethod,
-          });
+          const providerDetails = answered(
+            await wcRequest({
+              vendor: { configId: gateway.configId },
+              operation: "get-method-summary",
+              args: { methodRef: pm.paymentMethod },
+            }),
+          );
           enriched.push({ ...pm, providerDetails });
         } catch (error) {
           // A refusal is not a missing method. Saying "not found at provider"
@@ -346,17 +388,21 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
       }
       await assertEntityAccess(req, entityType, entityId);
 
-      const resolved = await resolveWcVendor(gatewayConfigId);
-      await assertPluginComponent(resolved);
+      const gateway = await describeWcVendor({ configId: gatewayConfigId });
+      await assertPluginComponent(gateway);
 
-      const customerRef = await ensureCustomer(entityType, entityId, resolved);
-      const session = await wcVendorRequest(resolved, "create-setup-session", {
-        customerRef,
-      });
+      const customerRef = await ensureCustomer(entityType, entityId, gateway);
+      const session = answered(
+        await wcRequest({
+          vendor: { configId: gateway.configId },
+          operation: "create-setup-session",
+          args: { customerRef },
+        }),
+      );
 
       res.json({
         clientSecret: session.clientSecret,
-        componentId: resolved.plugin.addComponentId ?? null,
+        componentId: gateway.addComponentId ?? null,
         publicConfig: session.publicConfig,
       });
     } catch (error) {
@@ -377,14 +423,17 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
       }
       await assertEntityAccess(req, entityType, entityId);
 
-      const resolved = await resolveWcVendor(gatewayConfigId);
-      await assertPluginComponent(resolved);
+      const gateway = await describeWcVendor({ configId: gatewayConfigId });
+      await assertPluginComponent(gateway);
 
-      const customerRef = await ensureCustomer(entityType, entityId, resolved);
-      await wcVendorRequest(resolved, "attach-method", {
-        customerRef,
-        methodToken,
-      });
+      const customerRef = await ensureCustomer(entityType, entityId, gateway);
+      answered(
+        await wcRequest({
+          vendor: { configId: gateway.configId },
+          operation: "attach-method",
+          args: { customerRef, methodToken },
+        }),
+      );
 
       const existing = await storage.ledger.paymentMethods.getByEntity(
         entityType,
@@ -455,12 +504,16 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
       await assertEntityAccess(req, entityType, entityId);
       const method = await loadOwnedMethod(pmId, entityType, entityId);
 
-      const resolved = await resolveMethodGateway(method.gatewayConfigId);
+      const gateway = await resolveMethodGateway(method.gatewayConfigId);
 
       try {
-        const details = await wcVendorRequest(resolved, "get-method-details", {
-          methodRef: method.paymentMethod,
-        });
+        const details = answered(
+          await wcRequest({
+            vendor: { configId: gateway.configId },
+            operation: "get-method-details",
+            args: { methodRef: method.paymentMethod },
+          }),
+        );
         res.json({
           paymentMethod: details.paymentMethod,
           providerUrl: details.providerUrl,
@@ -483,13 +536,17 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
       await assertEntityAccess(req, entityType, entityId);
       const method = await loadOwnedMethod(pmId, entityType, entityId);
 
-      const resolved = await resolveMethodGateway(method.gatewayConfigId);
+      const gateway = await resolveMethodGateway(method.gatewayConfigId);
 
       // Best-effort detach; still delete the row if the provider no longer has it.
       try {
-        await wcVendorRequest(resolved, "detach-method", {
-          methodRef: method.paymentMethod,
-        });
+        answered(
+          await wcRequest({
+            vendor: { configId: gateway.configId },
+            operation: "detach-method",
+            args: { methodRef: method.paymentMethod },
+          }),
+        );
       } catch (error) {
         // "Best effort" covers the provider having lost the method, not the
         // site having declined to call it. Deleting the row after a refusal

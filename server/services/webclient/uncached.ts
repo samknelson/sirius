@@ -1,4 +1,5 @@
 import { wcRequest } from "./client";
+import { notRecordableReason } from "./refusals";
 import { getWcRequest, registerWcRequest } from "./registry";
 import type { WcAnswer, WcService } from "./types";
 
@@ -62,6 +63,72 @@ export function registerUncachedWcRequest(entry: UncachedWcRequest): void {
 }
 
 /**
+ * What a vendor operation's request carries: which connection it is for, and
+ * the operation's own arguments.
+ *
+ * Both halves, because a vendor plugin can have several connections — two
+ * Stripe accounts, two remote sites — and they are different far ends that
+ * happen to share a code path.
+ */
+export interface WcVendorRequestArgs {
+  configId: string;
+  args: unknown;
+}
+
+/**
+ * The canonical request key for a vendor operation.
+ *
+ * Vendor operations are all uncached today, so nothing is stored and nothing
+ * can collide. This exists anyway because the day one of them starts caching,
+ * the cost of having keyed them all on a constant is two connections silently
+ * reading each other's stored answers — and that failure looks like a vendor
+ * bug, not a framework one. Keying per connection now is free; discovering
+ * later that it was needed is not.
+ */
+function vendorRequestKey(args: WcVendorRequestArgs): string {
+  return `${args.configId}:${canonicalJson(args.args)}`;
+}
+
+/**
+ * Arguments as a string that does not change when the caller's object happens
+ * to be built key-by-key in a different order.
+ */
+function canonicalJson(value: unknown): string {
+  if (value === undefined) return "";
+  return (
+    JSON.stringify(value, (_key, inner) =>
+      inner && typeof inner === "object" && !Array.isArray(inner)
+        ? Object.fromEntries(
+            Object.entries(inner as Record<string, unknown>).sort(([a], [b]) =>
+              a < b ? -1 : a > b ? 1 : 0,
+            ),
+          )
+        : inner,
+    ) ?? ""
+  );
+}
+
+/**
+ * Register one vendor-plugin operation, keyed per connection.
+ *
+ * Same entry as {@link registerUncachedWcRequest} in every other respect; only
+ * the identity of a request differs, because these carry which connection they
+ * are for and the others have no such thing.
+ */
+export function registerUncachedWcVendorRequest(entry: UncachedWcRequest): void {
+  registerWcRequest({
+    service: entry.service,
+    requestType: entry.requestType,
+    operation: entry.operation,
+    cached: false,
+    needsWritableDatabase: entry.needsWritableDatabase,
+    freshFor: 0,
+    failureRememberedFor: 0,
+    requestKey: vendorRequestKey,
+  });
+}
+
+/**
  * What an uncached request produced: the system's own answer, or the reason
  * there is none.
  *
@@ -117,12 +184,10 @@ export async function wcUncachedRequest<TValue>(
   }
 
   // Neither an answer nor a failure: the writable-database gate stopped the
-  // call before it was made. Said out loud, because the alternative is a
-  // caller reading "no answer" as a success with nothing in it.
-  const operation = behavior?.operation ?? options.requestType;
+  // call before it was made, and said so in the framework's own words.
   return {
     error:
-      `${options.service} was not asked to ${operation}: the result could not be recorded ` +
-      `(the database is not accepting writes), and this operation must not happen unrecorded.`,
+      result.error ??
+      notRecordableReason(options.service, behavior?.operation ?? options.requestType),
   };
 }

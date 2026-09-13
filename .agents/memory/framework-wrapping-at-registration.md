@@ -7,22 +7,24 @@ A vendor whose operations are *declared* by a plugin and *wrapped* by the
 registrar is on the shared web client framework without ever naming it. Two
 things follow, and both are easy to get wrong.
 
-## Wrap at registration, not at the caller
+## Take the runnable half off the declaration entirely
 
-Register a COPY of the plugin whose handlers are already wrapped, and keep the
-raw literal local to its file (`PluginRegistry.register` stores the object as
-passed and does not freeze it, so a wrapped clone is all it takes).
+A plugin declares what a vendor CAN do; the function that does it is stripped
+out at registration into a module-private map, reachable only through one
+accessor the framework calls. The registered object has no `run` on it at all.
 
-**Why:** a dispatcher that callers are *supposed* to use is a convention, and
-the maintenance refusal is a promise about the whole process — one caller
-reaching into `operations[...].run` quietly makes it false. Wrapping at
-registration means the guarantee holds however the handler is reached, so the
-dispatcher is left owning only what it genuinely owns: the resolved credential
-and the answer for an operation the plugin does not declare.
+**Why:** wrapping each handler at registration (registering a clone whose
+handlers already call the framework) gets the guarantee right but leaves a raw
+handler in existence — one export, one `operations[...].run` read, and the
+refusal, the count and the write gate are all missing with nothing to notice
+it. Removing the function from the reachable object makes the bypass
+unwritable rather than merely discouraged, and it collapses "wrapped" and
+"unwrapped" into one thing.
 
-**How to apply:** any plugin kind where the framework is applied centrally
-rather than inside each plugin. Watch the export surface — a raw literal that
-escapes the file is the same plugin with the refusal missing.
+**How to apply:** pair it with a lint rule restricting imports of the accessor
+to the single framework file that dispatches, or the private map is private in
+name only. The raw plugin literal still must not be exported — the strip
+happens at registration, so the literal in the file still carries its handlers.
 
 ## The lexical lint cannot see it, so check the inverse property
 

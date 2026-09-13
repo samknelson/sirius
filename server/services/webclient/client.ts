@@ -1,4 +1,7 @@
 import { assertExternalServiceAllowed, isMaintenanceModeError } from "../maintenance-flag";
+import { notRecordableReason } from "./refusals";
+
+export { notRecordableReason };
 import { logger } from "../../logger";
 import { getTodayYmd } from "@shared/utils/date";
 import { wcCacheStorage, wcRequestKeyHash, type WcCacheEntry } from "../../storage/wc-cache";
@@ -6,8 +9,23 @@ import { wcStatsStorage } from "../../storage/wc-stats";
 import { runOutsideTransaction } from "../../storage/transaction-context";
 import { getWcRequest, resolveWcDuration } from "./registry";
 import type { WcAnswer, WcRequestBehavior, WcRequestMode, WcResult, WcService } from "./types";
+// Type-only, and deliberately so: the vendor half of the framework lives
+// behind a dynamic import below, so nothing about the plugin registry is
+// pulled in at module load by the many boot-path callers of this file.
+import type {
+  WcVendorOperationArgs,
+  WcVendorOperationName,
+  WcVendorOperationResult,
+} from "../../plugins/wc-vendors/types";
 
-export interface WcRequestOptions<TValue> {
+/**
+ * Ask a service this module already knows how to reach: the caller brings the
+ * transport.
+ *
+ * This is the shape for the direct clients — the ones that hold an SDK or a
+ * `fetch` of their own and only want the framework's decisions around it.
+ */
+export interface WcTransportRequestOptions<TValue> {
   service: WcService;
   requestType: string;
   /** Whatever the registered canonicalizer expects. */
@@ -18,6 +36,38 @@ export interface WcRequestOptions<TValue> {
    * should be asked, and must declare whether the vendor answered.
    */
   fetch: () => Promise<WcAnswer<TValue>>;
+}
+
+/** Historic name for {@link WcTransportRequestOptions}. */
+export type WcRequestOptions<TValue> = WcTransportRequestOptions<TValue>;
+
+/**
+ * Which connection a vendor request is for.
+ *
+ * Exactly one of the two, and the type says so: naming both is a compile
+ * error rather than a silent precedence rule, because "the config id wins over
+ * the plugin id" is the kind of thing a caller reads once and then contradicts.
+ *
+ * - `configId` — this connection, chosen by whoever is asking.
+ * - `pluginId` — this vendor's one enabled connection. Refused when there is
+ *   none and when there is more than one; see `resolveDefaultWcVendor`.
+ */
+export type WcVendorTarget =
+  | { configId: string; pluginId?: never }
+  | { pluginId: string; configId?: never };
+
+/**
+ * Ask a vendor plugin to do one of the things it declares: the framework
+ * brings the transport.
+ *
+ * The caller names the operation, not a method, and never sees the credential
+ * the handler is given.
+ */
+export interface WcVendorRequestOptions<N extends WcVendorOperationName> {
+  vendor: WcVendorTarget;
+  operation: N;
+  args: WcVendorOperationArgs<N>;
+  mode?: WcRequestMode;
 }
 
 /**
@@ -84,18 +134,57 @@ function storedError(response: unknown): string | undefined {
 /**
  * The single entry point for an outbound third-party request.
  *
- * Resolves an answer from the cache or by making the call, according to the
- * behavior registered for (service, request type). Everything about the
- * decision — how long an answer stays fresh, how long a failure is remembered,
- * what makes two requests the same — comes from the registry and is read now,
- * so a changed policy takes effect on the next request rather than only on
- * entries written afterwards.
+ * Two shapes, one door. A caller either brings its own transport (`service` +
+ * `fetch`) or names a vendor plugin and an operation (`vendor` + `operation`);
+ * either way the framework owns the same decisions — the maintenance refusal,
+ * the cache, the writable-database gate, the usage count — and hands back the
+ * same {@link WcResult}. The shape a caller writes follows from how the vendor
+ * is reached, which is an implementation detail of the vendor and not
+ * something a domain module should have to know or restate.
+ *
+ * Everything about the decision — how long an answer stays fresh, how long a
+ * failure is remembered, what makes two requests the same — comes from the
+ * registry and is read now, so a changed policy takes effect on the next
+ * request rather than only on entries written afterwards.
  *
  * Throws `MaintenanceModeError` when the call it was about to make is refused;
- * a request served from the cache is not a call and is not refused.
+ * a request served from the cache is not a call and is not refused. A vendor
+ * request also throws when it cannot be addressed at all — no such connection,
+ * no single default, a disabled config, a missing credential, an operation the
+ * vendor does not declare — because none of those are answers about the far
+ * end. Everything the far end itself did comes back in the result.
  */
-export async function wcRequest<TValue>(
-  options: WcRequestOptions<TValue>,
+export function wcRequest<TValue>(
+  options: WcTransportRequestOptions<TValue>,
+): Promise<WcResult<TValue>>;
+export function wcRequest<N extends WcVendorOperationName>(
+  options: WcVendorRequestOptions<N>,
+): Promise<WcResult<WcVendorOperationResult<N>>>;
+export async function wcRequest(
+  options:
+    | WcTransportRequestOptions<unknown>
+    | WcVendorRequestOptions<WcVendorOperationName>,
+): Promise<WcResult<unknown>> {
+  if ("vendor" in options) {
+    // Loaded on demand. The vendor half reaches the plugin registry and the
+    // storage layer, and this file is on the boot path of every direct client;
+    // importing it up here would drag both into their module graph and invite
+    // exactly the initialization cycles that barrel imports cause.
+    const { runWcVendorRequest } = await import("./wc-vendor-context");
+    return runWcVendorRequest(options, wcTransportRequest);
+  }
+  return wcTransportRequest(options);
+}
+
+/**
+ * The framework's decisions around a transport the caller supplies.
+ *
+ * Vendor-blind by construction: the vendor half calls this with a `fetch` that
+ * runs the plugin's handler, so there is exactly one implementation of the
+ * cache, the refusal, the gate and the count.
+ */
+async function wcTransportRequest<TValue>(
+  options: WcTransportRequestOptions<TValue>,
 ): Promise<WcResult<TValue>> {
   const behavior = getWcRequest(options.service, options.requestType);
   if (!behavior) {
@@ -162,8 +251,15 @@ export async function wcRequest<TValue>(
   const needsWritable = behavior.needsWritableDatabase ?? behavior.cached;
   if (needsWritable && !(await wcCacheStorage.canStore())) {
     // Refused, not degraded: an answer that cannot be stored would be bought
-    // again on the very next call.
-    return stored();
+    // again on the very next call. A previously stored answer still answers;
+    // with nothing stored, the refusal says so in words rather than handing
+    // back an empty result a caller could read as an answer.
+    if (entry) return stored();
+    return {
+      source: "none",
+      fresh: false,
+      error: notRecordableReason(behavior.service, behavior.operation),
+    };
   }
 
   let answer: WcAnswer<TValue>;

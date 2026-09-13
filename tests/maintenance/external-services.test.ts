@@ -41,6 +41,7 @@ import { LocalPostalProvider } from "../../server/services/comm/providers/postal
 import { addressValidationService } from "../../server/services/comm/validators/address";
 import { lookupRepresentatives } from "../../server/services/google-civics";
 import { getWcVendorPlugin } from "../../server/plugins/wc-vendors";
+import { wcRequest } from "../../server/services/webclient";
 import { T631_PLUGIN_ID } from "../../server/plugins/wc-vendors/plugins/sitespecific-t631";
 import { freemanEdlsMigratePing } from "../../server/modules/sitespecific/freeman/edls-migrate/client";
 
@@ -62,21 +63,27 @@ const POSTAL_ADDRESS: PostalAddress = {
   country: "US",
 };
 
+/**
+ * The T631 ping as a caller makes it: named vendor, named operation, through
+ * the one door.
+ *
+ * There is no fabricated context any more — a registered plugin carries no
+ * runnable handler, so this goes through the framework, which is the point.
+ * The refusal is asserted as soon as the service is known, before any
+ * connection is read, so this stands up on a database with no T631 connection
+ * configured: with the flag on it must refuse, and with the flag off it must
+ * get far enough to complain about the missing connection instead.
+ */
 async function t631Ping(): Promise<unknown> {
   const plugin = getWcVendorPlugin(T631_PLUGIN_ID);
-  const operation = plugin?.operations.sirius_service_ping;
-  if (!operation) throw new Error("T631 ping operation is not registered");
-  return operation.run(
-    {
-      apiKey: "",
-      config: {
-        id: "maintenance-test",
-        name: "T631 maintenance test",
-        data: {},
-      },
-    } as any,
-    undefined as never,
-  );
+  if (!plugin?.operations.sirius_service_ping) {
+    throw new Error("T631 ping operation is not registered");
+  }
+  return wcRequest({
+    vendor: { pluginId: T631_PLUGIN_ID },
+    operation: "sirius_service_ping",
+    args: undefined as never,
+  });
 }
 
 /**

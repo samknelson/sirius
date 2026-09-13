@@ -1,23 +1,16 @@
 import { PluginRegistry } from "../_core";
-import {
-  registerUncachedWcRequest,
-  wcUncachedRequest,
-} from "../../services/webclient/uncached";
-import { isMaintenanceModeError } from "../../services/maintenance-flag";
-import { WcVendorRequestError } from "./errors";
+import { registerUncachedWcVendorRequest } from "../../services/webclient/uncached";
 import type {
-  WcVendorOperation,
-  WcVendorOperationMap,
+  RegisteredWcVendorPlugin,
+  WcVendorHandler,
+  WcVendorOperationInfoMap,
   WcVendorOperationName,
-  WcVendorOperationResult,
   WcVendorPlugin,
   WcVendorManifestEntry,
 } from "./types";
-import type { WcAnswer, WcService } from "../../services/webclient/types";
-import { wcCacheStorage } from "../../storage/wc-cache";
 
 export function getWcVendorOperationManifest(
-  plugin: WcVendorPlugin,
+  plugin: Pick<RegisteredWcVendorPlugin, "operations">,
 ): WcVendorManifestEntry["operations"] {
   return Object.entries(plugin.operations).flatMap(([id, operation]) =>
     operation
@@ -31,7 +24,7 @@ export function getWcVendorOperationManifest(
 }
 
 export const wcVendorRegistry = new PluginRegistry<
-  WcVendorPlugin,
+  RegisteredWcVendorPlugin,
   WcVendorManifestEntry
 >({
   kind: "wc-vendors",
@@ -55,83 +48,39 @@ export const wcVendorRegistry = new PluginRegistry<
 });
 
 /**
- * Put one declared operation on the web client framework.
+ * The runnable handlers, kept here and handed out nowhere.
  *
- * The handler is replaced rather than merely called from somewhere that knows
- * to use the framework, because "everything goes through the framework" has to
- * be true of the object, not of its callers. A registered plugin is handed out
- * by `getWcVendorPlugin` to anything that asks, and a rule that only
- * holds while callers remember it is not a rule — the maintenance refusal in
- * particular is a promise about the whole process, and one forgetful caller
- * would quietly make it false. After this, reaching into `operations` and
- * calling `run` directly is still refused, still gated on a writable database
- * and still counted.
+ * A registered plugin is given to anything that asks for it — an admin list, a
+ * config editor, a capability check — and what those callers need is what the
+ * vendor CAN do, never the ability to do it. Keeping the handlers out of that
+ * object is what makes "every outbound call goes through the framework" a
+ * property of the code rather than a rule callers have to remember: there is
+ * no second way to reach a vendor, because outside this map there is nothing
+ * to reach.
+ *
+ * Keyed by plugin id and operation id, the same pair the framework resolves a
+ * request from.
  */
-function onFramework(
-  service: WcService | undefined,
-  requestType: string,
-  declared: WcVendorOperation,
-): WcVendorOperation {
-  if (!service) {
-    return {
-      ...declared,
-      async run(ctx, args) {
-        if (
-          declared.needsWritableDatabase &&
-          !(await wcCacheStorage.canStore())
-        ) {
-          throw new WcVendorRequestError(
-            503,
-            `The vendor was not asked to ${declared.description}: the result could not be recorded ` +
-              `(the database is not accepting writes), and this operation must not happen unrecorded.`,
-          );
-        }
-        return declared.run(ctx, args);
-      },
-    };
-  }
+const handlers = new Map<string, WcVendorHandler>();
 
-  return {
-    ...declared,
-    async run(ctx, args) {
-      // Whether the provider failed, tracked separately from the error itself:
-      // `undefined` is a value a throw can carry, so the error cannot also be
-      // the flag that says there was one.
-      let providerFailed = false;
-      let providerError: unknown;
+function handlerKey(pluginId: string, operation: string): string {
+  return `${pluginId}:${operation}`;
+}
 
-      const { value, error } = await wcUncachedRequest<unknown>({
-        service,
-        requestType,
-        fetch: async (): Promise<WcAnswer<unknown>> => {
-          try {
-            return { answered: true, value: await declared.run(ctx, args) };
-          } catch (thrown) {
-            // A refusal is the framework's own answer, not the vendor's.
-            if (isMaintenanceModeError(thrown)) throw thrown;
-            providerFailed = true;
-            providerError = thrown;
-            return {
-              answered: false,
-              error: thrown instanceof Error ? thrown.message : String(thrown),
-            };
-          }
-        },
-      });
-
-      // The provider's own error object, unchanged. A route that reads
-      // `error.code === "resource_missing"` to turn a vendor's "no such thing"
-      // into a 404 is reading that object; replacing it with the framework's
-      // one-line summary would silently turn every one of those into a 500.
-      if (providerFailed) throw providerError;
-      if (error !== undefined) {
-        // The provider was never asked, because the answer could not be
-        // recorded. The framework's own words, unedited.
-        throw new WcVendorRequestError(503, error);
-      }
-      return value as WcVendorOperationResult<WcVendorOperationName>;
-    },
-  };
+/**
+ * The framework's own door to a vendor handler.
+ *
+ * Called by the web client framework and by nothing else — see the import rule
+ * in `scripts/dev/check-maintenance-guards.ts`. A caller holding this could
+ * make an outbound call that is not refused during maintenance, not gated on a
+ * writable database and not counted, which is the whole thing the framework
+ * exists to prevent.
+ */
+export function getWcVendorHandler(
+  pluginId: string,
+  operation: WcVendorOperationName,
+): WcVendorHandler | undefined {
+  return handlers.get(handlerKey(pluginId, operation));
 }
 
 /**
@@ -139,17 +88,23 @@ function onFramework(
  * module top level. Mirrors `registerChargePlugin` / `registerClientInjection`.
  *
  * Registering a plugin that names a service also registers one web client
- * request per operation it declares, and registers the plugin with each
- * handler already wrapped in that request. The framework therefore learns
- * about an operation the moment the plugin declares one. The alternative — a
+ * request per operation it declares, so the framework learns about an
+ * operation the moment the plugin declares one. The alternative — a
  * hand-written `registerUncachedWcRequest` beside each handler — is a list
  * that has to be kept in step with another list, and the failure when it is
  * not is silent: the call would throw "no behavior registered" the first time
  * somebody used the new operation.
  *
- * Done here, at the plugin's own module top level, because the framework reads
- * its registry synchronously before any await: a registration that waited for
- * app initialization would be too late for the first request.
+ * The handler itself is separated from the declaration here: the registry gets
+ * a plugin whose operations describe themselves and cannot be run, and the
+ * runnable half goes into the private map above. What used to happen instead
+ * was a wrapper — the registered object carried a `run` that called the
+ * framework before the real handler — which held the same guarantee only as
+ * long as nothing unwrapped it. Removing the handler removes the question.
+ *
+ * Done at the plugin's own module top level, because the framework reads its
+ * registry synchronously before any await: a registration that waited for app
+ * initialization would be too late for the first request.
  *
  * Answers are never kept. A connection test that replayed yesterday's success
  * is the one thing a connection test must not say, and the rest of these
@@ -158,28 +113,37 @@ function onFramework(
  */
 export function registerWcVendorPlugin(plugin: WcVendorPlugin): void {
   const service = plugin.service;
-  const operations: Record<string, WcVendorOperation> = {};
+  const operations: Record<string, { description: string; needsWritableDatabase: boolean }> = {};
+
   for (const [requestType, declared] of Object.entries(plugin.operations)) {
     if (!declared) continue;
     if (service) {
-      registerUncachedWcRequest({
+      registerUncachedWcVendorRequest({
         service,
         requestType,
         operation: declared.description,
         needsWritableDatabase: declared.needsWritableDatabase,
       });
     }
-    operations[requestType] = onFramework(service, requestType, declared);
+    handlers.set(
+      handlerKey(plugin.id, requestType),
+      declared.run.bind(declared) as WcVendorHandler,
+    );
+    operations[requestType] = {
+      description: declared.description,
+      needsWritableDatabase: declared.needsWritableDatabase,
+    };
   }
 
+  const { operations: _declared, ...metadata } = plugin;
   wcVendorRegistry.register({
-    ...plugin,
-    operations: operations as WcVendorOperationMap,
+    ...metadata,
+    operations: operations as WcVendorOperationInfoMap,
   });
 }
 
 export function getWcVendorPlugin(
   id: string,
-): WcVendorPlugin | undefined {
+): RegisteredWcVendorPlugin | undefined {
   return wcVendorRegistry.get(id);
 }

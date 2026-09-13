@@ -1,12 +1,11 @@
 import { storage } from "../../storage";
-import { getWcVendorPlugin } from "../../plugins/wc-vendors";
+import { getWcVendorHandler, getWcVendorPlugin } from "../../plugins/wc-vendors/registry";
 import type {
-  WcVendorOperation,
-  WcVendorOperationArgs,
+  RegisteredWcVendorPlugin,
+  WcVendorOperationInfo,
   WcVendorOperationName,
   WcVendorOperationResult,
   WcVendorContext,
-  WcVendorPlugin,
 } from "../../plugins/wc-vendors/types";
 import type { PluginConfig } from "@shared/schema";
 import {
@@ -17,17 +16,49 @@ import {
   WcVendorError,
   WcVendorRequestError,
 } from "../../plugins/wc-vendors/errors";
+import {
+  assertExternalServiceAllowed,
+  isMaintenanceModeError,
+} from "../maintenance-flag";
+import { wcCacheStorage } from "../../storage/wc-cache";
+import { notRecordableReason } from "./refusals";
+import type {
+  WcTransportRequestOptions,
+  WcVendorRequestOptions,
+  WcVendorTarget,
+} from "./client";
+import type { WcAnswer, WcRequestMode, WcResult } from "./types";
 
 /**
- * A gateway config resolved into everything the generic payment-methods routes
- * need to talk to the provider: the config row, the registered plugin, and a
- * ready-to-use provider context carrying the per-config API key.
+ * The vendor half of the web client framework.
+ *
+ * `wcRequest` in `client.ts` owns the decisions every outbound request shares —
+ * the cache, the maintenance refusal, the writable-database gate, the usage
+ * count — and knows nothing about vendor plugins. This file knows about
+ * plugins and nothing about those decisions: it turns "this connection, this
+ * operation" into a resolved credential and a handler, and hands the call back
+ * to the core through the transport it is given. Neither half imports the
+ * other at module load; the core reaches this one through a dynamic import.
  */
-export interface ResolvedWcVendor {
+
+/**
+ * A gateway config resolved into everything a call needs: the config row, the
+ * registered plugin, and a provider context carrying the per-config credential.
+ *
+ * Framework-internal. The credential in here is the whole reason this type
+ * does not leave the file — a domain caller gets a
+ * {@link WcVendorDescription}, which carries no credential at all.
+ */
+interface ResolvedWcVendor {
   config: PluginConfig;
-  plugin: WcVendorPlugin;
+  plugin: RegisteredWcVendorPlugin;
   context: WcVendorContext;
 }
+
+/** The framework's core, as this half calls it. */
+type WcTransport = <TValue>(
+  options: WcTransportRequestOptions<TValue>,
+) => Promise<WcResult<TValue>>;
 
 /** The config, plugin or credential could not be resolved. */
 export class WcVendorResolutionError extends WcVendorError {
@@ -41,15 +72,61 @@ export class WcVendorResolutionError extends WcVendorError {
 // provider was not reached", whatever the reason.
 export { WcVendorError, WcVendorRequestError };
 
+/** No enabled connection exists for the plugin a caller named. */
+export class WcVendorNoDefaultError extends WcVendorResolutionError {
+  constructor(public readonly pluginId: string) {
+    super(
+      503,
+      `No enabled '${pluginId}' connection is configured. Add one on the webclient vendors page.`,
+    );
+    this.name = "WcVendorNoDefaultError";
+  }
+}
+
+/** Several enabled connections exist and none of them is the obvious one. */
+export class WcVendorAmbiguousDefaultError extends WcVendorResolutionError {
+  constructor(
+    public readonly pluginId: string,
+    public readonly configIds: string[],
+  ) {
+    super(
+      409,
+      `This site has ${configIds.length} enabled '${pluginId}' connections, so there is no single default to use. ` +
+        `Leave exactly one enabled, or name the connection explicitly.`,
+    );
+    this.name = "WcVendorAmbiguousDefaultError";
+  }
+}
+
 /**
- * Turn a gateway config id into a {@link ResolvedWcVendor}. Resolves the
- * provider API key from the secret the config names (`data.secretName`, read
- * via the env registry), so multiple configs (e.g. two Stripe accounts)
- * each use their own credentials.
+ * What a caller may know about a connection: which one it is, which vendor is
+ * behind it, what gating it carries and what it can be asked to do.
+ *
+ * Everything a domain module legitimately needs — a component gate, a "can
+ * this vendor even do that" check, a plugin id to show — and nothing it does
+ * not. There is deliberately no handler and no credential on here: the only
+ * way to make the call is to ask the framework to make it.
  */
-export async function resolveWcVendor(
-  gatewayConfigId: string,
-): Promise<ResolvedWcVendor> {
+export interface WcVendorDescription {
+  configId: string;
+  configName: string | null;
+  pluginId: string;
+  pluginName: string;
+  /** Component that must be enabled for this vendor to be used. */
+  requiredComponent?: string;
+  /** Client component id for the vendor's own add-a-payment-method form. */
+  addComponentId?: string;
+  /** Operations this vendor declares. */
+  operations: WcVendorOperationName[];
+}
+
+/**
+ * Turn a config id into a {@link ResolvedWcVendor}. Resolves the provider
+ * credential from the secret the config names (`data.secretName`, read via the
+ * env registry), so multiple configs (e.g. two Stripe accounts) each use their
+ * own credentials.
+ */
+async function resolveWcVendor(gatewayConfigId: string): Promise<ResolvedWcVendor> {
   const config = await storage.pluginConfigs.get(gatewayConfigId);
   if (!config || config.pluginKind !== "wc-vendors") {
     throw new WcVendorResolutionError(404, "Vendor configuration not found");
@@ -121,32 +198,6 @@ export async function resolveWcVendor(
   };
 }
 
-/** No enabled connection exists for the plugin a caller named. */
-export class WcVendorNoDefaultError extends WcVendorResolutionError {
-  constructor(public readonly pluginId: string) {
-    super(
-      503,
-      `No enabled '${pluginId}' connection is configured. Add one on the webclient vendors page.`,
-    );
-    this.name = "WcVendorNoDefaultError";
-  }
-}
-
-/** Several enabled connections exist and none of them is the obvious one. */
-export class WcVendorAmbiguousDefaultError extends WcVendorResolutionError {
-  constructor(
-    public readonly pluginId: string,
-    public readonly configIds: string[],
-  ) {
-    super(
-      409,
-      `This site has ${configIds.length} enabled '${pluginId}' connections, so there is no single default to use. ` +
-        `Leave exactly one enabled, or name the connection explicitly.`,
-    );
-    this.name = "WcVendorAmbiguousDefaultError";
-  }
-}
-
 /**
  * Resolve the connection to use when the caller names a vendor but no
  * particular configuration of it.
@@ -164,9 +215,7 @@ export class WcVendorAmbiguousDefaultError extends WcVendorResolutionError {
  * default per operation" grows here, where the ambiguity rule already lives,
  * rather than in each caller.
  */
-export async function resolveDefaultWcVendor(
-  pluginId: string,
-): Promise<ResolvedWcVendor> {
+async function resolveDefaultWcVendor(pluginId: string): Promise<ResolvedWcVendor> {
   const enabled = (
     await storage.pluginConfigs.getByKindAndPlugin("wc-vendors", pluginId)
   ).filter((config) => config.enabled);
@@ -181,32 +230,211 @@ export async function resolveDefaultWcVendor(
   return resolveWcVendor(enabled[0].id);
 }
 
+/** Resolve whichever way the caller addressed the connection. */
+function resolveTarget(target: WcVendorTarget): Promise<ResolvedWcVendor> {
+  return target.configId !== undefined
+    ? resolveWcVendor(target.configId)
+    : resolveDefaultWcVendor(target.pluginId as string);
+}
+
 /**
- * Ask a resolved gateway to do one thing.
+ * What a connection is, for a caller that needs to decide something before
+ * asking for anything: whether its component is enabled, whether the vendor
+ * behind it can do the thing at all, what to show on a page.
  *
- * The typed door callers use: it names the operation rather than a method, so
- * a caller says what it wants done without knowing which vendor is behind the
- * config, and asking for something the vendor cannot do is answered rather
- * than crashing on a missing function.
- *
- * The web client framework is NOT applied here. A registered plugin's handlers
- * are already wrapped in it (see `registerWcVendorPlugin`), so the
- * maintenance refusal, the writable-database gate and the usage count hold for
- * every route into the handler, not just this one. What this owns is the
- * resolved credential — which the handler reads and nothing else sees — and
- * the refusal below.
+ * Resolves exactly as a request does, refusals included — a connection that is
+ * missing, disabled, unregistered or short a credential is reported here in the
+ * same words and with the same status as it would be at call time, so a caller
+ * that describes before it calls does not get two different answers.
  */
-export async function wcVendorRequest<N extends WcVendorOperationName>(
-  resolved: ResolvedWcVendor,
-  name: N,
-  args: WcVendorOperationArgs<N>,
-): Promise<WcVendorOperationResult<N>> {
-  const operation: WcVendorOperation<N> | undefined = resolved.plugin.operations[name];
-  if (!operation) {
-    throw new WcVendorRequestError(
-      501,
-      `Vendor '${resolved.plugin.name}' does not support '${name}'`,
+export async function describeWcVendor(
+  target: WcVendorTarget,
+): Promise<WcVendorDescription> {
+  const { config, plugin } = await resolveTarget(target);
+  return {
+    configId: config.id,
+    configName: config.name ?? null,
+    pluginId: plugin.id,
+    pluginName: plugin.name,
+    requiredComponent: plugin.requiredComponent,
+    addComponentId: plugin.addComponentId,
+    operations: Object.keys(plugin.operations) as WcVendorOperationName[],
+  };
+}
+
+function requireRegisteredPlugin(pluginId: string): RegisteredWcVendorPlugin {
+  const plugin = getWcVendorPlugin(pluginId);
+  if (!plugin) {
+    throw new WcVendorResolutionError(
+      404,
+      `No vendor plugin registered for '${pluginId}'`,
     );
   }
-  return operation.run(resolved.context, args);
+  return plugin;
+}
+
+function requireOperation(
+  plugin: RegisteredWcVendorPlugin,
+  name: WcVendorOperationName,
+): WcVendorOperationInfo {
+  const declaration = plugin.operations[name];
+  if (!declaration) {
+    throw new WcVendorRequestError(
+      501,
+      `Vendor '${plugin.name}' does not support '${name}'`,
+    );
+  }
+  return declaration;
+}
+
+/**
+ * Refuse now, if the site is in maintenance and this plugin talks to an
+ * outside system.
+ *
+ * Asked as early as the service is known, which for a caller naming a plugin
+ * id is before any configuration is read. That matters: "the site is in
+ * maintenance" is true of a site whether or not its connections are set up,
+ * and a refusal that first needed a resolvable connection would report an
+ * unconfigured site instead of a closed one.
+ *
+ * It is asked here ONLY for that reason. The refusal that covers the call
+ * itself is the core's, made on the one path that makes a call, so a caller
+ * naming a connection rather than a plugin is refused there and is not asked
+ * twice here.
+ */
+function refuseDuringMaintenance(
+  plugin: RegisteredWcVendorPlugin,
+  declaration: WcVendorOperationInfo,
+): void {
+  if (plugin.service) {
+    assertExternalServiceAllowed(plugin.service, declaration.description);
+  }
+}
+
+/**
+ * Whether this request is going to ask the far end anything.
+ *
+ * `local` and `cached-only` are answers about what we already have: the core
+ * reads no network on either, so nothing about them is refused during
+ * maintenance and nothing about them runs a handler. Deciding it here as well
+ * keeps the two halves saying the same thing — the vendor half refuses before
+ * the core is reached, and refusing a request the core would never have made
+ * would report a closed site to a caller that only wanted a normalized
+ * argument.
+ */
+function willReachTheFarEnd(mode: WcRequestMode | undefined): boolean {
+  return mode !== "local" && mode !== "cached-only";
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Ask a vendor plugin to do one of the things it declares.
+ *
+ * Called only by `wcRequest`, which is the door every caller uses. What this
+ * adds to the core is the part that is specific to a plugin: which connection,
+ * which credential, which handler, and the refusals that belong to addressing
+ * a vendor at all.
+ *
+ * Those refusals throw, and the far end's behaviour does not. "There is no such
+ * connection", "there is no single default", "this vendor cannot do that" and
+ * "the site is closed" are all statements about US, made before anything left
+ * the building; a caller that treated one as a vendor failure would report the
+ * vendor as unwell when nobody asked it anything. Whatever the vendor itself
+ * did comes back in the result, with the provider's own error object on
+ * `cause` for the callers that read it.
+ */
+export async function runWcVendorRequest<N extends WcVendorOperationName>(
+  options: WcVendorRequestOptions<N>,
+  transport: WcTransport,
+): Promise<WcResult<WcVendorOperationResult<N>>> {
+  const { vendor, operation: name, args } = options;
+  const calling = willReachTheFarEnd(options.mode);
+
+  // Before the database is touched, when the caller named the vendor itself.
+  if (vendor.pluginId !== undefined) {
+    const known = requireRegisteredPlugin(vendor.pluginId);
+    const declared = requireOperation(known, name);
+    if (calling) refuseDuringMaintenance(known, declared);
+  }
+
+  const resolved = await resolveTarget(vendor);
+  const declaration = requireOperation(resolved.plugin, name);
+
+  const handler = getWcVendorHandler(resolved.plugin.id, name);
+  if (!handler) {
+    throw new WcVendorRequestError(
+      501,
+      `Vendor '${resolved.plugin.name}' declares '${name}' but registered no handler for it`,
+    );
+  }
+  const run = () => handler(resolved.context, args as never);
+
+  // No outside system: there is nothing to refuse, nothing to count and no
+  // vendor to name, so the core — which is built around all three — has no
+  // work to do, and has no registered behavior to do it from. The two
+  // decisions that still apply are the caller's mode and whether the answer
+  // can be written down, because an in-process vendor can change state too.
+  if (!resolved.plugin.service) {
+    // Nothing is ever stored for an operation like this, so "only what is
+    // stored" and "nothing outside this process" are the same empty answer the
+    // core gives — and neither one runs the handler.
+    if (!calling) return { source: "none", fresh: false };
+    if (declaration.needsWritableDatabase && !(await wcCacheStorage.canStore())) {
+      return {
+        source: "none",
+        fresh: false,
+        error: notRecordableReason(resolved.plugin.name, declaration.description),
+      };
+    }
+    try {
+      return {
+        source: "network",
+        outcome: "success",
+        fresh: true,
+        value: (await run()) as WcVendorOperationResult<N>,
+        fetchedAt: new Date(),
+      };
+    } catch (thrown) {
+      if (isMaintenanceModeError(thrown)) throw thrown;
+      return {
+        source: "network",
+        outcome: "failure",
+        fresh: false,
+        error: errorMessage(thrown),
+        cause: thrown,
+      };
+    }
+  }
+
+  // Whether the provider failed, tracked separately from the error itself:
+  // `undefined` is a value a throw can carry, so the error cannot also be the
+  // flag that says there was one.
+  let providerFailed = false;
+  let providerError: unknown;
+
+  const result = await transport<WcVendorOperationResult<N>>({
+    service: resolved.plugin.service,
+    requestType: name,
+    args: { configId: resolved.config.id, args },
+    mode: options.mode,
+    fetch: async (): Promise<WcAnswer<WcVendorOperationResult<N>>> => {
+      try {
+        return {
+          answered: true,
+          value: (await run()) as WcVendorOperationResult<N>,
+        };
+      } catch (thrown) {
+        // A refusal is the framework's own answer, not the vendor's.
+        if (isMaintenanceModeError(thrown)) throw thrown;
+        providerFailed = true;
+        providerError = thrown;
+        return { answered: false, error: errorMessage(thrown) };
+      }
+    },
+  });
+
+  return providerFailed ? { ...result, cause: providerError } : result;
 }

@@ -8,9 +8,9 @@ import {
   getWcVendorPlugin,
   getWcVendorOperationManifest,
 } from "../../plugins/wc-vendors";
+import { wcRequest } from "../../services/webclient";
 import {
-  resolveWcVendor,
-  wcVendorRequest,
+  describeWcVendor,
   WcVendorError,
 } from "../../services/webclient/wc-vendor-context";
 import { isMaintenanceModeError } from "../../services/maintenance-flag";
@@ -42,7 +42,7 @@ export function registerWcVendorRoutes(app: Express): void {
   // gated every vendor happened to be a testable payment gateway and callers
   // could assume it; now that any outside system can be a vendor, a caller
   // that offers a config it cannot actually use would fail at the point of
-  // use (a 501 from `wcVendorRequest`, or an empty payment-type editor). So
+  // use (a 501 from the framework, or an empty payment-type editor). So
   // the capabilities are reported here once and each surface filters on the
   // one it needs, rather than every surface re-deriving them.
   app.get(base, requireAccess("admin"), async (_req: Request, res: Response) => {
@@ -85,9 +85,9 @@ export function registerWcVendorRoutes(app: Express): void {
     requireAccess("admin"),
     async (req: Request, res: Response) => {
       try {
-        const resolved = await resolveWcVendor(req.params.configId);
+        const vendor = await describeWcVendor({ configId: req.params.configId });
 
-        const component = resolved.plugin.requiredComponent;
+        const component = vendor.requiredComponent;
         if (component) {
           const checker = getComponentChecker();
           if (!checker || !(await checker(component))) {
@@ -97,8 +97,21 @@ export function registerWcVendorRoutes(app: Express): void {
           }
         }
 
-        const result = await wcVendorRequest(resolved, "test-connection", undefined);
-        res.json(result);
+        const result = await wcRequest({
+          vendor: { configId: vendor.configId },
+          operation: "test-connection",
+          args: undefined,
+        });
+        if (result.outcome === "success") return res.json(result.value);
+        // A test that did not run is not a test that failed, but this page has
+        // one place to show either. The provider's own error object goes to the
+        // catch below, which knows how to read a provider status; anything else
+        // is the framework's own sentence about why nothing was asked.
+        if (result.cause !== undefined) throw result.cause;
+        res.status(503).json({
+          connected: false,
+          error: { message: result.error ?? "The connection test did not run." },
+        });
       } catch (error: any) {
         // A refusal is reported in this route's own shape, so the page shows
         // why the test did not run where it shows every other failure.

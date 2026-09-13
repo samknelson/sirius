@@ -240,6 +240,49 @@ export type WcVendorOperationMap = {
   [N in WcVendorOperationName]?: WcVendorOperation<N>;
 };
 
+/**
+ * An operation as everything outside the framework sees it: what it is and
+ * what it needs, with no way to do it.
+ *
+ * The runnable half is deliberately absent. See {@link RegisteredWcVendorPlugin}.
+ */
+export type WcVendorOperationInfo = Omit<WcVendorOperationDeclaration, "run">;
+
+export type WcVendorOperationInfoMap = {
+  [N in WcVendorOperationName]?: WcVendorOperationInfo;
+};
+
+/**
+ * A handler as the framework holds it, after its operation id is no longer in
+ * the type.
+ *
+ * Loosely typed on purpose: the framework dispatches by a name it is given at
+ * runtime, so it cannot know which operation's argument and result types apply
+ * — that is the caller's knowledge, and `wcRequest`'s overload keeps it. The
+ * per-operation typing is enforced where the plugin declares the handler and
+ * where the caller names the operation; this is only the wire between them.
+ */
+export type WcVendorHandler = (
+  ctx: WcVendorContext,
+  args: never,
+) => Promise<unknown>;
+
+/**
+ * A plugin as the registry hands it out.
+ *
+ * Identical to {@link WcVendorPlugin} except that its operations describe
+ * themselves and cannot be run. Everything that asks the registry for a plugin
+ * — the admin vendor list, the config editor, the ledger's capability check —
+ * wants to know what a vendor can do, and none of them should be able to do
+ * it: an outbound call made straight off this object would skip the
+ * maintenance refusal, the writable-database gate and the usage count. The
+ * handlers stay in the registry's own map and come out only through the
+ * framework.
+ */
+export type RegisteredWcVendorPlugin = Omit<WcVendorPlugin, "operations"> & {
+  operations: WcVendorOperationInfoMap;
+};
+
 export type WcVendorSecretNameRequirement = "required" | "optional" | "none";
 
 export interface WcVendorPlugin extends BasePluginMetadata {
@@ -310,14 +353,14 @@ export interface WcVendorPlugin extends BasePluginMetadata {
    * What this plugin can do. Declared, not implemented-or-stubbed: see
    * {@link WcVendorOperations}.
    *
-   * What a plugin file writes here is the bare handler. What a caller gets
-   * back from the registry is that handler already wrapped in the web client
-   * framework, because `registerWcVendorPlugin` registers a plugin whose
-   * operations it has wrapped — so the refusal and the count hold however the
-   * handler is reached, including by reaching into this map. Callers should
-   * still go through `wcVendorRequest`, which resolves the credential to pass
-   * as the context and answers for an operation the plugin does not declare,
-   * but nothing about the maintenance guarantee rests on their doing so.
+   * This is the shape a plugin FILE writes, handler and all. It is not the
+   * shape anything gets back: `registerWcVendorPlugin` keeps the handlers in
+   * the registry's own map and registers a {@link RegisteredWcVendorPlugin}
+   * whose operations only describe themselves. So the only way to run one is
+   * `wcRequest({ vendor, operation, args })`, which resolves the connection
+   * and the credential, refuses during maintenance, gates on a writable
+   * database when the operation says so, counts the call, and answers rather
+   * than crashing when a vendor does not declare the operation asked for.
    */
   operations: WcVendorOperationMap;
 }
