@@ -22,15 +22,15 @@
  * A page cap bounds the walk: a table far larger than expected stops rather
  * than paging forever, and says so.
  */
+import { wcRequest } from "../../../../services/webclient";
 import {
-  freemanEdlsMigrateRequest,
-  type FreemanEdlsMigrateRequestSpec,
-  type FreemanEdlsMigrateResult,
-} from "./client";
+  FREEMAN_EDLS_MIGRATE_PLUGIN_ID,
+  FREEMAN_EDLS_MIGRATE_RAWDATA_ACTION,
+  type FreemanEdlsRawDataArgs,
+  type FreemanEdlsResult,
+} from "../../../../plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate";
 
 /** The legacy action that returns raw table rows. */
-export const FREEMAN_EDLS_MIGRATE_RAWDATA_ACTION = "sirius_freeman_rawdata";
-
 /** Rows per request. The legacy tables are small enough that this is cheap. */
 export const FREEMAN_EDLS_MIGRATE_PAGE_SIZE = 500;
 
@@ -53,10 +53,12 @@ export function buildRawDataRequest(
   orderColumn: string,
   limit: number,
   offset: number,
-): FreemanEdlsMigrateRequestSpec {
+): FreemanEdlsRawDataArgs {
   return {
-    action: FREEMAN_EDLS_MIGRATE_RAWDATA_ACTION,
-    args: [table, orderColumn, String(limit), String(offset)],
+    table,
+    orderColumn,
+    limit,
+    offset,
   };
 }
 
@@ -65,7 +67,7 @@ export interface LegacyPage {
   ok: boolean;
   rows: LegacyRow[];
   /** The full diagnostic result, kept for the failure report. */
-  result: FreemanEdlsMigrateResult;
+  result: FreemanEdlsResult;
   /** Why the page is not usable, when it is not. */
   error?: string;
 }
@@ -75,7 +77,7 @@ export interface LegacyPage {
  * success flag alongside the SQL the service ran. A body that does not carry
  * a row list is a failure, not an empty page.
  */
-export function extractPageRows(result: FreemanEdlsMigrateResult): LegacyPage {
+export function extractPageRows(result: FreemanEdlsResult): LegacyPage {
   if (!result.success) {
     return { ok: false, rows: [], result, error: result.error ?? "The legacy system refused the request." };
   }
@@ -136,9 +138,19 @@ export async function fetchLegacyPage(
   limit: number,
   offset: number,
 ): Promise<LegacyPage> {
-  const result = await freemanEdlsMigrateRequest(
-    buildRawDataRequest(table, orderColumn, limit, offset),
-  );
+  const response = await wcRequest({
+    vendor: { pluginId: FREEMAN_EDLS_MIGRATE_PLUGIN_ID },
+    operation: FREEMAN_EDLS_MIGRATE_RAWDATA_ACTION,
+    args: buildRawDataRequest(table, orderColumn, limit, offset),
+  });
+  if (response.outcome !== "success" || !response.value) {
+    throw response.cause ??
+      new Error(
+        response.error ??
+          "The legacy Freeman EDLS request was not attempted.",
+      );
+  }
+  const result = response.value;
   return extractPageRows(result);
 }
 
@@ -163,7 +175,7 @@ export interface LegacyTableRead {
   /** Set when the read was refused. */
   error?: string;
   /** The failing page's diagnostics, for the admin screen. */
-  failure?: FreemanEdlsMigrateResult;
+  failure?: FreemanEdlsResult;
 }
 
 export interface ReadLegacyTableOptions {

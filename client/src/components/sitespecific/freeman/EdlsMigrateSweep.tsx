@@ -144,7 +144,7 @@ function ReadList({ reads }: { reads: TableRead[] }) {
   );
 }
 
-export default function EdlsMigrateSweep({ configured }: { configured: boolean }) {
+export default function EdlsMigrateSweep() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [nodeReport, setNodeReport] = useState<NodeSweepReport | null>(null);
@@ -249,15 +249,6 @@ export default function EdlsMigrateSweep({ configured }: { configured: boolean }
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!configured && (
-            <Alert data-testid="alert-sweep-not-configured">
-              <AlertDescription>
-                The connection settings are incomplete, so a sweep would have nothing to
-                talk to. Set them first.
-              </AlertDescription>
-            </Alert>
-          )}
-
           {sourcesQuery.data && (
             <div className="space-y-1 text-xs text-muted-foreground">
               <p data-testid="text-sweep-sources">
@@ -273,7 +264,7 @@ export default function EdlsMigrateSweep({ configured }: { configured: boolean }
           <div className="flex flex-wrap gap-2">
             <Button
               onClick={() => nodeSweep.mutate()}
-              disabled={busy || !configured}
+              disabled={busy}
               data-testid="button-sweep-nodes"
             >
               {nodeSweep.isPending ? (
@@ -286,7 +277,7 @@ export default function EdlsMigrateSweep({ configured }: { configured: boolean }
             <Button
               variant="secondary"
               onClick={() => fieldSweep.mutate()}
-              disabled={busy || !configured || (staged?.count ?? 0) === 0}
+              disabled={busy || (staged?.count ?? 0) === 0}
               data-testid="button-sweep-fields"
             >
               {fieldSweep.isPending ? (

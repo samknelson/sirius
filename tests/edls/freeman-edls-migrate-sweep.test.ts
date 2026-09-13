@@ -50,56 +50,70 @@ vi.mock("../../server/storage/transaction-context", () => ({
   runInTransaction: (fn: () => Promise<unknown>) => inTransaction(fn),
 }));
 
-vi.mock("../../server/modules/sitespecific/freeman/edls-migrate/client", () => ({
-  freemanEdlsMigrateRequest: vi.fn(async (spec: { action: string; args: unknown[] }) => {
-    const [table, order, limit, offset] = spec.args.map(String);
-    h.requests.push({ table, order, limit, offset });
+vi.mock("../../server/services/webclient", () => ({
+  wcRequest: vi.fn(async (request: {
+    args: { table: string; orderColumn: string; limit: number; offset: number };
+  }) => {
+    const answered = (value: unknown) => ({
+      source: "network" as const,
+      outcome: "success" as const,
+      fresh: true,
+      value,
+    });
+    const { table, orderColumn, limit, offset } = request.args;
+    const order = String(orderColumn);
+    h.requests.push({
+      table,
+      order,
+      limit: String(limit),
+      offset: String(offset),
+    });
 
     const queue = h.pages.get(table) ?? [];
     const index = Number(offset) / Number(limit);
     const page = queue[index] ?? { rows: [] };
 
     if (page.refuse === "http") {
-      return {
+      return answered({
         success: false,
         outcome: "http_error",
-        action: spec.action,
+        action: "sirius_freeman_rawdata",
         error: "HTTP 500 Internal Server Error",
         timestamp: new Date().toISOString(),
         durationMs: 1,
-      };
+      });
     }
     if (page.refuse === "inner") {
-      return {
+      return answered({
         success: true,
         outcome: "success",
-        action: spec.action,
+        action: "sirius_freeman_rawdata",
         data: { success: true, data: { success: false, records: [] } },
         timestamp: new Date().toISOString(),
         durationMs: 1,
-      };
+      });
     }
     if (page.refuse === "shapeless") {
-      return {
+      return answered({
         success: true,
         outcome: "success",
-        action: spec.action,
+        action: "sirius_freeman_rawdata",
         data: { success: true, data: { success: true } },
         timestamp: new Date().toISOString(),
         durationMs: 1,
-      };
+      });
     }
-    return {
+    return answered({
       success: true,
       outcome: "success",
-      action: spec.action,
+      action: "sirius_freeman_rawdata",
       data: {
         success: true,
         data: { success: true, table, order, limit, offset, records: page.rows ?? [] },
       },
       timestamp: new Date().toISOString(),
       durationMs: 1,
-    };
+    });
   }),
 }));
 

@@ -43,7 +43,9 @@ import { lookupRepresentatives } from "../../server/services/google-civics";
 import { getWcVendorPlugin } from "../../server/plugins/wc-vendors";
 import { wcRequest } from "../../server/services/webclient";
 import { T631_PLUGIN_ID } from "../../server/plugins/wc-vendors/plugins/sitespecific-t631";
-import { freemanEdlsMigratePing } from "../../server/modules/sitespecific/freeman/edls-migrate/client";
+import {
+  FREEMAN_EDLS_MIGRATE_PLUGIN_ID,
+} from "../../server/plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate";
 
 /** The address-validation shape (Google side). */
 const ADDRESS = {
@@ -142,7 +144,16 @@ function operations() {
     // those — it would report the remote system as unwell when nobody asked it
     // anything — so each is asserted the same way as a vendor call.
     ["T631", "ping", () => t631Ping()],
-    ["Freeman EDLS", "ping", () => freemanEdlsMigratePing()],
+    [
+      "Freeman EDLS",
+      "ping",
+      () =>
+        wcRequest({
+          vendor: { pluginId: FREEMAN_EDLS_MIGRATE_PLUGIN_ID },
+          operation: "test-connection",
+          args: undefined,
+        }),
+    ],
   ] as const;
 }
 

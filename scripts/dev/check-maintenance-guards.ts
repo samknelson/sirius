@@ -77,7 +77,6 @@ const OUTBOUND_MODULES = [
   "server/services/google-civics.ts",
   "server/services/google-geocode.ts",
   "server/services/census-geocoder.ts",
-  "server/modules/sitespecific/freeman/edls-migrate/client.ts",
   "server/modules/sitespecific/btu/scraper-import.ts",
   "server/plugins/wizards/plugins/btu-cardcheck-scrape-import.ts",
   "server/plugins/wc-vendors/plugins/stripe.ts",
@@ -511,6 +510,11 @@ const HANDLERS_ON_FRAMEWORK: Record<
     // the remote operations are written in their own map that the plugin
     // literal spreads in, so both maps are named here.
     handlerContainers: ["operations", "t631RemoteOperations"],
+    handlerProperty: "run",
+    vendorIdentifiers: ["fetch"],
+  },
+  "server/plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate.ts": {
+    handlerContainers: ["operations", "remoteOperations"],
     handlerProperty: "run",
     vendorIdentifiers: ["fetch"],
   },

@@ -181,3 +181,4 @@ export async function backfillWcVendorSubsidiaries(): Promise<void> {
 import "./plugins/stripe";
 import "./plugins/dummy";
 import "./plugins/sitespecific-t631";
+import "./plugins/sitespecific-freeman-edls-migrate";
