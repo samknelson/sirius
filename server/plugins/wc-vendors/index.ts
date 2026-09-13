@@ -226,4 +226,4 @@ export async function backfillPaymentTypesFromGlobal(): Promise<void> {
 // Plugin registrations (side-effect imports — each file self-registers).
 import "./plugins/stripe";
 import "./plugins/dummy";
-import "./plugins/t631";
+import "./plugins/sitespecific-t631";

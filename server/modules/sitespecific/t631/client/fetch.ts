@@ -4,8 +4,14 @@ import { z } from "zod";
 import { sendIfMaintenanceRefusal } from "../../../../services/maintenance-flag";
 import { resolveDefaultWcVendor, wcVendorRequest } from "../../../../services/webclient/wc-vendor-context";
 import { WcVendorError } from "../../../../plugins/wc-vendors/errors";
-import { T631_ACTIONS, T631_PLUGIN_ID } from "../../../../plugins/wc-vendors/plugins/t631";
-import type { T631Action, T631FetchResult } from "../../../../plugins/wc-vendors/plugins/t631";
+import {
+  T631_ACTIONS,
+  T631_PLUGIN_ID,
+} from "../../../../plugins/wc-vendors/plugins/sitespecific-t631";
+import type {
+  T631Action,
+  T631FetchResult,
+} from "../../../../plugins/wc-vendors/plugins/sitespecific-t631";
 
 export type { T631Action, T631FetchResult };
 

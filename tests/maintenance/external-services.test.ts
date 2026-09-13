@@ -40,7 +40,8 @@ import { LocalEmailProvider } from "../../server/services/comm/providers/email/l
 import { LocalPostalProvider } from "../../server/services/comm/providers/postal/local";
 import { addressValidationService } from "../../server/services/comm/validators/address";
 import { lookupRepresentatives } from "../../server/services/google-civics";
-import { t631Fetch } from "../../server/modules/sitespecific/t631/client/fetch";
+import { getWcVendorPlugin } from "../../server/plugins/wc-vendors";
+import { T631_PLUGIN_ID } from "../../server/plugins/wc-vendors/plugins/sitespecific-t631";
 import { freemanEdlsMigratePing } from "../../server/modules/sitespecific/freeman/edls-migrate/client";
 
 /** The address-validation shape (Google side). */
@@ -60,6 +61,23 @@ const POSTAL_ADDRESS: PostalAddress = {
   zip: "02108",
   country: "US",
 };
+
+async function t631Ping(): Promise<unknown> {
+  const plugin = getWcVendorPlugin(T631_PLUGIN_ID);
+  const operation = plugin?.operations.sirius_service_ping;
+  if (!operation) throw new Error("T631 ping operation is not registered");
+  return operation.run(
+    {
+      apiKey: "",
+      config: {
+        id: "maintenance-test",
+        name: "T631 maintenance test",
+        data: {},
+      },
+    } as any,
+    undefined as never,
+  );
+}
 
 /**
  * Every vendor operation the guard covers, as a callable. Sends AND reads:
@@ -116,7 +134,7 @@ function operations() {
     // reads on a diagnostics page. A refusal must NOT be converted into one of
     // those — it would report the remote system as unwell when nobody asked it
     // anything — so each is asserted the same way as a vendor call.
-    ["T631", "ping", () => t631Fetch("sirius_service_ping")],
+    ["T631", "ping", () => t631Ping()],
     ["Freeman EDLS", "ping", () => freemanEdlsMigratePing()],
   ] as const;
 }

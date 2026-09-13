@@ -22,7 +22,7 @@ import { WcVendorError } from "../errors";
  * `server/modules/sitespecific/t631/client/`, outside this file.
  */
 
-export const T631_PLUGIN_ID = "t631";
+export const T631_PLUGIN_ID = "sitespecific-t631";
 export const T631_COMPONENT = "sitespecific.t631.client";
 
 // ---------------------------------------------------------------------------

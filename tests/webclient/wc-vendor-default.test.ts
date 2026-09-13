@@ -47,7 +47,7 @@ function config(id: string, enabled: boolean) {
   return {
     id,
     pluginKind: "wc-vendors",
-    pluginId: "t631",
+    pluginId: "sitespecific-t631",
     enabled,
     data: { secretName: "T631_CREDENTIAL" },
   };
@@ -67,7 +67,7 @@ beforeEach(() => {
   getPlugin.mockReset();
   getEnvironmentVariable.mockReset();
   getPlugin.mockReturnValue({
-    id: "t631",
+    id: "sitespecific-t631",
     name: "Teamsters 631",
     requiresSecret: false,
     operations: {},
@@ -77,27 +77,27 @@ beforeEach(() => {
 describe("the default connection for a vendor", () => {
   it("is the one enabled connection", async () => {
     listing([config("a", true), config("b", false)]);
-    const resolved = await resolveDefaultWcVendor("t631");
+    const resolved = await resolveDefaultWcVendor("sitespecific-t631");
     expect(resolved.config.id).toBe("a");
   });
 
   it("does not exist when none is enabled, and says so", async () => {
     listing([config("a", false)]);
-    await expect(resolveDefaultWcVendor("t631")).rejects.toBeInstanceOf(
+    await expect(resolveDefaultWcVendor("sitespecific-t631")).rejects.toBeInstanceOf(
       WcVendorNoDefaultError,
     );
   });
 
   it("does not exist when there are no connections at all", async () => {
     listing([]);
-    await expect(resolveDefaultWcVendor("t631")).rejects.toBeInstanceOf(
+    await expect(resolveDefaultWcVendor("sitespecific-t631")).rejects.toBeInstanceOf(
       WcVendorNoDefaultError,
     );
   });
 
   it("is refused rather than guessed when several are enabled", async () => {
     listing([config("a", true), config("b", true)]);
-    const error = await resolveDefaultWcVendor("t631").catch((e) => e);
+    const error = await resolveDefaultWcVendor("sitespecific-t631").catch((e) => e);
     expect(error).toBeInstanceOf(WcVendorAmbiguousDefaultError);
     expect(error.configIds).toEqual(["a", "b"]);
     expect(error.status).toBe(409);
@@ -105,9 +105,9 @@ describe("the default connection for a vendor", () => {
 
   it("distinguishes the two refusals, because they need different fixes", async () => {
     listing([]);
-    const none = await resolveDefaultWcVendor("t631").catch((e) => e);
+    const none = await resolveDefaultWcVendor("sitespecific-t631").catch((e) => e);
     listing([config("a", true), config("b", true)]);
-    const many = await resolveDefaultWcVendor("t631").catch((e) => e);
+    const many = await resolveDefaultWcVendor("sitespecific-t631").catch((e) => e);
 
     expect(none).not.toBeInstanceOf(WcVendorAmbiguousDefaultError);
     expect(none.status).toBe(503);

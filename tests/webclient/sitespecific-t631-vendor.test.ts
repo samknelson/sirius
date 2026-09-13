@@ -50,7 +50,7 @@ vi.stubGlobal("fetch", fetchSpy);
 
 const { getWcVendorPlugin } = await import("../../server/plugins/wc-vendors/registry");
 const { T631_ACTIONS, T631_PLUGIN_ID, T631_COMPONENT, T631ConfigurationError } =
-  await import("../../server/plugins/wc-vendors/plugins/t631");
+  await import("../../server/plugins/wc-vendors/plugins/sitespecific-t631");
 
 const GOOD_SETTINGS = {
   url: "https://t631.example.invalid/generic.json",
@@ -110,6 +110,10 @@ beforeEach(() => {
 });
 
 describe("the T631 vendor plugin", () => {
+  it("uses the site-specific plugin id", () => {
+    expect(T631_PLUGIN_ID).toBe("sitespecific-t631");
+  });
+
   it("is gated on its own component, not on the kind", () => {
     expect(plugin().requiredComponent).toBe(T631_COMPONENT);
   });
