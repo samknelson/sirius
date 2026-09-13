@@ -103,7 +103,7 @@ import { db, pool as pgPool } from "../../server/storage/db";
 import { drainStorageSideEffects } from "../../server/storage/drain-storage-side-effects";
 import { sql } from "drizzle-orm";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
-import { ensureIdMap, getMappings, putMapping, remapMapping, deleteMapping } from "./lib/idmap";
+import { ensureIdMap, getMappings, remapMapping, deleteMapping } from "./lib/idmap";
 import { RejectLog, pagedStaged, stagedCountOf, chunk, strOf, targetNidOf, toYmd, epochToYmd, yesNo, throttleStorageOpLogs } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
 import {
@@ -1051,7 +1051,12 @@ async function main() {
         progress.add(1);
       }
     }
-    // new anchors: scratch spans with surviving months but no wb mapping yet
+    // New anchors: process one bounded scratch page per statement. The
+    // INSERT's NULL sync fields intentionally match putMapping("wb", ...):
+    // anchors identify a span's usable month row, not a consumed source row.
+    // DISTINCT ON preserves the prior lateral query's earliest live
+    // year/month choice while replacing one id_map round trip per span with a
+    // single INSERT ... SELECT per page.
     progress.phase("anchors-create-scan", report.scratchSpans as number);
     let cursor = 0;
     for (;;) {
@@ -1063,23 +1068,32 @@ async function main() {
       `));
       if (scanned.length === 0) break;
       const scannedNids = scanned.map((r) => Number(r.nid));
-      const rows = rowsOf<{ nid: string | number; id: string }>(await db.execute(sql`
-        SELECT s.nid, a.id FROM ${SPANS()} s
-        CROSS JOIN LATERAL (
-          SELECT w.id FROM trust_wmb w
-           WHERE w.worker_id = s.worker_id AND w.employer_id = s.employer_id AND w.benefit_id = s.benefit_id
+      const insertedCount = await countOf(sql`
+        WITH candidates AS (
+          SELECT DISTINCT ON (s.nid) s.nid, w.id
+            FROM ${SPANS()} s
+            JOIN trust_wmb w
+              ON w.worker_id = s.worker_id
+             AND w.employer_id = s.employer_id
+             AND w.benefit_id = s.benefit_id
              AND (w.year * 12 + w.month - 1) BETWEEN s.start_idx AND COALESCE(s.end_idx, ${H_IDX}::int)
-           ORDER BY w.year, w.month LIMIT 1
-        ) a
-        WHERE s.nid IN (${sql.join(scannedNids.map((n) => sql`${n}`), sql`, `)})
-          AND NOT EXISTS (SELECT 1 FROM s1_staging.id_map m WHERE m.entity = 'wb' AND m.s1_id = s.nid)
-        ORDER BY s.nid
-      `));
+           WHERE s.nid IN (${sql.join(scannedNids.map((n) => sql`${n}`), sql`, `)})
+             AND NOT EXISTS (
+               SELECT 1 FROM s1_staging.id_map m WHERE m.entity = 'wb' AND m.s1_id = s.nid
+             )
+           ORDER BY s.nid, w.year, w.month
+        ),
+        inserted AS (
+          INSERT INTO s1_staging.id_map
+            (entity, s1_id, s2_id, stub, loader, consumed_fingerprint, logic_version, last_synced_at)
+          SELECT 'wb', nid, id, false, ${LOADER}, NULL, NULL, NULL FROM candidates
+          ON CONFLICT (entity, s1_id) DO NOTHING
+          RETURNING 1
+        )
+        SELECT count(*)::bigint AS c FROM inserted
+      `);
       cursor = Number(scanned[scanned.length - 1].nid);
-      for (const r of rows) {
-        await putMapping("wb", Number(r.nid), r.id, { stub: false, loader: LOADER });
-        anchorsCreated++;
-      }
+      anchorsCreated += insertedCount;
       progress.add(scanned.length);
       if (scanned.length < PAGE) break;
     }
@@ -1102,7 +1116,31 @@ async function main() {
        WHERE m.entity = 'wb' AND m.stub = false
          AND NOT EXISTS (SELECT 1 FROM trust_wmb w WHERE w.id = m.s2_id)
     `);
-    verifyFailures = verify.missingAfter + verify.staleAfter + verify.relDivergedAfter + verify.danglingAnchorsAfter;
+    // One set-based pass proves every span that still has at least one live
+    // month has an anchor. This deliberately avoids a global per-span lateral
+    // lookup; the existing trust_wmb tuple-unique index supports the join.
+    verify.missingAnchorsAfter = await countOf(sql`
+      SELECT count(*)::bigint AS c
+        FROM (
+          SELECT s.nid
+            FROM ${SPANS()} s
+            JOIN trust_wmb w
+              ON w.worker_id = s.worker_id
+             AND w.employer_id = s.employer_id
+             AND w.benefit_id = s.benefit_id
+             AND (w.year * 12 + w.month - 1) BETWEEN s.start_idx AND COALESCE(s.end_idx, ${H_IDX}::int)
+            LEFT JOIN s1_staging.id_map m
+              ON m.entity = 'wb' AND m.s1_id = s.nid
+           WHERE m.s1_id IS NULL
+           GROUP BY s.nid
+        ) missing
+    `);
+    verifyFailures =
+      verify.missingAfter +
+      verify.staleAfter +
+      verify.relDivergedAfter +
+      verify.danglingAnchorsAfter +
+      verify.missingAnchorsAfter;
   }
   report.verify = verify;
   progress.stop();
