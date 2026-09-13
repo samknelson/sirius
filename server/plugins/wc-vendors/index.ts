@@ -227,6 +227,3 @@ export async function backfillPaymentTypesFromGlobal(): Promise<void> {
 import "./plugins/stripe";
 import "./plugins/dummy";
 import "./plugins/t631";
-
-// Boot-time seeding owned by a single plugin, re-exported for app-init.
-export { seedT631VendorConfig } from "./plugins/t631";

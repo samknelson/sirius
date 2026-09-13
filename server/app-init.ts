@@ -405,7 +405,6 @@ export async function bootstrapApp(
     registerWcVendorPluginKind,
     backfillWcVendorSubsidiaries,
     backfillPaymentTypesFromGlobal,
-    seedT631VendorConfig,
   } = await import("./plugins/wc-vendors");
   const { initializeWebServiceSystem } = await import("./plugins/web-service");
   registerChargePluginKind();
@@ -416,12 +415,6 @@ export async function bootstrapApp(
   // inner-joins it). Backfill pre-existing configs so they don't vanish.
   await backfillWcVendorSubsidiaries();
   logger.info("Payment-gateway subsidiaries backfilled", { source: "startup" });
-
-  // Give the T631 client component a connection row on the first boot after it
-  // stopped being configured by environment variables. No-op once one exists,
-  // and no-op entirely when the component is off.
-  await seedT631VendorConfig();
-  logger.info("T631 vendor connection seeded", { source: "startup" });
 
   // Wire the shared plugin-config cache's invalidation subscription before any
   // config writes matter. The cache is generic (per-kind) and lazy; this only

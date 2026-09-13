@@ -6,11 +6,6 @@ import type {
 } from "../types";
 import { registerWcVendorPlugin } from "../registry";
 import { WcVendorError } from "../errors";
-import { logger } from "../../../logger";
-import {
-  getEnvironmentVariable,
-  registerEnvironmentVariables,
-} from "../../../config/env-registry";
 
 /**
  * The remote Teamsters 631 service, as a webclient vendor.
@@ -29,86 +24,6 @@ import {
 
 export const T631_PLUGIN_ID = "t631";
 export const T631_COMPONENT = "sitespecific.t631.client";
-
-/** Default name of the secret a seeded connection points at. */
-export const T631_DEFAULT_SECRET_NAME = "SITESPECIFIC_T631_CLIENT_CREDENTIAL";
-
-/**
- * The stable identifier the seeded connection is created with.
- *
- * It is what makes seeding safe when more than one process boots against this
- * database at once. T631 is deliberately not a singleton — several connections
- * are allowed — so nothing in the schema stops two boots that both saw no
- * connection from each creating one, and the result would be two enabled
- * connections and an ambiguous default that fails every scheduled sync. The
- * `sirius_id` unique constraint is the one thing here the database enforces, so
- * the seed claims it and the losing boot is told, by the database, that the row
- * it wanted already exists.
- *
- * Not the `auto.<component>.<local>` spelling: that scheme belongs to rows the
- * component lifecycle owns and reconciles, and this row is the operator's from
- * the moment it exists.
- */
-const T631_SEED_SIRIUS_ID = "seed.sitespecific.t631.client";
-
-/**
- * The environment variables a seeded connection is built from.
- *
- * They are declared here rather than beside the fetch function because seeding
- * is now the only thing that reads them: once the connection row exists, the
- * URL, account id and employer id are read from the row, and changing one is an
- * edit in the admin page rather than a redeploy. They keep
- * `changeTakesEffect: "immediate"` because the seeder reads them afresh on each
- * boot and keeps nothing between boots.
- *
- * The two token variables are no longer read anywhere. They stay declared so
- * that an environment which still carries them shows them (masked) on the
- * environment screen with a description saying they are spent, rather than
- * leaving an operator with two live-looking secrets and no way to learn they
- * are dead.
- */
-registerEnvironmentVariables([
-  {
-    name: "SITESPECIFIC_T631_CLIENT_URL",
-    description:
-      "Base URL of the remote T631 service. Seed value only: once the T631 connection row exists, its URL is edited on the connection, not here.",
-    secret: false,
-    category: T631_COMPONENT,
-    changeTakesEffect: "immediate",
-  },
-  {
-    name: "SITESPECIFIC_T631_CLIENT_ACCOUNT_ID",
-    description:
-      "Account id for the remote T631 service. Seed value only: once the T631 connection row exists, its account id is edited on the connection, not here.",
-    secret: false,
-    category: T631_COMPONENT,
-    changeTakesEffect: "immediate",
-  },
-  {
-    name: "SITESPECIFIC_T631_CLIENT_EMPLOYER_ID",
-    description:
-      "Employer id for the remote T631 service. Seed value only: once the T631 connection row exists, its employer id is edited on the connection, not here.",
-    secret: false,
-    category: T631_COMPONENT,
-    changeTakesEffect: "immediate",
-  },
-  {
-    name: "SITESPECIFIC_T631_CLIENT_ACCESS_TOKEN",
-    description:
-      `No longer read. The T631 connection draws both of its tokens from the single JSON credential secret it names (by default ${T631_DEFAULT_SECRET_NAME}). Safe to delete once that secret is in place.`,
-    secret: true,
-    category: T631_COMPONENT,
-    changeTakesEffect: "immediate",
-  },
-  {
-    name: "SITESPECIFIC_T631_CLIENT_EMPLOYER_TOKEN",
-    description:
-      `No longer read. The T631 connection draws both of its tokens from the single JSON credential secret it names (by default ${T631_DEFAULT_SECRET_NAME}). Safe to delete once that secret is in place.`,
-    secret: true,
-    category: T631_COMPONENT,
-    changeTakesEffect: "immediate",
-  },
-]);
 
 // ---------------------------------------------------------------------------
 // The operations this vendor declares
@@ -541,7 +456,7 @@ const t631WcVendorPlugin: WcVendorPlugin = {
   // resolution is allowed to succeed with it absent. That is what lets the
   // connection test answer "the secret is not set" instead of the framework
   // refusing before the vendor is ever asked — and an operator looking at a
-  // freshly seeded connection needs exactly that sentence.
+  // manually configured connection needs exactly that sentence.
   requiresSecret: false,
 
   configFields: [
@@ -618,136 +533,3 @@ function hostOf(url: string): string {
 }
 
 registerWcVendorPlugin(t631WcVendorPlugin);
-
-// ---------------------------------------------------------------------------
-// Boot-time seeding
-// ---------------------------------------------------------------------------
-
-/**
- * Create the T631 connection on the first boot after this plugin ships.
- *
- * Boot-time rather than a SQL migration because the decision depends on
- * component state, which the SQL layer cannot see: a site with the T631 client
- * switched off must not acquire a connection it never asked for. This mirrors
- * the other boot-time plugin-config backfills.
- *
- * It cannot produce a working connection on its own, and does not pretend to.
- * There is no existing variable holding the combined JSON credential, so the
- * seeded row names a secret that does not exist yet and every T631 call fails —
- * loudly, naming that secret — until an operator creates it. That is the
- * intended upgrade path, not an oversight.
- *
- * Safe on every boot: it creates nothing while a T631 connection exists, so
- * whatever an operator makes of the seeded row — editing its settings, pointing
- * it at a different secret, disabling it — survives every restart untouched.
- * Deleting the last one while the component is still on does bring a fresh seed
- * back on the next boot, deliberately: the component cannot work without a
- * connection, and a row that says which secret is missing is a better place to
- * land than no row and no explanation. Turning the component off is how you
- * mean it. It never writes a token value into the row; the row holds the
- * secret's NAME.
- *
- * Storage is imported lazily, matching the other seeders in this kind: this
- * module is reached through the plugins barrel, which sits inside the storage
- * boot chain, and a top-level storage import would close that cycle.
- */
-export async function seedT631VendorConfig(): Promise<void> {
-  const { isComponentEnabled } = await import("../../../modules/components");
-  if (!(await isComponentEnabled(T631_COMPONENT))) return;
-
-  const { storage } = await import("../../../storage");
-  const existing = await storage.pluginConfigs.getByKindAndPlugin(
-    "wc-vendors",
-    T631_PLUGIN_ID,
-  );
-  if (existing.length > 0) return;
-
-  const { runInTransaction } = await import("../../../storage/transaction-context");
-  const { withFrameworkWrite } = await import(
-    "../../../middleware/request-context"
-  );
-
-  const data = {
-    secretName: T631_DEFAULT_SECRET_NAME,
-    url: getEnvironmentVariable("SITESPECIFIC_T631_CLIENT_URL") ?? "",
-    accountId: getEnvironmentVariable("SITESPECIFIC_T631_CLIENT_ACCOUNT_ID") ?? "",
-    employerId: getEnvironmentVariable("SITESPECIFIC_T631_CLIENT_EMPLOYER_ID") ?? "",
-  };
-
-  try {
-    // Seeding a connection the component needs is the framework's own doing,
-    // not an administrator's: provenance with no person, and no audit entry, so
-    // a restart does not read as somebody having created it.
-    await withFrameworkWrite(() =>
-      runInTransaction(async () => {
-        const row = await storage.pluginConfigs.create({
-          pluginKind: "wc-vendors",
-          pluginId: T631_PLUGIN_ID,
-          enabled: true,
-          name: "Teamsters 631",
-          siriusId: T631_SEED_SIRIUS_ID,
-          data,
-        } as Parameters<typeof storage.pluginConfigs.create>[0]);
-        // The generic search inner-joins the subsidiary table, so a row without
-        // one would be invisible in the vendors admin page.
-        await storage.pluginConfigs.upsertSubsidiary("wc-vendors", { id: row.id });
-      }),
-    );
-    logger.info("Seeded the T631 connection from the environment", {
-      service: "wc-vendor-plugins",
-      secretName: T631_DEFAULT_SECRET_NAME,
-    });
-  } catch (error) {
-    if (isSeedIdentityTaken(error)) {
-      // The identity is taken, but by what? A concurrent boot's seed and an
-      // operator who happened to type this sirius_id onto an unrelated row
-      // raise the identical violation, so the error cannot tell them apart and
-      // the row has to be looked at. Reading it as "already seeded" either way
-      // would swallow a genuine collision and leave the component with no
-      // connection and nothing said about it.
-      const winner = await storage.pluginConfigs.findBySiriusId(
-        T631_SEED_SIRIUS_ID,
-      );
-      if (
-        winner &&
-        winner.pluginKind === "wc-vendors" &&
-        winner.pluginId === T631_PLUGIN_ID
-      ) {
-        logger.info("The T631 connection was seeded by another process", {
-          service: "wc-vendor-plugins",
-        });
-        return;
-      }
-      logger.error(
-        "Could not seed the T631 connection: its identifier is in use by another record",
-        {
-          service: "wc-vendor-plugins",
-          siriusId: T631_SEED_SIRIUS_ID,
-          conflictingPluginKind: winner?.pluginKind,
-          conflictingPluginId: winner?.pluginId,
-        },
-      );
-      return;
-    }
-    logger.error("Failed to seed the T631 connection", {
-      service: "wc-vendor-plugins",
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-}
-
-/**
- * Did this insert fail because the seed's identifier was already claimed?
- *
- * Matched on the constraint by name rather than on "some unique violation", so
- * that a future unique constraint on this table cannot quietly start being read
- * as a lost seeding race.
- */
-function isSeedIdentityTaken(error: unknown): boolean {
-  const candidate = error as { code?: unknown; constraint?: unknown } | null;
-  return (
-    !!candidate &&
-    candidate.code === "23505" &&
-    candidate.constraint === "plugin_configs_sirius_id_unique"
-  );
-}

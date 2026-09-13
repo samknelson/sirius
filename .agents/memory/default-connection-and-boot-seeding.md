@@ -1,6 +1,6 @@
 ---
-name: Default connection resolution and boot-seeding a non-singleton config row
-description: Why an ambiguous default must be refused rather than guessed, and how to seed a config row at boot when several rows are legitimately allowed.
+name: Default connection resolution and manual T631 configuration
+description: Why an ambiguous default must be refused rather than guessed, and why T631 has no automatic legacy migration or startup seeding.
 ---
 
 ## Refuse an ambiguous default; do not pick one
@@ -24,28 +24,16 @@ enabled, more than one enabled), and the ambiguous one carries the competing ids
 message can name them. Routes must map those statuses through instead of flattening them
 to 500.
 
-## Seeding a row at boot when the kind is not a singleton
+## T631 configuration is manual and authoritative
 
-Seeding from environment values at boot (rather than in a SQL migration) is right when
-the decision depends on component state the SQL layer cannot see. The hazard is that
-several processes boot the same image against the same database.
+Do not migrate, seed, repair, or synthesize a T631 vendor connection from legacy
+environment variables. The operator creates the plugin row and its named combined JSON
+credential secret manually in every deployment.
 
-**Why:** a check-then-insert is not idempotent across processes, and a kind that
-legitimately allows several rows has no `(kind, pluginId)` uniqueness to fall back on. Two
-boots both see nothing and both create a row — which lands you straight in the ambiguous
-default above.
+**Why:** the owner explicitly chose a clean cutover over compatibility machinery. The new
+plugin configuration is authoritative and final; deployments are intentionally allowed to
+lose T631 connectivity until they are manually configured.
 
-**How to apply:** give the seeded row a stable value in a column the database already
-enforces as unique, and let the database arbitrate. Then attribute the violation rather
-than assuming it: the same error code and constraint name is raised by a concurrent
-seeder *and* by an operator who happened to type that identifier onto an unrelated row.
-Read the winning row back and only treat it as a lost race if it is the row you meant to
-create; otherwise report the collision, because the alternative is a component left with
-no connection and nothing said about it. Keep the catch outside the transaction so the
-loser's subsidiary writes roll back with it.
-
-Decide and then *write down* what deleting the seeded row means. "Seed when none exists"
-means an operator who deletes the last one gets a fresh seed on the next boot. That is
-defensible — the component cannot work without a connection, and a row naming the missing
-secret is a better place to land than no row and no explanation — but only if the comment
-says so, because the obvious reading of the code is the opposite.
+**How to apply:** startup remains healthy when no connection exists. T631 operations must
+fail clearly before making a remote call. Do not add a legacy fallback, migration script,
+startup blocker, startup migration test, or boot-time seed for this integration.
