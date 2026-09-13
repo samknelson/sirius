@@ -404,6 +404,7 @@ export async function bootstrapApp(
     registerWcVendorPluginKind,
     backfillWcVendorSubsidiaries,
     migrateLegacyCivicWcVendorConfigs,
+    migrateLegacyBtuScrapeWcVendorConfig,
   } = await import("./plugins/wc-vendors");
   const { initializeWebServiceSystem } = await import("./plugins/web-service");
   registerChargePluginKind();
@@ -411,6 +412,7 @@ export async function bootstrapApp(
   registerWcVendorPluginKind();
   initializeWebServiceSystem();
   await migrateLegacyCivicWcVendorConfigs();
+  await migrateLegacyBtuScrapeWcVendorConfig();
   // Every wc-vendors config needs a subsidiary row (the generic search
   // inner-joins it). Backfill pre-existing configs so they don't vanish.
   await backfillWcVendorSubsidiaries();

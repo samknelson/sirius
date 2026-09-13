@@ -9,6 +9,10 @@ import { logger } from "../../logger";
 import { wcVendorRegistry } from "./registry";
 import type { RegisteredWcVendorPlugin } from "./types";
 import {
+  LEGACY_BTU_CHROMIUM_PATH,
+  LEGACY_BTU_SITE_URL,
+} from "./plugins/btu-cardcheck";
+import {
   listEnvironmentVariables,
   registerEnvironmentVariable,
 } from "../../config/env-registry";
@@ -311,6 +315,60 @@ export async function migrateLegacyCivicWcVendorConfigs(): Promise<void> {
         );
       }
     }),
+  );
+}
+
+const BTU_SCRAPE_CONFIG_MIGRATION_LOCK = "wc-vendors:btu-scrape-config-migration";
+
+export function planLegacyBtuScrapeWcVendorConfig(input: {
+  hasExistingConfig: boolean;
+  username?: string;
+  passwordSecretIsSet: boolean;
+}): Record<string, unknown> | null {
+  if (input.hasExistingConfig || !input.username?.trim() || !input.passwordSecretIsSet) {
+    return null;
+  }
+  return {
+    secretName: "BTU_SCRAPER_PASSWORD",
+    siteUrl: LEGACY_BTU_SITE_URL,
+    username: input.username.trim(),
+    chromiumPath: LEGACY_BTU_CHROMIUM_PATH,
+  };
+}
+
+/** Seed the canonical BTU connection without ever reading or persisting its password. */
+export async function migrateLegacyBtuScrapeWcVendorConfig(): Promise<void> {
+  const { storage } = await import("../../storage");
+  const { withFrameworkWrite } = await import("../../middleware/request-context");
+  const { getEnvironmentVariable } = await import("../../config/env-registry");
+  await withFrameworkWrite(() =>
+    storage.advisoryLock.withTransactionLock(
+      BTU_SCRAPE_CONFIG_MIGRATION_LOCK,
+      async () => {
+        const existing = await storage.pluginConfigs.getByKindAndPlugin(
+          "wc-vendors",
+          "btu-cardcheck",
+        );
+        const passwordMeta = listEnvironmentVariables().find(
+          (entry) => entry.name === "BTU_SCRAPER_PASSWORD",
+        );
+        const data = planLegacyBtuScrapeWcVendorConfig({
+          hasExistingConfig: existing.length > 0,
+          username: getEnvironmentVariable("BTU_SCRAPER_USERNAME"),
+          passwordSecretIsSet: passwordMeta?.isSet === true,
+        });
+        if (!data) return;
+        const row = await storage.pluginConfigs.create({
+          pluginKind: "wc-vendors",
+          pluginId: "btu-cardcheck",
+          enabled: true,
+          name: "BTU Card Check",
+          ordering: 0,
+          data,
+        });
+        await storage.pluginConfigs.upsertSubsidiary("wc-vendors", { id: row.id });
+      },
+    ),
   );
 }
 

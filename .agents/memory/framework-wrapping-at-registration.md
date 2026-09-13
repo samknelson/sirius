@@ -44,6 +44,18 @@ the wrapped handlers — and that must be computed BACKWARDS:
   vendor-reaching.
 - Report anything vendor-reaching that is not reachable from a handler.
 
+Keep vendor SDK entry points directly in the registered handler's reachable
+call graph. Do not pass a vendor-launching function as a callback into a helper,
+and do not hide the launch in a default constructor argument.
+
+**Why:** the static call graph intentionally does not infer that a function
+passed as a value will later be invoked only by the registered handler. Treating
+that as safe would also hide callbacks retained and invoked from unguarded code.
+
+**How to apply:** perform the SDK construction in the handler, then pass the
+already-created client/browser into private helpers. Helpers may retain and use
+that object as long as their methods remain reachable only from handlers.
+
 **Why:** forward reachability from the handlers answers the wrong question. It
 proves a helper *can* be reached from a handler, not that it can *only* be —
 a helper shared between a handler and a metadata hook like `validateConfig`

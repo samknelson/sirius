@@ -71,8 +71,6 @@ const GUARD_MODULE = "server/services/maintenance-flag.ts";
 const OUTBOUND_MODULES = [
   "server/lib/twilio-client.ts",
   "server/services/comm/validators/address.ts",
-  "server/modules/sitespecific/btu/scraper-import.ts",
-  "server/plugins/wizards/plugins/btu-cardcheck-scrape-import.ts",
   "server/plugins/wc-vendors/plugins/stripe.ts",
 ];
 /**
@@ -150,6 +148,9 @@ const VENDOR_MARKER_EXEMPT: Record<string, string> = {
     "HANDLERS_ON_FRAMEWORK audits that delegation and the framework supplies refusal.",
   "server/plugins/wc-vendors/plugins/census-geocoder.ts":
     "The Census endpoint is called only by a registered wc-vendor operation handler; " +
+    "HANDLERS_ON_FRAMEWORK audits that delegation and the framework supplies refusal.",
+  "server/plugins/wc-vendors/plugins/btu-cardcheck.ts":
+    "The BTU browser and PDF endpoints are reached only by registered wc-vendor operation handlers; " +
     "HANDLERS_ON_FRAMEWORK audits that delegation and the framework supplies refusal.",
 };
 
@@ -532,6 +533,11 @@ const HANDLERS_ON_FRAMEWORK: Record<
     handlerContainers: ["operations"],
     handlerProperty: "run",
     vendorIdentifiers: ["client"],
+  },
+  "server/plugins/wc-vendors/plugins/btu-cardcheck.ts": {
+    handlerContainers: ["operations"],
+    handlerProperty: "run",
+    vendorIdentifiers: ["puppeteer", "goto", "pdf", "fetch"],
   },
 };
 

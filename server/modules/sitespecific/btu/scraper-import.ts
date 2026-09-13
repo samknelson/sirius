@@ -5,90 +5,15 @@ import { insertFileSchema } from "@shared/schema";
 import { logger } from "../../../logger";
 import { sendInapp } from "../../../services/comm/senders/inapp";
 import { sendEmail } from "../../../services/comm/senders/email";
-import puppeteer, { type Browser, type Page } from "puppeteer-core";
-import { PDFDocument } from "pdf-lib";
-import { getEnvironmentVariable, registerEnvironmentVariables } from "../../../config/env-registry";
-import { wcUncachedRequest } from "../../../services/webclient";
 import { isMaintenanceModeError } from "../../../services/maintenance-flag";
-import { BTU_SCRAPE_FETCH_CARDCHECK, BTU_SCRAPE_LOGIN } from "./scrape-requests";
-
-// changeTakesEffect: "immediate" for both. loginToSite() reads them through
-// the registry at the start of each scrape run and nothing holds them between
-// runs. The same pair is registered by the cardcheck scrape-import wizard
-// plugin — registration is last-one-wins, so both copies must carry the same
-// classification.
-registerEnvironmentVariables([
-  { name: "BTU_SCRAPER_USERNAME", description: "Login username for the BTU cardcheck scraper.", secret: false, category: "sitespecific.btu", changeTakesEffect: "immediate", },
-  { name: "BTU_SCRAPER_PASSWORD", description: "Login password for the BTU cardcheck scraper.", secret: true, category: "sitespecific.btu", changeTakesEffect: "immediate", },
-]);
+import {
+  closeBtuCardcheckScrape,
+  fetchBtuCardcheckPdf,
+  startBtuCardcheckScrape,
+} from "../../../services/btu-cardcheck-scrape";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
-
-const CHROMIUM_PATH = '/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium';
-const LOGIN_URL = 'https://sirius-btu.activistcentral.net/user/login';
-
-function getCardcheckPageUrl(nid: string): string {
-  return `https://sirius-btu.activistcentral.net/node/${nid}/sirius_log_cardcheck`;
-}
-
-async function launchBrowser() {
-  return puppeteer.launch({
-    headless: true,
-    executablePath: CHROMIUM_PATH,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-  });
-}
-
-async function loginToSite(page: Page) {
-  const username = getEnvironmentVariable("BTU_SCRAPER_USERNAME");
-  const password = getEnvironmentVariable("BTU_SCRAPER_PASSWORD");
-
-  if (!username || !password) {
-    throw new Error('BTU_SCRAPER_USERNAME and BTU_SCRAPER_PASSWORD environment variables are required');
-  }
-
-  const { error } = await wcUncachedRequest<true>({
-    service: 'BTU',
-    requestType: BTU_SCRAPE_LOGIN,
-    fetch: async () => {
-      await page.goto(LOGIN_URL, { waitUntil: 'networkidle2', timeout: 60000 });
-
-      const hasLoginForm = await page.evaluate(() => !!document.querySelector('#edit-name'));
-      if (!hasLoginForm) {
-        const pageTitle = await page.title();
-        logger.info('Login page loaded but no form found', { pageTitle, url: page.url() });
-        return { answered: false, error: `Login form not found on page. Page title: ${pageTitle}` };
-      }
-
-      await page.type('#edit-name', username);
-      await page.type('#edit-pass', password);
-      await Promise.all([
-        page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }),
-        page.click('#edit-submit'),
-      ]);
-
-      const postLoginUrl = page.url();
-      const postLoginTitle = await page.title();
-      logger.info('Post-login state', { url: postLoginUrl, title: postLoginTitle });
-
-      const hasLoginError = await page.evaluate(() => {
-        const errorMsg = document.querySelector('.messages.error, .error-message');
-        return errorMsg ? errorMsg.textContent?.trim() : null;
-      });
-
-      if (hasLoginError) {
-        return { answered: false, error: `Login failed: ${hasLoginError}` };
-      }
-
-      return { answered: true, value: true };
-    },
-  });
-
-  // Nothing downstream can work without a session, so a login that did not
-  // happen stops the run here, exactly as it always has.
-  if (error) throw new Error(error);
-}
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -210,11 +135,10 @@ export function registerBtuScraperImportRoutes(
         });
 
         setImmediate(async () => {
-          let browser: Browser | null = null;
+          let sessionId: string | null = null;
           try {
-            browser = await launchBrowser();
-            const page = await browser.newPage();
-            await loginToSite(page);
+            const startedSessionId = await startBtuCardcheckScrape();
+            sessionId = startedSessionId;
 
             const results = {
               processed: 0,
@@ -267,87 +191,7 @@ export function registerBtuScraperImportRoutes(
                   continue;
                 }
 
-                const fetched = await wcUncachedRequest<Uint8Array>({
-                  service: 'BTU',
-                  requestType: BTU_SCRAPE_FETCH_CARDCHECK,
-                  fetch: async () => {
-                    const cardcheckPageUrl = getCardcheckPageUrl(nid);
-                    await page.goto(cardcheckPageUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-                    await delay(500);
-
-                    const pageTitle = await page.title();
-                    if (pageTitle.toLowerCase().includes('access denied')) {
-                      return { answered: false, error: `Access denied for NID ${nid}` };
-                    }
-                    if (pageTitle.toLowerCase().includes('not found') || pageTitle.toLowerCase().includes('page not found')) {
-                      return { answered: false, error: `Page not found for NID ${nid}` };
-                    }
-
-                    const pagePdfBuffer = await page.pdf({ format: 'Letter', printBackground: true });
-
-                    const attachedPdfUrls: string[] = await page.evaluate(() => {
-                      const links = Array.from(document.querySelectorAll('a[href]'));
-                      return links
-                        .map(a => (a as HTMLAnchorElement).href)
-                        .filter(href => href.toLowerCase().endsWith('.pdf'));
-                    });
-
-                    const cookies = await page.cookies();
-                    const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-
-                    let combinedPdfBytes: Uint8Array;
-
-                    try {
-                      const combinedDoc = await PDFDocument.create();
-
-                      const pageDoc = await PDFDocument.load(pagePdfBuffer);
-                      const pagePages = await combinedDoc.copyPages(pageDoc, pageDoc.getPageIndices());
-                      for (const p of pagePages) {
-                        combinedDoc.addPage(p);
-                      }
-
-                      for (const pdfUrl of attachedPdfUrls) {
-                        try {
-                          logger.info(`Downloading attached PDF: ${pdfUrl}`, { nid, cardcheckId: cardcheck.id });
-                          const pdfFetchResponse = await fetch(pdfUrl, {
-                            headers: { 'Cookie': cookieString },
-                            redirect: 'follow',
-                          });
-                          if (!pdfFetchResponse.ok) {
-                            logger.warn(`Failed to download PDF (HTTP ${pdfFetchResponse.status}): ${pdfUrl}`);
-                            continue;
-                          }
-                          const pdfArrayBuffer = await pdfFetchResponse.arrayBuffer();
-                          const pdfBuffer = Buffer.from(pdfArrayBuffer);
-                          if (pdfBuffer.length < 100) {
-                            logger.warn(`Downloaded PDF too small (${pdfBuffer.length} bytes), skipping: ${pdfUrl}`);
-                            continue;
-                          }
-                          const attachedDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
-                          const attachedPages = await combinedDoc.copyPages(attachedDoc, attachedDoc.getPageIndices());
-                          for (const ap of attachedPages) {
-                            combinedDoc.addPage(ap);
-                          }
-                          logger.info(`Successfully attached PDF (${pdfBuffer.length} bytes) from: ${pdfUrl}`, { nid });
-                        } catch (attachErr) {
-                          logger.warn(`Failed to download/parse attached PDF: ${pdfUrl}`, { error: attachErr });
-                        }
-                      }
-
-                      combinedPdfBytes = await combinedDoc.save();
-                    } catch (combineErr) {
-                      logger.warn('Failed to combine PDFs, using page PDF only', { error: combineErr });
-                      combinedPdfBytes = new Uint8Array(pagePdfBuffer);
-                    }
-
-                    return { answered: true, value: combinedPdfBytes };
-                  },
-                });
-
-                if (!fetched.value) {
-                  throw new Error(fetched.error || `Failed to fetch the card check page for NID ${nid}`);
-                }
-                const combinedPdfBytes = fetched.value;
+                const combinedPdfBytes = await fetchBtuCardcheckPdf(startedSessionId, nid);
 
                 const fileName = `cardcheck_scrape_${nid}.pdf`;
 
@@ -527,8 +371,8 @@ export function registerBtuScraperImportRoutes(
               logger.warn('Failed to update wizard error state', { error: clearErr });
             }
           } finally {
-            if (browser) {
-              await browser.close().catch(() => {});
+            if (sessionId) {
+              await closeBtuCardcheckScrape(sessionId).catch(() => {});
             }
           }
         });

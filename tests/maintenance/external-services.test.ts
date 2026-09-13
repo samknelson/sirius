@@ -41,6 +41,9 @@ import { T631_PLUGIN_ID } from "../../server/plugins/wc-vendors/plugins/sitespec
 import {
   FREEMAN_EDLS_MIGRATE_PLUGIN_ID,
 } from "../../server/plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate";
+import {
+  BTU_CARDCHECK_PLUGIN_ID,
+} from "../../server/plugins/wc-vendors/plugins/btu-cardcheck";
 import { getWcVendorHandler } from "../../server/plugins/wc-vendors/registry";
 import type { PluginConfig } from "@shared/schema";
 import { migrateLegacyCivicWcVendorConfigs } from "../../server/plugins/wc-vendors";
@@ -173,6 +176,16 @@ function operations() {
         wcRequest({
           vendor: { pluginId: FREEMAN_EDLS_MIGRATE_PLUGIN_ID },
           operation: "test-connection",
+          args: undefined,
+        }),
+    ],
+    [
+      "BTU",
+      "login",
+      () =>
+        wcRequest({
+          vendor: { pluginId: BTU_CARDCHECK_PLUGIN_ID },
+          operation: "login",
           args: undefined,
         }),
     ],
