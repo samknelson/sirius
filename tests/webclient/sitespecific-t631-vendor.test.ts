@@ -84,7 +84,10 @@ function expectNoCredentialAnywhere(value: unknown) {
 
 function context(apiKey: string, data: Record<string, unknown> = GOOD_SETTINGS) {
   return {
-    apiKey,
+    credential: {
+      secretName: "T631_CREDENTIAL",
+      value: apiKey,
+    },
     config: {
       id: "cfg-1",
       name: "Teamsters 631",
@@ -118,10 +121,8 @@ describe("the T631 vendor plugin", () => {
     expect(plugin().requiredComponent).toBe(T631_COMPONENT);
   });
 
-  it("resolves without a secret so it can report its own credential trouble", () => {
-    // If the generic resolver refused first, the connection test could never
-    // say WHY the credential is unusable — only that one is missing.
-    expect(plugin().requiresSecret).toBe(false);
+  it("declares that the framework must resolve its named credential", () => {
+    expect(plugin().credential).toEqual({ secretName: "required" });
   });
 
   it("puts every remote action on the web client framework as a read", () => {

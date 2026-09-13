@@ -14,6 +14,21 @@ import type {
   WcVendorManifestEntry,
 } from "./types";
 import type { WcAnswer, WcService } from "../../services/webclient/types";
+import { wcCacheStorage } from "../../storage/wc-cache";
+
+export function getWcVendorOperationManifest(
+  plugin: WcVendorPlugin,
+): WcVendorManifestEntry["operations"] {
+  return Object.entries(plugin.operations).flatMap(([id, operation]) =>
+    operation
+      ? [{
+          id,
+          description: operation.description,
+          needsWritableDatabase: operation.needsWritableDatabase,
+        }]
+      : [],
+  );
+}
 
 export const wcVendorRegistry = new PluginRegistry<
   WcVendorPlugin,
@@ -34,6 +49,8 @@ export const wcVendorRegistry = new PluginRegistry<
     description: p.description,
     requiredComponent: p.requiredComponent,
     addComponentId: p.addComponentId,
+    credential: p.credential,
+    operations: getWcVendorOperationManifest(p),
   }),
 });
 
@@ -51,10 +68,29 @@ export const wcVendorRegistry = new PluginRegistry<
  * and still counted.
  */
 function onFramework(
-  service: WcService,
+  service: WcService | undefined,
   requestType: string,
   declared: WcVendorOperation,
 ): WcVendorOperation {
+  if (!service) {
+    return {
+      ...declared,
+      async run(ctx, args) {
+        if (
+          declared.needsWritableDatabase &&
+          !(await wcCacheStorage.canStore())
+        ) {
+          throw new WcVendorRequestError(
+            503,
+            `The vendor was not asked to ${declared.description}: the result could not be recorded ` +
+              `(the database is not accepting writes), and this operation must not happen unrecorded.`,
+          );
+        }
+        return declared.run(ctx, args);
+      },
+    };
+  }
+
   return {
     ...declared,
     async run(ctx, args) {
@@ -122,21 +158,17 @@ function onFramework(
  */
 export function registerWcVendorPlugin(plugin: WcVendorPlugin): void {
   const service = plugin.service;
-  if (!service) {
-    // No outside system; see WcVendorPlugin.service.
-    wcVendorRegistry.register(plugin);
-    return;
-  }
-
   const operations: Record<string, WcVendorOperation> = {};
   for (const [requestType, declared] of Object.entries(plugin.operations)) {
     if (!declared) continue;
-    registerUncachedWcRequest({
-      service,
-      requestType,
-      operation: declared.operation,
-      needsWritableDatabase: declared.needsWritableDatabase,
-    });
+    if (service) {
+      registerUncachedWcRequest({
+        service,
+        requestType,
+        operation: declared.description,
+        needsWritableDatabase: declared.needsWritableDatabase,
+      });
+    }
     operations[requestType] = onFramework(service, requestType, declared);
   }
 

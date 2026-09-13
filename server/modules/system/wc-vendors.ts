@@ -4,7 +4,10 @@ import {
   requireAccess,
   getComponentChecker,
 } from "../../services/access-policy-evaluator";
-import { getWcVendorPlugin } from "../../plugins/wc-vendors";
+import {
+  getWcVendorPlugin,
+  getWcVendorOperationManifest,
+} from "../../plugins/wc-vendors";
 import {
   resolveWcVendor,
   wcVendorRequest,
@@ -57,11 +60,13 @@ export function registerWcVendorRoutes(app: Express): void {
         ) {
           continue;
         }
+        const operations = getWcVendorOperationManifest(plugin);
         available.push({
           id: cfg.id,
           pluginId: cfg.pluginId,
           name: cfg.name,
-          canTest: plugin.operations["test-connection"] !== undefined,
+          operations,
+          canTest: operations.some((operation) => operation.id === "test-connection"),
           acceptsPaymentTypes: (plugin.supportedPaymentTypes ?? []).length > 0,
         });
       }

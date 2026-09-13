@@ -67,12 +67,22 @@ export async function resolveWcVendor(
   }
 
   const data = (config.data ?? {}) as Record<string, unknown>;
-  const secretName = typeof data.secretName === "string" ? data.secretName : "";
-  if (!secretName) {
+  const requirement = plugin.credential.secretName;
+  const secretName =
+    typeof data.secretName === "string" ? data.secretName.trim() : "";
+  if (!secretName && requirement === "required") {
     throw new WcVendorResolutionError(
       503,
       "Vendor configuration does not name a credential secret",
     );
+  }
+
+  if (!secretName || requirement === "none") {
+    return {
+      config,
+      plugin,
+      context: { credential: { value: "" }, config },
+    };
   }
 
   // Dynamically-named credential: register in the env registry at resolve
@@ -93,15 +103,22 @@ export async function resolveWcVendor(
     category: "webclient",
     changeTakesEffect: "immediate",
   });
-  const apiKey = getEnvironmentVariable(secretName);
-  if (!apiKey && plugin.requiresSecret !== false) {
+  const credentialValue = getEnvironmentVariable(secretName);
+  if (!credentialValue && requirement === "required") {
     throw new WcVendorResolutionError(
       503,
       `Vendor credential secret '${secretName}' is not set`,
     );
   }
 
-  return { config, plugin, context: { apiKey: apiKey ?? "", config } };
+  return {
+    config,
+    plugin,
+    context: {
+      credential: { secretName, value: credentialValue ?? "" },
+      config,
+    },
+  };
 }
 
 /** No enabled connection exists for the plugin a caller named. */

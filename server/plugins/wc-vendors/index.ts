@@ -7,11 +7,13 @@ import {
 } from "../_core";
 import { logger } from "../../logger";
 import { wcVendorRegistry } from "./registry";
+import type { WcVendorPlugin } from "./types";
 
 export {
   wcVendorRegistry,
   registerWcVendorPlugin,
   getWcVendorPlugin,
+  getWcVendorOperationManifest,
 } from "./registry";
 export type * from "./types";
 
@@ -38,10 +40,18 @@ export function registerWcVendorPluginKind(): void {
     // publishable-key prefix) to the plugin. The generic create/update path
     // already enforces required per-plugin fields from `configFields`; this
     // covers format checks beyond presence.
-    validateConfig: (plugin, config) =>
-      plugin.validateConfig
-        ? plugin.validateConfig((config ?? {}) as Record<string, unknown>)
-        : { valid: true },
+    validateConfig: (plugin, config) => {
+      const vendor = plugin as WcVendorPlugin;
+      const data = (config ?? {}) as Record<string, unknown>;
+      const secretName =
+        typeof data.secretName === "string" ? data.secretName.trim() : "";
+      if (vendor.credential.secretName === "required" && !secretName) {
+        return { valid: false, errors: ["Secret Name is required."] };
+      }
+      return vendor.validateConfig
+        ? vendor.validateConfig(data)
+        : { valid: true };
+    },
   });
   // Webclient-vendor configs carry no relational dimensions of their own, but
   // they DO get a subsidiary row in `plugin_configs_wc_vendors`. That
@@ -57,7 +67,7 @@ export function registerWcVendorPluginKind(): void {
     pluginKind: "wc-vendors",
     configSchema: z.object({
       ...baseConfigSchemaShape,
-      secretName: z.string().min(1, "secretName is required"),
+      secretName: z.string().nullable().optional(),
       // Accepted payment method types for this config (e.g. ["card",
       // "us_bank_account"]). Lives in `data`; the provider declares the catalog
       // of valid options. Optional so generic create/update without it leaves
@@ -71,8 +81,22 @@ export function registerWcVendorPluginKind(): void {
     searchParamsSchema: z.object({
       ...baseSearchSchemaShape,
     }),
-    toRows: (input) => ({
-      base: {
+    toRows: (input) => {
+      const data: Record<string, unknown> = {
+        ...(input.data && typeof input.data === "object" ? input.data : {}),
+      };
+      const requirement = wcVendorRegistry.get(input.pluginId)?.credential.secretName;
+      if (requirement === "none" || input.secretName === null) {
+        delete data.secretName;
+      } else if (input.secretName !== undefined) {
+        data.secretName = input.secretName;
+      }
+      if (input.paymentTypes !== undefined) {
+        data.paymentTypes = input.paymentTypes;
+      }
+
+      return {
+        base: {
         pluginKind: "wc-vendors",
         pluginId: input.pluginId,
         enabled: input.enabled,
@@ -82,20 +106,15 @@ export function registerWcVendorPluginKind(): void {
         // (the authoritative store for these fields) while preserving any other
         // data the caller supplied. `paymentTypes` is folded conditionally so a
         // generic update that omits it leaves any existing list untouched.
-        data: {
-          ...(input.data && typeof input.data === "object" ? input.data : {}),
-          secretName: input.secretName,
-          ...(input.paymentTypes !== undefined
-            ? { paymentTypes: input.paymentTypes }
-            : {}),
+          data,
         },
-      },
       // Empty subsidiary — the FK-target table has no columns yet. Returning an
       // (empty) object is what makes the generic CRUD path call
       // `upsertSubsidiary("wc-vendors", { id })`, so every config has a row
       // and stays visible through the inner-joined generic search.
-      subsidiary: {},
-    }),
+        subsidiary: {},
+      };
+    },
     // Lift `data.secretName` back to the top-level flat shape clients send, so
     // round-tripping a config (read -> PATCH) keeps the field populated.
     hydrate: (envelope) => {
@@ -108,8 +127,18 @@ export function registerWcVendorPluginKind(): void {
       };
     },
     envelopeFields: [
-      { name: "secretName", label: "Secret Name", type: "string", required: true },
+      { name: "secretName", label: "Secret Name", type: "string" },
     ],
+    envelopeFieldsForPlugin: (plugin) => {
+      const requirement = (plugin as WcVendorPlugin).credential.secretName;
+      if (requirement === "none") return [];
+      return [{
+        name: "secretName",
+        label: "Secret Name",
+        type: "string",
+        required: requirement === "required",
+      }];
+    },
   });
   kindRegistered = true;
 }

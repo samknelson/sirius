@@ -33,12 +33,17 @@ import type { WcService } from "../../services/webclient/types";
 
 /**
  * Resolved per-operation context handed to every provider method. Built by the
- * generic module's credential resolver from a gateway config.
+ * generic module's credential resolver from a vendor config.
  */
 export interface WcVendorContext {
-  /** Provider API secret value, resolved from `config.data.secretName`. */
-  apiKey: string;
-  /** The gateway config row driving this operation (carries `data`). */
+  /** Credential metadata and value resolved by the generic framework. */
+  credential: {
+    /** Configured environment-variable name; absent for credential-free vendors. */
+    secretName?: string;
+    /** Secret value; empty only when the declaration allows no/optional credentials. */
+    value: string;
+  };
+  /** The vendor config row driving this operation (carries `data`). */
   config: PluginConfig;
 }
 
@@ -194,13 +199,13 @@ export type WcVendorOperationArgs<N extends WcVendorOperationName> =
 export type WcVendorOperationResult<N extends WcVendorOperationName> =
   WcVendorOperations[N]["result"];
 
-/** One operation a plugin declares: how to do it, and how it must be gated. */
-export interface WcVendorOperation<N extends WcVendorOperationName = WcVendorOperationName> {
+/** Shape captured by the declaration helper before operation ids are known. */
+export interface WcVendorOperationDeclaration<TArgs = unknown, TResult = unknown> {
   /**
    * What is being attempted, in plain words — the second half of "Stripe is
    * unavailable: the site is in maintenance mode (attempted: …)".
    */
-  operation: string;
+  description: string;
   /**
    * Whether the vendor may be asked when the answer cannot be written down.
    *
@@ -219,25 +224,33 @@ export interface WcVendorOperation<N extends WcVendorOperationName = WcVendorOpe
    */
   run(
     ctx: WcVendorContext,
-    args: WcVendorOperationArgs<N>,
-  ): Promise<WcVendorOperationResult<N>>;
+    args: TArgs,
+  ): Promise<TResult>;
+}
+
+/** One typed operation after its id has joined the shared vocabulary. */
+export interface WcVendorOperation<N extends WcVendorOperationName = WcVendorOperationName>
+  extends WcVendorOperationDeclaration<
+    WcVendorOperationArgs<N>,
+    WcVendorOperationResult<N>
+  > {
 }
 
 export type WcVendorOperationMap = {
   [N in WcVendorOperationName]?: WcVendorOperation<N>;
 };
 
+export type WcVendorSecretNameRequirement = "required" | "optional" | "none";
+
 export interface WcVendorPlugin extends BasePluginMetadata {
   /**
-   * Whether resolving this gateway requires the named credential secret to be
-   * present in the environment. Defaults to `true` (the historical behaviour:
-   * a missing secret yields a 503). A provider that needs no real credentials
-   * — e.g. the in-app "dummy" testing gateway — sets this to `false`, so the
-   * config may still name a secret without the gateway breaking when it is
-   * unset. When `false`, the resolved `context.apiKey` is an empty string if
-   * the secret is absent.
+   * Generic credential-reference contract. The framework owns the editable
+   * secret-name field, resolves its value, and supplies both through context.
+   * Vendors only own the format of the resolved value.
    */
-  requiresSecret?: boolean;
+  credential: {
+    secretName: WcVendorSecretNameRequirement;
+  };
   /**
    * Client component id (`"<plugin-id>:<Component>"`) for the auto-discovered
    * add-a-payment-method form, resolved through the client wc-vendors
@@ -309,4 +322,10 @@ export interface WcVendorManifestEntry {
   description?: string;
   requiredComponent?: string;
   addComponentId?: string;
+  credential: WcVendorPlugin["credential"];
+  operations: Array<{
+    id: string;
+    description: string;
+    needsWritableDatabase: boolean;
+  }>;
 }

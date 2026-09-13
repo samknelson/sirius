@@ -20,6 +20,11 @@ interface VendorConfigOption {
   name: string;
   /** The plugin declares a `test-connection` operation. */
   canTest: boolean;
+  operations: Array<{
+    id: string;
+    description: string;
+    needsWritableDatabase: boolean;
+  }>;
   acceptsPaymentTypes: boolean;
 }
 

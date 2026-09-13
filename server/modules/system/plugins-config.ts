@@ -284,7 +284,10 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
           pluginFields[meta.id] = fields;
         }
         const perPlugin = adapter.envelopeFieldsForPlugin?.(plugin);
-        if (Array.isArray(perPlugin) && perPlugin.length > 0) {
+        // An empty list is an explicit override: this plugin accepts NONE of
+        // the kind-wide fields. Omitting it would make the client fall back to
+        // adapter.envelopeFields and render fields the plugin rejected.
+        if (Array.isArray(perPlugin)) {
           pluginEnvelopeFields[meta.id] = perPlugin;
         }
       }

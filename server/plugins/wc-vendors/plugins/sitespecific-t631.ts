@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import type {
   WcVendorPlugin,
   WcVendorContext,
+  WcVendorOperationDeclaration,
   GatewayConnectionTest,
 } from "../types";
 import { registerWcVendorPlugin } from "../registry";
@@ -36,34 +37,58 @@ export const T631_COMPONENT = "sitespecific.t631.client";
  * these calls keep the exact framework identity they had before this plugin
  * existed — the same names on the usage figures and in the diagnostics.
  */
+const t631RemoteOperations = {
+  sirius_service_ping: {
+    description: "ping the T631 service",
+    needsWritableDatabase: false,
+    run: (ctx: WcVendorContext, _args: void) =>
+      performT631Fetch(ctx, "sirius_service_ping"),
+  },
+  sirius_edls_server_worker_list: {
+    description: "read the T631 worker list",
+    needsWritableDatabase: false,
+    run: (ctx: WcVendorContext, _args: void) =>
+      performT631Fetch(ctx, "sirius_edls_server_worker_list"),
+  },
+  sirius_dispatch_group_search: {
+    description: "read the T631 dispatch groups",
+    needsWritableDatabase: false,
+    run: (ctx: WcVendorContext, _args: void) =>
+      performT631Fetch(ctx, "sirius_dispatch_group_search"),
+  },
+  sirius_dispatch_facility_dropdown: {
+    description: "read the T631 facility list",
+    needsWritableDatabase: false,
+    run: (ctx: WcVendorContext, _args: void) =>
+      performT631Fetch(ctx, "sirius_dispatch_facility_dropdown"),
+  },
+  sirius_edls_server_tos_list: {
+    description: "read the T631 time-off-sick list",
+    needsWritableDatabase: false,
+    run: (ctx: WcVendorContext, _args: void) =>
+      performT631Fetch(ctx, "sirius_edls_server_tos_list"),
+  },
+} satisfies Record<
+  string,
+  WcVendorOperationDeclaration<never, T631FetchResult>
+>;
+
+type T631OperationContract = {
+  [N in keyof typeof t631RemoteOperations]: {
+    args: Parameters<(typeof t631RemoteOperations)[N]["run"]>[1];
+    result: Awaited<ReturnType<(typeof t631RemoteOperations)[N]["run"]>>;
+  };
+};
+
 declare module "../types" {
-  interface WcVendorOperations {
-    sirius_service_ping: { args: void; result: T631FetchResult };
-    sirius_edls_server_worker_list: { args: void; result: T631FetchResult };
-    sirius_dispatch_group_search: { args: void; result: T631FetchResult };
-    sirius_dispatch_facility_dropdown: { args: void; result: T631FetchResult };
-    sirius_edls_server_tos_list: { args: void; result: T631FetchResult };
-  }
+  interface WcVendorOperations extends T631OperationContract {}
 }
 
-export const T631_ACTIONS = [
-  "sirius_service_ping",
-  "sirius_edls_server_worker_list",
-  "sirius_dispatch_group_search",
-  "sirius_dispatch_facility_dropdown",
-  "sirius_edls_server_tos_list",
-] as const;
-
-export type T631Action = (typeof T631_ACTIONS)[number];
-
-/** Plain words for each action, used in the framework's refusal wording. */
-const ACTION_DESCRIPTIONS: Record<T631Action, string> = {
-  sirius_service_ping: "ping the T631 service",
-  sirius_edls_server_worker_list: "read the T631 worker list",
-  sirius_dispatch_group_search: "read the T631 dispatch groups",
-  sirius_dispatch_facility_dropdown: "read the T631 facility list",
-  sirius_edls_server_tos_list: "read the T631 time-off-sick list",
-};
+export type T631Action = keyof typeof t631RemoteOperations;
+export const T631_ACTIONS = Object.keys(t631RemoteOperations) as [
+  T631Action,
+  ...T631Action[],
+];
 
 export interface T631RequestDiagnostics {
   url: string;
@@ -128,11 +153,6 @@ function configData(ctx: WcVendorContext): Record<string, unknown> {
   return data && typeof data === "object" ? (data as Record<string, unknown>) : {};
 }
 
-function secretNameOf(ctx: WcVendorContext): string {
-  const name = configData(ctx).secretName;
-  return typeof name === "string" && name ? name : "(unnamed)";
-}
-
 function readSettings(ctx: WcVendorContext): T631Settings {
   const data = configData(ctx);
   const read = (key: keyof T631Settings): string =>
@@ -169,10 +189,10 @@ function readSettings(ctx: WcVendorContext): T631Settings {
  * for a log line, so its message is discarded rather than wrapped.
  */
 function readCredential(ctx: WcVendorContext): T631Credential {
-  const secretName = secretNameOf(ctx);
+  const secretName = ctx.credential.secretName ?? "(unnamed)";
   const shape = `a JSON object carrying ${CREDENTIAL_KEYS.join(" and ")}`;
 
-  const raw = ctx.apiKey.trim();
+  const raw = ctx.credential.value.trim();
   if (!raw) {
     throw new T631ConfigurationError(
       `T631 credential secret '${secretName}' is not set. Create it as ${shape}.`,
@@ -299,7 +319,7 @@ function credentialScrubber(secrets: string[]): CredentialScrubber {
 
 async function performT631Fetch(
   ctx: WcVendorContext,
-  action: T631Action,
+  action: string,
 ): Promise<T631FetchResult> {
   const startTime = Date.now();
   const timestamp = new Date().toISOString();
@@ -423,25 +443,6 @@ async function performT631Fetch(
   }
 }
 
-/**
- * One declared operation per remote action.
- *
- * None of them needs a writable database: each is a read that records nothing
- * here, and the diagnostics page running a ping is exactly what an operator
- * reaches for while the site is read-only.
- */
-function actionOperations(): WcVendorPlugin["operations"] {
-  const operations: Record<string, unknown> = {};
-  for (const action of T631_ACTIONS) {
-    operations[action] = {
-      operation: ACTION_DESCRIPTIONS[action],
-      needsWritableDatabase: false,
-      run: (ctx: WcVendorContext) => performT631Fetch(ctx, action),
-    };
-  }
-  return operations as WcVendorPlugin["operations"];
-}
-
 // Not exported: the only supported handle on this plugin is the one the
 // registry hands out, whose operations are already on the web client framework.
 // An exported literal would be the same plugin with the refusal missing.
@@ -451,13 +452,7 @@ const t631WcVendorPlugin: WcVendorPlugin = {
   description:
     "The remote Teamsters 631 service. The connection holds the URL, account id and employer id; the secret it names holds both tokens as one JSON object.",
   requiredComponent: T631_COMPONENT,
-
-  // The credential is checked by this plugin, not by the generic resolver, so
-  // resolution is allowed to succeed with it absent. That is what lets the
-  // connection test answer "the secret is not set" instead of the framework
-  // refusing before the vendor is ever asked — and an operator looking at a
-  // manually configured connection needs exactly that sentence.
-  requiresSecret: false,
+  credential: { secretName: "required" },
 
   configFields: [
     { name: "url", label: "Service URL", type: "string", required: true },
@@ -484,10 +479,10 @@ const t631WcVendorPlugin: WcVendorPlugin = {
   service: "T631",
 
   operations: {
-    ...actionOperations(),
+    ...t631RemoteOperations,
 
     "test-connection": {
-      operation: "test the T631 connection",
+      description: "test the T631 connection",
       needsWritableDatabase: false,
       async run(ctx): Promise<GatewayConnectionTest> {
         try {

@@ -119,8 +119,7 @@ function decodeMethodRef(methodRef: string): DummyCardMeta {
  *
  * Gated on the `ledger.dummy_gateway` component. The matching config names a
  * `DUMMY_GATEWAY` secret to exercise the secret-naming path, but the plugin
- * opts out of requiring it (`requiresSecret: false`), so the gateway resolves
- * whether or not the env var is set. Provider-only — no storage/DB access.
+ * does not expose a secret-name field. Provider-only — no storage/DB access.
  */
 // Not exported, for the same reason as the Stripe plugin: the registry is the
 // only supported handle on a gateway plugin.
@@ -131,8 +130,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
     "A fake payment gateway for testing the full payment lifecycle without a real provider. Stores only the card brand, expiry, and last 4 digits.",
   requiredComponent: "ledger.dummy_gateway",
   addComponentId: "dummy:DummyAddPaymentMethod",
-  // No real credentials needed — works even when DUMMY_GATEWAY is unset.
-  requiresSecret: false,
+  credential: { secretName: "none" },
 
   supportedPaymentTypes: [
     {
@@ -154,7 +152,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
 
   operations: {
     "test-connection": {
-      operation: "test connection",
+      description: "test connection",
       needsWritableDatabase: false,
       async run(): Promise<GatewayConnectionTest> {
         return {
@@ -171,7 +169,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
     },
 
     "create-customer": {
-      operation: "create a customer",
+      description: "create a customer",
       needsWritableDatabase: true,
       async run(): Promise<GatewayCustomerResult> {
         return { customerRef: `dummy_cus_${randomBytes(8).toString("hex")}` };
@@ -179,7 +177,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
     },
 
     "retrieve-customer": {
-      operation: "check a customer still exists",
+      description: "check a customer still exists",
       needsWritableDatabase: false,
       async run(): Promise<{ exists: boolean }> {
         // The dummy gateway never loses customers.
@@ -188,7 +186,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
     },
 
     "get-customer-details": {
-      operation: "read customer details",
+      description: "read customer details",
       needsWritableDatabase: false,
       async run(_ctx, { customerRef }): Promise<GatewayCustomerDetails> {
         return {
@@ -204,7 +202,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
     },
 
     "create-setup-session": {
-      operation: "start collecting a payment method",
+      description: "start collecting a payment method",
       needsWritableDatabase: true,
       async run(): Promise<GatewaySetupSession> {
         // The client add-form collects the card itself and ignores the secret,
@@ -217,7 +215,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
     },
 
     "attach-method": {
-      operation: "attach a payment method",
+      description: "attach a payment method",
       needsWritableDatabase: true,
       async run(_ctx, args): Promise<void> {
         // There is no remote provider to attach to, but this runs BEFORE the
@@ -230,7 +228,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
     },
 
     "get-method-summary": {
-      operation: "read a payment method summary",
+      description: "read a payment method summary",
       needsWritableDatabase: false,
       async run(_ctx, { methodRef }): Promise<GatewayMethodSummary> {
         const card = decodeMethodRef(methodRef);
@@ -248,7 +246,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
     },
 
     "get-method-details": {
-      operation: "read payment method details",
+      description: "read payment method details",
       needsWritableDatabase: false,
       async run(_ctx, { methodRef }): Promise<GatewayMethodDetails> {
         const card = decodeMethodRef(methodRef);
@@ -268,7 +266,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
     },
 
     "detach-method": {
-      operation: "remove a payment method",
+      description: "remove a payment method",
       needsWritableDatabase: true,
       async run(): Promise<void> {
         // Nothing to detach on a stateless dummy provider.

@@ -16,6 +16,7 @@ const getByKindAndPlugin = vi.fn();
 const getConfig = vi.fn();
 const getPlugin = vi.fn();
 const getEnvironmentVariable = vi.fn();
+const registerEnvironmentVariable = vi.fn();
 
 vi.mock("../../server/storage", () => ({
   storage: {
@@ -32,7 +33,8 @@ vi.mock("../../server/plugins/wc-vendors", () => ({
 }));
 
 vi.mock("../../server/config/env-registry", () => ({
-  registerEnvironmentVariable: vi.fn(),
+  registerEnvironmentVariable: (definition: unknown) =>
+    registerEnvironmentVariable(definition),
   registerEnvironmentVariables: vi.fn(),
   getEnvironmentVariable: (name: string) => getEnvironmentVariable(name),
 }));
@@ -66,16 +68,18 @@ beforeEach(() => {
   getConfig.mockReset();
   getPlugin.mockReset();
   getEnvironmentVariable.mockReset();
+  registerEnvironmentVariable.mockReset();
   getPlugin.mockReturnValue({
     id: "sitespecific-t631",
     name: "Teamsters 631",
-    requiresSecret: false,
+    credential: { secretName: "required" },
     operations: {},
   });
 });
 
 describe("the default connection for a vendor", () => {
   it("is the one enabled connection", async () => {
+    getEnvironmentVariable.mockReturnValue("configured-credential");
     listing([config("a", true), config("b", false)]);
     const resolved = await resolveDefaultWcVendor("sitespecific-t631");
     expect(resolved.config.id).toBe("a");
@@ -112,5 +116,62 @@ describe("the default connection for a vendor", () => {
     expect(none).not.toBeInstanceOf(WcVendorAmbiguousDefaultError);
     expect(none.status).toBe(503);
     expect(none.message).not.toEqual(many.message);
+  });
+});
+
+describe("vendor credential declarations", () => {
+  it("refuses a required secret that is not set", async () => {
+    const cfg = config("required", true);
+    getConfig.mockResolvedValue(cfg);
+    getEnvironmentVariable.mockReturnValue(undefined);
+
+    const error = await import(
+      "../../server/services/webclient/wc-vendor-context"
+    ).then(({ resolveWcVendor }) => resolveWcVendor(cfg.id).catch((e) => e));
+
+    expect(error.status).toBe(503);
+    expect(error.message).toContain("T631_CREDENTIAL");
+  });
+
+  it("resolves an optional credential as empty when it is not set", async () => {
+    const cfg = config("optional", true);
+    getConfig.mockResolvedValue(cfg);
+    getPlugin.mockReturnValue({
+      id: "sitespecific-t631",
+      name: "Optional vendor",
+      credential: { secretName: "optional" },
+      operations: {},
+    });
+    getEnvironmentVariable.mockReturnValue(undefined);
+
+    const { resolveWcVendor } = await import(
+      "../../server/services/webclient/wc-vendor-context"
+    );
+    const resolved = await resolveWcVendor(cfg.id);
+
+    expect(resolved.context.credential).toEqual({
+      secretName: "T631_CREDENTIAL",
+      value: "",
+    });
+  });
+
+  it("does not resolve or register a secret for a credential-free vendor", async () => {
+    const cfg = { ...config("none", true), data: {} };
+    getConfig.mockResolvedValue(cfg);
+    getPlugin.mockReturnValue({
+      id: "dummy",
+      name: "Dummy",
+      credential: { secretName: "none" },
+      operations: {},
+    });
+
+    const { resolveWcVendor } = await import(
+      "../../server/services/webclient/wc-vendor-context"
+    );
+    const resolved = await resolveWcVendor(cfg.id);
+
+    expect(resolved.context.credential).toEqual({ value: "" });
+    expect(registerEnvironmentVariable).not.toHaveBeenCalled();
+    expect(getEnvironmentVariable).not.toHaveBeenCalled();
   });
 });

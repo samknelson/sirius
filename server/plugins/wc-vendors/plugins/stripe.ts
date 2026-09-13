@@ -14,7 +14,7 @@ import { registerWcVendorPlugin } from "../registry";
 
 /** Build a Stripe client from the per-config resolved secret. */
 function client(ctx: WcVendorContext): Stripe {
-  return new Stripe(ctx.apiKey);
+  return new Stripe(ctx.credential.value);
 }
 
 /** Provider config data may carry a publishable key + payment types. */
@@ -24,7 +24,7 @@ function configData(ctx: WcVendorContext): Record<string, unknown> {
 }
 
 function dashboardBaseUrl(ctx: WcVendorContext): string {
-  return ctx.apiKey.startsWith("sk_test_")
+  return ctx.credential.value.startsWith("sk_test_")
     ? "https://dashboard.stripe.com/test"
     : "https://dashboard.stripe.com";
 }
@@ -103,6 +103,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
     "Stripe payment gateway. Each configuration names the secret that holds the Stripe API credentials.",
   requiredComponent: "ledger.stripe",
   addComponentId: "stripe:StripeAddPaymentMethod",
+  credential: { secretName: "required" },
 
   // The publishable key the browser needs to load Stripe Elements. Stored in
   // the config's `data` json (no schema change). Required: there is no env
@@ -141,7 +142,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
 
   operations: {
     "test-connection": {
-      operation: "test connection",
+      description: "test connection",
       // Nothing is recorded, and an operator diagnosing a credential on a
       // read-only connection is exactly who needs this to still work.
       needsWritableDatabase: false,
@@ -176,7 +177,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
                 currency: b.currency,
               })),
             ],
-            testMode: ctx.apiKey.startsWith("sk_test_"),
+            testMode: ctx.credential.value.startsWith("sk_test_"),
           };
         } catch (error: any) {
           return {
@@ -192,7 +193,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
     },
 
     "create-customer": {
-      operation: "create a customer",
+      description: "create a customer",
       // A customer created at Stripe and not written down here is created
       // again on the next request, leaving an orphan behind each time.
       needsWritableDatabase: true,
@@ -206,7 +207,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
     },
 
     "retrieve-customer": {
-      operation: "check a customer still exists",
+      description: "check a customer still exists",
       needsWritableDatabase: false,
       async run(ctx, { customerRef }): Promise<{ exists: boolean }> {
         try {
@@ -222,7 +223,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
     },
 
     "get-customer-details": {
-      operation: "read customer details",
+      description: "read customer details",
       needsWritableDatabase: false,
       async run(ctx, { customerRef }): Promise<GatewayCustomerDetails> {
         const customer = (await client(ctx).customers.retrieve(
@@ -248,7 +249,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
     },
 
     "create-setup-session": {
-      operation: "start collecting a payment method",
+      description: "start collecting a payment method",
       // This opens a flow that ends in a stored payment method. Letting
       // somebody type their card details knowing the result cannot be saved
       // wastes their time and leaves a dangling SetupIntent at Stripe.
@@ -299,7 +300,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
     },
 
     "attach-method": {
-      operation: "attach a payment method",
+      description: "attach a payment method",
       // The method is attached at Stripe and then recorded here; an attach
       // that cannot be recorded is a method nobody can ever use or remove.
       needsWritableDatabase: true,
@@ -311,7 +312,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
     },
 
     "get-method-summary": {
-      operation: "read a payment method summary",
+      description: "read a payment method summary",
       needsWritableDatabase: false,
       async run(ctx, { methodRef }): Promise<GatewayMethodSummary> {
         const pm = await client(ctx).paymentMethods.retrieve(methodRef);
@@ -339,7 +340,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
     },
 
     "get-method-details": {
-      operation: "read payment method details",
+      description: "read payment method details",
       needsWritableDatabase: false,
       async run(ctx, { methodRef }): Promise<GatewayMethodDetails> {
         const pm = await client(ctx).paymentMethods.retrieve(methodRef);
@@ -351,7 +352,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
     },
 
     "detach-method": {
-      operation: "remove a payment method",
+      description: "remove a payment method",
       // Detaching at Stripe without deleting the row here leaves a stored
       // method pointing at nothing, which the list then reports as missing.
       needsWritableDatabase: true,
