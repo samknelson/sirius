@@ -161,6 +161,12 @@ export function registerWcVendorRoutes(app: Express): void {
             message: "This operation is not available for manual execution",
           });
         }
+        const forceFresh = req.body?.forceFresh === true;
+        if (forceFresh && operation.cacheMode !== "cached") {
+          return res.status(400).json({
+            message: "A fresh provider call can only be requested for cached operations",
+          });
+        }
         const args = req.body?.args;
         const validatedArgs = cloneJsonValue(args);
         const validation = validateAgainstSchema(
@@ -183,6 +189,7 @@ export function registerWcVendorRoutes(app: Express): void {
           vendor: { configId: config.id },
           operation: req.params.operation as WcVendorOperationName,
           args: validatedArgs as never,
+          ...(forceFresh ? { mode: "force" as const } : {}),
         });
         return res.json(result);
       } catch (error: any) {

@@ -72,13 +72,17 @@ beforeEach(() => {
   });
 });
 
-async function postRun(operation: string, args: unknown) {
+async function postRun(
+  operation: string,
+  args: unknown,
+  options: { forceFresh?: boolean } = {},
+) {
   const response = await fetch(
     `${baseUrl}/api/admin/wc-overview/twilio-config/${operation}/run`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ args }),
+      body: JSON.stringify({ args, ...options }),
     },
   );
   return { status: response.status, body: await response.json() };
@@ -109,6 +113,32 @@ describe("WC overview real operation schemas", () => {
       operation: "validate-phone",
       args: { phoneNumber: "+17025550100" },
     });
+  });
+
+  it("passes force mode only when a cached operation requests a fresh call", async () => {
+    expect(
+      (
+        await postRun(
+          "validate-phone",
+          { phoneNumber: "+17025550100" },
+          { forceFresh: true },
+        )
+      ).status,
+    ).toBe(200);
+    expect(wcRequest).toHaveBeenCalledWith({
+      vendor: { configId: "twilio-config" },
+      operation: "validate-phone",
+      args: { phoneNumber: "+17025550100" },
+      mode: "force",
+    });
+
+    wcRequest.mockClear();
+    expect(
+      (
+        await postRun("read-configuration", {}, { forceFresh: true })
+      ).status,
+    ).toBe(400);
+    expect(wcRequest).not.toHaveBeenCalled();
   });
 
   it("accepts empty arguments for reads and continues refusing remote writes", async () => {

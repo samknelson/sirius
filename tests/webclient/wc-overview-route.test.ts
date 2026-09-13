@@ -14,6 +14,7 @@ const wcRequest = vi.hoisted(() => vi.fn());
 const readOperation = {
   description: "read a value",
   needsWritableDatabase: false,
+  cacheMode: "cached" as const,
   manualRun: {
     argsSchema: {
       type: "object",
@@ -30,10 +31,12 @@ const readOperation = {
 const privateOperation = {
   description: "private operation",
   needsWritableDatabase: false,
+  cacheMode: "uncached" as const,
 };
 const writeOperation = {
   description: "write a value",
   needsWritableDatabase: true,
+  cacheMode: "uncached" as const,
   manualRun: {
     argsSchema: {
       type: "object",
@@ -87,7 +90,7 @@ vi.mock("../../server/plugins/wc-vendors", () => ({
       id,
       description: declared.description,
       needsWritableDatabase: declared.needsWritableDatabase,
-      cacheMode: "uncached" as const,
+      cacheMode: declared.cacheMode,
       ...("manualRun" in declared && declared.manualRun
         ? { manualRun: declared.manualRun }
         : {}),
@@ -291,5 +294,31 @@ describe("WC manual operation route", () => {
       args: { value: "x", mode: "safe" },
     });
     expect(args).toEqual({ value: "x" });
+  });
+
+  it("forces cached manual operations and rejects force mode for uncached ones", async () => {
+    getConfig.mockResolvedValue(config("good", "fixture"));
+
+    expect(
+      (await postRun("good", "read", {
+        args: { value: "x" },
+        forceFresh: true,
+      })).status,
+    ).toBe(200);
+    expect(wcRequest).toHaveBeenCalledWith({
+      vendor: { configId: "good" },
+      operation: "read",
+      args: { value: "x", mode: "safe" },
+      mode: "force",
+    });
+
+    wcRequest.mockClear();
+    const rejected = await postRun("good", "write", {
+      args: { value: "x" },
+      confirmedWrite: true,
+      forceFresh: true,
+    });
+    expect(rejected.status).toBe(400);
+    expect(wcRequest).not.toHaveBeenCalled();
   });
 });

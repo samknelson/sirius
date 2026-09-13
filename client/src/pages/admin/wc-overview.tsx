@@ -69,6 +69,7 @@ export default function WcOverviewPage() {
   const [selected, setSelected] = useState<WcRow | null>(null);
   const [args, setArgs] = useState<Record<string, unknown>>({});
   const [confirmed, setConfirmed] = useState(false);
+  const [forceFresh, setForceFresh] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
@@ -83,7 +84,7 @@ export default function WcOverviewPage() {
       apiRequest(
         "POST",
         `/api/admin/wc-overview/${encodeURIComponent(row.configurationId)}/${encodeURIComponent(row.requestType)}/run`,
-        { args: values, confirmedWrite: confirmed },
+        { args: values, confirmedWrite: confirmed, forceFresh },
       ),
     onSuccess: () => {
       // The server's result may be served from cache or the network, and its
@@ -119,6 +120,7 @@ export default function WcOverviewPage() {
     setSelected(row);
     setArgs({});
     setConfirmed(false);
+    setForceFresh(false);
     setValidationError(null);
     run.reset();
   };
@@ -127,6 +129,7 @@ export default function WcOverviewPage() {
       setSelected(null);
       setArgs({});
       setConfirmed(false);
+      setForceFresh(false);
       setValidationError(null);
       run.reset();
     }
@@ -388,6 +391,38 @@ export default function WcOverviewPage() {
                         </label>
                       </AlertDescription>
                     </Alert>
+                  )}
+
+                  {selected.cached ? (
+                    <Alert>
+                      <AlertDescription>
+                        <label className="flex items-start gap-2">
+                          <Checkbox
+                            checked={forceFresh}
+                            onCheckedChange={(value) =>
+                              setForceFresh(value === true)
+                            }
+                            data-testid="checkbox-force-fresh-wc-run"
+                          />
+                          <span>
+                            <strong>Call the provider instead of using cache.</strong>
+                            <span className="mt-1 block text-muted-foreground">
+                              {forceFresh
+                                ? "The next run will request a fresh answer from the provider."
+                                : "The next run may use a recent cached answer."}
+                            </span>
+                          </span>
+                        </label>
+                      </AlertDescription>
+                    </Alert>
+                  ) : (
+                    <p
+                      className="text-sm text-muted-foreground"
+                      data-testid="text-wc-run-uncached"
+                    >
+                      This operation does not use cached answers; each run calls
+                      the provider.
+                    </p>
                   )}
                 </div>
 
