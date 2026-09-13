@@ -95,7 +95,7 @@ const ALLOWED_REJECTS: string[] = (() => {
 
 /**
  * Fund-ruled 2026-08-06 (N27): S1 sirius_json_definition node title (lowercase)
- * → S2 policy siriusId. All 15 distinct prod targets are listed here.
+ * → S2 policy siriusId. All 16 distinct prod targets are listed here.
  *
  * Appeal variants map to their base plan's siriusId — appeals in S1 are
  * replaced by exemptions in S2 and will be entered manually post-migration;
@@ -125,6 +125,7 @@ const S1_TITLE_TO_SIRIUS_ID: Record<string, string> = {
   // Plans needing NEW S2 policies — seed-migration-policies.ts must run first
   "restaurant plan": "RES",
   "restaurant plan - delta appeal": "RES",
+  "restaurant plan - kaiser appeal": "RES",
   "there there restaurant plan": "TT",
   "inactive": "U",
 };
