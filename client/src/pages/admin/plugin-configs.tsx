@@ -76,6 +76,8 @@ import {
   ArrowDown,
   ArrowUpDown,
   ArrowLeft,
+  Database,
+  Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useModalSeed } from "@/hooks/use-modal-seed";
@@ -117,6 +119,11 @@ interface ManifestEntry {
   description?: string;
   configSchema?: JsonSchema;
   uiSchema?: UiSchema;
+  operations?: Array<{
+    id: string;
+    description: string;
+    needsWritableDatabase: boolean;
+  }>;
 }
 
 interface PluginConfigRow {
@@ -545,7 +552,9 @@ export default function GenericPluginConfigsPage({
                         >
                           {plugin.name}
                         </span>
-                        {plugin.description && <PluginInfoPopover plugin={plugin} configId={config.id} />}
+                        {(plugin.description || plugin.operations) && (
+                          <PluginInfoPopover plugin={plugin} configId={config.id} />
+                        )}
                       </div>
                     </TableCell>
                     <TableCell data-testid={`text-config-name-${config.id}`}>
@@ -792,8 +801,8 @@ function useEnvelopeLabelMaps(envelopeFields: PluginConfigEnvelopeField[]) {
 
 /**
  * Small info trigger shown beside a plugin's name in the table. Opens a popover
- * with the plugin's manifest description so the description doesn't have to sit
- * inline in every row. Only rendered when the plugin has a description.
+ * with the plugin's manifest description and any declared operations so those
+ * details don't have to sit inline in every row.
  */
 function PluginInfoPopover({
   plugin,
@@ -816,11 +825,48 @@ function PluginInfoPopover({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="max-w-xs text-sm"
+        className="w-80 text-sm"
         data-testid={`popover-plugin-info-${configId}`}
       >
-        <p className="font-medium mb-1">{plugin.name}</p>
-        <p className="text-muted-foreground">{plugin.description}</p>
+        <p className="font-medium">{plugin.name}</p>
+        {plugin.description && (
+          <p className="mt-1 text-muted-foreground">{plugin.description}</p>
+        )}
+        {plugin.operations && (
+          <div className="mt-4 border-t pt-3">
+            <p className="mb-2 font-medium">Capabilities</p>
+            {plugin.operations.length === 0 ? (
+              <p
+                className="text-muted-foreground"
+                data-testid={`text-no-operations-${configId}`}
+              >
+                No operations declared.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {plugin.operations.map((operation) => (
+                  <li
+                    key={operation.id}
+                    className="space-y-1"
+                    data-testid={`operation-${configId}-${operation.id}`}
+                  >
+                    <p>{operation.description}</p>
+                    <Badge
+                      variant={operation.needsWritableDatabase ? "default" : "secondary"}
+                    >
+                      {operation.needsWritableDatabase ? (
+                        <Database className="mr-1 h-3 w-3" />
+                      ) : (
+                        <Eye className="mr-1 h-3 w-3" />
+                      )}
+                      {operation.needsWritableDatabase ? "Writes data" : "Read-only"}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );

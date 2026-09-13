@@ -4,7 +4,7 @@ import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, RefreshCw, DollarSign } from "lucide-react";
+import { CheckCircle2, XCircle, RefreshCw, DollarSign, Database, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -135,6 +135,59 @@ export default function VendorTestPage() {
             No webclient vendors are configured. Add one before running a connection test.
           </AlertDescription>
         </Alert>
+      )}
+
+      {!gatewaysLoading && allVendors && allVendors.length > 0 && (
+        <Card data-testid="card-vendor-capabilities">
+          <CardHeader>
+            <CardTitle>Vendor capabilities</CardTitle>
+            <CardDescription>
+              Operations declared by each configured vendor.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {allVendors.map((vendor) => (
+              <div
+                key={vendor.id}
+                className="space-y-2 border-b pb-5 last:border-b-0 last:pb-0"
+                data-testid={`vendor-capabilities-${vendor.id}`}
+              >
+                <div className="font-medium">{vendor.name}</div>
+                {vendor.operations.length === 0 ? (
+                  <p
+                    className="text-sm text-muted-foreground"
+                    data-testid={`text-no-operations-${vendor.id}`}
+                  >
+                    No operations declared.
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {vendor.operations.map((operation) => (
+                      <li
+                        key={operation.id}
+                        className="flex items-start justify-between gap-3 text-sm"
+                        data-testid={`operation-${vendor.id}-${operation.id}`}
+                      >
+                        <span>{operation.description}</span>
+                        <Badge
+                          variant={operation.needsWritableDatabase ? "default" : "secondary"}
+                          className="shrink-0"
+                        >
+                          {operation.needsWritableDatabase ? (
+                            <Database className="mr-1 h-3 w-3" />
+                          ) : (
+                            <Eye className="mr-1 h-3 w-3" />
+                          )}
+                          {operation.needsWritableDatabase ? "Writes data" : "Read-only"}
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       )}
 
       {isLoading && selectedId && (
