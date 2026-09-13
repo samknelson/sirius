@@ -158,6 +158,105 @@ describe("the wc-vendor plugin contract", () => {
     });
   });
 
+  it("publishes only the reviewed simple read operations for manual execution", () => {
+    const emptyArgs = {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    };
+    const stringArgs = (name: string, title: string) => ({
+      type: "object",
+      properties: {
+        [name]: { type: "string", title, minLength: 1, pattern: "\\S" },
+      },
+      required: [name],
+      additionalProperties: false,
+    });
+    const expectManualRead = (
+      pluginId: string,
+      operationId: string,
+      argsSchema: Record<string, unknown>,
+    ) => {
+      expect(getWcVendorOperationManifest(plugin(pluginId))).toContainEqual(
+        expect.objectContaining({
+          id: operationId,
+          manualRun: { argsSchema, effect: "read" },
+        }),
+      );
+    };
+
+    expectManualRead("twilio", "read-configuration", emptyArgs);
+    expectManualRead(
+      "twilio",
+      "validate-phone",
+      stringArgs("phoneNumber", "Phone number"),
+    );
+    expectManualRead("twilio", "list-phone-numbers", emptyArgs);
+    expectManualRead(
+      "lob",
+      "letter-status",
+      stringArgs("letterId", "Letter ID"),
+    );
+    expectManualRead(
+      "stripe",
+      "retrieve-customer",
+      stringArgs("customerRef", "Customer reference"),
+    );
+    expectManualRead(
+      "stripe",
+      "get-customer-details",
+      stringArgs("customerRef", "Customer reference"),
+    );
+    expectManualRead(
+      "stripe",
+      "get-method-summary",
+      stringArgs("methodRef", "Payment method reference"),
+    );
+    expectManualRead(
+      "stripe",
+      "get-method-details",
+      stringArgs("methodRef", "Payment method reference"),
+    );
+    expectManualRead(
+      "dummy",
+      "get-customer-details",
+      stringArgs("customerRef", "Customer reference"),
+    );
+    expectManualRead(
+      "dummy",
+      "get-method-summary",
+      stringArgs("methodRef", "Payment method reference"),
+    );
+    expectManualRead(
+      "dummy",
+      "get-method-details",
+      stringArgs("methodRef", "Payment method reference"),
+    );
+    expectManualRead(
+      "sitespecific-freeman-authorization",
+      "ping",
+      emptyArgs,
+    );
+    expect(getWcRequest("Twilio", "validate-phone")).toMatchObject({
+      cached: true,
+      needsWritableDatabase: true,
+    });
+
+    for (const [pluginId, operationId] of [
+      ["twilio", "send-sms"],
+      ["lob", "send-letter"],
+      ["lob", "cancel-letter"],
+      ["stripe", "create-customer"],
+      ["stripe", "detach-method"],
+      ["sitespecific-freeman-authorization", "authorize-bearer"],
+    ]) {
+      const operation = getWcVendorOperationManifest(plugin(pluginId)).find(
+        ({ id }) => id === operationId,
+      );
+      expect(operation?.manualRun).toBeUndefined();
+    }
+  });
+
   it("declares credential requirements instead of making each plugin add a field", () => {
     expect(plugin("stripe").credential).toEqual({
       secretName: "required",

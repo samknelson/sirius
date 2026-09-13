@@ -192,6 +192,22 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
     "get-customer-details": {
       description: "read customer details",
       needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: {
+          type: "object",
+          properties: {
+            customerRef: {
+              type: "string",
+              title: "Customer reference",
+              minLength: 1,
+              pattern: "\\S",
+            },
+          },
+          required: ["customerRef"],
+          additionalProperties: false,
+        },
+        effect: "read",
+      },
       async run(_ctx, { customerRef }): Promise<GatewayCustomerDetails> {
         return {
           id: customerRef,
@@ -234,6 +250,22 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
     "get-method-summary": {
       description: "read a payment method summary",
       needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: {
+          type: "object",
+          properties: {
+            methodRef: {
+              type: "string",
+              title: "Payment method reference",
+              minLength: 1,
+              pattern: "\\S",
+            },
+          },
+          required: ["methodRef"],
+          additionalProperties: false,
+        },
+        effect: "read",
+      },
       async run(_ctx, { methodRef }): Promise<GatewayMethodSummary> {
         const card = decodeMethodRef(methodRef);
         return {
@@ -252,6 +284,22 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
     "get-method-details": {
       description: "read payment method details",
       needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: {
+          type: "object",
+          properties: {
+            methodRef: {
+              type: "string",
+              title: "Payment method reference",
+              minLength: 1,
+              pattern: "\\S",
+            },
+          },
+          required: ["methodRef"],
+          additionalProperties: false,
+        },
+        effect: "read",
+      },
       async run(_ctx, { methodRef }): Promise<GatewayMethodDetails> {
         const card = decodeMethodRef(methodRef);
         return {

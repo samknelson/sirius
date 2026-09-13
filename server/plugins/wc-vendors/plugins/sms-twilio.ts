@@ -120,6 +120,14 @@ const twilioSmsPlugin: WcVendorPlugin = {
     "read-configuration": {
       description: "read Twilio account configuration",
       needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        },
+        effect: "read",
+      },
       async run(ctx): Promise<Record<string, unknown>> {
         const accounts = await client(ctx).api.accounts.list({ limit: 1 });
         const account = accounts[0];
@@ -135,6 +143,22 @@ const twilioSmsPlugin: WcVendorPlugin = {
     "validate-phone": {
       description: "look up a phone number with Twilio",
       needsWritableDatabase: true,
+      manualRun: {
+        argsSchema: {
+          type: "object",
+          properties: {
+            phoneNumber: {
+              type: "string",
+              title: "Phone number",
+              minLength: 1,
+              pattern: "\\S",
+            },
+          },
+          required: ["phoneNumber"],
+          additionalProperties: false,
+        },
+        effect: "read",
+      },
       cache: {
         mode: "cached",
         freshFor: async () =>
@@ -218,6 +242,14 @@ const twilioSmsPlugin: WcVendorPlugin = {
     "list-phone-numbers": {
       description: "list Twilio phone numbers",
       needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        },
+        effect: "read",
+      },
       async run(ctx): Promise<SmsPhoneNumber[]> {
         const numbers = await client(ctx).incomingPhoneNumbers.list({ limit: 50 });
         return numbers.map((number) => ({

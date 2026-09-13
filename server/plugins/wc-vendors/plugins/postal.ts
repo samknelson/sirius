@@ -351,6 +351,22 @@ const lobWcVendorPlugin: WcVendorPlugin = {
     "letter-status": {
       description: "poll letter status",
       needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: {
+          type: "object",
+          properties: {
+            letterId: {
+              type: "string",
+              title: "Letter ID",
+              minLength: 1,
+              pattern: "\\S",
+            },
+          },
+          required: ["letterId"],
+          additionalProperties: false,
+        },
+        effect: "read",
+      },
       run: (ctx, { letterId }) => lobStatus(ctx, letterId),
     },
     "cancel-letter": {

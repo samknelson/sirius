@@ -169,6 +169,14 @@ const operations = {
   ping: {
     description: "check the Freeman authorization endpoint",
     needsWritableDatabase: false,
+    manualRun: {
+      argsSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+      effect: "read",
+    },
     run: (ctx: WcVendorContext, _args: void) =>
       fetchFreemanAuthorization(ctx, false),
   },
