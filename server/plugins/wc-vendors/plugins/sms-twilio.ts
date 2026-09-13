@@ -10,6 +10,13 @@ import type {
   SmsValidatePhoneResult,
 } from "../sms-types";
 import "../sms-types";
+import type { WcAnswer } from "../../../services/webclient";
+import {
+  getPhoneValidationSettings,
+  revalidateAfterDays,
+} from "../../../services/comm/validators/phone-validation-settings";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function data(ctx: WcVendorContext): Record<string, unknown> {
   return ctx.config.data && typeof ctx.config.data === "object"
@@ -124,17 +131,31 @@ const twilioSmsPlugin: WcVendorPlugin = {
     "validate-phone": {
       description: "look up a phone number with Twilio",
       needsWritableDatabase: true,
-      async run(ctx, { phoneNumber }): Promise<SmsValidatePhoneResult> {
+      cache: {
+        mode: "cached",
+        freshFor: async () =>
+          revalidateAfterDays(await getPhoneValidationSettings()) * DAY_MS,
+        failureRememberedFor: 5 * 60 * 1000,
+        requestKey: ({ phoneNumber }) => phoneNumber,
+      },
+      async run(
+        ctx,
+        { phoneNumber },
+      ): Promise<WcAnswer<SmsValidatePhoneResult>> {
         const parsed = parsePhoneNumber(phoneNumber, "US");
         if (!parsed || !parsed.isValid()) {
-          return { valid: false, error: "Invalid phone number format." };
+          return {
+            answered: true,
+            value: { valid: false, error: "Invalid phone number format." },
+            store: false,
+          };
         }
         const e164 = parsed.format("E.164");
         const result = await client(ctx).lookups.v2.phoneNumbers(e164).fetch({
           fields: "line_type_intelligence",
         });
         const lineType = result.lineTypeIntelligence?.type?.toLowerCase();
-        return {
+        const value: SmsValidatePhoneResult = {
           valid: result.valid,
           formatted: result.phoneNumber,
           countryCode: result.countryCode,
@@ -144,6 +165,13 @@ const twilioSmsPlugin: WcVendorPlugin = {
           smsPossible: lineType !== "landline" && lineType !== "unknown",
           voicePossible: lineType !== "unknown",
         };
+        if (value.valid && result.lineTypeIntelligence === undefined) {
+          return {
+            answered: false,
+            error: "Provider answered without line-type intelligence",
+          };
+        }
+        return { answered: true, value, store: value.valid };
       },
     },
     "send-sms": {

@@ -74,12 +74,33 @@ vi.mock('../../server/storage', () => ({
  * (which would otherwise resolve a real Twilio config and SDK).
  */
 vi.mock('../../server/services/webclient/wc-vendor-context', () => ({
-  runWcVendorRequest: async (options: any) => ({
-    source: 'network',
-    outcome: 'success',
-    fresh: false,
-    value: await lookup(options.args.phoneNumber),
-  }),
+  runWcVendorRequest: async (options: any, transport: (request: any) => Promise<unknown>) =>
+    transport({
+      service: 'Twilio',
+      requestType: 'validate-phone',
+      args: {
+        configId: 'test-twilio',
+        args: options.args,
+      },
+      mode: options.mode,
+      fetch: async () => {
+        try {
+          const value = await lookup(options.args.phoneNumber);
+          if (value.valid && value.smsPossible === undefined) {
+            return {
+              answered: false,
+              error: 'Provider answered without line-type intelligence',
+            };
+          }
+          return { answered: true, value, store: value.valid };
+        } catch (error) {
+          return {
+            answered: false,
+            error: error instanceof Error ? error.message : 'Provider validation failed',
+          };
+        }
+      },
+    }),
 }));
 
 /**
@@ -158,6 +179,7 @@ vi.mock('../../server/storage/transaction-context', () => ({
   runOutsideTransaction: <T>(fn: () => T) => fn(),
 }));
 
+await import('../../server/plugins/wc-vendors/plugins/sms-twilio');
 const { resetUnstorableHolds } = await import('../../server/services/webclient');
 const { resetPhoneValidationSettings } = await import(
   '../../server/services/comm/validators/phone-validation-settings'
@@ -171,6 +193,7 @@ const { PhoneValidationService, DEFAULT_REVALIDATE_AFTER_DAYS } = await import(
 
 const NUMBER = '(617) 555-0142';
 const E164 = '+16175550142';
+const CACHE_KEY = `test-twilio:${E164}`;
 
 let service: InstanceType<typeof PhoneValidationService>;
 
@@ -234,7 +257,7 @@ describe('phone validation call frequency', () => {
     await service.validateAndFormat(NUMBER);
     expect(lookup).toHaveBeenCalledTimes(1);
 
-    const stale = store.get(E164)!;
+    const stale = store.get(CACHE_KEY)!;
     stale.fetchedAt = new Date(
       Date.now() - (DEFAULT_REVALIDATE_AFTER_DAYS + 1) * 24 * 60 * 60 * 1000,
     );
@@ -247,7 +270,7 @@ describe('phone validation call frequency', () => {
     providerSettings.twilio = { phoneValidation: { revalidateAfterDays: 1 } };
     await service.validateAndFormat(NUMBER);
 
-    const stored = store.get(E164)!;
+    const stored = store.get(CACHE_KEY)!;
     stored.fetchedAt = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
 
     await service.validateAndFormat(NUMBER);
@@ -302,7 +325,7 @@ describe('phone validation call frequency', () => {
     // The failure is recorded as a failure — never as a validation. It is the
     // hold itself, which is why it now survives a restart instead of living
     // in one process's memory.
-    const held = store.get(E164)!;
+    const held = store.get(CACHE_KEY)!;
     expect(held.outcome).toBe('failure');
     expect(held.response).toEqual({ error: 'twilio unreachable' });
 
@@ -318,7 +341,7 @@ describe('phone validation call frequency', () => {
     // of silence on the strength of a call that never happened.
     lookup.mockResolvedValueOnce({ valid: true, formatted: E164 } as any);
     await service.validateAndFormat(NUMBER);
-    expect(store.get(E164)?.outcome).toBe('failure');
+    expect(store.get(CACHE_KEY)?.outcome).toBe('failure');
   });
 
   it('backs off after paying for an answer it could not store', async () => {
@@ -327,7 +350,7 @@ describe('phone validation call frequency', () => {
     writeThrows = true;
     await service.validateAndFormat(NUMBER);
     expect(lookup).toHaveBeenCalledTimes(1);
-    expect(store.has(E164)).toBe(false);
+    expect(store.has(CACHE_KEY)).toBe(false);
 
     writeThrows = false;
     await service.validateAndFormat(NUMBER);

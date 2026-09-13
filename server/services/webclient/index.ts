@@ -31,14 +31,6 @@ export {
   type WcVendorTarget,
 } from "./client";
 export {
-  registerUncachedWcRequest,
-  wcUncachedRequest,
-  type UncachedWcRequest,
-  type WcUncachedOptions,
-  type WcUncachedResult,
-} from "./uncached";
-export {
-  registerWcRequest,
   getWcRequest,
   listWcRequests,
   resolveWcDuration,

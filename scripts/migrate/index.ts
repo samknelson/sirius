@@ -114,6 +114,7 @@ import "./core/1109_unify_medium_message_fields";
 import "./core/1110_create_letter_templates";
 import "./core/1111_rename_payment_gateway_kind_to_wc_vendors";
 import "./core/1112_delete_legacy_comm_service_configs";
+import "./core/1113_retarget_twilio_lookup_usage_alerts";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

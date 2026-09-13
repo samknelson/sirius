@@ -47,8 +47,8 @@ const CONFIG_ID = "config-1";
 const TODAY = getTodayYmd();
 
 const ONE: UsageCrossing = {
-  subject: "Twilio / phone-lookup",
-  targetKey: "wc:Twilio:phone-lookup",
+  subject: "Twilio / validate-phone",
+  targetKey: "wc:Twilio:validate-phone",
   count: 1200,
   threshold: 1000,
 };
@@ -123,8 +123,8 @@ describe("usage alert rules", () => {
 
   it("names what was counted by its dimensions, not by where the rule sits", () => {
     expect(wcTargetKey({ service: "Twilio", threshold: 1 })).toBe("wc:Twilio:*");
-    expect(wcTargetKey({ service: "Twilio", requestType: "phone-lookup", threshold: 1 })).toBe(
-      "wc:Twilio:phone-lookup",
+    expect(wcTargetKey({ service: "Twilio", requestType: "validate-phone", threshold: 1 })).toBe(
+      "wc:Twilio:validate-phone",
     );
     expect(wsClientTargetKey({ clientId: "c1", threshold: 1 })).toBe("ws-client:c1:*");
     expect(wsPluginTargetKey({ pluginId: "ping-v1", operation: "ping", threshold: 1 })).toBe(
@@ -133,7 +133,7 @@ describe("usage alert rules", () => {
     // Whole-service and narrowed rules are different things, and a client and
     // a plugin of the same name are too.
     expect(wcTargetKey({ service: "Twilio", threshold: 1 })).not.toBe(
-      wcTargetKey({ service: "Twilio", requestType: "phone-lookup", threshold: 1 }),
+      wcTargetKey({ service: "Twilio", requestType: "validate-phone", threshold: 1 }),
     );
     expect(wsClientTargetKey({ clientId: "x", threshold: 1 })).not.toBe(
       wsPluginTargetKey({ pluginId: "x", threshold: 1 }),
@@ -145,7 +145,7 @@ describe("the send-once key", () => {
   const base = {
     configId: CONFIG_ID,
     ymd: "2026-09-01",
-    targetKey: "wc:Twilio:phone-lookup",
+    targetKey: "wc:Twilio:validate-phone",
     threshold: 1000,
   };
 
@@ -214,7 +214,7 @@ describe("a usage alert notifier woken by a tick", () => {
 
   it("says what was counted, how many, and against which number", async () => {
     const email = await wakeAndCompose(notifierFinding([ONE]), "email");
-    expect(email?.subject).toContain("Twilio / phone-lookup");
+    expect(email?.subject).toContain("Twilio / validate-phone");
     expect(email?.bodyText).toContain("1200");
     expect(email?.bodyText).toContain("1000");
   });

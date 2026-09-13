@@ -69,9 +69,16 @@ const GUARD_MODULE = "server/services/maintenance-flag.ts";
  * rule 1.
  */
 const OUTBOUND_MODULES = [
-  "server/lib/twilio-client.ts",
   "server/services/comm/validators/address.ts",
-  "server/plugins/wc-vendors/plugins/stripe.ts",
+  "server/services/objectStorage.ts",
+  "server/services/container-facts.ts",
+  "server/modules/webservices/admin.ts",
+  "server/services/files/providers/s3.ts",
+  "server/services/files/providers/replit.ts",
+  "server/services/files/providers/local.ts",
+  "server/services/file-transfer-client.ts",
+  "server/auth/providers/replit.ts",
+  "server/storage/db.ts",
 ];
 /**
  * How an outbound call is recognized. `fetch` covers Lob, Google, OpenStates,
@@ -98,10 +105,14 @@ const OUTBOUND_MODULES = [
  */
 const OUTBOUND_CALLS = [
   "fetch",
+  "globalThis.fetch",
   "getTwilioClient",
   "sgMail.send",
   "page.goto",
   "page.pdf",
+  "this.client.send",
+  "client.discovery",
+  "client.refreshTokenGrant",
 ];
 
 /**
@@ -109,6 +120,28 @@ const OUTBOUND_CALLS = [
  * SDK import.
  */
 const VENDOR_MARKERS: { pattern: RegExp; what: string }[] = [
+  // Keep these transport markers deliberately broad.  A wrapper can hide the
+  // spelling of a vendor URL, but it cannot hide the transport it uses.  The
+  // plugin audit below is the stronger check for transport-bearing plugins.
+  {
+    pattern:
+      /(?:\bawait\s+|\breturn\s+|[=(,{;]\s*)(?:globalThis\.)?fetch\s*\(/,
+    what: "a fetch transport",
+  },
+  {
+    pattern: /\b(?:const|let|var)\s+\w+\s*=\s*(?:globalThis\.)?fetch\b/,
+    what: "an alias of the fetch transport",
+  },
+  {
+    pattern:
+      /import\s+(?:\*\s+as\s+\w+|\w+(?:\s*,\s*\{[^}]*\})?|\{[^}]*(?:request|get|Agent|ClientRequest)[^}]*\})\s+from\s+['"](?:node:)?https?['"]|require\s*\(\s*['"](?:node:)?https?['"]\s*\)/,
+    what: "the node HTTP/HTTPS transport",
+  },
+  {
+    pattern:
+      /(?:\bfrom\s+|\brequire\s*\(\s*|\bimport\s*\(\s*)['"](?:axios|got|node-fetch|undici|@sendgrid\/mail|twilio|stripe|puppeteer(?:-core)?|playwright(?:-core)?|@playwright\/test|googleapis|openid-client|ssh2-sftp-client|basic-ftp|@aws-sdk\/[^'"]+)['"]/,
+    what: "a vendor or browser transport SDK",
+  },
   { pattern: /https?:\/\/[\w.-]*\bgoogleapis\.com/, what: "a Google API endpoint" },
   { pattern: /https?:\/\/[\w.-]*\blob\.com/, what: "a Lob API endpoint" },
   { pattern: /https?:\/\/[\w.-]*\btwilio\.com/, what: "a Twilio API endpoint" },
@@ -122,6 +155,10 @@ const VENDOR_MARKERS: { pattern: RegExp; what: string }[] = [
   { pattern: /from\s+['"]@sendgrid\//, what: "the SendGrid SDK" },
   { pattern: /from\s+['"]twilio['"]/, what: "the Twilio SDK" },
   { pattern: /from\s+['"]stripe['"]/, what: "the Stripe SDK" },
+  { pattern: /from\s+['"]puppeteer(?:-core)?['"]/, what: "the Puppeteer browser SDK" },
+  { pattern: /from\s+['"]playwright(?:\/[^'"]*)?['"]/, what: "the Playwright browser SDK" },
+  { pattern: /from\s+['"]openid-client(?:\/[^'"]*)?['"]/, what: "the OpenID client SDK" },
+  { pattern: /from\s+['"]@aws-sdk\//, what: "the AWS SDK transport" },
 ];
 
 /**
@@ -152,6 +189,9 @@ const VENDOR_MARKER_EXEMPT: Record<string, string> = {
   "server/plugins/wc-vendors/plugins/btu-cardcheck.ts":
     "The BTU browser and PDF endpoints are reached only by registered wc-vendor operation handlers; " +
     "HANDLERS_ON_FRAMEWORK audits that delegation and the framework supplies refusal.",
+  "server/services/webclient/client.ts":
+    "The fetch callback is the web-client framework's intentional transport boundary. It is the " +
+    "framework implementation itself, not a caller that can bypass the framework.",
 };
 
 /**
@@ -176,35 +216,283 @@ const FRAMEWORK_ONLY_IMPORTS: { name: string; allowed: string[]; why: string }[]
   },
 ];
 
-/** Rule 4: a framework-only export is imported by the framework and nobody else. */
+/**
+ * Registration is an implementation detail of the framework.  In particular,
+ * allowing a service to import the registration helpers makes it possible to
+ * create a second list of operations beside the plugin registry.  Keep the
+ * few framework files which implement or re-export the helpers explicit.
+ */
+const FRAMEWORK_REGISTRATION_IMPORTS: {
+  name: string;
+  allowed: string[];
+  why: string;
+}[] = [
+  {
+    name: "registerWcRequest",
+    allowed: [
+      "server/services/webclient/registry.ts",
+      "server/services/webclient/uncached.ts",
+      "server/plugins/wc-vendors/registry.ts",
+    ],
+    why:
+      "request registration belongs to the web-client registry; vendor operations " +
+      "are registered by the wc-vendors registry",
+  },
+  {
+    name: "registerUncachedWcRequest",
+    allowed: [],
+    why:
+      "the generic uncached registration API was removed; all vendor operation registration " +
+      "belongs to the wc-vendors registry",
+  },
+  {
+    name: "registerUncachedWcVendorRequest",
+    allowed: ["server/services/webclient/uncached.ts", "server/plugins/wc-vendors/registry.ts"],
+    why: "vendor operation registration belongs to the wc-vendors registry",
+  },
+];
+
+const FRAMEWORK_IMPORT_RULES = [...FRAMEWORK_ONLY_IMPORTS, ...FRAMEWORK_REGISTRATION_IMPORTS];
+
+function staticModuleSpecifier(node: ts.StringLiteralLike | undefined): string | undefined {
+  return node?.text;
+}
+
+function isFrameworkModulePath(value: string): boolean {
+  return (
+    value.includes("webclient") ||
+    value.includes("wc-vendors/registry") ||
+    value.includes("plugins/wc-vendors")
+  );
+}
+
+/**
+ * Rule 4: framework-only exports are imported by the framework and nobody
+ * else.  This is intentionally syntax-based rather than text-based:
+ *
+ *   - named aliases and namespace property access are both bindings;
+ *   - named re-exports are still a way to hand the second door to callers;
+ *   - static dynamic-import property/destructuring access is visible to the
+ *     compiler and is checked too.
+ *
+ * An import of a module by itself is harmless.  It is the access to one of the
+ * named framework exports that is forbidden.
+ */
 function auditFrameworkOnlyImports(files: string[]): Violation[] {
   const violations: Violation[] = [];
 
   for (const file of files) {
     const sf = parse(file);
-    for (const rule of FRAMEWORK_ONLY_IMPORTS) {
-      if (rule.allowed.includes(file)) continue;
-      for (const statement of sf.statements) {
-        if (!ts.isImportDeclaration(statement)) continue;
+    const forbidden = new Map<string, (typeof FRAMEWORK_IMPORT_RULES)[number]>();
+    const namespaces = new Set<string>();
+    const report = (node: ts.Node, rule: (typeof FRAMEWORK_IMPORT_RULES)[number], action: string) => {
+      violations.push({
+        file,
+        line: lineOf(sf, node),
+        detail: `${action} ${rule.name}, which only the web client framework may hold`,
+        remedy:
+          `Make the call through wcRequest() instead: ${rule.why}. If the framework itself ` +
+          `has moved, update FRAMEWORK_IMPORT_RULES in scripts/dev/check-maintenance-guards.ts.`,
+      });
+    };
+    const ruleFor = (name: string) =>
+      FRAMEWORK_IMPORT_RULES.find(
+        (rule) => rule.name === name && !rule.allowed.includes(file),
+      );
+
+    for (const statement of sf.statements) {
+      if (ts.isImportDeclaration(statement)) {
         const clause = statement.importClause;
-        if (!clause?.namedBindings || !ts.isNamedImports(clause.namedBindings)) continue;
-        // A type-only import cannot call anything.
-        if (clause.isTypeOnly) continue;
+        if (!clause || clause.isTypeOnly) continue;
+        if (
+          !ts.isStringLiteral(statement.moduleSpecifier) ||
+          !isFrameworkModulePath(statement.moduleSpecifier.text)
+        ) {
+          continue;
+        }
+        if (clause.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
+          namespaces.add(clause.namedBindings.name.text);
+        }
+        if (!clause.namedBindings || !ts.isNamedImports(clause.namedBindings)) continue;
         for (const specifier of clause.namedBindings.elements) {
           if (specifier.isTypeOnly) continue;
-          if ((specifier.propertyName ?? specifier.name).text !== rule.name) continue;
-          violations.push({
-            file,
-            line: lineOf(sf, specifier),
-            detail: `imports ${rule.name}, which only the web client framework may hold`,
-            remedy:
-              `Make the call through wcRequest() instead: ${rule.why}. If the framework ` +
-              `itself has moved, update FRAMEWORK_ONLY_IMPORTS in ` +
-              `scripts/dev/check-maintenance-guards.ts.`,
-          });
+          const imported = (specifier.propertyName ?? specifier.name).text;
+          const rule = ruleFor(imported);
+          if (!rule) continue;
+          forbidden.set(specifier.name.text, rule);
+          report(specifier, rule, "imports");
+        }
+      }
+
+      if (ts.isExportDeclaration(statement)) {
+        if (
+          statement.moduleSpecifier &&
+          ts.isStringLiteral(statement.moduleSpecifier) &&
+          !statement.isTypeOnly &&
+          !statement.exportClause &&
+          isFrameworkModulePath(staticModuleSpecifier(statement.moduleSpecifier) ?? "")
+        ) {
+          // `export *` has no named AST children to inspect, but re-exports
+          // every framework export, including the forbidden ones.
+          for (const rule of FRAMEWORK_IMPORT_RULES) {
+            if (!rule.allowed.includes(file)) report(statement, rule, "re-exports");
+          }
+        }
+        if (statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+          const fromFramework =
+            statement.moduleSpecifier &&
+            ts.isStringLiteral(statement.moduleSpecifier) &&
+            isFrameworkModulePath(statement.moduleSpecifier.text);
+          for (const specifier of statement.exportClause.elements) {
+            const exported = specifier.name.text;
+            const local = (specifier.propertyName ?? specifier.name).text;
+            const rule =
+              forbidden.get(local) ??
+              (fromFramework ? ruleFor(exported) ?? ruleFor(local) : undefined);
+            if (rule) report(specifier, rule, "re-exports");
+          }
+        } else if (
+          statement.moduleSpecifier &&
+          ts.isStringLiteral(statement.moduleSpecifier) &&
+          statement.exportClause &&
+          ts.isNamespaceExport(statement.exportClause) &&
+          isFrameworkModulePath(statement.moduleSpecifier.text)
+        ) {
+          for (const rule of FRAMEWORK_IMPORT_RULES) {
+            if (!rule.allowed.includes(file)) report(statement, rule, "re-exports");
+          }
         }
       }
     }
+
+    // A namespace can itself be aliased (`const fw = webclient`); follow that
+    // simple, statically visible form as well.
+    const visitAliases = (node: ts.Node): void => {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) &&
+          node.initializer && ts.isIdentifier(node.initializer)) {
+        if (namespaces.has(node.initializer.text)) namespaces.add(node.name.text);
+      }
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer &&
+        ts.isCallExpression(node.initializer) &&
+        node.initializer.expression.kind === ts.SyntaxKind.ImportKeyword &&
+        node.initializer.arguments[0] &&
+        ts.isStringLiteral(node.initializer.arguments[0]) &&
+        isFrameworkModulePath(node.initializer.arguments[0].text)
+      ) {
+        namespaces.add(node.name.text);
+      }
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === "then"
+      ) {
+        const imported = dynamicModuleCall(node.expression.expression);
+        if (
+          imported?.arguments[0] &&
+          ts.isStringLiteral(imported.arguments[0]) &&
+          isFrameworkModulePath(imported.arguments[0].text)
+        ) {
+          const callback = node.arguments[0];
+          if (
+            callback &&
+            (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) &&
+            callback.parameters[0] &&
+            ts.isIdentifier(callback.parameters[0].name)
+          ) {
+            namespaces.add(callback.parameters[0].name.text);
+          }
+        }
+      }
+      ts.forEachChild(node, visitAliases);
+    };
+    visitAliases(sf);
+
+    const seen = new Set<string>();
+    const reportOnce = (node: ts.Node, rule: (typeof FRAMEWORK_IMPORT_RULES)[number], action: string) => {
+      const key = `${node.getStart(sf)}:${rule.name}:${action}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      report(node, rule, action);
+    };
+    const visit = (node: ts.Node): void => {
+      if (ts.isIdentifier(node)) {
+        const rule = forbidden.get(node.text);
+        const parent = node.parent;
+        const isImportName =
+          ts.isImportSpecifier(parent) || ts.isImportClause(parent) || ts.isNamespaceImport(parent);
+        const isTypePosition =
+          ts.isTypeReferenceNode(parent) || ts.isTypeQueryNode(parent) || ts.isImportTypeNode(parent);
+        const isFunctionDeclarationName =
+          ts.isFunctionDeclaration(parent) && parent.name === node;
+        // The import declaration was reported above.  References in calls,
+        // exports and assignments are separately reported here.
+        if (rule && !isImportName && !isTypePosition && !isFunctionDeclarationName) {
+          reportOnce(node, rule, "uses");
+        }
+      }
+      if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
+        const rule = namespaces.has(node.expression.text) ? ruleFor(node.name.text) : undefined;
+        if (rule) reportOnce(node.name, rule, "uses");
+      }
+      if (
+        ts.isElementAccessExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        namespaces.has(node.expression.text) &&
+        node.argumentExpression &&
+        ts.isStringLiteral(node.argumentExpression)
+      ) {
+        const rule = ruleFor(node.argumentExpression.text);
+        if (rule) reportOnce(node.argumentExpression, rule, "uses");
+      }
+      if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+        const source = node.arguments[0];
+        if (
+          source &&
+          ts.isStringLiteral(source) &&
+          isFrameworkModulePath(source.text)
+        ) {
+          // `import("./uncached").then(({ register... }) => ...)` is handled
+          // by the identifier walk.  Property and destructuring access need
+          // explicit treatment because their names are not references.
+          const parent = node.parent;
+          if (ts.isPropertyAccessExpression(parent)) {
+            const rule = ruleFor(parent.name.text);
+            if (rule) reportOnce(parent.name, rule, "dynamically imports");
+          } else if (ts.isElementAccessExpression(parent) && ts.isStringLiteral(parent.argumentExpression)) {
+            const rule = ruleFor(parent.argumentExpression.text);
+            if (rule) reportOnce(parent.argumentExpression, rule, "dynamically imports");
+          }
+        }
+      }
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isObjectBindingPattern(node.name) &&
+        node.initializer
+      ) {
+        const initializer = ts.isAwaitExpression(node.initializer)
+          ? node.initializer.expression
+          : node.initializer;
+        if (
+          ts.isCallExpression(initializer) &&
+          initializer.expression.kind === ts.SyntaxKind.ImportKeyword &&
+          initializer.arguments[0] &&
+          ts.isStringLiteral(initializer.arguments[0]) &&
+          isFrameworkModulePath(initializer.arguments[0].text)
+        ) {
+          for (const element of node.name.elements) {
+            const imported = element.propertyName ?? element.name;
+            if (!ts.isIdentifier(imported)) continue;
+            const rule = ruleFor(imported.text);
+            if (rule) reportOnce(imported, rule, "dynamically imports");
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
   }
 
   return violations;
@@ -279,6 +567,7 @@ function isFunctionLike(node: ts.Node): node is FunctionLike {
 
 /** A readable name for the reported function, walking out to a variable name. */
 function nameOf(fn: FunctionLike, sf: ts.SourceFile): string {
+  if (ts.isConstructorDeclaration(fn)) return "constructor";
   if ("name" in fn && fn.name && ts.isIdentifier(fn.name)) return fn.name.text;
   const parent = fn.parent;
   if (parent && ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
@@ -320,10 +609,30 @@ function declaredFunctions(sf: ts.SourceFile): Map<string, FunctionLike[]> {
 /** Rule 2: nothing outside OUTBOUND_MODULES talks to one of these vendors. */
 function auditUnlistedVendorModules(files: string[]): Violation[] {
   const violations: Violation[] = [];
-  const known = new Set([...OUTBOUND_MODULES, GUARD_MODULE]);
+  const known = new Set([
+    ...OUTBOUND_MODULES,
+    GUARD_MODULE,
+    ...discoverTransportBearingPlugins(files),
+  ]);
 
   for (const file of files) {
     if (known.has(file) || VENDOR_MARKER_EXEMPT[file]) continue;
+    const sf = parse(file);
+    const transports = [...transportNodes(sf)];
+    if (transports.length > 0) {
+      const first = transports[0];
+      violations.push({
+        file,
+        line: lineOf(sf, first),
+        detail:
+          `contains an outbound transport (${first.getText(sf)}) but is not a listed ` +
+          "outbound module",
+        remedy:
+          `Add "${file}" to OUTBOUND_MODULES in scripts/dev/check-maintenance-guards.ts and ` +
+          "put each transport call through the web client framework. If it is intentional " +
+          "infrastructure, add it to OUTBOUND_MODULES with function-level reasons.",
+      });
+    }
     const lines = readFileSync(file, "utf8").split("\n");
     for (const marker of VENDOR_MARKERS) {
       const index = lines.findIndex((l) => marker.pattern.test(l));
@@ -456,11 +765,97 @@ function functionsReachableFrom(
  * silently cover the next method somebody adds to it.
  */
 const OFF_FRAMEWORK_FUNCTIONS: Record<string, Record<string, string>> = {
-  "server/lib/twilio-client.ts": {
-    getCredentialsFromConnector:
-      "Reads Twilio credentials from the Replit connector endpoint, not from Twilio. It is " +
-      "reached only from getTwilioClient(), which is itself an outbound call the framework " +
-      "gates at every call site, so it cannot run during maintenance.",
+  "server/services/objectStorage.ts": {
+    checkStorageServiceAvailable:
+      "Restricted Replit object-storage sidecar health check.",
+    signObjectURL:
+      "Restricted Replit object-storage sidecar request for a signed object URL.",
+    uploadFile: "Upload to a signed object-storage URL.",
+    downloadFile: "Download from a signed object-storage URL.",
+    deleteFile: "Delete through a signed object-storage URL.",
+    getFileMetadata: "Read metadata through a signed object-storage URL.",
+    generateSignedUrl: "Generate a signed object-storage URL through the storage sidecar.",
+    fileExists: "Check object existence through the storage sidecar.",
+  },
+  "server/services/container-facts.ts": {
+    fetchEcsMetadata:
+      "Restricted link-local ECS task metadata diagnostic; host and redirects are checked.",
+    getContainerFacts:
+      "Assembles container diagnostics, including the restricted metadata endpoint.",
+  },
+  "server/modules/webservices/admin.ts": {
+    registerWebServiceAdminRoutes:
+      "The test-operation route calls this same application through a localhost URL.",
+    "anonymous function at line 410":
+      "The admin test-operation route calls this same application through a localhost URL.",
+  },
+  "server/services/files/providers/s3.ts": {
+    constructor:
+      "Constructs the configured AWS S3 filesystem client; this is file-transfer " +
+      "infrastructure, not a wc-vendor operation.",
+    read: "Configured S3 filesystem provider operation.",
+    write: "Configured S3 filesystem provider operation.",
+    delete: "Configured S3 filesystem provider operation.",
+    stat: "Configured S3 filesystem provider operation.",
+    list: "Configured S3 filesystem provider operation.",
+    mkdir: "Configured S3 filesystem provider operation.",
+    rmdir: "Configured S3 filesystem provider operation.",
+    copyThenDelete: "Configured S3 filesystem provider operation.",
+    rename: "Configured S3 filesystem provider operation.",
+    renameDirectory: "Configured S3 filesystem provider operation.",
+    getSignedUrl: "Configured S3 filesystem provider operation.",
+  },
+  "server/auth/providers/replit.ts": {
+    ensureStrategy:
+      "Constructs the inbound Replit Passport/OIDC strategy. This configures authentication " +
+      "for callers and is not an outbound vendor operation.",
+    discoverOidcConfig:
+      "Replit OIDC discovery for inbound application authentication.",
+    refreshToken:
+      "Refreshes the inbound Replit authentication session through the configured OIDC provider.",
+    createProvider:
+      "Builds the inbound Replit authentication provider and its configured strategy.",
+    getLoginHandler:
+      "Returns the inbound Replit login handler, which may initialize its OIDC strategy.",
+    getCallbackHandler:
+      "Returns the inbound Replit callback handler, which may initialize its OIDC strategy.",
+    "anonymous function at line 212":
+      "Inbound Replit login callback that initializes the configured authentication strategy.",
+    "anonymous function at line 222":
+      "Inbound Replit callback that initializes the configured authentication strategy.",
+  },
+  "server/services/file-transfer-client.ts": {
+    withSftpClient:
+      "Intentional SFTP transport for the configured file-transfer destination; this is " +
+      "file-transfer infrastructure, not a wc-vendor operation.",
+    withFtpClient:
+      "Intentional FTP transport for the configured file-transfer destination; this is " +
+      "file-transfer infrastructure, not a wc-vendor operation.",
+    testConnect:
+      "Runs the explicitly requested SFTP/FTP connection test for a file-transfer destination.",
+    testList:
+      "Runs the explicitly requested SFTP/FTP listing operation for a file-transfer destination.",
+    testCd:
+      "Runs the explicitly requested SFTP/FTP directory operation for a file-transfer destination.",
+    testUpload:
+      "Runs the explicitly requested SFTP/FTP upload operation for a file-transfer destination.",
+    streamDownload:
+      "Runs the explicitly requested SFTP/FTP download operation for a file-transfer destination.",
+    "anonymous function at line 110":
+      "Callback used only by the explicitly requested SFTP file-transfer connection test.",
+    "anonymous function at line 133":
+      "Callback used only by the explicitly requested SFTP file-transfer listing test.",
+    "anonymous function at line 161":
+      "Callback used only by the explicitly requested SFTP file-transfer directory test.",
+    "anonymous function at line 188":
+      "Callback used only by the explicitly requested SFTP file-transfer upload test.",
+  },
+  "server/storage/db.ts": {
+    iamPasswordProvider:
+      "Generates an expiring AWS RDS IAM signer token for the database driver's password " +
+      "callback. This is database infrastructure, not an outbound vendor operation.",
+    "anonymous function at line 164":
+      "Database driver's password callback that obtains the expiring RDS IAM signer token.",
   },
 };
 
@@ -539,7 +934,315 @@ const HANDLERS_ON_FRAMEWORK: Record<
     handlerProperty: "run",
     vendorIdentifiers: ["puppeteer", "goto", "pdf", "fetch"],
   },
+  "server/plugins/wc-vendors/plugins/census-geocoder.ts": {
+    handlerContainers: ["operations"],
+    handlerProperty: "run",
+    vendorIdentifiers: ["fetch"],
+  },
+  "server/plugins/wc-vendors/plugins/google-geocoding.ts": {
+    handlerContainers: ["operations"],
+    handlerProperty: "run",
+    vendorIdentifiers: ["fetch"],
+  },
+  "server/plugins/wc-vendors/plugins/openstates.ts": {
+    handlerContainers: ["operations"],
+    handlerProperty: "run",
+    vendorIdentifiers: ["fetch"],
+  },
+  "server/plugins/wc-vendors/plugins/sitespecific-freeman-authorization.ts": {
+    handlerContainers: ["operations"],
+    handlerProperty: "run",
+    vendorIdentifiers: ["fetch"],
+  },
 };
+
+const WC_VENDOR_PLUGIN_PREFIX = "server/plugins/wc-vendors/plugins/";
+const TRANSPORT_SDK_MODULES = [
+  "axios",
+  "got",
+  "node-fetch",
+  "undici",
+  "twilio",
+  "stripe",
+  "@sendgrid/mail",
+  "puppeteer",
+  "puppeteer-core",
+  "playwright",
+  "googleapis",
+  "openid-client",
+  "ssh2-sftp-client",
+  "basic-ftp",
+];
+
+function importedTransportBindings(sf: ts.SourceFile): Set<string> {
+  const bindings = new Set<string>(["fetch"]);
+  const addBindingPattern = (pattern: ts.BindingName): void => {
+    if (ts.isIdentifier(pattern)) {
+      bindings.add(pattern.text);
+      return;
+    }
+    for (const element of pattern.elements) {
+      if (ts.isOmittedExpression(element)) continue;
+      addBindingPattern(element.name);
+    }
+  };
+  for (const statement of sf.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
+      continue;
+    }
+    const moduleName = statement.moduleSpecifier.text;
+    const transportImport =
+      TRANSPORT_SDK_MODULES.some((name) => moduleName === name || moduleName.startsWith(`${name}/`)) ||
+      /^(?:node:)?https?$/.test(moduleName) ||
+      moduleName.startsWith("@aws-sdk/");
+    if (!transportImport || !statement.importClause) continue;
+    const clause = statement.importClause;
+    if (clause.name) bindings.add(clause.name.text);
+    if (clause.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
+      bindings.add(clause.namedBindings.name.text);
+    }
+    if (clause.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+      for (const specifier of clause.namedBindings.elements) {
+        const imported = (specifier.propertyName ?? specifier.name).text;
+        const nodeHttp =
+          /^(?:node:)?https?$/.test(moduleName) &&
+          !["request", "get", "Agent", "ClientRequest"].includes(imported);
+        if (!specifier.isTypeOnly && !nodeHttp) bindings.add(specifier.name.text);
+      }
+    }
+  }
+  // Dynamic imports and CommonJS require are bindings too.  Include
+  // destructuring aliases (`{ request: req }`) rather than relying on the
+  // package's original spelling.
+  const visitDynamicBindings = (node: ts.Node): void => {
+    const initializerCall =
+      ts.isVariableDeclaration(node) && node.initializer
+        ? dynamicModuleCall(node.initializer)
+        : undefined;
+    if (
+      ts.isVariableDeclaration(node) &&
+      initializerCall &&
+      initializerCall.arguments[0] &&
+      ts.isStringLiteral(initializerCall.arguments[0]) &&
+      isTransportModule(initializerCall.arguments[0].text)
+    ) {
+      if (
+        /^(?:node:)?https?$/.test(initializerCall.arguments[0].text) &&
+        ts.isObjectBindingPattern(node.name)
+      ) {
+        for (const element of node.name.elements) {
+          if (!ts.isBindingElement(element)) continue;
+          const imported = element.propertyName;
+          if (
+            !imported ||
+            (ts.isIdentifier(imported) &&
+              ["request", "get", "Agent", "ClientRequest"].includes(imported.text))
+          ) {
+            addBindingPattern(element.name);
+          }
+        }
+      } else {
+        addBindingPattern(node.name);
+      }
+    }
+    ts.forEachChild(node, visitDynamicBindings);
+  };
+  visitDynamicBindings(sf);
+  // Follow the common `const request = fetch` / `const request = http.request`
+  // spelling without attempting to infer arbitrary higher-order callbacks.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer &&
+        (ts.isIdentifier(node.initializer) && bindings.has(node.initializer.text) ||
+          ts.isPropertyAccessExpression(node.initializer) &&
+            ts.isIdentifier(node.initializer.expression) &&
+            (bindings.has(node.initializer.expression.text) ||
+              (node.initializer.expression.text === "globalThis" &&
+                node.initializer.name.text === "fetch")))
+      ) {
+        if (!bindings.has(node.name.text)) {
+          bindings.add(node.name.text);
+          changed = true;
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+  }
+  return bindings;
+}
+
+function isTransportModule(moduleName: string): boolean {
+  return (
+    TRANSPORT_SDK_MODULES.some(
+      (name) => moduleName === name || moduleName.startsWith(`${name}/`),
+    ) ||
+    /^(?:node:)?https?$/.test(moduleName) ||
+    moduleName.startsWith("@aws-sdk/")
+  );
+}
+
+function dynamicModuleCall(expression: ts.Expression): ts.CallExpression | undefined {
+  let current: ts.Expression = expression;
+  while (
+    ts.isAwaitExpression(current) ||
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isSatisfiesExpression(current)
+  ) {
+    current = current.expression;
+  }
+  if (!ts.isCallExpression(current)) return undefined;
+  if (
+    current.expression.kind === ts.SyntaxKind.ImportKeyword ||
+    (ts.isIdentifier(current.expression) && current.expression.text === "require")
+  ) {
+    return current;
+  }
+  return undefined;
+}
+
+const TRANSPORT_METHODS = new Set([
+  "fetch",
+  "goto",
+  "pdf",
+  "access",
+  "uploadFrom",
+  "downloadTo",
+  "getAuthToken",
+  "discovery",
+  "refreshTokenGrant",
+]);
+const BOUND_TRANSPORT_METHODS = new Set(["request", "get", "post", "put", "delete"]);
+
+/**
+ * One syntax detector shared by the unlisted-module, listed-module, and
+ * registered-plugin rules.  It follows import/require/dynamic-import aliases
+ * and marks both the package load and the eventual call.  The older marker
+ * strings remain useful for endpoint-only diagnostics; transport reachability
+ * itself must never depend on a hand-maintained identifier list.
+ */
+function transportNodes(sf: ts.SourceFile): Set<ts.Node> {
+  const bindings = importedTransportBindings(sf);
+  const nodes = new Set<ts.Node>();
+  const rootIdentifier = (expression: ts.Expression): string | undefined => {
+    let current = expression;
+    while (ts.isPropertyAccessExpression(current)) current = current.expression;
+    return ts.isIdentifier(current) ? current.text : undefined;
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const callee = node.expression;
+      if (
+        (callee.kind === ts.SyntaxKind.ImportKeyword ||
+          (ts.isIdentifier(callee) && callee.text === "require")) &&
+        node.arguments[0] &&
+        ts.isStringLiteral(node.arguments[0]) &&
+        isTransportModule(node.arguments[0].text)
+      ) nodes.add(node);
+      const text = callee.getText(sf);
+      const method = ts.isPropertyAccessExpression(callee) ? callee.name.text : undefined;
+      const root = rootIdentifier(callee);
+      if (
+        OUTBOUND_CALLS.includes(text) ||
+        (ts.isIdentifier(callee) && bindings.has(callee.text)) ||
+        (method &&
+          ((TRANSPORT_METHODS.has(method) &&
+            (root === undefined || bindings.has(root) || root === "globalThis")) ||
+            (BOUND_TRANSPORT_METHODS.has(method) && root !== undefined && bindings.has(root))))
+      ) {
+        nodes.add(node);
+      }
+    }
+    if (ts.isNewExpression(node)) {
+      const expression = node.expression;
+      if (ts.isIdentifier(expression) && bindings.has(expression.text)) nodes.add(node);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return nodes;
+}
+
+function hasTransportMarker(sf: ts.SourceFile): boolean {
+  const bindings = importedTransportBindings(sf);
+  let found = false;
+  for (const statement of sf.statements) {
+    if (!ts.isImportDeclaration(statement) || statement.importClause?.isTypeOnly) continue;
+    if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    const moduleName = statement.moduleSpecifier.text;
+    if (
+      TRANSPORT_SDK_MODULES.some(
+        (name) => moduleName === name || moduleName.startsWith(`${name}/`),
+      ) ||
+      /^(?:node:)?https?$/.test(moduleName) ||
+      moduleName.startsWith("@aws-sdk/")
+    ) {
+      return true;
+    }
+  }
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    if (ts.isCallExpression(node)) {
+      if (ts.isIdentifier(node.expression) && bindings.has(node.expression.text)) {
+        found = true;
+        return;
+      }
+      if (
+        ts.isPropertyAccessExpression(node.expression) &&
+        (node.expression.name.text === "goto" ||
+          node.expression.name.text === "pdf" ||
+          node.expression.name.text === "send" ||
+          node.expression.name.text === "request") &&
+        ts.isIdentifier(node.expression.expression) &&
+        bindings.has(node.expression.expression.text)
+      ) {
+        found = true;
+        return;
+      }
+    }
+    if (
+      ts.isStringLiteral(node) &&
+      /^https?:\/\//.test(node.text) &&
+      !node.text.includes("localhost")
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return found;
+}
+
+function isWcVendorRegistration(node: ts.CallExpression, sf: ts.SourceFile): boolean {
+  return calleeText(node, sf).split(".").pop() === "registerWcVendorPlugin";
+}
+
+/**
+ * Every plugin that registers a vendor and contains a visible transport must
+ * have a handler reachability specification.  A row in the hand-maintained
+ * map is still useful for unusual containers and identifiers, but absence is
+ * never treated as "there is nothing to audit".
+ */
+function discoverTransportBearingPlugins(files: string[]): string[] {
+  return files.filter((file) => {
+    if (!file.startsWith(WC_VENDOR_PLUGIN_PREFIX) || !file.endsWith(".ts")) return false;
+    const sf = parse(file);
+    let registers = false;
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node) && isWcVendorRegistration(node, sf)) registers = true;
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+    return registers && hasTransportMarker(sf);
+  });
+}
 
 /**
  * The handler functions declared in a `{ x: { <prop>() {} } }` map.
@@ -555,6 +1258,7 @@ function handlersInContainer(
   property: string,
 ): FunctionLike[] {
   const handlers: FunctionLike[] = [];
+  const declared = declaredFunctions(sf);
 
   const collect = (map: ts.ObjectLiteralExpression): void => {
     for (const entry of map.properties) {
@@ -563,8 +1267,15 @@ function handlersInContainer(
       for (const prop of entry.initializer.properties) {
         if (!prop.name || !ts.isIdentifier(prop.name)) continue;
         if (prop.name.text !== property) continue;
-        const value = ts.isPropertyAssignment(prop) ? prop.initializer : prop;
-        if (isFunctionLike(value)) handlers.push(value);
+        const value: ts.Node = ts.isPropertyAssignment(prop) ? prop.initializer : prop;
+        if (isFunctionLike(value)) {
+          handlers.push(value);
+        } else if (ts.isIdentifier(value)) {
+          // Most plugins keep a named handler outside the operation literal
+          // (`run: lookupDistricts`).  It is still the registered function,
+          // not an unregistered helper.
+          handlers.push(...(declared.get(value.text) ?? []));
+        }
       }
     }
   };
@@ -605,9 +1316,21 @@ function handlersInContainer(
 
 /** Rule 3: in a plugin module, only registered handlers reach the vendor. */
 function auditHandlersOnFramework(file: string): Violation[] {
-  const spec = HANDLERS_ON_FRAMEWORK[file];
+  return auditHandlersOnFrameworkSource(file, parse(file));
+}
+
+function auditHandlersOnFrameworkSource(
+  file: string,
+  sf: ts.SourceFile,
+  specOverride?: {
+    handlerContainers: string[];
+    handlerProperty: string;
+    vendorIdentifiers: string[];
+  },
+): Violation[] {
+  const spec = specOverride ?? HANDLERS_ON_FRAMEWORK[file];
+  if (!spec) return [];
   const containers = spec.handlerContainers.map((c) => `\`${c}\``).join(" / ");
-  const sf = parse(file);
   const handlers = handlersInContainer(sf, spec.handlerContainers, spec.handlerProperty);
 
   if (handlers.length === 0) {
@@ -698,10 +1421,19 @@ function vendorReachingFunctions(
   const callers = new Map<string, Set<FunctionLike>>();
   const topLevelCalls = new Map<string, number>();
   const stack: FunctionLike[] = [];
+  const transports = transportNodes(sf);
 
   const visit = (node: ts.Node): void => {
     const pushed = isFunctionLike(node);
     if (pushed) stack.push(node);
+
+    if (transports.has(node)) {
+      const identifier = node.getText(sf);
+      if (stack.length === 0) {
+        topLevel.push({ line: lineOf(sf, node), identifier });
+      }
+      for (const fn of stack) vendorReaching.add(fn);
+    }
 
     // A value-position mention of the vendor. A type position (`: Stripe`)
     // reaches nothing, and neither does the name being imported or declared.
@@ -853,46 +1585,114 @@ function auditRawPluginNotExported(
 }
 
 /** Rule 1: every outbound call in a listed module goes through the framework. */
-function auditOutboundModule(file: string): Violation[] {
-  const sf = parse(file);
-  const exemptions = OFF_FRAMEWORK_FUNCTIONS[file] ?? {};
-  const underFramework = functionsUnderFramework(sf);
-  const violations: Violation[] = [];
+function transportReachability(sf: ts.SourceFile): {
+  reaching: Set<FunctionLike>;
+  topLevel: Array<{ line: number; identifier: string }>;
+} {
+  const declared = declaredFunctions(sf);
+  const reaching = new Set<FunctionLike>();
+  const topLevel: Array<{ line: number; identifier: string }> = [];
+  const callers = new Map<string, Set<FunctionLike>>();
+  const topLevelCalls = new Map<string, number>();
   const stack: FunctionLike[] = [];
+  const transports = transportNodes(sf);
 
   const visit = (node: ts.Node): void => {
     const pushed = isFunctionLike(node);
     if (pushed) stack.push(node);
 
-    if (ts.isCallExpression(node) && OUTBOUND_CALLS.includes(calleeText(node, sf))) {
-      const enclosing = stack[stack.length - 1];
-      const owner = enclosing ? nameOf(enclosing, sf) : "(module top level)";
-      const exemptReason = stack
-        .map((fn) => exemptions[nameOf(fn, sf)])
-        .find(Boolean);
-
-      if (!exemptReason && !stack.some((fn) => underFramework.has(fn))) {
-        violations.push({
-          file,
-          line: lineOf(sf, node),
-          detail:
-            `${owner}() makes an outbound call (${calleeText(node, sf)}) that does not go ` +
-            `through the web client framework`,
-          remedy:
-            `Register the operation (registerWcRequest for a cacheable answer, ` +
-            `registerUncachedWcRequest for one that must never be replayed) and make the call ` +
-            `inside the \`${FRAMEWORK_WORK_PROPERTY}:\` callback of ${FRAMEWORK_CALLS.join("/")}. ` +
-            `If it genuinely must not go through the framework, name ${owner} in ` +
-            `OFF_FRAMEWORK_FUNCTIONS with the reason.`,
-        });
+    if (transports.has(node)) {
+      if (stack.length === 0) {
+        topLevel.push({ line: lineOf(sf, node), identifier: node.getText(sf) });
+      } else {
+        // Seed only the function which owns the transport. Callers are added
+        // by the backwards call-graph pass below, where each caller must earn
+        // its own exemption. This avoids treating an unrelated inline callback
+        // argument as a caller merely because it shares an enclosing body.
+        reaching.add(stack[stack.length - 1]);
       }
+    }
+
+    if (ts.isCallExpression(node)) {
+      const bareName = calleeText(node, sf).split(".").pop() ?? calleeText(node, sf);
+      if (stack.length === 0 && !topLevelCalls.has(bareName)) {
+        topLevelCalls.set(bareName, lineOf(sf, node));
+      }
+      let set = callers.get(bareName);
+      if (!set) callers.set(bareName, (set = new Set()));
+      for (const fn of stack) set.add(fn);
     }
 
     ts.forEachChild(node, visit);
     if (pushed) stack.pop();
   };
-
   visit(sf);
+
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const [name, fns] of callers) {
+      const targets = declared.get(name) ?? [];
+      if (!targets.some((target) => reaching.has(target))) continue;
+      for (const fn of fns) {
+        if (!reaching.has(fn)) {
+          reaching.add(fn);
+          grew = true;
+        }
+      }
+      const line = topLevelCalls.get(name);
+      if (line !== undefined && !topLevel.some((entry) => entry.line === line)) {
+        topLevel.push({ line, identifier: name });
+      }
+    }
+  }
+
+  return { reaching, topLevel };
+}
+
+function auditOutboundModule(file: string): Violation[] {
+  return auditOutboundSource(file, parse(file), OFF_FRAMEWORK_FUNCTIONS[file] ?? {});
+}
+
+function auditOutboundSource(
+  file: string,
+  sf: ts.SourceFile,
+  exemptions: Record<string, string>,
+): Violation[] {
+  const underFramework = functionsUnderFramework(sf);
+  const violations: Violation[] = [];
+  const { reaching, topLevel } = transportReachability(sf);
+
+  for (const { line, identifier } of topLevel) {
+    violations.push({
+      file,
+      line,
+      detail:
+        `module top level reaches an outbound transport (${identifier}), where no framework ` +
+        `request can reach it`,
+      remedy:
+        `Move the call under a ${FRAMEWORK_CALLS.join("/")} callback. If it genuinely must ` +
+        `not go through the framework, put the owning function in OFF_FRAMEWORK_FUNCTIONS ` +
+        `with a reason (module top level cannot be exempted).`,
+    });
+  }
+  for (const fn of reaching) {
+    const owner = nameOf(fn, sf);
+    if (underFramework.has(fn) || exemptions[owner]) continue;
+    violations.push({
+      file,
+      line: lineOf(sf, fn),
+      detail:
+        `${owner}() reaches an outbound transport but does not go through the web client ` +
+        `framework`,
+      remedy:
+        `Register the operation (registerWcRequest for a cacheable answer, ` +
+        `registerUncachedWcRequest for one that must never be replayed) and make the call ` +
+        `inside the \`${FRAMEWORK_WORK_PROPERTY}:\` callback of ${FRAMEWORK_CALLS.join("/")}. ` +
+        `If it genuinely must not go through the framework, name ${owner} in ` +
+        `OFF_FRAMEWORK_FUNCTIONS with the reason. Exempting a callee does not exempt callers.`,
+    });
+  }
   return violations;
 }
 
@@ -900,6 +1700,7 @@ export function findViolations(): Violation[] {
   const all = listWorkingTreeFiles();
   const present = new Set(all);
   const scanned = all.filter(isScanned);
+  const transportPlugins = discoverTransportBearingPlugins(scanned);
 
   const violations = auditModuleList(present);
   for (const module of OUTBOUND_MODULES) {
@@ -907,6 +1708,20 @@ export function findViolations(): Violation[] {
   }
   for (const module of Object.keys(HANDLERS_ON_FRAMEWORK)) {
     if (present.has(module)) violations.push(...auditHandlersOnFramework(module));
+  }
+  for (const module of transportPlugins) {
+    if (HANDLERS_ON_FRAMEWORK[module]) continue;
+    violations.push({
+      file: module,
+      line: 1,
+      detail:
+        "registers a wc vendor and contains an outbound transport, but has no " +
+        "HANDLERS_ON_FRAMEWORK reachability specification",
+      remedy:
+        "Add a handlerContainers/handlerProperty/vendorIdentifiers row to " +
+        "HANDLERS_ON_FRAMEWORK. Missing coverage fails closed so a new transport-bearing " +
+        "plugin cannot silently evade the handler audit.",
+    });
   }
   violations.push(...auditUnlistedVendorModules(scanned));
   violations.push(...auditFrameworkOnlyImports(scanned));
@@ -943,6 +1758,47 @@ function main(): void {
     ].join("\n"),
   );
   process.exit(1);
+}
+
+/** Focused fixture hooks used by the architecture tests. */
+export function findTransportCallTexts(source: string): string[] {
+  const sf = ts.createSourceFile(
+    "transport-fixture.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    /* setParentNodes */ true,
+  );
+  return [...transportNodes(sf)].map((node) => node.getText(sf));
+}
+
+export function auditWcVendorHandlerFixture(
+  source: string,
+  spec: {
+    handlerContainers: string[];
+    handlerProperty: string;
+    vendorIdentifiers: string[];
+  },
+): Violation[] {
+  const sf = ts.createSourceFile(
+    "wc-vendor-handler-fixture.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    /* setParentNodes */ true,
+  );
+  return auditHandlersOnFrameworkSource("wc-vendor-handler-fixture.ts", sf, spec);
+}
+
+export function auditListedTransportFixture(
+  source: string,
+  exemptions: Record<string, string>,
+): Violation[] {
+  const sf = ts.createSourceFile(
+    "listed-transport-fixture.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    /* setParentNodes */ true,
+  );
+  return auditOutboundSource("listed-transport-fixture.ts", sf, exemptions);
 }
 
 // Only run when executed directly (tests may import findViolations).

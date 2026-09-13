@@ -59,12 +59,14 @@ const ADDRESS = {
 
 /** The postal-provider shape (Lob side) — a different contract, same address. */
 const POSTAL_ADDRESS: PostalAddress = {
-  addressLine1: "1 Main St",
-  city: "Boston",
+  addressLine1: "987 Maintenance Test Ave",
+  city: "Cambridge",
   state: "MA",
-  zip: "02108",
+  zip: "02139-9998",
   country: "US",
 };
+
+const MAINTENANCE_PHONE = "+16175559998";
 
 /**
  * The T631 ping as a caller makes it: named vendor, named operation, through
@@ -109,7 +111,7 @@ function operations() {
     ["Twilio", "validatePhone", () => wcRequest({
       vendor: { pluginId: "twilio" },
       operation: "validate-phone",
-      args: { phoneNumber: "+16175551212" },
+      args: { phoneNumber: MAINTENANCE_PHONE },
     })],
     ["Twilio", "sendSms", () => wcRequest({
       vendor: { pluginId: "twilio" },
@@ -285,7 +287,7 @@ function ensureCivicKey(): void {
 }
 
 async function forgetStoredAnswers(): Promise<void> {
-  for (const service of ["Google", "Census"]) {
+  for (const service of ["Google", "Census", "Twilio", "Lob"]) {
     const rows = await wcCacheStorage.list({ service, page: 1, pageSize: 500 });
     for (const row of rows) await wcCacheStorage.deleteById(row.id);
   }

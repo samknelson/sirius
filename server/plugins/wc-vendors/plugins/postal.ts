@@ -14,6 +14,7 @@ import type {
 import { registerWcVendorPlugin } from "../registry";
 import { registerEnvironmentVariables } from "../../../config/env-registry";
 import { buildCanonicalAddress } from "../../../services/comm/providers/postal";
+import type { WcAnswer } from "../../../services/webclient";
 import type { PostalVendorTypesLoaded } from "../postal-types";
 void (undefined as unknown as PostalVendorTypesLoaded);
 
@@ -53,6 +54,42 @@ function isDeliverable(value: string | undefined): boolean {
     value === "deliverable_unnecessary_unit" ||
     value === "deliverable_incorrect_unit" ||
     value === "deliverable_missing_unit";
+}
+
+function withoutRecipient(
+  result: AddressVerificationResult,
+): AddressVerificationResult {
+  const stripped: AddressVerificationResult = { ...result };
+  if (stripped.normalizedAddress) {
+    const { name: _name, company: _company, ...rest } =
+      stripped.normalizedAddress;
+    stripped.normalizedAddress = rest as PostalAddress;
+  }
+  if (stripped.rawResponse && typeof stripped.rawResponse === "object") {
+    const { recipient: _recipient, ...rest } =
+      stripped.rawResponse as Record<string, unknown>;
+    stripped.rawResponse = rest;
+  }
+  return stripped;
+}
+
+async function cachedLobVerify(
+  ctx: WcVendorContext,
+  address: PostalAddress,
+): Promise<WcAnswer<AddressVerificationResult>> {
+  const result = await lobVerify(ctx, address);
+  if (result.rawResponse === undefined) {
+    return {
+      answered: false,
+      value: result,
+      error: result.error || "The provider answered without a Lob response",
+    };
+  }
+  return {
+    answered: true,
+    value: withoutRecipient(result),
+    store: result.valid,
+  };
 }
 
 async function lobVerify(ctx: WcVendorContext, address: PostalAddress): Promise<AddressVerificationResult> {
@@ -294,7 +331,13 @@ const lobWcVendorPlugin: WcVendorPlugin = {
     "verify-address": {
       description: "verify a postal address",
       needsWritableDatabase: true,
-      run: (ctx, address) => lobVerify(ctx, address),
+      cache: {
+        mode: "cached",
+        freshFor: 180 * 24 * 60 * 60 * 1000,
+        failureRememberedFor: 5 * 60 * 1000,
+        requestKey: (address) => buildCanonicalAddress(address),
+      },
+      run: cachedLobVerify,
     },
     "send-letter": {
       description: "send a postal letter",

@@ -1,55 +1,17 @@
-import { buildCanonicalAddress } from '../providers/postal';
 import type {
   AddressVerificationResult,
   PostalAddress,
 } from '../providers/postal';
-import { registerWcRequest, wcRequest, type WcAnswer, type WcRequestMode } from '../../webclient';
+import { wcRequest, type WcRequestMode } from '../../webclient';
 import { isMaintenanceModeError } from '../../maintenance-flag';
-import {
-  ADDRESS_VERIFICATION_REQUEST_TYPE,
-  ADDRESS_VERIFICATION_SERVICE,
-  addressVerificationRequestKey,
-  type AddressVerificationArgs,
-} from './address-verification-request';
 import {
   postalPluginIdForTarget,
   postalRequest,
 } from "../postal-vendor";
 import type { WcVendorTarget } from "../../webclient";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/**
- * How long a verification stays fresh.
- *
- * Long, for the same reason the phone window is: a building does not stop
- * receiving mail twice a year, and Lob bills per verification. The window is
- * the only thing standing between "verify this address" on a screen someone
- * reloads and a charge per reload.
- */
-const VERIFICATION_FRESH_FOR_MS = 180 * DAY_MS;
-
-/**
- * How long a failed verification is left alone. Short: a failure here is an
- * outage or a missing key, and a long silence would hide a fixed one.
- */
-const FAILURE_REMEMBERED_FOR_MS = 5 * 60 * 1000;
-
 /** The provider that actually calls a vendor. */
 const LOB_PROVIDER_ID = 'lob';
-
-registerWcRequest<AddressVerificationArgs>({
-  service: ADDRESS_VERIFICATION_SERVICE,
-  requestType: ADDRESS_VERIFICATION_REQUEST_TYPE,
-  operation: 'verify an address',
-  cached: true,
-  // A verification is billed. Making one on a connection that will forget the
-  // answer means paying for it again on the very next call.
-  needsWritableDatabase: true,
-  freshFor: VERIFICATION_FRESH_FOR_MS,
-  failureRememberedFor: FAILURE_REMEMBERED_FOR_MS,
-  requestKey: addressVerificationRequestKey,
-});
 
 export interface PostalVerification extends AddressVerificationResult {
   /**
@@ -106,15 +68,23 @@ export async function verifyPostalAddress(
     return { ...result, fromNetwork: true, verifiedAt: new Date() };
   }
 
-  const args: AddressVerificationArgs = { canonicalAddress: buildCanonicalAddress(address) };
-
-  const result = await wcRequest<AddressVerificationResult>({
-    service: ADDRESS_VERIFICATION_SERVICE,
-    requestType: ADDRESS_VERIFICATION_REQUEST_TYPE,
-    args,
-    mode: options?.mode,
-    fetch: () => verifyWithVendor(transportOrVendor, address),
-  });
+  let result;
+  try {
+    result = await wcRequest({
+      vendor: transportOrVendor,
+      operation: "verify-address",
+      args: address,
+      mode: options?.mode,
+    });
+  } catch (error) {
+    if (isMaintenanceModeError(error)) throw error;
+    return {
+      valid: false,
+      deliverable: false,
+      error: error instanceof Error ? error.message : "Address verification is unavailable",
+      fromNetwork: false,
+    };
+  }
 
   if (result.outcome === 'success' && result.value) {
     return {
@@ -136,66 +106,6 @@ export async function verifyPostalAddress(
     error: result.error || 'Address verification is unavailable',
     fromNetwork: result.source === 'network',
   };
-}
-
-/**
- * Make the verification and say what came back.
- *
- * Whether the vendor answered is declared here rather than inferred by the
- * framework from the absence of a thrown error, because this transport
- * catches its own transport failures — a missing key, a refused connection, a
- * Lob 4xx — and answers with `valid: false, deliverable: false` instead.
- * `rawResponse` is Lob's own fingerprint: it is set only from a body Lob
- * produced, so it is what separates a real "not deliverable" from a call that
- * never landed.
- */
-async function verifyWithVendor(
-  transportOrVendor: WcVendorTarget,
-  address: PostalAddress,
-): Promise<WcAnswer<AddressVerificationResult>> {
-  let result: AddressVerificationResult;
-  try {
-    result = await postalRequest(transportOrVendor, "verify-address", address);
-  } catch (error) {
-    if (isMaintenanceModeError(error)) throw error;
-    return {
-      answered: false,
-      error: error instanceof Error ? error.message : 'Address verification failed',
-    };
-  }
-
-  if (result.rawResponse === undefined) {
-    return {
-      answered: false,
-      value: result,
-      error: result.error || 'The provider answered without a Lob response',
-    };
-  }
-
-  // A "no such address" answer is a real answer — the caller is told the
-  // address is bad — but it is not kept: caching it would keep rejecting an
-  // address the postal service may recognise once it is built.
-  return { answered: true, value: withoutRecipient(result), store: result.valid };
-}
-
-/**
- * Strip the person out of an answer before it is stored.
- *
- * The request key is the address, so the stored answer is shared by everyone
- * at that address. A recipient name riding along in it would be handed to the
- * next caller — who addresses a letter with `normalizedAddress`.
- */
-function withoutRecipient(result: AddressVerificationResult): AddressVerificationResult {
-  const stripped: AddressVerificationResult = { ...result };
-  if (stripped.normalizedAddress) {
-    const { name, company, ...rest } = stripped.normalizedAddress;
-    stripped.normalizedAddress = rest as PostalAddress;
-  }
-  if (stripped.rawResponse && typeof stripped.rawResponse === 'object') {
-    const { recipient, ...rest } = stripped.rawResponse as Record<string, unknown>;
-    stripped.rawResponse = rest;
-  }
-  return stripped;
 }
 
 /**
