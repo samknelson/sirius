@@ -1,5 +1,9 @@
 import { PluginRegistry } from "../_core";
-import { registerUncachedWcVendorRequest } from "../../services/webclient/uncached";
+import {
+  registerUncachedWcVendorRequest,
+  type WcVendorRequestArgs,
+} from "../../services/webclient/uncached";
+import { registerWcRequest } from "../../services/webclient/registry";
 import type {
   RegisteredWcVendorPlugin,
   WcVendorHandler,
@@ -18,6 +22,7 @@ export function getWcVendorOperationManifest(
           id,
           description: operation.description,
           needsWritableDatabase: operation.needsWritableDatabase,
+          cacheMode: operation.cacheMode,
         }]
       : [],
   );
@@ -113,11 +118,38 @@ export function getWcVendorHandler(
  */
 export function registerWcVendorPlugin(plugin: WcVendorPlugin): void {
   const service = plugin.service;
-  const operations: Record<string, { description: string; needsWritableDatabase: boolean }> = {};
+  const operations: Record<
+    string,
+    {
+      description: string;
+      needsWritableDatabase: boolean;
+      cacheMode: "cached" | "uncached";
+    }
+  > = {};
 
   for (const [requestType, declared] of Object.entries(plugin.operations)) {
     if (!declared) continue;
-    if (service) {
+    const cacheMode = declared.cache?.mode ?? "uncached";
+    if (cacheMode === "cached" && !service) {
+      throw new Error(
+        `WC vendor plugin '${plugin.id}' declares cached operation '${requestType}' ` +
+          `without an outside service. Cached operations require a registered webclient service.`,
+      );
+    }
+    if (service && declared.cache?.mode === "cached") {
+      const cache = declared.cache;
+      registerWcRequest<WcVendorRequestArgs>({
+        service,
+        requestType,
+        operation: declared.description,
+        cached: true,
+        needsWritableDatabase: declared.needsWritableDatabase,
+        freshFor: cache.freshFor,
+        failureRememberedFor: cache.failureRememberedFor,
+        requestKey: ({ configId, args }) =>
+          `${configId}:${cache.requestKey(args as never)}`,
+      });
+    } else if (service) {
       registerUncachedWcVendorRequest({
         service,
         requestType,
@@ -132,6 +164,7 @@ export function registerWcVendorPlugin(plugin: WcVendorPlugin): void {
     operations[requestType] = {
       description: declared.description,
       needsWritableDatabase: declared.needsWritableDatabase,
+      cacheMode,
     };
   }
 

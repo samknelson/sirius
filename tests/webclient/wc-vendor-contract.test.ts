@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const canStore = vi.hoisted(() => vi.fn());
 const getConfig = vi.hoisted(() => vi.fn());
+const cacheRead = vi.hoisted(() => vi.fn());
+const cacheWriteSuccess = vi.hoisted(() => vi.fn());
+const cacheWriteFailure = vi.hoisted(() => vi.fn());
+const cachedRun = vi.hoisted(() => vi.fn());
 
 vi.mock("../../server/storage", () => ({
   storage: {
@@ -20,6 +24,9 @@ vi.mock("../../server/storage/wc-cache", async (importOriginal) => {
     wcCacheStorage: {
       ...actual.wcCacheStorage,
       canStore,
+      read: cacheRead,
+      writeSuccess: cacheWriteSuccess,
+      writeFailure: cacheWriteFailure,
     },
   };
 });
@@ -29,14 +36,78 @@ import {
   getWcVendorPlugin,
   registerWcVendorPluginKind,
 } from "../../server/plugins/wc-vendors";
+import { registerWcVendorPlugin } from "../../server/plugins/wc-vendors/registry";
 import { getPluginConfigAdapter } from "../../server/plugins/_core/config-adapter";
-import { wcRequest } from "../../server/services/webclient";
+import { getWcRequest, wcRequest } from "../../server/services/webclient";
+import {
+  MaintenanceModeError,
+  setMaintenanceActive,
+} from "../../server/services/maintenance-flag";
+
+declare module "../../server/plugins/wc-vendors/types" {
+  interface WcVendorOperations {
+    "cached-contract-test": {
+      args: { address: string; region?: string };
+      result: { normalized: string };
+    };
+    "uncached-contract-test": {
+      args: { value: string };
+      result: { value: string };
+    };
+  }
+}
 
 registerWcVendorPluginKind();
+registerWcVendorPlugin({
+  id: "cached-contract-fixture",
+  name: "Cached contract fixture",
+  description: "Exercises cached and uncached operation registration.",
+  credential: { secretName: "none" },
+  service: "Google",
+  operations: {
+    "cached-contract-test": {
+      description: "exercise a cached vendor operation",
+      needsWritableDatabase: true,
+      cache: {
+        mode: "cached",
+        freshFor: 60_000,
+        failureRememberedFor: 5_000,
+        requestKey: ({ address, region }) =>
+          [
+            address.trim().replace(/\s+/g, " ").toUpperCase(),
+            region?.trim().toUpperCase(),
+          ]
+            .filter(Boolean)
+            .join("|"),
+      },
+      run: cachedRun,
+    },
+    "uncached-contract-test": {
+      description: "exercise an explicitly uncached vendor operation",
+      needsWritableDatabase: false,
+      cache: { mode: "uncached" },
+      async run(_ctx, args) {
+        return { value: args.value };
+      },
+    },
+  },
+});
 
 beforeEach(() => {
   canStore.mockReset();
   canStore.mockResolvedValue(true);
+  cacheRead.mockReset();
+  cacheRead.mockResolvedValue(undefined);
+  cacheWriteSuccess.mockReset();
+  cacheWriteSuccess.mockResolvedValue(undefined);
+  cacheWriteFailure.mockReset();
+  cacheWriteFailure.mockResolvedValue(undefined);
+  cachedRun.mockReset();
+  cachedRun.mockImplementation(async (_ctx, args) => ({
+    answered: true,
+    value: { normalized: args.address.trim().toUpperCase() },
+  }));
+  setMaintenanceActive(false);
   getConfig.mockReset();
   getConfig.mockResolvedValue({
     id: "dummy-config",
@@ -61,11 +132,13 @@ describe("the wc-vendor plugin contract", () => {
       id: "test-connection",
       description: "test connection",
       needsWritableDatabase: false,
+      cacheMode: "uncached",
     });
     expect(stripe).toContainEqual({
       id: "create-customer",
       description: "create a customer",
       needsWritableDatabase: true,
+      cacheMode: "uncached",
     });
 
     const t631 = getWcVendorOperationManifest(plugin("sitespecific-t631"));
@@ -73,6 +146,7 @@ describe("the wc-vendor plugin contract", () => {
       id: "sirius_service_ping",
       description: "ping the T631 service",
       needsWritableDatabase: false,
+      cacheMode: "uncached",
     });
   });
 
@@ -174,9 +248,100 @@ describe("the wc-vendor plugin contract", () => {
     // one cannot make the call itself, and so cannot skip the refusal, the
     // write gate or the count that the framework applies around it.
     expect(Object.keys(declaration).sort()).toEqual([
+      "cacheMode",
       "description",
       "needsWritableDatabase",
     ]);
-    expect((declaration as Record<string, unknown>).run).toBeUndefined();
+    expect((declaration as unknown as Record<string, unknown>).run).toBeUndefined();
+    expect((declaration as unknown as Record<string, unknown>).cache).toBeUndefined();
+  });
+
+  it("registers cached and explicit uncached operations with the shared framework", () => {
+    const cached = getWcRequest("Google", "cached-contract-test");
+    expect(cached).toMatchObject({
+      cached: true,
+      needsWritableDatabase: true,
+      freshFor: 60_000,
+      failureRememberedFor: 5_000,
+    });
+    expect(
+      cached?.requestKey({
+        configId: "connection-a",
+        args: { address: "  10 main st ", region: " us " },
+      }),
+    ).toBe("connection-a:10 MAIN ST|US");
+
+    const uncached = getWcRequest("Google", "uncached-contract-test");
+    expect(uncached).toMatchObject({
+      cached: false,
+      needsWritableDatabase: false,
+    });
+  });
+
+  it("stores a cached handler's answer envelope under the per-connection key", async () => {
+    getConfig.mockResolvedValue({
+      id: "cached-config",
+      pluginKind: "wc-vendors",
+      pluginId: "cached-contract-fixture",
+      enabled: true,
+      name: "Cached fixture",
+      data: {},
+    });
+
+    const result = await wcRequest({
+      vendor: { configId: "cached-config" },
+      operation: "cached-contract-test",
+      args: { address: " 10 main st " },
+    });
+
+    expect(result).toMatchObject({
+      source: "network",
+      outcome: "success",
+      value: { normalized: "10 MAIN ST" },
+    });
+    expect(cacheWriteSuccess).toHaveBeenCalledWith(
+      "Google",
+      "cached-contract-test",
+      "cached-config:10 MAIN ST",
+      { normalized: "10 MAIN ST" },
+    );
+  });
+
+  it("serves cached vendor answers during maintenance but refuses a required call", async () => {
+    getConfig.mockResolvedValue({
+      id: "cached-config",
+      pluginKind: "wc-vendors",
+      pluginId: "cached-contract-fixture",
+      enabled: true,
+      name: "Cached fixture",
+      data: {},
+    });
+    setMaintenanceActive(true);
+    cacheRead.mockResolvedValue({
+      outcome: "success",
+      response: { normalized: "10 MAIN ST" },
+      fetchedAt: new Date(),
+    });
+
+    const stored = await wcRequest({
+      vendor: { configId: "cached-config" },
+      operation: "cached-contract-test",
+      args: { address: "10 main st" },
+    });
+    expect(stored).toMatchObject({
+      source: "cache",
+      outcome: "success",
+      value: { normalized: "10 MAIN ST" },
+    });
+    expect(cachedRun).not.toHaveBeenCalled();
+
+    cacheRead.mockResolvedValue(undefined);
+    await expect(
+      wcRequest({
+        vendor: { configId: "cached-config" },
+        operation: "cached-contract-test",
+        args: { address: "11 main st" },
+      }),
+    ).rejects.toBeInstanceOf(MaintenanceModeError);
   });
 });

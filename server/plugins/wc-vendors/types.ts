@@ -29,7 +29,11 @@ import type {
 // Type-only: the vendor vocabulary is the web client framework's, and the
 // framework's is the maintenance guard's. Naming a service here that those two
 // do not know is exactly the split this import prevents.
-import type { WcService } from "../../services/webclient/types";
+import type {
+  WcAnswer,
+  WcDuration,
+  WcService,
+} from "../../services/webclient/types";
 
 /**
  * Resolved per-operation context handed to every provider method. Built by the
@@ -199,8 +203,7 @@ export type WcVendorOperationArgs<N extends WcVendorOperationName> =
 export type WcVendorOperationResult<N extends WcVendorOperationName> =
   WcVendorOperations[N]["result"];
 
-/** Shape captured by the declaration helper before operation ids are known. */
-export interface WcVendorOperationDeclaration<TArgs = unknown, TResult = unknown> {
+interface WcVendorOperationDeclarationBase {
   /**
    * What is being attempted, in plain words — the second half of "Stripe is
    * unavailable: the site is in maintenance mode (attempted: …)".
@@ -218,23 +221,55 @@ export interface WcVendorOperationDeclaration<TArgs = unknown, TResult = unknown
    * away the diagnosis an operator is in the middle of.
    */
   needsWritableDatabase: boolean;
-  /**
-   * Do it. Pure provider work: no storage and no database access — all
-   * persistence belongs to the calling module.
-   */
-  run(
-    ctx: WcVendorContext,
-    args: TArgs,
-  ): Promise<TResult>;
 }
 
+/**
+ * A cached operation's complete storage policy.
+ *
+ * The key receives only the operation arguments. The framework prefixes it
+ * with the resolved config id, so two connections to the same vendor can never
+ * share an answer and credentials never enter the key.
+ */
+export interface WcVendorCachedOperationPolicy<TArgs> {
+  mode: "cached";
+  freshFor: WcDuration;
+  failureRememberedFor: WcDuration;
+  requestKey(args: TArgs): string;
+}
+
+export interface WcVendorUncachedOperationPolicy {
+  mode: "uncached";
+}
+
+/**
+ * Shape captured by the declaration helper before operation ids are known.
+ *
+ * Existing declarations omit `cache` and remain uncached. An explicit
+ * `mode: "uncached"` is accepted when a plugin wants to state the decision.
+ * Cached handlers return the framework's answer envelope because only the
+ * transport can say whether the far end answered and whether that answer is
+ * safe to store.
+ */
+export type WcVendorOperationDeclaration<
+  TArgs = unknown,
+  TResult = unknown,
+> = WcVendorOperationDeclarationBase & (
+  | {
+      cache?: undefined | WcVendorUncachedOperationPolicy;
+      run(ctx: WcVendorContext, args: TArgs): Promise<TResult>;
+    }
+  | {
+      cache: WcVendorCachedOperationPolicy<TArgs>;
+      run(ctx: WcVendorContext, args: TArgs): Promise<WcAnswer<TResult>>;
+    }
+);
+
 /** One typed operation after its id has joined the shared vocabulary. */
-export interface WcVendorOperation<N extends WcVendorOperationName = WcVendorOperationName>
-  extends WcVendorOperationDeclaration<
+export type WcVendorOperation<N extends WcVendorOperationName = WcVendorOperationName> =
+  WcVendorOperationDeclaration<
     WcVendorOperationArgs<N>,
     WcVendorOperationResult<N>
-  > {
-}
+  >;
 
 export type WcVendorOperationMap = {
   [N in WcVendorOperationName]?: WcVendorOperation<N>;
@@ -246,7 +281,11 @@ export type WcVendorOperationMap = {
  *
  * The runnable half is deliberately absent. See {@link RegisteredWcVendorPlugin}.
  */
-export type WcVendorOperationInfo = Omit<WcVendorOperationDeclaration, "run">;
+export interface WcVendorOperationInfo {
+  description: string;
+  needsWritableDatabase: boolean;
+  cacheMode: "cached" | "uncached";
+}
 
 export type WcVendorOperationInfoMap = {
   [N in WcVendorOperationName]?: WcVendorOperationInfo;
@@ -381,5 +420,6 @@ export interface WcVendorManifestEntry {
     id: string;
     description: string;
     needsWritableDatabase: boolean;
+    cacheMode: "cached" | "uncached";
   }>;
 }

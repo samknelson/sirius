@@ -357,7 +357,13 @@ export async function runWcVendorRequest<N extends WcVendorOperationName>(
   if (vendor.pluginId !== undefined) {
     const known = requireRegisteredPlugin(vendor.pluginId);
     const declared = requireOperation(known, name);
-    if (calling) refuseDuringMaintenance(known, declared);
+    // An uncached operation can only answer by calling, so refuse before even
+    // resolving its default connection. A cached operation may already have an
+    // answer: let the core inspect the cache first and refuse only if it would
+    // actually reach the far end.
+    if (calling && declared.cacheMode === "uncached") {
+      refuseDuringMaintenance(known, declared);
+    }
   }
 
   const resolved = await resolveTarget(vendor);
@@ -422,10 +428,20 @@ export async function runWcVendorRequest<N extends WcVendorOperationName>(
     mode: options.mode,
     fetch: async (): Promise<WcAnswer<WcVendorOperationResult<N>>> => {
       try {
-        return {
-          answered: true,
-          value: (await run()) as WcVendorOperationResult<N>,
-        };
+        const answer = await run();
+        if (declaration.cacheMode === "cached") {
+          if (
+            !answer ||
+            typeof answer !== "object" ||
+            typeof (answer as { answered?: unknown }).answered !== "boolean"
+          ) {
+            throw new Error(
+              `Cached vendor operation '${name}' returned no answer envelope`,
+            );
+          }
+          return answer as WcAnswer<WcVendorOperationResult<N>>;
+        }
+        return { answered: true, value: answer as WcVendorOperationResult<N> };
       } catch (thrown) {
         // A refusal is the framework's own answer, not the vendor's.
         if (isMaintenanceModeError(thrown)) throw thrown;
