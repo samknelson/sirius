@@ -199,3 +199,24 @@ describe("the neutral vendor surface stays neutral", () => {
     expect(neutral).not.toContain("isPaymentGatewayPlugin");
   });
 });
+
+describe("accepted payment type storage", () => {
+  it("reads and writes only the selected config's data.paymentTypes", () => {
+    const routes = readFileSync("server/modules/ledger/wc-vendors.ts", "utf8");
+
+    expect(routes).toContain("resolved.config!.data");
+    expect(routes).toContain("data.paymentTypes");
+    expect(routes).toContain("data: { ...existingData, paymentTypes }");
+    expect(routes).not.toContain("storage.variables");
+  });
+
+  it("does not restore payment types from a retired global during startup", () => {
+    const startup = readFileSync("server/app-init.ts", "utf8");
+    const vendorPlugins = readFileSync("server/plugins/wc-vendors/index.ts", "utf8");
+
+    expect(startup).not.toContain("backfillPaymentTypesFromGlobal");
+    expect(vendorPlugins).not.toContain("backfillPaymentTypesFromGlobal");
+    expect(startup).not.toContain("stripe_payment_methods");
+    expect(vendorPlugins).not.toContain("stripe_payment_methods");
+  });
+});

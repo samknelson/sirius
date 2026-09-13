@@ -404,7 +404,6 @@ export async function bootstrapApp(
   const {
     registerWcVendorPluginKind,
     backfillWcVendorSubsidiaries,
-    backfillPaymentTypesFromGlobal,
   } = await import("./plugins/wc-vendors");
   const { initializeWebServiceSystem } = await import("./plugins/web-service");
   registerChargePluginKind();
@@ -447,10 +446,6 @@ export async function bootstrapApp(
     initializeEventNotifierDispatcher();
   }
   logger.info("Event-notifier dispatcher initialized", { source: "startup" });
-  // Migrate the legacy global `stripe_payment_methods` variable onto each
-  // gateway config's own `data.paymentTypes`, then retire the global.
-  await backfillPaymentTypesFromGlobal();
-  logger.info("Payment types migrated off legacy global variable", { source: "startup" });
 
   // Initialize worker ban notifications
   initWorkerBanNotifications();
