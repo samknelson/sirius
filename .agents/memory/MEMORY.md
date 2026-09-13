@@ -1,3 +1,4 @@
+- [Migration initial-load scale](migration-initial-load-scale.md) — batch bookkeeping too; incremental rehearsals can hide fresh-target costs, and progress rates alone do not locate the bottleneck.
 - [In-app env overrides](env-overrides-framework.md) — env wins unless "released" (empty/`__UNSET__`); NO denylist, ALL registered vars overridable (owner decision, don't re-block); one ENV_{NAME} row per override.
 - [Entity metadata eligibility](entity-metadata-eligibility.md) — record history is for directly maintained records; central policy rejects process families at writes, reads, registry, and cleanup.
 - [PUBLIC_URL single base-URL source](public-url-registry.md) — Replit domain vars are UNREGISTERED; all public-origin reads go through PUBLIC_URL (transform holds the fallback chain); external callbacks use getPublicBaseUrl.
