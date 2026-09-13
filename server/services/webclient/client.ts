@@ -32,6 +32,11 @@ export interface WcTransportRequestOptions<TValue> {
   args: unknown;
   mode?: WcRequestMode;
   /**
+   * Resolved WC vendor connection. Framework-internal: direct transports leave
+   * this absent and are counted in the legacy/unattributed bucket.
+   */
+  configurationId?: string;
+  /**
    * Make the call. Invoked only when the wrapper has decided the vendor
    * should be asked, and must declare whether the vendor answered.
    */
@@ -110,10 +115,18 @@ function errorMessage(error: unknown): string {
  * really paid for. Failures are logged and swallowed — the request the caller
  * asked for succeeds or fails on its own merits, never on this.
  */
-async function countCall(behavior: WcRequestBehavior): Promise<void> {
+async function countCall(
+  behavior: WcRequestBehavior,
+  configurationId?: string,
+): Promise<void> {
   try {
     await runOutsideTransaction(() =>
-      wcStatsStorage.recordCall(behavior.service, behavior.requestType, getTodayYmd()),
+      wcStatsStorage.recordCall(
+        behavior.service,
+        behavior.requestType,
+        getTodayYmd(),
+        configurationId ?? null,
+      ),
     );
   } catch (error) {
     logger.error("Failed to count a web client call", {
@@ -274,7 +287,7 @@ async function wcTransportRequest<TValue>(
   // The vendor was contacted. Counted here and nowhere else: everything above
   // this line either answered from the cache or refused before the call, and a
   // failed attempt below it is still a call we made.
-  await countCall(behavior);
+  await countCall(behavior, options.configurationId);
 
   if (answer.answered) {
     const fetchedAt = new Date();

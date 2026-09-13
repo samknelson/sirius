@@ -424,6 +424,7 @@ export async function runWcVendorRequest<N extends WcVendorOperationName>(
   const result = await transport<WcVendorOperationResult<N>>({
     service: resolved.plugin.service,
     requestType: name,
+    configurationId: resolved.config.id,
     args: { configId: resolved.config.id, args },
     mode: options.mode,
     fetch: async (): Promise<WcAnswer<WcVendorOperationResult<N>>> => {

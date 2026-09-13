@@ -5,6 +5,7 @@ import { requireAccess } from "../../services/access-policy-evaluator";
 import { listWcRequests, resolveWcDuration } from "../../services/webclient";
 import { addDaysYmd, getTodayYmd, isValidYmd, isYmdAfter } from "@shared/utils/date";
 import type { WcCacheRow } from "../../storage/wc-cache";
+import { getWcVendorPlugin } from "../../plugins/wc-vendors/registry";
 
 /**
  * Admin visibility into the web client cache — the record of what we asked
@@ -35,6 +36,7 @@ const listQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
   service: z.string().trim().min(1).optional(),
   requestType: z.string().trim().min(1).optional(),
+  configurationId: z.string().trim().min(1).optional(),
   requestKey: z.string().trim().min(1).optional(),
 });
 
@@ -98,7 +100,9 @@ const statsQuerySchema = z.object({
   end: z.string().refine(isValidYmd, { message: "Expected a YYYY-MM-DD day" }).optional(),
   service: z.string().trim().min(1).optional(),
   requestType: z.string().trim().min(1).optional(),
+  configurationId: z.string().trim().min(1).optional(),
 });
+const UNATTRIBUTED_CONFIGURATION = "__unattributed__";
 
 /** How far back the stats read looks when the caller names no range. */
 const DEFAULT_STATS_DAYS = 30;
@@ -126,8 +130,18 @@ export function registerWcCacheAdminRoutes(app: Express) {
         return;
       }
       const { service, requestType } = parsed.data;
+      const configurationId =
+        parsed.data.configurationId === UNATTRIBUTED_CONFIGURATION
+          ? null
+          : parsed.data.configurationId;
       const [days, dimensions] = await Promise.all([
-        storage.wcStats.countsByDay({ start, end, service, requestType }),
+        storage.wcStats.countsByDay({
+          start,
+          end,
+          service,
+          requestType,
+          configurationId,
+        }),
         storage.wcStats.listDimensions(),
       ]);
       res.json({
@@ -138,7 +152,12 @@ export function registerWcCacheAdminRoutes(app: Express) {
         // gap it has to guess the meaning of.
         days,
         total: days.reduce((sum, day) => sum + day.calls, 0),
-        dimensions,
+        dimensions: dimensions.map((dimension) => ({
+          ...dimension,
+          pluginName: dimension.pluginId
+            ? getWcVendorPlugin(dimension.pluginId)?.name ?? null
+            : null,
+        })),
       });
     } catch (error) {
       console.error("Failed to read web client call stats:", error);

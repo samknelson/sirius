@@ -131,3 +131,4 @@
 - [Permanent test cost](permanent-test-cost.md) — propose tests only when regression value clearly justifies maintaining and running them on every build; do not default to UI tests.
 - [Comm vendor cutovers](comm-vendor-cutovers.md) — local plugins omit delivery operations; legacy migrations preserve effective env/override selections without copying credential values.
 - [Vendor cache cutovers](vendor-cache-cutovers.md) — keep legacy namespaces, but never reuse unscoped cache hashes when the originating config cannot be proven.
+- [Nullable usage attribution deletion](nullable-usage-attribution-deletion.md) — NULLS-NOT-DISTINCT counters need merge-before-delete and count-time locking or configuration deletion loses or blocks counts.

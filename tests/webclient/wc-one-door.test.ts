@@ -20,12 +20,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const recordCall = vi.hoisted(() => vi.fn());
 const canStore = vi.hoisted(() => vi.fn());
 const getConfig = vi.hoisted(() => vi.fn());
+const getByKindAndPlugin = vi.hoisted(() => vi.fn());
 
 vi.mock("../../server/storage", () => ({
   storage: {
     pluginConfigs: {
       get: (id: string) => getConfig(id),
-      getByKindAndPlugin: async () => [],
+      getByKindAndPlugin: (...args: unknown[]) => getByKindAndPlugin(...args),
     },
   },
 }));
@@ -96,6 +97,7 @@ beforeEach(() => {
   getConfig.mockImplementation(async (id: string) =>
     id.startsWith("cfg-") ? connection(id) : undefined,
   );
+  getByKindAndPlugin.mockReset().mockResolvedValue([]);
 });
 
 describe("the one entry point, for a vendor operation", () => {
@@ -112,7 +114,30 @@ describe("the one entry point, for a vendor operation", () => {
     // One request, one count. Counting in both halves of the framework would
     // double every figure on the usage page, and it would do so silently.
     expect(recordCall).toHaveBeenCalledTimes(1);
-    expect(recordCall).toHaveBeenCalledWith("Census", OPERATION, expect.any(String));
+    expect(recordCall).toHaveBeenCalledWith(
+      "Census",
+      OPERATION,
+      expect.any(String),
+      "cfg-a",
+    );
+  });
+
+  it("attributes a default-resolved request to the configuration it resolved", async () => {
+    getByKindAndPlugin.mockResolvedValue([connection("cfg-default")]);
+
+    await wcRequest({
+      vendor: { pluginId: TEST_PLUGIN_ID },
+      operation: OPERATION,
+      args: { q: 1 },
+    } as never);
+
+    expect(getByKindAndPlugin).toHaveBeenCalledWith("wc-vendors", TEST_PLUGIN_ID);
+    expect(recordCall).toHaveBeenCalledWith(
+      "Census",
+      OPERATION,
+      expect.any(String),
+      "cfg-default",
+    );
   });
 
   it("hands back the provider's failure, with the provider's own error on it", async () => {
