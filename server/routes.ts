@@ -1631,7 +1631,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       // Resolve/create the destination before changing either existing row.
       // A missing Twilio environment configuration therefore leaves Local
       // enabled instead of producing a zero-enabled state.
-      await ensureSmsVendorTarget(selectedPlugin);
+      const selectedTarget = await ensureSmsVendorTarget(selectedPlugin);
       const [localConfigs, twilioConfigs] = await Promise.all([
         storage.pluginConfigs.getByKindAndPlugin("wc-vendors", "sms-local"),
         storage.pluginConfigs.getByKindAndPlugin("wc-vendors", "twilio"),
@@ -1653,7 +1653,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
                 ? (config.data as Record<string, unknown>)
                 : {};
             await storage.pluginConfigs.update(config.id, {
-              enabled: config.pluginId === selectedPlugin,
+              enabled: config.id === selectedTarget.id,
               data: { ...data, phoneValidation: validation },
             });
           }),
@@ -1691,7 +1691,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const { runInTransaction, getClient } = await import("./storage/transaction-context");
       await runInTransaction(async () => {
         await getClient().execute(
-          sql`select pg_advisory_xact_lock(hashtext('wc-vendors:sms-migration'))`,
+          sql`select pg_advisory_xact_lock(hashtext('wc-vendors:sms-selection'))`,
         );
         await updateValidation(localConfigs, localValidationSettings);
         await updateValidation(twilioConfigs, twilioValidationSettings);

@@ -19,7 +19,7 @@ interface PostalProviderInfo {
 }
 
 interface PostalConfig {
-  defaultProvider: string;
+  defaultProvider: string | null;
   providers: PostalProviderInfo[];
   currentProvider: {
     id: string;
@@ -33,7 +33,7 @@ interface PostalConfig {
       error?: string;
       details?: Record<string, unknown>;
     };
-  };
+  } | null;
 }
 
 interface LobInfo {

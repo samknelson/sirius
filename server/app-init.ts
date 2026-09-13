@@ -263,28 +263,6 @@ export async function bootstrapApp(
   // without writing anything. See `server/services/bringup.ts`.
   await runSchemaBringUp();
 
-  // Migrate the legacy SMS category before any request, status callback, or
-  // phone-validation cache policy can resolve a vendor. The migration is
-  // transactional and idempotent; it copies only the named Twilio secret,
-  // never the secret value.
-  {
-    const { ensureSmsVendorConfig } = await import("./services/comm/sms-vendor");
-    try {
-      await ensureSmsVendorConfig();
-      logger.info("SMS wc-vendor configuration initialized", { source: "startup" });
-    } catch (error) {
-      // A brand-new installation may have neither legacy settings nor an SMS
-      // connection yet. Requests will surface the actionable configuration
-      // error; startup should not invent credentials or a provider choice.
-      if (!(error instanceof Error) || !error.message.includes("No SMS wc-vendor configuration")) {
-        logger.warn("SMS wc-vendor migration did not create a configuration", {
-          source: "startup",
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-  }
-
   // Initialize address validation service (loads or creates config). Runs
   // after bring-up: it writes a config row, which report-only mode must not
   // do, and it has nothing to say about the schema.

@@ -18,7 +18,7 @@ interface SmsProviderInfo {
 }
 
 interface SmsConfig {
-  defaultProvider: string;
+  defaultProvider: string | null;
   providers: SmsProviderInfo[];
   currentProvider: {
     id: string;
@@ -32,7 +32,7 @@ interface SmsConfig {
       error?: string;
       details?: Record<string, unknown>;
     };
-  };
+  } | null;
 }
 
 interface TwilioAccountInfo {

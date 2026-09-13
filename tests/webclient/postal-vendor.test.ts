@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginConfig } from "@shared/schema";
 import { storage } from "../../server/storage";
-import { setEnvironmentVariableOverrideSource } from "../../server/config/env-registry";
 import { getWcVendorPlugin } from "../../server/plugins/wc-vendors";
 import { wcRequest } from "../../server/services/webclient";
 import {
@@ -12,8 +11,6 @@ import {
 import * as postalVendor from "../../server/services/comm/postal-vendor";
 import * as addressVerification from "../../server/services/comm/validators/address-verification";
 import { sendPostal } from "../../server/services/comm/senders/postal";
-
-const lobEnvironmentSnapshot = process.env.LOB_API_KEY;
 
 function config(
   id: string,
@@ -34,9 +31,6 @@ function config(
 
 afterEach(() => {
   vi.restoreAllMocks();
-  setEnvironmentVariableOverrideSource(null);
-  if (lobEnvironmentSnapshot === undefined) delete process.env.LOB_API_KEY;
-  else process.env.LOB_API_KEY = lobEnvironmentSnapshot;
 });
 
 describe("postal vendor safety", () => {
@@ -92,7 +86,7 @@ describe("postal vendor safety", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it("migrates legacy Lob settings when no wc-vendor selection exists", async () => {
+  it("requires an enabled canonical wc-vendor row and ignores legacy settings", async () => {
     const lob = config("postal-lob", "lob", false);
     const local = config("postal-local", "local-postal", false);
     vi.spyOn(storage.pluginConfigs, "getByKind").mockResolvedValue([lob, local]);
@@ -108,51 +102,15 @@ describe("postal vendor safety", () => {
         },
       },
     } as never);
-    const update = vi.spyOn(storage.pluginConfigs, "update").mockImplementation(
-      async (id, patch) => ({
-        ...(id === lob.id ? lob : local),
-        ...patch,
-      } as PluginConfig),
-    );
+    const legacyRead = vi.spyOn(storage.variables, "getByName");
     vi.spyOn(storage.advisoryLock, "withTransactionLock").mockImplementation(
       async (_name, callback) => callback(),
     );
 
-    const selected = await ensurePostalVendorConfig();
-
-    expect(selected.id).toBe(lob.id);
-    expect(selected.pluginId).toBe("lob");
-    expect(update).toHaveBeenCalledWith(
-      lob.id,
-      expect.objectContaining({
-        data: expect.objectContaining({
-          defaultReturnAddress: { addressLine1: "1 Main St" },
-          secretName: "LOB_API_KEY",
-        }),
-      }),
+    await expect(ensurePostalVendorConfig()).rejects.toThrow(
+      "No enabled postal wc-vendor configuration exists.",
     );
-    expect(update).toHaveBeenCalledWith(lob.id, { enabled: true });
-  });
-
-  it("selects Lob by environment presence without copying the key value", async () => {
-    const created = config("postal-lob", "lob", true, { secretName: "LOB_API_KEY" });
-    vi.spyOn(storage.pluginConfigs, "getByKind").mockResolvedValue([]);
-    vi.spyOn(storage.variables, "getByName").mockResolvedValue({ value: {} } as never);
-    delete process.env.LOB_API_KEY;
-    setEnvironmentVariableOverrideSource((name) =>
-      name === "LOB_API_KEY" ? "live-secret-never-copied" : undefined,
-    );
-    vi.spyOn(storage.pluginConfigs, "create").mockResolvedValue(created);
-    vi.spyOn(storage.pluginConfigs, "upsertSubsidiary").mockResolvedValue(null);
-    vi.spyOn(storage.advisoryLock, "withTransactionLock").mockImplementation(
-      async (_name, callback) => callback(),
-    );
-
-    const selected = await ensurePostalVendorConfig();
-
-    expect(selected.pluginId).toBe("lob");
-    expect(selected.data).toEqual({ secretName: "LOB_API_KEY" });
-    expect(selected.data).not.toHaveProperty("apiKey", "live-secret-never-copied");
+    expect(legacyRead).not.toHaveBeenCalled();
   });
 
   it("switches providers under the shared transaction lock", async () => {

@@ -5,6 +5,7 @@ import type { PostalAddress } from "../services/comm/providers/postal";
 import { verifyPostalAddress } from "../services/comm/validators/address-verification";
 import {
   getPostalVendorConfig,
+  getPostalVendorConfigs,
   postalRequest,
   postalSupportsOperation,
   resolvePostalPluginId,
@@ -70,9 +71,25 @@ export function registerPostalConfigRoutes(app: Express) {
   const admin = requireAccess("admin");
   app.get("/api/config/postal", admin, async (_req: Request, res: Response) => {
     try {
-      const pluginId = await resolvePostalPluginId();
-      const config = await getPostalVendorConfig(pluginId);
-      const target = config ? { configId: config.id } : await resolvePostalVendorTarget();
+      const configs = await getPostalVendorConfigs();
+      const enabled = configs.filter((config) => config.enabled);
+      if (enabled.length > 1) {
+        throw new Error(
+          `Multiple enabled postal vendor configurations found (${enabled
+            .map((config) => config.id)
+            .join(", ")}). Select a target config ID.`,
+        );
+      }
+      const config = enabled[0];
+      if (!config) {
+        return res.json({
+          defaultProvider: null,
+          providers: postalPluginInfo,
+          currentProvider: null,
+        });
+      }
+      const pluginId = config.pluginId as PostalPluginId;
+      const target = { configId: config.id };
       const connection = await postalRequest(target, "test-connection", undefined);
       const supportsPostal = await postalSupportsOperation(target, "send-letter");
       const data = configData(config);
@@ -180,7 +197,12 @@ export function registerPostalConfigRoutes(app: Express) {
     try {
       const config = await getPostalVendorConfig("lob");
       if (!config) {
-        return res.json({ connected: false, error: "Lob is not configured", currentProvider: await resolvePostalPluginId() });
+        const active = (await getPostalVendorConfigs()).find((entry) => entry.enabled);
+        return res.json({
+          connected: false,
+          error: "Lob is not configured",
+          currentProvider: active?.pluginId,
+        });
       }
       const data = configData(config);
       const connection = await postalRequest({ configId: config.id }, "test-connection", undefined);

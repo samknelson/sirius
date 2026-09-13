@@ -8,6 +8,7 @@ import { wcRequest } from "../services/webclient";
 import {
   ensureSmsVendorConfig,
   ensureSmsVendorTarget,
+  getSmsVendorConfigs,
   resolveSmsVendor,
   SmsVendorConfigurationError,
 } from "../services/comm/sms-vendor";
@@ -93,11 +94,11 @@ async function updateSelectedProvider(providerId: string): Promise<void> {
   }
   // Create/validate the destination before entering the switch transaction.
   // If credentials are unavailable, the current provider remains enabled.
-  await ensureSmsVendorTarget(selected);
+  const target = await ensureSmsVendorTarget(selected);
   const { runInTransaction, getClient } = await import("../storage/transaction-context");
   await runInTransaction(async () => {
     await getClient().execute(
-      sql`select pg_advisory_xact_lock(hashtext('wc-vendors:sms-migration'))`,
+      sql`select pg_advisory_xact_lock(hashtext('wc-vendors:sms-selection'))`,
     );
     const configs = await Promise.all(
       ["twilio", "sms-local"].map(async (pluginId) => ({
@@ -111,9 +112,9 @@ async function updateSelectedProvider(providerId: string): Promise<void> {
     if (matching.length === 0) {
       throw new Error("No SMS wc-vendor configuration exists");
     }
-    for (const { pluginId, config } of matching) {
+    for (const { config } of matching) {
       await storage.pluginConfigs.update(config.id, {
-        enabled: pluginId === selected,
+        enabled: config.id === target.id,
       });
     }
   });
@@ -153,7 +154,28 @@ function sendConnection(res: Response, result: LegacyConnectionResult): void {
 export function registerTwilioRoutes(app: Express) {
   app.get("/api/config/sms", requireAccess("admin"), async (_req, res) => {
     try {
-      const vendor = await resolveSmsVendor();
+      const configs = await getSmsVendorConfigs();
+      const enabled = configs.filter((config) => config.enabled);
+      if (enabled.length > 1) {
+        throw new SmsVendorConfigurationError(
+          `Multiple enabled SMS wc-vendor configurations found (${enabled
+            .map((config) => config.id)
+            .join(", ")}).`,
+        );
+      }
+      const config = enabled[0];
+      if (!config) {
+        return res.json({
+          defaultProvider: null,
+          providers: SMS_PROVIDERS,
+          currentProvider: null,
+        });
+      }
+      const vendor = {
+        target: { configId: config.id },
+        pluginId: config.pluginId as "twilio" | "sms-local",
+        config,
+      };
       const connection = await testSmsVendor(vendor);
       const configuration =
         vendor.pluginId === "twilio" ? await readTwilioConfiguration(vendor) : {

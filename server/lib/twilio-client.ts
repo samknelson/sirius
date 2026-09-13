@@ -7,9 +7,8 @@ import { assertExternalServiceAllowed } from "../services/maintenance-flag";
 // memo, so a new value does not reach the sending path in this process.
 // (Testing the connection from the provider page clears the memo as a side
 // effect, but that is not something an operator editing a value can rely on.)
-// TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are also registered by
-// server/services/service-registry.ts and
-// server/services/comm/callback-handlers/twilio.ts — registration is
+// TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are also registered by the SMS
+// wc-vendor resolver and server/services/comm/callback-handlers/twilio.ts — registration is
 // last-one-wins, so all copies must carry the SAME classification.
 registerEnvironmentVariables([
   { name: "TWILIO_ACCOUNT_SID", description: "Twilio account SID for the SMS provider.", secret: false, category: "core", changeTakesEffect: "restart", },

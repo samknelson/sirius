@@ -70,7 +70,6 @@ const GUARD_MODULE = "server/services/maintenance-flag.ts";
  */
 const OUTBOUND_MODULES = [
   "server/lib/twilio-client.ts",
-  "server/services/comm/providers/sms/twilio.ts",
   "server/services/comm/validators/address.ts",
   "server/services/google-civics.ts",
   "server/services/google-geocode.ts",
@@ -455,12 +454,6 @@ const OFF_FRAMEWORK_FUNCTIONS: Record<string, Record<string, string>> = {
       "Reads Twilio credentials from the Replit connector endpoint, not from Twilio. It is " +
       "reached only from getTwilioClient(), which is itself an outbound call the framework " +
       "gates at every call site, so it cannot run during maintenance.",
-  },
-  "server/services/comm/providers/sms/twilio.ts": {
-    validatePhone:
-      "IS the work of a framework request — the cached phone-lookup entry registered in " +
-      "server/services/comm/validators/phone.ts, whose fetch callback calls this. The " +
-      "framework request is in that file, so it is not visible here.",
   },
 };
 

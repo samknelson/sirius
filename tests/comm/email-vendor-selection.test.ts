@@ -1,8 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   configs: [] as any[],
-  legacy: undefined as unknown,
   nextId: 1,
 }));
 
@@ -10,10 +9,6 @@ vi.mock("../../server/storage", () => ({
   storage: {
     advisoryLock: {
       withTransactionLock: async (_name: string, fn: () => Promise<unknown>) => fn(),
-    },
-    variables: {
-      getByName: async () =>
-        state.legacy === undefined ? undefined : { value: state.legacy },
     },
     pluginConfigs: {
       getByKind: async () => state.configs,
@@ -37,89 +32,28 @@ import {
   ensureEmailVendorConfig,
   setEmailVendor,
 } from "../../server/services/comm/email-vendor";
-import {
-  LEGACY_LOCAL_EMAIL_PLUGIN_ID,
-  LOCAL_EMAIL_PLUGIN_ID,
-} from "../../server/plugins/wc-vendors/plugins/email";
-import { setEnvironmentVariableOverrideSource } from "../../server/config/env-registry";
-
 beforeEach(() => {
   state.configs = [];
-  state.legacy = undefined;
   state.nextId = 1;
 });
 
-const environmentSnapshot = {
-  apiKey: process.env.SENDGRID_API_KEY,
-  fromEmail: process.env.SENDGRID_FROM_EMAIL,
-  fromName: process.env.SENDGRID_FROM_NAME,
-};
-
-afterEach(() => {
-  for (const [name, value] of [
-    ["SENDGRID_API_KEY", environmentSnapshot.apiKey],
-    ["SENDGRID_FROM_EMAIL", environmentSnapshot.fromEmail],
-    ["SENDGRID_FROM_NAME", environmentSnapshot.fromName],
-  ] as const) {
-    if (value === undefined) delete process.env[name];
-    else process.env[name] = value;
-  }
-  setEnvironmentVariableOverrideSource(null);
-});
-
-describe("email vendor upgrade and selection", () => {
-  it("migrates legacy local settings once and preserves the old provider id", async () => {
-    state.legacy = {
-      defaultProvider: LEGACY_LOCAL_EMAIL_PLUGIN_ID,
-      providers: {
-        [LEGACY_LOCAL_EMAIL_PLUGIN_ID]: {
-          settings: {
-            defaultFromEmail: "legacy@example.test",
-            defaultFromName: "Legacy Sender",
-          },
-        },
-      },
-    };
-
-    const first = await ensureEmailVendorConfig();
-    const second = await ensureEmailVendorConfig();
-
-    expect(first.id).toBe(second.id);
-    expect(state.configs).toHaveLength(1);
-    expect(first.pluginId).toBe(LOCAL_EMAIL_PLUGIN_ID);
-    expect(first.data).toMatchObject({
-      defaultFromEmail: "legacy@example.test",
-      defaultFromName: "Legacy Sender",
-    });
-  });
-
-  it("migrates an environment-only SendGrid installation by presence, never by copying the key", async () => {
-    process.env.SENDGRID_API_KEY = "do-not-copy-this-value";
-    process.env.SENDGRID_FROM_EMAIL = "env-sender@example.test";
-    process.env.SENDGRID_FROM_NAME = "Environment Sender";
-
-    const selected = await ensureEmailVendorConfig();
-
-    expect(selected.pluginId).toBe("sendgrid");
-    expect(selected.data).toMatchObject({
-      secretName: "SENDGRID_API_KEY",
-      defaultFromEmail: "env-sender@example.test",
-      defaultFromName: "Environment Sender",
-    });
-    expect(JSON.stringify(selected.data)).not.toContain("do-not-copy-this-value");
-  });
-
-  it("detects SendGrid from an effective in-app env override without persisting its value", async () => {
-    delete process.env.SENDGRID_API_KEY;
-    setEnvironmentVariableOverrideSource((name) =>
-      name === "SENDGRID_API_KEY" ? "override-key-do-not-copy" : undefined,
+describe("email vendor selection", () => {
+  it("requires an enabled canonical wc-vendor row", async () => {
+    await expect(ensureEmailVendorConfig()).rejects.toThrow(
+      "No enabled email wc-vendor configuration exists.",
     );
+    expect(state.configs).toHaveLength(0);
+  });
 
-    const selected = await ensureEmailVendorConfig();
+  it("creates a canonical row from an explicit administrator selection", async () => {
+    const selected = await setEmailVendor("sendgrid");
 
-    expect(selected.pluginId).toBe("sendgrid");
-    expect(selected.data).toMatchObject({ secretName: "SENDGRID_API_KEY" });
-    expect(JSON.stringify(selected.data)).not.toContain("override-key-do-not-copy");
+    expect(selected).toMatchObject({
+      pluginKind: "wc-vendors",
+      pluginId: "sendgrid",
+      enabled: true,
+      data: { secretName: "SENDGRID_API_KEY" },
+    });
   });
 
   it("fails explicitly instead of choosing between multiple enabled configs", async () => {

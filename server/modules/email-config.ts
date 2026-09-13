@@ -57,15 +57,23 @@ export function registerEmailConfigRoutes(app: Express) {
     requireAccess("admin"),
     async (_req: Request, res: Response) => {
       try {
-        const active = await ensureEmailVendorConfig();
-        const currentProvider = await vendorInfo(active);
         const configs = await getEmailVendorConfigs();
+        const enabled = configs.filter((config) => config.enabled);
+        if (enabled.length > 1) {
+          throw new Error(
+            `Multiple enabled email vendor configurations found (${enabled
+              .map((config) => config.id)
+              .join(", ")}). Select a target config ID.`,
+          );
+        }
+        const active = enabled[0];
+        const currentProvider = active ? await vendorInfo(active) : null;
         const providers = [
           { id: "sendgrid", displayName: "SendGrid Email", supportedFeatures: ["email", "email-validation", "delivery-status"] },
           { id: "local", displayName: "Local Email", supportedFeatures: ["email-validation"] },
         ];
         res.json({
-          defaultProvider: providerId(active.pluginId),
+          defaultProvider: active ? providerId(active.pluginId) : null,
           providers,
           currentProvider,
           configuredVendors: configs.map((config) => ({
@@ -217,14 +225,13 @@ export function registerEmailConfigRoutes(app: Express) {
     async (_req: Request, res: Response) => {
       try {
         const configs = await getEmailVendorConfigs();
-        const config =
-          configs.find((entry) => entry.pluginId === SENDGRID_EMAIL_PLUGIN_ID) ??
-          (await ensureEmailVendorConfig());
-        if (config.pluginId !== SENDGRID_EMAIL_PLUGIN_ID) {
+        const config = configs.find((entry) => entry.pluginId === SENDGRID_EMAIL_PLUGIN_ID);
+        if (!config) {
+          const active = configs.find((entry) => entry.enabled);
           return res.json({
             connected: false,
-            error: "SendGrid is not the active email provider",
-            currentProvider: providerId(config.pluginId),
+            error: "SendGrid is not configured",
+            currentProvider: active ? providerId(active.pluginId) : undefined,
           });
         }
         const result = await wcRequest({

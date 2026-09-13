@@ -12,9 +12,8 @@ export const LOCAL_EMAIL_PLUGIN_ID = "local-email";
 /** The pre-wc-vendor service registry used this provider id. */
 export const LEGACY_LOCAL_EMAIL_PLUGIN_ID = "local";
 
-// These declarations support migration of installations that predate named
-// secrets. The API key is only checked for presence by the migration bridge;
-// its value is never copied into plugin configuration.
+// Keep these registered names available to existing wc-vendor rows and sender
+// defaults. Credential values remain outside plugin configuration.
 registerEnvironmentVariables([
   {
     name: "SENDGRID_API_KEY",

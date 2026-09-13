@@ -19,7 +19,7 @@ interface EmailProviderInfo {
 }
 
 interface EmailConfig {
-  defaultProvider: string;
+  defaultProvider: string | null;
   providers: EmailProviderInfo[];
   currentProvider: {
     id: string;
@@ -33,7 +33,7 @@ interface EmailConfig {
       error?: string;
       details?: Record<string, unknown>;
     };
-  };
+  } | null;
 }
 
 interface SendGridInfo {

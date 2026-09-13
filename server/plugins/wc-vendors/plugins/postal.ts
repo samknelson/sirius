@@ -17,12 +17,11 @@ import { buildCanonicalAddress } from "../../../services/comm/providers/postal";
 import type { PostalVendorTypesLoaded } from "../postal-types";
 void (undefined as unknown as PostalVendorTypesLoaded);
 
-// Legacy migration reads this through the effective environment registry only
-// to detect whether an env-only Lob installation exists. Runtime credentials
-// still come exclusively from the named wc-vendor secret.
+// Existing Lob wc-vendor rows reference this registered secret name. Runtime
+// credentials come exclusively from the named secret.
 registerEnvironmentVariables([{
   name: "LOB_API_KEY",
-  description: "Legacy Lob API key used only to detect an env-only postal installation.",
+  description: "Lob API key referenced by postal wc-vendor configurations.",
   secret: true,
   category: "core",
   changeTakesEffect: "immediate",

@@ -32,7 +32,6 @@ import {
 } from "../../server/services/maintenance-flag";
 import { isMaintenanceActive as isMaintenanceActiveFromWriteLock } from "../../server/services/maintenance-mode";
 import type { PostalAddress } from "../../server/services/comm/providers/postal";
-import { LocalSmsProvider } from "../../server/services/comm/providers/sms/local";
 import { LocalEmailProvider } from "../../server/services/comm/providers/email/local";
 import { addressValidationService } from "../../server/services/comm/validators/address";
 import { lookupRepresentatives } from "../../server/services/google-civics";
@@ -306,7 +305,6 @@ describe("with maintenance ON, no vendor is reached", () => {
   });
 
   it("local providers keep working — they call nothing external", async () => {
-    await expect(new LocalSmsProvider().testConnection()).resolves.toMatchObject({ success: true });
     await expect(new LocalEmailProvider().testConnection()).resolves.toMatchObject({
       success: true,
     });

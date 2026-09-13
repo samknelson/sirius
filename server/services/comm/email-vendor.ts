@@ -6,16 +6,8 @@ import {
   SENDGRID_EMAIL_PLUGIN_ID,
 } from "../../plugins/wc-vendors/plugins/email";
 import type { WcVendorTarget } from "../webclient";
-import {
-  getEnvironmentVariable,
-} from "../../config/env-registry";
 
 const EMAIL_VENDOR_LOCK = "wc-vendors:email-selection";
-
-type LegacyEmailConfig = {
-  defaultProvider?: string;
-  providers?: Record<string, { settings?: Record<string, unknown> }>;
-};
 
 function isEmailPlugin(config: PluginConfig): boolean {
   return (
@@ -39,31 +31,9 @@ function normalizeEmailPluginId(pluginId: string): string {
     : pluginId;
 }
 
-async function legacyConfig(): Promise<LegacyEmailConfig> {
-  const variable = await storage.variables.getByName("service_config:email");
-  if (!variable?.value || typeof variable.value !== "object") return {};
-  return variable.value as LegacyEmailConfig;
-}
-
-function legacySettings(
-  config: LegacyEmailConfig,
-  providerId: string,
-): Record<string, unknown> {
-  const ids = isLocalEmailPluginId(providerId)
-    ? [LEGACY_LOCAL_EMAIL_PLUGIN_ID, LOCAL_EMAIL_PLUGIN_ID]
-    : [providerId];
-  for (const id of ids) {
-    const settings = config.providers?.[id]?.settings;
-    if (settings && typeof settings === "object") return settings;
-  }
-  return {};
-}
-
 function sendGridData(
-  legacy: LegacyEmailConfig,
   existingData: Record<string, unknown> = {},
 ): Record<string, unknown> {
-  const settings = legacySettings(legacy, SENDGRID_EMAIL_PLUGIN_ID);
   const data: Record<string, unknown> =
     existingData && typeof existingData === "object" && !Array.isArray(existingData)
       ? { ...existingData }
@@ -71,23 +41,17 @@ function sendGridData(
   const secretName =
     typeof data.secretName === "string" && data.secretName.trim()
       ? data.secretName.trim()
-      : typeof settings.secretName === "string" && settings.secretName.trim()
-        ? settings.secretName.trim()
-        : "SENDGRID_API_KEY";
+      : "SENDGRID_API_KEY";
   data.secretName = secretName;
 
   const fromEmail =
     typeof data.defaultFromEmail === "string" && data.defaultFromEmail.trim()
       ? data.defaultFromEmail.trim()
-      : typeof settings.defaultFromEmail === "string" && settings.defaultFromEmail.trim()
-        ? settings.defaultFromEmail.trim()
-        : getEnvironmentVariable("SENDGRID_FROM_EMAIL")?.trim();
+      : undefined;
   const fromName =
     typeof data.defaultFromName === "string" && data.defaultFromName.trim()
       ? data.defaultFromName.trim()
-      : typeof settings.defaultFromName === "string" && settings.defaultFromName.trim()
-        ? settings.defaultFromName.trim()
-        : getEnvironmentVariable("SENDGRID_FROM_NAME")?.trim();
+      : undefined;
   if (fromEmail) data.defaultFromEmail = fromEmail;
   if (fromName) data.defaultFromName = fromName;
   return data;
@@ -124,75 +88,11 @@ async function ensureEmailVendorConfigLocked(): Promise<PluginConfig> {
   );
   const enabled = assertAtMostOneEnabled(configs);
   if (enabled) return enabled;
-
-  const legacy = await legacyConfig();
-  const legacyProvider =
-    legacy.defaultProvider === SENDGRID_EMAIL_PLUGIN_ID
-      ? SENDGRID_EMAIL_PLUGIN_ID
-      : isLocalEmailPluginId(legacy.defaultProvider ?? "")
-        ? LOCAL_EMAIL_PLUGIN_ID
-        : undefined;
-  // Read the effective registry value only to determine presence. The value
-  // may come from the deployment environment or an in-app override, but it
-  // is never assigned to config, logged, or included in an error.
-  const environmentSendGrid =
-    legacyProvider === undefined &&
-    Boolean(getEnvironmentVariable("SENDGRID_API_KEY")?.trim());
-  const preferred =
-    legacyProvider ??
-    (environmentSendGrid ? SENDGRID_EMAIL_PLUGIN_ID : LOCAL_EMAIL_PLUGIN_ID);
-
-  const matching = configs.filter(
-    (config) => normalizeEmailPluginId(config.pluginId) === preferred,
-  );
-  if (matching.length > 1) {
-    throw new Error(
-      `Multiple disabled email vendor configurations exist for "${preferred}" ` +
-        `(${matching.map((config) => config.id).join(", ")}); select a target config ID.`,
-    );
-  }
-  const existingPreferred = matching[0];
-  if (existingPreferred) {
-    const update: Record<string, unknown> = { enabled: true };
-    if (preferred === SENDGRID_EMAIL_PLUGIN_ID) {
-      update.data = sendGridData(legacy, (existingPreferred.data ?? {}) as Record<string, unknown>);
-    }
-    return (
-      (await storage.pluginConfigs.update(existingPreferred.id, update)) ??
-      existingPreferred
-    );
-  }
-
-  const settings = legacySettings(legacy, preferred);
-  const data =
-    preferred === SENDGRID_EMAIL_PLUGIN_ID
-      ? sendGridData(legacy)
-      : {
-          ...(settings.defaultFromEmail
-            ? { defaultFromEmail: settings.defaultFromEmail }
-            : {}),
-          ...(settings.defaultFromName
-            ? { defaultFromName: settings.defaultFromName }
-            : {}),
-        };
-
-  const created = await storage.pluginConfigs.create({
-    pluginKind: "wc-vendors",
-    pluginId: preferred,
-    enabled: true,
-    name: preferred === SENDGRID_EMAIL_PLUGIN_ID ? "SendGrid Email" : "Local Email",
-    ordering: 0,
-    data,
-  });
-  await storage.pluginConfigs.upsertSubsidiary("wc-vendors", { id: created.id });
-  return created;
+  throw new Error("No enabled email wc-vendor configuration exists.");
 }
 
 /**
- * Return the configured email vendor, creating one compatibility row for
- * installations that still only have the pre-wc-vendor service setting.
- * Keeping this bridge here lets background senders work before an administrator
- * visits the new configuration page.
+ * Return the configured canonical email wc-vendor selection.
  */
 export async function ensureEmailVendorConfig(): Promise<PluginConfig> {
   return storage.advisoryLock.withTransactionLock(
@@ -229,14 +129,12 @@ export async function setEmailVendor(
     // than one enabled row: validate that exact row, then disable the others.
     // Without a target, migration/selection must refuse ambiguous state.
     let configs = await getEmailVendorConfigs();
-    const legacy = await legacyConfig();
     if (!targetConfigId) {
-      // This also performs legacy migration while holding the same lock. It
-      // makes first-use migration and an administrator's provider switch
-      // serialize across processes.
-      await ensureEmailVendorConfigLocked();
-      configs = await getEmailVendorConfigs();
-      assertAtMostOneEnabled(configs);
+      if (!normalized) {
+        await ensureEmailVendorConfigLocked();
+        configs = await getEmailVendorConfigs();
+        assertAtMostOneEnabled(configs);
+      }
     }
 
     let selected = targetConfigId
@@ -277,7 +175,7 @@ export async function setEmailVendor(
         ordering: 0,
         data:
           normalized === SENDGRID_EMAIL_PLUGIN_ID
-            ? sendGridData(legacy)
+            ? sendGridData()
             : {},
       });
       await storage.pluginConfigs.upsertSubsidiary("wc-vendors", { id: selected.id });
@@ -296,7 +194,7 @@ export async function setEmailVendor(
     if (normalizeEmailPluginId(selected.pluginId) === SENDGRID_EMAIL_PLUGIN_ID) {
       selected =
         (await storage.pluginConfigs.update(selected.id, {
-          data: sendGridData(legacy, (selected.data ?? {}) as Record<string, unknown>),
+          data: sendGridData((selected.data ?? {}) as Record<string, unknown>),
         })) ?? selected;
       usableSendGridData(selected);
     }
