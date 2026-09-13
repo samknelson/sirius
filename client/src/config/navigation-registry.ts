@@ -221,7 +221,7 @@ export const configSections: NavSection[] = [
     items: [
       { path: "/config/edls/settings", label: "Settings", icon: Settings, testId: "nav-config-edls-settings", permission: "admin", requiresComponent: "edls" },
       bespokeOptionsNavItem({ path: "/config/edls/tasks", optionsType: "edls-task", icon: List, testId: "nav-config-edls-tasks", permission: "admin", requiresComponent: "edls" }),
-      { path: "/config/edls/t631-fetch", label: "Teamsters 631 Fetch", icon: Zap, testId: "nav-config-edls-t631-fetch", permission: "admin", requiresComponents: ["edls", "sitespecific.t631.client"] },
+      { path: "/config/edls/t631-fetch", label: "Teamsters 631 Sync", icon: Zap, testId: "nav-config-edls-t631-fetch", permission: "admin", requiresComponents: ["edls", "sitespecific.t631.client"] },
       { path: "/config/edls/t631-ms", label: "Teamsters 631 MS", icon: List, testId: "nav-config-edls-t631-ms", permission: "admin", requiresComponents: ["edls", "sitespecific.t631.client"] },
       { path: "/admin/sitespecific/freeman/edls/migrate", label: "Freeman Migration", icon: Server, testId: "nav-config-edls-freeman-migrate", permission: "admin", requiresComponents: ["edls", "sitespecific.freeman.edls_migrate"] },
     ],

@@ -35,7 +35,7 @@ export const T631_COMPONENT = "sitespecific.t631.client";
  * merging (see `WcVendorOperations`). The operation name IS the remote action
  * name, and it is also the web client request type the registry registers, so
  * these calls keep the exact framework identity they had before this plugin
- * existed — the same names on the usage figures and in the diagnostics.
+ * existed — the same names on the usage figures and in the shared manual runner.
  */
 const t631RemoteOperations = {
   sirius_service_ping: {
@@ -125,7 +125,7 @@ export interface T631ResponseDiagnostics {
 
 /**
  * What one remote action produced, including enough of the request to diagnose
- * it. The admin diagnostics page renders this shape directly, so it is the
+ * it. The shared WC manual runner renders this shape directly, so it is the
  * plugin's published result and not an internal detail.
  */
 export interface T631FetchResult {
