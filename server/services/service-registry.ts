@@ -7,21 +7,6 @@ import type {
   ProviderFactory 
 } from './comm/providers/base';
 import { getConfigKey, categoryConfigSchema } from './comm/providers/base';
-import { getEnvironmentVariable, registerEnvironmentVariables } from "../config/env-registry";
-
-// changeTakesEffect: "restart" for all three. This module only reads them to
-// pick a default provider, but each value is memoized further down by the
-// provider that actually uses it (the Twilio credentials cache in
-// server/lib/twilio-client.ts, the SendGrid client initialized once per
-// provider instance), so a change does not reach the sending path in this
-// process. Registration is last-one-wins across modules, so these must match
-// the classifications in twilio-client.ts, the Twilio callback handler, and
-// the SendGrid provider.
-registerEnvironmentVariables([
-  { name: "TWILIO_ACCOUNT_SID", description: "Twilio account SID for the SMS provider.", secret: false, category: "core", changeTakesEffect: "restart", },
-  { name: "TWILIO_AUTH_TOKEN", description: "Twilio auth token for the SMS provider (also validates status callbacks).", secret: true, category: "core", changeTakesEffect: "restart", },
-  { name: "SENDGRID_API_KEY", description: "SendGrid API key for the sendgrid email provider.", secret: true, category: "core", changeTakesEffect: "restart", },
-]);
 
 type ProviderMap<T extends ServiceProvider> = Map<string, ProviderFactory<T>>;
 
@@ -181,29 +166,6 @@ class ServiceRegistry {
     const registeredProviders = this.getRegisteredProviders(category);
     
     let defaultProvider = registeredProviders[0] || '';
-    
-    if (category === 'sms') {
-      const hasTwilioCredentials = !!(
-        getEnvironmentVariable("TWILIO_ACCOUNT_SID") && 
-        getEnvironmentVariable("TWILIO_AUTH_TOKEN")
-      );
-      
-      if (!hasTwilioCredentials && registeredProviders.includes('local')) {
-        defaultProvider = 'local';
-      } else if (hasTwilioCredentials && registeredProviders.includes('twilio')) {
-        defaultProvider = 'twilio';
-      }
-    }
-
-    if (category === 'email') {
-      const hasSendGridCredentials = !!getEnvironmentVariable("SENDGRID_API_KEY");
-      
-      if (!hasSendGridCredentials && registeredProviders.includes('local')) {
-        defaultProvider = 'local';
-      } else if (hasSendGridCredentials && registeredProviders.includes('sendgrid')) {
-        defaultProvider = 'sendgrid';
-      }
-    }
     
     const providers: Record<string, ProviderConfig> = {};
     for (const providerId of registeredProviders) {

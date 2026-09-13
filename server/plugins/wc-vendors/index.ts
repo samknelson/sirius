@@ -184,3 +184,7 @@ import "./plugins/stripe";
 import "./plugins/dummy";
 import "./plugins/sitespecific-t631";
 import "./plugins/sitespecific-freeman-edls-migrate";
+import "./plugins/postal";
+import "./plugins/email";
+import "./plugins/sms-twilio";
+import "./plugins/sms-local";

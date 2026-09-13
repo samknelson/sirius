@@ -71,8 +71,6 @@ const GUARD_MODULE = "server/services/maintenance-flag.ts";
 const OUTBOUND_MODULES = [
   "server/lib/twilio-client.ts",
   "server/services/comm/providers/sms/twilio.ts",
-  "server/services/comm/providers/email/sendgrid.ts",
-  "server/services/comm/providers/postal/lob.ts",
   "server/services/comm/validators/address.ts",
   "server/services/google-civics.ts",
   "server/services/google-geocode.ts",
@@ -139,6 +137,15 @@ const VENDOR_MARKER_EXEMPT: Record<string, string> = {
   "server/services/comm/callback-handlers/twilio.ts":
     "Imports the Twilio SDK only for twilio.validateRequest(), an offline signature " +
     "check over an INBOUND webhook. It sends nothing and reaches no network.",
+  "server/plugins/wc-vendors/plugins/postal.ts":
+    "The Lob endpoints are called only by registered wc-vendor operation handlers; " +
+    "HANDLERS_ON_FRAMEWORK audits that delegation and the framework supplies refusal.",
+  "server/plugins/wc-vendors/plugins/email.ts":
+    "The SendGrid SDK is called only by registered wc-vendor operation handlers; " +
+    "HANDLERS_ON_FRAMEWORK audits that delegation and the framework supplies refusal.",
+  "server/plugins/wc-vendors/plugins/sms-twilio.ts":
+    "The Twilio SDK is called only by registered wc-vendor operation handlers; " +
+    "HANDLERS_ON_FRAMEWORK audits that delegation and the framework supplies refusal.",
 };
 
 /**
@@ -455,12 +462,6 @@ const OFF_FRAMEWORK_FUNCTIONS: Record<string, Record<string, string>> = {
       "server/services/comm/validators/phone.ts, whose fetch callback calls this. The " +
       "framework request is in that file, so it is not visible here.",
   },
-  "server/services/comm/providers/postal/lob.ts": {
-    verifyAddress:
-      "Cacheable, and the only one of the address lookups still off the framework: the " +
-      "Google validation, parsing and geocoding that surround it are now cached entries, " +
-      `and this one follows them. Guarded by ${GUARD_FN}() until it does.`,
-  },
 };
 
 /**
@@ -517,6 +518,21 @@ const HANDLERS_ON_FRAMEWORK: Record<
     handlerContainers: ["operations", "remoteOperations"],
     handlerProperty: "run",
     vendorIdentifiers: ["fetch"],
+  },
+  "server/plugins/wc-vendors/plugins/postal.ts": {
+    handlerContainers: ["operations"],
+    handlerProperty: "run",
+    vendorIdentifiers: ["fetch"],
+  },
+  "server/plugins/wc-vendors/plugins/email.ts": {
+    handlerContainers: ["sendGridOperations"],
+    handlerProperty: "run",
+    vendorIdentifiers: ["sgMail"],
+  },
+  "server/plugins/wc-vendors/plugins/sms-twilio.ts": {
+    handlerContainers: ["operations"],
+    handlerProperty: "run",
+    vendorIdentifiers: ["client"],
   },
 };
 

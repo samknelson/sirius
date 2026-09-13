@@ -1,5 +1,3 @@
-import type { ServiceProvider, ConnectionTestResult } from '../base';
-
 export interface PostalAddress {
   name?: string;
   company?: string;
@@ -104,33 +102,6 @@ export interface PostalTemplate {
   dateCreated: Date;
   dateModified: Date;
   metadata?: Record<string, string>;
-}
-
-export interface PostalTransport extends ServiceProvider {
-  readonly category: 'postal';
-  
-  verifyAddress(address: PostalAddress): Promise<AddressVerificationResult>;
-  
-  sendLetter(params: SendLetterParams): Promise<LetterSendResult>;
-  
-  getLetterStatus?(letterId: string): Promise<{
-    status: string;
-    trackingEvents: LetterTrackingEvent[];
-  }>;
-  
-  cancelLetter?(letterId: string): Promise<{ success: boolean; error?: string }>;
-  
-  supportsPostal(): boolean;
-  
-  getDefaultReturnAddress(): Promise<PostalAddress | undefined>;
-  setDefaultReturnAddress?(address: PostalAddress): Promise<void>;
-  
-  listTemplates?(): Promise<PostalTemplate[]>;
-}
-
-export interface PostalProviderSettings {
-  defaultReturnAddress?: PostalAddress;
-  [key: string]: unknown;
 }
 
 export function buildCanonicalAddress(address: PostalAddress): string {

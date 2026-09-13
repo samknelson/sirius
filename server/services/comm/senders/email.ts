@@ -1,14 +1,23 @@
-import { serviceRegistry } from '../../service-registry';
 import { getSystemMode } from '../../system-mode';
 import { createCommStorage, createCommEmailStorage, createCommEmailOptinStorage } from '../../../storage/comm';
 import { storage } from '../../../storage';
 import { runInTransaction } from '../../../storage/transaction-context';
-import type { EmailTransport, EmailRecipient } from '../providers/email';
 import type { Comm, CommEmail } from '@shared/schema';
 import { logger } from '../../../logger';
 import { buildStatusCallbackUrl } from '../callback-handlers/url-builder';
 import { isMaintenanceModeError } from "../../maintenance-flag";
 import { ALREADY_SENT, findSentWithKey, type AlreadySentCode } from '../send-key';
+import { wcRequest } from "../../webclient";
+import {
+  emailVendorTarget,
+  ensureEmailVendorConfig,
+} from "../email-vendor";
+import { getWcVendorPlugin } from "../../../plugins/wc-vendors";
+import type {
+  EmailRecipient,
+  EmailSendArgs,
+  EmailSendResult as VendorEmailSendResult,
+} from "../../../plugins/wc-vendors/plugins/email";
 
 export interface SendEmailRequest {
   contactId: string;
@@ -119,21 +128,27 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
   }
 
   try {
-    const emailTransport = await serviceRegistry.resolve<EmailTransport>('email');
-
-    if (!emailTransport.supportsEmail()) {
+    const emailVendorConfig = await ensureEmailVendorConfig();
+    const vendor = emailVendorTarget(emailVendorConfig);
+    const emailVendor = getWcVendorPlugin(emailVendorConfig.pluginId);
+    if (!emailVendor?.operations["send-email"]) {
       return {
         success: false,
-        error: 'Email sending is not supported by the current provider. Configure a provider with email capability (e.g., SendGrid).',
-        errorCode: 'EMAIL_NOT_SUPPORTED',
+        error:
+          "Email sending is not supported by the current provider. Configure a provider with email delivery capability (e.g., SendGrid).",
+        errorCode: "EMAIL_NOT_SUPPORTED",
       };
     }
-
-    const validationResult = await emailTransport.validateEmail(toEmail);
-    if (!validationResult.valid || !validationResult.formatted) {
+    const validation = await wcRequest({
+      vendor,
+      operation: "validate-email",
+      args: { email: toEmail },
+    });
+    const validationResult = validation.value;
+    if (!validationResult?.valid || !validationResult.formatted) {
       return {
         success: false,
-        error: `Invalid email address: ${validationResult.error || 'Unknown validation error'}`,
+        error: `Invalid email address: ${validationResult?.error || validation.error || 'Unknown validation error'}`,
         errorCode: 'VALIDATION_ERROR',
       };
     }
@@ -149,7 +164,12 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
     if (fromEmail) {
       fromRecipient = { email: fromEmail, name: fromName };
     } else {
-      fromRecipient = await emailTransport.getDefaultFromAddress();
+      const defaultFrom = await wcRequest({
+        vendor,
+        operation: "get-default-from",
+        args: undefined,
+      });
+      fromRecipient = defaultFrom.value;
     }
 
     // This insert is the send-once claim: if a key was supplied and it is
@@ -256,7 +276,7 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
     const statusCallbackUrl = buildStatusCallbackUrl(comm.id);
 
     try {
-      const sendResult = await emailTransport.sendEmail({
+      const sendArgs: EmailSendArgs = {
         to: toRecipient,
         from: fromRecipient,
         replyTo: replyTo ? { email: replyTo } : undefined,
@@ -264,7 +284,16 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
         text: bodyText,
         html: bodyHtml,
         statusCallbackUrl,
+      };
+      const vendorResult = await wcRequest({
+        vendor,
+        operation: "send-email",
+        args: sendArgs,
       });
+      const sendResult: VendorEmailSendResult = vendorResult.value ?? {
+        success: false,
+        error: vendorResult.error || "Email provider did not return a result",
+      };
 
       if (!sendResult.success) {
         await commStorage.updateComm(comm.id, {

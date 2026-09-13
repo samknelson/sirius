@@ -1,5 +1,4 @@
 import { parsePhoneNumber, CountryCode, PhoneNumber } from 'libphonenumber-js';
-import { serviceRegistry } from '../../service-registry';
 import { phoneOptinValidation } from '../../../storage/phone-optin-validation';
 import { runOutsideTransaction } from '../../../storage/transaction-context';
 import { registerWcRequest, wcRequest, type WcRequestMode, type WcResult } from '../../webclient';
@@ -16,7 +15,8 @@ import {
   revalidateAfterDays,
   type PhoneValidationSettings,
 } from './phone-validation-settings';
-import type { SmsTransport } from '../providers/sms';
+import { resolveSmsVendor } from "../sms-vendor";
+import type { SmsValidatePhoneResult } from "../../../plugins/wc-vendors/sms-types";
 
 export { DEFAULT_REVALIDATE_AFTER_DAYS };
 
@@ -138,17 +138,17 @@ export class PhoneValidationService {
     // never has a cached answer either. Retrying it costs nothing.
     if (!local.isValid || !local.e164Format) return local;
 
-    let smsTransport: SmsTransport;
+    let smsVendor: Awaited<ReturnType<typeof resolveSmsVendor>>;
     try {
-      smsTransport = await serviceRegistry.resolve<SmsTransport>('sms');
+      smsVendor = await resolveSmsVendor();
     } catch (error) {
-      console.error('Failed to resolve SMS provider, using local validation:', error);
+      console.error('Failed to resolve SMS vendor, using local validation:', error);
       return local;
     }
 
-    // Only the Twilio provider makes a billable external call; the local
-    // provider's validatePhone is the same libphonenumber parse we just did.
-    if (smsTransport.id !== 'twilio') return local;
+    // Only Twilio makes a billable external call; Local is the same
+    // libphonenumber parse we just did.
+    if (smsVendor.pluginId !== "twilio") return local;
 
     const e164 = local.e164Format;
     const args: PhoneLookupArgs = { phoneNumber: e164 };
@@ -166,7 +166,7 @@ export class PhoneValidationService {
         requestType: PHONE_LOOKUP_REQUEST_TYPE,
         args,
         mode: wcMode,
-        fetch: () => this.lookupWithProvider(smsTransport, local, e164),
+        fetch: () => this.lookupWithVendor(smsVendor.target, local, e164),
       });
     } catch (error) {
       if (!isMaintenanceModeError(error)) throw error;
@@ -208,14 +208,26 @@ export class PhoneValidationService {
    * swallows its own transport errors and answers with a locally-derived
    * result instead.
    */
-  private async lookupWithProvider(
-    smsTransport: SmsTransport,
+  private async lookupWithVendor(
+    vendor: Awaited<ReturnType<typeof resolveSmsVendor>>["target"],
     local: PhoneValidationResult,
     e164: string,
   ): Promise<{ answered: boolean; value?: PhoneValidationResult; error?: string; store?: boolean }> {
-    let result: Awaited<ReturnType<SmsTransport['validatePhone']>>;
+    let result: SmsValidatePhoneResult;
     try {
-      result = await smsTransport.validatePhone(e164);
+      const response = await wcRequest({
+        vendor,
+        operation: "validate-phone",
+        args: { phoneNumber: e164 },
+      });
+      if (response.outcome !== "success" || !response.value) {
+        return {
+          answered: false,
+          value: local,
+          error: response.error || "Provider validation failed",
+        };
+      }
+      result = response.value;
     } catch (error) {
       if (isMaintenanceModeError(error)) throw error;
       console.error('Provider validation failed:', error);

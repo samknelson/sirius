@@ -1,14 +1,15 @@
-import { serviceRegistry } from '../../service-registry';
 import { getSystemMode } from '../../system-mode';
 import { createCommStorage, createCommSmsStorage, createCommSmsOptinStorage } from '../../../storage/comm';
 import { storage } from '../../../storage';
 import { runInTransaction } from '../../../storage/transaction-context';
 import { buildStatusCallbackUrl } from '../callback-handlers/url-builder';
 import { phoneValidationService } from '../validators/phone';
-import type { SmsTransport } from '../providers/sms';
 import type { Comm, CommSms } from '@shared/schema';
 import { isMaintenanceModeError } from "../../maintenance-flag";
 import { ALREADY_SENT, findSentWithKey, type AlreadySentCode } from '../send-key';
+import { wcRequest } from "../../webclient";
+import { resolveSmsVendor } from "../sms-vendor";
+import type { SmsSendResult } from "../../../plugins/wc-vendors/sms-types";
 
 export interface SendSmsRequest {
   contactId: string;
@@ -104,9 +105,8 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
   }
 
   try {
-    const smsTransport = await serviceRegistry.resolve<SmsTransport>('sms');
-
-    if (!smsTransport.supportsSms()) {
+    const smsVendor = await resolveSmsVendor();
+    if (smsVendor.pluginId !== "twilio") {
       return {
         success: false,
         error: 'SMS sending is not supported by the current provider. Configure a provider with SMS capability (e.g., Twilio).',
@@ -230,16 +230,29 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
     }
 
     try {
-      const fromNumber = await smsTransport.getDefaultFromNumber();
-
       const statusCallbackUrl = buildStatusCallbackUrl(comm.id);
 
-      const sendResult = await smsTransport.sendSms({
-        to: normalizedPhone,
-        body: message,
-        from: fromNumber,
-        statusCallbackUrl,
-      });
+      let sendResult: SmsSendResult;
+      if (smsVendor.pluginId !== "twilio") {
+        sendResult = {
+          success: false,
+          error: "SMS delivery requires Twilio; the local SMS vendor only validates phone numbers.",
+        };
+      } else {
+        const sendResponse = await wcRequest({
+          vendor: smsVendor.target,
+          operation: "send-sms",
+          args: {
+            to: normalizedPhone,
+            body: message,
+            statusCallbackUrl,
+          },
+        });
+        sendResult = sendResponse.value ?? {
+          success: false,
+          error: sendResponse.error || "Failed to send SMS",
+        };
+      }
 
       if (!sendResult.success) {
         await commStorage.updateComm(comm.id, {

@@ -2,7 +2,6 @@ import { buildCanonicalAddress } from '../providers/postal';
 import type {
   AddressVerificationResult,
   PostalAddress,
-  PostalTransport,
 } from '../providers/postal';
 import { registerWcRequest, wcRequest, type WcAnswer, type WcRequestMode } from '../../webclient';
 import { isMaintenanceModeError } from '../../maintenance-flag';
@@ -12,6 +11,11 @@ import {
   addressVerificationRequestKey,
   type AddressVerificationArgs,
 } from './address-verification-request';
+import {
+  postalPluginIdForTarget,
+  postalRequest,
+} from "../postal-vendor";
+import type { WcVendorTarget } from "../../webclient";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -87,7 +91,7 @@ export interface VerifyPostalAddressOptions {
  * into an address Lob judged undeliverable.
  */
 export async function verifyPostalAddress(
-  transport: PostalTransport,
+  transportOrVendor: WcVendorTarget,
   address: PostalAddress,
   options?: VerifyPostalAddressOptions,
 ): Promise<PostalVerification> {
@@ -95,8 +99,11 @@ export async function verifyPostalAddress(
   // is a format check we could run for free any number of times, and storing
   // its verdict would stamp an address as vendor-verified on the strength of
   // a call that was never made.
-  if (transport.id !== LOB_PROVIDER_ID) {
-    return { ...(await transport.verifyAddress(address)), fromNetwork: true, verifiedAt: new Date() };
+  const pluginId = await postalPluginIdForTarget(transportOrVendor);
+
+  if (pluginId !== LOB_PROVIDER_ID) {
+    const result = await postalRequest(pluginId, "verify-address", address);
+    return { ...result, fromNetwork: true, verifiedAt: new Date() };
   }
 
   const args: AddressVerificationArgs = { canonicalAddress: buildCanonicalAddress(address) };
@@ -106,7 +113,7 @@ export async function verifyPostalAddress(
     requestType: ADDRESS_VERIFICATION_REQUEST_TYPE,
     args,
     mode: options?.mode,
-    fetch: () => verifyWithVendor(transport, address),
+    fetch: () => verifyWithVendor(transportOrVendor, address),
   });
 
   if (result.outcome === 'success' && result.value) {
@@ -143,12 +150,12 @@ export async function verifyPostalAddress(
  * never landed.
  */
 async function verifyWithVendor(
-  transport: PostalTransport,
+  transportOrVendor: WcVendorTarget,
   address: PostalAddress,
 ): Promise<WcAnswer<AddressVerificationResult>> {
   let result: AddressVerificationResult;
   try {
-    result = await transport.verifyAddress(address);
+    result = await postalRequest(transportOrVendor, "verify-address", address);
   } catch (error) {
     if (isMaintenanceModeError(error)) throw error;
     return {

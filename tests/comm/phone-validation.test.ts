@@ -32,16 +32,54 @@ const lookup = vi.fn(async (phoneNumber: string) => ({
 
 let providerId = 'twilio';
 
-const getProviderSettings = vi.fn(
-  async (_category: string, provider: string) => providerSettings[provider],
+const getPluginConfigs = vi.fn(
+  async (_kind: string, pluginId: string) => [{
+    id: `test-${pluginId}`,
+    pluginKind: 'wc-vendors',
+    pluginId,
+    enabled: pluginId === 'twilio' ? providerId === 'twilio' : providerId === 'local',
+    name: pluginId,
+    siriusId: null,
+    ordering: 0,
+    isSingleton: false,
+    data: providerSettings[pluginId === 'sms-local' ? 'local' : pluginId],
+  }],
 );
 
-vi.mock('../../server/services/service-registry', () => ({
-  serviceRegistry: {
-    resolve: async () => ({ id: providerId, validatePhone: lookup }),
-    getProviderSettings: (category: string, provider: string) =>
-      getProviderSettings(category, provider),
+const resolveSmsVendor = vi.fn(async () => ({
+  target: { pluginId: providerId === 'twilio' ? 'twilio' : 'sms-local' },
+  pluginId: providerId === 'twilio' ? 'twilio' : 'sms-local',
+  config: {
+    id: `test-${providerId}`,
+    pluginId: providerId === 'twilio' ? 'twilio' : 'sms-local',
   },
+}));
+
+vi.mock('../../server/services/comm/sms-vendor', () => ({
+  ensureSmsVendorConfig: vi.fn(async () => undefined),
+  resolveSmsVendor,
+}));
+
+vi.mock('../../server/storage', () => ({
+  storage: {
+    pluginConfigs: {
+      getByKindAndPlugin: getPluginConfigs,
+    },
+  },
+}));
+
+/**
+ * The paid lookup itself is now a wc-vendor operation. Keep the real webclient
+ * transport/cache wrapper under test, and replace only the vendor context
+ * (which would otherwise resolve a real Twilio config and SDK).
+ */
+vi.mock('../../server/services/webclient/wc-vendor-context', () => ({
+  runWcVendorRequest: async (options: any) => ({
+    source: 'network',
+    outcome: 'success',
+    fresh: false,
+    value: await lookup(options.args.phoneNumber),
+  }),
 }));
 
 /**
@@ -124,6 +162,9 @@ const { resetUnstorableHolds } = await import('../../server/services/webclient')
 const { resetPhoneValidationSettings } = await import(
   '../../server/services/comm/validators/phone-validation-settings'
 );
+const { getPhoneValidationSettings } = await import(
+  '../../server/services/comm/validators/phone-validation-settings'
+);
 const { PhoneValidationService, DEFAULT_REVALIDATE_AFTER_DAYS } = await import(
   '../../server/services/comm/validators/phone'
 );
@@ -136,7 +177,8 @@ let service: InstanceType<typeof PhoneValidationService>;
 beforeEach(() => {
   lookup.mockClear();
   canStore.mockClear();
-  getProviderSettings.mockClear();
+  getPluginConfigs.mockClear();
+  resolveSmsVendor.mockClear();
   optinWrite.mockClear();
   store.clear();
   // The settings memo and the "paid for it, could not store it" hold both
@@ -298,8 +340,32 @@ describe('phone validation call frequency', () => {
     for (let i = 0; i < 10; i++) {
       await service.validateAndFormat(NUMBER, { revalidate: 'never' });
     }
-    // One read of each provider's settings for the whole run, not ten.
-    expect(getProviderSettings).toHaveBeenCalledTimes(2);
+    // One read of each vendor's settings for the whole run, not ten.
+    expect(getPluginConfigs).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads local and Twilio settings even when local is selected', async () => {
+    providerId = 'local';
+    providerSettings.local = {
+      phoneValidation: { defaultCountry: 'GB', strictValidation: false },
+    };
+    providerSettings.twilio = {
+      phoneValidation: {
+        revalidateAfterDays: 7,
+        useLocalOnTwilioFailure: false,
+        logValidationAttempts: false,
+      },
+    };
+
+    await expect(getPhoneValidationSettings()).resolves.toMatchObject({
+      defaultCountry: 'GB',
+      strictValidation: false,
+      revalidateAfterDays: 7,
+      useLocalOnTwilioFailure: false,
+      logValidationAttempts: false,
+    });
+    expect(getPluginConfigs).toHaveBeenCalledWith('wc-vendors', 'sms-local');
+    expect(getPluginConfigs).toHaveBeenCalledWith('wc-vendors', 'twilio');
   });
 
   it('does not cache a number the provider rejects', async () => {

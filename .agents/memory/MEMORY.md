@@ -129,3 +129,4 @@
 - [Default connection + manual T631 cutover](default-connection-and-boot-seeding.md) — refuse ambiguous defaults; T631 has no legacy fallback, migration, startup blocker, or boot seed.
 - [WC vendor declaration contract](wc-vendor-declaration-contract.md) — operations are one typed map; credential secret-name requirements are framework-owned (`required`/`optional`/`none`).
 - [Permanent test cost](permanent-test-cost.md) — propose tests only when regression value clearly justifies maintaining and running them on every build; do not default to UI tests.
+- [Comm vendor cutovers](comm-vendor-cutovers.md) — local plugins omit delivery operations; legacy migrations preserve effective env/override selections without copying credential values.

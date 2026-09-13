@@ -1,4 +1,3 @@
-import { serviceRegistry } from '../../service-registry';
 
 /** Fallback when the setting is unset. A number does not change hands twice a year. */
 export const DEFAULT_REVALIDATE_AFTER_DAYS = 180;
@@ -58,21 +57,49 @@ export function revalidateAfterDays(settings: PhoneValidationSettings): number {
 
 async function loadPhoneValidationSettings(): Promise<PhoneValidationSettings> {
   try {
-    // Always read local settings (defaultCountry, strictValidation) from local provider
-    // These are provider-agnostic and apply regardless of which SMS provider is active
-    const localSettings = await serviceRegistry.getProviderSettings('sms', 'local');
-    const localValidation = (localSettings as any)?.phoneValidation || {};
-
-    // Read fallback settings from twilio provider (since they control Twilio failure behavior)
-    const twilioSettings = await serviceRegistry.getProviderSettings('sms', 'twilio');
-    const twilioValidation = (twilioSettings as any)?.phoneValidation || {};
+    const { storage } = await import("../../../storage");
+    const { ensureSmsVendorConfig } = await import("../sms-vendor");
+    await ensureSmsVendorConfig();
+    const [local, twilio] = await Promise.all([
+      storage.pluginConfigs.getByKindAndPlugin("wc-vendors", "sms-local"),
+      storage.pluginConfigs.getByKindAndPlugin("wc-vendors", "twilio"),
+    ]);
+    // Keep both sets of settings available even when the other vendor is
+    // selected. The local parser still owns default-country behavior and the
+    // Twilio row still owns revalidation/fallback policy after a provider
+    // switch.
+    const localData = local[0]?.data;
+    const twilioData = twilio[0]?.data;
+    const localValidation =
+      localData && typeof localData === "object"
+        ? ((localData as Record<string, unknown>).phoneValidation as Record<string, unknown> | undefined) ?? {}
+        : {};
+    const twilioValidation =
+      twilioData && typeof twilioData === "object"
+        ? ((twilioData as Record<string, unknown>).phoneValidation as Record<string, unknown> | undefined) ?? {}
+        : {};
 
     return {
-      defaultCountry: localValidation.defaultCountry || 'US',
-      strictValidation: localValidation.strictValidation ?? true,
-      useLocalOnTwilioFailure: twilioValidation.useLocalOnTwilioFailure ?? true,
-      logValidationAttempts: twilioValidation.logValidationAttempts ?? true,
-      revalidateAfterDays: twilioValidation.revalidateAfterDays,
+      defaultCountry:
+        typeof localValidation.defaultCountry === "string"
+          ? localValidation.defaultCountry
+          : "US",
+      strictValidation:
+        typeof localValidation.strictValidation === "boolean"
+          ? localValidation.strictValidation
+          : true,
+      useLocalOnTwilioFailure:
+        typeof twilioValidation.useLocalOnTwilioFailure === "boolean"
+          ? twilioValidation.useLocalOnTwilioFailure
+          : true,
+      logValidationAttempts:
+        typeof twilioValidation.logValidationAttempts === "boolean"
+          ? twilioValidation.logValidationAttempts
+          : true,
+      revalidateAfterDays:
+        typeof twilioValidation.revalidateAfterDays === "number"
+          ? twilioValidation.revalidateAfterDays
+          : undefined,
     };
   } catch {
     return {};

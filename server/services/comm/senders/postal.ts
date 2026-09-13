@@ -1,15 +1,20 @@
-import { serviceRegistry } from '../../service-registry';
 import { getSystemMode } from '../../system-mode';
 import { createCommStorage, createCommPostalStorage, createCommPostalOptinStorage } from '../../../storage/comm';
 import { storage } from '../../../storage';
 import { runInTransaction } from '../../../storage/transaction-context';
-import type { PostalTransport, PostalAddress, SendLetterParams } from '../providers/postal';
+import type { PostalAddress, SendLetterParams } from '../providers/postal';
 import { verifyPostalAddress } from '../validators/address-verification';
 import type { Comm, CommPostal } from '@shared/schema';
 import { logger } from '../../../logger';
 import { buildStatusCallbackUrl } from '../callback-handlers/url-builder';
 import { isMaintenanceModeError } from "../../maintenance-flag";
 import { ALREADY_SENT, findSentWithKey, type AlreadySentCode } from '../send-key';
+import {
+  postalRequest,
+  postalSupportsOperation,
+  resolvePostalVendorTarget,
+} from "../postal-vendor";
+import type { WcVendorTarget } from "../../webclient";
 
 export interface SendPostalRequest {
   contactId: string;
@@ -83,6 +88,24 @@ function buildCanonicalAddress(address: PostalAddress): string {
 export async function sendPostal(request: SendPostalRequest): Promise<SendPostalResult> {
   const { contactId, toAddress, fromAddress, description, file, templateId, mergeVariables, mailType, color, doubleSided, userId, tagIds, sendOffline, sendKey } = request;
 
+  let postalTarget: WcVendorTarget;
+  try {
+    postalTarget = await resolvePostalVendorTarget();
+    if (!await postalSupportsOperation(postalTarget, "send-letter")) {
+      return {
+        success: false,
+        error: 'Postal sending is not supported by the current provider. Configure a provider with postal sending capability (e.g., Lob).',
+        errorCode: 'POSTAL_NOT_SUPPORTED',
+      };
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error?.message || 'Failed to resolve the postal provider',
+      errorCode: 'UNKNOWN_ERROR',
+    };
+  }
+
   if (sendOffline) {
     try {
       const returnAddress = fromAddress;
@@ -151,17 +174,10 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
   }
 
   try {
-    const postalTransport = await serviceRegistry.resolve<PostalTransport>('postal');
-
-    if (!postalTransport.supportsPostal()) {
-      return {
-        success: false,
-        error: 'Postal mail is not supported by the current provider. Configure a provider with postal capability (e.g., Lob).',
-        errorCode: 'POSTAL_NOT_SUPPORTED',
-      };
-    }
-
-    const verificationResult = await verifyPostalAddress(postalTransport, toAddress);
+    const verificationResult = await verifyPostalAddress(
+      postalTarget,
+      toAddress,
+    );
     if (!verificationResult.valid) {
       return {
         success: false,
@@ -175,7 +191,11 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
 
     let returnAddress = fromAddress;
     if (!returnAddress) {
-      returnAddress = await postalTransport.getDefaultReturnAddress();
+      returnAddress = await postalRequest(
+        postalTarget,
+        "get-default-return-address",
+        undefined,
+      );
     }
 
     if (!returnAddress) {
@@ -323,7 +343,11 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
         },
       };
 
-      const sendResult = await postalTransport.sendLetter(sendParams);
+      const sendResult = await postalRequest(
+        postalTarget,
+        "send-letter",
+        sendParams,
+      );
 
       if (!sendResult.success) {
         await commStorage.updateComm(comm.id, {

@@ -1,11 +1,6 @@
-import { registerSmsProviders } from './sms/register';
-import { registerEmailProviders } from './email/register';
-import { registerPostalProviders } from './postal/register';
-
 export function initializeServiceProviders(): void {
-  registerSmsProviders();
-  registerEmailProviders();
-  registerPostalProviders();
+  // Kept as a compatibility export for older boot scripts. SMS transports are
+  // wc-vendor plugins and are not registered in the legacy service registry.
 }
 
 initializeServiceProviders();

@@ -7,8 +7,7 @@ import { sendEmail } from "../services/comm/senders/email";
 import { sendPostal } from "../services/comm/senders/postal";
 import { sendInapp, markInappAsRead, markAllInappAsRead } from "../services/comm/senders/inapp";
 import { handleStatusCallback } from "../services/comm/callback-handlers/handler";
-import { serviceRegistry } from "../services/service-registry";
-import type { PostalTransport, PostalAddress } from "../services/comm/providers/postal";
+import type { PostalAddress } from "../services/comm/providers/postal";
 import { verifyPostalAddress } from "../services/comm/validators/address-verification";
 import { mapVerificationToDeliverabilityStatus, isTerminalDeliverabilityStatus } from "../services/comm/validators/address";
 import { broadcastAlertUpdate } from "../services/websocket";
@@ -17,6 +16,10 @@ import { resolveContactLinks } from "./contact-links";
 import { createCommTagsStorage } from "../storage/comm-tags";
 import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
 import { deriveEmailPlainText, isSafeRelativePath } from "../delivery/shape";
+import {
+  postalRequest,
+  resolvePostalVendorTarget,
+} from "../services/comm/postal-vendor";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -680,18 +683,9 @@ export function registerCommRoutes(
         });
       }
 
-      let postalProvider: PostalTransport;
-      try {
-        postalProvider = await serviceRegistry.resolve<PostalTransport>('postal');
-      } catch (error) {
-        return res.status(503).json({ 
-          message: "Postal service is not configured",
-          errorCode: "SERVICE_UNAVAILABLE"
-        });
-      }
-
       const address: PostalAddress = parsed.data;
-      const result = await verifyPostalAddress(postalProvider, address);
+       const target = await resolvePostalVendorTarget();
+       const result = await verifyPostalAddress(target, address);
 
       // If addressId was provided AND verification succeeded, update deliverability_status
       // and apply terminal-status side-effect (markUndeliverable) so primary auto-promotion runs.
@@ -838,18 +832,9 @@ export function registerCommRoutes(
         });
       }
 
-      let postalProvider: PostalTransport;
-      try {
-        postalProvider = await serviceRegistry.resolve<PostalTransport>('postal');
-      } catch (error) {
-        return res.status(503).json({ 
-          message: "Postal service is not configured",
-          errorCode: "SERVICE_UNAVAILABLE"
-        });
-      }
-
       const address: PostalAddress = parsed.data;
-      const result = await verifyPostalAddress(postalProvider, address);
+       const target = await resolvePostalVendorTarget();
+       const result = await verifyPostalAddress(target, address);
 
       if (!result.valid || !result.canonicalAddress) {
         return res.status(400).json({
@@ -934,24 +919,8 @@ export function registerCommRoutes(
 
   app.get("/api/postal/templates", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
-      let postalProvider: PostalTransport;
-      try {
-        postalProvider = await serviceRegistry.resolve<PostalTransport>('postal');
-      } catch (error) {
-        return res.status(503).json({ 
-          message: "Postal service is not configured",
-          errorCode: "SERVICE_UNAVAILABLE"
-        });
-      }
-
-      if (!postalProvider.listTemplates) {
-        return res.status(501).json({ 
-          message: "Template listing is not supported by the configured postal provider",
-          templates: []
-        });
-      }
-
-      const templates = await postalProvider.listTemplates();
+       const target = await resolvePostalVendorTarget();
+       const templates = await postalRequest(target, "list-templates", undefined);
       res.json({ templates });
     } catch (error) {
       if (sendIfMaintenanceRefusal(res, error)) return;

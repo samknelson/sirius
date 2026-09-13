@@ -31,21 +31,20 @@ import {
   setMaintenanceActive,
 } from "../../server/services/maintenance-flag";
 import { isMaintenanceActive as isMaintenanceActiveFromWriteLock } from "../../server/services/maintenance-mode";
-import { TwilioSmsProvider } from "../../server/services/comm/providers/sms/twilio";
-import { SendGridEmailProvider } from "../../server/services/comm/providers/email/sendgrid";
-import { LobPostalProvider } from "../../server/services/comm/providers/postal/lob";
 import type { PostalAddress } from "../../server/services/comm/providers/postal";
 import { LocalSmsProvider } from "../../server/services/comm/providers/sms/local";
 import { LocalEmailProvider } from "../../server/services/comm/providers/email/local";
-import { LocalPostalProvider } from "../../server/services/comm/providers/postal/local";
 import { addressValidationService } from "../../server/services/comm/validators/address";
 import { lookupRepresentatives } from "../../server/services/google-civics";
 import { getWcVendorPlugin } from "../../server/plugins/wc-vendors";
 import { wcRequest } from "../../server/services/webclient";
+import { postalRequest } from "../../server/services/comm/postal-vendor";
 import { T631_PLUGIN_ID } from "../../server/plugins/wc-vendors/plugins/sitespecific-t631";
 import {
   FREEMAN_EDLS_MIGRATE_PLUGIN_ID,
 } from "../../server/plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate";
+import { getWcVendorHandler } from "../../server/plugins/wc-vendors/registry";
+import type { PluginConfig } from "@shared/schema";
 
 /** The address-validation shape (Google side). */
 const ADDRESS = {
@@ -94,40 +93,64 @@ async function t631Ping(): Promise<unknown> {
  * template listing all spend vendor quota or vendor state too.
  */
 function operations() {
-  const twilio = new TwilioSmsProvider();
-  const sendgrid = new SendGridEmailProvider();
-  const lob = new LobPostalProvider();
-
   return [
-    ["Twilio", "testConnection", () => twilio.testConnection()],
-    ["Twilio", "getConfiguration", () => twilio.getConfiguration()],
-    ["Twilio", "validatePhone", () => twilio.validatePhone("+16175551212")],
-    ["Twilio", "sendSms", () => twilio.sendSms({ to: "+16175551212", body: "hi" })],
-    ["Twilio", "getAvailablePhoneNumbers", () => twilio.getAvailablePhoneNumbers()],
+    ["Twilio", "testConnection", () => wcRequest({
+      vendor: { pluginId: "twilio" },
+      operation: "test-connection",
+      args: undefined,
+    })],
+    ["Twilio", "getConfiguration", () => wcRequest({
+      vendor: { pluginId: "twilio" },
+      operation: "read-configuration",
+      args: undefined,
+    })],
+    ["Twilio", "validatePhone", () => wcRequest({
+      vendor: { pluginId: "twilio" },
+      operation: "validate-phone",
+      args: { phoneNumber: "+16175551212" },
+    })],
+    ["Twilio", "sendSms", () => wcRequest({
+      vendor: { pluginId: "twilio" },
+      operation: "send-sms",
+      args: { to: "+16175551212", body: "hi" },
+    })],
+    ["Twilio", "getAvailablePhoneNumbers", () => wcRequest({
+      vendor: { pluginId: "twilio" },
+      operation: "list-phone-numbers",
+      args: undefined,
+    })],
 
-    ["SendGrid", "testConnection", () => sendgrid.testConnection()],
+    ["SendGrid", "testConnection", () => wcRequest({
+      vendor: { pluginId: "sendgrid" },
+      operation: "test-email-connection",
+      args: undefined,
+    })],
     [
       "SendGrid",
       "sendEmail",
-      () => sendgrid.sendEmail({ to: { email: "a@example.com" }, subject: "s", text: "t" }),
+      () => wcRequest({
+        vendor: { pluginId: "sendgrid" },
+        operation: "send-email",
+        args: { to: { email: "a@example.com" }, subject: "s", text: "t" },
+      }),
     ],
 
-    ["Lob", "testConnection", () => lob.testConnection()],
-    ["Lob", "verifyAddress", () => lob.verifyAddress(POSTAL_ADDRESS)],
+    ["Lob", "testConnection", () => postalRequest("lob", "test-connection", undefined)],
+    ["Lob", "verifyAddress", () => postalRequest("lob", "verify-address", POSTAL_ADDRESS)],
     [
       "Lob",
       "sendLetter",
       () =>
-        lob.sendLetter({
+        postalRequest("lob", "send-letter", {
           to: POSTAL_ADDRESS,
           from: POSTAL_ADDRESS,
           file: "<html><body>hi</body></html>",
           description: "test",
         }),
     ],
-    ["Lob", "getLetterStatus", () => lob.getLetterStatus("ltr_123")],
-    ["Lob", "cancelLetter", () => lob.cancelLetter("ltr_123")],
-    ["Lob", "listTemplates", () => lob.listTemplates()],
+    ["Lob", "getLetterStatus", () => postalRequest("lob", "letter-status", { letterId: "ltr_123" })],
+    ["Lob", "cancelLetter", () => postalRequest("lob", "cancel-letter", { letterId: "ltr_123" })],
+    ["Lob", "listTemplates", () => postalRequest("lob", "list-templates", undefined)],
 
     ["Google", "validateAddress", () => addressValidationService.validateAddress(ADDRESS)],
     [
@@ -278,9 +301,8 @@ describe("with maintenance ON, no vendor is reached", () => {
   });
 
   it("Lob's swallowing methods surface the refusal instead of an empty/undeliverable answer", async () => {
-    const lob = new LobPostalProvider();
-    await expect(lob.listTemplates()).rejects.toBeInstanceOf(MaintenanceModeError);
-    await expect(lob.verifyAddress(POSTAL_ADDRESS)).rejects.toBeInstanceOf(MaintenanceModeError);
+    await expect(postalRequest("lob", "list-templates", undefined)).rejects.toBeInstanceOf(MaintenanceModeError);
+    await expect(postalRequest("lob", "verify-address", POSTAL_ADDRESS)).rejects.toBeInstanceOf(MaintenanceModeError);
   });
 
   it("local providers keep working — they call nothing external", async () => {
@@ -288,8 +310,13 @@ describe("with maintenance ON, no vendor is reached", () => {
     await expect(new LocalEmailProvider().testConnection()).resolves.toMatchObject({
       success: true,
     });
-    await expect(new LocalPostalProvider().testConnection()).resolves.toMatchObject({
-      success: true,
+    const localPostalTest = getWcVendorHandler("local-postal", "test-connection");
+    if (!localPostalTest) throw new Error("Local Postal test operation is not registered");
+    await expect(localPostalTest({
+      credential: { value: "" },
+      config: { id: "test-local-postal", pluginKind: "wc-vendors", pluginId: "local-postal", enabled: true, ordering: 0 } as PluginConfig,
+    }, undefined as never)).resolves.toMatchObject({
+      connected: true,
     });
     expect(networkAttempts).toEqual([]);
   });
@@ -315,21 +342,19 @@ describe("with maintenance OFF, nothing is refused", () => {
 
 describe("leaving maintenance restores vendors live, with no restart", () => {
   it("flips on the flag change, in the same process", async () => {
-    const lob = new LobPostalProvider();
-
     setMaintenanceActive(true);
-    await expect(lob.listTemplates()).rejects.toBeInstanceOf(MaintenanceModeError);
+    await expect(postalRequest("lob", "list-templates", undefined)).rejects.toBeInstanceOf(MaintenanceModeError);
 
     setMaintenanceActive(false);
     let refusedAfterExit = false;
     try {
-      await lob.listTemplates();
+      await postalRequest("lob", "list-templates", undefined);
     } catch (error) {
       refusedAfterExit = isMaintenanceModeError(error);
     }
     expect(refusedAfterExit).toBe(false);
 
     setMaintenanceActive(true);
-    await expect(lob.listTemplates()).rejects.toBeInstanceOf(MaintenanceModeError);
+    await expect(postalRequest("lob", "list-templates", undefined)).rejects.toBeInstanceOf(MaintenanceModeError);
   });
 });

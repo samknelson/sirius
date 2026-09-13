@@ -666,10 +666,10 @@ export default function PostalConfigPage() {
                 To enable postal mail, configure your Lob credentials:
               </p>
               <div className="text-left max-w-md mx-auto bg-muted p-4 rounded-md text-sm font-mono">
-                <p>LOB_API_KEY=your_api_key</p>
+                 <p>Configure a Lob wc-vendor and set its Secret Name to the environment secret containing your Lob API key.</p>
               </div>
               <p className="text-sm mt-4">
-                Add this to your environment secrets, then test the connection.
+                 Add the named secret to your environment, then test the connection.
               </p>
             </div>
           </CardContent>

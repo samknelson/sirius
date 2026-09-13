@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { stringify } from "csv-stringify/sync";
 import multer from "multer";
+import { sql } from "drizzle-orm";
 import { storage } from "./storage";
 import { pickFirstByAccountOrder, toChargeConfig } from "./plugins/ledger/charge/charge-config-resolution";
 import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
@@ -158,7 +159,12 @@ import { requireAccess } from "./services/access-policy-evaluator";
 import { authorizeRecordGoRequest } from "./services/record-go-access";
 import { addressValidationService } from "./services/comm/validators/address";
 import { phoneValidationService, DEFAULT_REVALIDATE_AFTER_DAYS } from "./services/comm/validators/phone";
-import { serviceRegistry } from "./services/service-registry";
+import {
+  ensureSmsVendorConfig,
+  ensureSmsVendorTarget,
+  resolveSmsVendor,
+  SmsVendorConfigurationError,
+} from "./services/comm/sms-vendor";
 import { isAuthenticated } from "./auth";
 import { sendIfMaintenanceRefusal } from "./services/maintenance-flag";
 
@@ -1549,27 +1555,24 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // GET /api/variables/phone_validation_config - Get phone validation configuration
-  // Now derived from SMS provider selection, with stored settings for each provider
+  // GET /api/variables/phone_validation_config - Get phone validation configuration.
+  // SMS settings are kept on the wc-vendor rows. The response remains in the
+  // old shape because the phone-validation page predates the generic vendor UI.
   app.get(
     "/api/variables/phone_validation_config",
     requireAuth,
     async (req, res) => {
       try {
-        const smsConfig = await serviceRegistry.getCategoryConfig("sms");
-        const isTwilioMode = smsConfig.defaultProvider === "twilio";
-
-        // Get stored validation settings from both providers
-        const localSettings = await serviceRegistry.getProviderSettings(
-          "sms",
-          "local",
-        );
-        const twilioSettings = await serviceRegistry.getProviderSettings(
-          "sms",
-          "twilio",
-        );
-        const localValidation = (localSettings as any)?.phoneValidation || {};
-        const twilioValidation = (twilioSettings as any)?.phoneValidation || {};
+        const smsVendor = await resolveSmsVendor();
+        const [localConfigs, twilioConfigs] = await Promise.all([
+          storage.pluginConfigs.getByKindAndPlugin("wc-vendors", "sms-local"),
+          storage.pluginConfigs.getByKindAndPlugin("wc-vendors", "twilio"),
+        ]);
+        const localData = localConfigs[0]?.data as Record<string, any> | undefined;
+        const twilioData = twilioConfigs[0]?.data as Record<string, any> | undefined;
+        const localValidation = localData?.phoneValidation || {};
+        const twilioValidation = twilioData?.phoneValidation || {};
+        const isTwilioMode = smsVendor.pluginId === "twilio";
 
         // Return config in the legacy format for backward compatibility
         // Fallback settings are stored with twilio provider since they control Twilio failure behavior
@@ -1604,8 +1607,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     },
   );
 
-  // PUT /api/variables/phone_validation_config - Update phone validation configuration
-  // Now updates the SMS provider selection and stores validation settings for each provider
+  // PUT /api/variables/phone_validation_config - Update phone validation configuration.
+  // Update the selected provider by enabling its wc-vendor config and disabling
+  // the other SMS config. This preserves the legacy mode switch endpoint while
+  // making the vendor row the single source of truth.
   app.put("/api/variables/phone_validation_config", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { mode, local, twilio, fallback } = req.body;
@@ -1622,54 +1627,79 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
       }
       
-      // Store local-specific settings in the local provider
-      if (local) {
-        const localCurrentSettings = await serviceRegistry.getProviderSettings('sms', 'local');
-        const existingLocalValidation = (localCurrentSettings as any)?.phoneValidation || {};
-        const localValidationSettings = {
-          ...existingLocalValidation,
-          defaultCountry: local.defaultCountry ?? existingLocalValidation.defaultCountry ?? 'US',
-          strictValidation: local.strictValidation ?? existingLocalValidation.strictValidation ?? true
-        };
-        await serviceRegistry.saveProviderSettings("sms", "local", {
-          ...localCurrentSettings,
-          phoneValidation: localValidationSettings,
+      const selectedPlugin = mode === "twilio" ? "twilio" : "sms-local";
+      // Resolve/create the destination before changing either existing row.
+      // A missing Twilio environment configuration therefore leaves Local
+      // enabled instead of producing a zero-enabled state.
+      await ensureSmsVendorTarget(selectedPlugin);
+      const [localConfigs, twilioConfigs] = await Promise.all([
+        storage.pluginConfigs.getByKindAndPlugin("wc-vendors", "sms-local"),
+        storage.pluginConfigs.getByKindAndPlugin("wc-vendors", "twilio"),
+      ]);
+      if (localConfigs.length === 0 && twilioConfigs.length === 0) {
+        return res.status(404).json({
+          message: "No SMS wc-vendor configuration exists",
         });
       }
 
-      // Store twilio-specific settings and fallback settings in the twilio provider
-      // Fallback settings belong with twilio since they control Twilio failure behavior
-      const twilioCurrentSettings = await serviceRegistry.getProviderSettings("sms", "twilio");
-      const existingTwilioValidation = (twilioCurrentSettings as any)?.phoneValidation || {};
+      const updateValidation = async (
+        configs: typeof localConfigs,
+        validation: Record<string, unknown>,
+      ) => {
+        await Promise.all(
+          configs.map(async (config) => {
+            const data =
+              config.data && typeof config.data === "object"
+                ? (config.data as Record<string, unknown>)
+                : {};
+            await storage.pluginConfigs.update(config.id, {
+              enabled: config.pluginId === selectedPlugin,
+              data: { ...data, phoneValidation: validation },
+            });
+          }),
+        );
+      };
+
+      const localData = localConfigs[0]?.data as Record<string, any> | undefined;
+      const twilioData = twilioConfigs[0]?.data as Record<string, any> | undefined;
+      const existingLocalValidation = localData?.phoneValidation || {};
+      const existingTwilioValidation = twilioData?.phoneValidation || {};
+      const localValidationSettings = {
+        ...existingLocalValidation,
+        defaultCountry: local?.defaultCountry ?? existingLocalValidation.defaultCountry ?? "US",
+        strictValidation: local?.strictValidation ?? existingLocalValidation.strictValidation ?? true,
+      };
       const twilioValidationSettings = {
         ...existingTwilioValidation,
         lookupType: twilio?.lookupType ?? existingTwilioValidation.lookupType ?? [
           "line_type_intelligence",
           "caller_name",
         ],
-        useLocalOnTwilioFailure: fallback?.useLocalOnTwilioFailure ?? existingTwilioValidation.useLocalOnTwilioFailure ?? true,
-        logValidationAttempts: fallback?.logValidationAttempts ?? existingTwilioValidation.logValidationAttempts ?? true,
-        // How long a Twilio answer stays good for. Every path that formats a
-        // phone number runs through the validator, so without an age the app
-        // would pay for a lookup on each of them.
-        revalidateAfterDays: revalidateAfterDays ?? existingTwilioValidation.revalidateAfterDays ?? DEFAULT_REVALIDATE_AFTER_DAYS,
+        useLocalOnTwilioFailure:
+          fallback?.useLocalOnTwilioFailure ??
+          existingTwilioValidation.useLocalOnTwilioFailure ??
+          true,
+        logValidationAttempts:
+          fallback?.logValidationAttempts ??
+          existingTwilioValidation.logValidationAttempts ??
+          true,
+        revalidateAfterDays:
+          revalidateAfterDays ??
+          existingTwilioValidation.revalidateAfterDays ??
+          DEFAULT_REVALIDATE_AFTER_DAYS,
       };
-      await serviceRegistry.saveProviderSettings("sms", "twilio", {
-        ...twilioCurrentSettings,
-        phoneValidation: twilioValidationSettings,
+      const { runInTransaction, getClient } = await import("./storage/transaction-context");
+      await runInTransaction(async () => {
+        await getClient().execute(
+          sql`select pg_advisory_xact_lock(hashtext('wc-vendors:sms-migration'))`,
+        );
+        await updateValidation(localConfigs, localValidationSettings);
+        await updateValidation(twilioConfigs, twilioValidationSettings);
       });
 
-      // Update the SMS provider selection
-      await serviceRegistry.setDefaultProvider("sms", mode);
-
-      // Fetch updated config from both providers for response
-      const localSettings = await serviceRegistry.getProviderSettings("sms", "local");
-      const twilioSettings = await serviceRegistry.getProviderSettings("sms", "twilio");
-      const localValidation = (localSettings as any)?.phoneValidation || {};
-      const twilioValidation = (twilioSettings as any)?.phoneValidation || {};
-
-      const smsConfig = await serviceRegistry.getCategoryConfig("sms");
-      const isTwilioMode = smsConfig.defaultProvider === "twilio";
+      const isTwilioMode = selectedPlugin === "twilio";
+      const localValidation = localValidationSettings;
+      const twilioValidation = twilioValidationSettings;
 
       // Return config in the legacy format
       res.json({
@@ -1695,6 +1725,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       });
     } catch (error) {
       console.error("Error updating phone validation config:", error);
+      if (error instanceof SmsVendorConfigurationError) {
+        return res.status(400).json({ message: error.message });
+      }
       res.status(500).json({
         message: "Failed to update phone validation configuration",
         error: error instanceof Error ? error.message : String(error),
