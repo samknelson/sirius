@@ -32,7 +32,6 @@ import {
 } from "../../server/services/maintenance-flag";
 import { isMaintenanceActive as isMaintenanceActiveFromWriteLock } from "../../server/services/maintenance-mode";
 import type { PostalAddress } from "../../server/services/comm/providers/postal";
-import { LocalEmailProvider } from "../../server/services/comm/providers/email/local";
 import { addressValidationService } from "../../server/services/comm/validators/address";
 import { lookupRepresentatives } from "../../server/services/google-civics";
 import { getWcVendorPlugin } from "../../server/plugins/wc-vendors";
@@ -305,7 +304,12 @@ describe("with maintenance ON, no vendor is reached", () => {
   });
 
   it("local providers keep working — they call nothing external", async () => {
-    await expect(new LocalEmailProvider().testConnection()).resolves.toMatchObject({
+    const localEmailTest = getWcVendorHandler("local-email", "test-email-connection");
+    if (!localEmailTest) throw new Error("Local Email test operation is not registered");
+    await expect(localEmailTest({
+      credential: { value: "" },
+      config: { id: "test-local-email", pluginKind: "wc-vendors", pluginId: "local-email", enabled: true, ordering: 0 } as PluginConfig,
+    }, undefined as never)).resolves.toMatchObject({
       success: true,
     });
     const localPostalTest = getWcVendorHandler("local-postal", "test-connection");
