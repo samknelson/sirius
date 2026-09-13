@@ -62,6 +62,7 @@ export type ExternalService =
   | "Stripe"
   | "T631"
   | "Freeman EDLS"
+  | "Freeman Authorization"
   | "BTU";
 
 let maintenanceActive = false;

@@ -895,6 +895,13 @@ export const componentRegistry: ComponentDefinition[] = [
     dependsOnComponents: ["edls"]
   },
   {
+    id: "sitespecific.freeman.authorization",
+    name: "Freeman Authorization",
+    description: "Bearer authorization service for Freeman integrations",
+    enabledByDefault: false,
+    category: "site-specific"
+  },
+  {
     id: "sitespecific.t631.client",
     name: "Teamsters 631 Client",
     description: "Client connection to the Teamsters 631 site",
