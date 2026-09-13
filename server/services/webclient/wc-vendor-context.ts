@@ -104,6 +104,66 @@ export async function resolveWcVendor(
   return { config, plugin, context: { apiKey: apiKey ?? "", config } };
 }
 
+/** No enabled connection exists for the plugin a caller named. */
+export class WcVendorNoDefaultError extends WcVendorResolutionError {
+  constructor(public readonly pluginId: string) {
+    super(
+      503,
+      `No enabled '${pluginId}' connection is configured. Add one on the webclient vendors page.`,
+    );
+    this.name = "WcVendorNoDefaultError";
+  }
+}
+
+/** Several enabled connections exist and none of them is the obvious one. */
+export class WcVendorAmbiguousDefaultError extends WcVendorResolutionError {
+  constructor(
+    public readonly pluginId: string,
+    public readonly configIds: string[],
+  ) {
+    super(
+      409,
+      `This site has ${configIds.length} enabled '${pluginId}' connections, so there is no single default to use. ` +
+        `Leave exactly one enabled, or name the connection explicitly.`,
+    );
+    this.name = "WcVendorAmbiguousDefaultError";
+  }
+}
+
+/**
+ * Resolve the connection to use when the caller names a vendor but no
+ * particular configuration of it.
+ *
+ * The default is the one enabled configuration of that plugin. Not the first of
+ * several by some ordering: a caller reaching this function is one that has
+ * never chosen a connection, and quietly handing it whichever row sorts first
+ * is how a site with two connections ends up syncing both into the same place.
+ * The T631 worker sync makes that concrete — it deactivates every worker absent
+ * from the response it was given, so two connections taking turns would each
+ * deactivate the other's workers. Refusing an ambiguous default is what stops
+ * that, which is why more-than-one is an error here and not a preference.
+ *
+ * Every default resolution goes through this one function. A later "a different
+ * default per operation" grows here, where the ambiguity rule already lives,
+ * rather than in each caller.
+ */
+export async function resolveDefaultWcVendor(
+  pluginId: string,
+): Promise<ResolvedWcVendor> {
+  const enabled = (
+    await storage.pluginConfigs.getByKindAndPlugin("wc-vendors", pluginId)
+  ).filter((config) => config.enabled);
+
+  if (enabled.length === 0) throw new WcVendorNoDefaultError(pluginId);
+  if (enabled.length > 1) {
+    throw new WcVendorAmbiguousDefaultError(
+      pluginId,
+      enabled.map((config) => config.id),
+    );
+  }
+  return resolveWcVendor(enabled[0].id);
+}
+
 /**
  * Ask a resolved gateway to do one thing.
  *

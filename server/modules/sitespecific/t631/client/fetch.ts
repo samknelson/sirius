@@ -1,243 +1,49 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { randomBytes } from "crypto";
 import { requireComponent } from "../../../components";
 import { z } from "zod";
-import { getEnvironmentVariable, registerEnvironmentVariables } from "../../../../config/env-registry";
 import { sendIfMaintenanceRefusal } from "../../../../services/maintenance-flag";
-import { registerUncachedWcRequest, wcUncachedRequest } from "../../../../services/webclient";
+import { resolveDefaultWcVendor, wcVendorRequest } from "../../../../services/webclient/wc-vendor-context";
+import { WcVendorError } from "../../../../plugins/wc-vendors/errors";
+import { T631_ACTIONS, T631_PLUGIN_ID } from "../../../../plugins/wc-vendors/plugins/t631";
+import type { T631Action, T631FetchResult } from "../../../../plugins/wc-vendors/plugins/t631";
 
-// changeTakesEffect: "immediate" for all five. getConfig() re-reads every one
-// of them through the registry on each t631Fetch call and keeps nothing
-// between calls. The same five are also registered by the T631 status plugin
-// (server/plugins/system/status/plugins/sitespecific-t631-client.ts), which
-// reads them per status scan — registration is last-one-wins, so both copies
-// must carry the same classification.
-registerEnvironmentVariables([
-  { name: "SITESPECIFIC_T631_CLIENT_URL", description: "Base URL of the remote T631 service.", secret: false, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
-  { name: "SITESPECIFIC_T631_CLIENT_ACCOUNT_ID", description: "Account id for the remote T631 service.", secret: false, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
-  { name: "SITESPECIFIC_T631_CLIENT_ACCESS_TOKEN", description: "Access token for the remote T631 service.", secret: true, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
-  { name: "SITESPECIFIC_T631_CLIENT_EMPLOYER_ID", description: "Employer id for the remote T631 service.", secret: false, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
-  { name: "SITESPECIFIC_T631_CLIENT_EMPLOYER_TOKEN", description: "Employer token for the remote T631 service.", secret: true, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
-]);
+export type { T631Action, T631FetchResult };
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
-interface T631Config {
-  url: string;
-  accountId: string;
-  accessToken: string;
-  employerId: string;
-  employerToken: string;
-}
-
-interface T631RequestDiagnostics {
-  url: string;
-  method: string;
-  headers: Record<string, string>;
-  body: unknown[];
-}
-
-interface T631ResponseDiagnostics {
-  status: number;
-  statusText: string;
-  headers: Record<string, string>;
-}
-
-interface T631FetchResult {
-  success: boolean;
-  action: string;
-  request: T631RequestDiagnostics;
-  response?: T631ResponseDiagnostics;
-  data?: unknown;
-  rawBody?: string;
-  error?: string;
-  timestamp: string;
-  durationMs: number;
-}
-
-function getConfig(): T631Config {
-  const url = getEnvironmentVariable("SITESPECIFIC_T631_CLIENT_URL");
-  const accountId = getEnvironmentVariable("SITESPECIFIC_T631_CLIENT_ACCOUNT_ID");
-  const accessToken = getEnvironmentVariable("SITESPECIFIC_T631_CLIENT_ACCESS_TOKEN");
-  const employerId = getEnvironmentVariable("SITESPECIFIC_T631_CLIENT_EMPLOYER_ID");
-  const employerToken = getEnvironmentVariable("SITESPECIFIC_T631_CLIENT_EMPLOYER_TOKEN");
-
-  if (!url || !accountId || !accessToken || !employerId || !employerToken) {
-    const missing = [];
-    if (!url) missing.push("SITESPECIFIC_T631_CLIENT_URL");
-    if (!accountId) missing.push("SITESPECIFIC_T631_CLIENT_ACCOUNT_ID");
-    if (!accessToken) missing.push("SITESPECIFIC_T631_CLIENT_ACCESS_TOKEN");
-    if (!employerId) missing.push("SITESPECIFIC_T631_CLIENT_EMPLOYER_ID");
-    if (!employerToken) missing.push("SITESPECIFIC_T631_CLIENT_EMPLOYER_TOKEN");
-    throw new Error(`Missing T631 client configuration: ${missing.join(", ")}`);
-  }
-
-  return { url, accountId, accessToken, employerId, employerToken };
-}
-
-function maskCredential(value: string): string {
-  if (value.length <= 8) return "****";
-  return value.substring(0, 4) + "****" + value.substring(value.length - 4);
-}
-
-const VALID_ACTIONS = [
-  "sirius_service_ping",
-  "sirius_edls_server_worker_list",
-  "sirius_dispatch_group_search",
-  "sirius_dispatch_facility_dropdown",
-  "sirius_edls_server_tos_list",
-] as const;
-
-type T631Action = typeof VALID_ACTIONS[number];
+const VALID_ACTIONS = T631_ACTIONS;
 
 /**
- * One uncached framework entry per action.
+ * Ask the remote T631 service for one action, over the site's T631 connection.
  *
- * Registered in a loop because the action IS the request type — a new member
- * of VALID_ACTIONS is a new outbound operation, and a list that had to be
- * extended by hand alongside it would quietly leave the new one ungated.
+ * A thin adapter over the vendor plugin, kept because every caller — four
+ * scheduled jobs, the status check and the two admin routes below — names an
+ * action and nothing else. They have never chosen a connection, so this
+ * resolves the default one for them, in the single place that decides what a
+ * default is.
  *
- * None of them needs a writable database: t631Fetch records nothing itself, it
- * hands the remote system's answer back to a caller that decides what to keep,
- * and the diagnostics page that runs a ping is exactly what an operator
- * reaches for while the site is read-only.
- */
-for (const action of VALID_ACTIONS) {
-  registerUncachedWcRequest({
-    service: "T631",
-    requestType: action,
-    operation: `run ${action}`,
-    needsWritableDatabase: false,
-  });
-}
-
-/**
- * Ask the remote T631 service for one action.
- *
- * Never throws for a remote or network condition — every one of those comes
- * back as a result the diagnostics page can show. The single exception is a
- * `MaintenanceModeError`, which is deliberately left to propagate: it is not
- * something T631 said, and describing it as a failed request would tell an
- * operator the remote system is broken when nobody asked it anything. Callers
- * either report it as the refusal it is or let it reach the route, where
- * `sendIfMaintenanceRefusal` answers with the shared wording.
+ * The result contract is the plugin's and is unchanged: a remote or network
+ * condition comes back as a result the diagnostics page can show, never as a
+ * throw. What throws is everything that stopped the request before T631 was
+ * asked — no connection, an ambiguous one, a missing or malformed credential,
+ * and the maintenance refusal, which is deliberately left to propagate so a
+ * caller reports it as the refusal it is rather than as a broken remote system.
  */
 export async function t631Fetch(action: T631Action): Promise<T631FetchResult> {
-  // Missing configuration has always been thrown rather than reported as a
-  // failed request, so it is carried back out as itself.
-  let thrown: unknown;
-  let outcome: T631FetchResult | undefined;
-
-  await wcUncachedRequest<T631FetchResult>({
-    service: "T631",
-    requestType: action,
-    fetch: async () => {
-      try {
-        outcome = await performT631Fetch(action);
-        return { answered: outcome.success, error: outcome.error };
-      } catch (error) {
-        thrown = error;
-        return { answered: false, error: error instanceof Error ? error.message : String(error) };
-      }
-    },
-  });
-
-  if (outcome) return outcome;
-  if (thrown !== undefined) throw thrown;
-  // Only reachable if the framework declined to make the call, which this
-  // entry cannot ask for: it does not need a writable database.
-  throw new Error(`T631 ${action} was not attempted.`);
+  const resolved = await resolveDefaultWcVendor(T631_PLUGIN_ID);
+  return wcVendorRequest(resolved, action, undefined as never);
 }
 
-async function performT631Fetch(action: T631Action): Promise<T631FetchResult> {
-  const startTime = Date.now();
-  const timestamp = new Date().toISOString();
-
-  const config = getConfig();
-
-  const basicAuth = Buffer.from(`${config.accountId}:${config.accessToken}`).toString("base64");
-
-  let requestBody: unknown[];
-  let diagnosticsBody: unknown[];
-
-  if (action === "sirius_service_ping") {
-    const echoText = randomBytes(6).toString("hex");
-    requestBody = [action, "Echo Text Follows", echoText];
-    diagnosticsBody = [action, "Echo Text Follows", echoText];
-  } else if (action === "sirius_dispatch_group_search") {
-    const ts = Math.floor(Date.now() / 1000);
-    requestBody = [action, { domain_root: 1, limit: 500, ts }];
-    diagnosticsBody = [action, { domain_root: 1, limit: 500, ts }];
-  } else {
-    requestBody = [action, config.employerId, config.employerToken];
-    diagnosticsBody = [action, maskCredential(config.employerId), maskCredential(config.employerToken)];
-  }
-
-  const requestDiagnostics: T631RequestDiagnostics = {
-    url: config.url,
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Basic ${maskCredential(basicAuth)}`,
-    },
-    body: diagnosticsBody,
-  };
-
-  try {
-    const response = await fetch(config.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Basic ${basicAuth}`,
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    const durationMs = Date.now() - startTime;
-
-    const responseHeaders: Record<string, string> = {};
-    response.headers.forEach((value, key) => {
-      responseHeaders[key] = value;
-    });
-
-    const responseDiagnostics: T631ResponseDiagnostics = {
-      status: response.status,
-      statusText: response.statusText,
-      headers: responseHeaders,
-    };
-
-    const rawBody = await response.text().catch(() => "");
-
-    let parsedData: unknown = undefined;
-    try {
-      parsedData = JSON.parse(rawBody);
-    } catch {
-      // not JSON
-    }
-
-    return {
-      success: response.ok,
-      action,
-      request: requestDiagnostics,
-      response: responseDiagnostics,
-      data: parsedData,
-      rawBody: parsedData === undefined ? rawBody : undefined,
-      error: !response.ok ? `HTTP ${response.status} ${response.statusText}` : undefined,
-      timestamp,
-      durationMs,
-    };
-  } catch (error) {
-    const durationMs = Date.now() - startTime;
-    return {
-      success: false,
-      action,
-      request: requestDiagnostics,
-      error: error instanceof Error ? error.message : "Unknown error",
-      timestamp,
-      durationMs,
-    };
-  }
+/**
+ * True when the request never reached T631 because the connection itself is
+ * unusable — absent, ambiguous, incomplete, or naming a credential that is
+ * missing or malformed. Callers that want to say "not configured" rather than
+ * "the remote service is broken" ask this; the distinction matters because the
+ * two send an operator to completely different places.
+ */
+export function isT631ConfigurationError(error: unknown): error is WcVendorError {
+  return error instanceof WcVendorError;
 }
 
 const fetchRequestSchema = z.object({
@@ -278,6 +84,11 @@ export function registerT631ClientFetchRoutes(
         res.json(result);
       } catch (error) {
         if (sendIfMaintenanceRefusal(res, error)) return;
+        // A connection that is absent, ambiguous or missing its credential is
+        // not a server fault, and each carries the status that says which.
+        if (isT631ConfigurationError(error)) {
+          return res.status(error.status).json({ message: error.message });
+        }
         const message = error instanceof Error ? error.message : "Failed to execute T631 fetch";
         res.status(500).json({ message });
       }
@@ -327,6 +138,9 @@ export function registerT631ClientFetchRoutes(
         res.json({ dryRun, ...syncResult });
       } catch (error) {
         if (sendIfMaintenanceRefusal(res, error)) return;
+        if (isT631ConfigurationError(error)) {
+          return res.status(error.status).json({ message: error.message });
+        }
         const message = error instanceof Error ? error.message : "Failed to sync T631 worker EINs";
         res.status(500).json({ message });
       }

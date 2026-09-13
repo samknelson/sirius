@@ -155,3 +155,5 @@
 - [Studio template library route](studio-template-library-route.md) — Template Studio reuses the staff CRUD list with medium/context filters; 401/403 hides Templates, never add a parallel studio route.
 - [A plugin kind id is stored data](plugin-kind-id-is-data.md) — the id IS the plugin_kind discriminator + subsidiary table name, so renaming one is a data migration; drift gate matches FK/PK/unique STRUCTURALLY, so declared names can be fiction.
 - [Component-neutral plugin kinds](component-neutral-plugin-kind.md) — un-gating moves the gate to each plugin; inheriting routes need an explicit one, and consumers must stop assuming the founding component's shape.
+- [Credential redaction in vendor replies](credential-redaction-in-vendor-replies.md) — scrub what the REMOTE says back (echo, headers, status line, escaped spellings); fragment masking IS a leak.
+- [Default connection + boot seeding](default-connection-and-boot-seeding.md) — refuse an ambiguous default (syncs deactivate absent records); seed a non-singleton row via a DB-unique id, then attribute the 23505.
