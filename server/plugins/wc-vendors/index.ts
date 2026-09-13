@@ -4,8 +4,8 @@ import {
   registerPluginConfigAdapter,
   baseConfigSchemaShape,
   baseSearchSchemaShape,
-} from "../../_core";
-import { logger } from "../../../logger";
+} from "../_core";
+import { logger } from "../../logger";
 import { wcVendorRegistry } from "./registry";
 
 export {
@@ -24,8 +24,14 @@ export function registerWcVendorPluginKind(): void {
     label: "Webclient Vendors",
     description:
       "Outside systems this site calls through the web client framework (e.g. Stripe). Each configuration names the secret that holds its API credentials.",
-    // Mirror the charge kind's gating: ledger component + admin policy.
-    requiredComponent: "ledger",
+    // No kind-wide component gate, deliberately. A webclient vendor is any
+    // outside system this site calls, so the kind cannot belong to one
+    // domain's component: a site with the ledger switched off may still call
+    // vendors that have nothing to do with payments. Gating is per-plugin
+    // instead — each plugin declares its own `requiredComponent` (Stripe wants
+    // `ledger.stripe`), and the routes below enforce it on the resolved
+    // plugin. This mirrors the `web-service` kind, the other component-neutral
+    // kind. Do not reintroduce a gate here or in the generic config router.
     requiredPolicy: "admin",
     sortEntries: (a, b) => a.id.localeCompare(b.id),
     // Delegate provider-specific config validation (e.g. Stripe's `pk_`
@@ -117,8 +123,8 @@ export function registerWcVendorPluginKind(): void {
  * after the kind is registered. Re-running is a no-op.
  */
 export async function backfillWcVendorSubsidiaries(): Promise<void> {
-  const { storage } = await import("../../../storage");
-  const { withFrameworkWrite } = await import("../../../middleware/request-context");
+  const { storage } = await import("../../storage");
+  const { withFrameworkWrite } = await import("../../middleware/request-context");
   const configs = await storage.pluginConfigs.getByKind("wc-vendors");
   for (const cfg of configs) {
     try {
@@ -156,8 +162,8 @@ export async function backfillWcVendorSubsidiaries(): Promise<void> {
  * second simply finds it gone.
  */
 export async function backfillPaymentTypesFromGlobal(): Promise<void> {
-  const { storage } = await import("../../../storage");
-  const { withFrameworkWrite } = await import("../../../middleware/request-context");
+  const { storage } = await import("../../storage");
+  const { withFrameworkWrite } = await import("../../middleware/request-context");
   const variable = await storage.variables.getByName("stripe_payment_methods");
   if (!variable) return; // already migrated / never set
 

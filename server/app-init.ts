@@ -24,7 +24,7 @@ import type { ResolvedServiceRoles } from "./services/service-roles";
 // Side-effect imports: trigger plugin / provider / access-policy registration.
 import "./plugins/ledger/charge";
 import { registerWmbChargePluginListener } from "./plugins/ledger/charge";
-import "./plugins/ledger/wc-vendors";
+import "./plugins/wc-vendors";
 import "./plugins/trust/eligibility";
 import "./services/comm/providers";
 
@@ -405,7 +405,7 @@ export async function bootstrapApp(
     registerWcVendorPluginKind,
     backfillWcVendorSubsidiaries,
     backfillPaymentTypesFromGlobal,
-  } = await import("./plugins/ledger/wc-vendors");
+  } = await import("./plugins/wc-vendors");
   const { initializeWebServiceSystem } = await import("./plugins/web-service");
   registerChargePluginKind();
   registerTrustEligibilityKind();

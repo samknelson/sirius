@@ -1,9 +1,9 @@
-import { PluginRegistry } from "../../_core";
+import { PluginRegistry } from "../_core";
 import {
   registerUncachedWcRequest,
   wcUncachedRequest,
-} from "../../../services/webclient/uncached";
-import { isMaintenanceModeError } from "../../../services/maintenance-flag";
+} from "../../services/webclient/uncached";
+import { isMaintenanceModeError } from "../../services/maintenance-flag";
 import { WcVendorRequestError } from "./errors";
 import type {
   WcVendorOperation,
@@ -13,7 +13,7 @@ import type {
   WcVendorPlugin,
   WcVendorManifestEntry,
 } from "./types";
-import type { WcAnswer, WcService } from "../../../services/webclient/types";
+import type { WcAnswer, WcService } from "../../services/webclient/types";
 
 export const wcVendorRegistry = new PluginRegistry<
   WcVendorPlugin,

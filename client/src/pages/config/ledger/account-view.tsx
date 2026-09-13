@@ -17,7 +17,6 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Trash2, Loader2 } from "lucide-react";
 import { LedgerAccountLayout, useLedgerAccountLayout } from "@/components/layouts/LedgerAccountLayout";
-import { pluginSearch, pluginConfigsQueryKey } from "@/plugins/_core/manifest";
 
 interface WcVendorConfig {
   id: string;
@@ -31,9 +30,10 @@ function AccountDetailsContent() {
   const [, setLocation] = useLocation();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
+  // Matches the edit page's source, so the name shown here is the name that
+  // was offered there.
   const { data: gatewayConfigs = [], isLoading: gatewaysLoading } = useQuery<WcVendorConfig[]>({
-    queryKey: [...pluginConfigsQueryKey("wc-vendors"), "search"],
-    queryFn: () => pluginSearch<WcVendorConfig>("wc-vendors"),
+    queryKey: ["/api/ledger/wc-vendors"],
     enabled: !!account.gatewayConfigId,
   });
 

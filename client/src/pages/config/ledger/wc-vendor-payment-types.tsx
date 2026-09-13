@@ -21,6 +21,8 @@ interface GatewayConfigOption {
   id: string;
   pluginId: string;
   name: string;
+  /** The plugin declares a catalog of payment types this editor can offer. */
+  acceptsPaymentTypes: boolean;
 }
 
 interface PaymentTypeOption {
@@ -40,9 +42,15 @@ export default function WcVendorPaymentTypesPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: gateways, isLoading: gatewaysLoading } = useQuery<GatewayConfigOption[]>({
+  // The ledger's payment-capable vendor list, not the neutral one: a vendor
+  // that is not a payment gateway has no business in a payment-types editor.
+  const { data: allVendors, isLoading: gatewaysLoading } = useQuery<GatewayConfigOption[]>({
     queryKey: ["/api/ledger/wc-vendors"],
   });
+
+  // Narrower still. A payment gateway need not publish a payment-type catalog,
+  // and one that doesn't would open this editor with nothing to choose from.
+  const gateways = allVendors?.filter((v) => v.acceptsPaymentTypes);
 
   const [selectedId, setSelectedId] = useState<string>("");
 

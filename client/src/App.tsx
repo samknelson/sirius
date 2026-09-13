@@ -345,7 +345,7 @@ const EmailConfigPage = lazy(() => import("@/pages/config/email"));
 const PostalConfigPage = lazy(() => import("@/pages/config/postal"));
 const LogsPage = lazy(() => import("@/pages/config/logs"));
 const ComponentsConfigPage = lazy(() => import("@/pages/config/components"));
-const GatewayTestPage = lazy(() => import("@/pages/config/ledger/wc-vendor-test"));
+const VendorTestPage = lazy(() => import("@/pages/config/wc-vendors/test"));
 const LedgerSettingsPage = lazy(() => import("@/pages/config/ledger/settings"));
 const PaymentTypesPage = lazy(() => import("@/pages/config/ledger/wc-vendor-payment-types"));
 const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-types"));
@@ -3706,11 +3706,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ledger/wc-vendors/test">
-        <ProtectedRoute policy="admin" component="ledger">
+      {/* Testing a webclient vendor is not a ledger concern: the kind is
+          component-neutral and each plugin carries its own gate, so this page
+          stays reachable on a site with the ledger switched off. */}
+      <Route path="/config/wc-vendors/test">
+        <ProtectedRoute policy="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <GatewayTestPage />
+              <VendorTestPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

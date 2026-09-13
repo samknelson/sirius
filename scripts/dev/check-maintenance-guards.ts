@@ -76,7 +76,7 @@ const OUTBOUND_MODULES = [
   "server/modules/sitespecific/freeman/edls-migrate/client.ts",
   "server/modules/sitespecific/btu/scraper-import.ts",
   "server/plugins/wizards/plugins/btu-cardcheck-scrape-import.ts",
-  "server/plugins/ledger/wc-vendors/plugins/stripe.ts",
+  "server/plugins/wc-vendors/plugins/stripe.ts",
 ];
 /**
  * How an outbound call is recognized. `fetch` covers Lob, Google, OpenStates,
@@ -88,7 +88,7 @@ const OUTBOUND_MODULES = [
  * does not make its own framework request: the wc-vendors kind declares
  * operations, and registering the plugin wraps every one of its handlers in a
  * framework request. The `wcUncachedRequest` call rule 1 looks for is in
- * `server/plugins/ledger/wc-vendors/registry.ts` by design, and since
+ * `server/plugins/wc-vendors/registry.ts` by design, and since
  * delegation is only followed within a file, naming a Stripe call marker here
  * would report all nine handlers as off-framework and buy nine exemptions that
  * each say "yes it is".
@@ -430,7 +430,7 @@ const WRAPPED_AT_REGISTRATION: Record<
     vendorIdentifiers: string[];
   }
 > = {
-  "server/plugins/ledger/wc-vendors/plugins/stripe.ts": {
+  "server/plugins/wc-vendors/plugins/stripe.ts": {
     handlerContainer: "operations",
     handlerProperty: "run",
     vendorIdentifiers: ["Stripe", "client"],

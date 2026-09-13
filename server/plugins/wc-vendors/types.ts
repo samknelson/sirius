@@ -25,11 +25,11 @@ import type {
   BasePluginMetadata,
   PluginConfigEnvelopeField,
   PluginValidationResult,
-} from "../../_core";
+} from "../_core";
 // Type-only: the vendor vocabulary is the web client framework's, and the
 // framework's is the maintenance guard's. Naming a service here that those two
 // do not know is exactly the split this import prevents.
-import type { WcService } from "../../../services/webclient/types";
+import type { WcService } from "../../services/webclient/types";
 
 /**
  * Resolved per-operation context handed to every provider method. Built by the

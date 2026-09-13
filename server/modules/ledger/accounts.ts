@@ -4,6 +4,7 @@ import { insertLedgerAccountSchema, ledgerAccountDataSchema } from "@shared/sche
 import { getAllCurrencies, hasCurrency } from "@shared/currency";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
+import { checkPaymentGatewayConfig } from "./payment-gateway-capability";
 
 const SIRIUS_ID_UNIQUE_CONSTRAINT = "ledger_accounts_sirius_id_unique";
 
@@ -77,6 +78,18 @@ export function registerLedgerAccountRoutes(app: Express) {
         res.status(400).json({ message: `Invalid currency code: ${currencyCode}` });
         return;
       }
+
+      // The FK only proves the id is a wc-vendors config; since that kind is
+      // component-neutral it can name a vendor that is not a payment gateway.
+      // Refuse it here so a crafted request cannot park an unusable vendor on
+      // the account and surface as an unsupported-operation error later.
+      if (validatedData.gatewayConfigId) {
+        const problem = await checkPaymentGatewayConfig(validatedData.gatewayConfigId);
+        if (problem) {
+          res.status(problem.status).json({ message: problem.message });
+          return;
+        }
+      }
       
       const account = await storage.ledger.accounts.create(validatedData);
       res.status(201).json(account);
@@ -99,7 +112,17 @@ export function registerLedgerAccountRoutes(app: Express) {
       
       // Prevent currencyCode from being updated - it's immutable after creation
       const { currencyCode, ...safeUpdateData } = validatedData;
-      
+
+      // Same guard as create: a wc-vendors config is not necessarily a payment
+      // gateway. Clearing the link (null) stays allowed.
+      if (safeUpdateData.gatewayConfigId) {
+        const problem = await checkPaymentGatewayConfig(safeUpdateData.gatewayConfigId);
+        if (problem) {
+          res.status(problem.status).json({ message: problem.message });
+          return;
+        }
+      }
+
       const account = await storage.ledger.accounts.update(id, safeUpdateData);
       
       if (!account) {

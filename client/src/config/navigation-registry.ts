@@ -142,8 +142,10 @@ export const configSections: NavSection[] = [
     icon: Wallet,
     items: [
       bespokeOptionsNavItem({ path: "/config/ledger/payment-types", optionsType: "ledger-payment-type", icon: Wallet, testId: "nav-ledger-payment-types", policy: "staff", requiresComponent: "ledger" }),
-      { path: "/config/ledger/wc-vendors/test", label: "Gateway Test", icon: Activity, testId: "nav-ledger-gateway-test", permission: "admin" },
-      { path: "/config/ledger/wc-vendors/payment-types", label: "Gateway Payment Types", icon: CreditCard, testId: "nav-ledger-gateway-payment-types", permission: "admin" },
+      // Which payment types a vendor config accepts is a payments question, so
+      // it stays in this section — and now says so, rather than inheriting the
+      // gate from a section sibling that has moved to Web Services.
+      { path: "/config/ledger/wc-vendors/payment-types", label: "Gateway Payment Types", icon: CreditCard, testId: "nav-ledger-gateway-payment-types", permission: "admin", requiresComponent: "ledger" },
       { path: "/config/ledger/settings", label: "Settings", icon: Settings, testId: "nav-ledger-settings", permission: "admin" },
     ],
   },
@@ -259,6 +261,10 @@ export const configSections: NavSection[] = [
     items: [
       { path: "/admin/ws", label: "Incoming", icon: Network, testId: "nav-config-ws", permission: "admin" },
       { path: "/admin/wc", label: "Outgoing", icon: Cloud, testId: "nav-config-wc", permission: "admin" },
+      // A webclient vendor is an outside system we call, so its connection
+      // test belongs with the outgoing traffic it exercises rather than in
+      // Ledger, where it used to sit and would vanish with that component.
+      { path: "/config/wc-vendors/test", label: "Vendor Test", icon: Activity, testId: "nav-config-wc-vendor-test", permission: "admin" },
       { path: "/config/sftp/clients", label: "SFTP Clients", icon: Server, testId: "nav-config-sftp-clients", permission: "admin", requiresComponent: "system.sftp.client" },
     ],
   },

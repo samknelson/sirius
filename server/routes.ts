@@ -60,6 +60,7 @@ import { registerWizardDispatcherRoutes } from "./plugins/wizards";
 import { registerFileRoutes } from "./modules/files";
 import { registerLedgerPaymentMethodRoutes } from "./modules/ledger/payment-methods";
 import { registerLedgerWcVendorRoutes } from "./modules/ledger/wc-vendors";
+import { registerWcVendorRoutes } from "./modules/system/wc-vendors";
 import { registerLedgerAccountRoutes } from "./modules/ledger/accounts";
 import { registerLedgerEaRoutes } from "./modules/ledger/ea";
 import { registerLedgerPaymentRoutes } from "./modules/ledger/payments";
@@ -448,8 +449,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register provider-generic ledger payment-method routes
   registerLedgerPaymentMethodRoutes(app);
 
-  // Register provider-generic ledger wc-vendors admin routes (connection test)
+  // Register the ledger-owned wc-vendors routes (accepted payment types). The
+  // component-neutral vendor list + connection test are registered separately,
+  // off /api/ledger/, so they survive the ledger component being off.
   registerLedgerWcVendorRoutes(app);
+  registerWcVendorRoutes(app);
 
   // Register ledger/accounts routes
   registerLedgerAccountRoutes(app);

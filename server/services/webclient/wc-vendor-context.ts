@@ -1,5 +1,5 @@
 import { storage } from "../../storage";
-import { getWcVendorPlugin } from "../../plugins/ledger/wc-vendors";
+import { getWcVendorPlugin } from "../../plugins/wc-vendors";
 import type {
   WcVendorOperation,
   WcVendorOperationArgs,
@@ -7,7 +7,7 @@ import type {
   WcVendorOperationResult,
   WcVendorContext,
   WcVendorPlugin,
-} from "../../plugins/ledger/wc-vendors/types";
+} from "../../plugins/wc-vendors/types";
 import type { PluginConfig } from "@shared/schema";
 import {
   getEnvironmentVariable,
@@ -16,7 +16,7 @@ import {
 import {
   WcVendorError,
   WcVendorRequestError,
-} from "../../plugins/ledger/wc-vendors/errors";
+} from "../../plugins/wc-vendors/errors";
 
 /**
  * A gateway config resolved into everything the generic payment-methods routes
@@ -77,13 +77,20 @@ export async function resolveWcVendor(
 
   // Dynamically-named credential: register in the env registry at resolve
   // time (as a secret) so the environment contract stays complete.
-  // changeTakesEffect: "immediate" — the gateway is resolved afresh per
+  // changeTakesEffect: "immediate" — the vendor is resolved afresh per
   // request and the credential is read here each time, never cached.
+  //
+  // The category is "webclient", not the domain of whatever the vendor
+  // happens to do. Registration here is last-write-wins, so declaring a
+  // domain would let the first vendor resolved stamp its own domain on every
+  // other vendor's credential; and since the kind stopped being ledger-owned,
+  // a vendor that has nothing to do with payments must not have its secret
+  // filed under the ledger.
   registerEnvironmentVariable({
     name: secretName,
     description: `Vendor credential secret named by config '${config.siriusId ?? config.id}'.`,
     secret: true,
-    category: "ledger",
+    category: "webclient",
     changeTakesEffect: "immediate",
   });
   const apiKey = getEnvironmentVariable(secretName);

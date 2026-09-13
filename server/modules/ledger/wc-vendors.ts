@@ -4,57 +4,53 @@ import {
   requireAccess,
   getComponentChecker,
 } from "../../services/access-policy-evaluator";
-import { getWcVendorPlugin } from "../../plugins/ledger/wc-vendors";
-import {
-  resolveWcVendor,
-  wcVendorRequest,
-  WcVendorError,
-} from "./wc-vendor-context";
-import { isMaintenanceModeError } from "../../services/maintenance-flag";
+import { requireComponent } from "../components";
+import { getWcVendorPlugin } from "../../plugins/wc-vendors";
+import { listPaymentGatewayConfigs } from "./payment-gateway-capability";
 
 /**
- * Provider-generic wc-vendors admin routes.
+ * The one ledger-owned corner of the wc-vendors kind: which payment types a
+ * vendor config accepts.
  *
- * Exposes a connection test keyed by a gateway CONFIG id, so any provider — and
- * any number of configs (e.g. two Stripe accounts) — can be tested
- * independently using that config's own credentials. All provider knowledge
- * lives behind the wc-vendors plugin; this module stays provider-agnostic.
+ * Listing and testing vendors moved to `/api/wc-vendors` when the kind stopped
+ * being ledger-gated — a webclient vendor is any outside system this site
+ * calls, not a payments concept. Accepted payment types genuinely are a
+ * payments concept, so they stay here, under `/api/ledger/`, behind the
+ * `ledger` component.
  *
- * Access is admin-gated, plus the resolved plugin's `requiredComponent` is
- * enforced on top. Nothing here hardcodes `stripe` or `ledger.stripe`.
+ * That component check is load-bearing: it used to come for free from the
+ * kind's own `requiredComponent: "ledger"`, and ungating the kind would
+ * otherwise have left these two routes reachable on a site with no ledger at
+ * all. On top of it, the resolved plugin's own `requiredComponent` is
+ * enforced. Nothing here hardcodes `stripe` or `ledger.stripe`.
  */
 export function registerLedgerWcVendorRoutes(app: Express): void {
   const base = "/api/ledger/wc-vendors";
+  const ledgerComponent = requireComponent("ledger");
 
-  // List the gateway configs available to test: enabled configs whose plugin is
-  // registered and whose required component (if any) is enabled.
-  app.get(base, requireAccess("admin"), async (_req: Request, res: Response) => {
-    try {
-      const configs = await storage.pluginConfigs.getByKind("wc-vendors");
-      const checker = getComponentChecker();
-      const available = [];
-      for (const cfg of configs) {
-        if (!cfg.enabled) continue;
-        const plugin = getWcVendorPlugin(cfg.pluginId);
-        if (!plugin) continue;
-        if (
-          plugin.requiredComponent &&
-          (!checker || !(await checker(plugin.requiredComponent)))
-        ) {
-          continue;
-        }
-        available.push({ id: cfg.id, pluginId: cfg.pluginId, name: cfg.name });
+  // The vendors the ledger may use as payment gateways.
+  //
+  // This is NOT the neutral `/api/wc-vendors` list with a different gate: it is
+  // a strictly smaller set, because a component-neutral vendor need not be able
+  // to do anything payment-shaped at all. Ledger surfaces pick from here so
+  // they cannot offer a vendor whose first real use would fail.
+  app.get(
+    base,
+    requireAccess("admin"),
+    ledgerComponent,
+    async (_req: Request, res: Response) => {
+      try {
+        res.json(await listPaymentGatewayConfigs());
+      } catch (error: any) {
+        res.status(500).json({
+          message: "Failed to fetch payment gateways",
+          error: error?.message ?? String(error),
+        });
       }
-      res.json(available);
-    } catch (error: any) {
-      res.status(500).json({
-        message: "Failed to fetch vendors",
-        error: error?.message ?? String(error),
-      });
-    }
-  });
+    },
+  );
 
-  // Resolve a gateway config + its registered plugin WITHOUT requiring the
+  // Resolve a vendor config + its registered plugin WITHOUT requiring the
   // credential secret. Editing accepted payment types must work even before a
   // secret is configured, so we deliberately avoid `resolveWcVendor` (which
   // resolves the API key). Also enforces the plugin's required component.
@@ -92,6 +88,7 @@ export function registerLedgerWcVendorRoutes(app: Express): void {
   app.get(
     `${base}/:configId/payment-types`,
     requireAccess("admin"),
+    ledgerComponent,
     async (req: Request, res: Response) => {
       try {
         const resolved = await resolveConfigForEditing(req.params.configId);
@@ -119,6 +116,7 @@ export function registerLedgerWcVendorRoutes(app: Express): void {
   app.put(
     `${base}/:configId/payment-types`,
     requireAccess("admin"),
+    ledgerComponent,
     async (req: Request, res: Response) => {
       try {
         const resolved = await resolveConfigForEditing(req.params.configId);
@@ -175,49 +173,6 @@ export function registerLedgerWcVendorRoutes(app: Express): void {
         res.status(500).json({
           message: "Failed to update payment types",
           error: error?.message ?? String(error),
-        });
-      }
-    },
-  );
-
-  // Run a connection test against a specific gateway config.
-  app.get(
-    `${base}/:configId/test`,
-    requireAccess("admin"),
-    async (req: Request, res: Response) => {
-      try {
-        const resolved = await resolveWcVendor(req.params.configId);
-
-        const component = resolved.plugin.requiredComponent;
-        if (component) {
-          const checker = getComponentChecker();
-          if (!checker || !(await checker(component))) {
-            return res
-              .status(403)
-              .json({ message: `Component not enabled: ${component}` });
-          }
-        }
-
-        const result = await wcVendorRequest(resolved, "test-connection", undefined);
-        res.json(result);
-      } catch (error: any) {
-        // A refusal is reported in this route's own shape, so the page shows
-        // why the test did not run where it shows every other failure.
-        if (isMaintenanceModeError(error)) {
-          return res
-            .status(error.statusCode)
-            .json({ connected: false, error: { message: error.message } });
-        }
-        if (error instanceof WcVendorError) {
-          return res
-            .status(error.status)
-            .json({ connected: false, error: { message: error.message } });
-        }
-        res.status(500).json({
-          connected: false,
-          error: {
-            message: error?.message ?? "Failed to run connection test",
-          },
         });
       }
     },

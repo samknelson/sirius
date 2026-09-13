@@ -4,13 +4,13 @@ import {
   checkAccessInline,
   getComponentChecker,
 } from "../../services/access-policy-evaluator";
-import { getWcVendorPlugin } from "../../plugins/ledger/wc-vendors";
+import { listPaymentGatewayConfigs } from "./payment-gateway-capability";
 import {
   resolveWcVendor,
   wcVendorRequest,
   WcVendorError,
   type ResolvedWcVendor,
-} from "./wc-vendor-context";
+} from "../../services/webclient/wc-vendor-context";
 import {
   isMaintenanceModeError,
   sendIfMaintenanceRefusal,
@@ -222,30 +222,19 @@ function sendError(res: Response, error: unknown, fallback: string): void {
 export function registerLedgerPaymentMethodRoutes(app: Express): void {
   const base = "/api/ledger/payment-methods/:entityType/:entityId";
 
-  // List the gateway configs available for the picker (enabled configs whose
-  // plugin component is enabled).
+  // List the gateway configs available for the picker.
+  //
+  // Payment-gateway capability is part of the filter, not just enablement: the
+  // wc-vendors kind is component-neutral, so a registered vendor need not be a
+  // payment gateway at all. Offering one here would let it be attached to a
+  // payment method, and every later customer or method call against it would
+  // fail as an unsupported operation.
   app.get(`${base}/gateways`, async (req: Request, res: Response) => {
     try {
       const { entityType, entityId } = req.params;
       await assertEntityAccess(req, entityType, entityId);
 
-      const configs = await storage.pluginConfigs.getByKind("wc-vendors");
-      const checker = getComponentChecker();
-      const available = [];
-      for (const cfg of configs) {
-        if (!cfg.enabled) continue;
-        const plugin = getWcVendorPlugin(cfg.pluginId);
-        if (!plugin) continue;
-        if (
-          plugin.requiredComponent &&
-          checker &&
-          !(await checker(plugin.requiredComponent))
-        ) {
-          continue;
-        }
-        available.push({ id: cfg.id, pluginId: cfg.pluginId, name: cfg.name });
-      }
-      res.json(available);
+      res.json(await listPaymentGatewayConfigs());
     } catch (error) {
       sendError(res, error, "Failed to fetch payment gateways");
     }

@@ -14,19 +14,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-interface GatewayConfigOption {
+interface VendorConfigOption {
   id: string;
   pluginId: string;
   name: string;
+  /** The plugin declares a `test-connection` operation. */
+  canTest: boolean;
+  acceptsPaymentTypes: boolean;
 }
 
-interface GatewayBalance {
+interface VendorBalance {
   label: string;
   amount: number;
   currency: string;
 }
 
-interface GatewayConnectionTest {
+interface VendorConnectionTest {
   connected: boolean;
   account?: {
     id: string;
@@ -36,7 +39,7 @@ interface GatewayConnectionTest {
     type?: string | null;
     capabilities?: { label: string; enabled: boolean }[];
   };
-  balances?: GatewayBalance[];
+  balances?: VendorBalance[];
   testMode?: boolean;
   error?: {
     message: string;
@@ -45,15 +48,20 @@ interface GatewayConnectionTest {
   };
 }
 
-export default function GatewayTestPage() {
-  usePageTitle("Payment Gateway Test");
+export default function VendorTestPage() {
+  usePageTitle("Vendor Connection Test");
 
   const {
-    data: gateways,
+    data: allVendors,
     isLoading: gatewaysLoading,
-  } = useQuery<GatewayConfigOption[]>({
-    queryKey: ["/api/ledger/wc-vendors"],
+  } = useQuery<VendorConfigOption[]>({
+    queryKey: ["/api/wc-vendors"],
   });
+
+  // Every operation on a vendor plugin is optional, so only offer the vendors
+  // that declare `test-connection`. Listing the rest would hand the user a
+  // choice whose only outcome is a 501 from the operation lookup.
+  const gateways = allVendors?.filter((v) => v.canTest);
 
   const [selectedId, setSelectedId] = useState<string>("");
 
@@ -63,8 +71,8 @@ export default function GatewayTestPage() {
     }
   }, [gateways, selectedId]);
 
-  const { data, isLoading, error, refetch, isFetching } = useQuery<GatewayConnectionTest>({
-    queryKey: ["/api/ledger/wc-vendors", selectedId, "test"],
+  const { data, isLoading, error, refetch, isFetching } = useQuery<VendorConnectionTest>({
+    queryKey: ["/api/wc-vendors", selectedId, "test"],
     enabled: !!selectedId,
     retry: false,
   });
@@ -81,10 +89,10 @@ export default function GatewayTestPage() {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100">
-            Payment Gateway Connection Test
+            Vendor Connection Test
           </h1>
           <p className="text-muted-foreground mt-2">
-            Pick a configured payment gateway and test its connection.
+            Pick a configured webclient vendor and test its connection.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -94,7 +102,7 @@ export default function GatewayTestPage() {
             disabled={gatewaysLoading || !gateways || gateways.length === 0}
           >
             <SelectTrigger className="w-[240px]" data-testid="select-gateway">
-              <SelectValue placeholder="Select a gateway" />
+              <SelectValue placeholder="Select a vendor" />
             </SelectTrigger>
             <SelectContent>
               {(gateways ?? []).map((gw) => (
@@ -119,7 +127,7 @@ export default function GatewayTestPage() {
         <Alert>
           <XCircle className="h-4 w-4" />
           <AlertDescription data-testid="text-no-gateways">
-            No payment gateways are configured. Add one before running a connection test.
+            No webclient vendors are configured. Add one before running a connection test.
           </AlertDescription>
         </Alert>
       )}
@@ -139,7 +147,7 @@ export default function GatewayTestPage() {
         <Alert variant="destructive">
           <XCircle className="h-4 w-4" />
           <AlertDescription>
-            Failed to connect to the payment gateway. Please check your configuration.
+            Failed to connect to the vendor. Please check your configuration.
           </AlertDescription>
         </Alert>
       )}
@@ -160,20 +168,24 @@ export default function GatewayTestPage() {
         </Alert>
       )}
 
-      {data?.connected && data.account && (
+      {data?.connected && (
         <>
           <Alert className="border-green-200 bg-green-50 dark:bg-green-950 dark:border-green-800">
             <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
             <AlertDescription className="text-green-800 dark:text-green-200">
               <div className="font-semibold">Successfully connected!</div>
-              <div className="mt-1">This gateway is properly configured and accessible.</div>
+              <div className="mt-1">This vendor is properly configured and accessible.</div>
             </AlertDescription>
           </Alert>
 
+          {/* Account details are payment-gateway shaped and optional. A vendor
+              can report a good connection with no account behind it, and that
+              is a success worth showing, not a blank page. */}
+          {data.account && (
           <Card>
             <CardHeader>
               <CardTitle>Account Information</CardTitle>
-              <CardDescription>Details about the connected gateway account</CardDescription>
+              <CardDescription>Details about the connected vendor account</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -253,6 +265,7 @@ export default function GatewayTestPage() {
               )}
             </CardContent>
           </Card>
+          )}
 
           {data.balances && data.balances.length > 0 && (
             <Card>
@@ -261,7 +274,7 @@ export default function GatewayTestPage() {
                   <DollarSign className="h-5 w-5 mr-2" />
                   Account Balance
                 </CardTitle>
-                <CardDescription>Balances reported by the gateway account</CardDescription>
+                <CardDescription>Balances reported by the vendor account</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
                 {data.balances.map((bal, idx) => (
