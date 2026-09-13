@@ -403,16 +403,18 @@ export async function bootstrapApp(
   const {
     registerWcVendorPluginKind,
     backfillWcVendorSubsidiaries,
+    migrateLegacyCivicWcVendorConfigs,
   } = await import("./plugins/wc-vendors");
   const { initializeWebServiceSystem } = await import("./plugins/web-service");
   registerChargePluginKind();
   registerTrustEligibilityKind();
   registerWcVendorPluginKind();
   initializeWebServiceSystem();
+  await migrateLegacyCivicWcVendorConfigs();
   // Every wc-vendors config needs a subsidiary row (the generic search
   // inner-joins it). Backfill pre-existing configs so they don't vanish.
   await backfillWcVendorSubsidiaries();
-  logger.info("Payment-gateway subsidiaries backfilled", { source: "startup" });
+  logger.info("Webclient-vendor configurations initialized", { source: "startup" });
 
   // Wire the shared plugin-config cache's invalidation subscription before any
   // config writes matter. The cache is generic (per-kind) and lazy; this only

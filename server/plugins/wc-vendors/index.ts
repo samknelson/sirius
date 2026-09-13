@@ -8,6 +8,10 @@ import {
 import { logger } from "../../logger";
 import { wcVendorRegistry } from "./registry";
 import type { RegisteredWcVendorPlugin } from "./types";
+import {
+  listEnvironmentVariables,
+  registerEnvironmentVariable,
+} from "../../config/env-registry";
 
 export {
   wcVendorRegistry,
@@ -179,6 +183,137 @@ export async function backfillWcVendorSubsidiaries(): Promise<void> {
   }
 }
 
+const CIVIC_CONFIG_MIGRATION_LOCK = "wc-vendors:civic-config-migration";
+
+export interface LegacyCivicConfigPlanInput {
+  existingPluginIds: ReadonlySet<string>;
+  availableSecretNames: ReadonlySet<string>;
+  configuredGoogleSecretName?: string;
+}
+
+export interface LegacyCivicConfigPlan {
+  configs: Array<{
+    pluginId: "google-geocoding" | "openstates" | "census-geocoder";
+    name: string;
+    secretName?: string;
+  }>;
+  ambiguousGoogleSecretNames: string[];
+}
+
+/** Pure migration decision; separated so every fail-closed branch is testable. */
+export function planLegacyCivicWcVendorConfigs(
+  input: LegacyCivicConfigPlanInput,
+): LegacyCivicConfigPlan {
+  const configs: LegacyCivicConfigPlan["configs"] = [];
+  const has = (pluginId: string) => input.existingPluginIds.has(pluginId);
+  let ambiguousGoogleSecretNames: string[] = [];
+
+  if (!has("google-geocoding")) {
+    const candidates = Array.from(new Set([
+      input.configuredGoogleSecretName?.trim(),
+      "GOOGLE_MAPS_API_KEY",
+      "GOOGLE_CIVICS_API_KEY",
+    ].filter((name): name is string =>
+      Boolean(name) && input.availableSecretNames.has(name as string),
+    )));
+    if (candidates.length === 1) {
+      configs.push({
+        pluginId: "google-geocoding",
+        name: "Google Geocoding",
+        secretName: candidates[0],
+      });
+    } else if (candidates.length > 1) {
+      ambiguousGoogleSecretNames = candidates;
+    }
+  }
+  if (
+    !has("openstates") &&
+    input.availableSecretNames.has("OPEN_STATES_API_KEY")
+  ) {
+    configs.push({
+      pluginId: "openstates",
+      name: "OpenStates",
+      secretName: "OPEN_STATES_API_KEY",
+    });
+  }
+  if (!has("census-geocoder")) {
+    configs.push({
+      pluginId: "census-geocoder",
+      name: "US Census Geocoder",
+    });
+  }
+  return { configs, ambiguousGoogleSecretNames };
+}
+
+/**
+ * Convert the three legacy environment-backed civic connections into normal
+ * wc-vendor configurations. Only secret NAMES are persisted. Existing rows
+ * always win, including disabled and ambiguous sets: boot must never rewrite
+ * an administrator's connection choices.
+ */
+export async function migrateLegacyCivicWcVendorConfigs(): Promise<void> {
+  const { storage } = await import("../../storage");
+  const { withFrameworkWrite } = await import("../../middleware/request-context");
+
+  await withFrameworkWrite(() =>
+    storage.advisoryLock.withTransactionLock(CIVIC_CONFIG_MIGRATION_LOCK, async () => {
+      const existingRows = await storage.pluginConfigs.getByKind("wc-vendors");
+      const existingPluginIds = new Set(existingRows.map((row) => row.pluginId));
+      const addressConfig = await storage.variables.getByName("address_validation_config");
+      const addressValue =
+        addressConfig?.value && typeof addressConfig.value === "object"
+          ? addressConfig.value as Record<string, unknown>
+          : {};
+      const google =
+        addressValue.google && typeof addressValue.google === "object"
+          ? addressValue.google as Record<string, unknown>
+          : {};
+      const configuredName =
+        typeof google.apiKeyName === "string" ? google.apiKeyName.trim() : "";
+      if (configuredName) {
+        registerEnvironmentVariable({
+          name: configuredName,
+          description: "Legacy Google Maps key available for a Google Geocoding connection.",
+          secret: true,
+          category: "core",
+          changeTakesEffect: "immediate",
+        });
+      }
+
+      const available = new Set(
+        listEnvironmentVariables().filter((entry) => entry.isSet).map((entry) => entry.name),
+      );
+      const plan = planLegacyCivicWcVendorConfigs({
+        existingPluginIds,
+        availableSecretNames: available,
+        configuredGoogleSecretName: configuredName,
+      });
+
+      for (const config of plan.configs) {
+        const row = await storage.pluginConfigs.create({
+          pluginKind: "wc-vendors",
+          pluginId: config.pluginId,
+          enabled: true,
+          name: config.name,
+          ordering: 0,
+          data: config.secretName ? { secretName: config.secretName } : {},
+        });
+        await storage.pluginConfigs.upsertSubsidiary("wc-vendors", { id: row.id });
+      }
+
+      if (plan.ambiguousGoogleSecretNames.length > 1) {
+        logger.error(
+          "Google Geocoding connection was not migrated because several legacy credential names are active",
+          {
+            service: "wc-vendor-plugins",
+            secretNames: plan.ambiguousGoogleSecretNames,
+          },
+        );
+      }
+    }),
+  );
+}
+
 // Plugin registrations (side-effect imports — each file self-registers).
 import "./plugins/stripe";
 import "./plugins/dummy";
@@ -189,3 +324,6 @@ import "./plugins/postal";
 import "./plugins/email";
 import "./plugins/sms-twilio";
 import "./plugins/sms-local";
+import "./plugins/google-geocoding";
+import "./plugins/openstates";
+import "./plugins/census-geocoder";

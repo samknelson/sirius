@@ -46,7 +46,6 @@ export default function PostalAddressesConfigPage() {
         },
         google: {
           enabled: newMode === "google",
-          apiKeyName: config?.google?.apiKeyName || "GOOGLE_MAPS_API_KEY",
           components: config?.google?.components || {
             country: true,
             administrative_area_level_1: true,

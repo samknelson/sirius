@@ -71,9 +71,6 @@ const GUARD_MODULE = "server/services/maintenance-flag.ts";
 const OUTBOUND_MODULES = [
   "server/lib/twilio-client.ts",
   "server/services/comm/validators/address.ts",
-  "server/services/google-civics.ts",
-  "server/services/google-geocode.ts",
-  "server/services/census-geocoder.ts",
   "server/modules/sitespecific/btu/scraper-import.ts",
   "server/plugins/wizards/plugins/btu-cardcheck-scrape-import.ts",
   "server/plugins/wc-vendors/plugins/stripe.ts",
@@ -84,8 +81,8 @@ const OUTBOUND_MODULES = [
  * `getTwilioClient` is the single door to Twilio; `sgMail.send` is SendGrid's;
  * `page.goto`/`page.pdf` are how the BTU scrape reaches the site it drives.
  *
- * A wc-vendors plugin has no entry here, and rule 1 is therefore quiet about
- * one. Such a plugin makes no framework request of its own: it declares
+ * A wc-vendors plugin is listed here even though it makes no framework request
+ * of its own: it declares
  * operations, registration keeps the runnable halves in a private map, and the
  * framework is the only thing that can reach them. The framework request rule
  * 1 looks for is in `server/services/webclient` by design, and since
@@ -144,6 +141,15 @@ const VENDOR_MARKER_EXEMPT: Record<string, string> = {
     "HANDLERS_ON_FRAMEWORK audits that delegation and the framework supplies refusal.",
   "server/plugins/wc-vendors/plugins/sms-twilio.ts":
     "The Twilio SDK is called only by registered wc-vendor operation handlers; " +
+    "HANDLERS_ON_FRAMEWORK audits that delegation and the framework supplies refusal.",
+  "server/plugins/wc-vendors/plugins/google-geocoding.ts":
+    "The Google endpoint is called only by a registered wc-vendor operation handler; " +
+    "HANDLERS_ON_FRAMEWORK audits that delegation and the framework supplies refusal.",
+  "server/plugins/wc-vendors/plugins/openstates.ts":
+    "The OpenStates endpoint is called only by a registered wc-vendor operation handler; " +
+    "HANDLERS_ON_FRAMEWORK audits that delegation and the framework supplies refusal.",
+  "server/plugins/wc-vendors/plugins/census-geocoder.ts":
+    "The Census endpoint is called only by a registered wc-vendor operation handler; " +
     "HANDLERS_ON_FRAMEWORK audits that delegation and the framework supplies refusal.",
 };
 

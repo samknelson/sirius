@@ -43,6 +43,7 @@ import {
 } from "../../server/plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate";
 import { getWcVendorHandler } from "../../server/plugins/wc-vendors/registry";
 import type { PluginConfig } from "@shared/schema";
+import { migrateLegacyCivicWcVendorConfigs } from "../../server/plugins/wc-vendors";
 
 /** The address-validation shape (Google side). */
 const ADDRESS = {
@@ -265,7 +266,9 @@ describe("the refusal itself", () => {
  */
 function ensureCivicKey(): void {
   const env = getRawProcessEnv();
-  if (!env.GOOGLE_CIVICS_API_KEY) env.GOOGLE_CIVICS_API_KEY = "test-civic-key-never-sent";
+  if (!env.GOOGLE_MAPS_API_KEY && !env.GOOGLE_CIVICS_API_KEY) {
+    env.GOOGLE_MAPS_API_KEY = "test-civic-key-never-sent";
+  }
 }
 
 async function forgetStoredAnswers(): Promise<void> {
@@ -278,6 +281,7 @@ async function forgetStoredAnswers(): Promise<void> {
 describe("with maintenance ON, no vendor is reached", () => {
   beforeAll(async () => {
     ensureCivicKey();
+    await migrateLegacyCivicWcVendorConfigs();
     await forgetStoredAnswers();
   });
   beforeEach(() => setMaintenanceActive(true));
