@@ -130,14 +130,16 @@ export function registerWcVendorPluginKind(): void {
       { name: "secretName", label: "Secret Name", type: "string" },
     ],
     envelopeFieldsForPlugin: (plugin) => {
-      const requirement = (plugin as RegisteredWcVendorPlugin).credential.secretName;
+      const credential = (plugin as RegisteredWcVendorPlugin).credential;
+      const requirement = credential.secretName;
       if (requirement === "none") return [];
       return [{
         name: "secretName",
         label: "Secret Name",
         type: "string",
         required: requirement === "required",
-        description: (plugin as RegisteredWcVendorPlugin).credential.setupGuidance,
+        description: credential.setupGuidance,
+        example: credential.setupExample,
       }];
     },
   });

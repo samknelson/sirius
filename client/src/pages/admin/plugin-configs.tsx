@@ -1237,6 +1237,11 @@ function GenericConfigDialog({
                           {field.description}
                         </p>
                       )}
+                      {field.example && (
+                        <code className="block overflow-x-auto rounded-md border bg-muted/50 px-3 py-2 text-xs text-foreground">
+                          {field.example}
+                        </code>
+                      )}
                     </div>
                   );
                 })}

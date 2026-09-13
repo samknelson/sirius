@@ -128,3 +128,4 @@
 - [Credential redaction in vendor replies](credential-redaction-in-vendor-replies.md) — scrub what the REMOTE says back (echo, headers, status line, escaped spellings); fragment masking IS a leak.
 - [Default connection + manual T631 cutover](default-connection-and-boot-seeding.md) — refuse ambiguous defaults; T631 has no legacy fallback, migration, startup blocker, or boot seed.
 - [WC vendor declaration contract](wc-vendor-declaration-contract.md) — operations are one typed map; credential secret-name requirements are framework-owned (`required`/`optional`/`none`).
+- [Permanent test cost](permanent-test-cost.md) — propose tests only when regression value clearly justifies maintaining and running them on every build; do not default to UI tests.

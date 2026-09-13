@@ -299,6 +299,11 @@ export interface WcVendorPlugin extends BasePluginMetadata {
      * configuration editor; it must never contain or resolve a secret value.
      */
     setupGuidance?: string;
+    /**
+     * Optional placeholder-only credential example displayed as structured
+     * text beside Secret Name. Must never contain a real secret value.
+     */
+    setupExample?: string;
   };
   /**
    * Client component id (`"<plugin-id>:<Component>"`) for the auto-discovered

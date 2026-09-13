@@ -455,7 +455,9 @@ const t631WcVendorPlugin: WcVendorPlugin = {
   credential: {
     secretName: "required",
     setupGuidance:
-      'The named secret must contain a JSON object with both tokens, for example {"accessToken":"<access-token>","employerToken":"<employer-token>"}.',
+      "Enter the environment-secret name here, not a token or JSON value. The value stored in that secret must be a JSON object containing both T631 tokens:",
+    setupExample:
+      '{"accessToken":"<access-token>","employerToken":"<employer-token>"}',
   },
 
   configFields: [
