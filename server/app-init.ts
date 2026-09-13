@@ -117,7 +117,15 @@ function installBaseMiddleware(app: Express, roles: ResolvedServiceRoles): void 
           ip: req.ip,
         };
 
-        if (capturedJsonResponse) {
+        // Manual WC runs intentionally return the complete WcResult to the
+        // administrator.  Do not copy that result into the generic HTTP log:
+        // provider responses can contain arbitrary payloads, and a request's
+        // arguments may contain identifiers or other sensitive input.  Keep
+        // the normal request metadata above (method, path, status, timing and
+        // IP) so the endpoint remains observable without persisting its body.
+        const isWcManualRun =
+          /^\/api\/admin\/wc-overview\/[^/]+\/[^/]+\/run$/.test(path);
+        if (capturedJsonResponse && !isWcManualRun) {
           // Redact sensitive data and create a preview string.
           // Important: Only store the string, never the object, to prevent PII leaks.
           try {

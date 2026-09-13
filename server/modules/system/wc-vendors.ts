@@ -9,11 +9,24 @@ import {
   getWcVendorOperationManifest,
 } from "../../plugins/wc-vendors";
 import { wcRequest } from "../../services/webclient";
+import { validateAgainstSchema } from "../../lib/json-schema-validator";
+import { addDaysYmd, getTodayYmd } from "@shared/utils/date";
+import type { WcVendorOperationName } from "../../plugins/wc-vendors/types";
+import type { JsonSchema } from "@shared/json-schema-form";
 import {
   describeWcVendor,
   WcVendorError,
 } from "../../services/webclient/wc-vendor-context";
 import { isMaintenanceModeError } from "../../services/maintenance-flag";
+
+function cloneJsonValue(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  // AJV is configured with useDefaults to match RJSF. Validate a detached
+  // value so defaults are not written into Express's request body (which may
+  // be observed by later middleware or logging).
+  if (typeof structuredClone === "function") return structuredClone(value);
+  return JSON.parse(JSON.stringify(value));
+}
 
 /**
  * Component-neutral wc-vendors admin routes.
@@ -32,6 +45,159 @@ import { isMaintenanceModeError } from "../../services/maintenance-flag";
  */
 export function registerWcVendorRoutes(app: Express): void {
   const base = "/api/wc-vendors";
+
+  /**
+   * The consolidated read used by the WC administration page. The config and
+   * component checks intentionally mirror the generic vendor list above:
+   * disabled, unregistered, and component-gated connections are not leaked,
+   * while every operation of a usable connection gets a row even when it has
+   * never been called.
+   */
+  app.get("/api/admin/wc-overview", requireAccess("admin"), async (_req, res) => {
+    try {
+      const configs = await storage.pluginConfigs.getByKind("wc-vendors");
+      const checker = getComponentChecker();
+      const available: Array<{
+        config: typeof configs[number];
+        plugin: NonNullable<ReturnType<typeof getWcVendorPlugin>>;
+      }> = [];
+      for (const config of configs) {
+        if (!config.enabled) continue;
+        const plugin = getWcVendorPlugin(config.pluginId);
+        if (!plugin) continue;
+        if (
+          plugin.requiredComponent &&
+          (!checker || !(await checker(plugin.requiredComponent)))
+        ) continue;
+        available.push({ config, plugin });
+      }
+
+      const today = getTodayYmd();
+      const start = addDaysYmd(today, -6);
+      const counts = await storage.wcStats.countsByConfiguration({
+        start,
+        end: today,
+        configurationIds: available.map(({ config }) => config.id),
+      });
+      const byKey = new Map(
+        counts.map((row) => [
+          `${row.configurationId}:${row.service}:${row.requestType}`,
+          row.calls,
+        ]),
+      );
+      const todayByKey = new Map(
+        counts.map((row) => [
+          `${row.configurationId}:${row.service}:${row.requestType}`,
+          row.todayCalls,
+        ]),
+      );
+
+      const rows = available.flatMap(({ config, plugin }) =>
+        getWcVendorOperationManifest(plugin).map((operation) => {
+          const service = plugin.service ?? null;
+          const key = `${config.id}:${service ?? ""}:${operation.id}`;
+          const callsLast7Days = byKey.get(key) ?? 0;
+          return {
+            pluginId: plugin.id,
+            pluginName: plugin.name,
+            vendor: plugin.name,
+            service,
+            requestType: operation.id,
+            configurationId: config.id,
+            configurationName: config.name ?? null,
+            cached: operation.cacheMode === "cached",
+            callsToday: todayByKey.get(key) ?? 0,
+            callsLast7Days,
+            manualRun: operation.manualRun,
+          };
+        }),
+      );
+
+      res.json(rows);
+    } catch (error: any) {
+      res.status(500).json({
+        message: "Failed to fetch web client overview",
+        error: error?.message ?? String(error),
+      });
+    }
+  });
+
+  /**
+   * Run one explicitly selected operation. No handler or resolved credential
+   * crosses this boundary: all addressing and capability checks happen again
+   * immediately before the single framework call.
+   */
+  app.post(
+    "/api/admin/wc-overview/:configId/:operation/run",
+    requireAccess("admin"),
+    async (req, res) => {
+      try {
+        const config = await storage.pluginConfigs.get(req.params.configId);
+        if (!config || config.pluginKind !== "wc-vendors") {
+          return res.status(404).json({ message: "Vendor configuration not found" });
+        }
+        if (!config.enabled) {
+          return res.status(409).json({ message: "Vendor configuration is disabled" });
+        }
+        const plugin = getWcVendorPlugin(config.pluginId);
+        if (!plugin) {
+          return res.status(404).json({ message: "Vendor plugin is not registered" });
+        }
+        const checker = getComponentChecker();
+        if (
+          plugin.requiredComponent &&
+          (!checker || !(await checker(plugin.requiredComponent)))
+        ) {
+          return res
+            .status(403)
+            .json({ message: `Component not enabled: ${plugin.requiredComponent}` });
+        }
+
+        const operation = plugin.operations[
+          req.params.operation as WcVendorOperationName
+        ];
+        if (!operation || !operation.manualRun) {
+          return res.status(409).json({
+            message: "This operation is not available for manual execution",
+          });
+        }
+        const args = req.body?.args;
+        const validatedArgs = cloneJsonValue(args);
+        const validation = validateAgainstSchema(
+          cloneJsonValue(operation.manualRun.argsSchema) as JsonSchema,
+          validatedArgs,
+        );
+        if (!validation.valid) {
+          return res.status(400).json({
+            message: "Invalid operation arguments",
+            errors: validation.errors,
+          });
+        }
+        if (operation.manualRun.effect === "write" && req.body?.confirmedWrite !== true) {
+          return res.status(400).json({
+            message: "Explicit confirmation is required for write operations",
+          });
+        }
+
+        const result = await wcRequest({
+          vendor: { configId: config.id },
+          operation: req.params.operation as WcVendorOperationName,
+          args: validatedArgs as never,
+        });
+        return res.json(result);
+      } catch (error: any) {
+        if (error instanceof WcVendorError) {
+          return res.status(error.status).json({ message: error.message });
+        }
+        if (isMaintenanceModeError(error)) {
+          return res.status(error.statusCode).json({ message: error.message });
+        }
+        return res.status(500).json({
+          message: error?.message ?? "Failed to run web client operation",
+        });
+      }
+    },
+  );
 
   // List the usable vendor configs: enabled configs whose plugin is registered
   // and whose required component (if any) is enabled.

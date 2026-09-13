@@ -6,13 +6,36 @@ let write: { values?: unknown; conflict?: any } = {};
 let serviceTypeRows: Array<{ service: string; requestType: string; calls: number }> = [];
 let dayRows: Array<{ ymd: string; calls: number }> = [];
 let dimensionRows: Array<Record<string, unknown>> = [];
+let configurationRows: Array<{
+  configurationId: string | null;
+  service: string;
+  requestType: string;
+  calls: number;
+  todayCalls: number;
+}> = [];
+let whereConditions: unknown[] = [];
+
+function sqlParameters(node: unknown, seen = new Set<object>()): string[] {
+  if (!node || typeof node !== "object" || seen.has(node)) return [];
+  seen.add(node);
+  const object = node as Record<string, unknown>;
+  const values =
+    typeof object.value === "string" && !Array.isArray(object.value) ? [object.value] : [];
+  return Object.entries(object).reduce(
+    (all, [key, value]) =>
+      key === "table" ? all : all.concat(sqlParameters(value, seen)),
+    values,
+  );
+}
 
 function stubClient() {
   const chain: any = {};
-  let read: "days" | "serviceTypes" | "dimensions" = "serviceTypes";
+  let read: "days" | "serviceTypes" | "dimensions" | "configurations" = "serviceTypes";
   chain.select = (fields: Record<string, unknown>) => {
     read =
-      "configurationId" in fields
+      "todayCalls" in fields
+        ? "configurations"
+        : "configurationId" in fields
         ? "dimensions"
         : "ymd" in fields
           ? "days"
@@ -21,12 +44,17 @@ function stubClient() {
   };
   chain.from = () => chain;
   chain.leftJoin = () => chain;
-  chain.where = () => chain;
+  chain.where = (condition: unknown) => {
+    whereConditions.push(condition);
+    return chain;
+  };
   chain.groupBy = () => chain;
   chain.orderBy = () =>
     Promise.resolve(
       read === "days"
         ? dayRows
+          : read === "configurations"
+            ? configurationRows
         : read === "dimensions"
           ? dimensionRows
           : serviceTypeRows,
@@ -58,6 +86,8 @@ beforeEach(() => {
   serviceTypeRows = [];
   dayRows = [];
   dimensionRows = [];
+  configurationRows = [];
+  whereConditions = [];
 });
 
 describe("outgoing call attribution", () => {
@@ -131,5 +161,64 @@ describe("outgoing call attribution", () => {
     ];
 
     await expect(storage.listDimensions()).resolves.toEqual(dimensionRows);
+  });
+
+  it("groups configuration calls independently, keeps today separate, and excludes NULL attribution", async () => {
+    configurationRows = [
+      {
+        configurationId: "cfg-a",
+        service: "Google",
+        requestType: "geocode",
+        calls: 9,
+        todayCalls: 3,
+      },
+      {
+        configurationId: "cfg-b",
+        service: "Google",
+        requestType: "geocode",
+        calls: 14,
+        todayCalls: 5,
+      },
+      {
+        configurationId: null,
+        service: "Google",
+        requestType: "geocode",
+        calls: 100,
+        todayCalls: 40,
+      },
+    ];
+
+    await expect(
+      storage.countsByConfiguration({
+        configurationIds: ["cfg-a", "cfg-b"],
+        start: "2026-09-07",
+        end: "2026-09-13",
+        today: "2026-09-13",
+      }),
+    ).resolves.toEqual([
+      {
+        configurationId: "cfg-a",
+        service: "Google",
+        requestType: "geocode",
+        calls: 9,
+        todayCalls: 3,
+      },
+      {
+        configurationId: "cfg-b",
+        service: "Google",
+        requestType: "geocode",
+        calls: 14,
+        todayCalls: 5,
+      },
+    ]);
+
+    // The grouped query must carry both inclusive date boundaries and the
+    // explicit current-configuration allowlist; NULL historical attribution
+    // cannot satisfy that allowlist.
+    expect(whereConditions).toHaveLength(1);
+    const whereParameters = sqlParameters(whereConditions[0]);
+    expect(whereParameters).toEqual(
+      expect.arrayContaining(["2026-09-07", "2026-09-13", "cfg-a", "cfg-b"]),
+    );
   });
 });

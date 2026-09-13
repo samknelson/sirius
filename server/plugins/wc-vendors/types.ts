@@ -34,6 +34,7 @@ import type {
   WcDuration,
   WcService,
 } from "../../services/webclient/types";
+import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
 
 /**
  * Resolved per-operation context handed to every provider method. Built by the
@@ -221,6 +222,18 @@ interface WcVendorOperationDeclarationBase {
    * away the diagnosis an operator is in the middle of.
    */
   needsWritableDatabase: boolean;
+  /**
+   * Opt-in metadata for the administrator's manual-run surface.  Keeping this
+   * on the declaration (rather than inferring it from the argument type) makes
+   * the safety decision explicit and lets a plugin deliberately keep an
+   * operation private.  The schema is data only; the handler never leaves the
+   * registry.
+   */
+  manualRun?: {
+    argsSchema: JsonSchema;
+    uiSchema?: UiSchema;
+    effect: "read" | "write";
+  };
 }
 
 /**
@@ -285,6 +298,11 @@ export interface WcVendorOperationInfo {
   description: string;
   needsWritableDatabase: boolean;
   cacheMode: "cached" | "uncached";
+  manualRun?: {
+    argsSchema: JsonSchema;
+    uiSchema?: UiSchema;
+    effect: "read" | "write";
+  };
 }
 
 export type WcVendorOperationInfoMap = {
@@ -421,5 +439,10 @@ export interface WcVendorManifestEntry {
     description: string;
     needsWritableDatabase: boolean;
     cacheMode: "cached" | "uncached";
+    manualRun?: {
+      argsSchema: JsonSchema;
+      uiSchema?: UiSchema;
+      effect: "read" | "write";
+    };
   }>;
 }

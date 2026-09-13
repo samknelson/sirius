@@ -1,8 +1,30 @@
-import { useQuery } from "@tanstack/react-query";
-import { usePageTitle } from "@/contexts/PageTitleContext";
-import { WcLayout } from "@/components/layouts/WebServicesLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useMemo, useState } from "react";
+import type { IChangeEvent } from "@rjsf/core";
+import type { UiSchema } from "@rjsf/utils";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Eye, Loader2, Play, ShieldAlert, X } from "lucide-react";
+import type { JsonSchema } from "@shared/json-schema-form";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -11,139 +33,406 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2 } from "lucide-react";
+import { SchemaForm } from "@/components/json-schema-form";
+import { WcLayout } from "@/components/layouts/WebServicesLayout";
+import { usePageTitle } from "@/contexts/PageTitleContext";
+import { getApiErrorMessage, apiRequest } from "@/lib/queryClient";
 
-/**
- * Every outbound call we are able to make.
- *
- * This is the registry as it stands in the running process, not a written
- * list: a service whose module is not loaded in this environment is simply
- * absent, which is the honest answer to "what can we call from here". It is
- * also not a usage report — a request type nobody has ever called still
- * appears, because being able to call it is the fact this page states.
- */
-
-interface WcRequest {
+interface WcRow {
+  pluginId: string;
+  vendor: string;
   service: string;
   requestType: string;
-  operation: string;
+  configurationId: string;
+  configurationName?: string | null;
   cached: boolean;
-  needsWritableDatabase: boolean;
-  freshForMs: number;
-  failureRememberedForMs: number;
+  callsToday: number;
+  callsLast7Days: number;
+  manualRun?: {
+    argsSchema: JsonSchema;
+    uiSchema?: UiSchema;
+    effect: "read" | "write";
+  };
 }
 
-/** A window in the largest unit that stays readable. */
-function formatWindow(ms: number): string {
-  if (ms <= 0) return "—";
-  const minutes = ms / 60000;
-  if (minutes < 60) return `${Math.round(minutes)} min`;
-  const hours = minutes / 60;
-  if (hours < 48) return `${Math.round(hours)} hr`;
-  return `${Math.round(hours / 24)} days`;
-}
-
-function groupByService(requests: WcRequest[]): [string, WcRequest[]][] {
-  const byService = new Map<string, WcRequest[]>();
-  for (const request of requests) {
-    const existing = byService.get(request.service);
-    if (existing) existing.push(request);
-    else byService.set(request.service, [request]);
-  }
-  return Array.from(byService);
-}
+const ALL = "all";
 
 export default function WcOverviewPage() {
   usePageTitle("Outgoing Web Services");
 
-  const { data, isLoading, isError } = useQuery<WcRequest[]>({
-    queryKey: ["/api/admin/wc-requests"],
+  const { data, isLoading, isError, refetch } = useQuery<WcRow[]>({
+    queryKey: ["/api/admin/wc-overview"],
+  });
+  const [vendor, setVendor] = useState(ALL);
+  const [requestType, setRequestType] = useState(ALL);
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<WcRow | null>(null);
+  const [args, setArgs] = useState<Record<string, unknown>>({});
+  const [confirmed, setConfirmed] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const run = useMutation({
+    mutationFn: ({
+      row,
+      values,
+    }: {
+      row: WcRow;
+      values: Record<string, unknown>;
+    }) =>
+      apiRequest(
+        "POST",
+        `/api/admin/wc-overview/${encodeURIComponent(row.configurationId)}/${encodeURIComponent(row.requestType)}/run`,
+        { args: values, confirmedWrite: confirmed },
+      ),
+    onSuccess: () => {
+      // The server's result may be served from cache or the network, and its
+      // shape is intentionally vendor-specific. Refresh the registry after
+      // every successful run so usage counters never go stale.
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/wc-overview"],
+      });
+    },
   });
 
-  const services = groupByService(data ?? []);
+  const rows = data ?? [];
+  const vendors = useMemo(
+    () => Array.from(new Set(rows.map((row) => row.vendor))).sort(),
+    [rows],
+  );
+  const requestTypes = useMemo(
+    () => Array.from(new Set(rows.map((row) => row.requestType))).sort(),
+    [rows],
+  );
+  const filteredRows = rows.filter((row) => {
+    const haystack = `${row.vendor} ${row.service} ${row.requestType} ${
+      row.configurationName ?? ""
+    }`.toLowerCase();
+    return (
+      (vendor === ALL || row.vendor === vendor) &&
+      (requestType === ALL || row.requestType === requestType) &&
+      (!search || haystack.includes(search.toLowerCase()))
+    );
+  });
+
+  const openRun = (row: WcRow) => {
+    setSelected(row);
+    setArgs({});
+    setConfirmed(false);
+    setValidationError(null);
+    run.reset();
+  };
+  const closeRun = () => {
+    if (!run.isPending) {
+      setSelected(null);
+      setArgs({});
+      setConfirmed(false);
+      setValidationError(null);
+      run.reset();
+    }
+  };
+  const clearFilters = () => {
+    setVendor(ALL);
+    setRequestType(ALL);
+    setSearch("");
+  };
 
   return (
     <WcLayout activeTab="wc-overview">
-      <p className="text-muted-foreground" data-testid="text-page-description">
-        Every third-party call this application knows how to make, as registered
-        by the code that owns it. A cached request is answered from the stored
-        response while it is still inside its freshness window; an uncached one
-        goes out every time. A service that is not registered in this
-        environment does not appear here at all.
-      </p>
+      <div className="space-y-5">
+        <div>
+          <h2 className="text-lg font-semibold">Outbound call operations</h2>
+          <p className="text-sm text-muted-foreground">
+            Inspect configured calls and safely run the operations exposed by
+            each vendor.
+          </p>
+        </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-6 w-6 animate-spin" data-testid="loading-requests" />
-        </div>
-      ) : isError ? (
-        <p
-          className="py-16 text-center text-sm text-muted-foreground"
-          data-testid="text-requests-error"
-        >
-          The registered services could not be loaded.
-        </p>
-      ) : services.length === 0 ? (
-        <p className="py-16 text-center text-sm text-muted-foreground" data-testid="text-empty">
-          No outbound services are registered in this environment.
-        </p>
-      ) : (
-        <div className="space-y-4">
-          {services.map(([service, requests]) => (
-            <Card key={service} data-testid={`card-service-${service}`}>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  {service}
-                  <span className="text-xs font-normal text-muted-foreground">
-                    {requests.length} {requests.length === 1 ? "request type" : "request types"}
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table data-testid={`table-service-${service}`}>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Request type</TableHead>
-                      <TableHead>What it does</TableHead>
-                      <TableHead>Answers kept</TableHead>
-                      <TableHead>Fresh for</TableHead>
-                      <TableHead>Failure remembered</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {requests.map((request) => (
-                      <TableRow
-                        key={request.requestType}
-                        data-testid={`row-request-${service}-${request.requestType}`}
-                      >
-                        <TableCell className="font-medium break-all">
-                          {request.requestType}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {request.operation}
-                        </TableCell>
-                        <TableCell>
-                          {request.cached ? (
-                            <Badge variant="secondary" data-testid="badge-cached">
-                              Cached
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" data-testid="badge-uncached">
-                              Every time
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>{formatWindow(request.freshForMs)}</TableCell>
-                        <TableCell>{formatWindow(request.failureRememberedForMs)}</TableCell>
-                      </TableRow>
+        <Card data-testid="card-wc-filters">
+          <CardContent className="pt-6">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-52 flex-1 space-y-1">
+                <Label htmlFor="wc-search">Search</Label>
+                <Input
+                  id="wc-search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Vendor, service, account…"
+                  data-testid="input-wc-search"
+                />
+              </div>
+              <div className="w-48 space-y-1">
+                <Label>Vendor</Label>
+                <Select value={vendor} onValueChange={setVendor}>
+                  <SelectTrigger data-testid="select-wc-vendor">
+                    <SelectValue placeholder="All vendors" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL}>All vendors</SelectItem>
+                    {vendors.map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {value}
+                      </SelectItem>
                     ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-56 space-y-1">
+                <Label>Request type</Label>
+                <Select value={requestType} onValueChange={setRequestType}>
+                  <SelectTrigger data-testid="select-wc-request">
+                    <SelectValue placeholder="All request types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL}>All request types</SelectItem>
+                    {requestTypes.map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {value}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {(vendor !== ALL || requestType !== ALL || search) && (
+                <Button
+                  variant="ghost"
+                  onClick={clearFilters}
+                  data-testid="button-clear-wc-filters"
+                >
+                  <X className="mr-2 h-4 w-4" />
+                  Clear
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {isLoading ? (
+          <Card>
+            <CardContent className="space-y-3 py-8">
+              {[1, 2, 3].map((item) => (
+                <div key={item} className="h-4 animate-pulse rounded bg-muted" />
+              ))}
+            </CardContent>
+          </Card>
+        ) : isError ? (
+          <Alert variant="destructive">
+            <AlertDescription className="flex items-center justify-between gap-4">
+              Couldn’t load outbound operations.
+              <Button variant="outline" onClick={() => refetch()}>
+                Retry
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ) : filteredRows.length === 0 ? (
+          <Card>
+            <CardContent
+              className="py-12 text-center text-sm text-muted-foreground"
+              data-testid="text-wc-empty"
+            >
+              No outbound operations match these filters.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="overflow-x-auto rounded-md border">
+            <Table data-testid="table-wc-overview">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Vendor</TableHead>
+                  <TableHead>Request type</TableHead>
+                  <TableHead>Account</TableHead>
+                  <TableHead>Cached?</TableHead>
+                  <TableHead>Calls today</TableHead>
+                  <TableHead>Calls last 7 days</TableHead>
+                  <TableHead className="text-right">Run</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredRows.map((row) => (
+                  <TableRow
+                    key={`${row.configurationId}-${row.requestType}`}
+                    data-testid={`row-wc-${row.configurationId}-${row.requestType}`}
+                  >
+                    <TableCell className="font-medium">{row.vendor}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {row.requestType}
+                    </TableCell>
+                    <TableCell>
+                      {row.configurationName || "[no name]"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={row.cached ? "secondary" : "outline"}>
+                        {row.cached ? "Yes" : "No"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{row.callsToday ?? 0}</TableCell>
+                    <TableCell>{row.callsLast7Days ?? 0}</TableCell>
+                    <TableCell className="text-right">
+                      {row.manualRun ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openRun(row)}
+                          data-testid={`button-run-wc-${row.configurationId}-${row.requestType}`}
+                        >
+                          <Play className="mr-1.5 h-3.5 w-3.5" />
+                          Run
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
+      <Dialog open={!!selected} onOpenChange={(open) => !open && closeRun()}>
+        <DialogContent
+          className="max-h-[92vh] w-[calc(100%-2rem)] max-w-6xl overflow-y-auto"
+          data-testid="dialog-wc-run"
+        >
+          {selected?.manualRun && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Run {selected.requestType}</DialogTitle>
+                <DialogDescription>
+                  {selected.vendor} · {selected.configurationName || "[no name]"} ·{" "}
+                  {selected.manualRun.effect === "write"
+                    ? "Write operation"
+                    : "Read operation"}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid min-h-0 gap-6 md:grid-cols-2">
+                <div className="min-w-0 space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Arguments</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {validationError && (
+                        <Alert
+                          variant="destructive"
+                          className="mb-4"
+                          data-testid="alert-wc-validation"
+                        >
+                          <AlertDescription>{validationError}</AlertDescription>
+                        </Alert>
+                      )}
+                      <SchemaForm
+                        schema={selected.manualRun.argsSchema}
+                        uiSchema={selected.manualRun.uiSchema}
+                        formData={args}
+                        onChange={(
+                          event: IChangeEvent<Record<string, unknown>>,
+                        ) => {
+                          setValidationError(null);
+                          setArgs(event.formData ?? {});
+                        }}
+                        onError={(errors) => {
+                          setValidationError(
+                            errors.length === 1
+                              ? "Please correct the highlighted field before running."
+                              : `Please correct the ${errors.length} highlighted fields before running.`,
+                          );
+                        }}
+                        onSubmit={(
+                          event: IChangeEvent<Record<string, unknown>>,
+                        ) =>
+                          run.mutate({
+                            row: selected,
+                            values: event.formData ?? {},
+                          })
+                        }
+                      >
+                        <Button
+                          type="submit"
+                          disabled={
+                            run.isPending ||
+                            (selected.manualRun.effect === "write" && !confirmed)
+                          }
+                          data-testid="button-confirm-wc-run"
+                        >
+                          {run.isPending ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Play className="mr-2 h-4 w-4" />
+                          )}
+                          Run operation
+                        </Button>
+                      </SchemaForm>
+                    </CardContent>
+                  </Card>
+
+                  {selected.manualRun.effect === "write" && (
+                    <Alert variant="destructive">
+                      <ShieldAlert className="h-4 w-4" />
+                      <AlertDescription>
+                        <strong>This changes remote data.</strong>
+                        <label className="mt-3 flex items-start gap-2">
+                          <Checkbox
+                            checked={confirmed}
+                            onCheckedChange={(value) =>
+                              setConfirmed(value === true)
+                            }
+                            data-testid="checkbox-confirm-wc-write"
+                          />
+                          <span>
+                            I understand this operation may mutate the vendor
+                            account.
+                          </span>
+                        </label>
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+
+                <Card className="min-w-0">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Eye className="h-4 w-4" />
+                      Full result
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {run.isPending && (
+                      <div className="space-y-2" data-testid="wc-result-loading">
+                        <div className="h-4 animate-pulse rounded bg-muted" />
+                        <div className="h-4 animate-pulse rounded bg-muted" />
+                      </div>
+                    )}
+                    {run.isError && (
+                      <Alert variant="destructive">
+                        <AlertDescription>
+                          {getApiErrorMessage(run.error, "The operation failed.")}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    {run.data !== undefined && (
+                      <pre
+                        className="max-h-[55vh] overflow-auto rounded-md bg-muted p-4 text-xs"
+                        data-testid="text-wc-result"
+                      >
+                        {JSON.stringify(run.data, null, 2)}
+                      </pre>
+                    )}
+                    {!run.isPending && !run.isError && run.data === undefined && (
+                      <p className="text-sm text-muted-foreground">
+                        Run an operation to inspect its cache, source, and
+                        response details.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </WcLayout>
   );
 }

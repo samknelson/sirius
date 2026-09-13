@@ -11,6 +11,7 @@ import type {
   WcVendorOperationName,
   WcVendorPlugin,
   WcVendorManifestEntry,
+  WcVendorOperationInfo,
 } from "./types";
 
 export function getWcVendorOperationManifest(
@@ -23,6 +24,7 @@ export function getWcVendorOperationManifest(
           description: operation.description,
           needsWritableDatabase: operation.needsWritableDatabase,
           cacheMode: operation.cacheMode,
+          ...(operation.manualRun ? { manualRun: operation.manualRun } : {}),
         }]
       : [],
   );
@@ -124,6 +126,7 @@ export function registerWcVendorPlugin(plugin: WcVendorPlugin): void {
       description: string;
       needsWritableDatabase: boolean;
       cacheMode: "cached" | "uncached";
+      manualRun?: NonNullable<WcVendorOperationInfo["manualRun"]>;
     }
   > = {};
 
@@ -165,6 +168,7 @@ export function registerWcVendorPlugin(plugin: WcVendorPlugin): void {
       description: declared.description,
       needsWritableDatabase: declared.needsWritableDatabase,
       cacheMode,
+      ...(declared.manualRun ? { manualRun: declared.manualRun } : {}),
     };
   }
 

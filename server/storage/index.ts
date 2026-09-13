@@ -32,7 +32,7 @@ export { type WorkerBanStorage, createWorkerBanStorage } from "./worker-bans";
 export { type EntityNotesStorage, type EntityNoteWithDetails, createEntityNotesStorage, entityNotesLoggingConfig } from "./entity-notes";
 export { type WsClientStorage, type WsClientGrantStorage, type WsClientCredentialStorage, type CredentialCreateResult, type WsClientIpRuleStorage, createWsClientStorage, createWsClientGrantStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
 export { type WcCacheStorage, type WcCacheEntry, type WcCacheExpiry, type WcCacheRow, type WcCacheRowWithResponse, type WcCacheListFilters, type WcCacheListParams, createWcCacheStorage, wcCacheStorage, wcRequestKeyHash } from "./wc-cache";
-export { type WcStatsStorage, type WcStatsDay, type WcStatsService, type WcStatsServiceType, type WcStatsDimension, type WcStatsFilters, type WcStatsRangeParams, createWcStatsStorage, wcStatsStorage } from "./wc-stats";
+export { type WcStatsStorage, type WcStatsDay, type WcStatsService, type WcStatsServiceType, type WcStatsConfigurationOperation, type WcStatsDimension, type WcStatsFilters, type WcStatsRangeParams, createWcStatsStorage, wcStatsStorage } from "./wc-stats";
 export { type WsStatsStorage, type WsStatsDay, type WsStatsPlugin, type WsStatsPluginOperation, type WsStatsClient, type WsStatsDimension, type WsStatsDimensionCalls, type WsStatsFilters, type WsStatsRangeParams, createWsStatsStorage } from "./ws-stats";
 export { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type EmployerCompanyStorage, createEmployerCompanyStorage, employerCompanyLoggingConfig } from "./employers/companies";
 export { type ContractStorage, createContractStorage } from "./contract";

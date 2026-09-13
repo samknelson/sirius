@@ -112,6 +112,18 @@ registerWcVendorPlugin({
     [CENSUS_DISTRICT_OPERATION]: {
       description: "look up census districts",
       needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: {
+          type: "object",
+          properties: {
+            lat: { type: "number", minimum: -90, maximum: 90 },
+            lng: { type: "number", minimum: -180, maximum: 180 },
+          },
+          required: ["lat", "lng"],
+          additionalProperties: false,
+        },
+        effect: "read",
+      },
       cache: {
         mode: "cached",
         freshFor: 90 * DAY_MS,

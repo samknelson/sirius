@@ -133,6 +133,10 @@ describe("the wc-vendor plugin contract", () => {
       description: "test connection",
       needsWritableDatabase: false,
       cacheMode: "uncached",
+      manualRun: {
+        argsSchema: { type: "object", properties: {}, additionalProperties: false },
+        effect: "read",
+      },
     });
     expect(stripe).toContainEqual({
       id: "create-customer",
@@ -147,6 +151,10 @@ describe("the wc-vendor plugin contract", () => {
       description: "ping the T631 service",
       needsWritableDatabase: false,
       cacheMode: "uncached",
+      manualRun: {
+        argsSchema: { type: "object", properties: {}, additionalProperties: false },
+        effect: "read",
+      },
     });
   });
 

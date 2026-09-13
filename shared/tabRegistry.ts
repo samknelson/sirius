@@ -777,6 +777,7 @@ export const wcTabTree: HierarchicalTab[] = [
   { id: 'wc-overview', label: 'Overview', hrefTemplate: '/admin/wc/overview', permission: 'admin' },
   { id: 'wc-cache', label: 'Cache', hrefTemplate: '/admin/wc/cache', permission: 'admin' },
   { id: 'wc-stats', label: 'Stats', hrefTemplate: '/admin/wc/stats', permission: 'admin' },
+  { id: 'wc-info', label: 'Info', hrefTemplate: '/admin/wc/info', permission: 'admin' },
 ];
 
 /**

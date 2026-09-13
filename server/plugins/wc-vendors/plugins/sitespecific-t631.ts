@@ -41,30 +41,50 @@ const t631RemoteOperations = {
   sirius_service_ping: {
     description: "ping the T631 service",
     needsWritableDatabase: false,
+    manualRun: {
+      argsSchema: { type: "object", properties: {}, additionalProperties: false },
+      effect: "read",
+    },
     run: (ctx: WcVendorContext, _args: void) =>
       performT631Fetch(ctx, "sirius_service_ping"),
   },
   sirius_edls_server_worker_list: {
     description: "read the T631 worker list",
     needsWritableDatabase: false,
+    manualRun: {
+      argsSchema: { type: "object", properties: {}, additionalProperties: false },
+      effect: "read",
+    },
     run: (ctx: WcVendorContext, _args: void) =>
       performT631Fetch(ctx, "sirius_edls_server_worker_list"),
   },
   sirius_dispatch_group_search: {
     description: "read the T631 dispatch groups",
     needsWritableDatabase: false,
+    manualRun: {
+      argsSchema: { type: "object", properties: {}, additionalProperties: false },
+      effect: "read",
+    },
     run: (ctx: WcVendorContext, _args: void) =>
       performT631Fetch(ctx, "sirius_dispatch_group_search"),
   },
   sirius_dispatch_facility_dropdown: {
     description: "read the T631 facility list",
     needsWritableDatabase: false,
+    manualRun: {
+      argsSchema: { type: "object", properties: {}, additionalProperties: false },
+      effect: "read",
+    },
     run: (ctx: WcVendorContext, _args: void) =>
       performT631Fetch(ctx, "sirius_dispatch_facility_dropdown"),
   },
   sirius_edls_server_tos_list: {
     description: "read the T631 time-off-sick list",
     needsWritableDatabase: false,
+    manualRun: {
+      argsSchema: { type: "object", properties: {}, additionalProperties: false },
+      effect: "read",
+    },
     run: (ctx: WcVendorContext, _args: void) =>
       performT631Fetch(ctx, "sirius_edls_server_tos_list"),
   },
@@ -490,6 +510,10 @@ const t631WcVendorPlugin: WcVendorPlugin = {
     "test-connection": {
       description: "test the T631 connection",
       needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: { type: "object", properties: {}, additionalProperties: false },
+        effect: "read",
+      },
       async run(ctx): Promise<GatewayConnectionTest> {
         try {
           const result = await performT631Fetch(ctx, "sirius_service_ping");

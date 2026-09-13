@@ -150,6 +150,10 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
       // Nothing is recorded, and an operator diagnosing a credential on a
       // read-only connection is exactly who needs this to still work.
       needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: { type: "object", properties: {}, additionalProperties: false },
+        effect: "read",
+      },
       async run(ctx): Promise<GatewayConnectionTest> {
         try {
           const c = client(ctx);

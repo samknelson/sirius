@@ -84,6 +84,10 @@ const twilioSmsPlugin: WcVendorPlugin = {
     "test-connection": {
       description: "test Twilio connection",
       needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: { type: "object", properties: {}, additionalProperties: false },
+        effect: "read",
+      },
       async run(ctx): Promise<GatewayConnectionTest> {
         try {
           const accounts = await client(ctx).api.accounts.list({ limit: 1 });

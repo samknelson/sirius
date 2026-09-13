@@ -140,6 +140,19 @@ registerWcVendorPlugin({
     [GOOGLE_GEOCODE_OPERATION]: {
       description: "geocode an address",
       needsWritableDatabase: true,
+      manualRun: {
+        argsSchema: {
+          type: "object",
+          properties: {
+            address: { type: "string", minLength: 1 },
+            components: { type: "string" },
+            region: { type: "string" },
+          },
+          required: ["address"],
+          additionalProperties: false,
+        },
+        effect: "read",
+      },
       cache: {
         mode: "cached",
         freshFor: 365 * DAY_MS,

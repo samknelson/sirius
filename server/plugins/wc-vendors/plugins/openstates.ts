@@ -201,6 +201,18 @@ registerWcVendorPlugin({
     [OPENSTATES_LOOKUP_OPERATION]: {
       description: "look up state legislators",
       needsWritableDatabase: true,
+      manualRun: {
+        argsSchema: {
+          type: "object",
+          properties: {
+            lat: { type: "number", minimum: -90, maximum: 90 },
+            lng: { type: "number", minimum: -180, maximum: 180 },
+          },
+          required: ["lat", "lng"],
+          additionalProperties: false,
+        },
+        effect: "read",
+      },
       cache: { mode: "uncached" },
       run: lookupLegislators,
     },

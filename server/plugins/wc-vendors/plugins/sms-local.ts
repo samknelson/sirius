@@ -13,6 +13,10 @@ const localSmsPlugin: WcVendorPlugin = {
     "test-connection": {
       description: "test local SMS provider",
       needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: { type: "object", properties: {}, additionalProperties: false },
+        effect: "read",
+      },
       async run(): Promise<GatewayConnectionTest> {
         return {
           connected: true,
@@ -23,6 +27,15 @@ const localSmsPlugin: WcVendorPlugin = {
     "validate-phone": {
       description: "validate a phone number locally",
       needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: {
+          type: "object",
+          properties: { phoneNumber: { type: "string", minLength: 1 } },
+          required: ["phoneNumber"],
+          additionalProperties: false,
+        },
+        effect: "read",
+      },
       async run(_ctx, { phoneNumber }): Promise<SmsValidatePhoneResult> {
         const parsed = parsePhoneNumber(phoneNumber, "US");
         if (!parsed || !parsed.isValid()) {

@@ -366,6 +366,10 @@ const freemanEdlsMigrateVendorPlugin: WcVendorPlugin = {
     "test-connection": {
       description: "test the legacy Freeman EDLS connection",
       needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: { type: "object", properties: {}, additionalProperties: false },
+        effect: "read",
+      },
       async run(ctx): Promise<GatewayConnectionTest> {
         try {
           const token = randomBytes(8).toString("hex");

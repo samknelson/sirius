@@ -326,6 +326,10 @@ const lobWcVendorPlugin: WcVendorPlugin = {
     "test-connection": {
       description: "test connection",
       needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: { type: "object", properties: {}, additionalProperties: false },
+        effect: "read",
+      },
       run: (ctx) => lobTest(ctx),
     },
     "verify-address": {
@@ -439,6 +443,10 @@ const localWcVendorPlugin: WcVendorPlugin = {
     "test-connection": {
       description: "test connection",
       needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: { type: "object", properties: {}, additionalProperties: false },
+        effect: "read",
+      },
       run: async () => ({
         connected: true,
         testMode: true,

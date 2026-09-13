@@ -200,6 +200,15 @@ const commonOperations = {
   "validate-email": {
     description: "validate an email address",
     needsWritableDatabase: false,
+    manualRun: {
+      argsSchema: {
+        type: "object",
+        properties: { email: { type: "string", format: "email" } },
+        required: ["email"],
+        additionalProperties: false,
+      },
+      effect: "read",
+    },
     async run(
       _ctx: WcVendorContext,
       args: { email: string },
@@ -210,6 +219,10 @@ const commonOperations = {
   "get-default-from": {
     description: "read the configured default sender",
     needsWritableDatabase: false,
+    manualRun: {
+      argsSchema: { type: "object", properties: {}, additionalProperties: false },
+      effect: "read",
+    },
     async run(
       ctx: WcVendorContext,
       _args: void,
@@ -231,6 +244,10 @@ const sendGridOperations = {
   "test-email-connection": {
     description: "test the SendGrid connection",
     needsWritableDatabase: false,
+    manualRun: {
+      argsSchema: { type: "object", properties: {}, additionalProperties: false },
+      effect: "read",
+    },
     async run(ctx: WcVendorContext, _args: void) {
       try {
         const key = sendGridKey(ctx);
@@ -279,6 +296,10 @@ const localOperations = {
   "test-email-connection": {
     description: "test the local email provider",
     needsWritableDatabase: false,
+    manualRun: {
+      argsSchema: { type: "object", properties: {}, additionalProperties: false },
+      effect: "read",
+    },
     async run(_ctx: WcVendorContext, _args: void) {
       return {
         success: true,

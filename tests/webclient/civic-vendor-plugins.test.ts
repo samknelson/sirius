@@ -54,24 +54,24 @@ afterEach(() => {
 
 describe("civic vendor plugin declarations", () => {
   it("publishes the intended cache and write policies without runnable behavior", () => {
-    expect(manifest(GOOGLE_GEOCODING_PLUGIN_ID)).toContainEqual({
+    expect(manifest(GOOGLE_GEOCODING_PLUGIN_ID)).toContainEqual(expect.objectContaining({
       id: GOOGLE_GEOCODE_OPERATION,
       description: "geocode an address",
       needsWritableDatabase: true,
       cacheMode: "cached",
-    });
-    expect(manifest(OPENSTATES_PLUGIN_ID)).toContainEqual({
+    }));
+    expect(manifest(OPENSTATES_PLUGIN_ID)).toContainEqual(expect.objectContaining({
       id: OPENSTATES_LOOKUP_OPERATION,
       description: "look up state legislators",
       needsWritableDatabase: true,
       cacheMode: "uncached",
-    });
-    expect(manifest(CENSUS_GEOCODER_PLUGIN_ID)).toContainEqual({
+    }));
+    expect(manifest(CENSUS_GEOCODER_PLUGIN_ID)).toContainEqual(expect.objectContaining({
       id: CENSUS_DISTRICT_OPERATION,
       description: "look up census districts",
       needsWritableDatabase: false,
       cacheMode: "cached",
-    });
+    }));
     expect(JSON.stringify(manifest(
       GOOGLE_GEOCODING_PLUGIN_ID,
     ))).not.toContain("requestKey");

@@ -154,6 +154,10 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
     "test-connection": {
       description: "test connection",
       needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: { type: "object", properties: {}, additionalProperties: false },
+        effect: "read",
+      },
       async run(): Promise<GatewayConnectionTest> {
         return {
           connected: true,

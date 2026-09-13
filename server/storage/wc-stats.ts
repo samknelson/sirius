@@ -1,4 +1,4 @@
-import { sql, and, eq, gte, lte, asc, isNull, type SQL } from 'drizzle-orm';
+import { sql, and, eq, gte, lte, asc, isNull, inArray, type SQL } from 'drizzle-orm';
 import { pluginConfigs, pluginConfigsWcVendors, wcStats } from '@shared/schema';
 import type { Ymd } from '@shared/utils/date';
 import { getClient } from './transaction-context';
@@ -34,6 +34,15 @@ export interface WcStatsServiceType {
   service: string;
   requestType: string;
   calls: number;
+}
+
+/** Calls for one live configuration and request type. */
+export interface WcStatsConfigurationOperation {
+  configurationId: string;
+  service: string;
+  requestType: string;
+  calls: number;
+  todayCalls: number;
 }
 
 /** One stored attribution dimension, including its surviving config metadata. */
@@ -85,6 +94,15 @@ export interface WcStatsStorage {
    * knows about still is — this reads the counts, not the registry.
    */
   countsByServiceType(params: WcStatsRangeParams): Promise<WcStatsServiceType[]>;
+  /**
+   * Calls grouped by configuration and request type. This is intentionally a
+   * single grouped read so the WC overview does not issue one stats query per
+   * row.
+   */
+  countsByConfiguration(params: WcStatsRangeParams & {
+    configurationIds: string[];
+    today?: Ymd;
+  }): Promise<WcStatsConfigurationOperation[]>;
   /**
    * Calls per service inside the range, by service name. Services with no
    * calls in the range are absent — including a service that is registered
@@ -209,6 +227,43 @@ export function createWcStatsStorage(): WcStatsStorage {
 
     async countsByServiceType(params: WcStatsRangeParams): Promise<WcStatsServiceType[]> {
       return readCountsByServiceType(params);
+    },
+
+    async countsByConfiguration(params): Promise<WcStatsConfigurationOperation[]> {
+      if (params.configurationIds.length === 0) return [];
+      const client = getClient();
+      const rows = await client
+        .select({
+          configurationId: wcStats.configurationId,
+          service: wcStats.service,
+          requestType: wcStats.requestType,
+          calls: sql<number>`sum(${wcStats.calls})::int`,
+          todayCalls: sql<number>`sum(case when ${wcStats.ymd} = ${params.today ?? params.end} then ${wcStats.calls} else 0 end)::int`,
+        })
+        .from(wcStats)
+        .where(and(
+          rangeCondition(params),
+          // Historical/unattributed rows have NULL and therefore cannot match
+          // this list. The caller supplies only currently enabled configs.
+          inArray(wcStats.configurationId, params.configurationIds),
+        ))
+        .groupBy(wcStats.configurationId, wcStats.service, wcStats.requestType)
+        .orderBy(
+          asc(wcStats.configurationId),
+          asc(wcStats.service),
+          asc(wcStats.requestType),
+        );
+      return rows.flatMap((row) =>
+        row.configurationId
+          ? [{
+              configurationId: row.configurationId,
+              service: row.service,
+              requestType: row.requestType,
+              calls: Number(row.calls ?? 0),
+              todayCalls: Number(row.todayCalls ?? 0),
+            }]
+          : [],
+      );
     },
 
     async countsByService(params: WcStatsRangeParams): Promise<WcStatsService[]> {
