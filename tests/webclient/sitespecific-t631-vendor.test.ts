@@ -122,7 +122,11 @@ describe("the T631 vendor plugin", () => {
   });
 
   it("declares that the framework must resolve its named credential", () => {
-    expect(plugin().credential).toEqual({ secretName: "required" });
+    expect(plugin().credential).toEqual({
+      secretName: "required",
+      setupGuidance:
+        'The named secret must contain a JSON object with both tokens, for example {"accessToken":"<access-token>","employerToken":"<employer-token>"}.',
+    });
   });
 
   it("puts every remote action on the web client framework as a read", () => {

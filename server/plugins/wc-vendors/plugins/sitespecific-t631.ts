@@ -452,7 +452,11 @@ const t631WcVendorPlugin: WcVendorPlugin = {
   description:
     "The remote Teamsters 631 service. The connection holds the URL, account id and employer id; the secret it names holds both tokens as one JSON object.",
   requiredComponent: T631_COMPONENT,
-  credential: { secretName: "required" },
+  credential: {
+    secretName: "required",
+    setupGuidance:
+      'The named secret must contain a JSON object with both tokens, for example {"accessToken":"<access-token>","employerToken":"<employer-token>"}.',
+  },
 
   configFields: [
     { name: "url", label: "Service URL", type: "string", required: true },

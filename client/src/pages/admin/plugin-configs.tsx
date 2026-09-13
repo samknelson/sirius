@@ -1186,6 +1186,11 @@ function GenericConfigDialog({
                           data-testid={`input-envelope-${field.name}`}
                         />
                       )}
+                      {field.description && (
+                        <p className="whitespace-pre-wrap text-xs text-muted-foreground">
+                          {field.description}
+                        </p>
+                      )}
                     </div>
                   );
                 })}

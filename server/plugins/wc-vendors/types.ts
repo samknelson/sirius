@@ -250,6 +250,12 @@ export interface WcVendorPlugin extends BasePluginMetadata {
    */
   credential: {
     secretName: WcVendorSecretNameRequirement;
+    /**
+     * Safe, non-secret instructions describing the value the named secret must
+     * contain. May include placeholder-only examples and is sent to the admin
+     * configuration editor; it must never contain or resolve a secret value.
+     */
+    setupGuidance?: string;
   };
   /**
    * Client component id (`"<plugin-id>:<Component>"`) for the auto-discovered

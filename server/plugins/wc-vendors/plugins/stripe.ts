@@ -103,7 +103,11 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
     "Stripe payment gateway. Each configuration names the secret that holds the Stripe API credentials.",
   requiredComponent: "ledger.stripe",
   addComponentId: "stripe:StripeAddPaymentMethod",
-  credential: { secretName: "required" },
+  credential: {
+    secretName: "required",
+    setupGuidance:
+      "The named secret must contain one Stripe secret API key, for example sk_test_<your-key> or sk_live_<your-key>.",
+  },
 
   // The publishable key the browser needs to load Stripe Elements. Stored in
   // the config's `data` json (no schema change). Required: there is no env

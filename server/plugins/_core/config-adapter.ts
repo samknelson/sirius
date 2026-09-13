@@ -94,6 +94,8 @@ export interface PluginConfigEnvelopeField {
   name: string;
   /** Human label for the form control. */
   label: string;
+  /** Safe guidance shown beside the form control. */
+  description?: string;
   /** Input type the UI should render. */
   type: "string" | "number";
   /** Whether the field must be provided (non-empty). */

@@ -137,6 +137,7 @@ export function registerWcVendorPluginKind(): void {
         label: "Secret Name",
         type: "string",
         required: requirement === "required",
+        description: (plugin as WcVendorPlugin).credential.setupGuidance,
       }];
     },
   });

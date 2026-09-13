@@ -120,6 +120,8 @@ export interface PluginConfigEnvelopeFieldOptions {
 export interface PluginConfigEnvelopeField {
   name: string;
   label: string;
+  /** Safe guidance shown beside the form control. */
+  description?: string;
   type: "string" | "number";
   required?: boolean;
   /** When present, render this field as a dropdown populated from this source. */

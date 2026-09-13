@@ -57,9 +57,15 @@ describe("the wc-vendor plugin contract", () => {
   });
 
   it("declares credential requirements instead of making each plugin add a field", () => {
-    expect(plugin("stripe").credential).toEqual({ secretName: "required" });
+    expect(plugin("stripe").credential).toEqual({
+      secretName: "required",
+      setupGuidance:
+        "The named secret must contain one Stripe secret API key, for example sk_test_<your-key> or sk_live_<your-key>.",
+    });
     expect(plugin("sitespecific-t631").credential).toEqual({
       secretName: "required",
+      setupGuidance:
+        'The named secret must contain a JSON object with both tokens, for example {"accessToken":"<access-token>","employerToken":"<employer-token>"}.',
     });
     expect(plugin("dummy").credential).toEqual({ secretName: "none" });
   });
@@ -74,6 +80,8 @@ describe("the wc-vendor plugin contract", () => {
         label: "Secret Name",
         type: "string",
         required: true,
+        description:
+          "The named secret must contain one Stripe secret API key, for example sk_test_<your-key> or sk_live_<your-key>.",
       },
     ]);
     expect(adapter.envelopeFieldsForPlugin?.(plugin("dummy"))).toEqual([]);
