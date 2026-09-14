@@ -774,6 +774,7 @@ export const wsTabTree: HierarchicalTab[] = [
 export const WC_ADMIN_ENTITY_ID = 'admin';
 
 export const wcTabTree: HierarchicalTab[] = [
+  { id: 'wc-status', label: 'Status', hrefTemplate: '/admin/wc/status', permission: 'admin' },
   { id: 'wc-overview', label: 'Overview', hrefTemplate: '/admin/wc/overview', permission: 'admin' },
   { id: 'wc-cache', label: 'Cache', hrefTemplate: '/admin/wc/cache', permission: 'admin' },
   { id: 'wc-stats', label: 'Stats', hrefTemplate: '/admin/wc/stats', permission: 'admin' },

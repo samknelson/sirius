@@ -353,6 +353,7 @@ const FileBrowserDetailPage = lazy(() => import("@/pages/admin/file-browser-deta
 const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
 const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
 const EbsInspectionPage = lazy(() => import("@/pages/admin/ebs"));
+const WcStatusPage = lazy(() => import("@/pages/admin/wc-status"));
 const WcOverviewPage = lazy(() => import("@/pages/admin/wc-overview"));
 const WcInfoPage = lazy(() => import("@/pages/admin/wc-info"));
 const WcCachePage = lazy(() => import("@/pages/admin/wc-cache"));
@@ -3663,7 +3664,7 @@ function Router() {
       </Route>
 
       <Route path="/config/wc-vendors/test">
-        <ProtectedRoute permission="admin"><Redirect to="/admin/wc/overview" /></ProtectedRoute>
+        <ProtectedRoute permission="admin"><Redirect to="/admin/wc/status" /></ProtectedRoute>
       </Route>
 
       <Route path="/config/ledger/wc-vendors/payment-types">
@@ -3783,7 +3784,18 @@ function Router() {
           on the default tab. */}
       <Route path="/admin/wc">
         <ProtectedRoute permission="admin">
-          <Redirect to="/admin/wc/overview" />
+          <Redirect to="/admin/wc/status" />
+        </ProtectedRoute>
+      </Route>
+
+      {/* Current connectivity for each enabled outgoing connection. */}
+      <Route path="/admin/wc/status">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WcStatusPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 

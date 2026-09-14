@@ -288,7 +288,9 @@ export function registerWcVendorRoutes(app: Express): void {
         available.push({
           id: cfg.id,
           pluginId: cfg.pluginId,
+           pluginName: plugin.name,
           name: cfg.name,
+           siriusId: cfg.siriusId,
           operations,
            canTest: operations.some((operation) => operation.id === "service.test-connection"),
           acceptsPaymentTypes: (plugin.supportedPaymentTypes ?? []).length > 0,
