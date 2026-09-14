@@ -35,7 +35,12 @@ export type WcOutcome = "success" | "failure";
  * answered" is what stamps a record fresh on a call that never landed.
  */
 export interface WcAnswer<TValue> {
-  /** True only when the vendor itself answered. */
+  /**
+   * True only when the vendor itself supplied a complete answer. A complete
+   * negative answer (zero matches, or a completed lookup that says the subject
+   * is invalid) is still an answer and is stored for the normal success window.
+   * Transport/provider failures and local or incomplete fallbacks are not.
+   */
   answered: boolean;
   /**
    * The answer, when there is one. On a non-answer this may still carry
@@ -47,8 +52,9 @@ export interface WcAnswer<TValue> {
   error?: string;
   /**
    * Keep this answer? Defaults to true. `false` means the vendor answered but
-   * the answer must not be remembered — a "no such record" that the vendor
-   * may start recognising tomorrow, for instance.
+   * this particular successful answer must not be remembered. Do not use this
+   * for complete negative lookup results; use it only when the result is
+   * intentionally ephemeral despite being a complete provider answer.
    */
   store?: boolean;
 }

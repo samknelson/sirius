@@ -170,18 +170,29 @@ const twilioSmsPlugin: WcVendorPlugin = {
         ctx,
         { phoneNumber },
       ): Promise<WcAnswer<SmsValidatePhoneResult>> {
-        const parsed = parsePhoneNumber(phoneNumber, "US");
+        let parsed;
+        try {
+          parsed = parsePhoneNumber(phoneNumber, "US");
+        } catch {
+          parsed = undefined;
+        }
         if (!parsed || !parsed.isValid()) {
           return {
-            answered: true,
+            answered: false,
             value: { valid: false, error: "Invalid phone number format." },
-            store: false,
+            error: "Phone number was rejected locally before the provider lookup",
           };
         }
         const e164 = parsed.format("E.164");
         const result = await client(ctx).lookups.v2.phoneNumbers(e164).fetch({
           fields: "line_type_intelligence",
         });
+        if (typeof result.valid !== "boolean") {
+          return {
+            answered: false,
+            error: "Provider answered without a validity result",
+          };
+        }
         const lineType = result.lineTypeIntelligence?.type?.toLowerCase();
         const value: SmsValidatePhoneResult = {
           valid: result.valid,
@@ -199,7 +210,7 @@ const twilioSmsPlugin: WcVendorPlugin = {
             error: "Provider answered without line-type intelligence",
           };
         }
-        return { answered: true, value, store: value.valid };
+        return { answered: true, value };
       },
     },
     "communications.sms.send": {

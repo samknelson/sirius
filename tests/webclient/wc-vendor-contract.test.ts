@@ -934,6 +934,93 @@ describe("the wc-vendor plugin contract", () => {
     );
   });
 
+  it("stores and serves complete negative answers as successes while force still calls", async () => {
+    getConfig.mockResolvedValue({
+      id: "cached-config",
+      pluginKind: "wc-vendors",
+      pluginId: "cached-contract-fixture",
+      enabled: true,
+      name: "Cached fixture",
+      data: {},
+    });
+    const negative = { normalized: "" };
+    cachedRun.mockResolvedValue({ answered: true, value: negative });
+
+    await expect(wcRequest({
+      vendor: { configId: "cached-config" },
+      operation: "tests.cache.answer",
+      args: { address: "missing" },
+    })).resolves.toMatchObject({
+      source: "network",
+      outcome: "success",
+      value: negative,
+    });
+    expect(cacheWriteSuccess).toHaveBeenCalledWith(
+      "Census",
+      "tests.cache.answer",
+      "cached-config:MISSING",
+      negative,
+    );
+    expect(cacheWriteFailure).not.toHaveBeenCalled();
+
+    cacheRead.mockResolvedValue({
+      outcome: "success",
+      response: negative,
+      fetchedAt: new Date(),
+    });
+    cachedRun.mockClear();
+    for (const mode of ["default", "cached-only"] as const) {
+      await expect(wcRequest({
+        vendor: { configId: "cached-config" },
+        operation: "tests.cache.answer",
+        args: { address: "missing" },
+        mode,
+      })).resolves.toMatchObject({
+        source: "cache",
+        outcome: "success",
+        value: negative,
+      });
+    }
+    expect(cachedRun).not.toHaveBeenCalled();
+
+    await expect(wcRequest({
+      vendor: { configId: "cached-config" },
+      operation: "tests.cache.answer",
+      args: { address: "missing" },
+      mode: "force",
+    })).resolves.toMatchObject({ source: "network", outcome: "success" });
+    expect(cachedRun).toHaveBeenCalledOnce();
+  });
+
+  it("keeps incomplete and failed vendor attempts on the failure path", async () => {
+    getConfig.mockResolvedValue({
+      id: "cached-config",
+      pluginKind: "wc-vendors",
+      pluginId: "cached-contract-fixture",
+      enabled: true,
+      name: "Cached fixture",
+      data: {},
+    });
+    cachedRun.mockResolvedValue({
+      answered: false,
+      value: { normalized: "LOCAL FALLBACK" },
+      error: "Provider response was incomplete",
+    });
+
+    await expect(wcRequest({
+      vendor: { configId: "cached-config" },
+      operation: "tests.cache.answer",
+      args: { address: "missing" },
+    })).resolves.toMatchObject({
+      source: "network",
+      outcome: "failure",
+      fallback: { normalized: "LOCAL FALLBACK" },
+      error: "Provider response was incomplete",
+    });
+    expect(cacheWriteFailure).toHaveBeenCalledOnce();
+    expect(cacheWriteSuccess).not.toHaveBeenCalled();
+  });
+
   it("serves cached vendor answers during maintenance but refuses a required call", async () => {
     getConfig.mockResolvedValue({
       id: "cached-config",

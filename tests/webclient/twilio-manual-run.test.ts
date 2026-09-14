@@ -100,4 +100,44 @@ describe("Twilio manually runnable reads", () => {
       fields: "line_type_intelligence",
     });
   });
+
+  it("returns completed invalid lookups as cacheable answers", async () => {
+    lookupFetch.mockResolvedValue({
+      valid: false,
+      phoneNumber: "+17025550100",
+      countryCode: "US",
+      lineTypeIntelligence: { type: "unknown" },
+    });
+
+    const answer = await handler("communications.phone.validate")(context, {
+      phoneNumber: "+17025550100",
+    } as never) as { answered: boolean; store?: boolean; value?: { valid?: boolean } };
+    expect(answer).toMatchObject({ answered: true, value: { valid: false } });
+    expect(answer.store).toBeUndefined();
+  });
+
+  it("keeps locally rejected numbers out of successful caching", async () => {
+    const answer = await handler("communications.phone.validate")(context, {
+      phoneNumber: "not a phone",
+    } as never);
+    expect(answer).toMatchObject({
+      answered: false,
+      value: { valid: false },
+    });
+    expect(lookupFetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects incomplete provider responses instead of caching a negative", async () => {
+    lookupFetch.mockResolvedValue({
+      phoneNumber: "+17025550100",
+      countryCode: "US",
+    });
+
+    await expect(handler("communications.phone.validate")(context, {
+      phoneNumber: "+17025550100",
+    } as never)).resolves.toMatchObject({
+      answered: false,
+      error: "Provider answered without a validity result",
+    });
+  });
 });

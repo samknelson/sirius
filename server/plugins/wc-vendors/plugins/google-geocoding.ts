@@ -115,9 +115,11 @@ async function geocode(
     };
   }
 
-  if (data.status === "OK") return { answered: true, value: data };
-  if (data.status === "ZERO_RESULTS") {
-    return { answered: true, value: data, store: false };
+  if (data.status === "OK" && Array.isArray(data.results)) {
+    return { answered: true, value: data };
+  }
+  if (data.status === "ZERO_RESULTS" && Array.isArray(data.results)) {
+    return { answered: true, value: data };
   }
   return {
     answered: false,

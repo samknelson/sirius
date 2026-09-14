@@ -80,7 +80,7 @@ vi.mock('../../server/services/webclient/wc-vendor-context', () => ({
               error: 'Provider answered without line-type intelligence',
             };
           }
-          return { answered: true, value, store: value.valid };
+          return { answered: true, value };
         } catch (error) {
           return {
             answered: false,

@@ -67,7 +67,7 @@ async function cachedLobVerify(
   address: PostalAddress,
 ): Promise<WcAnswer<AddressVerificationResult>> {
   const result = await lobVerify(ctx, address);
-  if (result.rawResponse === undefined) {
+  if (result.rawResponse === undefined || result.error) {
     return {
       answered: false,
       value: result,
@@ -77,7 +77,6 @@ async function cachedLobVerify(
   return {
     answered: true,
     value: withoutRecipient(result),
-    store: result.valid,
   };
 }
 
@@ -103,6 +102,17 @@ async function lobVerify(ctx: WcVendorContext, address: PostalAddress): Promise<
       valid: false,
       deliverable: false,
       error: `Lob API error: ${response.status} - ${JSON.stringify(data)}`,
+      rawResponse: data,
+    };
+  }
+  if (
+    typeof data.valid_address !== "boolean" ||
+    typeof data.deliverability !== "string"
+  ) {
+    return {
+      valid: false,
+      deliverable: false,
+      error: "Lob answered without a complete verification result",
       rawResponse: data,
     };
   }

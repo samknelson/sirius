@@ -22,8 +22,11 @@ freshness window then buys months of silence on a lie.
 
 **How to apply:** any new adopter must look for the vendor's own fingerprint in
 the response (the field only a real answer carries), not for the absence of an
-exception. A vendor answer meaning "no such record" is `answered: true,
-store: false` — a real answer that must not be remembered.
+exception. A complete vendor answer meaning "no such record" or "invalid
+subject" is `answered: true` and uses the normal success freshness window.
+Local guesses, incomplete bodies, provider errors, and transport failures are
+`answered: false`; `store: false` is only for an intentionally ephemeral but
+otherwise complete provider answer.
 
 ## Four modes, and the fourth is not cosmetic
 

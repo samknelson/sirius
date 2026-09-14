@@ -199,7 +199,7 @@ describe("Google Geocoding vendor handler", () => {
     expect(answer.error).toContain("[REDACTED]");
   });
 
-  it("treats zero results as a real but deliberately unstored answer", async () => {
+  it("treats zero results as a complete cacheable vendor answer", async () => {
     vi.stubGlobal("fetch", vi.fn(async () =>
       new Response(JSON.stringify({ status: "ZERO_RESULTS", results: [] })),
     ));
@@ -211,9 +211,16 @@ describe("Google Geocoding vendor handler", () => {
       { address: "missing" } as never,
     )).resolves.toMatchObject({
       answered: true,
-      store: false,
       value: { status: "ZERO_RESULTS" },
     });
+    const answer = await handler(
+      GOOGLE_GEOCODING_PLUGIN_ID,
+      GOOGLE_GEOCODE_OPERATION,
+    )(
+      context(GOOGLE_GEOCODING_PLUGIN_ID, "key"),
+      { address: "missing" } as never,
+    ) as { store?: boolean };
+    expect(answer.store).toBeUndefined();
   });
 
   it("scrubs a credential-bearing URL from network exceptions", async () => {
