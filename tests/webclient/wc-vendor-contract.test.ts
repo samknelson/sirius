@@ -7,15 +7,22 @@ const cacheRead = vi.hoisted(() => vi.fn());
 const cacheWriteSuccess = vi.hoisted(() => vi.fn());
 const cacheWriteFailure = vi.hoisted(() => vi.fn());
 const cachedRun = vi.hoisted(() => vi.fn());
+const componentEnabled = vi.hoisted(() => vi.fn());
+const getConfigsByPlugin = vi.hoisted(() => vi.fn());
 
 vi.mock("../../server/storage", () => ({
   storage: {
     pluginConfigs: {
       get: (id: string) => getConfig(id),
       getByKind: (kind: string) => getConfigsByKind(kind),
-      getByKindAndPlugin: async () => [],
+      getByKindAndPlugin: (kind: string, pluginId: string) =>
+        getConfigsByPlugin(kind, pluginId),
     },
   },
+}));
+
+vi.mock("../../server/plugins/_core/gating", () => ({
+  isPluginComponentEnabledAsync: (plugin: unknown) => componentEnabled(plugin),
 }));
 
 vi.mock("../../server/storage/wc-cache", async (importOriginal) => {
@@ -42,6 +49,10 @@ import { registerWcVendorPlugin } from "../../server/plugins/wc-vendors/registry
 import { getPluginConfigAdapter } from "../../server/plugins/_core/config-adapter";
 import { getWcRequest, wcRequest } from "../../server/services/webclient";
 import {
+  describeWcVendor,
+  hasWcVendorOperation,
+} from "../../server/services/webclient/wc-vendor-context";
+import {
   MaintenanceModeError,
   setMaintenanceActive,
 } from "../../server/services/maintenance-flag";
@@ -66,6 +77,7 @@ registerWcVendorPlugin({
   description: "Exercises cached and uncached operation registration.",
   credential: { secretName: "none" },
   service: "Google",
+  requiredComponent: "contract.component",
   operations: {
     "cached-contract-test": {
       description: "exercise a cached vendor operation",
@@ -94,6 +106,23 @@ registerWcVendorPlugin({
     },
   },
 });
+registerWcVendorPlugin({
+  id: "disabled-routing-contract-fixture",
+  name: "Disabled routing contract fixture",
+  description: "Exercises component-aware automatic routing.",
+  credential: { secretName: "none" },
+  requiredComponent: "disabled.contract.component",
+  operations: {
+    "uncached-contract-test": {
+      description: "exercise a disabled automatic-routing candidate",
+      needsWritableDatabase: false,
+      cache: { mode: "uncached" },
+      async run(_ctx, args) {
+        return { value: args.value };
+      },
+    },
+  },
+});
 
 beforeEach(() => {
   canStore.mockReset();
@@ -110,6 +139,8 @@ beforeEach(() => {
     value: { normalized: args.address.trim().toUpperCase() },
   }));
   setMaintenanceActive(false);
+  componentEnabled.mockReset();
+  componentEnabled.mockResolvedValue(true);
   getConfig.mockReset();
   getConfig.mockResolvedValue({
     id: "dummy-config",
@@ -121,6 +152,8 @@ beforeEach(() => {
   });
   getConfigsByKind.mockReset();
   getConfigsByKind.mockResolvedValue([]);
+  getConfigsByPlugin.mockReset();
+  getConfigsByPlugin.mockResolvedValue([]);
 });
 
 function plugin(id: string) {
@@ -130,6 +163,206 @@ function plugin(id: string) {
 }
 
 describe("the wc-vendor plugin contract", () => {
+  it("refuses a disabled required component for every target before reaching the handler", async () => {
+    const row = {
+      id: "cached-config",
+      pluginKind: "wc-vendors",
+      pluginId: "cached-contract-fixture",
+      enabled: true,
+      name: "Cached fixture",
+      data: { operations: ["cached-contract-test"] },
+    };
+    getConfig.mockResolvedValue(row);
+    getConfigsByKind.mockResolvedValue([row]);
+    getConfigsByPlugin.mockResolvedValue([row]);
+    componentEnabled.mockResolvedValue(false);
+
+    await expect(
+      wcRequest({
+        vendor: { configId: row.id },
+        operation: "cached-contract-test",
+        args: { address: "10 main st" },
+      }),
+    ).rejects.toMatchObject({
+      status: 403,
+      message: "Component 'contract.component' not enabled",
+    });
+    await expect(
+      wcRequest({
+        vendor: { pluginId: row.pluginId },
+        operation: "cached-contract-test",
+        args: { address: "10 main st" },
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(
+      wcRequest({
+        vendor: { any: true },
+        operation: "cached-contract-test",
+        args: { address: "10 main st" },
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(
+      describeWcVendor(
+        { configId: row.id },
+        "cached-contract-test",
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(hasWcVendorOperation("cached-contract-test")).resolves.toBe(false);
+
+    expect(cachedRun).not.toHaveBeenCalled();
+    expect(cacheRead).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsupported operations before reaching any vendor handler", async () => {
+    getConfig.mockResolvedValue({
+      id: "cached-config",
+      pluginKind: "wc-vendors",
+      pluginId: "cached-contract-fixture",
+      enabled: true,
+      name: "Cached fixture",
+      data: {},
+    });
+
+    await expect(
+      wcRequest({
+        vendor: { configId: "cached-config" },
+        operation: "not-registered" as never,
+        args: undefined as never,
+      }),
+    ).rejects.toMatchObject({ status: 501 });
+    expect(cachedRun).not.toHaveBeenCalled();
+    expect(cacheRead).not.toHaveBeenCalled();
+  });
+
+  it("refuses ambiguous automatic operation assignments", async () => {
+    const assigned = (id: string) => ({
+      id,
+      pluginKind: "wc-vendors",
+      pluginId: "cached-contract-fixture",
+      enabled: true,
+      name: id,
+      data: { operations: ["cached-contract-test"] },
+    });
+    getConfigsByKind.mockResolvedValue([assigned("one"), assigned("two")]);
+
+    await expect(
+      wcRequest({
+        vendor: { any: true },
+        operation: "cached-contract-test",
+        args: { address: "10 main st" },
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining(
+        "Multiple enabled webclient vendor configurations are assigned",
+      ),
+    });
+    expect(getConfig).not.toHaveBeenCalled();
+    expect(cachedRun).not.toHaveBeenCalled();
+  });
+
+  it("does not let a component-disabled assignment make an available route ambiguous", async () => {
+    const assigned = (id: string, pluginId: string) => ({
+      id,
+      pluginKind: "wc-vendors",
+      pluginId,
+      enabled: true,
+      name: id,
+      data: { operations: ["cached-contract-test"] },
+    });
+    const usable = assigned("usable", "cached-contract-fixture");
+    const disabled = assigned("disabled", "disabled-routing-contract-fixture");
+    usable.data.operations = ["uncached-contract-test"];
+    disabled.data.operations = ["uncached-contract-test"];
+    getConfigsByKind.mockResolvedValue([usable, disabled]);
+    getConfig.mockResolvedValue(usable);
+    componentEnabled.mockImplementation(async (plugin) =>
+      plugin.id !== "disabled-routing-contract-fixture",
+    );
+
+    await expect(hasWcVendorOperation("uncached-contract-test")).resolves.toBe(true);
+    await expect(
+      wcRequest({
+        vendor: { any: true },
+        operation: "uncached-contract-test",
+        args: { value: "routed" },
+      }),
+    ).resolves.toMatchObject({
+      outcome: "success",
+      value: { value: "routed" },
+    });
+  });
+
+  it("rejects invalid explicit configurations before reaching the handler", async () => {
+    for (const [row, status] of [
+      [undefined, 404],
+      [
+        {
+          id: "wrong-kind",
+          pluginKind: "other",
+          pluginId: "cached-contract-fixture",
+          enabled: true,
+          data: {},
+        },
+        404,
+      ],
+      [
+        {
+          id: "disabled",
+          pluginKind: "wc-vendors",
+          pluginId: "cached-contract-fixture",
+          enabled: false,
+          data: {},
+        },
+        409,
+      ],
+    ] as const) {
+      getConfig.mockResolvedValueOnce(row);
+      await expect(
+        wcRequest({
+          vendor: { configId: row?.id ?? "missing" },
+          operation: "cached-contract-test",
+          args: { address: "10 main st" },
+        }),
+      ).rejects.toMatchObject({ status });
+    }
+
+    expect(componentEnabled).not.toHaveBeenCalled();
+    expect(cachedRun).not.toHaveBeenCalled();
+    expect(cacheRead).not.toHaveBeenCalled();
+  });
+
+  it("keeps explicit selection independent from automatic operation assignment", async () => {
+    getConfig.mockResolvedValue({
+      id: "cached-config",
+      pluginKind: "wc-vendors",
+      pluginId: "cached-contract-fixture",
+      enabled: true,
+      name: "Cached fixture",
+      data: {},
+    });
+
+    await expect(
+      wcRequest({
+        vendor: { any: true },
+        operation: "cached-contract-test",
+        args: { address: "10 main st" },
+      }),
+    ).rejects.toMatchObject({ status: 501 });
+
+    const explicit = await wcRequest({
+      vendor: { configId: "cached-config" },
+      operation: "cached-contract-test",
+      args: { address: "10 main st" },
+    });
+    expect(explicit).toMatchObject({
+      source: "network",
+      outcome: "success",
+      value: { normalized: "10 MAIN ST" },
+    });
+    expect(cachedRun).toHaveBeenCalledTimes(1);
+  });
+
   it("leaves existing unassigned configurations fail-closed for automatic routing", async () => {
     getConfigsByKind.mockResolvedValue([
       {

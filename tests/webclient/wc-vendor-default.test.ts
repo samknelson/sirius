@@ -17,6 +17,7 @@ const getConfig = vi.fn();
 const getPlugin = vi.fn();
 const getEnvironmentVariable = vi.fn();
 const registerEnvironmentVariable = vi.fn();
+const componentEnabled = vi.fn();
 
 vi.mock("../../server/storage", () => ({
   storage: {
@@ -31,6 +32,10 @@ vi.mock("../../server/storage", () => ({
 vi.mock("../../server/plugins/wc-vendors/registry", () => ({
   getWcVendorPlugin: (id: string) => getPlugin(id),
   getWcVendorHandler: () => undefined,
+}));
+
+vi.mock("../../server/plugins/_core/gating", () => ({
+  isPluginComponentEnabledAsync: (plugin: unknown) => componentEnabled(plugin),
 }));
 
 // Resolving a connection reads no table and makes no request, but the module
@@ -86,6 +91,8 @@ beforeEach(() => {
   getPlugin.mockReset();
   getEnvironmentVariable.mockReset();
   registerEnvironmentVariable.mockReset();
+  componentEnabled.mockReset();
+  componentEnabled.mockResolvedValue(true);
   getPlugin.mockReturnValue({
     id: "sitespecific-t631",
     name: "Teamsters 631",

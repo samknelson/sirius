@@ -28,6 +28,7 @@ import type {
   WcVendorTarget,
 } from "./client";
 import type { WcAnswer, WcRequestMode, WcResult } from "./types";
+import { isPluginComponentEnabledAsync } from "../../plugins/_core/gating";
 
 /**
  * The vendor half of the web client framework.
@@ -142,6 +143,12 @@ async function resolveWcVendor(gatewayConfigId: string): Promise<ResolvedWcVendo
       `No vendor plugin registered for '${config.pluginId}'`,
     );
   }
+  if (!(await isPluginComponentEnabledAsync(plugin))) {
+    throw new WcVendorResolutionError(
+      403,
+      `Component '${plugin.requiredComponent}' not enabled`,
+    );
+  }
 
   const data = (config.data ?? {}) as Record<string, unknown>;
   const requirement = plugin.credential.secretName;
@@ -244,6 +251,30 @@ function hasAssignedOperation(
   );
 }
 
+function hasDeclaredAssignedOperation(
+  config: PluginConfig,
+  operation: WcVendorOperationName,
+): boolean {
+  return (
+    hasAssignedOperation(config, operation) &&
+    Boolean(getWcVendorPlugin(config.pluginId)?.operations[operation])
+  );
+}
+
+async function keepComponentEnabledConfigs(
+  configs: PluginConfig[],
+): Promise<PluginConfig[]> {
+  const enabled = await Promise.all(
+    configs.map(async (config) => {
+      const plugin = getWcVendorPlugin(config.pluginId);
+      return plugin && (await isPluginComponentEnabledAsync(plugin))
+        ? config
+        : undefined;
+    }),
+  );
+  return enabled.filter((config): config is PluginConfig => Boolean(config));
+}
+
 /**
  * Resolve the one enabled connection assigned to a particular operation.
  *
@@ -257,12 +288,16 @@ async function resolveAnyWcVendor(
   const configs = (
     await storage.pluginConfigs.getByKind("wc-vendors")
   ).filter((config) => config.enabled);
-  const candidates = configs.filter((config) =>
-    hasAssignedOperation(config, operation) &&
-    Boolean(getWcVendorPlugin(config.pluginId)?.operations[operation]),
+  const assigned = configs.filter((config) =>
+    hasDeclaredAssignedOperation(config, operation),
   );
+  const candidates = await keepComponentEnabledConfigs(assigned);
 
   if (candidates.length === 0) {
+    // Preserve the specific component refusal when there is one otherwise
+    // unambiguous route. With several unusable assignments there is no single
+    // connection whose refusal can truthfully explain the route as a whole.
+    if (assigned.length === 1) return resolveWcVendor(assigned[0].id);
     throw new WcVendorRequestError(
       501,
       `No enabled webclient vendor configuration is assigned to '${operation}'. ` +
@@ -362,10 +397,10 @@ export async function hasWcVendorOperation(
   const configs = (
     await storage.pluginConfigs.getByKind("wc-vendors")
   ).filter((config) => config.enabled);
-  const candidates = configs.filter((config) =>
-    hasAssignedOperation(config, operation) &&
-    Boolean(getWcVendorPlugin(config.pluginId)?.operations[operation]),
+  const assigned = configs.filter((config) =>
+    hasDeclaredAssignedOperation(config, operation),
   );
+  const candidates = await keepComponentEnabledConfigs(assigned);
   return candidates.length === 1;
 }
 
