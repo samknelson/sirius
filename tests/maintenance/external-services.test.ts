@@ -1,4 +1,11 @@
 /**
+ * SAFETY: THIS ENTIRE SUITE IS INTENTIONALLY DISABLED.
+ *
+ * Its setup deletes paid WC cache data from whichever database the test
+ * process is configured to use. Do not re-enable any suite in this file until
+ * its database behavior is isolated and cannot alter shared development or
+ * production data.
+ *
  * Maintenance mode refuses every outbound vendor call.
  *
  * The database write lock is only half of maintenance mode, and it is the
@@ -211,7 +218,7 @@ afterEach(() => {
   setMaintenanceActive(false);
 });
 
-describe("the refusal itself", () => {
+describe.skip("the refusal itself", () => {
   it("is silent when maintenance is off", () => {
     setMaintenanceActive(false);
     expect(() => assertExternalServiceAllowed("Lob", "send letter")).not.toThrow();
@@ -293,7 +300,7 @@ async function forgetStoredAnswers(): Promise<void> {
   }
 }
 
-describe("with maintenance ON, no vendor is reached", () => {
+describe.skip("with maintenance ON, no vendor is reached", () => {
   beforeAll(async () => {
     ensureCivicKey();
     await migrateLegacyCivicWcVendorConfigs();
@@ -343,7 +350,7 @@ describe("with maintenance ON, no vendor is reached", () => {
   });
 });
 
-describe("with maintenance OFF, nothing is refused", () => {
+describe.skip("with maintenance OFF, nothing is refused", () => {
   beforeEach(() => setMaintenanceActive(false));
 
   for (const [service, name, run] of operations()) {
@@ -361,7 +368,7 @@ describe("with maintenance OFF, nothing is refused", () => {
   }
 });
 
-describe("leaving maintenance restores vendors live, with no restart", () => {
+describe.skip("leaving maintenance restores vendors live, with no restart", () => {
   it("flips on the flag change, in the same process", async () => {
     setMaintenanceActive(true);
     await expect(postalRequest("lob", "list-templates", undefined)).rejects.toBeInstanceOf(MaintenanceModeError);
