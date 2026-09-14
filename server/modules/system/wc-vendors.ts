@@ -92,6 +92,52 @@ export function registerWcVendorRoutes(app: Express): void {
         ]),
       );
 
+      // A plugin-targeted request has a default only when that vendor has one
+      // enabled, component-available connection. This is the same ambiguity
+      // rule used by resolveDefaultWcVendor, applied to the rows already
+      // admitted to this overview.
+      const configsByPlugin = new Map<string, string[]>();
+      for (const { config, plugin } of available) {
+        const ids = configsByPlugin.get(plugin.id) ?? [];
+        ids.push(config.id);
+        configsByPlugin.set(plugin.id, ids);
+      }
+      const vendorDefaultIds = new Set(
+        Array.from(configsByPlugin.values())
+          .filter((ids) => ids.length === 1)
+          .map(([id]) => id),
+      );
+
+      // An `any` request considers only enabled, component-available
+      // configurations that both assign and declare the operation. More than
+      // one candidate is ambiguous, so none is marked as the default.
+      const anyCandidatesByOperation = new Map<string, string[]>();
+      for (const { config, plugin } of available) {
+        const data =
+          config.data && typeof config.data === "object"
+            ? (config.data as Record<string, unknown>)
+            : {};
+        if (!Array.isArray(data.operations)) continue;
+        const assignedOperations = new Set(
+          data.operations.filter(
+            (assigned): assigned is string => typeof assigned === "string",
+          ),
+        );
+        for (const assigned of assignedOperations) {
+          if (
+            !plugin.operations[assigned as WcVendorOperationName]
+          ) continue;
+          const ids = anyCandidatesByOperation.get(assigned) ?? [];
+          ids.push(config.id);
+          anyCandidatesByOperation.set(assigned, ids);
+        }
+      }
+      const anyDefaultByOperation = new Map(
+        Array.from(anyCandidatesByOperation.entries())
+          .filter(([, ids]) => ids.length === 1)
+          .map(([operation, [id]]) => [operation, id]),
+      );
+
       const rows = available.flatMap(({ config, plugin }) =>
         getWcVendorOperationManifest(plugin).map((operation) => {
           const service = plugin.service ?? null;
@@ -105,6 +151,9 @@ export function registerWcVendorRoutes(app: Express): void {
             requestType: operation.id,
             configurationId: config.id,
             configurationName: config.name ?? null,
+            isVendorDefault: vendorDefaultIds.has(config.id),
+            isAnyVendorDefault:
+              anyDefaultByOperation.get(operation.id) === config.id,
             cached: operation.cacheMode === "cached",
             needsWritableDatabase: operation.needsWritableDatabase,
             externalSideEffect: operation.externalSideEffect,

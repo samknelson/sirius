@@ -47,6 +47,8 @@ interface WcRow {
   requestType: string;
   configurationId: string;
   configurationName?: string | null;
+  isVendorDefault: boolean;
+  isAnyVendorDefault: boolean;
   cached: boolean;
   callsToday: number;
   callsLast7Days: number;
@@ -156,6 +158,11 @@ export default function WcOverviewPage() {
             </Link>{" "}
             page.
           </p>
+           <p className="mt-1 text-xs text-muted-foreground">
+             <strong>Default for provider</strong> is used when a caller names a
+             provider but not a connection. <strong>Default for request type</strong>{" "}
+             is used when a caller asks for the operation with any provider.
+           </p>
         </div>
 
         <Card data-testid="card-wc-filters">
@@ -251,6 +258,12 @@ export default function WcOverviewPage() {
                   <TableHead>Provider</TableHead>
                   <TableHead>Request type</TableHead>
                   <TableHead>Configuration</TableHead>
+                   <TableHead title="Used when a caller names this provider but not a connection">
+                     Default for provider
+                   </TableHead>
+                   <TableHead title="Used when a caller asks for this operation with any provider">
+                     Default for request type
+                   </TableHead>
                   <TableHead>Cached?</TableHead>
                   <TableHead>Calls today</TableHead>
                   <TableHead>Calls last 7 days</TableHead>
@@ -275,6 +288,29 @@ export default function WcOverviewPage() {
                     <TableCell>
                       {row.configurationName || "[no name]"}
                     </TableCell>
+                     <TableCell>
+                       {row.isVendorDefault ? (
+                         <Badge
+                           variant="secondary"
+                           data-testid={`badge-vendor-default-${row.configurationId}-${row.requestType}`}
+                         >
+                           Yes
+                         </Badge>
+                       ) : (
+                         <span className="text-xs text-muted-foreground">—</span>
+                       )}
+                     </TableCell>
+                     <TableCell>
+                       {row.isAnyVendorDefault ? (
+                         <Badge
+                           data-testid={`badge-any-default-${row.configurationId}-${row.requestType}`}
+                         >
+                           Yes
+                         </Badge>
+                       ) : (
+                         <span className="text-xs text-muted-foreground">—</span>
+                       )}
+                     </TableCell>
                     <TableCell>
                       <Badge variant={row.cached ? "secondary" : "outline"}>
                         {row.cached ? "Yes" : "No"}

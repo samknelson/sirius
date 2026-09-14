@@ -165,9 +165,16 @@ beforeEach(() => {
     fetchedAt: new Date("2026-09-13T12:00:00.000Z"),
   });
   getByKind.mockResolvedValue([
-    config("good", "fixture"),
-    config("disabled", "fixture", { enabled: false }),
-    config("gated", "gated"),
+    config("good", "fixture", {
+      data: {
+        operations: ["tests.read", "tests.read", "tests.undeclared"],
+      },
+    }),
+    config("disabled", "fixture", {
+      enabled: false,
+      data: { operations: ["tests.read"] },
+    }),
+    config("gated", "gated", { data: { operations: ["tests.read"] } }),
   ]);
   countsByConfiguration.mockResolvedValue([
     {
@@ -212,12 +219,16 @@ describe("WC overview route", () => {
         configurationId: "good",
         requestType: "tests.read",
         service: "Google",
+        isVendorDefault: true,
+        isAnyVendorDefault: true,
         callsToday: 3,
         callsLast7Days: 11,
       }),
       expect.objectContaining({
         configurationId: "good",
         requestType: "tests.private",
+        isVendorDefault: true,
+        isAnyVendorDefault: false,
         callsToday: 0,
         callsLast7Days: 0,
       }),
@@ -241,6 +252,61 @@ describe("WC overview route", () => {
         end: getTodayYmd(),
         start: addDaysYmd(getTodayYmd(), -6),
       },
+    );
+  });
+
+  it("marks no default when vendor and any-vendor selection are ambiguous", async () => {
+    getByKind.mockResolvedValue([
+      config("first", "fixture", { data: { operations: ["tests.read"] } }),
+      config("second", "fixture", { data: { operations: ["tests.read"] } }),
+    ]);
+    countsByConfiguration.mockResolvedValue([]);
+
+    const { status, body } = await getOverview();
+
+    expect(status).toBe(200);
+    const readRows = body.filter((row: any) => row.requestType === "tests.read");
+    expect(readRows).toHaveLength(2);
+    expect(readRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          configurationId: "first",
+          isVendorDefault: false,
+          isAnyVendorDefault: false,
+        }),
+        expect.objectContaining({
+          configurationId: "second",
+          isVendorDefault: false,
+          isAnyVendorDefault: false,
+        }),
+      ]),
+    );
+  });
+
+  it("shows a different any-vendor default for the same request type", async () => {
+    getByKind.mockResolvedValue([
+      config("external", "fixture"),
+      config("local", "gated", { data: { operations: ["tests.read"] } }),
+    ]);
+    countsByConfiguration.mockResolvedValue([]);
+
+    const { status, body } = await getOverview();
+
+    expect(status).toBe(200);
+    const readRows = body.filter((row: any) => row.requestType === "tests.read");
+    expect(readRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          configurationId: "external",
+          isVendorDefault: true,
+          isAnyVendorDefault: false,
+        }),
+        expect.objectContaining({
+          configurationId: "local",
+          isVendorDefault: true,
+          isAnyVendorDefault: true,
+        }),
+      ]),
     );
   });
 
