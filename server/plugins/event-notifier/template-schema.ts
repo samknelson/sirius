@@ -33,19 +33,10 @@ export async function getSiteEnabledTemplateChannels(): Promise<Set<TemplateChan
   const enabled = new Set<TemplateChannel>(["inapp"]);
   const providerSupports = async (category: "email" | "sms"): Promise<boolean> => {
     try {
-      const { getWcVendorPlugin } = await import("../../plugins/wc-vendors");
-      if (category === "email") {
-        const { ensureEmailVendorConfig } = await import(
-          "../../services/comm/email-vendor"
-        );
-        const config = await ensureEmailVendorConfig();
-        return Boolean(getWcVendorPlugin(config.pluginId)?.operations["send-email"]);
-      }
-      const { ensureSmsVendorConfig } = await import(
-        "../../services/comm/sms-vendor"
+      const { hasWcVendorOperation } = await import(
+        "../../services/webclient/wc-vendor-context"
       );
-      const config = await ensureSmsVendorConfig();
-      return Boolean(getWcVendorPlugin(config.pluginId)?.operations["send-sms"]);
+      return hasWcVendorOperation(category === "email" ? "send-email" : "send-sms");
     } catch {
       return false;
     }

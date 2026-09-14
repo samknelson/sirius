@@ -1,41 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
-  emailPluginId: "sendgrid",
-  smsPluginId: "twilio",
+  emailEnabled: true,
+  smsEnabled: true,
 }));
 
-vi.mock("../../server/services/comm/email-vendor", () => ({
-  ensureEmailVendorConfig: vi.fn(async () => ({ pluginId: state.emailPluginId })),
-}));
-
-vi.mock("../../server/services/comm/sms-vendor", () => ({
-  ensureSmsVendorConfig: vi.fn(async () => ({ pluginId: state.smsPluginId })),
-}));
-
-vi.mock("../../server/plugins/wc-vendors", () => ({
-  getWcVendorPlugin: (pluginId: string) => {
-    if (pluginId === "sendgrid") {
-      return { operations: { "send-email": { description: "send email" } } };
-    }
-    if (pluginId === "twilio") {
-      return { operations: { "send-sms": { description: "send SMS" } } };
-    }
-    if (pluginId === "local-email") {
-      return { operations: { "validate-email": { description: "validate email" } } };
-    }
-    if (pluginId === "sms-local") {
-      return { operations: { "validate-phone": { description: "validate phone" } } };
-    }
-    return undefined;
-  },
+vi.mock("../../server/services/webclient/wc-vendor-context", () => ({
+  hasWcVendorOperation: vi.fn(async (operation: string) =>
+    operation === "send-email" ? state.emailEnabled : state.smsEnabled,
+  ),
 }));
 
 import { getSiteEnabledTemplateChannels } from "../../server/plugins/event-notifier/template-schema";
 
 beforeEach(() => {
-  state.emailPluginId = "sendgrid";
-  state.smsPluginId = "twilio";
+  state.emailEnabled = true;
+  state.smsEnabled = true;
 });
 
 describe("event notifier delivery capabilities", () => {
@@ -46,8 +26,8 @@ describe("event notifier delivery capabilities", () => {
   });
 
   it("does not advertise delivery for local validation-only vendors", async () => {
-    state.emailPluginId = "local-email";
-    state.smsPluginId = "sms-local";
+    state.emailEnabled = false;
+    state.smsEnabled = false;
 
     await expect(getSiteEnabledTemplateChannels()).resolves.toEqual(
       new Set(["inapp"]),

@@ -191,7 +191,7 @@ const ENV_OVERRIDE_ROW_PREFIX = "ENV_";
 function buildEnvOverrideEntry(rowName: string): VariableRegistryEntry {
   const envName = rowName.slice(ENV_OVERRIDE_ROW_PREFIX.length);
   return {
-    // Values may hold secrets (e.g. ENV_SENDGRID_API_KEY): redact generic
+    // Values may hold secrets (e.g. ENV_PROVIDER_SECRET): redact generic
     // reads when the underlying env declaration is marked secret. Unknown
     // (unregistered) names are redacted defensively.
     redactRead: (value) =>

@@ -43,8 +43,6 @@
 #                           NOT require separate images, ports, or commands.
 #   OPTIONAL, depending on which features/components are enabled:
 #   - Clerk:        CLERK_SECRET_KEY (+ VITE_CLERK_PUBLISHABLE_KEY at build)
-#   - SendGrid:     SENDGRID_API_KEY
-#   - Twilio:       TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, ...
 #   - Stripe:       STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
 #   - Object store: AWS_*/GCS credentials as configured
 #   - SAML/Okta/OAuth and any SITESPECIFIC_* values used by your deployment

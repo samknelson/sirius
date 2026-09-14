@@ -49,17 +49,26 @@ export type WcRequestOptions<TValue> = WcTransportRequestOptions<TValue>;
 /**
  * Which connection a vendor request is for.
  *
- * Exactly one of the two, and the type says so: naming both is a compile
+ * Exactly one of the target forms, and the type says so: naming both is a compile
  * error rather than a silent precedence rule, because "the config id wins over
  * the plugin id" is the kind of thing a caller reads once and then contradicts.
  *
  * - `configId` — this connection, chosen by whoever is asking.
  * - `pluginId` — this vendor's one enabled connection. Refused when there is
  *   none and when there is more than one; see `resolveDefaultWcVendor`.
+ * - `any` — the one enabled connection assigned to the requested operation.
+ *   Refused when there is none and when there is more than one assignment.
  */
 export type WcVendorTarget =
   | { configId: string; pluginId?: never }
-  | { pluginId: string; configId?: never };
+  | { pluginId: string; configId?: never }
+  /**
+   * Resolve the one enabled connection assigned to the requested operation.
+   * This is deliberately operation-scoped: communication callers must not
+   * select a provider for an entire medium when different providers expose
+   * different operations.
+   */
+  | { any: true; configId?: never; pluginId?: never };
 
 /**
  * Ask a vendor plugin to do one of the things it declares: the framework

@@ -56,6 +56,38 @@ export function registerWcVendorPluginKind(): void {
       if (vendor.credential.secretName === "required" && !secretName) {
         return { valid: false, errors: ["Secret Name is required."] };
       }
+      // Operation assignments are configuration data, rather than a second
+      // registry or a relational table. Validate them against the live
+      // plugin declaration so an assignment can never make `any` dispatch to
+      // an operation this plugin cannot actually run.
+      if (data.operations !== undefined) {
+        if (
+          !Array.isArray(data.operations) ||
+          data.operations.some(
+            (operation) => typeof operation !== "string" || !operation.trim(),
+          )
+        ) {
+          return {
+            valid: false,
+            errors: ["Assigned operations must be a list of operation IDs."],
+          };
+        }
+        const supported = new Set(Object.keys(vendor.operations));
+        const unsupported = data.operations.filter(
+          (operation): operation is string =>
+            typeof operation === "string" && !supported.has(operation),
+        );
+        if (unsupported.length > 0) {
+          return {
+            valid: false,
+            errors: [
+              `Unsupported operation assignment(s) for "${vendor.name}": ` +
+                `${unsupported.join(", ")}. ` +
+                `Supported: ${Array.from(supported).join(", ") || "(none)"}.`,
+            ],
+          };
+        }
+      }
       return vendor.validateConfig
         ? vendor.validateConfig(data)
         : { valid: true };
@@ -76,6 +108,17 @@ export function registerWcVendorPluginKind(): void {
     configSchema: z.object({
       ...baseConfigSchemaShape,
       secretName: z.string().nullable().optional(),
+      // The generic editor sends this envelope field at the top level; the
+      // adapter folds it into data.operations below. A comma-separated string
+      // is accepted as well because the generic static multi-select uses a
+      // string while it is in the form state.
+      operations: z.preprocess(
+        (value) =>
+          typeof value === "string"
+            ? value.split(",").map((operation) => operation.trim()).filter(Boolean)
+            : value,
+        z.array(z.string().min(1)).nullable().optional(),
+      ),
       // Accepted payment method types for this config (e.g. ["card",
       // "us_bank_account"]). Lives in `data`; the provider declares the catalog
       // of valid options. Optional so generic create/update without it leaves
@@ -101,6 +144,13 @@ export function registerWcVendorPluginKind(): void {
       }
       if (input.paymentTypes !== undefined) {
         data.paymentTypes = input.paymentTypes;
+      }
+      if (input.operations === null) {
+        delete data.operations;
+      } else if (input.operations !== undefined) {
+        data.operations = Array.from(
+          new Set(input.operations.map((operation: string) => operation.trim())),
+        );
       }
 
       return {
@@ -132,23 +182,65 @@ export function registerWcVendorPluginKind(): void {
         ...base,
         secretName: (data.secretName as string) ?? "",
         paymentTypes: Array.isArray(data.paymentTypes) ? data.paymentTypes : [],
+        // Keep an unassigned config absent at the data/API boundary. Besides
+        // making "absent means none" explicit, this lets a partial generic
+        // update preserve existing assignments when it does not mention them.
+        ...(Array.isArray(data.operations) ? { operations: data.operations } : {}),
       };
     },
     envelopeFields: [
       { name: "secretName", label: "Secret Name", type: "string" },
+      {
+        name: "operations",
+        label: "Assigned operations",
+        type: "string",
+        multiple: true,
+        options: {
+          choices: Array.from(
+            new Map(
+              wcVendorRegistry.list().flatMap((plugin) =>
+                Object.entries(plugin.operations).map(([value, operation]) => [
+                  value,
+                  {
+                    value,
+                    label: `${plugin.name}: ${operation?.description ?? value}`,
+                  },
+                ] as const),
+              ),
+            ).values(),
+          ),
+        },
+      },
     ],
     envelopeFieldsForPlugin: (plugin) => {
       const credential = (plugin as RegisteredWcVendorPlugin).credential;
       const requirement = credential.secretName;
-      if (requirement === "none") return [];
-      return [{
-        name: "secretName",
-        label: "Secret Name",
+      const vendor = plugin as RegisteredWcVendorPlugin;
+      const fields: import("../_core").PluginConfigEnvelopeField[] = [{
+        name: "operations",
+        label: "Assigned operations",
         type: "string",
-        required: requirement === "required",
-        description: credential.setupGuidance,
-        example: credential.setupExample,
+        multiple: true,
+        options: {
+          choices: Object.entries(vendor.operations).flatMap(
+            ([value, operation]) =>
+              operation
+                ? [{ value, label: operation.description }]
+                : [],
+          ),
+        },
       }];
+      if (requirement !== "none") {
+        fields.unshift({
+          name: "secretName",
+          label: "Secret Name",
+          type: "string",
+          required: requirement === "required",
+          description: credential.setupGuidance,
+          example: credential.setupExample,
+        });
+      }
+      return fields;
     },
   });
   kindRegistered = true;

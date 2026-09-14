@@ -16,10 +16,10 @@ import { resolveContactLinks } from "./contact-links";
 import { createCommTagsStorage } from "../storage/comm-tags";
 import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
 import { deriveEmailPlainText, isSafeRelativePath } from "../delivery/shape";
-import {
-  postalRequest,
-  resolvePostalVendorTarget,
-} from "../services/comm/postal-vendor";
+import { wcRequest } from "../services/webclient";
+import { WcVendorError } from "../services/webclient/wc-vendor-context";
+import type { PostalVendorTypesLoaded } from "../plugins/wc-vendors/postal-types";
+void (undefined as unknown as PostalVendorTypesLoaded);
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -684,8 +684,7 @@ export function registerCommRoutes(
       }
 
       const address: PostalAddress = parsed.data;
-       const target = await resolvePostalVendorTarget();
-       const result = await verifyPostalAddress(target, address);
+       const result = await verifyPostalAddress({ any: true }, address);
 
       // If addressId was provided AND verification succeeded, update deliverability_status
       // and apply terminal-status side-effect (markUndeliverable) so primary auto-promotion runs.
@@ -730,6 +729,9 @@ export function registerCommRoutes(
 
     } catch (error) {
       if (sendIfMaintenanceRefusal(res, error)) return;
+      if (error instanceof WcVendorError) {
+        return res.status(error.status).json({ message: error.message });
+      }
       console.error("Failed to verify address:", error);
       res.status(500).json({ message: "Failed to verify address" });
     }
@@ -833,8 +835,7 @@ export function registerCommRoutes(
       }
 
       const address: PostalAddress = parsed.data;
-       const target = await resolvePostalVendorTarget();
-       const result = await verifyPostalAddress(target, address);
+       const result = await verifyPostalAddress({ any: true }, address);
 
       if (!result.valid || !result.canonicalAddress) {
         return res.status(400).json({
@@ -902,6 +903,9 @@ export function registerCommRoutes(
       }
     } catch (error) {
       if (sendIfMaintenanceRefusal(res, error)) return;
+      if (error instanceof WcVendorError) {
+        return res.status(error.status).json({ message: error.message });
+      }
       console.error("Failed to verify and register address:", error);
       res.status(500).json({ message: "Failed to verify and register address" });
     }
@@ -919,11 +923,17 @@ export function registerCommRoutes(
 
   app.get("/api/postal/templates", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
-       const target = await resolvePostalVendorTarget();
-       const templates = await postalRequest(target, "list-templates", undefined);
-      res.json({ templates });
+       const templatesResult = await wcRequest({
+         vendor: { any: true },
+         operation: "list-templates",
+         args: undefined,
+       });
+      res.json({ templates: templatesResult.value ?? [] });
     } catch (error) {
       if (sendIfMaintenanceRefusal(res, error)) return;
+      if (error instanceof WcVendorError) {
+        return res.status(error.status).json({ message: error.message });
+      }
       console.error("Failed to fetch postal templates:", error);
       res.status(500).json({ message: "Failed to fetch postal templates" });
     }

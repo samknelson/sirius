@@ -10,11 +10,11 @@ import { buildStatusCallbackUrl } from '../callback-handlers/url-builder';
 import { isMaintenanceModeError } from "../../maintenance-flag";
 import { ALREADY_SENT, findSentWithKey, type AlreadySentCode } from '../send-key';
 import {
-  postalRequest,
-  postalSupportsOperation,
-  resolvePostalVendorTarget,
-} from "../postal-vendor";
-import type { WcVendorTarget } from "../../webclient";
+  wcRequest,
+  type WcVendorTarget,
+} from "../../webclient";
+import type { PostalVendorTypesLoaded } from "../../../plugins/wc-vendors/postal-types";
+void (undefined as unknown as PostalVendorTypesLoaded);
 
 export interface SendPostalRequest {
   contactId: string;
@@ -90,8 +90,9 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
 
   let postalTarget: WcVendorTarget;
   try {
-    postalTarget = await resolvePostalVendorTarget();
-    if (!await postalSupportsOperation(postalTarget, "send-letter")) {
+    postalTarget = { any: true };
+    const { hasWcVendorOperation } = await import("../../webclient/wc-vendor-context");
+    if (!(await hasWcVendorOperation("send-letter"))) {
       return {
         success: false,
         error: 'Postal sending is not supported by the current provider. Configure a provider with postal sending capability (e.g., Lob).',
@@ -191,11 +192,26 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
 
     let returnAddress = fromAddress;
     if (!returnAddress) {
-      returnAddress = await postalRequest(
-        postalTarget,
-        "get-default-return-address",
-        undefined,
-      );
+      const { hasWcVendorOperation } = await import("../../webclient/wc-vendor-context");
+      if (!(await hasWcVendorOperation("get-default-return-address"))) {
+        return {
+          success: false,
+          error: 'No return address provided and no default return address configured.',
+          errorCode: 'NO_RETURN_ADDRESS',
+        };
+      }
+      const defaultReturnAddress = await wcRequest({
+        vendor: { any: true },
+        operation: "get-default-return-address",
+        args: undefined,
+      });
+      if (defaultReturnAddress.outcome !== "success") {
+        if (defaultReturnAddress.cause !== undefined) throw defaultReturnAddress.cause;
+        throw new Error(
+          defaultReturnAddress.error || "Postal provider did not answer",
+        );
+      }
+      returnAddress = defaultReturnAddress.value;
     }
 
     if (!returnAddress) {
@@ -343,11 +359,19 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
         },
       };
 
-      const sendResult = await postalRequest(
-        postalTarget,
-        "send-letter",
-        sendParams,
-      );
+      const sendResponse = await wcRequest({
+        vendor: { any: true },
+        operation: "send-letter",
+        args: sendParams,
+      });
+      if (sendResponse.outcome !== "success") {
+        if (sendResponse.cause !== undefined) throw sendResponse.cause;
+        throw new Error(sendResponse.error || "Postal provider did not answer");
+      }
+      const sendResult = sendResponse.value ?? {
+        success: false,
+        error: sendResponse.error || "Postal provider did not return a result",
+      };
 
       if (!sendResult.success) {
         await commStorage.updateComm(comm.id, {

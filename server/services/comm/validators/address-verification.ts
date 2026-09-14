@@ -4,14 +4,10 @@ import type {
 } from '../providers/postal';
 import { wcRequest, type WcRequestMode } from '../../webclient';
 import { isMaintenanceModeError } from '../../maintenance-flag';
-import {
-  postalPluginIdForTarget,
-  postalRequest,
-} from "../postal-vendor";
 import type { WcVendorTarget } from "../../webclient";
-
-/** The provider that actually calls a vendor. */
-const LOB_PROVIDER_ID = 'lob';
+import { WcVendorError } from '../../webclient/wc-vendor-context';
+import type { PostalVendorTypesLoaded } from "../../../plugins/wc-vendors/postal-types";
+void (undefined as unknown as PostalVendorTypesLoaded);
 
 export interface PostalVerification extends AddressVerificationResult {
   /**
@@ -45,39 +41,28 @@ export interface VerifyPostalAddressOptions {
  * because the transport has no idea whether the same address was verified an
  * hour ago. The freshness window, the maintenance refusal and the "do not buy
  * what cannot be stored" rule are all applied by the web client framework;
- * this function's job is to say what a Lob verification means once one has
- * been made, and to keep the local provider out of the cache entirely.
+ * this function's job is to interpret the selected vendor's verification
+ * answer once one has been made.
  *
  * Throws `MaintenanceModeError` when a call would have to be made. That is
  * deliberate: a refusal must reach the caller as a refusal, never flattened
- * into an address Lob judged undeliverable.
+ * into an address the vendor judged undeliverable.
  */
 export async function verifyPostalAddress(
-  transportOrVendor: WcVendorTarget,
+  _transportOrVendor: WcVendorTarget,
   address: PostalAddress,
   options?: VerifyPostalAddressOptions,
 ): Promise<PostalVerification> {
-  // Only the Lob provider calls a vendor. The local provider's verifyAddress
-  // is a format check we could run for free any number of times, and storing
-  // its verdict would stamp an address as vendor-verified on the strength of
-  // a call that was never made.
-  const pluginId = await postalPluginIdForTarget(transportOrVendor);
-
-  if (pluginId !== LOB_PROVIDER_ID) {
-    const result = await postalRequest(pluginId, "verify-address", address);
-    return { ...result, fromNetwork: true, verifiedAt: new Date() };
-  }
-
   let result;
   try {
     result = await wcRequest({
-      vendor: transportOrVendor,
+      vendor: { any: true },
       operation: "verify-address",
       args: address,
       mode: options?.mode,
     });
   } catch (error) {
-    if (isMaintenanceModeError(error)) throw error;
+    if (isMaintenanceModeError(error) || error instanceof WcVendorError) throw error;
     return {
       valid: false,
       deliverable: false,

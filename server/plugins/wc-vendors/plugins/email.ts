@@ -5,35 +5,11 @@ import type {
   WcVendorPlugin,
 } from "../types";
 import { registerWcVendorPlugin } from "../registry";
-import { registerEnvironmentVariables } from "../../../config/env-registry";
 
 export const SENDGRID_EMAIL_PLUGIN_ID = "sendgrid";
 export const LOCAL_EMAIL_PLUGIN_ID = "local-email";
 /** The pre-wc-vendor service registry used this provider id. */
 export const LEGACY_LOCAL_EMAIL_PLUGIN_ID = "local";
-
-// Keep these registered names available to existing wc-vendor rows and sender
-// defaults. Credential values remain outside plugin configuration.
-registerEnvironmentVariables([
-  {
-    name: "SENDGRID_API_KEY",
-    description: "SendGrid API key",
-    secret: true,
-    category: "comm.email",
-  },
-  {
-    name: "SENDGRID_FROM_EMAIL",
-    description: "Legacy SendGrid sender email",
-    secret: false,
-    category: "comm.email",
-  },
-  {
-    name: "SENDGRID_FROM_NAME",
-    description: "Legacy SendGrid sender name",
-    secret: false,
-    category: "comm.email",
-  },
-]);
 
 export interface EmailRecipient {
   email: string;
@@ -331,7 +307,6 @@ const sendGridPlugin: WcVendorPlugin = {
     secretName: "required",
     setupGuidance:
       "Name the secret containing the SendGrid API key. The secret value is never stored in plugin configuration.",
-    setupExample: "SENDGRID_API_KEY",
   },
   configFields: [
     {

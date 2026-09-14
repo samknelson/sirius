@@ -230,11 +230,68 @@ async function resolveDefaultWcVendor(pluginId: string): Promise<ResolvedWcVendo
   return resolveWcVendor(enabled[0].id);
 }
 
+function hasAssignedOperation(
+  config: PluginConfig,
+  operation: WcVendorOperationName,
+): boolean {
+  const data =
+    config.data && typeof config.data === "object"
+      ? (config.data as Record<string, unknown>)
+      : {};
+  return (
+    Array.isArray(data.operations) &&
+    data.operations.some((assigned) => assigned === operation)
+  );
+}
+
+/**
+ * Resolve the one enabled connection assigned to a particular operation.
+ *
+ * Assignments live in each config's data, so an unassigned config is not an
+ * `any` candidate even when its plugin declares the operation. This makes the
+ * generic config editor's operation list the authoritative routing choice.
+ */
+async function resolveAnyWcVendor(
+  operation: WcVendorOperationName,
+): Promise<ResolvedWcVendor> {
+  const configs = (
+    await storage.pluginConfigs.getByKind("wc-vendors")
+  ).filter((config) => config.enabled);
+  const candidates = configs.filter((config) =>
+    hasAssignedOperation(config, operation) &&
+    Boolean(getWcVendorPlugin(config.pluginId)?.operations[operation]),
+  );
+
+  if (candidates.length === 0) {
+    throw new WcVendorRequestError(
+      501,
+      `No enabled webclient vendor configuration is assigned to '${operation}'. ` +
+        `Assign exactly one configuration to this operation.`,
+    );
+  }
+  if (candidates.length > 1) {
+    throw new WcVendorRequestError(
+      409,
+      `Multiple enabled webclient vendor configurations are assigned to '${operation}' ` +
+        `(${candidates.map((config) => config.id).join(", ")}); ` +
+        `assign only one or select a connection explicitly.`,
+    );
+  }
+  return resolveWcVendor(candidates[0].id);
+}
+
 /** Resolve whichever way the caller addressed the connection. */
-function resolveTarget(target: WcVendorTarget): Promise<ResolvedWcVendor> {
-  return target.configId !== undefined
-    ? resolveWcVendor(target.configId)
-    : resolveDefaultWcVendor(target.pluginId as string);
+function resolveTarget(
+  target: WcVendorTarget,
+  operation: WcVendorOperationName,
+): Promise<ResolvedWcVendor> {
+  if ("configId" in target) {
+    return resolveWcVendor(target.configId as string);
+  }
+  if ("pluginId" in target) {
+    return resolveDefaultWcVendor(target.pluginId as string);
+  }
+  return resolveAnyWcVendor(operation);
 }
 
 /**
@@ -249,8 +306,15 @@ function resolveTarget(target: WcVendorTarget): Promise<ResolvedWcVendor> {
  */
 export async function describeWcVendor(
   target: WcVendorTarget,
+  operation?: WcVendorOperationName,
 ): Promise<WcVendorDescription> {
-  const { config, plugin } = await resolveTarget(target);
+  if ("any" in target && !operation) {
+    throw new WcVendorRequestError(
+      400,
+      "An operation is required when describing an any webclient vendor target.",
+    );
+  }
+  const { config, plugin } = await resolveTarget(target, operation!);
   return {
     configId: config.id,
     configName: config.name ?? null,
@@ -285,6 +349,24 @@ function requireOperation(
     );
   }
   return declaration;
+}
+
+/**
+ * Assignment check for an operation-scoped (any) target. This inspects only
+ * enabled config rows, their stored assignments, and plugin declarations; it
+ * never resolves credentials or contacts a provider.
+ */
+export async function hasWcVendorOperation(
+  operation: WcVendorOperationName,
+): Promise<boolean> {
+  const configs = (
+    await storage.pluginConfigs.getByKind("wc-vendors")
+  ).filter((config) => config.enabled);
+  const candidates = configs.filter((config) =>
+    hasAssignedOperation(config, operation) &&
+    Boolean(getWcVendorPlugin(config.pluginId)?.operations[operation]),
+  );
+  return candidates.length === 1;
 }
 
 /**
@@ -366,7 +448,7 @@ export async function runWcVendorRequest<N extends WcVendorOperationName>(
     }
   }
 
-  const resolved = await resolveTarget(vendor);
+  const resolved = await resolveTarget(vendor, name);
   const declaration = requireOperation(resolved.plugin, name);
 
   const handler = getWcVendorHandler(resolved.plugin.id, name);

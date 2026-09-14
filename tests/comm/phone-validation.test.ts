@@ -46,20 +46,6 @@ const getPluginConfigs = vi.fn(
   }],
 );
 
-const resolveSmsVendor = vi.fn(async () => ({
-  target: { pluginId: providerId === 'twilio' ? 'twilio' : 'sms-local' },
-  pluginId: providerId === 'twilio' ? 'twilio' : 'sms-local',
-  config: {
-    id: `test-${providerId}`,
-    pluginId: providerId === 'twilio' ? 'twilio' : 'sms-local',
-  },
-}));
-
-vi.mock('../../server/services/comm/sms-vendor', () => ({
-  ensureSmsVendorConfig: vi.fn(async () => undefined),
-  resolveSmsVendor,
-}));
-
 vi.mock('../../server/storage', () => ({
   storage: {
     pluginConfigs: {
@@ -74,6 +60,8 @@ vi.mock('../../server/storage', () => ({
  * (which would otherwise resolve a real Twilio config and SDK).
  */
 vi.mock('../../server/services/webclient/wc-vendor-context', () => ({
+  hasWcVendorOperation: async (operation: string) =>
+    operation === 'validate-phone' && providerId === 'twilio',
   runWcVendorRequest: async (options: any, transport: (request: any) => Promise<unknown>) =>
     transport({
       service: 'Twilio',
@@ -201,7 +189,6 @@ beforeEach(() => {
   lookup.mockClear();
   canStore.mockClear();
   getPluginConfigs.mockClear();
-  resolveSmsVendor.mockClear();
   optinWrite.mockClear();
   store.clear();
   // The settings memo and the "paid for it, could not store it" hold both

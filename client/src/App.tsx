@@ -256,7 +256,6 @@ const SessionsPage = lazy(() => import("@/pages/sessions"));
 const FloodEventsPage = lazy(() => import("@/pages/flood-events"));
 const FloodEventsConfigPage = lazy(() => import("@/pages/flood-events-config"));
 const PostalAddressesConfigPage = lazy(() => import("@/pages/config/addresses"));
-const PhoneNumbersConfigPage = lazy(() => import("@/pages/config/phone-numbers"));
 const DynamicOptionsPage = lazy(() => import("@/pages/config/options"));
 
 const OptionsExportPage = lazy(() => import("@/pages/config/options-export"));
@@ -340,9 +339,6 @@ const EnvPage = lazy(() => import("@/pages/config/env"));
 const TimeZoneConfigPage = lazy(() => import("@/pages/config/timezone"));
 const SystemStatusPage = lazy(() => import("@/pages/config/system-status"));
 const DefaultPolicyPage = lazy(() => import("@/pages/config/default-policy"));
-const TwilioConfigPage = lazy(() => import("@/pages/config/twilio"));
-const EmailConfigPage = lazy(() => import("@/pages/config/email"));
-const PostalConfigPage = lazy(() => import("@/pages/config/postal"));
 const LogsPage = lazy(() => import("@/pages/config/logs"));
 const ComponentsConfigPage = lazy(() => import("@/pages/config/components"));
 const LedgerSettingsPage = lazy(() => import("@/pages/config/ledger/settings"));
@@ -2712,16 +2708,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/phone-numbers">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <PhoneNumbersConfigPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
       {/* The index of every dropdown list. Registered before the
           parameterized options routes so "options" isn't read as a type. */}
       <Route path="/config/options">
@@ -3651,36 +3637,6 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <DefaultPolicyPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/twilio">
-        <ProtectedRoute policy="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <TwilioConfigPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/email">
-        <ProtectedRoute policy="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <EmailConfigPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/postal">
-        <ProtectedRoute policy="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <PostalConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

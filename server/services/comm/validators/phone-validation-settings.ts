@@ -58,18 +58,43 @@ export function revalidateAfterDays(settings: PhoneValidationSettings): number {
 async function loadPhoneValidationSettings(): Promise<PhoneValidationSettings> {
   try {
     const { storage } = await import("../../../storage");
-    const { ensureSmsVendorConfig } = await import("../sms-vendor");
-    await ensureSmsVendorConfig();
     const [local, twilio] = await Promise.all([
       storage.pluginConfigs.getByKindAndPlugin("wc-vendors", "sms-local"),
       storage.pluginConfigs.getByKindAndPlugin("wc-vendors", "twilio"),
     ]);
+    // Settings are not a provider selection. When more than one row exists,
+    // prefer the row assigned to phone validation, then use stable config
+    // ordering rather than whichever row the database happened to return.
+    const selectSettingsRow = <T extends {
+      id: string;
+      enabled: boolean;
+      ordering: number;
+      data?: unknown;
+    }>(rows: T[]): T | undefined => {
+      const assigned = rows.filter((row) => {
+        const data =
+          row.data && typeof row.data === "object"
+            ? (row.data as Record<string, unknown>)
+            : {};
+        return Array.isArray(data.operations) &&
+          data.operations.includes("validate-phone");
+      });
+      const candidates = assigned.length > 0 ? assigned : rows;
+      return [...candidates].sort(
+        (a, b) =>
+          Number(b.enabled) - Number(a.enabled) ||
+          a.ordering - b.ordering ||
+          a.id.localeCompare(b.id),
+      )[0];
+    };
+    const localRow = selectSettingsRow(local);
+    const twilioRow = selectSettingsRow(twilio);
     // Keep both sets of settings available even when the other vendor is
-    // selected. The local parser still owns default-country behavior and the
+    // assigned. The local parser still owns default-country behavior and the
     // Twilio row still owns revalidation/fallback policy after a provider
     // switch.
-    const localData = local[0]?.data;
-    const twilioData = twilio[0]?.data;
+    const localData = localRow?.data;
+    const twilioData = twilioRow?.data;
     const localValidation =
       localData && typeof localData === "object"
         ? ((localData as Record<string, unknown>).phoneValidation as Record<string, unknown> | undefined) ?? {}

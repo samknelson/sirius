@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const canStore = vi.hoisted(() => vi.fn());
 const getConfig = vi.hoisted(() => vi.fn());
+const getConfigsByKind = vi.hoisted(() => vi.fn());
 const cacheRead = vi.hoisted(() => vi.fn());
 const cacheWriteSuccess = vi.hoisted(() => vi.fn());
 const cacheWriteFailure = vi.hoisted(() => vi.fn());
@@ -11,6 +12,7 @@ vi.mock("../../server/storage", () => ({
   storage: {
     pluginConfigs: {
       get: (id: string) => getConfig(id),
+      getByKind: (kind: string) => getConfigsByKind(kind),
       getByKindAndPlugin: async () => [],
     },
   },
@@ -117,6 +119,8 @@ beforeEach(() => {
     name: "Dummy",
     data: {},
   });
+  getConfigsByKind.mockReset();
+  getConfigsByKind.mockResolvedValue([]);
 });
 
 function plugin(id: string) {
@@ -126,6 +130,37 @@ function plugin(id: string) {
 }
 
 describe("the wc-vendor plugin contract", () => {
+  it("leaves existing unassigned configurations fail-closed for automatic routing", async () => {
+    getConfigsByKind.mockResolvedValue([
+      {
+        id: "legacy-twilio-config",
+        pluginKind: "wc-vendors",
+        pluginId: "twilio",
+        enabled: true,
+        name: "Legacy Twilio",
+        data: {},
+      },
+    ]);
+
+    await expect(
+      wcRequest({
+        vendor: { any: true },
+        operation: "send-sms",
+        args: {
+          to: "+17025550100",
+          body: "Test",
+          statusCallbackUrl: "https://example.test/status",
+        },
+      }),
+    ).rejects.toMatchObject({
+      status: 501,
+      message: expect.stringContaining(
+        "No enabled webclient vendor configuration is assigned to 'send-sms'",
+      ),
+    });
+    expect(getConfig).not.toHaveBeenCalled();
+  });
+
   it("publishes stable operation ids, descriptions, and write requirements", () => {
     const stripe = getWcVendorOperationManifest(plugin("stripe"));
     expect(stripe).toContainEqual({
@@ -273,21 +308,41 @@ describe("the wc-vendor plugin contract", () => {
     expect(plugin("dummy").credential).toEqual({ secretName: "none" });
   });
 
-  it("shows and requires the secret-name envelope field only when declared", () => {
+  it("shows credential and automatic-operation envelope fields from declarations", () => {
     const adapter = getPluginConfigAdapter("wc-vendors");
     if (!adapter) throw new Error("wc-vendors config adapter is not registered");
 
-    expect(adapter.envelopeFieldsForPlugin?.(plugin("stripe"))).toEqual([
-      {
+    const stripeFields = adapter.envelopeFieldsForPlugin?.(plugin("stripe")) ?? [];
+    expect(stripeFields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
         name: "secretName",
         label: "Secret Name",
-        type: "string",
         required: true,
         description:
           "The named secret must contain one Stripe secret API key, for example sk_test_<your-key> or sk_live_<your-key>.",
-      },
-    ]);
-    expect(adapter.envelopeFieldsForPlugin?.(plugin("dummy"))).toEqual([]);
+        }),
+        expect.objectContaining({
+          name: "operations",
+          label: "Assigned operations",
+          multiple: true,
+        }),
+      ]),
+    );
+
+    const dummyFields = adapter.envelopeFieldsForPlugin?.(plugin("dummy")) ?? [];
+    expect(dummyFields).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "secretName" })]),
+    );
+    expect(dummyFields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "operations",
+          label: "Assigned operations",
+          multiple: true,
+        }),
+      ]),
+    );
   });
 
   it("normalizes secret-name storage according to the declaration", () => {

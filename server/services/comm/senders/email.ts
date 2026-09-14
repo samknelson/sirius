@@ -8,11 +8,6 @@ import { buildStatusCallbackUrl } from '../callback-handlers/url-builder';
 import { isMaintenanceModeError } from "../../maintenance-flag";
 import { ALREADY_SENT, findSentWithKey, type AlreadySentCode } from '../send-key';
 import { wcRequest } from "../../webclient";
-import {
-  emailVendorTarget,
-  ensureEmailVendorConfig,
-} from "../email-vendor";
-import { getWcVendorPlugin } from "../../../plugins/wc-vendors";
 import type {
   EmailRecipient,
   EmailSendArgs,
@@ -128,10 +123,8 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
   }
 
   try {
-    const emailVendorConfig = await ensureEmailVendorConfig();
-    const vendor = emailVendorTarget(emailVendorConfig);
-    const emailVendor = getWcVendorPlugin(emailVendorConfig.pluginId);
-    if (!emailVendor?.operations["send-email"]) {
+    const { hasWcVendorOperation } = await import("../../webclient/wc-vendor-context");
+    if (!(await hasWcVendorOperation("send-email"))) {
       return {
         success: false,
         error:
@@ -140,7 +133,7 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
       };
     }
     const validation = await wcRequest({
-      vendor,
+      vendor: { any: true },
       operation: "validate-email",
       args: { email: toEmail },
     });
@@ -165,7 +158,7 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
       fromRecipient = { email: fromEmail, name: fromName };
     } else {
       const defaultFrom = await wcRequest({
-        vendor,
+        vendor: { any: true },
         operation: "get-default-from",
         args: undefined,
       });
@@ -286,7 +279,7 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
         statusCallbackUrl,
       };
       const vendorResult = await wcRequest({
-        vendor,
+        vendor: { any: true },
         operation: "send-email",
         args: sendArgs,
       });

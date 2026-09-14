@@ -8,7 +8,6 @@ import {
   getPhoneValidationSettings,
   type PhoneValidationSettings,
 } from './phone-validation-settings';
-import { resolveSmsVendor } from "../sms-vendor";
 import type { SmsValidatePhoneResult } from "../../../plugins/wc-vendors/sms-types";
 
 export { DEFAULT_REVALIDATE_AFTER_DAYS };
@@ -103,17 +102,8 @@ export class PhoneValidationService {
     // never has a cached answer either. Retrying it costs nothing.
     if (!local.isValid || !local.e164Format) return local;
 
-    let smsVendor: Awaited<ReturnType<typeof resolveSmsVendor>>;
-    try {
-      smsVendor = await resolveSmsVendor();
-    } catch (error) {
-      console.error('Failed to resolve SMS vendor, using local validation:', error);
-      return local;
-    }
-
-    // Only Twilio makes a billable external call; Local is the same
-    // libphonenumber parse we just did.
-    if (smsVendor.pluginId !== "twilio") return local;
+    const { hasWcVendorOperation } = await import("../../webclient/wc-vendor-context");
+    if (!(await hasWcVendorOperation("validate-phone"))) return local;
 
     const e164 = local.e164Format;
     // `always` asks the provider regardless of how recent the stored answer
@@ -125,7 +115,7 @@ export class PhoneValidationService {
     let result: WcResult<SmsValidatePhoneResult>;
     try {
       result = await wcRequest({
-        vendor: smsVendor.target,
+        vendor: { any: true },
         operation: "validate-phone",
         args: { phoneNumber: e164 },
         mode: wcMode,
@@ -134,7 +124,7 @@ export class PhoneValidationService {
       if (!isMaintenanceModeError(error)) throw error;
       // The vendor is off limits, but what we already know still stands.
       result = await wcRequest({
-        vendor: smsVendor.target,
+        vendor: { any: true },
         operation: "validate-phone",
         args: { phoneNumber: e164 },
         mode: 'cached-only',

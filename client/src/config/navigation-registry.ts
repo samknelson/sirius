@@ -113,9 +113,6 @@ export const configSections: NavSection[] = [
     description: "Message providers, addresses, and contact settings",
     icon: Phone,
     items: [
-      { path: "/config/twilio", label: "SMS Providers", icon: MessageSquare, testId: "nav-config-sms", permission: "admin" },
-      { path: "/config/email", label: "Email Providers", icon: MessageSquare, testId: "nav-config-email", permission: "admin" },
-      { path: "/config/postal", label: "Postal Providers", icon: MessageSquare, testId: "nav-config-postal", permission: "admin" },
       { path: "/config/addresses", label: "Postal Addresses", icon: MapPin, testId: "nav-config-addresses", permission: "admin" },
       { path: "/admin/letter-templates", label: "Letter Templates", icon: FileText, testId: "nav-config-letter-templates", permission: "staff" },
     ],

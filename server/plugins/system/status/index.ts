@@ -46,6 +46,5 @@ import "./plugins/system-mode";
 import "./plugins/database-connection";
 import "./plugins/database-disk";
 import "./plugins/filesystems";
-import "./plugins/comm-sms";
 import "./plugins/wc-usage";
 import "./plugins/sitespecific-t631-client";

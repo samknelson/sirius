@@ -12,21 +12,10 @@ import type {
   WcVendorPlugin,
 } from "../types";
 import { registerWcVendorPlugin } from "../registry";
-import { registerEnvironmentVariables } from "../../../config/env-registry";
 import { buildCanonicalAddress } from "../../../services/comm/providers/postal";
 import type { WcAnswer } from "../../../services/webclient";
 import type { PostalVendorTypesLoaded } from "../postal-types";
 void (undefined as unknown as PostalVendorTypesLoaded);
-
-// Existing Lob wc-vendor rows reference this registered secret name. Runtime
-// credentials come exclusively from the named secret.
-registerEnvironmentVariables([{
-  name: "LOB_API_KEY",
-  description: "Lob API key referenced by postal wc-vendor configurations.",
-  secret: true,
-  category: "core",
-  changeTakesEffect: "immediate",
-}]);
 
 type PostalConfigData = Record<string, unknown>;
 

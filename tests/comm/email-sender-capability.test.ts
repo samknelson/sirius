@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
-  pluginId: "local-email",
+  sendSupported: false,
   createComm: vi.fn(),
   createCommEmail: vi.fn(),
   updateComm: vi.fn(),
@@ -9,21 +9,10 @@ const state = vi.hoisted(() => ({
   wcRequest: vi.fn(),
 }));
 
-vi.mock("../../server/services/comm/email-vendor", () => ({
-  ensureEmailVendorConfig: vi.fn(async () => ({
-    id: "email-config",
-    pluginId: state.pluginId,
-    enabled: true,
-    data: {},
-  })),
-  emailVendorTarget: vi.fn(() => ({ configId: "email-config" })),
-}));
-
-vi.mock("../../server/plugins/wc-vendors", () => ({
-  getWcVendorPlugin: (pluginId: string) =>
-    pluginId === "sendgrid"
-      ? { operations: { "send-email": { description: "send email" } } }
-      : { operations: { "validate-email": { description: "validate email" } } },
+vi.mock("../../server/services/webclient/wc-vendor-context", () => ({
+  hasWcVendorOperation: vi.fn(async (operation: string) =>
+    operation === "send-email" && state.sendSupported,
+  ),
 }));
 
 vi.mock("../../server/services/webclient", () => ({
@@ -61,7 +50,7 @@ vi.mock("../../server/system-mode", () => ({
 import { sendEmail } from "../../server/services/comm/senders/email";
 
 beforeEach(() => {
-  state.pluginId = "local-email";
+  state.sendSupported = false;
   state.createComm.mockReset();
   state.createCommEmail.mockReset();
   state.updateComm.mockReset();
@@ -107,7 +96,7 @@ describe("email sender vendor capability gate", () => {
     expect(state.createComm).not.toHaveBeenCalled();
     expect(state.createCommEmail).not.toHaveBeenCalled();
 
-    state.pluginId = "sendgrid";
+    state.sendSupported = true;
     const sendGridResult = await sendEmail(request);
 
     expect(sendGridResult).toMatchObject({
