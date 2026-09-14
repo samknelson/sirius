@@ -1203,12 +1203,16 @@ async function main() {
     for (const part of chunk(exactTargets, 200)) {
       if (part.length === 0) continue;
       const res = await db.execute(sql`
-        SELECT id, worker_id, cardcheck_definition_id, status, signed_date, data
+        SELECT id, worker_id, cardcheck_definition_id, status,
+               CASE WHEN signed_date IS NULL THEN NULL
+                    ELSE (EXTRACT(EPOCH FROM signed_date AT TIME ZONE 'UTC') * 1000)::bigint
+               END AS signed_epoch,
+               data
           FROM cardchecks WHERE id IN (${sql.join(part.map((t) => sql`${t.s2Id}`), sql`, `)})
       `);
       const byId = new Map(
         (res as unknown as {
-          rows: Array<{ id: string; worker_id: string; cardcheck_definition_id: string; status: string; signed_date: string | Date | null; data: unknown }>;
+          rows: Array<{ id: string; worker_id: string; cardcheck_definition_id: string; status: string; signed_epoch: string | number | null; data: unknown }>;
         }).rows.map((row) => [row.id, row]),
       );
       for (const t of part) {
@@ -1219,7 +1223,11 @@ async function main() {
           if (row.worker_id !== t.workerId) mismatches.push("worker");
           if (row.cardcheck_definition_id !== t.definitionId) mismatches.push("definition");
           if (row.status !== t.status) mismatches.push("status");
-          if (toEpoch(row.signed_date) !== t.signedEpoch) mismatches.push("signed_date");
+          // Drizzle writes a Date to a naive timestamp as UTC wall-clock text
+          // and restores it as UTC on mapped reads. Raw db.execute bypasses
+          // that mapper, so make the UTC interpretation explicit in SQL.
+          const storedSignedEpoch = row.signed_epoch == null ? null : Number(row.signed_epoch);
+          if (storedSignedEpoch !== t.signedEpoch) mismatches.push("signed_date");
           const data = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
           if (stableStringify(data) !== t.dataCanon) mismatches.push("data");
         }
