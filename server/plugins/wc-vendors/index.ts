@@ -27,6 +27,9 @@ export {
 export type * from "./types";
 
 let kindRegistered = false;
+
+const ASSIGNED_OPERATIONS_DESCRIPTION =
+  "Used only when application code requests any eligible configuration for an operation. Manual runs and explicitly selected configurations are not restricted by this list.";
 export function registerWcVendorPluginKind(): void {
   if (kindRegistered) return;
   registerPluginKind({
@@ -194,6 +197,7 @@ export function registerWcVendorPluginKind(): void {
       {
         name: "operations",
         label: "Assigned operations",
+        description: ASSIGNED_OPERATIONS_DESCRIPTION,
         type: "string",
         multiple: true,
         options: {
@@ -220,6 +224,7 @@ export function registerWcVendorPluginKind(): void {
       const fields: import("../_core").PluginConfigEnvelopeField[] = [{
         name: "operations",
         label: "Assigned operations",
+        description: ASSIGNED_OPERATIONS_DESCRIPTION,
         type: "string",
         multiple: true,
         options: {

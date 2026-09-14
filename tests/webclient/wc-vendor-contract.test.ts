@@ -571,6 +571,8 @@ describe("the wc-vendor plugin contract", () => {
         expect.objectContaining({
           name: "operations",
           label: "Assigned operations",
+          description:
+            "Used only when application code requests any eligible configuration for an operation. Manual runs and explicitly selected configurations are not restricted by this list.",
           multiple: true,
         }),
       ]),
@@ -585,6 +587,8 @@ describe("the wc-vendor plugin contract", () => {
         expect.objectContaining({
           name: "operations",
           label: "Assigned operations",
+          description:
+            "Used only when application code requests any eligible configuration for an operation. Manual runs and explicitly selected configurations are not restricted by this list.",
           multiple: true,
         }),
       ]),
