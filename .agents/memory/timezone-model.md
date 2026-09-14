@@ -7,18 +7,17 @@ description: Naive timestamp columns store wall clock in the process zone; the s
 
 ## The storage contract (verified, not assumed)
 
-Core tables use `timestamp without time zone`. The driver serializes a JS Date
-using the **process local offset**, and the naive column keeps only the
-wall-clock fields; reading it back reinterprets those fields in the process
-zone. Measured:
+Core tables use `timestamp without time zone`. There are two distinct paths:
 
-```
-TZ=<unset>            12:00Z -> stored 12:00     "08:00" read back -> 08:00Z
-TZ=America/New_York   12:00Z -> stored 08:00     "08:00" read back -> 12:00Z
-```
+- Drizzle's mapped `timestamp()` serializes a JS `Date` as an ISO UTC string
+  and restores a naive timestamp as UTC. Mapped writes and reads preserve the
+  instant regardless of the process zone.
+- Raw `db.execute(sql)` bypasses Drizzle's column mapper. A returned naive
+  timestamp string passed to `new Date(...)` is interpreted in the process
+  zone and therefore shifts the instant. Raw verification SQL must extract the
+  epoch with an explicit UTC interpretation, or select through a mapped column.
 
-Writes and reads agree as long as the process zone is stable, and the process
-zone is the *only* thing that decides what stored history means.
+Do not assume behavior measured through one path applies to the other.
 
 **The matching hazard:** a column default of `now()` is evaluated by POSTGRES,
 using the *session* TimeZone, not Node's. If the two disagree, app-written
