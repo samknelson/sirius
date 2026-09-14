@@ -7,7 +7,7 @@ import { registerWcVendorPlugin } from "../registry";
 import type { WcVendorContext } from "../types";
 import { redactCredentialText } from "./credential-redaction";
 
-export const BTU_CARDCHECK_PLUGIN_ID = "btu-cardcheck";
+export const BTU_CARDCHECK_PLUGIN_ID = "sitespecific-btu-cardcheck";
 export const BTU_SCRAPE_LOGIN = "login";
 export const BTU_SCRAPE_FETCH_CARDCHECK = "fetch-cardcheck";
 export const LEGACY_BTU_SITE_URL = "https://sirius-btu.activistcentral.net";

@@ -71,6 +71,8 @@ function browserFixture(options?: {
 
 describe("BTU card-check vendor declaration", () => {
   it("declares only browser-free, uncached operations behind the BTU guard", () => {
+    expect(BTU_CARDCHECK_PLUGIN_ID).toBe("sitespecific-btu-cardcheck");
+    expect(getWcVendorPlugin("btu-cardcheck")).toBeUndefined();
     const plugin = getWcVendorPlugin(BTU_CARDCHECK_PLUGIN_ID);
     expect(plugin).toMatchObject({
       service: "BTU",

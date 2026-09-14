@@ -9,6 +9,7 @@ import { logger } from "../../logger";
 import { wcVendorRegistry } from "./registry";
 import type { RegisteredWcVendorPlugin } from "./types";
 import {
+  BTU_CARDCHECK_PLUGIN_ID,
   LEGACY_BTU_CHROMIUM_PATH,
   LEGACY_BTU_SITE_URL,
 } from "./plugins/btu-cardcheck";
@@ -439,7 +440,7 @@ export async function migrateLegacyBtuScrapeWcVendorConfig(): Promise<void> {
       async () => {
         const existing = await storage.pluginConfigs.getByKindAndPlugin(
           "wc-vendors",
-          "btu-cardcheck",
+          BTU_CARDCHECK_PLUGIN_ID,
         );
         const passwordMeta = listEnvironmentVariables().find(
           (entry) => entry.name === "BTU_SCRAPER_PASSWORD",
@@ -452,7 +453,7 @@ export async function migrateLegacyBtuScrapeWcVendorConfig(): Promise<void> {
         if (!data) return;
         const row = await storage.pluginConfigs.create({
           pluginKind: "wc-vendors",
-          pluginId: "btu-cardcheck",
+          pluginId: BTU_CARDCHECK_PLUGIN_ID,
           enabled: true,
           name: "BTU Card Check",
           ordering: 0,

@@ -117,6 +117,7 @@ import "./core/1112_delete_legacy_comm_service_configs";
 import "./core/1113_retarget_twilio_lookup_usage_alerts";
 import "./core/1114_wc_stats_configuration";
 import "./core/1115_merge_wc_stats_on_configuration_delete";
+import "./core/1116_rename_btu_cardcheck_vendor";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
