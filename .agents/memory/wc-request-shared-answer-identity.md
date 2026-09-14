@@ -1,6 +1,6 @@
 ---
 name: One cached answer, many askers
-description: When several call sites share one wc request entry — what belongs in the key, what must be stripped from the stored answer, and how a free service ends up in the vendor guard's list.
+description: When callers or providers share one WC answer — cache identity, provenance, freshness, caller-specific data, and vendor guarding.
 ---
 
 ## A shared entry means the answer must be about the question only
@@ -28,6 +28,27 @@ everyone living there.
 
 **How to apply:** whenever a wc entry has more than one caller, ask what in the
 stored blob came from the caller rather than the vendor.
+
+## Provider and configuration are provenance, not identity
+
+For a canonical operation, cache identity is the operation name plus its
+canonical request subject. The service and resolved configuration say who
+supplied the latest stored result; they do not create separate answers.
+Refreshing through another provider replaces both the result and that
+provenance.
+
+All providers for one canonical cached operation must resolve to the same
+success and failure windows. Refuse conflicting windows rather than letting the
+selected provider make one shared row fresh for one caller and stale for
+another.
+
+**Why:** configuration-prefixed keys and service-scoped uniqueness made paid
+answers disappear after provider or account changes even though the underlying
+question had not changed.
+
+**How to apply:** keep credentials, provider IDs, and configuration IDs out of
+canonical WC keys; store provider/configuration separately as nullable
+attribution, and resolve freshness at canonical-operation scope.
 
 ## Freshness for an answer that never changes
 

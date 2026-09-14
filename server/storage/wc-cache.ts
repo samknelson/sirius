@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { sql, and, eq, lt, desc, ilike, type SQL } from 'drizzle-orm';
+import { sql, and, eq, lt, desc, ilike, isNull, type SQL } from 'drizzle-orm';
 import { wcCache, type WcCacheOutcome } from '@shared/schema';
 import { getClient } from './transaction-context';
 
@@ -14,6 +14,7 @@ import { getClient } from './transaction-context';
  */
 export interface WcCacheEntry {
   service: string;
+  configurationId: string | null;
   requestType: string;
   requestKey: string;
   outcome: WcCacheOutcome;
@@ -35,6 +36,7 @@ export interface WcCacheEntry {
 export interface WcCacheRow {
   id: string;
   service: string;
+  configurationId: string | null;
   requestType: string;
   requestKey: string;
   outcome: WcCacheOutcome;
@@ -50,6 +52,7 @@ export interface WcCacheRowWithResponse extends WcCacheRow {
 /** Narrowing for the admin viewer's list. Every field is optional. */
 export interface WcCacheListFilters {
   service?: string;
+  configurationId?: string | null;
   requestType?: string;
   /** Case-insensitive substring of the readable request key. */
   requestKey?: string;
@@ -62,7 +65,6 @@ export interface WcCacheListParams extends WcCacheListFilters {
 
 /** One request type's idea of what is past its useful life. */
 export interface WcCacheExpiry {
-  service: string;
   requestType: string;
   /** Successes fetched before this moment are gone. */
   successOlderThan: Date;
@@ -71,10 +73,11 @@ export interface WcCacheExpiry {
 }
 
 export interface WcCacheStorage {
-  read(service: string, requestType: string, requestKey: string): Promise<WcCacheEntry | undefined>;
+  read(requestType: string, requestKey: string): Promise<WcCacheEntry | undefined>;
   /** Store an answer, replacing whatever was there. */
   writeSuccess(
     service: string,
+    configurationId: string | null,
     requestType: string,
     requestKey: string,
     response: unknown,
@@ -90,6 +93,7 @@ export interface WcCacheStorage {
    */
   writeFailure(
     service: string,
+    configurationId: string | null,
     requestType: string,
     requestKey: string,
     error: string | undefined,
@@ -109,8 +113,13 @@ export interface WcCacheStorage {
   purgeExpired(expiries: WcCacheExpiry[]): Promise<number>;
   /** The same count, without deleting anything. */
   countExpired(expiries: WcCacheExpiry[]): Promise<number>;
-  /** Distinct (service, request type) pairs actually present in the table. */
-  listRequestTypes(): Promise<Array<{ service: string; requestType: string; rows: number }>>;
+  /** Distinct provenance/request-type groups actually present in the table. */
+  listRequestTypes(): Promise<Array<{
+    service: string;
+    configurationId: string | null;
+    requestType: string;
+    rows: number;
+  }>>;
   /** One page of stored answers, newest first. */
   list(params: WcCacheListParams): Promise<WcCacheRow[]>;
   /** How many rows the same filters match. */
@@ -145,7 +154,6 @@ export function wcRequestKeyHash(requestKey: string): string {
 
 function expiryCondition(expiry: WcCacheExpiry) {
   return and(
-    eq(wcCache.service, expiry.service),
     eq(wcCache.requestType, expiry.requestType),
     sql`(
       (${wcCache.outcome} = 'success' AND ${lt(wcCache.fetchedAt, expiry.successOlderThan)})
@@ -165,6 +173,13 @@ function expiryCondition(expiry: WcCacheExpiry) {
 function listCondition(filters: WcCacheListFilters): SQL | undefined {
   const conditions: SQL[] = [];
   if (filters.service) conditions.push(eq(wcCache.service, filters.service));
+  if (filters.configurationId !== undefined) {
+    conditions.push(
+      filters.configurationId === null
+        ? isNull(wcCache.configurationId)
+        : eq(wcCache.configurationId, filters.configurationId),
+    );
+  }
   if (filters.requestType) conditions.push(eq(wcCache.requestType, filters.requestType));
   if (filters.requestKey) {
     conditions.push(ilike(wcCache.requestKey, `%${filters.requestKey}%`));
@@ -176,7 +191,6 @@ function listCondition(filters: WcCacheListFilters): SQL | undefined {
 export function createWcCacheStorage(): WcCacheStorage {
   return {
     async read(
-      service: string,
       requestType: string,
       requestKey: string,
     ): Promise<WcCacheEntry | undefined> {
@@ -184,6 +198,7 @@ export function createWcCacheStorage(): WcCacheStorage {
       const [row] = await client
         .select({
           service: wcCache.service,
+          configurationId: wcCache.configurationId,
           requestType: wcCache.requestType,
           requestKey: wcCache.requestKey,
           outcome: wcCache.outcome,
@@ -193,7 +208,6 @@ export function createWcCacheStorage(): WcCacheStorage {
         .from(wcCache)
         .where(
           and(
-            eq(wcCache.service, service),
             eq(wcCache.requestType, requestType),
             eq(wcCache.requestKeyHash, wcRequestKeyHash(requestKey)),
           ),
@@ -203,6 +217,7 @@ export function createWcCacheStorage(): WcCacheStorage {
 
     async writeSuccess(
       service: string,
+      configurationId: string | null,
       requestType: string,
       requestKey: string,
       response: unknown,
@@ -216,6 +231,7 @@ export function createWcCacheStorage(): WcCacheStorage {
         .insert(wcCache)
         .values({
           service,
+          configurationId,
           requestType,
           requestKey,
           requestKeyHash: wcRequestKeyHash(requestKey),
@@ -224,8 +240,10 @@ export function createWcCacheStorage(): WcCacheStorage {
           fetchedAt,
         })
         .onConflictDoUpdate({
-          target: [wcCache.service, wcCache.requestType, wcCache.requestKeyHash],
+          target: [wcCache.requestType, wcCache.requestKeyHash],
           set: {
+            service,
+            configurationId,
             requestKey,
             outcome: 'success',
             response: response as any,
@@ -236,6 +254,7 @@ export function createWcCacheStorage(): WcCacheStorage {
 
     async writeFailure(
       service: string,
+      configurationId: string | null,
       requestType: string,
       requestKey: string,
       error: string | undefined,
@@ -247,6 +266,7 @@ export function createWcCacheStorage(): WcCacheStorage {
         .insert(wcCache)
         .values({
           service,
+          configurationId,
           requestType,
           requestKey,
           requestKeyHash: wcRequestKeyHash(requestKey),
@@ -255,8 +275,10 @@ export function createWcCacheStorage(): WcCacheStorage {
           fetchedAt,
         })
         .onConflictDoUpdate({
-          target: [wcCache.service, wcCache.requestType, wcCache.requestKeyHash],
+          target: [wcCache.requestType, wcCache.requestKeyHash],
           set: {
+            service,
+            configurationId,
             requestKey,
             outcome: 'failure',
             response: { error: error ?? null } as any,
@@ -308,16 +330,22 @@ export function createWcCacheStorage(): WcCacheStorage {
       return total;
     },
 
-    async listRequestTypes(): Promise<Array<{ service: string; requestType: string; rows: number }>> {
+    async listRequestTypes(): Promise<Array<{
+      service: string;
+      configurationId: string | null;
+      requestType: string;
+      rows: number;
+    }>> {
       const client = getClient();
       const rows = await client
         .select({
           service: wcCache.service,
+          configurationId: wcCache.configurationId,
           requestType: wcCache.requestType,
           rows: sql<number>`count(*)::int`,
         })
         .from(wcCache)
-        .groupBy(wcCache.service, wcCache.requestType);
+        .groupBy(wcCache.service, wcCache.configurationId, wcCache.requestType);
       return rows.map((r) => ({ ...r, rows: Number(r.rows) }));
     },
 
@@ -328,6 +356,7 @@ export function createWcCacheStorage(): WcCacheStorage {
         .select({
           id: wcCache.id,
           service: wcCache.service,
+          configurationId: wcCache.configurationId,
           requestType: wcCache.requestType,
           requestKey: wcCache.requestKey,
           outcome: wcCache.outcome,
@@ -355,6 +384,7 @@ export function createWcCacheStorage(): WcCacheStorage {
         .select({
           id: wcCache.id,
           service: wcCache.service,
+          configurationId: wcCache.configurationId,
           requestType: wcCache.requestType,
           requestKey: wcCache.requestKey,
           outcome: wcCache.outcome,

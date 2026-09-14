@@ -33,6 +33,7 @@ export {
 export {
   getWcRequest,
   listWcRequests,
+  resolveWcCacheDurations,
   resolveWcDuration,
 } from "./registry";
 export type {

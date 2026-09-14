@@ -7,7 +7,7 @@ import { getTodayYmd } from "@shared/utils/date";
 import { wcCacheStorage, wcRequestKeyHash, type WcCacheEntry } from "../../storage/wc-cache";
 import { wcStatsStorage } from "../../storage/wc-stats";
 import { runOutsideTransaction } from "../../storage/transaction-context";
-import { getWcRequest, resolveWcDuration } from "./registry";
+import { getWcRequest, resolveWcCacheDurations, resolveWcDuration } from "./registry";
 import type { WcAnswer, WcRequestBehavior, WcRequestMode, WcResult, WcService } from "./types";
 // Type-only, and deliberately so: the vendor half of the framework lives
 // behind a dynamic import below, so nothing about the plugin registry is
@@ -98,7 +98,7 @@ export interface WcVendorRequestOptions<N extends WcVendorOperationName> {
 const unstorableHolds = new Map<string, number>();
 
 function holdKey(behavior: WcRequestBehavior, requestKey: string): string {
-  return `${behavior.service}:${behavior.requestType}:${wcRequestKeyHash(requestKey)}`;
+  return `${behavior.requestType}:${wcRequestKeyHash(requestKey)}`;
 }
 
 function inUnstorableHold(behavior: WcRequestBehavior, requestKey: string): boolean {
@@ -230,7 +230,7 @@ async function wcTransportRequest<TValue>(
   let entry: WcCacheEntry | undefined;
   if (behavior.cached) {
     try {
-      entry = await wcCacheStorage.read(behavior.service, behavior.requestType, requestKey);
+      entry = await wcCacheStorage.read(behavior.requestType, requestKey);
     } catch (error) {
       logger.error("Failed to read the web client cache", {
         service: "webclient",
@@ -241,8 +241,14 @@ async function wcTransportRequest<TValue>(
     }
   }
 
-  const freshFor = await resolveWcDuration(behavior.freshFor);
-  const failureRememberedFor = await resolveWcDuration(behavior.failureRememberedFor);
+  const sharedDurations = behavior.cached
+    ? await resolveWcCacheDurations(behavior.requestType)
+    : undefined;
+  const freshFor =
+    sharedDurations?.freshFor ?? await resolveWcDuration(behavior.freshFor);
+  const failureRememberedFor =
+    sharedDurations?.failureRememberedFor ??
+    await resolveWcDuration(behavior.failureRememberedFor);
   const window = entry?.outcome === "failure" ? failureRememberedFor : freshFor;
   const fresh = entry ? now - entry.fetchedAt.getTime() < window : false;
 
@@ -304,6 +310,7 @@ async function wcTransportRequest<TValue>(
       try {
         await wcCacheStorage.writeSuccess(
           behavior.service,
+          options.configurationId ?? null,
           behavior.requestType,
           requestKey,
           answer.value ?? null,
@@ -331,6 +338,7 @@ async function wcTransportRequest<TValue>(
     try {
       await wcCacheStorage.writeFailure(
         behavior.service,
+        options.configurationId ?? null,
         behavior.requestType,
         requestKey,
         answer.error,

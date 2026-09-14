@@ -13,7 +13,7 @@ import { isValidYmd } from "../../utils/date";
  * is decided by the per-request canonicalizer in the behavior registry
  * (`server/services/webclient/registry.ts`), not by this table — the table
  * only stores whatever string that canonicalizer produced and enforces that
- * it is unique within its (service, request type).
+ * it is unique within its provider-neutral request type.
  */
 export const wcCacheOutcomeEnum = pgEnum("wc_cache_outcome", ["success", "failure"]);
 
@@ -43,6 +43,7 @@ export const wcCacheOutcomeEnum = pgEnum("wc_cache_outcome", ["success", "failur
 export const wcCache = pgTable("wc_cache", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   service: varchar("service", { length: 64 }).notNull(),
+  configurationId: varchar("configuration_id"),
   requestType: varchar("request_type", { length: 64 }).notNull(),
   requestKey: text("request_key").notNull(),
   requestKeyHash: varchar("request_key_hash", { length: 64 }).notNull(),
@@ -53,14 +54,18 @@ export const wcCache = pgTable("wc_cache", {
 }, (table) => ({
   // Named UNIQUE CONSTRAINT (not a unique index) so the startup drift gate
   // sees the same object the migration creates.
-  requestUnique: unique("wc_cache_service_type_key_hash_uniq").on(
-    table.service,
+  requestUnique: unique("wc_cache_type_key_hash_uniq").on(
     table.requestType,
     table.requestKeyHash,
   ),
+  configurationFk: foreignKey({
+    name: "wc_cache_configuration_id_fkey",
+    columns: [table.configurationId],
+    foreignColumns: [pluginConfigsWcVendors.id],
+  }).onDelete("set null"),
   // The sweep's access pattern: everything of one request type older than a
   // cutoff. The unique constraint's index already serves point lookups.
-  sweepIdx: index("wc_cache_sweep_idx").on(table.service, table.requestType, table.fetchedAt),
+  sweepIdx: index("wc_cache_sweep_idx").on(table.requestType, table.fetchedAt),
 }));
 
 /**

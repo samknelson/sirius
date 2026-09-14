@@ -896,7 +896,7 @@ describe("the wc-vendor plugin contract", () => {
         configId: "connection-a",
         args: { address: "  10 main st ", region: " us " },
       }),
-    ).toBe("connection-a:10 MAIN ST|US");
+    ).toBe("10 MAIN ST|US");
 
     const uncached = getWcRequest("Census", "tests.answer");
     expect(uncached).toMatchObject({
@@ -905,7 +905,7 @@ describe("the wc-vendor plugin contract", () => {
     });
   });
 
-  it("stores a cached handler's answer envelope under the per-connection key", async () => {
+  it("stores a cached handler's answer with connection provenance", async () => {
     getConfig.mockResolvedValue({
       id: "cached-config",
       pluginKind: "wc-vendors",
@@ -928,10 +928,75 @@ describe("the wc-vendor plugin contract", () => {
     });
     expect(cacheWriteSuccess).toHaveBeenCalledWith(
       "Census",
+      "cached-config",
       "tests.cache.answer",
-      "cached-config:10 MAIN ST",
+      "10 MAIN ST",
       { normalized: "10 MAIN ST" },
     );
+  });
+
+  it("reuses one cached answer after switching provider and configuration", async () => {
+    const requestType = "tests.provider-switch";
+    const { registerWcRequest } = await import("../../server/services/webclient/registry");
+    for (const service of ["OpenStates", "Freeman Authorization"] as const) {
+      registerWcRequest({
+        service,
+        requestType,
+        operation: "exercise provider-neutral cache identity",
+        cached: true,
+        freshFor: 60_000,
+        failureRememberedFor: 5_000,
+        requestKey: (args: { subject: string }) => args.subject.trim().toUpperCase(),
+      });
+    }
+    const firstFetch = vi.fn(async () => ({
+      answered: true as const,
+      value: { normalized: "10 MAIN ST" },
+    }));
+    const first = await wcRequest({
+      service: "OpenStates",
+      configurationId: "first-config",
+      requestType,
+      args: { subject: "10 main st" },
+      fetch: firstFetch,
+    });
+    expect(first).toMatchObject({ source: "network", outcome: "success" });
+    expect(cacheWriteSuccess).toHaveBeenCalledWith(
+      "OpenStates",
+      "first-config",
+      requestType,
+      "10 MAIN ST",
+      { normalized: "10 MAIN ST" },
+    );
+
+    cacheRead.mockResolvedValue({
+      service: "OpenStates",
+      configurationId: "first-config",
+      requestType,
+      requestKey: "10 MAIN ST",
+      outcome: "success",
+      response: { normalized: "10 MAIN ST" },
+      fetchedAt: new Date(),
+    });
+    const secondFetch = vi.fn();
+
+    await expect(wcRequest({
+      service: "Freeman Authorization",
+      configurationId: "second-config",
+      requestType,
+      args: { subject: "10 main st" },
+      fetch: secondFetch,
+    })).resolves.toMatchObject({
+      source: "cache",
+      outcome: "success",
+      value: { normalized: "10 MAIN ST" },
+    });
+    expect(cacheRead).toHaveBeenLastCalledWith(
+      requestType,
+      "10 MAIN ST",
+    );
+    expect(firstFetch).toHaveBeenCalledOnce();
+    expect(secondFetch).not.toHaveBeenCalled();
   });
 
   it("stores and serves complete negative answers as successes while force still calls", async () => {
@@ -957,8 +1022,9 @@ describe("the wc-vendor plugin contract", () => {
     });
     expect(cacheWriteSuccess).toHaveBeenCalledWith(
       "Census",
+      "cached-config",
       "tests.cache.answer",
-      "cached-config:MISSING",
+      "MISSING",
       negative,
     );
     expect(cacheWriteFailure).not.toHaveBeenCalled();

@@ -324,8 +324,7 @@ export function registerWcVendorPlugin(plugin: WcVendorPlugin): void {
       failureRememberedFor: cached?.failureRememberedFor ?? 0,
       ...(cached
         ? {
-            requestKey: ({ configId, args }) =>
-              `${configId}:${cached.requestKey(args as never)}`,
+            requestKey: ({ args }) => cached.requestKey(args as never),
           }
         : {}),
     });

@@ -183,17 +183,9 @@ describe("the one entry point, for a vendor operation", () => {
     expect(recordCall).not.toHaveBeenCalled();
   });
 
-  it("keeps two connections to one vendor apart", async () => {
+  it("canonicalizes equivalent argument ordering", async () => {
     const behavior = getWcRequest("Census", OPERATION);
     if (!behavior) throw new Error("the test vendor's operation was not registered");
-
-    // Nothing is stored for a vendor operation today, so this identity is not
-    // yet load-bearing — which is exactly why it is pinned here. The day one of
-    // them caches, two connections sharing a key would read each other's
-    // answers, and that failure looks like a vendor bug.
-    const a = behavior.requestKey({ configId: "cfg-a", args: { q: 1 } });
-    const b = behavior.requestKey({ configId: "cfg-b", args: { q: 1 } });
-    expect(a).not.toBe(b);
 
     // The same request written with its arguments in a different order is the
     // same request.

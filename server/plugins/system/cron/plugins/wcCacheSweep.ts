@@ -1,5 +1,8 @@
 import { storage } from "../../../../storage";
-import { listWcRequests, resolveWcDuration } from "../../../../services/webclient";
+import {
+  listWcRequests,
+  resolveWcCacheDurations,
+} from "../../../../services/webclient";
 import type { WcCacheExpiry } from "../../../../storage/wc-cache";
 import { registerCronPlugin } from "../registry";
 import type { CronJobContext, CronJobResult } from "../types";
@@ -13,7 +16,7 @@ import type { CronJobContext, CronJobResult } from "../types";
  * and a failure older than its remembered-for window is no longer holding
  * anything off. Keeping either one only grows the table.
  *
- * Rows whose (service, request type) has no registered behavior are left
+ * Rows whose request type has no registered behavior are left
  * alone and reported. Nothing here knows what a retired request type's window
  * used to be, and deleting on that ignorance is how a still-live entry written
  * by an older release disappears.
@@ -33,20 +36,22 @@ registerCronPlugin({
     const behaviors = listWcRequests();
 
     const expiries: WcCacheExpiry[] = [];
+    const seen = new Set<string>();
     for (const behavior of behaviors) {
-      const freshFor = await resolveWcDuration(behavior.freshFor);
-      const failureRememberedFor = await resolveWcDuration(behavior.failureRememberedFor);
+      if (seen.has(behavior.requestType)) continue;
+      seen.add(behavior.requestType);
+      const durations = await resolveWcCacheDurations(behavior.requestType);
+      if (!durations) continue;
       expiries.push({
-        service: behavior.service,
         requestType: behavior.requestType,
-        successOlderThan: new Date(now - freshFor),
-        failureOlderThan: new Date(now - failureRememberedFor),
+        successOlderThan: new Date(now - durations.freshFor),
+        failureOlderThan: new Date(now - durations.failureRememberedFor),
       });
     }
 
-    const known = new Set(expiries.map((e) => `${e.service}:${e.requestType}`));
+    const known = new Set(expiries.map((e) => e.requestType));
     const present = await storage.wcCache.listRequestTypes();
-    const unregistered = present.filter((p) => !known.has(`${p.service}:${p.requestType}`));
+    const unregistered = present.filter((p) => !known.has(p.requestType));
 
     if (context.mode === "test") {
       const expired = await storage.wcCache.countExpired(expiries);

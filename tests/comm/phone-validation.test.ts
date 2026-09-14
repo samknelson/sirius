@@ -66,6 +66,7 @@ vi.mock('../../server/services/webclient/wc-vendor-context', () => ({
     transport({
       service: 'Twilio',
       requestType: 'communications.phone.validate',
+      configurationId: 'test-twilio',
       args: {
         configId: 'test-twilio',
         args: options.args,
@@ -98,6 +99,7 @@ vi.mock('../../server/services/webclient/wc-vendor-context', () => ({
  */
 interface StoredEntry {
   service: string;
+  configurationId: string | null;
   requestType: string;
   requestKey: string;
   outcome: 'success' | 'failure';
@@ -114,10 +116,11 @@ const optinWrite = vi.fn(async () => {});
 vi.mock('../../server/storage/wc-cache', () => ({
   wcRequestKeyHash: (requestKey: string) => requestKey,
   wcCacheStorage: {
-    read: async (_service: string, _requestType: string, requestKey: string) =>
+    read: async (_requestType: string, requestKey: string) =>
       store.get(requestKey),
     writeSuccess: async (
       service: string,
+      configurationId: string | null,
       requestType: string,
       requestKey: string,
       response: unknown,
@@ -125,6 +128,7 @@ vi.mock('../../server/storage/wc-cache', () => ({
       if (writeThrows) throw new Error('cannot execute INSERT in a read-only transaction');
       store.set(requestKey, {
         service,
+        configurationId,
         requestType,
         requestKey,
         outcome: 'success',
@@ -134,6 +138,7 @@ vi.mock('../../server/storage/wc-cache', () => ({
     },
     writeFailure: async (
       service: string,
+      configurationId: string | null,
       requestType: string,
       requestKey: string,
       error: string | undefined,
@@ -144,6 +149,7 @@ vi.mock('../../server/storage/wc-cache', () => ({
       if (existing?.outcome === 'success' && existing.fetchedAt >= keepSuccessNewerThan) return;
       store.set(requestKey, {
         service,
+        configurationId,
         requestType,
         requestKey,
         outcome: 'failure',
@@ -181,7 +187,7 @@ const { PhoneValidationService, DEFAULT_REVALIDATE_AFTER_DAYS } = await import(
 
 const NUMBER = '(617) 555-0142';
 const E164 = '+16175550142';
-const CACHE_KEY = `test-twilio:${E164}`;
+const CACHE_KEY = E164;
 
 let service: InstanceType<typeof PhoneValidationService>;
 

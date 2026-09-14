@@ -2,7 +2,11 @@ import type { Express } from "express";
 import { z } from "zod";
 import { storage } from "../../storage";
 import { requireAccess } from "../../services/access-policy-evaluator";
-import { listWcRequests, resolveWcDuration } from "../../services/webclient";
+import {
+  listWcRequests,
+  resolveWcCacheDurations,
+  resolveWcDuration,
+} from "../../services/webclient";
 import { addDaysYmd, getTodayYmd, isValidYmd, isYmdAfter } from "@shared/utils/date";
 import type { WcCacheRow } from "../../storage/wc-cache";
 import { getWcVendorPlugin } from "../../plugins/wc-vendors/registry";
@@ -14,7 +18,7 @@ import { getWcVendorPlugin } from "../../plugins/wc-vendors/registry";
  * Two things about this screen are deliberate:
  *
  * - **Freshness is derived, never stored.** There is no expiry column: an
- *   entry is fresh when the window its (service, request type) declares in the
+ *   entry is fresh when the window its canonical request type declares in the
  *   behavior registry has not yet elapsed since `fetchedAt`, and that window is
  *   resolved on every request exactly as `wcRequest` resolves it. An operator
  *   who shortens a setting sees the change here at once, and this screen can
@@ -42,7 +46,7 @@ const listQuerySchema = z.object({
 
 /** What the list and detail views add on top of the stored row. */
 interface WcCacheDecoration {
-  /** False when no behavior is registered for this (service, request type). */
+  /** False when no behavior is registered for this request type. */
   registered: boolean;
   /** Inside its window. Null when there is no window to judge against. */
   fresh: boolean | null;
@@ -55,17 +59,17 @@ interface WcCacheDecoration {
  *
  * Resolved once per HTTP request rather than once per row: a window can be a
  * settings read, and a page of 25 rows of one request type must not become 25
- * of them.
+ * of them. Cache identity is provider-neutral, so service is deliberately not
+ * part of this lookup.
  */
 async function resolveWindows(): Promise<
   Map<string, { freshFor: number; failureRememberedFor: number }>
 > {
   const windows = new Map<string, { freshFor: number; failureRememberedFor: number }>();
   for (const behavior of listWcRequests()) {
-    windows.set(`${behavior.service}:${behavior.requestType}`, {
-      freshFor: await resolveWcDuration(behavior.freshFor),
-      failureRememberedFor: await resolveWcDuration(behavior.failureRememberedFor),
-    });
+    if (windows.has(behavior.requestType)) continue;
+    const window = await resolveWcCacheDurations(behavior.requestType);
+    if (window) windows.set(behavior.requestType, window);
   }
   return windows;
 }
@@ -75,7 +79,7 @@ function decorate(
   windows: Map<string, { freshFor: number; failureRememberedFor: number }>,
   now: number,
 ): WcCacheDecoration {
-  const window = windows.get(`${row.service}:${row.requestType}`);
+  const window = windows.get(row.requestType);
   if (!window) return { registered: false, fresh: null, windowMs: null };
   // A failure row is held for its own, much shorter window — the same one the
   // wrapper judges it against before deciding whether to attempt the call
@@ -203,35 +207,68 @@ export function registerWcCacheAdminRoutes(app: Express) {
     }
   });
 
-  // Every (service, request type) worth offering as a filter: the pairs
-  // present in the table, plus the registered ones that have no rows yet.
-  // A pair present but unregistered is included and marked, because it is the
-  // one an operator is most likely to be looking for.
+  // Every service/request-type/provenance combination worth offering as a
+  // filter: the combinations present in the table, plus the registered
+  // service/request types that have no rows yet. A present but unregistered
+  // combination is included and marked, because it is the one an operator is
+  // most likely to be looking for.
   //
   // Registered before `/:id` so the literal path is not read as an id.
   app.get("/api/admin/wc-cache/request-types", requireAccess("admin"), async (_req, res) => {
     try {
-      const present = await storage.wcCache.listRequestTypes();
+      // Keep the route tolerant of older storage implementations while the
+      // provenance column is rolled out: an absent value is the same
+      // provenance as an explicit SQL NULL.
+      const present = (await storage.wcCache.listRequestTypes()) as Array<{
+        service: string;
+        requestType: string;
+        configurationId?: string | null;
+        rows: number;
+      }>;
       const byKey = new Map<
         string,
-        { service: string; requestType: string; rows: number; registered: boolean }
+        {
+          service: string;
+          requestType: string;
+          configurationId: string | null;
+          rows: number;
+          registered: boolean;
+        }
       >();
       for (const row of present) {
-        byKey.set(`${row.service}:${row.requestType}`, { ...row, registered: false });
+        byKey.set(
+          `${row.service}:${row.requestType}:${row.configurationId ?? UNATTRIBUTED_CONFIGURATION}`,
+          {
+            service: row.service,
+            requestType: row.requestType,
+            configurationId: row.configurationId ?? null,
+            rows: row.rows,
+            registered: false,
+          },
+        );
       }
       for (const behavior of listWcRequests()) {
-        const key = `${behavior.service}:${behavior.requestType}`;
-        const existing = byKey.get(key);
-        byKey.set(key, {
-          service: behavior.service,
-          requestType: behavior.requestType,
-          rows: existing?.rows ?? 0,
-          registered: true,
-        });
+        // A registered behavior with no rows is still a useful filter option.
+        // It has no provenance to report yet, so use null rather than making
+        // the behavior's service look like a cache identity.
+        const key = `${behavior.service}:${behavior.requestType}:${UNATTRIBUTED_CONFIGURATION}`;
+        if (!byKey.has(key)) {
+          byKey.set(key, {
+            service: behavior.service,
+            requestType: behavior.requestType,
+            configurationId: null,
+            rows: 0,
+            registered: true,
+          });
+        } else {
+          byKey.get(key)!.registered = true;
+        }
       }
       const result = Array.from(byKey.values()).sort(
         (a, b) =>
-          a.service.localeCompare(b.service) || a.requestType.localeCompare(b.requestType),
+          a.service.localeCompare(b.service) ||
+          a.requestType.localeCompare(b.requestType) ||
+          (a.configurationId ?? "").localeCompare(b.configurationId ?? ""),
       );
       res.json(result);
     } catch (error) {
@@ -249,7 +286,13 @@ export function registerWcCacheAdminRoutes(app: Express) {
     }
     try {
       const { page, pageSize, service, requestType, requestKey } = parsed.data;
-      const filters = { service, requestType, requestKey };
+      const configurationId =
+        parsed.data.configurationId === UNATTRIBUTED_CONFIGURATION
+          ? null
+          : parsed.data.configurationId;
+      const filters = { service, requestType, configurationId, requestKey } as Parameters<
+        typeof storage.wcCache.count
+      >[0];
       const [rows, total, windows] = await Promise.all([
         storage.wcCache.list({ page, pageSize, ...filters }),
         storage.wcCache.count(filters),

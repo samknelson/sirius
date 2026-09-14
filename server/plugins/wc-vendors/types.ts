@@ -196,6 +196,7 @@ export const WC_VENDOR_OPERATION_CATALOG = {
   "read-configuration": "communications.sms.configuration.read",
   "list-phone-numbers": "communications.phone.list",
   "send-letter": "communications.postal.send",
+  "address-verification": "communications.postal.address.verify",
   "verify-address": "communications.postal.address.verify",
   "letter-status": "communications.postal.letter.status",
   "cancel-letter": "communications.postal.letter.cancel",
