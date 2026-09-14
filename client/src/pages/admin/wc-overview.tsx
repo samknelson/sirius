@@ -41,8 +41,9 @@ import { Link } from "wouter";
 
 interface WcRow {
   pluginId: string;
+  pluginName: string;
   vendor: string;
-  service: string;
+  service: string | null;
   requestType: string;
   configurationId: string;
   configurationName?: string | null;
@@ -59,7 +60,7 @@ interface WcRow {
 const ALL = "all";
 
 export default function WcOverviewPage() {
-  usePageTitle("Outgoing Web Services");
+  usePageTitle("Web Client Providers");
 
   const { data, isLoading, isError, refetch } = useQuery<WcRow[]>({
     queryKey: ["/api/admin/wc-overview"],
@@ -107,7 +108,7 @@ export default function WcOverviewPage() {
     [rows],
   );
   const filteredRows = rows.filter((row) => {
-    const haystack = `${row.vendor} ${row.service} ${row.requestType} ${
+    const haystack = `${row.pluginName} ${row.pluginId} ${row.service ?? ""} ${row.requestType} ${
       row.configurationName ?? ""
     }`.toLowerCase();
     return (
@@ -145,10 +146,10 @@ export default function WcOverviewPage() {
     <WcLayout activeTab="wc-overview">
       <div className="space-y-5">
         <div>
-          <h2 className="text-lg font-semibold">Outbound call operations</h2>
+          <h2 className="text-lg font-semibold">Provider operations</h2>
           <p className="text-sm text-muted-foreground">
-            Inspect configured calls and safely run the operations exposed by
-            each vendor. Teamsters 631 worker dry-runs, imports, and synchronization
+            See which configured provider supplies each request type and safely
+            run supported operations. Teamsters 631 worker dry-runs, imports, and synchronization
             remain on the{" "}
             <Link href="/config/edls/t631-fetch" className="underline underline-offset-4">
               Teamsters 631 Sync
@@ -166,18 +167,18 @@ export default function WcOverviewPage() {
                   id="wc-search"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Vendor, service, account…"
+                  placeholder="Provider, plugin, service, configuration…"
                   data-testid="input-wc-search"
                 />
               </div>
               <div className="w-48 space-y-1">
-                <Label>Vendor</Label>
+                <Label>Provider</Label>
                 <Select value={vendor} onValueChange={setVendor}>
                   <SelectTrigger data-testid="select-wc-vendor">
-                    <SelectValue placeholder="All vendors" />
+                    <SelectValue placeholder="All providers" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={ALL}>All vendors</SelectItem>
+                    <SelectItem value={ALL}>All providers</SelectItem>
                     {vendors.map((value) => (
                       <SelectItem key={value} value={value}>
                         {value}
@@ -227,7 +228,7 @@ export default function WcOverviewPage() {
         ) : isError ? (
           <Alert variant="destructive">
             <AlertDescription className="flex items-center justify-between gap-4">
-              Couldn’t load outbound operations.
+              Couldn’t load provider operations.
               <Button variant="outline" onClick={() => refetch()}>
                 Retry
               </Button>
@@ -239,7 +240,7 @@ export default function WcOverviewPage() {
               className="py-12 text-center text-sm text-muted-foreground"
               data-testid="text-wc-empty"
             >
-              No outbound operations match these filters.
+              No provider operations match these filters.
             </CardContent>
           </Card>
         ) : (
@@ -247,9 +248,9 @@ export default function WcOverviewPage() {
             <Table data-testid="table-wc-overview">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Vendor</TableHead>
+                  <TableHead>Provider</TableHead>
                   <TableHead>Request type</TableHead>
-                  <TableHead>Account</TableHead>
+                  <TableHead>Configuration</TableHead>
                   <TableHead>Cached?</TableHead>
                   <TableHead>Calls today</TableHead>
                   <TableHead>Calls last 7 days</TableHead>
@@ -262,7 +263,12 @@ export default function WcOverviewPage() {
                     key={`${row.configurationId}-${row.requestType}`}
                     data-testid={`row-wc-${row.configurationId}-${row.requestType}`}
                   >
-                    <TableCell className="font-medium">{row.vendor}</TableCell>
+                    <TableCell>
+                      <div className="font-medium">{row.pluginName}</div>
+                      <div className="font-mono text-xs text-muted-foreground">
+                        {row.pluginId}
+                      </div>
+                    </TableCell>
                     <TableCell className="font-mono text-xs">
                       {row.requestType}
                     </TableCell>
