@@ -558,7 +558,24 @@ describe("the wc-vendor plugin contract", () => {
     const adapter = getPluginConfigAdapter("wc-vendors");
     if (!adapter) throw new Error("wc-vendors config adapter is not registered");
 
+    const kindOperations = adapter.envelopeFields?.find(
+      ({ name }) => name === "operations",
+    );
     const stripeFields = adapter.envelopeFieldsForPlugin?.(plugin("stripe")) ?? [];
+    const stripeOperations = stripeFields.find(({ name }) => name === "operations");
+    expect({
+      ...kindOperations,
+      options: undefined,
+    }).toEqual({
+      ...stripeOperations,
+      options: undefined,
+    });
+    expect(stripeOperations?.options?.choices).toEqual(
+      Object.entries(plugin("stripe").operations).map(([value, operation]) => ({
+        value,
+        label: operation.description,
+      })),
+    );
     expect(stripeFields).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

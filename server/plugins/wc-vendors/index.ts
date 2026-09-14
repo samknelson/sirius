@@ -8,6 +8,10 @@ import {
 import { logger } from "../../logger";
 import { wcVendorRegistry } from "./registry";
 import type { RegisteredWcVendorPlugin } from "./types";
+import type {
+  PluginConfigEnvelopeField,
+  PluginConfigEnvelopeFieldChoice,
+} from "../_core/config-adapter";
 import {
   BTU_CARDCHECK_PLUGIN_ID,
   LEGACY_BTU_CHROMIUM_PATH,
@@ -30,6 +34,20 @@ let kindRegistered = false;
 
 const ASSIGNED_OPERATIONS_DESCRIPTION =
   "Used only when application code requests any eligible configuration for an operation. Manual runs and explicitly selected configurations are not restricted by this list.";
+
+function assignedOperationsField(
+  choices: PluginConfigEnvelopeFieldChoice[],
+): PluginConfigEnvelopeField {
+  return {
+    name: "operations",
+    label: "Assigned operations",
+    description: ASSIGNED_OPERATIONS_DESCRIPTION,
+    type: "string",
+    multiple: true,
+    options: { choices },
+  };
+}
+
 export function registerWcVendorPluginKind(): void {
   if (kindRegistered) return;
   registerPluginKind({
@@ -194,48 +212,36 @@ export function registerWcVendorPluginKind(): void {
     },
     envelopeFields: [
       { name: "secretName", label: "Secret Name", type: "string" },
-      {
-        name: "operations",
-        label: "Assigned operations",
-        description: ASSIGNED_OPERATIONS_DESCRIPTION,
-        type: "string",
-        multiple: true,
-        options: {
-          choices: Array.from(
-            new Map(
-              wcVendorRegistry.list().flatMap((plugin) =>
-                Object.entries(plugin.operations).map(([value, operation]) => [
+      assignedOperationsField(
+        Array.from(
+          new Map(
+            wcVendorRegistry.list().flatMap((plugin) =>
+              Object.entries(plugin.operations).map(([value, operation]) => [
+                value,
+                {
                   value,
-                  {
-                    value,
-                    label: `${plugin.name}: ${operation?.description ?? value}`,
-                  },
-                ] as const),
-              ),
-            ).values(),
-          ),
-        },
-      },
+                  label: `${plugin.name}: ${operation?.description ?? value}`,
+                },
+              ] as const),
+            ),
+          ).values(),
+        ),
+      ),
     ],
     envelopeFieldsForPlugin: (plugin) => {
       const credential = (plugin as RegisteredWcVendorPlugin).credential;
       const requirement = credential.secretName;
       const vendor = plugin as RegisteredWcVendorPlugin;
-      const fields: import("../_core").PluginConfigEnvelopeField[] = [{
-        name: "operations",
-        label: "Assigned operations",
-        description: ASSIGNED_OPERATIONS_DESCRIPTION,
-        type: "string",
-        multiple: true,
-        options: {
-          choices: Object.entries(vendor.operations).flatMap(
+      const fields: PluginConfigEnvelopeField[] = [
+        assignedOperationsField(
+          Object.entries(vendor.operations).flatMap(
             ([value, operation]) =>
               operation
                 ? [{ value, label: operation.description }]
                 : [],
           ),
-        },
-      }];
+        ),
+      ];
       if (requirement !== "none") {
         fields.unshift({
           name: "secretName",
