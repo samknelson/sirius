@@ -34,7 +34,7 @@ registerSystemStatusPlugin({
     };
 
     try {
-      const result = await t631Fetch("sirius_service_ping");
+      const result = await t631Fetch("sitespecific.t631.service.ping");
       const host = hostOf(result.request.url);
       if (result.success) {
         return [

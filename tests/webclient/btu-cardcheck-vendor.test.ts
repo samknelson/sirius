@@ -81,15 +81,28 @@ describe("BTU card-check vendor declaration", () => {
     });
     expect(getWcVendorOperationManifest(plugin!)).toEqual([
       {
-        id: "login",
+        id: "service.test-connection",
+        description: "test the BTU card-check connection",
+        needsWritableDatabase: false,
+        externalSideEffect: false,
+        cacheMode: "uncached",
+        manualRun: {
+          argsSchema: { type: "object", properties: {}, additionalProperties: false },
+          effect: "read",
+        },
+      },
+      {
+        id: "sitespecific.btu.cardcheck.login",
         description: "sign in to the BTU site",
         needsWritableDatabase: true,
+        externalSideEffect: true,
         cacheMode: "uncached",
       },
       {
-        id: "fetch-cardcheck",
+        id: "sitespecific.btu.cardcheck.fetch",
         description: "fetch a card check page from the BTU site",
         needsWritableDatabase: true,
+        externalSideEffect: true,
         cacheMode: "uncached",
       },
     ]);

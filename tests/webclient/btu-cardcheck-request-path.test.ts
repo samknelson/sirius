@@ -29,7 +29,7 @@ describe("BTU card-check service WC request path", () => {
     await expect(startBtuCardcheckScrape()).resolves.toBe("session-1");
     expect(mocks.wcRequest).toHaveBeenCalledWith({
       vendor: { pluginId: "sitespecific-btu-cardcheck" },
-      operation: "login",
+      operation: "sitespecific.btu.cardcheck.login",
       args: undefined,
     });
   });
@@ -44,7 +44,7 @@ describe("BTU card-check service WC request path", () => {
     );
     expect(mocks.wcRequest).toHaveBeenCalledWith({
       vendor: { pluginId: "sitespecific-btu-cardcheck" },
-      operation: "fetch-cardcheck",
+      operation: "sitespecific.btu.cardcheck.fetch",
       args: { sessionId: "session-1", nid: "123" },
     });
   });

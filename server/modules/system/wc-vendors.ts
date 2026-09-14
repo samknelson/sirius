@@ -106,6 +106,8 @@ export function registerWcVendorRoutes(app: Express): void {
             configurationId: config.id,
             configurationName: config.name ?? null,
             cached: operation.cacheMode === "cached",
+            needsWritableDatabase: operation.needsWritableDatabase,
+            externalSideEffect: operation.externalSideEffect,
             callsToday: todayByKey.get(key) ?? 0,
             callsLast7Days,
             manualRun: operation.manualRun,
@@ -239,7 +241,7 @@ export function registerWcVendorRoutes(app: Express): void {
           pluginId: cfg.pluginId,
           name: cfg.name,
           operations,
-          canTest: operations.some((operation) => operation.id === "test-connection"),
+           canTest: operations.some((operation) => operation.id === "service.test-connection"),
           acceptsPaymentTypes: (plugin.supportedPaymentTypes ?? []).length > 0,
         });
       }
@@ -272,7 +274,7 @@ export function registerWcVendorRoutes(app: Express): void {
 
         const result = await wcRequest({
           vendor: { configId: vendor.configId },
-          operation: "test-connection",
+           operation: "service.test-connection",
           args: undefined,
         });
         if (result.outcome === "success") return res.json(result.value);
@@ -282,7 +284,7 @@ export function registerWcVendorRoutes(app: Express): void {
         // is the framework's own sentence about why nothing was asked.
         if (result.cause !== undefined) throw result.cause;
         res.status(503).json({
-          connected: false,
+          status: "unreachable",
           error: { message: result.error ?? "The connection test did not run." },
         });
       } catch (error: any) {
@@ -291,15 +293,15 @@ export function registerWcVendorRoutes(app: Express): void {
         if (isMaintenanceModeError(error)) {
           return res
             .status(error.statusCode)
-            .json({ connected: false, error: { message: error.message } });
+              .json({ status: "unreachable", error: { message: error.message } });
         }
         if (error instanceof WcVendorError) {
           return res
             .status(error.status)
-            .json({ connected: false, error: { message: error.message } });
+            .json({ status: "misconfigured", error: { message: error.message } });
         }
         res.status(500).json({
-          connected: false,
+          status: "unreachable",
           error: {
             message: error?.message ?? "Failed to run connection test",
           },

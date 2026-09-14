@@ -90,12 +90,12 @@ async function postRun(
 
 describe("WC overview real operation schemas", () => {
   it("rejects blank and additional Twilio phone arguments before wcRequest", async () => {
-    expect((await postRun("validate-phone", { phoneNumber: "   " })).status).toBe(
+    expect((await postRun("communications.phone.validate", { phoneNumber: "   " })).status).toBe(
       400,
     );
     expect(
       (
-        await postRun("validate-phone", {
+        await postRun("communications.phone.validate", {
           phoneNumber: "+17025550100",
           unexpected: "value",
         })
@@ -106,11 +106,11 @@ describe("WC overview real operation schemas", () => {
 
   it("passes the valid phone argument through the selected configuration", async () => {
     expect(
-      (await postRun("validate-phone", { phoneNumber: "+17025550100" })).status,
+      (await postRun("communications.phone.validate", { phoneNumber: "+17025550100" })).status,
     ).toBe(200);
     expect(wcRequest).toHaveBeenCalledWith({
       vendor: { configId: "twilio-config" },
-      operation: "validate-phone",
+      operation: "communications.phone.validate",
       args: { phoneNumber: "+17025550100" },
     });
   });
@@ -119,7 +119,7 @@ describe("WC overview real operation schemas", () => {
     expect(
       (
         await postRun(
-          "validate-phone",
+          "communications.phone.validate",
           { phoneNumber: "+17025550100" },
           { forceFresh: true },
         )
@@ -127,7 +127,7 @@ describe("WC overview real operation schemas", () => {
     ).toBe(200);
     expect(wcRequest).toHaveBeenCalledWith({
       vendor: { configId: "twilio-config" },
-      operation: "validate-phone",
+      operation: "communications.phone.validate",
       args: { phoneNumber: "+17025550100" },
       mode: "force",
     });
@@ -135,16 +135,16 @@ describe("WC overview real operation schemas", () => {
     wcRequest.mockClear();
     expect(
       (
-        await postRun("read-configuration", {}, { forceFresh: true })
+        await postRun("communications.sms.configuration.read", {}, { forceFresh: true })
       ).status,
     ).toBe(400);
     expect(wcRequest).not.toHaveBeenCalled();
   });
 
   it("accepts empty arguments for reads and continues refusing remote writes", async () => {
-    expect((await postRun("read-configuration", {})).status).toBe(200);
-    expect((await postRun("list-phone-numbers", {})).status).toBe(200);
-    expect((await postRun("list-phone-numbers", { limit: 500 })).status).toBe(400);
-    expect((await postRun("send-sms", {})).status).toBe(409);
+    expect((await postRun("communications.sms.configuration.read", {})).status).toBe(200);
+    expect((await postRun("communications.phone.list", {})).status).toBe(200);
+    expect((await postRun("communications.phone.list", { limit: 500 })).status).toBe(400);
+    expect((await postRun("communications.sms.send", {})).status).toBe(409);
   });
 });

@@ -11,7 +11,7 @@ const state = vi.hoisted(() => ({
 
 vi.mock("../../server/services/webclient/wc-vendor-context", () => ({
   hasWcVendorOperation: vi.fn(async (operation: string) =>
-    operation === "send-email" && state.sendSupported,
+    operation === "communications.email.send" && state.sendSupported,
   ),
 }));
 
@@ -63,13 +63,13 @@ beforeEach(() => {
   });
   state.createCommEmail.mockResolvedValue({ id: "comm-email-1", data: {} });
   state.wcRequest.mockImplementation(async ({ operation }: { operation: string }) => {
-    if (operation === "validate-email") {
+    if (operation === "communications.email.validate") {
       return { value: { valid: true, formatted: "recipient@example.test" } };
     }
-    if (operation === "get-default-from") {
+    if (operation === "communications.email.sender.default") {
       return { value: { email: "sender@example.test" } };
     }
-    if (operation === "send-email") {
+    if (operation === "communications.email.send") {
       return { value: { success: true, messageId: "message-1" } };
     }
     throw new Error(`Unexpected operation ${operation}`);
@@ -108,7 +108,7 @@ describe("email sender vendor capability gate", () => {
       expect.objectContaining({ sendKey: "email-once" }),
     );
     expect(state.wcRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ operation: "send-email" }),
+      expect.objectContaining({ operation: "communications.email.send" }),
     );
   });
 });

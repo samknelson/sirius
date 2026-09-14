@@ -13,19 +13,19 @@ describe("postal vendor safety", () => {
   it("does not expose delivery simulation operations for Local Postal", async () => {
     const plugin = getWcVendorPlugin("local-postal");
     expect(plugin).toBeDefined();
-    expect(plugin?.operations["send-letter"]).toBeUndefined();
-    expect(plugin?.operations["letter-status"]).toBeUndefined();
-    expect(plugin?.operations["cancel-letter"]).toBeUndefined();
+    expect(plugin?.operations["communications.postal.send"]).toBeUndefined();
+    expect(plugin?.operations["communications.postal.letter.status"]).toBeUndefined();
+    expect(plugin?.operations["communications.postal.letter.cancel"]).toBeUndefined();
 
     await expect(
       wcRequest({
         vendor: { pluginId: "local-postal" },
-        operation: "send-letter",
+        operation: "communications.postal.send",
         args: {} as never,
       }),
     ).rejects.toThrow();
-    expect(plugin?.operations["verify-address"]).toBeDefined();
-    expect(getWcVendorPlugin("lob")?.operations["send-letter"]).toBeDefined();
+    expect(plugin?.operations["communications.postal.address.verify"]).toBeDefined();
+    expect(getWcVendorPlugin("lob")?.operations["communications.postal.send"]).toBeDefined();
   });
 
   it("returns POSTAL_NOT_SUPPORTED before address validation or a send claim", async () => {

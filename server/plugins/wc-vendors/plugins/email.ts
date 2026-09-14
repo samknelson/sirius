@@ -90,10 +90,56 @@ function validateEmail(email: string): EmailValidationResult {
 }
 
 function sendGridKey(ctx: WcVendorContext): string {
-  if (!ctx.credential.value) {
+  const key = ctx.credential.value.trim();
+  if (!key) {
     throw new Error("SendGrid credential secret is not configured");
   }
-  return ctx.credential.value;
+  if (!key.startsWith("SG.")) {
+    throw new Error("SendGrid credential is malformed");
+  }
+  return key;
+}
+
+async function testSendGridConnection(ctx: WcVendorContext) {
+  let key: string;
+  try {
+    key = sendGridKey(ctx);
+  } catch (error) {
+    return {
+      status: "misconfigured" as const,
+      error: {
+        message:
+          error instanceof Error
+            ? error.message
+            : "SendGrid credential is not configured.",
+      },
+    };
+  }
+  try {
+    const response = await fetch("https://api.sendgrid.com/v3/user/profile", {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    if (response.ok) return { status: "connected" as const };
+    if (response.status === 401 || response.status === 403) {
+      return {
+        status: "misconfigured" as const,
+        error: { message: `SendGrid rejected the credential (HTTP ${response.status}).` },
+      };
+    }
+    return {
+      status: "unreachable" as const,
+      error: { message: `SendGrid profile probe returned HTTP ${response.status}.` },
+    };
+  } catch (error) {
+    return {
+      status: "unreachable" as const,
+      error: {
+        message: error instanceof Error
+          ? error.message
+          : "SendGrid profile probe failed.",
+      },
+    };
+  }
 }
 
 async function sendGridEmail(
@@ -153,19 +199,10 @@ async function sendGridEmail(
 }
 
 type EmailOperationContract = {
-  "send-email": { args: EmailSendArgs; result: EmailSendResult };
-  "test-email-connection": {
-    args: void;
-    result: {
-      success: boolean;
-      message?: string;
-      error?: string;
-      details?: Record<string, unknown>;
-    };
-  };
-  "validate-email": { args: { email: string }; result: EmailValidationResult };
-  "get-email-configuration": { args: void; result: EmailConfiguration };
-  "get-default-from": { args: void; result: EmailRecipient | undefined };
+  "communications.email.send": { args: EmailSendArgs; result: EmailSendResult };
+  "communications.email.validate": { args: { email: string }; result: EmailValidationResult };
+  "communications.email.configuration.read": { args: void; result: EmailConfiguration };
+  "communications.email.sender.default": { args: void; result: EmailRecipient | undefined };
 };
 
 declare module "../types" {
@@ -173,7 +210,7 @@ declare module "../types" {
 }
 
 const commonOperations = {
-  "validate-email": {
+  "communications.email.validate": {
     description: "validate an email address",
     needsWritableDatabase: false,
     manualRun: {
@@ -192,7 +229,7 @@ const commonOperations = {
       return validateEmail(args.email);
     },
   },
-  "get-default-from": {
+  "communications.email.sender.default": {
     description: "read the configured default sender",
     needsWritableDatabase: false,
     manualRun: {
@@ -210,14 +247,14 @@ const commonOperations = {
 
 const sendGridOperations = {
   ...commonOperations,
-  "send-email": {
+  "communications.email.send": {
     description: "send an email",
     needsWritableDatabase: true,
     async run(ctx: WcVendorContext, args: EmailSendArgs): Promise<EmailSendResult> {
       return sendGridEmail(ctx, args);
     },
   },
-  "test-email-connection": {
+  "service.test-connection": {
     description: "test the SendGrid connection",
     needsWritableDatabase: false,
     manualRun: {
@@ -225,23 +262,10 @@ const sendGridOperations = {
       effect: "read",
     },
     async run(ctx: WcVendorContext, _args: void) {
-      try {
-        const key = sendGridKey(ctx);
-        sgMail.setApiKey(key);
-        return {
-          success: true,
-          message: "SendGrid API key is configured",
-          details: { provider: "sendgrid", apiKeyConfigured: true },
-        };
-      } catch (error: any) {
-        return {
-          success: false,
-          error: error?.message || "Failed to configure SendGrid",
-        };
-      }
+      return testSendGridConnection(ctx);
     },
   },
-  "get-email-configuration": {
+  "communications.email.configuration.read": {
     description: "read SendGrid configuration",
     needsWritableDatabase: false,
     async run(ctx: WcVendorContext, _args: void): Promise<EmailConfiguration> {
@@ -269,7 +293,7 @@ const sendGridOperations = {
 
 const localOperations = {
   ...commonOperations,
-  "test-email-connection": {
+  "service.test-connection": {
     description: "test the local email provider",
     needsWritableDatabase: false,
     manualRun: {
@@ -278,12 +302,11 @@ const localOperations = {
     },
     async run(_ctx: WcVendorContext, _args: void) {
       return {
-        success: true,
-        message: "Local provider is always available (no external connection required)",
+        status: "connected" as const,
       };
     },
   },
-  "get-email-configuration": {
+  "communications.email.configuration.read": {
     description: "read local email configuration",
     needsWritableDatabase: false,
     async run(ctx: WcVendorContext, _args: void): Promise<EmailConfiguration> {

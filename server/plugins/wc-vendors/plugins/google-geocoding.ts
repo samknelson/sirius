@@ -10,7 +10,7 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const GOOGLE_GEOCODING_PLUGIN_ID = "google-geocoding";
-export const GOOGLE_GEOCODE_OPERATION = "geocode";
+export const GOOGLE_GEOCODE_OPERATION = "geography.address.geocode";
 
 export interface GoogleGeocodeArgs {
   address: string;
@@ -39,7 +39,7 @@ export interface GoogleGeocodeResponse {
 
 declare module "../types" {
   interface WcVendorOperations {
-    "geocode": {
+    "geography.address.geocode": {
       args: GoogleGeocodeArgs;
       result: GoogleGeocodeResponse;
     };
@@ -137,6 +137,18 @@ registerWcVendorPlugin({
   },
   service: "Google",
   operations: {
+    "service.test-connection": {
+      description: "test the Google Geocoding connection",
+      needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: { type: "object", properties: {}, additionalProperties: false },
+        effect: "read",
+      },
+      run: async (ctx) =>
+        ctx.credential.value.trim()
+          ? { status: "unsupported" as const, error: { message: "Google Geocoding has no non-destructive credential-only probe." } }
+          : { status: "misconfigured" as const, error: { message: "Google Maps API key is not configured." } },
+    },
     [GOOGLE_GEOCODE_OPERATION]: {
       description: "geocode an address",
       needsWritableDatabase: true,

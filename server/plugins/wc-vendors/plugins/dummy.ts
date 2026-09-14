@@ -151,7 +151,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
   // moment a plugin of this shape does name a service.
 
   operations: {
-    "test-connection": {
+    "service.test-connection": {
       description: "test connection",
       needsWritableDatabase: false,
       manualRun: {
@@ -172,7 +172,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
       },
     },
 
-    "create-customer": {
+    "payments.customer.create": {
       description: "create a customer",
       needsWritableDatabase: true,
       async run(): Promise<GatewayCustomerResult> {
@@ -180,7 +180,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
       },
     },
 
-    "retrieve-customer": {
+    "payments.customer.retrieve": {
       description: "check a customer still exists",
       needsWritableDatabase: false,
       async run(): Promise<{ exists: boolean }> {
@@ -189,7 +189,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
       },
     },
 
-    "get-customer-details": {
+    "payments.customer.details": {
       description: "read customer details",
       needsWritableDatabase: false,
       manualRun: {
@@ -221,7 +221,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
       },
     },
 
-    "create-setup-session": {
+    "payments.setup-session.create": {
       description: "start collecting a payment method",
       needsWritableDatabase: true,
       async run(): Promise<GatewaySetupSession> {
@@ -234,7 +234,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
       },
     },
 
-    "attach-method": {
+    "payments.payment-method.attach": {
       description: "attach a payment method",
       needsWritableDatabase: true,
       async run(_ctx, args): Promise<void> {
@@ -247,7 +247,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
       },
     },
 
-    "get-method-summary": {
+    "payments.payment-method.summary": {
       description: "read a payment method summary",
       needsWritableDatabase: false,
       manualRun: {
@@ -281,7 +281,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
       },
     },
 
-    "get-method-details": {
+    "payments.payment-method.details": {
       description: "read payment method details",
       needsWritableDatabase: false,
       manualRun: {
@@ -317,7 +317,7 @@ const dummyWcVendorPlugin: WcVendorPlugin = {
       },
     },
 
-    "detach-method": {
+    "payments.payment-method.detach": {
       description: "remove a payment method",
       needsWritableDatabase: true,
       async run(): Promise<void> {

@@ -49,7 +49,7 @@ import { wcRequest } from "../../server/services/webclient";
 const farEnd = vi.fn();
 
 const TEST_PLUGIN_ID = "one-door-test";
-const OPERATION = "one-door-answer";
+const OPERATION = "tests.one-door.answer";
 
 registerWcVendorPlugin({
   id: TEST_PLUGIN_ID,
@@ -59,6 +59,11 @@ registerWcVendorPlugin({
   service: "Census",
   credential: { secretName: "none" },
   operations: {
+    "service.test-connection": {
+      description: "test the one-door connection",
+      needsWritableDatabase: false,
+      run: async () => ({ status: "connected" as const }),
+    },
     [OPERATION]: {
       description: "answer the one-door test",
       needsWritableDatabase: false,
@@ -165,7 +170,7 @@ describe("the one entry point, for a vendor operation", () => {
     // and does not come back as a result.
     const error = await wcRequest({
       vendor: { configId: "cfg-a" },
-      operation: "sirius_service_ping",
+      operation: "sitespecific.t631.service.ping",
       args: undefined,
     }).then(
       () => undefined,

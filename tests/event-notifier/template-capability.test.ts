@@ -7,7 +7,7 @@ const state = vi.hoisted(() => ({
 
 vi.mock("../../server/services/webclient/wc-vendor-context", () => ({
   hasWcVendorOperation: vi.fn(async (operation: string) =>
-    operation === "send-email" ? state.emailEnabled : state.smsEnabled,
+    operation === "communications.email.send" ? state.emailEnabled : state.smsEnabled,
   ),
 }));
 

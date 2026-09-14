@@ -45,19 +45,19 @@ export interface SmsPhoneNumber {
 
 declare module "./types" {
   interface WcVendorOperations {
-    "validate-phone": {
+    "communications.phone.validate": {
       args: SmsValidatePhoneArgs;
       result: SmsValidatePhoneResult;
     };
-    "send-sms": {
+    "communications.sms.send": {
       args: SmsSendArgs;
       result: SmsSendResult;
     };
-    "list-phone-numbers": {
+    "communications.phone.list": {
       args: void;
       result: SmsPhoneNumber[];
     };
-    "read-configuration": {
+    "communications.sms.configuration.read": {
       args: void;
       result: Record<string, unknown>;
     };

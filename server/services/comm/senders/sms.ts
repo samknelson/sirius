@@ -105,7 +105,7 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
 
   try {
     const { hasWcVendorOperation } = await import("../../webclient/wc-vendor-context");
-    if (!(await hasWcVendorOperation("send-sms"))) {
+    if (!(await hasWcVendorOperation("communications.sms.send"))) {
       return {
         success: false,
         error: 'SMS sending is not supported by the current provider. Configure a provider with SMS capability (e.g., Twilio).',
@@ -256,7 +256,7 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
       let sendResult: SmsSendResult;
       const sendResponse = await wcRequest({
         vendor: { any: true },
-        operation: "send-sms",
+        operation: "communications.sms.send",
         args: {
           to: normalizedPhone,
           body: message,

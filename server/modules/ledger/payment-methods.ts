@@ -169,13 +169,13 @@ async function ensureCustomer(
   if (existing) {
     // Reuse the mapping unless the plugin can verify the provider customer is
     // gone, in which case fall through to recreate and repair the mapping.
-    if (!gateway.operations.includes("retrieve-customer")) {
+    if (!gateway.operations.includes("payments.customer.retrieve")) {
       return existing.customerRef;
     }
     const { exists } = answered(
       await wcRequest({
         vendor,
-        operation: "retrieve-customer",
+          operation: "payments.customer.retrieve",
         args: { customerRef: existing.customerRef },
       }),
     );
@@ -190,7 +190,7 @@ async function ensureCustomer(
   const { customerRef } = answered(
     await wcRequest({
       vendor,
-      operation: "create-customer",
+      operation: "payments.customer.create",
       args: { name: descriptor.name, metadata: descriptor.metadata },
     }),
   );
@@ -303,7 +303,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
         const customer = answered(
           await wcRequest({
             vendor: { configId: gateway.configId },
-            operation: "get-customer-details",
+            operation: "payments.customer.details",
             args: { customerRef },
           }),
         );
@@ -353,7 +353,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
           const providerDetails = answered(
             await wcRequest({
               vendor: { configId: gateway.configId },
-              operation: "get-method-summary",
+              operation: "payments.payment-method.summary",
               args: { methodRef: pm.paymentMethod },
             }),
           );
@@ -395,7 +395,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
       const session = answered(
         await wcRequest({
           vendor: { configId: gateway.configId },
-          operation: "create-setup-session",
+            operation: "payments.setup-session.create",
           args: { customerRef },
         }),
       );
@@ -430,7 +430,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
       answered(
         await wcRequest({
           vendor: { configId: gateway.configId },
-          operation: "attach-method",
+            operation: "payments.payment-method.attach",
           args: { customerRef, methodToken },
         }),
       );
@@ -510,7 +510,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
         const details = answered(
           await wcRequest({
             vendor: { configId: gateway.configId },
-            operation: "get-method-details",
+            operation: "payments.payment-method.details",
             args: { methodRef: method.paymentMethod },
           }),
         );
@@ -543,7 +543,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
         answered(
           await wcRequest({
             vendor: { configId: gateway.configId },
-            operation: "detach-method",
+            operation: "payments.payment-method.detach",
             args: { methodRef: method.paymentMethod },
           }),
         );

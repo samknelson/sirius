@@ -57,7 +57,7 @@ export async function verifyPostalAddress(
   try {
     result = await wcRequest({
       vendor: { any: true },
-      operation: "verify-address",
+      operation: "communications.postal.address.verify",
       args: address,
       mode: options?.mode,
     });

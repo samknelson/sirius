@@ -925,7 +925,7 @@ export function registerCommRoutes(
     try {
        const templatesResult = await wcRequest({
          vendor: { any: true },
-         operation: "list-templates",
+         operation: "communications.postal.template.list",
          args: undefined,
        });
       res.json({ templates: templatesResult.value ?? [] });

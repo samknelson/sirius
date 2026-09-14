@@ -123,9 +123,25 @@ export interface GatewayCustomerDetails {
  * the admin test page can render any gateway's health without provider-specific
  * knowledge. Providers map their native account/balance shapes into this.
  */
+export type WcConnectionStatus =
+  | "connected"
+  | "misconfigured"
+  | "unreachable"
+  | "unsupported";
+
+/**
+ * The deliberately small, provider-neutral result of service.test-connection.
+ *
+ * `status` is the only field callers should use to classify a check.  The
+ * optional legacy fields are accepted while a provider is being migrated and
+ * are removed by the registry normalizer before the result crosses the WC
+ * boundary; they are retained here so third-party declarations can migrate
+ * without a flag day.
+ */
 export interface GatewayConnectionTest {
-  /** True when the provider credentials authenticated successfully. */
-  connected: boolean;
+  status?: WcConnectionStatus;
+  /** True when the provider credentials authenticated successfully (legacy). */
+  connected?: boolean;
   /** Provider account summary (present when connected). */
   account?: {
     id: string;
@@ -142,6 +158,86 @@ export interface GatewayConnectionTest {
   testMode?: boolean;
   /** Populated when the connection failed. */
   error?: { message: string; type?: string; code?: string };
+}
+
+export interface NormalizedWcConnectionTest {
+  status: WcConnectionStatus;
+  account?: GatewayConnectionTest["account"];
+  balances?: GatewayConnectionTest["balances"];
+  testMode?: boolean;
+  error?: { message: string; type?: string; code?: string };
+}
+
+/**
+ * Complete legacy-to-canonical operation catalog.  Keep this map explicit:
+ * it is used by the boot migration and is also the compatibility boundary for
+ * persisted assignments.  Plugin ids and credential names are intentionally
+ * absent from this catalog.
+ */
+export const WC_VENDOR_OPERATION_CATALOG = {
+  "test-connection": "service.test-connection",
+  "test-email-connection": "service.test-connection",
+  ping: "service.test-connection",
+  "create-customer": "payments.customer.create",
+  "retrieve-customer": "payments.customer.retrieve",
+  "get-customer-details": "payments.customer.details",
+  "create-setup-session": "payments.setup-session.create",
+  "attach-method": "payments.payment-method.attach",
+  "get-method-summary": "payments.payment-method.summary",
+  "get-method-details": "payments.payment-method.details",
+  "detach-method": "payments.payment-method.detach",
+  "send-email": "communications.email.send",
+  "validate-email": "communications.email.validate",
+  "get-email-configuration": "communications.email.configuration.read",
+  "get-default-from": "communications.email.sender.default",
+  "validate-phone": "communications.phone.validate",
+  "phone-lookup": "communications.phone.validate",
+  "send-sms": "communications.sms.send",
+  "read-configuration": "communications.sms.configuration.read",
+  "list-phone-numbers": "communications.phone.list",
+  "send-letter": "communications.postal.send",
+  "verify-address": "communications.postal.address.verify",
+  "letter-status": "communications.postal.letter.status",
+  "cancel-letter": "communications.postal.letter.cancel",
+  "list-templates": "communications.postal.template.list",
+  "get-default-return-address": "communications.postal.return-address.default",
+  geocode: "geography.address.geocode",
+  "lookup-legislators": "civic.legislator.lookup",
+  "district-lookup": "civic.district.lookup",
+  login: "sitespecific.btu.cardcheck.login",
+  "fetch-cardcheck": "sitespecific.btu.cardcheck.fetch",
+  "authorize-bearer": "sitespecific.freeman.authorization.bearer",
+  "sitespecific.freeman.edls_migrate": "sitespecific.freeman.edls.migrate",
+  sirius_freeman_rawdata: "sitespecific.freeman.edls.migrate",
+  sirius_service_ping: "sitespecific.t631.service.ping",
+  sirius_edls_server_worker_list: "sitespecific.t631.worker.list",
+  sirius_dispatch_group_search: "sitespecific.t631.dispatch-group.search",
+  sirius_dispatch_facility_dropdown: "sitespecific.t631.facility.list",
+  sirius_edls_server_tos_list: "sitespecific.t631.tos.list",
+} as const;
+
+/** Stable aliases used by migration/contract tests and admin tooling. */
+export const LEGACY_TO_CANONICAL_WC_OPERATION = WC_VENDOR_OPERATION_CATALOG;
+
+export type LegacyWcVendorOperationName = keyof typeof WC_VENDOR_OPERATION_CATALOG;
+export type CanonicalWcVendorOperationName =
+  (typeof WC_VENDOR_OPERATION_CATALOG)[LegacyWcVendorOperationName];
+
+export function canonicalizeWcVendorOperationName(name: string): string {
+  return WC_VENDOR_OPERATION_CATALOG[name as LegacyWcVendorOperationName] ?? name;
+}
+
+export const normalizeWcVendorOperationName = canonicalizeWcVendorOperationName;
+
+/**
+ * Canonical ids are lowercase dotted paths. Hyphens are allowed inside a
+ * segment because service.test-connection is a public framework contract.
+ */
+export function isCanonicalWcVendorOperationName(name: string): boolean {
+  return (
+    name === "service.test-connection" ||
+    /^(?:[a-z][a-z0-9-]*\.)+[a-z][a-z0-9-]*$/.test(name)
+  );
 }
 
 /**
@@ -172,7 +268,7 @@ export interface PaymentTypeOption {
  *
  *   declare module "…/wc-vendors/types" {
  *     interface WcVendorOperations {
- *       "send-sms": { args: { to: string; body: string }; result: { sid: string } };
+   *       "communications.sms.send": { args: { to: string; body: string }; result: { sid: string } };
  *     }
  *   }
  *
@@ -184,18 +280,18 @@ export interface PaymentTypeOption {
  * told so.
  */
 export interface WcVendorOperations {
-  "test-connection": { args: void; result: GatewayConnectionTest };
-  "create-customer": { args: CreateCustomerInput; result: GatewayCustomerResult };
-  "retrieve-customer": { args: { customerRef: string }; result: { exists: boolean } };
-  "get-customer-details": { args: { customerRef: string }; result: GatewayCustomerDetails };
-  "create-setup-session": { args: { customerRef: string }; result: GatewaySetupSession };
-  "attach-method": {
+  "service.test-connection": { args: void; result: GatewayConnectionTest };
+  "payments.customer.create": { args: CreateCustomerInput; result: GatewayCustomerResult };
+  "payments.customer.retrieve": { args: { customerRef: string }; result: { exists: boolean } };
+  "payments.customer.details": { args: { customerRef: string }; result: GatewayCustomerDetails };
+  "payments.setup-session.create": { args: { customerRef: string }; result: GatewaySetupSession };
+  "payments.payment-method.attach": {
     args: { customerRef: string; methodToken: string };
     result: void;
   };
-  "get-method-summary": { args: { methodRef: string }; result: GatewayMethodSummary };
-  "get-method-details": { args: { methodRef: string }; result: GatewayMethodDetails };
-  "detach-method": { args: { methodRef: string }; result: void };
+  "payments.payment-method.summary": { args: { methodRef: string }; result: GatewayMethodSummary };
+  "payments.payment-method.details": { args: { methodRef: string }; result: GatewayMethodDetails };
+  "payments.payment-method.detach": { args: { methodRef: string }; result: void };
 }
 
 export type WcVendorOperationName = keyof WcVendorOperations;
@@ -222,6 +318,13 @@ interface WcVendorOperationDeclarationBase {
    * away the diagnosis an operator is in the middle of.
    */
   needsWritableDatabase: boolean;
+  /**
+   * Whether invoking this operation can cause an external side effect. This
+   * is intentionally independent of database writability: a read-only probe
+   * may still be an outbound call, while a local operation may write only to
+   * this application's database.
+   */
+  externalSideEffect?: boolean;
   /**
    * Opt-in metadata for the administrator's manual-run surface.  Keeping this
    * on the declaration (rather than inferring it from the argument type) makes
@@ -297,6 +400,7 @@ export type WcVendorOperationMap = {
 export interface WcVendorOperationInfo {
   description: string;
   needsWritableDatabase: boolean;
+  externalSideEffect: boolean;
   cacheMode: "cached" | "uncached";
   manualRun?: {
     argsSchema: JsonSchema;
@@ -438,6 +542,7 @@ export interface WcVendorManifestEntry {
     id: string;
     description: string;
     needsWritableDatabase: boolean;
+    externalSideEffect: boolean;
     cacheMode: "cached" | "uncached";
     manualRun?: {
       argsSchema: JsonSchema;

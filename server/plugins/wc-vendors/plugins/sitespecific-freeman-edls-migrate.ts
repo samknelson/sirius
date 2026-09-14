@@ -12,6 +12,8 @@ export const FREEMAN_EDLS_MIGRATE_PLUGIN_ID =
   "sitespecific-freeman-edls-migrate";
 export const FREEMAN_EDLS_MIGRATE_COMPONENT_ID =
   "sitespecific.freeman.edls_migrate";
+export const FREEMAN_EDLS_MIGRATE_OPERATION =
+  "sitespecific.freeman.edls.migrate";
 export const FREEMAN_EDLS_MIGRATE_RAWDATA_ACTION =
   "sirius_freeman_rawdata";
 const FREEMAN_EDLS_MIGRATE_PING_ACTION = "sirius_service_ping";
@@ -289,7 +291,7 @@ async function performFreemanEdlsRequest(
 }
 
 const remoteOperations = {
-  [FREEMAN_EDLS_MIGRATE_RAWDATA_ACTION]: {
+  [FREEMAN_EDLS_MIGRATE_OPERATION]: {
     description: "read a page from the legacy Freeman EDLS system",
     needsWritableDatabase: false,
     run: (ctx: WcVendorContext, args: FreemanEdlsRawDataArgs) =>
@@ -363,7 +365,7 @@ const freemanEdlsMigrateVendorPlugin: WcVendorPlugin = {
   service: "Freeman EDLS",
   operations: {
     ...remoteOperations,
-    "test-connection": {
+    "service.test-connection": {
       description: "test the legacy Freeman EDLS connection",
       needsWritableDatabase: false,
       manualRun: {

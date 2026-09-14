@@ -44,8 +44,14 @@ import {
   getWcVendorOperationManifest,
   getWcVendorPlugin,
   registerWcVendorPluginKind,
+  canonicalizeWcVendorAssignmentData,
+  canonicalizeWcUsageAlertRulesData,
+  normalizeWcConnectionTestResult,
 } from "../../server/plugins/wc-vendors";
-import { registerWcVendorPlugin } from "../../server/plugins/wc-vendors/registry";
+import {
+  getWcVendorHandler,
+  registerWcVendorPlugin,
+} from "../../server/plugins/wc-vendors/registry";
 import { getPluginConfigAdapter } from "../../server/plugins/_core/config-adapter";
 import { getWcRequest, wcRequest } from "../../server/services/webclient";
 import {
@@ -59,11 +65,11 @@ import {
 
 declare module "../../server/plugins/wc-vendors/types" {
   interface WcVendorOperations {
-    "cached-contract-test": {
+    "tests.cache.answer": {
       args: { address: string; region?: string };
       result: { normalized: string };
     };
-    "uncached-contract-test": {
+    "tests.answer": {
       args: { value: string };
       result: { value: string };
     };
@@ -76,10 +82,15 @@ registerWcVendorPlugin({
   name: "Cached contract fixture",
   description: "Exercises cached and uncached operation registration.",
   credential: { secretName: "none" },
-  service: "Google",
+  service: "Census",
   requiredComponent: "contract.component",
   operations: {
-    "cached-contract-test": {
+    "service.test-connection": {
+      description: "test the Census Geocoder connection",
+      needsWritableDatabase: false,
+      run: async () => ({ status: "connected" as const }),
+    },
+    "tests.cache.answer": {
       description: "exercise a cached vendor operation",
       needsWritableDatabase: true,
       cache: {
@@ -96,7 +107,7 @@ registerWcVendorPlugin({
       },
       run: cachedRun,
     },
-    "uncached-contract-test": {
+    "tests.answer": {
       description: "exercise an explicitly uncached vendor operation",
       needsWritableDatabase: false,
       cache: { mode: "uncached" },
@@ -113,7 +124,12 @@ registerWcVendorPlugin({
   credential: { secretName: "none" },
   requiredComponent: "disabled.contract.component",
   operations: {
-    "uncached-contract-test": {
+    "service.test-connection": {
+      description: "test the fixture connection",
+      needsWritableDatabase: false,
+      run: async () => ({ status: "connected" as const }),
+    },
+    "tests.answer": {
       description: "exercise a disabled automatic-routing candidate",
       needsWritableDatabase: false,
       cache: { mode: "uncached" },
@@ -163,6 +179,181 @@ function plugin(id: string) {
 }
 
 describe("the wc-vendor plugin contract", () => {
+  it("normalizes legacy connection results without leaking provider fields", () => {
+    expect(normalizeWcConnectionTestResult({ connected: true })).toEqual({
+      status: "connected",
+    });
+    expect(
+      normalizeWcConnectionTestResult({
+        connected: false,
+        error: "API key is not configured",
+        secret: "must-not-escape",
+      }),
+    ).toEqual({
+      status: "misconfigured",
+      error: { message: "API key is not configured" },
+    });
+    expect(normalizeWcConnectionTestResult({ unsupported: true })).toMatchObject({
+      status: "unsupported",
+    });
+    const canary = "credential-canary-should-not-escape";
+    expect(
+      normalizeWcConnectionTestResult(
+        {
+          connected: false,
+          error: {
+            message: `credential ${canary} was rejected`,
+            type: "private-provider-error",
+            code: "private-code",
+            details: { credential: canary },
+          },
+          account: {
+            id: canary,
+            email: "operator@example.test",
+            privateToken: canary,
+            capabilities: [
+              { label: `token ${canary}`, enabled: true, private: canary },
+              { label: "discard malformed", enabled: "yes" },
+            ],
+          },
+          balances: [
+            { label: canary, amount: 1, currency: "USD", secret: canary },
+          ],
+          privateTopLevel: canary,
+        },
+        canary,
+      ),
+    ).toEqual({
+      status: "misconfigured",
+      error: {
+        message: "credential [redacted] was rejected",
+        type: "private-provider-error",
+        code: "private-code",
+      },
+      account: {
+        id: "[redacted]",
+        email: "operator@example.test",
+        capabilities: [{ label: "token [redacted]", enabled: true }],
+      },
+      balances: [{ label: "[redacted]", amount: 1, currency: "USD" }],
+    });
+  });
+
+  it("migrates legacy assignment ids idempotently while preserving settings and secrets", () => {
+    const data = {
+      secretName: "STRIPE_SECRET",
+      enabledSetting: true,
+      operations: ["create-customer", "attach-method", "create-customer"],
+    };
+    const migrated = canonicalizeWcVendorAssignmentData(data);
+    expect(migrated).toEqual({
+      secretName: "STRIPE_SECRET",
+      enabledSetting: true,
+      operations: [
+        "payments.customer.create",
+        "payments.payment-method.attach",
+      ],
+    });
+    expect(canonicalizeWcVendorAssignmentData(migrated)).toBe(migrated);
+  });
+
+  it("migrates usage-alert rule operation ids without touching whole-service or unknown rules", () => {
+    const data = {
+      recipients: ["admin@example.test"],
+      rules: [
+        {
+          service: "Twilio",
+          requestType: "phone-lookup",
+          threshold: 1,
+          privateRuleField: "keep",
+        },
+        {
+          service: "Lob",
+          requestType: "send-letter",
+          threshold: 2,
+        },
+        { service: "Twilio", threshold: 1000, wholeService: true },
+        { service: "Future", requestType: "future.operation", threshold: 3 },
+      ],
+      unrelated: { preserve: true },
+    };
+    const migrated = canonicalizeWcUsageAlertRulesData(data);
+    expect(migrated).toEqual({
+      recipients: ["admin@example.test"],
+      rules: [
+        {
+          service: "Twilio",
+          requestType: "communications.phone.validate",
+          threshold: 1,
+          privateRuleField: "keep",
+        },
+        {
+          service: "Lob",
+          requestType: "communications.postal.send",
+          threshold: 2,
+        },
+        { service: "Twilio", threshold: 1000, wholeService: true },
+        { service: "Future", requestType: "future.operation", threshold: 3 },
+      ],
+      unrelated: { preserve: true },
+    });
+    expect(canonicalizeWcUsageAlertRulesData(migrated)).toBe(migrated);
+    expect((migrated.rules as unknown[])[2]).toBe(data.rules[2]);
+    expect((migrated.rules as unknown[])[3]).toBe(data.rules[3]);
+  });
+
+  it("rejects duplicate plugin ids before replacing the registered handler", () => {
+    const before = getWcVendorPlugin("cached-contract-fixture");
+    const handlerBefore = getWcVendorHandler(
+      "cached-contract-fixture",
+      "service.test-connection",
+    );
+    expect(() =>
+      registerWcVendorPlugin({
+        id: "cached-contract-fixture",
+        name: "replacement",
+        description: "Replacement fixture",
+        credential: { secretName: "none" },
+        operations: {
+          "service.test-connection": {
+            description: "replacement",
+            needsWritableDatabase: false,
+            run: async () => ({ status: "connected" as const }),
+          },
+        },
+      }),
+    ).toThrow(/already registered/);
+    expect(getWcVendorPlugin("cached-contract-fixture")).toBe(before);
+    expect(getWcVendorHandler("cached-contract-fixture", "service.test-connection"))
+      .toBe(handlerBefore);
+  });
+
+  it("preflights service behavior conflicts before registering a new plugin", () => {
+    expect(() =>
+      registerWcVendorPlugin({
+        id: "conflicting-service-test-fixture",
+        name: "Conflicting service fixture",
+        description: "Conflicting service fixture",
+        credential: { secretName: "none" },
+        service: "Census",
+        operations: {
+          "service.test-connection": {
+            description: "a different Google connection probe",
+            needsWritableDatabase: false,
+            run: async () => ({ status: "connected" as const }),
+          },
+        },
+      }),
+    ).toThrow(/conflicting metadata/);
+    expect(getWcVendorPlugin("conflicting-service-test-fixture")).toBeUndefined();
+    expect(
+      getWcVendorHandler(
+        "conflicting-service-test-fixture",
+        "service.test-connection",
+      ),
+    ).toBeUndefined();
+  });
+
   it("refuses a disabled required component for every target before reaching the handler", async () => {
     const row = {
       id: "cached-config",
@@ -170,7 +361,7 @@ describe("the wc-vendor plugin contract", () => {
       pluginId: "cached-contract-fixture",
       enabled: true,
       name: "Cached fixture",
-      data: { operations: ["cached-contract-test"] },
+      data: { operations: ["tests.cache.answer"] },
     };
     getConfig.mockResolvedValue(row);
     getConfigsByKind.mockResolvedValue([row]);
@@ -180,7 +371,7 @@ describe("the wc-vendor plugin contract", () => {
     await expect(
       wcRequest({
         vendor: { configId: row.id },
-        operation: "cached-contract-test",
+        operation: "tests.cache.answer",
         args: { address: "10 main st" },
       }),
     ).rejects.toMatchObject({
@@ -190,24 +381,24 @@ describe("the wc-vendor plugin contract", () => {
     await expect(
       wcRequest({
         vendor: { pluginId: row.pluginId },
-        operation: "cached-contract-test",
+        operation: "tests.cache.answer",
         args: { address: "10 main st" },
       }),
     ).rejects.toMatchObject({ status: 403 });
     await expect(
       wcRequest({
         vendor: { any: true },
-        operation: "cached-contract-test",
+        operation: "tests.cache.answer",
         args: { address: "10 main st" },
       }),
     ).rejects.toMatchObject({ status: 403 });
     await expect(
       describeWcVendor(
         { configId: row.id },
-        "cached-contract-test",
+        "tests.cache.answer",
       ),
     ).rejects.toMatchObject({ status: 403 });
-    await expect(hasWcVendorOperation("cached-contract-test")).resolves.toBe(false);
+    await expect(hasWcVendorOperation("tests.cache.answer")).resolves.toBe(false);
 
     expect(cachedRun).not.toHaveBeenCalled();
     expect(cacheRead).not.toHaveBeenCalled();
@@ -235,20 +426,23 @@ describe("the wc-vendor plugin contract", () => {
   });
 
   it("refuses ambiguous automatic operation assignments", async () => {
-    const assigned = (id: string) => ({
+    const assigned = (id: string, pluginId: string) => ({
       id,
       pluginKind: "wc-vendors",
-      pluginId: "cached-contract-fixture",
+      pluginId,
       enabled: true,
       name: id,
-      data: { operations: ["cached-contract-test"] },
+      data: { operations: ["tests.cache.answer"] },
     });
-    getConfigsByKind.mockResolvedValue([assigned("one"), assigned("two")]);
+    getConfigsByKind.mockResolvedValue([
+      assigned("one", "cached-contract-fixture"),
+      assigned("two", "cached-contract-fixture"),
+    ]);
 
     await expect(
       wcRequest({
         vendor: { any: true },
-        operation: "cached-contract-test",
+        operation: "tests.cache.answer",
         args: { address: "10 main st" },
       }),
     ).rejects.toMatchObject({
@@ -268,23 +462,23 @@ describe("the wc-vendor plugin contract", () => {
       pluginId,
       enabled: true,
       name: id,
-      data: { operations: ["cached-contract-test"] },
+      data: { operations: ["tests.cache.answer"] },
     });
     const usable = assigned("usable", "cached-contract-fixture");
     const disabled = assigned("disabled", "disabled-routing-contract-fixture");
-    usable.data.operations = ["uncached-contract-test"];
-    disabled.data.operations = ["uncached-contract-test"];
+    usable.data.operations = ["tests.answer"];
+    disabled.data.operations = ["tests.answer"];
     getConfigsByKind.mockResolvedValue([usable, disabled]);
     getConfig.mockResolvedValue(usable);
     componentEnabled.mockImplementation(async (plugin) =>
       plugin.id !== "disabled-routing-contract-fixture",
     );
 
-    await expect(hasWcVendorOperation("uncached-contract-test")).resolves.toBe(true);
+    await expect(hasWcVendorOperation("tests.answer")).resolves.toBe(true);
     await expect(
       wcRequest({
         vendor: { any: true },
-        operation: "uncached-contract-test",
+        operation: "tests.answer",
         args: { value: "routed" },
       }),
     ).resolves.toMatchObject({
@@ -321,7 +515,7 @@ describe("the wc-vendor plugin contract", () => {
       await expect(
         wcRequest({
           vendor: { configId: row?.id ?? "missing" },
-          operation: "cached-contract-test",
+          operation: "tests.cache.answer",
           args: { address: "10 main st" },
         }),
       ).rejects.toMatchObject({ status });
@@ -345,14 +539,14 @@ describe("the wc-vendor plugin contract", () => {
     await expect(
       wcRequest({
         vendor: { any: true },
-        operation: "cached-contract-test",
+        operation: "tests.cache.answer",
         args: { address: "10 main st" },
       }),
     ).rejects.toMatchObject({ status: 501 });
 
     const explicit = await wcRequest({
       vendor: { configId: "cached-config" },
-      operation: "cached-contract-test",
+      operation: "tests.cache.answer",
       args: { address: "10 main st" },
     });
     expect(explicit).toMatchObject({
@@ -378,7 +572,7 @@ describe("the wc-vendor plugin contract", () => {
     await expect(
       wcRequest({
         vendor: { any: true },
-        operation: "send-sms",
+        operation: "communications.sms.send",
         args: {
           to: "+17025550100",
           body: "Test",
@@ -388,7 +582,7 @@ describe("the wc-vendor plugin contract", () => {
     ).rejects.toMatchObject({
       status: 501,
       message: expect.stringContaining(
-        "No enabled webclient vendor configuration is assigned to 'send-sms'",
+        "No enabled webclient vendor configuration is assigned to 'communications.sms.send'",
       ),
     });
     expect(getConfig).not.toHaveBeenCalled();
@@ -397,9 +591,10 @@ describe("the wc-vendor plugin contract", () => {
   it("publishes stable operation ids, descriptions, and write requirements", () => {
     const stripe = getWcVendorOperationManifest(plugin("stripe"));
     expect(stripe).toContainEqual({
-      id: "test-connection",
+      id: "service.test-connection",
       description: "test connection",
       needsWritableDatabase: false,
+      externalSideEffect: false,
       cacheMode: "uncached",
       manualRun: {
         argsSchema: { type: "object", properties: {}, additionalProperties: false },
@@ -407,17 +602,19 @@ describe("the wc-vendor plugin contract", () => {
       },
     });
     expect(stripe).toContainEqual({
-      id: "create-customer",
+      id: "payments.customer.create",
       description: "create a customer",
       needsWritableDatabase: true,
+      externalSideEffect: true,
       cacheMode: "uncached",
     });
 
     const t631 = getWcVendorOperationManifest(plugin("sitespecific-t631"));
     expect(t631).toContainEqual({
-      id: "sirius_service_ping",
+      id: "sitespecific.t631.service.ping",
       description: "ping the T631 service",
       needsWritableDatabase: false,
+      externalSideEffect: true,
       cacheMode: "uncached",
       manualRun: {
         argsSchema: { type: "object", properties: {}, additionalProperties: false },
@@ -453,62 +650,62 @@ describe("the wc-vendor plugin contract", () => {
       );
     };
 
-    expectManualRead("twilio", "read-configuration", emptyArgs);
+    expectManualRead("twilio", "communications.sms.configuration.read", emptyArgs);
     expectManualRead(
       "twilio",
-      "validate-phone",
+      "communications.phone.validate",
       stringArgs("phoneNumber", "Phone number"),
     );
-    expectManualRead("twilio", "list-phone-numbers", emptyArgs);
+    expectManualRead("twilio", "communications.phone.list", emptyArgs);
     expectManualRead(
       "lob",
-      "letter-status",
+      "communications.postal.letter.status",
       stringArgs("letterId", "Letter ID"),
     );
     expectManualRead(
       "stripe",
-      "retrieve-customer",
+      "payments.customer.retrieve",
       stringArgs("customerRef", "Customer reference"),
     );
     expectManualRead(
       "stripe",
-      "get-customer-details",
+      "payments.customer.details",
       stringArgs("customerRef", "Customer reference"),
     );
     expectManualRead(
       "stripe",
-      "get-method-summary",
+      "payments.payment-method.summary",
       stringArgs("methodRef", "Payment method reference"),
     );
     expectManualRead(
       "stripe",
-      "get-method-details",
+      "payments.payment-method.details",
       stringArgs("methodRef", "Payment method reference"),
     );
     expectManualRead(
       "dummy",
-      "get-customer-details",
+      "payments.customer.details",
       stringArgs("customerRef", "Customer reference"),
     );
     expectManualRead(
       "dummy",
-      "get-method-summary",
+      "payments.payment-method.summary",
       stringArgs("methodRef", "Payment method reference"),
     );
     expectManualRead(
       "dummy",
-      "get-method-details",
+      "payments.payment-method.details",
       stringArgs("methodRef", "Payment method reference"),
     );
     expectManualRead(
       "sitespecific-freeman-authorization",
-      "ping",
+      "service.test-connection",
       emptyArgs,
     );
     expect(getWcVendorOperationManifest(
       plugin("sitespecific-freeman-authorization"),
     )).toContainEqual(expect.objectContaining({
-      id: "authorize-bearer",
+      id: "sitespecific.freeman.authorization.bearer",
       manualRun: {
         argsSchema: stringArgs("bearerCredential", "Bearer credential"),
         uiSchema: {
@@ -519,17 +716,17 @@ describe("the wc-vendor plugin contract", () => {
         effect: "read",
       },
     }));
-    expect(getWcRequest("Twilio", "validate-phone")).toMatchObject({
+    expect(getWcRequest("Twilio", "communications.phone.validate")).toMatchObject({
       cached: true,
       needsWritableDatabase: true,
     });
 
     for (const [pluginId, operationId] of [
-      ["twilio", "send-sms"],
-      ["lob", "send-letter"],
-      ["lob", "cancel-letter"],
-      ["stripe", "create-customer"],
-      ["stripe", "detach-method"],
+      ["twilio", "communications.sms.send"],
+      ["lob", "communications.postal.send"],
+      ["lob", "communications.postal.letter.cancel"],
+      ["stripe", "payments.customer.create"],
+      ["stripe", "payments.payment-method.detach"],
     ]) {
       const operation = getWcVendorOperationManifest(plugin(pluginId)).find(
         ({ id }) => id === operationId,
@@ -648,7 +845,7 @@ describe("the wc-vendor plugin contract", () => {
 
     const write = await wcRequest({
       vendor: { configId: "dummy-config" },
-      operation: "create-customer",
+      operation: "payments.customer.create",
       args: { name: "Test" },
     });
     // Nothing happened and the caller is told why, in the same shape every
@@ -660,18 +857,18 @@ describe("the wc-vendor plugin contract", () => {
 
     const read = await wcRequest({
       vendor: { configId: "dummy-config" },
-      operation: "test-connection",
+      operation: "service.test-connection",
       args: undefined,
     });
     expect(read).toMatchObject({
       outcome: "success",
-      value: { connected: true },
+      value: { status: "connected" },
     });
   });
 
   it("is the only way to reach a vendor: the registry hands out no handler", () => {
     const dummy = plugin("dummy");
-    const declaration = dummy.operations["create-customer"];
+    const declaration = dummy.operations["payments.customer.create"];
     if (!declaration) throw new Error("dummy operation is not registered");
     // What a registered plugin publishes is what it CAN do. A caller holding
     // one cannot make the call itself, and so cannot skip the refusal, the
@@ -679,6 +876,7 @@ describe("the wc-vendor plugin contract", () => {
     expect(Object.keys(declaration).sort()).toEqual([
       "cacheMode",
       "description",
+      "externalSideEffect",
       "needsWritableDatabase",
     ]);
     expect((declaration as unknown as Record<string, unknown>).run).toBeUndefined();
@@ -686,7 +884,7 @@ describe("the wc-vendor plugin contract", () => {
   });
 
   it("registers cached and explicit uncached operations with the shared framework", () => {
-    const cached = getWcRequest("Google", "cached-contract-test");
+    const cached = getWcRequest("Census", "tests.cache.answer");
     expect(cached).toMatchObject({
       cached: true,
       needsWritableDatabase: true,
@@ -700,7 +898,7 @@ describe("the wc-vendor plugin contract", () => {
       }),
     ).toBe("connection-a:10 MAIN ST|US");
 
-    const uncached = getWcRequest("Google", "uncached-contract-test");
+    const uncached = getWcRequest("Census", "tests.answer");
     expect(uncached).toMatchObject({
       cached: false,
       needsWritableDatabase: false,
@@ -719,7 +917,7 @@ describe("the wc-vendor plugin contract", () => {
 
     const result = await wcRequest({
       vendor: { configId: "cached-config" },
-      operation: "cached-contract-test",
+      operation: "tests.cache.answer",
       args: { address: " 10 main st " },
     });
 
@@ -729,8 +927,8 @@ describe("the wc-vendor plugin contract", () => {
       value: { normalized: "10 MAIN ST" },
     });
     expect(cacheWriteSuccess).toHaveBeenCalledWith(
-      "Google",
-      "cached-contract-test",
+      "Census",
+      "tests.cache.answer",
       "cached-config:10 MAIN ST",
       { normalized: "10 MAIN ST" },
     );
@@ -754,7 +952,7 @@ describe("the wc-vendor plugin contract", () => {
 
     const stored = await wcRequest({
       vendor: { configId: "cached-config" },
-      operation: "cached-contract-test",
+      operation: "tests.cache.answer",
       args: { address: "10 main st" },
     });
     expect(stored).toMatchObject({
@@ -768,7 +966,7 @@ describe("the wc-vendor plugin contract", () => {
     await expect(
       wcRequest({
         vendor: { configId: "cached-config" },
-        operation: "cached-contract-test",
+        operation: "tests.cache.answer",
         args: { address: "11 main st" },
       }),
     ).rejects.toBeInstanceOf(MaintenanceModeError);

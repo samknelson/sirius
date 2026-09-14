@@ -103,7 +103,7 @@ export class PhoneValidationService {
     if (!local.isValid || !local.e164Format) return local;
 
     const { hasWcVendorOperation } = await import("../../webclient/wc-vendor-context");
-    if (!(await hasWcVendorOperation("validate-phone"))) return local;
+    if (!(await hasWcVendorOperation("communications.phone.validate"))) return local;
 
     const e164 = local.e164Format;
     // `always` asks the provider regardless of how recent the stored answer
@@ -116,7 +116,7 @@ export class PhoneValidationService {
     try {
       result = await wcRequest({
         vendor: { any: true },
-        operation: "validate-phone",
+        operation: "communications.phone.validate",
         args: { phoneNumber: e164 },
         mode: wcMode,
       });
@@ -125,7 +125,7 @@ export class PhoneValidationService {
       // The vendor is off limits, but what we already know still stands.
       result = await wcRequest({
         vendor: { any: true },
-        operation: "validate-phone",
+        operation: "communications.phone.validate",
         args: { phoneNumber: e164 },
         mode: 'cached-only',
       });

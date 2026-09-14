@@ -22,14 +22,14 @@ import type {
  * this guard exists to prevent.
  */
 export const PAYMENT_GATEWAY_OPERATIONS: readonly WcVendorOperationName[] = [
-  "create-customer",
-  "retrieve-customer",
-  "get-customer-details",
-  "create-setup-session",
-  "attach-method",
-  "get-method-summary",
-  "get-method-details",
-  "detach-method",
+  "payments.customer.create",
+  "payments.customer.retrieve",
+  "payments.customer.details",
+  "payments.setup-session.create",
+  "payments.payment-method.attach",
+  "payments.payment-method.summary",
+  "payments.payment-method.details",
+  "payments.payment-method.detach",
 ];
 
 /** True when the plugin declares every operation the ledger's payment flows call. */

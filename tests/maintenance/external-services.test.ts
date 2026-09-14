@@ -88,12 +88,12 @@ const MAINTENANCE_PHONE = "+16175559998";
  */
 async function t631Ping(): Promise<unknown> {
   const plugin = getWcVendorPlugin(T631_PLUGIN_ID);
-  if (!plugin?.operations.sirius_service_ping) {
+  if (!plugin?.operations["sitespecific.t631.service.ping"]) {
     throw new Error("T631 ping operation is not registered");
   }
   return wcRequest({
     vendor: { pluginId: T631_PLUGIN_ID },
-    operation: "sirius_service_ping",
+    operation: "sitespecific.t631.service.ping",
     args: undefined as never,
   });
 }
@@ -107,33 +107,33 @@ function operations() {
   return [
     ["Twilio", "testConnection", () => wcRequest({
       vendor: { pluginId: "twilio" },
-      operation: "test-connection",
+      operation: "service.test-connection",
       args: undefined,
     })],
     ["Twilio", "getConfiguration", () => wcRequest({
       vendor: { pluginId: "twilio" },
-      operation: "read-configuration",
+      operation: "communications.sms.configuration.read",
       args: undefined,
     })],
     ["Twilio", "validatePhone", () => wcRequest({
       vendor: { pluginId: "twilio" },
-      operation: "validate-phone",
+      operation: "communications.phone.validate",
       args: { phoneNumber: MAINTENANCE_PHONE },
     })],
     ["Twilio", "sendSms", () => wcRequest({
       vendor: { pluginId: "twilio" },
-      operation: "send-sms",
+      operation: "communications.sms.send",
       args: { to: "+16175551212", body: "hi" },
     })],
     ["Twilio", "getAvailablePhoneNumbers", () => wcRequest({
       vendor: { pluginId: "twilio" },
-      operation: "list-phone-numbers",
+      operation: "communications.phone.list",
       args: undefined,
     })],
 
     ["SendGrid", "testConnection", () => wcRequest({
       vendor: { pluginId: "sendgrid" },
-      operation: "test-email-connection",
+      operation: "service.test-connection",
       args: undefined,
     })],
     [
@@ -141,27 +141,27 @@ function operations() {
       "sendEmail",
       () => wcRequest({
         vendor: { pluginId: "sendgrid" },
-        operation: "send-email",
+        operation: "communications.email.send",
         args: { to: { email: "a@example.com" }, subject: "s", text: "t" },
       }),
     ],
 
-    ["Lob", "testConnection", () => postalRequest("lob", "test-connection", undefined)],
-    ["Lob", "verifyAddress", () => postalRequest("lob", "verify-address", POSTAL_ADDRESS)],
+    ["Lob", "testConnection", () => postalRequest("lob", "service.test-connection", undefined)],
+    ["Lob", "verifyAddress", () => postalRequest("lob", "communications.postal.address.verify", POSTAL_ADDRESS)],
     [
       "Lob",
       "sendLetter",
       () =>
-        postalRequest("lob", "send-letter", {
+        postalRequest("lob", "communications.postal.send", {
           to: POSTAL_ADDRESS,
           from: POSTAL_ADDRESS,
           file: "<html><body>hi</body></html>",
           description: "test",
         }),
     ],
-    ["Lob", "getLetterStatus", () => postalRequest("lob", "letter-status", { letterId: "ltr_123" })],
-    ["Lob", "cancelLetter", () => postalRequest("lob", "cancel-letter", { letterId: "ltr_123" })],
-    ["Lob", "listTemplates", () => postalRequest("lob", "list-templates", undefined)],
+    ["Lob", "getLetterStatus", () => postalRequest("lob", "communications.postal.letter.status", { letterId: "ltr_123" })],
+    ["Lob", "cancelLetter", () => postalRequest("lob", "communications.postal.letter.cancel", { letterId: "ltr_123" })],
+    ["Lob", "listTemplates", () => postalRequest("lob", "communications.postal.template.list", undefined)],
 
     ["Google", "validateAddress", () => addressValidationService.validateAddress(ADDRESS)],
     [
@@ -184,7 +184,7 @@ function operations() {
       () =>
         wcRequest({
           vendor: { pluginId: FREEMAN_EDLS_MIGRATE_PLUGIN_ID },
-          operation: "test-connection",
+          operation: "service.test-connection",
           args: undefined,
         }),
     ],
@@ -194,7 +194,7 @@ function operations() {
       () =>
         wcRequest({
           vendor: { pluginId: BTU_CARDCHECK_PLUGIN_ID },
-          operation: "login",
+          operation: "sitespecific.btu.cardcheck.login",
           args: undefined,
         }),
     ],
@@ -325,26 +325,26 @@ describe.skip("with maintenance ON, no vendor is reached", () => {
   });
 
   it("Lob's swallowing methods surface the refusal instead of an empty/undeliverable answer", async () => {
-    await expect(postalRequest("lob", "list-templates", undefined)).rejects.toBeInstanceOf(MaintenanceModeError);
-    await expect(postalRequest("lob", "verify-address", POSTAL_ADDRESS)).rejects.toBeInstanceOf(MaintenanceModeError);
+    await expect(postalRequest("lob", "communications.postal.template.list", undefined)).rejects.toBeInstanceOf(MaintenanceModeError);
+    await expect(postalRequest("lob", "communications.postal.address.verify", POSTAL_ADDRESS)).rejects.toBeInstanceOf(MaintenanceModeError);
   });
 
   it("local providers keep working — they call nothing external", async () => {
-    const localEmailTest = getWcVendorHandler("local-email", "test-email-connection");
+    const localEmailTest = getWcVendorHandler("local-email", "service.test-connection");
     if (!localEmailTest) throw new Error("Local Email test operation is not registered");
     await expect(localEmailTest({
       credential: { value: "" },
       config: { id: "test-local-email", pluginKind: "wc-vendors", pluginId: "local-email", enabled: true, ordering: 0 } as PluginConfig,
     }, undefined as never)).resolves.toMatchObject({
-      success: true,
+      status: "connected",
     });
-    const localPostalTest = getWcVendorHandler("local-postal", "test-connection");
+    const localPostalTest = getWcVendorHandler("local-postal", "service.test-connection");
     if (!localPostalTest) throw new Error("Local Postal test operation is not registered");
     await expect(localPostalTest({
       credential: { value: "" },
       config: { id: "test-local-postal", pluginKind: "wc-vendors", pluginId: "local-postal", enabled: true, ordering: 0 } as PluginConfig,
     }, undefined as never)).resolves.toMatchObject({
-      connected: true,
+      status: "connected",
     });
     expect(networkAttempts).toEqual([]);
   });
@@ -371,18 +371,18 @@ describe.skip("with maintenance OFF, nothing is refused", () => {
 describe.skip("leaving maintenance restores vendors live, with no restart", () => {
   it("flips on the flag change, in the same process", async () => {
     setMaintenanceActive(true);
-    await expect(postalRequest("lob", "list-templates", undefined)).rejects.toBeInstanceOf(MaintenanceModeError);
+    await expect(postalRequest("lob", "communications.postal.template.list", undefined)).rejects.toBeInstanceOf(MaintenanceModeError);
 
     setMaintenanceActive(false);
     let refusedAfterExit = false;
     try {
-      await postalRequest("lob", "list-templates", undefined);
+      await postalRequest("lob", "communications.postal.template.list", undefined);
     } catch (error) {
       refusedAfterExit = isMaintenanceModeError(error);
     }
     expect(refusedAfterExit).toBe(false);
 
     setMaintenanceActive(true);
-    await expect(postalRequest("lob", "list-templates", undefined)).rejects.toBeInstanceOf(MaintenanceModeError);
+    await expect(postalRequest("lob", "communications.postal.template.list", undefined)).rejects.toBeInstanceOf(MaintenanceModeError);
   });
 });

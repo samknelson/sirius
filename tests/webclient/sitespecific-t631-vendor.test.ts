@@ -111,7 +111,7 @@ function handler(operation: string) {
 }
 
 async function runTest(apiKey: string, data?: Record<string, unknown>) {
-  return (await handler("test-connection")(
+  return (await handler("service.test-connection")(
     context(apiKey, data),
     undefined as never,
   )) as any;
@@ -143,7 +143,7 @@ describe("the T631 vendor plugin", () => {
   it("puts every remote action on the web client framework as a read", () => {
     const t631 = registrations.filter((entry) => entry.service === "T631");
     const types = t631.map((entry) => entry.requestType).sort();
-    expect(types).toEqual([...T631_ACTIONS, "test-connection"].sort());
+    expect(types).toEqual([...T631_ACTIONS, "service.test-connection"].sort());
     // Every one is a read that records nothing here, so a read-only site can
     // still run them — the diagnostics ping most of all.
     for (const entry of t631) {
@@ -154,18 +154,18 @@ describe("the T631 vendor plugin", () => {
   it("keeps the remote action names as the framework request types", () => {
     // These names are what the usage figures and the diagnostics page are
     // recorded under; renaming one silently starts a new counter.
-    expect(T631_ACTIONS).toContain("sirius_service_ping");
-    expect(T631_ACTIONS).toContain("sirius_edls_server_worker_list");
-    expect(T631_ACTIONS).toContain("sirius_edls_server_tos_list");
-    expect(T631_ACTIONS).toContain("sirius_dispatch_group_search");
-    expect(T631_ACTIONS).toContain("sirius_dispatch_facility_dropdown");
+    expect(T631_ACTIONS).toContain("sitespecific.t631.service.ping");
+    expect(T631_ACTIONS).toContain("sitespecific.t631.worker.list");
+    expect(T631_ACTIONS).toContain("sitespecific.t631.tos.list");
+    expect(T631_ACTIONS).toContain("sitespecific.t631.dispatch-group.search");
+    expect(T631_ACTIONS).toContain("sitespecific.t631.facility.list");
   });
 });
 
 describe("an unusable T631 credential", () => {
   it("is reported by the connection test, naming the secret, when it is absent", async () => {
     const result = await runTest("");
-    expect(result.connected).toBe(false);
+    expect(result.status).toBe("misconfigured");
     expect(result.error.message).toContain("T631_CREDENTIAL");
     expect(result.error.message).toContain("not set");
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -173,7 +173,7 @@ describe("an unusable T631 credential", () => {
 
   it("never quotes the credential back when it is not JSON", async () => {
     const result = await runTest(CANARY);
-    expect(result.connected).toBe(false);
+    expect(result.status).toBe("misconfigured");
     expect(result.error.message).toContain("not valid JSON");
     expect(result.error.message).not.toContain(CANARY);
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -181,13 +181,13 @@ describe("an unusable T631 credential", () => {
 
   it("is refused when it is JSON but not an object", async () => {
     const result = await runTest(JSON.stringify([CANARY]));
-    expect(result.connected).toBe(false);
+    expect(result.status).toBe("misconfigured");
     expect(result.error.message).not.toContain(CANARY);
   });
 
   it("names the missing token without echoing the one that is present", async () => {
     const result = await runTest(JSON.stringify({ accessToken: CANARY }));
-    expect(result.connected).toBe(false);
+    expect(result.status).toBe("misconfigured");
     expect(result.error.message).toContain("employerToken");
     expect(result.error.message).not.toContain(CANARY);
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -197,7 +197,7 @@ describe("an unusable T631 credential", () => {
     const result = await runTest(
       JSON.stringify({ accessToken: "access-token", employerToken: "   " }),
     );
-    expect(result.connected).toBe(false);
+    expect(result.status).toBe("misconfigured");
     expect(result.error.message).toContain("employerToken");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -210,7 +210,7 @@ describe("an unusable T631 credential", () => {
     const result = await runTest(
       JSON.stringify({ accessToken: "ab", employerToken: "cd" }),
     );
-    expect(result.connected).toBe(false);
+    expect(result.status).toBe("misconfigured");
     expect(result.error.message).toContain("accessToken");
     expect(result.error.message).toContain("employerToken");
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -220,7 +220,7 @@ describe("an unusable T631 credential", () => {
     // Misconfiguration has always been thrown rather than dressed up as a
     // failed request, because a scheduled sync must not read it as "T631 said
     // no workers" and start deactivating people.
-    const run = handler("sirius_edls_server_worker_list");
+    const run = handler("sitespecific.t631.worker.list");
     await expect(
       run(context(JSON.stringify({ accessToken: "a" })), undefined as never),
     ).rejects.toBeInstanceOf(T631ConfigurationError);
@@ -234,7 +234,7 @@ describe("an incomplete T631 connection", () => {
       JSON.stringify({ accessToken: "a", employerToken: "b" }),
       { url: "", accountId: "", employerId: "emp-1" },
     );
-    expect(result.connected).toBe(false);
+    expect(result.status).toBe("misconfigured");
     expect(result.error.message).toContain("url");
     expect(result.error.message).toContain("accountId");
     expect(result.error.message).not.toContain("employerId");
@@ -277,7 +277,7 @@ describe("a working T631 connection", () => {
 
   it("keeps the token out of the diagnostics it hands back, whole or in part", async () => {
     answerWith({ success: true, data: { tos_nodes: [] } });
-    const run = handler("sirius_edls_server_tos_list");
+    const run = handler("sitespecific.t631.tos.list");
     const result: any = await run(context(credential), undefined as never);
 
     // The real body carries the token; the diagnostics copy the admin page
@@ -304,7 +304,7 @@ describe("a working T631 connection", () => {
     answerWith({ success: true });
     const result: any = await runTest(credential);
     expect(result).toBeDefined();
-    const run = handler("sirius_service_ping");
+    const run = handler("sitespecific.t631.service.ping");
     const ping: any = await run(context(credential), undefined as never);
     expect(ping.request.headers.Authorization).toBe("Basic (redacted)");
     expectNoCredentialAnywhere(ping);
@@ -317,7 +317,7 @@ describe("a working T631 connection", () => {
       { success: false, error: "rejected", echo: ["x", "emp-1", CANARY] },
       false,
     );
-    const run = handler("sirius_edls_server_worker_list");
+    const run = handler("sitespecific.t631.worker.list");
     const result: any = await run(context(credential), undefined as never);
     expect(result.success).toBe(false);
     expectNoCredentialAnywhere(result);
@@ -330,7 +330,7 @@ describe("a working T631 connection", () => {
     fetchSpy.mockRejectedValue(
       new Error(`request failed while sending ${CANARY}`),
     );
-    const run = handler("sirius_edls_server_worker_list");
+    const run = handler("sitespecific.t631.worker.list");
     const result: any = await run(context(credential), undefined as never);
     expectNoCredentialAnywhere(result);
   });
@@ -349,7 +349,7 @@ describe("a working T631 connection", () => {
       }),
       text: async () => JSON.stringify({ success: true }),
     });
-    const run = handler("sirius_service_ping");
+    const run = handler("sitespecific.t631.service.ping");
     const result: any = await run(context(credential), undefined as never);
     expectNoCredentialAnywhere(result);
     expect(result.response.headers["x-echo-token"]).toBe("(redacted)");
@@ -366,7 +366,7 @@ describe("a working T631 connection", () => {
       headers: new Headers(),
       text: async () => "denied",
     });
-    const run = handler("sirius_edls_server_worker_list");
+    const run = handler("sitespecific.t631.worker.list");
     const result: any = await run(context(credential), undefined as never);
     expect(result.success).toBe(false);
     expect(result.error).toContain("HTTP 401");
@@ -390,7 +390,7 @@ describe("a working T631 connection", () => {
       headers: new Headers(),
       text: async () => JSON.stringify({ success: true, echoed: awkward }),
     });
-    const run = handler("sirius_edls_server_tos_list");
+    const run = handler("sitespecific.t631.tos.list");
     const result: any = await run(
       context(awkwardCredential),
       undefined as never,
@@ -414,7 +414,7 @@ describe("a working T631 connection", () => {
       text: async () =>
         `{"success": false, "echoed": ${JSON.stringify(awkward)}, "trunc`,
     });
-    const run = handler("sirius_edls_server_tos_list");
+    const run = handler("sitespecific.t631.tos.list");
     const result: any = await run(
       context(
         JSON.stringify({
@@ -446,7 +446,7 @@ describe("a working T631 connection", () => {
       headers: new Headers(),
       text: async () => JSON.stringify({ success: true, echoed: long }),
     });
-    const run = handler("sirius_edls_server_tos_list");
+    const run = handler("sitespecific.t631.tos.list");
     const result: any = await run(
       context(JSON.stringify({ accessToken: short, employerToken: long })),
       undefined as never,
@@ -457,7 +457,7 @@ describe("a working T631 connection", () => {
 
   it("reports a remote failure as a result, not as a throw", async () => {
     answerWith({ oops: true }, false);
-    const run = handler("sirius_dispatch_facility_dropdown");
+    const run = handler("sitespecific.t631.facility.list");
     const result: any = await run(context(credential), undefined as never);
     expect(result.success).toBe(false);
     expect(result.error).toContain("500");
@@ -465,7 +465,7 @@ describe("a working T631 connection", () => {
 
   it("reports a network failure as a result, not as a throw", async () => {
     fetchSpy.mockRejectedValue(new Error("ECONNREFUSED"));
-    const run = handler("sirius_dispatch_group_search");
+    const run = handler("sitespecific.t631.dispatch-group.search");
     const result: any = await run(context(credential), undefined as never);
     expect(result.success).toBe(false);
     expect(result.error).toBe("ECONNREFUSED");

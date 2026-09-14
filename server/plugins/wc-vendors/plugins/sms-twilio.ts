@@ -81,7 +81,7 @@ const twilioSmsPlugin: WcVendorPlugin = {
   },
   service: "Twilio",
   operations: {
-    "test-connection": {
+    "service.test-connection": {
       description: "test Twilio connection",
       needsWritableDatabase: false,
       manualRun: {
@@ -117,7 +117,7 @@ const twilioSmsPlugin: WcVendorPlugin = {
         }
       },
     },
-    "read-configuration": {
+    "communications.sms.configuration.read": {
       description: "read Twilio account configuration",
       needsWritableDatabase: false,
       manualRun: {
@@ -140,7 +140,7 @@ const twilioSmsPlugin: WcVendorPlugin = {
         };
       },
     },
-    "validate-phone": {
+    "communications.phone.validate": {
       description: "look up a phone number with Twilio",
       needsWritableDatabase: true,
       manualRun: {
@@ -202,7 +202,7 @@ const twilioSmsPlugin: WcVendorPlugin = {
         return { answered: true, value, store: value.valid };
       },
     },
-    "send-sms": {
+    "communications.sms.send": {
       description: "send an SMS with Twilio",
       needsWritableDatabase: true,
       async run(ctx, params): Promise<SmsSendResult> {
@@ -239,7 +239,7 @@ const twilioSmsPlugin: WcVendorPlugin = {
         }
       },
     },
-    "list-phone-numbers": {
+    "communications.phone.list": {
       description: "list Twilio phone numbers",
       needsWritableDatabase: false,
       manualRun: {

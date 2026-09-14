@@ -15,15 +15,15 @@ import type {
  */
 declare module "./types" {
   interface WcVendorOperations {
-    "verify-address": { args: PostalAddress; result: AddressVerificationResult };
-    "send-letter": { args: SendLetterParams; result: LetterSendResult };
-    "letter-status": {
+    "communications.postal.address.verify": { args: PostalAddress; result: AddressVerificationResult };
+    "communications.postal.send": { args: SendLetterParams; result: LetterSendResult };
+    "communications.postal.letter.status": {
       args: { letterId: string };
       result: { status: string; trackingEvents: LetterTrackingEvent[] };
     };
-    "cancel-letter": { args: { letterId: string }; result: { success: boolean; error?: string } };
-    "list-templates": { args: void; result: PostalTemplate[] };
-    "get-default-return-address": { args: void; result: PostalAddress | undefined };
+    "communications.postal.letter.cancel": { args: { letterId: string }; result: { success: boolean; error?: string } };
+    "communications.postal.template.list": { args: void; result: PostalTemplate[] };
+    "communications.postal.return-address.default": { args: void; result: PostalAddress | undefined };
   }
 }
 

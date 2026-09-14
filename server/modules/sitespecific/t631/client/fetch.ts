@@ -126,7 +126,7 @@ export function registerT631ClientFetchRoutes(
         }
         const { dryRun } = parsed.data;
 
-        const fetchResult = await t631Fetch("sirius_edls_server_worker_list");
+        const fetchResult = await t631Fetch("sitespecific.t631.worker.list");
         if (!fetchResult.success) {
           return res.status(502).json({
             message: `T631 fetch failed: ${fetchResult.error || "Unknown error"}`,

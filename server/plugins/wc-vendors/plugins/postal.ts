@@ -271,32 +271,18 @@ async function lobStatus(ctx: WcVendorContext, letterId: string) {
 
 async function lobTest(ctx: WcVendorContext): Promise<GatewayConnectionTest> {
   const key = ctx.credential.value;
-  if (!key) return { connected: false, error: { message: "Lob credential is not configured" } };
-  try {
-    const response = await fetch("https://api.lob.com/v1/us_verifications", {
-      method: "POST",
-      headers: authHeader(key),
-      body: JSON.stringify({ primary_line: "deliverable", zip_code: "11111" }),
-    });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      return {
-        connected: false,
-        testMode: key.startsWith("test_"),
-        error: { message: `Lob API returned ${response.status}: ${JSON.stringify(error)}` },
-      };
-    }
+  if (!key.trim()) {
     return {
-      connected: true,
-      testMode: key.startsWith("test_"),
-      account: { id: "lob", type: "postal" },
-    };
-  } catch (error) {
-    return {
-      connected: false,
-      error: { message: error instanceof Error ? error.message : "Failed to connect to Lob" },
+      status: "misconfigured",
+      error: { message: "Lob credential is not configured" },
     };
   }
+  return {
+    status: "unsupported",
+    error: {
+      message: "Lob has no non-destructive connection probe; address verification sends a POST and is not used for testing.",
+    },
+  };
 }
 
 export const LOB_POSTAL_PLUGIN_ID = "lob";
@@ -312,7 +298,7 @@ const lobWcVendorPlugin: WcVendorPlugin = {
   },
   service: "Lob",
   operations: {
-    "test-connection": {
+    "service.test-connection": {
       description: "test connection",
       needsWritableDatabase: false,
       manualRun: {
@@ -321,7 +307,7 @@ const lobWcVendorPlugin: WcVendorPlugin = {
       },
       run: (ctx) => lobTest(ctx),
     },
-    "verify-address": {
+    "communications.postal.address.verify": {
       description: "verify a postal address",
       needsWritableDatabase: true,
       cache: {
@@ -332,12 +318,12 @@ const lobWcVendorPlugin: WcVendorPlugin = {
       },
       run: cachedLobVerify,
     },
-    "send-letter": {
+    "communications.postal.send": {
       description: "send a postal letter",
       needsWritableDatabase: true,
       run: (ctx, params) => lobSend(ctx, params),
     },
-    "letter-status": {
+    "communications.postal.letter.status": {
       description: "poll letter status",
       needsWritableDatabase: false,
       manualRun: {
@@ -358,7 +344,7 @@ const lobWcVendorPlugin: WcVendorPlugin = {
       },
       run: (ctx, { letterId }) => lobStatus(ctx, letterId),
     },
-    "cancel-letter": {
+    "communications.postal.letter.cancel": {
       description: "cancel a postal letter",
       needsWritableDatabase: true,
       run: async (ctx, { letterId }) => {
@@ -375,7 +361,7 @@ const lobWcVendorPlugin: WcVendorPlugin = {
         return { success: true };
       },
     },
-    "list-templates": {
+    "communications.postal.template.list": {
       description: "list postal templates",
       needsWritableDatabase: false,
       run: async (ctx) => {
@@ -395,7 +381,7 @@ const lobWcVendorPlugin: WcVendorPlugin = {
         }));
       },
     },
-    "get-default-return-address": {
+    "communications.postal.return-address.default": {
       description: "read the default postal return address",
       needsWritableDatabase: false,
       run: async (ctx) => configuredReturnAddress(ctx),
@@ -445,7 +431,7 @@ const localWcVendorPlugin: WcVendorPlugin = {
   credential: { secretName: "none" },
   singleton: true,
   operations: {
-    "test-connection": {
+    "service.test-connection": {
       description: "test connection",
       needsWritableDatabase: false,
       manualRun: {
@@ -458,17 +444,17 @@ const localWcVendorPlugin: WcVendorPlugin = {
         account: { id: "local-postal", type: "test" },
       }),
     },
-    "verify-address": {
+    "communications.postal.address.verify": {
       description: "verify a postal address",
       needsWritableDatabase: false,
       run: async (_ctx, address) => localVerify(address),
     },
-    "list-templates": {
+    "communications.postal.template.list": {
       description: "list postal templates",
       needsWritableDatabase: false,
       run: async () => [],
     },
-    "get-default-return-address": {
+    "communications.postal.return-address.default": {
       description: "read the default postal return address",
       needsWritableDatabase: false,
       run: async (ctx) => configuredReturnAddress(ctx),

@@ -26,6 +26,7 @@ import { wcRequest } from "../../../../services/webclient";
 import {
   FREEMAN_EDLS_MIGRATE_PLUGIN_ID,
   FREEMAN_EDLS_MIGRATE_RAWDATA_ACTION,
+  FREEMAN_EDLS_MIGRATE_OPERATION,
   type FreemanEdlsRawDataArgs,
   type FreemanEdlsResult,
 } from "../../../../plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate";
@@ -140,7 +141,7 @@ export async function fetchLegacyPage(
 ): Promise<LegacyPage> {
   const response = await wcRequest({
     vendor: { pluginId: FREEMAN_EDLS_MIGRATE_PLUGIN_ID },
-    operation: FREEMAN_EDLS_MIGRATE_RAWDATA_ACTION,
+    operation: FREEMAN_EDLS_MIGRATE_OPERATION,
     args: buildRawDataRequest(table, orderColumn, limit, offset),
   });
   if (response.outcome !== "success" || !response.value) {

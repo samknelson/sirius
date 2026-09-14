@@ -11,7 +11,7 @@ import {
 } from "./credential-redaction";
 
 export const OPENSTATES_PLUGIN_ID = "openstates";
-export const OPENSTATES_LOOKUP_OPERATION = "lookup-legislators";
+export const OPENSTATES_LOOKUP_OPERATION = "civic.legislator.lookup";
 
 interface OpenStatesLink {
   url?: string;
@@ -51,7 +51,7 @@ export interface OpenStatesLookupArgs {
 
 declare module "../types" {
   interface WcVendorOperations {
-    "lookup-legislators": {
+    "civic.legislator.lookup": {
       args: OpenStatesLookupArgs;
       result: CivicOfficial[];
     };
@@ -198,6 +198,18 @@ registerWcVendorPlugin({
   },
   service: "OpenStates",
   operations: {
+    "service.test-connection": {
+      description: "test the OpenStates connection",
+      needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: { type: "object", properties: {}, additionalProperties: false },
+        effect: "read",
+      },
+      run: async (ctx) =>
+        ctx.credential.value.trim()
+          ? { status: "unsupported" as const, error: { message: "OpenStates has no non-destructive credential-only probe." } }
+          : { status: "misconfigured" as const, error: { message: "OpenStates API key is not configured." } },
+    },
     [OPENSTATES_LOOKUP_OPERATION]: {
       description: "look up state legislators",
       needsWritableDatabase: true,

@@ -92,7 +92,7 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
   try {
     postalTarget = { any: true };
     const { hasWcVendorOperation } = await import("../../webclient/wc-vendor-context");
-    if (!(await hasWcVendorOperation("send-letter"))) {
+    if (!(await hasWcVendorOperation("communications.postal.send"))) {
       return {
         success: false,
         error: 'Postal sending is not supported by the current provider. Configure a provider with postal sending capability (e.g., Lob).',
@@ -193,7 +193,7 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
     let returnAddress = fromAddress;
     if (!returnAddress) {
       const { hasWcVendorOperation } = await import("../../webclient/wc-vendor-context");
-      if (!(await hasWcVendorOperation("get-default-return-address"))) {
+    if (!(await hasWcVendorOperation("communications.postal.return-address.default"))) {
         return {
           success: false,
           error: 'No return address provided and no default return address configured.',
@@ -202,7 +202,7 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
       }
       const defaultReturnAddress = await wcRequest({
         vendor: { any: true },
-        operation: "get-default-return-address",
+        operation: "communications.postal.return-address.default",
         args: undefined,
       });
       if (defaultReturnAddress.outcome !== "success") {
@@ -361,7 +361,7 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
 
       const sendResponse = await wcRequest({
         vendor: { any: true },
-        operation: "send-letter",
+        operation: "communications.postal.send",
         args: sendParams,
       });
       if (sendResponse.outcome !== "success") {

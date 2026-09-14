@@ -38,7 +38,7 @@ export const T631_COMPONENT = "sitespecific.t631.client";
  * existed — the same names on the usage figures and in the shared manual runner.
  */
 const t631RemoteOperations = {
-  sirius_service_ping: {
+    "sitespecific.t631.service.ping": {
     description: "ping the T631 service",
     needsWritableDatabase: false,
     manualRun: {
@@ -48,7 +48,7 @@ const t631RemoteOperations = {
     run: (ctx: WcVendorContext, _args: void) =>
       performT631Fetch(ctx, "sirius_service_ping"),
   },
-  sirius_edls_server_worker_list: {
+    "sitespecific.t631.worker.list": {
     description: "read the T631 worker list",
     needsWritableDatabase: false,
     manualRun: {
@@ -58,7 +58,7 @@ const t631RemoteOperations = {
     run: (ctx: WcVendorContext, _args: void) =>
       performT631Fetch(ctx, "sirius_edls_server_worker_list"),
   },
-  sirius_dispatch_group_search: {
+    "sitespecific.t631.dispatch-group.search": {
     description: "read the T631 dispatch groups",
     needsWritableDatabase: false,
     manualRun: {
@@ -68,7 +68,7 @@ const t631RemoteOperations = {
     run: (ctx: WcVendorContext, _args: void) =>
       performT631Fetch(ctx, "sirius_dispatch_group_search"),
   },
-  sirius_dispatch_facility_dropdown: {
+    "sitespecific.t631.facility.list": {
     description: "read the T631 facility list",
     needsWritableDatabase: false,
     manualRun: {
@@ -78,7 +78,7 @@ const t631RemoteOperations = {
     run: (ctx: WcVendorContext, _args: void) =>
       performT631Fetch(ctx, "sirius_dispatch_facility_dropdown"),
   },
-  sirius_edls_server_tos_list: {
+    "sitespecific.t631.tos.list": {
     description: "read the T631 time-off-sick list",
     needsWritableDatabase: false,
     manualRun: {
@@ -507,7 +507,7 @@ const t631WcVendorPlugin: WcVendorPlugin = {
   operations: {
     ...t631RemoteOperations,
 
-    "test-connection": {
+    "service.test-connection": {
       description: "test the T631 connection",
       needsWritableDatabase: false,
       manualRun: {
@@ -540,7 +540,10 @@ const t631WcVendorPlugin: WcVendorPlugin = {
           // so it is reported rather than thrown. A maintenance refusal is not
           // ours to report and is left to propagate, exactly as it was before.
           if (error instanceof T631ConfigurationError) {
-            return { connected: false, error: { message: error.message } };
+            return {
+              status: "misconfigured",
+              error: { message: error.message },
+            };
           }
           throw error;
         }

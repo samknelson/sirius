@@ -18,7 +18,7 @@ function requireValue<T>(
 export async function startBtuCardcheckScrape(): Promise<string> {
   const result = await wcRequest({
     vendor: { pluginId: BTU_CARDCHECK_PLUGIN_ID },
-    operation: "login",
+    operation: "sitespecific.btu.cardcheck.login",
     args: undefined,
   });
   return requireValue<BtuScrapeLoginResult>(result, "start the scrape").sessionId;
@@ -30,7 +30,7 @@ export async function fetchBtuCardcheckPdf(
 ): Promise<Buffer> {
   const result = await wcRequest({
     vendor: { pluginId: BTU_CARDCHECK_PLUGIN_ID },
-    operation: "fetch-cardcheck",
+    operation: "sitespecific.btu.cardcheck.fetch",
     args: { sessionId, nid },
   });
   const value = requireValue<BtuScrapeCardcheckResult>(

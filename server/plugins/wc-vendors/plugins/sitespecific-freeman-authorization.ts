@@ -2,6 +2,7 @@ import type {
   WcVendorContext,
   WcVendorOperationDeclaration,
   WcVendorPlugin,
+  GatewayConnectionTest,
 } from "../types";
 import { registerWcVendorPlugin } from "../registry";
 import { WcVendorError } from "../errors";
@@ -166,7 +167,7 @@ async function fetchFreemanAuthorization(
 }
 
 const operations = {
-  ping: {
+  "service.test-connection": {
     description: "check the Freeman authorization endpoint",
     needsWritableDatabase: false,
     manualRun: {
@@ -177,10 +178,33 @@ const operations = {
       },
       effect: "read",
     },
-    run: (ctx: WcVendorContext, _args: void) =>
-      fetchFreemanAuthorization(ctx),
+    run: async (ctx: WcVendorContext, _args: void) => {
+      if (!ctx.config.data || typeof ctx.config.data !== "object") {
+        return { status: "misconfigured" as const, error: { message: "Freeman authorization URL is not configured." } };
+      }
+      try {
+        const result = await fetchFreemanAuthorization(ctx);
+        return result.success
+          ? { status: "connected" as const }
+          : {
+              status: "unreachable" as const,
+              error: { message: result.error ?? "Freeman authorization request failed." },
+            };
+      } catch (error) {
+        if (error instanceof FreemanAuthorizationConfigurationError) {
+          return {
+            status: "misconfigured" as const,
+            error: { message: error.message },
+          };
+        }
+        return {
+          status: "unreachable" as const,
+          error: { message: error instanceof Error ? error.message : String(error) },
+        };
+      }
+    },
   },
-  "authorize-bearer": {
+  "sitespecific.freeman.authorization.bearer": {
     description: "authorize a bearer token with Freeman",
     needsWritableDatabase: false,
     manualRun: {
@@ -213,15 +237,15 @@ const operations = {
     },
   },
 } satisfies {
-  ping: WcVendorOperationDeclaration<void, FreemanAuthorizationResult>;
-  "authorize-bearer": WcVendorOperationDeclaration<
+  "service.test-connection": WcVendorOperationDeclaration<void, GatewayConnectionTest>;
+  "sitespecific.freeman.authorization.bearer": WcVendorOperationDeclaration<
     FreemanBearerAuthorizationArgs,
     FreemanAuthorizationResult
   >;
 };
 
 type FreemanAuthorizationOperationContract = {
-  [N in keyof typeof operations]: {
+  [N in Exclude<keyof typeof operations, "service.test-connection">]: {
     args: Parameters<(typeof operations)[N]["run"]>[1];
     result: Awaited<ReturnType<(typeof operations)[N]["run"]>>;
   };

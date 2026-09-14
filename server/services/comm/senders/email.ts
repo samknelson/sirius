@@ -124,7 +124,7 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
 
   try {
     const { hasWcVendorOperation } = await import("../../webclient/wc-vendor-context");
-    if (!(await hasWcVendorOperation("send-email"))) {
+    if (!(await hasWcVendorOperation("communications.email.send"))) {
       return {
         success: false,
         error:
@@ -134,7 +134,7 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
     }
     const validation = await wcRequest({
       vendor: { any: true },
-      operation: "validate-email",
+        operation: "communications.email.validate",
       args: { email: toEmail },
     });
     const validationResult = validation.value;
@@ -159,7 +159,7 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
     } else {
       const defaultFrom = await wcRequest({
         vendor: { any: true },
-        operation: "get-default-from",
+        operation: "communications.email.sender.default",
         args: undefined,
       });
       fromRecipient = defaultFrom.value;
@@ -280,7 +280,7 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
       };
       const vendorResult = await wcRequest({
         vendor: { any: true },
-        operation: "send-email",
+        operation: "communications.email.send",
         args: sendArgs,
       });
       const sendResult: VendorEmailSendResult = vendorResult.value ?? {

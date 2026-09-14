@@ -60,7 +60,7 @@ function gatewayPlugin(over: Record<string, unknown> = {}): AnyPlugin {
     name: "Stripe",
     requiredComponent: "ledger.stripe",
     supportedPaymentTypes: [{ id: "card", name: "Card" }],
-    operations: operations([...PAYMENT_GATEWAY_OPERATIONS, "test-connection"]),
+    operations: operations([...PAYMENT_GATEWAY_OPERATIONS, "service.test-connection"]),
     ...over,
   } as unknown as AnyPlugin;
 }
@@ -73,7 +73,7 @@ function nonPaymentPlugin(over: Record<string, unknown> = {}): AnyPlugin {
   return {
     id: "site-web-client",
     name: "Site Web Client",
-    operations: operations(["test-connection"]),
+    operations: operations(["service.test-connection"]),
     ...over,
   } as unknown as AnyPlugin;
 }
@@ -167,7 +167,7 @@ describe("refusing a non-gateway on an account write", () => {
 
     const problem = await checkPaymentGatewayConfig("cfg-other");
     expect(problem?.status).toBe(400);
-    expect(problem?.message).toContain("create-customer");
+    expect(problem?.message).toContain("payments.customer.create");
   });
 
   it("refuses an id that is not a wc-vendors config at all", async () => {

@@ -10,7 +10,7 @@ const localSmsPlugin: WcVendorPlugin = {
   description: "Local SMS provider for phone-number validation; it does not deliver messages.",
   credential: { secretName: "none" },
   operations: {
-    "test-connection": {
+    "service.test-connection": {
       description: "test local SMS provider",
       needsWritableDatabase: false,
       manualRun: {
@@ -24,7 +24,7 @@ const localSmsPlugin: WcVendorPlugin = {
         };
       },
     },
-    "validate-phone": {
+    "communications.phone.validate": {
       description: "validate a phone number locally",
       needsWritableDatabase: false,
       manualRun: {

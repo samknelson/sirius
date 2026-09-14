@@ -61,7 +61,7 @@ describe("Twilio manually runnable reads", () => {
     ]);
 
     await expect(
-      handler("list-phone-numbers")(context, {} as never),
+      handler("communications.phone.list")(context, {} as never),
     ).resolves.toEqual([
       {
         sid: "PN123",
@@ -85,7 +85,7 @@ describe("Twilio manually runnable reads", () => {
     });
 
     await expect(
-      handler("validate-phone")(context, {
+      handler("communications.phone.validate")(context, {
         phoneNumber: "(702) 555-0100",
       } as never),
     ).resolves.toMatchObject({

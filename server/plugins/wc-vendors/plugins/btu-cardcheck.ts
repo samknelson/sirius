@@ -8,8 +8,8 @@ import type { WcVendorContext } from "../types";
 import { redactCredentialText } from "./credential-redaction";
 
 export const BTU_CARDCHECK_PLUGIN_ID = "sitespecific-btu-cardcheck";
-export const BTU_SCRAPE_LOGIN = "login";
-export const BTU_SCRAPE_FETCH_CARDCHECK = "fetch-cardcheck";
+export const BTU_SCRAPE_LOGIN = "sitespecific.btu.cardcheck.login";
+export const BTU_SCRAPE_FETCH_CARDCHECK = "sitespecific.btu.cardcheck.fetch";
 export const LEGACY_BTU_SITE_URL = "https://sirius-btu.activistcentral.net";
 export const LEGACY_BTU_CHROMIUM_PATH =
   "/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium";
@@ -24,8 +24,8 @@ export interface BtuScrapeCardcheckResult {
 
 declare module "../types" {
   interface WcVendorOperations {
-    login: { args: void; result: BtuScrapeLoginResult };
-    "fetch-cardcheck": {
+    "sitespecific.btu.cardcheck.login": { args: void; result: BtuScrapeLoginResult };
+    "sitespecific.btu.cardcheck.fetch": {
       args: { sessionId: string; nid: string };
       result: BtuScrapeCardcheckResult;
     };
@@ -319,7 +319,19 @@ registerWcVendorPlugin({
     return { valid: true };
   },
   operations: {
-    login: {
+    "service.test-connection": {
+      description: "test the BTU card-check connection",
+      needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: { type: "object", properties: {}, additionalProperties: false },
+        effect: "read",
+      },
+      run: async () => ({
+        status: "unsupported" as const,
+        error: { message: "BTU card-check has no safe non-destructive connection probe." },
+      }),
+    },
+    "sitespecific.btu.cardcheck.login": {
       description: "sign in to the BTU site",
       needsWritableDatabase: true,
       cache: { mode: "uncached" },
@@ -337,7 +349,7 @@ registerWcVendorPlugin({
         return runtime.login(ctx, browser);
       },
     },
-    "fetch-cardcheck": {
+    "sitespecific.btu.cardcheck.fetch": {
       description: "fetch a card check page from the BTU site",
       needsWritableDatabase: true,
       cache: { mode: "uncached" },

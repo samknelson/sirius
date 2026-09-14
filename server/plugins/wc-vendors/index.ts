@@ -12,6 +12,7 @@ import type {
   PluginConfigEnvelopeField,
   PluginConfigEnvelopeFieldChoice,
 } from "../_core/config-adapter";
+import { canonicalizeWcVendorOperationName } from "./types";
 import {
   BTU_CARDCHECK_PLUGIN_ID,
   LEGACY_BTU_CHROMIUM_PATH,
@@ -27,6 +28,7 @@ export {
   registerWcVendorPlugin,
   getWcVendorPlugin,
   getWcVendorOperationManifest,
+  normalizeWcConnectionTestResult,
 } from "./registry";
 export type * from "./types";
 
@@ -293,6 +295,8 @@ export async function backfillWcVendorSubsidiaries(): Promise<void> {
 
 const CIVIC_CONFIG_MIGRATION_LOCK = "wc-vendors:civic-config-migration";
 
+const WC_OPERATION_ASSIGNMENT_MIGRATION_LOCK =
+  "wc-vendors:canonical-operation-assignments";
 export interface LegacyCivicConfigPlanInput {
   existingPluginIds: ReadonlySet<string>;
   availableSecretNames: ReadonlySet<string>;
@@ -489,3 +493,95 @@ import "./plugins/sms-local";
 import "./plugins/google-geocoding";
 import "./plugins/openstates";
 import "./plugins/census-geocoder";
+
+/**
+ * Rewrite only the operation assignment list in-place. The row id, enabled
+ * state, settings, and secret reference all remain untouched. Cache and usage
+ * tables deliberately are not rewritten: their old request types are useful
+ * historical evidence, but the canonical request key must never reuse them.
+ */
+export async function migrateWcVendorOperationAssignments(): Promise<void> {
+  const { storage } = await import("../../storage");
+  const { withFrameworkWrite } = await import("../../middleware/request-context");
+  const { runInTransaction } = await import("../../storage/transaction-context");
+
+  await withFrameworkWrite(() =>
+    storage.advisoryLock.withTransactionLock(
+      WC_OPERATION_ASSIGNMENT_MIGRATION_LOCK,
+      () =>
+        runInTransaction(async () => {
+          const configs = await storage.pluginConfigs.getByKind("wc-vendors");
+          for (const config of configs) {
+            const data =
+              config.data && typeof config.data === "object"
+                ? (config.data as Record<string, unknown>)
+                : {};
+            if (!Array.isArray(data.operations)) continue;
+            const migrated = canonicalizeWcVendorAssignmentData(data);
+            if (migrated === data) continue;
+            await storage.pluginConfigs.update(config.id, {
+              data: migrated,
+            });
+          }
+          const eventNotifierConfigs =
+            await storage.pluginConfigs.getByKind("event-notifier");
+          for (const config of eventNotifierConfigs) {
+            if (config.pluginId !== "wc-usage-alert") continue;
+            const data =
+              config.data && typeof config.data === "object"
+                ? (config.data as Record<string, unknown>)
+                : {};
+            const migrated = canonicalizeWcUsageAlertRulesData(data);
+            if (migrated === data) continue;
+            await storage.pluginConfigs.update(config.id, {
+              data: migrated,
+            });
+          }
+        }),
+    ),
+  );
+}
+
+export function canonicalizeWcVendorAssignmentData(
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  const assignedOperations = data.operations;
+  if (!Array.isArray(assignedOperations)) return data;
+  const operations = Array.from(
+    new Set(
+      assignedOperations.map((operation) =>
+        typeof operation === "string"
+          ? canonicalizeWcVendorOperationName(operation)
+          : operation,
+      ),
+    ),
+  );
+  const changed =
+    operations.length !== assignedOperations.length ||
+    operations.some((operation, index) => operation !== assignedOperations[index]);
+  return changed ? { ...data, operations } : data;
+}
+
+/**
+ * Canonicalize only operation-specific usage-alert rules. Rules without a
+ * requestType are whole-service rules and deliberately remain unchanged;
+ * unknown request types also remain unchanged so boot never destroys an
+ * administrator's future/custom rule.
+ */
+export function canonicalizeWcUsageAlertRulesData(
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  const rules = data.rules;
+  if (!Array.isArray(rules)) return data;
+  let changed = false;
+  const nextRules = rules.map((rule) => {
+    if (!rule || typeof rule !== "object" || Array.isArray(rule)) return rule;
+    const record = rule as Record<string, unknown>;
+    if (typeof record.requestType !== "string") return rule;
+    const canonical = canonicalizeWcVendorOperationName(record.requestType);
+    if (canonical === record.requestType) return rule;
+    changed = true;
+    return { ...record, requestType: canonical };
+  });
+  return changed ? { ...data, rules: nextRules } : data;
+}

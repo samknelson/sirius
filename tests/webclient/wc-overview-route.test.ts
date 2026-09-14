@@ -14,6 +14,7 @@ const wcRequest = vi.hoisted(() => vi.fn());
 const readOperation = {
   description: "read a value",
   needsWritableDatabase: false,
+  externalSideEffect: false,
   cacheMode: "cached" as const,
   manualRun: {
     argsSchema: {
@@ -31,11 +32,13 @@ const readOperation = {
 const privateOperation = {
   description: "private operation",
   needsWritableDatabase: false,
+  externalSideEffect: false,
   cacheMode: "uncached" as const,
 };
 const writeOperation = {
   description: "write a value",
   needsWritableDatabase: true,
+  externalSideEffect: true,
   cacheMode: "uncached" as const,
   manualRun: {
     argsSchema: {
@@ -54,9 +57,15 @@ const plugins = {
     name: "Fixture Vendor",
     service: "Google",
     operations: {
-      read: readOperation,
-      private: privateOperation,
-      write: writeOperation,
+      "service.test-connection": {
+        description: "test the fixture connection",
+        needsWritableDatabase: false,
+        cacheMode: "uncached" as const,
+        externalSideEffect: false,
+      },
+      "tests.read": readOperation,
+      "tests.private": privateOperation,
+      "tests.write": writeOperation,
     },
   },
   gated: {
@@ -64,7 +73,15 @@ const plugins = {
     name: "Gated Vendor",
     service: "T631",
     requiredComponent: "fixture.component",
-    operations: { read: readOperation },
+    operations: {
+      "service.test-connection": {
+        description: "test the gated connection",
+        needsWritableDatabase: false,
+        cacheMode: "uncached" as const,
+        externalSideEffect: false,
+      },
+      "tests.read": readOperation,
+    },
   },
 };
 
@@ -90,6 +107,7 @@ vi.mock("../../server/plugins/wc-vendors", () => ({
       id,
       description: declared.description,
       needsWritableDatabase: declared.needsWritableDatabase,
+      externalSideEffect: declared.externalSideEffect ?? true,
       cacheMode: declared.cacheMode,
       ...("manualRun" in declared && declared.manualRun
         ? { manualRun: declared.manualRun }
@@ -155,7 +173,7 @@ beforeEach(() => {
     {
       configurationId: "good",
       service: "Google",
-      requestType: "read",
+      requestType: "tests.read",
       calls: 11,
       todayCalls: 3,
     },
@@ -192,25 +210,25 @@ describe("WC overview route", () => {
     expect(body).toEqual(expect.arrayContaining([
       expect.objectContaining({
         configurationId: "good",
-        requestType: "read",
+        requestType: "tests.read",
         service: "Google",
         callsToday: 3,
         callsLast7Days: 11,
       }),
       expect.objectContaining({
         configurationId: "good",
-        requestType: "private",
+        requestType: "tests.private",
         callsToday: 0,
         callsLast7Days: 0,
       }),
       expect.objectContaining({
         configurationId: "good",
-        requestType: "write",
+        requestType: "tests.write",
         callsToday: 0,
         callsLast7Days: 0,
       }),
     ]));
-    expect(body).toHaveLength(3);
+    expect(body).toHaveLength(4);
     expect(body).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ configurationId: "disabled" }),
@@ -230,7 +248,7 @@ describe("WC overview route", () => {
     checker.mockResolvedValue(false);
     const { status, body } = await getOverview();
     expect(status).toBe(200);
-    expect(body).toHaveLength(3);
+    expect(body).toHaveLength(4);
     expect(body).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ configurationId: "gated" })]),
     );
@@ -246,9 +264,9 @@ describe("WC manual operation route", () => {
   });
 
   it.each([
-    ["wrong kind", config("wrong", "fixture", { pluginKind: "other" }), "wrong", "read", 404],
-    ["missing", undefined, "missing", "read", 404],
-    ["disabled", config("disabled", "fixture", { enabled: false }), "disabled", "read", 409],
+    ["wrong kind", config("wrong", "fixture", { pluginKind: "other" }), "wrong", "tests.read", 404],
+    ["missing", undefined, "missing", "tests.read", 404],
+    ["disabled", config("disabled", "fixture", { enabled: false }), "disabled", "tests.read", 409],
   ])("rejects %s config ownership/state", async (_label, row, id, operation, status) => {
     getConfig.mockResolvedValue(row);
     const result = await postRun(id, operation, { args: { value: "x" } });
@@ -259,18 +277,18 @@ describe("WC manual operation route", () => {
   it("rejects component-gated, non-runnable, and malformed operations", async () => {
     getConfig.mockResolvedValue(config("gated", "gated"));
     checker.mockResolvedValue(false);
-    expect((await postRun("gated", "read", { args: { value: "x" } })).status).toBe(403);
+    expect((await postRun("gated", "tests.read", { args: { value: "x" } })).status).toBe(403);
 
     getConfig.mockResolvedValue(config("good", "fixture"));
     checker.mockResolvedValue(true);
-    expect((await postRun("good", "private", { args: {} })).status).toBe(409);
-    expect((await postRun("good", "read", { args: {} })).status).toBe(400);
+    expect((await postRun("good", "tests.private", { args: {} })).status).toBe(409);
+    expect((await postRun("good", "tests.read", { args: {} })).status).toBe(400);
     expect(wcRequest).not.toHaveBeenCalled();
   });
 
   it("requires write confirmation", async () => {
     getConfig.mockResolvedValue(config("good", "fixture"));
-    const result = await postRun("good", "write", { args: { value: "x" } });
+    const result = await postRun("good", "tests.write", { args: { value: "x" } });
     expect(result.status).toBe(400);
     expect(wcRequest).not.toHaveBeenCalled();
   });
@@ -279,7 +297,7 @@ describe("WC manual operation route", () => {
     const row = config("good", "fixture");
     getConfig.mockResolvedValue(row);
     const args = { value: "x" };
-    const result = await postRun("good", "read", { args });
+    const result = await postRun("good", "tests.read", { args });
     expect(result.status).toBe(200);
     expect(result.body).toMatchObject({
       source: "network",
@@ -290,7 +308,7 @@ describe("WC manual operation route", () => {
     expect(wcRequest).toHaveBeenCalledTimes(1);
     expect(wcRequest).toHaveBeenCalledWith({
       vendor: { configId: "good" },
-      operation: "read",
+      operation: "tests.read",
       args: { value: "x", mode: "safe" },
     });
     expect(args).toEqual({ value: "x" });
@@ -300,20 +318,20 @@ describe("WC manual operation route", () => {
     getConfig.mockResolvedValue(config("good", "fixture"));
 
     expect(
-      (await postRun("good", "read", {
+      (await postRun("good", "tests.read", {
         args: { value: "x" },
         forceFresh: true,
       })).status,
     ).toBe(200);
     expect(wcRequest).toHaveBeenCalledWith({
       vendor: { configId: "good" },
-      operation: "read",
+      operation: "tests.read",
       args: { value: "x", mode: "safe" },
       mode: "force",
     });
 
     wcRequest.mockClear();
-    const rejected = await postRun("good", "write", {
+    const rejected = await postRun("good", "tests.write", {
       args: { value: "x" },
       confirmedWrite: true,
       forceFresh: true,

@@ -77,7 +77,7 @@ async function loadPhoneValidationSettings(): Promise<PhoneValidationSettings> {
             ? (row.data as Record<string, unknown>)
             : {};
         return Array.isArray(data.operations) &&
-          data.operations.includes("validate-phone");
+          data.operations.includes("communications.phone.validate");
       });
       const candidates = assigned.length > 0 ? assigned : rows;
       return [...candidates].sort(

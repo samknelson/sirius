@@ -145,7 +145,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
   service: "Stripe",
 
   operations: {
-    "test-connection": {
+    "service.test-connection": {
       description: "test connection",
       // Nothing is recorded, and an operator diagnosing a credential on a
       // read-only connection is exactly who needs this to still work.
@@ -200,7 +200,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
       },
     },
 
-    "create-customer": {
+    "payments.customer.create": {
       description: "create a customer",
       // A customer created at Stripe and not written down here is created
       // again on the next request, leaving an orphan behind each time.
@@ -214,7 +214,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
       },
     },
 
-    "retrieve-customer": {
+    "payments.customer.retrieve": {
       description: "check a customer still exists",
       needsWritableDatabase: false,
       manualRun: {
@@ -246,7 +246,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
       },
     },
 
-    "get-customer-details": {
+    "payments.customer.details": {
       description: "read customer details",
       needsWritableDatabase: false,
       manualRun: {
@@ -288,7 +288,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
       },
     },
 
-    "create-setup-session": {
+    "payments.setup-session.create": {
       description: "start collecting a payment method",
       // This opens a flow that ends in a stored payment method. Letting
       // somebody type their card details knowing the result cannot be saved
@@ -339,7 +339,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
       },
     },
 
-    "attach-method": {
+    "payments.payment-method.attach": {
       description: "attach a payment method",
       // The method is attached at Stripe and then recorded here; an attach
       // that cannot be recorded is a method nobody can ever use or remove.
@@ -351,7 +351,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
       },
     },
 
-    "get-method-summary": {
+    "payments.payment-method.summary": {
       description: "read a payment method summary",
       needsWritableDatabase: false,
       manualRun: {
@@ -395,7 +395,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
       },
     },
 
-    "get-method-details": {
+    "payments.payment-method.details": {
       description: "read payment method details",
       needsWritableDatabase: false,
       manualRun: {
@@ -423,7 +423,7 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
       },
     },
 
-    "detach-method": {
+    "payments.payment-method.detach": {
       description: "remove a payment method",
       // Detaching at Stripe without deleting the row here leaves a stored
       // method pointing at nothing, which the list then reports as missing.

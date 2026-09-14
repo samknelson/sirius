@@ -36,7 +36,9 @@ export async function getSiteEnabledTemplateChannels(): Promise<Set<TemplateChan
       const { hasWcVendorOperation } = await import(
         "../../services/webclient/wc-vendor-context"
       );
-      return hasWcVendorOperation(category === "email" ? "send-email" : "send-sms");
+      return hasWcVendorOperation(
+        category === "email" ? "communications.email.send" : "communications.sms.send",
+      );
     } catch {
       return false;
     }

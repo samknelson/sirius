@@ -4,7 +4,7 @@ import { registerWcVendorPlugin } from "../registry";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const CENSUS_GEOCODER_PLUGIN_ID = "census-geocoder";
-export const CENSUS_DISTRICT_OPERATION = "district-lookup";
+export const CENSUS_DISTRICT_OPERATION = "civic.district.lookup";
 
 export interface CensusDistrictInfo {
   state: string;
@@ -38,7 +38,7 @@ interface CensusGeocoderResponse {
 
 declare module "../types" {
   interface WcVendorOperations {
-    "district-lookup": {
+    "civic.district.lookup": {
       args: CensusDistrictArgs;
       result: CensusDistrictInfo | null;
     };
@@ -109,6 +109,18 @@ registerWcVendorPlugin({
   credential: { secretName: "none" },
   service: "Census",
   operations: {
+    "service.test-connection": {
+      description: "test the Census Geocoder connection",
+      needsWritableDatabase: false,
+      manualRun: {
+        argsSchema: { type: "object", properties: {}, additionalProperties: false },
+        effect: "read",
+      },
+      run: async () => ({
+        status: "unsupported" as const,
+        error: { message: "Census Geocoder has no credential or non-destructive connection probe." },
+      }),
+    },
     [CENSUS_DISTRICT_OPERATION]: {
       description: "look up census districts",
       needsWritableDatabase: false,

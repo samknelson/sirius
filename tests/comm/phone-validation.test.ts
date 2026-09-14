@@ -61,11 +61,11 @@ vi.mock('../../server/storage', () => ({
  */
 vi.mock('../../server/services/webclient/wc-vendor-context', () => ({
   hasWcVendorOperation: async (operation: string) =>
-    operation === 'validate-phone' && providerId === 'twilio',
+    operation === 'communications.phone.validate' && providerId === 'twilio',
   runWcVendorRequest: async (options: any, transport: (request: any) => Promise<unknown>) =>
     transport({
       service: 'Twilio',
-      requestType: 'validate-phone',
+      requestType: 'communications.phone.validate',
       args: {
         configId: 'test-twilio',
         args: options.args,
