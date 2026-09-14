@@ -52,6 +52,8 @@ interface WcCacheDecoration {
   fresh: boolean | null;
   /** The window applied, in milliseconds. Null when unregistered. */
   windowMs: number | null;
+  /** Registered vendor display name for a surviving attributed config. */
+  vendorName: string | null;
 }
 
 /**
@@ -75,12 +77,13 @@ async function resolveWindows(): Promise<
 }
 
 function decorate(
-  row: Pick<WcCacheRow, "service" | "requestType" | "outcome" | "fetchedAt">,
+  row: Pick<WcCacheRow, "service" | "requestType" | "outcome" | "fetchedAt" | "pluginId">,
   windows: Map<string, { freshFor: number; failureRememberedFor: number }>,
   now: number,
 ): WcCacheDecoration {
   const window = windows.get(row.requestType);
-  if (!window) return { registered: false, fresh: null, windowMs: null };
+  const vendorName = row.pluginId ? getWcVendorPlugin(row.pluginId)?.name ?? null : null;
+  if (!window) return { registered: false, fresh: null, windowMs: null, vendorName };
   // A failure row is held for its own, much shorter window — the same one the
   // wrapper judges it against before deciding whether to attempt the call
   // again.
@@ -90,6 +93,7 @@ function decorate(
     registered: true,
     fresh: now - new Date(row.fetchedAt).getTime() < windowMs,
     windowMs,
+    vendorName,
   };
 }
 
@@ -223,6 +227,8 @@ export function registerWcCacheAdminRoutes(app: Express) {
         service: string;
         requestType: string;
         configurationId?: string | null;
+        configurationName?: string | null;
+        pluginId?: string | null;
         rows: number;
       }>;
       const byKey = new Map<
@@ -231,6 +237,8 @@ export function registerWcCacheAdminRoutes(app: Express) {
           service: string;
           requestType: string;
           configurationId: string | null;
+          configurationName: string | null;
+          vendorName: string | null;
           rows: number;
           registered: boolean;
         }
@@ -242,6 +250,10 @@ export function registerWcCacheAdminRoutes(app: Express) {
             service: row.service,
             requestType: row.requestType,
             configurationId: row.configurationId ?? null,
+            configurationName: row.configurationName ?? null,
+            vendorName: row.pluginId
+              ? getWcVendorPlugin(row.pluginId)?.name ?? null
+              : null,
             rows: row.rows,
             registered: false,
           },
@@ -257,6 +269,8 @@ export function registerWcCacheAdminRoutes(app: Express) {
             service: behavior.service,
             requestType: behavior.requestType,
             configurationId: null,
+            configurationName: null,
+            vendorName: null,
             rows: 0,
             registered: true,
           });

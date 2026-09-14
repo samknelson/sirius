@@ -57,6 +57,8 @@ interface WcCacheRow {
   id: string;
   service: string;
   configurationId: string | null;
+  configurationName: string | null;
+  vendorName: string | null;
   requestType: string;
   requestKey: string;
   outcome: "success" | "failure";
@@ -74,6 +76,8 @@ interface WcCacheDetail extends WcCacheRow {
 interface RequestTypeOption {
   service: string;
   configurationId: string | null;
+  configurationName: string | null;
+  vendorName: string | null;
   requestType: string;
   rows: number;
   registered: boolean;
@@ -93,8 +97,14 @@ function formatDate(value: string | null | undefined): string {
   return d.toLocaleString();
 }
 
-function formatConfiguration(configurationId: string | null): string {
-  return configurationId ?? "Unattributed";
+function formatConfiguration(
+  configurationId: string | null,
+  configurationName: string | null,
+  vendorName: string | null,
+): string {
+  if (!configurationId || (!configurationName && !vendorName)) return "Unattributed";
+  const displayName = configurationName ?? "Unnamed connection";
+  return vendorName ? `${displayName} — ${vendorName}` : displayName;
 }
 
 /** A window in the largest unit that stays readable. */
@@ -238,7 +248,20 @@ function DetailDialog({ id, onClose }: { id: string | null; onClose: () => void 
                 <Field label="Service" value={data.service} />
                 <Field
                   label="Configuration provenance"
-                  value={formatConfiguration(data.configurationId)}
+                  value={
+                    <span>
+                      {formatConfiguration(
+                        data.configurationId,
+                        data.configurationName,
+                        data.vendorName,
+                      )}
+                      {data.configurationId && (data.configurationName || data.vendorName) ? (
+                        <span className="block text-xs text-muted-foreground">
+                          {data.configurationId}
+                        </span>
+                      ) : null}
+                    </span>
+                  }
                 />
                 <Field label="Request type" value={data.requestType} />
                 <Field label="Request key" value={data.requestKey} />
@@ -314,9 +337,26 @@ export default function WcCachePage() {
   const end = Math.min(page * PAGE_SIZE, total);
 
   const services = Array.from(new Set(requestTypes.map((t) => t.service))).sort();
-  const configurations = Array.from(
-    new Set(requestTypes.map((t) => t.configurationId).filter((id): id is string => id !== null)),
-  ).sort();
+  const configurations = requestTypes
+    .filter(
+      (option): option is RequestTypeOption & { configurationId: string } =>
+        option.configurationId !== null &&
+        (option.configurationName !== null || option.vendorName !== null),
+    )
+    .filter(
+      (option, index, options) =>
+        options.findIndex((candidate) => candidate.configurationId === option.configurationId) ===
+        index,
+    )
+    .sort((a, b) =>
+      formatConfiguration(
+        a.configurationId,
+        a.configurationName,
+        a.vendorName,
+      ).localeCompare(
+        formatConfiguration(b.configurationId, b.configurationName, b.vendorName),
+      ),
+    );
   // Service may narrow the offered types, but choosing a type never selects a
   // service: service is provenance, while request type is cache identity.
   const typesForService = requestTypes
@@ -384,9 +424,16 @@ export default function WcCachePage() {
                   <SelectItem value={UNATTRIBUTED_CONFIGURATION}>
                     No configuration provenance
                   </SelectItem>
-                  {configurations.map((id) => (
-                    <SelectItem key={id} value={id}>
-                      {id}
+                  {configurations.map((configuration) => (
+                    <SelectItem
+                      key={configuration.configurationId}
+                      value={configuration.configurationId}
+                    >
+                      {formatConfiguration(
+                        configuration.configurationId,
+                        configuration.configurationName,
+                        configuration.vendorName,
+                      )}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -477,7 +524,11 @@ export default function WcCachePage() {
                     >
                       <TableCell className="font-medium">{row.service}</TableCell>
                       <TableCell className="break-all">
-                        {formatConfiguration(row.configurationId)}
+                        {formatConfiguration(
+                          row.configurationId,
+                          row.configurationName,
+                          row.vendorName,
+                        )}
                       </TableCell>
                       <TableCell className="break-all">
                         {row.requestType}

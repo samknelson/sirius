@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { sql, and, eq, lt, desc, ilike, isNull, type SQL } from 'drizzle-orm';
-import { wcCache, type WcCacheOutcome } from '@shared/schema';
+import { pluginConfigs, wcCache, type WcCacheOutcome } from '@shared/schema';
 import { getClient } from './transaction-context';
 
 /**
@@ -37,6 +37,9 @@ export interface WcCacheRow {
   id: string;
   service: string;
   configurationId: string | null;
+  /** Safe display metadata from a surviving attributed vendor configuration. */
+  configurationName: string | null;
+  pluginId: string | null;
   requestType: string;
   requestKey: string;
   outcome: WcCacheOutcome;
@@ -117,6 +120,8 @@ export interface WcCacheStorage {
   listRequestTypes(): Promise<Array<{
     service: string;
     configurationId: string | null;
+    configurationName: string | null;
+    pluginId: string | null;
     requestType: string;
     rows: number;
   }>>;
@@ -333,6 +338,8 @@ export function createWcCacheStorage(): WcCacheStorage {
     async listRequestTypes(): Promise<Array<{
       service: string;
       configurationId: string | null;
+      configurationName: string | null;
+      pluginId: string | null;
       requestType: string;
       rows: number;
     }>> {
@@ -341,11 +348,26 @@ export function createWcCacheStorage(): WcCacheStorage {
         .select({
           service: wcCache.service,
           configurationId: wcCache.configurationId,
+          configurationName: pluginConfigs.name,
+          pluginId: pluginConfigs.pluginId,
           requestType: wcCache.requestType,
           rows: sql<number>`count(*)::int`,
         })
         .from(wcCache)
-        .groupBy(wcCache.service, wcCache.configurationId, wcCache.requestType);
+        .leftJoin(
+          pluginConfigs,
+          and(
+            eq(wcCache.configurationId, pluginConfigs.id),
+            eq(pluginConfigs.pluginKind, 'wc-vendors'),
+          ),
+        )
+        .groupBy(
+          wcCache.service,
+          wcCache.configurationId,
+          pluginConfigs.name,
+          pluginConfigs.pluginId,
+          wcCache.requestType,
+        );
       return rows.map((r) => ({ ...r, rows: Number(r.rows) }));
     },
 
@@ -357,13 +379,22 @@ export function createWcCacheStorage(): WcCacheStorage {
           id: wcCache.id,
           service: wcCache.service,
           configurationId: wcCache.configurationId,
+          configurationName: pluginConfigs.name,
+          pluginId: pluginConfigs.pluginId,
           requestType: wcCache.requestType,
           requestKey: wcCache.requestKey,
           outcome: wcCache.outcome,
           fetchedAt: wcCache.fetchedAt,
           createdAt: wcCache.createdAt,
         })
-        .from(wcCache);
+        .from(wcCache)
+        .leftJoin(
+          pluginConfigs,
+          and(
+            eq(wcCache.configurationId, pluginConfigs.id),
+            eq(pluginConfigs.pluginKind, 'wc-vendors'),
+          ),
+        );
       return await (where ? query.where(where) : query)
         .orderBy(desc(wcCache.fetchedAt), desc(wcCache.id))
         .limit(params.pageSize)
@@ -385,6 +416,8 @@ export function createWcCacheStorage(): WcCacheStorage {
           id: wcCache.id,
           service: wcCache.service,
           configurationId: wcCache.configurationId,
+          configurationName: pluginConfigs.name,
+          pluginId: pluginConfigs.pluginId,
           requestType: wcCache.requestType,
           requestKey: wcCache.requestKey,
           outcome: wcCache.outcome,
@@ -393,6 +426,13 @@ export function createWcCacheStorage(): WcCacheStorage {
           createdAt: wcCache.createdAt,
         })
         .from(wcCache)
+        .leftJoin(
+          pluginConfigs,
+          and(
+            eq(wcCache.configurationId, pluginConfigs.id),
+            eq(pluginConfigs.pluginKind, 'wc-vendors'),
+          ),
+        )
         .where(eq(wcCache.id, id));
       return row || undefined;
     },
