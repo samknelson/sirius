@@ -31,7 +31,10 @@ export interface FreemanAuthorizationResult {
 
 interface FreemanAuthorizationSettings {
   url: string;
-  bearerToken: string;
+}
+
+interface FreemanBearerAuthorizationArgs {
+  bearerCredential: string;
 }
 
 class FreemanAuthorizationConfigurationError extends WcVendorError {
@@ -50,16 +53,12 @@ function readSettings(ctx: WcVendorContext): FreemanAuthorizationSettings {
     typeof data.authorizationUrl === "string"
       ? data.authorizationUrl.trim()
       : "";
-  const bearerToken = ctx.credential.value;
-  const missing: string[] = [];
-  if (!url) missing.push("authorizationUrl");
-  if (!bearerToken) missing.push("credential");
-  if (missing.length > 0) {
+  if (!url) {
     throw new FreemanAuthorizationConfigurationError(
-      `Freeman authorization connection '${ctx.config.name ?? ctx.config.id}' is missing: ${missing.join(", ")}.`,
+      `Freeman authorization connection '${ctx.config.name ?? ctx.config.id}' is missing: authorizationUrl.`,
     );
   }
-  return { url, bearerToken };
+  return { url };
 }
 
 function credentialScrubber(token: string): {
@@ -95,10 +94,11 @@ function credentialScrubber(token: string): {
 
 async function fetchFreemanAuthorization(
   ctx: WcVendorContext,
-  authenticated: boolean,
+  bearerToken?: string,
 ): Promise<FreemanAuthorizationResult> {
-  const { url, bearerToken } = readSettings(ctx);
-  const scrub = credentialScrubber(bearerToken);
+  const { url } = readSettings(ctx);
+  const authenticated = bearerToken !== undefined;
+  const scrub = credentialScrubber(bearerToken ?? "");
   let response: Response;
   try {
     response = await fetch(url, {
@@ -178,18 +178,47 @@ const operations = {
       effect: "read",
     },
     run: (ctx: WcVendorContext, _args: void) =>
-      fetchFreemanAuthorization(ctx, false),
+      fetchFreemanAuthorization(ctx),
   },
   "authorize-bearer": {
     description: "authorize a bearer token with Freeman",
     needsWritableDatabase: false,
-    run: (ctx: WcVendorContext, _args: void) =>
-      fetchFreemanAuthorization(ctx, true),
+    manualRun: {
+      argsSchema: {
+        type: "object",
+        properties: {
+          bearerCredential: {
+            type: "string",
+            title: "Bearer credential",
+            minLength: 1,
+            pattern: "\\S",
+          },
+        },
+        required: ["bearerCredential"],
+        additionalProperties: false,
+      },
+      uiSchema: {
+        bearerCredential: {
+          "ui:widget": "password",
+        },
+      },
+      effect: "read",
+    },
+    run: (ctx: WcVendorContext, args: FreemanBearerAuthorizationArgs) => {
+      const bearerToken = args.bearerCredential.trim();
+      if (!bearerToken) {
+        throw new WcVendorError(400, "Bearer credential is required.");
+      }
+      return fetchFreemanAuthorization(ctx, bearerToken);
+    },
   },
-} satisfies Record<
-  string,
-  WcVendorOperationDeclaration<void, FreemanAuthorizationResult>
->;
+} satisfies {
+  ping: WcVendorOperationDeclaration<void, FreemanAuthorizationResult>;
+  "authorize-bearer": WcVendorOperationDeclaration<
+    FreemanBearerAuthorizationArgs,
+    FreemanAuthorizationResult
+  >;
+};
 
 type FreemanAuthorizationOperationContract = {
   [N in keyof typeof operations]: {
@@ -209,9 +238,7 @@ const freemanAuthorizationVendorPlugin: WcVendorPlugin = {
   description: "Bearer authorization service for Freeman integrations.",
   requiredComponent: FREEMAN_AUTHORIZATION_COMPONENT_ID,
   credential: {
-    secretName: "required",
-    setupGuidance:
-      "The named secret must contain the bearer token only, without the 'Bearer' prefix.",
+    secretName: "none",
   },
   configFields: [
     {

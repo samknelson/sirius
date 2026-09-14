@@ -505,6 +505,20 @@ describe("the wc-vendor plugin contract", () => {
       "ping",
       emptyArgs,
     );
+    expect(getWcVendorOperationManifest(
+      plugin("sitespecific-freeman-authorization"),
+    )).toContainEqual(expect.objectContaining({
+      id: "authorize-bearer",
+      manualRun: {
+        argsSchema: stringArgs("bearerCredential", "Bearer credential"),
+        uiSchema: {
+          bearerCredential: {
+            "ui:widget": "password",
+          },
+        },
+        effect: "read",
+      },
+    }));
     expect(getWcRequest("Twilio", "validate-phone")).toMatchObject({
       cached: true,
       needsWritableDatabase: true,
@@ -516,7 +530,6 @@ describe("the wc-vendor plugin contract", () => {
       ["lob", "cancel-letter"],
       ["stripe", "create-customer"],
       ["stripe", "detach-method"],
-      ["sitespecific-freeman-authorization", "authorize-bearer"],
     ]) {
       const operation = getWcVendorOperationManifest(plugin(pluginId)).find(
         ({ id }) => id === operationId,
