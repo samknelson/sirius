@@ -9,6 +9,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ListBulkAction } from "@/components/bulk/list-bulk-action";
 import { apiRequest, serializeQueryKey, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { ComponentConfig } from "@shared/components";
+import {
+  normalizeWorkerBenefitRoleFilters,
+  type WorkerBenefitRoleFilters,
+} from "@shared/worker-benefit-role-filters";
 
 interface PaginatedWorkersResponse {
   data: any[];
@@ -18,10 +23,32 @@ interface PaginatedWorkersResponse {
   totalPages: number;
 }
 
+const BENEFIT_ROLE_FILTER_KEYS = [
+  "isSubscriber",
+  "isDependent",
+  "subscriberSinceFrom",
+  "subscriberSinceThrough",
+  "dependentSinceFrom",
+  "dependentSinceThrough",
+] as const;
+
+function withoutWorkerBenefitRoleFilters(filters: WorkerFilters): WorkerFilters {
+  const next = { ...filters };
+  for (const key of BENEFIT_ROLE_FILTER_KEYS) {
+    delete next[key];
+  }
+  return next;
+}
+
 export default function Workers() {
   const [location] = useLocation();
   const { hasPermission } = useAuth();
   const { toast } = useToast();
+  const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
+    queryKey: ["/api/components/config"],
+  });
+  const trustBenefitsEnabled =
+    componentConfigs.find((config) => config.componentId === "trust.benefits")?.enabled ?? false;
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
   // Pending (typed/selected but not yet applied) search + filter state. Nothing
@@ -49,16 +76,55 @@ export default function Workers() {
   const [appliedFilters, setAppliedFilters] = useState<WorkerFilters>(defaultFilters);
 
   const handleApplySearch = useCallback(() => {
+    let normalizedRoleFilters: WorkerBenefitRoleFilters;
+    try {
+      normalizedRoleFilters = normalizeWorkerBenefitRoleFilters(filters, trustBenefitsEnabled);
+    } catch (error) {
+      toast({
+        title: "Invalid benefit role filters",
+        description: error instanceof Error
+          ? error.message
+          : "Enter valid benefit role filter values and month ranges.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setAppliedNameId(nameIdInput);
     setAppliedContact(contactInput);
-    setAppliedFilters(filters);
+    // Applied state is canonicalized so requests and exports can never include
+    // the pending-only `any` or blank values.
+    setAppliedFilters({
+      ...withoutWorkerBenefitRoleFilters(filters),
+      ...normalizedRoleFilters,
+    });
     setPage(1);
-  }, [nameIdInput, contactInput, filters]);
+    // Applying is an explicit recipient-set boundary, even when the effective
+    // filter values happen to be unchanged.
+    setSelectedIds(new Set());
+  }, [nameIdInput, contactInput, filters, toast, trustBenefitsEnabled]);
 
   // Filter controls just accumulate locally; applying happens via the button.
   const handleFiltersChange = useCallback((newFilters: WorkerFilters) => {
     setFilters(newFilters);
   }, []);
+
+  // A trust.benefits deployment may be turned off while this page is open.
+  // Clear both generations of local state immediately; filterParams below also
+  // gates the request during the transition before this effect runs.
+  useEffect(() => {
+    if (!trustBenefitsEnabled) {
+      setFilters((current) => withoutWorkerBenefitRoleFilters(current));
+      setAppliedFilters((current) => withoutWorkerBenefitRoleFilters(current));
+      setPage(1);
+      setSelectedIds(new Set());
+    }
+  }, [trustBenefitsEnabled]);
+
+  const appliedBenefitRoleFilters = useMemo(
+    () => normalizeWorkerBenefitRoleFilters(appliedFilters, trustBenefitsEnabled),
+    [appliedFilters, trustBenefitsEnabled],
+  );
 
   // Build the filter param object exactly the way the paginated query does, so the
   // "all matching IDs" endpoint receives identical inputs and can never drift.
@@ -76,7 +142,15 @@ export default function Workers() {
     jobTitle: appliedFilters.jobTitle,
     memberStatusId: appliedFilters.memberStatusId,
     representativeId: appliedFilters.representativeId,
-  }), [appliedNameId, appliedContact, sortOrder, sortBy, appliedFilters]);
+    ...appliedBenefitRoleFilters,
+  }), [
+    appliedNameId,
+    appliedContact,
+    sortOrder,
+    sortBy,
+    appliedFilters,
+    appliedBenefitRoleFilters,
+  ]);
 
   // Reset selection whenever the effective filter set changes so users can never
   // accidentally bulk-message recipients that no longer match their current filters.
@@ -191,6 +265,7 @@ export default function Workers() {
           filters={filters}
           onFiltersChange={handleFiltersChange}
           appliedFilters={appliedFilters}
+           enableBenefitRoleFilters={trustBenefitsEnabled}
           selectable
           selectedIds={selectedIds}
           onSelectionChange={setSelectedIds}

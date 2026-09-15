@@ -14,6 +14,10 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { parsePhoneNumber } from "libphonenumber-js";
 import {
+  normalizeWorkerBenefitRoleFilters,
+  type WorkerBenefitRoleFilters,
+} from "@shared/worker-benefit-role-filters";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -42,6 +46,12 @@ export interface WorkerFilters {
   jobTitle: string;
   memberStatusId: string;
   representativeId?: string;
+  isSubscriber?: "any" | "yes" | "no";
+  isDependent?: "any" | "yes" | "no";
+  subscriberSinceFrom?: string;
+  subscriberSinceThrough?: string;
+  dependentSinceFrom?: string;
+  dependentSinceThrough?: string;
 }
 
 interface WorkersTableProps {
@@ -67,6 +77,8 @@ interface WorkersTableProps {
   onFiltersChange?: (filters: WorkerFilters) => void;
   /** Last-applied filters (apply-button model); used for CSV export so it matches the visible list. */
   appliedFilters?: WorkerFilters;
+  /** Opt in only on the workers page; other table consumers do not support these controls. */
+  enableBenefitRoleFilters?: boolean;
   selectable?: boolean;
   selectedIds?: Set<string>;
   onSelectionChange?: (selectedIds: Set<string>) => void;
@@ -165,6 +177,7 @@ export function WorkersTable({
   filters: externalFilters,
   onFiltersChange,
   appliedFilters: externalAppliedFilters,
+  enableBenefitRoleFilters = false,
   selectable = false,
   selectedIds,
   onSelectionChange,
@@ -216,6 +229,9 @@ export function WorkersTable({
   const trustBenefitsEnabled = componentConfigs.find(c => c.componentId === "trust.benefits")?.enabled ?? false;
   const cardcheckEnabled = componentConfigs.find(c => c.componentId === "cardcheck")?.enabled ?? false;
   const politicalEnabled = componentConfigs.find(c => c.componentId === "sitespecific.btu.political")?.enabled ?? false;
+  const selectedIsSubscriber = filters.isSubscriber ?? "any";
+  const selectedIsDependent = filters.isDependent ?? "any";
+  const showBenefitRoleFilters = enableBenefitRoleFilters && trustBenefitsEnabled;
 
   // Reset benefit filter when trust.benefits is disabled
   useEffect(() => {
@@ -223,6 +239,32 @@ export function WorkersTable({
       updateFilter("benefitId", "all");
     }
   }, [trustBenefitsEnabled, selectedBenefitId]);
+
+  // Role-history controls are opt-in because this table is also used by
+  // recipient-selection pages whose endpoints do not support them.
+  useEffect(() => {
+    if (!showBenefitRoleFilters && enableBenefitRoleFilters) {
+      const {
+        isSubscriber: _isSubscriber,
+        isDependent: _isDependent,
+        subscriberSinceFrom: _subscriberSinceFrom,
+        subscriberSinceThrough: _subscriberSinceThrough,
+        dependentSinceFrom: _dependentSinceFrom,
+        dependentSinceThrough: _dependentSinceThrough,
+        ...withoutRoleFilters
+      } = filters;
+      if (
+        _isSubscriber !== undefined ||
+        _isDependent !== undefined ||
+        _subscriberSinceFrom !== undefined ||
+        _subscriberSinceThrough !== undefined ||
+        _dependentSinceFrom !== undefined ||
+        _dependentSinceThrough !== undefined
+      ) {
+        setFilters(withoutRoleFilters);
+      }
+    }
+  }, [enableBenefitRoleFilters, filters, setFilters, showBenefitRoleFilters]);
 
   // Reset member status filter when cardcheck is disabled
   useEffect(() => {
@@ -717,9 +759,18 @@ export function WorkersTable({
     if (exportFilters.bargainingUnitId !== 'all') params.set('bargainingUnitId', exportFilters.bargainingUnitId);
     if (exportFilters.benefitId !== 'all') params.set('benefitId', exportFilters.benefitId);
     if (exportFilters.contactStatus !== 'all') params.set('contactStatus', exportFilters.contactStatus);
+    if (exportFilters.hasMultipleEmployers) params.set('hasMultipleEmployers', 'true');
     if (exportFilters.jobTitle) params.set('jobTitle', exportFilters.jobTitle);
     if (exportFilters.memberStatusId !== 'all') params.set('memberStatusId', exportFilters.memberStatusId);
     if (exportFilters.representativeId && exportFilters.representativeId !== 'all') params.set('representativeId', exportFilters.representativeId);
+    const exportBenefitRoleFilters: WorkerBenefitRoleFilters =
+      normalizeWorkerBenefitRoleFilters(
+        exportFilters,
+        showBenefitRoleFilters,
+      );
+    for (const [key, value] of Object.entries(exportBenefitRoleFilters)) {
+      params.set(key, value);
+    }
     if (trustBenefitsEnabled) params.set('includeBenefits', 'true');
     
     // Trigger download by opening the export URL
@@ -917,6 +968,161 @@ export function WorkersTable({
                   </SelectContent>
                 </Select>
               </div>
+            )}
+
+            {/* Historical benefit-role filters are intentionally available only
+                to the workers page. They query retained role history rather
+                than the current-month benefit rows. */}
+            {showBenefitRoleFilters && (
+              <>
+                <div className="w-48 space-y-1">
+                  <label htmlFor="is-subscriber-filter" className="text-sm font-medium">
+                    Is subscriber
+                  </label>
+                  <Select
+                    value={selectedIsSubscriber}
+                    onValueChange={(value) =>
+                      setFilters({
+                        ...filters,
+                        isSubscriber: value as WorkerFilters["isSubscriber"],
+                      })
+                    }
+                  >
+                    <SelectTrigger
+                      id="is-subscriber-filter"
+                      data-testid="select-is-subscriber-filter"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any</SelectItem>
+                      <SelectItem value="yes">Yes</SelectItem>
+                      <SelectItem value="no">No</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="w-48 space-y-1">
+                  <label htmlFor="is-dependent-filter" className="text-sm font-medium">
+                    Is dependent
+                  </label>
+                  <Select
+                    value={selectedIsDependent}
+                    onValueChange={(value) =>
+                      setFilters({
+                        ...filters,
+                        isDependent: value as WorkerFilters["isDependent"],
+                      })
+                    }
+                  >
+                    <SelectTrigger
+                      id="is-dependent-filter"
+                      data-testid="select-is-dependent-filter"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any</SelectItem>
+                      <SelectItem value="yes">Yes</SelectItem>
+                      <SelectItem value="no">No</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="w-80 space-y-1">
+                  <span className="text-sm font-medium">
+                    Subscriber since
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label htmlFor="subscriber-since-from" className="space-y-1 text-xs text-muted-foreground">
+                      From
+                      <Input
+                        id="subscriber-since-from"
+                        type="month"
+                        aria-label="Subscriber since from"
+                        value={filters.subscriberSinceFrom ?? ""}
+                        onChange={(event) =>
+                          setFilters({
+                            ...filters,
+                            subscriberSinceFrom: event.target.value,
+                          })
+                        }
+                        className="h-9 w-full min-w-0 text-foreground"
+                        data-testid="input-subscriber-since-from"
+                      />
+                    </label>
+                    <label htmlFor="subscriber-since-through" className="space-y-1 text-xs text-muted-foreground">
+                      Through
+                      <Input
+                        id="subscriber-since-through"
+                        type="month"
+                        aria-label="Subscriber since through"
+                        value={filters.subscriberSinceThrough ?? ""}
+                        onChange={(event) =>
+                          setFilters({
+                            ...filters,
+                            subscriberSinceThrough: event.target.value,
+                          })
+                        }
+                        className="h-9 w-full min-w-0 text-foreground"
+                        data-testid="input-subscriber-since-through"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="w-80 space-y-1">
+                  <span className="text-sm font-medium">
+                    Dependent since
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label htmlFor="dependent-since-from" className="space-y-1 text-xs text-muted-foreground">
+                      From
+                      <Input
+                        id="dependent-since-from"
+                        type="month"
+                        aria-label="Dependent since from"
+                        value={filters.dependentSinceFrom ?? ""}
+                        onChange={(event) =>
+                          setFilters({
+                            ...filters,
+                            dependentSinceFrom: event.target.value,
+                          })
+                        }
+                        className="h-9 w-full min-w-0 text-foreground"
+                        data-testid="input-dependent-since-from"
+                      />
+                    </label>
+                    <label htmlFor="dependent-since-through" className="space-y-1 text-xs text-muted-foreground">
+                      Through
+                      <Input
+                        id="dependent-since-through"
+                        type="month"
+                        aria-label="Dependent since through"
+                        value={filters.dependentSinceThrough ?? ""}
+                        onChange={(event) =>
+                          setFilters({
+                            ...filters,
+                            dependentSinceThrough: event.target.value,
+                          })
+                        }
+                        className="h-9 w-full min-w-0 text-foreground"
+                        data-testid="input-dependent-since-through"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <p
+                  className="basis-full text-xs text-muted-foreground"
+                  aria-live="polite"
+                  data-testid="text-benefit-role-filter-help"
+                >
+                  Uses the earliest month of historical retained coverage, not
+                  just current coverage. Benefit history updates asynchronously
+                  after coverage changes.
+                </p>
+              </>
             )}
             
             {/* Contact Status Filter */}
