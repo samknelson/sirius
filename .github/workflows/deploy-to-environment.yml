@@ -259,7 +259,17 @@ jobs:
         # That is not hypothetical: it happened on 2026-08-31 (run 33387090483,
         # a deploy from freeman-dev), which took dev off IAM auth without any
         # visible failure.
-        KEEP_VARS='["PORT","NODE_ENV","DB_HOST","DB_PORT","DB_NAME","DATABASE_URL","DB_IAM_AUTH","DB_USER"]'
+        #
+        # SERVICE_ROLE is the same case. It selects which slice of the HTTP
+        # surface a container serves (static | api-user | api-ws) and is set
+        # per SERVICE by Terraform, so it cannot move to GitHub: Environment
+        # config is per environment, but the three services in one environment
+        # each need a different value. Off the keep-list, this replace strips
+        # it and every container falls back to serving all three roles — the
+        # split silently stops enforcing anything, and because all roles are
+        # enabled every health check still returns 200, so the deploy goes
+        # green with no signal that it happened.
+        KEEP_VARS='["PORT","NODE_ENV","DB_HOST","DB_PORT","DB_NAME","DATABASE_URL","DB_IAM_AUTH","DB_USER","SERVICE_ROLE"]'
 
         # ── UI ──────────────────────────────────────────────────────────────
         echo "Describing latest revision of task family '$UI_SERVICE'..."
