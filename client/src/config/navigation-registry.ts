@@ -1,6 +1,6 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, BookOpen, 
-  CreditCard, Activity, Wallet, Settings, Shield, Key, KeyRound, FileText, 
+  Activity, Wallet, Settings, Shield, Key, KeyRound, FileText,
   Building2, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, Tag, RefreshCw, Radio, HelpCircle, FolderOpen, NotebookPen, Terminal, Power, Cloud, History, type LucideIcon
 } from "lucide-react";
 import type { ResolvedCatalogEntry } from "@shared/catalog";
@@ -139,10 +139,6 @@ export const configSections: NavSection[] = [
     icon: Wallet,
     items: [
       bespokeOptionsNavItem({ path: "/config/ledger/payment-types", optionsType: "ledger-payment-type", icon: Wallet, testId: "nav-ledger-payment-types", policy: "staff", requiresComponent: "ledger" }),
-      // Which payment types a vendor config accepts is a payments question, so
-      // it stays in this section — and now says so, rather than inheriting the
-      // gate from a section sibling that has moved to Web Services.
-      { path: "/config/ledger/wc-vendors/payment-types", label: "Gateway Payment Types", icon: CreditCard, testId: "nav-ledger-gateway-payment-types", permission: "admin", requiresComponent: "ledger" },
       { path: "/config/ledger/settings", label: "Settings", icon: Settings, testId: "nav-ledger-settings", permission: "admin" },
     ],
   },

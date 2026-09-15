@@ -13,6 +13,7 @@ import type {
   PluginConfigEnvelopeFieldChoice,
 } from "../_core/config-adapter";
 import { canonicalizeWcVendorOperationName } from "./types";
+import { isPaymentGatewayPlugin } from "../../modules/ledger/payment-gateway-definition";
 import {
   BTU_CARDCHECK_PLUGIN_ID,
   LEGACY_BTU_CHROMIUM_PATH,
@@ -108,6 +109,52 @@ export function registerWcVendorPluginKind(): void {
               `Unsupported operation assignment(s) for "${vendor.name}": ` +
                 `${unsupported.join(", ")}. ` +
                 `Supported: ${Array.from(supported).join(", ") || "(none)"}.`,
+            ],
+          };
+        }
+      }
+      const paymentCatalog = vendor.supportedPaymentTypes ?? [];
+      const eligiblePaymentTypes = paymentCatalog.filter(
+        (option) => option.setupEligible !== false,
+      );
+      if (isPaymentGatewayPlugin(vendor) && eligiblePaymentTypes.length > 0) {
+        if (
+          !Array.isArray(data.paymentTypes) ||
+          data.paymentTypes.length === 0 ||
+          data.paymentTypes.some(
+            (paymentType) => typeof paymentType !== "string" || !paymentType.trim(),
+          )
+        ) {
+          return {
+            valid: false,
+            errors: ["Accepted Payment Types requires at least one payment type."],
+          };
+        }
+        const knownIds = new Set(paymentCatalog.map((option) => option.id));
+        const unknown = data.paymentTypes.filter(
+          (paymentType): paymentType is string =>
+            typeof paymentType === "string" && !knownIds.has(paymentType),
+        );
+        if (unknown.length > 0) {
+          return {
+            valid: false,
+            errors: [`Unknown payment type(s): ${unknown.join(", ")}.`],
+          };
+        }
+        const ineligibleIds = new Set(
+          paymentCatalog
+            .filter((option) => option.setupEligible === false)
+            .map((option) => option.id),
+        );
+        const ineligible = data.paymentTypes.filter(
+          (paymentType): paymentType is string =>
+            typeof paymentType === "string" && ineligibleIds.has(paymentType),
+        );
+        if (ineligible.length > 0) {
+          return {
+            valid: false,
+            errors: [
+              `Payment type(s) cannot be saved as reusable methods: ${ineligible.join(", ")}.`,
             ],
           };
         }
@@ -252,6 +299,27 @@ export function registerWcVendorPluginKind(): void {
           required: requirement === "required",
           description: credential.setupGuidance,
           example: credential.setupExample,
+        });
+      }
+      const eligiblePaymentTypes = (vendor.supportedPaymentTypes ?? []).filter(
+        (option) => option.setupEligible !== false,
+      );
+      if (isPaymentGatewayPlugin(vendor) && eligiblePaymentTypes.length > 0) {
+        fields.push({
+          name: "paymentTypes",
+          label: "Accepted Payment Types",
+          description:
+            "Payment method types this configuration accepts when adding a reusable payment method.",
+          type: "string",
+          required: true,
+          multiple: true,
+          multipleStorage: "array",
+          options: {
+            choices: eligiblePaymentTypes.map((option) => ({
+              value: option.id,
+              label: option.name,
+            })),
+          },
         });
       }
       return fields;

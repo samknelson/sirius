@@ -7,9 +7,24 @@ const secretField = {
   required: true,
 };
 
+const paymentTypesField = {
+  name: "paymentTypes",
+  label: "Accepted Payment Types",
+  type: "string",
+  required: true,
+  multiple: true,
+  multipleStorage: "array",
+  options: {
+    choices: [
+      { value: "card", label: "Credit/Debit Card" },
+      { value: "us_bank_account", label: "US Bank Account (ACH)" },
+    ],
+  },
+};
+
 const plugins = [
   { id: "dummy", fields: [] },
-  { id: "stripe", fields: [secretField] },
+  { id: "stripe", fields: [secretField, paymentTypesField] },
 ];
 
 vi.mock("../../server/plugins/_core", () => ({
@@ -68,7 +83,7 @@ describe("wc-vendor config metadata", () => {
       pluginFields: {},
       pluginEnvelopeFields: {
         dummy: [],
-        stripe: [secretField],
+        stripe: [secretField, paymentTypesField],
       },
     });
   });

@@ -201,13 +201,11 @@ describe("the neutral vendor surface stays neutral", () => {
 });
 
 describe("accepted payment type storage", () => {
-  it("reads and writes only the selected config's data.paymentTypes", () => {
+  it("has no configuration-specific payment-types API after the editor move", () => {
     const routes = readFileSync("server/modules/ledger/wc-vendors.ts", "utf8");
 
-    expect(routes).toContain("resolved.config!.data");
-    expect(routes).toContain("data.paymentTypes");
-    expect(routes).toContain("data: { ...existingData, paymentTypes }");
-    expect(routes).not.toContain("storage.variables");
+    expect(routes).not.toContain("/:configId/payment-types");
+    expect(routes).not.toContain("paymentTypes");
   });
 
   it("does not restore payment types from a retired global during startup", () => {

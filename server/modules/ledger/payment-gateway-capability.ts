@@ -1,10 +1,15 @@
 import { storage } from "../../storage";
 import { getComponentChecker } from "../../services/access-policy-evaluator";
 import { getWcVendorPlugin } from "../../plugins/wc-vendors";
-import type {
-  RegisteredWcVendorPlugin,
-  WcVendorOperationName,
-} from "../../plugins/wc-vendors/types";
+import {
+  PAYMENT_GATEWAY_OPERATIONS,
+  isPaymentGatewayPlugin,
+} from "./payment-gateway-definition";
+
+export {
+  PAYMENT_GATEWAY_OPERATIONS,
+  isPaymentGatewayPlugin,
+} from "./payment-gateway-definition";
 
 /**
  * Which webclient vendors the ledger is allowed to treat as a payment gateway.
@@ -21,26 +26,6 @@ import type {
  * publish one and still be unable to create a customer, which is the failure
  * this guard exists to prevent.
  */
-export const PAYMENT_GATEWAY_OPERATIONS: readonly WcVendorOperationName[] = [
-  "payments.customer.create",
-  "payments.customer.retrieve",
-  "payments.customer.details",
-  "payments.setup-session.create",
-  "payments.payment-method.attach",
-  "payments.payment-method.summary",
-  "payments.payment-method.details",
-  "payments.payment-method.detach",
-];
-
-/** True when the plugin declares every operation the ledger's payment flows call. */
-export function isPaymentGatewayPlugin(
-  plugin: Pick<RegisteredWcVendorPlugin, "operations">,
-): boolean {
-  return PAYMENT_GATEWAY_OPERATIONS.every(
-    (name) => plugin.operations[name] !== undefined,
-  );
-}
-
 /** A vendor config offered to a ledger payment surface. */
 export interface PaymentGatewayOption {
   id: string;

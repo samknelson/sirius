@@ -1064,9 +1064,10 @@ function GenericConfigDialog({
       const envelopeBody: Record<string, unknown> = {};
       for (const f of envelopeFields) {
         const raw = envelope[f.name] ?? "";
-        if (f.multiple && f.options?.endpoint) {
-          // Endpoint-backed multi-selects (e.g. dashboard "Visible to roles")
-          // persist as real arrays; the comma-joined string is UI state only.
+        if (f.multiple && (f.multipleStorage === "array" || f.options?.endpoint)) {
+          // Array-backed multi-selects persist as real arrays; endpoint-backed
+          // fields retain their historical array behavior. The comma-joined
+          // string is UI state only.
           envelopeBody[f.name] = raw
             .split(",")
             .map((s) => s.trim())
@@ -1409,7 +1410,7 @@ function EnvelopeSelectField({
  * dashboard "Visible to roles" field backed by the roles endpoint). The value
  * is stored as a comma-joined string of selected values (e.g.
  * "start,continue") so it round-trips through the flat envelope state; the
- * save path splits multi fields back into arrays for array-typed payloads.
+  * save path splits explicitly array-backed fields back into arrays.
  */
 function EnvelopeCheckboxField({
   field,

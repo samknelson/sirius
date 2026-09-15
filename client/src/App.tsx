@@ -342,7 +342,6 @@ const DefaultPolicyPage = lazy(() => import("@/pages/config/default-policy"));
 const LogsPage = lazy(() => import("@/pages/config/logs"));
 const ComponentsConfigPage = lazy(() => import("@/pages/config/components"));
 const LedgerSettingsPage = lazy(() => import("@/pages/config/ledger/settings"));
-const PaymentTypesPage = lazy(() => import("@/pages/config/ledger/wc-vendor-payment-types"));
 const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-types"));
 // Hidden, nav-less generic plugin-config admin (Task #353 foundation). Not in
 // any navigation registry; reachable only via this route for verification.
@@ -3668,12 +3667,8 @@ function Router() {
       </Route>
 
       <Route path="/config/ledger/wc-vendors/payment-types">
-        <ProtectedRoute policy="admin" component="ledger">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <PaymentTypesPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
+        <ProtectedRoute permission="admin">
+          <Redirect to="/admin/plugin-configs/wc-vendors" />
         </ProtectedRoute>
       </Route>
 

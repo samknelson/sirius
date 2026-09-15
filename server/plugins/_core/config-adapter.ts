@@ -108,12 +108,16 @@ export interface PluginConfigEnvelopeField {
    */
   options?: PluginConfigEnvelopeFieldOptions;
   /**
-   * When true (only meaningful together with `options.choices`), the UI renders
-   * the fixed choices as a checkbox group allowing multiple selections. The
-   * stored value is a comma-joined string of the selected choice values (e.g.
-   * "start,continue").
+   * When true, the UI renders the choices as a checkbox group allowing multiple
+   * selections. The editor keeps a comma-joined string in local form state.
    */
   multiple?: boolean;
+  /**
+   * Persist a multiple field as an array rather than the legacy comma-joined
+   * string. Declare this explicitly because both representations are valid
+   * plugin contracts and the generic editor must not guess from the field name.
+   */
+  multipleStorage?: "array";
   /**
    * When true, the generic admin page offers this field as a filter in its
    * filter bar (in addition to the universal Plugin filter). The kind's

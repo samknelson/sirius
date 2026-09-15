@@ -53,6 +53,7 @@ import {
   registerWcVendorPlugin,
 } from "../../server/plugins/wc-vendors/registry";
 import { getPluginConfigAdapter } from "../../server/plugins/_core/config-adapter";
+import { getPluginKind } from "../../server/plugins/_core/kinds";
 import { getWcRequest, wcRequest } from "../../server/services/webclient";
 import {
   describeWcVendor,
@@ -789,7 +790,22 @@ describe("the wc-vendor plugin contract", () => {
             "Used only when application code requests any eligible configuration for an operation. Manual runs and explicitly selected configurations are not restricted by this list.",
           multiple: true,
         }),
+        expect.objectContaining({
+          name: "paymentTypes",
+          label: "Accepted Payment Types",
+          required: true,
+          multiple: true,
+          multipleStorage: "array",
+        }),
       ]),
+    );
+    const paymentTypes = stripeFields.find(({ name }) => name === "paymentTypes");
+    expect(paymentTypes?.options?.choices).toContainEqual({
+      value: "card",
+      label: "Credit/Debit Card",
+    });
+    expect(paymentTypes?.options?.choices).not.toContainEqual(
+      expect.objectContaining({ value: "paypal" }),
     );
 
     const dummyFields = adapter.envelopeFieldsForPlugin?.(plugin("dummy")) ?? [];
@@ -807,6 +823,83 @@ describe("the wc-vendor plugin contract", () => {
         }),
       ]),
     );
+  });
+
+  it("validates accepted payment types on the normal configuration save path", async () => {
+    const registration = getPluginKind("wc-vendors");
+    if (!registration?.validateConfig) {
+      throw new Error("wc-vendors config validation is not registered");
+    }
+    const stripe = plugin("stripe");
+    const validBase = {
+      secretName: "STRIPE_A",
+      publishableKey: "pk_test_example",
+    };
+
+    expect(
+      await registration.validateConfig(stripe, {
+        ...validBase,
+        paymentTypes: ["card", "us_bank_account"],
+      }),
+    ).toEqual({ valid: true });
+    expect(
+      await registration.validateConfig(stripe, {
+        ...validBase,
+        paymentTypes: [],
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        valid: false,
+        errors: expect.arrayContaining([
+          expect.stringContaining("requires at least one"),
+        ]),
+      }),
+    );
+    expect(
+      await registration.validateConfig(stripe, {
+        ...validBase,
+        paymentTypes: ["not-a-stripe-type"],
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        valid: false,
+        errors: expect.arrayContaining([
+          expect.stringContaining("Unknown payment type"),
+        ]),
+      }),
+    );
+    expect(
+      await registration.validateConfig(stripe, {
+        ...validBase,
+        paymentTypes: ["paypal"],
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        valid: false,
+        errors: expect.arrayContaining([
+          expect.stringContaining("cannot be saved as reusable methods"),
+        ]),
+      }),
+    );
+  });
+
+  it("round-trips accepted payment types as an array without dropping other data", () => {
+    const adapter = getPluginConfigAdapter("wc-vendors");
+    if (!adapter) throw new Error("wc-vendors config adapter is not registered");
+
+    const rows = adapter.toRows({
+      pluginId: "stripe",
+      enabled: true,
+      name: "Primary",
+      data: { publishableKey: "pk_test_example", other: "kept" },
+      paymentTypes: ["card", "us_bank_account"],
+    });
+
+    expect(rows.base.data).toEqual({
+      publishableKey: "pk_test_example",
+      other: "kept",
+      paymentTypes: ["card", "us_bank_account"],
+    });
   });
 
   it("normalizes secret-name storage according to the declaration", () => {

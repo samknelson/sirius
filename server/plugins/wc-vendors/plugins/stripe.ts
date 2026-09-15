@@ -303,18 +303,18 @@ const stripeWcVendorPlugin: WcVendorPlugin = {
         // SetupIntent. If the config carries any charge-only type (PayPal,
         // BNPL, vouchers, single-use redirects), fail with a clear, actionable
         // error that NAMES the offending type(s) instead of letting Stripe
-        // reject the call with an opaque 500. The Gateway Payment Types editor
+        // reject the call with an opaque 500. The gateway configuration editor
         // prevents creating this state going forward; this guard covers configs
         // saved before that.
         const ineligible = configured.filter((t) => !SETUP_ELIGIBLE_TYPE_IDS.has(t));
         if (ineligible.length > 0) {
           throw new GatewaySetupError(
-            `These payment types can't be saved as a reusable payment method: ${ineligible.join(", ")}. Remove them under Gateway Payment Types and keep a card or bank account type.`,
+            `These payment types can't be saved as a reusable payment method: ${ineligible.join(", ")}. Edit the gateway configuration and keep a card or bank account type.`,
           );
         }
         if (configured.length === 0) {
           throw new GatewaySetupError(
-            "This gateway has no payment types that can be saved as a reusable payment method. Enable a card or bank account type under Gateway Payment Types.",
+            "This gateway has no payment types that can be saved as a reusable payment method. Edit the gateway configuration and enable a card or bank account type.",
           );
         }
         const paymentTypes = configured;
