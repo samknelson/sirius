@@ -86,6 +86,7 @@ export const entityMetadataContexts: Record<string, MetadataRecordContext> = {
   sitespecific_bao_cobra_rates: context(coreSchema.sitespecificBaoCobraRates, "BAO COBRA Rates", null),
   sitespecific_bao_distance_cache: context(coreSchema.sitespecificBaoDistanceCache, "BAO Distance Cache", null),
   sitespecific_bao_dp_rates: context(coreSchema.sitespecificBaoDpRates, "BAO Domestic Partner Rates", null),
+  sitespecific_bao_ee_contribution_rates: context(coreSchema.sitespecificBaoEeContributionRates, "BAO EE Contribution Rates", null),
   sitespecific_bao_employer_rates: context(coreSchema.sitespecificBaoEmployerRates, "BAO Employer Rates", null),
   sitespecific_bao_notes_tags: context(coreSchema.sitespecificBaoNotesTags, "BAO Note Tags", null),
   sitespecific_bao_premium_files: context(coreSchema.sitespecificBaoPremiumFiles, "BAO Premium Files", null),

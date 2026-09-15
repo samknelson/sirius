@@ -42,6 +42,36 @@ export interface ResolvedEmployerPolicy {
   policySource: string;
 }
 
+/**
+ * The authoritative employer/policy source for coverage granted to a
+ * subscriber.  The WMB row is a materialized coverage result and can outlive
+ * a corrected election, so it must not supply the policy employer.  The
+ * election employer(s) are used only to identify the employer; legacy
+ * election policy fields remain deliberately ignored.
+ */
+export interface GrantingPolicyResolutionStorage extends PolicyResolutionStorage {
+  workers: {
+    getWorker(id: string): Promise<{
+      denormHomeEmployerId?: string | null;
+    } | undefined>;
+  };
+  workerTrustElections: {
+    listByWorker(
+      workerId: string,
+    ): Promise<Array<{
+      employerId?: string | null;
+      startYmd: string;
+      endYmd?: string | null;
+    }>>;
+  };
+}
+
+export interface ResolvedGrantingWorkerPolicy extends ResolvedEmployerPolicy {
+  /** Employer selected from the historical granting election/home assignment. */
+  employerId: string | null;
+  resolutionStatus: "resolved" | "missing" | "ambiguous";
+}
+
 interface EmployerPolicyCacheEntry {
   employerLabel: string | null;
   /** History rows sorted by date DESC, each with its joined policy. */
@@ -152,4 +182,83 @@ export async function resolveEmployerPolicyAsOf(
     return { policy: defaultPolicy, policySource: "System default policy" };
   }
   return { policy: null, policySource: "None" };
+}
+
+/**
+ * Resolve a subscriber's granting policy as of a coverage month.  This is the
+ * worker-facing companion to `resolveEmployerPolicyAsOf`: it obtains the
+ * employer(s) from active historical elections (then the subscriber's home
+ * employer), and only then applies employer policy history/current/default
+ * fallback. Consumers must not use a dependent WMB's employer for this; an
+ * unresolved or conflicting multi-election result is deliberately surfaced.
+ */
+export async function resolveGrantingWorkerPolicyAsOf(
+  storage: GrantingPolicyResolutionStorage,
+  workerId: string,
+  asOfYmd: string,
+  cache: PolicyResolutionCache = createPolicyResolutionCache(),
+): Promise<ResolvedGrantingWorkerPolicy> {
+  // Benefits scans select the granting election at the *last* day of the
+  // coverage month, while policy/rate effective dating remains anchored to
+  // the first day. Match that established convention so a mid-month employer
+  // correction has the same grant attribution here as in WMB generation.
+  const [year, month] = asOfYmd.slice(0, 7).split("-").map(Number);
+  const electionAsOfYmd =
+    Number.isInteger(year) && Number.isInteger(month)
+      ? `${year}-${String(month).padStart(2, "0")}-${String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, "0")}`
+      : asOfYmd;
+  const [elections, worker] = await Promise.all([
+    storage.workerTrustElections.listByWorker(workerId),
+    storage.workers.getWorker(workerId),
+  ]);
+  const electionEmployerIds = Array.from(
+    new Set(
+      elections
+        .filter(
+          (election) =>
+            election.startYmd <= electionAsOfYmd &&
+            (!election.endYmd || election.endYmd >= electionAsOfYmd),
+        )
+        .flatMap((election) =>
+          election.employerId ? [election.employerId] : [],
+        ),
+    ),
+  );
+  const employerIds =
+    electionEmployerIds.length > 0
+      ? electionEmployerIds
+      : [worker?.denormHomeEmployerId ?? null];
+  const resolved = await Promise.all(
+    employerIds.map((employerId) =>
+      resolveEmployerPolicyAsOf(storage, employerId, asOfYmd, cache),
+    ),
+  );
+
+  // Do not let one resolvable employer conceal another that is unresolvable.
+  // A partial result is not sound billing configuration and must be surfaced,
+  // rather than selecting a policy arbitrarily.
+  if (resolved.some((result) => !result.policy)) {
+    return {
+      policy: null,
+      policySource: "Unresolved granting policy",
+      employerId: employerIds.length === 1 ? employerIds[0] : null,
+      resolutionStatus: "missing",
+    };
+  }
+  const policyIds = Array.from(new Set(resolved.map((result) => result.policy!.id)));
+  if (policyIds.length !== 1) {
+    return {
+      policy: null,
+      policySource: `Ambiguous granting policy (${policyIds.join(", ")})`,
+      employerId: employerIds.length === 1 ? employerIds[0] : null,
+      resolutionStatus: "ambiguous",
+    };
+  }
+  const first = resolved[0];
+  return {
+    policy: first.policy,
+    policySource: first.policySource,
+    employerId: employerIds.length === 1 ? employerIds[0] : null,
+    resolutionStatus: "resolved",
+  };
 }

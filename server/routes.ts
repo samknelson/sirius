@@ -143,6 +143,7 @@ import { registerBaoDcEntityFileContext } from "./modules/sitespecific/bao/dc-fi
 import { registerBaoCaseEntityFileContext } from "./modules/sitespecific/bao/case-files-context";
 import { registerBaoCaseRoutes } from "./modules/sitespecific/bao/cases";
 import { registerBaoDpRatesRoutes } from "./modules/sitespecific/bao/dp-rates";
+import { registerBaoEeContributionRatesRoutes } from "./modules/sitespecific/bao/ee-contribution-rates";
 import { registerBaoDistanceCacheRoutes } from "./modules/sitespecific/bao/distance-cache";
 import { registerBaoBeneficiariesRoutes } from "./modules/sitespecific/bao/beneficiaries";
 import { registerBaoEchpRoutes } from "./modules/sitespecific/bao/echp";
@@ -1913,6 +1914,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerBaoDisabilityCreditRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoCaseRoutes(app, requireAuth, requireAccess);
   registerBaoDpRatesRoutes(app, requireAuth, requirePermission, requireAccess);
+  registerBaoEeContributionRatesRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoDistanceCacheRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoBeneficiariesRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoEchpRoutes(app, requireAuth, requirePermission, requireAccess);

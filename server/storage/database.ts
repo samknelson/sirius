@@ -166,6 +166,7 @@ import { type BaoDisabilityCreditStorage, createBaoDisabilityCreditStorage } fro
 import { type BaoNoteTagsStorage, createBaoNoteTagsStorage, baoNoteTagsLoggingConfig } from "./sitespecific/bao/note-tags";
 import { type BaoCasesStorage, createBaoCasesStorage } from "./sitespecific/bao/cases";
 import { type BaoDpRatesStorage, createBaoDpRatesStorage, baoDpRatesLoggingConfig } from "./sitespecific/bao/dp-rates";
+import { type BaoEeContributionRatesStorage, createBaoEeContributionRatesStorage, baoEeContributionRatesLoggingConfig } from "./sitespecific/bao/ee-contribution-rates";
 import { type BaoPremiumRatesStorage, createBaoPremiumRatesStorage, baoPremiumRatesLoggingConfig } from "./sitespecific/bao/premium-rates";
 import { type BaoPremiumFilesStorage, createBaoPremiumFilesStorage, baoPremiumFilesLoggingConfig } from "./sitespecific/bao/premium-files";
 import { type BaoWithholdingAllocationsStorage, createBaoWithholdingAllocationsStorage, baoWithholdingAllocationsLoggingConfig } from "./sitespecific/bao/withholding-allocations";
@@ -308,6 +309,7 @@ export interface IStorage {
   baoCases: BaoCasesStorage;
   baoDisabilityCredit: BaoDisabilityCreditStorage;
   baoDpRates: BaoDpRatesStorage;
+  baoEeContributionRates: BaoEeContributionRatesStorage;
   baoPremiumRates: BaoPremiumRatesStorage;
   baoPremiumFiles: BaoPremiumFilesStorage;
   baoWithholdingAllocations: BaoWithholdingAllocationsStorage;
@@ -446,6 +448,7 @@ export class DatabaseStorage implements IStorage {
   baoCases: BaoCasesStorage;
   baoDisabilityCredit: BaoDisabilityCreditStorage;
   baoDpRates: BaoDpRatesStorage;
+  baoEeContributionRates: BaoEeContributionRatesStorage;
   baoPremiumRates: BaoPremiumRatesStorage;
   baoPremiumFiles: BaoPremiumFilesStorage;
   baoWithholdingAllocations: BaoWithholdingAllocationsStorage;
@@ -731,6 +734,10 @@ export class DatabaseStorage implements IStorage {
     this.baoDpRates = withStorageLogging(
       createBaoDpRatesStorage(),
       baoDpRatesLoggingConfig,
+    );
+    this.baoEeContributionRates = withStorageLogging(
+      createBaoEeContributionRatesStorage(),
+      baoEeContributionRatesLoggingConfig,
     );
     this.baoPremiumRates = withStorageLogging(
       createBaoPremiumRatesStorage(),

@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { parsePhoneNumber } from "libphonenumber-js";
-import { comm, employers, files, ledgerAccounts, ledgerEa, ledgerPayments, workers, wizards, trustBenefits, trustProviders, entityNotes, users } from "../../../schema";
+import { comm, employers, files, ledgerAccounts, ledgerEa, ledgerPayments, workers, wizards, trustBenefits, trustProviders, entityNotes, users, policies } from "../../../schema";
 import { validateSSN } from "../../../utils/ssn";
 import { toYmd } from "../../../utils/date";
 
@@ -978,6 +978,146 @@ export const listBaoDpRatesQuerySchema = z.object({
 });
 
 export type ListBaoDpRatesQuery = z.infer<typeof listBaoDpRatesQuerySchema>;
+
+// ---------------------------------------------------------------------------
+// Employee contribution rates
+//
+// These are BAO's flat, monthly member contribution rates.  They intentionally
+// belong to a policy + benefit rather than an election data blob: the charge
+// plugin resolves the granting policy historically for each coverage month.
+// A configured $0.00 is meaningful (free coverage), while no row is missing
+// configuration and must remain distinguishable to charge diagnostics.
+// ---------------------------------------------------------------------------
+
+const baoContributionRateYmd = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")
+  .refine((value) => {
+    const [year, month, day] = value.split("-").map(Number);
+    if (year < 1) return false;
+    // Date.UTC treats 0–99 as 1900–1999; setUTCFullYear preserves the
+    // calendar year so the validation has the same meaning for all YYYY
+    // values accepted by the format.
+    const candidate = new Date(0);
+    candidate.setUTCFullYear(year, month - 1, day);
+    return (
+      candidate.getUTCFullYear() === year &&
+      candidate.getUTCMonth() === month - 1 &&
+      candidate.getUTCDate() === day
+    );
+  }, "Date must be a real calendar date");
+
+/**
+ * Exact nonnegative USD in the table's numeric(10,2) range.  Rates are
+ * strings on the boundary so values such as $0.00 retain their exact decimal
+ * meaning rather than taking a floating-point round trip.
+ */
+const baoContributionRateString = z
+  .string()
+  .trim()
+  .regex(
+    /^(?:0|[1-9]\d{0,7})(?:\.\d{1,2})?$/,
+    "Rate must be a nonnegative currency amount with at most 2 decimal places",
+  );
+const baoContributionRateAmount = z
+  .union([
+    baoContributionRateString,
+    z
+      .number({ invalid_type_error: "Rate must be a number" })
+      .finite("Rate must be a finite number")
+      .min(0, "Rate must be at least 0")
+      .max(99_999_999.99, "Rate is too large")
+      .refine(
+        (value) => Math.abs(value * 100 - Math.round(value * 100)) < 0.0000001,
+        "Rate must have at most 2 decimal places",
+      ),
+  ])
+  .transform((value) => (typeof value === "number" ? value.toFixed(2) : value));
+
+export const sitespecificBaoEeContributionRates = pgTable(
+  "sitespecific_bao_ee_contribution_rates",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    policyId: varchar("policy_id").notNull(),
+    benefitId: varchar("benefit_id").notNull(),
+    /** Flat monthly member contribution in dollars; $0.00 explicitly means free coverage. */
+    rate: numeric("rate", { precision: 10, scale: 2 }).notNull(),
+    effectiveYmd: date("effective_ymd").notNull(),
+  },
+  (table) => [
+    unique("sitespecific_bao_ee_contribution_rates_policy_benefit_ymd_uq").on(
+      table.policyId,
+      table.benefitId,
+      table.effectiveYmd,
+    ),
+    foreignKey({
+      name: "sitespecific_bao_ee_contribution_rates_policy_id_fkey",
+      columns: [table.policyId],
+      foreignColumns: [policies.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_ee_contribution_rates_benefit_id_fkey",
+      columns: [table.benefitId],
+      foreignColumns: [trustBenefits.id],
+    }).onDelete("cascade"),
+    check(
+      "sitespecific_bao_ee_contribution_rates_rate_nonnegative_chk",
+      sql`${table.rate} >= 0`,
+    ),
+  ],
+);
+
+export const insertBaoEeContributionRateSchema = createInsertSchema(
+  sitespecificBaoEeContributionRates,
+).omit({ id: true });
+
+export type BaoEeContributionRate =
+  typeof sitespecificBaoEeContributionRates.$inferSelect;
+export type InsertBaoEeContributionRate = z.infer<
+  typeof insertBaoEeContributionRateSchema
+>;
+
+/** A rate row enriched with its benefit name for the policy rate surface. */
+export type BaoEeContributionRateWithBenefit = BaoEeContributionRate & {
+  benefitName: string | null;
+};
+
+export const createBaoEeContributionRateRequestSchema = z
+  .object({
+    policyId: z.string().min(1, "A policy is required"),
+    benefitId: z.string().min(1, "A benefit is required"),
+    rate: baoContributionRateAmount,
+    effectiveYmd: baoContributionRateYmd,
+  })
+  .strict();
+
+export const updateBaoEeContributionRateRequestSchema = z
+  .object({
+    benefitId: z.string().min(1).optional(),
+    rate: baoContributionRateAmount.optional(),
+    effectiveYmd: baoContributionRateYmd.optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "Provide at least one field to update",
+  });
+
+export const listBaoEeContributionRatesQuerySchema = z
+  .object({
+    policyId: z.string().min(1, "A policy is required"),
+    benefitId: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type CreateBaoEeContributionRateRequest = z.infer<
+  typeof createBaoEeContributionRateRequestSchema
+>;
+export type UpdateBaoEeContributionRateRequest = z.infer<
+  typeof updateBaoEeContributionRateRequestSchema
+>;
+export type ListBaoEeContributionRatesQuery = z.infer<
+  typeof listBaoEeContributionRatesQuerySchema
+>;
 
 export const searchBaoCobraCasesQuerySchema = z.object({
   statusId: z.string().min(1).optional(),

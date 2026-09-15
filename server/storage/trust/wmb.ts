@@ -68,6 +68,26 @@ export interface WmbPremiumCoverage {
   employerId: string | null;
 }
 
+/**
+ * Live coverage that grants one subscriber's flat BAO employee contribution
+ * for a benefit/month.  A subscriber row is not required: relation-sourced
+ * dependent rows grant the same subscriber one flat contribution.
+ */
+export interface WmbEeContributionCoverage {
+  subscriberWorkerId: string;
+  benefitId: string;
+  month: number;
+  year: number;
+  /** Every live WMB row making this contribution applicable. */
+  wmbIds: string[];
+  /**
+   * Employers recorded by the granting coverage rows.  The charge plugin
+   * resolves each through historical policy assignment and treats conflicting
+   * policy results as an explicit diagnostic rather than guessing.
+   */
+  employerIds: string[];
+}
+
 export interface TrustWmbStorage {
   getActiveBenefitWorkerCountsByEmployerLatestPeriod(): Promise<ActiveBenefitWorkerCount[]>;
   /**
@@ -101,6 +121,19 @@ export interface TrustWmbStorage {
     month: number,
     year: number,
   ): Promise<WmbPremiumCoverage>;
+  /** Live granting coverage for one subscriber/benefit/month. */
+  getEeContributionCoverage(
+    subscriberWorkerId: string,
+    benefitId: string,
+    month: number,
+    year: number,
+  ): Promise<WmbEeContributionCoverage | null>;
+  /**
+   * Every currently live contribution subject.  Historical entries are
+   * deliberately discovered separately from the ledger, so source-row
+   * deletion cannot make an already-posted charge undiscoverable.
+   */
+  listEeContributionCoverage(): Promise<WmbEeContributionCoverage[]>;
   workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean>;
 }
 
@@ -391,6 +424,117 @@ export function createTrustWmbStorage(): TrustWmbStorage {
         dependentWmbIds: dependents.map((d) => d.id),
         employerId: own?.employerId ?? dependents[0]?.employerId ?? null,
       };
+    },
+
+    async getEeContributionCoverage(
+      subscriberWorkerId: string,
+      benefitId: string,
+      month: number,
+      year: number,
+    ): Promise<WmbEeContributionCoverage | null> {
+      const client = getClient();
+      const own = await client
+        .select({ id: trustWmb.id, employerId: trustWmb.employerId })
+        .from(trustWmb)
+        .where(
+          and(
+            eq(trustWmb.workerId, subscriberWorkerId),
+            eq(trustWmb.benefitId, benefitId),
+            eq(trustWmb.month, month),
+            eq(trustWmb.year, year),
+            isNull(trustWmb.sourceRelationId),
+          ),
+        )
+        .orderBy(asc(trustWmb.id));
+
+      let dependent: Array<{ id: string; employerId: string }> = [];
+      if (await tableExistsUtil("worker_relations")) {
+        dependent = await client
+          .select({ id: trustWmb.id, employerId: trustWmb.employerId })
+          .from(trustWmb)
+          .innerJoin(
+            workerRelations,
+            eq(workerRelations.id, trustWmb.sourceRelationId),
+          )
+          .where(
+            and(
+              eq(workerRelations.worker1, subscriberWorkerId),
+              eq(trustWmb.benefitId, benefitId),
+              eq(trustWmb.month, month),
+              eq(trustWmb.year, year),
+            ),
+          )
+          .orderBy(asc(trustWmb.id));
+      }
+
+      const rows = [...own, ...dependent];
+      if (rows.length === 0) return null;
+      return {
+        subscriberWorkerId,
+        benefitId,
+        month,
+        year,
+        wmbIds: rows.map((row) => row.id),
+        employerIds: Array.from(new Set(rows.map((row) => row.employerId))).sort(),
+      };
+    },
+
+    async listEeContributionCoverage(): Promise<WmbEeContributionCoverage[]> {
+      const client = getClient();
+      const own = await client
+        .select({
+          subscriberWorkerId: trustWmb.workerId,
+          benefitId: trustWmb.benefitId,
+          month: trustWmb.month,
+          year: trustWmb.year,
+          id: trustWmb.id,
+          employerId: trustWmb.employerId,
+        })
+        .from(trustWmb)
+        .where(isNull(trustWmb.sourceRelationId));
+
+      const dependent = (await tableExistsUtil("worker_relations"))
+        ? await client
+            .select({
+              subscriberWorkerId: workerRelations.worker1,
+              benefitId: trustWmb.benefitId,
+              month: trustWmb.month,
+              year: trustWmb.year,
+              id: trustWmb.id,
+              employerId: trustWmb.employerId,
+            })
+            .from(trustWmb)
+            .innerJoin(
+              workerRelations,
+              eq(workerRelations.id, trustWmb.sourceRelationId),
+            )
+        : [];
+
+      const groups = new Map<string, WmbEeContributionCoverage>();
+      for (const row of [...own, ...dependent]) {
+        const key = `${row.subscriberWorkerId}:${row.benefitId}:${row.year}:${row.month}`;
+        const current = groups.get(key);
+        if (current) {
+          current.wmbIds.push(row.id);
+          if (!current.employerIds.includes(row.employerId)) {
+            current.employerIds.push(row.employerId);
+          }
+          continue;
+        }
+        groups.set(key, {
+          subscriberWorkerId: row.subscriberWorkerId,
+          benefitId: row.benefitId,
+          month: row.month,
+          year: row.year,
+          wmbIds: [row.id],
+          employerIds: [row.employerId],
+        });
+      }
+      return Array.from(groups.values()).map((group) => ({
+        ...group,
+        wmbIds: group.wmbIds.sort(),
+        employerIds: group.employerIds.sort(),
+      }));
     },
 
     async workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean> {

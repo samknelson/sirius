@@ -132,6 +132,15 @@ export interface LedgerEntryStorage {
   getByReference(referenceType: string, referenceId: string): Promise<Ledger[]>;
   getByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<Ledger | undefined>;
   getByReferenceAndConfig(referenceId: string, chargePluginConfigId: string): Promise<Ledger[]>;
+  /**
+   * Charge entries only (never payments) for one plugin configuration.
+   * Reconciliation plugins use this historical sweep set after a source row
+   * has been deleted.
+   */
+  listByChargePluginAndConfig(
+    chargePlugin: string,
+    chargePluginConfigId: string,
+  ): Promise<Ledger[]>;
   /** Distinct referenceIds that have entries for a config + reference type. */
   listReferenceIdsByConfigAndType(chargePluginConfigId: string, referenceType: string): Promise<string[]>;
   getByFilter(filter: LedgerEntryFilter): Promise<Ledger[]>;
@@ -1826,6 +1835,23 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         }
       }
       return merged;
+    },
+
+    async listByChargePluginAndConfig(
+      chargePlugin: string,
+      chargePluginConfigId: string,
+    ): Promise<Ledger[]> {
+      const client = getClient();
+      return client
+        .select()
+        .from(ledger)
+        .where(
+          and(
+            eq(ledger.chargePlugin, chargePlugin),
+            eq(ledger.chargePluginConfigId, chargePluginConfigId),
+          ),
+        )
+        .orderBy(asc(ledger.id));
     },
 
     async listReferenceIdsByConfigAndType(chargePluginConfigId: string, referenceType: string): Promise<string[]> {

@@ -8,6 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { PolicyLayout, usePolicyLayout } from "@/components/layouts/PolicyLayout";
+import { PolicyContributionRatesCard } from "@/components/sitespecific/bao/PolicyContributionRatesCard";
+import { useAuth } from "@/contexts/AuthContext";
 import { TrustBenefit } from "@shared/schema";
 import { Save, Loader2, ExternalLink } from "lucide-react";
 
@@ -19,6 +21,7 @@ const ELIGIBILITY_ADMIN_PATH = "/admin/plugin-configs/trust-eligibility";
 
 function PolicyBenefitsContent() {
   const { policy } = usePolicyLayout();
+  const { hasComponent, hasPermission } = useAuth();
   const { toast } = useToast();
 
   const policyData = (policy.data as PolicyData) || {};
@@ -151,6 +154,13 @@ function PolicyBenefitsContent() {
           )}
         </CardContent>
       </Card>
+
+      {hasComponent("sitespecific.bao") && (
+        <PolicyContributionRatesCard
+          policyId={policy.id}
+          canManage={hasPermission("admin")}
+        />
+      )}
 
       <Card>
         <CardHeader>
