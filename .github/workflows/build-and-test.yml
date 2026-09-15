@@ -4,7 +4,7 @@ name: Build and Test
 # Two jobs:
 #   1. test               — Node typecheck (tsc). Runs on PR and on workflow_call.
 #   2. build-and-push-app — Docker build + ECR push for the single app image,
-#                           tagged into TWO ECR repos (ui + api).
+#                           tagged into the ui, api and ws ECR repos.
 #                           (workflow_call only)
 #
 # Topology: FLS ships as ONE container — Node 20, multi-stage, built from the
@@ -13,9 +13,15 @@ name: Build and Test
 # built Vite SPA out of dist/public.
 #
 # Deployment topology: a SINGLE Docker image is built per push, then tagged
-# into TWO ECR repos (ui + api) and deployed to TWO ECS services (ui + api).
-# Same image, two tag destinations, two service rollouts. This is a
-# transitional state — a future change may collapse to one service.
+# into the ui, api and ws ECR repos and deployed to the matching ECS services.
+# Same image everywhere; which slice of the HTTP surface a container answers is
+# selected at runtime by SERVICE_ROLE, a Terraform-owned env var (static /
+# api-user / api-ws). Nothing about the build differs per role.
+#
+# The ws repo is OPTIONAL so this workflow stays usable in an environment where
+# the third service has not been applied yet: the ws tag is added only when the
+# ws ECR repo exists, and ws-image-uri is then empty for the deploy workflow to
+# skip on. Once Terraform creates the repo the tag appears automatically.
 #
 # The Dockerfile lives at ./Dockerfile (build context = repo root). It is
 # expected to invoke `npx vite build` + `npx esbuild ...` directly — NOT
@@ -38,9 +44,11 @@ name: Build and Test
 # Hardcoded (no secrets needed):
 #   AWS_REGION   = us-east-2 (short code: use2)
 #   ECR repos    = fm-fls-ui-ecr-<env-short>-use2
-#                  fm-fls-api-ecr-<env-short>-use2   (URIs derived at runtime)
+#                  fm-fls-api-ecr-<env-short>-use2
+#                  fm-fls-ws-ecr-<env-short>-use2    (URIs derived at runtime)
 #   ECS services = fm-fls-ui-<env-short>-use2
-#                  fm-fls-api-<env-short>-use2       (managed in fm-workloads-fls)
+#                  fm-fls-api-<env-short>-use2
+#                  fm-fls-ws-<env-short>-use2        (managed in fm-workloads-fls)
 #
 # ECS task definition expectations (Terraform-owned in fm-workloads-fls):
 #   env: DATABASE_URL, SESSION_SECRET, PORT=5000, NODE_ENV=production,
@@ -75,6 +83,9 @@ on:
       api-image-uri:
         description: 'Full ECR URI of the pushed image in the API repo (with sha tag)'
         value: ${{ jobs.build-and-push-app.outputs.api-image-uri }}
+      ws-image-uri:
+        description: 'Full ECR URI of the pushed image in the WS repo (with sha tag). Empty when the ws ECR repo does not exist in this environment yet.'
+        value: ${{ jobs.build-and-push-app.outputs.ws-image-uri }}
 
   pull_request:
     branches: [ 'rel/*', freeman-dev ]
@@ -153,6 +164,7 @@ jobs:
     outputs:
       ui-image-uri: ${{ steps.uri.outputs.ui-image-uri }}
       api-image-uri: ${{ steps.uri.outputs.api-image-uri }}
+      ws-image-uri: ${{ steps.uri.outputs.ws-image-uri }}
 
     steps:
     - name: Checkout
@@ -189,13 +201,40 @@ jobs:
         esac
         UI_REPO_NAME="fm-${{ env.PROJECT }}-ui-ecr-${ENV_SHORT}-${{ env.SHORT_REGION }}"
         API_REPO_NAME="fm-${{ env.PROJECT }}-api-ecr-${ENV_SHORT}-${{ env.SHORT_REGION }}"
+        WS_REPO_NAME="fm-${{ env.PROJECT }}-ws-ecr-${ENV_SHORT}-${{ env.SHORT_REGION }}"
         UI_REPO="${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${UI_REPO_NAME}"
         API_REPO="${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${API_REPO_NAME}"
+        WS_REPO="${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${WS_REPO_NAME}"
         echo "ui-repo=$UI_REPO" >> $GITHUB_OUTPUT
         echo "api-repo=$API_REPO" >> $GITHUB_OUTPUT
         echo "sha=$SHORT_SHA" >> $GITHUB_OUTPUT
         echo "env-short=$ENV_SHORT" >> $GITHUB_OUTPUT
-        echo "::notice::App build for '$ENV_SHORT' → ui-repo=$UI_REPO api-repo=$API_REPO sha=$SHORT_SHA"
+
+        # The ws repo is only pushed to where Terraform has created it. Pushing
+        # a tag to a non-existent repo fails the whole build-push step, which
+        # would take ui and api down with it in an environment that has not had
+        # the three-service split applied yet.
+        # An array, not a here-string: the YAML block indentation would
+        # otherwise become part of each tag value.
+        TAG_LIST=(
+          "${UI_REPO}:${SHORT_SHA}"
+          "${UI_REPO}:${ENV_SHORT}-latest"
+          "${API_REPO}:${SHORT_SHA}"
+          "${API_REPO}:${ENV_SHORT}-latest"
+        )
+        if aws ecr describe-repositories --repository-names "$WS_REPO_NAME" >/dev/null 2>&1; then
+          TAG_LIST+=("${WS_REPO}:${SHORT_SHA}" "${WS_REPO}:${ENV_SHORT}-latest")
+          echo "ws-repo=$WS_REPO" >> $GITHUB_OUTPUT
+          echo "::notice::App build for '$ENV_SHORT' → ui-repo=$UI_REPO api-repo=$API_REPO ws-repo=$WS_REPO sha=$SHORT_SHA"
+        else
+          echo "ws-repo=" >> $GITHUB_OUTPUT
+          echo "::notice::No ws ECR repo '$WS_REPO_NAME' in this environment — building ui and api only. Apply the three-service split in fm-workloads-fls to enable it."
+        fi
+        {
+          echo "tags<<TAGS_EOF"
+          printf '%s\n' "${TAG_LIST[@]}"
+          echo "TAGS_EOF"
+        } >> $GITHUB_OUTPUT
 
     - name: Build and push app image
       uses: docker/build-push-action@v5
@@ -210,11 +249,9 @@ jobs:
         # additional build-args so Vite bakes them into the client bundle.
         build-args: |
           VITE_CLERK_PUBLISHABLE_KEY=${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
-        tags: |
-          ${{ steps.meta.outputs.ui-repo }}:${{ steps.meta.outputs.sha }}
-          ${{ steps.meta.outputs.ui-repo }}:${{ steps.meta.outputs.env-short }}-latest
-          ${{ steps.meta.outputs.api-repo }}:${{ steps.meta.outputs.sha }}
-          ${{ steps.meta.outputs.api-repo }}:${{ steps.meta.outputs.env-short }}-latest
+        # Assembled in the meta step so the ws tags can be omitted where that
+        # repo does not exist yet.
+        tags: ${{ steps.meta.outputs.tags }}
         cache-from: type=gha,scope=app
         cache-to: type=gha,mode=max,scope=app
 
@@ -223,3 +260,9 @@ jobs:
       run: |
         echo "ui-image-uri=${{ steps.meta.outputs.ui-repo }}:${{ steps.meta.outputs.sha }}" >> $GITHUB_OUTPUT
         echo "api-image-uri=${{ steps.meta.outputs.api-repo }}:${{ steps.meta.outputs.sha }}" >> $GITHUB_OUTPUT
+        # Empty when the ws repo does not exist; the deploy workflow skips ws on it.
+        if [ -n "${{ steps.meta.outputs.ws-repo }}" ]; then
+          echo "ws-image-uri=${{ steps.meta.outputs.ws-repo }}:${{ steps.meta.outputs.sha }}" >> $GITHUB_OUTPUT
+        else
+          echo "ws-image-uri=" >> $GITHUB_OUTPUT
+        fi

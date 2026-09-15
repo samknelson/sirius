@@ -1,15 +1,34 @@
 name: Deploy to Environment
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Reusable workflow: rolls TWO ECS services (ui and api) sharing the same image
-# to ECS Fargate for one env.
+# Reusable workflow: rolls the ui, api and ws ECS services — all sharing the
+# same image — to ECS Fargate for one env.
 #
-# Topology: ONE container image per env, deployed to TWO ECS services in the
-# same cluster. The image runs Express on PORT=5000, which serves both the API
-# under /api/* and the built SPA from dist/public. Both services run the
-# identical image; the ALB routes /api/* to the api target group and /* to the
-# ui target group. This is a transitional shape — a future change may collapse
-# back to a single service.
+# Topology: ONE container image per env, deployed to up to THREE ECS services in
+# the same cluster. The image runs Express on PORT=5000 serving both /api/* and
+# the built SPA from dist/public. All services run the identical image; which
+# slice each one answers is selected at runtime by SERVICE_ROLE, set per service
+# by Terraform (fm-workloads-fls):
+#
+#   service   SERVICE_ROLE   ALB rule                       health check
+#   ui        static         priority 100  /*               /
+#   api       api-user       priority  10  /api, /api/*     /api/health
+#   ws        api-ws         priority   5  /api/ws, /api/ws/*   /api/ws/health
+#
+# ws is the gateway-facing web-service surface, reached through the Freeman API
+# Gateway. A container answers 503 SERVICE_ROLE_NOT_ASSIGNED for anything
+# outside its slice — including its own health check, which is why each service
+# has a different health path.
+#
+# SERVICE_ROLE IS OWNED BY TERRAFORM, NOT BY THIS WORKFLOW. It reaches a task
+# only because the describe below picks up the revision Terraform registered,
+# and because SERVICE_ROLE is on KEEP_VARS so the env replace does not strip it.
+# Hence apply-then-deploy, never the reverse.
+#
+# ws IS OPTIONAL. An environment where the three-service split has not been
+# applied yet has no ws service, so the caller passes an empty ws-image-uri (or
+# the ws service simply does not exist) and this workflow rolls ui and api only.
+# Nothing needs editing here when ws is later applied.
 #
 # NOTE (2026-06-14): fm-workloads-fls switched to Mode B
 # (`ignore_task_definition_changes = true`). This workflow IS the source of
@@ -59,8 +78,10 @@ name: Deploy to Environment
 #   AWS_REGION              = us-east-2 (short code: use2)
 #   ECS UI service name     = fm-fls-ui-<env-short>-use2
 #   ECS API service name    = fm-fls-api-<env-short>-use2
+#   ECS WS service name     = fm-fls-ws-<env-short>-use2
 #   UI task family          = fm-fls-ui-<env-short>-use2
 #   API task family         = fm-fls-api-<env-short>-use2
+#   WS task family          = fm-fls-ws-<env-short>-use2
 #   (service name == task family name in this topology)
 #
 # Environment → short code mapping:
@@ -85,6 +106,11 @@ on:
       api-image-uri:
         description: 'Full ECR URI for the API repo image (with tag)'
         required: true
+        type: string
+      ws-image-uri:
+        description: 'Full ECR URI for the WS repo image (with tag). Leave empty in an environment where the ws service has not been applied yet; ws is then skipped.'
+        required: false
+        default: ''
         type: string
       rollback-on-failure:
         description: 'If the rollout fails, return each service that was updated to its previous task revision'
@@ -136,10 +162,12 @@ jobs:
         # Service name == task family name for each component.
         UI_SERVICE="fm-${{ env.PROJECT }}-ui-${ENV_SHORT}-${{ env.SHORT_REGION }}"
         API_SERVICE="fm-${{ env.PROJECT }}-api-${ENV_SHORT}-${{ env.SHORT_REGION }}"
+        WS_SERVICE="fm-${{ env.PROJECT }}-ws-${ENV_SHORT}-${{ env.SHORT_REGION }}"
         echo "env-short=$ENV_SHORT" >> $GITHUB_OUTPUT
         echo "env-lower=$ENV_LOWER" >> $GITHUB_OUTPUT
         echo "ui-service=$UI_SERVICE" >> $GITHUB_OUTPUT
         echo "api-service=$API_SERVICE" >> $GITHUB_OUTPUT
+        echo "ws-service=$WS_SERVICE" >> $GITHUB_OUTPUT
 
     - name: Build container env from GitHub Environment
       id: appenv
@@ -188,6 +216,28 @@ jobs:
         echo "api-prev-task-arn=$API_PREV" >> "$GITHUB_OUTPUT"
         echo "Currently running — ui: $UI_PREV"
         echo "Currently running — api: $API_PREV"
+
+        # ws is in play only when the caller supplied an image for it AND the
+        # service exists in this environment. describe-services does not fail on
+        # a missing service — it returns an empty services[] which the query
+        # renders as "None" — so that is checked explicitly rather than trusted.
+        WS_SERVICE="${{ steps.names.outputs.ws-service }}"
+        WS_ENABLED=false
+        if [ -z "${{ inputs.ws-image-uri }}" ]; then
+          echo "::notice::No ws-image-uri supplied — rolling ui and api only."
+        else
+          WS_PREV=$(aws ecs describe-services --cluster "$CLUSTER" \
+            --services "$WS_SERVICE" \
+            --query 'services[0].taskDefinition' --output text)
+          if [ -z "$WS_PREV" ] || [ "$WS_PREV" = "None" ]; then
+            echo "::warning::ws-image-uri was supplied but ECS service '$WS_SERVICE' does not exist in cluster '$CLUSTER'. Rolling ui and api only — apply the three-service split in fm-workloads-fls for this environment."
+          else
+            WS_ENABLED=true
+            echo "ws-prev-task-arn=$WS_PREV" >> "$GITHUB_OUTPUT"
+            echo "Currently running — ws: $WS_PREV"
+          fi
+        fi
+        echo "ws-enabled=$WS_ENABLED" >> "$GITHUB_OUTPUT"
 
     - name: Install stability waiter
       # `aws ecs wait services-stable` is capped at 40 attempts x 15s = 10
@@ -241,6 +291,8 @@ jobs:
         set -euo pipefail
         UI_SERVICE="${{ steps.names.outputs.ui-service }}"
         API_SERVICE="${{ steps.names.outputs.api-service }}"
+        WS_SERVICE="${{ steps.names.outputs.ws-service }}"
+        WS_ENABLED="${{ steps.current.outputs.ws-enabled }}"
         CLUSTER="${{ vars.ECS_CLUSTER }}"
 
         # -- GitHub-managed env vars (replace semantics) ---------------------
@@ -355,10 +407,57 @@ jobs:
           --force-new-deployment > /dev/null
         echo "api-updated=true" >> "$GITHUB_OUTPUT"
 
-        # ── Wait for both services to stabilize ─────────────────────────────
+        # ── WS ──────────────────────────────────────────────────────────────
+        # Skipped entirely where the service does not exist (see the capture
+        # step); ui and api are unaffected by its absence.
+        SERVICES=("$UI_SERVICE" "$API_SERVICE")
+        if [ "$WS_ENABLED" = "true" ]; then
+          echo "Describing latest revision of task family '$WS_SERVICE'..."
+          aws ecs describe-task-definition --task-definition "$WS_SERVICE" \
+            --query 'taskDefinition' --output json > ws-taskdef.json
+
+          # Guard: same single-container assumption as the UI task (see above).
+          WS_CONTAINERS=$(jq '.containerDefinitions | length' ws-taskdef.json)
+          if [ "$WS_CONTAINERS" -ne 1 ]; then
+            echo "::error::WS task definition '$WS_SERVICE' has $WS_CONTAINERS container definitions; expected exactly 1. Refusing to guess which to update."
+            exit 1
+          fi
+
+          echo "Swapping WS image to ${{ inputs.ws-image-uri }}..."
+          # Same env replace as the UI task above (GitHub wins collisions).
+          jq --arg img "${{ inputs.ws-image-uri }}" --argjson extra "$EXTRA_ENV" --argjson keep "$KEEP_VARS" '
+            .containerDefinitions[0].image = $img |
+            .containerDefinitions[0].environment =
+              ((((.containerDefinitions[0].environment // [])
+                 | map(select(.name as $n | $keep | index($n)))) + $extra)
+               | group_by(.name) | map(last)) |
+            del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                .compatibilities, .registeredAt, .registeredBy,
+                .enableFaultInjection, .deregisteredAt)
+          ' ws-taskdef.json > ws-taskdef-new.json
+
+          WS_NEW_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://ws-taskdef-new.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "ws-task-arn=$WS_NEW_ARN" >> "$GITHUB_OUTPUT"
+          echo "Registered WS revision: $WS_NEW_ARN"
+
+          echo "Updating service '$WS_SERVICE' to use new revision..."
+          aws ecs update-service \
+            --cluster "$CLUSTER" \
+            --service "$WS_SERVICE" \
+            --task-definition "$WS_NEW_ARN" \
+            --force-new-deployment > /dev/null
+          echo "ws-updated=true" >> "$GITHUB_OUTPUT"
+          SERVICES+=("$WS_SERVICE")
+        else
+          echo "Skipping ws — not enabled for this environment."
+        fi
+
+        # ── Wait for the rolled services to stabilize ───────────────────────
         echo "Waiting up to ${{ inputs.stability-timeout-minutes }}m for services to stabilize..."
         "$RUNNER_TEMP/wait-stable.sh" "$CLUSTER" "${{ inputs.stability-timeout-minutes }}" \
-          "$UI_SERVICE" "$API_SERVICE"
+          "${SERVICES[@]}"
         echo "Deploy complete."
 
     - name: Roll back on failure
@@ -370,6 +469,7 @@ jobs:
         CLUSTER="${{ vars.ECS_CLUSTER }}"
         UI_SERVICE="${{ steps.names.outputs.ui-service }}"
         API_SERVICE="${{ steps.names.outputs.api-service }}"
+        WS_SERVICE="${{ steps.names.outputs.ws-service }}"
 
         ROLLED=()
         if [ "${{ steps.deploy.outputs.ui-updated }}" = "true" ]; then
@@ -390,6 +490,16 @@ jobs:
             --task-definition "${{ steps.current.outputs.api-prev-task-arn }}" \
             --force-new-deployment > /dev/null
           ROLLED+=("$API_SERVICE")
+        fi
+
+        if [ "${{ steps.deploy.outputs.ws-updated }}" = "true" ]; then
+          echo "Rolling '$WS_SERVICE' back to ${{ steps.current.outputs.ws-prev-task-arn }}..."
+          aws ecs update-service \
+            --cluster "$CLUSTER" \
+            --service "$WS_SERVICE" \
+            --task-definition "${{ steps.current.outputs.ws-prev-task-arn }}" \
+            --force-new-deployment > /dev/null
+          ROLLED+=("$WS_SERVICE")
         fi
 
         if [ ${#ROLLED[@]} -eq 0 ]; then
@@ -418,4 +528,10 @@ jobs:
         - **Service:** ${{ steps.names.outputs.api-service }}
         - **Image:** \`${{ inputs.api-image-uri }}\`
         - **Task revision:** ${{ steps.deploy.outputs.api-task-arn }}
+
+        ### WS
+        - **Enabled:** ${{ steps.current.outputs.ws-enabled }}
+        - **Service:** ${{ steps.names.outputs.ws-service }}
+        - **Image:** \`${{ inputs.ws-image-uri }}\`
+        - **Task revision:** ${{ steps.deploy.outputs.ws-task-arn }}
         EOF
