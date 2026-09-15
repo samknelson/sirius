@@ -151,16 +151,6 @@ export const configSections: NavSection[] = [
       { path: "/config/steward-settings", label: "Steward", icon: Users, testId: "nav-config-steward-settings", permission: "admin", requiresComponent: "worker.steward" },
       { path: "/config/workers/ban", label: "Ban Notifications", icon: Shield, testId: "nav-config-workers-ban", permission: "admin", requiresComponent: "worker.ban" },
       { path: "/config/workers/tos", label: "Time Off Sick", icon: Calendar, testId: "nav-config-workers-tos", permission: "admin", requiresComponent: "worker.tos" },
-      { path: "/config/workers/user-settings", label: "Worker User Settings", icon: Settings, testId: "nav-config-users-worker-settings", permission: "admin" },
-    ],
-  },
-  {
-    id: "employers",
-    title: "Employers",
-    description: "Employer-related configuration",
-    icon: Building2,
-    items: [
-      { path: "/config/employers/user-settings", label: "Employer User Settings", icon: Settings, testId: "nav-config-users-employer-settings", permission: "admin" },
     ],
   },
   {
@@ -202,7 +192,6 @@ export const configSections: NavSection[] = [
     icon: Heart,
     items: [
       { path: "/trust-benefits", label: "Trust Benefits", icon: Heart, testId: "nav-trust-benefits", permission: "staff" },
-      { path: "/config/trust/providers/user-settings", label: "Provider User Settings", icon: Settings, testId: "nav-config-users-trust-provider-settings", permission: "admin" },
       { path: "/config/trust/sitespecific/bao/thresholds", label: "Member Status Thresholds", icon: Clock, testId: "nav-config-bao-thresholds", permission: "admin", requiresComponent: "sitespecific.bao" },
     ],
   },

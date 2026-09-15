@@ -232,7 +232,6 @@ const UserSendSms = lazy(() => import("@/pages/admin/user-send-sms"));
 const UserSendEmail = lazy(() => import("@/pages/admin/user-send-email"));
 const UserSendPostal = lazy(() => import("@/pages/admin/user-send-postal"));
 const UserSendInApp = lazy(() => import("@/pages/admin/user-send-inapp"));
-const AdminRolesPage = lazy(() => import("@/pages/admin/roles"));
 const AdminPermissionsPage = lazy(() => import("@/pages/admin/permissions"));
 const LetterTemplatesPage = lazy(() => import("@/pages/admin/letter-templates"));
 const LetterTemplateDetailPage = lazy(() => import("@/pages/admin/letter-template-detail"));
@@ -249,9 +248,6 @@ const UsersListPage = lazy(() => import("@/pages/config/users/list"));
 const RolesPage = lazy(() => import("@/pages/config/users/roles"));
 const PermissionsPage = lazy(() => import("@/pages/config/users/permissions"));
 const PoliciesPage = lazy(() => import("@/pages/config/users/policies"));
-const EmployerUserSettingsPage = lazy(() => import("@/pages/config/users/employer-settings"));
-const TrustProviderUserSettingsPage = lazy(() => import("@/pages/config/users/trust-provider-settings"));
-const WorkerUserSettingsPage = lazy(() => import("@/pages/config/users/worker-settings"));
 const SessionsPage = lazy(() => import("@/pages/sessions"));
 const FloodEventsPage = lazy(() => import("@/pages/flood-events"));
 const FloodEventsConfigPage = lazy(() => import("@/pages/flood-events-config"));
@@ -2562,35 +2558,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/employers/user-settings">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <EmployerUserSettingsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/trust/providers/user-settings">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <TrustProviderUserSettingsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/workers/user-settings">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <WorkerUserSettingsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
       <Route path="/admin/users/sessions">
         <ProtectedRoute permission="admin">
@@ -4090,16 +4057,6 @@ function Router() {
 
       <Route path="/config/ledger/accounts">
         <Redirect to="/ledger/accounts" />
-      </Route>
-
-      <Route path="/admin/roles">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <AdminLayout>
-              <AdminRolesPage />
-            </AdminLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
       </Route>
 
       <Route path="/admin/permissions">

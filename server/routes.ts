@@ -52,9 +52,6 @@ import {
   registerComponentRoutes,
   getEnabledComponentIds,
 } from "./modules/components";
-import { registerEmployerUserSettingsRoutes } from "./modules/employers/user-settings";
-import { registerTrustProviderUserSettingsRoutes } from "./modules/trust/provider/user-settings";
-import { registerWorkerUserSettingsRoutes } from "./modules/worker-user-settings";
 import { registerWorkerUsersRoutes } from "./modules/workers/users";
 import { registerWizardRoutes } from "./modules/wizards";
 import { registerWizardDispatcherRoutes } from "./plugins/wizards";
@@ -312,15 +309,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerUserRoutes(app, requireAuth, requirePermission);
   registerLetterTemplateRoutes(app, requireAccess);
 
-  // Register employer user settings routes
-  registerEmployerUserSettingsRoutes(app, requireAuth, requirePermission);
-
-  // Register trust provider user settings routes
-  registerTrustProviderUserSettingsRoutes(app, requireAuth, requirePermission);
-  
-  // Register worker user settings routes
-  registerWorkerUserSettingsRoutes(app, requireAuth, requirePermission);
-  
   // Register worker users routes (create/manage user accounts for workers)
   registerWorkerUsersRoutes(app, requireAuth, requirePermission);
   

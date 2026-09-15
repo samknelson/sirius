@@ -72,6 +72,27 @@ const terminologyValueSchema = terminologySchema.transform((terms) => {
 });
 
 const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
+  // Role assignments for externally scoped users (admin read/write).
+  // The generic variable routes own persistence for the Roles page tabs.
+  worker_user_roles_required: {
+    schema: z.array(z.string()).transform((ids) => Array.from(new Set(ids))),
+  },
+  worker_user_roles_optional: {
+    schema: z.array(z.string()).transform((ids) => Array.from(new Set(ids))),
+  },
+  employer_user_roles_required: {
+    schema: z.array(z.string()).transform((ids) => Array.from(new Set(ids))),
+  },
+  employer_user_roles_optional: {
+    schema: z.array(z.string()).transform((ids) => Array.from(new Set(ids))),
+  },
+  trust_provider_user_roles_required: {
+    schema: z.array(z.string()).transform((ids) => Array.from(new Set(ids))),
+  },
+  trust_provider_user_roles_optional: {
+    schema: z.array(z.string()).transform((ids) => Array.from(new Set(ids))),
+  },
+
   // Staff-readable, gated by the grievance component (deadline coloring)
   "grievance.deadline_thresholds": { readTier: "staff", component: "grievance" },
 
