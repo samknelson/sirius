@@ -1,13 +1,21 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Plus, Search, ArrowRight, Loader2, RefreshCw } from "lucide-react";
+import { FileText, Plus, Search, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useCatalogQuery } from "@/hooks/useCatalogQuery";
@@ -25,12 +33,15 @@ export interface LetterTemplate {
 }
 
 const mediumLabel: Record<MediumName, string> = { email: "Email", sms: "SMS", postal: "Postal", inapp: "In-app" };
+const ANY = "__any__";
 
 export default function LetterTemplatesPage() {
   usePageTitle("Letter Templates");
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [contextFilter, setContextFilter] = useState(ANY);
+  const [mediumFilter, setMediumFilter] = useState(ANY);
   const [name, setName] = useState("");
   const [medium, setMedium] = useState<MediumName>("email");
   const [contextIds, setContextIds] = useState<string[]>([]);
@@ -42,10 +53,24 @@ export default function LetterTemplatesPage() {
     () => (contexts.data?.catalog.entries ?? []).map((entry) => readTokenContext(entry as never)).filter(Boolean),
     [contexts.data],
   );
+  const contextNames = useMemo(
+    () => new Map(contextOptions.map((context) => [context!.id, context!.name])),
+    [contextOptions],
+  );
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return (templates.data ?? []).filter((item) => !term || item.name.toLowerCase().includes(term) || item.id.toLowerCase().includes(term));
-  }, [templates.data, search]);
+    return (templates.data ?? []).filter((item) => (
+      (!term || item.name.toLowerCase().includes(term)) &&
+      (contextFilter === ANY || item.contextIds.includes(contextFilter)) &&
+      (mediumFilter === ANY || item.medium === mediumFilter)
+    ));
+  }, [templates.data, search, contextFilter, mediumFilter]);
+  const isFiltered = Boolean(search.trim()) || contextFilter !== ANY || mediumFilter !== ANY;
+  const clearFilters = () => {
+    setSearch("");
+    setContextFilter(ANY);
+    setMediumFilter(ANY);
+  };
 
   const create = useMutation({
     mutationFn: () => apiRequest("POST", "/api/admin/letter-templates", { name: name.trim(), medium, contextIds }),
@@ -74,22 +99,70 @@ export default function LetterTemplatesPage() {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-3 border-b py-4">
+          <CardHeader className="space-y-4 border-b py-4">
             <CardTitle className="text-base">Saved templates</CardTitle>
-            <div className="relative w-full max-w-xs">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input className="h-9 pl-9" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or ID" aria-label="Search templates" />
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(180px,1fr)_minmax(160px,220px)_minmax(140px,180px)_auto]">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input className="h-9 pl-9" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name" aria-label="Search templates by name" />
+              </div>
+              <Select value={contextFilter} onValueChange={setContextFilter} disabled={contexts.isLoading || contexts.isError}>
+                <SelectTrigger className="h-9" aria-label="Filter by context">
+                  <SelectValue placeholder={contexts.isLoading ? "Loading contexts…" : "All contexts"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ANY}>All contexts</SelectItem>
+                  {contextOptions.map((context) => context && <SelectItem key={context.id} value={context.id}>{context.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={mediumFilter} onValueChange={setMediumFilter}>
+                <SelectTrigger className="h-9" aria-label="Filter by medium">
+                  <SelectValue placeholder="All media" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ANY}>All media</SelectItem>
+                  {MEDIUM_NAMES.map((value) => <SelectItem key={value} value={value}>{mediumLabel[value]}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button type="button" variant="outline" size="sm" className="h-9" onClick={clearFilters} disabled={!isFiltered}>Clear filters</Button>
             </div>
           </CardHeader>
           <CardContent className="p-0">
             {templates.isLoading ? <div className="space-y-3 p-5"><div className="h-10 animate-pulse rounded bg-muted" /><div className="h-10 animate-pulse rounded bg-muted" /></div> :
               templates.isError ? <div className="p-8 text-center"><p className="text-sm text-destructive">Couldn’t load letter templates.</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void templates.refetch()}><RefreshCw className="mr-2 h-4 w-4" />Retry</Button></div> :
-              visible.length === 0 ? <div className="p-10 text-center"><FileText className="mx-auto h-8 w-8 text-muted-foreground/50" /><p className="mt-3 text-sm font-medium">{search ? "No matching templates" : "No letter templates yet"}</p><p className="mt-1 text-xs text-muted-foreground">{search ? "Try a different name or identifier." : "Create the first reusable delivery template."}</p></div> :
-              <div className="divide-y">{visible.map((item) => <Link key={item.id} href={`/admin/letter-templates/${item.id}`} className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-muted/40">
-                <div className="flex h-9 w-9 items-center justify-center rounded-md border bg-muted/30"><FileText className="h-4 w-4 text-muted-foreground" /></div>
-                <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{item.name}</p><p className="mt-1 font-mono text-[11px] text-muted-foreground">{item.id} · {item.contextIds.length} context{item.contextIds.length === 1 ? "" : "s"}</p></div>
-                <span className="rounded border px-2 py-1 text-[11px] font-medium text-muted-foreground">{mediumLabel[item.medium]}</span><ArrowRight className="h-4 w-4 text-muted-foreground" />
-              </Link>)}</div>}
+              visible.length === 0 ? <div className="p-10 text-center"><FileText className="mx-auto h-8 w-8 text-muted-foreground/50" /><p className="mt-3 text-sm font-medium">{isFiltered ? "No matching templates" : "No letter templates yet"}</p><p className="mt-1 text-xs text-muted-foreground">{isFiltered ? "Try changing or clearing the filters." : "Create the first reusable delivery template."}</p></div> :
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Contexts</TableHead>
+                    <TableHead>Medium</TableHead>
+                    <TableHead className="w-24 text-right">View</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visible.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-medium">{item.name}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1.5">
+                          {item.contextIds.map((contextId) => (
+                            <span key={contextId} className="rounded border bg-muted/30 px-2 py-1 text-xs">
+                              {contextNames.get(contextId) ?? contextId}
+                            </span>
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell>{mediumLabel[item.medium]}</TableCell>
+                      <TableCell className="text-right">
+                        <Link href={`/admin/letter-templates/${item.id}`} className="text-sm font-medium text-primary underline-offset-4 hover:underline">
+                          View
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>}
           </CardContent>
         </Card>
 
