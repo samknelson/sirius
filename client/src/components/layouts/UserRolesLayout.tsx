@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Shield } from "lucide-react";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { EntityTabNavigation } from "@/components/shared/EntityTabNavigation";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useUserRolesTabAccess } from "@/hooks/useTabAccess";
@@ -14,19 +15,11 @@ export default function UserRolesLayout({ activeTab, children }: UserRolesLayout
   const { tabs } = useUserRolesTabAccess();
 
   return (
-    <div className="container mx-auto max-w-7xl space-y-6 py-8">
-      <div>
-        <h1
-          className="flex items-center gap-2 text-2xl font-bold md:text-3xl"
-          data-testid="heading-roles"
-        >
-          <Shield className="h-7 w-7" />
-          Role Management
-        </h1>
-        <p className="mt-2 text-muted-foreground">
-          Define roles and configure role assignment for each user type
-        </p>
-      </div>
+    <div className="min-h-screen bg-background text-foreground">
+      <PageHeader
+        title="Role Management"
+        icon={<Shield className="text-primary-foreground" size={16} />}
+      />
 
       <EntityTabNavigation
         tabs={tabs}
@@ -35,7 +28,9 @@ export default function UserRolesLayout({ activeTab, children }: UserRolesLayout
         primaryTestId="tabs-user-roles"
       />
 
-      {children}
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        {children}
+      </main>
     </div>
   );
 }
