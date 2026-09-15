@@ -1,4 +1,3 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Briefcase, Shield, User } from 'lucide-react';
 import RolesManagement from '@/components/admin/RolesManagement';
 import UserRoleSettings from '@/components/admin/UserRoleSettings';
@@ -45,18 +44,5 @@ export default function RolesPage({ view = "roles" }: { view?: RolesView }) {
     );
   }
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Shield className="h-5 w-5" />
-          Roles
-        </CardTitle>
-        <CardDescription>Create and manage roles and assign permissions</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <RolesManagement />
-      </CardContent>
-    </Card>
-  );
+  return <RolesManagement />;
 }
