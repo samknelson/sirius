@@ -1,4 +1,4 @@
-import { getClient, onAfterCommit } from './transaction-context';
+import { getClient, onAfterCommit, runInTransaction } from './transaction-context';
 import {
   workers,
   contacts,
@@ -9,12 +9,14 @@ import {
   workerWshDenorm,
   workerEmploymentDenorm,
   denorm,
+  trustWmb,
+  workerRelations,
   type Worker,
   type InsertWorker,
   type TrustBenefit,
   type Employer,
 } from "@shared/schema";
-import { eq, sql, and, or, ne, isNull } from "drizzle-orm";
+import { eq, sql, and, or, ne, isNull, inArray } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { logger } from "../logger";
@@ -26,6 +28,11 @@ import { parseSSN, validateSSN } from "@shared/utils/ssn";
 import { isComponentEnabledSync } from "../services/component-cache";
 import { provenanceCreatedDate } from "./system/entity-metadata-order";
 import { eventBus, EventType } from "../services/event-bus";
+import { tableExists } from "./utils";
+import {
+  affectedWorkerBenefitRoleHistoryWorkers,
+  enqueueWorkerBenefitRoleHistoryInvalidations,
+} from "./trust/worker-benefit-role-history-invalidation";
 
 export const ssnValidate = createAsyncStorageValidator<{ ssn: string | null; workerId?: string; allowSsaRuleInvalid?: boolean }, never, { ssn: string | null }>(
   async (data) => {
@@ -1523,29 +1530,78 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async deleteWorker(id: string): Promise<boolean> {
-      const client = getClient();
-      // Get the worker to find its contact
-      const [worker] = await client.select().from(workers).where(eq(workers.id, id));
-      if (!worker) {
-        return false;
-      }
-      
-      // Delete the worker first
-      const result = await client.delete(workers).where(eq(workers.id, id)).returning();
-      
-      // If worker was deleted, also delete the corresponding contact using contact storage
-      if (result.length > 0) {
-        await contactsStorage.deleteContact(worker.contactId);
-        // Announce the deletion once it is durable, so the areas that hang off
-        // a worker with no foreign key (notes, file attachments) clean up now
-        // rather than waiting for their nightly sweep. Best-effort: a failed
-        // emit or handler never fails the delete.
-        onAfterCommit(() => {
-          void eventBus.emit(EventType.WORKER_DELETE_AFTER, { workerId: id });
-        });
-      }
-      
-      return result.length > 0;
+      return runInTransaction(async () => {
+        const client = getClient();
+        // Read the contact id only to establish the global delete lock order.
+        // Contact deletion locks contact -> worker, so worker deletion must do
+        // the same (never worker -> contact) to avoid a concurrent-delete
+        // deadlock.
+        const [worker] = await client.select().from(workers).where(eq(workers.id, id));
+        if (!worker) {
+          return false;
+        }
+        await client.execute(sql`
+          SELECT id FROM contacts WHERE id = ${worker.contactId} FOR UPDATE
+        `);
+        // This conflicts with FK KEY SHARE acquired by concurrent WMB and
+        // relation inserts, so every cascade survivor is visible in the
+        // snapshot below before the worker can be removed.
+        const lockedWorker = await client.execute(sql`
+          SELECT id FROM workers WHERE id = ${id} FOR UPDATE
+        `);
+        // A concurrent contact deletion may have cascaded this worker while we
+        // waited for the contact lock.
+        if (lockedWorker.rows.length === 0) return false;
+
+        // A worker delete cascades relationships and its WMB rows. Snapshot
+        // every surviving counterpart plus WMB receiver/grantor before the
+        // FK actions erase the relation direction or convert source ids to
+        // NULL. Deployments without the optional relation table still delete
+        // safely and simply have no surviving relationship fan-out.
+        const affectedWorkers = new Set<string>();
+        if (await tableExists("worker_relations")) {
+          const relations = await client
+            .select({
+              id: workerRelations.id,
+              worker1: workerRelations.worker1,
+              worker2: workerRelations.worker2,
+            })
+            .from(workerRelations)
+            .where(or(eq(workerRelations.worker1, id), eq(workerRelations.worker2, id)));
+          relations.forEach((relation) => {
+            if (relation.worker1 !== id) affectedWorkers.add(relation.worker1);
+            if (relation.worker2 !== id) affectedWorkers.add(relation.worker2);
+          });
+          const relationIds = relations.map((relation) => relation.id);
+          if (relationIds.length) {
+            const wmbSources = await client
+              .select({ workerId: trustWmb.workerId, sourceRelationId: trustWmb.sourceRelationId })
+              .from(trustWmb)
+              .where(inArray(trustWmb.sourceRelationId, relationIds));
+            (await affectedWorkerBenefitRoleHistoryWorkers(wmbSources))
+              .filter((workerId) => workerId !== id)
+              .forEach((workerId) => affectedWorkers.add(workerId));
+          }
+        }
+
+        // Delete the worker first.
+        const result = await client.delete(workers).where(eq(workers.id, id)).returning();
+
+        // If worker was deleted, also delete the corresponding contact using contact storage
+        if (result.length > 0) {
+          await enqueueWorkerBenefitRoleHistoryInvalidations([...affectedWorkers]);
+          await contactsStorage.deleteContact(worker.contactId);
+          // Announce the deletion once it is durable, so the areas that hang off
+          // a worker with no foreign key (notes, file attachments) clean up now
+          // rather than waiting for their nightly sweep. Best-effort: a failed
+          // emit or handler never fails the delete.
+          onAfterCommit(() => {
+            void eventBus.emit(EventType.WORKER_DELETE_AFTER, { workerId: id });
+          });
+        }
+
+        return result.length > 0;
+      });
     },
 
     async getMemberStatusCodesByIndustry(industryId: string, workerIdsList: string[]): Promise<Array<{ workerId: string; code: string }>> {

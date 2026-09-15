@@ -59,7 +59,7 @@
 - [Storage audit log args PII](storage-audit-log-args-pii.md) — logged storage methods persist raw args to winston_logs; redact payloads via logArgs, conditional-log via shouldLog; prune deletes must re-qualify atomically.
 - [Inbound maintenance refusal ordering](inbound-maintenance-gate.md) — an always-on refusal goes at the FRONT of middleware assembly (body parsers 400/413 first, auth writes a last-used stamp); router registration must assert it.
 - [Maintenance-mode write lock + vendor refusal](maintenance-mode-write-lock.md) — read-only per pool checkout AND one guard refusing every outbound vendor call off the same import-free flag; allowInMaintenanceMode unlocks the DB only.
-- [Denorm event ordering race](denorm-event-ordering-race.md) — registry runs compute() outside applyComputed's tx; stale snapshot can win last & be marked ok. Framework-wide, don't fix per-plugin.
+- [Denorm concurrency](denorm-event-ordering-race.md) — all invalidations share the guard, even migrations; disabled means paused, not lost; measure batching at real commit boundaries.
 - [Dashboard target-view gating](dashboard-target-view-gating.md) — "view as user" overrides must enforce ALL gates (incl. client requiredPermissions hint) against the target on every endpoint via one shared helper.
 - [Policy delegation defeats skipCache](policy-delegation-cache-staleness.md) — ctx.checkPolicy sub-policy results are cached ~5min even when the outer policy sets skipCache; inline relationship checks for revocation-critical policies.
 - [Template Studio preview pattern](template-studio-host-pattern.md) — preview request is self-describing (specs+finished templates+context, no registry); callers compose their own templates; shared field tables keep preview==delivery.

@@ -1,8 +1,12 @@
 import { createNoopValidator } from '../utils/validation';
-import { getClient } from '../transaction-context';
-import { trustBenefits, optionsTrustBenefitType, type TrustBenefit, type InsertTrustBenefit } from "@shared/schema";
-import { eq, asc } from "drizzle-orm";
+import { getClient, runInTransaction } from '../transaction-context';
+import { trustBenefits, trustWmb, optionsTrustBenefitType, type TrustBenefit, type InsertTrustBenefit } from "@shared/schema";
+import { eq, asc, sql } from "drizzle-orm";
 import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
+import {
+  affectedWorkerBenefitRoleHistoryWorkers,
+  enqueueWorkerBenefitRoleHistoryInvalidations,
+} from "./worker-benefit-role-history-invalidation";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -124,9 +128,27 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
     },
 
     async deleteTrustBenefit(id: string): Promise<boolean> {
-      const client = getClient();
-      const result = await client.delete(trustBenefits).where(eq(trustBenefits.id, id)).returning();
-      return result.length > 0;
+      return runInTransaction(async () => {
+        const client = getClient();
+        // FK inserts acquire KEY SHARE on the parent. Lock it before taking the
+        // cascading-WMB snapshot so an insert cannot commit between snapshot
+        // and delete and escape the role-history invalidation.
+        await client.execute(sql`
+          SELECT id FROM trust_benefits WHERE id = ${id} FOR UPDATE
+        `);
+        // The benefit FK cascades its WMB rows directly in PostgreSQL. Capture
+        // both receivers and relationship grantors before that cascade.
+        const wmbSources = await client
+          .select({ workerId: trustWmb.workerId, sourceRelationId: trustWmb.sourceRelationId })
+          .from(trustWmb)
+          .where(eq(trustWmb.benefitId, id));
+        const affectedWorkers = await affectedWorkerBenefitRoleHistoryWorkers(wmbSources);
+        const result = await client.delete(trustBenefits).where(eq(trustBenefits.id, id)).returning();
+        if (result.length > 0) {
+          await enqueueWorkerBenefitRoleHistoryInvalidations(affectedWorkers);
+        }
+        return result.length > 0;
+      });
     }
   };
 }

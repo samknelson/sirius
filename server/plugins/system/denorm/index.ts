@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { logger } from "../../../logger";
+import { eventBus, EventType } from "../../../services/event-bus";
 import {
   registerPluginKind,
   registerPluginConfigAdapter,
@@ -7,6 +8,7 @@ import {
   baseSearchSchemaShape,
 } from "../../_core";
 import { denormPluginRegistry } from "./registry";
+import { recomputeStaleDenorm } from "./recompute";
 
 export * from "./types";
 export { denormPluginRegistry, registerDenormPlugin, getDenormPlugin } from "./registry";
@@ -26,6 +28,7 @@ export {
 } from "./recompute";
 
 let kindRegistered = false;
+let drainTickSubscribed = false;
 function registerDenormKind(): void {
   if (kindRegistered) return;
   registerPluginKind({
@@ -82,6 +85,20 @@ function registerDenormKind(): void {
       };
     },
   });
+  if (!drainTickSubscribed) {
+    // The tick emitter is the shared bounded cadence. This leaves the
+    // operator-configured hourly denorm cron alone while giving expensive,
+    // deferred producers six independently claimed drain opportunities/hour.
+    eventBus.on({
+      name: "denorm:bounded-stale-drain",
+      description: "Drains bounded deferred denorm work every ten-minute shared tick.",
+      event: EventType.CRON_TICK_10M,
+      handler: async () => {
+        await recomputeStaleDenorm();
+      },
+    });
+    drainTickSubscribed = true;
+  }
   kindRegistered = true;
 }
 
@@ -112,6 +129,7 @@ import "./plugins/employerMonthly";
 import "./plugins/trustWmbStart";
 import "./plugins/trustWmbRestart";
 import "./plugins/trustWmbTerminate";
+import "./plugins/workerBenefitRoleHistory";
 // Dispatch-eligibility denorm plugins (write side of dispatch eligibility).
 import "./plugins/dispatch/accepted";
 // Auto Sign-In: sets workers back to Available when their accepted primary

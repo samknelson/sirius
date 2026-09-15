@@ -37,6 +37,14 @@ export interface RequestContext {
    */
   wmbScanWrite?: boolean;
   /**
+   * A bounded per-worker scan transaction's role-history invalidations. WMB
+   * storage adds affected receiver/grantor ids here and the scan flushes them
+   * once before that source transaction commits.
+   */
+  wmbBenefitRoleHistoryWorkerIds?: Set<string>;
+  /** Per-transaction relationship lookup cache paired with the collector. */
+  wmbBenefitRoleHistoryGrantors?: Map<string, string | null>;
+  /**
    * When true, the charge-plugin executor refuses to run any charge plugin
    * within this async scope (it logs and returns an empty result instead).
    * This is the S1→S2 migration mode: bulk loaders (e.g. the T20 hours
@@ -198,6 +206,29 @@ export function withWmbScanWrites<T>(fn: () => Promise<T>): Promise<T> {
   const current = requestContext.getStore();
   const next: RequestContext = { ...(current ?? {}), wmbScanWrite: true };
   return requestContext.run(next, fn);
+}
+
+/**
+ * Coalesce role-history invalidations within one bounded source transaction.
+ * The caller supplies the storage flush so this context module never performs
+ * database work itself. A throw skips the flush and lets the surrounding
+ * transaction roll back both source changes and any prior marker writes.
+ */
+export async function withWmbBenefitRoleHistoryInvalidationBatch<T>(
+  flush: (workerIds: string[]) => Promise<void>,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const current = requestContext.getStore();
+  const next: RequestContext = {
+    ...(current ?? {}),
+    wmbBenefitRoleHistoryWorkerIds: new Set<string>(),
+    wmbBenefitRoleHistoryGrantors: new Map<string, string | null>(),
+  };
+  return requestContext.run(next, async () => {
+    const result = await fn();
+    await flush(Array.from(next.wmbBenefitRoleHistoryWorkerIds!));
+    return result;
+  });
 }
 
 /**

@@ -1,10 +1,10 @@
 ---
 name: Denorm event ordering race
-description: Framework-wide race — denorm registry runs compute() before applyComputed's lock, so a stale snapshot can overwrite newer facts and be marked ok.
+description: Shared denorm invalidations must protect computation snapshots, including disabled processing and migration cleanup.
 ---
 
-The denorm registry runs `plugin.compute(entityId)` BEFORE `applyComputed` acquires the status-row lock. Rapid same-entity mutations can compute divergent snapshots; the older one can win the lock last, overwrite the newer facts, and mark the row `ok` — so the stale sweep never repairs it.
+Keep concurrency protection in the shared denorm framework, not in individual plugins. Every source invalidation must participate, including hand-written stale upserts and migration cleanup. Disabling processing must not disable durable invalidation.
 
-**Why:** the status-row lock serializes writes, not the reads that produced them. Shared by every denorm plugin; not plugin-specific.
+**Why:** serializing writes alone does not protect the earlier reads that produced them. A missed invalidation can leave an existing payload permanently incorrect; missing-row backfill will not repair it. A disabled config means paused processing, not permission to lose changes.
 
-**How to apply:** never attempt a per-plugin fix in a new denorm plugin — follow the existing convention. A real fix belongs in the registry: serialize/coalesce per (plugin, config, entity), compute inside the applyComputed transaction after taking the status row, or add a monotonic revision guard.
+**How to apply:** use the shared invalidation and guarded apply contract for every writer. Benchmark bulk work at the actual source commit boundaries; one artificial scan-wide transaction conceals bookkeeping costs and does not prove partial-failure safety.

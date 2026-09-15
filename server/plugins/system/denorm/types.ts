@@ -52,6 +52,12 @@ export interface DenormEventHandler<TPayload = unknown> {
    * omitted, the registry recomputes via `compute(entityId)` first.
    */
   getPayload?: (payload: unknown) => TPayload;
+  /**
+   * Queue the status row but do not compute on the event path. Use for
+   * aggregates whose authoritative query is intentionally deferred; the
+   * bounded denorm drain owns their execution.
+   */
+  deferred?: boolean;
 }
 
 /**

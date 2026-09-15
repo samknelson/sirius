@@ -1,10 +1,21 @@
-import { getClient } from '../transaction-context';
-import { trustWmb, trustBenefits, employers, optionsTrustBenefitType, workerRelations, type TrustWmb } from "@shared/schema";
+import { getClient, runInTransaction } from '../transaction-context';
+import {
+  trustWmb,
+  trustBenefits,
+  employers,
+  optionsTrustBenefitType,
+  workerRelations,
+  type TrustWmb,
+} from "@shared/schema";
 import { sql, eq, and, desc, inArray, or, isNull, asc } from "drizzle-orm";
 import { tableExists as tableExistsUtil } from "../utils";
+import {
+  enqueueWorkerBenefitRoleHistoryInvalidations,
+} from "./worker-benefit-role-history-invalidation";
 import { type StorageLoggingConfig } from "../middleware/logging";
 import { logger } from "../../logger";
 import { eventBus, EventType } from "../../services/event-bus";
+import { getRequestContext } from "../../middleware/request-context";
 
 export interface ActiveBenefitWorkerCount {
   employerId: string;
@@ -75,6 +86,11 @@ export interface TrustWmbStorage {
   createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string; sourceRelationId?: string | null }): Promise<TrustWmb>;
   deleteWorkerBenefit(id: string): Promise<boolean>;
   /**
+   * Persist one coalesced role-history invalidation marker per affected worker.
+   * Public only for the scan transaction boundary; never writes payload rows.
+   */
+  enqueueBenefitRoleHistoryInvalidations(workerIds: string[]): Promise<void>;
+  /**
    * Resolve the subscriber's premium coverage rows for one (benefit, month).
    * Tolerates the optional worker.relations component being absent (no
    * worker_relations table => dependent rows can't exist, own row only).
@@ -89,6 +105,39 @@ export interface TrustWmbStorage {
 }
 
 export function createTrustWmbStorage(): TrustWmbStorage {
+  async function persistRoleHistoryInvalidations(workerIds: string[]): Promise<void> {
+    await enqueueWorkerBenefitRoleHistoryInvalidations(workerIds);
+  }
+
+  async function affectedRoleHistoryWorkers(workerId: string, sourceRelationId?: string | null): Promise<string[]> {
+    const ids = new Set([workerId]);
+    if (!sourceRelationId || !(await tableExistsUtil("worker_relations"))) return [...ids];
+    const context = getRequestContext();
+    let grantor = context?.wmbBenefitRoleHistoryGrantors?.get(sourceRelationId);
+    if (grantor === undefined) {
+      const client = getClient();
+      const [relation] = await client
+        .select({ worker1: workerRelations.worker1 })
+        .from(workerRelations)
+        .where(eq(workerRelations.id, sourceRelationId))
+        .limit(1);
+      grantor = relation?.worker1 ?? null;
+      context?.wmbBenefitRoleHistoryGrantors?.set(sourceRelationId, grantor);
+    }
+    if (grantor) ids.add(grantor);
+    return [...ids];
+  }
+
+  async function enqueueRoleHistoryForWmb(workerId: string, sourceRelationId?: string | null): Promise<void> {
+    const affected = await affectedRoleHistoryWorkers(workerId, sourceRelationId);
+    const collector = getRequestContext()?.wmbBenefitRoleHistoryWorkerIds;
+    if (collector) {
+      affected.forEach((id) => collector.add(id));
+      return;
+    }
+    await persistRoleHistoryInvalidations(affected);
+  }
+
   return {
     async getActiveBenefitWorkerCountsByEmployerLatestPeriod(): Promise<ActiveBenefitWorkerCount[]> {
       const client = getClient();
@@ -216,13 +265,17 @@ export function createTrustWmbStorage(): TrustWmbStorage {
     },
 
     async createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string; sourceRelationId?: string | null }): Promise<TrustWmb> {
-      const client = getClient();
-      const [wmb] = await client
-        .insert(trustWmb)
-        .values(data)
-        .returning();
+      return runInTransaction(async () => {
+        const client = getClient();
+        const [wmb] = await client
+          .insert(trustWmb)
+          .values(data)
+          .returning();
 
-      if (wmb) {
+        if (wmb) {
+          // This is deliberately before the event: marker + WMB have the same
+          // commit boundary, while the event remains for existing listeners.
+          await enqueueRoleHistoryForWmb(wmb.workerId, wmb.sourceRelationId);
         const payload = {
           wmbId: wmb.id,
           workerId: wmb.workerId,
@@ -246,21 +299,23 @@ export function createTrustWmbStorage(): TrustWmbStorage {
             error: err instanceof Error ? err.message : String(err),
           });
         }
-      }
-
-      return wmb;
+        }
+        return wmb;
+      });
     },
 
     async deleteWorkerBenefit(id: string): Promise<boolean> {
-      const client = getClient();
-      const result = await client
-        .delete(trustWmb)
-        .where(eq(trustWmb.id, id))
-        .returning();
+      return runInTransaction(async () => {
+        const client = getClient();
+        const result = await client
+          .delete(trustWmb)
+          .where(eq(trustWmb.id, id))
+          .returning();
 
       const deleted = result[0];
 
-      if (deleted) {
+        if (deleted) {
+          await enqueueRoleHistoryForWmb(deleted.workerId, deleted.sourceRelationId);
         const payload = {
           wmbId: deleted.id,
           workerId: deleted.workerId,
@@ -282,9 +337,13 @@ export function createTrustWmbStorage(): TrustWmbStorage {
             error: err instanceof Error ? err.message : String(err),
           });
         }
-      }
+        }
+        return result.length > 0;
+      });
+    },
 
-      return result.length > 0;
+    async enqueueBenefitRoleHistoryInvalidations(workerIds: string[]): Promise<void> {
+      await persistRoleHistoryInvalidations(workerIds);
     },
 
     async getPremiumCoverage(

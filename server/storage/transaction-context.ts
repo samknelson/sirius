@@ -93,3 +93,16 @@ export async function runInTransaction<T>(
   }
   return result;
 }
+
+/**
+ * Isolate one recoverable unit inside the current transaction.  Drizzle nested
+ * transactions are PostgreSQL savepoints: a failed unit rolls back only its
+ * writes, while the outer transaction (and its after-commit queue) remains
+ * usable for later units. Without an ambient transaction this is simply a
+ * normal transaction.
+ */
+export async function runInSavepoint<T>(fn: () => Promise<T>): Promise<T> {
+  const existingTx = transactionStorage.getStore();
+  if (!existingTx) return runInTransaction(fn);
+  return existingTx.transaction(async (tx) => transactionStorage.run(tx, fn));
+}

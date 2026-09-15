@@ -1,4 +1,5 @@
 import { logger, storageLogger } from "../../../logger";
+import { randomUUID } from "node:crypto";
 import { isCacheInitialized } from "../../../services/component-cache";
 import { eventBus } from "../../../services/event-bus";
 import { storage } from "../../../storage";
@@ -62,6 +63,9 @@ class DenormPluginRegistry extends PluginRegistry<DenormPlugin, DenormManifestEn
           `Updates ${plugin.metadata.id} denorm data for affected entities.`,
         event: eventHandler.event,
         handler: async (payload) => {
+          let claimed:
+            | { entityId: string; configId: string; generation: number; claimToken: string }
+            | undefined;
           if (!isCacheInitialized()) {
             logger.warn(
               `Component cache not initialized, skipping ${plugin.metadata.id} denorm update`,
@@ -123,14 +127,54 @@ class DenormPluginRegistry extends PluginRegistry<DenormPlugin, DenormManifestEn
               );
               return;
             }
+            if (eventHandler.deferred) {
+              // The enqueue above is the whole event-path contract for an
+              // expensive aggregate. It is intentionally not an in-memory
+              // hand-off: the bounded drainer will read the durable row.
+              return;
+            }
+            const pending = await storage.denorm.claimStaleForEntity(
+              { entityId, configId: config.id },
+              randomUUID(),
+            );
+            if (!pending) return;
+            claimed = {
+              entityId,
+              configId: config.id,
+              generation: pending.generation,
+              claimToken: pending.claimToken,
+            };
             const data = eventHandler.getPayload
               ? eventHandler.getPayload(payload)
               : await plugin.compute(entityId);
-            await applyComputed(plugin, config.id, entityId, data);
+            await applyComputed(
+              plugin,
+              config.id,
+              entityId,
+              data,
+              pending.generation,
+              pending.claimToken,
+            );
           } catch (error) {
-            // The entity's denorm row (marked `stale` above when the config
-            // resolved) remains queued for the denorm_stale cron, and the
-            // failure is surfaced in the admin log viewer.
+            // A thrown event-path compute/write must not retain its claim for
+            // fifteen minutes. Return precisely this generation/token to
+            // `stale` so the immediate sweep can heal a transient failure;
+            // conditional release preserves a newer invalidation/claim.
+            if (claimed) {
+              try {
+                await storage.denorm.releaseClaimIfGeneration(claimed, claimed.generation, claimed.claimToken);
+              } catch (releaseError) {
+                logger.error(
+                  `Failed to release denorm claim after ${plugin.metadata.id} event failure`,
+                  {
+                    service: "denorm-registry",
+                    pluginId: plugin.metadata.id,
+                    entityId: claimed.entityId,
+                    error: releaseError instanceof Error ? releaseError.message : String(releaseError),
+                  },
+                );
+              }
+            }
             const message = error instanceof Error ? error.message : String(error);
             logger.error(
               `Denorm plugin ${plugin.metadata.id} failed to update from event ${eventHandler.event}`,
