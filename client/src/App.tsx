@@ -244,6 +244,7 @@ const CronJobRun = lazy(() => import("@/pages/cron-job-run"));
 const CronJobHistory = lazy(() => import("@/pages/cron-job-history"));
 import AdminLayout from "@/components/layouts/AdminLayout";
 import ConfigurationLayout from "@/components/layouts/ConfigurationLayout";
+import UserRolesLayout from "@/components/layouts/UserRolesLayout";
 const UsersListPage = lazy(() => import("@/pages/config/users/list"));
 const RolesPage = lazy(() => import("@/pages/config/users/roles"));
 const PermissionsPage = lazy(() => import("@/pages/config/users/permissions"));
@@ -2537,7 +2538,39 @@ function Router() {
       <Route path="/admin/users/roles">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <RolesPage />
+            <UserRolesLayout activeTab="roles">
+              <RolesPage />
+            </UserRolesLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/users/roles/workers">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserRolesLayout activeTab="worker-users">
+              <RolesPage view="workers" />
+            </UserRolesLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/users/roles/employers">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserRolesLayout activeTab="employer-users">
+              <RolesPage view="employers" />
+            </UserRolesLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/users/roles/providers">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserRolesLayout activeTab="provider-users">
+              <RolesPage view="providers" />
+            </UserRolesLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

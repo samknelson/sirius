@@ -9,6 +9,7 @@ import {
   WS_ADMIN_ENTITY_ID,
   WC_ADMIN_ENTITY_ID,
   RECORD_METADATA_ADMIN_ENTITY_ID,
+  USER_ROLES_ADMIN_ENTITY_ID,
 } from "@shared/tabRegistry";
 import { apiRequest } from "@/lib/queryClient";
 import { useTerm } from "@/contexts/TerminologyContext";
@@ -513,6 +514,15 @@ export function useRecordMetadataTabAccess(enabled = true) {
   return useTabAccess({
     entityType: 'record_metadata',
     entityId: RECORD_METADATA_ADMIN_ENTITY_ID,
+    enabled,
+  });
+}
+
+/** Tab access for the singleton user-role administration page. */
+export function useUserRolesTabAccess(enabled = true) {
+  return useTabAccess({
+    entityType: 'user_roles',
+    entityId: USER_ROLES_ADMIN_ENTITY_ID,
     enabled,
   });
 }

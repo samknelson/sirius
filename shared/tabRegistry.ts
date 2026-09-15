@@ -119,7 +119,12 @@ export type TabEntityType =
    * The record history admin page. A single admin page, not a row, so the
    * entity id is the constant {@link RECORD_METADATA_ADMIN_ENTITY_ID}.
    */
-  | 'record_metadata';
+  | 'record_metadata'
+  /**
+   * User role administration. A single admin page, not a row, so the entity id
+   * is the constant {@link USER_ROLES_ADMIN_ENTITY_ID}.
+   */
+  | 'user_roles';
 
 /**
  * Tab check request for batch access evaluation
@@ -796,6 +801,17 @@ export const recordMetadataTabTree: HierarchicalTab[] = [
   { id: 'record-metadata-list', label: 'History', hrefTemplate: '/admin/metadata/list', permission: 'admin' },
   { id: 'record-metadata-backfill', label: 'Fill In', hrefTemplate: '/admin/metadata/backfill', permission: 'admin' },
 ];
+
+/** Registered views of the singleton user-role administration page. */
+export const USER_ROLES_ADMIN_ENTITY_ID = 'admin';
+
+export const userRolesTabTree: HierarchicalTab[] = [
+  { id: 'roles', label: 'Roles', hrefTemplate: '/admin/users/roles', permission: 'admin' },
+  { id: 'worker-users', label: 'Worker Users', hrefTemplate: '/admin/users/roles/workers', permission: 'admin' },
+  { id: 'employer-users', label: 'Employer Users', hrefTemplate: '/admin/users/roles/employers', permission: 'admin' },
+  { id: 'provider-users', label: 'Provider Users', hrefTemplate: '/admin/users/roles/providers', permission: 'admin' },
+];
+
 /**
  * Entity tab trees by type
  */
@@ -837,6 +853,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   ws: wsTabTree,
   wc: wcTabTree,
   record_metadata: recordMetadataTabTree,
+  user_roles: userRolesTabTree,
 };
 
 /**
