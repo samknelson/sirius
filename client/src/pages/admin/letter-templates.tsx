@@ -9,6 +9,14 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -42,6 +50,7 @@ export default function LetterTemplatesPage() {
   const [search, setSearch] = useState("");
   const [contextFilter, setContextFilter] = useState(ANY);
   const [mediumFilter, setMediumFilter] = useState(ANY);
+  const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [medium, setMedium] = useState<MediumName>("email");
   const [contextIds, setContextIds] = useState<string[]>([]);
@@ -76,10 +85,23 @@ export default function LetterTemplatesPage() {
     mutationFn: () => apiRequest("POST", "/api/admin/letter-templates", { name: name.trim(), medium, contextIds }),
     onSuccess: (created: LetterTemplate) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/letter-templates"] });
+      setCreateOpen(false);
       setLocation(`/admin/letter-templates/${created.id}`);
     },
   });
 
+  const resetCreateForm = () => {
+    setName("");
+    setMedium("email");
+    setContextIds([]);
+    setContextInput("");
+    create.reset();
+  };
+  const handleCreateOpenChange = (open: boolean) => {
+    if (!open && create.isPending) return;
+    setCreateOpen(open);
+    if (!open) resetCreateForm();
+  };
   const addContext = (value: string) => {
     if (value && !contextIds.includes(value)) setContextIds((ids) => [...ids, value]);
     setContextInput("");
@@ -94,11 +116,41 @@ export default function LetterTemplatesPage() {
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">Letter templates</h1>
           <p className="mt-1 text-sm text-muted-foreground">Reusable wording with explicit delivery fields and token contexts.</p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground"><FileText className="h-4 w-4" /> {templates.data?.length ?? 0} templates</div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground"><FileText className="h-4 w-4" /> {templates.data?.length ?? 0} templates</div>
+          <Dialog open={createOpen} onOpenChange={handleCreateOpenChange}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Create template
+              </Button>
+            </DialogTrigger>
+            <DialogContent aria-describedby={undefined}>
+              <DialogHeader>
+                <DialogTitle>Create template</DialogTitle>
+              </DialogHeader>
+              <form className="space-y-4" onSubmit={(event) => {
+                event.preventDefault();
+                if (name.trim() && contextIds.length > 0 && !contexts.isError) create.mutate();
+              }}>
+                {createError && <Alert variant="destructive"><AlertDescription>{createError}</AlertDescription></Alert>}
+                {contexts.isError && <Alert variant="destructive"><AlertDescription className="flex items-center justify-between gap-3"><span>Token contexts could not be loaded.</span><Button type="button" variant="outline" size="sm" onClick={() => void contexts.refetch()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry</Button></AlertDescription></Alert>}
+                <div className="space-y-2"><Label htmlFor="template-name">Name</Label><Input id="template-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Benefits enrollment reminder" autoFocus /></div>
+                <div className="space-y-2"><Label>Medium</Label><Select value={medium} onValueChange={(v) => setMedium(v as MediumName)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{MEDIUM_NAMES.map((m) => <SelectItem key={m} value={m}>{mediumLabel[m]}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-2"><Label>Context</Label><Select value={contextInput} onValueChange={addContext} disabled={contexts.isLoading || contexts.isError}><SelectTrigger><SelectValue placeholder={contexts.isLoading ? "Loading contexts…" : "Select at least one context"} /></SelectTrigger><SelectContent>{contextOptions.map((c) => c && <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
+                  <div className="flex flex-wrap gap-1.5">{contextIds.map((id) => <button type="button" key={id} onClick={() => setContextIds((ids) => ids.filter((value) => value !== id))} className="rounded border bg-muted/40 px-2 py-1 text-xs hover:bg-muted" title="Remove context">{contextNames.get(id) ?? id} ×</button>)}</div>
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => handleCreateOpenChange(false)} disabled={create.isPending}>Cancel</Button>
+                  <Button type="submit" disabled={!name.trim() || contextIds.length === 0 || create.isPending || contexts.isError}>{create.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Create template</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </header>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <Card>
+      <Card>
           <CardHeader className="space-y-4 border-b py-4">
             <CardTitle className="text-base">Saved templates</CardTitle>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(180px,1fr)_minmax(160px,220px)_minmax(140px,180px)_auto]">
@@ -164,22 +216,7 @@ export default function LetterTemplatesPage() {
                 </TableBody>
               </Table>}
           </CardContent>
-        </Card>
-
-        <Card className="h-fit">
-          <CardHeader><CardTitle className="text-base">Create template</CardTitle><p className="text-sm text-muted-foreground">Start with the delivery contract. Content can be authored in TokenStudio after creation.</p></CardHeader>
-          <CardContent className="space-y-4">
-            {createError && <Alert variant="destructive"><AlertDescription>{createError}</AlertDescription></Alert>}
-            {contexts.isError && <Alert variant="destructive"><AlertDescription className="flex items-center justify-between gap-3"><span>Token contexts could not be loaded.</span><Button type="button" variant="outline" size="sm" onClick={() => void contexts.refetch()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry</Button></AlertDescription></Alert>}
-            <div className="space-y-2"><Label htmlFor="template-name">Name</Label><Input id="template-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Benefits enrollment reminder" /></div>
-            <div className="space-y-2"><Label>Medium</Label><Select value={medium} onValueChange={(v) => setMedium(v as MediumName)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{MEDIUM_NAMES.map((m) => <SelectItem key={m} value={m}>{mediumLabel[m]}</SelectItem>)}</SelectContent></Select></div>
-            <div className="space-y-2"><Label>Token contexts</Label><Select value={contextInput} onValueChange={addContext}><SelectTrigger><SelectValue placeholder="Select at least one context" /></SelectTrigger><SelectContent>{contextOptions.map((c) => c && <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
-              <div className="flex flex-wrap gap-1.5">{contextIds.map((id) => <button type="button" key={id} onClick={() => setContextIds((ids) => ids.filter((value) => value !== id))} className="rounded border bg-muted/40 px-2 py-1 font-mono text-[11px] hover:bg-muted" title="Remove context">{id} ×</button>)}</div>
-            </div>
-            <Button className="w-full" disabled={!name.trim() || contextIds.length === 0 || create.isPending || contexts.isError} onClick={() => create.mutate()}>{create.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Create template</Button>
-          </CardContent>
-        </Card>
-      </div>
+      </Card>
     </div>
   );
 }
