@@ -1,5 +1,6 @@
 import { db } from "../server/db";
 import { sql } from "drizzle-orm";
+import { storage } from "../server/storage";
 
 async function createWorkerBenefits() {
   console.log("Creating legal benefits for 349 workers...");
@@ -98,11 +99,17 @@ async function createWorkerBenefits() {
         continue;
       }
       
-      // Create the benefit assignment
-      await db.execute(sql`
-        INSERT INTO trust_wmb (worker_id, month, year, employer_id, benefit_id)
-        VALUES (${workerId}, ${month}, ${year}, ${employerId}, ${benefitId})
-      `);
+      // All WMB writes go through storage: it writes the role-history stale
+      // marker in the same source transaction, including the shared
+      // generation/lease protocol. This script used to INSERT directly and
+      // silently bypassed that durable hand-off.
+      await storage.trust.wmb.createWorkerBenefit({
+        workerId,
+        month,
+        year,
+        employerId,
+        benefitId,
+      });
       
       created++;
       if (created % 50 === 0) {

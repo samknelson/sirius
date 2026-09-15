@@ -135,6 +135,8 @@ import "./components/dispatch/002_worker_dispatch_elig_denorm_denorm_id";
 import "./components/dispatch/003_create_dispatch_job_employer_contacts";
 import "./components/trust.benefits/001_backfill_trust_eligibility_configs";
 import "./components/trust.benefits/002_create_trust_wmb_events";
+import "./components/trust.benefits/003_create_worker_benefit_role_history_denorm";
+import "./components/worker.relations/001_add_trust_wmb_source_relation_fk";
 import "./components/contract/001_create_contract_tables";
 import "./components/edls/001_add_show_status";
 import "./components/edls/002_add_sheet_notes_and_change_tracking";
@@ -247,6 +249,9 @@ import "./core/1183_restore_ledger_metadata";
 import "./core/1184_unify_medium_message_fields";
 import "./core/1185_create_letter_templates";
 import "./core/1186_ledger_ea_statement_ymd_index";
+import "./core/1189_add_denorm_generation";
+import "./core/1190_add_worker_benefit_role_history_wmb_indexes";
+import "./core/1191_add_denorm_claim_lease";
 
 export {
   runMigrations,

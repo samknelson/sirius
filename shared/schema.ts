@@ -2440,6 +2440,10 @@ export {
   insertTrustWmbEventSchema,
   type InsertTrustWmbEvent,
   type TrustWmbEvent,
+  workerBenefitRoleHistoryDenorm,
+  insertWorkerBenefitRoleHistoryDenormSchema,
+  type InsertWorkerBenefitRoleHistoryDenorm,
+  type WorkerBenefitRoleHistoryDenorm,
 } from "./schema/trust/benefit-eligibility-schema";
 
 // Dashboard subsidiary — role-based visibility hoisted out of the opaque
@@ -2540,10 +2544,22 @@ export const denorm = pgTable("denorm", {
   computedAt: timestamp("computed_at"),
   staleAt: timestamp("stale_at"),
   message: varchar("message"),
+  // Monotonically advances whenever source work invalidates this row.  A
+  // recomputer snapshots it before doing its read and may mark the row current
+  // only if it still matches, so an invalidation that arrives mid-compute is
+  // never cleared by an older result.
+  generation: integer("generation").notNull().default(1),
+  // A bounded processor leases a stale generation before it computes. A
+  // superseding invalidation clears this lease, and an abandoned lease expires
+  // so a crash cannot strand durable work.
+  claimToken: varchar("claim_token"),
+  claimAt: timestamp("claim_at"),
 }, (table) => [
   uniqueIndex("denorm_entity_config_uniq").on(table.entityId, table.configId),
   index("denorm_status_idx").on(table.status),
   index("denorm_config_idx").on(table.configId),
+  index("denorm_config_status_stale_idx").on(table.configId, table.status, table.staleAt),
+  index("denorm_stale_claim_idx").on(table.configId, table.status, table.claimAt, table.staleAt),
 ]);
 
 export const insertDenormSchema = createInsertSchema(denorm);

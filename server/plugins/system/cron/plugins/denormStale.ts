@@ -3,7 +3,7 @@ import { registerCronPlugin } from "../registry";
 import type { CronJobContext, CronJobResult } from "../types";
 
 /**
- * `denorm_stale` cron — hourly job that drains the stale denorm queue.
+ * `denorm_stale` cron — hourly fallback for the denorm queue drain.
  *
  * Calls the denorm wrapper's `recomputeStaleDenorm`, which pulls a capped batch
  * of each plugin's `stale` rows, recomputes their payload, and marks them `ok`.
@@ -18,10 +18,13 @@ registerCronPlugin({
     id: "denorm_stale",
     name: "Denorm Stale Recompute",
     description:
-      "Hourly job that recomputes stale denorm rows and marks them ok across all denorm plugins.",
+      "Hourly fallback that recomputes stale denorm rows and marks them ok across all denorm plugins.",
     singleton: true,
   },
-  defaultSchedule: "30 * * * *", // Hourly at :30 — deliberately offset from denorm_backfill (:00) so rows enqueued by the backfill sweep are recomputed within the same hour, not raced.
+  // Existing installations already persist this schedule. Prompt bounded
+  // draining comes from the shared ten-minute tick subscriber, rather than
+  // silently changing every installed cron configuration at registration.
+  defaultSchedule: "30 * * * *",
   defaultEnabled: true,
 
   async execute(context: CronJobContext): Promise<CronJobResult> {

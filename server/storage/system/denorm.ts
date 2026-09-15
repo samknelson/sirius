@@ -6,7 +6,8 @@ import {
   type InsertDenorm,
   type DenormStatus,
 } from "@shared/schema";
-import { eq, and, asc, sql, inArray } from "drizzle-orm";
+import { eq, and, asc, sql, inArray, isNull, or } from "drizzle-orm";
+import { enqueueDenormInvalidations } from "./denorm-invalidation";
 
 /**
  * Stub validator - add validation logic here when needed.
@@ -51,6 +52,11 @@ export interface DenormStatusCounts {
   total: number;
 }
 
+/** A stale row leased to exactly one bounded denorm processor. */
+export interface DenormClaim extends Denorm {
+  claimToken: string;
+}
+
 export interface DenormStorage {
   /** Read the denorm row for a single (entity, config) pair, if any. */
   get(entityId: string, configId: string): Promise<Denorm | undefined>;
@@ -76,6 +82,16 @@ export interface DenormStorage {
    */
   getStaleBatchForConfig(configId: string, limit: number): Promise<Denorm[]>;
   /**
+   * Atomically lease up to `limit` unclaimed/expired stale rows. Leases expire
+   * after fifteen minutes so a crashed worker cannot strand pending work.
+   */
+  claimStaleBatchForConfig(configId: string, limit: number, claimToken: string): Promise<DenormClaim[]>;
+  /** Lease this exact row for immediate event-path processing. */
+  claimStaleForEntity(
+    input: Pick<DenormStatusInput, "entityId" | "configId">,
+    claimToken: string,
+  ): Promise<DenormClaim | undefined>;
+  /**
    * Count denorm records grouped by status for a single plugin config. Uses a
    * grouped SQL aggregate (not an in-memory scan). Returns zeros for a config
    * with no records.
@@ -93,6 +109,32 @@ export interface DenormStorage {
    * status / entity_type / timestamps / message on subsequent writes.
    */
   upsertStatus(input: DenormStatusInput): Promise<Denorm>;
+  /**
+   * Transition a stale row to `ok` only when the generation observed before
+   * compute still matches. Returns undefined when newer work won the race.
+   */
+  markComputedIfGeneration(
+    input: Omit<DenormStatusInput, "status">,
+    generation: number,
+    claimToken: string,
+  ): Promise<Denorm | undefined>;
+  /** Mark an attempted generation errored without overwriting newer work. */
+  markErrorIfGeneration(
+    input: Omit<DenormStatusInput, "status">,
+    generation: number,
+    claimToken: string,
+    message: string,
+  ): Promise<Denorm | undefined>;
+  /**
+   * Give a failed immediate event-path claim back to the bounded drainer.
+   * Generation and token are both required so this can never undo a newer
+   * source invalidation or another processor's lease.
+   */
+  releaseClaimIfGeneration(
+    input: Pick<DenormStatusInput, "entityId" | "configId">,
+    generation: number,
+    claimToken: string,
+  ): Promise<Denorm | undefined>;
   /**
    * Bulk-insert backfill seeds as `stale` rows; any (entity, config)
    * pair that already has a row is re-marked stale (`ON CONFLICT DO UPDATE`
@@ -178,6 +220,66 @@ export function createDenormStorage(): DenormStorage {
         .limit(limit);
     },
 
+    async claimStaleBatchForConfig(
+      configId: string,
+      limit: number,
+      claimToken: string,
+    ): Promise<DenormClaim[]> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        WITH candidates AS (
+          SELECT id
+          FROM denorm
+          WHERE config_id = ${configId}
+            AND status = 'stale'
+            AND (claim_at IS NULL OR claim_at < now() - interval '15 minutes')
+          ORDER BY stale_at ASC NULLS FIRST, id ASC
+          LIMIT ${limit}
+          FOR UPDATE SKIP LOCKED
+        )
+        UPDATE denorm AS target
+        SET claim_token = ${claimToken}, claim_at = now()
+        FROM candidates
+        WHERE target.id = candidates.id
+        RETURNING
+          target.id AS "id",
+          target.entity_id AS "entityId",
+          target.entity_type AS "entityType",
+          target.config_id AS "configId",
+          target.status AS "status",
+          target.computed_at AS "computedAt",
+          target.stale_at AS "staleAt",
+          target.message AS "message",
+          target.generation AS "generation",
+          target.claim_token AS "claimToken",
+          target.claim_at AS "claimAt"
+      `);
+      return result.rows as unknown as DenormClaim[];
+    },
+
+    async claimStaleForEntity(
+      input: Pick<DenormStatusInput, "entityId" | "configId">,
+      claimToken: string,
+    ): Promise<DenormClaim | undefined> {
+      const client = getClient();
+      const [row] = await client
+        .update(denorm)
+        .set({ claimToken, claimAt: new Date() })
+        .where(
+          and(
+            eq(denorm.entityId, input.entityId),
+            eq(denorm.configId, input.configId),
+            eq(denorm.status, "stale"),
+            or(
+              isNull(denorm.claimAt),
+              sql`${denorm.claimAt} < now() - interval '15 minutes'`,
+            ),
+          ),
+        )
+        .returning();
+      return row ? row as DenormClaim : undefined;
+    },
+
     async countByStatusForConfig(configId: string): Promise<DenormStatusCounts> {
       const client = getClient();
       const rows = await client
@@ -236,34 +338,91 @@ export function createDenormStorage(): DenormStorage {
             computedAt: values.computedAt,
             staleAt: values.staleAt,
             message: values.message,
+            claimToken: null,
+            claimAt: null,
           },
         })
         .returning();
       return row;
     },
 
-    async insertStaleBatch(seeds: DenormStaleSeed[]): Promise<number> {
-      if (seeds.length === 0) return 0;
+    async markComputedIfGeneration(
+      input: Omit<DenormStatusInput, "status">,
+      generation: number,
+      claimToken: string,
+    ): Promise<Denorm | undefined> {
       const client = getClient();
-      const now = new Date();
-      const values: InsertDenorm[] = seeds.map((seed) => ({
-        entityId: seed.entityId,
-        entityType: seed.entityType,
-        configId: seed.configId,
-        status: "stale",
-        computedAt: null,
-        staleAt: now,
-        message: null,
-      }));
-      const inserted = await client
-        .insert(denorm)
-        .values(values)
-        .onConflictDoUpdate({
-          target: [denorm.entityId, denorm.configId],
-          set: { status: "stale", staleAt: now },
+      const [row] = await client
+        .update(denorm)
+        .set({
+          entityType: input.entityType,
+          status: "ok",
+          computedAt: input.computedAt ?? new Date(),
+          staleAt: null,
+          message: null,
+          claimToken: null,
+          claimAt: null,
         })
-        .returning({ id: denorm.id });
-      return inserted.length;
+        .where(
+          and(
+            eq(denorm.entityId, input.entityId),
+            eq(denorm.configId, input.configId),
+            eq(denorm.generation, generation),
+            eq(denorm.status, "stale"),
+            eq(denorm.claimToken, claimToken),
+          ),
+        )
+        .returning();
+      return row;
+    },
+
+    async markErrorIfGeneration(
+      input: Omit<DenormStatusInput, "status">,
+      generation: number,
+      claimToken: string,
+      message: string,
+    ): Promise<Denorm | undefined> {
+      const client = getClient();
+      const [row] = await client
+        .update(denorm)
+        .set({ status: "error", message, claimToken: null, claimAt: null })
+        .where(
+          and(
+            eq(denorm.entityId, input.entityId),
+            eq(denorm.configId, input.configId),
+            eq(denorm.generation, generation),
+            eq(denorm.status, "stale"),
+            eq(denorm.claimToken, claimToken),
+          ),
+        )
+        .returning();
+      return row;
+    },
+
+    async releaseClaimIfGeneration(
+      input: Pick<DenormStatusInput, "entityId" | "configId">,
+      generation: number,
+      claimToken: string,
+    ): Promise<Denorm | undefined> {
+      const client = getClient();
+      const [row] = await client
+        .update(denorm)
+        .set({ claimToken: null, claimAt: null })
+        .where(
+          and(
+            eq(denorm.entityId, input.entityId),
+            eq(denorm.configId, input.configId),
+            eq(denorm.generation, generation),
+            eq(denorm.status, "stale"),
+            eq(denorm.claimToken, claimToken),
+          ),
+        )
+        .returning();
+      return row;
+    },
+
+    async insertStaleBatch(seeds: DenormStaleSeed[]): Promise<number> {
+      return enqueueDenormInvalidations(seeds);
     },
 
     async deleteByEntityIdsForConfig(configId: string, entityIds: string[]): Promise<number> {
@@ -280,7 +439,14 @@ export function createDenormStorage(): DenormStorage {
       const client = getClient();
       const updated = await client
         .update(denorm)
-        .set({ status: "stale", staleAt: new Date() })
+        .set({
+          status: "stale",
+          staleAt: new Date(),
+          message: null,
+          generation: sql`${denorm.generation} + 1`,
+          claimToken: null,
+          claimAt: null,
+        })
         .where(eq(denorm.configId, configId))
         .returning({ id: denorm.id });
       return updated.length;

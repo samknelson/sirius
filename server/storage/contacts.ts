@@ -1,6 +1,22 @@
-import { getClient, onAfterCommit } from './transaction-context';
+import { getClient, onAfterCommit, runInTransaction } from './transaction-context';
 import { eventBus, EventType } from '../services/event-bus';
-import { contacts, contactPostal, phoneNumbers, optionsGender, trustProviderContacts, employerContacts, type Contact, type InsertContact, type ContactPostal, type InsertContactPostal, type PhoneNumber, type InsertPhoneNumber } from "@shared/schema";
+import {
+  contacts,
+  contactPostal,
+  phoneNumbers,
+  optionsGender,
+  trustProviderContacts,
+  employerContacts,
+  workers,
+  workerRelations,
+  trustWmb,
+  type Contact,
+  type InsertContact,
+  type ContactPostal,
+  type InsertContactPostal,
+  type PhoneNumber,
+  type InsertPhoneNumber,
+} from "@shared/schema";
 import { eq, and, ne, desc, sql, or, ilike, inArray, isNull } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { provenanceModifiedDate } from "./system/entity-metadata-order";
@@ -12,6 +28,11 @@ import {
   createStorageValidator
 } from "./utils/validation";
 import { parseYmdParts } from '@shared/utils/date';
+import { tableExists } from "./utils";
+import {
+  affectedWorkerBenefitRoleHistoryWorkers,
+  enqueueWorkerBenefitRoleHistoryInvalidations,
+} from "./trust/worker-benefit-role-history-invalidation";
 
 export const addressValidate = createStorageValidator<InsertContactPostal, ContactPostal, {}>(
   (data, existing) => {
@@ -1162,9 +1183,63 @@ export function createContactStorage(): ContactStorage {
     },
 
     async deleteContact(id: string): Promise<boolean> {
-      const client = getClient();
-      const result = await client.delete(contacts).where(eq(contacts.id, id)).returning();
-      return result.length > 0;
+      return runInTransaction(async () => {
+        const client = getClient();
+        // A worker insert holds KEY SHARE on its contact. Lock the contact,
+        // then every cascading worker and relation before the snapshots so
+        // concurrent FK inserts cannot escape the survivor invalidations.
+        await client.execute(sql`
+          SELECT id FROM contacts WHERE id = ${id} FOR UPDATE
+        `);
+        const workerResult = await client.execute(sql`
+          SELECT id FROM workers WHERE contact_id = ${id} FOR UPDATE
+        `);
+        const deletedWorkerIds = (workerResult.rows as Array<{ id: string }>).map((row) => row.id);
+        const deletedWorkerSet = new Set(deletedWorkerIds);
+        const affectedWorkers = new Set<string>();
+
+        if (deletedWorkerIds.length && await tableExists("worker_relations")) {
+          // Lock the relationship parents before inspecting their sourced WMBs:
+          // a WMB insert's source_relation FK takes KEY SHARE on these rows.
+          const relationsResult = await client.execute(sql`
+            SELECT id, worker_1 AS "worker1", worker_2 AS "worker2"
+            FROM worker_relations
+            WHERE worker_1 IN (${sql.join(deletedWorkerIds.map((workerId) => sql`${workerId}`), sql`, `)})
+               OR worker_2 IN (${sql.join(deletedWorkerIds.map((workerId) => sql`${workerId}`), sql`, `)})
+            FOR UPDATE
+          `);
+          const relations = relationsResult.rows as Array<{
+            id: string;
+            worker1: string;
+            worker2: string;
+          }>;
+          for (const relation of relations) {
+            if (!deletedWorkerSet.has(relation.worker1)) affectedWorkers.add(relation.worker1);
+            if (!deletedWorkerSet.has(relation.worker2)) affectedWorkers.add(relation.worker2);
+          }
+          const relationIds = relations.map((relation) => relation.id);
+          if (relationIds.length) {
+            const wmbResult = await client.execute(sql`
+              SELECT worker_id AS "workerId", source_relation_id AS "sourceRelationId"
+              FROM trust_wmb
+              WHERE source_relation_id IN (${sql.join(relationIds.map((relationId) => sql`${relationId}`), sql`, `)})
+            `);
+            const wmbSources = wmbResult.rows as Array<{
+              workerId: string;
+              sourceRelationId: string | null;
+            }>;
+            for (const workerId of await affectedWorkerBenefitRoleHistoryWorkers(wmbSources)) {
+              if (!deletedWorkerSet.has(workerId)) affectedWorkers.add(workerId);
+            }
+          }
+        }
+
+        const result = await client.delete(contacts).where(eq(contacts.id, id)).returning();
+        if (result.length) {
+          await enqueueWorkerBenefitRoleHistoryInvalidations([...affectedWorkers]);
+        }
+        return result.length > 0;
+      });
     },
   };
 }

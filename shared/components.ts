@@ -551,9 +551,13 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "core",
     managesSchema: true,
     schemaManifest: {
-      version: 1,
+      version: 2,
       schemaPath: "./shared/schema/trust/benefit-eligibility-schema.ts",
-      tables: ["plugin_configs_benefit_eligibility", "trust_wmb_events"]
+      tables: [
+        "plugin_configs_benefit_eligibility",
+        "trust_wmb_events",
+        "worker_benefit_role_history_denorm",
+      ]
     }
   },
   {

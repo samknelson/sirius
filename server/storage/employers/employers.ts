@@ -1,10 +1,14 @@
 import { createNoopValidator } from '../utils/validation';
-import { getClient, onAfterCommit } from '../transaction-context';
-import { employers, type Employer, type InsertEmployer } from "@shared/schema";
+import { getClient, onAfterCommit, runInTransaction } from '../transaction-context';
+import { employers, trustWmb, type Employer, type InsertEmployer } from "@shared/schema";
 import { eq, sql, inArray, or, ilike, asc } from "drizzle-orm";
 import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 import { eventBus, EventType } from "../../services/event-bus";
 import { storageLogger as logger } from "../../logger";
+import {
+  affectedWorkerBenefitRoleHistoryWorkers,
+  enqueueWorkerBenefitRoleHistoryInvalidations,
+} from "../trust/worker-benefit-role-history-invalidation";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -187,18 +191,32 @@ export function createEmployerStorage(): EmployerStorage {
     },
 
     async deleteEmployer(id: string): Promise<boolean> {
-      const client = getClient();
-      const result = await client.delete(employers).where(eq(employers.id, id)).returning();
-      if (result.length > 0) {
-        // Announce the deletion once it is durable, so the areas that hang off
-        // an employer with no foreign key (notes, file attachments) clean up
-        // now rather than waiting for their nightly sweep. Best-effort: a
-        // failed emit or handler never fails the delete.
-        onAfterCommit(() => {
-          void eventBus.emit(EventType.EMPLOYER_DELETE_AFTER, { employerId: id });
-        });
-      }
-      return result.length > 0;
+      return runInTransaction(async () => {
+        const client = getClient();
+        // Serialize FK WMB inserts with the cascade snapshot below.
+        await client.execute(sql`
+          SELECT id FROM employers WHERE id = ${id} FOR UPDATE
+        `);
+        // Employer FK cascade bypasses WMB storage, so preserve every affected
+        // receiver and grantor before the source rows disappear.
+        const wmbSources = await client
+          .select({ workerId: trustWmb.workerId, sourceRelationId: trustWmb.sourceRelationId })
+          .from(trustWmb)
+          .where(eq(trustWmb.employerId, id));
+        const affectedWorkers = await affectedWorkerBenefitRoleHistoryWorkers(wmbSources);
+        const result = await client.delete(employers).where(eq(employers.id, id)).returning();
+        if (result.length > 0) {
+          await enqueueWorkerBenefitRoleHistoryInvalidations(affectedWorkers);
+          // Announce the deletion once it is durable, so the areas that hang off
+          // an employer with no foreign key (notes, file attachments) clean up
+          // now rather than waiting for their nightly sweep. Best-effort: a
+          // failed emit or handler never fails the delete.
+          onAfterCommit(() => {
+            void eventBus.emit(EventType.EMPLOYER_DELETE_AFTER, { employerId: id });
+          });
+        }
+        return result.length > 0;
+      });
     }
   };
 }

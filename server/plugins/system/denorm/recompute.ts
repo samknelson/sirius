@@ -1,11 +1,15 @@
 import { logger } from "../../../logger";
+import { randomUUID } from "node:crypto";
 import { isPluginComponentEnabledSync } from "../../_core";
 import { storage } from "../../../storage";
 import { applyComputed } from "./apply";
 import { denormPluginRegistry } from "./registry";
 
 /** Default cap on how many stale rows a single plugin drains per run. */
-export const DEFAULT_RECOMPUTE_LIMIT = 1000;
+// A hard bounded batch sized so a 30k corrective-scan burst drains quickly
+// across the shared ten-minute tick without an unbounded transaction or memory
+// footprint.
+export const DEFAULT_RECOMPUTE_LIMIT = 5000;
 
 /** Per-plugin outcome of a recompute sweep. */
 export interface DenormRecomputePluginResult {
@@ -50,14 +54,14 @@ export interface RecomputeAllOptions {
  * required component on, config row present and enabled) it pulls up to `limit`
  * of the plugin's `stale` rows (oldest first) and, per row, recomputes the
  * payload via `compute` and routes it through the shared `applyComputed` helper,
- * which upserts the `denorm` status row to `ok` and writes the payload in one
- * transaction.
+ * which claim-checks and marks the `denorm` status row `ok`, then writes the
+ * payload in one transaction.
  *
  * A single bad entity is isolated: it is marked `error` (with the message) and
  * the sweep continues with the next row. Per-plugin failures are likewise
  * isolated so one plugin's error does not abort the whole sweep. Because each
  * plugin is capped at `limit` rows per run, a large backlog drains over several
- * hourly runs. In `test` mode nothing is written: it only counts the stale rows
+ * scheduled runs. In `test` mode nothing is written: it only counts the stale rows
  * it would recompute.
  */
 export async function recomputeStaleDenorm(
@@ -95,21 +99,37 @@ export async function recomputeStaleDenorm(
         continue;
       }
 
-      const staleRows = await storage.denorm.getStaleBatchForConfig(config.id, limit);
-
       if (mode === "test") {
+        const staleRows = await storage.denorm.getStaleBatchForConfig(config.id, limit);
         totalRecomputed += staleRows.length;
         perPlugin.push({ pluginId, recomputed: staleRows.length, errored: 0 });
         continue;
       }
 
+      // Claim before compute. Generation alone prevents stale output after a
+      // source write, but without this lease two processors could both see the
+      // same generation and a loser could subsequently mark the winner's row
+      // error. Expired claims make a process crash recoverable.
+      const staleRows = await storage.denorm.claimStaleBatchForConfig(
+        config.id,
+        limit,
+        randomUUID(),
+      );
       let recomputed = 0;
       let errored = 0;
       for (const row of staleRows) {
         try {
           const payload = await plugin.compute(row.entityId);
-          await applyComputed(plugin, config.id, row.entityId, payload);
-          recomputed++;
+          if (await applyComputed(
+            plugin,
+            config.id,
+            row.entityId,
+            payload,
+            row.generation,
+            row.claimToken,
+          )) {
+            recomputed++;
+          }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           errored++;
@@ -122,13 +142,11 @@ export async function recomputeStaleDenorm(
           // Mark the row `error` (failed apply rolled back, so it's still
           // `stale`) so the failure is visible and it isn't re-drained as stale.
           try {
-            await storage.denorm.upsertStatus({
+            await storage.denorm.markErrorIfGeneration({
               entityId: row.entityId,
               entityType: plugin.entityType,
               configId: config.id,
-              status: "error",
-              message,
-            });
+            }, row.generation, row.claimToken, message);
           } catch (markError) {
             logger.error(
               `Failed to mark denorm row error for plugin ${pluginId} entity ${row.entityId}`,

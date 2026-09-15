@@ -8,7 +8,11 @@ import type { IStorage } from "../storage";
 import type { Worker, Policy, TrustBenefit, PluginConfigBenefitEligibility } from "@shared/schema";
 import { logger } from "../logger";
 import { isComponentEnabledSync } from "./component-cache";
-import { withWmbScanWrites } from "../middleware/request-context";
+import {
+  withWmbBenefitRoleHistoryInvalidationBatch,
+  withWmbScanWrites,
+} from "../middleware/request-context";
+import { runInSavepoint, runInTransaction } from "../storage/transaction-context";
 import {
   resolveEmployerPolicyAsOf,
   createPolicyResolutionCache,
@@ -252,36 +256,52 @@ async function evaluatePersonBenefits(
     // row a scan creates/deletes would re-enqueue follow-up scans, whose own
     // writes would enqueue more — an unbounded feedback loop. Other listeners
     // (charges, audit) still run normally.
-    await withWmbScanWrites(async () => {
-      for (const action of actions) {
-        try {
-          if (action.action === "create") {
-            await storage.trust.wmb.createWorkerBenefit({
-              workerId: personWorkerId,
-              month,
-              year,
-              employerId: employerIdForCreate,
-              benefitId: action.benefitId,
-              sourceRelationId,
-            });
-            action.executed = true;
-          } else if (action.action === "delete") {
-            const existingRecord = currentMonthBenefitMap.get(action.benefitId);
-            if (existingRecord) {
-              await storage.trust.wmb.deleteWorkerBenefit(existingRecord.id);
-              action.executed = true;
+    // One worker's scan is the largest source transaction we permit.  The
+    // collector turns every WMB change in it into one durable invalidation per
+    // affected worker/config before commit; a later worker gets its own
+    // transaction, so a corrective scan never holds tens of thousands in RAM
+    // or one enormous transaction.
+    await runInTransaction(async () =>
+      withWmbBenefitRoleHistoryInvalidationBatch(
+        (workerIds) => storage.trust.wmb.enqueueBenefitRoleHistoryInvalidations(workerIds),
+        async () => {
+          await withWmbScanWrites(async () => {
+            for (const action of actions) {
+              try {
+                if (action.action === "create") {
+                  await runInSavepoint(() =>
+                    storage.trust.wmb.createWorkerBenefit({
+                      workerId: personWorkerId,
+                      month,
+                      year,
+                      employerId: employerIdForCreate,
+                      benefitId: action.benefitId,
+                      sourceRelationId,
+                    }),
+                  );
+                  action.executed = true;
+                } else if (action.action === "delete") {
+                  const existingRecord = currentMonthBenefitMap.get(action.benefitId);
+                  if (existingRecord) {
+                    await runInSavepoint(() =>
+                      storage.trust.wmb.deleteWorkerBenefit(existingRecord.id),
+                    );
+                    action.executed = true;
+                  }
+                }
+              } catch (error) {
+                action.executed = false;
+                action.executionError = error instanceof Error ? error.message : String(error);
+                logger.error(`Failed to execute action for benefit ${action.benefitId}`, {
+                  service: "benefits-scan",
+                  error: action.executionError,
+                });
+              }
             }
-          }
-        } catch (error) {
-          action.executed = false;
-          action.executionError = error instanceof Error ? error.message : String(error);
-          logger.error(`Failed to execute action for benefit ${action.benefitId}`, {
-            service: "benefits-scan",
-            error: action.executionError,
           });
-        }
-      }
-    });
+        },
+      ),
+    );
   }
 
   return { previousMonthBenefitIds, actions };

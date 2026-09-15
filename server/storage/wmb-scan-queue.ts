@@ -764,10 +764,20 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
               computedAt: null,
               staleAt: now,
               message: null,
+              generation: 1,
+              claimToken: null,
+              claimAt: null,
             })
             .onConflictDoUpdate({
               target: [denorm.entityId, denorm.configId],
-              set: { status: "stale", staleAt: now },
+              set: {
+                status: "stale",
+                staleAt: now,
+                message: null,
+                generation: sql`${denorm.generation} + 1`,
+                claimToken: null,
+                claimAt: null,
+              },
             });
         }
 

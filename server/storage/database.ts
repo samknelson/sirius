@@ -9,6 +9,10 @@ import { type TrustBenefitStorage, createTrustBenefitStorage, trustBenefitLoggin
 import { type TrustProviderStorage, createTrustProviderStorage } from "./trust/providers";
 import { type TrustWmbStorage, createTrustWmbStorage, trustWmbLoggingConfig } from "./trust/wmb";
 import { type TrustWmbEventsStorage, createTrustWmbEventsStorage } from "./trust/wmb-events";
+import {
+  type WorkerBenefitRoleHistoryStorage,
+  createWorkerBenefitRoleHistoryStorage,
+} from "./trust/worker-benefit-role-history";
 import { type TrustProviderContactStorage, createTrustProviderContactStorage, trustProviderContactLoggingConfig } from "./trust/provider/contacts";
 import { type WorkerIdStorage, createWorkerIdStorage, workerIdLoggingConfig } from "./workers/ids";
 import { type BookmarkStorage, createBookmarkStorage, bookmarkLoggingConfig } from "./bookmarks";
@@ -241,6 +245,7 @@ export interface IStorage {
   trustProviderContacts: TrustProviderContactStorage;
   trust: { wmb: TrustWmbStorage };
   trustWmbEvents: TrustWmbEventsStorage;
+  workerBenefitRoleHistory: WorkerBenefitRoleHistoryStorage;
   workerIds: WorkerIdStorage;
   bookmarks: BookmarkStorage;
   ledger: LedgerStorageWithPaymentMethods;
@@ -378,6 +383,7 @@ export class DatabaseStorage implements IStorage {
   trustProviderContacts: TrustProviderContactStorage;
   trust: { wmb: TrustWmbStorage };
   trustWmbEvents: TrustWmbEventsStorage;
+  workerBenefitRoleHistory: WorkerBenefitRoleHistoryStorage;
   workerIds: WorkerIdStorage;
   bookmarks: BookmarkStorage;
   ledger: LedgerStorageWithPaymentMethods;
@@ -533,6 +539,7 @@ export class DatabaseStorage implements IStorage {
       wmb: withStorageLogging(createTrustWmbStorage(), trustWmbLoggingConfig),
     };
     this.trustWmbEvents = createTrustWmbEventsStorage();
+    this.workerBenefitRoleHistory = createWorkerBenefitRoleHistoryStorage();
     this.trustProviderContacts = withStorageLogging(
       createTrustProviderContactStorage(this.contacts),
       trustProviderContactLoggingConfig,
