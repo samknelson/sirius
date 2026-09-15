@@ -122,6 +122,10 @@ export interface LedgerEntryStorage {
   getAll(): Promise<Ledger[]>;
   get(id: string): Promise<Ledger | undefined>;
   getByEaId(eaId: string): Promise<Ledger[]>;
+  getOutstandingStatementMonths(
+    eaId: string,
+    excluded: { year: number; month: number },
+  ): Promise<{ count: number; months: Array<{ year: number; month: number }> }>;
   getBalancesByEaIds(eaIds: string[]): Promise<Map<string, string>>;
   getBalancesByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[]): Promise<Array<{ entityId: string; accountId: string; total: string }>>;
   getMonthlyDeltasByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[], monthKeys: string[]): Promise<Array<{ entityId: string; ym: string; total: string }>>;
@@ -958,6 +962,52 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       const client = getClient();
       return await client.select().from(ledger)
         .where(eq(ledger.eaId, eaId));
+    },
+
+    async getOutstandingStatementMonths(
+      eaId: string,
+      excluded: { year: number; month: number },
+    ): Promise<{ count: number; months: Array<{ year: number; month: number }> }> {
+      const client = getClient();
+      const result = await client.execute(sqlRaw`
+        WITH outstanding_months AS (
+          SELECT
+            EXTRACT(YEAR FROM l.statement_ymd)::integer AS year,
+            EXTRACT(MONTH FROM l.statement_ymd)::integer AS month
+          FROM ledger AS l
+          WHERE l.ea_id = ${eaId}
+          GROUP BY
+            EXTRACT(YEAR FROM l.statement_ymd),
+            EXTRACT(MONTH FROM l.statement_ymd)
+          HAVING SUM(l.amount) > 0::numeric
+        ),
+        eligible_months AS (
+          SELECT
+            year,
+            month,
+            COUNT(*) OVER ()::integer AS total_count
+          FROM outstanding_months
+          WHERE NOT (year = ${excluded.year} AND month = ${excluded.month})
+        )
+        SELECT year, month, total_count
+        FROM eligible_months
+        ORDER BY year ASC, month ASC
+        LIMIT 12
+      `);
+
+      const rows = result.rows as Array<{
+        year: number;
+        month: number;
+        total_count: number;
+      }>;
+      if (rows.length === 0) {
+        return { count: 0, months: [] };
+      }
+
+      return {
+        count: Number(rows[0].total_count),
+        months: rows.map(({ year, month }) => ({ year, month })),
+      };
     },
 
     async getBalancesByEaIds(eaIds: string[]): Promise<Map<string, string>> {

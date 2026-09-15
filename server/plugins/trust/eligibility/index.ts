@@ -142,3 +142,4 @@ import "./plugins/sitespecific-bao-buildup";
 import "./plugins/sitespecific-bao-cobra";
 import "./plugins/sitespecific-bao-dp";
 import "./plugins/sitespecific-bao-threshold";
+import "./plugins/sitespecific-bao-ee-contributions";

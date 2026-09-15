@@ -246,6 +246,7 @@ import "./core/1182_allow_unknown_process_provenance";
 import "./core/1183_restore_ledger_metadata";
 import "./core/1184_unify_medium_message_fields";
 import "./core/1185_create_letter_templates";
+import "./core/1186_ledger_ea_statement_ymd_index";
 
 export {
   runMigrations,

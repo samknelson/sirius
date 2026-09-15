@@ -1008,6 +1008,9 @@ export const ledger = pgTable("ledger", {
   statementYmd: date("statement_ymd").notNull(),
 }, (table) => ({
   uniqueChargePluginKey: unique().on(table.chargePlugin, table.chargePluginKey),
+  // EE Contributions evaluates outstanding statement months per employee
+  // account; keep the account predicate and statement-month grouping indexable.
+  eaIdStatementYmdIdx: index("ledger_ea_id_statement_ymd_idx").on(table.eaId, table.statementYmd),
 }));
 
 export const wizards = pgTable("wizards", {
