@@ -30,7 +30,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  AlertTriangle,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -66,11 +65,36 @@ interface StatusPayload {
 }
 interface CollisionsPayload {
   stagingPresent: boolean;
-  stagedWorkers: number;
-  duplicates: Array<{ siriusId: number; nids: number[] }>;
-  ownershipConflicts: Array<{ nid: number; siriusId: number; ownerWorkerId: string }>;
-  missingSiriusId: number;
-  nonNumericSiriusId: number;
+  idMapPresent: boolean;
+  stagedClaims: number;
+  decisions: SiriusIdOwnershipDecision[];
+  decisionsTruncated: boolean;
+  actionCounts: Partial<Record<SiriusIdOwnershipAction, number>>;
+  hardBlockers: number;
+  pendingRekeys: number;
+  planHash: string | null;
+}
+type SiriusIdOwnershipAction =
+  | "correct"
+  | "new_claim_reserved"
+  | "mapped_rekey"
+  | "displace_generated"
+  | "source_duplicate"
+  | "source_id_missing"
+  | "source_id_non_numeric"
+  | "source_id_out_of_range"
+  | "blocked_mapping_missing"
+  | "blocked_mapping_ambiguous"
+  | "blocked_owner_native"
+  | "blocked_owner_mapping_ambiguous"
+  | "blocked_owner_entitlement_unknown";
+interface SiriusIdOwnershipDecision {
+  sourceNid: number;
+  siriusId: number | null;
+  action: SiriusIdOwnershipAction;
+  claimantWorkerId: string | null;
+  currentOwnerWorkerId: string | null;
+  detail: string;
 }
 interface RunRow {
   id: number;
@@ -151,6 +175,26 @@ function CheckIcon({ state }: { state: CheckState }) {
   return <MinusCircle className="h-4 w-4 text-muted-foreground" />;
 }
 
+const OWNERSHIP_ACTION_LABEL: Record<SiriusIdOwnershipAction, string> = {
+  correct: "Correct",
+  new_claim_reserved: "Reserved for new worker",
+  mapped_rekey: "Repairable mapped rekey",
+  displace_generated: "Repairable generated allocation",
+  source_duplicate: "S1 duplicate — blocker",
+  source_id_missing: "Missing S1 ID — blocker",
+  source_id_non_numeric: "Non-numeric S1 ID — blocker",
+  source_id_out_of_range: "Out-of-range S1 ID — blocker",
+  blocked_mapping_missing: "Missing mapping — blocker",
+  blocked_mapping_ambiguous: "Ambiguous mapping — blocker",
+  blocked_owner_native: "Native owner — review blocker",
+  blocked_owner_mapping_ambiguous: "Ambiguous owner mapping — blocker",
+  blocked_owner_entitlement_unknown: "Owner entitlement unknown — blocker",
+};
+
+function isRepairableAction(action: SiriusIdOwnershipAction): boolean {
+  return action === "mapped_rekey" || action === "displace_generated";
+}
+
 export default function S1MigrationDashboard() {
   usePageTitle("S1 Migration");
   const [expandedRun, setExpandedRun] = useState<number | null>(null);
@@ -168,10 +212,10 @@ export default function S1MigrationDashboard() {
   const latestBalance = latestRun("verify-balance-parity");
   const latestMonth = latestRun("verify-month-parity");
 
-  const collisionsClean =
+  const ownershipReady =
     collisions == null
       ? null
-      : collisions.duplicates.length === 0 && collisions.ownershipConflicts.length === 0;
+      : collisions.hardBlockers === 0 && collisions.pendingRekeys === 0;
 
   const checks: Array<{ id: string; label: string; state: CheckState; detail: string }> = [
     {
@@ -184,13 +228,15 @@ export default function S1MigrationDashboard() {
     },
     {
       id: "collisions",
-      label: "sirius_id collision pre-scan clean",
-      state: collisionsClean == null ? "pending" : collisionsClean ? "pass" : "fail",
+      label: "Sirius ID ownership preflight ready",
+      state: ownershipReady == null ? "pending" : ownershipReady ? "pass" : "fail",
       detail:
-        collisionsClean === false
-          ? "COLLISIONS PRESENT — the contacts loader will stop; fund triage required (never merge)"
+        ownershipReady === false
+          ? collisions && collisions.hardBlockers > 0
+            ? `${collisions.hardBlockers} ownership blocker(s) require source-data or mapping review`
+            : `${collisions?.pendingRekeys ?? 0} approved repair action(s) must be applied before the ordinary loader runs`
           : collisions
-            ? `${collisions.stagedWorkers} staged workers scanned`
+            ? `${collisions.stagedClaims} authoritative staged claims scanned`
             : "",
     },
     {
@@ -283,20 +329,20 @@ export default function S1MigrationDashboard() {
           <Card data-testid="card-collisions">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                sirius_id collision pre-scan
-                {collisionsClean === false && (
+                Sirius ID ownership preflight
+                {ownershipReady === false && (
                   <Badge variant="destructive" data-testid="badge-collisions-fatal">
-                    FATAL — run will stop
+                    action required
                   </Badge>
                 )}
-                {collisionsClean === true && (
+                {ownershipReady === true && (
                   <Badge variant="secondary" data-testid="badge-collisions-clean">clean</Badge>
                 )}
               </CardTitle>
               <CardDescription>
-                The same gate the contacts/workers loader enforces before any write. Colliding
-                member numbers belong to distinct people — never merged; the fund re-numbers one
-                member of each pair in S1.
+                Read-only evidence using exact S1 worker mappings. The ordinary contacts/workers
+                loader will not apply a repair. Valid S1 member numbers are never changed to
+                resolve an S2 migration allocation conflict.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -306,62 +352,60 @@ export default function S1MigrationDashboard() {
               {collisions?.stagingPresent && (
                 <>
                   <div className="flex flex-wrap gap-2 text-sm">
-                    <Badge variant="outline">{collisions.stagedWorkers} staged workers</Badge>
+                    <Badge variant="outline">{collisions.stagedClaims} staged claims</Badge>
                     <Badge variant="outline">
-                      {collisions.missingSiriusId} missing sirius_id (will sequence-assign)
+                      {collisions.hardBlockers} review blocker{collisions.hardBlockers === 1 ? "" : "s"}
                     </Badge>
                     <Badge variant="outline">
-                      {collisions.nonNumericSiriusId} non-numeric (reject note)
+                      {collisions.pendingRekeys} repairable rekey{collisions.pendingRekeys === 1 ? "" : "s"}
                     </Badge>
+                    {!collisions.idMapPresent && (
+                      <Badge variant="destructive">id_map missing — review required</Badge>
+                    )}
                   </div>
-                  {collisions.duplicates.length >= 200 && (
+                  {collisions.pendingRekeys > 0 && (
                     <p className="text-sm text-muted-foreground">
-                      Showing the first 200 colliding values — the full list is longer.
+                      Repairable migration-generated assignments still require the separately
+                      approved, hash-checked CLI repair while writers are paused. This page cannot
+                      apply changes.
                     </p>
                   )}
-                  {collisions.duplicates.length > 0 && (
+                  {collisions.decisionsTruncated && (
+                    <p className="text-sm text-muted-foreground">
+                      Showing the first 200 ownership decisions — the full diagnostic has more.
+                    </p>
+                  )}
+                  {collisions.decisions.length > 0 && (
                     <Table data-testid="table-collision-duplicates">
                       <TableHeader>
                         <TableRow>
+                          <TableHead>S1 worker nid</TableHead>
                           <TableHead>sirius_id</TableHead>
-                          <TableHead>Claimed by worker nids</TableHead>
+                          <TableHead>Category / intended action</TableHead>
+                          <TableHead>Evidence</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {collisions.duplicates.map((d) => (
-                          <TableRow key={d.siriusId}>
-                            <TableCell className="font-mono">{d.siriusId}</TableCell>
-                            <TableCell className="font-mono">{d.nids.join(", ")}</TableCell>
+                        {collisions.decisions.map((decision) => (
+                          <TableRow key={`${decision.sourceNid}-${decision.siriusId}`}>
+                            <TableCell className="font-mono">{decision.sourceNid}</TableCell>
+                            <TableCell className="font-mono">{decision.siriusId ?? "—"}</TableCell>
+                            <TableCell>
+                              <Badge variant={
+                                decision.action.startsWith("blocked_") ||
+                                decision.action === "source_duplicate" ||
+                                decision.action.startsWith("source_id_")
+                                  ? "destructive"
+                                  : isRepairableAction(decision.action) ? "secondary" : "outline"
+                              }>
+                                {OWNERSHIP_ACTION_LABEL[decision.action]}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{decision.detail}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
-                  )}
-                  {collisions.ownershipConflicts.length > 0 && (
-                    <div>
-                      <p className="text-sm font-medium flex items-center gap-1 mb-2">
-                        <AlertTriangle className="h-4 w-4 text-destructive" />
-                        Values already owned by a different S2 worker (cross-run collision)
-                      </p>
-                      <Table data-testid="table-collision-ownership">
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Staged nid</TableHead>
-                            <TableHead>sirius_id</TableHead>
-                            <TableHead>Owning S2 worker</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {collisions.ownershipConflicts.map((c) => (
-                            <TableRow key={`${c.nid}-${c.siriusId}`}>
-                              <TableCell className="font-mono">{c.nid}</TableCell>
-                              <TableCell className="font-mono">{c.siriusId}</TableCell>
-                              <TableCell className="font-mono">{c.ownerWorkerId}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
                   )}
                 </>
               )}

@@ -9,9 +9,10 @@
  *   - s1_staging.runs (loader / harness / stage reports incl. rejects, parity)
  *   - s1_staging.id_map (per-entity load progress)
  *   - a handful of aggregate target-table counts (readiness checks)
- * plus the sirius_id collision pre-scan over staged workers — the same fatal
- * gate the contacts/workers loader enforces (collisions are distinct people;
- * never merged; fund triage required).
+ * plus the read-only Sirius-ID ownership plan over staged workers — the same
+ * pre-write decision the contacts/workers loader enforces. It distinguishes
+ * repairable generated allocations from source/mapping blockers and never
+ * equates people merely because their numbers match.
  *
  * Everything is aggregates + staging ids (nids); no S1 record-level values
  * are returned. Gated: auth + component `sitespecific.bao.s1migration` +
@@ -20,6 +21,12 @@
 import type { Express, RequestHandler } from "express";
 import { sql } from "drizzle-orm";
 import { db } from "./../storage/db";
+import { storage } from "../storage/database";
+import {
+  planSiriusIdOwnership,
+  siriusIdPlanHash,
+  type SiriusIdOwnershipAction,
+} from "../storage/workers/sirius-id-ownership-plan";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
 
@@ -46,28 +53,6 @@ async function countIfPresent(qualified: string): Promise<number | null> {
   );
   return Number(rowsOf(res)[0]?.n ?? 0);
 }
-
-/**
- * Staged field_sirius_id extraction, mirroring the loader's rules
- * (strOf collapses {value,...} objects and [ {value,...} ] arrays; only
- * /^\d+$/ values count as numeric).
- */
-const stagedFsidCte = sql`
-  WITH w AS (
-    SELECT nid,
-           NULLIF(TRIM(COALESCE(
-             fields->'field_sirius_id'->>'value',
-             fields->'field_sirius_id'->0->>'value'
-           )), '') AS raw
-    FROM s1_staging.records
-    WHERE bundle = 'sirius_worker'
-  ),
-  n AS (
-    SELECT nid, raw,
-           CASE WHEN raw ~ '^[0-9]+$' THEN raw::bigint END AS fsid
-    FROM w
-  )
-`;
 
 /**
  * Defense-in-depth redaction for run args/report jsonb before it leaves the
@@ -184,80 +169,45 @@ export function registerS1MigrationRoutes(app: Express, requireAuth: RequestHand
     }
   });
 
-  // The fatal-gate pre-scan: cross-worker sirius_id collisions in staged
-  // data, plus values already owned by a DIFFERENT S2 worker row. Mirrors
-  // load-contacts-workers' abort conditions so operators see the stop
-  // BEFORE burning the freeze window.
+  // Read-only ownership planning for the fatal pre-write gate.  This calls
+  // the same id_map-based planner as the CLI diagnostic and contacts/workers
+  // loader — a numeric match is never taken as evidence two people are same.
   app.get("/api/s1-migration/collisions", ...gates, async (_req, res) => {
     try {
-      if (!(await regclassPresent("s1_staging.records"))) {
+      const snapshot = await storage.workers.getMigrationSiriusIdOwnershipSnapshot();
+      if (!snapshot.stagingPresent) {
         return res.json({
           stagingPresent: false,
-          stagedWorkers: 0,
-          duplicates: [],
-          ownershipConflicts: [],
-          missingSiriusId: 0,
-          nonNumericSiriusId: 0,
+          idMapPresent: snapshot.idMapPresent,
+          stagedClaims: 0,
+          decisions: [],
+          decisionsTruncated: false,
+          actionCounts: {},
+          hardBlockers: 1,
+          pendingRekeys: 0,
+          planHash: null,
         });
       }
-
-      const counts = rowsOf(
-        await db.execute(sql`
-          ${stagedFsidCte}
-          SELECT COUNT(*)::int AS staged,
-                 COUNT(*) FILTER (WHERE raw IS NULL)::int AS missing,
-                 COUNT(*) FILTER (WHERE raw IS NOT NULL AND fsid IS NULL)::int AS non_numeric
-          FROM n
-        `),
-      )[0] ?? {};
-
-      const duplicates = rowsOf(
-        await db.execute(sql`
-          ${stagedFsidCte}
-          SELECT fsid, array_agg(nid ORDER BY nid) AS nids
-          FROM n WHERE fsid IS NOT NULL
-          GROUP BY fsid HAVING COUNT(*) > 1
-          ORDER BY fsid LIMIT 200
-        `),
-      ).map((r) => ({
-        siriusId: Number(r.fsid),
-        nids: (r.nids as unknown[]).map(Number),
-      }));
-
-      const idMapPresent = await regclassPresent("s1_staging.id_map");
-      const workersPresent = await regclassPresent("public.workers");
-      const ownershipConflicts =
-        idMapPresent && workersPresent
-          ? rowsOf(
-              await db.execute(sql`
-                ${stagedFsidCte}
-                SELECT n.nid, n.fsid, wk.id AS owner_worker_id
-                FROM n
-                JOIN workers wk ON wk.sirius_id = n.fsid
-                LEFT JOIN s1_staging.id_map m
-                  ON m.entity = 'worker' AND m.s1_id = n.nid
-                WHERE n.fsid IS NOT NULL
-                  AND (m.s2_id IS NULL OR m.s2_id <> wk.id::text)
-                ORDER BY n.fsid LIMIT 200
-              `),
-            ).map((r) => ({
-              nid: Number(r.nid),
-              siriusId: Number(r.fsid),
-              ownerWorkerId: String(r.owner_worker_id),
-            }))
-          : [];
-
+      const plan = planSiriusIdOwnership(snapshot);
+      const actionCounts: Partial<Record<SiriusIdOwnershipAction, number>> = {};
+      for (const decision of plan.decisions) {
+        actionCounts[decision.action] = (actionCounts[decision.action] ?? 0) + 1;
+      }
+      const DECISION_LIMIT = 200;
       res.json({
         stagingPresent: true,
-        stagedWorkers: Number(counts.staged ?? 0),
-        duplicates,
-        ownershipConflicts,
-        missingSiriusId: Number(counts.missing ?? 0),
-        nonNumericSiriusId: Number(counts.non_numeric ?? 0),
+        idMapPresent: snapshot.idMapPresent,
+        stagedClaims: snapshot.claims.length,
+        decisions: plan.decisions.slice(0, DECISION_LIMIT),
+        decisionsTruncated: plan.decisions.length > DECISION_LIMIT,
+        actionCounts,
+        hardBlockers: plan.hardBlockers,
+        pendingRekeys: plan.pendingRekeys,
+        planHash: siriusIdPlanHash(plan),
       });
     } catch (e) {
-      console.error("s1-migration collisions failed:", e);
-      res.status(500).json({ message: "Failed to run collision pre-scan" });
+      console.error("s1-migration ownership plan failed:", e);
+      res.status(500).json({ message: "Failed to read Sirius ID ownership plan" });
     }
   });
 

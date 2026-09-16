@@ -529,7 +529,7 @@ SELECT count(*) FROM worker_trust_elections;  -- elections
 | # | Command (prod) | Dev rehearsal delta | Expected counter shape (prod) | Dev-observed (reference) |
 |---|---|---|---|---|
 | 1 | `npx tsx scripts/s1-migration/load-options.ts` | same | **Standard sync envelope (§10)** — top level is `summary` (created/updated/unchanged/…) + `rejectGate`/`verify`/`findings`; the legacy counters now sit under `detail`: `detail.unhandledVocabularies: {}`, `detail.workerMsUnresolvedIndustry: 0`, `detail.hourTypeVerify: "ok"`, `verify.failures: []`. Every worker-ms term resolves an industry (Q37). Re-runs fast-skip unchanged terms via consumed fingerprints (`detail.fastPathSkips`). Deletion policy: report-only — a term vanished from staging emits a blocking `deleted_in_s1` finding (§10). **Member-status hours thresholds (logic v2, Task 415):** the S1 payload carries the BAO threshold ONLY in the term NAME's `- NN hours` suffix (the 7 `sirius_member_status` terms stage just `field_sirius_id`/`field_sirius_industry`; `field_sirius_json` is empty). The loader decodes it and merges `data.sitespecific.bao.threshold` on create, adopt, and already-mapped rows (sibling JSON preserved; the logic-version bump reprocesses rows synced under v1). Expected restored values: 1667→100, 1666→60, 1628→80 (Event Center), 1672→60, 1688→40 (UNITE HERE), 1678→60 (Restaurant), 1673 (PA Worker)→none — reported under `detail.workerMsThresholdMissing`, S2-configured value (if any) left untouched; `detail.workerMsThresholdApplied` counts writes (7-term prod set: 6 on first v2 run, 0 on rerun). Verify eligibility behavior with `npx tsx scripts/oneoffs/verify-bao-threshold.ts`. | 70 terms; created 4 industries, 10 relation types, 7 member statuses, 8 payment types |
-| 2 | `npx tsx scripts/s1-migration/load-contacts-workers.ts` | same | `contacts.created+matched ≈ staged`; **T1 ruling 2026-08-06:** `workers.sirius_id = field_sirius_id`, nid → "Legacy NID" worker_ids row (every loaded worker gets one; no "Sirius ID" rows). Rejects are **annotations** (row still loads where possible): expect `ssn_collision_q36` (small), `worker_contact_unresolved` (small), `sirius_id_assigned` (workers with no field_sirius_id — count unknown in prod, triage the report); `sirius_id_not_numeric` expects 0 — triage any occurrence; **sirius_id collisions are FATAL** (pre-scan aborts before any write; no allow flag — see §5); `verifyFailures: 0` (includes sirius_id==field_sirius_id and Legacy NID coverage checks) | 74 contacts, 50 workers, 184 worker ids; rejects ssn_collision_q36=2, worker_contact_unresolved=2, sirius_id_assigned=2 |
+| 2 | `npx tsx scripts/s1-migration/load-contacts-workers.ts` | same | `contacts.created+matched ≈ staged`; **T1 ruling 2026-08-06:** `workers.sirius_id = field_sirius_id`, nid → "Legacy NID" worker_ids row (every loaded worker gets one; no "Sirius ID" rows). `field_sirius_id` is required and numeric: missing or non-numeric values are **FATAL pre-write blockers**, never sequence-assigned. Expect `ssn_collision_q36` (small) and `worker_contact_unresolved` (small) only after the ownership gate is clean. **S1 duplicate claims and unresolved ownership are FATAL** (no allow flag — see §5); an evidence-backed migration allocation conflict is repaired only through the separately approved ownership-repair command, never by this loader. `verifyFailures: 0` includes `sirius_id==field_sirius_id` and Legacy NID coverage checks. | 74 contacts, 50 workers, 184 worker ids; historical `sirius_id_assigned` rehearsal counters are obsolete and must not be used as an allowance |
 | 2b | `npx tsx scripts/s1-migration/load-beneficiaries.ts` | requires `dev/seed-beneficiary-fakes.ts` first (synthetic worker JSON has no `beneficiaries`; re-run after any restage) + `--allow-rejects worker_unmapped,percent_sum_mismatch,pct_unusable,bad_json,unexpected_tier,list_exists_foreign,worker_map_broken` (seeded traps, 1 each); optional failure-path smoke `dev/smoke-beneficiary-clear-write-failure.ts` (exercises `write_failed` phase "clear" via a temporary trigger — dev only); sync smoke `dev/smoke-sync-beneficiaries.ts` | **After contacts/workers (2).** Loads `beneficiaries.primary[]` from worker `field_sirius_json` into the BAO beneficiaries store (replace-all via storage; authorship in id_map `bao-beneficiaries` — re-runs refresh loader-owned lists, NEVER clobber foreign ones). Values load VERBATIM (fund ruling: SSNs/phones that would fail the route schema are the legal record) — `softMismatches.ssnInvalid/phoneInvalid/percentOutOfRange` are report-only triage counts, not rejects. Staged-side reference (recomputed at run time, emitted as `stagedCounts` for fund comparison): ≈5,227 workers with key / ≈3,062 with ≥1 populated row / ≈5,087 populated rows. Run clean first; triage every fatal class (§5). `unexpected_tier` = ANNOTATION (primary still loads; a `contingent` tier is out of scope by ruling). Reconciliation is built in: `reconciliation.workersOk/rowsOk` true, `verifyFailures: 0`. **Sync-converted (§10):** re-runs fast-skip unchanged owned workers via versioned consumed fingerprints (no S2 reads); a staged worker that vanishes ENTIRELY → report-only `source_worker_missing` finding (S2 list + authorship mapping preserved; acknowledge per run via `--allow-findings source_worker_missing`; STOP-THE-LINE for the final freeze run); a missing S2 target stays the fatal `worker_map_broken` reject; LOGIC_VERSION bump or `--force-reconcile` reprocesses unchanged workers. | 14 seeded traps: 7 workers / 11 rows written (incl. legacy trailing-dot "50."/"50." → 50/50 and fractional 50.5/49.5 with precision retained), 1 owned stale list cleared (contingent-only staging); rejects 1 each of the 6 fatal trap classes (incl. worker_map_broken from a broken clear-path authorship row; pct_unusable worker carries 2 bad rows — blank + "50..") + unexpected_tier=2 (annotations — one on a loaded worker, one on the cleared worker); soft ssnInvalid=1, phoneInvalid=1, percentOutOfRange=2; re-run fast-skips all 7 owned workers (adopts only on LOGIC_VERSION bump or `--force-reconcile`), clears 0; clear-write-failure smoke all-PASS |
 | 3 | `npx tsx scripts/s1-migration/load-member-statuses.ts` | same | `assignments == workersWithMs`, `rejects: {}` | 28/28 |
 | 4 | `npx tsx scripts/s1-migration/load-employers.ts` | same | `rejects: {}`; prod expects ~557 shop contacts → ~920 links (T24) | 10 employers, 8 contacts, 16 links |
@@ -566,7 +566,7 @@ every ruling below (each class ruled "allow" for production is present; each
 
 | Loader | Production `--allow-rejects` |
 |---|---|
-| contacts-workers | `worker_id_value_collision,duplicate_email,address_incomplete,phone_invalid,contact_no_name,ssn_collision_q36,worker_contact_unresolved,worker_gender_unresolved,sirius_id_assigned` |
+| contacts-workers | `worker_id_value_collision,duplicate_email,address_incomplete,phone_invalid,contact_no_name,ssn_collision_q36,worker_contact_unresolved,worker_gender_unresolved` |
 | employers | `duplicate_email,shopcontact_no_name,phone_invalid,shopcontact_employer_unresolved` |
 | policies | `policy_unmatched_unreferenced` (after inspecting reported titles) |
 | employer-rates | `bad_rate` (§4 row 5c: the 2 known colon typos; `rate_conflict` NEVER — allowing it drops the shop's whole rate history) |
@@ -608,8 +608,10 @@ them for a specific run only after the verification the row below requires.
 | `employer_unresolved` | benefit-history | not present | Shopless spans (heavily 2020–2021, BPA era). **First rerun t16 elections with the typed-elections fix** (pre-fix, 61,823 coverage-tier-typed elections were skipped entirely and never reached id_map, so the election→employer fallback failed). **2026-08-09 rerun result: the fix worked** — 35,103 → **1,462** (`employerFromElection` rescued 33,881). The 1,462 residue was allowed for the rehearsal; its production disposition (drop vs designated employer) is STILL a pending fund ruling (05-open-questions "Unresolved"). |
 | `non_cleared_status` | ledger | ALLOWED (2 Pending) | **Expected** — verify count == frozen S1 non-cleared AR count, then allow |
 | `timestamp_missing` / `create_failed` / `update_failed` | log-notes | never blanket-allow | A source timestamp or note write failure means the row cannot be verified. Triage the aggregate report and rerun; unresolved handler/contact associations are intentionally not reject classes and do not block the migration. |
-| `ssn_collision_q36`, `worker_contact_unresolved`, `worker_gender_unresolved`, `sirius_id_assigned`, … | contacts-workers | reported (annotations — non-fatal) | Same; RULED annotation family — the standardized reject gate (§10/§11) still requires the explicit allowance (sync-config lists them), then review counts in the report. `sirius_id_assigned` = workers with no/non-numeric `field_sirius_id` loaded with a sequence-assigned sirius_id (documented T1 rule) |
-| sirius_id collision (pre-scan / cross-run) | contacts-workers | not present | **FATAL, no allow flag exists.** Fund finding 2026-08-06: S1's unlocked ID counter duplicated ~1 in 410 sirius_ids; 19 values are each shared by two DISTINCT people (38 workers). The loader aborts before any write and lists the colliding values + nids. NEVER dedupe/merge — that combines two people's benefit histories. Triage: fund re-numbers one member of each pair in S1 (or rules a manual assignment), re-stage, re-run. |
+| `ssn_collision_q36`, `worker_contact_unresolved`, `worker_gender_unresolved`, … | contacts-workers | reported (annotations — non-fatal) | Same; RULED annotation family — the standardized reject gate (§10/§11) still requires the explicit allowance (sync-config lists them), then review counts in the report. |
+| missing or non-numeric `field_sirius_id` | contacts-workers | historical rehearsal rows only | **FATAL, no allow flag exists.** The ordinary loader never invents a member's Sirius ID. Correct the authoritative S1 field, re-stage, and rerun the diagnostic before any loader write. |
+| duplicate S1 claim / unresolved Sirius-ID ownership | contacts-workers | not present | **FATAL, no allow flag exists.** Never dedupe or merge people. A duplicate S1 claim requires fund source-data triage (including renumbering one duplicate only when the fund decides that is correct). An unresolved owner/mapping requires review; neither is an automatic repair. |
+| proven migration-generated allocation conflict | ownership diagnostic / approved repair only | not applicable | This is **not evidence that S1 should be renumbered**. Keep the valid S1 number with its staged worker. The ordinary contacts/workers loader does not repair ownership. Pause writers, obtain the diagnostic plan and its exact approval hash, then run the explicit guarded repair command described in §5.1. It preserves the worker UUID and references, revalidates under lock, and refuses native or ambiguous rows. |
 | `bad_json` / `bad_shape` | beneficiaries | `bad_json` ALLOWED (1 seeded trap) | Run clean; unparseable/misshapen `field_sirius_json` is unloadable — inspect nid samples, then allow observed counts |
 | `worker_unmapped` | beneficiaries | ALLOWED (1 seeded trap: staged worker with no id_map row) | Expected family: deleted/merged S1 contacts (same as benefit-history) — sample nids, verify, allow observed count |
 | `pct_unusable` / `percent_sum_mismatch` | beneficiaries | ALLOWED (1 seeded trap each) | Fund says current data always totals 100 — run clean; any occurrence is S1 dirt for fund triage (fix in S1 + restage, or allow with observed nids documented) |
@@ -624,6 +626,70 @@ them for a specific run only after the verification the row below requires.
 | `missing_mail` / `invalid_mail` | users | ALLOWED (synthetic traps: 3 staff w/o mail, 1 bad mail) | Run clean; prod staff accounts may genuinely lack mail — inspect, then allow observed counts (those accounts cannot use Okta and need manual handling) |
 | `duplicate_user_email` | users | ALLOWED (1 synthetic dup pair) | Run clean; lowest uid wins — triage which account the person actually uses, then allow |
 | `no_resolvable_worker` / `ambiguous_worker_email` | users | reported (annotations — non-fatal) | Same; the reconciliation report is the staff-review artifact; unlinked users self-verify via SSN+DOB |
+
+### 5.1 Sirius ID ownership diagnostic and approved repair
+
+The contacts/workers loader performs the **read-only** ownership preflight
+before its first write. It does not repair an allocation conflict itself. The
+dashboard presents the same plan, but is also read-only. In particular, do not
+renumber a valid S1 member merely because an S2 migration-generated worker
+currently holds that number.
+
+The initial investigation scope is the reported Sirius IDs `1009069` through
+`1009085` (whose reported staged-worker nids are `18441635` through
+`18442766`). This repository has not used that statement to claim that any
+real target has been inspected or repaired. Run the diagnostic against the
+actual target to establish the evidence:
+
+```bash
+# Read-only. With no scope flags, the default is the union of reported
+# Sirius IDs 1009069–1009085 and reported worker nids 18441635–18442766.
+npx tsx scripts/tools/s1-sirius-id-ownership.ts
+
+# Optional: a consciously narrower approved review scope.
+npx tsx scripts/tools/s1-sirius-id-ownership.ts --ids 1009069,1009070
+# --ids scopes only by Sirius ID; --nids scopes only by S1 worker nid.
+# Supplying both intentionally takes their union. With neither flag, the
+# reported IDs and reported nid range are both inspected.
+```
+
+The diagnostic reports the exact source mapping, any shell mapping and marker,
+the staged entitlement when present, an intended action for each claim, and an
+`approvalHash`. Interpret it as follows:
+
+| Result category | Required action |
+|---|---|
+| `correct` / `new_claim_reserved` | No ownership write is needed. A new claim remains reserved so a relationship shell cannot take it. |
+| `mapped_rekey` / `displace_generated` | Repairable only after review. The evidence must identify an exact mapped worker or a proven migration-generated shell/allocation; an equal number alone is never identity evidence. |
+| `source_id_missing`, `source_id_non_numeric`, `source_id_out_of_range` | Stop. Correct the authoritative S1 field and re-stage. Source workers never receive a generated replacement ID. |
+| `source_duplicate` | Stop. This is an S1 duplicate claim; never merge workers. The fund decides the source correction, which may include renumbering one actual duplicate. |
+| `blocked_mapping_*`, `blocked_owner_*` | Stop for mapping/native-owner review. Do not move an unproven or staff-created S2 worker and do not infer identity from a shared number. |
+
+For a reviewed plan containing only repairable rekeys, pause application writers
+and all migration writers first. Copy the hash from an immediately preceding
+diagnostic and use it exactly:
+
+```bash
+npx tsx scripts/tools/s1-sirius-id-ownership.ts \
+  --apply --approve <approvalHash-from-the-immediately-preceding-diagnostic>
+```
+
+`--apply` is intentionally unavailable through HTTP and cannot run without
+both flags. It locks the worker table, rereads the staged and target evidence,
+recomputes the scoped plan and hash, and commits all required temporary parking
+and final rekeys as one transaction. A changed hash, a new blocker, or a stale
+owner causes a rollback with no partial reassignment. Worker UUIDs and every
+foreign-key reference are retained; only `workers.sirius_id` changes. The
+sequence is advanced without lowering it.
+
+After a successful apply (or after an interrupted/failed attempt), rerun the
+same read-only diagnostic while writers remain paused. Do **not** reuse an old
+approval hash: a completed repair produces a new, clean plan, and a stale
+approval is deliberately rejected. Only when `hardBlockers: 0` and
+`pendingRekeys: 0` may the ordinary contacts/workers loader run. Then resume
+writers after its normal verification. Relationship shells are the sole
+migration-generated IDs; their allocator observes all staged reservations, so
+later S1 arrivals cannot be silently displaced.
 
 **Forbidden in production (synthetic-only, now unnecessary even in dev):**
 `--stub-missing`, `--allow-unresolved-industry`, `--fallback-industry`,

@@ -43,24 +43,20 @@
  *     field_sirius_id IS the S2 sirius_id; the S1 nid is a node counter in a
  *     disjoint id space). The nid is preserved as a "Legacy NID" worker_ids
  *     row (type seeded with stable sirius_id "s1-legacy-nid"). Sequence
- *     setval() runs once after the load — the only raw SQL write in this
- *     loader (spec-sanctioned).
- *   - missing/non-numeric field_sirius_id (RULE, documented): the worker
- *     still loads with a SEQUENCE-ASSIGNED sirius_id (above both the staged
- *     field_sirius_id range and the current DB max) + reject-report note
- *     (`sirius_id_assigned`, plus `sirius_id_not_numeric` when a value
- *     existed but failed numeric validation). Never silently defaulted.
- *   - cross-worker field_sirius_id collisions are FATAL (data-integrity
- *     ruling 2026-08-06: colliding sirius_ids belong to DISTINCT PEOPLE —
- *     S1's unlocked ID counter duplicated ~1 in 410 values). A pre-scan
- *     aborts BEFORE any write; no first-wins, no dedupe, no merge, no
- *     --allow-rejects class. A staged value already owned by a different S2
- *     row (cross-run collision) throws mid-loop for the same reason. Both
- *     stop the run for fund triage.
- *   - re-runs REPAIR rows loaded under the old nid-based mapping: a mapped
- *     worker whose sirius_id equals its nid (≠ staged field_sirius_id) is
- *     updated in place, its old "Sirius ID" worker_ids row (value == staged
- *     field_sirius_id) is removed, and a "Legacy NID" row is added.
+ *     safety is handled by the locked storage create path; this loader makes
+ *     no raw sequence write.
+ *   - missing/non-numeric field_sirius_id is a pre-write blocker. A source
+ *     worker never receives a generated number: only relationship shells may
+ *     use the ownership-aware generated-ID allocator.
+ *   - cross-worker field_sirius_id collisions and ambiguous S2 ownership are
+ *     FATAL pre-write blockers: no first-wins, no dedupe, no merge, and no
+ *     --allow-rejects class. Proven migration-generated occupants and mapped
+ *     rekeys are reported as repair_pending and require the hash-approved
+ *     repair CLI before this loader can run.
+ *   - ID ownership repairs are never performed by this loader. A mapped
+ *     mismatch or a proven generated occupant produces a pre-write
+ *     `repair_pending` blocker; the hash-approved repair CLI preserves UUIDs
+ *     and must complete before this loader is re-run.
  *   - contact_id via id_map (contact nid → contacts.id); missing → reject
  *   - ssn (T3): digits-only, must be 9 digits; collisions load ssn=null +
  *     reject (Q36 review queue), except a uniquely claimed incoming SSN may
@@ -155,7 +151,7 @@ import {
   sweepDeletions,
   type SyncFinding,
 } from "./lib/sync";
-import { nextSiriusId } from "./lib/sirius-id";
+import { planSiriusIdOwnership } from "../../server/storage/workers/sirius-id-ownership-plan";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 /** Reject classes the operator explicitly allows for THIS run (comma-sep).
@@ -171,7 +167,7 @@ const ALLOWED_REJECTS: string[] = (() => {
 const LOADER = "t3t1-contacts-workers";
 /** Loader logic version — BUMP whenever transform logic changes so unchanged
  * S1 rows reprocess into the corrected S2 shape on their next run. */
-const LOGIC_VERSION = 2;
+const LOGIC_VERSION = 3;
 const FORCE_RECONCILE = parseForceReconcile();
 const ALLOWED_FINDINGS = parseAllowedFindings();
 
@@ -263,37 +259,37 @@ async function main() {
   report.stagedWorkers = stagedWorkers.length;
   progress.setTotal(stagedContacts.length + stagedWorkers.length);
 
-  // ---- FATAL pre-scan: cross-worker field_sirius_id collisions ----
-  // Data-integrity ruling 2026-08-06 (fund finding: S1's unlocked ID counter
-  // duplicated ~1 in 410 sirius_ids; colliding workers are DISTINCT PEOPLE).
+  // ---- source-ID pre-scan; ownership planning below decides every blocker ----
+  // A duplicate source claim is never auto-resolved because the claimants are
+  // distinct people; an invalid source value also cannot receive a substitute.
   // A collision is NEVER auto-resolved: no first-wins, no dedupe, no merge —
   // merging would combine two people's benefit histories. There is NO
   // --allow-rejects class for this. The scan runs BEFORE any write (contacts
-  // included); the run stops here and the fund must re-number one of the
-  // colliding members in S1 (or rule a manual assignment) before retrying.
+  // included); a complete shared ownership decision below stops the run before
+  // writes and directs proven S2 allocation conflicts to the repair workflow.
+  const sourceSiriusIdProblems = {
+    missingNids: [] as number[],
+    nonNumericNids: [] as number[],
+    duplicateClaims: [] as Array<{ siriusId: number; nids: number[] }>,
+  };
   {
     const byFsid = new Map<number, number[]>(); // fsid → staged worker nids
     for (const w of stagedWorkers) {
       const raw = strOf(w.fields, "field_sirius_id");
-      if (raw == null || !/^\d+$/.test(raw)) continue;
+      if (raw == null) {
+        sourceSiriusIdProblems.missingNids.push(w.nid);
+        continue;
+      }
+      if (!/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw)) || Number(raw) > 2_147_483_647) {
+        sourceSiriusIdProblems.nonNumericNids.push(w.nid);
+        continue;
+      }
       const v = Number(raw);
       byFsid.set(v, [...(byFsid.get(v) ?? []), w.nid]);
     }
-    const collisions = [...byFsid.entries()].filter(([, nids]) => nids.length > 1);
-    if (collisions.length > 0) {
-      console.error(
-        `FATAL: ${collisions.length} field_sirius_id value(s) are each claimed by multiple staged workers ` +
-          `(${collisions.reduce((n, [, nids]) => n + nids.length, 0)} workers). ` +
-          `NOT auto-resolvable — colliding sirius_ids belong to distinct people; ` +
-          `no allow flag exists. Nothing was written. Triage with the fund:`,
-      );
-      for (const [fsid, nids] of collisions.slice(0, 50)) {
-        console.error(`  sirius_id ${fsid}: worker nids ${nids.join(", ")}`);
-      }
-      if (collisions.length > 50) console.error(`  … and ${collisions.length - 50} more`);
-      await pool.end();
-      process.exit(1);
-    }
+    sourceSiriusIdProblems.duplicateClaims = [...byFsid.entries()]
+      .filter(([, nids]) => nids.length > 1)
+      .map(([siriusId, nids]) => ({ siriusId, nids }));
   }
 
   // ---- shared-email ownership pre-scan (S1 user↔contact association) ----
@@ -409,6 +405,48 @@ async function main() {
 
   const contactMap = await getMappings("contact", stagedContacts.map((c) => c.nid));
   const workerMap = await getMappings("worker", stagedWorkers.map((w) => w.nid));
+
+  // One shared, read-only ownership decision precedes every domain write —
+  // including the shared-email repair below.  The loader never applies a
+  // rekey itself: a repair plan is intentionally an operator-approved CLI
+  // action so a number can never be treated as person identity.
+  const siriusOwnershipPlan = planSiriusIdOwnership(
+    await storage.workers.getMigrationSiriusIdOwnershipSnapshot(),
+  );
+  const ownershipActions = siriusOwnershipPlan.decisions.reduce<Record<string, number>>((counts, decision) => {
+    counts[decision.action] = (counts[decision.action] ?? 0) + 1;
+    return counts;
+  }, {});
+  report.siriusIdOwnership = {
+    snapshotPresent: siriusOwnershipPlan.snapshotPresent,
+    actions: ownershipActions,
+    reservations: siriusOwnershipPlan.reservations.length,
+    hardBlockers: siriusOwnershipPlan.hardBlockers,
+    pendingRekeys: siriusOwnershipPlan.pendingRekeys,
+    sourceMissing: sourceSiriusIdProblems.missingNids.length,
+    sourceNonNumeric: sourceSiriusIdProblems.nonNumericNids.length,
+    sourceDuplicateClaims: sourceSiriusIdProblems.duplicateClaims.length,
+  };
+  if (
+    !siriusOwnershipPlan.snapshotPresent ||
+    siriusOwnershipPlan.hardBlockers > 0 ||
+    siriusOwnershipPlan.pendingRekeys > 0 ||
+    sourceSiriusIdProblems.missingNids.length > 0 ||
+    sourceSiriusIdProblems.nonNumericNids.length > 0 ||
+    sourceSiriusIdProblems.duplicateClaims.length > 0
+  ) {
+    console.error(
+      "FATAL: Sirius ID ownership preflight blocked this run before any domain write. " +
+        `sourceMissing=${sourceSiriusIdProblems.missingNids.length} ` +
+        `sourceNonNumeric=${sourceSiriusIdProblems.nonNumericNids.length} ` +
+        `sourceDuplicates=${sourceSiriusIdProblems.duplicateClaims.length} ` +
+        `ownershipBlockers=${siriusOwnershipPlan.hardBlockers} ` +
+        `repairPending=${siriusOwnershipPlan.pendingRekeys}. ` +
+        "Use the read-only Sirius ID diagnostic and, only for a proven repair, its hash-approved apply command.",
+    );
+    await pool.end();
+    process.exit(1);
+  }
 
   // ---- consumed fingerprints (Task 293) ----
   // Worker: the staged node hash directly (single source, SQL-joinable).
@@ -542,29 +580,6 @@ async function main() {
   }
   let ssnTransfersPlanned = ssnTransferByIncomingNid.size;
   let ssnTransfersApplied = 0;
-  // sirius_id → owning S2 worker id (collision pre-check + assign base), plus
-  // the reverse (row → current sirius_id) so rekeys keep both in sync
-  const siriusRes = await db.execute(sql`SELECT id, sirius_id FROM workers`);
-  const siriusOwner = new Map(
-    (siriusRes as unknown as { rows: Array<{ id: string; sirius_id: number | string }> }).rows.map((r) => [
-      Number(r.sirius_id),
-      r.id,
-    ]),
-  );
-  const rowSirius = new Map(
-    (siriusRes as unknown as { rows: Array<{ id: string; sirius_id: number | string }> }).rows.map((r) => [
-      r.id,
-      Number(r.sirius_id),
-    ]),
-  );
-  // keep ownership maps exact when a row is created or rekeyed — a freed old
-  // value (e.g. a repaired nid) must stop looking "owned"
-  const rekeyOwnerMaps = (rowId: string, newVal: number) => {
-    const old = rowSirius.get(rowId);
-    if (old != null && siriusOwner.get(old) === rowId) siriusOwner.delete(old);
-    siriusOwner.set(newVal, rowId);
-    rowSirius.set(rowId, newVal);
-  };
   // workers.data by row id — storage worker reads strip `data`
   // (stripWorkerData), so the aatRequired merge/compare needs a direct read.
   const wdataRes = await db.execute(sql`SELECT id, data FROM workers WHERE data IS NOT NULL`);
@@ -1118,62 +1133,18 @@ async function main() {
     updated: 0,
     workerIdsCreated: 0,
     workerIdsRemoved: 0,
-    siriusIdAssigned: 0,
-    oldMappingRepaired: 0,
     oldSiriusIdRowsRemoved: 0,
-    parkedForRekey: 0,
   };
   const finalContactMap = await getMappings("contact", stagedContacts.map((c) => c.nid));
 
-  // ---- sirius_id resolution (T1, ruling 2026-08-06) ----
+  // The preflight above has already established that every staged worker has
+  // a unique numeric source ID and that no ownership repair is pending.
   const fsidOf = (w: StagedNode): { value: number | null; raw: string | null } => {
     const raw = strOf(w.fields, "field_sirius_id");
     if (raw == null) return { value: null, raw: null };
-    return /^\d+$/.test(raw) ? { value: Number(raw), raw } : { value: null, raw };
+    const value = /^\d+$/.test(raw) ? Number(raw) : NaN;
+    return Number.isSafeInteger(value) && value <= 2_147_483_647 ? { value, raw } : { value: null, raw };
   };
-  // cross-worker staged collisions: first (lowest nid — stagedWorkers is
-  // nid-ordered) wins
-  const fsidFirstOwner = new Map<number, number>(); // fsid → first nid
-  for (const w of stagedWorkers) {
-    const { value } = fsidOf(w);
-    if (value != null && !fsidFirstOwner.has(value)) fsidFirstOwner.set(value, w.nid);
-  }
-  // assign counter for missing/invalid field_sirius_id: above BOTH the staged
-  // field_sirius_id range and everything already in the DB (nids from an
-  // old-mapping load included), so assignment can never collide.
-  let nextAssigned = nextSiriusId(fsidFirstOwner.keys(), siriusOwner.keys());
-
-  // ---- collision-safe repair pre-pass (swaps/cycles among old values) ----
-  // Plan every already-mapped worker's target sirius_id first; any mapped row
-  // whose CURRENT value blocks a DIFFERENT mapped worker's target — while the
-  // row itself is scheduled to move elsewhere — is PARKED on a temporary
-  // non-conflicting value. Sequential updates in the main loop then can't
-  // trip the (sirius_id) unique constraint, and true external ownership
-  // (a row that keeps its value) still rejects in the main loop.
-  if (!DRY_RUN) {
-    const plannedByRow = new Map<string, number>(); // s2 row id → target sirius_id
-    for (const w of stagedWorkers) {
-      const m = workerMap.get(w.nid);
-      if (!m) continue;
-      const { value } = fsidOf(w);
-      if (value != null && fsidFirstOwner.get(value) === w.nid) plannedByRow.set(m.s2Id, value);
-    }
-    const targetWanter = new Map<number, string>(); // target value → row that wants it
-    for (const [rowId, t] of plannedByRow) targetWanter.set(t, rowId);
-    let parkNext = nextAssigned + 1_000_000; // parked values sit far above assigns
-    for (const [rowId, cur] of [...rowSirius]) {
-      const wanter = targetWanter.get(cur);
-      if (!wanter || wanter === rowId) continue; // nobody else wants this value
-      const ownTarget = plannedByRow.get(rowId);
-      if (ownTarget == null || ownTarget === cur) continue; // true owner — main loop rejects the wanter
-      const parked = parkNext++;
-      await withNotificationsSuppressed(() =>
-        storage.workers.updateWorkerForMigration(rowId, { siriusId: parked }),
-      );
-      rekeyOwnerMaps(rowId, parked);
-      wStats.parkedForRekey++;
-    }
-  }
 
   for (const w of stagedWorkers) {
     progress.add(1);
@@ -1226,45 +1197,12 @@ async function main() {
 
     // ---- resolve target sirius_id (T1 ruling: field_sirius_id) ----
     const { value: fsid, raw: fsidRaw } = fsidOf(w);
-    if (fsidRaw != null && fsid == null) {
-      rejects.add("sirius_id_not_numeric", { workerNid: w.nid }, w.nid);
+    if (fsid == null) {
+      // This should be impossible after the pre-write ownership plan. Keep
+      // the invariant loud rather than allocating a substitute ID.
+      throw new Error(`Sirius ID preflight invariant failed for staged worker nid ${w.nid} (raw=${fsidRaw == null ? "missing" : "invalid"})`);
     }
-    if (fsid != null && fsidFirstOwner.get(fsid) !== w.nid) {
-      // Unreachable after the fatal pre-scan — kept as defense in depth.
-      // A collision must NEVER load partially (no first-wins).
-      throw new Error(
-        `sirius_id collision reached the load loop (fsid=${fsid}, nids ${fsidFirstOwner.get(fsid)}/${w.nid}) — aborting`,
-      );
-    }
-    if (fsid != null) {
-      const ownerRow = siriusOwner.get(fsid);
-      if (ownerRow && (!mapped || ownerRow !== mapped.s2Id)) {
-        // A DIFFERENT S2 worker row (not mapped to this nid) already owns this
-        // member number — a cross-run person collision. Same ruling as the
-        // pre-scan: fatal, never auto-resolved, no allow flag. The loader is
-        // idempotent; nothing about this staged worker was written.
-        throw new Error(
-          `FATAL sirius_id collision: staged worker nid ${w.nid} claims sirius_id ${fsid}, ` +
-            `already owned by a different S2 worker row. Never auto-resolved (distinct people) — ` +
-            `triage with the fund, then re-run.`,
-        );
-      }
-    }
-    let expectedSirius: number;
-    if (fsid != null) {
-      expectedSirius = fsid;
-    } else {
-      // missing/invalid field_sirius_id — documented rule: adopt an existing
-      // non-nid value (a prior run's assignment), else sequence-assign + note
-      const existingRow = mapped && !DRY_RUN ? await storage.workers.getWorker(mapped.s2Id) : undefined;
-      if (existingRow && existingRow.siriusId !== w.nid) {
-        expectedSirius = existingRow.siriusId;
-      } else {
-        expectedSirius = nextAssigned++;
-        wStats.siriusIdAssigned++;
-        rejects.add("sirius_id_assigned", { workerNid: w.nid, assigned: expectedSirius }, w.nid);
-      }
-    }
+    const expectedSirius = fsid;
 
     /** workers.data reconcile: merge aatRequired into the existing data
      * object (other keys preserved); remove the key when the S1 field is
@@ -1287,12 +1225,13 @@ async function main() {
           rejects.add("mapped_worker_missing", { workerNid: w.nid, s2Id: mapped.s2Id });
           continue;
         }
-        if (worker.siriusId === w.nid && worker.siriusId !== expectedSirius) {
-          wStats.oldMappingRepaired++; // row loaded under the old nid-based mapping
+        if (worker.siriusId !== expectedSirius) {
+          // The approved repair flow owns all existing-row rekeys. A target
+          // change after this run's preflight is never reconciled implicitly.
+          throw new Error(`Sirius ID ownership changed after preflight for staged worker nid ${w.nid}; rerun the diagnostic`);
         }
         const dataPlan = desiredDataOf(mapped.s2Id);
         const drift =
-          worker.siriusId !== expectedSirius ||
           (worker.ssn ?? null) !== ssn ||
           worker.contactId !== contactMapping.s2Id ||
           dataPlan.drift;
@@ -1305,7 +1244,6 @@ async function main() {
             }
             await withNotificationsSuppressed(() =>
               storage.workers.updateWorkerForMigration(mapped.s2Id, {
-                siriusId: expectedSirius,
                 contactId: contactMapping.s2Id,
                 ssn,
                 data: dataPlan.value,
@@ -1316,7 +1254,6 @@ async function main() {
             workerSsn.delete(approvedSsnTransfer.staleWorkerId);
             ssnTransfersApplied++;
           }
-          rekeyOwnerMaps(mapped.s2Id, expectedSirius);
           const oldSsn = workerSsn.get(mapped.s2Id);
           if (oldSsn && oldSsn !== ssn && ssnOwner.get(oldSsn)?.workerId === mapped.s2Id) ssnOwner.delete(oldSsn);
           if (ssn) {
@@ -1340,6 +1277,9 @@ async function main() {
           rejects.add("stub_worker_missing", { workerNid: w.nid, s2Id: mapped.s2Id });
           continue;
         }
+        if (worker.siriusId !== expectedSirius) {
+          throw new Error(`Sirius ID ownership changed after preflight for staged stub worker nid ${w.nid}; rerun the diagnostic`);
+        }
         if (worker.contactId !== contactMapping.s2Id) {
           // contacts pass should have adopted the stub's contact — a mismatch
           // means the contact node mapped elsewhere first; repoint and log
@@ -1354,7 +1294,6 @@ async function main() {
           }
           await withNotificationsSuppressed(() =>
             storage.workers.updateWorkerForMigration(mapped.s2Id, {
-              siriusId: expectedSirius,
               contactId: contactMapping.s2Id,
               ssn,
               data: dataPlan.value,
@@ -1365,7 +1304,6 @@ async function main() {
           workerSsn.delete(approvedSsnTransfer.staleWorkerId);
           ssnTransfersApplied++;
         }
-        rekeyOwnerMaps(mapped.s2Id, expectedSirius);
         if (dataPlan.value == null) workerDataById.delete(mapped.s2Id);
         else workerDataById.set(mapped.s2Id, dataPlan.value);
         if (ssn) {
@@ -1400,7 +1338,6 @@ async function main() {
           ssnTransfersApplied++;
         }
         workerId = created.id;
-        rekeyOwnerMaps(created.id, expectedSirius);
         if (data) workerDataById.set(created.id, data);
         if (ssn) {
           ssnOwner.set(ssn, { workerId: created.id, mappings: [{ nid: w.nid, stub: false }] });
@@ -1501,16 +1438,6 @@ async function main() {
     finishWorkerRow();
   }
   report.workers = wStats;
-
-  // ---------------- setval (T1 — the one raw-SQL write, spec-sanctioned) ----------------
-  // max(sirius_id) now reflects the field_sirius_id value space (plus any
-  // sequence-assigned ids above it) — NOT the nid space. Shell workers
-  // (relationships loader) and app-created workers allocate above this.
-  if (!DRY_RUN) {
-    await db.execute(sql`
-      SELECT setval(pg_get_serial_sequence('workers','sirius_id'), (SELECT max(sirius_id) FROM workers))
-    `);
-  }
 
   // ---------------- verify pass ----------------
   // Scoped to rows PROCESSED this run (fast-path rows were verified when
@@ -1621,8 +1548,8 @@ async function main() {
         verifyFailedWorkerNids.add(w.nid);
         continue;
       }
-      // sirius_id == staged field_sirius_id (T1 ruling); workers without one
-      // must carry an assigned/adopted value that is NOT the nid
+      // Every processed worker has a numeric source claim because preflight
+      // blocks the loader otherwise.
       const { value: vFsid } = fsidOf(w);
       if (vFsid != null) {
         if (row.siriusId !== vFsid) {
@@ -1630,8 +1557,8 @@ async function main() {
           verifyFailures++;
           verifyFailedWorkerNids.add(w.nid);
         }
-      } else if (row.siriusId === w.nid) {
-        console.error(`VERIFY: worker nid ${w.nid} still carries nid-based sirius_id`);
+      } else {
+        console.error(`VERIFY: worker nid ${w.nid} has no valid staged sirius_id after preflight`);
         verifyFailures++;
         verifyFailedWorkerNids.add(w.nid);
       }

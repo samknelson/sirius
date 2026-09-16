@@ -10,12 +10,12 @@
  *   - worker_2 = `field_sirius_contact_alt` contact → its worker if one
  *     exists, else CREATE A SHELL WORKER for that contact (S2 relations join
  *     workers, not contacts — same approach S2's DP/COBRA flows use).
- *     Shells: no S1 worker nid → serial sirius_id (post-setval, above the
- *     migrated field_sirius_id / assigned range — T1 ruling 2026-08-06),
- *     data.migrationShell=true, id_map entity "shell-worker" keyed by
- *     the CONTACT nid (idempotency). Shells are created ONLY after every
- *     other resolution/validation for the row has passed, so a reject can't
- *     leave an orphan shell behind.
+ *     Shells: no S1 worker nid → an ownership-aware generated sirius_id above
+ *     all authoritative staged reservations, with persisted allocation
+ *     provenance; data.migrationShell=true; id_map entity "shell-worker"
+ *     keyed by the CONTACT nid (idempotency). Shells are created ONLY after
+ *     every other resolution/validation for the row has passed, so a reject
+ *     can't leave an orphan shell behind.
  *   - relation_type: reltype tid → term id_map (T4) → fallback
  *     options_worker_relation_type.sirius_id.
  *   - start/end: field_sirius_date_start/_date_end date-cast. The S2 relations
@@ -86,6 +86,7 @@ import {
   parseForceReconcile,
   sweepDeletions,
 } from "./lib/sync";
+import { planSiriusIdOwnership } from "../../server/storage/workers/sirius-id-ownership-plan";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const ALLOWED_REJECTS: string[] = (() => {
@@ -94,7 +95,7 @@ const ALLOWED_REJECTS: string[] = (() => {
 })();
 const LOADER = "t15-relationships";
 /** BUMP whenever transform logic changes so unchanged S1 rows reprocess. */
-const LOGIC_VERSION = 1;
+const LOGIC_VERSION = 2;
 const FORCE_RECONCILE = parseForceReconcile();
 const ALLOWED_FINDINGS = parseAllowedFindings();
 
@@ -159,6 +160,40 @@ async function main() {
   const stagedWorkers = await loadStaged("sirius_worker");
   report.stagedRelationships = rels.length;
   progress.setTotal(rels.length);
+
+  // Shell allocation must see exactly the same source reservations and
+  // ownership blockers as the contacts/workers loader. This entire decision
+  // is read-only and runs before relationship, shell, or id-map domain writes.
+  const siriusOwnershipSnapshot = await storage.workers.getMigrationSiriusIdOwnershipSnapshot();
+  const siriusOwnershipPlan = planSiriusIdOwnership(siriusOwnershipSnapshot);
+  const ownershipActions = siriusOwnershipPlan.decisions.reduce<Record<string, number>>((counts, decision) => {
+    counts[decision.action] = (counts[decision.action] ?? 0) + 1;
+    return counts;
+  }, {});
+  const sourceIdsMissingOrInvalid = siriusOwnershipSnapshot.claims.filter(
+    (claim) => claim.sourceIdProblem !== null,
+  ).length;
+  report.siriusIdOwnership = {
+    snapshotPresent: siriusOwnershipPlan.snapshotPresent,
+    actions: ownershipActions,
+    reservations: siriusOwnershipPlan.reservations.length,
+    hardBlockers: siriusOwnershipPlan.hardBlockers,
+    pendingRekeys: siriusOwnershipPlan.pendingRekeys,
+    sourceMissingOrInvalid: sourceIdsMissingOrInvalid,
+  };
+  if (
+    !siriusOwnershipPlan.snapshotPresent ||
+    siriusOwnershipPlan.hardBlockers > 0 ||
+    siriusOwnershipPlan.pendingRekeys > 0 ||
+    sourceIdsMissingOrInvalid
+  ) {
+    throw new Error(
+      "Sirius ID ownership preflight blocked this run before any domain write. " +
+        `sourceMissingOrInvalid=${sourceIdsMissingOrInvalid} ` +
+        `ownershipBlockers=${siriusOwnershipPlan.hardBlockers} repairPending=${siriusOwnershipPlan.pendingRekeys}. ` +
+        "Run the read-only Sirius ID diagnostic and, only for a proven repair, its hash-approved apply command.",
+    );
+  }
 
   // contact nid → worker nid (owning-side + alt-side resolution)
   const workerNidByContactNid = new Map<number, number>();
@@ -350,6 +385,10 @@ async function main() {
           contactId: needShellForContactId!,
           ssn: null,
           data: { migrationShell: true, s1ContactNid: altNid },
+          allocation: {
+            kind: "relationship-shell",
+            reservedSiriusIds: siriusOwnershipPlan.reservations,
+          },
         }),
       );
       const winner = await putMapping("shell-worker", altNid, created.id, { stub: false, loader: LOADER });

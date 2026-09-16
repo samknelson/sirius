@@ -34,6 +34,15 @@ import {
   affectedWorkerBenefitRoleHistoryWorkers,
   enqueueWorkerBenefitRoleHistoryInvalidations,
 } from "./trust/worker-benefit-role-history-invalidation";
+import {
+  allocateRelationshipShellSiriusId,
+  advanceWorkerSequenceSafely,
+  applySiriusIdOwnershipPlan,
+  readSiriusIdOwnershipSnapshot,
+  type ApplySiriusIdOwnershipPlanInput,
+  type ApplySiriusIdOwnershipPlanResult,
+} from "./workers/sirius-id-ownership";
+import type { SiriusIdOwnershipSnapshot } from "./workers/sirius-id-ownership-plan";
 
 export const ssnValidate = createAsyncStorageValidator<{ ssn: string | null; workerId?: string; allowSsaRuleInvalid?: boolean }, never, { ssn: string | null }>(
   async (data) => {
@@ -294,10 +303,21 @@ export interface WorkerStorage {
     family: string | null;
   }>>;
   createWorker(name: string): Promise<Worker>;
-  /** S1-migration only (03-transformations T1): insert a worker with an
-   * EXPLICIT sirius_id (S1 nid) and a pre-existing contact. The migration
-   * runs setval() on the sirius_id sequence after the load. */
-  createWorkerForMigration(input: { siriusId?: number; contactId: string; ssn: string | null; data?: Record<string, unknown> | null }): Promise<Worker>;
+  /** S1-migration only: source workers must supply their authoritative S1
+   * ID. Only relationship shells may ask storage to allocate a generated ID;
+   * their allocation is recorded in data and skips every staged reservation. */
+  createWorkerForMigration(input: {
+    siriusId?: number;
+    contactId: string;
+    ssn: string | null;
+    data?: Record<string, unknown> | null;
+    allocation?: { kind: "relationship-shell"; reservedSiriusIds: readonly number[] };
+  }): Promise<Worker>;
+  /** Read-only source/target ownership evidence for migration preflight and
+   * operator diagnostics. */
+  getMigrationSiriusIdOwnershipSnapshot(): Promise<SiriusIdOwnershipSnapshot>;
+  /** Explicit hash-approved operator repair; ordinary loaders never call it. */
+  applyMigrationSiriusIdOwnershipPlan(input: ApplySiriusIdOwnershipPlanInput): Promise<ApplySiriusIdOwnershipPlanResult>;
   /** S1-migration only: absorb a stub worker created by an earlier loader —
    * stamps the real sirius_id / ssn / data onto the existing row. */
   updateWorkerForMigration(workerId: string, updates: { siriusId?: number; contactId?: string; ssn?: string | null; data?: Record<string, unknown> | null }): Promise<Worker | undefined>;
@@ -1469,20 +1489,48 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return stripWorkerData(worker);
     },
 
-    async createWorkerForMigration(input: { siriusId?: number; contactId: string; ssn: string | null; data?: Record<string, unknown> | null }): Promise<Worker> {
-      const client = getClient();
-      const [worker] = await client
-        .insert(workers)
-        .values({
-          // omit siriusId → serial assigns (shell workers for migrated
-          // relations, T15 — they have no S1 worker node)
-          ...(input.siriusId != null ? { siriusId: input.siriusId } : {}),
-          contactId: input.contactId,
-          ssn: input.ssn,
-          data: input.data ?? null,
-        })
-        .returning();
-      return stripWorkerData(worker);
+    async createWorkerForMigration(input: {
+      siriusId?: number;
+      contactId: string;
+      ssn: string | null;
+      data?: Record<string, unknown> | null;
+      allocation?: { kind: "relationship-shell"; reservedSiriusIds: readonly number[] };
+    }): Promise<Worker> {
+      return runInTransaction(async () => {
+        const generated = input.siriusId == null;
+        if (generated && input.allocation?.kind !== "relationship-shell") {
+          throw new Error("Migration source workers require an authoritative Sirius ID; only relationship shells may receive generated IDs.");
+        }
+        // The allocator holds an EXCLUSIVE workers lock.  Explicit source-ID
+        // writes take the same lock so native serial allocation cannot race a
+        // staged reservation decision.
+        const siriusId = generated
+          ? await allocateRelationshipShellSiriusId(input.allocation!.reservedSiriusIds)
+          : input.siriusId!;
+        if (!generated) await getClient().execute(sql`LOCK TABLE workers IN EXCLUSIVE MODE`);
+        const data = generated
+          ? {
+              ...(input.data ?? {}),
+              migrationSiriusIdAllocation: { kind: "generated", source: "relationship-shell" },
+            }
+          : input.data ?? null;
+        const [worker] = await getClient()
+          .insert(workers)
+          .values({ siriusId, contactId: input.contactId, ssn: input.ssn, data })
+          .returning();
+        await advanceWorkerSequenceSafely();
+        return stripWorkerData(worker);
+      });
+    },
+
+    async getMigrationSiriusIdOwnershipSnapshot(): Promise<SiriusIdOwnershipSnapshot> {
+      return readSiriusIdOwnershipSnapshot();
+    },
+
+    async applyMigrationSiriusIdOwnershipPlan(
+      input: ApplySiriusIdOwnershipPlanInput,
+    ): Promise<ApplySiriusIdOwnershipPlanResult> {
+      return applySiriusIdOwnershipPlan(input);
     },
 
     async updateWorkerForMigration(workerId: string, updates: { siriusId?: number; contactId?: string; ssn?: string | null; data?: Record<string, unknown> | null }): Promise<Worker | undefined> {
