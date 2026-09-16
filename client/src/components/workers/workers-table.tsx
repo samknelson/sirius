@@ -229,9 +229,80 @@ export function WorkersTable({
   const trustBenefitsEnabled = componentConfigs.find(c => c.componentId === "trust.benefits")?.enabled ?? false;
   const cardcheckEnabled = componentConfigs.find(c => c.componentId === "cardcheck")?.enabled ?? false;
   const politicalEnabled = componentConfigs.find(c => c.componentId === "sitespecific.btu.political")?.enabled ?? false;
-  const selectedIsSubscriber = filters.isSubscriber ?? "any";
-  const selectedIsDependent = filters.isDependent ?? "any";
+  // The role controls are affirmative checkboxes. Date-only values can exist
+  // in saved/legacy filter state, so surface their intent as checked rather
+  // than hiding the dates and making the filter impossible to inspect.
+  const subscriberRoleEnabled =
+    filters.isSubscriber === "yes" ||
+    (filters.isSubscriber !== "no" &&
+      Boolean(filters.subscriberSinceFrom || filters.subscriberSinceThrough));
+  const dependentRoleEnabled =
+    filters.isDependent === "yes" ||
+    (filters.isDependent !== "no" &&
+      Boolean(filters.dependentSinceFrom || filters.dependentSinceThrough));
   const showBenefitRoleFilters = enableBenefitRoleFilters && trustBenefitsEnabled;
+
+  const setBenefitRoleEnabled = (
+    role: "subscriber" | "dependent",
+    checked: boolean,
+  ) => {
+    if (checked) {
+      setFilters({
+        ...filters,
+        [role === "subscriber" ? "isSubscriber" : "isDependent"]: "yes",
+      });
+      return;
+    }
+
+    const nextFilters = { ...filters };
+    if (role === "subscriber") {
+      delete nextFilters.isSubscriber;
+      delete nextFilters.subscriberSinceFrom;
+      delete nextFilters.subscriberSinceThrough;
+    } else {
+      delete nextFilters.isDependent;
+      delete nextFilters.dependentSinceFrom;
+      delete nextFilters.dependentSinceThrough;
+    }
+    setFilters(nextFilters);
+  };
+
+  // Values from the previous select-based UI can persist in a bookmarked URL
+  // or pending state. A legacy negative selection now means unchecked/no
+  // restriction; a date-only selection retains its intent by becoming the
+  // affirmative checkbox state.
+  useEffect(() => {
+    const nextFilters = { ...filters };
+    let changed = false;
+
+    if (filters.isSubscriber === "no") {
+      delete nextFilters.isSubscriber;
+      delete nextFilters.subscriberSinceFrom;
+      delete nextFilters.subscriberSinceThrough;
+      changed = true;
+    } else if (
+      filters.isSubscriber !== "yes" &&
+      (filters.subscriberSinceFrom || filters.subscriberSinceThrough)
+    ) {
+      nextFilters.isSubscriber = "yes";
+      changed = true;
+    }
+
+    if (filters.isDependent === "no") {
+      delete nextFilters.isDependent;
+      delete nextFilters.dependentSinceFrom;
+      delete nextFilters.dependentSinceThrough;
+      changed = true;
+    } else if (
+      filters.isDependent !== "yes" &&
+      (filters.dependentSinceFrom || filters.dependentSinceThrough)
+    ) {
+      nextFilters.isDependent = "yes";
+      changed = true;
+    }
+
+    if (changed) setFilters(nextFilters);
+  }, [filters, setFilters]);
 
   // Reset benefit filter when trust.benefits is disabled
   useEffect(() => {
@@ -975,142 +1046,88 @@ export function WorkersTable({
                 than the current-month benefit rows. */}
             {showBenefitRoleFilters && (
               <>
-                <div className="w-48 space-y-1">
-                  <label htmlFor="is-subscriber-filter" className="text-sm font-medium">
-                    Is subscriber
-                  </label>
-                  <Select
-                    value={selectedIsSubscriber}
-                    onValueChange={(value) =>
-                      setFilters({
-                        ...filters,
-                        isSubscriber: value as WorkerFilters["isSubscriber"],
-                      })
-                    }
-                  >
-                    <SelectTrigger
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3">
+                    <Checkbox
                       id="is-subscriber-filter"
-                      data-testid="select-is-subscriber-filter"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="any">Any</SelectItem>
-                      <SelectItem value="yes">Yes</SelectItem>
-                      <SelectItem value="no">No</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="w-48 space-y-1">
-                  <label htmlFor="is-dependent-filter" className="text-sm font-medium">
-                    Is dependent
-                  </label>
-                  <Select
-                    value={selectedIsDependent}
-                    onValueChange={(value) =>
-                      setFilters({
-                        ...filters,
-                        isDependent: value as WorkerFilters["isDependent"],
-                      })
-                    }
-                  >
-                    <SelectTrigger
-                      id="is-dependent-filter"
-                      data-testid="select-is-dependent-filter"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="any">Any</SelectItem>
-                      <SelectItem value="yes">Yes</SelectItem>
-                      <SelectItem value="no">No</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="w-80 space-y-1">
-                  <span className="text-sm font-medium">
-                    Subscriber since
-                  </span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label htmlFor="subscriber-since-from" className="space-y-1 text-xs text-muted-foreground">
-                      From
+                      checked={subscriberRoleEnabled}
+                      onCheckedChange={(checked) =>
+                        setBenefitRoleEnabled("subscriber", checked === true)
+                      }
+                      data-testid="checkbox-is-subscriber-filter"
+                    />
+                    <label htmlFor="is-subscriber-filter" className="cursor-pointer text-sm font-medium">
+                      Subscriber
+                    </label>
+                  </div>
+                  {subscriberRoleEnabled && (
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="subscriber-since-from" className="text-xs text-muted-foreground">
+                        Since
+                      </label>
                       <Input
                         id="subscriber-since-from"
                         type="month"
                         aria-label="Subscriber since from"
                         value={filters.subscriberSinceFrom ?? ""}
-                        onChange={(event) =>
-                          setFilters({
-                            ...filters,
-                            subscriberSinceFrom: event.target.value,
-                          })
-                        }
-                        className="h-9 w-full min-w-0 text-foreground"
+                        onChange={(event) => setFilters({ ...filters, subscriberSinceFrom: event.target.value })}
+                        className="h-9 w-36 text-foreground"
                         data-testid="input-subscriber-since-from"
                       />
-                    </label>
-                    <label htmlFor="subscriber-since-through" className="space-y-1 text-xs text-muted-foreground">
-                      Through
+                      <label htmlFor="subscriber-since-through" className="sr-only">Subscriber since through</label>
                       <Input
                         id="subscriber-since-through"
                         type="month"
                         aria-label="Subscriber since through"
                         value={filters.subscriberSinceThrough ?? ""}
-                        onChange={(event) =>
-                          setFilters({
-                            ...filters,
-                            subscriberSinceThrough: event.target.value,
-                          })
-                        }
-                        className="h-9 w-full min-w-0 text-foreground"
+                        onChange={(event) => setFilters({ ...filters, subscriberSinceThrough: event.target.value })}
+                        className="h-9 w-36 text-foreground"
                         data-testid="input-subscriber-since-through"
                       />
-                    </label>
-                  </div>
+                    </div>
+                  )}
                 </div>
 
-                <div className="w-80 space-y-1">
-                  <span className="text-sm font-medium">
-                    Dependent since
-                  </span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label htmlFor="dependent-since-from" className="space-y-1 text-xs text-muted-foreground">
-                      From
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3">
+                    <Checkbox
+                      id="is-dependent-filter"
+                      checked={dependentRoleEnabled}
+                      onCheckedChange={(checked) =>
+                        setBenefitRoleEnabled("dependent", checked === true)
+                      }
+                      data-testid="checkbox-is-dependent-filter"
+                    />
+                    <label htmlFor="is-dependent-filter" className="cursor-pointer text-sm font-medium">
+                      Dependent
+                    </label>
+                  </div>
+                  {dependentRoleEnabled && (
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="dependent-since-from" className="text-xs text-muted-foreground">
+                        Since
+                      </label>
                       <Input
                         id="dependent-since-from"
                         type="month"
                         aria-label="Dependent since from"
                         value={filters.dependentSinceFrom ?? ""}
-                        onChange={(event) =>
-                          setFilters({
-                            ...filters,
-                            dependentSinceFrom: event.target.value,
-                          })
-                        }
-                        className="h-9 w-full min-w-0 text-foreground"
+                        onChange={(event) => setFilters({ ...filters, dependentSinceFrom: event.target.value })}
+                        className="h-9 w-36 text-foreground"
                         data-testid="input-dependent-since-from"
                       />
-                    </label>
-                    <label htmlFor="dependent-since-through" className="space-y-1 text-xs text-muted-foreground">
-                      Through
+                      <label htmlFor="dependent-since-through" className="sr-only">Dependent since through</label>
                       <Input
                         id="dependent-since-through"
                         type="month"
                         aria-label="Dependent since through"
                         value={filters.dependentSinceThrough ?? ""}
-                        onChange={(event) =>
-                          setFilters({
-                            ...filters,
-                            dependentSinceThrough: event.target.value,
-                          })
-                        }
-                        className="h-9 w-full min-w-0 text-foreground"
+                        onChange={(event) => setFilters({ ...filters, dependentSinceThrough: event.target.value })}
+                        className="h-9 w-36 text-foreground"
                         data-testid="input-dependent-since-through"
                       />
-                    </label>
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 <p
