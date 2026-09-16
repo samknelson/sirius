@@ -16,6 +16,7 @@ import {
   type TrustBenefit,
   type Employer,
 } from "@shared/schema";
+import type { WorkerBenefitRoleFilters } from "@shared/worker-benefit-role-filters";
 import { eq, sql, and, or, ne, isNull, inArray } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
 import { type StorageLoggingConfig } from "./middleware/logging";
@@ -155,7 +156,7 @@ export interface PaginatedWorkersResult {
   totalPages: number;
 }
 
-export interface WorkersExportParams {
+export interface WorkersExportParams extends WorkerBenefitRoleFilters {
   nameIdSearch?: string;
   contactSearch?: string;
   sortBy?: 'lastName' | 'firstName' | 'employer';
@@ -164,6 +165,7 @@ export interface WorkersExportParams {
   employerTypeId?: string;
   bargainingUnitId?: string;
   benefitId?: string;
+  hasMultipleEmployers?: boolean;
   contactStatus?: 'all' | 'has_email' | 'missing_email' | 'has_phone' | 'missing_phone' | 'has_address' | 'missing_address' | 'complete' | 'incomplete';
   jobTitle?: string;
   memberStatusId?: string;
@@ -171,7 +173,7 @@ export interface WorkersExportParams {
   includeBenefits?: boolean;
 }
 
-export interface WorkersPaginationParams {
+export interface WorkersPaginationParams extends WorkerBenefitRoleFilters {
   page?: number;
   pageSize?: number;
   nameIdSearch?: string;
@@ -322,6 +324,12 @@ export interface WorkerStorage {
 }
 
 interface InternalSearchParams {
+  isSubscriber?: WorkerBenefitRoleFilters["isSubscriber"];
+  isDependent?: WorkerBenefitRoleFilters["isDependent"];
+  subscriberSinceFrom?: WorkerBenefitRoleFilters["subscriberSinceFrom"];
+  subscriberSinceThrough?: WorkerBenefitRoleFilters["subscriberSinceThrough"];
+  dependentSinceFrom?: WorkerBenefitRoleFilters["dependentSinceFrom"];
+  dependentSinceThrough?: WorkerBenefitRoleFilters["dependentSinceThrough"];
   nameIdSearch?: string;
   contactSearch?: string;
   sortOrder?: 'asc' | 'desc';
@@ -377,13 +385,34 @@ function _buildContactStatusCondition(contactStatus: string | undefined) {
   }
 }
 
+function periodValue(period: string): number {
+  const [year, month] = period.split("-").map(Number);
+  return year * 12 + month;
+}
+
 async function _searchWorkers(params: InternalSearchParams): Promise<InternalSearchResult> {
   const client = getClient();
   const nameIdSearch = params.nameIdSearch?.trim() ?? '';
   const contactSearch = params.contactSearch?.trim() ?? '';
   const sortOrder = params.sortOrder ?? 'asc';
   const sortBy = params.sortBy ?? 'lastName';
-  const { employerId, employerTypeId, bargainingUnitId, benefitId, contactStatus, hasMultipleEmployers, jobTitle, memberStatusId, representativeId } = params;
+  const {
+    employerId,
+    employerTypeId,
+    bargainingUnitId,
+    benefitId,
+    contactStatus,
+    hasMultipleEmployers,
+    jobTitle,
+    memberStatusId,
+    representativeId,
+    isSubscriber,
+    isDependent,
+    subscriberSinceFrom,
+    subscriberSinceThrough,
+    dependentSinceFrom,
+    dependentSinceThrough,
+  } = params;
 
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
@@ -515,7 +544,57 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
       )`
     : sql``;
 
-  const allConditions = sql`${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition} ${multipleEmployersCondition} ${jobTitleCondition} ${memberStatusCondition} ${representativeCondition}`;
+  // The role-history denorm is a one-row worker summary. Use an EXISTS
+  // predicate rather than a join so the list, count, IDs, and export paths all
+  // retain one row per worker. In particular, "no" means an explicit false
+  // summary value; a missing summary row must not count as false.
+  const roleFilterEnabled =
+    benefitsEnabled &&
+    ((isSubscriber === "yes" || isSubscriber === "no") ||
+      (isDependent === "yes" || isDependent === "no") ||
+      subscriberSinceFrom !== undefined ||
+      subscriberSinceThrough !== undefined ||
+      dependentSinceFrom !== undefined ||
+      dependentSinceThrough !== undefined);
+  const roleSubscriberCondition =
+    isSubscriber === "yes" || isSubscriber === "no"
+      ? sql`AND wbrh.subscriber = ${isSubscriber === "yes"}`
+      : sql``;
+  const roleDependentCondition =
+    isDependent === "yes" || isDependent === "no"
+      ? sql`AND wbrh.dependent = ${isDependent === "yes"}`
+      : sql``;
+  const subscriberPeriod = sql`wbrh.subscriber_year * 12 + wbrh.subscriber_month`;
+  const dependentPeriod = sql`wbrh.dependent_year * 12 + wbrh.dependent_month`;
+  const subscriberSinceCondition = sql`
+    ${subscriberSinceFrom !== undefined
+      ? sql`AND ${subscriberPeriod} >= ${periodValue(subscriberSinceFrom)}`
+      : sql``}
+    ${subscriberSinceThrough !== undefined
+      ? sql`AND ${subscriberPeriod} <= ${periodValue(subscriberSinceThrough)}`
+      : sql``}
+  `;
+  const dependentSinceCondition = sql`
+    ${dependentSinceFrom !== undefined
+      ? sql`AND ${dependentPeriod} >= ${periodValue(dependentSinceFrom)}`
+      : sql``}
+    ${dependentSinceThrough !== undefined
+      ? sql`AND ${dependentPeriod} <= ${periodValue(dependentSinceThrough)}`
+      : sql``}
+  `;
+  const roleCondition = roleFilterEnabled
+    ? sql`AND EXISTS (
+        SELECT 1
+        FROM worker_benefit_role_history_denorm wbrh
+        WHERE wbrh.worker_id = w.id
+        ${roleSubscriberCondition}
+        ${roleDependentCondition}
+        ${subscriberSinceCondition}
+        ${dependentSinceCondition}
+      )`
+    : sql``;
+
+  const allConditions = sql`${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition} ${multipleEmployersCondition} ${jobTitleCondition} ${memberStatusCondition} ${representativeCondition} ${roleCondition}`;
 
   const isPaginated = params.page !== undefined && params.pageSize !== undefined;
   const isExportBatch = params.exportOffset !== undefined && params.exportLimit !== undefined;
@@ -795,6 +874,12 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         jobTitle: params.jobTitle,
         memberStatusId: params.memberStatusId,
         representativeId: params.representativeId,
+        isSubscriber: params.isSubscriber,
+        isDependent: params.isDependent,
+        subscriberSinceFrom: params.subscriberSinceFrom,
+        subscriberSinceThrough: params.subscriberSinceThrough,
+        dependentSinceFrom: params.dependentSinceFrom,
+        dependentSinceThrough: params.dependentSinceThrough,
         page,
         pageSize,
       });
@@ -819,9 +904,16 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         bargainingUnitId: params.bargainingUnitId,
         benefitId: params.benefitId,
         contactStatus: params.contactStatus,
+        hasMultipleEmployers: params.hasMultipleEmployers,
         jobTitle: params.jobTitle,
         memberStatusId: params.memberStatusId,
         representativeId: params.representativeId,
+        isSubscriber: params.isSubscriber,
+        isDependent: params.isDependent,
+        subscriberSinceFrom: params.subscriberSinceFrom,
+        subscriberSinceThrough: params.subscriberSinceThrough,
+        dependentSinceFrom: params.dependentSinceFrom,
+        dependentSinceThrough: params.dependentSinceThrough,
         includeBenefits: params.includeBenefits,
         exportOffset: offset,
         exportLimit: limit,
@@ -844,6 +936,12 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         jobTitle: params.jobTitle,
         memberStatusId: params.memberStatusId,
         representativeId: params.representativeId,
+        isSubscriber: params.isSubscriber,
+        isDependent: params.isDependent,
+        subscriberSinceFrom: params.subscriberSinceFrom,
+        subscriberSinceThrough: params.subscriberSinceThrough,
+        dependentSinceFrom: params.dependentSinceFrom,
+        dependentSinceThrough: params.dependentSinceThrough,
       });
       const seen = new Set<string>();
       const ordered: string[] = [];

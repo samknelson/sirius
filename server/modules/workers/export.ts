@@ -11,6 +11,14 @@ import type {
   WorkersExportParams,
 } from "../../storage/workers";
 import { buildContentDisposition } from "../../utils/content-disposition";
+import {
+  isCacheInitialized,
+  isComponentEnabledSync,
+} from "../../services/component-cache";
+import {
+  normalizeWorkerBenefitRoleFilters,
+  WorkerBenefitRoleFilterError,
+} from "@shared/worker-benefit-role-filters";
 
 export interface WorkerExportDependencies {
   workers: Pick<WorkerStorage, "getWorkersForExportBatch">;
@@ -207,6 +215,7 @@ export function registerWorkerExportRoute(
           req.query.benefitId !== "all"
             ? req.query.benefitId
             : undefined;
+        const hasMultipleEmployers = req.query.hasMultipleEmployers === "true";
         const validContactStatuses = [
           "all",
           "has_email",
@@ -241,6 +250,12 @@ export function registerWorkerExportRoute(
             ? req.query.representativeId
             : undefined;
         const includeBenefits = req.query.includeBenefits === "true";
+        // Validate before reading export metadata or sending CSV headers. An
+        // invalid filter is a client error, not a failed or partial export.
+        const roleFilters = normalizeWorkerBenefitRoleFilters(
+          req.query,
+          isCacheInitialized() && isComponentEnabledSync("trust.benefits"),
+        );
 
         // These labels define the CSV shape and are read once. Per-worker
         // enrichment is intentionally done below for only the current batch.
@@ -280,12 +295,14 @@ export function registerWorkerExportRoute(
               employerId,
               employerTypeId,
               bargainingUnitId,
+              hasMultipleEmployers,
               benefitId,
               contactStatus,
               jobTitle,
               memberStatusId,
               representativeId,
               includeBenefits,
+              ...roleFilters,
             },
             offset,
             EXPORT_BATCH_SIZE,
@@ -347,6 +364,9 @@ export function registerWorkerExportRoute(
 
         if (!clientDisconnected && !res.destroyed) res.end();
       } catch (error) {
+        if (error instanceof WorkerBenefitRoleFilterError) {
+          return res.status(400).json({ message: error.message });
+        }
         console.error("Failed to export workers:", error);
         if (streamingStarted || res.headersSent) {
           // Once CSV bytes have been sent, a JSON error would corrupt the

@@ -177,6 +177,14 @@ import { phoneValidationService, DEFAULT_REVALIDATE_AFTER_DAYS } from "./service
 import { serviceRegistry } from "./services/service-registry";
 import { isAuthenticated } from "./auth";
 import { sendIfMaintenanceRefusal } from "./services/maintenance-flag";
+import {
+  normalizeWorkerBenefitRoleFilters,
+  WorkerBenefitRoleFilterError,
+} from "@shared/worker-benefit-role-filters";
+import {
+  isCacheInitialized,
+  isComponentEnabledSync,
+} from "./services/component-cache";
 
 // Authentication middleware
 const requireAuth = isAuthenticated;
@@ -640,6 +648,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     const jobTitle = typeof query.jobTitle === 'string' && query.jobTitle.trim() ? query.jobTitle.trim() : undefined;
     const memberStatusId = typeof query.memberStatusId === 'string' && query.memberStatusId !== 'all' ? query.memberStatusId : undefined;
     const representativeId = typeof query.representativeId === 'string' && query.representativeId !== 'all' ? query.representativeId : undefined;
+    const roleFilters = normalizeWorkerBenefitRoleFilters(
+      query,
+      isCacheInitialized() && isComponentEnabledSync("trust.benefits"),
+    );
 
     return {
       nameIdSearch,
@@ -655,6 +667,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       jobTitle,
       memberStatusId,
       representativeId,
+      ...roleFilters,
     };
   };
 
@@ -674,6 +687,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       });
       res.json(result);
     } catch (error) {
+      if (error instanceof WorkerBenefitRoleFilterError) {
+        return res.status(400).json({ message: error.message });
+      }
       console.error("Failed to fetch paginated workers:", error);
       res.status(500).json({ message: "Failed to fetch workers" });
     }
@@ -686,6 +702,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const contactIds = await storage.workers.getAllMatchingContactIds(filters);
       res.json({ contactIds, total: contactIds.length });
     } catch (error) {
+      if (error instanceof WorkerBenefitRoleFilterError) {
+        return res.status(400).json({ message: error.message });
+      }
       console.error("Failed to fetch matching worker contact IDs:", error);
       res.status(500).json({ message: "Failed to fetch matching workers" });
     }
