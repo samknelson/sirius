@@ -348,7 +348,7 @@ export function PaymentForm({
       }
       return await apiRequest("POST", "/api/ledger/payments", data);
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       const successTitle = mode === "edit" ? "Payment updated" : "Payment created";
       toast({
         title: successTitle,
@@ -357,20 +357,53 @@ export function PaymentForm({
             ? "The payment has been updated successfully."
             : "The payment has been created successfully.",
       });
-      // Invalidate caches
-      queryClient.invalidateQueries({ queryKey: ["/api/ledger/payments", paymentId] });
+      // The edit response is the authoritative saved payment. Replace its
+      // cache synchronously so reopening it cannot first hydrate allocations
+      // from the pre-save value, even if its query became inactive meanwhile.
+      if (mode === "edit" && paymentId) {
+        const { ledgerNotifications: _notifications, ...savedPayment } = data;
+        queryClient.setQueryData(
+          ["/api/ledger/payments", paymentId],
+          savedPayment as unknown as LedgerPayment,
+        );
+        setBoxesLoaded(false);
+      }
+
+      // Refresh batch/list summaries before the parent keeps or changes
+      // selection. Other payment surfaces only need to be marked stale.
+      const refreshes: Array<Promise<unknown>> = [];
       if (paymentId) {
-        queryClient.invalidateQueries({ queryKey: [`/api/ledger/payments/${paymentId}/transactions`] });
+        void queryClient.invalidateQueries({
+          queryKey: [`/api/ledger/payments/${paymentId}/transactions`],
+        });
       }
       if (accountId) {
-        queryClient.invalidateQueries({ queryKey: ["/api/ledger/accounts", accountId, "payments"] });
+        void queryClient.invalidateQueries({
+          queryKey: ["/api/ledger/accounts", accountId, "payments"],
+        });
       }
       if (batchId) {
-        queryClient.invalidateQueries({ queryKey: [`/api/ledger-payment-batches/${batchId}`] });
-        queryClient.invalidateQueries({ queryKey: [`/api/ledger-payment-batches/${batchId}/payments`] });
+        refreshes.push(
+          queryClient.refetchQueries({
+            queryKey: [`/api/ledger-payment-batches/${batchId}`],
+          }, { throwOnError: true }),
+          queryClient.refetchQueries({
+            queryKey: [`/api/ledger-payment-batches/${batchId}/payments`],
+          }, { throwOnError: true }),
+        );
       }
       if (payment?.ledgerEaId) {
-        queryClient.invalidateQueries({ queryKey: ["/api/ledger/payments/ea", payment.ledgerEaId] });
+        void queryClient.invalidateQueries({
+          queryKey: ["/api/ledger/payments/ea", payment.ledgerEaId],
+        });
+      }
+      const refreshResults = await Promise.allSettled(refreshes);
+      if (refreshResults.some((result) => result.status === "rejected")) {
+        toast({
+          title: "Payment saved",
+          description: "The payment was saved, but the batch summary could not be refreshed.",
+          variant: "destructive",
+        });
       }
       showLedgerNotifications(data?.ledgerNotifications);
       onSuccess?.(data);
