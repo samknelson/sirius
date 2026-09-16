@@ -63,7 +63,8 @@
  *   - Consumed fingerprint = targeted hash of the WINNING entries
  *     ({date, rate, uuid}, date-sorted) — a policy edit elsewhere in the
  *     shop JSON does not reprocess this loader.
- *   - Unchanged shops skip via the fingerprint fast path (no storage reads).
+ *   - An unchanged fingerprint skips only after a target-state read proves
+ *     every desired row still exists and no stale migration row remains.
  *   - Deletion sweep: a shop whose hourly rate history VANISHED (or whose
  *     node was deleted in S1) has its migration-owned rate rows deleted.
  *     Unparseable JSON keeps the shop in the source set — never sweep over a
@@ -110,12 +111,13 @@ import {
   parseForceReconcile,
   sweepDeletions,
 } from "./lib/sync";
+import { employerRatesMatchDesired } from "./lib/employer-rate-sync";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const LOADER = "t-employer-rates";
 const ID_MAP_ENTITY = "employer-rate";
 /** BUMP whenever transform logic changes so unchanged S1 rows reprocess. */
-const LOGIC_VERSION = 1;
+const LOGIC_VERSION = 2;
 const ALLOWED_REJECTS: string[] = (() => {
   const i = process.argv.indexOf("--allow-rejects");
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1].split(",").map((s) => s.trim()).filter(Boolean) : [];
@@ -334,6 +336,7 @@ async function main() {
   let updated = 0;
   let adopted = 0;
   let removed = 0;
+  let degradedFastPaths = 0;
   const perYear: Record<string, number> = {};
   const okShops: Array<{
     nid: number;
@@ -358,9 +361,24 @@ async function main() {
     });
     const mapping = anchorMap.get(shop.nid);
     if (classifyRow(mapping, fp, LOGIC_VERSION, FORCE_RECONCILE) === "unchanged") {
-      summary.unchanged++;
-      fastPathSkips++;
-      continue;
+      const existing = DRY_RUN
+        ? []
+        : await storage.baoEmployerRates.list({
+            employerId: emp.s2Id,
+            accountId,
+          });
+      if (
+        DRY_RUN ||
+        employerRatesMatchDesired(existing, shop.entries)
+      ) {
+        summary.unchanged++;
+        fastPathSkips++;
+        continue;
+      }
+      // The fingerprint describes source consumption, not durable target
+      // existence. Reconcile a truncated/restored target instead of trusting
+      // stale id_map bookkeeping.
+      degradedFastPaths++;
     }
 
     for (const e of shop.entries) perYear[e.date.slice(0, 4)] = (perYear[e.date.slice(0, 4)] ?? 0) + 1;
@@ -472,6 +490,7 @@ async function main() {
   report.employersLoaded = okShops.length;
   report.entriesPerYear = perYear;
   report.fastPathSkips = fastPathSkips;
+  report.degradedFastPaths = degradedFastPaths;
 
   // ── Verify: every winning entry present with a numerically equal rate,
   //    and no stale migration-owned date remains ────────────────────────────

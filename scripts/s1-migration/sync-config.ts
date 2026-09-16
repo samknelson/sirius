@@ -85,7 +85,7 @@ export const FLEET: FleetStep[] = [
   { id: "employers", script: "load-employers.ts", loader: "t7t24-employers", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
   { id: "policies", script: "load-policies.ts", loader: "t-policies", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
   { id: "employer-policies", script: "load-employer-policies.ts", loader: "t-employer-policies", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
-  { id: "employer-rates", script: "load-employer-rates.ts", loader: "t-employer-rates", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
+  { id: "employer-rates", script: "load-employer-rates.ts", loader: "t-employer-rates", logicVersion: 2, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
   { id: "relationships", script: "load-relationships.ts", loader: "t15-relationships", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
   { id: "employee-ids", script: "load-employee-ids.ts", loader: "n4-employee-ids", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
   { id: "elections", script: "load-elections.ts", loader: "t16-elections", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
