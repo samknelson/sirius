@@ -154,3 +154,4 @@
 - [Studio template library route](studio-template-library-route.md) — Template Studio reuses the staff CRUD list with medium/context filters; 401/403 hides Templates, never add a parallel studio route.
 - [Omada migration boundary](omada-migration-boundary.md) — migrate Omada catalog/policy/coverage only; eligibility rules are manually configured and never migration-seeded.
 - [Reconciliation scope symmetry](reconciliation-scope-symmetry.md) — scope both pricing and orphan reversals; event tests must assert unrelated posted balances remain unchanged.
+- [Fingerprint fast paths need target proof](fingerprint-fast-path-target-proof.md) — source-consumed bookkeeping cannot prove child target rows survived a restore or truncation.
