@@ -76,6 +76,7 @@ import {
   type StageResultLike,
 } from "./lib/stage-result-contract";
 import { assertMigrationTimeZone, MIGRATION_SYSTEM_TIME_ZONE } from "./lib/timezone-contract";
+import { buildEmployerRateSnapshot, evaluateEmployerRateDurability, type EmployerRateSnapshot } from "./lib/employer-rate-sync";
 import {
   FLEET,
   PROFILES,
@@ -172,6 +173,7 @@ interface EnvelopeLike {
   findings: Array<{ kind: string }>;
   blockingFindings: Array<{ kind: string }>;
   runtime: { timeZone: { runtimeTimeZone: string; dbSessionTimeZone: string | null; expected: string } | null };
+  detail: Record<string, unknown>;
 }
 
 function validateEnvelope(step: FleetStep, run: ChildRun, forcedThisRun: boolean): { env: EnvelopeLike | null; contractErrors: string[] } {
@@ -205,6 +207,7 @@ function validateEnvelope(step: FleetStep, run: ChildRun, forcedThisRun: boolean
   const v = e.verify;
   if (!v || (v.status !== "pass" && v.status !== "fail") || typeof v.failures !== "number") errs.push("verify missing/malformed");
   if (!Array.isArray(e.findings) || !Array.isArray(e.blockingFindings)) errs.push("findings/blockingFindings missing");
+  if (!e.detail || typeof e.detail !== "object") errs.push("detail missing/malformed");
   // Time zone evidence (lib/timezone-contract.ts). A fleet child is spawned
   // with this process's environment, so it SHOULD have passed the same gate;
   // the envelope is the proof. A missing block means the loader never ran the
@@ -275,6 +278,7 @@ async function main() {
     openEndThrough: horizon,
     parityMonths: months,
     timeZone, // aggregate runtime evidence — diagnose a mismatched run from s1_staging.runs alone
+    target: describeDatabaseTarget(resolveDatabaseUrl()),
   };
   let writeFence: AppWriteFenceLease | undefined;
   let aggregateRunId: number | undefined;
@@ -439,6 +443,66 @@ async function main() {
 
     report.fleetTotals = totals;
     report.findingsByKind = findingsByKind;
+
+    // Independent durability gate. The employer-rate child proves its writes
+    // before it exits; this second read runs only after the complete fleet, so
+    // a later bootstrap/utility/loader deletion cannot leave a green initial
+    // load report. It also records enough non-secret identity/version evidence
+    // to distinguish an old image or wrong target from post-write deletion.
+    if (DRY_RUN || aborted) {
+      report.employerRateDurability = {
+        status: "skipped",
+        reason: DRY_RUN ? "dry-run" : `fleet aborted at ${String(report.fleetAbortedAt)}`,
+      };
+    } else {
+      const rateStep = fleetRecords.find((record) => record.id === "employer-rates");
+      const rateEnvelope = rateStep
+        ? (FLEET.find((step) => step.id === "employer-rates") ? rateStep : undefined)
+        : undefined;
+      const rawResult = rateEnvelope
+        ? JSON.parse(fs.readFileSync(path.join(tmpDir, "employer-rates.json"), "utf8")) as EnvelopeLike
+        : null;
+      const accountId = rawResult?.detail?.accountId;
+      const expectedSnapshot = rawResult?.detail?.durabilitySnapshot as EmployerRateSnapshot | undefined;
+      if (
+        typeof accountId !== "string" ||
+        !expectedSnapshot ||
+        typeof expectedSnapshot.rowCount !== "number" ||
+        typeof expectedSnapshot.migrationOwnedRows !== "number" ||
+        typeof expectedSnapshot.digest !== "string"
+      ) {
+        const reason = "employer-rate loader did not provide accountId/durabilitySnapshot evidence";
+        report.employerRateDurability = { status: "fail", failures: [reason] };
+        failures.push(`employer-rate durability: ${reason}`);
+      } else {
+        const rows = (await pgPool.query(
+          `SELECT employer_id, effective_ymd::text, rate::text, data
+             FROM sitespecific_bao_employer_rates
+            WHERE account_id = $1
+            ORDER BY employer_id, effective_ymd`,
+          [accountId],
+        )).rows as Array<{ employer_id: string; effective_ymd: string; rate: string; data: unknown }>;
+        const actualSnapshot = buildEmployerRateSnapshot(
+          rows.map((row) => ({
+            employerId: row.employer_id,
+            effectiveYmd: row.effective_ymd,
+            rate: row.rate,
+            data: row.data,
+          })),
+        );
+        const gate = evaluateEmployerRateDurability(expectedSnapshot, actualSnapshot);
+        report.employerRateDurability = {
+          ...gate,
+          loaderLogicVersion: rawResult.logicVersion,
+          expectedLogicVersion: FLEET.find((step) => step.id === "employer-rates")?.logicVersion,
+          target: describeDatabaseTarget(resolveDatabaseUrl()),
+          accountId,
+          expectedSnapshot,
+          actualSnapshot,
+        };
+        for (const failure of gate.failures) failures.push(`employer-rate durability: ${failure}`);
+      }
+    }
 
     // Mode gate on report-only findings.
     if (MODE === "final-freeze" && finalFreezeBlocked.length > 0) {

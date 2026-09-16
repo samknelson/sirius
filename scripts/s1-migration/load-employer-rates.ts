@@ -111,7 +111,8 @@ import {
   parseForceReconcile,
   sweepDeletions,
 } from "./lib/sync";
-import { employerRatesMatchDesired } from "./lib/employer-rate-sync";
+import { buildEmployerRateSnapshot, employerRatesMatchDesired } from "./lib/employer-rate-sync";
+import { resolveDatabaseUrl, describeDatabaseTarget } from "../../shared/database-url";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const LOADER = "t-employer-rates";
@@ -215,6 +216,8 @@ async function main() {
   const { accountId, configName } = await resolveHourlyAccount();
   report.accountId = accountId;
   report.chargeConfigName = configName;
+  report.target = describeDatabaseTarget(resolveDatabaseUrl());
+  report.loaderLogicVersion = LOGIC_VERSION;
 
   const shops = await loadStaged("grievance_shop");
   report.shopsStaged = shops.length;
@@ -488,6 +491,7 @@ async function main() {
   report.ratesAdopted = adopted;
   report.ratesRemoved = removed;
   report.employersLoaded = okShops.length;
+  report.expectedRateRows = withRates.reduce((total, shop) => total + shop.entries.length, 0);
   report.entriesPerYear = perYear;
   report.fastPathSkips = fastPathSkips;
   report.degradedFastPaths = degradedFastPaths;
@@ -549,6 +553,10 @@ async function main() {
   });
   summary.deleted += sweep.deleted;
   report.sweep = { candidates: sweep.candidates, deleted: sweep.deleted, alreadyHandled: sweep.alreadyHandled };
+  if (!DRY_RUN) {
+    const durableRows = await storage.baoEmployerRates.list({ accountId });
+    report.durabilitySnapshot = buildEmployerRateSnapshot(durableRows);
+  }
 
   progress.stop();
   report.rejectSamples = rejects.samples;

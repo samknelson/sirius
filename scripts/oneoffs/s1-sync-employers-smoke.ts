@@ -292,6 +292,20 @@ async function main() {
     check("rate row created (6.50 @ 2025-07-01)", rates1.length === 1 && Number(rates1[0].rate) === 6.5 && String(rates1[0].effective_ymd).startsWith("2025-07-01"), rates1);
     check("employer-rate anchor mapped", !!(await mappingOf("employer-rate", N.sh1)));
 
+    console.log("phase 1b: consumed fingerprint + missing target repairs");
+    await db.execute(sql`DELETE FROM sitespecific_bao_employer_rates WHERE employer_id = ${emp.s2Id}`);
+    const repairRun = runRates();
+    check("rates repair run exits 0", repairRun.status === 0, repairRun.result?.rejectGate);
+    check("missing-target fast path was degraded", (repairRun.result?.detail?.degradedFastPaths ?? 0) >= 1, repairRun.result?.detail);
+    const repairedRates = await rows<any>(
+      sql`SELECT rate, effective_ymd FROM sitespecific_bao_employer_rates WHERE employer_id = ${emp.s2Id}`,
+    );
+    check(
+      "missing rate recreated despite consumed fingerprint",
+      repairedRates.length === 1 && Number(repairedRates[0].rate) === 6.5,
+      repairedRates,
+    );
+
     // =========================================================== phase 2: update
     console.log("phase 2: staged edits converge on re-run");
     await upsertRecords([

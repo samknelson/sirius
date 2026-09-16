@@ -23,6 +23,34 @@ never bulk-migrate).
 | `S1_DATABASE_URL` | The S1 MariaDB (mysql2). **Must carry an explicit port.** Beware trailing whitespace in the value — `generate.mjs` fails with `Incorrect database name 'smf_prod '`. Safe invocation: `S1_DATABASE_URL="$(printf %s "$S1_DATABASE_URL" | tr -d '[:space:]')" …` |
 | `TZ` | **`America/Los_Angeles`, always** — the pinned S2 system zone (next subsection). Baked into the `migration` image; a shell running any `scripts/s1-migration/*` command must `export TZ=America/Los_Angeles` first. Every stage/loader/verify/sync/bootstrap process refuses to write anything if it is not running in this zone. |
 
+### Employer-rate repair and final evidence
+
+Run employer-rate repairs through the current migration image, against the same
+`EXTERNAL_DATABASE_URL` used by the application:
+
+```bash
+npx tsx scripts/s1-migration/load-employer-rates.ts --force-reconcile --allow-rejects bad_rate
+npx tsx scripts/s1-migration/sync.ts --mode daily --profile production --skip-stage
+```
+
+The loader's envelope must report `logicVersion: 2`, `detail.loaderLogicVersion:
+2`, the non-secret `detail.target`, and the configured hourly `accountId`.
+Version 2 reads target state before accepting a consumed fingerprint, so a
+truncated table is recreated without deleting id-map fingerprints first.
+
+The aggregate sync report independently reads the rate table after the entire
+loader fleet. `employerRateDurability.status` must be `pass`; it records the
+loader version, target identity, account, and before/after aggregate snapshots
+(row count, migration-owned count, and a deterministic employer/date/rate
+digest). A failure blocks the run and distinguishes stale-image or wrong-target
+execution from rows that disappeared or changed after child verification.
+Do not run `bootstrap-target.ts --wipe` or
+`scripts/oneoffs/wipe-bao-rates-and-sources.ts` after loading.
+
+The observed production report's 727 recognized entries and 713 creates prove
+that the hourly UUID allowlist was active. Do not change that allowlist unless a
+production entry is specifically shown as unrecognized.
+
 ### Time zone pin (read before the first rehearsal — never changes afterwards)
 
 S2 stores its core timestamps as `timestamp` (no zone). The wall clock in such

@@ -17,3 +17,9 @@ records are excluded from the verify set.
 existence. Validate the complete owned child set before skipping, or include every desired
 record in final verification and invalidate/reconcile missing targets. A logic-version bump
 repairs existing stale mappings once, but it does not replace the ongoing target-state check.
+
+When a multi-process workflow must prove rows survived after a loader exited, capture an
+aggregate-safe snapshot after the loader's final sweep and recompute it at workflow completion.
+Use a deterministic digest of the complete business-key/value set plus counts; a plain count
+can be masked by unrelated replacement rows, and a desired-row count can become vacuous when
+unchanged records fast-skip.
