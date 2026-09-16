@@ -3,6 +3,7 @@ import {
   normalizeWorkerBenefitRoleFilters,
   WorkerBenefitRoleFilterError,
 } from "@shared/worker-benefit-role-filters";
+import { serializeQueryKey } from "@/lib/queryClient";
 
 describe("worker benefit role filter normalization", () => {
   it.each([
@@ -79,5 +80,44 @@ describe("worker benefit role filter normalization", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(WorkerBenefitRoleFilterError);
     }
+  });
+
+  it.each([
+    [{ isSubscriber: "yes" }, { isSubscriber: "yes" }],
+    [
+      { isSubscriber: "yes", subscriberSinceFrom: "2024-01" },
+      { isSubscriber: "yes", subscriberSinceFrom: "2024-01" },
+    ],
+    [{ isDependent: "yes" }, { isDependent: "yes" }],
+    [
+      { isDependent: "yes", dependentSinceThrough: "2024-12" },
+      { isDependent: "yes", dependentSinceThrough: "2024-12" },
+    ],
+  ])("normalizes role-only and optional-date values %j", (input, expected) => {
+    expect(normalizeWorkerBenefitRoleFilters(input, true)).toEqual(expected);
+  });
+
+  it("omits role values when the gated component is disabled", () => {
+    expect(
+      normalizeWorkerBenefitRoleFilters(
+        { isSubscriber: "yes", subscriberSinceFrom: "2024-01" },
+        false,
+      ),
+    ).toEqual({});
+  });
+
+  it.each([
+    [{ isSubscriber: "yes" }, "isSubscriber=yes"],
+    [
+      { isDependent: "yes", dependentSinceFrom: "2024-01" },
+      "isDependent=yes&dependentSinceFrom=2024-01",
+    ],
+  ])("serializes the applied %j role filter for the list request", (params, query) => {
+    expect(
+      serializeQueryKey([
+        "/api/workers/with-details/paginated",
+        { page: 1, pageSize: 50, ...params },
+      ]),
+    ).toContain(query);
   });
 });

@@ -1063,7 +1063,7 @@ export function WorkersTable({
                   {subscriberRoleEnabled && (
                     <div className="flex items-center gap-2">
                       <label htmlFor="subscriber-since-from" className="text-xs text-muted-foreground">
-                        Since
+                        Since (optional)
                       </label>
                       <Input
                         id="subscriber-since-from"
@@ -1105,7 +1105,7 @@ export function WorkersTable({
                   {dependentRoleEnabled && (
                     <div className="flex items-center gap-2">
                       <label htmlFor="dependent-since-from" className="text-xs text-muted-foreground">
-                        Since
+                        Since (optional)
                       </label>
                       <Input
                         id="dependent-since-from"
@@ -1135,9 +1135,9 @@ export function WorkersTable({
                   aria-live="polite"
                   data-testid="text-benefit-role-filter-help"
                 >
-                  Uses the earliest month of historical retained coverage, not
-                  just current coverage. Benefit history updates asynchronously
-                  after coverage changes.
+                  Select a role, then click Apply. Leave dates blank for all
+                  subscribers or dependents. Optional dates filter the earliest
+                  month of retained coverage, not just current coverage.
                 </p>
               </>
             )}
