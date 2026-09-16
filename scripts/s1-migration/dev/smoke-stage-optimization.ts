@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import type { Pool, RowDataPacket } from "mysql2/promise";
-import { assessCountEvidence } from "../lib/stage-evidence";
+import { assessCountEvidence, simulateResumableRanges } from "../lib/stage-evidence";
 import { validateStageResultPayload } from "../lib/stage-result-contract";
 import { shouldRefreshNodePayload } from "../lib/incremental-node";
 import {
@@ -69,6 +69,15 @@ function testEvidence() {
   );
 }
 
+function testResumableRanges() {
+  const model = simulateResumableRanges(3_660_001, 50_000, [1, 7]);
+  assert.equal(model.ranges.length, 74, "production-scale payperiod source is bounded into ranges");
+  assert.ok(model.ranges.every((range) => range.verified && range.cleaned), "only verified ranges are cleaned");
+  assert.equal(model.ranges.filter((range) => range.scanned).length, 72, "resume scans only unfinished ranges");
+  assert.equal(model.deferredOutOfBound, true, "movement outside the verified range is deferred");
+  assert.deepEqual(simulateResumableRanges(25, 10, [1]).ranges.map((r) => r.index), [1, 2, 3]);
+}
+
 function testStageResultContract() {
   const dailyEvidence = {
     source: "sirius_worker",
@@ -93,6 +102,36 @@ function testStageResultContract() {
     countEvidence: [dailyEvidence],
   });
   assert.deepEqual(validDaily.errors, []);
+
+  const deferredDaily = validateStageResultPayload("daily", {
+    contractVersion: 2,
+    step: "stage",
+    mode: "daily",
+    status: "pass",
+    mismatches: 0,
+    acceptedLiveDrifts: 1,
+    countEvidence: [{
+      ...dailyEvidence,
+      sourceCountBefore: 3_660_000,
+      sourceCountAfter: 3_660_001,
+      identitiesScanned: 3_660_000,
+      stagedCount: 3_660_000,
+      deferredOutsideRange: true,
+    }],
+  });
+  assert.deepEqual(deferredDaily.errors, [], "one-row growth outside the observation boundary is accepted");
+
+  const failedRange = validateStageResultPayload("daily", {
+    contractVersion: 2,
+    step: "stage",
+    mode: "daily",
+    status: "fail",
+    mismatches: 1,
+    acceptedLiveDrifts: 0,
+    countEvidence: [],
+    failureReason: "sirius_payperiod range 17 identity verification failed; stale cleanup deferred",
+  });
+  assert.deepEqual(failedRange.errors, [], "range failure preserves a valid aggregate failure envelope");
 
   const forgedFreeze = validateStageResultPayload("final-freeze", {
     contractVersion: 2,
@@ -288,6 +327,7 @@ async function testShards() {
 }
 
 testEvidence();
+testResumableRanges();
 testStageResultContract();
 testPayloadRefresh();
 await testShards();

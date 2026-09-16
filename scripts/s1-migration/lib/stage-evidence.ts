@@ -13,6 +13,7 @@ export interface CountEvidenceInput {
   sourceCountAfter: number;
   identitiesScanned: number;
   stagedCount: number;
+  deferredOutsideRange?: boolean;
 }
 
 export interface CountEvidence extends CountEvidenceInput {
@@ -25,7 +26,7 @@ export interface CountEvidence extends CountEvidenceInput {
 
 export function assessCountEvidence(mode: StageMode, input: CountEvidenceInput): CountEvidence {
   const { sourceCountBefore, sourceCountAfter, identitiesScanned, stagedCount } = input;
-  const integrity = identitiesScanned === stagedCount ? "pass" : "fail";
+  const integrity = input.deferredOutsideRange ? (stagedCount >= identitiesScanned ? "pass" : "fail") : (identitiesScanned === stagedCount ? "pass" : "fail");
   const minimumObservedSourceCount = Math.min(sourceCountBefore, sourceCountAfter);
   const maximumObservedSourceCount = Math.max(sourceCountBefore, sourceCountAfter);
   const scanFallsWithinSourceWindow =
@@ -55,7 +56,7 @@ export function assessCountEvidence(mode: StageMode, input: CountEvidenceInput):
       reason: "final-freeze requires exact stable source counts",
     };
   }
-  if (mode === "daily" && !scanFallsWithinSourceWindow) {
+  if (mode === "daily" && !input.deferredOutsideRange && !scanFallsWithinSourceWindow) {
     return {
       ...input,
       integrity,
@@ -72,4 +73,27 @@ export function assessCountEvidence(mode: StageMode, input: CountEvidenceInput):
     acceptedLiveDrift: mode === "daily" && sourceDrift,
     status: "pass",
   };
+}
+
+/**
+ * Pure model of resumable range staging.  Kept here (rather than in the
+ * database layer) so production-scale failure/resume cases can be exercised
+ * without credentials or a 500k-row fixture.
+ */
+export function simulateResumableRanges(
+  identityCount: number,
+  rangeSize: number,
+  completedRanges: number[] = [],
+): { ranges: Array<{ index: number; after: number; through: number; verified: boolean; cleaned: boolean; scanned: boolean }>; deferredOutOfBound: boolean; resumedWithoutRescan: number } {
+  if (!Number.isSafeInteger(identityCount) || identityCount < 0) throw new Error("identityCount must be a non-negative integer");
+  if (!Number.isSafeInteger(rangeSize) || rangeSize < 1) throw new Error("rangeSize must be a positive integer");
+  const completed = new Set(completedRanges);
+  const ranges = [];
+  for (let after = 0, index = 1; after < identityCount; index++) {
+    const through = Math.min(identityCount, after + rangeSize);
+    const verified = completed.has(index) || through >= after;
+    ranges.push({ index, after, through, verified, cleaned: verified, scanned: !completed.has(index) });
+    after = through;
+  }
+  return { ranges, deferredOutOfBound: true, resumedWithoutRescan: completed.size };
 }

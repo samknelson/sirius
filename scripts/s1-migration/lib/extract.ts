@@ -400,6 +400,12 @@ export async function extractBundleIncrementalSharded(
   batchSize: number,
   hooks: IncrementalBundleHooks,
   shardCount: number,
+  onRangeComplete?: (report: BundleExtractReport) => Promise<void>,
+  rangeSize?: number,
+  skipRanges: Set<number> = new Set(),
+  completedRangeReports: Map<number, BundleExtractReport> = new Map(),
+  rangeCountOverride?: number,
+  exactThroughNid?: number,
 ): Promise<BundleExtractReport> {
   const start = Date.now();
   const [[bounds]] = await pool.query<RowDataPacket[]>(
@@ -409,15 +415,17 @@ export async function extractBundleIncrementalSharded(
   );
   const sourceCountBefore = Number(bounds?.n ?? 0);
   const minNid = bounds?.min_nid == null ? null : Number(bounds.min_nid);
-  const maxNid = bounds?.max_nid == null ? null : Number(bounds.max_nid);
-  if (sourceCountBefore === 0 || minNid == null || maxNid == null || shardCount <= 1) {
+  const maxNid = bounds?.max_nid == null ? 0 : Number(bounds.max_nid);
+  if ((sourceCountBefore === 0 || minNid == null) && rangeCountOverride == null) {
     return extractBundleIncremental(pool, bundle, fields, batchSize, hooks);
   }
+  const boundedMinNid = minNid ?? 0;
 
-  const count = Math.max(1, Math.min(Math.floor(shardCount), sourceCountBefore));
-  const width = Math.max(1, Math.ceil((maxNid - minNid + 1) / count));
+  const count = Math.max(1, Math.min(Math.floor(shardCount), Math.max(1, sourceCountBefore)));
+  const width = rangeSize && rangeSize > 0 ? Math.floor(rangeSize) : Math.max(1, Math.ceil((maxNid - boundedMinNid + 1) / count));
+  const rangeCount = rangeCountOverride ?? (rangeSize && rangeSize > 0 ? Math.ceil(maxNid / width) : count);
   const ranges = Array.from({ length: count }, (_, offset) => {
-    const rangeMin = minNid + offset * width;
+    const rangeMin = boundedMinNid + offset * width;
     const rangeMax = offset === count - 1 ? Number.MAX_SAFE_INTEGER : Math.min(maxNid, rangeMin + width - 1);
     return {
       index: offset + 1,
@@ -429,16 +437,57 @@ export async function extractBundleIncrementalSharded(
       throughNid: rangeMax,
     };
   }).filter((range) => range.afterNid < range.throughNid);
+  // Fixed-size ranges are intentionally resumable. A verified range is
+  // durable evidence; generation semantics let us skip it without rescanning.
+  const effectiveRanges = rangeSize && rangeSize > 0
+    ? Array.from({ length: rangeCount }, (_, offset) => ({
+        index: offset + 1,
+        count: rangeCount,
+        afterNid: offset * width,
+        throughNid: offset === rangeCount - 1 && exactThroughNid != null
+          ? exactThroughNid
+          : (offset + 1) * width,
+      }))
+    : ranges;
 
-  const settled = await Promise.allSettled(
-    ranges.map((range) => extractBundleIncremental(pool, bundle, fields, batchSize, hooks, range)),
-  );
+  const results: Array<PromiseSettledResult<BundleExtractReport>> = new Array(effectiveRanges.length);
+  let nextRange = 0;
+  const worker = async () => {
+    for (;;) {
+      const offset = nextRange++;
+      if (offset >= effectiveRanges.length) return;
+      const range = effectiveRanges[offset];
+      try {
+      if (skipRanges.has(range.index)) {
+        const prior = completedRangeReports.get(range.index);
+        results[offset] = { status: "fulfilled", value: {
+          bundle, s1NodeCount: sourceCountBefore, sourceCountAfter: sourceCountBefore,
+          extracted: prior?.identitiesScanned ?? 0, identitiesScanned: prior?.identitiesScanned ?? 0,
+          payloadExtracted: 0, incremental: true,
+          identityHash: prior?.identityHash ?? "", timings: { identityReadMs: 0, fieldReadMs: 0, stagingCallbackMs: 0 },
+          shards: [{ ...range, identitiesScanned: prior?.identitiesScanned ?? 0, payloadExtracted: 0, durationMs: 0, identityHash: prior?.identityHash ?? "" }],
+          fieldRowCounts: {}, anomalies: emptyAnomalies(), durationMs: 0,
+        } as BundleExtractReport };
+        continue;
+      }
+      const report = await extractBundleIncremental(pool, bundle, fields, batchSize, hooks, range);
+      // The caller can verify and durably checkpoint this range before any
+      // other range is allowed to be considered for stale cleanup.
+      if (onRangeComplete) await onRangeComplete(report);
+      results[offset] = { status: "fulfilled", value: report };
+      } catch (reason) {
+        results[offset] = { status: "rejected", reason };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(count, effectiveRanges.length) }, worker));
+  const settled = results;
   const failures = settled.filter((result): result is PromiseRejectedResult => result.status === "rejected");
   if (failures.length > 0) {
     const messages = failures.map((failure) =>
       failure.reason instanceof Error ? failure.reason.message.split("\n")[0] : String(failure.reason),
     );
-    throw new Error(`${bundle}: ${failures.length}/${ranges.length} staging shard(s) failed: ${messages.join("; ")}`);
+    throw new Error(`${bundle}: ${failures.length}/${effectiveRanges.length} staging shard(s) failed: ${messages.join("; ")}`);
   }
   const reports = settled
     .filter((result): result is PromiseFulfilledResult<BundleExtractReport> => result.status === "fulfilled")

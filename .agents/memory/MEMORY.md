@@ -156,3 +156,4 @@
 - [Reconciliation scope symmetry](reconciliation-scope-symmetry.md) — scope both pricing and orphan reversals; event tests must assert unrelated posted balances remain unchanged.
 - [Fingerprint fast paths need target proof](fingerprint-fast-path-target-proof.md) — source-consumed bookkeeping cannot prove child target rows survived a restore or truncation.
 - [Ledger upsert movement events](ledger-upsert-movement-events.md) — stable-key ledger upserts replace every mutable field and emit both old/new EA-month coordinates after commit.
+- [Live staging range evidence](live-staging-range-evidence.md) — daily high-churn staging freezes exact ranges; cleanup authorization and checkpoint commit atomically, while final-freeze stays whole-source exact.

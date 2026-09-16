@@ -166,20 +166,19 @@ npx tsx scripts/s1-migration/stage.ts --mode daily --bundles sirius_worker,siriu
 npx tsx scripts/s1-migration/stage.ts --mode daily --skip-terms --batch 1000
 ```
 
-Daily mode performs a complete lightweight node identity/change scan, rebuilds
-full field payloads only for new/changed/overlap records, and reconciles hard
-deletes from the complete scanned identity set. Independent light bundles run
-in bounded two-wide waves; `sirius_payperiod`, `smf_worker_month`, and
-`sirius_log` remain serial relative to one another but use two disjoint NID
-range shards by default. `--bundle-concurrency 1` and `--heavy-shards 1`
-disable those optimizations for diagnosis.
+Daily mode freezes a generation-specific upper NID boundary, splits it into
+fixed 50,000-NID ranges, rebuilds full field payloads only for
+new/changed/overlap records, and verifies each range immediately. Stale rows
+are deleted only inside a verified range. Up to `--heavy-shards` ranges run at
+once; bundles themselves retain the existing bounded scheduling.
 
-For node bundles, the daily gate accepts live-source movement only after the
-extraction identity count/fingerprint matches a second complete key-only scan
-and an independent post-scan count. A moving identity set retries at most
-three times with a fresh cleanup watermark, then fails without deleting stale
-rows. Terms and raw tables remain full-scanned and strict (no live count drift)
-until they have an equivalent source-specific identity contract.
+For node bundles, the daily gate accepts live-source movement after every
+completed range matches its immediate key-only verification. Movement in one
+range cannot invalidate verified work elsewhere. An interrupted run resumes
+through `sync.ts --stage-resume-generation <id>` and skips that generation's
+verified ranges; never use `--skip-stage` for this case. Rows above the frozen
+boundary and changes after a range verification are deferred to the next new
+daily generation. Terms and raw tables remain full-scanned and strict.
 Missing/inconsistent evidence exits 1. Final-freeze is a full payload
 extraction and requires exact stable counts under an operational S1 write
 freeze.

@@ -12,6 +12,7 @@ export interface StageEvidenceLike {
   status: "pass" | "fail";
   identityVerified?: boolean;
   identityVerificationAttempts?: number;
+  deferredOutsideRange?: boolean;
 }
 
 export interface StageResultLike {
@@ -22,6 +23,7 @@ export interface StageResultLike {
   mismatches: number;
   acceptedLiveDrifts: number;
   countEvidence: StageEvidenceLike[];
+  failureReason?: string;
 }
 
 /** Independently validate and recompute the stage handoff contract. */
@@ -39,7 +41,16 @@ export function validateStageResultPayload(
   if (!Number.isInteger(result.acceptedLiveDrifts) || Number(result.acceptedLiveDrifts) < 0) {
     errors.push("stage acceptedLiveDrifts missing/malformed");
   }
-  if (!Array.isArray(result.countEvidence) || result.countEvidence.length === 0) {
+  if (
+    result.status === "fail" &&
+    Array.isArray(result.countEvidence) &&
+    result.countEvidence.length === 0 &&
+    typeof result.failureReason === "string" &&
+    result.failureReason.length > 0
+  ) {
+    if (result.mismatches !== 1) errors.push("failed stage without evidence must report mismatches=1");
+    if (result.acceptedLiveDrifts !== 0) errors.push("failed stage without evidence cannot accept live drift");
+  } else if (!Array.isArray(result.countEvidence) || result.countEvidence.length === 0) {
     errors.push("stage countEvidence missing/empty");
   } else {
     let derivedFailures = 0;
@@ -62,12 +73,19 @@ export function validateStageResultPayload(
       if (evidence.integrity !== "pass" || evidence.status !== "pass") {
         errors.push(`${prefix} (${evidence.source}) did not pass integrity/evidence`);
       }
-      if (evidence.identitiesScanned !== evidence.stagedCount) {
+      if (!evidence.deferredOutsideRange && evidence.identitiesScanned !== evidence.stagedCount) {
         errors.push(`${prefix} (${evidence.source}) scanned/staged identities differ`);
+      }
+      if (evidence.deferredOutsideRange && mode !== "daily") errors.push(`${prefix} deferred range outside daily mode`);
+      if (evidence.deferredOutsideRange && evidence.stagedCount < evidence.identitiesScanned) {
+        errors.push(`${prefix} deferred evidence has fewer staged rows than scanned`);
       }
       const low = Math.min(evidence.sourceCountBefore, evidence.sourceCountAfter);
       const high = Math.max(evidence.sourceCountBefore, evidence.sourceCountAfter);
-      const sourceDrift = evidence.sourceCountBefore !== evidence.sourceCountAfter;
+      const sourceDrift =
+        evidence.sourceCountBefore !== evidence.sourceCountAfter ||
+        evidence.identitiesScanned !== evidence.sourceCountBefore ||
+        evidence.identitiesScanned !== evidence.sourceCountAfter;
       if (evidence.sourceDrift !== sourceDrift) {
         errors.push(`${prefix} (${evidence.source}) sourceDrift disagrees with numeric counts`);
       }
@@ -75,7 +93,11 @@ export function validateStageResultPayload(
       if (evidence.acceptedLiveDrift !== expectedAcceptedDrift) {
         errors.push(`${prefix} (${evidence.source}) acceptedLiveDrift disagrees with numeric evidence/status`);
       }
-      if (mode === "daily" && (evidence.identitiesScanned < low || evidence.identitiesScanned > high)) {
+      if (
+        mode === "daily" &&
+        !evidence.deferredOutsideRange &&
+        (evidence.identitiesScanned < low || evidence.identitiesScanned > high)
+      ) {
         errors.push(`${prefix} (${evidence.source}) scan falls outside source count window`);
       }
       if (

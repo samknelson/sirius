@@ -1,3 +1,33 @@
+# Daily bounded range staging (Task 540)
+
+Daily staging of the large node bundles is split into disjoint NID ranges.
+Each range is fingerprinted again immediately after extraction and its result
+is written to `s1_staging.range_evidence`. Stale rows are deleted only inside a
+range whose evidence is `verified`; source movement outside that interval is
+left in staging for the next run. This makes an interrupted run safe to resume:
+already verified ranges are durable evidence, while an incomplete range has no
+destructive cleanup authorization. Re-running `stage.ts` remains idempotent.
+To resume the same interrupted generation, rerun with
+`sync.ts --mode daily --profile production --stage-resume-generation
+<generation>` (the generation is printed near the start of the failed stage).
+Do not use `--skip-stage` when resuming: it bypasses the range verifier and is
+prohibited for an interrupted range run. The normal rerun after deploying the
+corrected image is the same daily sync command with
+`--stage-resume-generation`; no loader runs until every unfinished range
+passes. A daily invocation without that flag gets a new generation and scans
+every range, so old evidence can never suppress update detection.
+
+If source movement repeatedly prevents one range from verifying, rerun the
+same generation after the source activity settles. Verified ranges are not
+rescanned. Failed or pending ranges retain their target rows; no broad cleanup
+is performed. Rows inserted above the generation's maximum planned NID, and
+changes made after a range's verification instant, are intentionally deferred
+to the next new daily generation. Final-freeze does not accept a resume
+generation and retains whole-source count equality.
+
+The production-scale, database-free model is covered by
+`scripts/s1-migration/dev/smoke-stage-optimization.ts`.
+
 # S1 → S2 Production Migration Runbook
 
 **Status:** verified end-to-end on 2026-08-06 by a full dev rehearsal (fresh target,

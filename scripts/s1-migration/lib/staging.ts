@@ -135,6 +135,36 @@ export async function ensureStagingSchema(): Promise<void> {
       report jsonb NOT NULL DEFAULT '{}'::jsonb
     )
   `);
+  // Durable, per-identity-range evidence.  Unlike a process-local cursor this
+  // survives an interrupted stage and makes the destructive boundary
+  // auditable: a range may only be cleaned after its fingerprint was verified.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS s1_staging.range_evidence (
+      generation text NOT NULL DEFAULT 'legacy',
+      bundle text NOT NULL,
+      range_after_nid bigint NOT NULL,
+      range_through_nid bigint NOT NULL,
+      identity_hash text NOT NULL,
+      identities_scanned integer NOT NULL,
+      staged_count integer NOT NULL,
+      watermark timestamptz NOT NULL,
+      status text NOT NULL CHECK (status IN ('pending', 'verified', 'failed')),
+      verified_at timestamptz,
+      PRIMARY KEY (generation, bundle, range_after_nid, range_through_nid)
+    )
+  `);
+  await db.execute(sql`ALTER TABLE s1_staging.range_evidence ADD COLUMN IF NOT EXISTS generation text NOT NULL DEFAULT 'legacy'`);
+  await db.execute(sql`ALTER TABLE s1_staging.range_evidence DROP CONSTRAINT IF EXISTS range_evidence_pkey`);
+  await db.execute(sql`ALTER TABLE s1_staging.range_evidence DROP CONSTRAINT IF EXISTS range_evidence_status_check`);
+  await db.execute(sql`ALTER TABLE s1_staging.range_evidence ADD CONSTRAINT range_evidence_status_check CHECK (status IN ('pending', 'verified', 'failed'))`);
+  await db.execute(sql`ALTER TABLE s1_staging.range_evidence ADD PRIMARY KEY (generation, bundle, range_after_nid, range_through_nid)`);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS s1_staging.range_generations (
+      generation text PRIMARY KEY,
+      bundles jsonb NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
 }
 
 /** Flush thresholds: keep single INSERT statements bounded even when field
@@ -273,6 +303,215 @@ export async function deleteStaleRecords(bundle: string, watermark: string): Pro
   return Number((res as unknown as { rowCount?: number }).rowCount ?? 0);
 }
 
+/** Stale cleanup constrained to a successfully verified identity range. */
+export async function deleteStaleRecordsInRange(
+  bundle: string,
+  watermark: string,
+  afterNid: number,
+  throughNid: number,
+): Promise<number> {
+  const res = await db.execute(sql`
+    DELETE FROM s1_staging.records
+     WHERE bundle = ${bundle}
+       AND nid > ${afterNid}
+       AND nid <= ${throughNid}
+       AND extracted_at < ${watermark}::timestamptz
+  `);
+  return Number((res as unknown as { rowCount?: number }).rowCount ?? 0);
+}
+
+export interface RangeEvidence {
+  generation?: string;
+  bundle: string;
+  afterNid: number;
+  throughNid: number;
+  identityHash: string;
+  identitiesScanned: number;
+  stagedCount: number;
+  watermark: string;
+  status: "pending" | "verified" | "failed";
+}
+
+export async function recordRangeEvidence(evidence: RangeEvidence): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO s1_staging.range_evidence
+      (generation, bundle, range_after_nid, range_through_nid, identity_hash,
+       identities_scanned, staged_count, watermark, status, verified_at)
+    VALUES (${evidence.generation ?? "legacy"}, ${evidence.bundle}, ${evidence.afterNid}, ${evidence.throughNid},
+            ${evidence.identityHash}, ${evidence.identitiesScanned},
+            ${evidence.stagedCount}, ${evidence.watermark}::timestamptz,
+            ${evidence.status}, CASE WHEN ${evidence.status} = 'verified' THEN now() ELSE NULL END)
+    ON CONFLICT (generation, bundle, range_after_nid, range_through_nid) DO UPDATE SET
+      identity_hash = EXCLUDED.identity_hash,
+      identities_scanned = EXCLUDED.identities_scanned,
+      staged_count = EXCLUDED.staged_count,
+      watermark = EXCLUDED.watermark,
+      status = EXCLUDED.status,
+      verified_at = EXCLUDED.verified_at
+  `);
+}
+
+export async function getRangeEvidence(
+  bundle: string,
+  afterNid: number,
+  throughNid: number,
+  generation = "legacy",
+): Promise<RangeEvidence | null> {
+  const result = await db.execute(sql`
+    SELECT generation, bundle, range_after_nid, range_through_nid, identity_hash,
+           identities_scanned, staged_count, watermark, status
+      FROM s1_staging.range_evidence
+     WHERE generation = ${generation} AND bundle = ${bundle} AND range_after_nid = ${afterNid}
+       AND range_through_nid = ${throughNid}
+  `);
+  const row = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0];
+  return row
+    ? {
+        generation: String(row.generation),
+        bundle: String(row.bundle),
+        afterNid: Number(row.range_after_nid),
+        throughNid: Number(row.range_through_nid),
+        identityHash: String(row.identity_hash),
+        identitiesScanned: Number(row.identities_scanned),
+        stagedCount: Number(row.staged_count),
+        watermark: String(row.watermark),
+        status: row.status === "verified" ? "verified" : row.status === "pending" ? "pending" : "failed",
+      }
+    : null;
+}
+
+export async function listRangeEvidence(generation: string, bundle: string): Promise<RangeEvidence[]> {
+  const result = await db.execute(sql`
+    SELECT generation, bundle, range_after_nid, range_through_nid, identity_hash,
+           identities_scanned, staged_count, watermark, status
+      FROM s1_staging.range_evidence
+     WHERE generation = ${generation} AND bundle = ${bundle}
+     ORDER BY range_after_nid
+  `);
+  return (result as unknown as { rows: Array<Record<string, unknown>> }).rows.map((row) => ({
+    generation: String(row.generation),
+    bundle: String(row.bundle),
+    afterNid: Number(row.range_after_nid),
+    throughNid: Number(row.range_through_nid),
+    identityHash: String(row.identity_hash),
+    identitiesScanned: Number(row.identities_scanned),
+    stagedCount: Number(row.staged_count),
+    watermark: String(row.watermark),
+    status: row.status === "verified" ? "verified" : row.status === "pending" ? "pending" : "failed",
+  }));
+}
+
+export interface RangePlan {
+  bundle: string;
+  maxNid: number;
+  rangeSize: number;
+}
+
+/** Persist the complete multi-bundle observation boundary before extraction. */
+export async function createRangeGeneration(generation: string, plans: RangePlan[]): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`
+      INSERT INTO s1_staging.range_generations (generation, bundles)
+      VALUES (${generation}, ${JSON.stringify(plans)}::jsonb)
+    `);
+    for (const plan of plans) {
+      const count = Math.max(1, Math.ceil(plan.maxNid / plan.rangeSize));
+      const watermarkResult = await tx.execute(sql`SELECT now() AS ts`);
+      const ts = (watermarkResult as unknown as { rows: Array<{ ts: string | Date }> }).rows[0]?.ts;
+      const watermark = ts instanceof Date ? ts.toISOString() : String(ts);
+      for (let index = 0; index < count; index++) {
+        const throughNid = Math.min(plan.maxNid, (index + 1) * plan.rangeSize);
+        await tx.execute(sql`
+          INSERT INTO s1_staging.range_evidence
+            (generation, bundle, range_after_nid, range_through_nid, identity_hash,
+             identities_scanned, staged_count, watermark, status)
+          VALUES (${generation}, ${plan.bundle}, ${index * plan.rangeSize}, ${throughNid},
+                  '', 0, 0, ${watermark}::timestamptz, 'pending')
+        `);
+      }
+    }
+  });
+}
+
+export async function getRangeGenerationPlans(generation: string): Promise<RangePlan[] | null> {
+  const result = await db.execute(sql`
+    SELECT bundles FROM s1_staging.range_generations WHERE generation = ${generation}
+  `);
+  const value = (result as unknown as { rows: Array<{ bundles: unknown }> }).rows[0]?.bundles;
+  if (!Array.isArray(value)) return null;
+  return value.map((plan) => {
+    const row = plan as Record<string, unknown>;
+    return {
+      bundle: String(row.bundle),
+      maxNid: Number(row.maxNid),
+      rangeSize: Number(row.rangeSize),
+    };
+  });
+}
+
+/**
+ * Delete stale rows, prove the post-delete count, and authorize resume in one
+ * transaction. Any mismatch rolls back both cleanup and the checkpoint.
+ */
+export async function reconcileVerifiedRange(
+  evidence: RangeEvidence,
+  expectedCount: number,
+): Promise<{ staleRemoved: number; stagedCount: number }> {
+  return db.transaction(async (tx) => {
+    const authorization = await tx.execute(sql`
+      SELECT status
+        FROM s1_staging.range_evidence
+       WHERE generation = ${evidence.generation ?? "legacy"}
+         AND bundle = ${evidence.bundle}
+         AND range_after_nid = ${evidence.afterNid}
+         AND range_through_nid = ${evidence.throughNid}
+       FOR UPDATE
+    `);
+    const authorized = (authorization as unknown as { rows: Array<{ status: string }> }).rows;
+    if (authorized.length !== 1 || authorized[0].status === "verified") {
+      throw new Error(`${evidence.bundle} range has no pending cleanup authorization`);
+    }
+    const deleted = await tx.execute(sql`
+      DELETE FROM s1_staging.records
+       WHERE bundle = ${evidence.bundle}
+         AND nid > ${evidence.afterNid}
+         AND nid <= ${evidence.throughNid}
+         AND extracted_at < ${evidence.watermark}::timestamptz
+    `);
+    const counted = await tx.execute(sql`
+      SELECT COUNT(*)::int AS n FROM s1_staging.records
+       WHERE bundle = ${evidence.bundle}
+         AND nid > ${evidence.afterNid}
+         AND nid <= ${evidence.throughNid}
+    `);
+    const stagedCount = Number((counted as unknown as { rows: Array<{ n: number }> }).rows[0]?.n ?? 0);
+    if (stagedCount !== expectedCount) {
+      throw new Error(`${evidence.bundle} range staged=${stagedCount} verified=${expectedCount}; cleanup rolled back`);
+    }
+    const updated = await tx.execute(sql`
+      UPDATE s1_staging.range_evidence
+         SET identity_hash = ${evidence.identityHash},
+             identities_scanned = ${expectedCount},
+             staged_count = ${stagedCount},
+             watermark = ${evidence.watermark}::timestamptz,
+             status = 'verified',
+             verified_at = now()
+       WHERE generation = ${evidence.generation ?? "legacy"}
+         AND bundle = ${evidence.bundle}
+         AND range_after_nid = ${evidence.afterNid}
+         AND range_through_nid = ${evidence.throughNid}
+      RETURNING generation
+    `);
+    if ((updated as unknown as { rows: unknown[] }).rows.length !== 1) {
+      throw new Error(`${evidence.bundle} range checkpoint was not persisted; cleanup rolled back`);
+    }
+    return {
+      staleRemoved: Number((deleted as unknown as { rowCount?: number }).rowCount ?? 0),
+      stagedCount,
+    };
+  });
+}
+
 /**
  * Lightweight staging metadata lookup used by daily incremental node staging.
  * Payload JSON is intentionally not read: source identity/change scans decide
@@ -346,6 +585,23 @@ export async function stagedCount(bundle: string): Promise<number> {
   );
   const rows = (res as unknown as { rows: Array<{ n: number }> }).rows;
   return Number(rows[0]?.n ?? 0);
+}
+
+export async function stagedMaxNid(bundle: string): Promise<number> {
+  const res = await db.execute(sql`
+    SELECT COALESCE(MAX(nid), 0)::bigint AS n
+      FROM s1_staging.records
+     WHERE bundle = ${bundle}
+  `);
+  return Number((res as unknown as { rows: Array<{ n: number | string }> }).rows[0]?.n ?? 0);
+}
+
+export async function stagedCountInRange(bundle: string, afterNid: number, throughNid: number): Promise<number> {
+  const res = await db.execute(sql`
+    SELECT COUNT(*)::int AS n FROM s1_staging.records
+     WHERE bundle = ${bundle} AND nid > ${afterNid} AND nid <= ${throughNid}
+  `);
+  return Number((res as unknown as { rows: Array<{ n: number }> }).rows[0]?.n ?? 0);
 }
 
 export async function stagedTermCount(): Promise<number> {

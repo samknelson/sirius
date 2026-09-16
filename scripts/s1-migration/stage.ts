@@ -33,6 +33,8 @@ import {
   upsertRecords,
   upsertTerms,
   stagedCount,
+  stagedCountInRange,
+  stagedMaxNid,
   stagedTermCount,
   stagingNow,
   deleteStaleRecords,
@@ -55,6 +57,11 @@ import {
   nulSanitizedCount,
   stagedRecordMetadata,
   markStagedRecordsSeen,
+  recordRangeEvidence,
+  listRangeEvidence,
+  createRangeGeneration,
+  getRangeGenerationPlans,
+  reconcileVerifiedRange,
 } from "./lib/staging";
 import { assessCountEvidence, type CountEvidence, type StageMode } from "./lib/stage-evidence";
 import { shouldRefreshNodePayload } from "./lib/incremental-node";
@@ -62,6 +69,8 @@ import { isValidTimeZone } from "../../shared/utils/timezone";
 import { pool as pgPool } from "../../server/storage/db";
 import type { Pool } from "mysql2/promise";
 import type { RowDataPacket } from "mysql2/promise";
+
+let activeS1Pool: Pool | null = null;
 
 /** In-scope node bundles per docs/s1-migration (02-mapping, 03 §12 load order). */
 const IN_SCOPE_BUNDLES = [
@@ -115,6 +124,8 @@ interface CliArgs {
   rawOnly: boolean;
   batch: number;
   heavyShards: number;
+  rangeSize: number;
+  resumeGeneration: string | null;
   bundleConcurrency: number;
 }
 
@@ -129,6 +140,8 @@ function parseArgs(argv: string[]): CliArgs {
     batch: 500,
     heavyShards: 2,
     bundleConcurrency: 2,
+    rangeSize: 50_000,
+    resumeGeneration: null,
   };
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
@@ -166,6 +179,13 @@ function parseArgs(argv: string[]): CliArgs {
         break;
       case "--bundle-concurrency":
         args.bundleConcurrency = Math.max(1, Math.min(2, Number(argv[++i] ?? 2)));
+        break;
+      case "--range-size":
+        args.rangeSize = Math.max(1, Math.floor(Number(argv[++i] ?? 50_000)));
+        break;
+      case "--resume-generation":
+        args.resumeGeneration = String(argv[++i] ?? "");
+        if (!args.resumeGeneration) throw new Error("--resume-generation requires a generation id");
         break;
       default:
         throw new Error(`Unknown argument: ${argv[i]}`);
@@ -435,81 +455,127 @@ async function stageNodeBundle(params: {
   batch: number;
   mode: StageMode;
   heavyShards: number;
+  rangeSize: number;
+  generation: string;
+  resumeGeneration: string | null;
+  observationThroughNid: number;
 }): Promise<{ report: BundleExtractReport; evidence: NamedCountEvidence }> {
-  const { s1, bundle, fields, batch, mode, heavyShards } = params;
+  const { s1, bundle, fields, batch, mode, heavyShards, rangeSize, generation } = params;
   const extractionStartedAt = new Date();
   let watermark = await stagingNow();
   let report: BundleExtractReport;
   let identityVerified = mode !== "daily";
   let identityVerificationAttempts = 0;
-  let initialSourceCountBefore: number | null = null;
-  let totalPayloadExtracted = 0;
-  let totalIdentityReadMs = 0;
-  let totalFieldReadMs = 0;
-  let totalStagingCallbackMs = 0;
+  let rangeCleanupPerformed = false;
+  const skipRanges = new Set<number>();
+  const completedRangeReports = new Map<number, BundleExtractReport>();
 
   if (mode === "daily") {
-    const maxIdentityAttempts = 3;
-    let finalReport: BundleExtractReport | null = null;
-    for (let attempt = 1; attempt <= maxIdentityAttempts; attempt++) {
-      identityVerificationAttempts = attempt;
-      watermark = await stagingNow();
-      const incrementalHooks: IncrementalBundleHooks = {
-        selectPayloadIds: async (nodes) => {
-          const prior = await stagedRecordMetadata(bundle, nodes.map((node) => node.nid));
-          const selected = new Set<number>();
-          for (const node of nodes) {
-            const staged = prior.get(node.nid);
-            if (shouldRefreshNodePayload(node, staged)) selected.add(node.nid);
-          }
-          await markStagedRecordsSeen(bundle, nodes.map((node) => node.nid), watermark);
-          return selected;
-        },
-        onPayload: upsertRecords,
-      };
-      const attemptReport =
-        DAILY_SHARDED_BUNDLES.has(bundle) && heavyShards > 1
-          ? await extractBundleIncrementalSharded(s1, bundle, fields, batch, incrementalHooks, heavyShards)
-          : await extractBundleIncremental(s1, bundle, fields, batch, incrementalHooks);
-      initialSourceCountBefore ??= attemptReport.s1NodeCount;
-      totalPayloadExtracted += attemptReport.payloadExtracted;
-      totalIdentityReadMs += attemptReport.timings.identityReadMs;
-      totalFieldReadMs += attemptReport.timings.fieldReadMs;
-      totalStagingCallbackMs += attemptReport.timings.stagingCallbackMs;
-      const verification = await verifyBundleIdentityWorkset(s1, bundle, batch, attemptReport.shards);
-      identityVerified =
-        verification.identitiesScanned === attemptReport.identitiesScanned &&
-        verification.identityHash === attemptReport.identityHash &&
-        verification.sourceCountAfter === verification.identitiesScanned;
-      if (identityVerified) {
-        attemptReport.s1NodeCount = initialSourceCountBefore;
-        attemptReport.sourceCountAfter = verification.sourceCountAfter;
-        attemptReport.payloadExtracted = totalPayloadExtracted;
-        attemptReport.timings = {
-          identityReadMs: totalIdentityReadMs,
-          fieldReadMs: totalFieldReadMs,
-          stagingCallbackMs: totalStagingCallbackMs,
-        };
-        attemptReport.durationMs = Date.now() - extractionStartedAt.getTime();
-        finalReport = attemptReport;
-        break;
+    identityVerificationAttempts = 1;
+    let planned = params.resumeGeneration ? await listRangeEvidence(params.resumeGeneration, bundle) : [];
+    if (params.resumeGeneration && planned.length === 0) {
+      throw new Error(`${bundle}: resume generation ${params.resumeGeneration} has no durable range plan`);
+    }
+    if (!params.resumeGeneration) planned = await listRangeEvidence(generation, bundle);
+    if (planned.length === 0) throw new Error(`${bundle}: daily generation has no planned ranges`);
+    for (let index = 0; index < planned.length; index++) {
+      const expectedAfter = index * rangeSize;
+      const expectedThrough = index === planned.length - 1
+        ? params.observationThroughNid
+        : (index + 1) * rangeSize;
+      if (planned[index].afterNid !== expectedAfter || planned[index].throughNid !== expectedThrough) {
+        throw new Error(`${bundle}: generation range plan is incomplete or non-contiguous`);
       }
-      console.warn(
-        `${bundle}: identity workset moved during attempt ${attempt}/${maxIdentityAttempts} ` +
-          `(extracted=${attemptReport.identitiesScanned}, verified=${verification.identitiesScanned}); retrying before cleanup`,
-      );
     }
-    if (!finalReport || !identityVerified) {
-      throw new Error(`${bundle}: source identity workset did not stabilize after ${maxIdentityAttempts} attempts; no stale cleanup performed`);
+    for (const [index, prior] of planned.entries()) {
+      if (prior.status !== "verified") continue;
+      skipRanges.add(index + 1);
+      completedRangeReports.set(index + 1, {
+        bundle,
+        s1NodeCount: 0,
+        sourceCountAfter: 0,
+        extracted: prior.identitiesScanned,
+        identitiesScanned: prior.identitiesScanned,
+        payloadExtracted: 0,
+        incremental: true,
+        identityHash: prior.identityHash,
+        timings: { identityReadMs: 0, fieldReadMs: 0, stagingCallbackMs: 0 },
+        shards: [{
+          index: index + 1,
+          afterNid: prior.afterNid,
+          throughNid: prior.throughNid,
+          identitiesScanned: prior.identitiesScanned,
+          payloadExtracted: 0,
+          durationMs: 0,
+          identityHash: prior.identityHash,
+        }],
+        fieldRowCounts: {},
+        anomalies: { nonUndLanguage: 0, duplicateDelta: 0, extraDeltaOnSingle: 0 },
+        durationMs: 0,
+      });
     }
-    report = finalReport;
+    if (skipRanges.size > 0) {
+      console.log(`${bundle}: resuming ${generation}, skipping ${skipRanges.size} verified range(s)`);
+      rangeCleanupPerformed = true;
+    }
+    watermark = await stagingNow();
+    const incrementalHooks: IncrementalBundleHooks = {
+      selectPayloadIds: async (nodes) => {
+        const prior = await stagedRecordMetadata(bundle, nodes.map((node) => node.nid));
+        const selected = new Set<number>();
+        for (const node of nodes) {
+          if (shouldRefreshNodePayload(node, prior.get(node.nid))) selected.add(node.nid);
+        }
+        await markStagedRecordsSeen(bundle, nodes.map((node) => node.nid), watermark);
+        return selected;
+      },
+      onPayload: upsertRecords,
+    };
+    const onRangeComplete = async (rangeReport: BundleExtractReport) => {
+      const shard = rangeReport.shards?.[0];
+      if (!shard) throw new Error(`${bundle}: bounded range report missing shard evidence`);
+      const verification = await verifyBundleIdentityWorkset(s1, bundle, batch, [{
+        ...shard,
+        identityHash: rangeReport.identityHash,
+      }]);
+      const verified =
+        verification.identitiesScanned === rangeReport.identitiesScanned &&
+        verification.shards[0]?.identityHash === rangeReport.identityHash;
+      if (!verified) {
+        await recordRangeEvidence({
+          generation, bundle, afterNid: shard.afterNid, throughNid: shard.throughNid,
+          identityHash: rangeReport.identityHash, identitiesScanned: verification.identitiesScanned,
+          stagedCount: await stagedCountInRange(bundle, shard.afterNid, shard.throughNid),
+          watermark, status: "failed",
+        });
+        throw new Error(`${bundle} range ${shard.index} identity verification failed; stale cleanup deferred`);
+      }
+      const reconciled = await reconcileVerifiedRange({
+        generation, bundle, afterNid: shard.afterNid, throughNid: shard.throughNid,
+        identityHash: rangeReport.identityHash, identitiesScanned: verification.identitiesScanned,
+        stagedCount: verification.identitiesScanned, watermark, status: "verified",
+      }, verification.identitiesScanned);
+      if (reconciled.staleRemoved > 0) {
+        console.log(`${bundle} range ${shard.index}: staleRemoved=${reconciled.staleRemoved}`);
+      }
+      rangeCleanupPerformed = true;
+    };
+    report = await extractBundleIncrementalSharded(
+      s1, bundle, fields, batch, incrementalHooks, heavyShards,
+      onRangeComplete, rangeSize, skipRanges, completedRangeReports,
+      planned.length, params.observationThroughNid,
+    );
+    identityVerified = true;
   } else {
     report = await extractBundle(s1, bundle, fields, batch, upsertRecords);
   }
 
   // Cleanup is intentionally after the whole bundle (including every shard)
   // settles. A rejected extraction never reaches this destructive step.
-  const stale = await deleteStaleRecords(bundle, watermark);
+  // Sharded daily runs already performed a verified, bounded cleanup for
+  // every completed range. Never follow that with a bundle-wide delete:
+  // movement in an unverified/out-of-bound interval is intentionally deferred.
+  const stale = rangeCleanupPerformed ? 0 : await deleteStaleRecords(bundle, watermark);
   const staged = await stagedCount(bundle);
   const finishedAt = new Date();
   const evidence: NamedCountEvidence = {
@@ -525,6 +591,7 @@ async function stageNodeBundle(params: {
       sourceCountAfter: report.sourceCountAfter,
       identitiesScanned: report.identitiesScanned,
       stagedCount: staged,
+        deferredOutsideRange: mode === "daily" && rangeCleanupPerformed,
     }),
   };
   const ok = evidence.status === "pass" ? (evidence.acceptedLiveDrift ? "LIVE-DRIFT-ACCEPTED" : "OK") : "MISMATCH";
@@ -551,7 +618,13 @@ async function stageNodeBundle(params: {
 async function main() {
   const startedAt = new Date();
   const args = parseArgs(process.argv.slice(2));
+  if (args.mode === "final-freeze" && args.resumeGeneration) {
+    throw new Error("--resume-generation is daily-only; final-freeze always performs a new exact whole-source extraction");
+  }
+  const generation = args.resumeGeneration ?? `daily-${Date.now()}-${process.pid}`;
+  if (args.mode === "daily") console.log(`[stage] generation=${generation}`);
   const s1 = createS1Pool();
+  activeS1Pool = s1;
   await ensureStagingSchema();
 
   const populated = await listNodeBundles(s1);
@@ -573,9 +646,11 @@ async function main() {
   } else if (args.all) {
     targets = populated.map((b) => b.bundle);
   } else {
-    targets = IN_SCOPE_BUNDLES.filter((b) => populatedNames.has(b));
+    // Empty bundles remain in scope: a bundle that transitioned to zero must
+    // conclusively verify absence before stale staging rows can be removed.
+    targets = [...IN_SCOPE_BUNDLES];
     const empty = IN_SCOPE_BUNDLES.filter((b) => !populatedNames.has(b));
-    if (empty.length > 0) console.log(`in-scope bundles with zero S1 nodes (skipped): ${empty.join(", ")}`);
+    if (empty.length > 0) console.log(`in-scope bundles with zero S1 nodes (absence will be verified): ${empty.join(", ")}`);
   }
 
   // Ruled-DROP bundles are excluded in every mode (including --all/--bundles),
@@ -597,6 +672,33 @@ async function main() {
     console.log(
       `${s.bundle}: DOCUMENTED SKIP reason=${s.reason} s1=${s.s1NodeCount} (ruled DROP — see docs/n3-employer-payperiod-drop.md)`,
     );
+  }
+
+  let generationPlans = args.resumeGeneration
+    ? await getRangeGenerationPlans(generation)
+    : null;
+  if (args.mode === "daily") {
+    if (args.resumeGeneration) {
+      if (!generationPlans) throw new Error(`resume generation ${generation} does not exist`);
+      // Resume follows the frozen plan, not today's populated-bundle list.
+      targets = generationPlans.map((plan) => plan.bundle);
+    } else {
+      generationPlans = [];
+      for (const bundle of targets) {
+        const [rows] = await s1.query<RowDataPacket[]>(
+          `SELECT MAX(nid) AS max_nid FROM node WHERE type = ?`,
+          [bundle],
+        );
+        const sourceMaxNid = rows[0]?.max_nid == null ? 0 : Number(rows[0].max_nid);
+        const targetMaxNid = await stagedMaxNid(bundle);
+        generationPlans.push({
+          bundle,
+          maxNid: Math.max(1, sourceMaxNid, targetMaxNid),
+          rangeSize: args.rangeSize,
+        });
+      }
+      await createRangeGeneration(generation, generationPlans);
+    }
   }
 
   const { catalog: nodeCatalog, source: catalogSource } = await buildFieldCatalog(s1, "node");
@@ -666,6 +768,10 @@ async function main() {
       batch: args.batch,
       mode: args.mode,
       heavyShards: args.heavyShards,
+      rangeSize: generationPlans?.find((plan) => plan.bundle === bundle)?.rangeSize ?? args.rangeSize,
+      generation,
+      resumeGeneration: args.resumeGeneration,
+      observationThroughNid: generationPlans?.find((plan) => plan.bundle === bundle)?.maxNid ?? args.rangeSize,
     });
   const bundleResults: Array<{ report: BundleExtractReport; evidence: NamedCountEvidence }> = [];
   if (args.mode === "daily") {
@@ -784,8 +890,9 @@ async function main() {
   );
 
   await s1.end();
+  activeS1Pool = null;
   await pgPool.end();
-  process.exit(mismatches === 0 ? 0 : 1);
+  process.exitCode = mismatches === 0 ? 0 : 1;
 }
 
 function logAnomalies(a: { nonUndLanguage: number; duplicateDelta: number; extraDeltaOnSingle: number }) {
@@ -796,7 +903,39 @@ function logAnomalies(a: { nonUndLanguage: number; duplicateDelta: number; extra
   }
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
+  const message = e instanceof Error ? e.message.split("\n")[0] : String(e).split("\n")[0];
   console.error(e);
-  process.exit(1);
+  const resultPath = getEnvironmentVariable("S1_RESULT_JSON_PATH");
+  if (resultPath) {
+    try {
+      const { writeFileSync } = await import("fs");
+      const modeArg = process.argv[process.argv.indexOf("--mode") + 1];
+      writeFileSync(resultPath, JSON.stringify({
+        contractVersion: 2,
+        step: "stage",
+        mode: modeArg === "daily" ? "daily" : "final-freeze",
+        status: "fail",
+        mismatches: 1,
+        acceptedLiveDrifts: 0,
+        countEvidence: [],
+        failureReason: message.slice(0, 500),
+      }));
+    } catch (writeError) {
+      console.error(`stage failure result could not be written: ${String((writeError as Error).message ?? writeError).split("\n")[0]}`);
+    }
+  }
+  const shutdowns: Promise<unknown>[] = [];
+  if (activeS1Pool) {
+    shutdowns.push(activeS1Pool.end());
+    activeS1Pool = null;
+  }
+  shutdowns.push(pgPool.end());
+  const settled = await Promise.allSettled(shutdowns);
+  for (const result of settled) {
+    if (result.status === "rejected") {
+      console.error(`stage failure cleanup failed: ${String((result.reason as Error)?.message ?? result.reason).split("\n")[0]}`);
+    }
+  }
+  process.exitCode = 1;
 });

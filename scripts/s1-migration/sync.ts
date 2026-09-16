@@ -104,6 +104,7 @@ const DRY_RUN = process.argv.includes("--dry-run");
 const FORCE_RECONCILE = process.argv.includes("--force-reconcile");
 const SKIP_STAGE = process.argv.includes("--skip-stage");
 const KEEP_GOING = process.argv.includes("--keep-going");
+const STAGE_RESUME_GENERATION = argValue("--stage-resume-generation");
 
 if (MODE !== "daily" && MODE !== "final-freeze") {
   console.error("Usage: sync.ts --mode daily|final-freeze [--profile production|dev] [--dry-run] [--force-reconcile] [--skip-stage] [--keep-going]");
@@ -111,6 +112,14 @@ if (MODE !== "daily" && MODE !== "final-freeze") {
 }
 if (!(PROFILE_NAME in PROFILES)) {
   console.error(`FAIL: unknown profile "${PROFILE_NAME}" (known: ${Object.keys(PROFILES).join(", ")})`);
+  process.exit(1);
+}
+if (STAGE_RESUME_GENERATION && MODE !== "daily") {
+  console.error("FAIL: --stage-resume-generation is daily-only; final-freeze must start a new exact stage");
+  process.exit(1);
+}
+if (STAGE_RESUME_GENERATION && SKIP_STAGE) {
+  console.error("FAIL: --stage-resume-generation cannot be combined with --skip-stage");
   process.exit(1);
 }
 
@@ -226,6 +235,17 @@ function countByKind(findings: Array<{ kind: string }>): Record<string, number> 
   return out;
 }
 
+function conciseError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.split("\n")[0].slice(0, 240) || "unknown error";
+}
+
+function noteCleanupFailure(failures: string[], operation: string, error: unknown): void {
+  const reason = conciseError(error);
+  failures.push(`${operation} failed: ${reason}`);
+  console.error(`[sync] ${operation} failed: ${reason}`);
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -261,9 +281,19 @@ async function main() {
   const [{ got }] = (await lockClient.query(`SELECT pg_try_advisory_lock(${MIGRATION_LOCK_KEY}) AS got`)).rows as Array<{ got: boolean }>;
   if (!got) {
     console.error("FAIL: another migration process (sync/bootstrap/seed) holds the advisory lock on this target — concurrent sync runs are refused.");
-    lockClient.release();
-    await pgPool.end();
-    process.exit(1);
+    const lockFailures: string[] = [];
+    try {
+      lockClient.release();
+    } catch (e) {
+      noteCleanupFailure(lockFailures, "advisory lock release", e);
+    }
+    try {
+      await pgPool.end();
+    } catch (e) {
+      noteCleanupFailure(lockFailures, "database pool shutdown", e);
+    }
+    process.exitCode = 1;
+    return;
   }
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "s1-sync-"));
@@ -275,6 +305,7 @@ async function main() {
     forceReconcile: FORCE_RECONCILE, // prominent: top-level, plus per-step below
     skipStage: SKIP_STAGE,
     keepGoing: KEEP_GOING,
+    stageResumeGeneration: STAGE_RESUME_GENERATION,
     openEndThrough: horizon,
     parityMonths: months,
     timeZone, // aggregate runtime evidence — diagnose a mismatched run from s1_staging.runs alone
@@ -304,7 +335,9 @@ async function main() {
       console.log("[sync] stage: SKIPPED (--skip-stage)");
     } else {
       console.log("[sync] stage: re-staging from S1 …");
-      const run = runChild("stage.ts", ["--mode", MODE, ...profile.stageArgs], path.join(tmpDir, "stage.json"));
+      const stageArgs = ["--mode", MODE, ...profile.stageArgs];
+      if (STAGE_RESUME_GENERATION) stageArgs.push("--resume-generation", STAGE_RESUME_GENERATION);
+      const run = runChild("stage.ts", stageArgs, path.join(tmpDir, "stage.json"));
       const validation = validateStageResult(run);
       const ok = run.exitCode === 0 && validation.errors.length === 0 && validation.result?.status === "pass";
       report.stage = {
@@ -313,6 +346,7 @@ async function main() {
         durationSec: run.durationSec,
         mismatches: validation.result?.mismatches ?? null,
         acceptedLiveDrifts: validation.result?.acceptedLiveDrifts ?? null,
+        failureReason: validation.result?.failureReason ?? null,
         countEvidence: validation.result?.countEvidence ?? null,
         contractErrors: validation.errors,
         resultError: run.resultError,
@@ -321,7 +355,7 @@ async function main() {
         failures.push(
           run.resultError
             ? `stage: ${run.resultError} (exit ${run.exitCode})`
-            : `stage: evidence gate failed (exit ${run.exitCode}): ${validation.errors.join("; ") || "stage reported failure"} — aborting before any loader runs`,
+            : `stage: evidence gate failed (exit ${run.exitCode}): ${validation.errors.join("; ") || validation.result?.failureReason || "stage reported failure"} — aborting before any loader runs`,
         );
         return; // stage gate: abort everything
       }
@@ -493,7 +527,7 @@ async function main() {
         const gate = evaluateEmployerRateDurability(expectedSnapshot, actualSnapshot);
         report.employerRateDurability = {
           ...gate,
-          loaderLogicVersion: rawResult.logicVersion,
+          loaderLogicVersion: rawResult!.logicVersion,
           expectedLogicVersion: FLEET.find((step) => step.id === "employer-rates")?.logicVersion,
           target: describeDatabaseTarget(resolveDatabaseUrl()),
           accountId,
@@ -594,18 +628,31 @@ async function main() {
       try {
         aggregateRunId = await recordRun(startedAt, { command: "sync", mode: MODE, profile: PROFILE_NAME, dryRun: DRY_RUN, forceReconcile: FORCE_RECONCILE, skipStage: SKIP_STAGE, keepGoing: KEEP_GOING }, report);
       } catch (e) {
-        console.error(`[sync] recordRun failed (non-fatal): ${(e as Error).message?.split("\n")[0]}`);
+        // Recording is part of the aggregate contract.  Do not let a broken
+        // connection turn an otherwise useful stage/fleet failure into an
+        // apparently successful process.
+        noteCleanupFailure(failures, "aggregate record", e);
+        report.failures = failures;
+        report.result = "FAIL";
       }
     } else {
       console.log("[sync] dry-run: no runs row recorded");
     }
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });
-    } catch {
-      /* ignore */
+    } catch (e) {
+      noteCleanupFailure(failures, "temporary directory cleanup", e);
     }
     if (writeFence) {
-      await finalizeWriteFenceReport(writeFence, report, failures);
+      try {
+        await finalizeWriteFenceReport(writeFence, report, failures);
+      } catch (e) {
+        // finalizeWriteFenceReport is defensive today, but retain the
+        // aggregate failure if its implementation or lease changes.
+        noteCleanupFailure(failures, "app write fence cleanup", e);
+        report.failures = failures;
+        report.result = "FAIL";
+      }
       if ((report.writeFence as { releaseStatus?: string }).releaseStatus === "released") {
         console.log("[sync] app write fence: RELEASED — writes and background work may resume");
       } else {
@@ -615,10 +662,9 @@ async function main() {
         try {
           await updateRunReport(aggregateRunId, report);
         } catch (e) {
-          failures.push("aggregate sync run could not be updated with final fence cleanup status");
+          noteCleanupFailure(failures, "aggregate update", e);
           report.failures = failures;
           report.result = "FAIL";
-          console.error(`[sync] final aggregate run update failed: ${(e as Error).message?.split("\n")[0]}`);
         }
       }
       // Write the process result after every cleanup/persistence attempt so
@@ -632,8 +678,30 @@ async function main() {
       }
       console.log(`[sync] FINAL RESULT after fence cleanup: ${String(report.result)}`);
     }
-    lockClient.release();
-    await pgPool.end();
+    // These are independent terminal operations: always attempt pool
+    // shutdown even if releasing the lock client fails.  Neither operation
+    // may replace the original stage/fleet/parity failure.
+    try {
+      lockClient.release();
+    } catch (e) {
+      noteCleanupFailure(failures, "advisory lock release", e);
+    }
+    try {
+      await pgPool.end();
+    } catch (e) {
+      noteCleanupFailure(failures, "database pool shutdown", e);
+    }
+    if (failures.length > 0) {
+      report.failures = failures;
+      report.result = "FAIL";
+      if (resultPath) {
+        try {
+          fs.writeFileSync(resultPath, JSON.stringify(report));
+        } catch (e) {
+          console.error(`[sync] could not update S1_RESULT_JSON_PATH after terminal cleanup: ${conciseError(e)}`);
+        }
+      }
+    }
     process.exitCode = failures.length === 0 ? 0 : 1;
   }
 }
