@@ -97,6 +97,15 @@ loaders against ANY target (fresh branch or production), ensure:
   contact roles/terms.
 
 **Operational preconditions**
+- **Scheduled Phase 2 runs:** production automation uses
+  `run-scheduled-daily.ts`, which invokes exactly `sync.ts --mode daily
+  --profile production`, accepts no forwarded arguments, publishes only an
+  aggregate completion/finding summary to SNS, and exits nonzero whenever the
+  sync or its result contract fails. The separate 09:00 Pacific
+  `check-scheduled-daily-late.ts` task alerts if no ordinary production daily
+  run has passed since local midnight. AWS setup and operator gates are in
+  `docs/s1-migration/FC-ENVIRONMENT-SETUP.md` under “Automated Phase 2 daily
+  sync.”
 - **Production network proof:** before Phase 1 and after any task-definition,
   image, subnet, security-group, route, DNS, endpoint, or secret-target change,
   launch `preflight-private-connectivity.ts` as an ECS one-off with the exact

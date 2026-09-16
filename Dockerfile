@@ -7,7 +7,8 @@
 #   1. deps           — installs the full web build toolchain and source.
 #   2. builder        — builds the Vite client and esbuild server bundle,
 #                       then prunes dev dependencies.
-#   3. migration-deps — installs production dependencies plus an isolated tsx
+#   3. migration-deps — installs production dependencies (including the SNS
+#                       client used by scheduled-run alerts) plus isolated tsx
 #                       runner, without the large web build toolchain.
 #   4. migration      — one-off S1 migration image; never serves traffic.
 #   5. runtime        — lean web image with production node_modules + dist/.

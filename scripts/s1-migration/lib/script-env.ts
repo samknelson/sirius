@@ -8,6 +8,7 @@ import {
 registerEnvironmentVariables([
   { name: "S1_MIGRATION_DEBUG", description: "Enable verbose S1 migration error logging.", secret: false, category: "core" },
   { name: "S1_RESULT_JSON_PATH", description: "Path where an S1 migration command writes its JSON result.", secret: false, category: "core" },
+  { name: "S1_SYNC_ALERT_TOPIC_ARN", description: "SNS topic ARN for sanitized scheduled S1 sync alerts.", secret: false, category: "core" },
   { name: "S1_DATABASE_URL", description: "S1 (legacy Drupal MariaDB) connection URL", secret: true, category: "core" },
   { name: "S1_SYNC_LOCK_HELD", description: "Marker indicating the parent S1 sync process holds the migration lock.", secret: false, category: "core" },
   { name: "S1_BOOTSTRAP_LOCK_HELD", description: "Marker indicating the parent S1 bootstrap process holds the migration lock.", secret: false, category: "core" },

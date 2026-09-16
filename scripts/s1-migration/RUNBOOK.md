@@ -1235,8 +1235,14 @@ pass; and final-freeze PASS after the S1 side is restored.
    S1 endpoint, leave `EXTERNAL_DATABASE_URL` on production Neon, and repeat
    the private-connectivity preflight before the first run. Once per day,
    operator-invoked from
-   inside the production boundary (§1; no cron, no app-hosted automation):
-   `npx tsx scripts/s1-migration/sync.ts --mode daily`. Read the aggregate
+   inside the production boundary (§1):
+   `npx tsx scripts/s1-migration/sync.ts --mode daily`. This exact ordinary
+   run must pass once manually before the disabled EventBridge schedules
+   described in `docs/s1-migration/FC-ENVIRONMENT-SETUP.md` are enabled.
+   Thereafter the scheduler uses the no-argument
+   `run-scheduled-daily.ts` wrapper at midnight Pacific; it cannot forward
+   `--skip-stage`, `--force-reconcile`, per-run allowances, or dry-run flags.
+   Read the aggregate
    report (console or `s1_staging.runs`). Triage rules:
    - New reject class → triage (§5), obtain the fund ruling, then add it to
      `sync-config.ts` (a reviewed commit) — never a one-off shell flag.

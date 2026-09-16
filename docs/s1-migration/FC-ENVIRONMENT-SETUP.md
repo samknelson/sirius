@@ -277,3 +277,138 @@ sessions; the worksheet is mainly so you can rebuild after a teardown.
 3. **Phase 3 — final freeze and cutover.** Freeze S1 writes, run
    `sync.ts --mode final-freeze`, require every final gate to pass, then follow
    the unchanged manual Okta/canary/cutover sequence in RUNBOOK §4.15–§4.17.
+
+## Automated Phase 2 daily sync
+
+Automation is deliberately an AWS control-plane concern, not an app cron.
+EventBridge Scheduler starts the existing migration task in the same private
+network. The database advisory lock remains the overlap authority. A failed
+container is not retried automatically; an operator reviews it and launches a
+manual rerun only after confirming that the earlier task is stopped.
+
+### One-time prerequisites
+
+1. Repoint the existing `sirius-migration/S1_DATABASE_URL` secret to the
+   approved read-only live `smf-db-prod` URL. Do not change
+   `EXTERNAL_DATABASE_URL`.
+2. Register an immutable migration task revision whose image is pinned as
+   `repository@sha256:...` (a tag, including a commit tag, is not sufficient)
+   containing
+   this code. Keep the same image, two secret mappings, execution role, private
+   subnets, security groups, and `assignPublicIp=DISABLED` for preflight,
+   manual proof, and scheduled launches.
+3. Give the task role only `sns:Publish` to the migration alert topic. Give the
+   Scheduler role only `ecs:RunTask` on the pinned task revision and
+   `iam:PassRole` for its task/execution roles, plus `sqs:SendMessage` to the
+   Scheduler DLQ. Keep the web service desired count at **1**.
+4. Create an SNS topic and confirmed email subscriptions for the operations
+   distribution list. Set its ARN only in the task override as
+   `S1_SYNC_ALERT_TOPIC_ARN`; it is not secret.
+5. The helper configures EventBridge Scheduler
+   `TargetErrorCount`/`InvocationDroppedCount` alarms for its schedule group
+   and an EventBridge rule for nonzero ECS `STOPPED` events. Both target the
+   SNS topic with aggregate-only messages. This is distinct from container
+   self-reporting: a launch failure means no container existed to publish its
+   own result. Do not replace the input transformer with full task logs,
+   container environment, or source events.
+
+The checked-in helper validates and creates both schedules initially disabled:
+
+```bash
+chmod +x scripts/s1-migration/aws/configure-daily-sync.sh
+# Fill the non-secret identifiers from the private worksheet:
+export AWS_REGION=us-west-2
+export ECS_CLUSTER_ARN='<production cluster ARN>'
+export MIGRATION_TASK_DEFINITION='<immutable task definition ARN:revision>'
+export MIGRATION_CONTAINER_NAME=migration
+export PRIVATE_SUBNET_IDS='<subnet-a>,<subnet-b>'
+export SECURITY_GROUP_IDS='<sg-id>'
+export SCHEDULER_ROLE_ARN='<scheduler role ARN>'
+export S1_SYNC_ALERT_TOPIC_ARN='<SNS topic ARN>'
+export SCHEDULER_DLQ_ARN='<SQS dead-letter queue ARN>'
+scripts/s1-migration/aws/configure-daily-sync.sh validate
+scripts/s1-migration/aws/configure-daily-sync.sh apply
+```
+
+`apply` creates/updates two **disabled**, exact-time schedules:
+
+- `cron(0 0 * * ? *)`, `America/Los_Angeles`: one Fargate task running
+  `npx tsx scripts/s1-migration/run-scheduled-daily.ts`.
+- `cron(0 9 * * ? *)`, `America/Los_Angeles`: one Fargate task running
+  `npx tsx scripts/s1-migration/check-scheduled-daily-late.ts`.
+
+The named timezone, not a UTC offset, handles daylight-saving transitions.
+Both targets use task count 1, no public IP, zero Scheduler retries, and the
+same SQS dead-letter queue. Alarm on that queue's visible-message count and
+retain its messages until an operator has reviewed each launch failure.
+
+### Required enable gate
+
+Do not enable either schedule until all of this evidence is retained:
+
+1. Run `preflight-private-connectivity.ts` with the pinned task revision and
+   exact production network. Keep the sanitized evidence block from “dns” to
+   `PASS`; confirm separately in the private worksheet that the approved live
+   source identity is `smf-db-prod`.
+2. Run the helper’s printed manual-proof command. It uses the same task
+   revision, network, wrapper, and alert topic as the schedule. Require ECS
+   exit 0, aggregate `result=PASS`, all gate statuses passing, write-fence
+   release, and receipt of the sanitized completion message.
+3. Inspect `s1_staging.runs` or the migration dashboard for that aggregate run.
+   The report contains duration, gate statuses, fleet totals, and findings by
+   kind. Do not copy source rows or credentials into evidence.
+4. Exercise the disabled schedule with a temporary controlled expression or
+   the exact printed `run-task` command. Confirm exactly one task, pinned
+   revision/image, private network, expected secrets, and no operator flags.
+5. Prove alerts without changing normal production data:
+   - launch failure: temporarily target a deliberately invalid test-only task
+     revision or deny the test Scheduler role, then confirm the Scheduler
+     failure alarm/DLQ notification;
+   - nonzero exit: launch the migration image with a test override that exits
+     nonzero, then confirm the ECS STOPPED rule notification;
+   - findings: publish a synthetic aggregate-only test message to the SNS topic
+     (do not manufacture production findings);
+   - late check: launch `check-scheduled-daily-late.ts` against a transactionally
+     isolated test target/date, or publish its documented synthetic test
+     message. Never delete or alter production run history to force lateness.
+6. Restore the exact targets and run `configure-daily-sync.sh validate`, then
+   `configure-daily-sync.sh enable`.
+
+### Daily inspection and manual recovery
+
+CloudWatch `/sirius-migration` is the progress stream. The durable source of
+truth is the newest `s1_staging.runs` row whose args identify ordinary
+production daily sync. Notifications distinguish:
+
+- completion success;
+- completion with aggregate findings by kind (triage required even though the
+  daily gate passed);
+- wrapper/sync failure;
+- ECS nonzero exit;
+- Scheduler target/launch failure;
+- no ordinary successful completion by 09:00 Pacific.
+
+Before a manual rerun, use `ecs describe-tasks` and confirm the prior task has
+`lastStatus=STOPPED`. Review its aggregate report and CloudWatch stream. Rerun
+the ordinary wrapper with the same task/network configuration. Do not add
+`--skip-stage`, `--force-reconcile`, or allowances to scheduled recovery. If an
+exceptional operator repair needs such a flag, run `sync.ts` directly under
+the existing runbook approval process; it is not a scheduler rerun.
+
+While a wet sync holds the write fence, reads remain available and application
+mutations receive retryable 503 responses. The web service stays at desired
+count 1.
+
+### Disable before Phase 3
+
+Before S1 is frozen:
+
+```bash
+scripts/s1-migration/aws/configure-daily-sync.sh disable
+```
+
+Then verify both schedules report `DISABLED`. Disabling prevents future
+launches but does **not** stop a task already running. Inspect ECS explicitly:
+allow a healthy run to finish, or use `stop-task` only as a recorded operator
+decision after assessing the partial run. Confirm it is `STOPPED` and the
+write fence has released before starting the Phase 3 final-freeze command.
