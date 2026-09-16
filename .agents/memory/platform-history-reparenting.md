@@ -28,6 +28,11 @@ observed case, ~85% of the side branch's unique commits were such orphaned dupli
   commits are safe to drop, and only the files the branch exists to carry actually matter.
 - Diagnose by comparing tree hashes, not commit hashes: identical tree + identical author
   and committer dates + different parents is the signature of a re-parented duplicate.
+- Deployment-branch reconciliation must not rely only on reversing the branch's combined
+  patch against today's `main`: a later legitimate edit to any shared file makes that check
+  fail even when every remote commit was already incorporated. For remote-only linear
+  history, commit-level stable patch equivalence is valid proof; refuse that shortcut when
+  the remote-only range contains merge commits, because `git cherry` does not evaluate them.
 
 **Task-environment symptom:** `origin` is the GitHub remote whose `main` can sit days behind
 the platform's rewritten main, so `check-migrations --base=origin/main` reports dozens of
