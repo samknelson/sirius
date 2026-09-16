@@ -220,6 +220,7 @@ export class ChargeTransactionCollector {
           eaId,
           referenceType: t.referenceType ?? 'charge_plugin',
           referenceId: t.referenceId,
+          date: resolvedDate,
           statementYmd: t.statementYmd ?? dateToYmd(resolvedDate),
           memo: t.memo !== undefined ? t.memo : t.description,
           data: t.metadata,

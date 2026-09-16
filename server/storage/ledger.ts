@@ -806,14 +806,16 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
     async update(id: string, paymentUpdate: Partial<InsertLedgerPayment>): Promise<LedgerPayment | undefined> {
       validate.validateOrThrow(id);
       const client = getClient();
-      // If payment type is being changed, validate currency match
-      if (paymentUpdate.paymentType) {
+      // If payment type or EA is being changed, validate the effective pair.
+      if (paymentUpdate.paymentType || paymentUpdate.ledgerEaId) {
         const [existingPayment] = await client.select().from(ledgerPayments).where(eq(ledgerPayments.id, id));
         if (!existingPayment) {
           return undefined;
         }
         
-        const [ea] = await client.select().from(ledgerEa).where(eq(ledgerEa.id, existingPayment.ledgerEaId));
+        const effectiveEaId = paymentUpdate.ledgerEaId ?? existingPayment.ledgerEaId;
+        const effectivePaymentTypeId = paymentUpdate.paymentType ?? existingPayment.paymentType;
+        const [ea] = await client.select().from(ledgerEa).where(eq(ledgerEa.id, effectiveEaId));
         if (!ea) {
           throw new Error("Account entry not found");
         }
@@ -823,7 +825,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
           throw new Error("Account not found");
         }
         
-        const [paymentType] = await client.select().from(optionsLedgerPaymentType).where(eq(optionsLedgerPaymentType.id, paymentUpdate.paymentType));
+        const [paymentType] = await client.select().from(optionsLedgerPaymentType).where(eq(optionsLedgerPaymentType.id, effectivePaymentTypeId));
         if (!paymentType) {
           throw new Error("Payment type not found");
         }
@@ -1700,6 +1702,27 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         return { ...e, date: resolvedDate, statementYmd };
       });
       const client = getClient();
+      const keys = values
+        .map((value) => value.chargePluginKey)
+        .filter((key): key is string => Boolean(key));
+      const beforeRows = keys.length > 0
+        ? await client
+            .select({
+              id: ledger.id,
+              chargePlugin: ledger.chargePlugin,
+              chargePluginKey: ledger.chargePluginKey,
+              eaId: ledger.eaId,
+              statementYmd: ledger.statementYmd,
+            })
+            .from(ledger)
+            .where(inArray(ledger.chargePluginKey, keys))
+        : [];
+      const beforeByKey = new Map(
+        beforeRows.map((row) => [
+          `${row.chargePlugin}::${row.chargePluginKey}`,
+          row,
+        ]),
+      );
       const inserted = await client
         .insert(ledger)
         .values(values)
@@ -1711,15 +1734,34 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
             eaId: sqlRaw`excluded.ea_id`,
             memo: sqlRaw`excluded.memo`,
             data: sqlRaw`excluded.data`,
+            date: sqlRaw`excluded.date`,
+            referenceType: sqlRaw`excluded.reference_type`,
+            referenceId: sqlRaw`excluded.reference_id`,
             statementYmd: sqlRaw`excluded.statement_ymd`,
           },
         })
         .returning();
       if (inserted.length > 0) {
-        await emitLedgerEntryEvents(
-          inserted.map((e) => ({ id: e.id, eaId: e.eaId, statementYmd: e.statementYmd })),
-          "created",
-        );
+        const created: Array<{ id: string; eaId: string; statementYmd: string | null }> = [];
+        const updated: Array<{ id: string; eaId: string; statementYmd: string | null }> = [];
+        for (const entry of inserted) {
+          const before = beforeByKey.get(
+            `${entry.chargePlugin}::${entry.chargePluginKey}`,
+          );
+          if (!before) {
+            created.push(entry);
+            continue;
+          }
+          updated.push(entry);
+          if (
+            before.eaId !== entry.eaId ||
+            before.statementYmd !== entry.statementYmd
+          ) {
+            updated.push(before);
+          }
+        }
+        await emitLedgerEntryEvents(created, "created");
+        await emitLedgerEntryEvents(updated, "updated");
       }
       return inserted;
     },

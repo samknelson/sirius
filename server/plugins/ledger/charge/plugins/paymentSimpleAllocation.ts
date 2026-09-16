@@ -169,27 +169,23 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
       const notifications: LedgerNotification[] = [];
 
       if (paymentContext.allocationId) {
-        const matchingKey = expectedEntry?.chargePluginKey;
+        const ymdSuffix = resolvedStatementYmd ? `:${resolvedStatementYmd}` : "";
+        const matchingKey =
+          `${config.id}:${paymentContext.paymentId}:${paymentContext.ledgerEaId}${ymdSuffix}`;
         let existingEntry: Ledger | undefined;
 
-        if (matchingKey) {
-          const allEntries = await storage.ledger.entries.getByReferenceAndConfig(
-            paymentContext.paymentId,
-            config.id
-          );
-          existingEntry = allEntries.find(
-            e => e.chargePlugin === this.metadata.id && e.chargePluginKey === matchingKey
-          );
-        }
+        const allEntries = await storage.ledger.entries.getByReferenceAndConfig(
+          paymentContext.paymentId,
+          config.id
+        );
+        existingEntry = allEntries.find(
+          e => e.chargePlugin === this.metadata.id && e.chargePluginKey === matchingKey
+        );
 
         if (existingEntry) {
-          await storage.ledger.entries.delete(existingEntry.id);
-          logger.info("Deleted existing allocation entry for replacement", {
-            service: "charge-plugin-payment-simple-allocation",
-            paymentId: paymentContext.paymentId,
-            deletedEntryId: existingEntry.id,
-            chargePluginKey: matchingKey,
-          });
+          if (!expectedEntry) {
+            await storage.ledger.entries.delete(existingEntry.id);
+          }
         }
 
         if (!expectedEntry) {
@@ -246,18 +242,10 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
       );
       const ourEntries = existingEntries.filter(e => e.chargePlugin === this.metadata.id);
 
-      for (const staleEntry of ourEntries) {
-        await storage.ledger.entries.delete(staleEntry.id);
-        logger.info("Deleted stale ledger entry", {
-          service: "charge-plugin-payment-simple-allocation",
-          paymentId: paymentContext.paymentId,
-          deletedEntryId: staleEntry.id,
-          previousAmount: staleEntry.amount,
-          previousKey: staleEntry.chargePluginKey,
-        });
-      }
-
       if (!expectedEntry) {
+        for (const staleEntry of ourEntries) {
+          await storage.ledger.entries.delete(staleEntry.id);
+        }
         if (ourEntries.length > 0) {
           const totalDeleted = ourEntries.reduce((sum, e) => sum + Math.abs(parseFloat(e.amount)), 0);
           notifications.push({
@@ -294,7 +282,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
         metadata: expectedEntry.metadata,
       };
 
-      const actionType = ourEntries.length > 0 ? "recreated" : "created";
+      const actionType = ourEntries.length > 0 ? "updated" : "created";
       logger.info(`${actionType} ledger entry for cleared payment`, {
         service: "charge-plugin-payment-simple-allocation",
         paymentId: paymentContext.paymentId,

@@ -155,3 +155,4 @@
 - [Omada migration boundary](omada-migration-boundary.md) — migrate Omada catalog/policy/coverage only; eligibility rules are manually configured and never migration-seeded.
 - [Reconciliation scope symmetry](reconciliation-scope-symmetry.md) — scope both pricing and orphan reversals; event tests must assert unrelated posted balances remain unchanged.
 - [Fingerprint fast paths need target proof](fingerprint-fast-path-target-proof.md) — source-consumed bookkeeping cannot prove child target rows survived a restore or truncation.
+- [Ledger upsert movement events](ledger-upsert-movement-events.md) — stable-key ledger upserts replace every mutable field and emit both old/new EA-month coordinates after commit.

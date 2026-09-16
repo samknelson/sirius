@@ -146,7 +146,7 @@ export function registerLedgerPaymentBatchRoutes(app: Express) {
         }
 
         type AttachOutcome =
-          | { kind: "created"; paymentId: string; assignment: LedgerPaymentBatchAssignment; createdPayment: LedgerPayment }
+          | { kind: "created"; paymentId: string; assignment: LedgerPaymentBatchAssignment; createdPayment: LedgerPayment; notifications: LedgerNotification[] }
           | { kind: "attached"; paymentId: string; assignment: LedgerPaymentBatchAssignment }
           | { kind: "conflict"; assignment: LedgerPaymentBatchAssignment };
         type AttachError = { status: number; message: string };
@@ -191,9 +191,17 @@ export function registerLedgerPaymentBatchRoutes(app: Express) {
               paymentIdLocal,
             );
             if (assignResult.kind === "created") {
-              return createdPayment
-                ? { kind: "created", paymentId: paymentIdLocal, assignment: assignResult.assignment, createdPayment }
-                : { kind: "attached", paymentId: paymentIdLocal, assignment: assignResult.assignment };
+              if (createdPayment) {
+                const notifications = await triggerPaymentChargePlugins(createdPayment);
+                return {
+                  kind: "created",
+                  paymentId: paymentIdLocal,
+                  assignment: assignResult.assignment,
+                  createdPayment,
+                  notifications,
+                };
+              }
+              return { kind: "attached", paymentId: paymentIdLocal, assignment: assignResult.assignment };
             }
             // Conflict: for an attach (no create), this is a 409. For a create attempt,
             // throwing forces the whole transaction (including the payment insert) to roll back.
@@ -222,17 +230,10 @@ export function registerLedgerPaymentBatchRoutes(app: Express) {
           return;
         }
 
-        // Trigger charge plugins AFTER the transaction has committed, so we never produce
-        // ledger side-effects for a payment whose assignment failed.
-        let createdNotifications: LedgerNotification[] = [];
-        if (outcome.kind === "created") {
-          createdNotifications = await triggerPaymentChargePlugins(outcome.createdPayment);
-        }
-
         res.status(201).json({
           assignment: outcome.assignment,
           paymentId: outcome.paymentId,
-          ledgerNotifications: createdNotifications,
+          ledgerNotifications: outcome.kind === "created" ? outcome.notifications : [],
         });
       } catch (error) {
         if (error instanceof Error && error.name === "ZodError") {
@@ -262,25 +263,25 @@ export function registerLedgerPaymentBatchRoutes(app: Express) {
           return;
         }
 
-        const removed = await storage.ledger.paymentBatchAssignments.unassign(id, paymentId);
+        const removed = await runInTransaction(async () => {
+          const removed = await storage.ledger.paymentBatchAssignments.unassign(id, paymentId);
+          if (!removed) return false;
+
+          if (deletePayment) {
+            const payment = await storage.ledger.payments.get(paymentId);
+            if (payment) {
+              await cleanupUploadSourcePaymentArtifacts(
+                paymentId,
+                payment.details as Record<string, unknown> | null,
+              );
+            }
+            await storage.ledger.payments.delete(paymentId);
+          }
+          return true;
+        });
         if (!removed) {
           res.status(404).json({ message: "Assignment not found" });
           return;
-        }
-
-        if (deletePayment) {
-          // Reverse any BAO upload-source worker entries and release the
-          // consumed uploads before deleting the payment (same cleanup the
-          // direct payment DELETE route runs). If cleanup fails, refuse to
-          // delete so we never orphan funded worker credits.
-          const payment = await storage.ledger.payments.get(paymentId);
-          if (payment) {
-            await cleanupUploadSourcePaymentArtifacts(
-              paymentId,
-              payment.details as Record<string, unknown> | null,
-            );
-          }
-          await storage.ledger.payments.delete(paymentId);
         }
 
         res.status(204).send();

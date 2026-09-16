@@ -45,7 +45,7 @@ const suppressionLogState = new Map<
  */
 export async function executeChargePlugins(
   context: PluginContext,
-  options?: { onlyPluginIds?: string[] }
+  options?: { onlyPluginIds?: string[]; throwOnFailure?: boolean }
 ): Promise<ChargePluginExecutionResult> {
   const trigger = context.trigger;
 
@@ -155,6 +155,11 @@ export async function executeChargePlugins(
         if (result.success && result.notifications && result.notifications.length > 0) {
           notifications.push(...result.notifications);
         }
+        if (!result.success && options?.throwOnFailure) {
+          throw new Error(
+            result.error || `Charge plugin ${plugin.metadata.id} failed`,
+          );
+        }
       }
     } catch (error) {
       logger.error("Failed to execute charge plugin", {
@@ -170,6 +175,7 @@ export async function executeChargePlugins(
         notificationCount: 0,
         error: error instanceof Error ? error.message : "Unknown error",
       });
+      if (options?.throwOnFailure) throw error;
     }
   }
 
@@ -187,7 +193,7 @@ export async function executeChargePlugins(
       })),
     });
     try {
-      await createLedgerEntries(totalTransactions);
+      await createLedgerEntries(totalTransactions, options?.throwOnFailure === true);
       logger.info("Completed ledger entry creation for charge plugin transactions", {
         service: "charge-plugin-executor",
         count: totalTransactions.length,
@@ -199,6 +205,7 @@ export async function executeChargePlugins(
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
       });
+      if (options?.throwOnFailure) throw error;
     }
   }
 
@@ -227,7 +234,10 @@ export async function executeChargePlugins(
  * finishes. When no sink is present, the original per-transaction write path
  * is used.
  */
-async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<void> {
+export async function createLedgerEntries(
+  transactions: LedgerTransaction[],
+  throwOnFailure = false,
+): Promise<void> {
   const sink = requestContext.getStore()?.chargeTransactionSink;
   if (sink) {
     // Batch mode: defer writes to the collector; the wrapper flushes at the end.
@@ -248,7 +258,7 @@ async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<v
         transaction.accountId,
       );
 
-      await storage.ledger.entries.create({
+      await storage.ledger.entries.bulkCreate([{
         chargePlugin: transaction.chargePlugin,
         chargePluginKey: transaction.chargePluginKey,
         chargePluginConfigId: transaction.chargePluginConfigId,
@@ -256,10 +266,11 @@ async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<v
         eaId: ea.id,
         referenceType: transaction.referenceType || "charge_plugin",
         referenceId: transaction.referenceId,
+        date: transaction.transactionDate,
         statementYmd: transaction.statementYmd || dateToYmd(transaction.transactionDate),
         memo: transaction.memo !== undefined ? transaction.memo : transaction.description,
         data: transaction.metadata,
-      });
+      }]);
 
       logger.info("Created ledger entry from charge plugin", {
         service: "charge-plugin-executor",
@@ -275,7 +286,7 @@ async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<v
         transaction,
         error: error instanceof Error ? error.message : String(error),
       });
-      // Don't throw - just log and continue
+      if (throwOnFailure) throw error;
     }
   }
 }
