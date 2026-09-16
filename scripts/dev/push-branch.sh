@@ -45,7 +45,7 @@ fetch_branch() {
 reconcile_equivalent_remote_history() {
   local branch="$1"
   local remote_ref="$TRACKING_NAMESPACE/$branch"
-  local base patch_file index_file old_main main_tree remote_tree matching_main_commit reconciled_main
+  local base patch_file index_file old_main main_tree remote_tree matching_main_commit reconciled_main cherry_output
 
   if git merge-base --is-ancestor "$remote_ref" main; then
     return
@@ -82,6 +82,36 @@ reconcile_equivalent_remote_history() {
     git update-ref refs/heads/main "$reconciled_main" "$old_main"
     echo "Reconciled origin/$branch: its complete tree matches main commit $matching_main_commit."
     return
+  fi
+
+  # A production hotfix is commonly committed once on main and once on the
+  # deployment branch, producing different commit ids with the same patch.
+  # Test those commits individually before testing the branch's combined
+  # reverse patch. The combined patch is too strict after main has made later
+  # edits to one of the same files (for example, appending another memory
+  # entry), even though every remote commit was already incorporated.
+  #
+  # `git cherry` intentionally ignores merge commits, so only accept this
+  # proof when the remote-only history contains no merges. A branch carrying
+  # a merge still falls through to the full-tree/reverse-patch safety checks.
+  if ! git rev-list --merges "main..$remote_ref" | grep -q .; then
+    cherry_output=$(git cherry main "$remote_ref")
+    if [ -n "$cherry_output" ] && ! grep -q '^+' <<<"$cherry_output"; then
+      old_main=$(git rev-parse main)
+      main_tree=$(git rev-parse 'main^{tree}')
+      reconciled_main=$(
+        printf 'Reconcile %s before deployment push\n\nEvery remote-only commit is patch-equivalent to work already on main; keep the current main tree unchanged.\n' \
+          "origin/$branch" |
+          GIT_AUTHOR_NAME="$WORKFLOW_GIT_NAME" \
+          GIT_AUTHOR_EMAIL="$WORKFLOW_GIT_EMAIL" \
+          GIT_COMMITTER_NAME="$WORKFLOW_GIT_NAME" \
+          GIT_COMMITTER_EMAIL="$WORKFLOW_GIT_EMAIL" \
+          git commit-tree "$main_tree" -p "$old_main" -p "$remote_ref"
+      )
+      git update-ref refs/heads/main "$reconciled_main" "$old_main"
+      echo "Reconciled origin/$branch: every remote-only commit is patch-equivalent to work already on main."
+      return
+    fi
   fi
 
   patch_file=$(mktemp)
