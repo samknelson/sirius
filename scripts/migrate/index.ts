@@ -50,6 +50,7 @@ import "./core/1045_create_missing_bulk_component_tables";
 import "./core/1046_recreate_bulk_tables_after_publish_drop";
 import "./core/1047_create_wizard_work_location_mappings";
 import "./core/1048_worker_hours_worker_id_idx";
+import "./core/1049_complete_processed_gbhet_legal_wizards";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

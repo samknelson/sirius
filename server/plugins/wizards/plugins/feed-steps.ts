@@ -357,14 +357,22 @@ export function buildProcessStep(
     component,
     getState: runStepState("process"),
     run: async (ctx: WizardStepContext) => {
-      await feed.processFeedData(ctx.wizardId, 100, (p) => {
+      const results = await feed.processFeedData(ctx.wizardId, 100, (p) => {
         const pct =
           p.total > 0
             ? Math.min(99, Math.round((p.processed / p.total) * 100))
             : 0;
         void ctx.reportProgress(pct);
       });
-      // processResults + wizard status persisted by the base method.
+      // processFeedData persists processResults, while the dispatcher owns
+      // top-level wizard status changes through WizardStepResult. Returning
+      // the status here prevents successfully processed feed wizards from
+      // remaining listed as drafts after they advance to Review, while
+      // preserving the failure-aware status used by feed implementations.
+      return {
+        status:
+          results.failureCount > 0 ? "completed_with_errors" : "completed",
+      };
     },
     getData: (ctx: WizardStepContext) => {
       const data = (ctx.wizard.data as any) || {};
