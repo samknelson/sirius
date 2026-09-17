@@ -91,6 +91,7 @@ import {
 } from "./sync-config";
 
 const MIGRATION_LOCK_KEY = 727001; // same key as bootstrap-target/seed-trust-config
+import { assertFleetVersions } from "./lib/fleet-version-check";
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -257,6 +258,10 @@ function noteCleanupFailure(failures: string[], operation: string, error: unknow
 // ---------------------------------------------------------------------------
 async function main() {
   validateSyncConfig();
+  // Check the entire shipped fleet, even optional seeders, before staging or
+  // acquiring the app write fence. Runtime envelope validation still applies.
+  assertFleetVersions(FLEET, BASE);
+  console.log("[sync] fleet version preflight: PASS");
   const profile = PROFILES[PROFILE_NAME];
   const startedAt = new Date();
   const failures: string[] = [];

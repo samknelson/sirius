@@ -1241,6 +1241,12 @@ nothing written. Children inherit the (applied) `TZ` and re-prove it in their
 own envelopes.
 
 **Result contract (no log scraping).** Every fleet step must write the §10
+standard envelope. Before staging or acquiring the app write fence, a source-only
+preflight checks every shipped loader's literal `LOGIC_VERSION` against the fleet
+expectation and reports all mismatches together. This includes optional seeders;
+it never executes loaders. Runtime envelope validation remains mandatory.
+
+Every executed fleet step must write the §10
 standard envelope to its `S1_RESULT_JSON_PATH` file. The orchestrator
 validates presence, schema, loader name, dry-run/force echo,
 `runtime.timeZone` (present AND equal to the pin — a loader that bypassed the
