@@ -20,6 +20,7 @@ interface DcSummaryContent {
   /** Linked count only — the complete list lives on its own page. */
   fmlaEligibleCount: number;
   draftCount: number;
+  recentlyDeniedCount: number;
   activeGrants: Array<{
     worker: WorkerRef;
     grantedMonthCount: number;
@@ -125,7 +126,7 @@ export function BaoDcSummary(_props: DashboardPluginProps) {
   }
   if (!data) return null;
 
-  const { fmlaEligibleCount, draftCount, activeGrants, queue, maxedOut } = data;
+  const { fmlaEligibleCount, draftCount, recentlyDeniedCount, activeGrants, queue, maxedOut } = data;
 
   return (
     <Card data-testid="card-dashboard-bao-dc-summary">
@@ -163,6 +164,20 @@ export function BaoDcSummary(_props: DashboardPluginProps) {
           <Button asChild variant="outline" size="sm">
             <Link href="/bao/dc/drafts" data-testid="link-dc-drafts">
               View draft queue
+            </Link>
+          </Button>
+        </div>
+
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <h4 className="text-sm font-medium">Recently Denied</h4>
+            <Badge variant="secondary" data-testid="badge-dc-recently-denied-count">
+              {recentlyDeniedCount}
+            </Badge>
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/bao/dc/recently-denied" data-testid="link-dc-recently-denied">
+              View recently denied cases
             </Link>
           </Button>
         </div>

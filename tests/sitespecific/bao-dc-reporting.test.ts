@@ -10,6 +10,14 @@ import {
   BAO_DC_EXPIRY_WARNING_DAYS,
 } from "@shared/sitespecific/bao/dc-reporting";
 import { BAO_DC_ANNUAL_MONTH_LIMIT } from "@shared/schema";
+import { recentDcDenialCutoffYmd } from "../../server/services/sitespecific/bao/dc-reporting";
+
+describe("recent denial window", () => {
+  it("uses an inclusive cutoff exactly 30 calendar days before the report date", () => {
+    expect(recentDcDenialCutoffYmd("2026-09-17")).toBe("2026-08-18");
+    expect(recentDcDenialCutoffYmd("2026-03-01")).toBe("2026-01-30");
+  });
+});
 
 describe("buildDcYearUsage", () => {
   it("counts non-removed months per calendar year against the annual limit", () => {

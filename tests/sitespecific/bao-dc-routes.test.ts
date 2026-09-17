@@ -188,6 +188,7 @@ describe("DC route stage boundaries", () => {
       [`/api/sitespecific/bao/dc/cases/${id}/extend`, { method: "POST", body: JSON.stringify({ reason: "x" }) }],
       [`/api/sitespecific/bao/dc/queue`, {}],
       [`/api/sitespecific/bao/dc/drafts`, {}],
+      [`/api/sitespecific/bao/dc/recently-denied`, {}],
       [`/api/sitespecific/bao/dc/queue/next`, {}],
     ];
     for (const [path, init] of memberCalls) {
@@ -332,6 +333,127 @@ describe("DC route stage boundaries", () => {
     expect(rows.find((row: any) => row.case.id === draftA).ageDays).toEqual(
       expect.any(Number),
     );
+  });
+
+  it("returns only denials from the inclusive 30-day window, newest first", async () => {
+    const recent = await makeCase("draft");
+    const boundary = await makeCase("draft");
+    const tooOld = await makeCase("draft");
+    const future = await makeCase("draft");
+    const withdrawn = await makeCase("draft");
+    const asOf = new Date();
+    const ymdDaysAgo = (days: number) => {
+      const date = new Date(asOf);
+      date.setUTCDate(date.getUTCDate() - days);
+      return date.toISOString().slice(0, 10);
+    };
+    await Promise.all([
+      db.update(sitespecificBaoDcCases).set({
+        status: "denied",
+        terminalReason: "recent denial",
+        terminalYmd: ymdDaysAgo(2),
+      }).where(eq(sitespecificBaoDcCases.id, recent)),
+      db.update(sitespecificBaoDcCases).set({
+        status: "denied",
+        terminalReason: "boundary denial",
+        terminalYmd: ymdDaysAgo(30),
+      }).where(eq(sitespecificBaoDcCases.id, boundary)),
+      db.update(sitespecificBaoDcCases).set({
+        status: "denied",
+        terminalReason: "old denial",
+        terminalYmd: ymdDaysAgo(31),
+      }).where(eq(sitespecificBaoDcCases.id, tooOld)),
+      db.update(sitespecificBaoDcCases).set({
+        status: "denied",
+        terminalReason: "future denial",
+        terminalYmd: ymdDaysAgo(-1),
+      }).where(eq(sitespecificBaoDcCases.id, future)),
+      db.update(sitespecificBaoDcCases).set({
+        status: "withdrawn",
+        terminalReason: "not denied",
+        terminalYmd: ymdDaysAgo(1),
+      }).where(eq(sitespecificBaoDcCases.id, withdrawn)),
+    ]);
+
+    const res = await request("/api/sitespecific/bao/dc/recently-denied", { user: staffId });
+    expect(res.status).toBe(200);
+    const rows = await res.json();
+    const fixtureRows = rows.filter((row: any) =>
+      [recent, boundary, tooOld, future, withdrawn].includes(row.case.id),
+    );
+    expect(fixtureRows.map((row: any) => row.case.id)).toEqual([recent, boundary]);
+    expect(fixtureRows.map((row: any) => row.denialYmd)).toEqual([
+      ymdDaysAgo(2),
+      ymdDaysAgo(30),
+    ]);
+    expect(fixtureRows[0].worker.workerId).toBe(workerId);
+  });
+
+  it("keeps a denied case terminal, removes it from queues, and allows a new case", async () => {
+    const isolatedWorker = await storage.workers.createWorker(
+      `DC denial lifecycle ${Date.now()}`,
+    );
+    try {
+      const queuedCase = await storage.baoDisabilityCredit.openCase({
+        workerId: isolatedWorker.id,
+        openedYmd: new Date().toISOString().slice(0, 10),
+        qualifyingBasis: {
+          asOfYmd: new Date().toISOString().slice(0, 10),
+          conditions: ["staff_exception"],
+          exceptionReason: "denial lifecycle test",
+        },
+        createdByUserId: staffId,
+      });
+      await db
+        .update(sitespecificBaoDcCases)
+        .set({ status: "in_queue" })
+        .where(eq(sitespecificBaoDcCases.id, queuedCase.id));
+      const deniedId = queuedCase.id;
+      const denied = await request(`/api/sitespecific/bao/dc/cases/${deniedId}/actions`, {
+        method: "POST",
+        user: staffId,
+        body: JSON.stringify({
+          action: "deny",
+          reason: "does not meet the requirements",
+          expectedStatus: "in_queue",
+        }),
+      });
+      expect(denied.status).toBe(200);
+      const deniedBody = await denied.json();
+      expect(deniedBody.case.status).toBe("denied");
+      expect(deniedBody.case.terminalYmd).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+      const [drafts, queue, recent] = await Promise.all([
+        request("/api/sitespecific/bao/dc/drafts", { user: staffId }).then((r) => r.json()),
+        request("/api/sitespecific/bao/dc/queue", { user: staffId }).then((r) => r.json()),
+        request("/api/sitespecific/bao/dc/recently-denied", { user: staffId }).then((r) => r.json()),
+      ]);
+      expect(drafts.some((row: any) => row.case.id === deniedId)).toBe(false);
+      expect(queue.some((row: any) => row.case.id === deniedId)).toBe(false);
+      expect(recent.find((row: any) => row.case.id === deniedId)?.denialYmd).toBe(
+        deniedBody.case.terminalYmd,
+      );
+
+      const next = await storage.baoDisabilityCredit.openCase({
+        workerId: isolatedWorker.id,
+        openedYmd: deniedBody.case.terminalYmd,
+        qualifyingBasis: {
+          asOfYmd: deniedBody.case.terminalYmd,
+          conditions: ["staff_exception"],
+          exceptionReason: "new circumstances",
+        },
+        createdByUserId: staffId,
+      });
+      expect(next.status).toBe("draft");
+    } finally {
+      await db
+        .delete(sitespecificBaoDcEvents)
+        .where(eq(sitespecificBaoDcEvents.workerId, isolatedWorker.id));
+      await db
+        .delete(sitespecificBaoDcCases)
+        .where(eq(sitespecificBaoDcCases.workerId, isolatedWorker.id));
+      await db.delete(workersTable).where(eq(workersTable.id, isolatedWorker.id));
+    }
   });
 });
 

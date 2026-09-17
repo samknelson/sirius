@@ -256,6 +256,35 @@ export interface DcDraftQueueRow {
   latestActivity: { eventType: string; at: string } | null;
 }
 
+export interface DcRecentlyDeniedRow {
+  case: BaoDcCase;
+  worker: DcWorkerRef;
+  denialYmd: string;
+}
+
+/** Inclusive cutoff: a denial leaves only once it is more than 30 days old. */
+export function recentDcDenialCutoffYmd(asOfYmd: string): string {
+  const cutoff = new Date(`${asOfYmd}T00:00:00.000Z`);
+  cutoff.setUTCDate(cutoff.getUTCDate() - 30);
+  return cutoff.toISOString().slice(0, 10);
+}
+
+/** Terminal denied cases from the rolling 30-day window, newest denial first. */
+export async function listDcRecentlyDenied(
+  asOfYmd = todayYmd(),
+): Promise<DcRecentlyDeniedRow[]> {
+  const cases = await storage.baoDisabilityCredit.listRecentlyDeniedCases(
+    recentDcDenialCutoffYmd(asOfYmd),
+    asOfYmd,
+  );
+  const refs = await workerRefMap(cases.map((c) => c.workerId));
+  return cases.map((theCase) => ({
+    case: theCase,
+    worker: ref(refs, theCase.workerId),
+    denialYmd: theCase.terminalYmd!,
+  }));
+}
+
 /**
  * Every draft case, oldest first. Drafts remain separate even when a worker
  * has more than one open case so each unfinished workflow is actionable.

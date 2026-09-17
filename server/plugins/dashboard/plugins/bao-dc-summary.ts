@@ -6,6 +6,7 @@ import {
   listDcApprovalQueue,
   listDcDraftQueue,
   listDcMaxedOutWorkers,
+  listDcRecentlyDenied,
   listDcUploadReviewFindings,
 } from "../../../services/sitespecific/bao/dc-reporting";
 
@@ -34,10 +35,11 @@ export const baoDcSummaryPlugin: DashboardPlugin = {
   content: {
     // Default (no-action) content — the main dashboard payload.
     "": async () => {
-      const [populations, drafts, activeGrants, queue, maxedOut] =
+      const [populations, drafts, recentlyDenied, activeGrants, queue, maxedOut] =
         await Promise.all([
           getDcUpcomingPopulations(),
           listDcDraftQueue(),
+          listDcRecentlyDenied(),
           listDcActiveGrants(),
           listDcApprovalQueue(),
           listDcMaxedOutWorkers(),
@@ -47,6 +49,7 @@ export const baoDcSummaryPlugin: DashboardPlugin = {
       return {
         fmlaEligibleCount: populations.fmlaEligible.length,
         draftCount: drafts.length,
+        recentlyDeniedCount: recentlyDenied.length,
         activeGrants,
         queue,
         maxedOut,

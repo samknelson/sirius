@@ -177,6 +177,8 @@ export interface BaoDisabilityCreditStorage {
   listCasesForWorker(workerId: string): Promise<BaoDcCase[]>;
   /** Oldest-first cases in the given status (approval queue read). */
   listCasesByStatus(status: BaoDcCaseStatus): Promise<BaoDcCase[]>;
+  /** Denied cases on/after the inclusive terminal-date cutoff, newest first. */
+  listRecentlyDeniedCases(cutoffYmd: string, asOfYmd: string): Promise<BaoDcCase[]>;
   openCase(input: OpenDcCaseInput): Promise<BaoDcCase>;
   /**
    * Lifecycle transition following the shared transition map
@@ -576,6 +578,21 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
         .from(casesTable)
         .where(eq(casesTable.status, status))
         .orderBy(asc(casesTable.createdAt), asc(casesTable.id));
+    },
+
+    async listRecentlyDeniedCases(cutoffYmd: string, asOfYmd: string): Promise<BaoDcCase[]> {
+      await requireTables(this);
+      return getClient()
+        .select()
+        .from(casesTable)
+        .where(
+          and(
+            eq(casesTable.status, "denied"),
+            gte(casesTable.terminalYmd, cutoffYmd),
+            lte(casesTable.terminalYmd, asOfYmd),
+          ),
+        )
+        .orderBy(desc(casesTable.terminalYmd), desc(casesTable.id));
     },
 
     async withCaseSerialization<T>(caseId: string, fn: () => Promise<T>): Promise<T> {

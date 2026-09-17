@@ -38,6 +38,7 @@ import { insertFileSchema } from "@shared/schema";
 import {
   listDcApprovalQueue,
   listDcDraftQueue,
+  listDcRecentlyDenied,
   getDcUpcomingPopulations,
 } from "../../../services/sitespecific/bao/dc-reporting";
 import { BAO_DC_APPROVE_PERMISSION } from "../../../storage/sitespecific/bao/dc-approver";
@@ -740,6 +741,21 @@ export function registerBaoDisabilityCreditRoutes(
     async (_req: Request, res: Response) => {
       try {
         res.json(await listDcDraftQueue());
+      } catch (error) {
+        handleDcError(res, error);
+      }
+    },
+  );
+
+  // Terminal denied cases from the inclusive rolling 30-day window — STAFF.
+  app.get(
+    "/api/sitespecific/bao/dc/recently-denied",
+    requireAuth,
+    componentMiddleware,
+    requireAccess("staff"),
+    async (_req: Request, res: Response) => {
+      try {
+        res.json(await listDcRecentlyDenied());
       } catch (error) {
         handleDcError(res, error);
       }

@@ -9,6 +9,7 @@ describe("Disability Credit dashboard draft contract", () => {
       "utf8",
     );
     expect(source).toContain("draftCount: drafts.length");
+    expect(source).toContain("recentlyDeniedCount: recentlyDenied.length");
     expect(source).not.toContain("getDcNetGrantActivity");
     expect(source).not.toMatch(/\bnetActivity[,}]/);
     expect(baoDcSummaryPlugin.requiredPolicy).toBe("staff");
@@ -25,6 +26,8 @@ describe("Disability Credit dashboard draft contract", () => {
     );
     expect(source).toContain('data-testid="badge-dc-draft-count"');
     expect(source).toContain('href="/bao/dc/drafts"');
+    expect(source).toContain('data-testid="badge-dc-recently-denied-count"');
+    expect(source).toContain('href="/bao/dc/recently-denied"');
     expect(source).toContain('data-testid="link-dc-open-queue"');
     expect(source).not.toContain("Net grant activity (recent months)");
     expect(source).not.toContain("list-dc-net-activity");
