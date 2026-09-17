@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import type { Pool, RowDataPacket } from "mysql2/promise";
-import { assessCountEvidence, simulateResumableRanges } from "../lib/stage-evidence";
+import { assessCountEvidence, formatShardLogSummary, simulateResumableRanges } from "../lib/stage-evidence";
 import { validateStageResultPayload } from "../lib/stage-result-contract";
 import { shouldRefreshNodePayload } from "../lib/incremental-node";
 import {
@@ -76,6 +76,22 @@ function testResumableRanges() {
   assert.equal(model.ranges.filter((range) => range.scanned).length, 72, "resume scans only unfinished ranges");
   assert.equal(model.deferredOutOfBound, true, "movement outside the verified range is deferred");
   assert.deepEqual(simulateResumableRanges(25, 10, [1]).ranges.map((r) => r.index), [1, 2, 3]);
+}
+
+function testShardLogSummary() {
+  const shards = Array.from({ length: 370 }, (_, offset) => ({
+    index: offset + 1,
+    afterNid: offset * 50_000,
+    throughNid: (offset + 1) * 50_000,
+    identitiesScanned: offset === 49 ? 12 : 0,
+    payloadExtracted: offset === 49 ? 3 : 0,
+    durationMs: offset === 49 ? 1_200 : 10,
+  }));
+  const summary = formatShardLogSummary(shards);
+  assert.match(summary, /^ranges=370 nonEmpty=1 empty=369 scanned=12 payloads=3 rangeWork=4890ms slowest:/);
+  assert.match(summary, /50\[2450001-2500000\]=12\/3 \(1200ms\)/);
+  assert.ok(summary.length < 500, "hundreds of sparse ranges produce one bounded CloudWatch event");
+  assert.equal((summary.match(/\[/g) ?? []).length, 5, "only the five slowest ranges are retained");
 }
 
 function testStageResultContract() {
@@ -328,6 +344,7 @@ async function testShards() {
 
 testEvidence();
 testResumableRanges();
+testShardLogSummary();
 testStageResultContract();
 testPayloadRefresh();
 await testShards();

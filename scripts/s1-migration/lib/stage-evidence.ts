@@ -24,6 +24,42 @@ export interface CountEvidence extends CountEvidenceInput {
   reason?: string;
 }
 
+export interface StageShardLogEntry {
+  index: number;
+  afterNid: number;
+  throughNid: number;
+  identitiesScanned: number;
+  payloadExtracted: number;
+  durationMs: number;
+}
+
+/**
+ * Keep CloudWatch events bounded even when a sparse source spans hundreds of
+ * NID ranges. Aggregate every range, then retain only the slowest few as
+ * actionable diagnostics.
+ */
+export function formatShardLogSummary(shards: StageShardLogEntry[], slowestLimit = 5): string {
+  const nonEmpty = shards.filter((shard) => shard.identitiesScanned > 0);
+  const identitiesScanned = shards.reduce((sum, shard) => sum + shard.identitiesScanned, 0);
+  const payloadExtracted = shards.reduce((sum, shard) => sum + shard.payloadExtracted, 0);
+  const workMs = shards.reduce((sum, shard) => sum + shard.durationMs, 0);
+  const slowest = [...shards]
+    .sort((a, b) => b.durationMs - a.durationMs || a.index - b.index)
+    .slice(0, Math.max(0, slowestLimit))
+    .map((shard) =>
+      `${shard.index}[${shard.afterNid + 1}-${shard.throughNid}]=${shard.identitiesScanned}/${shard.payloadExtracted} (${shard.durationMs}ms)`,
+    );
+  return [
+    `ranges=${shards.length}`,
+    `nonEmpty=${nonEmpty.length}`,
+    `empty=${shards.length - nonEmpty.length}`,
+    `scanned=${identitiesScanned}`,
+    `payloads=${payloadExtracted}`,
+    `rangeWork=${workMs}ms`,
+    ...(slowest.length > 0 ? [`slowest: ${slowest.join(" ")}`] : []),
+  ].join(" ");
+}
+
 export function assessCountEvidence(mode: StageMode, input: CountEvidenceInput): CountEvidence {
   const { sourceCountBefore, sourceCountAfter, identitiesScanned, stagedCount } = input;
   const integrity = input.deferredOutsideRange ? (stagedCount >= identitiesScanned ? "pass" : "fail") : (identitiesScanned === stagedCount ? "pass" : "fail");

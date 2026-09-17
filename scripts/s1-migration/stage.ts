@@ -63,7 +63,7 @@ import {
   getRangeGenerationPlans,
   reconcileVerifiedRange,
 } from "./lib/staging";
-import { assessCountEvidence, type CountEvidence, type StageMode } from "./lib/stage-evidence";
+import { assessCountEvidence, formatShardLogSummary, type CountEvidence, type StageMode } from "./lib/stage-evidence";
 import { shouldRefreshNodePayload } from "./lib/incremental-node";
 import { isValidTimeZone } from "../../shared/utils/timezone";
 import { pool as pgPool } from "../../server/storage/db";
@@ -602,9 +602,7 @@ async function stageNodeBundle(params: {
     `  timings: identityRead=${report.timings.identityReadMs}ms fieldRead=${report.timings.fieldReadMs}ms stagingCallbacks=${report.timings.stagingCallbackMs}ms`,
   );
   if (report.shards?.length) {
-    console.log(
-      `  shards: ${report.shards.map((shard) => `${shard.index}[${shard.afterNid + 1}-${shard.throughNid}]=${shard.identitiesScanned}/${shard.payloadExtracted} (${shard.durationMs}ms)`).join(" ")}`,
-    );
+    console.log(`  shards: ${formatShardLogSummary(report.shards)}`);
   }
   const fieldSummary = Object.entries(report.fieldRowCounts)
     .filter(([, rows]) => rows > 0)
@@ -782,7 +780,7 @@ async function main() {
       bundleResults.push(...(await Promise.all(wave.map(runBundle))));
     }
     for (const bundle of targets.filter((name) => DAILY_SHARDED_BUNDLES.has(name))) {
-      console.log(`daily heavy bundle: ${bundle} (serial bundle, ${args.heavyShards} identity-range shard(s))`);
+      console.log(`daily heavy bundle: ${bundle} (serial bundle, range concurrency=${args.heavyShards})`);
       bundleResults.push(await runBundle(bundle));
     }
   } else {

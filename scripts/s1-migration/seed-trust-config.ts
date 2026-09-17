@@ -30,7 +30,7 @@ import { withNotificationsSuppressed } from "../../server/middleware/request-con
 import { resolveDatabaseUrl, describeDatabaseTarget } from "../../shared/database-url";
 import { loadStaged } from "./lib/loader-utils";
 import { getMappings, putMapping, ensureIdMap } from "./lib/idmap";
-import { recordRun } from "./lib/staging";
+import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { buildLoaderResult, emitLoaderResult, loaderExitCode, emptySummary } from "./lib/sync";
 
 const LOADER = "seed-trust-config";
@@ -149,6 +149,10 @@ async function seedBenefits(): Promise<SideReport> {
 async function main() {
   const startedAt = new Date();
   console.log(`[${LOADER}] target: ${describeDatabaseTarget(resolveDatabaseUrl())}${DRY_RUN ? " (DRY RUN)" : ""}`);
+
+  // This is both the staging-table prerequisite and the mandatory migration
+  // time-zone gate. buildLoaderResult captures the evidence established here.
+  await ensureStagingSchema();
 
   // Single-run guard: read-then-create resolution is not concurrency-safe.
   // Session-scoped advisory lock (same key as bootstrap-target); released on
