@@ -31,7 +31,7 @@ function formatWorkerName(worker: AssignmentWithWorker["worker"]): string {
   if (worker.family) return worker.family;
   if (worker.given) return worker.given;
   if (worker.displayName) return worker.displayName;
-  return `Worker ${worker.siriusId || worker.id.slice(0, 8)}`;
+  return worker.siriusId != null ? `Worker #${worker.siriusId}` : "Worker (No Sirius ID)";
 }
 
 function formatUserName(user: NextAssignment["supervisor"]): string {

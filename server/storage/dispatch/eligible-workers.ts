@@ -24,7 +24,7 @@ export const validate = createNoopValidator();
 
 export interface EligibleWorker {
   id: string;
-  siriusId: number;
+  siriusId: number | null;
   displayName: string;
   seniorityDate: Date | null;
 }
@@ -72,7 +72,7 @@ export interface PluginCheckResult {
 export interface WorkerEligibilityCheckResult {
   workerId: string;
   workerName: string;
-  workerSiriusId: number;
+  workerSiriusId: number | null;
   isEligible: boolean;
   seniorityPosition: number | null;
   totalEligible: number | null;
@@ -855,7 +855,7 @@ export function createDispatchEligibleWorkersStorage(): DispatchEligibleWorkersS
 
       return {
         workerId: worker.id,
-        workerName: worker.displayName || `Worker #${worker.siriusId}`,
+        workerName: worker.displayName || "Unnamed worker",
         workerSiriusId: worker.siriusId,
         isEligible,
         seniorityPosition,

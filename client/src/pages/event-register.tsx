@@ -139,7 +139,8 @@ function EventRegisterContent() {
                         value={worker.contact_id}
                         data-testid={`select-worker-option-${worker.id}`}
                       >
-                        {worker.contact_name || "Unknown"} (#{worker.sirius_id})
+                        {worker.contact_name || "Unknown"} (
+                        {worker.sirius_id != null ? `#${worker.sirius_id}` : "No Sirius ID"})
                       </SelectItem>
                     ))
                   )}

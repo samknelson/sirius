@@ -199,7 +199,7 @@ export class ReportGbhetLegalCompliance extends WizardReport {
         .innerJoin(contacts, eq(workers.contactId, contacts.id))
         .where(inArray(workers.id, workerIds));
 
-      const workerMap = new Map<string, { siriusId: number; displayName: string | null }>();
+      const workerMap = new Map<string, { siriusId: number | null; displayName: string | null }>();
       for (const w of workersData) {
         workerMap.set(w.id, { siriusId: w.siriusId, displayName: w.displayName });
       }

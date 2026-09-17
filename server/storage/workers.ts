@@ -35,7 +35,6 @@ import {
   enqueueWorkerBenefitRoleHistoryInvalidations,
 } from "./trust/worker-benefit-role-history-invalidation";
 import {
-  allocateRelationshipShellSiriusId,
   advanceWorkerSequenceSafely,
   applySiriusIdOwnershipPlan,
   readSiriusIdOwnershipSnapshot,
@@ -203,7 +202,7 @@ export interface WorkersPaginationParams extends WorkerBenefitRoleFilters {
 }
 
 export interface WorkerSearchResult {
-  workers: Array<{ id: string; siriusId: number; displayName: string }>;
+  workers: Array<{ id: string; siriusId: number | null; displayName: string }>;
   total: number;
 }
 
@@ -304,14 +303,14 @@ export interface WorkerStorage {
   }>>;
   createWorker(name: string): Promise<Worker>;
   /** S1-migration only: source workers must supply their authoritative S1
-   * ID. Only relationship shells may ask storage to allocate a generated ID;
-   * their allocation is recorded in data and skips every staged reservation. */
+   * ID. Relationship shells explicitly persist a NULL Sirius ID; their UUID
+   * remains the relationship identity. */
   createWorkerForMigration(input: {
     siriusId?: number;
     contactId: string;
     ssn: string | null;
     data?: Record<string, unknown> | null;
-    allocation?: { kind: "relationship-shell"; reservedSiriusIds: readonly number[] };
+    kind?: "relationship-shell";
   }): Promise<Worker>;
   /** Read-only source/target ownership evidence for migration preflight and
    * operator diagnostics. */
@@ -865,7 +864,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         workers: results.map(r => ({
           id: r.id,
           siriusId: r.siriusId,
-          displayName: r.displayName || `Worker #${r.siriusId}`,
+          displayName: r.displayName || "Unnamed worker",
         })),
         total: results.length,
       };
@@ -1494,31 +1493,41 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       contactId: string;
       ssn: string | null;
       data?: Record<string, unknown> | null;
-      allocation?: { kind: "relationship-shell"; reservedSiriusIds: readonly number[] };
+      kind?: "relationship-shell";
     }): Promise<Worker> {
       return runInTransaction(async () => {
-        const generated = input.siriusId == null;
-        if (generated && input.allocation?.kind !== "relationship-shell") {
-          throw new Error("Migration source workers require an authoritative Sirius ID; only relationship shells may receive generated IDs.");
+        const isRelationshipShell = input.kind === "relationship-shell";
+        if (!isRelationshipShell && input.siriusId == null) {
+          throw new Error("Migration source workers require an authoritative Sirius ID; no generated replacement is allowed.");
         }
-        // The allocator holds an EXCLUSIVE workers lock.  Explicit source-ID
-        // writes take the same lock so native serial allocation cannot race a
-        // staged reservation decision.
-        const siriusId = generated
-          ? await allocateRelationshipShellSiriusId(input.allocation!.reservedSiriusIds)
-          : input.siriusId!;
-        if (!generated) await getClient().execute(sql`LOCK TABLE workers IN EXCLUSIVE MODE`);
-        const data = generated
+        if (isRelationshipShell && input.siriusId != null) {
+          throw new Error("Relationship shell workers must retain a NULL Sirius ID.");
+        }
+        // Keep an explicit authoritative import serial-safe for a later S2
+        // cutover. Shells do not take this lock because they never consume or
+        // advance the sequence.
+        if (!isRelationshipShell) {
+          await getClient().execute(sql`LOCK TABLE workers IN EXCLUSIVE MODE`);
+        }
+        const data = isRelationshipShell
           ? {
               ...(input.data ?? {}),
-              migrationSiriusIdAllocation: { kind: "generated", source: "relationship-shell" },
+              migrationShell: true,
             }
           : input.data ?? null;
         const [worker] = await getClient()
           .insert(workers)
-          .values({ siriusId, contactId: input.contactId, ssn: input.ssn, data })
+          // Explicit NULL is critical: after S2 cutover the database default
+          // allocates omitted values, but a migration relationship shell must
+          // never receive one.
+          .values({
+            siriusId: isRelationshipShell ? null : input.siriusId!,
+            contactId: input.contactId,
+            ssn: input.ssn,
+            data,
+          })
           .returning();
-        await advanceWorkerSequenceSafely();
+        if (!isRelationshipShell) await advanceWorkerSequenceSafely();
         return stripWorkerData(worker);
       });
     },

@@ -13,6 +13,7 @@ import {
   buildMemberUnits,
   displayName,
   isQmscoRelation,
+  requireWorkerSiriusId,
   type EdiPerson,
 } from "../base";
 
@@ -198,6 +199,7 @@ registerTrustProviderEdiPlugin({
     const out: Array<Record<string, unknown>> = [];
     for (const unit of units) {
       const { wmb, subscriber } = unit;
+      const subscriberSiriusId = requireWorkerSiriusId(subscriber, "MLK");
       const shared = {
         policy: cfg.policy,
         plan: cfg.plan,
@@ -205,7 +207,7 @@ registerTrustProviderEdiPlugin({
         lob: cfg.lob,
         ern: cfg.ern,
         fileDate,
-        memAcct: String(subscriber.workerSiriusId ?? ""),
+        memAcct: subscriberSiriusId,
         subscriberSsn: padSsn(subscriber.ssn),
         subscriberName: displayName(subscriber),
         coverageStart: ymdCompact(unit.coverageStartYmd),
@@ -216,7 +218,7 @@ registerTrustProviderEdiPlugin({
         pk: wmb.id,
         ...shared,
         memDep: "M",
-        depAcct: String(subscriber.workerSiriusId ?? ""),
+        depAcct: subscriberSiriusId,
         depRel: "01",
         memberName: displayName(subscriber),
         memberSsn: padSsn(subscriber.ssn),
@@ -233,7 +235,7 @@ registerTrustProviderEdiPlugin({
           pk: `${wmb.id}:${dep.relationId}`,
           ...shared,
           memDep: "D",
-          depAcct: String(dep.workerSiriusId ?? ""),
+          depAcct: requireWorkerSiriusId(dep, "MLK"),
           depRel: mlkDepRel(dep.relationSiriusId),
           memberName: displayName(dep),
           memberSsn: padSsn(dep.ssn),

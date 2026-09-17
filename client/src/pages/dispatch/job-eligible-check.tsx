@@ -108,7 +108,9 @@ function EligibleWorkersCheckContent() {
                       >
                         <User className="h-4 w-4 text-muted-foreground" />
                         <span>{worker.displayName}</span>
-                        <span className="text-muted-foreground text-sm">#{worker.siriusId}</span>
+                        <span className="text-muted-foreground text-sm">
+                          {worker.siriusId != null ? `#${worker.siriusId}` : "No Sirius ID"}
+                        </span>
                       </Button>
                     ))
                   ) : (
@@ -128,7 +130,9 @@ function EligibleWorkersCheckContent() {
                 </span>
                 {eligibilityResult && (
                   <span className="text-muted-foreground text-sm ml-2" data-testid="text-selected-worker-id">
-                    #{eligibilityResult.workerSiriusId}
+                    {eligibilityResult.workerSiriusId != null
+                      ? `#${eligibilityResult.workerSiriusId}`
+                      : "No Sirius ID"}
                   </span>
                 )}
               </div>

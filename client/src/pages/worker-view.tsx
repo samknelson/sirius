@@ -180,7 +180,7 @@ function WorkerDetailsContent() {
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Sirius ID</label>
               <p className="text-foreground font-mono text-sm" data-testid={`text-worker-ids-${worker.id}`}>
-                {worker.siriusId}
+                {worker.siriusId ?? "No Sirius ID"}
               </p>
             </div>
             <div className="space-y-2">

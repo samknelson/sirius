@@ -118,7 +118,9 @@ function EmployerWorkersContent() {
                       <Link href={`/workers/${worker.workerId}`} className="text-sm font-medium text-primary hover:underline" data-testid={`link-worker-${worker.workerId}`}>
                         {worker.contactName || "Unnamed Worker"}
                       </Link>
-                      <div className="text-xs text-muted-foreground">ID: {worker.workerSiriusId}</div>
+                      <div className="text-xs text-muted-foreground">
+                        ID: {worker.workerSiriusId ?? "No Sirius ID"}
+                      </div>
                     </td>
                     <td className="py-3 px-4">
                       {worker.employmentStatusName ? (

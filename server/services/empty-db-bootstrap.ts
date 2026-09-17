@@ -58,6 +58,11 @@ import {
 import { logger } from "../logger";
 import { getEnvironmentVariable } from "../config/env-registry";
 import type { DatabaseState } from "./bringup-report";
+import {
+  workerSiriusIdDefaultFunctionSql,
+  workerSiriusIdSequenceCreateSql,
+  workerSiriusIdSequenceOwnershipSql,
+} from "./worker-sirius-id-default-sql";
 
 const NAME_SYM_DESC = "drizzle:Name";
 
@@ -345,6 +350,17 @@ export async function ensureEmptyDatabaseBootstrap(
   // touch.
   const coreVersion = highestVersion(getMigrations());
   await runInTransaction(async () => {
+    // The workers table's policy-aware default references this function.  It
+    // must exist before the table DDL is parsed on a newly bootstrapped DB.
+    // Its variables lookup is dynamic so the variables table can be created
+    // later in this same transaction.
+    await storage.rawSql.execute(workerSiriusIdDefaultFunctionSql);
+    // `workers.sirius_id` is an integer rather than Drizzle's `serial` so
+    // its default can be policy-aware. Create and retain the serial-compatible
+    // sequence explicitly; the function resolves it through the ownership
+    // association after the workers table exists.
+    await storage.rawSql.execute(workerSiriusIdSequenceCreateSql);
+
     // ---- Execute: enums → tables (FK order) → indexes ----
     for (const sql of enumStatements) {
       await storage.rawSql.execute(sql);
@@ -352,6 +368,7 @@ export async function ensureEmptyDatabaseBootstrap(
     for (const plan of ordered) {
       await storage.rawSql.execute(plan.createTableSql);
     }
+    await storage.rawSql.execute(workerSiriusIdSequenceOwnershipSql);
     for (const plan of ordered) {
       for (const sql of plan.createIndexSqls) {
         await storage.rawSql.execute(sql);

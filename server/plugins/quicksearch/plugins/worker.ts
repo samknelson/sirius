@@ -322,7 +322,9 @@ export const workerQuicksearchPlugin: QuicksearchPlugin = {
       const detail = idDetails.get(r.id) ?? null;
       const phone = phoneDetails.get(r.id) ?? null;
 
-      const subtitle: string[] = [`#${r.siriusId}`];
+      const subtitle: string[] = [
+        r.siriusId == null ? "No Sirius ID" : `#${r.siriusId}`,
+      ];
       if (flags.matchedWorkerId && detail) {
         subtitle.push(`${detail.typeName ?? "ID"} ${detail.value}`);
       }
@@ -334,7 +336,7 @@ export const workerQuicksearchPlugin: QuicksearchPlugin = {
 
       return {
         id: r.id,
-        title: r.displayName || `Worker #${r.siriusId}`,
+        title: r.displayName || "Worker",
         subtitle: subtitle.join(" · "),
         matchedOn: describeMatch(flags, detail?.typeName ?? null),
       };

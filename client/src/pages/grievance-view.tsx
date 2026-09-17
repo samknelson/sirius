@@ -166,7 +166,7 @@ function GrievanceDetailsContent() {
                       data-testid={`link-worker-${w.workerId}`}
                     >
                       {w.displayName || "Unknown"}
-                      {w.siriusId != null ? ` #${w.siriusId}` : ""}
+                      {w.siriusId != null ? ` #${w.siriusId}` : " · No Sirius ID"}
                     </Link>
                     {w.primary && showLead && (
                       <Badge variant="default" data-testid={`badge-lead-${w.workerId}`}>

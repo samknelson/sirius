@@ -368,6 +368,7 @@ const DispatchEditPage = lazy(() => import("@/pages/dispatch/dispatch-edit"));
 const DispatchManagePage = lazy(() => import("@/pages/dispatch/dispatch-manage"));
 const MasqueradePage = lazy(() => import("@/pages/config/masquerade"));
 const SystemModePage = lazy(() => import("@/pages/config/system-mode"));
+const WorkerSiriusIdAuthorityPage = lazy(() => import("@/pages/config/worker-sirius-id-authority"));
 const AuthSettingsPage = lazy(() => import("@/pages/config/auth-settings"));
 const EnvPage = lazy(() => import("@/pages/config/env"));
 const TimeZoneConfigPage = lazy(() => import("@/pages/config/timezone"));
@@ -3874,6 +3875,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <SystemModePage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/worker-sirius-id-authority">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WorkerSiriusIdAuthorityPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

@@ -291,11 +291,13 @@ export default function PensionPayoutCalculatorPage() {
                       key={worker.id}
                       className="w-full text-left px-3 py-2 hover:bg-muted transition-colors flex items-center gap-2"
                       onClick={() => handleWorkerSelect(worker)}
-                      data-testid={`button-select-worker-${worker.siriusId}`}
+                      data-testid={`button-select-worker-${worker.id}`}
                     >
                       <User className="h-4 w-4 text-muted-foreground" />
                       <span className="font-medium">{worker.displayName}</span>
-                      <span className="text-muted-foreground text-sm">#{worker.siriusId}</span>
+                      <span className="text-muted-foreground text-sm">
+                        {worker.siriusId != null ? `#${worker.siriusId}` : "No Sirius ID"}
+                      </span>
                     </button>
                   ))}
                 </div>

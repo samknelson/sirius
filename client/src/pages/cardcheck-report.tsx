@@ -38,11 +38,12 @@ import { format, formatLocalFields } from "@/lib/date-format";
 import { Link } from "wouter";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { matchesCardcheckReportSearch } from "@/lib/cardcheck-report-search";
 
 interface CardcheckReportItem {
   cardcheckId: string;
   workerId: string;
-  workerSiriusId: number;
+  workerSiriusId: number | null;
   workerName: string;
   bargainingUnitId: string | null;
   bargainingUnitName: string | null;
@@ -177,10 +178,7 @@ export default function CardcheckReport() {
     
     if (searchTerm) {
       const lowerSearch = searchTerm.toLowerCase();
-      filtered = filtered.filter(item => 
-        item.workerName.toLowerCase().includes(lowerSearch) ||
-        item.workerSiriusId.toString().includes(lowerSearch)
-      );
+      filtered = filtered.filter(item => matchesCardcheckReportSearch(item, lowerSearch));
     }
 
     if (validityFilter === "invalid") {
@@ -338,7 +336,7 @@ export default function CardcheckReport() {
 
       return [
         escapeCsv(item.workerName),
-        String(item.workerSiriusId),
+        item.workerSiriusId == null ? "" : String(item.workerSiriusId),
         ...showOnListsIdTypes.map(idType => {
           const typeMap = workerIdValueMap.get(item.workerId);
           return escapeCsv(typeMap?.get(idType.id) || "");
@@ -669,7 +667,7 @@ export default function CardcheckReport() {
                             {item.workerName}
                           </span>
                           <div className="text-xs text-muted-foreground">
-                            ID: {item.workerSiriusId}
+                            ID: {item.workerSiriusId ?? "No Sirius ID"}
                           </div>
                         </TableCell>
                         {showOnListsIdTypes.map((idType) => {

@@ -323,10 +323,12 @@ function DispatchDetailsContent() {
   });
 
   const workerName = dispatch.worker?.contact
-    ? `${dispatch.worker.contact.given || ''} ${dispatch.worker.contact.family || ''}`.trim() || dispatch.worker.contact.displayName
-    : dispatch.worker?.siriusId
-      ? `Worker #${dispatch.worker.siriusId}`
-      : 'Unknown Worker';
+    ? `${dispatch.worker.contact.given || ''} ${dispatch.worker.contact.family || ''}`.trim() ||
+      dispatch.worker.contact.displayName ||
+      "Worker (No Sirius ID)"
+    : dispatch.worker
+      ? "Worker (No Sirius ID)"
+      : "Unknown Worker";
 
   return (
     <div className="space-y-6">
@@ -378,9 +380,9 @@ function DispatchDetailsContent() {
                   {workerName}
                 </p>
               )}
-              {dispatch.worker?.siriusId && (
-                <p className="font-mono text-sm text-muted-foreground" data-testid="text-sirius-id">#{dispatch.worker.siriusId}</p>
-              )}
+              <p className="font-mono text-sm text-muted-foreground" data-testid="text-sirius-id">
+                {dispatch.worker?.siriusId != null ? `#${dispatch.worker.siriusId}` : "No Sirius ID"}
+              </p>
             </div>
           </CardContent>
         </Card>

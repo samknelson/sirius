@@ -42,7 +42,11 @@ export function DeleteWorkerModal({
           <AlertDialogDescription>
             Are you sure you want to delete{" "}
             <span className="font-medium" data-testid="text-delete-worker-name">
-              {worker?.siriusId ? `Worker #${worker.siriusId}` : "this worker"}
+              {worker
+                ? worker.siriusId != null
+                  ? `Worker #${worker.siriusId}`
+                  : "Worker (No Sirius ID)"
+                : "this worker"}
             </span>
             ? This will permanently remove the worker from your database.
           </AlertDialogDescription>

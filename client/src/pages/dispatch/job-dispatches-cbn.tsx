@@ -198,7 +198,7 @@ function JobDispatchesCbnContent() {
                       />
                     </TableCell>
                     <TableCell className="font-mono text-sm" data-testid={`text-siriusid-${worker.id}`}>
-                      {worker.siriusId}
+                      {worker.siriusId ?? "No Sirius ID"}
                     </TableCell>
                     <TableCell data-testid={`text-name-${worker.id}`}>{worker.displayName || "Unknown"}</TableCell>
                     <TableCell>

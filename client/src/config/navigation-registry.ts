@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, BookOpen,
   CreditCard, Activity, Wallet, Settings, Shield, Key, KeyRound, FileText, 
-  Building2, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, Tag, RefreshCw, Radio, HelpCircle, FolderOpen, NotebookPen, Terminal, Power, Cloud, Database, CalendarClock, History, type LucideIcon
+  Building2, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, Tag, RefreshCw, Radio, HelpCircle, FolderOpen, NotebookPen, Terminal, Power, Cloud, Database, CalendarClock, History, Fingerprint, type LucideIcon
 } from "lucide-react";
 import type { ResolvedCatalogEntry } from "@shared/catalog";
 
@@ -65,6 +65,7 @@ export const configSections: NavSection[] = [
     icon: Settings,
     items: [
       { path: "/config/system-mode", label: "System Mode", icon: Server, testId: "nav-config-system-mode", permission: "admin" },
+      { path: "/config/worker-sirius-id-authority", label: "Worker Sirius ID Authority", icon: Fingerprint, testId: "nav-config-worker-sid-authority", permission: "admin" },
       { path: "/config/auth-settings", label: "Auth Settings", icon: KeyRound, testId: "nav-config-auth-settings", permission: "admin" },
       { path: "/config/system-status", label: "System Status", icon: Activity, testId: "nav-config-system-status", permission: "admin" },
       { path: "/config/env", label: "Environment", icon: Terminal, testId: "nav-config-env", permission: "admin" },

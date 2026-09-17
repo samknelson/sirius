@@ -202,7 +202,7 @@ function formatAssignedWorkerName(worker: AssignmentWithWorker["worker"]): strin
   if (worker.family) return worker.family;
   if (worker.given) return worker.given;
   if (worker.displayName) return worker.displayName;
-  return worker.siriusId ? `Worker #${worker.siriusId}` : "Unknown Worker";
+  return worker.siriusId != null ? `Worker #${worker.siriusId}` : "Worker (No Sirius ID)";
 }
 
 function formatTime12h(time: string | null | undefined): string {
@@ -324,7 +324,7 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId, positionNumber }: Ass
   const classification = assignmentData.classificationId ? classificationsMap.get(assignmentData.classificationId) : null;
   const displayIdLabel = workerIdTypeConfigured
     ? (displayIdValues[assignment.workerId] ?? "—")
-    : (assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—");
+    : (assignment.worker.siriusId != null ? `#${assignment.worker.siriusId}` : "No Sirius ID");
 
   const handleUnassign = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -668,7 +668,7 @@ function formatWorkerName(worker: AvailableWorker): string {
   if (worker.family) return worker.family;
   if (worker.given) return worker.given;
   if (worker.displayName) return worker.displayName;
-  return worker.siriusId ? `Worker #${worker.siriusId}` : "Unknown Worker";
+  return worker.siriusId != null ? `Worker #${worker.siriusId}` : "Worker (No Sirius ID)";
 }
 
 function getStatusDotColor(status: string | null): string {
@@ -687,7 +687,7 @@ function formatWorkerFullName(details: WorkerAssignmentDetails): string {
   if (details.given || details.family) {
     return [details.given, details.family].filter(Boolean).join(" ");
   }
-  return details.siriusId ? `Worker #${details.siriusId}` : "Unknown Worker";
+  return details.siriusId != null ? `Worker #${details.siriusId}` : "Worker (No Sirius ID)";
 }
 
 function getStatusCardStyle(status: string): string {
@@ -1167,7 +1167,7 @@ function AvailableWorkersPanel() {
                     const isAssigned = assignedWorkerIds.has(worker.id);
                     const displayIdLabel = workerIdTypeConfigured
                       ? (displayIdValues[worker.id] ?? "—")
-                      : (worker.siriusId ? `#${worker.siriusId}` : null);
+                      : (worker.siriusId != null ? `#${worker.siriusId}` : "No Sirius ID");
                     return (
                       <div
                         key={worker.id}

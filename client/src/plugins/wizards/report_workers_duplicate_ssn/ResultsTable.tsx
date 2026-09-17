@@ -29,7 +29,7 @@ export function ResultsTable(props: WizardStepComponentProps) {
                     className="text-sm font-medium text-primary hover:underline"
                     data-testid={`link-worker-${worker.workerId}`}
                   >
-                    {worker.displayName} (ID: {worker.siriusId})
+                    {worker.displayName} (ID: {worker.siriusId ?? "No Sirius ID"})
                   </Link>
                 </div>
               ))}

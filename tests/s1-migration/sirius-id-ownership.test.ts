@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  SIRIUS_ID_OWNERSHIP_PLAN_VERSION,
+  assertSiriusIdReferenceRetention,
   planSiriusIdOwnership,
   projectSiriusIdOwnershipEvidence,
-  nextRelationshipShellSiriusId,
   siriusIdPlanHash,
+  type SiriusIdReferenceRetention,
   type SiriusIdOwnershipSnapshot,
 } from "../../server/storage/workers/sirius-id-ownership-plan";
 
@@ -12,16 +14,26 @@ const snapshot = (partial: Partial<SiriusIdOwnershipSnapshot>): SiriusIdOwnershi
   idMapPresent: true,
   claims: [],
   workers: [],
+  contactMappings: [{ sourceNid: 91, s2Id: "contact-91", stub: false, loader: "t3t1-contacts-workers" }],
   ...partial,
 });
 
+const shell = (id: string, siriusId: number | null, data: Record<string, unknown> | null = {}) => ({
+  id,
+  siriusId,
+  contactId: "contact-91",
+  data: data == null ? null : { migrationShell: true, s1ContactNid: 91, ...data },
+  workerMappings: [],
+  shellMappings: [{ sourceNid: 91, stub: false, loader: "t15-relationships" }],
+});
+
 describe("Sirius ID ownership planner", () => {
-  it("uses exact source mapping, not a number match, to confirm ownership", () => {
+  it("uses an exact worker mapping, not a matching number, to confirm ownership", () => {
     const plan = planSiriusIdOwnership(snapshot({
       claims: [{ sourceNid: 10, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null }],
       workers: [{
         id: "mapped", siriusId: 100, data: null,
-        workerMappings: [{ sourceNid: 10, stub: false, loader: "contacts-workers" }],
+        workerMappings: [{ sourceNid: 10, stub: false, loader: "t3t1-contacts-workers" }],
         shellMappings: [],
       }],
     }));
@@ -29,211 +41,296 @@ describe("Sirius ID ownership planner", () => {
     expect(plan.rekeys).toEqual([]);
   });
 
-  it("blocks duplicate source claims before considering any target repair", () => {
-    const plan = planSiriusIdOwnership(snapshot({
-      claims: [
-        { sourceNid: 10, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null },
-        { sourceNid: 11, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null },
-      ],
-    }));
-    expect(plan.hardBlockers).toBe(2);
-    expect(plan.decisions.map((decision) => decision.action)).toEqual(["source_duplicate", "source_duplicate"]);
-  });
-
-  it("blocks valid claims when exact id_map evidence is unavailable, including an empty scoped result", () => {
-    const unavailable = snapshot({
-      idMapPresent: false,
-      claims: [{ sourceNid: 10, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null }],
-    });
-    expect(planSiriusIdOwnership(unavailable).decisions[0]).toMatchObject({ action: "blocked_mapping_missing" });
-    expect(planSiriusIdOwnership(snapshot({ idMapPresent: false })).hardBlockers).toBeGreaterThanOrEqual(1);
-  });
-
-  it("blocks inverse worker-map ambiguity before considering a correct number or rekey", () => {
-    const plan = planSiriusIdOwnership(snapshot({
-      claims: [
-        { sourceNid: 10, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null },
-        { sourceNid: 11, rawSiriusId: "101", siriusId: 101, sourceIdProblem: null },
-      ],
-      workers: [{
-        id: "multiply-mapped", siriusId: 100, data: null,
-        workerMappings: [
-          { sourceNid: 10, stub: false, loader: "contacts-workers" },
-          { sourceNid: 11, stub: false, loader: "contacts-workers" },
-        ],
-        shellMappings: [],
-      }],
-    }));
-    expect(plan.hardBlockers).toBe(2);
-    expect(plan.decisions.map((decision) => decision.action)).toEqual([
-      "blocked_mapping_ambiguous", "blocked_mapping_ambiguous",
-    ]);
+  it("retains nullable UUID-only shells in the snapshot without treating NULL as ID zero", () => {
+    const plan = planSiriusIdOwnership(snapshot({ workers: [shell("null-shell", null)] }));
     expect(plan.rekeys).toEqual([]);
+    expect(plan.decisions).toEqual([]);
   });
 
-  it("displaces only a proven generated shell and reserves every staged source ID", () => {
+  it("requires explicit retirement review before clearing a proven shell for an S1 claim", () => {
     const state = snapshot({
-      claims: [
-        { sourceNid: 10, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null },
-        { sourceNid: 11, rawSiriusId: "101", siriusId: 101, sourceIdProblem: null },
-      ],
-      workers: [{
-        id: "shell", siriusId: 100, data: { migrationShell: true },
-        workerMappings: [],
-        shellMappings: [{ sourceNid: 99, stub: false, loader: "relationships" }],
-      }],
+      claims: [{ sourceNid: 10, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null }],
+      workers: [shell("shell", 100)],
     });
-    const plan = planSiriusIdOwnership(state);
-    expect(plan.hardBlockers).toBe(0);
-    expect(plan.decisions[0]).toMatchObject({ action: "displace_generated", currentOwnerWorkerId: "shell" });
-    expect(plan.rekeys).toEqual([{
-      workerId: "shell", fromSiriusId: 100, toSiriusId: 102,
-      reason: "displace_generated", sourceNid: 10,
+    const diagnostic = planSiriusIdOwnership(state);
+    expect(diagnostic.decisions[0]).toMatchObject({ action: "blocked_shell_retirement_not_selected" });
+    expect(diagnostic.hardBlockers).toBe(1);
+
+    const reviewed = planSiriusIdOwnership(state, undefined, undefined, {
+      retireShells: true,
+      shellWorkerIds: new Set(["shell"]),
+    });
+    expect(reviewed.hardBlockers).toBe(0);
+    expect(reviewed.rekeys).toEqual([{
+      workerId: "shell", fromSiriusId: 100, toSiriusId: null, reason: "retire_shell", sourceNid: 10,
     }]);
-    expect(projectSiriusIdOwnershipEvidence(state, plan)[0]).toMatchObject({
-      claimant: null,
-      owner: {
-        workerId: "shell",
-        migrationShell: true,
-        generatedAllocation: true,
-        shellMappings: [{ sourceNid: 99, loader: "relationships" }],
-        currentSourceEntitlements: [],
-      },
-    });
   });
 
-  it("refuses to displace an unproven or native owner", () => {
-    const plan = planSiriusIdOwnership(snapshot({
-      claims: [{ sourceNid: 10, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null }],
-      workers: [{ id: "native", siriusId: 100, data: { migrationShell: true }, workerMappings: [], shellMappings: [] }],
-    }));
-    expect(plan.decisions[0]).toMatchObject({ action: "blocked_owner_native", currentOwnerWorkerId: "native" });
-    expect(plan.rekeys).toEqual([]);
-  });
-
-  it("refuses a mapped-owner swap without explicit review and makes the approval hash order-independent", () => {
-    const state = snapshot({
-      claims: [
-        { sourceNid: 10, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null },
-        { sourceNid: 11, rawSiriusId: "101", siriusId: 101, sourceIdProblem: null },
-      ],
-      workers: [
-        { id: "a", siriusId: 101, data: null, workerMappings: [{ sourceNid: 10, stub: false, loader: "contacts-workers" }], shellMappings: [] },
-        { id: "b", siriusId: 100, data: null, workerMappings: [{ sourceNid: 11, stub: false, loader: "contacts-workers" }], shellMappings: [] },
-      ],
-    });
-    const first = planSiriusIdOwnership(state);
-    const second = planSiriusIdOwnership(snapshot({ ...state, workers: [...state.workers].reverse() }));
-    expect(first.decisions.map((decision) => decision.action)).toEqual([
-      "blocked_owner_entitlement_unknown", "blocked_owner_entitlement_unknown",
-    ]);
-    expect(first.rekeys).toEqual([]);
-    expect(siriusIdPlanHash(first)).toBe(siriusIdPlanHash(second));
-  });
-
-  it("blocks missing, non-numeric, and out-of-range source IDs without generating replacements", () => {
-    const plan = planSiriusIdOwnership(snapshot({
-      claims: [
-        { sourceNid: 10, rawSiriusId: null, siriusId: null, sourceIdProblem: "missing" },
-        { sourceNid: 11, rawSiriusId: "bad", siriusId: null, sourceIdProblem: "non_numeric" },
-        { sourceNid: 12, rawSiriusId: "2147483648", siriusId: null, sourceIdProblem: "out_of_range" },
-      ],
-    }));
-    expect(plan.hardBlockers).toBe(3);
-    expect(plan.decisions.map((decision) => decision.action)).toEqual([
-      "source_id_missing", "source_id_non_numeric", "source_id_out_of_range",
-    ]);
-    expect(plan.rekeys).toEqual([]);
-  });
-
-  it("projects mapped workers' current staged entitlement without exposing worker data", () => {
-    const state = snapshot({
-      claims: [{ sourceNid: 10, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null }],
-      workers: [{
-        id: "mapped", siriusId: 100,
-        data: { migrationSiriusIdAllocation: { kind: "authoritative" }, private: "not projected" },
-        workerMappings: [{ sourceNid: 10, stub: false, loader: "contacts-workers" }],
-        shellMappings: [],
-      }],
-    });
-    const evidence = projectSiriusIdOwnershipEvidence(state, planSiriusIdOwnership(state));
-    expect(evidence[0]?.claimant).toEqual({
-      workerId: "mapped",
-      siriusId: 100,
-      workerMappings: [{ sourceNid: 10, stub: false, loader: "contacts-workers" }],
+  it("allows all-shell review to retire a historic shell without treating ordinary workers as candidates", () => {
+    const ordinaryWorker = {
+      id: "ordinary-worker",
+      siriusId: 666_854,
+      contactId: "ordinary-contact",
+      data: null,
+      workerMappings: [{ sourceNid: 10, stub: false, loader: "t3t1-contacts-workers" }],
       shellMappings: [],
-      migrationShell: false,
-      generatedAllocation: false,
-      currentSourceEntitlements: [{ sourceNid: 10, siriusId: 100, sourceIdProblem: null }],
+    };
+    const state = snapshot({ workers: [ordinaryWorker, shell("historic-shell", 1_009_147)] });
+    const plan = planSiriusIdOwnership(state, undefined, undefined, { retireShells: true, allShells: true });
+    expect(plan.scope).toMatchObject({ retireShells: true, allShells: true, shellWorkerIds: null });
+    expect(plan.decisions).toMatchObject([{ action: "retire_shell", currentOwnerWorkerId: "historic-shell" }]);
+    expect(plan.hardBlockers).toBe(0);
+    expect(plan.rekeys).toEqual([{
+      workerId: "historic-shell", fromSiriusId: 1_009_147, toSiriusId: null, reason: "retire_shell", sourceNid: null,
+    }]);
+  });
+
+  it("refuses all malformed, ambiguous, mapped, and authoritative shell-like provenance", () => {
+    const noMarker = shell("no-marker", 101, null);
+    const multipleShellMaps = { ...shell("many-shell-maps", 102), shellMappings: [
+      { sourceNid: 92, stub: false, loader: "relationships" },
+      { sourceNid: 93, stub: false, loader: "relationships" },
+    ] };
+    const workerMapped = {
+      ...shell("worker-mapped", 103),
+      workerMappings: [{ sourceNid: 11, stub: false, loader: "t3t1-contacts-workers" }],
+    };
+    const authoritative = shell("authoritative", 104, {
+      migrationShell: true,
+      migrationSiriusIdAllocation: { kind: "authoritative" },
     });
+    const malformedAllocation = shell("malformed-allocation", 105, {
+      migrationSiriusIdAllocation: { kind: 17 },
+    });
+    const plan = planSiriusIdOwnership(snapshot({
+      workers: [noMarker, multipleShellMaps, workerMapped, authoritative, malformedAllocation],
+    }), undefined, undefined, { retireShells: true, allShells: true });
+    expect(plan.rekeys).toEqual([]);
+    expect(plan.decisions.map((decision) => decision.action)).toEqual([
+      "blocked_shell_authoritative_entitlement",
+      "blocked_shell_provenance_missing",
+      "blocked_shell_provenance_ambiguous",
+      "blocked_shell_provenance_missing",
+      "blocked_shell_provenance_ambiguous",
+    ]);
+    expect(plan.hardBlockers).toBe(5);
   });
 
-  it("uses sequence state and all staged reservations when selecting a shell ID", () => {
-    expect(nextRelationshipShellSiriusId([12, 20], [25, 27], 24)).toBe(28);
-    // A native insert can consume nextval before waiting on the table lock.
-    expect(nextRelationshipShellSiriusId([12], [20], 26)).toBe(27);
-    expect(() => nextRelationshipShellSiriusId([], [], 2_147_483_647)).toThrow(/No signed-serial/);
+  it("does not clear a generated marker without independent shell proof", () => {
+    const plan = planSiriusIdOwnership(snapshot({
+      workers: [{
+        id: "generated-only", siriusId: 100, data: { migrationSiriusIdAllocation: { kind: "generated" } },
+        workerMappings: [], shellMappings: [],
+      }],
+    }), undefined, undefined, { retireShells: true, allShells: true });
+    expect(plan.decisions[0]).toMatchObject({ action: "blocked_shell_provenance_missing" });
+    expect(plan.rekeys).toEqual([]);
   });
 
-  it("keeps explicit source-NID scope in the approval hash", () => {
+  it("requires marker/contact/map agreement and rejects noncanonical or stale shell provenance", () => {
+    const markerMismatch = shell("marker-mismatch", 100, { s1ContactNid: 92 });
+    const stubMap = {
+      ...shell("stub-map", 101),
+      shellMappings: [{ sourceNid: 91, stub: true, loader: "t15-relationships" }],
+    };
+    const wrongContact = { ...shell("wrong-contact", 102), contactId: "different-contact" };
+    const plan = planSiriusIdOwnership(snapshot({
+      workers: [markerMismatch, stubMap, wrongContact],
+    }), undefined, undefined, { retireShells: true, allShells: true });
+    expect(plan.rekeys).toEqual([]);
+    expect(plan.decisions.map((decision) => decision.action))
+      .toEqual(["blocked_shell_provenance_missing", "blocked_shell_provenance_missing", "blocked_shell_provenance_missing"]);
+  });
+
+  it("blocks shell retirement when its marked S1 contact now has an authoritative staged worker", () => {
+    const plan = planSiriusIdOwnership(snapshot({
+      claims: [{
+        sourceNid: 10, rawSiriusId: "800", siriusId: 800, sourceIdProblem: null,
+        contactNid: 91, sourceContactProblem: null,
+      }],
+      workers: [shell("shell", 100)],
+    }), undefined, undefined, { retireShells: true, shellWorkerIds: new Set(["shell"]) });
+    expect(plan.decisions).toContainEqual(expect.objectContaining({
+      action: "blocked_shell_authoritative_entitlement",
+      currentOwnerWorkerId: "shell",
+    }));
+    expect(plan.rekeys).toEqual([]);
+  });
+
+  it("refuses direct retirement where a staged authoritative entitlement exists", () => {
+    const plan = planSiriusIdOwnership(snapshot({
+      claims: [{ sourceNid: 10, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null }],
+      workers: [shell("shell", 100)],
+    }), undefined, undefined, { retireShells: true, allShells: true });
+    expect(plan.decisions).toMatchObject([
+      { action: "retire_shell", sourceNid: 10 },
+    ]);
+    // The source-claim repair is the only approved route; the all-shell pass
+    // does not add a second unreviewed retirement decision.
+    expect(plan.rekeys).toHaveLength(1);
+  });
+
+  it("uses NULL parking for an exact, fully scoped S1 authoritative swap", () => {
     const state = snapshot({
       claims: [
         { sourceNid: 10, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null },
         { sourceNid: 11, rawSiriusId: "101", siriusId: 101, sourceIdProblem: null },
       ],
       workers: [
-        { id: "a", siriusId: 101, data: null, workerMappings: [{ sourceNid: 10, stub: false, loader: "contacts-workers" }], shellMappings: [] },
-        { id: "b", siriusId: 100, data: null, workerMappings: [{ sourceNid: 11, stub: false, loader: "contacts-workers" }], shellMappings: [] },
+        {
+          id: "a", siriusId: 101, data: null,
+          workerMappings: [{ sourceNid: 10, stub: false, loader: "t3t1-contacts-workers" }], shellMappings: [],
+        },
+        {
+          id: "b", siriusId: 100, data: null,
+          workerMappings: [{ sourceNid: 11, stub: false, loader: "t3t1-contacts-workers" }], shellMappings: [],
+        },
       ],
     });
-    const nidScoped = planSiriusIdOwnership(state, undefined, new Set([10, 11]));
-    const idScoped = planSiriusIdOwnership(state, new Set([100, 101]));
-    const partialNidScope = planSiriusIdOwnership(state, undefined, new Set([10]));
-    expect(nidScoped.hardBlockers).toBe(2);
-    expect(partialNidScope.decisions[0]).toMatchObject({ action: "blocked_owner_entitlement_unknown" });
-    expect(siriusIdPlanHash(nidScoped)).not.toBe(siriusIdPlanHash(idScoped));
-    expect(siriusIdPlanHash(nidScoped)).not.toBe(siriusIdPlanHash(partialNidScope));
+    const plan = planSiriusIdOwnership(state, undefined, new Set([10, 11]));
+    expect(plan.hardBlockers).toBe(0);
+    expect(plan.rekeys).toEqual([
+      { workerId: "a", fromSiriusId: 101, toSiriusId: 100, reason: "mapped_rekey", sourceNid: 10 },
+      { workerId: "b", fromSiriusId: 100, toSiriusId: 101, reason: "mapped_rekey", sourceNid: 11 },
+    ]);
   });
 
-  it("never displaces a generated-marked owner that has multiple worker mappings", () => {
+  it("does not rekey an exact owner outside the approved source scope", () => {
+    const plan = planSiriusIdOwnership(snapshot({
+      claims: [
+        { sourceNid: 10, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null },
+        { sourceNid: 11, rawSiriusId: "101", siriusId: 101, sourceIdProblem: null },
+      ],
+      workers: [
+        { id: "a", siriusId: 101, data: null, workerMappings: [{ sourceNid: 10, stub: false, loader: "t3t1-contacts-workers" }], shellMappings: [] },
+        { id: "b", siriusId: 100, data: null, workerMappings: [{ sourceNid: 11, stub: false, loader: "t3t1-contacts-workers" }], shellMappings: [] },
+      ],
+    }), undefined, new Set([10]));
+    expect(plan.decisions[0]).toMatchObject({ action: "blocked_owner_outside_scope" });
+    expect(plan.rekeys).toEqual([]);
+  });
+
+  it("refuses a stub or noncanonical worker mapping as exact rekey proof", () => {
     const plan = planSiriusIdOwnership(snapshot({
       claims: [{ sourceNid: 10, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null }],
       workers: [{
-        id: "claimant", siriusId: 90, data: null,
-        workerMappings: [{ sourceNid: 10, stub: false, loader: "contacts-workers" }],
+        id: "stub-worker", siriusId: 90, data: null,
+        workerMappings: [{ sourceNid: 10, stub: true, loader: "t3t1-contacts-workers" }],
         shellMappings: [],
-      }, {
-        id: "generated-but-mapped", siriusId: 100,
-        data: { migrationSiriusIdAllocation: { kind: "generated" }, migrationShell: true },
-        workerMappings: [
-          { sourceNid: 99, stub: false, loader: "contacts-workers" },
-          { sourceNid: 98, stub: false, loader: "contacts-workers" },
+      }],
+    }));
+    expect(plan.decisions[0]).toMatchObject({ action: "blocked_mapping_ambiguous" });
+    expect(plan.rekeys).toEqual([]);
+  });
+
+  it("includes explicit shell selection and the v2 version in the approval hash", () => {
+    const state = snapshot({ workers: [shell("shell-b", 102), shell("shell-a", 101)] });
+    const all = planSiriusIdOwnership(state, undefined, undefined, { retireShells: true, allShells: true });
+    const one = planSiriusIdOwnership(state, undefined, undefined, {
+      retireShells: true, shellWorkerIds: new Set(["shell-a"]),
+    });
+    expect(all.planVersion).toBe(SIRIUS_ID_OWNERSHIP_PLAN_VERSION);
+    expect(siriusIdPlanHash(all)).not.toBe(siriusIdPlanHash(one));
+    expect(siriusIdPlanHash(all)).toBe(siriusIdPlanHash(planSiriusIdOwnership(
+      snapshot({ workers: [...state.workers].reverse() }),
+      undefined,
+      undefined,
+      { retireShells: true, allShells: true },
+    )));
+  });
+
+  it("changes the approval hash when a reviewed shell UUID set or source state becomes stale", () => {
+    const current = snapshot({ workers: [shell("shell-a", 101)] });
+    const reviewed = planSiriusIdOwnership(current, undefined, undefined, {
+      retireShells: true, allShells: true,
+    });
+    const shellSetChanged = planSiriusIdOwnership(snapshot({
+      workers: [shell("shell-a", 101), shell("shell-b", 102)],
+    }), undefined, undefined, { retireShells: true, allShells: true });
+    const sidChanged = planSiriusIdOwnership(snapshot({ workers: [shell("shell-a", 102)] }),
+      undefined, undefined, { retireShells: true, allShells: true });
+    expect(siriusIdPlanHash(shellSetChanged)).not.toBe(siriusIdPlanHash(reviewed));
+    expect(siriusIdPlanHash(sidChanged)).not.toBe(siriusIdPlanHash(reviewed));
+  });
+
+  it("blocks the whole exact shell scope when any requested UUID is missing or already retired", () => {
+    const plan = planSiriusIdOwnership(snapshot({
+      workers: [shell("valid-shell", 101), shell("already-retired", null)],
+    }), undefined, undefined, {
+      retireShells: true,
+      shellWorkerIds: new Set(["valid-shell", "already-retired", "missing-shell"]),
+    });
+
+    expect(plan.rekeys).toEqual([{
+      workerId: "valid-shell", fromSiriusId: 101, toSiriusId: null, reason: "retire_shell", sourceNid: null,
+    }]);
+    expect(plan.decisions.filter((decision) => decision.action === "blocked_shell_selection_missing"))
+      .toMatchObject([
+        { currentOwnerWorkerId: "already-retired" },
+        { currentOwnerWorkerId: "missing-shell" },
+      ]);
+    expect(plan.hardBlockers).toBe(2);
+  });
+
+  it("binds a retirement hash to reviewed contact and mapping provenance even when its action is unchanged", () => {
+    const original = snapshot({ workers: [shell("shell-a", 101)] });
+    const retargeted = snapshot({
+      workers: [{
+        ...shell("shell-a", 101, { s1ContactNid: 92 }),
+        contactId: "contact-92",
+        shellMappings: [{ sourceNid: 92, stub: false, loader: "t15-relationships" }],
+      }],
+      contactMappings: [{ sourceNid: 92, s2Id: "contact-92", stub: false, loader: "t3t1-contacts-workers" }],
+    });
+    const originalPlan = planSiriusIdOwnership(original, undefined, undefined, {
+      retireShells: true, shellWorkerIds: new Set(["shell-a"]),
+    });
+    const retargetedPlan = planSiriusIdOwnership(retargeted, undefined, undefined, {
+      retireShells: true, shellWorkerIds: new Set(["shell-a"]),
+    });
+    expect(originalPlan.decisions.map((decision) => decision.action)).toEqual(["retire_shell"]);
+    expect(retargetedPlan.decisions.map((decision) => decision.action)).toEqual(["retire_shell"]);
+    expect(originalPlan.rekeys).toEqual(retargetedPlan.rekeys);
+    expect(originalPlan.evidenceDigest).not.toBe(retargetedPlan.evidenceDigest);
+    expect(siriusIdPlanHash(originalPlan)).not.toBe(siriusIdPlanHash(retargetedPlan));
+  });
+
+  it("rejects any per-UUID FK retention drift before a repair transaction can commit", () => {
+    const before: SiriusIdReferenceRetention = {
+      workerRows: [{ workerId: "shell-a", rows: 1 }, { workerId: "shell-b", rows: 1 }],
+      foreignKeyReferences: [{
+        constraintName: "relations_worker_fk",
+        table: "public.worker_relations",
+        column: "worker_2",
+        byWorker: [
+          { workerId: "shell-a", rows: 1, rowIdentityHash: "a" },
+          { workerId: "shell-b", rows: 1, rowIdentityHash: "b" },
         ],
-        shellMappings: [{ sourceNid: 77, stub: false, loader: "relationships" }],
       }],
-    }));
-    expect(plan.decisions[0]).toMatchObject({
-      action: "blocked_owner_mapping_ambiguous",
-      claimantWorkerId: "claimant",
-      currentOwnerWorkerId: "generated-but-mapped",
-    });
-    expect(plan.rekeys).toEqual([]);
+    };
+    expect(() => assertSiriusIdReferenceRetention(before, structuredClone(before))).not.toThrow();
+    const moved = structuredClone(before);
+    moved.foreignKeyReferences[0].byWorker = [
+      { workerId: "shell-a", rows: 0, rowIdentityHash: "" },
+      { workerId: "shell-b", rows: 2, rowIdentityHash: "a,b" },
+    ];
+    expect(() => assertSiriusIdReferenceRetention(before, moved))
+      .toThrow(/foreign-key reference retention changed/);
   });
 
-  it("does not displace a generated-marked owner with even one worker mapping", () => {
-    const plan = planSiriusIdOwnership(snapshot({
-      claims: [{ sourceNid: 10, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null }],
-      workers: [{
-        id: "generated-but-mapped", siriusId: 100,
-        data: { migrationSiriusIdAllocation: { kind: "generated" } },
-        workerMappings: [{ sourceNid: 99, stub: false, loader: "contacts-workers" }],
-        shellMappings: [],
-      }],
-    }));
-    expect(plan.decisions[0]).toMatchObject({
-      action: "blocked_owner_entitlement_unknown",
-      currentOwnerWorkerId: "generated-but-mapped",
+  it("projects proof state without exposing worker data", () => {
+    const state = snapshot({ workers: [shell("shell", 100, {
+      migrationShell: true, private: "not projected",
+    })] });
+    const plan = planSiriusIdOwnership(state, undefined, undefined, {
+      retireShells: true, shellWorkerIds: new Set(["shell"]),
     });
-    expect(plan.rekeys).toEqual([]);
+    expect(projectSiriusIdOwnershipEvidence(state, plan)[0]?.owner).toMatchObject({
+      workerId: "shell",
+      migrationShell: true,
+      shellProof: "proven",
+      shellMappings: [{ sourceNid: 91, loader: "t15-relationships" }],
+    });
+    expect(JSON.stringify(projectSiriusIdOwnershipEvidence(state, plan))).not.toContain("not projected");
   });
 });

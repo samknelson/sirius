@@ -629,6 +629,63 @@ them for a specific run only after the verification the row below requires.
 
 ### 5.1 Sirius ID ownership diagnostic and approved repair
 
+**Production authority rule:** While S1 remains writable, it is the sole allocator
+of Sirius IDs. S2 may copy an exact authoritative S1 worker ID but must not mint a
+replacement for a relationship shell. Relationships use worker UUIDs; shells
+must have `sirius_id = NULL`. A staged maximum is NOT the live S1 maximum, and
+neither maximum reserves a range against future S1 writes. Never run the former
+numeric `displace_generated` repair against a writable S1 source.
+
+The production incident demonstrated this limitation: a reviewed repair freed
+17 source numbers but allocated 17 replacements that live S1 already owned.
+The clean post-repair staging report proved only staging consistency. It did
+not prove live-source ownership or successful import of the freed claims.
+
+Deploy the nullable-SID schema and allocation prevention before retiring old
+shell numbers. Schema migration must not clear existing values automatically.
+Keep native allocation authority external/S1; do not enable S2 allocation
+until the final source write freeze and cutover are approved.
+
+The admin control is **Configuration → System → Worker Sirius ID Authority**
+(`/config/worker-sirius-id-authority`), backed by
+`worker_sirius_id_authority`. Missing/invalid values default safely to
+`external`; only explicit `s2` enables the policy-aware database default.
+Shell inserts always pass NULL, even under `s2`. Native omitted-SID inserts
+under `external` also receive NULL rather than inventing a source claim.
+
+After deploying the corrected application AND migration task image, start with
+this **read-only** inventory of all historical shell SID candidates:
+
+```bash
+npx tsx scripts/tools/s1-sirius-id-ownership.ts --retire-shells --all-shells
+```
+
+This selects every non-NULL worker carrying shell-like provenance; ordinary
+authoritative/native workers are not shell candidates. Do not assume it
+selects only the originally reported 17 rows. Review every candidate; if
+repairing a smaller set, rerun the diagnostic with
+`--retire-shells --shell-worker-ids <comma-separated-worker-UUIDs>` instead.
+An exact UUID scope fails closed if any requested worker is missing or already
+has a NULL SID; rerun the diagnostic rather than accepting a partial repair.
+That exact scoped diagnostic produces its own new approval hash. All reported
+retirements must have `toSiriusId: null`; no invented positive or negative
+replacement numbers are acceptable. A shell requires matching persisted
+contact provenance, canonical contact/shell mappings, no authoritative worker
+mapping, and no staged worker entitlement for that source contact.
+
+With writers paused and evidence reviewed, repeat the **exact diagnostic
+arguments** and append `--apply --approve <new-reviewed-hash>`. The apply report
+contains `applied.applied`, `applied.retiredShells`,
+`applied.authoritativeRekeys`, `applied.planHash`, and
+`applied.referenceRetention.verified`. Check the per-worker reference counts
+and row-identity hashes, not just the process exit code. Rerun the same scoped
+diagnostic afterward and require zero pending changes and blockers.
+
+This is not a live-source parity report. Clearing shell numbers neither imports
+missing S1 workers nor resolves contact rejects. Continue staging/import
+reconciliation separately under normal source-authority rules; a dry-run
+failure remains a failure even if its ownership subsection is clean.
+
 The contacts/workers loader performs the **read-only** ownership preflight
 before its first write. It does not repair an allocation conflict itself. The
 dashboard presents the same plan, but is also read-only. In particular, do not
@@ -660,7 +717,9 @@ the staged entitlement when present, an intended action for each claim, and an
 | Result category | Required action |
 |---|---|
 | `correct` / `new_claim_reserved` | No ownership write is needed. A new claim remains reserved so a relationship shell cannot take it. |
-| `mapped_rekey` / `displace_generated` | Repairable only after review. The evidence must identify an exact mapped worker or a proven migration-generated shell/allocation; an equal number alone is never identity evidence. |
+| `mapped_rekey` | Repairable only after review of the exact authoritative S1 worker mapping. An equal number alone is never identity evidence. |
+| `retire_shell` | Explicitly selected, proven relationship shell has its numeric SID cleared to NULL. Its worker UUID, contact, and relationships are retained. No replacement number is allocated. |
+| `blocked_shell_*` | Stop. Missing, ambiguous, or authoritative-worker provenance must not be bypassed. |
 | `source_id_missing`, `source_id_non_numeric`, `source_id_out_of_range` | Stop. Correct the authoritative S1 field and re-stage. Source workers never receive a generated replacement ID. |
 | `source_duplicate` | Stop. This is an S1 duplicate claim; never merge workers. The fund decides the source correction, which may include renumbering one actual duplicate. |
 | `blocked_mapping_*`, `blocked_owner_*` | Stop for mapping/native-owner review. Do not move an unproven or staff-created S2 worker and do not infer identity from a shared number. |
@@ -675,21 +734,23 @@ npx tsx scripts/tools/s1-sirius-id-ownership.ts \
 ```
 
 `--apply` is intentionally unavailable through HTTP and cannot run without
-both flags. It locks the worker table, rereads the staged and target evidence,
-recomputes the scoped plan and hash, and commits all required temporary parking
-and final rekeys as one transaction. A changed hash, a new blocker, or a stale
-owner causes a rollback with no partial reassignment. Worker UUIDs and every
-foreign-key reference are retained; only `workers.sirius_id` changes. The
-sequence is advanced without lowering it.
+both flags. Use exactly the scope flags from the diagnostic. The updated repair
+locks and rereads evidence, checks the reviewed hash, and performs SID changes
+in one transaction. It must never allocate temporary or replacement numeric
+IDs: any parking uses NULL. Old numeric-displacement approval hashes are invalid.
+UUID/reference preservation must be verified by the apply report, not inferred
+from a dry run that may skip verification.
 
 After a successful apply (or after an interrupted/failed attempt), rerun the
 same read-only diagnostic while writers remain paused. Do **not** reuse an old
 approval hash: a completed repair produces a new, clean plan, and a stale
 approval is deliberately rejected. Only when `hardBlockers: 0` and
 `pendingRekeys: 0` may the ordinary contacts/workers loader run. Then resume
-writers after its normal verification. Relationship shells are the sole
-migration-generated IDs; their allocator observes all staged reservations, so
-later S1 arrivals cannot be silently displaced.
+writers after its normal verification and explicit operator approval. A clean
+ownership plan does not mean the contacts/workers load succeeded: newly freed
+claims may remain unimported because of contact-resolution rejects. Do not
+allow-list rejects merely to make this repair appear successful. Relationship
+shells remain UUID-only even after S2 native allocation is enabled at cutover.
 
 **Forbidden in production (synthetic-only, now unnecessary even in dev):**
 `--stub-missing`, `--allow-unresolved-industry`, `--fallback-industry`,

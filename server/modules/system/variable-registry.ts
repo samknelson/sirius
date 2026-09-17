@@ -21,6 +21,10 @@ import {
   TIMEZONE_POLICY_VARIABLE_NAME,
   timeZonePolicySchema,
 } from "@shared/utils/timezone";
+import {
+  WORKER_SIRIUS_ID_AUTHORITY_VARIABLE,
+  workerSiriusIdAuthoritySchema,
+} from "@shared/worker-sirius-id-authority";
 
 /**
  * Unified per-variable registry.
@@ -176,6 +180,13 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
   // Any authenticated user may read it; admins write it. The /api/menu
   // resolver falls back to "default" for unset/unknown values.
   site_menu_plugin: { readTier: "authenticated", schema: z.string() },
+
+  // Worker SID allocation is externally authoritative while S1 is in use.
+  // S2 allocation is an explicit, admin-only cutover decision; the database
+  // default independently enforces the same value for direct SQL inserts.
+  [WORKER_SIRIUS_ID_AUTHORITY_VARIABLE]: {
+    schema: workerSiriusIdAuthoritySchema,
+  },
 };
 
 /**

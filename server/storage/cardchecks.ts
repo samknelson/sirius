@@ -66,7 +66,7 @@ export interface CardcheckStatusSummary {
 export interface SignedCardcheckWithDetails {
   cardcheckId: string;
   workerId: string;
-  workerSiriusId: number;
+  workerSiriusId: number | null;
   workerName: string;
   bargainingUnitId: string | null;
   bargainingUnitName: string | null;
@@ -87,7 +87,7 @@ export interface CardcheckReportFilters {
 export interface CardcheckReportItem {
   cardcheckId: string;
   workerId: string;
-  workerSiriusId: number;
+  workerSiriusId: number | null;
   workerName: string;
   bargainingUnitId: string | null;
   bargainingUnitName: string | null;

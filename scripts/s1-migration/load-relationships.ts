@@ -10,12 +10,11 @@
  *   - worker_2 = `field_sirius_contact_alt` contact → its worker if one
  *     exists, else CREATE A SHELL WORKER for that contact (S2 relations join
  *     workers, not contacts — same approach S2's DP/COBRA flows use).
- *     Shells: no S1 worker nid → an ownership-aware generated sirius_id above
- *     all authoritative staged reservations, with persisted allocation
- *     provenance; data.migrationShell=true; id_map entity "shell-worker"
- *     keyed by the CONTACT nid (idempotency). Shells are created ONLY after
- *     every other resolution/validation for the row has passed, so a reject
- *     can't leave an orphan shell behind.
+ *     Shells: no S1 worker nid → UUID identity with NULL sirius_id;
+ *     data.migrationShell=true; id_map entity "shell-worker" keyed by the
+ *     CONTACT nid (idempotency). Shells are created ONLY after every other
+ *     resolution/validation for the row has passed, so a reject can't leave
+ *     an orphan shell behind.
  *   - relation_type: reltype tid → term id_map (T4) → fallback
  *     options_worker_relation_type.sirius_id.
  *   - start/end: field_sirius_date_start/_date_end date-cast. The S2 relations
@@ -385,10 +384,7 @@ async function main() {
           contactId: needShellForContactId!,
           ssn: null,
           data: { migrationShell: true, s1ContactNid: altNid },
-          allocation: {
-            kind: "relationship-shell",
-            reservedSiriusIds: siriusOwnershipPlan.reservations,
-          },
+          kind: "relationship-shell",
         }),
       );
       const winner = await putMapping("shell-worker", altNid, created.id, { stub: false, loader: LOADER });

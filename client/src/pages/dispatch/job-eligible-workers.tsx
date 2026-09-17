@@ -324,7 +324,7 @@ function EligibleWorkersContent() {
                     {offset + index + 1}
                   </TableCell>
                   <TableCell data-testid={`text-worker-sirius-id-${worker.id}`}>
-                    {worker.siriusId}
+                    {worker.siriusId ?? "No Sirius ID"}
                   </TableCell>
                   <TableCell className="font-medium" data-testid={`text-worker-name-${worker.id}`}>
                     {worker.displayName || "Unnamed Worker"}

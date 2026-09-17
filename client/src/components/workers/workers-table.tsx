@@ -1420,7 +1420,7 @@ export function WorkersTable({
                           </span>
                         </Link>
                         <p className="text-xs text-muted-foreground" data-testid={`text-job-title-${worker.id}`}>
-                          {worker.siriusId}{worker.denormJobTitle ? ` · ${worker.denormJobTitle}` : ""}
+                           {worker.siriusId ?? "No Sirius ID"}{worker.denormJobTitle ? ` · ${worker.denormJobTitle}` : ""}
                         </p>
                         {/* One small labeled row per list-enabled worker ID
                             (replaces the former per-ID-type columns; mirrors BTU). */}

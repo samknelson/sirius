@@ -123,7 +123,7 @@ function formatOutDuration(startDate: string): string {
 
 function workerName(w: ActiveWorkerTosWorker): string {
   if (w.family || w.given) return [w.family, w.given].filter(Boolean).join(", ");
-  return w.displayName || `Worker #${w.siriusId ?? "?"}`;
+  return w.displayName || "Worker (No Sirius ID)";
 }
 
 function supervisorName(s: AssignmentForWorker["supervisor"]): string {

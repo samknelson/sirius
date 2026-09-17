@@ -165,7 +165,7 @@ function OffersContent({ jobId }: { jobId: string }) {
                   {data.workers.map((row) => (
                     <TableRow key={row.id} data-testid={`row-offer-${row.id}`}>
                       <TableCell data-testid={`text-offer-name-${row.id}`}>{row.name}</TableCell>
-                      <TableCell>{row.siriusId}</TableCell>
+                      <TableCell>{row.siriusId ?? "No Sirius ID"}</TableCell>
                       <TableCell>
                         {row.interview ? (
                           <Badge

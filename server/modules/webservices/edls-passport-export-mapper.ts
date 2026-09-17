@@ -84,7 +84,7 @@ export interface PassportExportAssignmentExtra {
 export interface PassportExportAssignment {
   worker_name: string;
   worker_ms: string | null;
-  worker_id: number | null;
+  worker_id: number;
   worker_empid: string | null;
   assignment_extra: PassportExportAssignmentExtra;
 }
@@ -185,6 +185,16 @@ function formatHourMinute(time: string | null): string | null {
 }
 
 function mapAssignment(assignment: EdlsPassportAssignment): PassportExportAssignment {
+  if (
+    assignment.workerSiriusId == null ||
+    !Number.isSafeInteger(assignment.workerSiriusId) ||
+    assignment.workerSiriusId < 0
+  ) {
+    const name = [assignment.workerFamily, assignment.workerGiven].filter(Boolean).join(", ");
+    throw new Error(
+      `Passport export cannot be generated: worker "${name || assignment.id}" (${assignment.id}) has no Sirius ID.`,
+    );
+  }
   return {
     worker_name: [assignment.workerFamily ?? "", assignment.workerGiven ?? ""].join(", "),
     worker_ms: assignment.memberStatusCode,

@@ -11,6 +11,7 @@ import {
   buildMemberUnits,
   displayName,
   isQmscoRelation,
+  requireWorkerSiriusId,
   type EdiPerson,
   type EdiDependent,
   type EdiPostal,
@@ -163,7 +164,7 @@ registerTrustProviderEdiPlugin({
     for (const unit of units) {
       const { wmb, subscriber } = unit;
       const shared = {
-        subscriberId: String(subscriber.workerSiriusId ?? ""),
+        subscriberId: requireWorkerSiriusId(subscriber, "Hinge"),
         subscriberName: displayName(subscriber),
         coverageStart: ymdCompact(unit.coverageStartYmd),
         // Monthly benefit records have no end date; coverage is open (blank).

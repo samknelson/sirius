@@ -325,7 +325,7 @@ export default function CardcheckViewPage() {
                     {contact.displayName}
                   </p>
                   <p className="text-sm text-muted-foreground font-mono">
-                    [{worker.siriusId}]
+                     [{worker.siriusId ?? "No Sirius ID"}]
                   </p>
                   {hasComponent("bargainingunits") && (
                     <div className="mt-2">

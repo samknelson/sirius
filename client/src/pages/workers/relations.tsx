@@ -68,14 +68,14 @@ interface WorkerRelationType {
 }
 
 interface WorkerSearchResult {
-  workers: Array<{ id: string; siriusId: number; displayName: string }>;
+  workers: Array<{ id: string; siriusId: number | null; displayName: string }>;
   total: number;
 }
 
 function formatWorkerName(w: OtherWorker | null): string {
   if (!w) return "Unknown worker";
   const built = [w.given, w.family].filter(Boolean).join(" ").trim();
-  return built || w.displayName || `Worker #${w.siriusId ?? ""}`.trim();
+  return built || w.displayName || "Worker (No Sirius ID)";
 }
 
 function todayYmd(): string {
@@ -112,7 +112,7 @@ function RelationsContent() {
   const currentWorkerLabel =
     [contact?.given, contact?.family].filter(Boolean).join(" ").trim() ||
     contact?.displayName ||
-    (worker.siriusId ? `Worker #${worker.siriusId}` : worker.id);
+    (worker.siriusId != null ? `Worker #${worker.siriusId}` : "Worker (No Sirius ID)");
 
   const { data: relations = [], isLoading } = useQuery<WorkerRelationRow[]>({
     queryKey: ["/api/workers", worker.id, "relations"],
@@ -513,13 +513,17 @@ function RelationsContent() {
                                 type="button"
                                 onClick={() => {
                                   setFormOtherWorkerId(w.id);
-                                  setFormOtherWorkerLabel(w.displayName || `Worker #${w.siriusId}`);
+                                  setFormOtherWorkerLabel(w.displayName || "Worker (No Sirius ID)");
                                 }}
                                 className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
                                 data-testid={`option-worker-${w.id}`}
                               >
-                                {w.displayName || `Worker #${w.siriusId}`}
-                                {w.siriusId ? <span className="text-muted-foreground"> · #{w.siriusId}</span> : null}
+                                {w.displayName || "Worker"}
+                                {w.siriusId != null ? (
+                                  <span className="text-muted-foreground"> · #{w.siriusId}</span>
+                                ) : (
+                                  <span className="text-muted-foreground"> · No Sirius ID</span>
+                                )}
                               </button>
                             ))}
                           {(workerSearchResults?.workers ?? []).length === 0 && (

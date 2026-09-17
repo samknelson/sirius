@@ -62,7 +62,10 @@ function WorkerDeleteContent() {
             Deleting this worker will:
           </p>
           <ul className="text-sm text-muted-foreground space-y-1 ml-4 list-disc">
-            <li>Permanently delete the worker record (Sirius ID: {worker.siriusId})</li>
+            <li>
+              Permanently delete the worker record (Sirius ID:{" "}
+              {worker.siriusId ?? "No Sirius ID"})
+            </li>
             <li>Delete the associated contact record ({contact?.displayName || 'Unknown'})</li>
             <li>Remove all employment history</li>
             <li>Remove all benefit records</li>
@@ -89,7 +92,7 @@ function WorkerDeleteContent() {
                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                 <AlertDialogDescription>
                   This will permanently delete the worker "{contact?.displayName || 'Unknown'}" 
-                  (Sirius ID: {worker.siriusId}). 
+                  (Sirius ID: {worker.siriusId ?? "No Sirius ID"}).
                   This action cannot be undone and will remove all associated records.
                 </AlertDialogDescription>
               </AlertDialogHeader>

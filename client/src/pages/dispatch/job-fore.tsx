@@ -150,7 +150,7 @@ function JobForeContent() {
                       )}
                     </TableCell>
                     <TableCell data-testid={`text-sirius-id-${fore.id}`}>
-                      {fore.worker?.siriusId ?? "—"}
+                      {fore.worker?.siriusId ?? "No Sirius ID"}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -193,7 +193,8 @@ function JobForeContent() {
                 <SelectContent>
                   {eligibleWorkers.map((w) => (
                     <SelectItem key={w.id} value={w.id} data-testid={`option-worker-${w.id}`}>
-                      {w.displayName || "Unknown Worker"}{w.siriusId != null ? ` (#${w.siriusId})` : ""}
+                      {w.displayName || "Unknown Worker"}
+                      {w.siriusId != null ? ` (#${w.siriusId})` : " (No Sirius ID)"}
                     </SelectItem>
                   ))}
                 </SelectContent>

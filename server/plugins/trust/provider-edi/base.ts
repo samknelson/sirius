@@ -323,8 +323,8 @@ export interface EdiPostal {
 export interface EdiPerson {
   ssn: string | null;
   contactId: string;
-  /** Numeric worker Sirius ID (legacy `field_sirius_id`). */
-  workerSiriusId: number;
+  /** Numeric worker Sirius ID (legacy `field_sirius_id`), when assigned. */
+  workerSiriusId: number | null;
   email: string | null;
   givenName: string | null;
   familyName: string | null;
@@ -657,6 +657,27 @@ export function displayName(p: {
   familyName: string | null;
 }): string {
   return [p.givenName, p.familyName].filter(Boolean).join(" ");
+}
+
+/**
+ * Return the worker SID required by a carrier file, or fail the report rather
+ * than serializing null/blank/"null" into an external identifier column.
+ */
+export function requireWorkerSiriusId(
+  person: Pick<EdiPerson, "workerSiriusId" | "contactId" | "givenName" | "familyName">,
+  providerName: string,
+): string {
+  if (
+    person.workerSiriusId == null ||
+    !Number.isSafeInteger(person.workerSiriusId) ||
+    person.workerSiriusId < 0
+  ) {
+    const name = displayName(person) || person.contactId;
+    throw new Error(
+      `${providerName} EDI report cannot be generated: worker "${name}" (${person.contactId}) has no Sirius ID.`,
+    );
+  }
+  return String(person.workerSiriusId);
 }
 
 /** Common postal → row fields (street/city/state/5-digit zip). */

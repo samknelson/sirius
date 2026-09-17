@@ -120,9 +120,9 @@ function getWorkerName(dispatch: DispatchWithRelations): string {
   const contact = dispatch.worker.contact;
   if (contact) {
     const name = `${contact.given || ''} ${contact.family || ''}`.trim();
-    return name || contact.displayName || `Worker #${dispatch.worker.siriusId}`;
+     return name || contact.displayName || "Worker (No Sirius ID)";
   }
-  return `Worker #${dispatch.worker.siriusId}`;
+   return "Worker (No Sirius ID)";
 }
 
 function getJobTitle(dispatch: DispatchWithRelations): string {

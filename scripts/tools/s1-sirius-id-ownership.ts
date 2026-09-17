@@ -1,20 +1,23 @@
 /**
  * Read-only Sirius-ID ownership diagnostic and explicitly approved repair.
  *
- * With no scope flags, default scope is the union of reported Sirius IDs
- * 1009069–1009085 and reported S1 worker nids 18441635–18442766. This command
- * never writes unless BOTH --apply and the exact --approve <sha256> printed by
- * an immediately preceding diagnostic are supplied. Ordinary migration
- * loaders intentionally do not call the apply API.
+ * No invocation writes unless BOTH --apply and the exact --approve hash from
+ * the same scoped diagnostic are supplied. Shell retirement is additionally
+ * opt-in: it requires --retire-shells plus either --all-shells or an exact
+ * UUID list. A retirement clears sirius_id to NULL; this tool never allocates,
+ * generates, or parks a numeric Sirius ID.
  *
  * Examples:
  *   npx tsx scripts/tools/s1-sirius-id-ownership.ts
  *   npx tsx scripts/tools/s1-sirius-id-ownership.ts --ids 1009069,1009070
- *   npx tsx scripts/tools/s1-sirius-id-ownership.ts --apply --approve <hash>
+ *   npx tsx scripts/tools/s1-sirius-id-ownership.ts --retire-shells --all-shells
+ *   npx tsx scripts/tools/s1-sirius-id-ownership.ts --retire-shells --shell-worker-ids <uuid>,<uuid>
+ *   npx tsx scripts/tools/s1-sirius-id-ownership.ts --retire-shells --all-shells --apply --approve <hash>
  */
 import { storage } from "../../server/storage/database";
 import { pool } from "../../server/storage/db";
 import {
+  SIRIUS_ID_OWNERSHIP_PLAN_VERSION,
   planSiriusIdOwnership,
   projectSiriusIdOwnershipEvidence,
   siriusIdPlanHash,
@@ -22,56 +25,94 @@ import {
 
 const REPORTED_IDS = Array.from({ length: 17 }, (_, offset) => 1_009_069 + offset);
 const REPORTED_NIDS = Array.from({ length: 1_132 }, (_, offset) => 18_441_635 + offset);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function parseIds(): number[] {
-  const index = process.argv.indexOf("--ids");
-  if (index < 0) throw new Error("internal: parseIds called without --ids");
+function parsePositiveIntegerList(flag: "--ids" | "--nids", label: string): number[] {
+  const index = process.argv.indexOf(flag);
+  if (index < 0) throw new Error(`internal: ${flag} parser called without its flag`);
   const raw = String(process.argv[index + 1] ?? "");
-  const ids = raw.split(",").map((value) => Number(value.trim()));
-  if (ids.length === 0 || ids.some((id) => !Number.isSafeInteger(id) || id < 1)) {
-    throw new Error("--ids must be a comma-separated list of positive integer Sirius IDs.");
+  const values = raw.split(",").map((value) => Number(value.trim()));
+  if (values.length === 0 || values.some((value) => !Number.isSafeInteger(value) || value < 1)) {
+    throw new Error(`${flag} must be a comma-separated list of positive ${label}.`);
   }
-  return [...new Set(ids)].sort((a, b) => a - b);
+  return [...new Set(values)].sort((a, b) => a - b);
 }
 
-function parseNids(): number[] {
-  const index = process.argv.indexOf("--nids");
-  if (index < 0) throw new Error("internal: parseNids called without --nids");
-  const raw = String(process.argv[index + 1] ?? "");
-  const nids = raw.split(",").map((value) => Number(value.trim()));
-  if (nids.length === 0 || nids.some((nid) => !Number.isSafeInteger(nid) || nid < 1)) {
-    throw new Error("--nids must be a comma-separated list of positive S1 node IDs.");
+function parseShellWorkerIds(): string[] {
+  const index = process.argv.indexOf("--shell-worker-ids");
+  if (index < 0) throw new Error("internal: shell-worker UUID parser called without its flag");
+  const ids = String(process.argv[index + 1] ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase());
+  if (ids.length === 0 || ids.some((id) => !UUID.test(id))) {
+    throw new Error("--shell-worker-ids must be a comma-separated list of canonical worker UUIDs.");
   }
-  return [...new Set(nids)].sort((a, b) => a - b);
+  return [...new Set(ids)].sort();
+}
+
+function assertArgumentCombination(
+  apply: boolean,
+  approvalHash: string | undefined,
+  retireShells: boolean,
+  allShells: boolean,
+  shellWorkerIds: string[] | undefined,
+): void {
+  if (apply && (!approvalHash || !/^[a-f0-9]{64}$/i.test(approvalHash))) {
+    throw new Error("--apply requires the exact 64-character hash from this diagnostic: --approve <hash>.");
+  }
+  if (!apply && approvalHash != null) throw new Error("--approve is only valid with --apply.");
+  if ((allShells || shellWorkerIds != null) && !retireShells) {
+    throw new Error("--all-shells and --shell-worker-ids require explicit --retire-shells evidence-review mode.");
+  }
+  if (retireShells && !allShells && shellWorkerIds == null) {
+    throw new Error("--retire-shells requires exactly one diagnostic selection: --all-shells or --shell-worker-ids <uuid,...>.");
+  }
+  if (allShells && shellWorkerIds != null) {
+    throw new Error("Choose either --all-shells or --shell-worker-ids, not both.");
+  }
 }
 
 async function main(): Promise<void> {
   const apply = process.argv.includes("--apply");
   const approvalIndex = process.argv.indexOf("--approve");
   const approvalHash = approvalIndex >= 0 ? process.argv[approvalIndex + 1] : undefined;
-  if (apply && (!approvalHash || !/^[a-f0-9]{64}$/i.test(approvalHash))) {
-    throw new Error("--apply requires the exact 64-character hash from this diagnostic: --approve <hash>.");
-  }
-  if (!apply && approvalIndex >= 0) throw new Error("--approve is only valid with --apply.");
+  const retireShells = process.argv.includes("--retire-shells");
+  const allShells = process.argv.includes("--all-shells");
+  const shellWorkerIds = process.argv.includes("--shell-worker-ids") ? parseShellWorkerIds() : undefined;
+  assertArgumentCombination(apply, approvalHash, retireShells, allShells, shellWorkerIds);
 
   const hasIds = process.argv.includes("--ids");
   const hasNids = process.argv.includes("--nids");
-  // No flag means the reported investigation union. Supplying either flag is
-  // deliberately exact: --ids does not silently broaden to reported nids,
-  // and --nids does not silently broaden to reported IDs.
-  const ids = hasIds ? parseIds() : !hasNids ? REPORTED_IDS : undefined;
-  const nids = hasNids ? parseNids() : !hasIds ? REPORTED_NIDS : undefined;
+  // The incident report remains the default source diagnostic. Supplying either
+  // scope flag is exact and never silently broadens to the other report range.
+  const ids = hasIds ? parsePositiveIntegerList("--ids", "integer Sirius IDs") : !hasNids ? REPORTED_IDS : undefined;
+  const nids = hasNids ? parsePositiveIntegerList("--nids", "S1 node IDs") : !hasIds ? REPORTED_NIDS : undefined;
   const snapshot = await storage.workers.getMigrationSiriusIdOwnershipSnapshot();
   const plan = planSiriusIdOwnership(
     snapshot,
     ids ? new Set(ids) : undefined,
     nids ? new Set(nids) : undefined,
+    { retireShells, allShells, shellWorkerIds: shellWorkerIds ? new Set(shellWorkerIds) : undefined },
   );
   const planHash = siriusIdPlanHash(plan);
+  const commandScope = {
+    ids: ids ?? null,
+    nids: nids ?? null,
+    retireShells,
+    allShells,
+    shellWorkerIds: shellWorkerIds ?? null,
+  };
   const output = {
+    format: "s1-sirius-id-ownership-report-v2",
     mode: apply ? "apply" : "diagnostic",
-    scopeSiriusIds: ids ?? null,
-    scopeSourceNids: nids ?? null,
+    planVersion: SIRIUS_ID_OWNERSHIP_PLAN_VERSION,
+    evidenceDigest: plan.evidenceDigest,
+    commandScope,
+    requiredApplyArguments: {
+      apply: "--apply",
+      approve: "--approve <approvalHash>",
+      scope: commandScope,
+    },
     stagingPresent: snapshot.stagingPresent,
     idMapPresent: snapshot.idMapPresent,
     stagedClaims: snapshot.claims.length,
@@ -82,8 +123,8 @@ async function main(): Promise<void> {
     pendingRekeys: plan.pendingRekeys,
     approvalHash: planHash,
     operatorProcedure: apply
-      ? "Apply re-reads source and target evidence under a workers table lock; a changed hash or any unresolved claim rolls back without writes."
-      : "Review the decisions, then run this exact scoped command with --apply --approve <approvalHash>. Do not run an ordinary loader until pending rekeys are explicitly applied and this diagnostic is clean.",
+      ? "Apply locks workers plus present staging evidence, rechecks this versioned hash, NULL-parks affected UUIDs, writes only exact S1 authoritative rekeys, and compares worker/FK reference counts before commit."
+      : "Review exported evidence. For existing shell retirement, --all-shells selects every non-NULL worker carrying shell-like provenance; ordinary workers are excluded. Use --shell-worker-ids for an exact subset. Then repeat the exact scope with --apply --approve <approvalHash>.",
   };
   if (!apply) {
     console.log(JSON.stringify(output, null, 2));
@@ -94,14 +135,26 @@ async function main(): Promise<void> {
     approvalHash,
     siriusIds: ids,
     sourceNids: nids,
+    retireShells,
+    allShells,
+    shellWorkerIds,
   });
-  console.log(JSON.stringify({ ...output, applied: result.applied, appliedPlanHash: result.planHash }, null, 2));
+  console.log(JSON.stringify({ ...output, applied: result }, null, 2));
 }
 
 main()
   .catch((error: unknown) => {
-    // This tool never prints source rows, database URLs, or database errors.
-    console.error(error instanceof Error ? error.message : "Sirius ID ownership diagnostic failed.");
+    // Export remains identifiers/provenance/counts only; never source rows,
+    // contact details, database URLs, or raw database errors.
+    const message = error instanceof Error ? error.message : "";
+    const safeOperatorError =
+      message.startsWith("--") ||
+      message.startsWith("Choose ") ||
+      message.startsWith("Sirius ID ownership plan") ||
+      message.startsWith("The approved worker UUID") ||
+      message.startsWith("Worker UUID or foreign-key") ||
+      message.startsWith("Sirius ID postcondition");
+    console.error(safeOperatorError ? message : "Sirius ID ownership diagnostic failed; inspect secure server diagnostics.");
     process.exitCode = 1;
   })
   .finally(async () => {

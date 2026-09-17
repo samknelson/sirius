@@ -137,9 +137,9 @@ loaders against ANY target (fresh branch or production), ensure:
   Later loaders resolve earlier loaders' `id_map` entries; missing mappings
   are rejects/skips. `id_map` rows pointing at deleted S2 rows hard-fail —
   repair the map, never delete it.
-- **Sequences:** the contacts/workers loader runs the one sanctioned
-  `setval`; relationship shell workers allocate above that range. Don't load
-  relationships before contacts/workers.
+- **SID authority:** while S1 is writable, S2 only copies authoritative S1
+  worker numbers. Relationship shells use UUIDs and NULL SIDs, never numbers
+  above a staged maximum. Don't load relationships before contacts/workers.
 - **Synthetic-only allowances** (never on production):
   `--allow-unresolved-industry` (T4), `--allow-rejects owner_missing` (T15),
   `--stub-missing` (T20).
@@ -367,7 +367,7 @@ doesn't match. It must never point at production.
   `worker_relations`. `worker_1` = owning contact's worker
   (`field_sirius_contact` → contact→worker reverse map); `worker_2` = alt
   contact's worker, else a SHELL worker is created for that contact (serial
-  sirius_id above the post-setval range, `data.migrationShell=true`, id_map
+  `sirius_id=NULL`, `data.migrationShell=true`, id_map
   entity `shell-worker` keyed by the CONTACT nid — S2 relations join workers,
   not contacts). Reltype tid → term id_map →
   `options_worker_relation_type.siriusId` fallback. `active=No` with no end

@@ -111,7 +111,7 @@ export function GrievanceWorkerSection({
                   >
                     {w.displayName || "Unknown"}{" "}
                     <span className="text-muted-foreground text-sm">
-                      {w.siriusId != null ? `#${w.siriusId}` : ""}
+                      {w.siriusId != null ? `#${w.siriusId}` : "No Sirius ID"}
                     </span>
                   </button>
                 ))}
@@ -139,7 +139,7 @@ export function GrievanceWorkerSection({
                     data-testid={`link-worker-${w.workerId}`}
                   >
                     {w.displayName || "Unknown"}
-                    {w.siriusId != null ? ` #${w.siriusId}` : ""}
+                      {w.siriusId != null ? ` #${w.siriusId}` : " · No Sirius ID"}
                   </Link>
                   {w.primary && showLead && (
                     <Badge variant="default" data-testid={`badge-lead-${w.workerId}`}>

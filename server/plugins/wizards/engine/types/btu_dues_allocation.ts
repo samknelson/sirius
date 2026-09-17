@@ -16,7 +16,7 @@ import { eq, sql } from 'drizzle-orm';
 
 export interface CardCheckComparisonEntry {
   workerId: string;
-  workerSiriusId: number;
+  workerSiriusId: number | null;
   workerName: string;
   bpsEmployeeId?: string | null;
   bargainingUnitName: string | null;
@@ -27,7 +27,7 @@ export interface CardCheckComparisonEntry {
 
 export interface AllocatedWorkerEntry {
   workerId: string;
-  workerSiriusId: number;
+  workerSiriusId: number | null;
   workerName: string;
   bpsEmployeeId: string;
   bargainingUnitId: string | null;
@@ -706,8 +706,8 @@ export class BtuDuesAllocationWizard extends FeedWizard {
 
         const contact = contactMap.get(worker.contactId);
         const workerName = contact
-          ? `${contact.family || ''}, ${contact.given || ''}`.trim().replace(/^,\s*|,\s*$/g, '') || contact.displayName || `Worker #${worker.siriusId}`
-          : `Worker #${worker.siriusId}`;
+          ? `${contact.family || ''}, ${contact.given || ''}`.trim().replace(/^,\s*|,\s*$/g, '') || contact.displayName || "Unnamed worker"
+          : "Unnamed worker";
 
         const employerNames: string[] = [];
         if (worker.denormEmployerIds) {

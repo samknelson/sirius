@@ -174,7 +174,7 @@ function BenefitDetailsModal({
             {entry.workerDisplayName || "Unknown Worker"}
           </DialogTitle>
           <DialogDescription>
-            Sirius ID: {entry.workerSiriusId || "-"} | Policy: {entry.resultSummary?.policyName || "Unknown"}
+            Sirius ID: {entry.workerSiriusId ?? "No Sirius ID"} | Policy: {entry.resultSummary?.policyName || "Unknown"}
           </DialogDescription>
         </DialogHeader>
 
@@ -616,7 +616,7 @@ export default function WmbScanDetail() {
                     return (
                       <TableRow key={entry.id} data-testid={`row-worker-${entry.workerSiriusId}`}>
                         <TableCell className="font-mono" data-testid={`text-sirius-id-${entry.id}`}>
-                          {entry.workerSiriusId || "-"}
+                          {entry.workerSiriusId ?? "No Sirius ID"}
                         </TableCell>
                         <TableCell data-testid={`text-worker-name-${entry.id}`}>
                           <div className="flex items-center gap-2">

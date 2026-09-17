@@ -381,7 +381,9 @@ export function registerT631InterviewsRoutes(
           1,
           0,
           {
-            siriusId: worker.siriusId,
+            // A NULL SID is a legitimate pre-cutover/native worker state, not
+            // a numeric search key.  Omit the optional filter in that case.
+            siriusId: worker.siriusId ?? undefined,
             excludePluginIds: ["sitespecific_t631_interview"],
           },
         );

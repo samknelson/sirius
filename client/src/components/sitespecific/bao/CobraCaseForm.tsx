@@ -142,7 +142,7 @@ function WorkerPicker({
                 >
                   {w.displayName || "Unknown"}{" "}
                   <span className="text-muted-foreground text-sm">
-                    {w.siriusId != null ? `#${w.siriusId}` : ""}
+                    {w.siriusId != null ? `#${w.siriusId}` : "No Sirius ID"}
                   </span>
                 </button>
               ))}

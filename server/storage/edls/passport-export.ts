@@ -165,12 +165,22 @@ function assignmentDataField(data: unknown, key: string): string | null {
  * or when the lookup fails for any reason — a missing crew lead is never
  * fatal to the export.
  */
-async function loadCrewleadSiriusIds(): Promise<Map<string, string>> {
+async function loadCrewleadSiriusIds(): Promise<Map<string, string | null>> {
   if (!isComponentEnabledSync("sitespecific.freeman")) return new Map();
   try {
     if (!(await storage.freemanCrewleads.tableExists())) return new Map();
     const crewleads = await storage.freemanCrewleads.getAll();
-    return new Map(crewleads.map((lead) => [lead.id, lead.siriusId]));
+    return new Map(
+      crewleads.map((lead) => {
+        const siriusId =
+          typeof lead.siriusId === "string" &&
+          lead.siriusId.trim() !== "" &&
+          lead.siriusId.trim().toLowerCase() !== "null"
+            ? lead.siriusId.trim()
+            : null;
+        return [lead.id, siriusId] as const;
+      }),
+    );
   } catch (err) {
     logger.warn(
       `Freeman crew leads unavailable for passport export: ${err instanceof Error ? err.message : String(err)}`,
