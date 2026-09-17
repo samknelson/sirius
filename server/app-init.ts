@@ -367,8 +367,10 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   await initializeDispatchEligSystem();
   logger.info("Dispatch eligibility system initialized", { source: "startup" });
 
-  // Initialize the worker-ban plugin framework (kind + built-in plugins),
-  // seed the default "Dispatch" ban type and migrate legacy dispatch bans.
+  // Initialize the worker-ban plugin framework before its best-effort legacy
+  // cleanup. The literal `dispatch` remains an enforced type if live schema,
+  // data, or a trigger prevents conversion; cleanup diagnostics name the
+  // blocker but an optional conversion cannot take the application offline.
   {
     const { initializeWorkerBanSystem, seedWorkerBanTypes } = await import(
       "./plugins/worker-bans"
