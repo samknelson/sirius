@@ -13,6 +13,7 @@ import {
   type IncrementalBundleHooks,
 } from "../lib/extract";
 import type { StagedRecord, StagedRecordMetadata } from "../lib/staging";
+import { shouldSkipSeeder } from "../sync-config";
 
 function testEvidence() {
   assert.equal(
@@ -92,6 +93,18 @@ function testShardLogSummary() {
   assert.match(summary, /50\[2450001-2500000\]=12\/3 \(1200ms\)/);
   assert.ok(summary.length < 500, "hundreds of sparse ranges produce one bounded CloudWatch event");
   assert.equal((summary.match(/\[/g) ?? []).length, 5, "only the five slowest ranges are retained");
+}
+
+function testOptionalDailySeeders() {
+  assert.equal(shouldSkipSeeder("daily", true, "seed-trust-config"), true);
+  assert.equal(shouldSkipSeeder("daily", true, "seed-policy-benefits"), true);
+  assert.equal(shouldSkipSeeder("daily", true, "elections"), false);
+  assert.equal(shouldSkipSeeder("daily", false, "seed-trust-config"), false);
+  assert.throws(
+    () => shouldSkipSeeder("final-freeze", true, "seed-trust-config"),
+    /daily-only/,
+    "final-freeze cannot omit migration configuration seeders",
+  );
 }
 
 function testStageResultContract() {
@@ -345,6 +358,7 @@ async function testShards() {
 testEvidence();
 testResumableRanges();
 testShardLogSummary();
+testOptionalDailySeeders();
 testStageResultContract();
 testPayloadRefresh();
 await testShards();

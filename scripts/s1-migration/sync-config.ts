@@ -97,6 +97,16 @@ export const FLEET: FleetStep[] = [
   { id: "enrollment-packet-tags", script: "load-enrollment-packet-tags.ts", loader: "t29-enrollment-packet-tags", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true, extraArgs: ["--migration-mode"] },
 ];
 
+/** Configuration-mutating setup steps operators may explicitly omit on daily runs. */
+export const SEEDER_STEP_IDS = new Set(["seed-trust-config", "seed-policy-benefits"]);
+
+export function shouldSkipSeeder(mode: SyncMode, skipSeeders: boolean, stepId: string): boolean {
+  if (skipSeeders && mode !== "daily") {
+    throw new Error("--skip-seeders is daily-only; final-freeze must run the trust configuration seeders");
+  }
+  return skipSeeders && SEEDER_STEP_IDS.has(stepId);
+}
+
 export interface StepPolicy {
   /** RULED allow-reject classes for this loader in this profile (§5). */
   allowRejects?: string[];

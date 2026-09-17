@@ -1207,7 +1207,7 @@ findings. Reports stay aggregates-only (no names/PII), and say when
 ## 11. One-command daily sync (`sync.ts`) — full-fleet gates
 
     npx tsx scripts/s1-migration/sync.ts --mode daily [--profile production] \
-        [--dry-run] [--force-reconcile] [--skip-stage] [--keep-going]
+        [--dry-run] [--force-reconcile] [--skip-stage] [--skip-seeders] [--keep-going]
 
 One run = migration advisory lock (727001; concurrent sync/bootstrap/seed
 refused) → exclusive app-write fence → `stage.ts` (mode-aware evidence gate) → dev fake
@@ -1216,6 +1216,13 @@ re-seeds (dev profile only) → the WHOLE loader fleet in §3 order with the
 (0¢) + month parity (rolling ruled months) → ONE aggregate report printed and
 persisted to `s1_staging.runs` (`report->>'command' = 'sync'`; also written
 to `S1_RESULT_JSON_PATH` when set). Exit 0 only when EVERY gate passes.
+
+`--skip-seeders` is daily-only and omits both `seed-trust-config` and
+`seed-policy-benefits`. Use it when S2 trust benefits/providers and EC/UH
+benefit assignments are already deliberately configured and S1 must not create
+or append configuration during that run. Existing staged benefit mappings must
+already resolve; downstream loaders remain fail-closed if S1 introduces an
+unmapped benefit. Final-freeze refuses this flag and always runs both seeders.
 
 **Config is checked in** (`sync-config.ts`), never ad-hoc shell flags: fleet
 order (§3, including beneficiaries + cardchecks), per-loader `--allow-rejects`

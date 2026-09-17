@@ -80,6 +80,7 @@ import { buildEmployerRateSnapshot, evaluateEmployerRateDurability, type Employe
 import {
   FLEET,
   PROFILES,
+  shouldSkipSeeder,
   validateSyncConfig,
   resolveOpenEndThrough,
   parityMonths,
@@ -103,11 +104,12 @@ const PROFILE_NAME = (argValue("--profile") ?? "production") as SyncProfileName;
 const DRY_RUN = process.argv.includes("--dry-run");
 const FORCE_RECONCILE = process.argv.includes("--force-reconcile");
 const SKIP_STAGE = process.argv.includes("--skip-stage");
+const SKIP_SEEDERS = process.argv.includes("--skip-seeders");
 const KEEP_GOING = process.argv.includes("--keep-going");
 const STAGE_RESUME_GENERATION = argValue("--stage-resume-generation");
 
 if (MODE !== "daily" && MODE !== "final-freeze") {
-  console.error("Usage: sync.ts --mode daily|final-freeze [--profile production|dev] [--dry-run] [--force-reconcile] [--skip-stage] [--keep-going]");
+  console.error("Usage: sync.ts --mode daily|final-freeze [--profile production|dev] [--dry-run] [--force-reconcile] [--skip-stage] [--skip-seeders] [--keep-going]");
   process.exit(1);
 }
 if (!(PROFILE_NAME in PROFILES)) {
@@ -120,6 +122,10 @@ if (STAGE_RESUME_GENERATION && MODE !== "daily") {
 }
 if (STAGE_RESUME_GENERATION && SKIP_STAGE) {
   console.error("FAIL: --stage-resume-generation cannot be combined with --skip-stage");
+  process.exit(1);
+}
+if (SKIP_SEEDERS && MODE !== "daily") {
+  console.error("FAIL: --skip-seeders is daily-only; final-freeze must run the trust configuration seeders");
   process.exit(1);
 }
 
@@ -258,7 +264,7 @@ async function main() {
   const months = parityMonths(profile, startedAt);
 
   console.log(`[sync] target: ${describeDatabaseTarget(resolveDatabaseUrl())}`);
-  console.log(`[sync] mode=${MODE} profile=${PROFILE_NAME} dryRun=${DRY_RUN} skipStage=${SKIP_STAGE} keepGoing=${KEEP_GOING}`);
+  console.log(`[sync] mode=${MODE} profile=${PROFILE_NAME} dryRun=${DRY_RUN} skipStage=${SKIP_STAGE} skipSeeders=${SKIP_SEEDERS} keepGoing=${KEEP_GOING}`);
   console.log(`[sync] open-end horizon: ${horizon}${profile.openEndThrough === "current-la-month" ? " (current LA month — advances per sync)" : " (pinned)"}`);
   console.log(`[sync] parity months: ${months.join(", ")} (open-span month = ${currentLaMonth(startedAt)})`);
   if (FORCE_RECONCILE) {
@@ -304,6 +310,7 @@ async function main() {
     dryRun: DRY_RUN,
     forceReconcile: FORCE_RECONCILE, // prominent: top-level, plus per-step below
     skipStage: SKIP_STAGE,
+    skipSeeders: SKIP_SEEDERS,
     keepGoing: KEEP_GOING,
     stageResumeGeneration: STAGE_RESUME_GENERATION,
     openEndThrough: horizon,
@@ -371,6 +378,16 @@ async function main() {
     let aborted = false;
 
     for (const step of FLEET) {
+      if (shouldSkipSeeder(MODE, SKIP_SEEDERS, step.id)) {
+        console.log(`\n[sync] ── ${step.id}: SKIPPED (--skip-seeders)`);
+        fleetRecords.push({
+          id: step.id,
+          script: step.script,
+          status: "skipped",
+          reason: "operator ran daily sync with --skip-seeders",
+        });
+        continue;
+      }
       const pol = profile.steps[step.id] ?? {};
       const args: string[] = [];
       if (DRY_RUN) args.push("--dry-run");
