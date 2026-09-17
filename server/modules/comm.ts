@@ -113,8 +113,8 @@ const sendPostalSchema = z.object({
   doubleSided: z.boolean().optional(),
   tagIds: tagIdsSchema,
   sendOffline: z.boolean().optional(),
-}).refine(data => data.file || data.templateId, {
-  message: "Either file or templateId is required",
+}).refine(data => Boolean(data.file?.trim()) !== Boolean(data.templateId?.trim()), {
+  message: "Exactly one of file or templateId is required",
 });
 
 const sendInappSchema = z.object({

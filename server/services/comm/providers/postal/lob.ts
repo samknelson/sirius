@@ -432,6 +432,15 @@ export class LobPostalProvider implements PostalTransport {
   }
 
   async sendLetter(params: SendLetterParams): Promise<LetterSendResult> {
+    const hasFile = typeof params.file === 'string' && params.file.trim().length > 0;
+    const hasTemplate = typeof params.templateId === 'string' && params.templateId.trim().length > 0;
+    if (hasFile === hasTemplate) {
+      return {
+        success: false,
+        error: 'Exactly one of file or templateId is required to send a Lob letter',
+      };
+    }
+
     const { value, error } = await wcUncachedRequest<LetterSendResult>({
       service: 'Lob',
       requestType: SEND_LETTER,
@@ -501,11 +510,11 @@ export class LobPostalProvider implements PostalTransport {
       }
 
       if (params.templateId) {
-        letterData.template_id = params.templateId;
+        letterData.file = params.templateId;
         if (params.mergeVariables) {
           letterData.merge_variables = params.mergeVariables;
         }
-      } else if (params.file) {
+      } else {
         letterData.file = params.file;
       }
 
