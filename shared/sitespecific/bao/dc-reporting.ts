@@ -384,6 +384,9 @@ export interface DcMonthHistoryEntry {
   actorUserId: string | null;
   /** True when the event removed the month from the annual count. */
   removed: boolean;
+  /** Status-change snapshot; null for month events. */
+  fromStatus: string | null;
+  toStatus: string | null;
 }
 
 /**
@@ -406,7 +409,7 @@ export function deriveDcMonthHistory(
 ): DcMonthHistoryEntry[] {
   const monthById = new Map(months.map((m) => [m.id, m]));
   return events
-    .filter(isDcMonthEvent)
+    .filter((event) => isDcMonthEvent(event) || event.eventType === "case_status_changed")
     .map((event) => {
       const p = (event.payload ?? {}) as Record<string, unknown>;
       const monthId = dcEventMonthId(event);
@@ -418,7 +421,7 @@ export function deriveDcMonthHistory(
       let hoursBefore: number | null = null;
       let hoursAfter: number | null = null;
       let removed = false;
-      let reason: string | null = null;
+      let reason: string | null = stringOrNull(p.reason);
       switch (event.eventType) {
         case "case_month_granted":
         case "case_month_released":
@@ -432,7 +435,6 @@ export function deriveDcMonthHistory(
           break;
         case "case_month_voided":
           removed = true;
-          reason = stringOrNull(p.reason);
           if (reason === "no_shortfall") {
             hoursBefore = 0;
             hoursAfter = 0;
@@ -467,6 +469,8 @@ export function deriveDcMonthHistory(
         reason,
         actorUserId: stringOrNull(p.actorUserId),
         removed,
+        fromStatus: stringOrNull(p.from),
+        toStatus: stringOrNull(p.to),
       };
     })
     .sort(

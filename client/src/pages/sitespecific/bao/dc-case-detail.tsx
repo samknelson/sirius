@@ -793,8 +793,8 @@ export default function BaoDcCaseDetailPage() {
           <CardHeader>
             <CardTitle className="text-base">Disability Credit log</CardTitle>
             <CardDescription>
-              Automatically recorded, in order: every grant, queue, release, reconciliation and
-              void with the credited hours before and after. Entries cannot be edited.
+              Automatically recorded, in order: status changes and every grant, queue, release,
+              reconciliation and void. Entries cannot be edited.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -815,7 +815,7 @@ export default function BaoDcCaseDetailPage() {
             <Textarea
               value={actionReason}
               onChange={(e) => setActionReason(e.target.value)}
-              placeholder="Reason (required for deny/withdraw, recorded for bounce)…"
+              placeholder="Explanation (required to return a queued case, deny, or withdraw)…"
               data-testid="input-dc-action-reason"
             />
             <div className="flex flex-wrap gap-2">
@@ -847,7 +847,12 @@ export default function BaoDcCaseDetailPage() {
                     >
                       Deny
                     </Button>
-                    <Button variant="outline" onClick={() => act.mutate("bounce")} disabled={act.isPending} data-testid="button-dc-bounce">
+                    <Button
+                      variant="outline"
+                      onClick={() => act.mutate("bounce")}
+                      disabled={act.isPending || !actionReason.trim()}
+                      data-testid="button-dc-bounce"
+                    >
                       Return to draft
                     </Button>
                   </>

@@ -799,4 +799,37 @@ describe("DC post-approval derivations (shared)", () => {
     ]);
     expect(history[0]).toMatchObject({ removed: true, reason: "deselected" });
   });
+
+  it("includes immutable status feedback with its transition and reviewer", () => {
+    const history = deriveDcMonthHistory(
+      [
+        {
+          id: "status-1",
+          eventType: "case_status_changed",
+          caseId: "c1",
+          dedupeKey: "status",
+          payload: {
+            from: "in_queue",
+            to: "draft",
+            reason: "The physician signature is missing.",
+            actorUserId: "reviewer-1",
+          },
+          createdAt: "2026-09-17T14:00:00.000Z",
+        },
+      ],
+      [],
+    );
+
+    expect(history).toEqual([
+      expect.objectContaining({
+        id: "status-1",
+        eventType: "case_status_changed",
+        fromStatus: "in_queue",
+        toStatus: "draft",
+        reason: "The physician signature is missing.",
+        actorUserId: "reviewer-1",
+        at: "2026-09-17T14:00:00.000Z",
+      }),
+    ]);
+  });
 });

@@ -25,6 +25,7 @@ export const eventNotifierRegistry = new PluginRegistry<
     requiredPolicy: p.requiredPolicy,
     hidden: p.hidden,
     needsReadOnlyDb: p.needsReadOnlyDb,
+    singleton: p.singleton,
   }),
   toManifestEntry: (p) => ({
     id: p.id,

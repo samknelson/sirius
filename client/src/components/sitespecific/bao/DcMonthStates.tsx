@@ -117,6 +117,12 @@ const HISTORY_LABELS: Record<string, string> = {
 };
 
 function historyLabel(entry: DcMonthHistoryEntry): string {
+  if (entry.eventType === "case_status_changed") {
+    if (entry.fromStatus === "in_queue" && entry.toStatus === "draft") {
+      return "Submitted → Draft";
+    }
+    return `${entry.fromStatus ?? "Unknown"} → ${entry.toStatus ?? "Unknown"}`;
+  }
   if (entry.eventType === "case_month_reconciled" && entry.removed) return "Reconciled away";
   if (entry.eventType === "case_month_voided" && entry.reason === "no_shortfall") {
     return "Voided — no shortfall";
@@ -145,7 +151,7 @@ export function DcMonthHistoryList({
   if (history.length === 0) {
     return (
       <p className="text-sm text-muted-foreground" data-testid="text-dc-month-history-empty">
-        No month activity yet.
+        No activity yet.
       </p>
     );
   }

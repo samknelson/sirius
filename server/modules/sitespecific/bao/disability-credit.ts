@@ -167,6 +167,10 @@ function handleDcError(res: Response, error: unknown): void {
       403,
       "Only designated Disability Credit approvers can approve, deny, or return queued cases",
     ],
+    RETURN_TO_DRAFT_REASON_REQUIRED: [
+      400,
+      "Explain what is missing or insufficient before returning this case to draft",
+    ],
     DC_EXCEPTION_NOT_APPLICABLE: [
       409,
       "This worker currently meets the FMLA eligibility gate — open a regular case instead of an exception",

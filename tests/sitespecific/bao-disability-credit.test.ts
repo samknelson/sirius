@@ -390,6 +390,7 @@ describe("DC case integrity", () => {
     const c = await storage.baoDisabilityCredit.openCase({
       workerId: otherWorkerId, openedYmd: "2026-08-15",
       qualifyingBasis: { asOfYmd: "2026-08-15", conditions: ["denial_letter"], denialLetterIds: ["x"] },
+      allowDuplicate: true,
     });
     caseIds.push(c.id);
     await storage.baoDisabilityCredit.transitionCase(c.id, {
@@ -401,6 +402,55 @@ describe("DC case integrity", () => {
       .where(eq(sitespecificBaoDcEvents.caseId, c.id));
     const hop = events.find((e) => e.eventType === "case_status_changed");
     expect((hop?.payload as { reason?: string })?.reason).toBe("test cleanup");
+  });
+
+  it("requires feedback for an explicit queued return and records its notification marker", async () => {
+    const c = await storage.baoDisabilityCredit.openCase({
+      workerId: otherWorkerId,
+      openedYmd: "2026-09-17",
+      qualifyingBasis: {
+        asOfYmd: "2026-09-17",
+        conditions: ["denial_letter"],
+        denialLetterIds: ["return-feedback"],
+      },
+      createdByUserId: userId,
+      allowDuplicate: true,
+    });
+    caseIds.push(c.id);
+    await storage.baoDisabilityCredit.transitionCase(c.id, {
+      to: "in_queue",
+      actorUserId: userId,
+    });
+
+    await expect(
+      performDcCaseAction(c.id, "bounce", {
+        actorUserId: userId,
+        reason: "   ",
+        expectedStatus: "in_queue",
+      }),
+    ).rejects.toThrow("RETURN_TO_DRAFT_REASON_REQUIRED");
+    expect((await storage.baoDisabilityCredit.getCase(c.id))?.status).toBe("in_queue");
+
+    await performDcCaseAction(c.id, "bounce", {
+      actorUserId: userId,
+      reason: "  The physician signature is missing.  ",
+      expectedStatus: "in_queue",
+    });
+    expect((await storage.baoDisabilityCredit.getCase(c.id))?.status).toBe("draft");
+
+    const events = await storage.baoDisabilityCredit.listEventsForCase(c.id);
+    const returned = events.find(
+      (event) =>
+        event.eventType === "case_status_changed" &&
+        (event.payload as { from?: string; to?: string }).from === "in_queue" &&
+        (event.payload as { from?: string; to?: string }).to === "draft",
+    );
+    expect(returned?.payload).toMatchObject({
+      reason: "The physician signature is missing.",
+      actorUserId: userId,
+      createdByUserId: userId,
+      explicitApproverReturn: true,
+    });
   });
 
   it("records and voids denial letters with idempotent events", async () => {
@@ -515,6 +565,8 @@ describe("DC document classification boundary", () => {
     expect(
       String((bounceHop?.payload as { reason?: string })?.reason ?? "").toLowerCase(),
     ).toContain("no longer passes");
+    expect((bounceHop?.payload as { explicitApproverReturn?: boolean })?.explicitApproverReturn)
+      .not.toBe(true);
 
     await db.delete(sitespecificBaoDcCaseMonths).where(eq(sitespecificBaoDcCaseMonths.caseId, c.id));
     await storage.baoDisabilityCredit.transitionCase(c.id, {

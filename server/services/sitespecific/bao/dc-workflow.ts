@@ -102,7 +102,7 @@ export interface DcCaseBundle {
   monthOptions: DcMonthOption[];
   /** Per-month state (coverage month, hours, reason) for every case month. */
   monthStates: DcCaseMonthState[];
-  /** Chronological grant/queue/release/reconcile/void log for the case. */
+  /** Chronological status and grant/queue/release/reconcile/void log for the case. */
   monthHistory: DcMonthHistoryEntry[];
   /** Display names for user ids stamped on events (actors). */
   actorNames: Record<string, string>;
@@ -507,6 +507,7 @@ export async function recomputeReadinessAndMaybeBounce(
       dc.listCaseMonths(caseId),
     ]);
     const readiness = computeCaseReadiness(theCase, docs, months);
+
     const bounceable: BaoDcCaseStatus[] = ["ready_for_review", "in_queue"];
     if (readiness.ready || !bounceable.includes(theCase.status)) {
       return { readiness, bounced: false };
@@ -616,6 +617,14 @@ export async function performDcCaseAction(
     if (opts.authorize) await opts.authorize(theCase);
     const readiness = computeCaseReadiness(theCase, docs, months);
 
+    if (
+      action === "bounce" &&
+      theCase.status === "in_queue" &&
+      (!opts.reason || !opts.reason.trim())
+    ) {
+      throw new Error("RETURN_TO_DRAFT_REASON_REQUIRED");
+    }
+
     if (["send_for_approval", "approve"].includes(action) && !readiness.ready) {
       const err = new Error("CASE_NOT_READY") as Error & { details?: string[] };
       err.details = readiness.missing;
@@ -648,6 +657,7 @@ export async function performDcCaseAction(
       // Bounce (and terminal) reasons ride the case_status_changed payload.
       reason: opts.reason,
       expectedStatus: opts.expectedStatus,
+      explicitApproverReturn: action === "bounce" && theCase.status === "in_queue",
     });
     if (action === "approve") {
       // Grant cascade — same transaction and worker lock as the transition,

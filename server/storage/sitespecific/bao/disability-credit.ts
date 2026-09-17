@@ -118,6 +118,12 @@ export interface TransitionDcCaseInput {
   actorUserId: string;
   /** Required for terminal targets (denied/withdrawn/void). */
   reason?: string;
+  /**
+   * Marks the explicit approver action that returns a queued case to draft.
+   * Automatic readiness bounces deliberately omit this so notifiers can
+   * distinguish the two paths without parsing human-readable reasons.
+   */
+  explicitApproverReturn?: boolean;
   terminalYmd?: string;
   /** Compare-and-set guard: mismatch throws Error("STALE_CASE_STATE"). */
   expectedStatus?: BaoDcCaseStatus;
@@ -490,6 +496,29 @@ async function recordAndEmitDcEvent(args: {
           typeof args.payload.workMonthYmd === "string"
             ? args.payload.workMonthYmd
             : null,
+        ...(args.eventType === "case_status_changed"
+          ? {
+              previousStatus:
+                typeof args.payload.from === "string"
+                  ? (args.payload.from as BaoDcCaseStatus)
+                  : undefined,
+              status:
+                typeof args.payload.to === "string"
+                  ? (args.payload.to as BaoDcCaseStatus)
+                  : undefined,
+              reason:
+                typeof args.payload.reason === "string" ? args.payload.reason : undefined,
+              actorUserId:
+                typeof args.payload.actorUserId === "string"
+                  ? args.payload.actorUserId
+                  : undefined,
+              createdByUserId:
+                typeof args.payload.createdByUserId === "string"
+                  ? args.payload.createdByUserId
+                  : null,
+              explicitApproverReturn: args.payload.explicitApproverReturn === true,
+            }
+          : {}),
       });
     }
   });
@@ -700,6 +729,8 @@ export function createBaoDisabilityCreditStorage(): BaoDisabilityCreditStorage {
             from: theCase.status,
             to,
             actorUserId: input.actorUserId,
+            createdByUserId: updated.createdByUserId,
+            ...(input.explicitApproverReturn ? { explicitApproverReturn: true } : {}),
             // Non-terminal transitions may carry a reason too (e.g. bounce
             // back to draft) — history lives in the event payload, not notes.
             ...(isTerminal

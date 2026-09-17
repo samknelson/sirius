@@ -318,6 +318,22 @@ function registerEventNotifierKind(): void {
         },
       ];
     },
+    // A notifier may declare itself operational infrastructure rather than an
+    // optional admin-created rule. Seed that singleton enabled with its one
+    // supported channel; existing rows are never overwritten by the generic
+    // boot seeder.
+    seedDefault: (plugin) => {
+      const p = plugin as import("./types").EventNotifierPlugin;
+      if (!p.singleton) return null;
+      return {
+        pluginId: p.id,
+        name: p.name,
+        enabled: true,
+        ordering: p.order ?? 100,
+        data: {},
+        media: [...p.supportedMedia],
+      };
+    },
   });
   kindRegistered = true;
 }
@@ -403,6 +419,7 @@ import "./plugins/dispatch-fore-notifier";
 import "./plugins/sitespecific-t631-interview";
 import "./plugins/bao-case-status-notifier";
 import "./plugins/bao-case-member-notice";
+import "./plugins/bao-dc-return-to-draft";
 import "./plugins/wc-usage-alert";
 import "./plugins/ws-usage-client-alert";
 import "./plugins/ws-usage-plugin-alert";

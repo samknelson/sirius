@@ -534,6 +534,17 @@ export interface BaoDcCaseSavedPayload {
     | "attestations_updated";
   /** First-of-month Ymd for month events, null for case-level events. */
   workMonthYmd: string | null;
+  /** Status-transition snapshot fields; present for case_status_changed. */
+  previousStatus?: import("@shared/schema").BaoDcCaseStatus;
+  status?: import("@shared/schema").BaoDcCaseStatus;
+  reason?: string;
+  actorUserId?: string;
+  createdByUserId?: string | null;
+  /**
+   * True only for the explicit approver return action. Automatic checklist
+   * bounces remain false/absent and therefore do not notify the case creator.
+   */
+  explicitApproverReturn?: boolean;
 }
 
 /**
