@@ -10,6 +10,7 @@ import type {
   WizardUpdateContext,
   WizardUpdateResult,
 } from "../types";
+import { reconcileInheritedColumnMapping } from "./feed-mapping";
 
 /**
  * Shared Upload → Map → Validate → Process → Results step builders for the
@@ -145,6 +146,23 @@ export function buildUploadStep(
       const { dbUser } = await getEffectiveUser(session, user);
       if (!dbUser) throw new Error("User not found");
 
+      const rows = parseFileToRows(file.buffer, file.mimetype);
+      const existingData = (ctx.wizard.data as any) || {};
+      const isInitialUpload = !existingData.uploadedFileId;
+      const inheritedMapping =
+        isInitialUpload &&
+        existingData.columnMapping &&
+        Object.keys(existingData.columnMapping).length > 0
+          ? reconcileInheritedColumnMapping(
+              existingData.columnMapping,
+              Array.isArray(existingData.inheritedColumnHeaders)
+                ? existingData.inheritedColumnHeaders
+                : undefined,
+              rows,
+              existingData.hasHeaders ?? true,
+            )
+          : {};
+
       const customPath = `wizards/${ctx.wizardId}/${Date.now()}_${file.originalname}`;
       const uploadResult = await objectStorageService.uploadFile({
         fileName: file.originalname,
@@ -167,13 +185,19 @@ export function buildUploadStep(
         accessLevel: "private",
       });
 
-      const rows = parseFileToRows(file.buffer, file.mimetype);
       return {
         data: {
           fileName: file.originalname,
           columnCount: rows[0]?.length ?? 0,
           previewRows: rows.slice(0, 6),
           totalRows: rows.length,
+          ...(isInitialUpload && Object.keys(inheritedMapping).length > 0
+            ? {
+                columnMapping: inheritedMapping,
+                hasHeaders: existingData.hasHeaders ?? true,
+              }
+            : {}),
+          inheritedColumnHeaders: null,
         },
       };
     },

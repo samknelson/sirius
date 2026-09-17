@@ -239,6 +239,13 @@ async function inheritFeedSetup(
   if (data.hasHeaders === undefined && d.hasHeaders !== undefined) {
     data.hasHeaders = d.hasHeaders;
   }
+  if (
+    d.hasHeaders !== false &&
+    Array.isArray(d.previewRows) &&
+    Array.isArray(d.previewRows[0])
+  ) {
+    data.inheritedColumnHeaders = d.previewRows[0];
+  }
   if (data.mode === undefined && d.mode !== undefined) {
     data.mode = d.mode;
   }
