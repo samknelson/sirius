@@ -21,6 +21,24 @@ function StripeForm({ onSuccess, onCancel }: StripeFormProps) {
   const elements = useElements();
   const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
+  const [confirmedMethodToken, setConfirmedMethodToken] = useState<string>();
+
+  const saveMethod = async (methodToken: string) => {
+    setIsProcessing(true);
+    try {
+      await onSuccess(methodToken);
+      setConfirmedMethodToken(undefined);
+    } catch (err) {
+      setConfirmedMethodToken(methodToken);
+      toast({
+        title: "Could not save payment method",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,21 +64,27 @@ function StripeForm({ onSuccess, onCancel }: StripeFormProps) {
           typeof setupIntent.payment_method === "string"
             ? setupIntent.payment_method
             : setupIntent.payment_method.id;
-        onSuccess(methodToken);
+        await saveMethod(methodToken);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: "Error",
-        description: err.message || "An unexpected error occurred",
+        description: err instanceof Error ? err.message : "An unexpected error occurred",
         variant: "destructive",
       });
+    } finally {
       setIsProcessing(false);
     }
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <PaymentElement />
+      {!confirmedMethodToken && <PaymentElement />}
+      {confirmedMethodToken && (
+        <p className="text-sm text-destructive" data-testid="text-payment-method-save-failed">
+          Your payment details were confirmed, but could not be saved. Retry without entering them again.
+        </p>
+      )}
       <div className="flex justify-end space-x-2 pt-4">
         <Button
           type="button"
@@ -71,12 +95,13 @@ function StripeForm({ onSuccess, onCancel }: StripeFormProps) {
           Cancel
         </Button>
         <Button
-          type="submit"
+          type={confirmedMethodToken ? "button" : "submit"}
+          onClick={confirmedMethodToken ? () => void saveMethod(confirmedMethodToken) : undefined}
           disabled={!stripe || isProcessing}
           data-testid="button-confirm-payment-method"
         >
           {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Add Payment Method
+          {confirmedMethodToken ? "Retry saving" : "Add Payment Method"}
         </Button>
       </div>
     </form>

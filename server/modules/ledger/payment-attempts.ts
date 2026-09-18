@@ -8,6 +8,7 @@ import { selectFinancialPaymentType, shouldApplyPaymentEvent } from "./payment-a
 import { createUnifiedOptionsStorage } from "../../storage/unified-options";
 import { runInTransaction } from "../../storage/transaction-context";
 import { getComponentChecker } from "../../services/access-policy-evaluator";
+import { getCurrency } from "@shared/currency";
 
 const options = createUnifiedOptionsStorage();
 const raw = (req: Request) => (req as Request & { rawBody?: Buffer }).rawBody;
@@ -42,6 +43,134 @@ function workerVisibleStatus(attempt: { status: string; ledgerPaymentId?: string
     : attempt.status;
 }
 
+type WorkerPayableAccount = {
+  eaId: string;
+  accountId: string;
+  accountName: string;
+  currencyCode: string;
+  gatewayConfigId: string | null;
+  eligible: boolean;
+  error?: string;
+};
+
+type AccountEligibility =
+  | {
+      eligible: true;
+      resolved: Awaited<ReturnType<typeof resolveGateway>>;
+      paymentType: { id: string };
+      createPaymentIntent: NonNullable<
+        Awaited<ReturnType<typeof resolveGateway>>["plugin"]["createPaymentIntent"]
+      >;
+    }
+  | { eligible: false; error: string };
+
+function parseStoredMoney(
+  value: unknown,
+  label: string,
+  options: { nonNegative?: boolean; allowNumber?: boolean } = {},
+): number {
+  const validString =
+    typeof value === "string" &&
+    value.trim().length > 0 &&
+    value === value.trim() &&
+    /^-?\d+(?:\.\d{1,2})?$/.test(value);
+  const validNumber =
+    options.allowNumber === true &&
+    typeof value === "number" &&
+    Number.isFinite(value);
+  if (!validString && !validNumber) {
+    throw new PaymentAttemptConflictError(
+      `${label} is unavailable because its stored amount is invalid`,
+    );
+  }
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || (options.nonNegative && amount < 0)) {
+    throw new PaymentAttemptConflictError(
+      `${label} is unavailable because its stored amount is invalid`,
+    );
+  }
+  return amount;
+}
+
+async function getAccountEligibility(account: {
+  isActive: boolean;
+  currencyCode: string;
+  gatewayConfigId: string | null;
+}): Promise<AccountEligibility> {
+  if (!account.isActive) {
+    return { eligible: false, error: "This ledger account is inactive" };
+  }
+  const currency = getCurrency(account.currencyCode);
+  if (!currency || currency.precision !== 2) {
+    return {
+      eligible: false,
+      error: `Online worker payments do not support ${account.currencyCode} accounts`,
+    };
+  }
+  if (!account.gatewayConfigId) {
+    return {
+      eligible: false,
+      error: "This ledger account does not have a payment gateway configured",
+    };
+  }
+  let resolved: Awaited<ReturnType<typeof resolveGateway>>;
+  try {
+    resolved = await resolveGateway(account.gatewayConfigId);
+    await assertGatewayReadyForCharge(resolved);
+    const createPaymentIntent = resolved.plugin.createPaymentIntent;
+    if (!createPaymentIntent) {
+      return {
+        eligible: false,
+        error: "This payment gateway does not support online payments",
+      };
+    }
+    const paymentType = selectFinancialPaymentType(
+      await options.list("ledger-payment-type"),
+      account.currencyCode,
+    );
+    if (paymentType) {
+      return { eligible: true, resolved, paymentType, createPaymentIntent };
+    }
+    return {
+      eligible: false,
+      error: `No financial ledger payment type is configured for ${account.currencyCode}`,
+    };
+  } catch (cause) {
+    return {
+      eligible: false,
+      error: cause instanceof Error ? cause.message : "Payment gateway unavailable",
+    };
+  }
+}
+
+async function listWorkerPayableAccounts(workerId: string): Promise<WorkerPayableAccount[]> {
+  const eas = await storage.ledger.ea.getByEntityWithBalance("worker", workerId);
+  return Promise.all(eas.map(async (ea) => {
+    const account = await storage.ledger.accounts.get(ea.accountId);
+    if (!account) {
+      return {
+        eaId: ea.id,
+        accountId: ea.accountId,
+        accountName: "Unknown account",
+        currencyCode: "USD",
+        gatewayConfigId: null,
+        eligible: false,
+        error: "Ledger account not found",
+      };
+    }
+    const eligibility = await getAccountEligibility(account);
+    return {
+      eaId: ea.id,
+      accountId: account.id,
+      accountName: account.name,
+      currencyCode: account.currencyCode,
+      gatewayConfigId: account.gatewayConfigId,
+      eligible: eligibility.eligible,
+      ...(eligibility.eligible ? {} : { error: eligibility.error }),
+    };
+  }));
+}
+
 export function registerLedgerPaymentAttemptRoutes(
   app: Express,
   requireAuth: import("express").RequestHandler,
@@ -59,8 +188,8 @@ export function registerLedgerPaymentAttemptRoutes(
         return error(res, 404, "Payment method not found");
       }
       const ea = await storage.ledger.ea.get(eaId);
-      if (ea?.entityType !== "worker" || ea.entityId !== workerId) return error(res, 403, "Ledger account does not belong to this worker");
       if (!ea) return error(res, 409, "No ledger account is configured for this worker");
+      if (ea.entityType !== "worker" || ea.entityId !== workerId) return error(res, 403, "Ledger account does not belong to this worker");
       const existing = await storage.ledger.paymentAttempts.getByIdempotencyKey(idempotencyKey);
       if (existing) {
         if (
@@ -95,27 +224,15 @@ export function registerLedgerPaymentAttemptRoutes(
           }),
         });
       }
-      const resolved = await resolveGateway(method.gatewayConfigId);
-      await assertGatewayReadyForCharge(resolved);
-      if (!resolved.plugin.createPaymentIntent) {
-        return error(res, 409, "This payment gateway does not support online payments");
-      }
       const account = await storage.ledger.accounts.get(ea.accountId);
-      const currency = account?.currencyCode ?? "USD";
-      const paymentType = selectFinancialPaymentType(
-        await options.list("ledger-payment-type"),
-        currency,
-      );
-      if (!paymentType) {
-        return error(
-          res,
-          409,
-          `No financial ledger payment type is configured for ${currency}`,
-        );
-      }
-      if (account?.gatewayConfigId && account.gatewayConfigId !== method.gatewayConfigId) {
+      if (!account) return error(res, 409, "Ledger account configuration not found");
+      const currency = account.currencyCode;
+      const eligibility = await getAccountEligibility(account);
+      if (!eligibility.eligible) return error(res, 409, eligibility.error);
+      if (account.gatewayConfigId !== method.gatewayConfigId) {
         return error(res, 409, "Payment method is not enabled for this ledger account");
       }
+      const { resolved, paymentType, createPaymentIntent } = eligibility;
       const methodSummary = await resolved.plugin.getMethodSummary(resolved.context, method.paymentMethod);
       if (methodSummary.type !== "card" && methodSummary.type !== "us_bank_account") {
         return error(res, 400, "This payment method cannot be used for worker payments");
@@ -125,9 +242,16 @@ export function registerLedgerPaymentAttemptRoutes(
       const attempt = await runInTransaction(async () => {
         await storage.ledger.paymentAttempts.lockEa(ea.id);
         await storage.ledger.paymentAttempts.expireReservations(ea.id);
-        const balance = Number(await storage.ledger.ea.getBalance(ea.id));
-        const reserved = await storage.ledger.paymentAttempts.getReservedAmount(ea.id);
-        if (!Number.isFinite(balance) || Number(amount) > balance - reserved + 0.0001) {
+        const balance = parseStoredMoney(
+          await storage.ledger.ea.getBalance(ea.id),
+          "Payable balance",
+        );
+        const reserved = parseStoredMoney(
+          await storage.ledger.paymentAttempts.getReservedAmount(ea.id),
+          "Reserved payment amount",
+          { nonNegative: true, allowNumber: true },
+        );
+        if (Number(amount) > balance - reserved + 0.0001) {
           throw new PaymentAttemptConflictError("Payment amount exceeds the available balance");
         }
         return storage.ledger.paymentAttempts.create({
@@ -142,7 +266,7 @@ export function registerLedgerPaymentAttemptRoutes(
         });
       });
       try {
-        const intent = await resolved.plugin.createPaymentIntent(resolved.context, {
+        const intent = await createPaymentIntent(resolved.context, {
           amount: Math.round(Number(amount) * 100), currency, customerRef: customer.customerRef,
           paymentMethodRef: method.paymentMethod, paymentMethodType: methodSummary.type, idempotencyKey,
           metadata: { attemptId: attempt.id, workerId },
@@ -192,13 +316,79 @@ export function registerLedgerPaymentAttemptRoutes(
     return createAttempt(req, res);
   });
 
+  app.get("/api/workers/:workerId/ledger/payable-accounts", requireAuth, async (req, res) => {
+    try {
+      if (!(await assertWorker(req, req.params.workerId))) return error(res, 403, "Access denied");
+      return res.json(await listWorkerPayableAccounts(req.params.workerId));
+    } catch (cause) {
+      return error(
+        res,
+        500,
+        cause instanceof Error ? cause.message : "Failed to load payable accounts",
+      );
+    }
+  });
+
   app.get("/api/workers/:workerId/ledger/payable", requireAuth, async (req, res) => {
-    if (!(await assertWorker(req, req.params.workerId))) return error(res, 403, "Access denied");
-    const eas = await storage.ledger.ea.getByEntity("worker", req.params.workerId);
-    if (eas.length !== 1) return error(res, 409, "A single payable ledger account must be configured");
-    const account = await storage.ledger.accounts.get(eas[0].accountId);
-    const balance = await storage.ledger.ea.getBalance(eas[0].id);
-    return res.json({ eaId: eas[0].id, balance, currencyCode: account?.currencyCode ?? "USD" });
+    try {
+      if (!(await assertWorker(req, req.params.workerId))) return error(res, 403, "Access denied");
+      const hasEaId = Object.prototype.hasOwnProperty.call(req.query, "eaId");
+      if (
+        hasEaId &&
+        (typeof req.query.eaId !== "string" ||
+          !req.query.eaId.trim() ||
+          req.query.eaId !== req.query.eaId.trim())
+      ) {
+        return error(res, 400, "eaId must be a non-empty ledger account entry id");
+      }
+      const requestedEaId = hasEaId ? req.query.eaId as string : undefined;
+      let ea;
+      if (requestedEaId) {
+        ea = await storage.ledger.ea.get(requestedEaId);
+        if (!ea) return error(res, 404, "Ledger account entry not found");
+        if (ea.entityType !== "worker" || ea.entityId !== req.params.workerId) {
+          return error(res, 403, "Ledger account does not belong to this worker");
+        }
+      } else {
+        const eas = await storage.ledger.ea.getByEntity("worker", req.params.workerId);
+        if (eas.length === 0) return error(res, 409, "No ledger account is configured for this worker");
+        if (eas.length > 1) {
+          return error(res, 400, "eaId is required when a worker has multiple ledger accounts");
+        }
+        ea = eas[0];
+      }
+      const account = await storage.ledger.accounts.get(ea.accountId);
+      if (!account) return error(res, 409, "Ledger account configuration not found");
+      const eligibility = await getAccountEligibility(account);
+      if (!eligibility.eligible) return error(res, 409, eligibility.error);
+      const balance = await storage.ledger.ea.getBalance(ea.id);
+      const balanceAmount = parseStoredMoney(balance, "Payable balance");
+      const reservedAmount = parseStoredMoney(
+        await storage.ledger.paymentAttempts.getReservedAmount(ea.id),
+        "Reserved payment amount",
+        { nonNegative: true, allowNumber: true },
+      );
+      const availableBalance = Math.max(0, balanceAmount - reservedAmount);
+      return res.json({
+        eaId: ea.id,
+        accountId: account.id,
+        accountName: account.name,
+        balance,
+        currencyCode: account.currencyCode,
+        availableBalance: availableBalance.toFixed(2),
+        reservedAmount: reservedAmount.toFixed(2),
+        gatewayConfigId: account.gatewayConfigId,
+      });
+    } catch (cause) {
+      if (cause instanceof PaymentAttemptConflictError) {
+        return error(res, 409, cause.message);
+      }
+      return error(
+        res,
+        500,
+        cause instanceof Error ? cause.message : "Failed to load payable balance",
+      );
+    }
   });
 
   app.post("/api/ledger/payment-gateways/:gatewayConfigId/webhook", async (req, res) => {

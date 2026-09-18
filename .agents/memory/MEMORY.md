@@ -136,4 +136,5 @@
 - [Webhook replay must retry unfinished effects](webhook-replay-unfinished-effects.md) — duplicate receipt proves ingestion, not completion; replays must resume any uncommitted internal side effect.
 - [Deployment cron policy](deployment-cron-policy.md) — production cron enablement must come from the real deployment environment; copied DB overrides cannot authorize execution.
 - [Payment editor lifecycle](payment-editor-lifecycle.md) — intact allocations can disappear during control initialization; distinguish deliberate account changes from hydration and preserve local drafts.
+- [Ledger currency discovery](ledger-currency-discovery.md) — nonfinancial units must not invalidate account discovery; monetary validation belongs to payable responses.
 - [Browser fixture lifecycle](browser-fixture-lifecycle.md) — print failures before bounded Vite cleanup; wait for closing confirmation portals before typing into the underlying editor.

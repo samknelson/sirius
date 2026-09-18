@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Trash2, Plus, ExternalLink } from "lucide-react";
+import { Loader2, Trash2, Plus, ExternalLink, CreditCard } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -128,8 +128,8 @@ function WorkerLedgerAccountsContent() {
               <CardTitle>Accounts</CardTitle>
               <CardDescription>Manage ledger account entries for this worker</CardDescription>
             </div>
-             <Button asChild variant="outline" data-testid="button-worker-pay-balance">
-               <Link href={`/workers/${workerId}/ledger/pay`}>
+              <Button asChild variant="outline" data-testid="button-worker-pay-balance">
+                <Link href={`/workers/${workerId}/ledger/pay`}>
                  <ExternalLink className="h-4 w-4 mr-2" />
                  Make a payment
                </Link>
@@ -258,6 +258,19 @@ function WorkerLedgerAccountsContent() {
                         >
                           {formatAmount(balanceNum, currencyCode)}
                         </span>
+                        <Button
+                          asChild
+                          variant="ghost"
+                          size="icon"
+                          data-testid={`button-pay-entry-${entry.id}`}
+                        >
+                          <Link
+                            href={`/workers/${workerId}/ledger/pay?eaId=${encodeURIComponent(entry.id)}`}
+                            aria-label={`Pay ${account?.name || "account"} balance`}
+                          >
+                            <CreditCard className="h-4 w-4" />
+                          </Link>
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"

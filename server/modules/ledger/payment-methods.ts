@@ -246,8 +246,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
         if (!plugin) continue;
         if (
           plugin.requiredComponent &&
-          checker &&
-          !(await checker(plugin.requiredComponent))
+          (!checker || !(await checker(plugin.requiredComponent)))
         ) {
           continue;
         }
