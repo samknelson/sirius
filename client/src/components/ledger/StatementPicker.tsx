@@ -52,7 +52,9 @@ export function StatementPicker({
   onManualMonthChange,
   onManualYearChange,
 }: StatementPickerProps) {
-  const [useManual, setUseManual] = useState(false);
+  const [useManual, setUseManual] = useState(
+    selections.length === 0 && Boolean(manualMonth || manualYear),
+  );
   const [multiMode, setMultiMode] = useState(selections.length > 1);
   const prevEaIdRef = useRef<string | null>(eaId);
 
@@ -69,9 +71,6 @@ export function StatementPicker({
       prevEaIdRef.current = eaId;
       setUseManual(false);
       setMultiMode(false);
-      onSelectionsChange([]);
-      onManualMonthChange("");
-      onManualYearChange("");
     }
   }, [eaId]);
 
@@ -82,10 +81,16 @@ export function StatementPicker({
   }, [selections.length]);
 
   useEffect(() => {
-    if (invoices && invoices.length === 0 && eaId && !useManual) {
+    if (
+      invoices &&
+      invoices.length === 0 &&
+      eaId &&
+      selections.length === 0 &&
+      !useManual
+    ) {
       setUseManual(true);
     }
-  }, [invoices, eaId]);
+  }, [invoices, eaId, selections.length, useManual]);
 
   if (!eaId) {
     return (

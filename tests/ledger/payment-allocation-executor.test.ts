@@ -59,6 +59,38 @@ describe("strict payment-allocation ledger writes", () => {
     ]);
   });
 
+  it("writes every generated employer allocation and preserves the payment total", async () => {
+    getOrCreateEaCached
+      .mockResolvedValueOnce({ id: "ea-acme" })
+      .mockResolvedValueOnce({ id: "ea-beta" });
+    const allocations = [
+      {
+        ...transaction,
+        chargePluginKey: "config-1:payment-1:ea-acme:2026-01-01",
+        entityId: "acme",
+        amount: "-60.00",
+      },
+      {
+        ...transaction,
+        chargePluginKey: "config-1:payment-1:ea-beta:2026-02-01",
+        entityId: "beta",
+        amount: "-40.00",
+        statementYmd: "2026-02-01",
+      },
+    ];
+
+    await createLedgerEntries(allocations, true);
+
+    const written = bulkCreate.mock.calls.flatMap(([entries]) => entries);
+    expect(bulkCreate).toHaveBeenCalledTimes(2);
+    expect(written).toHaveLength(2);
+    expect(written.map((entry: { amount: string }) => entry.amount)).toEqual(["-60.00", "-40.00"]);
+    expect(written.reduce(
+      (total: number, entry: { amount: string }) => total + Number(entry.amount),
+      0,
+    )).toBe(-100);
+  });
+
   it("propagates a replacement write failure to the payment transaction", async () => {
     bulkCreate.mockRejectedValueOnce(new Error("injected replacement failure"));
 

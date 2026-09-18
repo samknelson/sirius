@@ -12,13 +12,17 @@ import { insertLedgerPaymentSchema, type LedgerPayment, type LedgerPaymentType }
 import { apiRequest, getApiErrorMessage, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
 import { Download, ImagePlus, Loader2, Plus, X } from "lucide-react";
 import type { File as FileRecord } from "@shared/schema";
 import { type StatementSelection } from "@/components/ledger/StatementPicker";
-import { ParticipantAllocationBox, type ParticipantBoxState } from "@/components/ledger/ParticipantAllocationBox";
+import {
+  ParticipantAllocationBox,
+  type ParticipantBoxState,
+  type ParticipantBoxUpdate,
+} from "@/components/ledger/ParticipantAllocationBox";
 import { isValidYmd, ymdToDateForPicker, dateToYmd } from "@shared/utils/date";
 
 const EMPTY_PARTICIPANT_BOX: ParticipantBoxState = {
@@ -28,6 +32,12 @@ const EMPTY_PARTICIPANT_BOX: ParticipantBoxState = {
   manualMonth: "",
   manualYear: "",
 };
+
+let nextParticipantBoxId = 1;
+
+function withParticipantBoxId(box: ParticipantBoxState): ParticipantBoxState {
+  return box._id ? box : { ...box, _id: nextParticipantBoxId++ };
+}
 
 type EAListItem = {
   id: string;
@@ -150,9 +160,13 @@ export function PaymentForm({
   const [dateEntered, setDateEntered] = useState("");
   const [effectiveDate, setEffectiveDate] = useState("");
   const [participantBoxes, setParticipantBoxes] = useState<ParticipantBoxState[]>([
-    { ...EMPTY_PARTICIPANT_BOX, amount: mode === "create" ? "0.00" : "" },
+    withParticipantBoxId({
+      ...EMPTY_PARTICIPANT_BOX,
+      amount: mode === "create" ? "0.00" : "",
+    }),
   ]);
-  const [boxesLoaded, setBoxesLoaded] = useState(mode === "create");
+  const hydratedEditSessionRef = useRef<string | null>(null);
+  const [hydratedEditSession, setHydratedEditSession] = useState<string | null>(null);
 
   // ---- Edit mode: load payment + derive accountId ----
   const { data: payment, isLoading: isPaymentLoading } = useQuery<LedgerPayment>({
@@ -284,35 +298,17 @@ export function PaymentForm({
 
   const form = useForm<z.infer<typeof insertLedgerPaymentSchema>>({
     resolver: zodResolver(insertLedgerPaymentSchema),
-    ...(mode === "edit"
-      ? {
-          values: payment
-            ? {
-                status: payment.status,
-                allocated: payment.allocated,
-                amount: payment.amount,
-                paymentType: payment.paymentType,
-                ledgerEaId: payment.ledgerEaId,
-                details: payment.details as PaymentDetails,
-                dateReceived: payment.dateReceived ? new Date(payment.dateReceived) : null,
-                dateCleared: payment.dateCleared ? new Date(payment.dateCleared) : null,
-                memo: payment.memo,
-              }
-            : undefined,
-        }
-      : {
-          defaultValues: {
-            status: "draft",
-            allocated: false,
-            amount: "0.00",
-            paymentType: "",
-            ledgerEaId: "",
-            details: null,
-            dateReceived: new Date(),
-            dateCleared: null,
-            memo: null,
-          },
-        }),
+    defaultValues: {
+      status: "draft",
+      allocated: false,
+      amount: mode === "create" ? "0.00" : "",
+      paymentType: "",
+      ledgerEaId: "",
+      details: null,
+      dateReceived: mode === "create" ? new Date() : null,
+      dateCleared: null,
+      memo: null,
+    },
   });
 
   // Default the paymentType in create mode once types load
@@ -326,22 +322,15 @@ export function PaymentForm({
   const selectedPaymentType = paymentTypes.find((pt) => pt.id === watchedPaymentType);
   const category: PaymentCategory = (selectedPaymentType?.category as PaymentCategory) || "financial";
 
-  // Edit mode: prefill detail strings
-  useEffect(() => {
-    if (mode !== "edit" || !payment) return;
-    const details = payment.details as PaymentDetails | null;
-    if (details) {
-      setMerchant(details.merchant || "");
-      setCheckTransactionNumber(details.checkTransactionNumber || "");
-      setAdjustmentUser(details.adjustmentUser || "");
-      setDateEntered(details.dateEntered || "");
-      setEffectiveDate(details.effectiveDate || "");
-    }
-  }, [mode, payment]);
+  const editSessionKey =
+    mode === "edit" && payment
+      ? [mode, paymentId || "", accountIdProp || "", batchId || ""].join(":")
+      : null;
 
-  // Edit mode: hydrate participantBoxes from payment.details.proposedAllocation
+  // Hydrate once per explicit edit session. Background query refreshes and the
+  // post-save cache write must not replace fields the user is still editing.
   useEffect(() => {
-    if (mode !== "edit" || !payment || boxesLoaded) return;
+    if (!payment || !editSessionKey || hydratedEditSessionRef.current === editSessionKey) return;
     const details = payment.details as PaymentDetails | null;
     const detailsRecord = details as Record<string, unknown> | null;
     const proposedAllocation =
@@ -376,7 +365,7 @@ export function PaymentForm({
         if (b.eaId === primaryEaId && a.eaId !== primaryEaId) return 1;
         return 0;
       });
-      const boxes: ParticipantBoxState[] = sortedGroups.map((group) => ({
+      const boxes: ParticipantBoxState[] = sortedGroups.map((group) => withParticipantBoxId({
         eaId: group.eaId,
         amount: group.totalAmount.toFixed(2),
         statementSelections: group.selections,
@@ -394,17 +383,34 @@ export function PaymentForm({
         }));
       }
       setParticipantBoxes([
-        {
+        withParticipantBoxId({
           eaId: payment.ledgerEaId,
           amount: payment.amount,
           statementSelections,
           manualMonth: "",
           manualYear: "",
-        },
+        }),
       ]);
     }
-    setBoxesLoaded(true);
-  }, [mode, payment, boxesLoaded]);
+    form.reset({
+      status: payment.status,
+      allocated: payment.allocated,
+      amount: payment.amount,
+      paymentType: payment.paymentType,
+      ledgerEaId: payment.ledgerEaId,
+      details: payment.details as PaymentDetails,
+      dateReceived: payment.dateReceived ? new Date(payment.dateReceived) : null,
+      dateCleared: payment.dateCleared ? new Date(payment.dateCleared) : null,
+      memo: payment.memo,
+    });
+    setMerchant(details?.merchant || "");
+    setCheckTransactionNumber(details?.checkTransactionNumber || "");
+    setAdjustmentUser(details?.adjustmentUser || "");
+    setDateEntered(details?.dateEntered || "");
+    setEffectiveDate(details?.effectiveDate || "");
+    hydratedEditSessionRef.current = editSessionKey;
+    setHydratedEditSession(editSessionKey);
+  }, [editSessionKey, form, payment]);
 
   // Default adjustment fields
   useEffect(() => {
@@ -416,14 +422,20 @@ export function PaymentForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category, payment, user]);
 
-  const updateParticipantBox = (index: number, updated: ParticipantBoxState) => {
-    setParticipantBoxes((prev) => prev.map((b, i) => (i === index ? updated : b)));
+  const updateParticipantBox = (rowId: number, update: ParticipantBoxUpdate) => {
+    setParticipantBoxes((prev) =>
+      prev.map((box) => {
+        if (box._id !== rowId) return box;
+        const patch = typeof update === "function" ? update(box) : update;
+        return patch === box ? box : { ...box, ...patch, _id: box._id };
+      }),
+    );
   };
-  const removeParticipantBox = (index: number) => {
-    setParticipantBoxes((prev) => prev.filter((_, i) => i !== index));
+  const removeParticipantBox = (rowId: number) => {
+    setParticipantBoxes((prev) => prev.filter((box) => box._id !== rowId));
   };
   const addParticipantBox = () => {
-    setParticipantBoxes((prev) => [...prev, { ...EMPTY_PARTICIPANT_BOX }]);
+    setParticipantBoxes((prev) => [...prev, withParticipantBoxId({ ...EMPTY_PARTICIPANT_BOX })]);
   };
 
   const submitMutation = useMutation({
@@ -457,7 +469,6 @@ export function PaymentForm({
           ["/api/ledger/payments", paymentId],
           savedPaymentData as unknown as LedgerPayment,
         );
-        setBoxesLoaded(false);
       }
 
       const refreshes: Array<Promise<unknown>> = [];
@@ -687,7 +698,10 @@ export function PaymentForm({
     submitMutation.mutate(submissionData);
   });
 
-  if (mode === "edit" && isPaymentLoading) {
+  if (
+    mode === "edit" &&
+    (isPaymentLoading || (!!payment && (!editSessionKey || hydratedEditSession !== editSessionKey)))
+  ) {
     const inner = (
       <div className="space-y-4">
         <Skeleton className="h-10 w-full" />
@@ -763,10 +777,7 @@ export function PaymentForm({
                     onChange={(e) => {
                       field.onChange(e);
                       if (participantBoxes.length === 1) {
-                        updateParticipantBox(0, {
-                          ...participantBoxes[0],
-                          amount: e.target.value,
-                        });
+                        updateParticipantBox(participantBoxes[0]._id!, { amount: e.target.value });
                       }
                     }}
                   />
@@ -1101,10 +1112,10 @@ export function PaymentForm({
 
           {participantBoxes.map((box, idx) => (
             <ParticipantAllocationBox
-              key={idx}
+              key={box._id}
               state={box}
-              onChange={(updated) => updateParticipantBox(idx, updated)}
-              onRemove={participantBoxes.length > 1 ? () => removeParticipantBox(idx) : undefined}
+              onChange={(update) => updateParticipantBox(box._id!, update)}
+              onRemove={participantBoxes.length > 1 ? () => removeParticipantBox(box._id!) : undefined}
               eaOptions={accountEAs}
               currencyCode={currencyCode}
               index={idx}

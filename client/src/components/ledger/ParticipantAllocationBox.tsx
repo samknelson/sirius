@@ -13,6 +13,10 @@ export interface ParticipantBoxState {
   manualYear: string;
 }
 
+export type ParticipantBoxUpdate =
+  | Partial<ParticipantBoxState>
+  | ((current: ParticipantBoxState) => Partial<ParticipantBoxState> | ParticipantBoxState);
+
 interface EAOption {
   id: string;
   entityType: string;
@@ -22,7 +26,7 @@ interface EAOption {
 
 interface ParticipantAllocationBoxProps {
   state: ParticipantBoxState;
-  onChange: (state: ParticipantBoxState) => void;
+  onChange: (update: ParticipantBoxUpdate) => void;
   onRemove?: () => void;
   eaOptions: EAOption[];
   currencyCode: string;
@@ -42,6 +46,7 @@ export function ParticipantAllocationBox({
   const availableEAs = eaOptions.filter(
     (ea) => ea.id === state.eaId || !usedEaIds.includes(ea.id)
   );
+  const selectedEA = availableEAs.find((ea) => ea.id === state.eaId);
 
   return (
     <div className="border rounded-lg p-4 space-y-3 bg-card">
@@ -66,18 +71,27 @@ export function ParticipantAllocationBox({
         <label className="text-sm font-medium">Account</label>
         <Select
           value={state.eaId}
-          onValueChange={(val) =>
-            onChange({
-              ...state,
-              eaId: val,
-              statementSelections: [],
-              manualMonth: "",
-              manualYear: "",
-            })
-          }
+          onValueChange={(val) => {
+            // Radix may emit an empty or repeated value while options mount.
+            // Only a real user selection should invalidate statement periods.
+            if (!val) return;
+            onChange((current) => {
+              if (val === current.eaId) return current;
+              return {
+                eaId: val,
+                statementSelections: [],
+                manualMonth: "",
+                manualYear: "",
+              };
+            });
+          }}
         >
           <SelectTrigger>
-            <SelectValue placeholder="Select a participant..." />
+            <SelectValue placeholder="Select a participant...">
+              {selectedEA
+                ? `${selectedEA.entityName || selectedEA.entityId} (${selectedEA.entityType})`
+                : undefined}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {availableEAs.map((ea) => (
@@ -97,7 +111,7 @@ export function ParticipantAllocationBox({
           min="0"
           placeholder="0.00"
           value={state.amount}
-          onChange={(e) => onChange({ ...state, amount: e.target.value })}
+          onChange={(e) => onChange({ amount: e.target.value })}
         />
       </div>
 
@@ -106,13 +120,11 @@ export function ParticipantAllocationBox({
         currencyCode={currencyCode}
         paymentAmount={state.amount || "0"}
         selections={state.statementSelections}
-        onSelectionsChange={(sels) =>
-          onChange({ ...state, statementSelections: sels })
-        }
+        onSelectionsChange={(sels) => onChange({ statementSelections: sels })}
         manualMonth={state.manualMonth}
         manualYear={state.manualYear}
-        onManualMonthChange={(m) => onChange({ ...state, manualMonth: m })}
-        onManualYearChange={(y) => onChange({ ...state, manualYear: y })}
+        onManualMonthChange={(m) => onChange({ manualMonth: m })}
+        onManualYearChange={(y) => onChange({ manualYear: y })}
       />
     </div>
   );

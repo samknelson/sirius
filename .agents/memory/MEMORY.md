@@ -157,3 +157,4 @@
 - [Lob HTML pagination limits](lob-html-pagination-limits.md) — actual proofs ignore paged CSS and can split text mid-line; padded-block tricks are not safe for arbitrary multi-page HTML.
 - [DP report billing authority](dp-report-billing-authority.md) — a surviving posted charge is authoritative for its month when WMB/rate reconstruction later fails; historical billing proves nothing current.
 - [Deployment cron policy](deployment-cron-policy.md) — production cron enablement must come from the real deployment environment; copied DB overrides cannot authorize execution.
+- [Payment editor lifecycle](payment-editor-lifecycle.md) — intact allocations can disappear during control initialization; distinguish deliberate account changes from hydration and preserve local drafts.
