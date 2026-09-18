@@ -181,10 +181,33 @@ interface LobLetterResponse {
   object: string;
 }
 
+function appendMultipartFields(
+  form: FormData,
+  value: Record<string, unknown>,
+  prefix?: string,
+): void {
+  for (const [key, fieldValue] of Object.entries(value)) {
+    if (fieldValue === undefined || fieldValue === null) continue;
+
+    const fieldName = prefix ? `${prefix}[${key}]` : key;
+    if (typeof fieldValue === 'object') {
+      appendMultipartFields(
+        form,
+        fieldValue as Record<string, unknown>,
+        fieldName,
+      );
+    } else {
+      form.append(fieldName, String(fieldValue));
+    }
+  }
+}
 export class LobPostalProvider implements PostalTransport {
   readonly id = 'lob';
+
   readonly displayName = 'Lob';
+
   readonly category = 'postal' as const;
+
   readonly supportedFeatures = [
     'address_verification',
     'letter_sending',
@@ -196,7 +219,9 @@ export class LobPostalProvider implements PostalTransport {
   ];
 
   private apiKey: string | null = null;
+
   private baseUrl = 'https://api.lob.com/v1';
+
   private settings: PostalProviderSettings = {};
 
   async configure(config: unknown): Promise<void> {
@@ -432,12 +457,18 @@ export class LobPostalProvider implements PostalTransport {
   }
 
   async sendLetter(params: SendLetterParams): Promise<LetterSendResult> {
-    const hasFile = typeof params.file === 'string' && params.file.trim().length > 0;
+    if (params.file !== undefined) {
+      return {
+        success: false,
+        error: 'Lob does not accept string file content; supply pdfFile or templateId',
+      };
+    }
+    const hasFile = params.pdfFile !== undefined;
     const hasTemplate = typeof params.templateId === 'string' && params.templateId.trim().length > 0;
     if (hasFile === hasTemplate) {
       return {
         success: false,
-        error: 'Exactly one of file or templateId is required to send a Lob letter',
+        error: 'Exactly one of pdfFile or templateId must be supplied',
       };
     }
 
@@ -463,6 +494,36 @@ export class LobPostalProvider implements PostalTransport {
     }
 
     try {
+      if (params.file !== undefined) {
+        return {
+          answered: false,
+          error: 'Lob does not accept string file content; supply pdfFile or templateId',
+        };
+      }
+
+      const hasPdfFile = params.pdfFile !== undefined;
+      const hasTemplateId = Boolean(params.templateId);
+      if (hasPdfFile === hasTemplateId) {
+        return {
+          answered: false,
+          error: 'Exactly one of pdfFile or templateId must be supplied',
+        };
+      }
+
+      if (params.pdfFile?.length === 0) {
+        return { answered: false, error: 'pdfFile must not be empty' };
+      }
+
+      if (
+        params.pdfFile !== undefined &&
+        !params.pdfFile.subarray(0, 5).equals(Buffer.from('%PDF-'))
+      ) {
+        return {
+          answered: false,
+          error: 'pdfFile must contain PDF data beginning with %PDF-',
+        };
+      }
+
       const mailType = params.options?.mailType || 'usps_first_class';
       
       const letterData: Record<string, unknown> = {
@@ -509,27 +570,50 @@ export class LobPostalProvider implements PostalTransport {
         letterData.custom_envelope = params.options.customEnvelope;
       }
 
-      if (params.templateId) {
+      if (params.pdfFile !== undefined) {
+        if (params.mergeVariables) {
+          letterData.merge_variables = params.mergeVariables;
+        }
+      } else if (params.templateId) {
+        // Lob's file field accepts a hosted template ID; template_id is not
+        // part of the letters-create request contract.
         letterData.file = params.templateId;
         if (params.mergeVariables) {
           letterData.merge_variables = params.mergeVariables;
         }
-      } else {
-        letterData.file = params.file;
       }
 
       if (params.metadata) {
         letterData.metadata = params.metadata;
       }
 
-      const response = await fetch(`${this.baseUrl}/letters`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${apiKey}:`).toString('base64')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(letterData),
-      });
+      const authorization = `Basic ${Buffer.from(`${apiKey}:`).toString('base64')}`;
+      let response: Response;
+      if (params.pdfFile !== undefined) {
+        const form = new FormData();
+        appendMultipartFields(form, letterData);
+        form.append(
+          'file',
+          new Blob([Uint8Array.from(params.pdfFile)], { type: 'application/pdf' }),
+          'letter.pdf',
+        );
+        response = await fetch(`${this.baseUrl}/letters`, {
+          method: 'POST',
+          headers: {
+            Authorization: authorization,
+          },
+          body: form,
+        });
+      } else {
+        response = await fetch(`${this.baseUrl}/letters`, {
+          method: 'POST',
+          headers: {
+            Authorization: authorization,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(letterData),
+        });
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));

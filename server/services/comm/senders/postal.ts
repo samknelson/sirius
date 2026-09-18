@@ -10,6 +10,7 @@ import { logger } from '../../../logger';
 import { isMaintenanceModeError } from "../../maintenance-flag";
 import { ALREADY_SENT, findSentWithKey, type AlreadySentCode } from '../send-key';
 import { resolveLobCallbackStatus } from '../callback-handlers/lob';
+import { isRemoteLetterDocument } from '@shared/utils/html/letter-page';
 
 export interface SendPostalRequest {
   contactId: string;
@@ -38,7 +39,7 @@ export interface SendPostalResult {
   comm?: Comm;
   commPostal?: CommPostal;
   error?: string;
-  errorCode?: 'POSTAL_NOT_SUPPORTED' | 'VALIDATION_ERROR' | 'NOT_OPTED_IN' | 'NOT_ALLOWLISTED' | 'PROVIDER_ERROR' | 'UNKNOWN_ERROR' | 'NO_RETURN_ADDRESS' | AlreadySentCode;
+  errorCode?: 'POSTAL_NOT_SUPPORTED' | 'VALIDATION_ERROR' | 'LETTER_PREPARATION_FAILED' | 'NOT_OPTED_IN' | 'NOT_ALLOWLISTED' | 'PROVIDER_ERROR' | 'UNKNOWN_ERROR' | 'NO_RETURN_ADDRESS' | AlreadySentCode;
   /**
    * The send was refused because its key was already spent. This is NOT a
    * failure — nothing was attempted and nothing broke. `comm` carries the
@@ -81,7 +82,43 @@ function buildCanonicalAddress(address: PostalAddress): string {
 }
 
 export async function sendPostal(request: SendPostalRequest): Promise<SendPostalResult> {
-  const { contactId, toAddress, fromAddress, description, file, templateId, mergeVariables, mailType, color, doubleSided, userId, tagIds, sendOffline, sendKey } = request;
+  const { contactId, toAddress, fromAddress, description, file: requestedFile, templateId, mergeVariables, mailType, color, doubleSided, userId, tagIds, sendOffline, sendKey } = request;
+
+  /**
+   * THE GUARANTEE: a letter file leaves here as the standard letter page.
+   *
+   * Every letter this system composes is an HTML BODY, and the page shell
+   * around it — margins, and the blank band the provider stamps its
+   * address block into — is decided in one place
+   * (`shared/utils/html/letter-page.ts`). Wrapping at the caller is a
+   * promise each caller can forget, so the send path wraps here instead;
+    * a caller that already wrapped (the notifier compose step) has its
+    * body extracted and sanitized, and a foreign whole document is
+   * refused rather than mailed full-bleed.
+   *
+   * This is also what the offline record stores, so a letter recorded as
+   * mailed by hand is the page that would have printed.
+   */
+  let file = requestedFile;
+  if (file !== undefined && !isRemoteLetterDocument(file)) {
+    try {
+      const { prepareLetterHtml } = await import("../letter-pdf");
+      file = await prepareLetterHtml(file);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Invalid letter content",
+        errorCode: 'VALIDATION_ERROR',
+      };
+    }
+  }
+  if (file !== undefined && templateId) {
+    return {
+      success: false,
+      error: "Choose either a letter body or a Lob template, not both.",
+      errorCode: 'VALIDATION_ERROR',
+    };
+  }
 
   if (sendOffline) {
     try {
@@ -183,6 +220,25 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
         success: false,
         error: 'No return address provided and no default return address configured.',
         errorCode: 'NO_RETURN_ADDRESS',
+      };
+    }
+
+    // Finish ALL local preparation before spending the durable send key.
+    // A queue timeout, Chromium failure, or refused remote PDF has not sent
+    // anything and must leave a keyed notifier retryable. The provider call
+    // still happens only after the atomic claim below.
+    let pdfFile: Buffer | undefined;
+    try {
+      pdfFile = file === undefined
+        ? undefined
+        : isRemoteLetterDocument(file)
+          ? await (await import("../remote-letter-pdf")).downloadRemoteLetterPdf(file)
+          : await (await import("../letter-pdf")).renderLetterPdf(file);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unable to prepare the letter PDF",
+        errorCode: "LETTER_PREPARATION_FAILED",
       };
     }
 
@@ -303,7 +359,7 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
         to: normalizedAddress,
         from: returnAddress,
         description,
-        file,
+        pdfFile,
         templateId,
         mergeVariables,
         options: {

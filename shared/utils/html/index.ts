@@ -56,4 +56,13 @@ export {
   type HtmlSanitizePolicyName,
 } from "./policies";
 export { sanitizeHtml, sanitizeHtmlReportingChange } from "./sanitize";
-export { LETTER_PAGE_HTML, wrapLetterPage } from "./letter-page";
+export {
+  LETTER_PAGE_HTML,
+  LETTER_PAGE_GEOMETRY,
+  LETTER_PAGE_MARKER,
+  wrapLetterPage,
+  isLetterPage,
+  ensureLetterPage,
+  unwrapLetterPage,
+  isRemoteLetterDocument,
+} from "./letter-page";

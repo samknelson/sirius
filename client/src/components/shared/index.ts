@@ -4,3 +4,4 @@ export { ActivityLogView } from "./ActivityLogView";
 export { GenericOptionsPage } from "./GenericOptionsPage";
 export { RecordMetadataBadge } from "./RecordMetadataBadge";
 export { RecordCreatedStamp } from "./RecordCreatedStamp";
+export { LetterPagePreview } from "./LetterPagePreview";

@@ -66,7 +66,7 @@ describe("Lob letter request payload", () => {
     expect(outboundPayload).not.toHaveProperty("template_id");
   });
 
-  it("uses direct HTML as the single Lob file source", async () => {
+  it("refuses direct HTML before it can reach Lob's renderer", async () => {
     const html = "<html><body>Direct letter</body></html>";
     const result = await provider.sendLetter({
       to: address,
@@ -74,15 +74,16 @@ describe("Lob letter request payload", () => {
       file: html,
     });
 
-    expect(result.success).toBe(true);
-    expect(outboundPayload).toMatchObject({ file: html });
-    expect(outboundPayload).not.toHaveProperty("template_id");
-    expect(outboundPayload).not.toHaveProperty("merge_variables");
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/does not accept string file content/);
+    expect(outboundPayload).toBeUndefined();
+    expect(mocks.wcUncachedRequest).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it.each([
     ["missing", {}],
-    ["ambiguous", { file: "<p>Letter</p>", templateId: "tmpl_selected" }],
+    ["ambiguous", { pdfFile: Buffer.from("%PDF-1.7"), templateId: "tmpl_selected" }],
   ])("rejects %s letter content before calling Lob", async (_case, content) => {
     const result = await provider.sendLetter({
       to: address,
@@ -92,7 +93,7 @@ describe("Lob letter request payload", () => {
 
     expect(result).toEqual({
       success: false,
-      error: "Exactly one of file or templateId is required to send a Lob letter",
+      error: "Exactly one of pdfFile or templateId must be supplied",
     });
     expect(mocks.wcUncachedRequest).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();

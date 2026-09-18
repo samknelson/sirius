@@ -44,6 +44,40 @@ export const quicksearchFloodEvent: FloodEventDefinition = {
   },
 };
 
+/**
+ * Staff postal PDF preview cap.
+ *
+ * PDF rendering is deliberately bounded, but each accepted preview still
+ * launches Chromium. Bucket previews by the effective user so masquerading
+ * follows the account whose permissions and UI are in effect. Like the other
+ * interactive resource caps, callers fail open if the shared flood store is
+ * unavailable.
+ */
+export const POSTAL_PDF_PREVIEW_FLOOD_EVENT = "postal-pdf-preview";
+
+export const postalPdfPreviewFloodEvent: FloodEventDefinition = {
+  name: POSTAL_PDF_PREVIEW_FLOOD_EVENT,
+  threshold: 20,
+  windowSeconds: 60,
+  getIdentifier: (context: FloodContext): string => {
+    if (!context.userId) {
+      throw new Error("userId is required for postal-pdf-preview flood event");
+    }
+    return context.userId;
+  },
+  resolveIdentifierName: async (identifier: string): Promise<string | null> => {
+    try {
+      const user = await storage.users.getUser(identifier);
+      if (!user) return null;
+      return user.firstName && user.lastName
+        ? `${user.firstName} ${user.lastName}`.trim()
+        : user.email || null;
+    } catch {
+      return null;
+    }
+  },
+};
+
 export const bookmarkFloodEvent: FloodEventDefinition = {
   name: "bookmark",
   threshold: 1000,
@@ -290,6 +324,7 @@ export const edlsScheduleAnswerFloodEvent: FloodEventDefinition = {
 
 export function registerFloodEvents(): void {
   registerFloodEvent(quicksearchFloodEvent);
+  registerFloodEvent(postalPdfPreviewFloodEvent);
   registerFloodEvent(bookmarkFloodEvent);
   registerFloodEvent(localLoginFloodEvent);
   registerFloodEvent(localPasswordChangeFloodEvent);

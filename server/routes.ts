@@ -16,6 +16,7 @@ import { registerDenormRoutes } from "./modules/system/denorm";
 import { registerContactPostalRoutes } from "./modules/contact-postal";
 import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerCommRoutes } from "./modules/comm";
+import { registerCommPostalPreviewRoutes } from "./modules/comm-postal-preview";
 import { registerGrievanceRoutes } from "./modules/grievances/grievances";
 import { registerEntityFileContexts } from "./modules/entity-files-contexts";
 import { registerCatalogRoutes } from "./modules/catalogs";
@@ -357,6 +358,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register communication routes
   registerCommRoutes(app, requireAuth, requirePermission, requireAccess);
+  registerCommPostalPreviewRoutes(app, requireAuth, requireAccess);
 
   // Register grievance routes
   registerGrievanceRoutes(app, requireAuth, requireAccess);

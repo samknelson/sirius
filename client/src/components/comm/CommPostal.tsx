@@ -27,7 +27,6 @@ import {
   XCircle,
   MapPin,
   FileText,
-  Code,
   FileCode
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -37,12 +36,17 @@ import {
   refuseUnrenderedTokens,
 } from "./ComposeTemplateStudio";
 import type { ComposeTemplateTarget } from "@shared/comm-compose";
-import { wrapLetterPage } from "@shared/utils/html/letter-page";
+import { LetterPagePreview } from "@/components/shared/LetterPagePreview";
 import { useToast } from "@/hooks/use-toast";
 import { Address } from "@/lib/entity-types";
 import { useSystemMode } from "@/lib/use-variable";
 
-type ContentMode = "template" | "compose" | "rawHtml";
+// Compose or a vendor-hosted template. A third "raw HTML" mode used to
+// mail whatever whole document was typed here, straight past the standard
+// letter page — that is the full-bleed letter this screen's preview now
+// exists to prevent, so the mode is gone and the send path refuses a whole
+// document from any caller.
+type ContentMode = "template" | "compose";
 
 interface PostalOptinResponse {
   exists: boolean;
@@ -102,7 +106,6 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
   const [templateId, setTemplateId] = useState("");
   const [contentMode, setContentMode] = useState<ContentMode>("compose");
   const [composeBody, setComposeBody] = useState("");
-  const [rawHtml, setRawHtml] = useState("");
   const [mailType, setMailType] = useState<"usps_first_class" | "usps_standard">("usps_first_class");
   const [isOptinDialogOpen, setIsOptinDialogOpen] = useState(false);
   const [verificationResult, setVerificationResult] = useState<VerifyAddressResult | null>(null);
@@ -241,7 +244,6 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
       setDescription("");
       setTemplateId("");
       setComposeBody("");
-      setRawHtml("");
       setTagIds([]);
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId, "comm"] });
       onSendSuccess?.();
@@ -308,10 +310,9 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
       payload.templateId = templateId.trim();
     } else if (contentMode === "compose") {
       if (!composeBody.trim()) return;
-      payload.file = wrapLetterPage(composeBody.trim());
-    } else if (contentMode === "rawHtml") {
-      if (!rawHtml.trim()) return;
-      payload.file = rawHtml.trim();
+      // The body only. The send path and preview both pass it through the
+      // same server PDF renderer.
+      payload.file = composeBody.trim();
     }
 
     sendPostalMutation.mutate(payload);
@@ -319,8 +320,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
 
   const hasContent = 
     (contentMode === "template" && templateId.trim().length > 0) ||
-    (contentMode === "compose" && composeBody.trim().length > 0) ||
-    (contentMode === "rawHtml" && rawHtml.trim().length > 0);
+    (contentMode === "compose" && composeBody.trim().length > 0);
 
   const canSend = 
     selectedAddress && 
@@ -673,13 +673,6 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
                         Compose
                       </Label>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <RadioGroupItem value="rawHtml" id="mode-raw" data-testid="radio-mode-raw" />
-                      <Label htmlFor="mode-raw" className="flex items-center gap-1 cursor-pointer font-normal">
-                        <Code className="h-4 w-4" />
-                        Raw HTML
-                      </Label>
-                    </div>
                     {templatesData?.templates && templatesData.templates.length > 0 && (
                       <div className="flex items-center gap-2">
                         <RadioGroupItem value="template" id="mode-template" data-testid="radio-mode-template" />
@@ -743,7 +736,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
                               key: "body",
                               label: "Letter Body",
                               mode: "html",
-                              hint: "Wrapped in the standard letter page on send.",
+                              hint: "The letter body. Mailed inside the standard letter page.",
                             },
                             {
                               key: "description",
@@ -772,29 +765,18 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
                       data-testid="textarea-compose-body"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Your content will be wrapped in a default HTML template with 1-inch margins and standard letter formatting.
+                      Write the body of the letter only. It is mailed inside the
+                      standard letter page — the same page an automatic notice
+                      gets. The preview below is generated by the same PDF
+                      renderer used when the letter is sent.
                     </p>
+                    <LetterPagePreview
+                      bodyHtml={composeBody}
+                      testId="letter-preview-compose"
+                    />
                   </div>
                 )}
 
-                {contentMode === "rawHtml" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="raw-html">Full HTML</Label>
-                    <Textarea
-                      id="raw-html"
-                      placeholder="<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    @page { margin: 1in; }\n    body { font-family: Arial; }\n  </style>\n</head>\n<body>\n  Your letter content here...\n</body>\n</html>"
-                      value={rawHtml}
-                      onChange={(e) => setRawHtml(e.target.value)}
-                      rows={12}
-                      disabled={!selectedAddress}
-                      className="font-mono text-sm"
-                      data-testid="textarea-raw-html"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Enter complete HTML for the letter. Use @page CSS rules to control margins and page layout.
-                    </p>
-                  </div>
-                )}
               </div>
 
               <div className="space-y-2">
@@ -840,7 +822,6 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
                 setDescription("");
                 setTemplateId("");
                 setComposeBody("");
-                setRawHtml("");
                 setVerificationResult(null);
                 setTagIds([]);
               }}

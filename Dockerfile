@@ -67,10 +67,9 @@
 #   from inside the container, so when the app cannot establish that it is
 #   supervised, the page says so and demands a typed confirmation.
 #
-# CAVEAT: features that rely on `puppeteer-core` (e.g. some PDF generation)
-# need a Chromium binary in the container. This image does not install one.
-# If you use those features, install Chromium and set PUPPETEER_EXECUTABLE_PATH
-# (or switch to full `puppeteer`) in a derived image.
+# Chromium is intentionally included in the normal web runtime for the
+# PDF letter renderer. CHROMIUM_EXECUTABLE_PATH may
+# override its location; the renderer otherwise discovers /usr/bin/chromium.
 # ============================================================================
 
 
@@ -222,6 +221,16 @@ FROM node:20-bookworm-slim AS runtime
 ENV NODE_ENV=production
 # Default port; override with -e PORT=...
 ENV PORT=5000
+
+# Letter-rendering runtime dependency: puppeteer-core supplies no
+# browser, so install Chromium and stable document fonts in the web image only.
+# Keep this out of migration-deps/migration: one-off schema jobs do not render.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        chromium \
+        fonts-dejavu-core \
+        fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

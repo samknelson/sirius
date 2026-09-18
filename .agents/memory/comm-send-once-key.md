@@ -34,12 +34,24 @@ that did go out without recording a failure that never happened.
 message on every run, and the comm layer had no way to say "this one already
 went out".
 
-**Trade-off — a spent key stays spent.** A keyed send that fails has still
+**Trade-off — a spent key stays spent.** A keyed send that fails after the claim has still
 consumed its key and is never retried, including failures unrelated to the
 content (no opt-in, provider outage). Re-opening the key on failure puts the
 race back, because "did it fail?" is only knowable after the provider has been
 called. The failed comm row is the evidence. Callers needing retries must vary
 the key.
+
+**Complete retryable local preparation before claiming.** PDF rendering,
+renderer-queue waits and remote-document validation must finish before the
+communication insert, while the actual provider submission stays after it.
+
+**Why:** previews competing for renderer slots can otherwise permanently
+consume a notifier's key without a single provider attempt. Local failure
+has no ambiguous external outcome and does not need the spent-key trade-off.
+
+**How to apply:** reserve independent rendering capacity for deliveries and
+previews; bound waiting, but return a pre-claim failure on local overload or
+render errors. Never reopen a key after a provider attempt.
 
 **How to apply:** any new caller wanting at-most-once delivery passes a key it
 can recompute deterministically. The read-side "already sent?" helper is an

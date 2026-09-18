@@ -71,7 +71,9 @@ export interface SendLetterParams {
   to: PostalAddress;
   from: PostalAddress;
   description?: string;
+  /** @deprecated Lob refuses string content; retained for other postal transports. */
   file?: string;
+  pdfFile?: Buffer;
   templateId?: string;
   mergeVariables?: Record<string, string>;
   options?: LetterDeliveryOptions;

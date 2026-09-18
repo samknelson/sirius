@@ -189,3 +189,31 @@ mtime_ms = 1788555457339
 storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:8a1a98ac-267a-49fc-bedd-c98aa4f89294/6415bf77-a9a0-477b-9c58-ac073619803a/56604eb2-4cf0-4d10-a737-763848c78f43"
 storage_version_token = "1788555469522637"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "4lXztgULRP3CbaaaXFkEV"
+uri = "file://attached_assets/lob-short-letter-proof.pdf"
+type = "pdf"
+title = "Short letter — Lob test proof"
+description = "Actual Lob proof: one-inch margins and body below the address/barcode area. Synthetic test content; not mailed."
+logical_id = "7ae5f8a9-e4bc-4f3a-992b-48a756c242d0"
+content_hash = "sha256:c488a06655bcd531340e1542ce0beeaf2d505c98bfbdad4f7f3817240c8e3d2e"
+size = 49522
+mtime_ms = 1789683692083
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:8a1a98ac-267a-49fc-bedd-c98aa4f89294/7ae5f8a9-e4bc-4f3a-992b-48a756c242d0/4c7986ca-9a98-4011-9f87-582985b9d750"
+storage_version_token = "1789683773748646"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "pbDMaHgeE0FLupWiTPSzI"
+uri = "file://attached_assets/lob-two-page-letter-proof.pdf"
+type = "pdf"
+title = "Two-page letter — Lob test proof"
+description = "Actual Lob proof: first-page address clearance and normal margins on page two. Synthetic test content; not mailed."
+logical_id = "04ec2d50-ad99-491d-b568-5df3f4808c6e"
+content_hash = "sha256:acfabbece1af8af9e526fd93d927f7b8158cbaa5f5ae9f8352fa62f1b2a45011"
+size = 51283
+mtime_ms = 1789683692093
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:8a1a98ac-267a-49fc-bedd-c98aa4f89294/04ec2d50-ad99-491d-b568-5df3f4808c6e/7305a455-ebe1-4719-a087-435e33165a2f"
+storage_version_token = "1789683774509835"
+content_type = "application/pdf"

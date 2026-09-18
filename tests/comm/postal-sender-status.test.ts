@@ -8,6 +8,17 @@ const mocks = vi.hoisted(() => ({
   getPostalOptin: vi.fn(),
   sendLetter: vi.fn(),
   getCommWithDetails: vi.fn(),
+  renderLetterPdf: vi.fn(),
+  downloadRemoteLetterPdf: vi.fn(),
+}));
+
+vi.mock("../../server/services/comm/letter-pdf", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../server/services/comm/letter-pdf")>(),
+  renderLetterPdf: mocks.renderLetterPdf,
+}));
+
+vi.mock("../../server/services/comm/remote-letter-pdf", () => ({
+  downloadRemoteLetterPdf: mocks.downloadRemoteLetterPdf,
 }));
 
 vi.mock("../../server/storage/comm", () => ({
@@ -76,6 +87,7 @@ vi.mock("../../server/services/maintenance-flag", () => ({
 }));
 
 import { sendPostal } from "../../server/services/comm/senders/postal";
+import { LetterRenderQueue } from "../../server/services/comm/letter-render-queue";
 
 const toAddress = {
   name: "Test Recipient",
@@ -85,6 +97,16 @@ const toAddress = {
   zip: "97201",
   country: "US",
 };
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((onResolve, onReject) => {
+    resolve = onResolve;
+    reject = onReject;
+  });
+  return { promise, resolve, reject };
+}
 
 describe("postal sender Lob acceptance status", () => {
   beforeEach(() => {
@@ -103,6 +125,8 @@ describe("postal sender Lob acceptance status", () => {
       data: {},
     });
     mocks.getPostalOptin.mockResolvedValue({ optin: true, allowlist: true });
+    mocks.renderLetterPdf.mockResolvedValue(Buffer.from("%PDF-finalized"));
+    mocks.downloadRemoteLetterPdf.mockResolvedValue(Buffer.from("%PDF-downloaded"));
     mocks.getCommWithDetails.mockResolvedValue({
       id: "comm-1",
       medium: "postal",
@@ -154,6 +178,204 @@ describe("postal sender Lob acceptance status", () => {
         },
       }),
     );
+  });
+
+  it("renders a composed letter and submits only the finalized PDF", async () => {
+    mocks.sendLetter.mockResolvedValue({
+      success: true,
+      letterId: "ltr_pdf",
+      details: { providerStatus: "created" },
+    });
+
+    const result = await sendPostal({
+      contactId: "contact-1",
+      toAddress,
+      file: '<p style="position:fixed">Final letter</p><script>steal()</script>',
+    });
+
+    expect(result.success).toBe(true);
+    expect(mocks.renderLetterPdf).toHaveBeenCalledOnce();
+    const renderedHtml = mocks.renderLetterPdf.mock.calls[0][0] as string;
+    expect(renderedHtml).toContain("sirius-letter-page-v2");
+    expect(renderedHtml).toContain("<p>Final letter</p>");
+    expect(renderedHtml).not.toContain("position:fixed");
+    expect(renderedHtml).not.toContain("<script");
+    const sendParams = mocks.sendLetter.mock.calls[0][0];
+    expect(sendParams.file).toBeUndefined();
+    expect(sendParams.pdfFile).toEqual(Buffer.from("%PDF-finalized"));
+  });
+
+  it("does not spend a send key on render failure, so the same keyed send can retry", async () => {
+    mocks.renderLetterPdf.mockRejectedValueOnce(new Error("Chromium could not render the letter"));
+    mocks.sendLetter.mockResolvedValue({
+      success: true,
+      letterId: "ltr_retry",
+      details: { providerStatus: "created" },
+    });
+    const request = {
+      contactId: "contact-1",
+      toAddress,
+      file: "<p>Final letter</p>",
+      sendKey: "notice:case-1",
+    };
+
+    const failed = await sendPostal(request);
+
+    expect(failed).toMatchObject({
+      success: false,
+      errorCode: "LETTER_PREPARATION_FAILED",
+      error: "Chromium could not render the letter",
+    });
+    expect(failed.comm).toBeUndefined();
+    expect(mocks.createComm).not.toHaveBeenCalled();
+    expect(mocks.updateComm).not.toHaveBeenCalled();
+    expect(mocks.sendLetter).not.toHaveBeenCalled();
+
+    const retried = await sendPostal(request);
+
+    expect(retried.success).toBe(true);
+    expect(mocks.createComm).toHaveBeenCalledOnce();
+    expect(mocks.createComm).toHaveBeenCalledWith(
+      expect.objectContaining({ sendKey: "notice:case-1" }),
+    );
+    expect(mocks.sendLetter).toHaveBeenCalledOnce();
+  });
+
+  it("does not claim or send while a keyed letter is still rendering", async () => {
+    const pendingPdf = deferred<Buffer>();
+    mocks.renderLetterPdf.mockReturnValueOnce(pendingPdf.promise);
+    mocks.sendLetter.mockResolvedValue({
+      success: true,
+      letterId: "ltr_pending",
+      details: { providerStatus: "created" },
+    });
+
+    const sending = sendPostal({
+      contactId: "contact-1",
+      toAddress,
+      file: "<p>Pending letter</p>",
+      sendKey: "notice:pending",
+    });
+    await vi.waitFor(() => expect(mocks.renderLetterPdf).toHaveBeenCalledOnce());
+
+    expect(mocks.createComm).not.toHaveBeenCalled();
+    expect(mocks.sendLetter).not.toHaveBeenCalled();
+
+    pendingPdf.resolve(Buffer.from("%PDF-pending"));
+    const result = await sending;
+
+    expect(result.success).toBe(true);
+    expect(mocks.createComm).toHaveBeenCalledOnce();
+    expect(mocks.createComm).toHaveBeenCalledWith(
+      expect.objectContaining({ sendKey: "notice:pending" }),
+    );
+    expect(mocks.sendLetter).toHaveBeenCalledOnce();
+  });
+
+  it("passes the existing template path through without rendering a PDF", async () => {
+    mocks.sendLetter.mockResolvedValue({
+      success: true,
+      letterId: "ltr_template",
+      details: { providerStatus: "created" },
+    });
+    const mergeVariables = { firstName: "Taylor" };
+
+    const result = await sendPostal({
+      contactId: "contact-1",
+      toAddress,
+      templateId: "tmpl_existing",
+      mergeVariables,
+    });
+
+    expect(result.success).toBe(true);
+    expect(mocks.renderLetterPdf).not.toHaveBeenCalled();
+    const sendParams = mocks.sendLetter.mock.calls[0][0];
+    expect(sendParams.file).toBeUndefined();
+    expect(sendParams).toMatchObject({
+      pdfFile: undefined,
+      templateId: "tmpl_existing",
+      mergeVariables,
+    });
+  });
+
+  it("downloads a remote letter and sends only its validated PDF bytes", async () => {
+    mocks.sendLetter.mockResolvedValue({
+      success: true,
+      letterId: "ltr_remote",
+      details: { providerStatus: "created" },
+    });
+    const url = "https://letters.example.test/final.pdf";
+
+    const result = await sendPostal({
+      contactId: "contact-1",
+      toAddress,
+      file: url,
+    });
+
+    expect(result.success).toBe(true);
+    expect(mocks.downloadRemoteLetterPdf).toHaveBeenCalledWith(url);
+    expect(mocks.renderLetterPdf).not.toHaveBeenCalled();
+    const sendParams = mocks.sendLetter.mock.calls[0][0];
+    expect(sendParams.file).toBeUndefined();
+    expect(sendParams.pdfFile).toEqual(Buffer.from("%PDF-downloaded"));
+    expect(JSON.stringify(sendParams)).not.toContain(url);
+  });
+
+  it("does not call transport when a remote letter download is refused", async () => {
+    mocks.downloadRemoteLetterPdf.mockRejectedValue(
+      new Error("Remote letter download was refused"),
+    );
+
+    const result = await sendPostal({
+      contactId: "contact-1",
+      toAddress,
+      file: "https://letters.example.test/refused.pdf",
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      errorCode: "LETTER_PREPARATION_FAILED",
+      error: "Remote letter download was refused",
+    });
+    expect(result.comm).toBeUndefined();
+    expect(mocks.renderLetterPdf).not.toHaveBeenCalled();
+    expect(mocks.createComm).not.toHaveBeenCalled();
+    expect(mocks.updateComm).not.toHaveBeenCalled();
+    expect(mocks.sendLetter).not.toHaveBeenCalled();
+  });
+
+  it("keeps the delivery lane available while two previews occupy its separate lane", async () => {
+    const queue = new LetterRenderQueue({ waitTimeoutMs: 1_000 });
+    const previewGate = deferred<void>();
+    const firstPreview = queue.run(true, () => previewGate.promise);
+    const secondPreviewTask = vi.fn(async () => undefined);
+    const secondPreview = queue.run(true, secondPreviewTask);
+    mocks.renderLetterPdf.mockImplementationOnce(() =>
+      queue.run(false, async () => Buffer.from("%PDF-delivery")),
+    );
+    mocks.sendLetter.mockResolvedValue({
+      success: true,
+      letterId: "ltr_lane",
+      details: { providerStatus: "created" },
+    });
+
+    const result = await sendPostal({
+      contactId: "contact-1",
+      toAddress,
+      file: "<p>Delivery letter</p>",
+      sendKey: "notice:lane-isolation",
+    });
+
+    expect(result.success).toBe(true);
+    expect(secondPreviewTask).not.toHaveBeenCalled();
+    expect(mocks.createComm).toHaveBeenCalledOnce();
+    expect(mocks.createComm).toHaveBeenCalledWith(
+      expect.objectContaining({ sendKey: "notice:lane-isolation" }),
+    );
+    expect(mocks.sendLetter).toHaveBeenCalledOnce();
+
+    previewGate.resolve();
+    await Promise.all([firstPreview, secondPreview]);
   });
 
   it("keeps a failed provider request failed rather than queued or sent", async () => {

@@ -52,6 +52,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useModalSeed } from "@/hooks/use-modal-seed";
+import { LetterPagePreview } from "@/components/shared/LetterPagePreview";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public types
@@ -1094,10 +1095,12 @@ export function TemplateStudio({
       );
     }
     if (channel === "postal") {
-      // Letter-style sheet: the letter body on "paper" (rendered as the
-      // markup it is when the field is HTML — the same sanitized output
-      // delivery wraps in the standard letter page), companion fields such
-      // as the mailing description as plain text.
+      // The page that will print: an HTML field IS the letter body, so it
+      // is previewed inside the standard letter page at sheet proportions
+      // (margins, and the band the provider stamps its address block
+      // into) rather than as loose text on a generic card — an overlap is
+      // only visible against the real page. Companion fields such as the
+      // mailing description are not printed, so they stay plain text.
       return (
         <div className="space-y-3">
           {fields.map((f) => {
@@ -1109,14 +1112,12 @@ export function TemplateStudio({
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{f.label}</p>
                 )}
                 {isHtml ? (
-                  <div
-                    className="rounded-sm border bg-white dark:bg-neutral-100 text-neutral-900 shadow-sm px-8 py-6 text-sm leading-relaxed break-words min-h-[12rem] prose prose-sm max-w-none prose-p:my-0 prose-p:mb-4 prose-neutral"
-                    data-testid={`studio-preview-postal-${f.key}`}
-                    // Same provenance as the email body above: server-sanitized
-                    // by `server/delivery/shape.ts` under "rich-document".
-                    dangerouslySetInnerHTML={{
-                      __html: r?.rendered || "<p><em>(empty letter — nothing would be mailed)</em></p>",
-                    }}
+                  // Same provenance as the email body above: server-sanitized
+                  // by `server/delivery/shape.ts` under "rich-document", then
+                  // wrapped in the same page the send path wraps it in.
+                  <LetterPagePreview
+                    bodyHtml={r?.rendered ?? ""}
+                    testId={`studio-preview-postal-${f.key}`}
                   />
                 ) : (
                   <div
