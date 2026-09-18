@@ -161,6 +161,58 @@ describe("BAO Domestic Partner current-month report", () => {
     expect(counts).toEqual([10, 10]);
   });
 
+  it("uses a posted current-month charge when WMB/rates cannot reconstruct that month", async () => {
+    seed(0);
+    relations = [
+      { id: "relation", worker1: "subscriber", worker2: "partner", relationTypeName: "Domestic Partner" },
+    ];
+    elections = [
+      { id: "election", workerId: "subscriber", relationshipIds: ["relation"], benefitIds: ["medical"] },
+    ];
+    // No current-month benefit presence: the independent pricing lookup is
+    // unavailable, but the surviving posted current-month charge is authoritative.
+    entries = [
+      { referenceId: "election", amount: "25.00", data: { billingMonth: "2026-04", dpRelationshipId: "relation", dpWorkerId: "partner" } },
+    ];
+    balances = [{ entityId: "subscriber", accountId: "acct", total: "0.00" }];
+
+    const report = await calculateDpCurrentMonthReport("2026-04-15");
+
+    expect(report.rows).toEqual([
+      expect.objectContaining({
+        charge: "25.00",
+        paidAmount: "25.00",
+        balance: "0.00",
+        status: "paid_covered",
+      }),
+    ]);
+    expect(report.statusCounts.paid_covered).toBe(1);
+    expect([report.totalCharges, report.totalPaid, report.totalBalance]).toEqual(["25.00", "25.00", "0.00"]);
+  });
+
+  it("does not use historical charges as current-month coverage", async () => {
+    seed(0);
+    relations = [
+      { id: "relation", worker1: "subscriber", worker2: "partner", relationTypeName: "Domestic Partner" },
+    ];
+    elections = [
+      { id: "election", workerId: "subscriber", relationshipIds: ["relation"], benefitIds: ["medical"] },
+    ];
+    entries = [
+      { referenceId: "election", amount: "25.00", data: { billingMonth: "2026-03", dpRelationshipId: "relation", dpWorkerId: "partner" } },
+    ];
+    balances = [{ entityId: "subscriber", accountId: "acct", total: "0.00" }];
+
+    const report = await calculateDpCurrentMonthReport("2026-04-15");
+
+    expect(report.rows[0]).toEqual(expect.objectContaining({
+      charge: "0.00",
+      paidAmount: "0.00",
+      status: "unavailable_not_covered",
+    }));
+    expect(report.statusCounts.unavailable_not_covered).toBe(1);
+  });
+
   it("returns an empty summary without loading pricing, payments or names", async () => {
     seed(0);
     const report = await calculateDpCurrentMonthReport("2026-04-15");

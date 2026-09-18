@@ -114,10 +114,21 @@ export async function calculateDpCurrentMonthReport(
     if (seen.has(key)) continue;
     seen.add(key);
 
+    const postedCharge = Number(paymentMonth?.netCharge);
+    const hasPostedCurrentMonthCharge =
+      Number.isFinite(postedCharge) && postedCharge >= 0.005;
     let charge = "0.00";
     let paidAmount = paymentMonth?.paidAmount ?? "0.00";
     let status: DpReportStatus;
-    if (price.kind === "no_charge") {
+    if (hasPostedCurrentMonthCharge) {
+      // A surviving posted charge is the authoritative coverage basis for the
+      // month. The rate/WMB reconstruction can legitimately become unavailable
+      // after billing, but must not erase the charge or its applied payment.
+      charge = paymentMonth!.netCharge;
+      if (paymentMonth!.status === "paid") status = "paid_covered";
+      else if (paymentMonth!.status === "partial") status = "partially_paid";
+      else status = "unpaid_not_covered";
+    } else if (price.kind === "no_charge") {
       status = "confirmed_no_charge";
       paidAmount = "0.00";
     } else if (price.kind !== "charge") {

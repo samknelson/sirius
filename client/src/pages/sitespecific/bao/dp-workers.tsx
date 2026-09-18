@@ -101,7 +101,7 @@ export default function BaoDpWorkersPage() {
                   <TableBody>{data.data.map((row) => (
                     <TableRow key={`${row.electionId}-${row.relationshipId}`} data-testid={`row-bao-dp-worker-${row.workerId}`}>
                       <TableCell><Link className="text-primary hover:underline" href={`/workers/${row.workerId}/sitespecific/bao/dp`}>{row.workerName}</Link></TableCell>
-                      <TableCell>{row.partnerName}</TableCell>
+                      <TableCell><Link className="text-primary hover:underline" href={`/workers/${row.partnerWorkerId}/sitespecific/bao/dp`}>{row.partnerName}</Link></TableCell>
                       <TableCell>{row.coverageMonth}</TableCell>
                       <TableCell>{money(row.charge)}</TableCell><TableCell>{money(row.paidAmount)}</TableCell><TableCell>{money(row.balance)}</TableCell>
                       <TableCell><Badge variant="outline">{STATUS_LABELS[row.status] ?? row.status}</Badge></TableCell>

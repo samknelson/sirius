@@ -46,6 +46,9 @@ describe("Domestic Partner monitoring UI contract", () => {
     expect(pageSource).toContain(
       "href={`/workers/${row.workerId}/sitespecific/bao/dp`}",
     );
+    expect(pageSource).toContain(
+      "href={`/workers/${row.partnerWorkerId}/sitespecific/bao/dp`}",
+    );
     expect(appSource).toContain('<Route path="/bao/dp/workers">');
     expect(appSource).toContain(
       '<ProtectedRoute permission="staff" component="sitespecific.bao">',
