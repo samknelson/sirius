@@ -344,10 +344,25 @@ export function registerBulkMessageRoutes(
           if (existing) {
             const parsed = insertBulkMessagesPostalSchema.partial().safeParse(messageBody);
             if (!parsed.success) return res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
+            const next = { ...existing, ...parsed.data };
+            const contentSources = [next.bodyHtml, next.fileUrl, next.templateId]
+              .filter((value) => typeof value === "string" && value.trim() !== "");
+            if (contentSources.length > 1) {
+              return res.status(400).json({
+                message: "Choose only one postal content source: a composed letter body, a file, or a Lob template.",
+              });
+            }
             result = await storage.bulkMessagesPostal.update(existing.id, parsed.data);
           } else {
             const parsed = insertBulkMessagesPostalSchema.safeParse({ ...messageBody, bulkId: bulk.id });
             if (!parsed.success) return res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
+            const contentSources = [parsed.data.bodyHtml, parsed.data.fileUrl, parsed.data.templateId]
+              .filter((value) => typeof value === "string" && value.trim() !== "");
+            if (contentSources.length > 1) {
+              return res.status(400).json({
+                message: "Choose only one postal content source: a composed letter body, a file, or a Lob template.",
+              });
+            }
             result = await storage.bulkMessagesPostal.create(parsed.data);
           }
           break;
@@ -798,7 +813,7 @@ export function registerBulkMessageRoutes(
       const inapp = await storage.bulkMessagesInapp.getByBulkId(bulk.id);
       if (inapp) templates.push(inapp.title || "", inapp.body || "", inapp.linkLabel || "");
       const postal = await storage.bulkMessagesPostal.getByBulkId(bulk.id);
-      if (postal) templates.push(postal.description || "");
+      if (postal) templates.push(postal.bodyHtml || "", postal.description || "");
 
       // Only cover expressions that parse + validate against the roots
       // bulk's context declares — the same list the editor offered;

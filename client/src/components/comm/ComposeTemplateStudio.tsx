@@ -170,6 +170,11 @@ export function ComposeTemplateStudio({
     setDraft(draftRef.current);
   };
 
+  const replaceDraft = (values: Record<string, string>) => {
+    draftRef.current = values;
+    setDraft(values);
+  };
+
   const handEdited = () =>
     applied !== null &&
     fieldKeys.some(
@@ -276,6 +281,7 @@ export function ComposeTemplateStudio({
           fields={fields}
           values={draft}
           onValueChange={editDraft}
+          onValuesChange={replaceDraft}
           fieldSpecs={MEDIUM_FIELDS[channel]}
           contextId={composeTokenContextId(target.scope)}
           seedsUrl={`/api/comm-compose/preview-seeds?scope=${encodeURIComponent(target.scope)}&recordId=${encodeURIComponent(target.recordId)}`}

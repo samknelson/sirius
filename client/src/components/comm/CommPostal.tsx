@@ -274,7 +274,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
     if (
       composeTarget &&
       contentMode === "compose" &&
-      refuseUnrenderedTokens({ body: composeBody, description }, toast)
+      refuseUnrenderedTokens({ bodyHtml: composeBody, description }, toast)
     ) {
       return;
     }
@@ -733,7 +733,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
                           title="Compose Letter"
                           fields={[
                             {
-                              key: "body",
+                              key: "bodyHtml",
                               label: "Letter Body",
                               mode: "html",
                               hint: "The letter body. Mailed inside the standard letter page.",
@@ -745,9 +745,9 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess, c
                               hint: "Internal description of the mailing; not printed.",
                             },
                           ]}
-                          values={{ body: composeBody, description }}
+                          values={{ bodyHtml: composeBody, description }}
                           onApply={(rendered) => {
-                            setComposeBody(rendered.body ?? "");
+                            setComposeBody(rendered.bodyHtml ?? "");
                             setDescription(rendered.description ?? "");
                           }}
                           testId="button-compose-postal-template"

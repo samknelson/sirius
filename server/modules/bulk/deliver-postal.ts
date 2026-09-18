@@ -11,12 +11,18 @@ import {
 import type { TokenRootSeed } from "../../plugins/tokens/types";
 import { BULK_POSTAL_MERGE_ROOT_NAMES } from "./token-roots";
 import { parseTokenChain } from "@shared/tokens";
-import { mediumField, tokenCleanerFor } from "../../delivery/shape";
+import {
+  mediumField,
+  shapeRenderedValue,
+  tokenCleanerFor,
+} from "../../delivery/shape";
+import { recordBulkUndeliverable } from "./undeliverable";
 
 // By key, never by position — see `deliver-email.ts`. Bulk postal
-// authors only the description: the printed content of the letter comes
-// from the vendor's template, so the medium's optional letter body is
-// deliberately not offered here and never rendered.
+// authors a canonical HTML body and an optional description. Legacy
+// vendor template/file records remain valid, but are mutually exclusive
+// with an authored body.
+const BODY_HTML_SPEC = mediumField("postal", "bodyHtml");
 const DESCRIPTION_SPEC = mediumField("postal", "description");
 
 export async function resolvePostalAddress(storage: IStorage, contactId: string): Promise<PostalAddress | null> {
@@ -64,13 +70,45 @@ export async function deliverPostal(
     country: postalContent.fromCountry || "US",
   } : undefined;
   const ctx = createTokenEvalContext(storage, contactId, { seeds });
+  const contentSources = [
+    postalContent.bodyHtml?.trim(),
+    postalContent.fileUrl?.trim(),
+    postalContent.templateId?.trim(),
+  ].filter(Boolean);
+  if (contentSources.length === 0) {
+    return { success: false, error: "No postal letter content configured for this message", errorCode: "NO_CONTENT" };
+  }
+  if (contentSources.length > 1) {
+    return {
+      success: false,
+      error: "Choose only one postal content source: a composed letter body, a file, or a Lob template.",
+      errorCode: "VALIDATION_ERROR",
+    };
+  }
+  const renderedBody = postalContent.bodyHtml
+    ? shapeRenderedValue(
+        BODY_HTML_SPEC,
+        (
+          await renderTokens(postalContent.bodyHtml, ctx, {
+            strictUnknown: true,
+            clean: tokenCleanerFor(BODY_HTML_SPEC) ?? undefined,
+          })
+        ).output,
+      )
+    : undefined;
+  if (postalContent.bodyHtml && !renderedBody) {
+    return recordBulkUndeliverable("postal", messageId, contactId, ["bodyHtml"], tagIds);
+  }
   const renderedDescription = postalContent.description
-    ? (
-        await renderTokens(postalContent.description, ctx, {
-          strictUnknown: true,
-          clean: tokenCleanerFor(DESCRIPTION_SPEC) ?? undefined,
-        })
-      ).output
+    ? shapeRenderedValue(
+        DESCRIPTION_SPEC,
+        (
+          await renderTokens(postalContent.description, ctx, {
+            strictUnknown: true,
+            clean: tokenCleanerFor(DESCRIPTION_SPEC) ?? undefined,
+          })
+        ).output,
+      )
     : undefined;
   const baseMerge = (postalContent.mergeVariables as Record<string, string>) || {};
   // Expose the catalog tokens as Lob merge variables, keyed by their
@@ -94,7 +132,9 @@ export async function deliverPostal(
     toAddress: addr,
     fromAddress,
     description: renderedDescription,
-    file: postalContent.fileUrl || undefined,
+    // sendPostal accepts a composed HTML body through `file`; it applies
+    // the shared sanitizer and canonical letter-page wrapper exactly once.
+    file: renderedBody || postalContent.fileUrl || undefined,
     templateId: postalContent.templateId || undefined,
     mergeVariables: mergedVariables,
     mailType: postalContent.mailType === "usps_standard" ? "usps_standard" : "usps_first_class",

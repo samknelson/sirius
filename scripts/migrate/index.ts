@@ -152,6 +152,7 @@ import "./components/trust.elections/002_create_open_enrollment_windows";
 import "./components/trust.elections/003_policy_id_nullable";
 import "./components/worker.aat/001_create_worker_aat";
 import "./components/bulk/001_drop_email_body_text";
+import "./components/bulk/002_add_postal_body_html";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
 // into sync with the schema BEFORE the drift gate runs. Baseline scripts

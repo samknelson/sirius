@@ -49,6 +49,12 @@ const SMS_FIELDS: StudioField[] = [
 ];
 
 const POSTAL_FIELDS: StudioField[] = [
+  {
+    key: "bodyHtml",
+    label: "Letter body",
+    mode: "html",
+    hint: "Mailed inside the standard postal letter layout.",
+  },
   { key: "description", label: "Description", mode: "multiline" },
 ];
 
@@ -261,8 +267,10 @@ function SmsForm({ record, onSave, isPending, seedsUrl }: FormProps) {
 
 function PostalForm({ record, onSave, isPending, seedsUrl }: FormProps) {
   const [form, setForm] = useState({
+    bodyHtml: "",
     description: "",
     templateId: "",
+    fileUrl: "",
     color: false,
     doubleSided: false,
     mailType: "usps_first_class",
@@ -271,8 +279,10 @@ function PostalForm({ record, onSave, isPending, seedsUrl }: FormProps) {
   useEffect(() => {
     if (record) {
       setForm({
+        bodyHtml: (record.bodyHtml as string) || "",
         description: (record.description as string) || "",
         templateId: (record.templateId as string) || "",
+        fileUrl: (record.fileUrl as string) || "",
         color: (record.color as boolean) || false,
         doubleSided: (record.doubleSided as boolean) || false,
         mailType: (record.mailType as string) || "usps_first_class",
@@ -285,7 +295,8 @@ function PostalForm({ record, onSave, isPending, seedsUrl }: FormProps) {
       <TemplateCard
         testId="card-postal-template"
         fields={POSTAL_FIELDS}
-        values={{ description: form.description }}
+        values={{ bodyHtml: form.bodyHtml, description: form.description }}
+        footnote="Use either a composed letter body or an existing Lob template/file. The standard postal layout and sanitization are applied when the letter is sent."
         action={
           <TokenStudioButton
             label="Edit in Template Studio"
@@ -296,8 +307,15 @@ function PostalForm({ record, onSave, isPending, seedsUrl }: FormProps) {
             contextId={BULK_MESSAGE_TOKEN_CONTEXT}
             seedsUrl={seedsUrl}
             fields={POSTAL_FIELDS}
-            values={{ description: form.description }}
-            onValueChange={(_key, value) => setForm((p) => ({ ...p, description: value }))}
+            values={{ bodyHtml: form.bodyHtml, description: form.description }}
+            onValueChange={(key, value) => setForm((p) => ({ ...p, [key]: value }))}
+            onValuesChange={(values) =>
+              setForm((p) => ({
+                ...p,
+                bodyHtml: values.bodyHtml ?? "",
+                description: values.description ?? "",
+              }))
+            }
           />
         }
       />
@@ -329,9 +347,23 @@ function PostalForm({ record, onSave, isPending, seedsUrl }: FormProps) {
           <Label htmlFor="postalDoubleSided">Double Sided</Label>
         </div>
       </div>
+      {[
+        form.bodyHtml.trim() ? "composed letter body" : null,
+        form.templateId.trim() ? "Lob template" : null,
+        form.fileUrl.trim() ? "existing file" : null,
+      ].filter(Boolean).length > 1 && (
+        <p className="text-sm text-destructive" data-testid="text-postal-content-conflict">
+          Choose only one postal content source: clear the composed letter body or the existing Lob template/file.
+        </p>
+      )}
       <SaveButton
         onClick={() => onSave({ ...form })}
         isPending={isPending}
+        disabled={[
+          form.bodyHtml.trim(),
+          form.templateId.trim(),
+          form.fileUrl.trim(),
+        ].filter(Boolean).length !== 1}
         label="Save Postal Content"
         testId="button-save-postal-message"
       />

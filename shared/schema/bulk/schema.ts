@@ -82,6 +82,7 @@ export const bulkMessagesPostal = pgTable("bulk_messages_postal", {
   fromZip: text("from_zip"),
   fromCountry: text("from_country").default("US"),
   description: text("description"),
+  bodyHtml: text("body_html"),
   fileUrl: text("file_url"),
   templateId: varchar("template_id"),
   mergeVariables: jsonb("merge_variables"),

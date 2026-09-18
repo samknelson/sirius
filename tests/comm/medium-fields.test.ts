@@ -88,6 +88,15 @@ describe("medium field declarations", () => {
     // No authored plain-text part: it is derived from the HTML body at
     // send, so the two parts of one email cannot disagree.
     expect(MEDIUM_FIELDS.email.map((f) => f.key)).toEqual(["subject", "bodyHtml"]);
+    // Saved letter templates, one-off compose, bulk persistence and
+    // delivery all use this exact body key. A `body` alias would make
+    // exact-key template replacement silently drop the letter.
+    expect(MEDIUM_FIELDS.postal.map((f) => f.key)).toEqual([
+      "bodyHtml",
+      "description",
+    ]);
+    expect(mediumField("postal", "bodyHtml").requiredForMessage).toBe(true);
+    expect(() => mediumField("postal", "body")).toThrow();
     expect(() => mediumField("email", "bodyText")).toThrow();
   });
 });
