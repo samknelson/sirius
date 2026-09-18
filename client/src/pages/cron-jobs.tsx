@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Clock, ChevronRight, Calendar } from "lucide-react";
+import { Clock, ChevronRight, Calendar, AlertTriangle } from "lucide-react";
 import { format } from "@/lib/date-format";
 import { CronJob } from "@/lib/cron-types";
 
@@ -48,6 +48,22 @@ export default function CronJobs() {
           Manage scheduled tasks and view execution history.
         </p>
       </div>
+
+      {jobs[0] && !jobs[0].executionPolicy.allowed && (
+        <Card className="mb-6 border-amber-500/50 bg-amber-500/5" data-testid="cron-execution-suppressed">
+          <CardContent className="flex gap-3 py-4">
+            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium">Cron execution is suppressed for this deployment</p>
+              <p className="text-sm text-muted-foreground">{jobs[0].executionPolicy.reason}</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Enabled settings below are preserved. After a raw database refresh, restart the
+                application or explicitly reload scheduling.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {jobs.length === 0 ? (
         <Card>
@@ -103,6 +119,9 @@ export default function CronJobs() {
                       <Badge variant={job.isEnabled ? "default" : "secondary"} data-testid={`badge-enabled-${job.name}`}>
                         {job.isEnabled ? "Enabled" : "Disabled"}
                       </Badge>
+                      {job.isEnabled && !job.executionPolicy.allowed && (
+                        <Badge variant="outline" className="ml-2">Execution suppressed</Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm">
                       {job.latestRun ? (

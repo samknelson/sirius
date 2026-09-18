@@ -4,6 +4,10 @@ import type { PluginConfigWithSubsidiary } from "../../storage/system/plugin-con
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { cronScheduler } from "../../cron";
 import { cronPluginRegistry } from "../../plugins/system/cron";
+import {
+  CronExecutionSuppressedError,
+  getCronExecutionPolicy,
+} from "../../cron/execution-policy";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -60,7 +64,7 @@ export function registerCronJobRoutes(
         const envelope = await storage.pluginConfigs.getWithSubsidiary(config.id);
         const job = toLegacyCronJob(envelope ?? { config, subsidiary: null });
         const latestRun = await storage.cronJobRuns.getLatestByJobName(job.name);
-        return { ...job, latestRun };
+        return { ...job, latestRun, executionPolicy: getCronExecutionPolicy() };
       }));
 
       res.json(jobsWithRuns);
@@ -92,6 +96,7 @@ export function registerCronJobRoutes(
         ...job,
         latestRun,
         defaultSettings,
+        executionPolicy: getCronExecutionPolicy(),
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch cron job" });
@@ -147,6 +152,13 @@ export function registerCronJobRoutes(
 
       res.status(201).json(latestRun);
     } catch (error) {
+      if (error instanceof CronExecutionSuppressedError) {
+        return res.status(error.status).json({
+          message: error.message,
+          code: error.code,
+          executionPolicy: error.policy,
+        });
+      }
       res.status(500).json({
         message: error instanceof Error ? error.message : "Failed to run cron job"
       });

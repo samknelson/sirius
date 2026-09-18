@@ -156,3 +156,4 @@
 - [Live staging range evidence](live-staging-range-evidence.md) — daily high-churn staging freezes exact ranges; cleanup authorization and checkpoint commit atomically, while final-freeze stays whole-source exact.
 - [Lob HTML pagination limits](lob-html-pagination-limits.md) — actual proofs ignore paged CSS and can split text mid-line; padded-block tricks are not safe for arbitrary multi-page HTML.
 - [DP report billing authority](dp-report-billing-authority.md) — a surviving posted charge is authoritative for its month when WMB/rate reconstruction later fails; historical billing proves nothing current.
+- [Deployment cron policy](deployment-cron-policy.md) — production cron enablement must come from the real deployment environment; copied DB overrides cannot authorize execution.

@@ -605,6 +605,7 @@ export function getRawProcessEnv(): NodeJS.ProcessEnv {
 // ---------------------------------------------------------------------------
 registerEnvironmentVariables([
   { name: "NODE_ENV", description: "Runtime mode: development | production.", secret: false, category: "core", changeTakesEffect: "restart", },
+  { name: "CRON_EXECUTION", description: "Deployment cron policy: enabled permits scheduled and manual cron execution; disabled preserves enabled job configurations but suppresses all execution. Production deployments must set this explicitly in the deployment environment.", secret: false, category: "core", changeTakesEffect: "restart", },
   // The system time zone. "restart" is the honest classification even though
   // the runtime itself would pick up a mid-process change: cron jobs are
   // already registered against the old zone by the time anyone could edit

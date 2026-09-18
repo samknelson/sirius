@@ -143,6 +143,11 @@ export function CronJobLayout({ activeTab, children }: CronJobLayoutProps) {
               <Badge variant={job.isEnabled ? "default" : "secondary"} data-testid="badge-job-status">
                 {job.isEnabled ? "Enabled" : "Disabled"}
               </Badge>
+              {job.isEnabled && !job.executionPolicy.allowed && (
+                <Badge variant="outline" data-testid="badge-execution-suppressed">
+                  Execution suppressed
+                </Badge>
+              )}
               <span className="text-sm text-muted-foreground font-mono">{job.schedule}</span>
             </div>
           }

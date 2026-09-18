@@ -131,7 +131,9 @@ function CronJobRunContent() {
         <CardHeader>
           <CardTitle>Run Job</CardTitle>
           <CardDescription>
-            Trigger {job.name} to run immediately, regardless of its schedule
+            {job.executionPolicy.allowed
+              ? `Trigger ${job.name} to run immediately, regardless of its schedule`
+              : job.executionPolicy.reason}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -142,10 +144,10 @@ function CronJobRunContent() {
                 value={runMode}
                 onValueChange={(value) => setRunMode(value as "live" | "test")}
                 className="space-y-3"
-                disabled={isPolling}
+                disabled={isPolling || !job.executionPolicy.allowed}
               >
                 <div className="flex items-start space-x-3">
-                  <RadioGroupItem value="live" id="mode-live" data-testid="radio-mode-live" disabled={isPolling} />
+                  <RadioGroupItem value="live" id="mode-live" data-testid="radio-mode-live" disabled={isPolling || !job.executionPolicy.allowed} />
                   <div className="flex-1">
                     <Label htmlFor="mode-live" className="font-medium cursor-pointer">
                       Live Mode
@@ -156,7 +158,7 @@ function CronJobRunContent() {
                   </div>
                 </div>
                 <div className="flex items-start space-x-3">
-                  <RadioGroupItem value="test" id="mode-test" data-testid="radio-mode-test" disabled={isPolling} />
+                  <RadioGroupItem value="test" id="mode-test" data-testid="radio-mode-test" disabled={isPolling || !job.executionPolicy.allowed} />
                   <div className="flex-1">
                     <Label htmlFor="mode-test" className="font-medium cursor-pointer">
                       Test Mode
@@ -170,7 +172,7 @@ function CronJobRunContent() {
             </div>
             <Button
               onClick={() => runMutation.mutate()}
-              disabled={runMutation.isPending || isPolling}
+              disabled={runMutation.isPending || isPolling || !job.executionPolicy.allowed}
               data-testid="button-run-now"
             >
               {isPolling ? (
