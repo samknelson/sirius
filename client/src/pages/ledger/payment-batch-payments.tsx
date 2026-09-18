@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Plus, Trash2, AlertCircle, CheckCircle2, MinusCircle } from "lucide-react";
 import { PaymentForm } from "@/components/ledger/PaymentForm";
-import type { LedgerPayment, LedgerPaymentType, LedgerAccount } from "@shared/schema";
+import type { LedgerPayment, LedgerPaymentType, LedgerAccount, AllocatedEntity } from "@shared/schema";
 
 type EAListItem = {
   id: string;
@@ -28,16 +28,9 @@ type EAListItem = {
   entityName: string | null;
 };
 
-interface BatchPaymentAllocation {
-  eaId: string;
-  amount: string;
-  statementYmd: string;
-  ea?: EAListItem | null;
-}
-
 export type BatchPayment = LedgerPayment & {
   _assignmentId: string;
-  allocatedEntities?: BatchPaymentAllocation[];
+  allocatedEntities?: AllocatedEntity[];
 };
 
 function formatCurrency(amount: string | number | null | undefined, currencyCode = "USD") {
@@ -311,9 +304,7 @@ function BatchPaymentsContent() {
                         </div>
                         {p.allocatedEntities && p.allocatedEntities.length > 0 && (
                           <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                            {p.allocatedEntities
-                              .map((a) => a.ea?.entityName || `${a.ea?.entityType ?? "—"}`)
-                              .join(", ")}
+                            {p.allocatedEntities.map((a) => a.entityName || a.entityId).join(", ")}
                           </div>
                         )}
                       </button>

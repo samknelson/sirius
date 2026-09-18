@@ -11,12 +11,14 @@ import { isValidYmd, ymdToDateForPicker, dateToYmd } from "@shared/utils/date";
 import { isComponentEnabled } from "../components";
 import { respondWithTransactions } from "./transaction-query";
 import { onAfterCommit, runInTransaction } from "../../storage/transaction-context";
+import { storageLogger } from "../../logger";
+import { getRequestContext } from "../../middleware/request-context";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
-export async function enrichWithAllocatedEntities(
-  payments: LedgerPaymentWithEntity[]
-): Promise<LedgerPaymentWithEntity[]> {
+export async function enrichWithAllocatedEntities<T extends LedgerPayment>(
+  payments: T[],
+): Promise<Array<T & { allocatedEntities: AllocatedEntity[] }>> {
   const allEaIds = new Set<string>();
   for (const payment of payments) {
     const details = payment.details as Record<string, unknown> | null;
@@ -76,6 +78,66 @@ export async function enrichWithAllocatedEntities(
     }
 
     return { ...payment, allocatedEntities };
+  });
+}
+
+export interface PaymentAllocationAuditSummary {
+  paymentId: string;
+  status: string;
+  dateCleared: Date | null;
+  allocationCount: number;
+  allocationTotal: string;
+  allocationEaIds: string[];
+  allocationEntityIds: string[];
+}
+
+export async function getPaymentAllocationAuditSummary(
+  payment: LedgerPayment,
+): Promise<PaymentAllocationAuditSummary> {
+  const details = payment.details as Record<string, unknown> | null;
+  const proposed = Array.isArray(details?.proposedAllocation)
+    ? details.proposedAllocation as ProposedAllocationEntry[]
+    : [];
+  const allocations = proposed.length > 0
+    ? proposed
+    : [{ eaId: payment.ledgerEaId, amount: payment.amount, statementYmd: "" }];
+  const allocationEaIds = [...new Set(allocations.map((allocation) => allocation.eaId))];
+  const allocationEntityIds: string[] = [];
+  for (const eaId of allocationEaIds) {
+    const ea = await storage.ledger.ea.get(eaId);
+    if (ea) allocationEntityIds.push(ea.entityId);
+  }
+  const totalCents = allocations.reduce(
+    (sum, allocation) => sum + (parseExactMoneyToCents(allocation.amount) ?? 0),
+    0,
+  );
+  return {
+    paymentId: payment.id,
+    status: payment.status,
+    dateCleared: payment.dateCleared,
+    allocationCount: allocations.length,
+    allocationTotal: (totalCents / 100).toFixed(2),
+    allocationEaIds,
+    allocationEntityIds: [...new Set(allocationEntityIds)],
+  };
+}
+
+export function logBatchPaymentActivity(
+  batchId: string,
+  operation: "createPayment" | "assignPayment" | "updatePayment" | "postPayment" | "removePayment" | "deletePayment",
+  summary: PaymentAllocationAuditSummary,
+): void {
+  const context = getRequestContext();
+  storageLogger.info(`Storage operation: ledger.paymentBatches.${operation}`, {
+    module: "ledger.paymentBatches",
+    operation,
+    entity_id: summary.paymentId,
+    host_entity_id: batchId,
+    description: `${operation} ${summary.paymentId} (${summary.status}; ${summary.allocationCount} allocations totaling $${summary.allocationTotal})`,
+    user_id: context?.userId,
+    user_email: context?.userEmail,
+    ip_address: context?.ipAddress,
+    meta: summary,
   });
 }
 
@@ -576,7 +638,8 @@ export function registerLedgerPaymentRoutes(app: Express) {
       // Check EA-level access
       if (!await checkPaymentEaAccessInline(req, res, ea, 'ledger.ea.view')) return;
       
-      res.json(payment);
+      const [enriched] = await enrichWithAllocatedEntities([payment]);
+      res.json(enriched);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch payment" });
     }
@@ -616,11 +679,18 @@ export function registerLedgerPaymentRoutes(app: Express) {
   // POST /api/ledger/payments - Create a new payment (staff only)
   app.post("/api/ledger/payments", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
-      const { result, notifications } = await runInTransaction(async () => {
+      const { result, notifications, enriched } = await runInTransaction(async () => {
         const result = await createPaymentFromRequestBody(req.body);
-        if (!result.ok) return { result, notifications: [] as LedgerNotification[] };
+        if (!result.ok) {
+          return {
+            result,
+            notifications: [] as LedgerNotification[],
+            enriched: undefined,
+          };
+        }
         const notifications = await triggerPaymentChargePlugins(result.payment);
-        return { result, notifications };
+        const [enriched] = await enrichWithAllocatedEntities([result.payment]);
+        return { result, notifications, enriched };
       });
       if (!result.ok) {
         res.status(result.status).json({ message: result.message });
@@ -628,7 +698,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
       }
 
       res.status(201).json({
-        ...result.payment,
+        ...enriched!,
         ledgerNotifications: notifications,
       });
     } catch (error) {
@@ -662,9 +732,17 @@ export function registerLedgerPaymentRoutes(app: Express) {
       
       const validatedData = insertLedgerPaymentSchema.partial().parse(processedBody);
 
-      const { payment, notifications } = await runInTransaction(async () => {
+      const { payment, notifications, enriched, batchIds, auditSummary } = await runInTransaction(async () => {
         const payment = await storage.ledger.payments.update(id, validatedData);
-        if (!payment) return { payment, notifications: [] as LedgerNotification[] };
+        if (!payment) {
+          return {
+            payment,
+            notifications: [] as LedgerNotification[],
+            enriched: undefined,
+            batchIds: [] as string[],
+            auditSummary: undefined,
+          };
+        }
 
         // Validate the complete row returned by UPDATE while its row lock and
         // this transaction are still active. A competing partial update can no
@@ -723,7 +801,12 @@ export function registerLedgerPaymentRoutes(app: Express) {
         }
 
         const notifications = await triggerPaymentChargePlugins(payment);
-        return { payment, notifications };
+        const [enriched] = await enrichWithAllocatedEntities([payment]);
+        const batchIds = await storage.ledger.paymentBatchAssignments.getBatchIdsByPaymentId(payment.id);
+        const auditSummary = batchIds.length > 0
+          ? await getPaymentAllocationAuditSummary(payment)
+          : undefined;
+        return { payment, notifications, enriched, batchIds, auditSummary };
       });
       
       if (!payment) {
@@ -731,8 +814,14 @@ export function registerLedgerPaymentRoutes(app: Express) {
         return;
       }
       
+      if (auditSummary) {
+        const operation = payment.status === "cleared" ? "postPayment" : "updatePayment";
+        for (const batchId of batchIds) {
+          logBatchPaymentActivity(batchId, operation, auditSummary);
+        }
+      }
       res.json({
-        ...payment,
+        ...enriched!,
         ledgerNotifications: notifications,
       });
     } catch (error) {

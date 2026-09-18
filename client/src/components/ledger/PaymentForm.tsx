@@ -73,6 +73,7 @@ interface PaymentDetails {
 
 export interface PaymentFormSubmitResult {
   id: string;
+  payment?: LedgerPayment;
   ledgerNotifications?: LedgerNotification[];
   [key: string]: unknown;
 }
@@ -344,65 +345,86 @@ export function PaymentForm({
         const res = await apiRequest("POST", `/api/ledger-payment-batches/${batchId}/payments`, {
           payment: data,
         });
-        return { id: res.paymentId, ledgerNotifications: res.ledgerNotifications };
+        return {
+          ...res.payment,
+          id: res.paymentId,
+          payment: res.payment,
+          ledgerNotifications: res.ledgerNotifications,
+        };
       }
       return await apiRequest("POST", "/api/ledger/payments", data);
     },
     onSuccess: async (data) => {
-      const successTitle = mode === "edit" ? "Payment updated" : "Payment created";
-      toast({
-        title: successTitle,
-        description:
-          mode === "edit"
-            ? "The payment has been updated successfully."
-            : "The payment has been created successfully.",
-      });
+      const savedPayment = data.payment ?? data;
+      const savedPaymentData = { ...savedPayment } as Record<string, unknown>;
+      delete savedPaymentData.ledgerNotifications;
+      delete savedPaymentData.payment;
       // The edit response is the authoritative saved payment. Replace its
       // cache synchronously so reopening it cannot first hydrate allocations
       // from the pre-save value, even if its query became inactive meanwhile.
       if (mode === "edit" && paymentId) {
-        const { ledgerNotifications: _notifications, ...savedPayment } = data;
         queryClient.setQueryData(
           ["/api/ledger/payments", paymentId],
-          savedPayment as unknown as LedgerPayment,
+          savedPaymentData as unknown as LedgerPayment,
         );
         setBoxesLoaded(false);
       }
 
-      // Refresh batch/list summaries before the parent keeps or changes
-      // selection. Other payment surfaces only need to be marked stale.
       const refreshes: Array<Promise<unknown>> = [];
-      if (paymentId) {
-        void queryClient.invalidateQueries({
-          queryKey: [`/api/ledger/payments/${paymentId}/transactions`],
-        });
+      const savedPaymentId = data.id || paymentId;
+      if (savedPaymentId) {
+        queryClient.setQueryData(
+          ["/api/ledger/payments", savedPaymentId],
+          savedPaymentData as unknown as LedgerPayment,
+        );
+        refreshes.push(queryClient.refetchQueries({
+          queryKey: [`/api/ledger/payments/${savedPaymentId}/transactions`],
+          type: "all",
+        }, { throwOnError: true }));
       }
       if (accountId) {
-        void queryClient.invalidateQueries({
+        refreshes.push(queryClient.refetchQueries({
           queryKey: ["/api/ledger/accounts", accountId, "payments"],
-        });
+          type: "all",
+        }, { throwOnError: true }));
       }
       if (batchId) {
         refreshes.push(
           queryClient.refetchQueries({
             queryKey: [`/api/ledger-payment-batches/${batchId}`],
+            type: "all",
           }, { throwOnError: true }),
           queryClient.refetchQueries({
             queryKey: [`/api/ledger-payment-batches/${batchId}/payments`],
+            type: "all",
           }, { throwOnError: true }),
         );
       }
-      if (payment?.ledgerEaId) {
-        void queryClient.invalidateQueries({
-          queryKey: ["/api/ledger/payments/ea", payment.ledgerEaId],
-        });
+      const affectedEaIds = new Set<string>();
+      if (payment?.ledgerEaId) affectedEaIds.add(payment.ledgerEaId);
+      if (savedPaymentData.ledgerEaId) affectedEaIds.add(String(savedPaymentData.ledgerEaId));
+      for (const eaId of affectedEaIds) {
+        refreshes.push(queryClient.refetchQueries({
+          queryKey: ["/api/ledger/payments/ea", eaId],
+          type: "all",
+        }, { throwOnError: true }));
       }
       const refreshResults = await Promise.allSettled(refreshes);
-      if (refreshResults.some((result) => result.status === "rejected")) {
+      const refreshFailed = refreshResults.some((result) => result.status === "rejected");
+      if (refreshFailed) {
         toast({
           title: "Payment saved",
-          description: "The payment was saved, but the batch summary could not be refreshed.",
+          description: "The payment was saved, but one or more payment views could not be refreshed.",
           variant: "destructive",
+        });
+      } else {
+        const successTitle = mode === "edit" ? "Payment updated" : "Payment created";
+        toast({
+          title: successTitle,
+          description:
+            mode === "edit"
+              ? "The payment has been updated successfully."
+              : "The payment has been created successfully.",
         });
       }
       showLedgerNotifications(data?.ledgerNotifications);

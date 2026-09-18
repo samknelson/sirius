@@ -291,6 +291,7 @@ export type AssignPaymentResult =
 export interface LedgerPaymentBatchAssignmentStorage {
   getSummaryByBatchId(batchId: string): Promise<{ paymentsCount: number; paymentsTotal: string }>;
   getPaymentsByBatchId(batchId: string): Promise<LedgerPaymentWithAssignment[]>;
+  getBatchIdsByPaymentId(paymentId: string): Promise<string[]>;
   assignPayment(batchId: string, paymentId: string): Promise<AssignPaymentResult>;
   unassign(batchId: string, paymentId: string): Promise<boolean>;
 }
@@ -2599,6 +2600,15 @@ export function createLedgerPaymentBatchAssignmentStorage(): LedgerPaymentBatchA
         allocatedEntities: [],
         _assignmentId: r.assignmentId,
       }));
+    },
+
+    async getBatchIdsByPaymentId(paymentId: string): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .select({ batchId: ledgerPaymentBatchAssignments.batchId })
+        .from(ledgerPaymentBatchAssignments)
+        .where(eq(ledgerPaymentBatchAssignments.paymentId, paymentId));
+      return rows.map((row) => row.batchId);
     },
 
     async assignPayment(batchId: string, paymentId: string): Promise<AssignPaymentResult> {

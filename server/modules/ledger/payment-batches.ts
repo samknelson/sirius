@@ -10,6 +10,8 @@ import {
   triggerPaymentChargePlugins,
   enrichWithAllocatedEntities,
   cleanupUploadSourcePaymentArtifacts,
+  getPaymentAllocationAuditSummary,
+  logBatchPaymentActivity,
 } from "./payments";
 import type { LedgerNotification } from "../../plugins/ledger/charge/types";
 import type { LedgerPayment } from "@shared/schema";
@@ -146,8 +148,8 @@ export function registerLedgerPaymentBatchRoutes(app: Express) {
         }
 
         type AttachOutcome =
-          | { kind: "created"; paymentId: string; assignment: LedgerPaymentBatchAssignment; createdPayment: LedgerPayment; notifications: LedgerNotification[] }
-          | { kind: "attached"; paymentId: string; assignment: LedgerPaymentBatchAssignment }
+          | { kind: "created"; paymentId: string; assignment: LedgerPaymentBatchAssignment; createdPayment: LedgerPayment; notifications: LedgerNotification[]; enrichedPayment: LedgerPayment & { allocatedEntities: any[] }; auditSummary: Awaited<ReturnType<typeof getPaymentAllocationAuditSummary>> }
+          | { kind: "attached"; paymentId: string; assignment: LedgerPaymentBatchAssignment; enrichedPayment: LedgerPayment & { allocatedEntities: any[] }; auditSummary: Awaited<ReturnType<typeof getPaymentAllocationAuditSummary>> }
           | { kind: "conflict"; assignment: LedgerPaymentBatchAssignment };
         type AttachError = { status: number; message: string };
 
@@ -191,6 +193,13 @@ export function registerLedgerPaymentBatchRoutes(app: Express) {
               paymentIdLocal,
             );
             if (assignResult.kind === "created") {
+              const savedPayment = createdPayment
+                ?? await storage.ledger.payments.get(paymentIdLocal);
+              if (!savedPayment) {
+                throw new Error("Assigned payment could not be reloaded");
+              }
+              const [enrichedPayment] = await enrichWithAllocatedEntities([savedPayment]);
+              const auditSummary = await getPaymentAllocationAuditSummary(savedPayment);
               if (createdPayment) {
                 const notifications = await triggerPaymentChargePlugins(createdPayment);
                 return {
@@ -199,9 +208,17 @@ export function registerLedgerPaymentBatchRoutes(app: Express) {
                   assignment: assignResult.assignment,
                   createdPayment,
                   notifications,
+                  enrichedPayment,
+                  auditSummary,
                 };
               }
-              return { kind: "attached", paymentId: paymentIdLocal, assignment: assignResult.assignment };
+              return {
+                kind: "attached",
+                paymentId: paymentIdLocal,
+                assignment: assignResult.assignment,
+                enrichedPayment,
+                auditSummary,
+              };
             }
             // Conflict: for an attach (no create), this is a 409. For a create attempt,
             // throwing forces the whole transaction (including the payment insert) to roll back.
@@ -230,9 +247,15 @@ export function registerLedgerPaymentBatchRoutes(app: Express) {
           return;
         }
 
+        if (outcome.kind === "created") {
+          logBatchPaymentActivity(batch.id, "createPayment", outcome.auditSummary);
+        }
+        logBatchPaymentActivity(batch.id, "assignPayment", outcome.auditSummary);
+
         res.status(201).json({
           assignment: outcome.assignment,
           paymentId: outcome.paymentId,
+          payment: outcome.enrichedPayment,
           ledgerNotifications: outcome.kind === "created" ? outcome.notifications : [],
         });
       } catch (error) {
@@ -263,9 +286,13 @@ export function registerLedgerPaymentBatchRoutes(app: Express) {
           return;
         }
 
-        const removed = await runInTransaction(async () => {
+        const removal = await runInTransaction(async () => {
+          const paymentBefore = await storage.ledger.payments.get(paymentId);
+          const auditSummary = paymentBefore
+            ? await getPaymentAllocationAuditSummary(paymentBefore)
+            : undefined;
           const removed = await storage.ledger.paymentBatchAssignments.unassign(id, paymentId);
-          if (!removed) return false;
+          if (!removed) return { removed: false, auditSummary: undefined };
 
           if (deletePayment) {
             const payment = await storage.ledger.payments.get(paymentId);
@@ -277,11 +304,18 @@ export function registerLedgerPaymentBatchRoutes(app: Express) {
             }
             await storage.ledger.payments.delete(paymentId);
           }
-          return true;
+          return { removed: true, auditSummary };
         });
-        if (!removed) {
+        if (!removal.removed) {
           res.status(404).json({ message: "Assignment not found" });
           return;
+        }
+
+        if (removal.auditSummary) {
+          logBatchPaymentActivity(id, "removePayment", removal.auditSummary);
+          if (deletePayment) {
+            logBatchPaymentActivity(id, "deletePayment", removal.auditSummary);
+          }
         }
 
         res.status(204).send();
