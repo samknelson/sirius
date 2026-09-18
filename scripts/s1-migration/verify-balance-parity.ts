@@ -39,7 +39,8 @@
  *            ar_missing_in_s2, ar_amount_mismatch, ar_account_mismatch,
  *            ar_extra_in_s2, ar_unparsable_key
  *   Payment: payment_status_missing, payment_status_unmapped,
- *            payment_bad_amount, payment_account_ref_missing,
+ *            payment_amount_missing, payment_bad_amount,
+ *            payment_account_ref_missing,
  *            payment_account_unmapped, payment_missing_in_s2,
  *            payment_amount_mismatch, payment_status_mismatch,
  *            payment_account_mismatch, payment_extra_in_s2,
@@ -324,7 +325,11 @@ async function main() {
         continue;
       }
       const amtRaw = strOf(s.fields, "field_sirius_dollar_amt");
-      const signedCents = amtRaw != null && AMOUNT_RE.test(amtRaw.trim()) ? toCents(amtRaw.trim()) : null;
+      if (amtRaw == null || amtRaw.trim() === "") {
+        mismatches.add("payment_amount_missing", { nid }, nid);
+        continue;
+      }
+      const signedCents = AMOUNT_RE.test(amtRaw.trim()) ? toCents(amtRaw.trim()) : null;
       if (signedCents == null) {
         mismatches.add("payment_bad_amount", { nid }, nid);
         continue;

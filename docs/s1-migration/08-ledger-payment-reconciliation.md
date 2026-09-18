@@ -544,7 +544,8 @@ itself but NOT date/payer/type, so those rejected rows surface as
 | Mismatch class | Expected count | Source |
 |---|---|---|
 | `payment_status_missing` | 3 | = t19 `status_missing` |
-| `payment_bad_amount` | 102 | = t19 `amount_missing` (harness merges missing+malformed) |
+| `payment_amount_missing` | 102 | = t19 `amount_missing` |
+| `payment_bad_amount` | 0 | = t19 `bad_amount`; malformed values remain blocking |
 | `payment_account_unmapped` | 3 | = t19 `account_unensured` |
 | `payment_missing_in_s2` | 42 | = 40 `payer_ref_missing` + 1 `date_missing` + 1 `payment_type_missing` |
 | every `ar_*` class | 0 | t18 loaded 8/8 with built-in per-account verify |
@@ -687,6 +688,10 @@ closed every class:
 Net production allow-list: **`amount_missing,account_unensured`** (~104
 expected rejects on the post-cleanup rerun; reject counts must be re-verified
 after restaging — see the re-run triage task).
+
+The balance harness mirrors the ruled `amount_missing` class as
+`payment_amount_missing`. It deliberately keeps malformed values in the
+separate, blocking `payment_bad_amount` class.
 
 Carry-forward observations (fund/workflow questions, not migration blockers):
 S1 permits payment and ledger amounts to diverge (S2 prevents structurally);

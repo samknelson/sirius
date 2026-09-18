@@ -255,7 +255,9 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
     openEndThrough: "current-la-month",
     parity: {
       toleranceCents: 0, // §6: zero tolerance unless the fund rules otherwise
-      allowMismatches: [],
+      // Mirrors the ruled T19 amount_missing reject. Malformed amounts remain
+      // payment_bad_amount and still stop the balance gate.
+      allowMismatches: ["payment_amount_missing"],
       maxDisagreementPct: 0, // §6: any non-zero threshold is an explicit fund decision
       // freeze = 2026-08 initial production load month; midHistory 2025-06 =
       // the ruled rehearsal evidence month (82/82) — re-rule at cutover if
