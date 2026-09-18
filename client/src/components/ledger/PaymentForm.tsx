@@ -22,8 +22,8 @@ import {
   type ParticipantBoxUpdate,
 } from "@/components/ledger/ParticipantAllocationBox";
 import { isValidYmd, ymdToDateForPicker, dateToYmd } from "@shared/utils/date";
-import { Loader2, Plus, X } from "lucide-react";
-import { EntityFileManager } from "@/components/entity-files/EntityFileManager";
+import { ImagePlus, Loader2, Plus, X } from "lucide-react";
+import { EntityFileManager, uploadEntityFile } from "@/components/entity-files/EntityFileManager";
 
 const EMPTY_PARTICIPANT_BOX: ParticipantBoxState = {
   eaId: "",
@@ -167,6 +167,10 @@ export function PaymentForm({
   ]);
   const hydratedEditSessionRef = useRef<string | null>(null);
   const [hydratedEditSession, setHydratedEditSession] = useState<string | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const [pendingAttachment, setPendingAttachment] = useState<File | null>(null);
+  const [savedCreateResult, setSavedCreateResult] = useState<PaymentFormSubmitResult | null>(null);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
 
   // ---- Edit mode: load payment + derive accountId ----
   const { data: payment, isLoading: isPaymentLoading } = useQuery<LedgerPayment>({
@@ -423,6 +427,33 @@ export function PaymentForm({
       }
       const refreshResults = await Promise.allSettled(refreshes);
       const refreshFailed = refreshResults.some((result) => result.status === "rejected");
+
+      if (mode === "create" && pendingAttachment && savedPaymentId) {
+        setSavedCreateResult(data);
+        setIsUploadingAttachment(true);
+        try {
+          await uploadEntityFile({
+            context: "ledger_payment",
+            entityId: savedPaymentId,
+            file: pendingAttachment,
+          });
+          setPendingAttachment(null);
+          setSavedCreateResult(null);
+          queryClient.invalidateQueries({
+            queryKey: ["/api/entity-files", "ledger_payment", savedPaymentId],
+          });
+        } catch (error) {
+          toast({
+            title: "Payment saved, attachment not uploaded",
+            description: `${getApiErrorMessage(error, "The attachment could not be uploaded.")} Retry below; the payment will not be created again.`,
+            variant: "destructive",
+          });
+          showLedgerNotifications(data?.ledgerNotifications);
+          return;
+        } finally {
+          setIsUploadingAttachment(false);
+        }
+      }
       if (refreshFailed) {
         toast({
           title: "Payment saved",
@@ -457,6 +488,37 @@ export function PaymentForm({
   );
 
   const onSubmit = form.handleSubmit((data) => {
+    if (savedCreateResult && pendingAttachment) {
+      const savedPaymentId = savedCreateResult.id;
+      setIsUploadingAttachment(true);
+      uploadEntityFile({
+        context: "ledger_payment",
+        entityId: savedPaymentId,
+        file: pendingAttachment,
+      })
+        .then(() => {
+          queryClient.invalidateQueries({
+            queryKey: ["/api/entity-files", "ledger_payment", savedPaymentId],
+          });
+          setPendingAttachment(null);
+          setSavedCreateResult(null);
+          toast({
+            title: "Attachment uploaded",
+            description: "The image has been attached to the saved payment.",
+          });
+          onSuccess?.(savedCreateResult);
+        })
+        .catch((error) => {
+          toast({
+            title: "Attachment still not uploaded",
+            description: getApiErrorMessage(error, "The attachment could not be uploaded. Please try again."),
+            variant: "destructive",
+          });
+        })
+        .finally(() => setIsUploadingAttachment(false));
+      return;
+    }
+
     if (isUploadSourcePayment) {
       const existingDetails = { ...((payment?.details || {}) as Record<string, unknown>) };
       if (category === "financial") {
@@ -913,6 +975,65 @@ export function PaymentForm({
           )}
         />
 
+        {mode === "create" && !batchId && (
+          <div className="space-y-2 rounded-md border p-4" data-testid="payment-attachment-picker">
+            <div>
+              <label className="text-sm font-medium">Payment image (optional)</label>
+              <p className="text-xs text-muted-foreground">
+                The image stays on this device until the payment saves, then uploads through Entity Files.
+              </p>
+            </div>
+            <input
+              ref={attachmentInputRef}
+              type="file"
+              accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.tiff,image/jpeg,image/png,image/gif,image/webp,image/bmp,image/tiff"
+              className="hidden"
+              data-testid="input-payment-attachment"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) setPendingAttachment(file);
+                event.target.value = "";
+              }}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={submitMutation.isPending || isUploadingAttachment || !!savedCreateResult}
+                onClick={() => attachmentInputRef.current?.click()}
+                data-testid="button-select-payment-attachment"
+              >
+                <ImagePlus className="mr-2 h-4 w-4" />
+                {pendingAttachment ? "Replace image" : "Select image"}
+              </Button>
+              {pendingAttachment && (
+                <>
+                  <span className="max-w-sm truncate text-sm" data-testid="text-payment-attachment-name">
+                    {pendingAttachment.name}
+                  </span>
+                  {!savedCreateResult && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setPendingAttachment(null)}
+                      data-testid="button-remove-payment-attachment"
+                    >
+                      <X className="mr-1 h-4 w-4" />
+                      Remove
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+            {savedCreateResult && (
+              <p className="text-sm text-destructive" data-testid="text-payment-attachment-retry">
+                The payment was saved. Retry the attachment or continue to the saved payment.
+              </p>
+            )}
+          </div>
+        )}
+
         {isUploadSourcePayment ? (
           <div className="rounded-md border p-4 space-y-1" data-testid="text-upload-source-info">
             <p className="text-sm font-medium">Upload source allocation</p>
@@ -981,17 +1102,36 @@ export function PaymentForm({
         )}
 
         <div className="flex gap-2">
-          {onCancel && (
+          {onCancel && !savedCreateResult && (
             <Button type="button" variant="outline" onClick={onCancel} data-testid="button-cancel">
               Cancel
             </Button>
           )}
-          <Button type="submit" disabled={submitMutation.isPending} data-testid="button-save">
-            {submitMutation.isPending
+          {savedCreateResult && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isUploadingAttachment}
+              onClick={() => onSuccess?.(savedCreateResult)}
+              data-testid="button-continue-saved-payment"
+            >
+              Continue without image
+            </Button>
+          )}
+          <Button
+            type="submit"
+            disabled={submitMutation.isPending || isUploadingAttachment}
+            data-testid="button-save"
+          >
+            {isUploadingAttachment
+              ? "Uploading image..."
+              : submitMutation.isPending
               ? mode === "edit"
                 ? "Saving..."
                 : "Creating..."
-              : submitLabel || (mode === "edit" ? "Save Changes" : "Create Payment")}
+              : savedCreateResult
+                ? "Retry attachment"
+                : submitLabel || (mode === "edit" ? "Save Changes" : "Create Payment")}
           </Button>
         </div>
       </form>

@@ -108,6 +108,16 @@ async function click(element: Element) {
   });
 }
 
+async function selectFile(input: HTMLInputElement, file: File) {
+  Object.defineProperty(input, "files", {
+    configurable: true,
+    value: [file],
+  });
+  await act(async () => {
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
 async function choose(trigger: Element, optionText: string) {
   await act(async () => {
     trigger.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowDown" }));
@@ -181,6 +191,9 @@ beforeEach(() => {
     if (url.startsWith("/api/ledger/payments/")) return json(serverPayment);
     if (url === "/api/ledger/payment-types") return json(paymentTypes);
     if (url.startsWith("/api/ledger/accounts/")) return json({ id: "account-1", currencyCode: "USD" });
+    if (url.startsWith("/api/entity-files/")) {
+      return json({ configured: true, message: null, allowed: null, files: [] });
+    }
     return json([]);
   }));
 
@@ -293,6 +306,56 @@ describe("PaymentForm rendered allocation regressions", () => {
       expect(call[2].details.proposedAllocation.map((row: any) => row.eaId)).toEqual(["ea-acme", "ea-beta"]);
       expect(call[2].details.proposedAllocation.map((row: any) => row.amount)).toEqual(["60.00", "40.00"]);
     }
+  });
+
+  it("retries a failed image upload without creating the payment again", async () => {
+    let uploadAttempts = 0;
+    vi.mocked(fetch).mockImplementation(async (request: string | URL | Request, init?: RequestInit) => {
+      const url = typeof request === "string" ? request : request instanceof URL ? request.href : request.url;
+      if (url === "/api/entity-files/ledger_payment/created-payment" && init?.method === "POST") {
+        uploadAttempts += 1;
+        if (uploadAttempts === 1) {
+          return new Response(JSON.stringify({ message: "Storage is temporarily unavailable" }), {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify({ id: "attachment-1" }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url === "/api/ledger/payment-types") return json(paymentTypes);
+      if (url.startsWith("/api/ledger/accounts/")) return json({ id: "account-1", currencyCode: "USD" });
+      return json([]);
+    });
+
+    const onSuccess = vi.fn();
+    renderForm({ mode: "create", accountId: "account-1", onSuccess });
+    await waitFor(() => expect(participantCards()).toHaveLength(1));
+    await changeInput(container.querySelector('[data-testid="input-amount"]')!, "25.00");
+    await choose(participantCards()[0].querySelector('[role="combobox"]')!, "Acme");
+    await selectFile(
+      container.querySelector('[data-testid="input-payment-attachment"]')!,
+      new File(["image"], "check.png", { type: "image/png" }),
+    );
+
+    expect(container.querySelector('[data-testid="text-payment-attachment-name"]')?.textContent).toBe("check.png");
+    await click(container.querySelector('[data-testid="button-save"]')!);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="text-payment-attachment-retry"]')).not.toBeNull();
+    });
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(apiRequest.mock.calls.filter(
+      ([method, url]) => method === "POST" && url === "/api/ledger/payments",
+    )).toHaveLength(1);
+
+    await click(container.querySelector('[data-testid="button-save"]')!);
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    expect(uploadAttempts).toBe(2);
+    expect(apiRequest.mock.calls.filter(
+      ([method, url]) => method === "POST" && url === "/api/ledger/payments",
+    )).toHaveLength(1);
   });
 
   it("preserves a saved statement period when the participant has no invoice rows", async () => {

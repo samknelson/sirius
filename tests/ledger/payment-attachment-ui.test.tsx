@@ -13,8 +13,10 @@ describe("Entity Files payment attachment surfaces", () => {
   const batchDetails = source("client/src/pages/ledger/payment-batch-details.tsx");
 
   it("uses the shared manager on staff payment edit and view surfaces", () => {
-    expect(paymentForm).toContain('import { EntityFileManager } from "@/components/entity-files/EntityFileManager";');
+    expect(paymentForm).toContain("EntityFileManager, uploadEntityFile");
     expect(paymentForm).toContain('context="ledger_payment"');
+    expect(paymentForm).toContain('context: "ledger_payment"');
+    expect(paymentForm).toContain("Retry attachment");
     expect(paymentView).toContain('import { EntityFileManager } from "@/components/entity-files/EntityFileManager";');
     expect(paymentView).toContain('context="ledger_payment"');
   });

@@ -77,6 +77,32 @@ interface EntityFilesResponse {
   files: EntityFileItem[];
 }
 
+export async function uploadEntityFile({
+  context,
+  entityId,
+  file,
+  typeId,
+}: {
+  context: string;
+  entityId: string;
+  file: File;
+  typeId?: string | null;
+}): Promise<unknown> {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (typeId) formData.append("typeId", typeId);
+  const res = await fetch(`/api/entity-files/${context}/${entityId}`, {
+    method: "POST",
+    body: formData,
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message || `Upload failed (${res.status})`);
+  }
+  return res.json();
+}
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -168,21 +194,8 @@ export function EntityFileManager({
   );
 
   const uploadMutation = useMutation({
-    mutationFn: async ({ file, typeId }: { file: File; typeId: string | null }) => {
-      const formData = new FormData();
-      formData.append("file", file);
-      if (typeId) formData.append("typeId", typeId);
-      const res = await fetch(`/api/entity-files/${context}/${entityId}`, {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.message || `Upload failed (${res.status})`);
-      }
-      return res.json();
-    },
+    mutationFn: async ({ file, typeId }: { file: File; typeId: string | null }) =>
+      uploadEntityFile({ context, entityId, file, typeId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: listKey });
       setPendingFile(null);
