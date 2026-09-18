@@ -120,6 +120,7 @@ async function authoritativeRows(): Promise<DpReportWorker[]> {
           : price.kind === "missing_rate"
             ? "missing_effective_rate"
             : null,
+      billingWarning: null,
     });
   }
   return rows;
@@ -205,10 +206,35 @@ describe("BAO Domestic Partner current-month report", () => {
         balance: "0.00",
         status: "paid_covered",
         unavailableReason: null,
+        billingWarning: "posted_charge_inputs_unavailable",
       }),
     ]);
     expect(report.statusCounts.paid_covered).toBe(1);
     expect([report.totalCharges, report.totalPaid, report.totalBalance]).toEqual(["25.00", "25.00", "0.00"]);
+  });
+
+  it("warns when a surviving current-month charge differs from reconstructed pricing", async () => {
+    seed(0);
+    relations = [
+      { id: "relation", worker1: "subscriber", worker2: "partner", relationTypeName: "Domestic Partner" },
+    ];
+    elections = [
+      { id: "election", workerId: "subscriber", relationshipIds: ["relation"], benefitIds: ["medical"] },
+    ];
+    presence = [{ workerId: "subscriber", benefitId: "medical", year: 2026, month: 4 }];
+    entries = [
+      { referenceId: "election", amount: "25.00", data: { billingMonth: "2026-04", dpRelationshipId: "relation", dpWorkerId: "partner" } },
+    ];
+    balances = [{ entityId: "subscriber", accountId: "acct", total: "0.00" }];
+
+    const report = await calculateDpCurrentMonthReport("2026-04-15");
+
+    expect(report.rows[0]).toEqual(expect.objectContaining({
+      charge: "25.00",
+      paidAmount: "25.00",
+      status: "paid_covered",
+      billingWarning: "posted_charge_amount_mismatch",
+    }));
   });
 
   it("does not use historical charges as current-month coverage", async () => {
@@ -231,8 +257,32 @@ describe("BAO Domestic Partner current-month report", () => {
       paidAmount: "0.00",
       status: "unavailable_not_covered",
       unavailableReason: "missing_benefit_presence",
+      billingWarning: null,
     }));
     expect(report.statusCounts.unavailable_not_covered).toBe(1);
+  });
+
+  it("does not warn for a fully reversed current-month charge", async () => {
+    seed(0);
+    relations = [
+      { id: "relation", worker1: "subscriber", worker2: "partner", relationTypeName: "Domestic Partner" },
+    ];
+    elections = [
+      { id: "election", workerId: "subscriber", relationshipIds: ["relation"], benefitIds: ["medical"] },
+    ];
+    entries = [
+      { referenceId: "election", amount: "25.00", data: { billingMonth: "2026-04", dpRelationshipId: "relation", dpWorkerId: "partner" } },
+      { referenceId: "election", amount: "-25.00", data: { billingMonth: "2026-04", dpRelationshipId: "relation", dpWorkerId: "partner" } },
+    ];
+
+    const report = await calculateDpCurrentMonthReport("2026-04-15");
+
+    expect(report.rows[0]).toEqual(expect.objectContaining({
+      charge: "0.00",
+      paidAmount: "0.00",
+      status: "unavailable_not_covered",
+      billingWarning: null,
+    }));
   });
 
   it("returns an empty summary without loading pricing, payments or names", async () => {

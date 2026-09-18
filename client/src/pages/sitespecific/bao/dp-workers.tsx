@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { HeartHandshake } from "lucide-react";
+import { AlertTriangle, HeartHandshake } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getApiErrorMessage } from "@/lib/queryClient";
 
 type Status = "paid_covered" | "partially_paid" | "unpaid_not_covered" | "confirmed_no_charge" | "unavailable_not_covered";
+
+type BillingWarning = "posted_charge_inputs_unavailable" | "posted_charge_amount_mismatch";
 type UnavailableReason = "missing_benefit_presence" | "missing_effective_rate" | "ambiguous_coverage_basis";
 type Row = {
   workerId: string;
@@ -26,6 +28,7 @@ type Row = {
   balance: string | number;
   status: Status;
   unavailableReason: UnavailableReason | null;
+  billingWarning: BillingWarning | null;
 };
 type Response = {
   asOfYmd: string;
@@ -43,6 +46,11 @@ const STATUS_LABELS: Record<Status, string> = {
   unpaid_not_covered: "Unpaid / not covered",
   confirmed_no_charge: "Confirmed no charge",
   unavailable_not_covered: "Unavailable / not covered",
+};
+
+const BILLING_WARNING_LABELS: Record<BillingWarning, string> = {
+  posted_charge_inputs_unavailable: "Posted charge kept; current coverage inputs or rate are unavailable",
+  posted_charge_amount_mismatch: "Posted charge kept; current coverage inputs calculate a different amount",
 };
 
 const UNAVAILABLE_REASON_LABELS: Record<UnavailableReason, string> = {
@@ -112,7 +120,17 @@ export default function BaoDpWorkersPage() {
                       <TableCell><Link className="text-primary hover:underline" href={`/workers/${row.partnerWorkerId}/sitespecific/bao/dp`}>{row.partnerName}</Link></TableCell>
                       <TableCell>{row.coverageMonth}</TableCell>
                       <TableCell>{money(row.charge)}</TableCell><TableCell>{money(row.paidAmount)}</TableCell><TableCell>{money(row.balance)}</TableCell>
-                      <TableCell><Badge variant="outline">{STATUS_LABELS[row.status] ?? row.status}</Badge></TableCell>
+                      <TableCell>
+                        <div className="flex flex-col items-start gap-1.5">
+                          <Badge variant="outline">{STATUS_LABELS[row.status] ?? row.status}</Badge>
+                          {row.billingWarning ? (
+                            <span className="flex max-w-xs items-start gap-1 text-xs text-amber-700 dark:text-amber-400" data-testid={`warning-bao-dp-worker-${row.workerId}`}>
+                              <AlertTriangle className="mt-0.5 shrink-0" size={13} aria-hidden="true" />
+                              {BILLING_WARNING_LABELS[row.billingWarning]}
+                            </span>
+                          ) : null}
+                        </div>
+                      </TableCell>
                       <TableCell className="max-w-xs text-sm text-muted-foreground">
                         {row.unavailableReason ? UNAVAILABLE_REASON_LABELS[row.unavailableReason] : "—"}
                       </TableCell>

@@ -64,6 +64,15 @@ export interface DpPaymentStateResult {
   months: DpChargeMonthStatus[];
 }
 
+/** True only when charge entries survive reversal for a DP coverage month. */
+export function hasPostedDpCharge(
+  month: DpChargeMonthStatus | undefined,
+): boolean {
+  return month !== undefined
+    && Number.isFinite(Number(month.netCharge))
+    && Number(month.netCharge) >= 0.005;
+}
+
 interface DpPaymentCalculationInput {
   accountId: string;
   configId: string;

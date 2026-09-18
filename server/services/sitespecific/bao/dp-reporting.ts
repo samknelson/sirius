@@ -2,7 +2,11 @@ import { storage } from "../../../storage";
 import { getTodayYmd } from "@shared/utils/date";
 import { resolveDpTierTransition, priceDpRatedBenefits } from "../../../modules/sitespecific/bao/dp-pricing";
 import { isDpRelationTypeName } from "@shared/sitespecific/bao/dp-relation-types";
-import { computeDpPaymentStates, type DpPaymentStateResult } from "../../../modules/sitespecific/bao/dp-payment-state";
+import {
+  computeDpPaymentStates,
+  hasPostedDpCharge,
+  type DpPaymentStateResult,
+} from "../../../modules/sitespecific/bao/dp-payment-state";
 
 export type DpReportStatus =
   | "paid_covered"
@@ -11,6 +15,10 @@ export type DpReportStatus =
   | "confirmed_no_charge"
   | "unavailable_not_covered";
 
+export type DpBillingWarning =
+  | "posted_charge_inputs_unavailable"
+  | "posted_charge_amount_mismatch";
+
 export type DpReportUnavailableReason =
   | "missing_benefit_presence"
   | "missing_effective_rate"
@@ -18,17 +26,31 @@ export type DpReportUnavailableReason =
 
 export interface DpReportWorker {
   workerId: string;
+
   workerName: string;
+
   partnerWorkerId: string;
+
   partnerName: string;
+
   electionId: string;
+
   relationshipId: string;
+
   coverageMonth: string;
+
   charge: string;
+
   paidAmount: string;
+
   balance: string;
+
   status: DpReportStatus;
+  /** Data drift warning; does not change the authoritative posted payment status. */
+
   unavailableReason: DpReportUnavailableReason | null;
+
+  billingWarning: DpBillingWarning | null;
 }
 
 export interface DpReportResult {
@@ -120,20 +142,23 @@ export async function calculateDpCurrentMonthReport(
     if (seen.has(key)) continue;
     seen.add(key);
 
-    const postedCharge = Number(paymentMonth?.netCharge);
-    const hasPostedCurrentMonthCharge =
-      Number.isFinite(postedCharge) && postedCharge >= 0.005;
     let charge = "0.00";
     let paidAmount = paymentMonth?.paidAmount ?? "0.00";
     let status: DpReportStatus;
     let unavailableReason: DpReportUnavailableReason | null = null;
-    if (hasPostedCurrentMonthCharge) {
+    let billingWarning: DpBillingWarning | null = null;
+    if (paymentMonth && hasPostedDpCharge(paymentMonth)) {
       // A surviving posted charge is the authoritative coverage basis for the
       // month. The rate/WMB reconstruction can legitimately become unavailable
       // after billing, but must not erase the charge or its applied payment.
-      charge = paymentMonth!.netCharge;
-      if (paymentMonth!.status === "paid") status = "paid_covered";
-      else if (paymentMonth!.status === "partial") status = "partially_paid";
+      charge = paymentMonth.netCharge;
+      if (price.kind !== "charge") {
+        billingWarning = "posted_charge_inputs_unavailable";
+      } else if (Math.abs(Number(paymentMonth.netCharge) - Number(price.amount)) >= 0.005) {
+        billingWarning = "posted_charge_amount_mismatch";
+      }
+      if (paymentMonth.status === "paid") status = "paid_covered";
+      else if (paymentMonth.status === "partial") status = "partially_paid";
       else status = "unpaid_not_covered";
     } else if (price.kind === "no_charge") {
       status = "confirmed_no_charge";
@@ -165,6 +190,7 @@ export async function calculateDpCurrentMonthReport(
       balance: money(Math.max(0, Number(charge) - Number(paidAmount))),
       status,
       unavailableReason,
+      billingWarning,
     });
   }
 
