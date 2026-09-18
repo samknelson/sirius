@@ -90,6 +90,7 @@ const WorkerCertificationView = lazy(() => import("@/pages/worker-certification-
 const WorkerRatings = lazy(() => import("@/pages/worker-ratings"));
 const WorkerAat = lazy(() => import("@/pages/worker-aat"));
 const WorkerLedgerAccounts = lazy(() => import("@/pages/worker-ledger-accounts"));
+const WorkerLedgerPayment = lazy(() => import("@/pages/worker-ledger-payment"));
 const WorkerSitespecificBaoEchp = lazy(() => import("@/pages/worker-sitespecific-bao-echp"));
 const Stewards = lazy(() => import("@/pages/stewards"));
 const WorkerBenefitsCurrent = lazy(() => import("@/pages/worker-benefits-current"));
@@ -1275,6 +1276,14 @@ function Router() {
         <ProtectedRoute tabId="accounts" entityType="worker">
           <AuthenticatedLayout>
             <WorkerLedgerAccounts />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/ledger/pay">
+        <ProtectedRoute policy="worker.ledger" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerLedgerPayment />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

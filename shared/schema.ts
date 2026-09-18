@@ -987,6 +987,43 @@ export const ledgerPayments = pgTable("ledger_payments", {
   attachmentFileId: varchar("attachment_file_id").references(() => files.id, { onDelete: "set null" }),
 });
 
+/**
+ * A provider charge attempt is separate from a ledger payment.  The provider
+ * may remain processing (ACH) or send several/out-of-order webhook updates;
+ * this durable row is the idempotency and reconciliation boundary.
+ */
+export const ledgerPaymentAttempts = pgTable("ledger_payment_attempts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: "restrict" }),
+  ledgerEaId: varchar("ledger_ea_id").notNull().references(() => ledgerEa.id, { onDelete: "restrict" }),
+  gatewayConfigId: varchar("gateway_config_id").notNull(),
+  paymentMethodId: varchar("payment_method_id").notNull(),
+  providerIntentRef: text("provider_intent_ref"),
+  idempotencyKey: text("idempotency_key").notNull(),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 10 }).notNull().default("USD"),
+  status: text("status").notNull().default("requires_action"),
+  ledgerPaymentId: varchar("ledger_payment_id").references(() => ledgerPayments.id, { onDelete: "set null" }),
+  lastProviderEventCreated: integer("last_provider_event_created"),
+  failureMessage: text("failure_message"),
+  metadata: jsonb("metadata"),
+}, (table) => [
+  foreignKey({
+    name: "ledger_payment_attempts_gateway_config_fkey",
+    columns: [table.gatewayConfigId],
+    foreignColumns: [pluginConfigsPaymentGateway.id],
+  }).onDelete("restrict"),
+  foreignKey({
+    name: "ledger_payment_attempts_payment_method_fkey",
+    columns: [table.paymentMethodId],
+    foreignColumns: [ledgerPaymentMethods.id],
+  }).onDelete("restrict"),
+  unique("ledger_payment_attempts_idempotency_key_unique").on(table.idempotencyKey),
+  unique("ledger_payment_attempts_provider_intent_unique").on(table.providerIntentRef),
+  uniqueIndex("ledger_payment_attempts_ledger_payment_unique").on(table.ledgerPaymentId),
+  index("ledger_payment_attempts_worker_idx").on(table.workerId),
+  check("ledger_payment_attempts_status_check", sql`${table.status} IN ('requires_action','processing','succeeded','failed')`),
+]);
 export const ledgerEa = pgTable("ledger_ea", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   accountId: varchar("account_id").notNull().references(() => ledgerAccounts.id),
@@ -3278,3 +3315,28 @@ export type BusinessCalendarManualOpen = typeof businessCalendarManualOpen.$infe
 export type LedgerPaymentMethodWithCreatedDate = LedgerPaymentMethod & {
   createdDate: Date | null;
 };
+
+export const insertLedgerPaymentAttemptSchema = createInsertSchema(ledgerPaymentAttempts).omit({
+  id: true,
+});
+
+export type InsertLedgerPaymentAttempt = z.infer<typeof insertLedgerPaymentAttemptSchema>;
+
+export const ledgerPaymentAttemptEvents = pgTable("ledger_payment_attempt_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  attemptId: varchar("attempt_id").notNull(),
+  providerEventId: text("provider_event_id").notNull(),
+  eventType: text("event_type").notNull(),
+  providerCreated: integer("provider_created").notNull(),
+  payload: jsonb("payload"),
+  receivedAt: timestamp("received_at").default(sql`now()`).notNull(),
+}, (table) => [
+  foreignKey({
+    name: "ledger_payment_attempt_events_attempt_fkey",
+    columns: [table.attemptId],
+    foreignColumns: [ledgerPaymentAttempts.id],
+  }).onDelete("cascade"),
+  unique("ledger_payment_attempt_events_provider_event_unique").on(table.providerEventId),
+]);
+
+export type LedgerPaymentAttempt = typeof ledgerPaymentAttempts.$inferSelect;

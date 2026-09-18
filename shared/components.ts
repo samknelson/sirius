@@ -172,7 +172,10 @@ export const componentRegistry: ComponentDefinition[] = [
         pluginId: "stripe",
         siriusId: "auto.ledger.stripe.default",
         name: "Stripe (Default)",
-        data: { secretName: "STRIPE_DEFAULT" },
+         data: {
+           secretName: "STRIPE_DEFAULT",
+           webhookSecretName: "STRIPE_WEBHOOK_SECRET",
+         },
       },
     ],
   },

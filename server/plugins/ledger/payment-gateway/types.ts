@@ -33,6 +33,8 @@ export interface PaymentGatewayContext {
   apiKey: string;
   /** The gateway config row driving this operation (carries `data`). */
   config: PluginConfig;
+  /** Optional webhook signing secret resolved by the generic context. */
+  webhookSecret?: string;
 }
 
 export interface CreateCustomerInput {
@@ -127,6 +129,25 @@ export interface GatewayConnectionTest {
   error?: { message: string; type?: string; code?: string };
 }
 
+export type GatewayChargeStatus = "requires_action" | "processing" | "succeeded" | "failed";
+
+export interface GatewayPaymentIntent {
+  providerIntentRef: string;
+  status: GatewayChargeStatus;
+  clientSecret?: string | null;
+  amount: number;
+  currency: string;
+  paymentMethodType?: string | null;
+  failureMessage?: string | null;
+}
+
+export interface GatewayWebhookEvent {
+  id: string;
+  type: string;
+  data: unknown;
+  created?: number;
+}
+
 /**
  * A single selectable payment method type in a provider's catalog. `id` is the
  * value stored on the config (e.g. "card"); `name`/`description` are display
@@ -189,6 +210,31 @@ export interface PaymentGatewayPlugin extends BasePluginMetadata {
    * save. Used by Stripe to require a `pk_`-prefixed publishable key.
    */
   validateConfig?(data: Record<string, unknown>): PluginValidationResult;
+
+  /** Create a provider charge. This method never writes application storage. */
+  createPaymentIntent?(
+    ctx: PaymentGatewayContext,
+    args: {
+      amount: number;
+      currency: string;
+      customerRef: string;
+      paymentMethodRef: string;
+      paymentMethodType?: string;
+      idempotencyKey: string;
+      metadata?: Record<string, string>;
+    },
+  ): Promise<GatewayPaymentIntent>;
+  /** Retrieve a charge for reconciliation and webhook processing. */
+  retrievePaymentIntent?(
+    ctx: PaymentGatewayContext,
+    providerIntentRef: string,
+  ): Promise<GatewayPaymentIntent>;
+  /** Verify and normalize a signed provider webhook payload. */
+  constructWebhookEvent?(
+    ctx: PaymentGatewayContext,
+    rawBody: Buffer,
+    signature: string,
+  ): GatewayWebhookEvent;
 
   // --- Provider-only behaviour (no storage/DB access) --------------------
   /** Test the provider connection using this config's resolved credentials. */

@@ -124,10 +124,16 @@ function WorkerLedgerAccountsContent() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between gap-2">
-            <div>
+             <div>
               <CardTitle>Accounts</CardTitle>
               <CardDescription>Manage ledger account entries for this worker</CardDescription>
             </div>
+             <Button asChild variant="outline" data-testid="button-worker-pay-balance">
+               <Link href={`/workers/${workerId}/ledger/pay`}>
+                 <ExternalLink className="h-4 w-4 mr-2" />
+                 Make a payment
+               </Link>
+             </Button>
             {isFormOpen ? (
               <Button
                 onClick={() => setIsFormOpen(false)}

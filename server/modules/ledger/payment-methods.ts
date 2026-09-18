@@ -56,6 +56,21 @@ const ENTITY_CONFIG: Record<string, EntityConfig> = {
       };
     },
   },
+  worker: {
+    policy: "worker.ledger",
+    loadDescriptor: async (entityId) => {
+      const worker = await storage.workers.getWorker(entityId);
+      if (!worker) return null;
+      const name = await storage.workers.getWorkerDisplayName(entityId);
+      return {
+        name: name || "Worker",
+        metadata: {
+          worker_id: worker.id,
+          sirius_id: String(worker.siriusId ?? ""),
+        },
+      };
+    },
+  },
 };
 
 class HttpError extends Error {
@@ -211,7 +226,8 @@ function sendError(res: Response, error: unknown, fallback: string): void {
   res.status(500).json({ message: fallback, error: message });
 }
 
-export function registerLedgerPaymentMethodRoutes(app: Express): void {
+export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: import("express").RequestHandler): void {
+  if (requireAuth) app.use("/api/ledger/payment-methods", requireAuth);
   const base = "/api/ledger/payment-methods/:entityType/:entityId";
 
   // List the gateway configs available for the picker (enabled configs whose

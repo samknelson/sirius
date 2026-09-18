@@ -104,7 +104,8 @@ function installBaseMiddleware(app: Express): void {
   app.use(express.json({
     limit: '50mb',
     verify: (req, _res, buffer) => {
-      if ((req as Request).originalUrl.startsWith('/api/comm/statuscallback/')) {
+      if ((req as Request).originalUrl.startsWith('/api/comm/statuscallback/') ||
+          /^\/api\/ledger\/payment-gateways\/[^/]+\/webhook(?:\?|$)/.test((req as Request).originalUrl)) {
         (req as typeof req & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
       }
     },
