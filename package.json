@@ -9,6 +9,7 @@
     "start": "NODE_ENV=production node dist/production-entry.js",
     "check": "node --max-old-space-size=4096 node_modules/typescript/bin/tsc -p tsconfig.server.json && node --max-old-space-size=4096 node_modules/typescript/bin/tsc -p tsconfig.client.json",
     "test": "vitest run",
+    "test:browser:postal-templates": "node tests/postal-templates/browser.mjs",
     "test:watch": "vitest",
     "lint": "tsx scripts/dev/lint.ts",
     "db:push": "tsx scripts/db-push.ts",
