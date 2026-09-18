@@ -218,19 +218,39 @@ jobs:
         echo "Currently running — api: $API_PREV"
 
         # ws is in play only when the caller supplied an image for it AND the
-        # service exists in this environment. describe-services does not fail on
-        # a missing service — it returns an empty services[] which the query
-        # renders as "None" — so that is checked explicitly rather than trusted.
+        # service exists AND is ACTIVE in this environment. describe-services
+        # does not fail on a missing service — it returns an empty services[]
+        # which the query renders as "None" — so that is checked explicitly
+        # rather than trusted. It ALSO returns recently-deleted services with
+        # status INACTIVE (or DRAINING mid-delete) and a still-populated
+        # taskDefinition, so the ARN alone is not proof the service is usable:
+        # update-service against a non-ACTIVE service fails with
+        # ServiceNotActiveException, and under `set -e` that aborts the job
+        # AFTER ui and api have already been rolled. Status is therefore
+        # checked alongside the task definition.
         WS_SERVICE="${{ steps.names.outputs.ws-service }}"
         WS_ENABLED=false
         if [ -z "${{ inputs.ws-image-uri }}" ]; then
-          echo "::notice::No ws-image-uri supplied — rolling ui and api only."
-        else
-          WS_PREV=$(aws ecs describe-services --cluster "$CLUSTER" \
+          # No image for ws. If the service nevertheless exists and is serving
+          # traffic, ui and api are about to move to a new build while ws stays
+          # on the old one — against a schema the new build may already have
+          # migrated. That is worth more than silence.
+          WS_ORPHAN_STATUS=$(aws ecs describe-services --cluster "$CLUSTER" \
             --services "$WS_SERVICE" \
-            --query 'services[0].taskDefinition' --output text)
+            --query 'services[0].status' --output text 2>/dev/null || echo "None")
+          if [ "$WS_ORPHAN_STATUS" = "ACTIVE" ]; then
+            echo "::warning::No ws-image-uri supplied but ECS service '$WS_SERVICE' is ACTIVE in cluster '$CLUSTER'. ui and api will roll to the new image while ws keeps serving the previous build. Check the caller passes ws-image-uri for this environment."
+          else
+            echo "::notice::No ws-image-uri supplied — rolling ui and api only."
+          fi
+        else
+          read -r WS_STATUS WS_PREV <<<"$(aws ecs describe-services --cluster "$CLUSTER" \
+            --services "$WS_SERVICE" \
+            --query 'services[0].[status,taskDefinition]' --output text)"
           if [ -z "$WS_PREV" ] || [ "$WS_PREV" = "None" ]; then
             echo "::warning::ws-image-uri was supplied but ECS service '$WS_SERVICE' does not exist in cluster '$CLUSTER'. Rolling ui and api only — apply the three-service split in fm-workloads-fls for this environment."
+          elif [ "$WS_STATUS" != "ACTIVE" ]; then
+            echo "::warning::ws-image-uri was supplied but ECS service '$WS_SERVICE' is '$WS_STATUS', not ACTIVE, in cluster '$CLUSTER'. Rolling ui and api only — updating a non-ACTIVE service would fail the deploy after ui and api have already changed."
           else
             WS_ENABLED=true
             echo "ws-prev-task-arn=$WS_PREV" >> "$GITHUB_OUTPUT"

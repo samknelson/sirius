@@ -222,14 +222,33 @@ jobs:
           "${API_REPO}:${SHORT_SHA}"
           "${API_REPO}:${ENV_SHORT}-latest"
         )
-        if aws ecr describe-repositories --repository-names "$WS_REPO_NAME" >/dev/null 2>&1; then
+        # Distinguish "repo genuinely absent" from "the call failed". Swallowing
+        # every error into the absent branch means an IAM policy scoped to only
+        # the ui/api repos, a missing ecr:DescribeRepositories permission, or a
+        # throttle would silently and permanently skip the ws build while the
+        # run stays green and the notice positively asserts the repo is missing.
+        # Only RepositoryNotFoundException means absent; anything else is a real
+        # failure and must stop the build.
+        set +e
+        WS_REPO_ERR=$(aws ecr describe-repositories --repository-names "$WS_REPO_NAME" 2>&1 >/dev/null)
+        WS_REPO_RC=$?
+        set -e
+        if [ "$WS_REPO_RC" -eq 0 ]; then
           TAG_LIST+=("${WS_REPO}:${SHORT_SHA}" "${WS_REPO}:${ENV_SHORT}-latest")
           echo "ws-repo=$WS_REPO" >> $GITHUB_OUTPUT
-          echo "::notice::App build for '$ENV_SHORT' → ui-repo=$UI_REPO api-repo=$API_REPO ws-repo=$WS_REPO sha=$SHORT_SHA"
-        else
+          echo "::notice::ws ECR repo '$WS_REPO_NAME' found — ws image will be built and pushed."
+        elif printf '%s' "$WS_REPO_ERR" | grep -q 'RepositoryNotFoundException'; then
           echo "ws-repo=" >> $GITHUB_OUTPUT
           echo "::notice::No ws ECR repo '$WS_REPO_NAME' in this environment — building ui and api only. Apply the three-service split in fm-workloads-fls to enable it."
+        else
+          echo "::error::Could not determine whether ws ECR repo '$WS_REPO_NAME' exists. This is NOT a missing repo — the describe-repositories call itself failed (check the OIDC role has ecr:DescribeRepositories on this repo, and for throttling). Failing rather than silently skipping the ws build."
+          echo "$WS_REPO_ERR"
+          exit 1
         fi
+
+        # Emitted unconditionally: in an environment without the ws repo this is
+        # still the line operators read to confirm which sha went where.
+        echo "::notice::App build for '$ENV_SHORT' → ui-repo=$UI_REPO api-repo=$API_REPO sha=$SHORT_SHA"
         {
           echo "tags<<TAGS_EOF"
           printf '%s\n' "${TAG_LIST[@]}"
