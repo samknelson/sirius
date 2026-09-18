@@ -10,6 +10,8 @@ vite.config.ts.*
 *.tar.gz.replit
 replit.nix
 .cache/
+screenshots/postal-template-failure.png
+screenshots/postal-template-regression.png
 __replit_disk_meta.json
 .drizzle-runtime.json
 .drizzle-runtime-schema.ts
