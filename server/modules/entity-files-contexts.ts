@@ -100,4 +100,28 @@ export function registerEntityFileContexts(): void {
     },
     ...staffOnly(),
   });
+
+  // Ledger payments — staff-only and hidden with the ledger component.
+  registerEntityFileContext({
+    id: "ledger_payment",
+    label: "Payments",
+    recordLabel: "Payment",
+    component: "ledger",
+    async entityExists(entityId: string): Promise<boolean> {
+      return Boolean(await storage.ledger.payments.get(entityId));
+    },
+    ...staffOnly(),
+  });
+
+  // Payment batches — staff-only and hidden with the payment-batch component.
+  registerEntityFileContext({
+    id: "ledger_payment_batch",
+    label: "Payment Batches",
+    recordLabel: "Payment Batch",
+    component: "ledger.payment.batch",
+    async entityExists(entityId: string): Promise<boolean> {
+      return Boolean(await storage.ledger.paymentBatches.get(entityId));
+    },
+    ...staffOnly(),
+  });
 }

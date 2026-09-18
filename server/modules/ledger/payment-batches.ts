@@ -49,6 +49,11 @@ export function registerLedgerPaymentBatchRoutes(app: Express) {
 
   app.post("/api/ledger-payment-batches", requireComponent("ledger.payment.batch"), requireAccess('staff'), async (req, res) => {
     try {
+      if (Object.prototype.hasOwnProperty.call(req.body ?? {}, "attachmentFileId")) {
+        return res.status(400).json({
+          message: "attachmentFileId is retired; use the Entity Files area for payment batch attachments",
+        });
+      }
       const validatedData = insertLedgerPaymentBatchSchema.parse(req.body);
       const account = await storage.ledger.accounts.get(validatedData.accountId);
       if (!account) {
@@ -68,6 +73,11 @@ export function registerLedgerPaymentBatchRoutes(app: Express) {
 
   app.patch("/api/ledger-payment-batches/:id", requireComponent("ledger.payment.batch"), requireAccess('staff'), async (req, res) => {
     try {
+      if (Object.prototype.hasOwnProperty.call(req.body ?? {}, "attachmentFileId")) {
+        return res.status(400).json({
+          message: "attachmentFileId is retired; use the Entity Files area for payment batch attachments",
+        });
+      }
       const existing = await storage.ledger.paymentBatches.get(req.params.id);
       if (!existing) {
         res.status(404).json({ message: "Payment batch not found" });

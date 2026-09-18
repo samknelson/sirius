@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { PaymentBatchLayout, usePaymentBatchLayout } from "@/components/layouts/PaymentBatchLayout";
@@ -8,21 +8,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
-import { Loader2, Paperclip, X, Download, FileText } from "lucide-react";
-import type { File as FileRecord } from "@shared/schema";
+import { Loader2 } from "lucide-react";
+import { EntityFileManager } from "@/components/entity-files/EntityFileManager";
 
 function BatchEditContent() {
   const { batch } = usePaymentBatchLayout();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [name, setName] = useState("");
   const [batchTotal, setBatchTotal] = useState("");
   const [expectedPaymentCount, setExpectedPaymentCount] = useState("");
-  const [attachmentFileId, setAttachmentFileId] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (batch) {
@@ -31,15 +28,8 @@ function BatchEditContent() {
       setExpectedPaymentCount(
         batch.expectedPaymentCount != null ? String(batch.expectedPaymentCount) : "",
       );
-      setAttachmentFileId(batch.attachmentFileId ?? null);
     }
   }, [batch]);
-
-  const { data: attachment } = useQuery<FileRecord>({
-    queryKey: ["/api/files", attachmentFileId],
-    queryFn: () => apiRequest("GET", `/api/files/${attachmentFileId}`),
-    enabled: !!attachmentFileId,
-  });
 
   const updateMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
@@ -55,42 +45,6 @@ function BatchEditContent() {
     },
   });
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("entityType", "ledger_payment_batch");
-      fd.append("entityId", batch.id);
-      fd.append("fileSystemId", "private");
-
-      const res = await fetch("/api/files", {
-        method: "POST",
-        body: fd,
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Upload failed");
-      }
-      const created = (await res.json()) as FileRecord;
-      setAttachmentFileId(created.id);
-      toast({ title: "Attachment uploaded", description: file.name });
-    } catch (err) {
-      toast({
-        title: "Upload failed",
-        description: getApiErrorMessage(err, "Please try again."),
-        variant: "destructive",
-      });
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -103,7 +57,6 @@ function BatchEditContent() {
       batchTotal: batchTotal.trim() === "" ? null : batchTotal.trim(),
       expectedPaymentCount:
         expectedPaymentCount.trim() === "" ? null : parseInt(expectedPaymentCount, 10),
-      attachmentFileId: attachmentFileId,
     };
     updateMutation.mutate(payload);
   };
@@ -161,92 +114,6 @@ function BatchEditContent() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Attachment (image or PDF)</Label>
-              <div className="flex items-center gap-3">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*,application/pdf"
-                  className="hidden"
-                  onChange={handleFileSelect}
-                  data-testid="input-batch-attachment"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  data-testid="button-upload-attachment"
-                >
-                  {uploading ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Paperclip className="h-4 w-4 mr-2" />
-                  )}
-                  {attachmentFileId ? "Replace Attachment" : "Upload Attachment"}
-                </Button>
-                {attachmentFileId && (
-                  <>
-                    <a
-                      href={`/api/files/${attachmentFileId}/download`}
-                      className="text-sm text-primary hover:underline inline-flex items-center gap-1"
-                      data-testid="link-attachment-download"
-                    >
-                      <Download className="h-4 w-4" />
-                      {attachment?.fileName || "Download"}
-                    </a>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setAttachmentFileId(null)}
-                      data-testid="button-remove-attachment"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </>
-                )}
-              </div>
-              {attachmentFileId && attachment?.mimeType?.startsWith("image/") && (
-                <a
-                  href={`/api/files/${attachmentFileId}/download`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block mt-2"
-                  data-testid="link-attachment-image-preview"
-                >
-                  <img
-                    src={`/api/files/${attachmentFileId}/download`}
-                    alt={attachment?.fileName || "Batch attachment"}
-                    className="max-h-64 max-w-full rounded border bg-muted object-contain"
-                    data-testid="img-attachment-preview"
-                  />
-                </a>
-              )}
-              {attachmentFileId && attachment?.mimeType === "application/pdf" && (
-                <a
-                  href={`/api/files/${attachmentFileId}/download`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-3 rounded border bg-muted/40 hover:bg-muted/70 transition-colors px-4 py-4 max-w-md mt-2"
-                  data-testid="link-attachment-pdf-preview"
-                >
-                  <div className="rounded bg-background border p-2">
-                    <FileText className="h-6 w-6 text-primary" />
-                  </div>
-                  <div className="min-w-0 text-sm">
-                    <div className="font-medium truncate">
-                      {attachment?.fileName || "PDF attachment"}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Click to open PDF in a new tab
-                    </div>
-                  </div>
-                </a>
-              )}
-            </div>
-
             <div className="flex gap-3 pt-4">
               <Button
                 type="submit"
@@ -268,6 +135,7 @@ function BatchEditContent() {
           </form>
         </CardContent>
       </Card>
+      <EntityFileManager context="ledger_payment_batch" entityId={batch.id} />
     </div>
   );
 }

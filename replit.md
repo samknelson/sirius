@@ -75,6 +75,14 @@ Sirius is a full-stack web application designed for comprehensive worker managem
     Run `npx tsc -p tsconfig.scripts.json --noEmit` before first execution of
     a new or changed script.
 
+-   **Payment attachment setup uses Config → Entity Files.** Configure the
+    `Payments` and `Payment Batches` areas with an existing `FILESYSTEMS`
+    filesystem, a directory template (for example
+    `payments/:entity-id`), and any allowed extensions. Existing migrated
+    attachments remain readable without this configuration; only new uploads
+    require it. File types can be scoped to either area through the existing
+    file-type configuration.
+
 ## Stack
 
 -   **Frontend**: React 18, TypeScript, Vite, Wouter, TanStack Query, React Hook Form, Shadcn/ui (Radix UI), Tailwind CSS ("new-york" theme)

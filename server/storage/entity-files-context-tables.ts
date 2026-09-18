@@ -1,4 +1,6 @@
 import { workers, employers, trustProviders, grievances, wizards } from "@shared/schema";
+import { ledgerPayments } from "@shared/schema";
+import { ledgerPaymentBatches } from "@shared/schema/ledger/payment-batch/schema";
 import {
   getEntityFileContext,
   listEntityFileContexts,
@@ -26,6 +28,8 @@ export const fileContextTables: Record<string, PgTable<TableConfig>> = {
   employer: employers,
   trust_provider: trustProviders,
   grievance: grievances,
+  ledger_payment: ledgerPayments,
+  ledger_payment_batch: ledgerPaymentBatches,
 };
 
 /**

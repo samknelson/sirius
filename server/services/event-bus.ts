@@ -119,6 +119,8 @@ export enum EventType {
   EMPLOYER_DELETE_AFTER = "employer.delete.after",
   TRUST_PROVIDER_DELETE_AFTER = "trust.provider.delete.after",
   GRIEVANCE_DELETE_AFTER = "grievance.delete.after",
+  LEDGER_PAYMENT_DELETE_AFTER = "ledger.payment.delete.after",
+  LEDGER_PAYMENT_BATCH_DELETE_AFTER = "ledger.payment-batch.delete.after",
   CRON = "cron",
   LOG = "log",
 }
@@ -814,7 +816,7 @@ export interface EmployerMonthlyPayload {
 /**
  * One record has been deleted, and the delete has committed.
  *
- * These four exist so the polymorphic areas that hang off a record — its
+ * These events exist so the polymorphic areas that hang off a record — its
  * notes (`entity_notes`) and its file attachments (`entity_files`), neither
  * of which has a foreign key back to the record — can clean up at the moment
  * of deletion instead of waiting for a nightly sweep. A handler runs after
@@ -837,6 +839,14 @@ export interface TrustProviderDeleteAfterPayload {
 
 export interface GrievanceDeleteAfterPayload {
   grievanceId: string;
+}
+
+export interface LedgerPaymentDeleteAfterPayload {
+  paymentId: string;
+}
+
+export interface LedgerPaymentBatchDeleteAfterPayload {
+  batchId: string;
 }
 
 export interface CronPayload {
@@ -922,6 +932,8 @@ export interface EventPayloadMap {
   [EventType.EMPLOYER_DELETE_AFTER]: EmployerDeleteAfterPayload;
   [EventType.TRUST_PROVIDER_DELETE_AFTER]: TrustProviderDeleteAfterPayload;
   [EventType.GRIEVANCE_DELETE_AFTER]: GrievanceDeleteAfterPayload;
+  [EventType.LEDGER_PAYMENT_DELETE_AFTER]: LedgerPaymentDeleteAfterPayload;
+  [EventType.LEDGER_PAYMENT_BATCH_DELETE_AFTER]: LedgerPaymentBatchDeleteAfterPayload;
   [EventType.CRON]: CronPayload;
   [EventType.LOG]: LogPayload;
 }

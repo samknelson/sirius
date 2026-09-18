@@ -57,6 +57,16 @@ const FILE_CONTEXT_BY_EVENT: ReadonlyArray<{
     contextId: "grievance",
     recordId: (p: EventPayloadMap[EventType.GRIEVANCE_DELETE_AFTER]) => p.grievanceId,
   },
+  {
+    event: EventType.LEDGER_PAYMENT_DELETE_AFTER,
+    contextId: "ledger_payment",
+    recordId: (p: EventPayloadMap[EventType.LEDGER_PAYMENT_DELETE_AFTER]) => p.paymentId,
+  },
+  {
+    event: EventType.LEDGER_PAYMENT_BATCH_DELETE_AFTER,
+    contextId: "ledger_payment_batch",
+    recordId: (p: EventPayloadMap[EventType.LEDGER_PAYMENT_BATCH_DELETE_AFTER]) => p.batchId,
+  },
 ];
 
 const handlerIds: string[] = [];

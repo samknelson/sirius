@@ -4,12 +4,12 @@ import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import type { LedgerPayment } from "@shared/schema";
-import type { File as FileRecord } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LedgerTransactionsView } from "@/components/ledger/LedgerTransactionsView";
 import { formatAmount } from "@shared/currency";
 import { isValidYmd, ymdToDateForPicker } from "@shared/utils/date";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EntityFileManager } from "@/components/entity-files/EntityFileManager";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -28,14 +28,6 @@ function PaymentViewContent() {
 
   const { data: payment, isLoading } = useQuery<LedgerPayment & { dateCreated: Date | null }>({
     queryKey: ["/api/ledger/payments", id],
-  });
-  const { data: attachment } = useQuery<FileRecord>({
-    queryKey: ["/api/files", payment?.attachmentFileId],
-    queryFn: () => fetch(`/api/files/${payment?.attachmentFileId}`, { credentials: "include" }).then(async (res) => {
-      if (!res.ok) throw new Error("Attachment unavailable");
-      return res.json();
-    }),
-    enabled: !!payment?.attachmentFileId,
   });
 
   const details = (payment?.details || {}) as Record<string, unknown>;
@@ -177,37 +169,6 @@ function PaymentViewContent() {
             </div>
           )}
 
-          {payment.attachmentFileId && (
-            <div className="space-y-3" data-testid="payment-attachment-section">
-              <label className="text-sm font-medium text-muted-foreground">Payment image</label>
-              {attachment?.mimeType?.startsWith("image/") && (
-                <a
-                  href={`/api/files/${payment.attachmentFileId}/download`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block"
-                  data-testid="link-payment-attachment-preview"
-                >
-                  <img
-                    src={`/api/files/${payment.attachmentFileId}/download`}
-                    alt={attachment.fileName || "Payment attachment"}
-                    className="max-h-80 max-w-full rounded border bg-muted object-contain"
-                    data-testid="img-payment-attachment-preview"
-                  />
-                </a>
-              )}
-              <a
-                href={`/api/files/${payment.attachmentFileId}/download`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center text-sm text-primary hover:underline"
-                data-testid="link-payment-attachment-download"
-              >
-                {attachment?.fileName || "Open/download image"}
-              </a>
-            </div>
-          )}
-
           {proposedAllocation.length > 0 && (
             <div>
               <label className="text-sm font-medium text-muted-foreground">Payment Allocations</label>
@@ -239,6 +200,8 @@ function PaymentViewContent() {
           )}
         </CardContent>
       </Card>
+
+      <EntityFileManager context="ledger_payment" entityId={payment.id} />
 
       <LedgerTransactionsView
         baseUrl={`/api/ledger/payments/${id}/transactions`}

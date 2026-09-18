@@ -3,9 +3,9 @@ import { Link } from "wouter";
 import { PaymentBatchLayout, usePaymentBatchLayout } from "@/components/layouts/PaymentBatchLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { apiRequest } from "@/lib/queryClient";
-import { Download, AlertCircle, CheckCircle2, FileText } from "lucide-react";
-import type { LedgerAccount, File as FileRecord } from "@shared/schema";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
+import type { LedgerAccount } from "@shared/schema";
+import { EntityFileManager } from "@/components/entity-files/EntityFileManager";
 
 interface BatchWithSummary {
   id: string;
@@ -13,7 +13,6 @@ interface BatchWithSummary {
   accountId: string;
   batchTotal: string | null;
   expectedPaymentCount: number | null;
-  attachmentFileId: string | null;
   paymentsCount?: number;
   paymentsTotal?: string;
 }
@@ -37,12 +36,6 @@ function BatchDetailsContent() {
   const { data: account } = useQuery<LedgerAccount>({
     queryKey: ["/api/ledger/accounts", batch.accountId],
     enabled: !!batch.accountId,
-  });
-
-  const { data: attachment } = useQuery<FileRecord>({
-    queryKey: ["/api/files", batch.attachmentFileId],
-    queryFn: () => apiRequest("GET", `/api/files/${batch.attachmentFileId}`),
-    enabled: !!batch.attachmentFileId,
   });
 
   const currency = (account as LedgerAccount & { currencyCode?: string })?.currencyCode || "USD";
@@ -197,66 +190,13 @@ function BatchDetailsContent() {
               </dd>
             </div>
             <div className="sm:col-span-2">
-              <dt className="text-sm font-medium text-muted-foreground">Attachment</dt>
-              <dd className="mt-2 text-sm space-y-2" data-testid="text-batch-attachment">
-                {batch.attachmentFileId ? (
-                  <>
-                    {attachment?.mimeType?.startsWith("image/") ? (
-                      <a
-                        href={`/api/files/${batch.attachmentFileId}/download`}
-                        target="_blank"
-                        rel="noreferrer"
-                        data-testid="link-batch-attachment-image"
-                      >
-                        <img
-                          src={`/api/files/${batch.attachmentFileId}/download`}
-                          alt={attachment?.fileName || "Batch attachment"}
-                          className="max-h-96 max-w-full rounded border bg-muted object-contain"
-                          data-testid="img-batch-attachment"
-                        />
-                      </a>
-                    ) : attachment?.mimeType === "application/pdf" ? (
-                      <a
-                        href={`/api/files/${batch.attachmentFileId}/download`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-3 rounded border bg-muted/40 hover:bg-muted/70 transition-colors px-4 py-6 max-w-md"
-                        data-testid="link-batch-attachment-pdf"
-                      >
-                        <div className="rounded bg-background border p-3">
-                          <FileText className="h-8 w-8 text-primary" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="font-medium truncate">
-                            {attachment?.fileName || "PDF attachment"}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            Click to open PDF in a new tab
-                          </div>
-                        </div>
-                      </a>
-                    ) : null}
-                    <a
-                      href={`/api/files/${batch.attachmentFileId}/download`}
-                      className="text-primary hover:underline inline-flex items-center gap-1"
-                      data-testid="link-batch-attachment"
-                    >
-                      <Download className="h-4 w-4" />
-                      {attachment?.fileName || "Download attachment"}
-                    </a>
-                  </>
-                ) : (
-                  <span className="text-muted-foreground italic">No attachment</span>
-                )}
-              </dd>
-            </div>
-            <div className="sm:col-span-2">
               <dt className="text-sm font-medium text-muted-foreground">Batch ID</dt>
               <dd className="mt-1 text-sm font-mono text-muted-foreground" data-testid="text-batch-id">{batch.id}</dd>
             </div>
           </dl>
         </CardContent>
       </Card>
+      <EntityFileManager context="ledger_payment_batch" entityId={batch.id} />
     </div>
   );
 }

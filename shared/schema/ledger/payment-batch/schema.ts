@@ -2,7 +2,7 @@ import { foreignKey, pgTable, varchar, text, jsonb, numeric, integer } from "dri
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { ledgerAccounts, ledgerPayments, files } from "../../../schema";
+import { ledgerAccounts, ledgerPayments } from "../../../schema";
 
 export const ledgerPaymentBatches = pgTable("ledger_payment_batches", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -10,7 +10,6 @@ export const ledgerPaymentBatches = pgTable("ledger_payment_batches", {
   accountId: varchar("account_id").notNull().references(() => ledgerAccounts.id, { onDelete: "restrict" }),
   batchTotal: numeric("batch_total", { precision: 12, scale: 2 }),
   expectedPaymentCount: integer("expected_payment_count"),
-  attachmentFileId: varchar("attachment_file_id").references(() => files.id, { onDelete: "set null" }),
   data: jsonb("data"),
 });
 

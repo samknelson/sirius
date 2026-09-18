@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../../storage";
 import { createUnifiedOptionsStorage } from "../../storage/unified-options";
-import { insertFileSchema, insertLedgerPaymentSchema, type LedgerPayment, type LedgerPaymentWithEntity, type AllocatedEntity } from "@shared/schema";
+import { insertLedgerPaymentSchema, type LedgerPayment, type LedgerPaymentWithEntity, type AllocatedEntity } from "@shared/schema";
 import { requireAccess, checkAccessInline } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { executeChargePlugins, TriggerType, PaymentSavedContext, LedgerNotification } from "../../plugins/ledger/charge";
@@ -13,70 +13,27 @@ import { respondWithTransactions } from "./transaction-query";
 import { onAfterCommit, runInTransaction, runOutsideTransaction } from "../../storage/transaction-context";
 import { storageLogger } from "../../logger";
 import { getRequestContext } from "../../middleware/request-context";
-import { fileSystemService, isFileSystemConfigured } from "../../services/files";
-import multer from "multer";
 import { extname } from "path";
 
-const paymentAttachmentUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 },
-});
-const PAYMENT_ATTACHMENT_MIMES: Record<string, string> = {
-  "image/jpeg": ".jpg",
-  "image/png": ".png",
-  "image/gif": ".gif",
-  "image/webp": ".webp",
-  "image/bmp": ".bmp",
-  "image/tiff": ".tiff",
-};
-
+/** Retained as a pure validation helper for legacy callers; uploads use Entity Files. */
 export function validatePaymentAttachment(file: { originalname: string; mimetype: string }): string | null {
-  const extension = extname(file.originalname).toLowerCase();
-  const expectedExtension = PAYMENT_ATTACHMENT_MIMES[file.mimetype];
-  if (
-    !expectedExtension ||
-    (file.mimetype === "image/jpeg" && extension !== ".jpg" && extension !== ".jpeg") ||
-    (file.mimetype !== "image/jpeg" && extension !== expectedExtension)
-  ) {
-    return "Unsupported attachment. Upload a JPEG, PNG, GIF, WebP, BMP, or TIFF image.";
-  }
-  return null;
+  const allowed: Record<string, string[]> = {
+    "image/jpeg": [".jpg", ".jpeg"],
+    "image/png": [".png"],
+    "image/gif": [".gif"],
+    "image/webp": [".webp"],
+    "image/bmp": [".bmp"],
+    "image/tiff": [".tiff"],
+  };
+  const extensions = allowed[file.mimetype];
+  return extensions && extensions.includes(extname(file.originalname).toLowerCase())
+    ? null
+    : "Unsupported attachment. Upload a JPEG, PNG, GIF, WebP, BMP, or TIFF image.";
 }
-
 export function ordinaryPaymentAttachmentError(body: unknown): string | null {
   return Object.prototype.hasOwnProperty.call(body ?? {}, "attachmentFileId")
-    ? "Payment attachments must be uploaded through the attachment endpoint"
+    ? "attachmentFileId is retired; use the Entity Files area for payment attachments"
     : null;
-}
-
-const paymentAttachmentUploadMiddleware = (req: Request, res: Response, next: () => void) =>
-  paymentAttachmentUpload.single("file")(req, res, (error: unknown) => {
-    if (!error) {
-      next();
-      return;
-    }
-    if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-      res.status(400).json({ message: "Image attachment is too large (maximum 20 MB)." });
-      return;
-    }
-    res.status(400).json({ message: "Invalid image upload." });
-  });
-
-async function removePaymentAttachmentObject(file: { id: string; fileSystemId: string; storagePath: string }) {
-  try {
-    await fileSystemService.remove(file.fileSystemId, file.storagePath);
-  } catch (error) {
-    logger.warn("Payment attachment object cleanup failed", {
-      paymentAttachmentFileId: file.id,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-}
-
-function schedulePaymentAttachmentCleanup(file: { id: string; fileSystemId: string; storagePath: string }) {
-  onAfterCommit(() => {
-    void runOutsideTransaction(() => removePaymentAttachmentObject(file));
-  });
 }
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
@@ -717,108 +674,6 @@ export function registerLedgerPaymentRoutes(app: Express) {
     }
   });
 
-  // Attach one private raster image to an existing payment. The upload is
-  // intentionally separate from payment writes so financial edits cannot
-  // accidentally replace or clear an attachment.
-  app.post(
-    "/api/ledger/payments/:id/attachment",
-    requireComponent("ledger"),
-    requireAccess("staff"),
-    paymentAttachmentUploadMiddleware,
-    async (req, res) => {
-      let uploadedObject: { id: string; fileSystemId: string; storagePath: string } | undefined;
-      try {
-        const payment = await storage.ledger.payments.get(req.params.id);
-        if (!payment) {
-          res.status(404).json({ message: "Payment not found" });
-          return;
-        }
-        if (!req.file) {
-          res.status(400).json({ message: "No image file provided" });
-          return;
-        }
-        const attachmentError = validatePaymentAttachment(req.file);
-        if (attachmentError) {
-          res.status(400).json({ message: attachmentError });
-          return;
-        }
-        if (!isFileSystemConfigured("private")) {
-          res.status(503).json({ message: 'Filesystem "private" is not configured.' });
-          return;
-        }
-        if (!req.user) {
-          res.status(401).json({ message: "Authentication required" });
-          return;
-        }
-
-        const uploaded = await fileSystemService.upload({
-          fileSystemId: "private",
-          fileName: req.file.originalname,
-          fileContent: req.file.buffer,
-          mimeType: req.file.mimetype,
-        });
-        uploadedObject = {
-          id: "uncommitted",
-          fileSystemId: "private",
-          storagePath: uploaded.storagePath,
-        };
-        const saved = await runInTransaction(async () => {
-          const fileData = insertFileSchema.parse({
-            fileName: req.file!.originalname,
-            storagePath: uploaded.storagePath,
-            mimeType: req.file!.mimetype,
-            size: uploaded.size,
-            uploadedBy: (req.user as any).id,
-            entityType: "ledger_payment",
-            entityId: payment.id,
-            fileSystemId: "private",
-            metadata: null,
-          });
-          const created = await storage.files.create(fileData);
-          const replaced = await storage.ledger.payments.replaceAttachment(payment.id, created.id);
-          if (!replaced) throw new Error("Payment not found");
-          if (replaced.oldFile) schedulePaymentAttachmentCleanup(replaced.oldFile);
-          return replaced.payment;
-        });
-        uploadedObject = undefined;
-        res.status(201).json(saved);
-      } catch (error) {
-        // The object is written before the transaction starts. If validation,
-        // file-row insertion, or payment replacement fails, the transaction
-        // rolls back both database writes and only the raw object remains.
-        if (uploadedObject) await removePaymentAttachmentObject(uploadedObject);
-        if (error instanceof Error && error.name === "ZodError") {
-          res.status(400).json({ message: "Invalid image attachment" });
-        } else if (!res.headersSent) {
-          res.status(500).json({ message: "Failed to save payment attachment" });
-        }
-      }
-    },
-  );
-
-  app.delete(
-    "/api/ledger/payments/:id/attachment",
-    requireComponent("ledger"),
-    requireAccess("staff"),
-    async (req, res) => {
-      try {
-        const payment = await storage.ledger.payments.get(req.params.id);
-        if (!payment) {
-          res.status(404).json({ message: "Payment not found" });
-          return;
-        }
-        await runInTransaction(async () => {
-          const replaced = await storage.ledger.payments.replaceAttachment(payment.id, null);
-          if (!replaced) throw new Error("Payment not found");
-          if (replaced.oldFile) schedulePaymentAttachmentCleanup(replaced.oldFile);
-        });
-        res.status(204).send();
-      } catch {
-        res.status(500).json({ message: "Failed to remove payment attachment" });
-      }
-    },
-  );
-
   // GET /api/ledger/payments/:id/transactions - Get ledger entries for a payment
   // (paginated, server-side filters; format=csv streams the full filtered set)
   app.get("/api/ledger/payments/:id/transactions", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
@@ -854,7 +709,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
   app.post("/api/ledger/payments", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       if (ordinaryPaymentAttachmentError(req.body)) {
-        res.status(400).json({ message: "Payment attachments must be uploaded through the attachment endpoint" });
+        res.status(400).json({ message: "attachmentFileId is retired; use the Entity Files area for payment attachments" });
         return;
       }
       const { result, notifications, enriched } = await runInTransaction(async () => {
@@ -902,7 +757,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
       
       const rawBody = req.body;
       if (ordinaryPaymentAttachmentError(rawBody)) {
-        res.status(400).json({ message: "Payment attachments must be changed through the attachment endpoint" });
+        res.status(400).json({ message: "attachmentFileId is retired; use the Entity Files area for payment attachments" });
         return;
       }
 
@@ -1039,13 +894,6 @@ export function registerLedgerPaymentRoutes(app: Express) {
       const success = await runInTransaction(async () => {
         await cleanupUploadSourcePaymentArtifacts(id, payment.details as Record<string, unknown> | null);
         const deleted = await storage.ledger.payments.delete(id);
-        if (deleted && payment.attachmentFileId) {
-          const file = await storage.files.getById(payment.attachmentFileId);
-          if (file) {
-            await storage.files.delete(file.id);
-            schedulePaymentAttachmentCleanup(file);
-          }
-        }
         return deleted;
       });
       
