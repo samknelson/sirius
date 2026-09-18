@@ -33,6 +33,19 @@ const ICONS: Record<string, typeof Search> = {
 /** Wait this long after the last keystroke before asking the server. */
 const DEBOUNCE_MS = 250;
 
+/** Server-owned record links must leave the SPA so Express can resolve them. */
+export function navigateQuicksearchResult(
+  href: string,
+  navigate: (href: string) => void,
+  fullNavigate: (href: string) => void = (destination) => window.location.assign(destination),
+): void {
+  if (/^\/go\/[^/?#]+(?:[?#].*)?$/.test(href)) {
+    fullNavigate(href);
+    return;
+  }
+  navigate(href);
+}
+
 /**
  * Search from anywhere.
  *
@@ -113,7 +126,7 @@ export function QuickSearch() {
 
   function go(href: string) {
     setOpen(false);
-    navigate(href);
+    navigateQuicksearchResult(href, navigate);
   }
 
   return (
