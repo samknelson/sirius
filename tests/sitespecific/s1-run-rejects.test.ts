@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { rejectCountsOf } from "@/lib/s1-run-rejects";
+import { formatS1RunDuration } from "@/lib/s1-run-duration";
 
 describe("rejectCountsOf", () => {
   it("reads a standard loader envelope's rejectGate.counts", () => {
@@ -88,5 +89,32 @@ describe("rejectCountsOf", () => {
     expect(
       rejectCountsOf({ rejectGate: { counts: { good: 2, bad: "x", worse: null } } }),
     ).toEqual({ good: 2 });
+  });
+});
+
+describe("formatS1RunDuration", () => {
+  const start = "2026-01-01T00:00:00.000Z";
+
+  it("preserves tenth-of-a-second precision below one minute", () => {
+    expect(formatS1RunDuration(start, "2026-01-01T00:00:59.900Z")).toBe("59.9s");
+  });
+
+  it("decomposes minute, hour, and day durations with intermediate zeroes", () => {
+    expect(formatS1RunDuration(start, "2026-01-01T00:24:11.000Z")).toBe("24m 11s");
+    expect(formatS1RunDuration(start, "2026-01-01T01:12:24.300Z")).toBe("1h 12m 24s");
+    expect(formatS1RunDuration(start, "2026-01-06T00:40:42.000Z")).toBe("5d 0h 40m 42s");
+  });
+
+  it("uses whole seconds for fractional long runs", () => {
+    expect(formatS1RunDuration(start, "2026-01-01T00:01:00.900Z")).toBe("1m 0s");
+  });
+
+  it("returns the existing placeholder for invalid timestamps", () => {
+    expect(formatS1RunDuration("not-a-date", start)).toBe("—");
+    expect(formatS1RunDuration(start, "not-a-date")).toBe("—");
+  });
+
+  it("clamps negative spans to zero", () => {
+    expect(formatS1RunDuration("2026-01-01T00:00:01.000Z", start)).toBe("0s");
   });
 });

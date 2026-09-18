@@ -9,6 +9,7 @@
  */
 import { useState } from "react";
 import { rejectCountsOf } from "@/lib/s1-run-rejects";
+import { formatS1RunDuration } from "@/lib/s1-run-duration";
 import { useQuery } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import {
@@ -133,13 +134,6 @@ function rejectsOf(run: RunRow): Record<string, number> {
 function fmtTs(ts: string): string {
   const d = new Date(ts);
   return isNaN(d.getTime()) ? ts : d.toLocaleString();
-}
-
-function durationS(run: RunRow): string {
-  const a = new Date(run.startedAt).getTime();
-  const b = new Date(run.finishedAt).getTime();
-  if (isNaN(a) || isNaN(b)) return "—";
-  return `${Math.max(0, Math.round((b - a) / 100) / 10)}s`;
 }
 
 type CheckState = "pass" | "fail" | "pending";
@@ -647,7 +641,7 @@ function RunHistory({ runs, readError, loading, refreshing, retry, expandedRun, 
                             </TableCell>
                             <TableCell className="font-mono">{runName(run)}</TableCell>
                             <TableCell>{fmtTs(run.startedAt)}</TableCell>
-                            <TableCell>{durationS(run)}</TableCell>
+                            <TableCell>{formatS1RunDuration(run.startedAt, run.finishedAt)}</TableCell>
                             <TableCell>
                               <Badge
                                 variant={
