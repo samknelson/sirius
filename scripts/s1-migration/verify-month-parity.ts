@@ -14,7 +14,8 @@
  *   S1 view:  staged sirius_trust_worker_benefit coverage SPANS whose
  *             inclusive month range covers that month, resolved through the
  *             exact T17 rules (id_map crosswalk, dependents via relations →
- *             worker_2, employer fallback via the linked election,
+ *             worker_2, employer fallback via the linked election then the
+ *             uniquely named S2 employer `UNKNOWN`,
  *             inactive-no-end end-dating from node.changed).
  *
  * EVIDENCE SOURCES are pluggable: the S1 view is produced by an
@@ -161,9 +162,21 @@ const stagedSpansSource: EvidenceSource = {
     let inactiveEndDated = 0;
     let dependentSpans = 0;
     let employerFromElection = 0;
+    let employerFromUnknown = 0;
     let duplicateTuples = 0;
 
     const benefitRes = await resolveBenefitNidMap(HARNESS, /* dryRun (read-only!) */ true);
+    const unknownRes = (await db.execute(sql`
+      SELECT id
+        FROM employers
+       WHERE btrim(name) = 'UNKNOWN'
+    `)) as unknown as { rows: Array<{ id: string }> };
+    if (unknownRes.rows.length !== 1) {
+      throw new Error(
+        `Month parity requires exactly one employer named UNKNOWN; found ${unknownRes.rows.length}`,
+      );
+    }
+    const unknownEmployerId = unknownRes.rows[0].id;
 
     for await (const staged of pagedStaged(BUNDLE)) {
       // ---- date screen (field-local; no lookups) ----
@@ -353,8 +366,8 @@ const stagedSpansSource: EvidenceSource = {
           }
         }
         if (!employerId) {
-          unresolved.add("employer_unresolved", { nid }, nid);
-          continue;
+          employerId = unknownEmployerId;
+          employerFromUnknown++;
         }
         const key = tupleKey(workerId, employerId, benefitId);
         if (tuples.has(key)) duplicateTuples++; // overlapping spans legally share months
@@ -373,6 +386,7 @@ const stagedSpansSource: EvidenceSource = {
         inactiveEndDated,
         dependentSpans,
         employerFromElection,
+        employerFromUnknown,
         overlappingSpanTuples: duplicateTuples,
         benefitResolution: {
           stagedBenefits: benefitRes.stagedBenefits,

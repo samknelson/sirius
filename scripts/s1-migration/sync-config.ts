@@ -223,7 +223,6 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
           "subscriber_worker_mismatch",
           "relation_subscriber_mismatch",
           "relation_unmapped",
-          "employer_unresolved",
         ],
       },
       payments: {},
@@ -318,10 +317,8 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
           "subscriber_worker_mismatch", // §5 RULED 2026-08-09: allow (worker side deleted from S1)
           "worker_unmapped",
           "relation_unmapped",
-          // employer_unresolved is NOT a standing allowance: the rehearsal
-          // allowed the 1,462 residue, but its production disposition (drop
-          // vs designated employer) is a PENDING fund ruling (§5 /
-          // 05-open-questions). Add it per-run only once the fund rules.
+          // employer_unresolved RETIRED: fund ruling 2026-09-18 assigns
+          // otherwise-unresolvable benefit-history spans to UNKNOWN.
           // open_end_through_required RETIRED (§5): horizon now defaults —
           // removed from the allow-list rather than carrying a dead class.
         ],

@@ -575,6 +575,9 @@ for (let i = 0; i < HOTELS.length; i++) {
   const ind = i < 2 ? 'Event Center' : (i === 2 ? 'Food Service' : 'Hotel');
   await fd('field_data_field_sirius_industry', [{bundle:'grievance_shop', entity_id:nid, values:{field_sirius_industry_tid:vocab['sirius_industry'][ind]}}]);
 }
+// T17's ruled final fallback must exist without participating in ordinary
+// synthetic shop selection (which would retarget unrelated fixture records).
+await makeNode('grievance_shop', 'UNKNOWN');
 // shop contacts — full T24 field set at production-observed rates
 const CT_TIDS = Object.values(vocab['grievance_contact_types']);
 for (let i = 0; i < 8; i++) {

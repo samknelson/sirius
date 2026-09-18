@@ -65,10 +65,9 @@ const IDX_2027_01 = idxOf(2027, 1);
  * historic class (harmless to allow when absent). */
 const T16_FLAGS = ["--allow-rejects", "worker_ref_missing,relation_unmapped"];
 /** Dev data traps (RUNBOOK §8 t17 row): pre-existing reject classes that
- * re-resolve (and re-reject) on every sync run. relation_unmapped and
- * employer_unresolved are synthetic-regen fallout (relations/shops that never
- * made id_map) — real S1 loads relations first, so prod runs expect zero. */
-const T17_REJECTS = "start_missing,subscriber_worker_mismatch,relation_subscriber_mismatch,relation_unmapped,employer_unresolved";
+ * re-resolve (and re-reject) on every sync run. relation_unmapped is
+ * synthetic-regen fallout (relations that never made id_map). */
+const T17_REJECTS = "start_missing,subscriber_worker_mismatch,relation_subscriber_mismatch,relation_unmapped";
 const T17_FLAGS = ["--open-end-through", DEV_HORIZON, "--allow-rejects", T17_REJECTS];
 const T17_FLAGS_2027 = ["--open-end-through", "2027-01", "--allow-rejects", T17_REJECTS];
 

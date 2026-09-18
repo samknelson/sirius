@@ -73,7 +73,8 @@
  *     field_sirius_trust_subscriber (fallback field_sirius_worker; if both
  *     are present and disagree, fatal reject — never guess).
  *   - employer ← field_grievance_shop; when absent, falls back to the
- *     linked election's employer (field_sirius_trust_election → T16 map).
+ *     linked election's employer (field_sirius_trust_election → T16 map),
+ *     then to the uniquely named S2 employer `UNKNOWN`.
  *   - field_sirius_active=No with no end date → end-dated from node.changed
  *     (T14/T15 convention), counted separately for month-parity scrutiny.
  *
@@ -133,6 +134,8 @@ const BUNDLE = "sirius_trust_worker_benefit";
 const DRY_RUN = process.argv.includes("--dry-run");
 /** Loader logic version — BUMP whenever resolution logic (targeting rules,
  * date conventions) changes so scratch rows re-resolve on their next run. */
+// UNKNOWN fallback only changes rows that formerly rejected and therefore
+// have no accepted scratch entry; they already re-resolve on every run.
 const LOGIC_VERSION = 1;
 const FORCE_RECONCILE = parseForceReconcile();
 const ALLOWED_FINDINGS = parseAllowedFindings();
@@ -197,7 +200,6 @@ const FATAL_REASONS = [
   "relation_unmapped",
   "relation_map_broken",
   "relation_subscriber_mismatch",
-  "employer_unresolved",
   "start_missing",
   "bad_start_date",
   "bad_end_date",
@@ -386,6 +388,18 @@ async function main() {
     process.exit(loaderExitCode(result));
   }
 
+  const unknownEmployers = rowsOf<{ id: string }>(await db.execute(sql`
+    SELECT id
+      FROM employers
+     WHERE btrim(name) = 'UNKNOWN'
+  `));
+  if (unknownEmployers.length !== 1) {
+    throw new Error(
+      `Benefit-history import requires exactly one employer named UNKNOWN; found ${unknownEmployers.length}`,
+    );
+  }
+  const unknownEmployerId = unknownEmployers[0].id;
+
   // heartbeat: aggregates only (span counts/elapsed/rate — never row contents)
   const progress = makeProgressLogger(LOADER, report.staged as number);
   let progressDone = 0;
@@ -409,6 +423,7 @@ async function main() {
   let openAfterHorizon = 0;
   let inactiveEndDated = 0;
   let employerFromElection = 0;
+  let employerFromUnknown = 0;
   let dependentSpans = 0;
   let monthsExpanded = 0;
   let maxSpanMonths = 0;
@@ -574,8 +589,8 @@ async function main() {
       }
     }
     if (!employerId) {
-      rejects.add("employer_unresolved", { nid }, nid);
-      continue;
+      employerId = unknownEmployerId;
+      employerFromUnknown++;
     }
 
     const startRaw = strOf(f, "field_sirius_date_start");
@@ -1155,6 +1170,7 @@ async function main() {
   report.openSpansStartingAfterHorizon = openAfterHorizon;
   report.dependentSpans = dependentSpans;
   report.employerFromElection = employerFromElection;
+  report.employerFromUnknown = employerFromUnknown;
   report.employerRefreshedFromElection = employerRefreshed;
   report.relationWorkersRefreshed = relationWorkersRefreshed;
   report.inactiveEndDated = inactiveEndDated;
