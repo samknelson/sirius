@@ -41,8 +41,7 @@ async function stagingPresent(client: SqlClient, name: string): Promise<boolean>
 
 /** Read-only source/target evidence. It tolerates absent staging so a
  * diagnostic can explain why no repair is available rather than guessing. */
-export async function readSiriusIdOwnershipSnapshot(): Promise<SiriusIdOwnershipSnapshot> {
-  const client = getClient();
+export async function readSiriusIdOwnershipSnapshotWithClient(client: SqlClient): Promise<SiriusIdOwnershipSnapshot> {
   const hasRecords = await stagingPresent(client, "s1_staging.records");
   const hasMap = await stagingPresent(client, "s1_staging.id_map");
   if (!hasRecords) return { stagingPresent: false, idMapPresent: hasMap, claims: [], workers: [] };
@@ -69,8 +68,16 @@ export async function readSiriusIdOwnershipSnapshot(): Promise<SiriusIdOwnership
       ...sourceIdClaim(Number(row.nid), row.raw_sirius_id),
       ...sourceContactClaim(row.raw_contact_nid),
     }));
+  // Only migration markers participate in planning; do not fetch arbitrary
+  // profile JSON (which can be large and may contain sensitive fields).
   const workersResult = await client.execute(sql`
-    SELECT id, contact_id, sirius_id, data FROM workers ORDER BY id
+    SELECT id, contact_id, sirius_id,
+      jsonb_strip_nulls(jsonb_build_object(
+        'migrationShell', data->'migrationShell',
+        's1ContactNid', data->'s1ContactNid',
+        'migrationSiriusIdAllocation', data->'migrationSiriusIdAllocation'
+      )) AS data
+      FROM workers ORDER BY id
   `);
   const workers = rowsOf<{ id: string; contact_id: string | null; sirius_id: number | string | null; data: Record<string, unknown> | null }>(workersResult)
     .map((row) => ({
@@ -86,7 +93,8 @@ export async function readSiriusIdOwnershipSnapshot(): Promise<SiriusIdOwnership
   const mappingsResult = await client.execute(sql`
     SELECT entity, s1_id, s2_id, stub, loader
       FROM s1_staging.id_map
-     WHERE entity IN ('worker', 'shell-worker', 'contact')
+     WHERE entity IN ('worker', 'shell-worker')
+       AND s2_id IN (SELECT id::text FROM workers)
   `);
   for (const row of rowsOf<{ entity: string; s1_id: number | string; s2_id: string; stub: boolean; loader: string }>(mappingsResult)) {
     const worker = byId.get(String(row.s2_id));
@@ -95,8 +103,15 @@ export async function readSiriusIdOwnershipSnapshot(): Promise<SiriusIdOwnership
     if (row.entity === "worker") worker.workerMappings.push(mapping);
     else if (row.entity === "shell-worker") worker.shellMappings.push(mapping);
   }
-  const contactMappings = rowsOf<{ entity: string; s1_id: number | string; s2_id: string; stub: boolean; loader: string }>(mappingsResult)
-    .filter((row) => row.entity === "contact")
+  const shellContactNids = [...new Set(workers.flatMap((worker) =>
+    typeof worker.data?.s1ContactNid === "number" ? [worker.data.s1ContactNid] : []))];
+  const contactResult = shellContactNids.length === 0 ? { rows: [] } : await client.execute(sql`
+    SELECT entity, s1_id, s2_id, stub, loader
+      FROM s1_staging.id_map
+     WHERE entity = 'contact'
+       AND s1_id IN (${sql.join(shellContactNids.map((nid) => sql`${nid}`), sql`, `)})
+  `);
+  const contactMappings = rowsOf<{ entity: string; s1_id: number | string; s2_id: string; stub: boolean; loader: string }>(contactResult)
     .map((row) => ({
       sourceNid: Number(row.s1_id),
       s2Id: String(row.s2_id),
@@ -104,6 +119,10 @@ export async function readSiriusIdOwnershipSnapshot(): Promise<SiriusIdOwnership
       loader: String(row.loader),
     }));
   return { stagingPresent: true, idMapPresent: true, claims, workers, contactMappings };
+}
+
+export async function readSiriusIdOwnershipSnapshot(): Promise<SiriusIdOwnershipSnapshot> {
+  return readSiriusIdOwnershipSnapshotWithClient(getClient());
 }
 
 /**

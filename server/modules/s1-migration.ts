@@ -34,6 +34,22 @@ export const S1_MIGRATION_COMPONENT_ID = "sitespecific.bao.s1migration";
 type Row = Record<string, unknown>;
 const rowsOf = (res: unknown): Row[] =>
   ((res as { rows?: Row[] }).rows ?? []) as Row[];
+const phaseMs = (started: number) => Math.max(0, Math.round(performance.now() - started));
+
+/** Coalesce only work currently in flight; resolved values are never cached. */
+export function createInFlightCoalescer<T>() {
+  let inFlight: Promise<T> | null = null;
+  return (factory: () => Promise<T>): Promise<T> => {
+    if (inFlight) return inFlight;
+    inFlight = factory().finally(() => { inFlight = null; });
+    return inFlight;
+  };
+}
+
+// This is deliberately a promise, rather than a result cache: requests that
+// arrive together share one consistent pre-flight, while a later request
+// always observes the current database.
+const ownershipPreflight = createInFlightCoalescer<ReturnType<typeof projectSiriusIdOwnershipDashboard>>();
 
 async function regclassPresent(qualified: string): Promise<boolean> {
   const res = await db.execute(
@@ -112,8 +128,13 @@ export function registerS1MigrationRoutes(app: Express, requireAuth: RequestHand
 
   // Staging mirror + target readiness aggregates.
   app.get("/api/s1-migration/status", ...gates, async (_req, res) => {
+    const started = performance.now();
     try {
-      const stagingPresent = await regclassPresent("s1_staging.records");
+      const statusPhase = performance.now();
+      const [stagingPresent, idMapPresent] = await Promise.all([
+        regclassPresent("s1_staging.records"),
+        regclassPresent("s1_staging.id_map"),
+      ]);
 
       let bundles: Array<{ bundle: string; rows: number; lastExtractedAt: string | null }> = [];
       let termCount: number | null = null;
@@ -131,9 +152,11 @@ export function registerS1MigrationRoutes(app: Express, requireAuth: RequestHand
           rows: Number(r.rows),
           lastExtractedAt: r.last_extracted_at ? String(r.last_extracted_at) : null,
         }));
-        termCount = await countIfPresent("s1_staging.terms");
-        rawLedgerRows = await countIfPresent("s1_staging.raw_ledger_ar");
-        if (await regclassPresent("s1_staging.id_map")) {
+        [termCount, rawLedgerRows] = await Promise.all([
+          countIfPresent("s1_staging.terms"),
+          countIfPresent("s1_staging.raw_ledger_ar"),
+        ]);
+        if (idMapPresent) {
           idMap = rowsOf(
             await db.execute(sql`
               SELECT entity, loader, COUNT(*)::int AS rows, SUM(stub::int)::int AS stubs
@@ -148,6 +171,14 @@ export function registerS1MigrationRoutes(app: Express, requireAuth: RequestHand
         }
       }
 
+      const targetStarted = performance.now();
+      const [policies, trustProviders, trustBenefits, workers, contacts] = await Promise.all([
+        countIfPresent("public.policies"),
+        countIfPresent("public.trust_providers"),
+        countIfPresent("public.trust_benefits"),
+        countIfPresent("public.workers"),
+        countIfPresent("public.contacts"),
+      ]);
       res.json({
         stagingPresent,
         bundles,
@@ -155,12 +186,18 @@ export function registerS1MigrationRoutes(app: Express, requireAuth: RequestHand
         rawLedgerRows,
         idMap,
         target: {
-          policies: await countIfPresent("public.policies"),
-          trustProviders: await countIfPresent("public.trust_providers"),
-          trustBenefits: await countIfPresent("public.trust_benefits"),
-          workers: await countIfPresent("public.workers"),
-          contacts: await countIfPresent("public.contacts"),
+          policies, trustProviders, trustBenefits, workers, contacts,
         },
+        timings: {
+          statusMs: phaseMs(statusPhase),
+          targetMs: phaseMs(targetStarted),
+          totalMs: phaseMs(started),
+        },
+      });
+      console.info("s1-migration status timing", {
+        statusMs: phaseMs(statusPhase),
+        targetMs: phaseMs(targetStarted),
+        totalMs: phaseMs(started),
       });
     } catch (e) {
       console.error("s1-migration status failed:", e);
@@ -173,12 +210,26 @@ export function registerS1MigrationRoutes(app: Express, requireAuth: RequestHand
   // loader — a numeric match is never taken as evidence two people are same.
   app.get("/api/s1-migration/collisions", ...gates, async (_req, res) => {
     try {
-      const snapshot = await storage.workers.getMigrationSiriusIdOwnershipSnapshot();
-      if (!snapshot.stagingPresent) {
-        return res.json(projectSiriusIdOwnershipDashboard(snapshot, null));
-      }
-      const plan = planSiriusIdOwnership(snapshot);
-      res.json(projectSiriusIdOwnershipDashboard(snapshot, plan));
+      const started = performance.now();
+      const result = await ownershipPreflight(async () => {
+          const snapshotStarted = performance.now();
+          const snapshot = await storage.workers.getMigrationSiriusIdOwnershipSnapshot();
+          const snapshotMs = phaseMs(snapshotStarted);
+          if (!snapshot.stagingPresent) {
+            const timings = { snapshotMs, plannerMs: 0, projectionMs: 0, totalMs: phaseMs(started) };
+            console.info("s1-migration ownership timing", timings);
+            return { ...projectSiriusIdOwnershipDashboard(snapshot, null), timings };
+          }
+          const plannerStarted = performance.now();
+          const plan = planSiriusIdOwnership(snapshot);
+          const plannerMs = phaseMs(plannerStarted);
+          const projectionStarted = performance.now();
+          const projected = projectSiriusIdOwnershipDashboard(snapshot, plan);
+          const timings = { snapshotMs, plannerMs, projectionMs: phaseMs(projectionStarted), totalMs: phaseMs(started) };
+          console.info("s1-migration ownership timing", timings);
+          return { ...projected, timings };
+      });
+      res.json(result);
     } catch (e) {
       console.error("s1-migration ownership plan failed:", e);
       res.status(500).json({ message: "Failed to read Sirius ID ownership plan" });
@@ -188,16 +239,20 @@ export function registerS1MigrationRoutes(app: Express, requireAuth: RequestHand
   // Run history: stage runs, loader runs (rejects/rejectSamples/verify
   // counters), and parity harness results — whatever recordRun persisted.
   app.get("/api/s1-migration/runs", ...gates, async (req, res) => {
+    const started = performance.now();
     try {
       if (!(await regclassPresent("s1_staging.runs"))) {
-        return res.json({ stagingPresent: false, runs: [] });
+        return res.json({ stagingPresent: false, runs: [], timings: { databaseMs: phaseMs(started), shapingMs: 0, totalMs: phaseMs(started) } });
       }
       const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+      const databaseStarted = performance.now();
+      const result = await db.execute(sql`
+           SELECT id, started_at, finished_at, args, report
+           FROM s1_staging.runs ORDER BY id DESC LIMIT ${limit}
+         `);
+      const databaseMs = phaseMs(databaseStarted);
       const runs = rowsOf(
-        await db.execute(sql`
-          SELECT id, started_at, finished_at, args, report
-          FROM s1_staging.runs ORDER BY id DESC LIMIT ${limit}
-        `),
+        result,
       ).map((r) => ({
         id: Number(r.id),
         startedAt: String(r.started_at),
@@ -205,7 +260,9 @@ export function registerS1MigrationRoutes(app: Express, requireAuth: RequestHand
         args: sanitizeRunJson(r.args ?? {}) as Record<string, unknown>,
         report: sanitizeRunJson(r.report ?? {}) as Record<string, unknown>,
       }));
-      res.json({ stagingPresent: true, runs });
+      const timings = { databaseMs, shapingMs: Math.max(0, phaseMs(started) - databaseMs), totalMs: phaseMs(started) };
+      res.json({ stagingPresent: true, runs, timings });
+      console.info("s1-migration runs timing", timings);
     } catch (e) {
       console.error("s1-migration runs failed:", e);
       res.status(500).json({ message: "Failed to read run history" });

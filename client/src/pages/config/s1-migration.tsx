@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type {
   SiriusIdOwnershipAction,
@@ -217,35 +216,41 @@ export default function S1MigrationDashboard() {
     return result ?? "not yet run";
   };
 
-  const ownershipReady =
-    collisionsQ.isError || collisions == null
-      ? null
-      : collisions.stagingPresent && collisions.idMapPresent &&
-        collisions.hardBlockers === 0 && collisions.pendingRekeys === 0;
+  const ownershipDataReady = collisions == null
+    ? null
+    : collisions.stagingPresent && collisions.idMapPresent &&
+      collisions.hardBlockers === 0 && collisions.pendingRekeys === 0;
+  const ownershipReady = collisionsQ.isError ? null : ownershipDataReady;
   // Defense in depth for cached responses from before the issue-only endpoint.
   const ownershipIssues = (collisions?.decisions ?? []).filter(
     ({ action }) => action !== "correct" && action !== "new_claim_reserved",
   );
-  const ownershipSummary = collisionsQ.isError
-    ? "Could not read ownership preflight. Refresh to retry."
-    : !collisions
+  const ownershipDataSummary = !collisions
       ? "Ownership preflight unavailable."
       : !collisions.stagingPresent
         ? "Staging not present yet — preflight unavailable."
         : !collisions.idMapPresent
           ? "id_map missing — ownership cannot be verified."
-          : ownershipReady
+           : ownershipDataReady
             ? `No ownership issues · ${collisions.stagedClaims} staged claims scanned`
             : `${collisions.hardBlockers} review blocker(s) · ${collisions.pendingRekeys} repair action(s)`;
-  const stagingSummary = statusQ.isError
-    ? "Could not read staging status. Refresh to retry."
-    : !status
+  const ownershipSummary = collisionsQ.isError
+    ? collisions
+      ? `Could not refresh ownership preflight. Cached data is stale. ${ownershipDataSummary}`
+      : "Could not read ownership preflight. Refresh to retry."
+    : ownershipDataSummary;
+  const stagingDataSummary = !status
       ? "Staging status unavailable."
       : !status.stagingPresent
         ? "Staging not present yet."
         : status.bundles.length === 0
           ? "No bundles staged yet."
           : `${status.bundles.length} bundles · ${status.bundles.reduce((n, b) => n + b.rows, 0)} rows`;
+  const stagingSummary = statusQ.isError
+    ? status
+      ? `Could not refresh staging status. Cached data is stale. ${stagingDataSummary}`
+      : "Could not read staging status. Refresh to retry."
+    : stagingDataSummary;
 
   const checks: Array<{ id: string; label: string; state: CheckState; detail: string }> = [
     {
@@ -302,8 +307,6 @@ export default function S1MigrationDashboard() {
     },
   ];
 
-  const loading = statusQ.isLoading || collisionsQ.isLoading || runsQ.isLoading;
-
   return (
     <div className="space-y-6" data-testid="page-s1-migration">
       <div>
@@ -316,15 +319,7 @@ export default function S1MigrationDashboard() {
         </p>
       </div>
 
-      {loading && (
-        <div className="space-y-3">
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-32 w-full" />
-        </div>
-      )}
-
-      {!loading && (
-        <>
+      <>
           <Card data-testid="card-readiness">
             <CardHeader>
               <CardTitle>Readiness</CardTitle>
@@ -345,7 +340,15 @@ export default function S1MigrationDashboard() {
             </CardContent>
           </Card>
 
-          <RunHistory runs={runs} readError={runHistoryError} expandedRun={expandedRun} setExpandedRun={setExpandedRun} />
+          <RunHistory
+            runs={runs}
+            readError={runHistoryError}
+            loading={runsQ.isLoading}
+            refreshing={runsQ.isFetching}
+            retry={() => void runsQ.refetch()}
+            expandedRun={expandedRun}
+            setExpandedRun={setExpandedRun}
+          />
 
           <Collapsible open={ownershipOpen} onOpenChange={setOwnershipOpen} asChild>
           <Card data-testid="card-collisions">
@@ -361,8 +364,24 @@ export default function S1MigrationDashboard() {
                 </button>
               </CollapsibleTrigger>
               <CardDescription className="flex flex-wrap items-center gap-2">
-                {collisionsQ.isError ? (
-                  <Badge variant="destructive">read failed</Badge>
+                {collisionsQ.isLoading && !collisions ? (
+                  <Badge variant="outline" data-testid="ownership-loading">loading</Badge>
+                ) : collisionsQ.isError ? (
+                  <>
+                    <Badge variant="destructive" data-testid="ownership-stale">
+                      {collisions ? "stale · read failed" : "read failed"}
+                    </Badge>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void collisionsQ.refetch()}
+                      disabled={collisionsQ.isFetching}
+                      data-testid="button-retry-ownership"
+                    >
+                      {collisionsQ.isFetching ? "Retrying…" : "Retry"}
+                    </Button>
+                  </>
                 ) : ownershipReady === false && (
                   <Badge variant="destructive" data-testid="badge-collisions-fatal">
                     {!collisions?.stagingPresent || !collisions.idMapPresent ? "not ready" : "action required"}
@@ -371,7 +390,7 @@ export default function S1MigrationDashboard() {
                 {ownershipReady === true && (
                   <Badge variant="secondary" data-testid="badge-collisions-clean">clean</Badge>
                 )}
-                <span>{ownershipSummary}</span>
+                <span>{collisionsQ.isLoading && !collisions ? "Loading ownership preflight…" : ownershipSummary}</span>
               </CardDescription>
             </CardHeader>
             <CollapsibleContent>
@@ -381,7 +400,7 @@ export default function S1MigrationDashboard() {
                 loader will not apply a repair. Valid S1 member numbers are never changed to
                 resolve an S2 migration allocation conflict.
               </p>
-              {!collisionsQ.isError && collisions?.stagingPresent && (
+                {!collisionsQ.isError && collisions?.stagingPresent && (
                 <>
                   <div className="flex flex-wrap gap-2 text-sm">
                     <Badge variant="outline">{collisions.stagedClaims} staged claims</Badge>
@@ -460,9 +479,26 @@ export default function S1MigrationDashboard() {
                 </button>
               </CollapsibleTrigger>
               <CardDescription className="flex flex-wrap items-center gap-2">
-                {statusQ.isError ? <Badge variant="destructive">read failed</Badge> :
-                  (!status?.stagingPresent || status.bundles.length === 0) && <Badge variant="outline">not ready</Badge>}
-                <span>{stagingSummary}</span>
+                {statusQ.isLoading && !status ? (
+                  <Badge variant="outline" data-testid="staging-loading">loading</Badge>
+                ) : statusQ.isError ? (
+                  <>
+                    <Badge variant="destructive" data-testid="staging-stale">
+                      {status ? "stale · read failed" : "read failed"}
+                    </Badge>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void statusQ.refetch()}
+                      disabled={statusQ.isFetching}
+                      data-testid="button-retry-staging"
+                    >
+                      {statusQ.isFetching ? "Retrying…" : "Retry"}
+                    </Button>
+                  </>
+                ) : (!status?.stagingPresent || status?.bundles.length === 0) && <Badge variant="outline">not ready</Badge>}
+                <span>{statusQ.isLoading && !status ? "Loading staging status…" : stagingSummary}</span>
               </CardDescription>
             </CardHeader>
             <CollapsibleContent>
@@ -524,14 +560,16 @@ export default function S1MigrationDashboard() {
           </Card>
           </Collapsible>
         </>
-      )}
     </div>
   );
 }
 
-function RunHistory({ runs, readError, expandedRun, setExpandedRun }: {
+function RunHistory({ runs, readError, loading, refreshing, retry, expandedRun, setExpandedRun }: {
   runs: RunRow[];
   readError: string | null;
+  loading: boolean;
+  refreshing: boolean;
+  retry: () => void;
   expandedRun: number | null;
   setExpandedRun: (id: number | null) => void;
 }) {
@@ -541,15 +579,35 @@ function RunHistory({ runs, readError, expandedRun, setExpandedRun }: {
               <CardTitle>Run history</CardTitle>
               <CardDescription>
                 Stage, loader, and parity harness reports recorded by each run (most recent first)
+                {refreshing && !readError && (
+                  <span className="ml-2 text-xs" data-testid="run-history-refreshing">Refreshing…</span>
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent>
               {readError && (
-                <p role="alert" className="mb-4 text-sm text-destructive" data-testid="run-history-read-error">
+                <div role="alert" className="mb-4 flex items-center gap-2 text-sm text-destructive" data-testid="run-history-read-error">
+                  <span>
                   {readError}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={retry}
+                    disabled={refreshing}
+                    data-testid="button-retry-run-history"
+                  >
+                    {refreshing ? "Retrying…" : "Retry"}
+                  </Button>
+                </div>
+              )}
+              {loading && runs.length === 0 && !readError && (
+                <p className="text-sm text-muted-foreground" data-testid="run-history-loading">
+                  Loading run history…
                 </p>
               )}
-              {!readError && runs.length === 0 && (
+              {!loading && !readError && runs.length === 0 && (
                 <p className="text-sm text-muted-foreground">No runs recorded yet.</p>
               )}
               {runs.length > 0 && (
