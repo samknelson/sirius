@@ -157,29 +157,22 @@ export async function linkWorkerToAuthIdentity(
     }
   }
 
-  const existingIdentity =
-    await storage.authIdentities.getByProviderAndExternalId(
-      providerType,
-      externalId
-    );
-
-  let alreadyLinked = false;
-  if (!existingIdentity) {
-    await storage.authIdentities.create({
-      userId: user.id,
-      providerType,
-      externalId,
-      email: emailUsed,
-      displayName:
-        args.displayName ||
-        `${args.firstName || ""} ${args.lastName || ""}`.trim() ||
-        undefined,
-      profileImageUrl: args.profileImageUrl || undefined,
-      metadata: { workerId: worker.id },
-    });
-  } else {
-    alreadyLinked = true;
+  const claimed = await storage.authIdentities.getOrCreate({
+    userId: user.id,
+    providerType,
+    externalId,
+    email: emailUsed,
+    displayName:
+      args.displayName ||
+      `${args.firstName || ""} ${args.lastName || ""}`.trim() ||
+      undefined,
+    profileImageUrl: args.profileImageUrl || undefined,
+    metadata: { workerId: worker.id },
+  });
+  if (claimed.identity.userId !== user.id) {
+    throw new Error("Auth identity is already linked to another user");
   }
+  const alreadyLinked = !claimed.created;
 
   const linkedUser = await storage.users.updateUser(user.id, {
     email: emailUsed,

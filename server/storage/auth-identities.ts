@@ -48,6 +48,15 @@ export interface AuthIdentityUpsertResult {
   created: boolean;
 }
 
+/**
+ * What an external-identity claim did: which row won, and whether this call
+ * made it.
+ */
+export interface AuthIdentityGetOrCreateResult {
+  identity: AuthIdentity;
+  created: boolean;
+}
+
 /** What a delete did, with the owner read out of the deleted row itself. */
 export interface AuthIdentityDeleteResult {
   deleted: boolean;
@@ -77,6 +86,14 @@ export interface AuthIdentitiesStorage {
   ): Promise<AuthIdentity | undefined>;
 
   create(identity: InsertAuthIdentity): Promise<AuthIdentity>;
+
+  /**
+   * Atomically claim a provider/external-id pair. Concurrent callbacks return
+   * the same winning row instead of surfacing a unique-constraint failure.
+   */
+  getOrCreate(
+    identity: InsertAuthIdentity
+  ): Promise<AuthIdentityGetOrCreateResult>;
 
   /**
    * Apply what a provider (or a reconciler) asserts about an identity,
@@ -213,6 +230,32 @@ export function createAuthIdentitiesStorage(): AuthIdentitiesStorage {
         .values(identity)
         .returning();
       return created;
+    },
+
+    async getOrCreate(
+      identity: InsertAuthIdentity
+    ): Promise<AuthIdentityGetOrCreateResult> {
+      validate.validateOrThrow(identity);
+      const client = getClient();
+      const [created] = await client
+        .insert(authIdentities)
+        .values(identity)
+        .onConflictDoNothing({
+          target: [authIdentities.providerType, authIdentities.externalId],
+        })
+        .returning();
+      if (created) return { identity: created, created: true };
+
+      const existing = await client.query.authIdentities.findFirst({
+        where: and(
+          eq(authIdentities.providerType, identity.providerType),
+          eq(authIdentities.externalId, identity.externalId),
+        ),
+      });
+      if (!existing) {
+        throw new Error("Auth identity claim lost without a winning row");
+      }
+      return { identity: existing, created: false };
     },
 
     async update(
@@ -397,6 +440,27 @@ export const authIdentitiesLoggingConfig: StorageLoggingConfig<AuthIdentitiesSto
       after: async (_args, result) => describeIdentity(result as AuthIdentity | undefined),
       getDescription: async (args, result) =>
         `Linked ${identityLabel((result as AuthIdentity | undefined) ?? args[0])}`,
+    },
+
+    getOrCreate: {
+      enabled: true,
+      shouldLog: (_args, result) =>
+        (result as AuthIdentityGetOrCreateResult | undefined)?.created === true,
+      logArgs: (args) => [describeIdentityInput(args[0])],
+      getEntityId: (_args, result) =>
+        (result as AuthIdentityGetOrCreateResult | undefined)?.identity.id,
+      getHostEntityId: (args, result) =>
+        (result as AuthIdentityGetOrCreateResult | undefined)?.identity.userId ??
+        args[0]?.userId,
+      after: async (_args, result) =>
+        describeIdentity(
+          (result as AuthIdentityGetOrCreateResult | undefined)?.identity
+        ),
+      getDescription: async (args, result) =>
+        `Linked ${identityLabel(
+          (result as AuthIdentityGetOrCreateResult | undefined)?.identity ??
+            args[0]
+        )}`,
     },
 
     update: {

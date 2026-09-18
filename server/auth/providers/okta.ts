@@ -123,6 +123,46 @@ import {
 } from "../worker-link";
 export { isMigratedAccount };
 
+type SafeDatabaseDiagnostic = {
+  name?: string;
+  code?: string;
+  table?: string;
+  column?: string;
+  constraint?: string;
+};
+
+/** Database identifiers only: never include detail, query text, values, or claims. */
+export function safeDatabaseDiagnostic(error: unknown): SafeDatabaseDiagnostic {
+  if (!error || typeof error !== "object") return {};
+  const source = error as Record<string, unknown>;
+  const diagnostic: SafeDatabaseDiagnostic = {};
+  for (const key of ["name", "code", "table", "column", "constraint"] as const) {
+    if (typeof source[key] === "string") diagnostic[key] = source[key] as string;
+  }
+  return diagnostic;
+}
+
+export async function linkProvisionedOktaIdentity(args: {
+  userId: string;
+  externalId: string;
+  email: string;
+  displayName?: string;
+  profileImageUrl?: string;
+}) {
+  const claimed = await storage.authIdentities.getOrCreate({
+    userId: args.userId,
+    providerType: "okta",
+    externalId: args.externalId,
+    email: args.email,
+    displayName: args.displayName,
+    profileImageUrl: args.profileImageUrl,
+  });
+  if (claimed.identity.userId !== args.userId) {
+    throw new Error("Okta identity is already linked to another user");
+  }
+  return claimed.identity;
+}
+
 /** Exported for harness tests (fabricated claims + fake req). */
 export async function checkUserAccess(
   claims: any,
@@ -474,15 +514,23 @@ export async function checkUserAccess(
     userId: user.id,
   });
 
-  await storage.authIdentities.create({
-    userId: user.id,
-    providerType: "okta",
+  try {
+    await linkProvisionedOktaIdentity({
+      userId: user.id,
     externalId,
     email,
-    displayName:
-      `${firstName || ""} ${lastName || ""}`.trim() || undefined,
+      displayName:
+        `${firstName || ""} ${lastName || ""}`.trim() || undefined,
     profileImageUrl,
-  });
+    });
+  } catch (error) {
+    logger.error("Okta provisioned-account identity linking failed", {
+      userId: user.id,
+      externalId,
+      database: safeDatabaseDiagnostic(error),
+    });
+    throw new Error("Unable to link the Okta account");
+  }
 
   const linkedUser = await storage.users.updateUser(user.id, {
     email,
@@ -571,8 +619,10 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
           user.dbUser = accessCheck.user;
           verified(null, user);
         } catch (err) {
-          logger.error("Okta verify callback error", { error: err });
-          verified(err as Error);
+          logger.error("Okta verify callback error", {
+            database: safeDatabaseDiagnostic(err),
+          });
+          verified(new Error("Okta authentication could not be completed"));
         }
       };
 
@@ -763,7 +813,7 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
             const params = new URLSearchParams({
               provider: "okta",
               error: "okta_callback_failed",
-              description: err?.message || "Authentication failed",
+              description: "Authentication could not be completed",
             });
             return res.redirect(`/login?${params.toString()}`);
           }

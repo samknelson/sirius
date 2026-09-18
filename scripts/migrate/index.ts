@@ -259,6 +259,7 @@ import "./core/1193_add_ledger_payment_attachment";
 import "./core/1194_create_ledger_payment_attempts";
 import "./core/1195_unify_ledger_payment_attachments";
 import "./core/1196_add_payment_attempt_reservation_expiry";
+import "./core/1197_repair_auth_identity_timestamps";
 
 export {
   runMigrations,
