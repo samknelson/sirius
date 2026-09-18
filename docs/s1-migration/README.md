@@ -36,7 +36,7 @@ The **extract/staging framework and the loaders are built**: `scripts/s1-migrati
 The original design blockers are **closed**: N11/N12 resolved, N17 ruled 2026-08-05 (import in full — 02 §5c), JSON payloads resolved (06 v4), validation gates passed via the dev rehearsal. Outstanding before cutover:
 
 1. **Conrad duplicate rate** — shop 8865846 has two 2023-12-01 rates; fund must fix S1, then re-stage + rerun row 5c ([05-open-questions.md](05-open-questions.md) "Unresolved").
-2. **CLOSED 2026-09-18: `employer_unresolved` residue** — import shopless benefit-history spans under the uniquely named S2 employer `UNKNOWN`.
+2. **CLOSED 2026-09-18: `employer_unresolved` residue** — import shopless benefit-history spans under S1 employer NID / S2 Sirius ID `15283150` (`UNKNOWN`).
 3. **58 active-flagged dangling-relation spans** — nid list delivered to the fund for S1 cleanup; re-stage after they fix.
 4. **Parity gates after the hours load completes** (RUNBOOK §6).
 5. **Q38 — file-blob access** for T10 (the DB has no bytes; needs the S1 private-files store / S3 bucket).

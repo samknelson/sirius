@@ -15,7 +15,7 @@
  *             inclusive month range covers that month, resolved through the
  *             exact T17 rules (id_map crosswalk, dependents via relations →
  *             worker_2, employer fallback via the linked election then the
- *             uniquely named S2 employer `UNKNOWN`,
+ *             S1 employer NID / S2 Sirius ID 15283150 (`UNKNOWN`),
  *             inactive-no-end end-dating from node.changed).
  *
  * EVIDENCE SOURCES are pluggable: the S1 view is produced by an
@@ -90,6 +90,7 @@ import {
 import { numFlag, listFlag, flagValue } from "./lib/parity";
 
 const HARNESS = "verify-month-parity";
+const UNKNOWN_EMPLOYER_SIRIUS_ID = "15283150";
 const BUNDLE = "sirius_trust_worker_benefit";
 
 const MONTH: Ym = (() => {
@@ -167,13 +168,18 @@ const stagedSpansSource: EvidenceSource = {
 
     const benefitRes = await resolveBenefitNidMap(HARNESS, /* dryRun (read-only!) */ true);
     const unknownRes = (await db.execute(sql`
-      SELECT id
+      SELECT id, name
         FROM employers
-       WHERE btrim(name) = 'UNKNOWN'
-    `)) as unknown as { rows: Array<{ id: string }> };
+       WHERE sirius_id = ${UNKNOWN_EMPLOYER_SIRIUS_ID}
+    `)) as unknown as { rows: Array<{ id: string; name: string | null }> };
     if (unknownRes.rows.length !== 1) {
       throw new Error(
-        `Month parity requires exactly one employer named UNKNOWN; found ${unknownRes.rows.length}`,
+        `Month parity requires exactly one employer with Sirius ID ${UNKNOWN_EMPLOYER_SIRIUS_ID}; found ${unknownRes.rows.length}`,
+      );
+    }
+    if (unknownRes.rows[0].name?.trim() !== "UNKNOWN") {
+      throw new Error(
+        `Month parity fallback employer ${UNKNOWN_EMPLOYER_SIRIUS_ID} must be named UNKNOWN; found ${JSON.stringify(unknownRes.rows[0].name)}`,
       );
     }
     const unknownEmployerId = unknownRes.rows[0].id;

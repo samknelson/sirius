@@ -74,7 +74,7 @@
  *     are present and disagree, fatal reject — never guess).
  *   - employer ← field_grievance_shop; when absent, falls back to the
  *     linked election's employer (field_sirius_trust_election → T16 map),
- *     then to the uniquely named S2 employer `UNKNOWN`.
+ *     then to S1 employer NID / S2 Sirius ID 15283150 (`UNKNOWN`).
  *   - field_sirius_active=No with no end date → end-dated from node.changed
  *     (T14/T15 convention), counted separately for month-parity scrutiny.
  *
@@ -131,6 +131,7 @@ import {
 
 const LOADER = "t17-benefit-history";
 const BUNDLE = "sirius_trust_worker_benefit";
+const UNKNOWN_EMPLOYER_SIRIUS_ID = "15283150";
 const DRY_RUN = process.argv.includes("--dry-run");
 /** Loader logic version — BUMP whenever resolution logic (targeting rules,
  * date conventions) changes so scratch rows re-resolve on their next run. */
@@ -388,14 +389,19 @@ async function main() {
     process.exit(loaderExitCode(result));
   }
 
-  const unknownEmployers = rowsOf<{ id: string }>(await db.execute(sql`
-    SELECT id
+  const unknownEmployers = rowsOf<{ id: string; name: string | null }>(await db.execute(sql`
+    SELECT id, name
       FROM employers
-     WHERE btrim(name) = 'UNKNOWN'
+     WHERE sirius_id = ${UNKNOWN_EMPLOYER_SIRIUS_ID}
   `));
   if (unknownEmployers.length !== 1) {
     throw new Error(
-      `Benefit-history import requires exactly one employer named UNKNOWN; found ${unknownEmployers.length}`,
+      `Benefit-history import requires exactly one employer with Sirius ID ${UNKNOWN_EMPLOYER_SIRIUS_ID}; found ${unknownEmployers.length}`,
+    );
+  }
+  if (unknownEmployers[0].name?.trim() !== "UNKNOWN") {
+    throw new Error(
+      `Benefit-history fallback employer ${UNKNOWN_EMPLOYER_SIRIUS_ID} must be named UNKNOWN; found ${JSON.stringify(unknownEmployers[0].name)}`,
     );
   }
   const unknownEmployerId = unknownEmployers[0].id;

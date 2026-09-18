@@ -579,7 +579,7 @@ every ruling below (each class ruled "allow" for production is present; each
 
 `employer_unresolved` (benefit-history) is retired. Fund ruling 2026-09-18
 (mmcdermott4): import spans whose direct shop and election fallback both fail
-by assigning them to the uniquely named S2 employer `UNKNOWN`.
+by assigning them to S1 employer NID / S2 Sirius ID `15283150` (`UNKNOWN`).
 
 Per-run conditional allowances (`non_cleared_status` on ledger after the AR
 count check, observed-count allowances like beneficiaries `bad_json`, users
@@ -603,7 +603,7 @@ them for a specific run only after the verification the row below requires.
 | `benefit_unmapped` | benefit-history, elections | not present | **RULED 2026-08-09: allow.** Entirely deleted benefit nid 2457521 (BPA-era bad data) — out of scope. Observed 2026-08-09: 6,863 (benefit-history). |
 | `worker_unmapped` | benefit-history, elections | ALLOWED (synthetic) | Sampled nids all deleted from S1 (deleted/merged contacts). Allow with observed counts. Observed 2026-08-09: 452 (benefit-history). |
 | `relation_unmapped` | benefit-history | not present | **RULED 2026-08-09: allow, documented.** Deleted relationship nodes (15,778 of 37,520 distinct refs). Of 73,891 dangling spans, 73,833 are inactive + end-dated (BPA era). 58 carry active=Yes (54 open-ended, half started 2023+) but a deleted relationship cannot grant benefits (fund rule: relationship must be active), so they are stale-open rows, not live coverage — the 58-nid list was delivered to the fund for S1 cleanup (end-date or verify intentional removal). Underlying S1 gap: deleting a relationship does not close its benefit spans. Final 2026-08-09 run count: 71,964. |
-| `employer_unresolved` | benefit-history | **RETIRED 2026-09-18** | Shopless spans (heavily 2020–2021, BPA era). The typed-election fix reduced 35,103 to 1,462 (`employerFromElection` rescued 33,881). **Fund ruling 2026-09-18 (mmcdermott4): import the residue under the uniquely named S2 employer `UNKNOWN`.** The loader fails before processing unless exactly one such employer exists. |
+| `employer_unresolved` | benefit-history | **RETIRED 2026-09-18** | Shopless spans (heavily 2020–2021, BPA era). The typed-election fix reduced 35,103 to 1,462 (`employerFromElection` rescued 33,881). **Fund ruling 2026-09-18 (mmcdermott4): import the residue under S1 employer NID / S2 Sirius ID `15283150` (`UNKNOWN`).** The loader fails before processing unless exactly one employer has that Sirius ID and its trimmed name is `UNKNOWN`. |
 | `non_cleared_status` | ledger | ALLOWED (2 Pending) | **Expected** — verify count == frozen S1 non-cleared AR count, then allow |
 | `timestamp_missing` / `create_failed` / `update_failed` | log-notes | never blanket-allow | A source timestamp or note write failure means the row cannot be verified. Triage the aggregate report and rerun; unresolved handler/contact associations are intentionally not reject classes and do not block the migration. |
 | `ssn_collision_q36`, `worker_contact_unresolved`, `worker_gender_unresolved`, … | contacts-workers | reported (annotations — non-fatal) | Same; RULED annotation family — the standardized reject gate (§10/§11) still requires the explicit allowance (sync-config lists them), then review counts in the report. |
