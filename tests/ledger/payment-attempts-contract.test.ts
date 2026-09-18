@@ -66,6 +66,13 @@ describe("worker Stripe payment attempt backend", () => {
     expect(source).toContain('policy: "worker.ledger"');
   });
 
+  it("fails the gateway picker component gate closed when no checker exists", () => {
+    const source = readFileSync("server/modules/ledger/payment-methods.ts", "utf8");
+    expect(source).toContain(
+      "(!checker || !(await checker(plugin.requiredComponent)))",
+    );
+  });
+
   it("rejects stale and equal-rank failure events after success", () => {
     expect(shouldApplyPaymentEvent("processing", 20, "succeeded", 21)).toBe(true);
     expect(shouldApplyPaymentEvent("succeeded", 21, "failed", 21)).toBe(false);
