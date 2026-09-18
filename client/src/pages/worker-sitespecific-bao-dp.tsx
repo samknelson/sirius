@@ -150,7 +150,7 @@ function WorkerDpContent() {
             </div>
             {data.eaId && owesMoney && (
               <Button asChild data-testid="button-dp-pay">
-                <Link href={`/ea/${data.eaId}/payments/new`}>
+                <Link href={`/workers/${worker.id}/ledger/pay`}>
                   <CreditCard className="h-4 w-4 mr-2" />
                   Make a Payment
                 </Link>

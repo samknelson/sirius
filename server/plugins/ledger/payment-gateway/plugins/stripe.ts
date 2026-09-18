@@ -10,6 +10,8 @@ import type {
   GatewayMethodDetails,
   GatewayConnectionTest,
   GatewayCustomerDetails,
+  GatewayPaymentIntent,
+  GatewayWebhookEvent,
 } from "../types";
 import { registerPaymentGatewayPlugin } from "../registry";
 
@@ -22,6 +24,20 @@ function client(ctx: PaymentGatewayContext): Stripe {
 function configData(ctx: PaymentGatewayContext): Record<string, unknown> {
   const data = ctx.config.data;
   return data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+}
+
+function assertWorkerTestCredentials(ctx: PaymentGatewayContext): void {
+  const publishableKey =
+    typeof configData(ctx).publishableKey === "string"
+      ? String(configData(ctx).publishableKey)
+      : "";
+  if (!ctx.apiKey.startsWith("sk_test_") || !publishableKey.startsWith("pk_test_")) {
+    const error = new Error(
+      "Worker Stripe payments require matching Stripe test-mode secret and publishable keys.",
+    );
+    (error as Error & { statusCode?: number }).statusCode = 503;
+    throw error;
+  }
 }
 
 function dashboardBaseUrl(ctx: PaymentGatewayContext): string {
@@ -112,6 +128,12 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
       type: "string",
       required: true,
     },
+    {
+      name: "webhookSecretName",
+      label: "Webhook Signing Secret Name",
+      type: "string",
+      required: false,
+    },
   ],
 
   // Presence of the publishable key is enforced generically (configFields
@@ -132,6 +154,39 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
   // Catalog of Stripe payment method types the editor offers (defined at module
   // scope so the setup flow can share the `setupEligible` markers).
   supportedPaymentTypes: STRIPE_PAYMENT_TYPES,
+
+  async createPaymentIntent(ctx, args): Promise<GatewayPaymentIntent> {
+    assertWorkerTestCredentials(ctx);
+    const configured = configData(ctx).paymentTypes;
+    const type = args.paymentMethodType ?? (Array.isArray(configured)
+      ? (configured as string[]).find((t) => t === "card" || t === "us_bank_account") ?? "card"
+      : "card");
+    const intent = await client(ctx).paymentIntents.create({
+      amount: args.amount,
+      currency: args.currency.toLowerCase(),
+      customer: args.customerRef,
+      payment_method: args.paymentMethodRef,
+      payment_method_types: [type],
+      confirm: true,
+      metadata: args.metadata ?? {},
+    }, { idempotencyKey: args.idempotencyKey });
+    return normalizeIntent(intent);
+  },
+
+  async retrievePaymentIntent(ctx, providerIntentRef) {
+    return normalizeIntent(await client(ctx).paymentIntents.retrieve(providerIntentRef));
+  },
+
+  constructWebhookEvent(ctx, rawBody, signature): GatewayWebhookEvent {
+    const webhookSecret = ctx.webhookSecret;
+    if (!webhookSecret) {
+      const error = new Error("Stripe webhook signing secret is not configured");
+      (error as Error & { statusCode?: number }).statusCode = 503;
+      throw error;
+    }
+    const event = client(ctx).webhooks.constructEvent(rawBody, signature, webhookSecret);
+    return { id: event.id, type: event.type, data: event.data.object, created: event.created };
+  },
 
   async testConnection(ctx: PaymentGatewayContext): Promise<GatewayConnectionTest> {
     try {
@@ -329,5 +384,23 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
     await client(ctx).paymentMethods.detach(methodRef);
   },
 };
+
+function normalizeIntent(intent: Stripe.PaymentIntent): GatewayPaymentIntent {
+  const status: GatewayPaymentIntent["status"] =
+    intent.status === "succeeded" ? "succeeded" :
+      intent.status === "processing" ? "processing" :
+        intent.status === "requires_action" || intent.status === "requires_confirmation"
+          ? "requires_action" : "failed";
+  return {
+    providerIntentRef: intent.id,
+    status,
+    clientSecret: intent.client_secret,
+    amount: intent.amount,
+    currency: intent.currency,
+    paymentMethodType: typeof intent.payment_method === "object" && intent.payment_method
+      ? intent.payment_method.type : null,
+    failureMessage: intent.last_payment_error?.message ?? null,
+  };
+}
 
 registerPaymentGatewayPlugin(stripePaymentGatewayPlugin);

@@ -65,6 +65,7 @@ import { registerLedgerAccountRoutes } from "./modules/ledger/accounts";
 import { registerLedgerEaRoutes } from "./modules/ledger/ea";
 import { registerLedgerPaymentRoutes } from "./modules/ledger/payments";
 import { registerLedgerPaymentBatchRoutes } from "./modules/ledger/payment-batches";
+import { registerLedgerPaymentAttemptRoutes } from "./modules/ledger/payment-attempts";
 import { registerAccessPolicyRoutes } from "./modules/access-policies";
 import { registerLogRoutes } from "./modules/system/logs";
 import { registerWorkerWshRoutes } from "./modules/worker-wsh";
@@ -475,7 +476,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerComponentRoutes(app, requireAuth, requirePermission);
 
   // Register provider-generic ledger payment-method routes
-  registerLedgerPaymentMethodRoutes(app);
+  registerLedgerPaymentMethodRoutes(app, requireAuth);
 
   // Register provider-generic ledger payment-gateway admin routes (connection test)
   registerLedgerPaymentGatewayRoutes(app);
@@ -491,6 +492,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register ledger/payment-batches routes
   registerLedgerPaymentBatchRoutes(app);
+  registerLedgerPaymentAttemptRoutes(app, requireAuth);
 
   // Register log management routes
   registerLogRoutes(app, requireAuth, requirePermission, requireAccess);

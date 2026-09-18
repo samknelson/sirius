@@ -21,6 +21,20 @@ export interface ResolvedGateway {
   context: PaymentGatewayContext;
 }
 
+export function resolveGatewayNamedSecret(config: PluginConfig, field: string): string | undefined {
+  const data = (config.data ?? {}) as Record<string, unknown>;
+  const name = typeof data[field] === "string" ? data[field].trim() : "";
+  if (!name) return undefined;
+  registerEnvironmentVariable({
+    name,
+    description: `Payment-gateway secret '${field}' named by config '${config.siriusId ?? config.id}'.`,
+    secret: true,
+    category: "ledger",
+    changeTakesEffect: "immediate",
+  });
+  return getEnvironmentVariable(name);
+}
+
 /** Error carrying the HTTP status the route should return. */
 export class GatewayResolutionError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -82,5 +96,13 @@ export async function resolveGateway(
     );
   }
 
-  return { config, plugin, context: { apiKey: apiKey ?? "", config } };
+  return {
+    config,
+    plugin,
+    context: {
+      apiKey: apiKey ?? "",
+      config,
+      webhookSecret: resolveGatewayNamedSecret(config, "webhookSecretName"),
+    },
+  };
 }
