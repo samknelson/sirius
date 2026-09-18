@@ -2,6 +2,10 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { requireComponent } from "../../components";
 import { storage } from "../../../storage";
 import { computeDpPaymentState } from "./dp-payment-state";
+import {
+  calculateDpCurrentMonthReport,
+  DP_REPORT_STATUSES,
+} from "../../../services/sitespecific/bao/dp-reporting";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -26,6 +30,58 @@ export function registerBaoDpRoutes(
   requireAccess: AccessMiddleware,
 ) {
   const componentMiddleware = requireComponent("sitespecific.bao");
+
+  app.get(
+    "/api/sitespecific/bao/dp-report/summary",
+    requireAuth,
+    componentMiddleware,
+    requireAccess("staff"),
+    async (_req, res) => {
+      try {
+        const report = await calculateDpCurrentMonthReport();
+        const { rows: _rows, ...summary } = report;
+        res.json(summary);
+      } catch (error) {
+        console.error("Failed to calculate DP report summary:", error);
+        res.status(500).json({ message: "Failed to calculate Domestic Partner report" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/sitespecific/bao/dp-report/workers",
+    requireAuth,
+    componentMiddleware,
+    requireAccess("staff"),
+    async (req, res) => {
+      try {
+        const status = typeof req.query.status === "string" ? req.query.status : undefined;
+        if (status && !DP_REPORT_STATUSES.includes(status as (typeof DP_REPORT_STATUSES)[number])) {
+          return res.status(400).json({ message: "Invalid Domestic Partner report status" });
+        }
+        const report = await calculateDpCurrentMonthReport();
+        const filtered = status
+          ? report.rows.filter((row) => row.status === status)
+          : report.rows;
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 50));
+        const start = (page - 1) * pageSize;
+        res.json({
+          asOfYmd: report.asOfYmd,
+          currentMonth: report.currentMonth,
+          data: filtered.slice(start, start + pageSize),
+          total: filtered.length,
+          page,
+          pageSize,
+          totalPages: Math.max(1, Math.ceil(filtered.length / pageSize)),
+          status: status ?? null,
+        });
+      } catch (error) {
+        console.error("Failed to calculate DP report workers:", error);
+        res.status(500).json({ message: "Failed to calculate Domestic Partner report" });
+      }
+    },
+  );
 
   app.get(
     "/api/workers/:workerId/sitespecific/bao/dp",

@@ -312,6 +312,7 @@ const BaoDcQueuePage = lazy(() => import("@/pages/sitespecific/bao/dc-queue"));
 const BaoDcDraftQueuePage = lazy(() => import("@/pages/sitespecific/bao/dc-drafts"));
 const BaoDcRecentlyDeniedPage = lazy(() => import("@/pages/sitespecific/bao/dc-recently-denied"));
 const BaoDcFmlaEligiblePage = lazy(() => import("@/pages/sitespecific/bao/dc-fmla-eligible"));
+const BaoDpWorkersPage = lazy(() => import("@/pages/sitespecific/bao/dp-workers"));
 const WorkerBaoDc = lazy(() => import("@/pages/worker-sitespecific-bao-dc"));
 const BaoCaseNew = lazy(() => import("@/pages/sitespecific/bao/case-new"));
 const BaoCaseDetail = lazy(() => import("@/pages/sitespecific/bao/case-detail"));
@@ -3208,6 +3209,11 @@ function Router() {
       <Route path="/bao/dc/cases/:id">
         <ProtectedRoute permission="staff" component="sitespecific.bao">
           <AuthenticatedLayout><BaoDcCaseDetailPage /></AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/bao/dp/workers">
+        <ProtectedRoute permission="staff" component="sitespecific.bao">
+          <AuthenticatedLayout><BaoDpWorkersPage /></AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
