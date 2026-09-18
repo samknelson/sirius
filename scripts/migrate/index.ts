@@ -254,6 +254,7 @@ import "./core/1189_add_denorm_generation";
 import "./core/1190_add_worker_benefit_role_history_wmb_indexes";
 import "./core/1191_add_denorm_claim_lease";
 import "./core/1192_worker_sirius_id_authority";
+import "./core/1193_add_ledger_payment_attachment";
 
 export {
   runMigrations,

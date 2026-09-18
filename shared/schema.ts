@@ -984,6 +984,7 @@ export const ledgerPayments = pgTable("ledger_payments", {
   dateReceived: timestamp("date_received"),
   dateCleared: timestamp("date_cleared"),
   memo: text("memo"),
+  attachmentFileId: varchar("attachment_file_id").references(() => files.id, { onDelete: "set null" }),
 });
 
 export const ledgerEa = pgTable("ledger_ea", {

@@ -9,13 +9,14 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertLedgerPaymentSchema, type LedgerPayment, type LedgerPaymentType } from "@shared/schema";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect } from "react";
 import type { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
-import { Plus } from "lucide-react";
+import { Download, ImagePlus, Loader2, Plus, X } from "lucide-react";
+import type { File as FileRecord } from "@shared/schema";
 import { type StatementSelection } from "@/components/ledger/StatementPicker";
 import { ParticipantAllocationBox, type ParticipantBoxState } from "@/components/ledger/ParticipantAllocationBox";
 import { isValidYmd, ymdToDateForPicker, dateToYmd } from "@shared/utils/date";
@@ -158,6 +159,95 @@ export function PaymentForm({
     queryKey: ["/api/ledger/payments", paymentId],
     enabled: mode === "edit" && !!paymentId,
   });
+
+  const attachmentFileId = mode === "edit" ? payment?.attachmentFileId ?? null : null;
+  const { data: attachment } = useQuery<FileRecord>({
+    queryKey: ["/api/files", attachmentFileId],
+    queryFn: () => apiRequest("GET", `/api/files/${attachmentFileId}`),
+    enabled: !!attachmentFileId,
+  });
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
+  const [attachmentRemoving, setAttachmentRemoving] = useState(false);
+
+  const updatePaymentAttachmentCache = (saved: any, fileId: string | null) => {
+    const savedPayment = saved?.payment || saved;
+    if (paymentId) {
+      queryClient.setQueryData(["/api/ledger/payments", paymentId], {
+        ...(payment || {}),
+        ...(savedPayment || {}),
+        attachmentFileId: fileId,
+      });
+    }
+    if (fileId) {
+      void queryClient.invalidateQueries({ queryKey: ["/api/files", fileId] });
+    }
+  };
+
+  const handleAttachmentSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !paymentId) return;
+    if (!file.type.startsWith("image/") || file.type === "image/svg+xml") {
+      toast({
+        title: "Unsupported image",
+        description: "Choose a raster image such as PNG, JPEG, GIF, or WebP.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setAttachmentUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch(`/api/ledger/payments/${paymentId}/attachment`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!response.ok) {
+        let message = "The image could not be uploaded.";
+        try {
+          const body = await response.json();
+          message = body.message || message;
+        } catch {
+          // Keep the actionable fallback when the server did not return JSON.
+        }
+        throw new Error(message);
+      }
+      const saved = await response.json();
+      const savedFileId = saved?.file?.id || saved?.attachment?.id || saved?.attachmentFileId;
+      if (!savedFileId) throw new Error("The upload succeeded but no attachment was returned.");
+      updatePaymentAttachmentCache(saved, savedFileId);
+      toast({ title: "Image attached", description: file.name });
+    } catch (error) {
+      toast({
+        title: "Image upload failed",
+        description: getApiErrorMessage(error, "Please try again."),
+        variant: "destructive",
+      });
+    } finally {
+      setAttachmentUploading(false);
+    }
+  };
+
+  const removeAttachment = async () => {
+    if (!paymentId || !attachmentFileId) return;
+    setAttachmentRemoving(true);
+    try {
+      await apiRequest("DELETE", `/api/ledger/payments/${paymentId}/attachment`);
+      updatePaymentAttachmentCache(null, null);
+      void queryClient.removeQueries({ queryKey: ["/api/files", attachmentFileId] });
+      toast({ title: "Image removed", description: "The payment attachment was removed." });
+    } catch (error) {
+      toast({
+        title: "Could not remove image",
+        description: getApiErrorMessage(error, "Please try again."),
+        variant: "destructive",
+      });
+    } finally {
+      setAttachmentRemoving(false);
+    }
+  };
 
   const { data: paymentTypes = [] } = useQuery<LedgerPaymentType[]>({
     queryKey: ["/api/ledger/payment-types"],
@@ -860,6 +950,78 @@ export function PaymentForm({
               />
             </div>
           </>
+        )}
+
+        {mode === "edit" && paymentId && (
+          <div className="space-y-3 rounded-md border p-4" data-testid="payment-attachment-section">
+            <div>
+              <label className="text-sm font-medium">Payment image</label>
+              <p className="text-xs text-muted-foreground">
+                Optional raster image attachment. Changes are saved separately from payment details.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,image/tiff"
+                className="hidden"
+                id="payment-attachment-input"
+                onChange={handleAttachmentSelect}
+                disabled={attachmentUploading || attachmentRemoving}
+                data-testid="input-payment-attachment"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => document.getElementById("payment-attachment-input")?.click()}
+                disabled={attachmentUploading || attachmentRemoving}
+                data-testid="button-upload-payment-attachment"
+              >
+                {attachmentUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImagePlus className="mr-2 h-4 w-4" />}
+                {attachmentFileId ? "Replace image" : "Upload image"}
+              </Button>
+              {attachmentFileId && (
+                <>
+                  <a
+                    href={`/api/files/${attachmentFileId}/download`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                    data-testid="link-payment-attachment-download"
+                  >
+                    <Download className="h-4 w-4" />
+                    {attachment?.fileName || "Open/download"}
+                  </a>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={removeAttachment}
+                    disabled={attachmentUploading || attachmentRemoving}
+                    data-testid="button-remove-payment-attachment"
+                  >
+                    {attachmentRemoving ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                    <span className="sr-only">Remove image</span>
+                  </Button>
+                </>
+              )}
+            </div>
+            {attachmentFileId && attachment?.mimeType?.startsWith("image/") && (
+              <a
+                href={`/api/files/${attachmentFileId}/download`}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="link-payment-attachment-preview"
+              >
+                <img
+                  src={`/api/files/${attachmentFileId}/download`}
+                  alt={attachment.fileName || "Payment attachment"}
+                  className="max-h-64 max-w-full rounded border bg-muted object-contain"
+                  data-testid="img-payment-attachment-preview"
+                />
+              </a>
+            )}
+          </div>
         )}
 
         <FormField

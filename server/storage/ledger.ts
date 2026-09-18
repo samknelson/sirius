@@ -2,7 +2,7 @@ import { createNoopValidator } from './utils/validation';
 import { getClient, onAfterCommit } from './transaction-context';
 import { eventBus, EventType } from "../services/event-bus";
 import { logger } from "../logger";
-import { entityMetadata, ledgerAccounts, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
+import { entityMetadata, ledgerAccounts, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType, files } from "@shared/schema";
 import { ledgerPaymentBatches, ledgerPaymentBatchAssignments } from "@shared/schema/ledger/payment-batch/schema";
 import type { LedgerPaymentBatch, InsertLedgerPaymentBatch, LedgerPaymentBatchAssignment } from "@shared/schema/ledger/payment-batch/schema";
 import type { 
@@ -82,6 +82,10 @@ export interface LedgerPaymentStorage {
   /** Migration-only: like create, but preserves a verbatim historical dateCreated. */
   createForMigration(payment: InsertLedgerPayment & { dateCreated?: Date | null }): Promise<LedgerPayment>;
   update(id: string, payment: Partial<InsertLedgerPayment>): Promise<LedgerPayment | undefined>;
+  replaceAttachment(
+    id: string,
+    attachmentFileId: string | null,
+  ): Promise<{ payment: LedgerPayment; oldFile?: { id: string; fileSystemId: string; storagePath: string } } | undefined>;
   /** Migration-only: like update, but the patch admits dateCreated (S1-wins
    * sync re-writes the verbatim historical timestamp). */
   updateForMigration(
@@ -847,6 +851,41 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         .where(eq(ledgerPayments.id, id))
         .returning();
       return payment || undefined;
+    },
+
+    async replaceAttachment(
+      id: string,
+      attachmentFileId: string | null,
+    ): Promise<{ payment: LedgerPayment; oldFile?: { id: string; fileSystemId: string; storagePath: string } } | undefined> {
+      const client = getClient();
+      const [existing] = await client
+        .select()
+        .from(ledgerPayments)
+        .where(eq(ledgerPayments.id, id))
+        .for("update");
+      if (!existing) return undefined;
+      const oldId = existing.attachmentFileId;
+      const [payment] = await client
+        .update(ledgerPayments)
+        .set({ attachmentFileId })
+        .where(eq(ledgerPayments.id, id))
+        .returning();
+      let oldFile: { id: string; fileSystemId: string; storagePath: string } | undefined;
+      if (oldId && oldId !== attachmentFileId) {
+        const [file] = await client
+          .select({
+            id: files.id,
+            fileSystemId: files.fileSystemId,
+            storagePath: files.storagePath,
+          })
+          .from(files)
+          .where(eq(files.id, oldId));
+        if (file) {
+          await client.delete(files).where(eq(files.id, oldId));
+          oldFile = file;
+        }
+      }
+      return { payment, oldFile };
     },
 
     async updateForMigration(
