@@ -41,7 +41,8 @@ function responseFor(method: string, url: string, body?: unknown) {
   if (method === "GET" && url.includes("/ledger/payable")) return { balance: "125.50", currencyCode: "USD", eaId: "ea-9" };
   if (method === "GET" && url.endsWith("/worker/worker-42")) return methods;
   if (method === "GET" && url.endsWith("/worker/worker-42/gateways")) return [{ id: "gw-stripe", pluginId: "stripe", name: "Stripe" }];
-  if (method === "POST" && url.includes("payment-intent")) return { status: "succeeded", clientSecret: null, publicConfig: {} };
+  if (method === "POST" && url.includes("payment-intent")) return { id: "attempt-1", status: "succeeded", clientSecret: null, publicConfig: {} };
+  if (method === "GET" && url.endsWith("/payment-attempts/attempt-1")) return { id: "attempt-1", status: "succeeded", ledgerPaymentId: "payment-1" };
   throw new Error(`Unexpected request ${method} ${url} ${JSON.stringify(body)}`);
 }
 
@@ -128,7 +129,8 @@ describe("worker ledger checkout", () => {
       paymentMethodId: "pm-card",
       idempotencyKey: "idem-123",
     }));
-    expect(container?.textContent).toContain("Payment successful");
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("GET", "/api/ledger/payment-attempts/attempt-1"));
+    await waitFor(() => expect(container?.textContent).toContain("Payment successful"));
   });
 
   it("shows ACH processing rather than card success when the API returns processing", async () => {
@@ -141,7 +143,7 @@ describe("worker ledger checkout", () => {
     await act(async () => { testId<HTMLButtonElement>("button-select-worker-payment-method-pm-card").click(); });
     await act(async () => { testId<HTMLButtonElement>("button-worker-start-payment").click(); });
     await waitFor(() => expect(container?.textContent).toContain("Payment processing"));
-    expect(container?.textContent).toContain("bank payment is being processed");
+    expect(container?.textContent).toContain("payment is being processed");
     expect(container?.textContent).not.toContain("Payment successful");
   });
 });

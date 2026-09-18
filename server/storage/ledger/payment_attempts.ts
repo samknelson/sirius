@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getClient } from "../transaction-context";
 import {
   ledgerPaymentAttemptEvents,
@@ -17,6 +17,7 @@ export interface PaymentAttemptStorage {
   recordEvent(input: { attemptId: string; providerEventId: string; eventType: string; providerCreated: number; payload: unknown }): Promise<boolean>;
   claimLedgerPosting(id: string, ledgerPaymentId: string): Promise<boolean>;
   lockEa(id: string): Promise<void>;
+  expireReservations(eaId: string): Promise<void>;
   getReservedAmount(eaId: string): Promise<number>;
 }
 
@@ -78,13 +79,32 @@ export function createPaymentAttemptStorage(): PaymentAttemptStorage {
     async lockEa(id) {
       await getClient().execute(sql`SELECT id FROM ${ledgerEa} WHERE id = ${id} FOR UPDATE`);
     },
+    async expireReservations(eaId) {
+      await getClient().update(ledgerPaymentAttempts)
+        .set({ status: "failed", failureMessage: "Payment confirmation expired" })
+        .where(and(
+          eq(ledgerPaymentAttempts.ledgerEaId, eaId),
+          eq(ledgerPaymentAttempts.status, "requires_action"),
+          sql`${ledgerPaymentAttempts.reservationExpiresAt} IS NOT NULL`,
+          sql`${ledgerPaymentAttempts.reservationExpiresAt} <= now()`,
+        ));
+    },
     async getReservedAmount(eaId) {
       const [row] = await getClient()
         .select({ total: sql<string>`COALESCE(SUM(${ledgerPaymentAttempts.amount}), 0)` })
         .from(ledgerPaymentAttempts)
         .where(and(
           eq(ledgerPaymentAttempts.ledgerEaId, eaId),
-          inArray(ledgerPaymentAttempts.status, ["requires_action", "processing"]),
+          sql`(
+            ${ledgerPaymentAttempts.status} = 'processing'
+            OR (
+              ${ledgerPaymentAttempts.status} = 'requires_action'
+              AND (
+                ${ledgerPaymentAttempts.reservationExpiresAt} IS NULL
+                OR ${ledgerPaymentAttempts.reservationExpiresAt} > now()
+              )
+            )
+          )`,
         ));
       return Number(row?.total ?? 0);
     },

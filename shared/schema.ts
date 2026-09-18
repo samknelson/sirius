@@ -1002,6 +1002,7 @@ export const ledgerPaymentAttempts = pgTable("ledger_payment_attempts", {
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
   currency: varchar("currency", { length: 10 }).notNull().default("USD"),
   status: text("status").notNull().default("requires_action"),
+  reservationExpiresAt: timestamp("reservation_expires_at"),
   ledgerPaymentId: varchar("ledger_payment_id").references(() => ledgerPayments.id, { onDelete: "set null" }),
   lastProviderEventCreated: integer("last_provider_event_created"),
   failureMessage: text("failure_message"),

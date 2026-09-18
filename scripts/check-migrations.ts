@@ -82,7 +82,21 @@ function addedFiles(base: string | undefined): string[] {
   } catch {
     // ignore
   }
-  return Array.from(new Set(output.split("\n").map(s => s.trim()).filter(Boolean)));
+  const candidates = Array.from(new Set(output.split("\n").map(s => s.trim()).filter(Boolean)));
+  if (!base) return candidates;
+
+  // A re-parented carrying branch can contain the same migration path at its
+  // tip while the three-dot merge-base diff still reports that path as added.
+  // Such a path is already deployed and must not be treated as a new
+  // migration; only paths absent from the actual base tree are new.
+  return candidates.filter((file) => {
+    try {
+      execSync(`git cat-file -e ${base}:${file}`, { stdio: "ignore" });
+      return false;
+    } catch {
+      return true;
+    }
+  });
 }
 
 function coreVersionOf(file: string): number | null {

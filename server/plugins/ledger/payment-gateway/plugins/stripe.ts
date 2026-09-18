@@ -132,7 +132,7 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
       name: "webhookSecretName",
       label: "Webhook Signing Secret Name",
       type: "string",
-      required: false,
+      required: true,
     },
   ],
 

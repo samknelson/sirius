@@ -51,12 +51,13 @@ export class GatewayResolutionError extends Error {
  */
 export async function resolveGateway(
   gatewayConfigId: string,
+  options: { allowDisabled?: boolean } = {},
 ): Promise<ResolvedGateway> {
   const config = await storage.pluginConfigs.get(gatewayConfigId);
   if (!config || config.pluginKind !== "payment-gateway") {
     throw new GatewayResolutionError(404, "Payment gateway configuration not found");
   }
-  if (!config.enabled) {
+  if (!config.enabled && !options.allowDisabled) {
     throw new GatewayResolutionError(409, "Payment gateway configuration is disabled");
   }
 

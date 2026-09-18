@@ -30,9 +30,9 @@ function Form({ amount, onComplete }: Omit<WorkerStripePaymentFormProps, "public
       });
       if (result.error) {
         onComplete("failed", result.error.message);
-      } else if (result.paymentIntent?.status === "succeeded") {
-        onComplete("succeeded");
       } else {
+        // Stripe success confirms provider collection, not the internal ledger
+        // posting. The parent polls our attempt until ledgerPaymentId exists.
         onComplete("processing");
       }
     } catch (error) {

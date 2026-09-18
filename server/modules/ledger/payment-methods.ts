@@ -490,7 +490,8 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
     }
   });
 
-  // Detach at the provider and delete the stored method.
+  // Detach at the provider. Worker methods are retained as inactive records
+  // because payment attempts reference them for provider/audit history.
   app.delete(`${base}/:pmId`, async (req: Request, res: Response) => {
     try {
       const { entityType, entityId, pmId } = req.params;
@@ -510,7 +511,14 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
         );
       }
 
-      await storage.ledger.paymentMethods.delete(pmId);
+      if (entityType === "worker") {
+        await storage.ledger.paymentMethods.update(pmId, {
+          isActive: false,
+          isDefault: false,
+        });
+      } else {
+        await storage.ledger.paymentMethods.delete(pmId);
+      }
       res.json({ success: true });
     } catch (error) {
       sendError(res, error, "Failed to delete payment method");

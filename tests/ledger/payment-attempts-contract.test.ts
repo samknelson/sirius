@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { shouldApplyPaymentEvent } from "../../server/modules/ledger/payment-attempt-state";
+import {
+  selectFinancialPaymentType,
+  shouldApplyPaymentEvent,
+} from "../../server/modules/ledger/payment-attempt-state";
 
 describe("worker Stripe payment attempt backend", () => {
   it("keeps provider events and application idempotency keys unique", () => {
@@ -15,6 +18,46 @@ describe("worker Stripe payment attempt backend", () => {
     expect(source).toContain("constructWebhookEvent");
     expect(source).toContain("recordEvent");
     expect(source).toContain("stale");
+    expect(source).toContain("attempt.gatewayConfigId !== req.params.gatewayConfigId");
+    expect(source).toContain("attempt.providerIntentRef !== providerRef");
+  });
+
+  it("expires abandoned reservations and still records funds settled after a balance change", () => {
+    const route = readFileSync("server/modules/ledger/payment-attempts.ts", "utf8");
+    const storage = readFileSync("server/storage/ledger/payment_attempts.ts", "utf8");
+    expect(route).toContain("expireReservations");
+    expect(route).toContain("payment_intent.canceled");
+    expect(route).not.toContain("Settled payment exceeds the current payable balance");
+    expect(storage).toContain("reservationExpiresAt");
+    expect(storage).toContain("Payment confirmation expired");
+  });
+
+  it("requires an enabled component and signed webhook before charging", () => {
+    const source = readFileSync("server/modules/ledger/payment-attempts.ts", "utf8");
+    expect(source).toContain("assertGatewayReadyForCharge");
+    expect(source).toContain("Component not enabled");
+    expect(source).toContain("signed webhook is not configured");
+  });
+
+  it("selects a financial ledger payment type in the attempt currency", () => {
+    const types = [
+      { id: "usd-adjustment", category: "adjustment", currencyCode: "USD" },
+      { id: "usd-payment", category: "financial", currencyCode: "USD" },
+      { id: "cad-payment", category: "financial", currencyCode: "CAD" },
+    ];
+    expect(selectFinancialPaymentType(types, "cad")?.id).toBe("cad-payment");
+    expect(selectFinancialPaymentType(types, "EUR")).toBeUndefined();
+
+    const source = readFileSync("server/modules/ledger/payment-attempts.ts", "utf8");
+    expect(source).toContain("No financial ledger payment type is configured");
+    expect(source).toContain("ledgerPaymentTypeId");
+  });
+
+  it("retains removed worker methods as inactive attempt history", () => {
+    const source = readFileSync("server/modules/ledger/payment-methods.ts", "utf8");
+    expect(source).toContain('entityType === "worker"');
+    expect(source).toContain("isActive: false");
+    expect(source).toContain("paymentMethods.delete(pmId)");
   });
 
   it("exposes worker entity payment methods through the existing policy", () => {
