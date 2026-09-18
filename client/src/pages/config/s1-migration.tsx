@@ -202,6 +202,20 @@ export default function S1MigrationDashboard() {
     runs.find((r) => runName(r) === name);
   const latestBalance = latestRun("verify-balance-parity");
   const latestMonth = latestRun("verify-month-parity");
+  const runHistoryError = runsQ.isError
+    ? runsQ.data
+      ? "Could not refresh run history. Cached history is stale and may not include the latest runs. Refresh to retry."
+      : "Could not load run history. Refresh to retry."
+    : null;
+  const parityDetail = (run: RunRow | undefined): string => {
+    const result = run ? `${runOutcome(run).label} at ${fmtTs(run.finishedAt)}` : null;
+    if (runsQ.isError) {
+      return result
+        ? `Readiness unknown — run history refresh failed. Stale cached result: ${result}. Refresh to retry.`
+        : "Readiness unknown — could not read run history. Refresh to retry.";
+    }
+    return result ?? "not yet run";
+  };
 
   const ownershipReady =
     collisionsQ.isError || collisions == null
@@ -277,18 +291,14 @@ export default function S1MigrationDashboard() {
     {
       id: "balance-parity",
       label: "Balance parity",
-      state: parityState(latestBalance),
-      detail: latestBalance
-        ? `${runOutcome(latestBalance).label} at ${fmtTs(latestBalance.finishedAt)}`
-        : "not yet run",
+      state: runsQ.isError ? "pending" : parityState(latestBalance),
+      detail: parityDetail(latestBalance),
     },
     {
       id: "month-parity",
       label: "Month parity",
-      state: parityState(latestMonth),
-      detail: latestMonth
-        ? `${runOutcome(latestMonth).label} at ${fmtTs(latestMonth.finishedAt)}`
-        : "not yet run",
+      state: runsQ.isError ? "pending" : parityState(latestMonth),
+      detail: parityDetail(latestMonth),
     },
   ];
 
@@ -335,7 +345,7 @@ export default function S1MigrationDashboard() {
             </CardContent>
           </Card>
 
-          <RunHistory runs={runs} expandedRun={expandedRun} setExpandedRun={setExpandedRun} />
+          <RunHistory runs={runs} readError={runHistoryError} expandedRun={expandedRun} setExpandedRun={setExpandedRun} />
 
           <Collapsible open={ownershipOpen} onOpenChange={setOwnershipOpen} asChild>
           <Card data-testid="card-collisions">
@@ -519,8 +529,9 @@ export default function S1MigrationDashboard() {
   );
 }
 
-function RunHistory({ runs, expandedRun, setExpandedRun }: {
+function RunHistory({ runs, readError, expandedRun, setExpandedRun }: {
   runs: RunRow[];
+  readError: string | null;
   expandedRun: number | null;
   setExpandedRun: (id: number | null) => void;
 }) {
@@ -533,7 +544,12 @@ function RunHistory({ runs, expandedRun, setExpandedRun }: {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {runs.length === 0 && (
+              {readError && (
+                <p role="alert" className="mb-4 text-sm text-destructive" data-testid="run-history-read-error">
+                  {readError}
+                </p>
+              )}
+              {!readError && runs.length === 0 && (
                 <p className="text-sm text-muted-foreground">No runs recorded yet.</p>
               )}
               {runs.length > 0 && (
