@@ -11,6 +11,11 @@ export type DpReportStatus =
   | "confirmed_no_charge"
   | "unavailable_not_covered";
 
+export type DpReportUnavailableReason =
+  | "missing_benefit_presence"
+  | "missing_effective_rate"
+  | "ambiguous_coverage_basis";
+
 export interface DpReportWorker {
   workerId: string;
   workerName: string;
@@ -23,6 +28,7 @@ export interface DpReportWorker {
   paidAmount: string;
   balance: string;
   status: DpReportStatus;
+  unavailableReason: DpReportUnavailableReason | null;
 }
 
 export interface DpReportResult {
@@ -120,6 +126,7 @@ export async function calculateDpCurrentMonthReport(
     let charge = "0.00";
     let paidAmount = paymentMonth?.paidAmount ?? "0.00";
     let status: DpReportStatus;
+    let unavailableReason: DpReportUnavailableReason | null = null;
     if (hasPostedCurrentMonthCharge) {
       // A surviving posted charge is the authoritative coverage basis for the
       // month. The rate/WMB reconstruction can legitimately become unavailable
@@ -133,6 +140,11 @@ export async function calculateDpCurrentMonthReport(
       paidAmount = "0.00";
     } else if (price.kind !== "charge") {
       status = "unavailable_not_covered";
+      unavailableReason = presentBenefitIds.length === 0
+        ? "missing_benefit_presence"
+        : price.kind === "ambiguous_rates"
+          ? "ambiguous_coverage_basis"
+          : "missing_effective_rate";
     } else {
       charge = price.amount;
       if (paymentMonth?.status === "paid") status = "paid_covered";
@@ -152,6 +164,7 @@ export async function calculateDpCurrentMonthReport(
       paidAmount,
       balance: money(Math.max(0, Number(charge) - Number(paidAmount))),
       status,
+      unavailableReason,
     });
   }
 

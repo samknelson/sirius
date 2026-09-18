@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getApiErrorMessage } from "@/lib/queryClient";
 
 type Status = "paid_covered" | "partially_paid" | "unpaid_not_covered" | "confirmed_no_charge" | "unavailable_not_covered";
+type UnavailableReason = "missing_benefit_presence" | "missing_effective_rate" | "ambiguous_coverage_basis";
 type Row = {
   workerId: string;
   workerName: string;
@@ -24,6 +25,7 @@ type Row = {
   paidAmount: string | number;
   balance: string | number;
   status: Status;
+  unavailableReason: UnavailableReason | null;
 };
 type Response = {
   asOfYmd: string;
@@ -41,6 +43,12 @@ const STATUS_LABELS: Record<Status, string> = {
   unpaid_not_covered: "Unpaid / not covered",
   confirmed_no_charge: "Confirmed no charge",
   unavailable_not_covered: "Unavailable / not covered",
+};
+
+const UNAVAILABLE_REASON_LABELS: Record<UnavailableReason, string> = {
+  missing_benefit_presence: "No elected benefit is present for this coverage month",
+  missing_effective_rate: "No confirmed effective rate is available",
+  ambiguous_coverage_basis: "More than one benefit could determine the coverage rate",
 };
 
 function money(value: string | number) {
@@ -97,7 +105,7 @@ export default function BaoDpWorkersPage() {
             ) : (
               <>
                 <Table data-testid="table-bao-dp-workers">
-                  <TableHeader><TableRow><TableHead>Subscriber</TableHead><TableHead>Domestic partner</TableHead><TableHead>Coverage month</TableHead><TableHead>Charge</TableHead><TableHead>Paid</TableHead><TableHead>Balance</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Subscriber</TableHead><TableHead>Domestic partner</TableHead><TableHead>Coverage month</TableHead><TableHead>Charge</TableHead><TableHead>Paid</TableHead><TableHead>Balance</TableHead><TableHead>Status</TableHead><TableHead>Reason</TableHead></TableRow></TableHeader>
                   <TableBody>{data.data.map((row) => (
                     <TableRow key={`${row.electionId}-${row.relationshipId}`} data-testid={`row-bao-dp-worker-${row.workerId}`}>
                       <TableCell><Link className="text-primary hover:underline" href={`/workers/${row.workerId}/sitespecific/bao/dp`}>{row.workerName}</Link></TableCell>
@@ -105,6 +113,9 @@ export default function BaoDpWorkersPage() {
                       <TableCell>{row.coverageMonth}</TableCell>
                       <TableCell>{money(row.charge)}</TableCell><TableCell>{money(row.paidAmount)}</TableCell><TableCell>{money(row.balance)}</TableCell>
                       <TableCell><Badge variant="outline">{STATUS_LABELS[row.status] ?? row.status}</Badge></TableCell>
+                      <TableCell className="max-w-xs text-sm text-muted-foreground">
+                        {row.unavailableReason ? UNAVAILABLE_REASON_LABELS[row.unavailableReason] : "—"}
+                      </TableCell>
                     </TableRow>
                   ))}</TableBody>
                 </Table>

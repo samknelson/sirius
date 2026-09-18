@@ -99,7 +99,10 @@ async function authoritativeRows(): Promise<DpReportWorker[]> {
     const types = new Map((await storage.workerRelations.listByIdsWithType(election.relationshipIds)).map((r) => [r.id, r.relationTypeName]));
     const transition: BaoDpTierTransition = resolveDpTierTransition(election, (id) => types.get(id));
     const presence = await storage.trust.wmb.getWorkerBenefitPresence(relation.worker1);
-    const price = await priceDpMonth((election.benefitIds ?? []).filter((id) => presence.some((p) => p.benefitId === id && p.year === 2026 && p.month === 4)), transition, "2026-04");
+    const presentBenefitIds = (election.benefitIds ?? []).filter((id) =>
+      presence.some((p) => p.benefitId === id && p.year === 2026 && p.month === 4),
+    );
+    const price = await priceDpMonth(presentBenefitIds, transition, "2026-04");
     const payment = await computeDpPaymentState(relation.worker1);
     const month = payment?.months.find((m) => m.month === "2026-04" && m.electionId === election.id && m.dpRelationshipId === relation.id);
     const charge = price.kind === "charge" ? price.amount : "0.00";
@@ -110,6 +113,13 @@ async function authoritativeRows(): Promise<DpReportWorker[]> {
       electionId: election.id, relationshipId: relation.id, coverageMonth: "2026-04",
       charge, paidAmount, balance: Math.max(0, Number(charge) - Number(paidAmount)).toFixed(2),
       status: price.kind === "no_charge" ? "confirmed_no_charge" : price.kind !== "charge" ? "unavailable_not_covered" : month?.status === "paid" ? "paid_covered" : month?.status === "partial" ? "partially_paid" : "unpaid_not_covered",
+      unavailableReason: presentBenefitIds.length === 0
+        ? "missing_benefit_presence"
+        : price.kind === "ambiguous_rates"
+          ? "ambiguous_coverage_basis"
+          : price.kind === "missing_rate"
+            ? "missing_effective_rate"
+            : null,
     });
   }
   return rows;
@@ -135,6 +145,16 @@ describe("BAO Domestic Partner current-month report", () => {
       expect(report.statusCounts[status]).toBe(expected.filter((r) => r.status === status).length);
     }
     expect(report.statusCounts).toEqual({ paid_covered: 1, partially_paid: 1, unpaid_not_covered: 1, confirmed_no_charge: 1, unavailable_not_covered: 4 });
+    expect(Object.fromEntries(
+      report.rows
+        .filter((row) => row.status === "unavailable_not_covered")
+        .map((row) => [row.workerId.split("-")[0], row.unavailableReason]),
+    )).toEqual({
+      missing: "missing_effective_rate",
+      provisional: "missing_effective_rate",
+      ambiguous: "ambiguous_coverage_basis",
+      absent: "missing_benefit_presence",
+    });
     expect(report.totalActiveWorkers).toBe(8);
     expect([report.totalCharges, report.totalPaid, report.totalBalance]).toEqual(["40.00", "15.00", "25.00"]);
     expect(storage.baoDpRates.getEffectiveRatesForMonth).toHaveBeenCalledWith("2026-04-01");
@@ -184,6 +204,7 @@ describe("BAO Domestic Partner current-month report", () => {
         paidAmount: "25.00",
         balance: "0.00",
         status: "paid_covered",
+        unavailableReason: null,
       }),
     ]);
     expect(report.statusCounts.paid_covered).toBe(1);
@@ -209,6 +230,7 @@ describe("BAO Domestic Partner current-month report", () => {
       charge: "0.00",
       paidAmount: "0.00",
       status: "unavailable_not_covered",
+      unavailableReason: "missing_benefit_presence",
     }));
     expect(report.statusCounts.unavailable_not_covered).toBe(1);
   });
