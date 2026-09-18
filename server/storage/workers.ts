@@ -254,6 +254,7 @@ export interface WorkerStorage {
   getData(id: string): Promise<Record<string, unknown>>;
   setData(id: string, data: Record<string, unknown>): Promise<void>;
   getWorkerDisplayName(id: string | undefined | null): Promise<string>;
+  getWorkerDisplayNames(ids: string[]): Promise<Map<string, string>>;
   getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
   /**
    * Bulk variant of `getWorkerBySSN`: resolve many SSNs in ONE query.
@@ -1184,6 +1185,31 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       if (!row) return id;
       const composed = [row.given, row.family].filter(Boolean).join(' ').trim();
       return composed || row.displayName || id;
+    },
+
+    async getWorkerDisplayNames(ids: string[]): Promise<Map<string, string>> {
+      const uniqueIds = Array.from(new Set(ids));
+      const names = new Map<string, string>(uniqueIds.map((id) => [id, id]));
+      if (uniqueIds.length === 0) return names;
+      const client = getClient();
+      for (let offset = 0; offset < uniqueIds.length; offset += 500) {
+        const idChunk = uniqueIds.slice(offset, offset + 500);
+        const rows = await client
+          .select({
+            id: workers.id,
+            displayName: contacts.displayName,
+            given: contacts.given,
+            family: contacts.family,
+          })
+          .from(workers)
+          .leftJoin(contacts, eq(workers.contactId, contacts.id))
+          .where(inArray(workers.id, idChunk));
+        for (const row of rows) {
+          const composed = [row.given, row.family].filter(Boolean).join(' ').trim();
+          names.set(row.id, composed || row.displayName || row.id);
+        }
+      }
+      return names;
     },
 
     async getWorkerBySSN(ssn: string): Promise<Worker | undefined> {

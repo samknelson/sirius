@@ -31,6 +31,7 @@ export interface BaoDpRatesStorage {
     tierTransition: BaoDpTierTransition,
     asOfYmd: string,
   ): Promise<BaoDpRate | undefined>;
+  getEffectiveRatesForMonth(asOfYmd: string): Promise<BaoDpRate[]>;
   create(entry: InsertBaoDpRate): Promise<BaoDpRate>;
   update(
     id: string,
@@ -121,6 +122,22 @@ export function createBaoDpRatesStorage(): BaoDpRatesStorage {
         .orderBy(desc(rates.effectiveYmd))
         .limit(1);
       return results[0];
+    },
+
+    async getEffectiveRatesForMonth(asOfYmd: string): Promise<BaoDpRate[]> {
+      if (!(await this.tableExists())) {
+        throw new Error("COMPONENT_TABLE_NOT_FOUND");
+      }
+      const client = getClient();
+      return await client
+        .selectDistinctOn([rates.benefitId, rates.tierTransition])
+        .from(rates)
+        .where(lte(rates.effectiveYmd, asOfYmd))
+        .orderBy(
+          asc(rates.benefitId),
+          asc(rates.tierTransition),
+          desc(rates.effectiveYmd),
+        );
     },
 
     async create(entry: InsertBaoDpRate): Promise<BaoDpRate> {

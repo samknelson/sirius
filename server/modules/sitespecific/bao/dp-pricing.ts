@@ -108,6 +108,13 @@ export async function priceDpMonth(
       provisional: !!rate.provisional,
     });
   }
+  return priceDpRatedBenefits(rated);
+}
+
+/** Shared rate interpretation for single-worker and bulk-loaded callers. */
+export function priceDpRatedBenefits(
+  rated: ReadonlyArray<{ benefitId: string; rate: string; provisional: boolean }>,
+): DpMonthPrice {
   if (rated.length === 0) {
     return { kind: "missing_rate", ratedBenefitIds: [] };
   }

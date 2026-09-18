@@ -66,6 +66,7 @@ export interface WorkerTrustElectionsStorage {
   listByWorker(workerId: string): Promise<WorkerTrustElection[]>;
   getActiveByWorker(workerId: string): Promise<WorkerTrustElection | undefined>;
   getActiveByWorkerAsOf(workerId: string, asOfYmd: string): Promise<WorkerTrustElection | undefined>;
+  getActiveByWorkersAsOf(workerIds: string[], asOfYmd: string): Promise<WorkerTrustElection[]>;
   /**
    * True when the worker has any election whose range covers today and that
    * covers a Medical or Dental benefit. First-time enrollment is
@@ -661,6 +662,32 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
         .orderBy(desc(workerTrustElections.startYmd))
         .limit(1);
       return rows[0];
+    },
+
+    async getActiveByWorkersAsOf(workerIds, asOfYmd) {
+      const uniqueWorkerIds = Array.from(new Set(workerIds));
+      if (uniqueWorkerIds.length === 0) return [];
+      const client = getClient();
+      const firstByWorker = new Map<string, WorkerTrustElection>();
+      for (let offset = 0; offset < uniqueWorkerIds.length; offset += 500) {
+        const workerIdChunk = uniqueWorkerIds.slice(offset, offset + 500);
+        const rows = await client
+          .select()
+          .from(workerTrustElections)
+          .where(
+            and(
+              inArray(workerTrustElections.workerId, workerIdChunk),
+              electionCoversAsOf(asOfYmd),
+            ),
+          )
+          .orderBy(desc(workerTrustElections.startYmd));
+        for (const row of rows) {
+          if (!firstByWorker.has(row.workerId)) firstByWorker.set(row.workerId, row);
+        }
+      }
+      return Array.from(firstByWorker.values()).sort(
+        (a, b) => String(b.startYmd).localeCompare(String(a.startYmd)),
+      );
     },
 
     async hasActiveMedicalOrDentalElection(workerId) {

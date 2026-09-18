@@ -341,8 +341,10 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
         }
       }
 
-      const otherWorkers: WorkerRelationOtherWorker[] = otherIds.size
-        ? await client
+      const otherWorkers: WorkerRelationOtherWorker[] = [];
+      const otherIdList = Array.from(otherIds);
+      for (let offset = 0; offset < otherIdList.length; offset += 5_000) {
+        otherWorkers.push(...await client
             .select({
               id: workers.id,
               siriusId: workers.siriusId,
@@ -352,8 +354,8 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
             })
             .from(workers)
             .leftJoin(contacts, eq(workers.contactId, contacts.id))
-            .where(inArray(workers.id, Array.from(otherIds)))
-        : [];
+            .where(inArray(workers.id, otherIdList.slice(offset, offset + 5_000))));
+      }
       const byId = new Map<string, WorkerRelationOtherWorker>(otherWorkers.map((w) => [w.id, w]));
 
       const today = getTodayYmd();
@@ -413,7 +415,9 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
       const unique = Array.from(new Set(ids)).filter(Boolean);
       if (unique.length === 0) return [];
       const client = getClient();
-      const rows = await client
+      const results: WorkerRelationWithTypeName[] = [];
+      for (let offset = 0; offset < unique.length; offset += 5_000) {
+        const rows = await client
         .select({
           relation: workerRelations,
           relationTypeName: optionsWorkerRelationType.name,
@@ -423,11 +427,13 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
           optionsWorkerRelationType,
           eq(workerRelations.relationType, optionsWorkerRelationType.id),
         )
-        .where(inArray(workerRelations.id, unique));
-      return rows.map((r) => ({
-        ...r.relation,
-        relationTypeName: r.relationTypeName ?? null,
-      }));
+        .where(inArray(workerRelations.id, unique.slice(offset, offset + 5_000)));
+        results.push(...rows.map((r) => ({
+          ...r.relation,
+          relationTypeName: r.relationTypeName ?? null,
+        })));
+      }
+      return results;
     },
 
     async create(data: InsertWorkerRelation): Promise<WorkerRelation> {

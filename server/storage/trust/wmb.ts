@@ -43,6 +43,10 @@ export interface WorkerBenefitPresenceRow {
   benefitTypeIcon: string | null;
 }
 
+export interface WorkerBenefitPresenceForMonthRow extends WorkerBenefitPresenceRow {
+  workerId: string;
+}
+
 /** One (benefit, year, month) → distinct-worker coverage count. */
 export interface BenefitMonthWorkerCount {
   benefitId: string;
@@ -103,6 +107,11 @@ export interface TrustWmbStorage {
   getById(id: string): Promise<TrustWmb | undefined>;
   getWorkerBenefits(workerId: string): Promise<any[]>;
   getWorkerBenefitPresence(workerId: string): Promise<WorkerBenefitPresenceRow[]>;
+  getWorkersBenefitPresenceForMonth(
+    workerIds: string[],
+    year: number,
+    month: number,
+  ): Promise<WorkerBenefitPresenceForMonthRow[]>;
   createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string; sourceRelationId?: string | null }): Promise<TrustWmb>;
   deleteWorkerBenefit(id: string): Promise<boolean>;
   /**
@@ -284,6 +293,69 @@ export function createTrustWmbStorage(): TrustWmbStorage {
         .where(eq(trustWmb.workerId, workerId));
 
       return results.map((r) => ({
+        benefitId: r.benefitId,
+        year: r.year,
+        month: r.month,
+        sourceRelationId: r.sourceRelationId ?? null,
+        benefitName: r.benefitName ?? null,
+        benefitTypeId: r.benefitTypeId ?? null,
+        benefitTypeName: r.benefitTypeName ?? null,
+        benefitTypeSequence: r.benefitTypeSequence ?? null,
+        benefitTypeColor: (r.benefitTypeData as any)?.color ?? null,
+        benefitTypeIcon: (r.benefitTypeData as any)?.icon ?? null,
+      }));
+    },
+
+    async getWorkersBenefitPresenceForMonth(
+      workerIds: string[],
+      year: number,
+      month: number,
+    ): Promise<WorkerBenefitPresenceForMonthRow[]> {
+      const uniqueWorkerIds = Array.from(new Set(workerIds));
+      if (uniqueWorkerIds.length === 0) return [];
+      const client = getClient();
+      const results: Array<{
+        workerId: string;
+        benefitId: string;
+        year: number;
+        month: number;
+        sourceRelationId: string | null;
+        benefitName: string | null;
+        benefitTypeId: string | null;
+        benefitTypeName: string | null;
+        benefitTypeSequence: number | null;
+        benefitTypeData: unknown;
+      }> = [];
+      for (let offset = 0; offset < uniqueWorkerIds.length; offset += 500) {
+        const workerIdChunk = uniqueWorkerIds.slice(offset, offset + 500);
+        const rows = await client
+          .selectDistinct({
+            workerId: trustWmb.workerId,
+            benefitId: trustWmb.benefitId,
+            year: trustWmb.year,
+            month: trustWmb.month,
+            sourceRelationId: trustWmb.sourceRelationId,
+            benefitName: trustBenefits.name,
+            benefitTypeId: optionsTrustBenefitType.id,
+            benefitTypeName: optionsTrustBenefitType.name,
+            benefitTypeSequence: optionsTrustBenefitType.sequence,
+            benefitTypeData: optionsTrustBenefitType.data,
+          })
+          .from(trustWmb)
+          .leftJoin(trustBenefits, eq(trustWmb.benefitId, trustBenefits.id))
+          .leftJoin(optionsTrustBenefitType, eq(trustBenefits.benefitType, optionsTrustBenefitType.id))
+          .where(
+            and(
+              inArray(trustWmb.workerId, workerIdChunk),
+              eq(trustWmb.year, year),
+              eq(trustWmb.month, month),
+            ),
+          );
+        results.push(...rows);
+      }
+
+      return results.map((r) => ({
+        workerId: r.workerId,
         benefitId: r.benefitId,
         year: r.year,
         month: r.month,

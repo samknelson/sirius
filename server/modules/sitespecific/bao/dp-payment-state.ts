@@ -3,6 +3,7 @@ import {
   toChargeConfig,
   pickFirstByAccountOrder,
 } from "../../../plugins/ledger/charge/charge-config-resolution";
+import type { Ledger, WorkerTrustElection } from "@shared/schema";
 
 export const DP_CHARGE_PLUGIN_ID = "sitespecific-bao-dp";
 
@@ -63,37 +64,26 @@ export interface DpPaymentStateResult {
   months: DpChargeMonthStatus[];
 }
 
+interface DpPaymentCalculationInput {
+  accountId: string;
+  configId: string;
+  balance: number;
+  elections: WorkerTrustElection[];
+  entriesByElection: ReadonlyMap<string, readonly Ledger[]>;
+}
+
 /**
- * Compute the per-month DP member charge / paid / balance state for a worker
- * from the worker's DP ledger account. Returns null when no DP billing
- * account is configured — callers must treat that as "payment state
- * unknown". Confirmed no-charge months never post an entry, so they do not
- * appear here and contribute nothing to the balance.
- *
- * Payment attribution: payments on the account are not allocated to specific
- * months in the ledger, so months are marked paid FIFO (oldest month first)
- * from the account's total credited amount. NOTE (unconfirmed business
- * rules): payment due dates, grace periods, and overpayment/refund treatment
- * are deliberately not modeled here.
+ * Pure FIFO calculation shared by the single and batch loaders. Elections
+ * and each election's entries are consumed in loader order, preserving the
+ * existing tie order when multiple rows have the same billing month.
  */
-export async function computeDpPaymentState(
-  workerId: string,
-): Promise<DpPaymentStateResult | null> {
-  const config = await resolveDpChargeConfig();
-  if (!config?.account) return null;
-  const accountId = config.account;
-
-  // Balance on the DP account (positive = owed).
-  const balances = await storage.ledger.entries.getBalancesByEntityAndAccount(
-    "worker",
-    [workerId],
-    [accountId],
-  );
-  const balance = Number(balances[0]?.total ?? "0");
-
-  // Net charge per (election, DP, month) from this config's entries across
-  // the worker's elections.
-  const elections = await storage.workerTrustElections.listByWorker(workerId);
+function calculateDpPaymentState({
+  accountId,
+  configId,
+  balance,
+  elections,
+  entriesByElection,
+}: DpPaymentCalculationInput): DpPaymentStateResult {
   const byKey = new Map<
     string,
     {
@@ -105,11 +95,7 @@ export async function computeDpPaymentState(
     }
   >();
   for (const election of elections) {
-    const entries = await storage.ledger.entries.getByReferenceAndConfig(
-      election.id,
-      config.id,
-    );
-    for (const entry of entries) {
+    for (const entry of entriesByElection.get(election.id) ?? []) {
       const meta = entry.data as {
         billingMonth?: string;
         dpRelationshipId?: string;
@@ -157,10 +143,130 @@ export async function computeDpPaymentState(
 
   return {
     accountId,
-    configId: config.id,
+    configId,
     balance: balance.toFixed(2),
     totalCharges: totalCharges.toFixed(2),
     totalPaid: totalPaid.toFixed(2),
     months,
   };
+}
+
+/**
+ * Compute the per-month DP member charge / paid / balance state for a worker
+ * from the worker's DP ledger account. Returns null when no DP billing
+ * account is configured — callers must treat that as "payment state
+ * unknown". Confirmed no-charge months never post an entry, so they do not
+ * appear here and contribute nothing to the balance.
+ *
+ * Payment attribution: payments on the account are not allocated to specific
+ * months in the ledger, so months are marked paid FIFO (oldest month first)
+ * from the account's total credited amount. NOTE (unconfirmed business
+ * rules): payment due dates, grace periods, and overpayment/refund treatment
+ * are deliberately not modeled here.
+ */
+export async function computeDpPaymentState(
+  workerId: string,
+): Promise<DpPaymentStateResult | null> {
+  const config = await resolveDpChargeConfig();
+  if (!config?.account) return null;
+  const accountId = config.account;
+
+  // Balance on the DP account (positive = owed).
+  const balances = await storage.ledger.entries.getBalancesByEntityAndAccount(
+    "worker",
+    [workerId],
+    [accountId],
+  );
+  const balance = Number(balances[0]?.total ?? "0");
+
+  // Net charge per (election, DP, month) from this config's entries across
+  // the worker's elections.
+  const elections = await storage.workerTrustElections.listByWorker(workerId);
+  const entriesByElection = new Map<string, Ledger[]>();
+  for (const election of elections) {
+    const entries = await storage.ledger.entries.getByReferenceAndConfig(
+      election.id,
+      config.id,
+    );
+    entriesByElection.set(election.id, entries);
+  }
+
+  return calculateDpPaymentState({
+    accountId,
+    configId: config.id,
+    balance,
+    elections,
+    entriesByElection,
+  });
+}
+
+/**
+ * Compute DP payment states with bulk reads, bounded in chunks for very large
+ * populations. The result contains each distinct requested worker id. When no DP
+ * billing account is configured, each value is null.
+ */
+export async function computeDpPaymentStates(
+  workerIds: string[],
+): Promise<Map<string, DpPaymentStateResult | null>> {
+  const uniqueWorkerIds = Array.from(new Set(workerIds));
+  const result = new Map<string, DpPaymentStateResult | null>();
+  if (uniqueWorkerIds.length === 0) return result;
+
+  const config = await resolveDpChargeConfig();
+  if (!config?.account) {
+    for (const workerId of uniqueWorkerIds) result.set(workerId, null);
+    return result;
+  }
+
+  const accountId = config.account;
+  const balances: Array<{ entityId: string; accountId: string; total: string }> = [];
+  const elections: WorkerTrustElection[] = [];
+  // These existing storage methods bind one parameter per worker. Bound the
+  // input without splitting any worker's history across separate calculations.
+  for (let offset = 0; offset < uniqueWorkerIds.length; offset += 5_000) {
+    const chunk = uniqueWorkerIds.slice(offset, offset + 5_000);
+    const [chunkBalances, chunkElections] = await Promise.all([
+      storage.ledger.entries.getBalancesByEntityAndAccount(
+        "worker", chunk, [accountId],
+      ),
+      // listByWorker delegates to this exact sort, preserving per-worker order.
+      storage.workerTrustElections.search({ workerIds: chunk, sort: "startDesc" }),
+    ]);
+    for (const balance of chunkBalances) balances.push(balance);
+    for (const election of chunkElections) elections.push(election);
+  }
+
+  const electionIds = elections.map((election) => election.id);
+  const bulkEntries =
+    await storage.ledger.entries.getByReferencesAndConfig(electionIds, config.id);
+  const entriesByElection = new Map<string, Ledger[]>(
+    electionIds.map((electionId) => [electionId, []]),
+  );
+  for (const entry of bulkEntries) {
+    if (entry.referenceId) entriesByElection.get(entry.referenceId)?.push(entry);
+  }
+
+  const balanceByWorker = new Map(
+    balances.map((row) => [row.entityId, Number(row.total)]),
+  );
+  const electionsByWorker = new Map<string, WorkerTrustElection[]>(
+    uniqueWorkerIds.map((workerId) => [workerId, []]),
+  );
+  for (const election of elections) {
+    electionsByWorker.get(election.workerId)?.push(election);
+  }
+
+  for (const workerId of uniqueWorkerIds) {
+    result.set(
+      workerId,
+      calculateDpPaymentState({
+        accountId,
+        configId: config.id,
+        balance: balanceByWorker.get(workerId) ?? 0,
+        elections: electionsByWorker.get(workerId) ?? [],
+        entriesByElection,
+      }),
+    );
+  }
+  return result;
 }

@@ -133,6 +133,12 @@ export interface LedgerEntryStorage {
   getByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<Ledger | undefined>;
   getByReferenceAndConfig(referenceId: string, chargePluginConfigId: string): Promise<Ledger[]>;
   /**
+   * Batch variant of `getByReferenceAndConfig`. Entry order within each
+   * reference matches the single-reference loader: database rows first, then
+   * pending collector rows.
+   */
+  getByReferencesAndConfig(referenceIds: string[], chargePluginConfigId: string): Promise<Ledger[]>;
+  /**
    * Charge entries only (never payments) for one plugin configuration.
    * Reconciliation plugins use this historical sweep set after a source row
    * has been deleted.
@@ -1877,6 +1883,54 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         }
       }
       return merged;
+    },
+
+    async getByReferencesAndConfig(referenceIds: string[], chargePluginConfigId: string): Promise<Ledger[]> {
+      const uniqueReferenceIds = Array.from(new Set(referenceIds));
+      if (uniqueReferenceIds.length === 0) return [];
+
+      const client = getClient();
+      const dbEntries: Ledger[] = [];
+      // Keep well below PostgreSQL's bind-parameter ceiling. This remains a
+      // bounded bulk query per chunk rather than degrading to one query per
+      // reference/worker.
+      const referenceChunkSize = 5_000;
+      for (let start = 0; start < uniqueReferenceIds.length; start += referenceChunkSize) {
+        const chunk = uniqueReferenceIds.slice(start, start + referenceChunkSize);
+        dbEntries.push(...await client.select()
+          .from(ledger)
+          .where(and(
+            inArray(ledger.referenceId, chunk),
+            eq(ledger.chargePluginConfigId, chargePluginConfigId),
+          )));
+      }
+
+      // Match the collector-aware semantics of the single-reference loader
+      // without issuing a database query per reference.
+      const { requestContext: rc } = await import("../middleware/request-context");
+      const sink = rc.getStore()?.chargeTransactionSink;
+      if (!sink) return dbEntries;
+
+      const dbKeys = new Set(dbEntries.map((entry) => entry.chargePluginKey));
+      const pendingEntries: Ledger[] = [];
+      for (const referenceId of uniqueReferenceIds) {
+        for (const pending of sink.getPendingByReference(referenceId, chargePluginConfigId)) {
+          if (!dbKeys.has(pending.chargePluginKey)) {
+            pendingEntries.push(pending as unknown as Ledger);
+          }
+        }
+      }
+
+      // Grouping below restores DB-then-pending order for each reference.
+      const mergedByReference = new Map<string, Ledger[]>(
+        uniqueReferenceIds.map((referenceId) => [referenceId, []]),
+      );
+      for (const entry of [...dbEntries, ...pendingEntries]) {
+        if (entry.referenceId) mergedByReference.get(entry.referenceId)?.push(entry);
+      }
+      return uniqueReferenceIds.flatMap(
+        (referenceId) => mergedByReference.get(referenceId) ?? [],
+      );
     },
 
     async listByChargePluginAndConfig(
