@@ -101,7 +101,8 @@ loaders against ANY target (fresh branch or production), ensure:
   `run-scheduled-daily.ts`, which invokes exactly `sync.ts --mode daily
   --profile production`, accepts no forwarded arguments, publishes only an
   aggregate completion/finding summary to SNS, and exits nonzero whenever the
-  sync or its result contract fails. The separate 09:00 Pacific
+   sync or its result contract fails. It runs at 00:01 Pacific each Monday
+   through Friday. The separate weekday 09:00 Pacific
   `check-scheduled-daily-late.ts` task alerts if no ordinary production daily
   run has passed since local midnight. AWS setup and operator gates are in
   `docs/s1-migration/FC-ENVIRONMENT-SETUP.md` under “Automated Phase 2 daily

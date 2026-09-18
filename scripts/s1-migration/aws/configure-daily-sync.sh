@@ -70,6 +70,8 @@ command -v jq >/dev/null || { echo "jq is required" >&2; exit 2; }
 GROUP="${SCHEDULE_GROUP:-sirius-migration}"
 DAILY="${DAILY_SCHEDULE_NAME:-sirius-s1-daily}"
 LATE="${LATE_SCHEDULE_NAME:-sirius-s1-daily-late-check}"
+DAILY_EXPRESSION="cron(1 0 ? * MON-FRI *)"
+LATE_EXPRESSION="cron(0 9 ? * MON-FRI *)"
 FAILURE_RULE="${ECS_FAILURE_RULE_NAME:-sirius-s1-daily-task-failed}"
 STARTUP_FAILURE_RULE="${ECS_STARTUP_FAILURE_RULE_NAME:-sirius-s1-daily-task-start-failed}"
 
@@ -192,9 +194,9 @@ schedule_matches() {
 
 if [[ "$ACTION" == "validate" ]]; then
   if aws scheduler get-schedule-group --region "$AWS_REGION" --name "$GROUP" >/dev/null 2>&1; then
-    schedule_matches "$DAILY" "cron(0 0 * * ? *)" "$DAILY_TARGET" "DISABLED" ||
+    schedule_matches "$DAILY" "$DAILY_EXPRESSION" "$DAILY_TARGET" "DISABLED" ||
       { echo "$DAILY is missing or differs from the safe generated target" >&2; exit 1; }
-    schedule_matches "$LATE" "cron(0 9 * * ? *)" "$LATE_TARGET" "DISABLED" ||
+    schedule_matches "$LATE" "$LATE_EXPRESSION" "$LATE_TARGET" "DISABLED" ||
       { echo "$LATE is missing or differs from the safe generated target" >&2; exit 1; }
     echo "live schedules exactly match the generated task, network, commands, timezone, DLQ, and retry policy"
   else
@@ -209,8 +211,8 @@ aws scheduler get-schedule-group --region "$AWS_REGION" --name "$GROUP" >/dev/nu
 
 # Provision the complete safe targets disabled first. Monitoring must be fully
 # configured before either schedule is allowed to launch.
-upsert_schedule "$DAILY" "cron(0 0 * * ? *)" "$DAILY_TARGET" "DISABLED"
-upsert_schedule "$LATE" "cron(0 9 * * ? *)" "$LATE_TARGET" "DISABLED"
+upsert_schedule "$DAILY" "$DAILY_EXPRESSION" "$DAILY_TARGET" "DISABLED"
+upsert_schedule "$LATE" "$LATE_EXPRESSION" "$LATE_TARGET" "DISABLED"
 
 CLUSTER_NAME="${ECS_CLUSTER_ARN##*/}"
 TASK_FAMILY="$(jq -r .family <<<"$TASK_JSON")"
@@ -401,14 +403,14 @@ if [[ "$ACTION" == "enable" ]]; then
   rollback_enable() {
     set +e
     echo "enable failed; disabling both schedules" >&2
-    upsert_schedule "$DAILY" "cron(0 0 * * ? *)" "$DAILY_TARGET" "DISABLED"
-    upsert_schedule "$LATE" "cron(0 9 * * ? *)" "$LATE_TARGET" "DISABLED"
+    upsert_schedule "$DAILY" "$DAILY_EXPRESSION" "$DAILY_TARGET" "DISABLED"
+    upsert_schedule "$LATE" "$LATE_EXPRESSION" "$LATE_TARGET" "DISABLED"
   }
   trap rollback_enable ERR
-  upsert_schedule "$DAILY" "cron(0 0 * * ? *)" "$DAILY_TARGET" "ENABLED"
-  upsert_schedule "$LATE" "cron(0 9 * * ? *)" "$LATE_TARGET" "ENABLED"
-  schedule_matches "$DAILY" "cron(0 0 * * ? *)" "$DAILY_TARGET" "ENABLED"
-  schedule_matches "$LATE" "cron(0 9 * * ? *)" "$LATE_TARGET" "ENABLED"
+  upsert_schedule "$DAILY" "$DAILY_EXPRESSION" "$DAILY_TARGET" "ENABLED"
+  upsert_schedule "$LATE" "$LATE_EXPRESSION" "$LATE_TARGET" "ENABLED"
+  schedule_matches "$DAILY" "$DAILY_EXPRESSION" "$DAILY_TARGET" "ENABLED"
+  schedule_matches "$LATE" "$LATE_EXPRESSION" "$LATE_TARGET" "ENABLED"
   trap - ERR
   echo "configured and verified both schedules state=ENABLED"
 else

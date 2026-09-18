@@ -1,6 +1,7 @@
 /**
- * Runs at 09:00 America/Los_Angeles. Alerts unless today's scheduled daily
- * aggregate report exists and passed. Reads aggregate migration metadata only.
+ * Runs at 09:00 Pacific each Monday through Friday. Alerts unless today's
+ * scheduled daily aggregate report exists and passed. Reads aggregate migration
+ * metadata only.
  */
 import { pool } from "../../server/storage/db";
 import { publishS1AutomationAlert } from "./lib/sns-alert";

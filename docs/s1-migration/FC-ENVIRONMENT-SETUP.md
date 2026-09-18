@@ -330,11 +330,13 @@ scripts/s1-migration/aws/configure-daily-sync.sh validate
 scripts/s1-migration/aws/configure-daily-sync.sh apply
 ```
 
-`apply` creates/updates two **disabled**, exact-time schedules:
+`apply` creates/updates two **disabled**, exact-time weekday schedules:
 
-- `cron(0 0 * * ? *)`, `America/Los_Angeles`: one Fargate task running
+- `cron(1 0 ? * MON-FRI *)`, `America/Los_Angeles`: one Fargate task at
+  00:01 Pacific, Monday through Friday, running
   `npx tsx scripts/s1-migration/run-scheduled-daily.ts`.
-- `cron(0 9 * * ? *)`, `America/Los_Angeles`: one Fargate task running
+- `cron(0 9 ? * MON-FRI *)`, `America/Los_Angeles`: one Fargate task at
+  09:00 Pacific, Monday through Friday, running
   `npx tsx scripts/s1-migration/check-scheduled-daily-late.ts`.
 
 The named timezone, not a UTC offset, handles daylight-saving transitions.

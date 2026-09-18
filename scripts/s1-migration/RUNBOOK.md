@@ -1408,7 +1408,8 @@ pass; and final-freeze PASS after the S1 side is restored.
    run must pass once manually before the disabled EventBridge schedules
    described in `docs/s1-migration/FC-ENVIRONMENT-SETUP.md` are enabled.
    Thereafter the scheduler uses the no-argument
-   `run-scheduled-daily.ts` wrapper at midnight Pacific; it cannot forward
+    `run-scheduled-daily.ts` wrapper at 00:01 Pacific each Monday through
+    Friday; it cannot forward
    `--skip-stage`, `--force-reconcile`, per-run allowances, or dry-run flags.
    Read the aggregate
    report (console or `s1_staging.runs`). Triage rules:

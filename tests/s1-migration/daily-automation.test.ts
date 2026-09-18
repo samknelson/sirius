@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   assertNoForbiddenScheduledFlags,
@@ -22,6 +23,13 @@ const passing = {
 };
 
 describe("scheduled S1 daily automation", () => {
+  it("runs at 00:01 Pacific on weekdays with a weekday late check", () => {
+    const setup = readFileSync("scripts/s1-migration/aws/configure-daily-sync.sh", "utf8");
+    expect(setup).toContain('DAILY_EXPRESSION="cron(1 0 ? * MON-FRI *)"');
+    expect(setup).toContain('LATE_EXPRESSION="cron(0 9 ? * MON-FRI *)"');
+    expect(setup).toContain("--schedule-expression-timezone America/Los_Angeles");
+  });
+
   it("pins the wrapper command and refuses operator-only flags", () => {
     expect(DAILY_SYNC_COMMAND).toEqual(["npx", "tsx", "scripts/s1-migration/run-scheduled-daily.ts"]);
     expect(() => assertNoForbiddenScheduledFlags([])).not.toThrow();
