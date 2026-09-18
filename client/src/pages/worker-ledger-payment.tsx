@@ -74,7 +74,9 @@ function parseAccounts(value: unknown): PayableAccount[] {
       eaId: requireString(row.eaId, "eaId"),
       accountId: requireString(row.accountId, "accountId"),
       accountName: requireString(row.accountName, "accountName"),
-      currencyCode: requireCurrency(row.currencyCode),
+      // Discovery includes nonfinancial ledger units so their refusal can be
+      // displayed without preventing payment of a different, eligible account.
+      currencyCode: requireString(row.currencyCode, "currencyCode"),
       gatewayConfigId: row.gatewayConfigId == null ? null : requireString(row.gatewayConfigId, "gatewayConfigId"),
       eligible: row.eligible,
       error: typeof row.error === "string" ? row.error : undefined,

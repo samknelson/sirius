@@ -153,6 +153,28 @@ afterEach(async () => {
 });
 
 describe("worker ledger checkout", () => {
+  it("keeps USD payable when another account has nonfinancial ledger units", async () => {
+    const reason = "Online payments do not support POINTS";
+    apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
+      if (method === "GET" && url.endsWith("/ledger/payable-accounts")) return Promise.resolve([
+        { eaId: "ea-9", accountId: "account-9", accountName: "USD account", currencyCode: "USD", gatewayConfigId: "gw-stripe", eligible: true },
+        { eaId: "ea-points", accountId: "account-points", accountName: "Points account", currencyCode: "POINTS", gatewayConfigId: null, eligible: false, error: reason },
+      ]);
+      return Promise.resolve(responseFor(method, url, body));
+    });
+    await render();
+    await choose(testId("select-worker-payment-account"), "USD account");
+    await waitFor(() => expect(container?.textContent).toContain("$125.50"));
+    await inputAmount("5.00");
+    await act(async () => { testId<HTMLButtonElement>("button-select-worker-payment-method-pm-card").click(); });
+    expect(testId<HTMLButtonElement>("button-worker-start-payment").disabled).toBe(false);
+    await choose(testId("select-worker-payment-account"), `Points account — ${reason}`);
+    await waitFor(() => expect(container?.textContent).toContain(reason));
+    expect(container?.querySelector('[data-testid="text-worker-payment-paid"]')).toBeNull();
+    expect(container?.querySelector('[data-testid="button-worker-start-payment"]')).toBeNull();
+    expect(apiRequest.mock.calls.some((call) => String(call[1]).includes("eaId=ea-points"))).toBe(false);
+  });
+
   it("requires an explicit choice when multiple accounts are available", async () => {
     apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
       if (method === "GET" && url.endsWith("/ledger/payable-accounts")) return Promise.resolve([
