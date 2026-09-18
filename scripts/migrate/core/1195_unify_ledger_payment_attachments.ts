@@ -3,7 +3,7 @@ import { db } from "../../../server/db";
 import { registerMigration, type Migration } from "../../../server/services/migration-runner";
 import { logger } from "../../../server/logger";
 
-const SERVICE = "migration-1194";
+const SERVICE = "migration-1195";
 
 type LegacyReference = {
   contextId: "ledger_payment" | "ledger_payment_batch";
@@ -188,7 +188,7 @@ async function up(): Promise<void> {
 }
 
 const migration: Migration = {
-  version: 1194,
+  version: 1195,
   name: "unify_ledger_payment_attachments",
   description:
     "Adopt legacy payment and payment-batch attachment pointers into entity_files without moving files, validate ownership and representation, then retire legacy columns.",
