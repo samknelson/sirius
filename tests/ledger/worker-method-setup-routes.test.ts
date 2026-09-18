@@ -151,12 +151,15 @@ beforeEach(() => {
     },
   ]);
   h.storage.ledger.gatewayCustomers.get.mockImplementation(
-    async (entityType, entityId, gatewayConfigId) =>
-      h.customer?.entityType === entityType &&
-      h.customer.entityId === entityId &&
-      h.customer.gatewayConfigId === gatewayConfigId
-        ? h.customer
-        : undefined,
+    async (entityType, entityId, gatewayConfigId) => {
+      const customer = h.customer;
+      return customer &&
+        customer.entityType === entityType &&
+        customer.entityId === entityId &&
+        customer.gatewayConfigId === gatewayConfigId
+          ? customer
+          : undefined;
+    },
   );
   h.storage.ledger.gatewayCustomers.upsert.mockImplementation(async (row) => {
     h.customer = row;
