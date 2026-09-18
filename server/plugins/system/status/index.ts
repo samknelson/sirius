@@ -43,6 +43,7 @@ import "./plugins/user-activity";
 import "./plugins/instance";
 import "./plugins/container";
 import "./plugins/system-mode";
+import "./plugins/cron-execution";
 import "./plugins/database-connection";
 import "./plugins/database-disk";
 import "./plugins/filesystems";

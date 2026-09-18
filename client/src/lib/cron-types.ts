@@ -21,4 +21,10 @@ export interface CronJob {
   settings?: Record<string, unknown> | null;
   defaultSettings?: Record<string, unknown>;
   latestRun?: CronJobRun;
+  executionPolicy: {
+    allowed: boolean;
+    configuredValue: "enabled" | "disabled" | "missing" | "invalid";
+    reason: string;
+    requiresRestartAfterDatabaseRefresh: boolean;
+  };
 }

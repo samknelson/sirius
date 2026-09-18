@@ -9,6 +9,10 @@ import {
 import { getEnabledComponentIds } from "../modules/components";
 import { eventBus, EventType, type PluginConfigSavedPayload } from "../services/event-bus";
 import { tryAcquireAppWriteFence } from "../services/s1-write-fence";
+import {
+  assertCronExecutionAllowed,
+  getCronExecutionPolicy,
+} from "./execution-policy";
 
 /**
  * Normalized view of a cron job the scheduler operates on, projected from a
@@ -64,6 +68,21 @@ export class CronScheduler {
 
     if (this.isRunning) {
       logger.warn('Cron scheduler is already running', { service: 'cron-scheduler' });
+      return;
+    }
+
+    const policy = getCronExecutionPolicy();
+    logger.info("Cron execution policy evaluated", {
+      service: "cron-scheduler",
+      allowed: policy.allowed,
+      configuredValue: policy.configuredValue,
+      reason: policy.reason,
+    });
+    if (!policy.allowed) {
+      logger.warn("Cron scheduler suppressed for this deployment", {
+        service: "cron-scheduler",
+        reason: policy.reason,
+      });
       return;
     }
 
@@ -141,6 +160,7 @@ export class CronScheduler {
   }
 
   private async scheduleJob(job: ScheduledCronJob): Promise<void> {
+    assertCronExecutionAllowed();
     // Check if a plugin is registered for this job
     const plugin = cronPluginRegistry.get(job.name);
     if (!plugin) {
@@ -235,6 +255,10 @@ export class CronScheduler {
   }
 
   async executeJob(job: ScheduledCronJob, isManual: boolean, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<void> {
+    // This is intentionally repeated at the final shared execution boundary.
+    // Scheduled callbacks, manual runs, and future direct callers all refuse
+    // before fences, run records, plugin code, or any other side effect.
+    assertCronExecutionAllowed();
     const startedAt = new Date();
 
     // Do this before creating a "running" record or invoking plugin code.
@@ -369,6 +393,7 @@ export class CronScheduler {
   }
 
   async manualRun(jobName: string, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<void> {
+    assertCronExecutionAllowed();
     const configs = await storage.pluginConfigs.getByKindAndPlugin('cron', jobName);
 
     if (configs.length === 0) {

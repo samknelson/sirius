@@ -604,7 +604,17 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Start cron scheduler after routes are registered
   try {
     await cronScheduler.start();
-    logger.info("Cron scheduler started", { source: "startup" });
+    const { getCronExecutionPolicy } = await import("./cron/execution-policy");
+    const policy = getCronExecutionPolicy();
+    logger.info(
+      policy.allowed ? "Cron scheduler started" : "Cron scheduler suppressed",
+      {
+        source: "startup",
+        cronExecutionAllowed: policy.allowed,
+        cronExecutionConfiguration: policy.configuredValue,
+        reason: policy.reason,
+      },
+    );
   } catch (error) {
     logger.error("Failed to start cron scheduler", {
       source: "startup",
