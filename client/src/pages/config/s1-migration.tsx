@@ -21,6 +21,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import type {
+  SiriusIdOwnershipAction,
+  SiriusIdOwnershipDecision,
+} from "../../../../server/storage/workers/sirius-id-ownership-plan";
 import {
   Table,
   TableBody,
@@ -73,28 +78,6 @@ interface CollisionsPayload {
   hardBlockers: number;
   pendingRekeys: number;
   planHash: string | null;
-}
-type SiriusIdOwnershipAction =
-  | "correct"
-  | "new_claim_reserved"
-  | "mapped_rekey"
-  | "displace_generated"
-  | "source_duplicate"
-  | "source_id_missing"
-  | "source_id_non_numeric"
-  | "source_id_out_of_range"
-  | "blocked_mapping_missing"
-  | "blocked_mapping_ambiguous"
-  | "blocked_owner_native"
-  | "blocked_owner_mapping_ambiguous"
-  | "blocked_owner_entitlement_unknown";
-interface SiriusIdOwnershipDecision {
-  sourceNid: number;
-  siriusId: number | null;
-  action: SiriusIdOwnershipAction;
-  claimantWorkerId: string | null;
-  currentOwnerWorkerId: string | null;
-  detail: string;
 }
 interface RunRow {
   id: number;
@@ -179,7 +162,7 @@ const OWNERSHIP_ACTION_LABEL: Record<SiriusIdOwnershipAction, string> = {
   correct: "Correct",
   new_claim_reserved: "Reserved for new worker",
   mapped_rekey: "Repairable mapped rekey",
-  displace_generated: "Repairable generated allocation",
+  retire_shell: "Shell retirement — approval required",
   source_duplicate: "S1 duplicate — blocker",
   source_id_missing: "Missing S1 ID — blocker",
   source_id_non_numeric: "Non-numeric S1 ID — blocker",
@@ -189,15 +172,23 @@ const OWNERSHIP_ACTION_LABEL: Record<SiriusIdOwnershipAction, string> = {
   blocked_owner_native: "Native owner — review blocker",
   blocked_owner_mapping_ambiguous: "Ambiguous owner mapping — blocker",
   blocked_owner_entitlement_unknown: "Owner entitlement unknown — blocker",
+  blocked_owner_outside_scope: "Owner outside approved scope — blocker",
+  blocked_shell_retirement_not_selected: "Shell retirement not selected — blocker",
+  blocked_shell_selection_missing: "Selected shell unavailable — blocker",
+  blocked_shell_provenance_missing: "Missing shell provenance — blocker",
+  blocked_shell_provenance_ambiguous: "Ambiguous shell provenance — blocker",
+  blocked_shell_authoritative_entitlement: "Shell has authoritative entitlement — blocker",
 };
 
 function isRepairableAction(action: SiriusIdOwnershipAction): boolean {
-  return action === "mapped_rekey" || action === "displace_generated";
+  return action === "mapped_rekey" || action === "retire_shell";
 }
 
 export default function S1MigrationDashboard() {
   usePageTitle("S1 Migration");
   const [expandedRun, setExpandedRun] = useState<number | null>(null);
+  const [ownershipOpen, setOwnershipOpen] = useState(false);
+  const [stagingOpen, setStagingOpen] = useState(false);
 
   const statusQ = useQuery<StatusPayload>({ queryKey: ["/api/s1-migration/status"] });
   const collisionsQ = useQuery<CollisionsPayload>({ queryKey: ["/api/s1-migration/collisions"] });
@@ -213,9 +204,34 @@ export default function S1MigrationDashboard() {
   const latestMonth = latestRun("verify-month-parity");
 
   const ownershipReady =
-    collisions == null
+    collisionsQ.isError || collisions == null
       ? null
-      : collisions.hardBlockers === 0 && collisions.pendingRekeys === 0;
+      : collisions.stagingPresent && collisions.idMapPresent &&
+        collisions.hardBlockers === 0 && collisions.pendingRekeys === 0;
+  // Defense in depth for cached responses from before the issue-only endpoint.
+  const ownershipIssues = (collisions?.decisions ?? []).filter(
+    ({ action }) => action !== "correct" && action !== "new_claim_reserved",
+  );
+  const ownershipSummary = collisionsQ.isError
+    ? "Could not read ownership preflight. Refresh to retry."
+    : !collisions
+      ? "Ownership preflight unavailable."
+      : !collisions.stagingPresent
+        ? "Staging not present yet — preflight unavailable."
+        : !collisions.idMapPresent
+          ? "id_map missing — ownership cannot be verified."
+          : ownershipReady
+            ? `No ownership issues · ${collisions.stagedClaims} staged claims scanned`
+            : `${collisions.hardBlockers} review blocker(s) · ${collisions.pendingRekeys} repair action(s)`;
+  const stagingSummary = statusQ.isError
+    ? "Could not read staging status. Refresh to retry."
+    : !status
+      ? "Staging status unavailable."
+      : !status.stagingPresent
+        ? "Staging not present yet."
+        : status.bundles.length === 0
+          ? "No bundles staged yet."
+          : `${status.bundles.length} bundles · ${status.bundles.reduce((n, b) => n + b.rows, 0)} rows`;
 
   const checks: Array<{ id: string; label: string; state: CheckState; detail: string }> = [
     {
@@ -229,15 +245,8 @@ export default function S1MigrationDashboard() {
     {
       id: "collisions",
       label: "Sirius ID ownership preflight ready",
-      state: ownershipReady == null ? "pending" : ownershipReady ? "pass" : "fail",
-      detail:
-        ownershipReady === false
-          ? collisions && collisions.hardBlockers > 0
-            ? `${collisions.hardBlockers} ownership blocker(s) require source-data or mapping review`
-            : `${collisions?.pendingRekeys ?? 0} approved repair action(s) must be applied before the ordinary loader runs`
-          : collisions
-            ? `${collisions.stagedClaims} authoritative staged claims scanned`
-            : "",
+      state: collisionsQ.isError ? "fail" : ownershipReady == null ? "pending" : ownershipReady ? "pass" : "fail",
+      detail: ownershipSummary,
     },
     {
       id: "trust",
@@ -326,30 +335,43 @@ export default function S1MigrationDashboard() {
             </CardContent>
           </Card>
 
+          <RunHistory runs={runs} expandedRun={expandedRun} setExpandedRun={setExpandedRun} />
+
+          <Collapsible open={ownershipOpen} onOpenChange={setOwnershipOpen} asChild>
           <Card data-testid="card-collisions">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                Sirius ID ownership preflight
-                {ownershipReady === false && (
+            <CardHeader className="p-4">
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  data-testid="button-toggle-ownership"
+                >
+                  {ownershipOpen ? <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" /> : <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />}
+                  <span className="font-semibold">Sirius ID ownership preflight</span>
+                </button>
+              </CollapsibleTrigger>
+              <CardDescription className="flex flex-wrap items-center gap-2">
+                {collisionsQ.isError ? (
+                  <Badge variant="destructive">read failed</Badge>
+                ) : ownershipReady === false && (
                   <Badge variant="destructive" data-testid="badge-collisions-fatal">
-                    action required
+                    {!collisions?.stagingPresent || !collisions.idMapPresent ? "not ready" : "action required"}
                   </Badge>
                 )}
                 {ownershipReady === true && (
                   <Badge variant="secondary" data-testid="badge-collisions-clean">clean</Badge>
                 )}
-              </CardTitle>
-              <CardDescription>
+                <span>{ownershipSummary}</span>
+              </CardDescription>
+            </CardHeader>
+            <CollapsibleContent>
+            <CardContent className="space-y-4 px-4 pb-4">
+              <p className="text-sm text-muted-foreground">
                 Read-only evidence using exact S1 worker mappings. The ordinary contacts/workers
                 loader will not apply a repair. Valid S1 member numbers are never changed to
                 resolve an S2 migration allocation conflict.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {!collisions?.stagingPresent && (
-                <p className="text-sm text-muted-foreground">Staging not present yet.</p>
-              )}
-              {collisions?.stagingPresent && (
+              </p>
+              {!collisionsQ.isError && collisions?.stagingPresent && (
                 <>
                   <div className="flex flex-wrap gap-2 text-sm">
                     <Badge variant="outline">{collisions.stagedClaims} staged claims</Badge>
@@ -372,10 +394,10 @@ export default function S1MigrationDashboard() {
                   )}
                   {collisions.decisionsTruncated && (
                     <p className="text-sm text-muted-foreground">
-                      Showing the first 200 ownership decisions — the full diagnostic has more.
+                      Showing the first 200 ownership issues — the full CLI diagnostic has more.
                     </p>
                   )}
-                  {collisions.decisions.length > 0 && (
+                  {ownershipIssues.length > 0 && (
                     <Table data-testid="table-collision-duplicates">
                       <TableHeader>
                         <TableRow>
@@ -386,9 +408,9 @@ export default function S1MigrationDashboard() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {collisions.decisions.map((decision) => (
-                          <TableRow key={`${decision.sourceNid}-${decision.siriusId}`}>
-                            <TableCell className="font-mono">{decision.sourceNid}</TableCell>
+                        {ownershipIssues.map((decision, index) => (
+                          <TableRow key={`${decision.sourceNid}-${decision.siriusId}-${decision.action}-${index}`}>
+                            <TableCell className="font-mono">{decision.sourceNid ?? "—"}</TableCell>
                             <TableCell className="font-mono">{decision.siriusId ?? "—"}</TableCell>
                             <TableCell>
                               <Badge variant={
@@ -410,19 +432,39 @@ export default function S1MigrationDashboard() {
                 </>
               )}
             </CardContent>
+            </CollapsibleContent>
           </Card>
+          </Collapsible>
 
+          <Collapsible open={stagingOpen} onOpenChange={setStagingOpen} asChild>
           <Card data-testid="card-staging">
-            <CardHeader>
-              <CardTitle>Staging mirror</CardTitle>
-              <CardDescription>
+            <CardHeader className="p-4">
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  data-testid="button-toggle-staging"
+                >
+                  {stagingOpen ? <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" /> : <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />}
+                  <span className="font-semibold">Staging mirror</span>
+                </button>
+              </CollapsibleTrigger>
+              <CardDescription className="flex flex-wrap items-center gap-2">
+                {statusQ.isError ? <Badge variant="destructive">read failed</Badge> :
+                  (!status?.stagingPresent || status.bundles.length === 0) && <Badge variant="outline">not ready</Badge>}
+                <span>{stagingSummary}</span>
+              </CardDescription>
+            </CardHeader>
+            <CollapsibleContent>
+            <CardContent className="space-y-6 px-4 pb-4">
+              {!statusQ.isError && status?.stagingPresent && (
+              <p className="text-sm text-muted-foreground">
                 {status?.stagingPresent
                   ? `${status.termCount ?? 0} taxonomy terms · ${status.rawLedgerRows ?? 0} raw AR ledger rows`
                   : "s1_staging has not been created on this database"}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {status?.stagingPresent && status.bundles.length > 0 && (
+              </p>
+              )}
+              {!statusQ.isError && status?.stagingPresent && status.bundles.length > 0 && (
                 <Table data-testid="table-staging-bundles">
                   <TableHeader>
                     <TableRow>
@@ -442,7 +484,7 @@ export default function S1MigrationDashboard() {
                   </TableBody>
                 </Table>
               )}
-              {status?.stagingPresent && status.idMap.length > 0 && (
+              {!statusQ.isError && status?.stagingPresent && status.idMap.length > 0 && (
                 <div>
                   <p className="text-sm font-medium mb-2">Load progress (id_map)</p>
                   <Table data-testid="table-idmap">
@@ -468,8 +510,21 @@ export default function S1MigrationDashboard() {
                 </div>
               )}
             </CardContent>
+            </CollapsibleContent>
           </Card>
+          </Collapsible>
+        </>
+      )}
+    </div>
+  );
+}
 
+function RunHistory({ runs, expandedRun, setExpandedRun }: {
+  runs: RunRow[];
+  expandedRun: number | null;
+  setExpandedRun: (id: number | null) => void;
+}) {
+  return (
           <Card data-testid="card-runs">
             <CardHeader>
               <CardTitle>Run history</CardTitle>
@@ -568,8 +623,5 @@ export default function S1MigrationDashboard() {
               )}
             </CardContent>
           </Card>
-        </>
-      )}
-    </div>
   );
 }

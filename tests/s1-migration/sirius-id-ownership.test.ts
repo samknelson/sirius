@@ -5,9 +5,12 @@ import {
   planSiriusIdOwnership,
   projectSiriusIdOwnershipEvidence,
   siriusIdPlanHash,
+  type SiriusIdOwnershipDecision,
+  type SiriusIdOwnershipPlan,
   type SiriusIdReferenceRetention,
   type SiriusIdOwnershipSnapshot,
 } from "../../server/storage/workers/sirius-id-ownership-plan";
+import { projectSiriusIdOwnershipDashboard } from "../../server/modules/s1-migration-dashboard";
 
 const snapshot = (partial: Partial<SiriusIdOwnershipSnapshot>): SiriusIdOwnershipSnapshot => ({
   stagingPresent: true,
@@ -25,6 +28,40 @@ const shell = (id: string, siriusId: number | null, data: Record<string, unknown
   data: data == null ? null : { migrationShell: true, s1ContactNid: 91, ...data },
   workerMappings: [],
   shellMappings: [{ sourceNid: 91, stub: false, loader: "t15-relationships" }],
+});
+
+const decision = (
+  sourceNid: number,
+  action: SiriusIdOwnershipDecision["action"],
+): SiriusIdOwnershipDecision => ({
+  sourceNid,
+  siriusId: sourceNid,
+  action,
+  claimantWorkerId: null,
+  currentOwnerWorkerId: null,
+  detail: action,
+});
+
+const dashboardPlan = (
+  decisions: SiriusIdOwnershipDecision[],
+  partial: Partial<SiriusIdOwnershipPlan> = {},
+): SiriusIdOwnershipPlan => ({
+  planVersion: SIRIUS_ID_OWNERSHIP_PLAN_VERSION,
+  evidenceDigest: "dashboard-test-evidence",
+  snapshotPresent: true,
+  scope: {
+    siriusIds: null,
+    sourceNids: null,
+    retireShells: false,
+    allShells: false,
+    shellWorkerIds: null,
+  },
+  decisions,
+  rekeys: [],
+  reservations: [],
+  hardBlockers: 0,
+  pendingRekeys: 0,
+  ...partial,
 });
 
 describe("Sirius ID ownership planner", () => {
@@ -332,5 +369,90 @@ describe("Sirius ID ownership planner", () => {
       shellMappings: [{ sourceNid: 91, loader: "t15-relationships" }],
     });
     expect(JSON.stringify(projectSiriusIdOwnershipEvidence(state, plan))).not.toContain("not projected");
+  });
+
+  it("keeps a blocker visible after more than 200 healthy ownership decisions", () => {
+    const decisions = [
+      ...Array.from({ length: 201 }, (_, i) => decision(i + 1, "correct")),
+      decision(202, "blocked_owner_native"),
+    ];
+    const projection = projectSiriusIdOwnershipDashboard(snapshot({}), dashboardPlan(decisions, {
+      hardBlockers: 1,
+    }));
+
+    expect(projection.decisions).toEqual([
+      expect.objectContaining({ sourceNid: 202, action: "blocked_owner_native" }),
+    ]);
+    expect(projection.decisionsTruncated).toBe(false);
+  });
+
+  it("truncates only when the full plan contains more than 200 issue decisions", () => {
+    const healthy = [decision(1, "correct"), decision(2, "new_claim_reserved")];
+    const issues = Array.from({ length: 201 }, (_, i) => decision(i + 3, "source_id_missing"));
+    const exactly200 = projectSiriusIdOwnershipDashboard(
+      snapshot({}),
+      dashboardPlan([...healthy, ...issues.slice(0, 200)]),
+    );
+    const moreThan200 = projectSiriusIdOwnershipDashboard(
+      snapshot({}),
+      dashboardPlan([...healthy, ...issues]),
+    );
+
+    expect(exactly200.decisions).toHaveLength(200);
+    expect(exactly200.decisionsTruncated).toBe(false);
+    expect(moreThan200.decisions).toHaveLength(200);
+    expect(moreThan200.decisionsTruncated).toBe(true);
+  });
+
+  it("omits clean decisions while preserving full-plan counts, totals, and hash", () => {
+    const decisions = [
+      decision(1, "correct"),
+      decision(2, "correct"),
+      decision(3, "new_claim_reserved"),
+      decision(4, "mapped_rekey"),
+      decision(5, "blocked_mapping_missing"),
+    ];
+    const plan = dashboardPlan(decisions, {
+      hardBlockers: 1,
+      pendingRekeys: 7,
+      rekeys: [{
+        workerId: "worker-4",
+        fromSiriusId: 40,
+        toSiriusId: 4,
+        reason: "mapped_rekey",
+        sourceNid: 4,
+      }],
+    });
+    const projection = projectSiriusIdOwnershipDashboard(snapshot({}), plan);
+
+    expect(projection.decisions.map(({ action }) => action))
+      .toEqual(["mapped_rekey", "blocked_mapping_missing"]);
+    expect(projection.actionCounts).toEqual({
+      correct: 2,
+      new_claim_reserved: 1,
+      mapped_rekey: 1,
+      blocked_mapping_missing: 1,
+    });
+    expect(projection.hardBlockers).toBe(1);
+    expect(projection.pendingRekeys).toBe(7);
+    expect(projection.planHash).toBe(siriusIdPlanHash(plan));
+  });
+
+  it("preserves the missing-staging dashboard response semantics", () => {
+    expect(projectSiriusIdOwnershipDashboard(snapshot({
+      stagingPresent: false,
+      idMapPresent: false,
+      claims: [{ sourceNid: 10, rawSiriusId: "100", siriusId: 100, sourceIdProblem: null }],
+    }), null)).toEqual({
+      stagingPresent: false,
+      idMapPresent: false,
+      stagedClaims: 0,
+      decisions: [],
+      decisionsTruncated: false,
+      actionCounts: {},
+      hardBlockers: 1,
+      pendingRekeys: 0,
+      planHash: null,
+    });
   });
 });

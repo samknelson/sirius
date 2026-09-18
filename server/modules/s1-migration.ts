@@ -24,11 +24,10 @@ import { db } from "./../storage/db";
 import { storage } from "../storage/database";
 import {
   planSiriusIdOwnership,
-  siriusIdPlanHash,
-  type SiriusIdOwnershipAction,
 } from "../storage/workers/sirius-id-ownership-plan";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
+import { projectSiriusIdOwnershipDashboard } from "./s1-migration-dashboard";
 
 export const S1_MIGRATION_COMPONENT_ID = "sitespecific.bao.s1migration";
 
@@ -176,35 +175,10 @@ export function registerS1MigrationRoutes(app: Express, requireAuth: RequestHand
     try {
       const snapshot = await storage.workers.getMigrationSiriusIdOwnershipSnapshot();
       if (!snapshot.stagingPresent) {
-        return res.json({
-          stagingPresent: false,
-          idMapPresent: snapshot.idMapPresent,
-          stagedClaims: 0,
-          decisions: [],
-          decisionsTruncated: false,
-          actionCounts: {},
-          hardBlockers: 1,
-          pendingRekeys: 0,
-          planHash: null,
-        });
+        return res.json(projectSiriusIdOwnershipDashboard(snapshot, null));
       }
       const plan = planSiriusIdOwnership(snapshot);
-      const actionCounts: Partial<Record<SiriusIdOwnershipAction, number>> = {};
-      for (const decision of plan.decisions) {
-        actionCounts[decision.action] = (actionCounts[decision.action] ?? 0) + 1;
-      }
-      const DECISION_LIMIT = 200;
-      res.json({
-        stagingPresent: true,
-        idMapPresent: snapshot.idMapPresent,
-        stagedClaims: snapshot.claims.length,
-        decisions: plan.decisions.slice(0, DECISION_LIMIT),
-        decisionsTruncated: plan.decisions.length > DECISION_LIMIT,
-        actionCounts,
-        hardBlockers: plan.hardBlockers,
-        pendingRekeys: plan.pendingRekeys,
-        planHash: siriusIdPlanHash(plan),
-      });
+      res.json(projectSiriusIdOwnershipDashboard(snapshot, plan));
     } catch (e) {
       console.error("s1-migration ownership plan failed:", e);
       res.status(500).json({ message: "Failed to read Sirius ID ownership plan" });
