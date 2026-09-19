@@ -237,13 +237,13 @@ Task definition requirements:
   with health checks), and disable any scheduler-imposed stop.
 - Run steps **sequentially** (one task at a time) per the §3 load order;
   bootstrap/seed concurrency is refused by an advisory lock anyway.
-- **Production network:** launch in private subnets of production VPC
-  `vpc-08bed2ce763bc0b15`, with the approved migration security groups and
-  `assignPublicIp=DISABLED`. S1 is reached through production VPC peering;
-  public-disabled Neon is reached through PrivateLink/private DNS. Required
-  ECR, S3, Secrets Manager, and CloudWatch Logs endpoints or NAT egress must
-  exist for task startup. The exact command and sanitized evidence contract
-  are in `docs/s1-migration/FC-ENVIRONMENT-SETUP.md`.
+- **Production network:** launch in both public task subnets of production VPC
+  `vpc-08bed2ce763bc0b15`, with the approved migration security group and
+  `assignPublicIp=ENABLED`. This matches every proven production migration run;
+  the VPC has no NAT gateway. S1 is reached through production VPC peering and
+  public-disabled Neon through PrivateLink/private DNS. The exact command and
+  sanitized evidence contract are in
+  `docs/s1-migration/FC-ENVIRONMENT-SETUP.md`.
 
 Running the image with no command prints usage and exits — nothing touches a
 database without an explicit runbook command.
@@ -1444,8 +1444,8 @@ pass; and final-freeze PASS after the S1 side is restored.
 Record PASS/FAIL, timestamp, task ARN/revision, and image digest. Never record
 URLs, credentials, hostnames, IP addresses, database names, or source rows.
 
-- [ ] Exact production task definition and private subnets/security groups in
-  `vpc-08bed2ce763bc0b15`; public IP disabled.
+- [ ] Exact production task definition, both public task subnets, and dedicated
+  migration security group in `vpc-08bed2ce763bc0b15`; public IP enabled.
 - [ ] Private-connectivity preflight exit 0: both DNS checks report
   `allPrivate=true`, and both read-only database probes are reachable.
 - [ ] Image digest matches the approved frozen commit.

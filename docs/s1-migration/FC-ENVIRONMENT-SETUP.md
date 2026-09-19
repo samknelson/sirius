@@ -11,9 +11,11 @@ account IDs, or connection strings to this file.
 
 ## Architecture
 
-- **Runner VPC:** production VPC `vpc-08bed2ce763bc0b15`. Every migration
-  one-off uses private subnets and the production migration/container security
-  group, with `assignPublicIp=DISABLED`.
+- **Runner VPC:** production VPC `vpc-08bed2ce763bc0b15`. Migration one-offs
+  use the two production public task subnets and the dedicated migration
+  security group, with `assignPublicIp=ENABLED`. This is the proven launch
+  configuration; the subnets route through the VPC Internet Gateway and have
+  no NAT gateway.
 - **S1 source:** RDS MariaDB reached from the production VPC through the
   production-to-S1 VPC peering route. The restored/frozen source and its
   security group admit port 3306 from the migration task security group.
@@ -33,9 +35,8 @@ account IDs, or connection strings to this file.
 
 ### Production task-start dependencies
 
-Private tasks still need control-plane access before the container starts.
-The private subnets must have either NAT egress or VPC endpoints (with private
-DNS and security-group access) for:
+Tasks need control-plane access before the container starts. The approved
+public-subnet/public-IP launch provides that path for:
 
 - ECR API and ECR Docker registry (plus the S3 gateway path used for image
   layers);
@@ -43,10 +44,10 @@ DNS and security-group access) for:
 - CloudWatch Logs, for `awslogs`.
 
 DNS resolution and network ACLs must also permit the S1 peering route and the
-Neon PrivateLink endpoint. Missing startup endpoints usually appear as
+Neon PrivateLink endpoint. Missing startup connectivity usually appears as
 `ResourceInitializationError`; missing database routes appear only after the
 container starts. Infrastructure owners fix those paths. Do not change
-connection strings, enable public Neon access, or add public IPs as a bypass.
+connection strings or enable public Neon access as a bypass.
 
 ## One-time setup (persists in the AWS account)
 
@@ -186,7 +187,7 @@ aws ecs run-task --region us-west-2 \
   --cluster <cluster> \
   --launch-type FARGATE \
   --task-definition sirius-migration \
-  --network-configuration 'awsvpcConfiguration={subnets=[<production private subnets>],securityGroups=[<production migration SGs>],assignPublicIp=DISABLED}' \
+  --network-configuration 'awsvpcConfiguration={subnets=[<production public task subnets>],securityGroups=[<production migration SGs>],assignPublicIp=ENABLED}' \
   --overrides '{"containerOverrides":[{"name":"migration","command":["npx","tsx","scripts/s1-migration/<step>"]}]}'
 ```
 
@@ -244,8 +245,8 @@ hours/log-notes/packet-tags.
 ## Values to save (private worksheet — NOT in the repo)
 
 - AWS account ID, region (us-west-2), FC ECS cluster name, FC web service name
-- Production migration network config (private subnets, security groups,
-  `assignPublicIp=DISABLED`)
+- Production migration network config (both public task subnets, dedicated
+  migration security group, `assignPublicIp=ENABLED`)
 - FC execution role ARN
 - `migration-taskdef.json` (full file)
 - RDS copy: instance identifier, endpoint, master username/password,
@@ -294,9 +295,9 @@ manual rerun only after confirming that the earlier task is stopped.
 2. Register an immutable migration task revision whose image is pinned as
    `repository@sha256:...` (a tag, including a commit tag, is not sufficient)
    containing
-   this code. Keep the same image, two secret mappings, execution role, private
-   subnets, security groups, and `assignPublicIp=DISABLED` for preflight,
-   manual proof, and scheduled launches.
+   this code. Keep the same image, two secret mappings, execution role, public
+   task subnets, dedicated migration security group, and
+   `assignPublicIp=ENABLED` for preflight, manual proof, and scheduled launches.
 3. Give the task role only `sns:Publish` to the migration alert topic. Give the
    Scheduler role only `ecs:RunTask` on the pinned task revision and
    `iam:PassRole` for its task/execution roles, plus `sqs:SendMessage` to the
@@ -340,9 +341,10 @@ scripts/s1-migration/aws/configure-daily-sync.sh apply
   `npx tsx scripts/s1-migration/check-scheduled-daily-late.ts`.
 
 The named timezone, not a UTC offset, handles daylight-saving transitions.
-Both targets use task count 1, no public IP, zero Scheduler retries, and the
-same SQS dead-letter queue. Alarm on that queue's visible-message count and
-retain its messages until an operator has reviewed each launch failure.
+Both targets use task count 1, the proven public-IP launch configuration, zero
+Scheduler retries, and the same SQS dead-letter queue. Alarm on that queue's
+visible-message count and retain its messages until an operator has reviewed
+each launch failure.
 
 ### Required enable gate
 

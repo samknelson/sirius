@@ -10,7 +10,7 @@ Required environment:
   ECS_CLUSTER_ARN               production cluster ARN
   MIGRATION_TASK_DEFINITION     proven migration task definition ARN:revision
   MIGRATION_CONTAINER_NAME      normally migration
-  PRIVATE_SUBNET_IDS            comma-separated production private subnet IDs
+  PRIVATE_SUBNET_IDS            comma-separated production task subnet IDs
   SECURITY_GROUP_IDS            comma-separated production migration SG IDs
   SCHEDULER_ROLE_ARN            role allowed to ecs:RunTask and iam:PassRole
   S1_SYNC_ALERT_TOPIC_ARN       SNS topic for the operator distribution list
@@ -126,7 +126,7 @@ TARGET_BASE="$(jq -n \
         awsvpcConfiguration: {
           Subnets: $subnets,
           SecurityGroups: $sgs,
-          AssignPublicIp: "DISABLED"
+          AssignPublicIp: "ENABLED"
         }
       }
     }
@@ -154,7 +154,7 @@ LATE_TARGET="$(jq \
     }]
   } | tojson)}' <<<"$TARGET_BASE")"
 
-echo "validated taskDefinition=$TASK_ARN image=$IMAGE publicIp=DISABLED timezone=America/Los_Angeles"
+echo "validated taskDefinition=$TASK_ARN image=$IMAGE publicIp=ENABLED timezone=America/Los_Angeles"
 echo "validated taskRole=$TASK_ROLE_ARN executionRole=$EXECUTION_ROLE_ARN taskCount=1 retries=0"
 
 upsert_schedule() {
@@ -397,7 +397,7 @@ echo "configured Scheduler/DLQ alarms plus ECS startup/nonzero-exit rules for cl
 echo "manual proof command uses the exact daily target:"
 printf 'aws ecs run-task --region %q --cluster %q --launch-type FARGATE --task-definition %q --network-configuration %q --overrides %q\n' \
   "$AWS_REGION" "$ECS_CLUSTER_ARN" "$TASK_ARN" \
-  "awsvpcConfiguration={subnets=[$PRIVATE_SUBNET_IDS],securityGroups=[$SECURITY_GROUP_IDS],assignPublicIp=DISABLED}" \
+  "awsvpcConfiguration={subnets=[$PRIVATE_SUBNET_IDS],securityGroups=[$SECURITY_GROUP_IDS],assignPublicIp=ENABLED}" \
   "$(jq -r .Input <<<"$DAILY_TARGET")"
 if [[ "$ACTION" == "enable" ]]; then
   rollback_enable() {

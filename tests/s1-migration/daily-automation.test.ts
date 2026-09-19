@@ -28,6 +28,8 @@ describe("scheduled S1 daily automation", () => {
     expect(setup).toContain('DAILY_EXPRESSION="cron(1 0 ? * MON-FRI *)"');
     expect(setup).toContain('LATE_EXPRESSION="cron(0 9 ? * MON-FRI *)"');
     expect(setup).toContain("--schedule-expression-timezone America/Los_Angeles");
+    expect(setup).toContain('AssignPublicIp: "ENABLED"');
+    expect(setup).toContain("assignPublicIp=ENABLED");
   });
 
   it("pins the wrapper command and refuses operator-only flags", () => {
