@@ -63,6 +63,11 @@ type RunSheet = {
   message?: string;
   details?: string;
 };
+type RunRecordCounts = {
+  crews: { created: number; updated: number };
+  assignments: { created: number; updated: number };
+  workers: { created: number; updated: number };
+};
 type RunStatus = {
   status: StatusName;
   label: string;
@@ -71,6 +76,7 @@ type RunStatus = {
   created: number;
   updated: number;
   failed: number;
+  records: RunRecordCounts;
   page: number;
   nextPage: number;
   complete: boolean;
@@ -135,6 +141,26 @@ function SheetOutcomeBadge({ outcome }: { outcome: SheetOutcome }) {
   return <Badge variant="secondary">{outcome === "would_create" ? "Would create" : "Would update"}</Badge>;
 }
 
+function RecordCountSummary({
+  records,
+  mode,
+}: {
+  records: RunRecordCounts;
+  mode?: "test" | "live";
+}) {
+  const createLabel = mode === "test" ? "would create" : "created";
+  const updateLabel = mode === "test" ? "would update" : "updated";
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      {(["crews", "assignments", "workers"] as const).map((kind) => (
+        <span key={kind}>
+          {kind}: {records[kind].created} {createLabel}, {records[kind].updated} {updateLabel}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function StatusRow({ name, cursor, outcome, mode }: {
   name: StatusName;
   cursor?: Cursor;
@@ -163,12 +189,15 @@ function StatusRow({ name, cursor, outcome, mode }: {
         sweep {formatDate(cursor?.sweepStartedAt)}
       </div>
       {outcome ? (
-        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <span>{outcome.fetched} fetched</span>
-          <span>{outcome.valid} valid</span>
-          <span>{outcome.created} {mode === "test" ? "would create" : "created"}</span>
-          <span>{outcome.updated} {mode === "test" ? "would update" : "updated"}</span>
-          {outcome.failed > 0 && <span className="font-medium text-destructive">{outcome.failed} failed</span>}
+        <div className="space-y-1">
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span>{outcome.fetched} fetched</span>
+            <span>{outcome.valid} valid</span>
+            <span>{outcome.created} {mode === "test" ? "would create" : "created"}</span>
+            <span>{outcome.updated} {mode === "test" ? "would update" : "updated"}</span>
+            {outcome.failed > 0 && <span className="font-medium text-destructive">{outcome.failed} failed</span>}
+          </div>
+          <RecordCountSummary records={outcome.records} mode={mode} />
         </div>
       ) : (
         <div className="text-xs text-muted-foreground">No outcome in this session</div>
@@ -354,12 +383,15 @@ export default function MigrateSheets() {
                         {item.fetch.responseShape ? ` · response ${item.fetch.responseShape}` : ""}
                       </p>
                     </div>
-                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                      <span>{item.fetched} fetched</span>
-                      <span>{item.valid} succeeded</span>
-                      <span>{item.created} {latestRun.mode === "test" ? "would create" : "created"}</span>
-                      <span>{item.updated} {latestRun.mode === "test" ? "would update" : "updated"}</span>
-                      <span className={item.failed ? "font-medium text-destructive" : ""}>{item.failed} failed</span>
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <span>{item.fetched} fetched</span>
+                        <span>{item.valid} succeeded</span>
+                        <span>{item.created} {latestRun.mode === "test" ? "would create" : "created"}</span>
+                        <span>{item.updated} {latestRun.mode === "test" ? "would update" : "updated"}</span>
+                        <span className={item.failed ? "font-medium text-destructive" : ""}>{item.failed} failed</span>
+                      </div>
+                      <RecordCountSummary records={item.records} mode={latestRun.mode} />
                     </div>
                   </div>
 

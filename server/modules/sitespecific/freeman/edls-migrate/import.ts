@@ -87,12 +87,19 @@ interface FreemanMigrateSheetResult {
   details?: string;
 }
 
+interface FreemanMigrateRecordCounts {
+  crews: { created: number; updated: number };
+  assignments: { created: number; updated: number };
+  workers: { created: number; updated: number };
+}
+
 export interface FreemanMigrateReport {
   mode: "test" | "live";
   limit: number;
   statuses: Array<{
     status: FreemanMigrateStatus; label: string;
     fetched: number; valid: number; created: number; updated: number; failed: number;
+    records: FreemanMigrateRecordCounts;
     page: number; nextPage: number; complete: boolean;
     request: {
       status: FreemanMigrateStatus;
@@ -111,6 +118,24 @@ export interface FreemanMigrateReport {
   }>;
   startedAt: string;
   durationMs: number;
+}
+
+function emptyRecordCounts(): FreemanMigrateRecordCounts {
+  return {
+    crews: { created: 0, updated: 0 },
+    assignments: { created: 0, updated: 0 },
+    workers: { created: 0, updated: 0 },
+  };
+}
+
+function addRecordCounts(
+  target: FreemanMigrateRecordCounts,
+  source: FreemanMigrateRecordCounts,
+): void {
+  for (const kind of ["crews", "assignments"] as const) {
+    target[kind].created += source[kind].created;
+    target[kind].updated += source[kind].updated;
+  }
 }
 
 class FreemanMigrateReportedError extends Error {
@@ -471,13 +496,25 @@ function parseWorkerName(source: Record<string, unknown>): { displayName: string
   return { displayName: raw, given, family };
 }
 
+interface ResolvedWorker {
+  id: string;
+  kind: "created" | "updated";
+}
+
+interface FreemanMigratePlanState {
+  workers: Map<string, string>;
+  assignmentOwners: Map<string, string>;
+  replacedSheetIds: Set<string>;
+}
+
 async function resolveWorker(
   source: Record<string, unknown>,
   live: boolean,
   employerId: string,
   ymd: string,
   fallbackKey: string,
-): Promise<string | null> {
+  planState?: FreemanMigratePlanState,
+): Promise<ResolvedWorker | null> {
   const sourceId = text(pick(source, "worker_id", "workerId", "sirius_id", "siriusId", "id"));
   const employeeId = text(pick(source, "worker_empid", "employee_id", "employeeId"));
   const client = getClient();
@@ -490,6 +527,15 @@ async function resolveWorker(
   const existingEin = employeeId && einTypeId
     ? await storage.workerIds.getWorkerIdByTypeAndValue(einTypeId, employeeId)
     : undefined;
+  const sourceAliases = [
+    ...(sourceId ? [`worker-id:${sourceId}`] : []),
+    ...(employeeId ? [`employee-id:${employeeId}`] : []),
+  ];
+  const sourceKey = sourceAliases[0] ?? `assignment:${fallbackKey}`;
+  const rememberAliases = (workerId: string, aliases: string[]) => {
+    if (live) return;
+    for (const alias of aliases) planState?.workers.set(alias, workerId);
+  };
   if (sourceId && /^\d+$/.test(sourceId)) {
     const [found] = await client.select({ id: workers.id }).from(workers).where(eq(workers.siriusId, Number(sourceId)));
     if (found) {
@@ -500,19 +546,16 @@ async function resolveWorker(
         await storage.workerIds.createWorkerId({ workerId: found.id, typeId: einTypeId, value: employeeId });
       }
       if (live) await ensureWorkerEmployment(found.id, employerId, ymd);
-      return found.id;
+      rememberAliases(found.id, sourceAliases);
+      return { id: found.id, kind: "updated" };
     }
   }
   if (existingEin) {
     if (live) await ensureWorkerEmployment(existingEin.workerId, employerId, ymd);
-    return existingEin.workerId;
+    rememberAliases(existingEin.workerId, [`employee-id:${employeeId}`]);
+    return { id: existingEin.workerId, kind: "updated" };
   }
   const parsedName = parseWorkerName(source);
-  const sourceKey = sourceId
-    ? `worker-id:${sourceId}`
-    : employeeId
-      ? `employee-id:${employeeId}`
-      : `assignment:${fallbackKey}`;
   const existingPlaceholders = await client.select({ id: workers.id }).from(workers)
     .where(sql`${workers.data}->'freemanMigration'->>'sourceKey' = ${sourceKey}`);
   if (existingPlaceholders.length > 1) {
@@ -520,9 +563,23 @@ async function resolveWorker(
   }
   if (existingPlaceholders[0]) {
     if (live) await ensureWorkerEmployment(existingPlaceholders[0].id, employerId, ymd);
-    return existingPlaceholders[0].id;
+    rememberAliases(existingPlaceholders[0].id, [sourceKey]);
+    return { id: existingPlaceholders[0].id, kind: "updated" };
   }
-  if (!live) return `planned-worker:${sourceKey}`;
+  if (!live) {
+    const planned = sourceAliases
+      .map((alias) => planState?.workers.get(alias))
+      .find((id): id is string => Boolean(id));
+    if (planned) {
+      for (const alias of sourceAliases) planState?.workers.set(alias, planned);
+      return { id: planned, kind: "updated" };
+    }
+    const id = `planned-worker:${sourceKey}`;
+    for (const alias of sourceAliases.length ? sourceAliases : [sourceKey]) {
+      planState?.workers.set(alias, id);
+    }
+    return { id, kind: "created" };
+  }
   const { displayName, family, given } = parsedName;
   const worker = await storage.workers.createWorkerWithNameParts({ given, family, displayName });
   if (employeeId && einTypeId) {
@@ -541,7 +598,7 @@ async function resolveWorker(
       },
     },
   }).where(eq(workers.id, worker.id)).returning({ id: workers.id });
-  return updated?.id ?? worker.id;
+  return { id: updated?.id ?? worker.id, kind: "created" };
 }
 
 async function ensureWorkerEmployment(
@@ -583,6 +640,20 @@ function sourceCrew(sheet: Record<string, unknown>): unknown[] {
 function sourceAssignments(crew: Record<string, unknown>): unknown[] {
   return list(pick(crew, "assignments", "workers", "crew_workers", "crewWorkers"));
 }
+function sourceCrewIdentity(crew: Record<string, unknown>, index: number): string {
+  const sourceId = text(pick(crew, "uuid", "id"));
+  return sourceId ? `source:${sourceId}` : `sequence:${index}`;
+}
+function incrementCount(counts: Map<string, number>, key: string): void {
+  counts.set(key, (counts.get(key) ?? 0) + 1);
+}
+function consumeCount(counts: Map<string, number>, key: string): boolean {
+  const remaining = counts.get(key) ?? 0;
+  if (remaining <= 0) return false;
+  if (remaining === 1) counts.delete(key);
+  else counts.set(key, remaining - 1);
+  return true;
+}
 
 async function resolveCrewlead(
   siriusId: string | null,
@@ -607,7 +678,13 @@ async function reconcileSheet(
   status: FreemanMigrateStatus,
   live: boolean,
   employerId: string,
-): Promise<{ kind: "created" | "updated"; sheetId?: string }> {
+  planState?: FreemanMigratePlanState,
+): Promise<{
+  kind: "created" | "updated";
+  sheetId?: string;
+  records: FreemanMigrateRecordCounts;
+  workers: Array<{ id: string; kind: "created" | "updated" }>;
+}> {
   const sheet = record(source);
   const nid = sourceNid(pick(sheet, "nid", "node_id", "nodeId", "id"));
   if (!nid) {
@@ -638,27 +715,37 @@ async function reconcileSheet(
   });
   const crews = sourceCrew(sheet);
   const crewPlans: Array<{
+    identity: string;
     input: CrewInput;
-    assignments: Array<{ workerId: string; data: Record<string, unknown> }>;
+    assignments: Array<{
+      workerId: string;
+      workerKind: "created" | "updated";
+      data: Record<string, unknown>;
+    }>;
   }> = [];
   for (let index = 0; index < crews.length; index++) {
     const crew = record(crews[index]);
     const assignments = sourceAssignments(crew);
-    const crewIdentity = text(pick(crew, "uuid", "id")) ?? String(index);
+    const crewIdentity = sourceCrewIdentity(crew, index);
     const freemanCrewLeadId = await resolveCrewlead(
       text(pick(crew, "crewlead", "crew_lead", "crewLead")),
       live,
     );
-    const workersResolved: Array<{ workerId: string; data: Record<string, unknown> }> = [];
+    const workersResolved: Array<{
+      workerId: string;
+      workerKind: "created" | "updated";
+      data: Record<string, unknown>;
+    }> = [];
     for (let assignmentIndex = 0; assignmentIndex < assignments.length; assignmentIndex++) {
       const assignment = assignments[assignmentIndex];
       const assignmentRecord = record(assignment);
-      const workerId = await resolveWorker(
+      const resolvedWorker = await resolveWorker(
         assignmentRecord,
         live,
         employerId,
         ymd,
         `${nid}:${crewIdentity}:${assignmentIndex}`,
+        planState,
       );
       const extra = record(assignmentRecord.assignment_extra);
       const classificationId = await resolveNamed(
@@ -666,9 +753,10 @@ async function reconcileSheet(
         text(pick(extra, "classification")),
         live,
       );
-      if (workerId) {
+      if (resolvedWorker) {
         workersResolved.push({
-          workerId,
+          workerId: resolvedWorker.id,
+          workerKind: resolvedWorker.kind,
           data: {
             startTime: text(pick(extra, "time")),
             note: text(pick(extra, "note")),
@@ -681,6 +769,7 @@ async function reconcileSheet(
     const count = numberValue(pick(crew, "worker_count", "workerCount", "count"), workersResolved.length);
     const taskId = await resolveNamed(optionsEdlsTasks, text(pick(crew, "task", "task_name", "taskName")), live, { departmentId });
     crewPlans.push({
+      identity: crewIdentity,
       input: {
         title: text(pick(crew, "title", "name")) ?? `Freeman crew ${index + 1}`,
         workerCount: Math.max(count, workersResolved.length),
@@ -711,34 +800,102 @@ async function reconcileSheet(
   const [existingByNid] = await client.select().from(edlsSheets)
     .where(sql`${edlsSheets.data}->'freemanMigration'->>'nid' = ${nid}`);
   const existing = mapped ?? existingByNid;
+  const records = emptyRecordCounts();
+  const workerKinds = new Map<string, "created" | "updated">();
+  for (const plan of crewPlans) {
+    for (const assignment of plan.assignments) {
+      const previous = workerKinds.get(assignment.workerId);
+      workerKinds.set(
+        assignment.workerId,
+        previous === "created" || assignment.workerKind === "created"
+          ? "created"
+          : "updated",
+      );
+    }
+  }
+  for (const kind of workerKinds.values()) records.workers[kind]++;
+
+  const existingCrewIdentityCounts = new Map<string, number>();
+  const existingAssignmentWorkerCounts = new Map<string, number>();
+  if (existing) {
+    const existingCrews = await storage.edlsCrews.getBySheetId(existing.id);
+    for (const existingCrew of existingCrews) {
+      const migration = record(record(existingCrew.data).freemanMigration);
+      const existingSource = record(migration.source);
+      incrementCount(
+        existingCrewIdentityCounts,
+        sourceCrewIdentity(existingSource, existingCrew.sequence),
+      );
+      for (const assignment of await storage.edlsAssignments.getByCrewId(existingCrew.id)) {
+        incrementCount(existingAssignmentWorkerCounts, assignment.workerId);
+      }
+    }
+  }
+  for (const plan of crewPlans) {
+    if (consumeCount(existingCrewIdentityCounts, plan.identity)) records.crews.updated++;
+    else records.crews.created++;
+    if (status === "trash") continue;
+    for (const assignment of plan.assignments) {
+      if (consumeCount(existingAssignmentWorkerCounts, assignment.workerId)) {
+        records.assignments.updated++;
+      } else {
+        records.assignments.created++;
+      }
+    }
+  }
   if (!live) {
     await validateEdlsSheet.validateOrThrow({
       workerCount: finalWorkerCount,
       _crews: crewInputs,
     });
     const seenAssignments = new Set<string>();
-    for (const plan of crewPlans) {
-      for (const assignment of plan.assignments) {
-        const key = `${ymd}:${assignment.workerId}`;
-        if (seenAssignments.has(key)) {
-          throw new Error("The same worker is assigned more than once on this date.");
-        }
-        seenAssignments.add(key);
-        if (assignment.workerId.startsWith("planned-worker:")) continue;
-        const conflicts = await client.select({
-          sheetId: edlsCrews.sheetId,
-        }).from(edlsAssignments)
-          .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
-          .where(and(
-            eq(edlsAssignments.ymd, ymd),
-            eq(edlsAssignments.workerId, assignment.workerId),
-          ));
-        if (conflicts.some((conflict) => conflict.sheetId !== existing?.id)) {
-          throw new Error("A worker already has an assignment on this date.");
+    const assignmentKeys: string[] = [];
+    const assignmentOwner = existing?.id ?? `planned-sheet:${nid}`;
+    if (status !== "trash") {
+      for (const plan of crewPlans) {
+        for (const assignment of plan.assignments) {
+          const key = `${ymd}:${assignment.workerId}`;
+          if (seenAssignments.has(key)) {
+            throw new Error("The same worker is assigned more than once on this date.");
+          }
+          seenAssignments.add(key);
+          assignmentKeys.push(key);
+          const plannedOwner = planState?.assignmentOwners.get(key);
+          if (plannedOwner && plannedOwner !== assignmentOwner) {
+            throw new Error("A worker already has an assignment on this date.");
+          }
+          if (assignment.workerId.startsWith("planned-worker:")) continue;
+          const conflicts = await client.select({
+            sheetId: edlsCrews.sheetId,
+          }).from(edlsAssignments)
+            .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
+            .where(and(
+              eq(edlsAssignments.ymd, ymd),
+              eq(edlsAssignments.workerId, assignment.workerId),
+            ));
+          if (conflicts.some((conflict) => (
+            conflict.sheetId !== existing?.id
+            && !planState?.replacedSheetIds.has(conflict.sheetId)
+          ))) {
+            throw new Error("A worker already has an assignment on this date.");
+          }
         }
       }
     }
-    return { kind: existing ? "updated" : "created" };
+    if (planState) {
+      for (const [key, owner] of planState.assignmentOwners) {
+        if (owner === assignmentOwner) planState.assignmentOwners.delete(key);
+      }
+      for (const key of assignmentKeys) {
+        planState.assignmentOwners.set(key, assignmentOwner);
+      }
+      if (existing) planState.replacedSheetIds.add(existing.id);
+    }
+    return {
+      kind: existing ? "updated" : "created",
+      records,
+      workers: Array.from(workerKinds, ([id, kind]) => ({ id, kind })),
+    };
   }
   const data = {
     freemanMigration: {
@@ -774,13 +931,25 @@ async function reconcileSheet(
   }
   const targetId = result.sheet.id;
   await storage.freemanEdlsMigrateStaging.setTargetSheetId(nid, targetId, sheet);
-  return { kind: result.kind, sheetId: targetId };
+  return {
+    kind: result.kind,
+    sheetId: targetId,
+    records,
+    workers: Array.from(workerKinds, ([id, kind]) => ({ id, kind })),
+  };
 }
 
 const STATUS_LABELS: Record<FreemanMigrateStatus, string> = {
   draft: "Draft", request: "Requested", lock: "Scheduled", trash: "Discarded", reserved: "Reserved",
 };
-async function runStatus(status: FreemanMigrateStatus, cursor: z.infer<typeof progressSchema>, limit: number, mode: "test" | "live", employerId: string) {
+async function runStatus(
+  status: FreemanMigrateStatus,
+  cursor: z.infer<typeof progressSchema>,
+  limit: number,
+  mode: "test" | "live",
+  employerId: string,
+  planState: FreemanMigratePlanState,
+) {
   const result = await wcRequest({
     vendor: { pluginId: FREEMAN_EDLS_MIGRATE_PLUGIN_ID },
     operation: FREEMAN_EDLS_FETCH_SHEETS_OPERATION,
@@ -813,15 +982,39 @@ async function runStatus(status: FreemanMigrateStatus, cursor: z.infer<typeof pr
   const unwrapped = unwrapSheets(result.value.data);
   const sheets = unwrapped.sheets;
   let created = 0; let updated = 0;
+  const records = emptyRecordCounts();
+  const statusWorkers = new Map<string, "created" | "updated">();
   const sheetResults: FreemanMigrateSheetResult[] = [];
   for (const sheet of sheets) {
     const identity = sourceIdentity(sheet);
     try {
+      const sheetPlanState = mode === "test"
+        ? {
+          workers: new Map(planState.workers),
+          assignmentOwners: new Map(planState.assignmentOwners),
+          replacedSheetIds: new Set(planState.replacedSheetIds),
+        }
+        : undefined;
       const reconciled = mode === "live"
         ? await runInTransaction(() => reconcileSheet(sheet, status, true, employerId))
-        : await reconcileSheet(sheet, status, false, employerId);
+        : await reconcileSheet(sheet, status, false, employerId, sheetPlanState);
+      if (sheetPlanState) {
+        planState.workers = sheetPlanState.workers;
+        planState.assignmentOwners = sheetPlanState.assignmentOwners;
+        planState.replacedSheetIds = sheetPlanState.replacedSheetIds;
+      }
       if (reconciled.kind === "created") created++;
       else if (reconciled.kind === "updated") updated++;
+      addRecordCounts(records, reconciled.records);
+      for (const worker of reconciled.workers) {
+        const previous = statusWorkers.get(worker.id);
+        statusWorkers.set(
+          worker.id,
+          previous === "created" || worker.kind === "created"
+            ? "created"
+            : "updated",
+        );
+      }
       sheetResults.push({
         ...identity,
         ...(reconciled.sheetId ? { sheetId: reconciled.sheetId } : {}),
@@ -851,12 +1044,14 @@ async function runStatus(status: FreemanMigrateStatus, cursor: z.infer<typeof pr
     }
   }
   const failed = sheetResults.filter((sheet) => sheet.outcome === "failed").length;
+  for (const kind of statusWorkers.values()) records.workers[kind]++;
   return {
     fetched: sheets.length,
     valid: sheets.length - failed,
     created,
     updated,
     failed,
+    records,
     complete: sheets.length < limit && failed === 0,
     fetch: {
       outcome: "success" as const,
@@ -895,6 +1090,11 @@ async function runFreemanMigrateUnlocked(
   const state = await readState();
   const next = structuredClone(state);
   const statuses: FreemanMigrateReport["statuses"] = [];
+  const planState: FreemanMigratePlanState = {
+    workers: new Map(),
+    assignmentOwners: new Map(),
+    replacedSheetIds: new Set(),
+  };
   let employerId: string | null = null;
   let setupError: FreemanMigrateError | undefined;
   try {
@@ -945,6 +1145,7 @@ async function runFreemanMigrateUnlocked(
         created: 0,
         updated: 0,
         failed: 0,
+        records: emptyRecordCounts(),
         page: cursor.page,
         nextPage: cursor.page,
         complete: false,
@@ -965,7 +1166,7 @@ async function runFreemanMigrateUnlocked(
       // fall into the gap between query time and watermark time.
       const sweepStartedAt = cursor.sweepStartedAt ?? new Date().toISOString();
       const activeCursor = { ...cursor, sweepStartedAt };
-      const report = await runStatus(status, activeCursor, limit, mode, employerId);
+      const report = await runStatus(status, activeCursor, limit, mode, employerId, planState);
       const complete = report.complete;
       next.statuses[status] = report.failed > 0
         ? cursor
@@ -989,6 +1190,7 @@ async function runFreemanMigrateUnlocked(
       statuses.push({
         status, label: STATUS_LABELS[status],
         fetched: 0, valid: 0, created: 0, updated: 0, failed: 0,
+        records: emptyRecordCounts(),
         page: cursor.page, nextPage: cursor.page, complete: false,
         request,
         fetch: {

@@ -134,3 +134,4 @@
 - [Nullable usage attribution deletion](nullable-usage-attribution-deletion.md) — NULLS-NOT-DISTINCT counters need merge-before-delete and count-time locking or configuration deletion loses or blocks counts.
 - [One-time Freeman migration verification](freeman-migration-verification.md) — do not add permanent tests for Freeman migration; verify with checks, build, review, and startup because the feature is retired after cutover.
 - [Freeman passport response envelope](freeman-passport-response-envelope.md) — sheet pages live at success→data.success→data.data.sheets; Jan 1, 1970 is rejected because legacy PHP treats strtotime()=0 as false.
+- [Freeman migration count semantics](freeman-migration-count-semantics.md) — matched existing child records count as updated even when values did not change.
