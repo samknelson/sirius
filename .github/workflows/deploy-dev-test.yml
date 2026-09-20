@@ -64,4 +64,7 @@ jobs:
       environment: 'Development'
       ui-image-uri: ${{ needs.build-development.outputs.ui-image-uri }}
       api-image-uri: ${{ needs.build-development.outputs.api-image-uri }}
+      # Empty until the three-service split is applied for this environment,
+      # in which case the deploy workflow rolls ui and api only.
+      ws-image-uri: ${{ needs.build-development.outputs.ws-image-uri }}
     secrets: inherit
