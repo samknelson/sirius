@@ -76,6 +76,7 @@ type RunSheet = {
   outcome: SheetOutcome;
   records?: RunRecordCounts;
   stage?: RunStage;
+  code?: string;
   message?: string;
   details?: string;
 };
@@ -112,6 +113,7 @@ type RunStatus = {
   sheets: RunSheet[];
 };
 type RunResponse = {
+  correlationId?: string;
   mode: "test" | "live";
   limit: number;
   stoppedEarly?: boolean;
@@ -133,14 +135,108 @@ const RUN_KEY = "/api/sitespecific/freeman/edls-migrate/import/run";
 const RESET_KEY = "/api/sitespecific/freeman/edls-migrate/import/reset";
 const START_KEY = "/api/sitespecific/freeman/edls-migrate/import/start";
 const STOP_KEY = "/api/sitespecific/freeman/edls-migrate/import/stop";
+type MigrationRequestFailureBody = {
+  message?: string;
+  stage?: string;
+  code?: string;
+  details?: string;
+  correlationId?: string;
+};
+
+class MigrationRequestError extends Error {
+  constructor(
+    message: string,
+    readonly diagnostics: {
+      endpoint: string;
+      status?: number;
+      statusText?: string;
+      contentType?: string;
+      body?: MigrationRequestFailureBody;
+      responseNote?: string;
+    },
+  ) {
+    super(message);
+    this.name = "MigrationRequestError";
+  }
+}
+
+function canonicalStatusText(status: number): string {
+  return ({
+    400: "Bad Request",
+    401: "Unauthorized",
+    403: "Forbidden",
+    404: "Not Found",
+    409: "Conflict",
+    429: "Too Many Requests",
+    500: "Internal Server Error",
+    502: "Bad Gateway",
+    503: "Service Unavailable",
+    504: "Gateway Timeout",
+  } as Record<number, string>)[status] ?? "(unrecognized status)";
+}
+
+function isMigrationFailureBody(value: unknown): value is MigrationRequestFailureBody {
+  if (!value || typeof value !== "object") return false;
+  const body = value as Record<string, unknown>;
+  return typeof body.message === "string"
+    && typeof body.stage === "string"
+    && typeof body.code === "string"
+    && typeof body.correlationId === "string";
+}
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, { ...init, credentials: "include" });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({ message: "Request failed" }));
-    throw new Error(body.message || `HTTP ${response.status}`);
+  let response: Response;
+  try {
+    response = await fetch(url, { ...init, credentials: "include" });
+  } catch (error) {
+    throw new MigrationRequestError(
+      error instanceof Error ? error.message : "The request did not reach the server.",
+      { endpoint: url },
+    );
   }
-  return response.json() as Promise<T>;
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type") || "not provided";
+    const raw = await response.text();
+    let body: MigrationRequestFailureBody | undefined;
+    let responseNote: string | undefined;
+    if (contentType.toLowerCase().includes("json")) {
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        if (isMigrationFailureBody(parsed)) {
+          body = parsed;
+        } else {
+          responseNote = `A JSON error body was omitted because it was not a recognized migration failure envelope (${raw.length} bytes).`;
+        }
+      } catch {
+        responseNote = `The server returned malformed JSON (${raw.length} bytes); its body was omitted for safety.`;
+      }
+    } else {
+      responseNote = `The server returned a non-JSON body (${raw.length} bytes); its body was omitted for safety.`;
+    }
+    const message = typeof body?.message === "string" && body.message.trim()
+      ? body.message
+      : `HTTP ${response.status} ${canonicalStatusText(response.status)}`;
+    throw new MigrationRequestError(message, {
+      endpoint: url,
+      status: response.status,
+      statusText: canonicalStatusText(response.status),
+      contentType,
+      body,
+      responseNote,
+    });
+  }
+  const raw = await response.text();
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw new MigrationRequestError("The server returned malformed JSON.", {
+      endpoint: url,
+      status: response.status,
+      statusText: canonicalStatusText(response.status),
+      contentType: response.headers.get("content-type") || "not provided",
+      responseNote: `The successful response contained malformed JSON (${raw.length} bytes); its body was omitted for safety.`,
+    });
+  }
 }
 
 function formatDate(value?: string) {
@@ -230,6 +326,7 @@ export default function MigrateSheets() {
   const queryClient = useQueryClient();
   const [limit, setLimit] = useState("100");
   const [latestRun, setLatestRun] = useState<RunResponse | null>(null);
+  const [runFailure, setRunFailure] = useState<MigrationRequestError | null>(null);
   const statusQuery = useQuery<StatusResponse>({
     queryKey: [STATUS_KEY],
     refetchInterval: (query) => {
@@ -246,12 +343,20 @@ export default function MigrateSheets() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode, limit: validLimit }),
       }),
+    onMutate: () => setRunFailure(null),
     onSuccess: (run) => {
+      setRunFailure(null);
       setLatestRun(run);
       queryClient.invalidateQueries({ queryKey: [STATUS_KEY] });
       toast({ title: `${run.mode === "live" ? "Live" : "Test"} import finished`, description: `${run.statuses.length} status groups processed in ${Math.round(run.durationMs / 100) / 10}s.` });
     },
-    onError: (error: Error) => toast({ title: "Import could not run", description: getApiErrorMessage(error, "The migration request failed."), variant: "destructive" }),
+    onError: (error: Error) => {
+      const failure = error instanceof MigrationRequestError
+        ? error
+        : new MigrationRequestError(error.message || "The migration request failed.", { endpoint: RUN_KEY });
+      setRunFailure(failure);
+      toast({ title: "Import could not run", description: failure.message, variant: "destructive" });
+    },
   });
   const resetMutation = useMutation({
     mutationFn: () => requestJson<StatusResponse>(RESET_KEY, { method: "POST" }),
@@ -453,12 +558,63 @@ export default function MigrateSheets() {
           ))}
         </div>
 
+        {runFailure && (
+          <Alert variant="destructive" data-testid="alert-import-request-failure">
+            <XCircle className="h-4 w-4" />
+            <AlertTitle>Migration request failed</AlertTitle>
+            <AlertDescription className="space-y-2">
+              <p>{runFailure.message}</p>
+              {runFailure.diagnostics.body?.details && (
+                <p className="font-mono text-xs">{runFailure.diagnostics.body.details}</p>
+              )}
+              <dl className="grid gap-x-3 gap-y-1 text-xs sm:grid-cols-[max-content_1fr]">
+                <dt className="font-medium">Endpoint</dt>
+                <dd className="break-all font-mono">{runFailure.diagnostics.endpoint}</dd>
+                <dt className="font-medium">HTTP response</dt>
+                <dd>
+                  {runFailure.diagnostics.status ?? "No response"}
+                  {runFailure.diagnostics.statusText ? ` ${runFailure.diagnostics.statusText}` : ""}
+                </dd>
+                <dt className="font-medium">Content type</dt>
+                <dd className="font-mono">{runFailure.diagnostics.contentType ?? "No response"}</dd>
+                {runFailure.diagnostics.body?.stage && (
+                  <>
+                    <dt className="font-medium">Stage</dt>
+                    <dd className="font-mono">{runFailure.diagnostics.body.stage}</dd>
+                  </>
+                )}
+                {runFailure.diagnostics.body?.code && (
+                  <>
+                    <dt className="font-medium">Code</dt>
+                    <dd className="font-mono">{runFailure.diagnostics.body.code}</dd>
+                  </>
+                )}
+                {runFailure.diagnostics.body?.correlationId && (
+                  <>
+                    <dt className="font-medium">Support reference</dt>
+                    <dd className="break-all font-mono">{runFailure.diagnostics.body.correlationId}</dd>
+                  </>
+                )}
+              </dl>
+              {runFailure.diagnostics.responseNote && (
+                <div>
+                  <p className="text-xs font-medium">Response body</p>
+                  <p className="mt-1 text-xs">{runFailure.diagnostics.responseNote}</p>
+                </div>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
+
         {displayedRun && (
           <div className="space-y-4 rounded-md border p-3" data-testid="card-import-outcome">
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <Badge variant={displayedRun.mode === "live" ? "destructive" : "secondary"}>{displayedRun.mode === "live" ? "LIVE" : "TEST"}</Badge>
               <span className="font-medium">Latest outcome</span>
-              <span className="text-xs text-muted-foreground">started {formatDate(displayedRun.startedAt)} · limit {displayedRun.limit} · {Math.round(displayedRun.durationMs / 100) / 10}s</span>
+              <span className="text-xs text-muted-foreground">
+                started {formatDate(displayedRun.startedAt)} · limit {displayedRun.limit} · {Math.round(displayedRun.durationMs / 100) / 10}s
+                {displayedRun.correlationId ? ` · support ${displayedRun.correlationId}` : ""}
+              </span>
             </div>
             <div className="space-y-3">
               {displayedRun.statuses.map((item) => (
@@ -550,6 +706,7 @@ export default function MigrateSheets() {
                                   <div className="space-y-1">
                                     <p><span className="font-medium text-foreground">{humanize(sheet.stage ?? "processing")}:</span> {sheet.message}</p>
                                     {sheet.details && <p className="font-mono">{sheet.details}</p>}
+                                    {sheet.code && <p className="font-mono">Code: {sheet.code}</p>}
                                   </div>
                                 ) : (
                                   <div className="space-y-1">

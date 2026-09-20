@@ -18,7 +18,10 @@ vi.mock("../../server/services/event-bus", () => ({
   EventType: { WORKER_DELETE_AFTER: "WORKER_DELETE_AFTER" },
 }));
 
-const { createFreemanEdlsFullResetStorage } = await import(
+const {
+  createFreemanEdlsFullResetStorage,
+  lockFreemanEdlsFullResetTables,
+} = await import(
   "../../server/storage/sitespecific/freeman/edls-full-reset"
 );
 
@@ -28,6 +31,7 @@ describe("Freeman EDLS full reset database behavior", () => {
   it("retains communication rows while removing worker contact PII", async () => {
     try {
       await db.transaction(async (tx) => runWithTransaction(tx, async () => {
+        await lockFreemanEdlsFullResetTables();
         const [contact] = await tx.insert(contacts).values({
           displayName: "Reset Database Fixture",
           given: "Reset",
@@ -79,6 +83,7 @@ describe("Freeman EDLS full reset database behavior", () => {
   it("preserves a facility contact intact while deleting its worker", async () => {
     try {
       await db.transaction(async (tx) => runWithTransaction(tx, async () => {
+        await lockFreemanEdlsFullResetTables();
         const [contact] = await tx.insert(contacts).values({
           displayName: "Facility Contact Fixture",
           given: "Facility",
@@ -159,6 +164,7 @@ describe("Freeman EDLS full reset database behavior", () => {
   it("reports the concrete worker identity for a catalog-discovered blocker", async () => {
     try {
       await db.transaction(async (tx) => runWithTransaction(tx, async () => {
+        await lockFreemanEdlsFullResetTables();
         const [contact] = await tx.insert(contacts).values({
           displayName: "Blocked Worker Fixture",
         }).returning();
@@ -176,7 +182,6 @@ describe("Freeman EDLS full reset database behavior", () => {
           INSERT INTO full_reset_worker_blocker_fixture (id, worker_id, name)
           VALUES ('blocker-record', ${worker.id}, 'Required payroll record')
         `);
-
         const storage = createFreemanEdlsFullResetStorage();
         const plan = await storage.getPlan();
         expect(plan.blockers).toEqual(expect.arrayContaining([

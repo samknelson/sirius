@@ -44,6 +44,7 @@ export const FREEMAN_MIGRATE_STATUS_VARIABLE = "SITESPECIFIC_FREEMAN_MIGRATE_STA
 
 export const FREEMAN_MIGRATE_RUN_VARIABLE = "SITESPECIFIC_FREEMAN_MIGRATE_RUN";
 export const FREEMAN_EDLS_FULL_RESET_CONFIRMATION = "DELETE ALL WORKERS";
+export const FREEMAN_EDLS_FULL_RESET_DIAGNOSTICS_VERSION = "full-reset-diagnostics-v2";
 const EPOCH = "1970-01-01T00:00:00.000Z";
 // Freeman runs this through PHP strtotime() and rejects the Unix epoch because
 // strtotime("1970-01-01...") is 0, which its legacy truthiness check treats as
@@ -94,6 +95,7 @@ interface FreemanMigrateSheetResult {
   outcome: FreemanSheetOutcome;
   records?: FreemanMigrateRecordCounts;
   stage?: FreemanMigrateStage;
+  code?: string;
   message?: string;
   details?: string;
 }
@@ -105,6 +107,7 @@ interface FreemanMigrateRecordCounts {
 }
 
 export interface FreemanMigrateReport {
+  correlationId?: string;
   mode: "test" | "live";
   limit: number;
   stoppedEarly: boolean;
@@ -1110,6 +1113,7 @@ async function runStatus(
   idTypes: FreemanWorkerIdTypes,
   planState: FreemanMigratePlanState,
   shouldStop?: () => Promise<boolean>,
+  diagnostics?: { correlationId: string },
 ) {
   const result = await wcRequest({
     vendor: { pluginId: FREEMAN_EDLS_MIGRATE_PLUGIN_ID },
@@ -1200,7 +1204,11 @@ async function runStatus(
         : undefined;
       logger.error("Freeman EDLS sheet import failed", {
         service: "freeman-edls-migrate",
+        correlationId: diagnostics?.correlationId,
+        mode,
+        limit,
         status,
+        page: cursor.page,
         nid: identity.nid,
         stage: failure.stage,
         code: failure.code,
@@ -1212,6 +1220,7 @@ async function runStatus(
         sourceStatus: status,
         outcome: "failed",
         stage: failure.stage,
+        code: failure.code,
         message: failure.message,
         details: failure.details,
       });
@@ -1291,6 +1300,7 @@ async function runFreemanMigrateUnlocked(
   mode: "test" | "live",
   raw: unknown,
   shouldStop?: () => Promise<boolean>,
+  diagnostics?: { correlationId: string },
 ): Promise<FreemanMigrateReport> {
   const { limit } = runSchema.parse(raw ?? {});
   const startedAt = new Date().toISOString();
@@ -1347,6 +1357,11 @@ async function runFreemanMigrateUnlocked(
   } catch (error) {
     logger.error("Freeman EDLS migration setup failed", {
       service: "freeman-edls-migrate",
+      correlationId: diagnostics?.correlationId,
+      mode,
+      limit,
+      stage: "relation_resolution",
+      code: "setup_failed",
       error: error instanceof Error ? error.message : String(error),
     });
     setupError = {
@@ -1398,7 +1413,17 @@ async function runFreemanMigrateUnlocked(
       // fall into the gap between query time and watermark time.
       const sweepStartedAt = cursor.sweepStartedAt ?? new Date().toISOString();
       const activeCursor = { ...cursor, sweepStartedAt };
-      const report = await runStatus(status, activeCursor, limit, mode, employerId, workerIdTypes, planState, shouldStop);
+      const report = await runStatus(
+        status,
+        activeCursor,
+        limit,
+        mode,
+        employerId,
+        workerIdTypes,
+        planState,
+        shouldStop,
+        diagnostics,
+      );
       const complete = report.complete;
       next.statuses[status] = nextCursorAfterReport(cursor, sweepStartedAt, report);
       statuses.push({
@@ -1414,7 +1439,12 @@ async function runFreemanMigrateUnlocked(
       const failure = statusFailure(error);
       logger.error("Freeman EDLS status import failed", {
         service: "freeman-edls-migrate",
+        correlationId: diagnostics?.correlationId,
+        mode,
+        limit,
         status,
+        page: cursor.page,
+        startDate: cursor.startDate,
         stage: failure.stage,
         code: failure.code,
         error: error instanceof Error ? error.message : String(error),
@@ -1440,17 +1470,26 @@ async function runFreemanMigrateUnlocked(
     stoppedEarly = await shouldStop();
   }
   if (mode === "live") await writeState(next);
-  return { mode, limit, stoppedEarly, statuses, startedAt, durationMs: Date.now() - started };
+  return {
+    correlationId: diagnostics?.correlationId,
+    mode,
+    limit,
+    stoppedEarly,
+    statuses,
+    startedAt,
+    durationMs: Date.now() - started,
+  };
 }
 
 export async function runFreemanMigrate(
   mode: "test" | "live",
   raw: unknown,
+  diagnostics?: { correlationId: string },
 ): Promise<FreemanMigrateReport> {
-  if (mode === "test") return runFreemanMigrateUnlocked(mode, raw);
+  if (mode === "test") return runFreemanMigrateUnlocked(mode, raw, undefined, diagnostics);
   return withFreemanMigrateLock(async () => {
     await assertNoActiveFreemanMigrate();
-    return runFreemanMigrateUnlocked(mode, raw);
+    return runFreemanMigrateUnlocked(mode, raw, undefined, diagnostics);
   });
 }
 
@@ -1508,7 +1547,7 @@ export class FreemanFullResetRefusedError extends Error {
   constructor(
     message: string,
     public readonly kind: "relationship",
-    public readonly details?: Record<string, string | undefined>,
+    public readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "FreemanFullResetRefusedError";
@@ -1575,6 +1614,7 @@ export async function getFreemanEdlsFullResetPreflight() {
     ...plan,
     snapshot: fullResetSnapshot(plan),
     confirmation: FREEMAN_EDLS_FULL_RESET_CONFIRMATION,
+    diagnosticsVersion: FREEMAN_EDLS_FULL_RESET_DIAGNOSTICS_VERSION,
   };
 }
 
@@ -1595,6 +1635,7 @@ export async function executeFreemanEdlsFullReset(raw: unknown) {
     try {
       return {
         deleted: await storage.freemanEdlsFullReset.execute(plan),
+        diagnosticsVersion: FREEMAN_EDLS_FULL_RESET_DIAGNOSTICS_VERSION,
       };
     } catch (error) {
       if (error instanceof FreemanEdlsFullResetCountsChangedError) {
