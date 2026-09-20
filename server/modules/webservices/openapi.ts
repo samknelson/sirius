@@ -53,6 +53,11 @@ const SECURITY_SCHEMES = {
     description:
       "HTTP Basic authentication, using the client key as the username and the client secret as the password.",
   },
+  freemanBearerAuth: {
+    type: "http",
+    scheme: "bearer",
+    description: "Freeman bearer token. Sent together with X-WS-Client-Key and X-WS-Client-Secret.",
+  },
 } as const;
 
 /**
@@ -64,6 +69,13 @@ const SECURITY_REQUIREMENTS: Record<string, string[]>[] = [
   { wsClientKey: [], wsClientSecret: [] },
   { wsBasicAuth: [] },
 ];
+
+const FREEMAN_AUTHORIZATION_CONFIG_KEY = "freemanBearerAuthorizationConfigId";
+
+function usesFreemanBearerAuthorization(client: WsClient): boolean {
+  const value = client.data?.[FREEMAN_AUTHORIZATION_CONFIG_KEY];
+  return typeof value === "string" && value.trim().length > 0;
+}
 
 /** Human label for a configuration, falling back to its address. */
 function labelOf(config: PluginConfig, address: ServiceAddress): string {
@@ -155,6 +167,7 @@ function frameworkResponses(): Record<string, unknown> {
  */
 export async function buildClientOpenApiDocument(client: WsClient): Promise<OpenApiDocument> {
   const services = await callableServices(client.id);
+  const requiresFreemanBearer = usesFreemanBearerAuthorization(client);
 
   const paths: Record<string, Record<string, unknown>> = {};
   let anyDatabaseIdAddress = false;
@@ -209,7 +222,9 @@ export async function buildClientOpenApiDocument(client: WsClient): Promise<Open
   const baseUrl = getPublicBaseUrl();
   const descriptionParts = [
     `Web services available to the client "${client.name}".`,
-    "Every operation is authenticated with this client's own key and secret; the document never contains them.",
+    requiresFreemanBearer
+      ? "Every operation requires X-WS-Client-Key, X-WS-Client-Secret, and Authorization: Bearer <token>. HTTP Basic authentication cannot be used because Authorization carries the Bearer token. The document never contains a credential."
+      : "Every operation is authenticated with this client's own key and secret; the document never contains them.",
     "A service granted to another client, or switched off, does not appear here.",
   ];
   if (anyDatabaseIdAddress) {
@@ -240,8 +255,22 @@ export async function buildClientOpenApiDocument(client: WsClient): Promise<Open
               "Relative to this installation's own host; no public URL is configured for it.",
           },
     ],
-    components: { securitySchemes: SECURITY_SCHEMES },
-    security: SECURITY_REQUIREMENTS,
+    components: {
+      securitySchemes: requiresFreemanBearer
+        ? {
+            wsClientKey: SECURITY_SCHEMES.wsClientKey,
+            wsClientSecret: SECURITY_SCHEMES.wsClientSecret,
+            freemanBearerAuth: SECURITY_SCHEMES.freemanBearerAuth,
+          }
+        : {
+            wsClientKey: SECURITY_SCHEMES.wsClientKey,
+            wsClientSecret: SECURITY_SCHEMES.wsClientSecret,
+            wsBasicAuth: SECURITY_SCHEMES.wsBasicAuth,
+          },
+    },
+    security: requiresFreemanBearer
+      ? [{ wsClientKey: [], wsClientSecret: [], freemanBearerAuth: [] }]
+      : SECURITY_REQUIREMENTS,
     paths,
   };
 }

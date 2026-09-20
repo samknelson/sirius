@@ -92,6 +92,21 @@ function FreemanBearerAuthorizationContent() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <Alert>
+          <AlertTitle>Required request headers</AlertTitle>
+          <AlertDescription className="space-y-2">
+            <p>
+              When this client uses Freeman Bearer Authorization, every request must include all
+              three headers:
+            </p>
+            <pre className="overflow-x-auto rounded-md bg-muted p-3 text-sm text-foreground">
+              <code>{`X-WS-Client-Key: <client key>
+X-WS-Client-Secret: <client secret>
+Authorization: Bearer <token>`}</code>
+            </pre>
+            <p>HTTP Basic authentication cannot be used because Authorization carries the Bearer token.</p>
+          </AlertDescription>
+        </Alert>
         {isLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="loader-freeman-authorization">
             <Loader2 className="h-4 w-4 animate-spin" />
