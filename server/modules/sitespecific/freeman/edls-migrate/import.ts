@@ -177,6 +177,134 @@ function reportedError(
   );
 }
 
+interface SafeFailureDiagnostic {
+  details: string;
+  log: {
+    causeKind: "domain_validation" | "database" | "storage";
+    causeCode?: string;
+    constraint?: string;
+    table?: string;
+    column?: string;
+  };
+}
+
+interface CursorReport {
+  interrupted: boolean;
+  complete: boolean;
+}
+
+function safeDatabaseIdentifier(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return /^[A-Za-z0-9_.-]{1,128}$/.test(value) ? value : undefined;
+}
+
+function errorChain(error: unknown): Array<Record<string, unknown>> {
+  const chain: Array<Record<string, unknown>> = [];
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (
+    current
+    && typeof current === "object"
+    && !seen.has(current)
+    && chain.length < 8
+  ) {
+    seen.add(current);
+    const item = current as Record<string, unknown>;
+    chain.push(item);
+    current = item.cause;
+  }
+  return chain;
+}
+
+function safeCanonicalSaveDiagnostic(error: unknown): SafeFailureDiagnostic {
+  const chain = errorChain(error);
+  const domainValidation = chain.find((item) =>
+    item.name === "DomainValidationError" && Array.isArray(item.errors)
+  );
+  if (domainValidation) {
+    const issues = (domainValidation.errors as unknown[])
+      .flatMap((issue) => {
+        if (!issue || typeof issue !== "object") return [];
+        const item = issue as Record<string, unknown>;
+        const field = safeDatabaseIdentifier(item.field) ?? "record";
+        const code = safeDatabaseIdentifier(item.code) ?? "validation_failed";
+        const explanations: Record<string, string> = {
+          WORKER_COUNT_MISMATCH: "The sheet worker count must equal the sum of its crew worker counts.",
+        };
+        return [`${field} (${code}): ${explanations[code] ?? "The value was rejected."}`];
+      })
+      .slice(0, 5);
+    return {
+      details: issues.length
+        ? `Storage validation rejected the sheet: ${issues.join("; ")}`
+        : "Storage validation rejected the sheet.",
+      log: {
+        causeKind: "domain_validation",
+        causeCode: safeDatabaseIdentifier(
+          (domainValidation.errors as Array<Record<string, unknown>>)[0]?.code,
+        ),
+      },
+    };
+  }
+
+  const databaseError = chain.find((item) =>
+    typeof item.code === "string" && /^[0-9A-Z]{5}$/.test(item.code)
+  );
+  if (databaseError) {
+    const causeCode = databaseError.code as string;
+    const constraint = safeDatabaseIdentifier(databaseError.constraint);
+    const table = safeDatabaseIdentifier(databaseError.table);
+    const column = safeDatabaseIdentifier(databaseError.column);
+    const explanation: Record<string, string> = {
+      "22001": "A value is longer than the database field allows.",
+      "22P02": "A value has an invalid database format.",
+      "23502": "A required database field is missing.",
+      "23503": "A referenced record no longer exists.",
+      "23505": "A database uniqueness rule was violated.",
+      "23514": "A database validation rule was violated.",
+    };
+    const fields = [
+      `database code ${causeCode}`,
+      ...(constraint ? [`constraint ${constraint}`] : []),
+      ...(table ? [`table ${table}`] : []),
+      ...(column ? [`column ${column}`] : []),
+    ];
+    return {
+      details: `${explanation[causeCode] ?? "The database rejected the save."} (${fields.join(", ")}).`,
+      log: { causeKind: "database", causeCode, constraint, table, column },
+    };
+  }
+
+  const knownStorageMessage = chain
+    .map((item) => item.message)
+    .find((message) =>
+      message === "Target sheet disappeared during import."
+      || message === "The same worker is assigned more than once on this date."
+      || message === "A worker already has an assignment on this date."
+    );
+  return {
+    details: typeof knownStorageMessage === "string"
+      ? knownStorageMessage
+      : "The storage layer rejected the save without a recognized database code. See the server log entry for this sheet.",
+    log: { causeKind: "storage" },
+  };
+}
+
+function nextCursorAfterReport(
+  cursor: z.infer<typeof progressSchema>,
+  sweepStartedAt: string,
+  report: CursorReport,
+): z.infer<typeof progressSchema> {
+  if (report.interrupted) return cursor;
+  return report.complete
+    ? { startDate: sweepStartedAt, page: 0, sweepStartedAt: null }
+    : { startDate: cursor.startDate, page: cursor.page + 1, sweepStartedAt };
+}
+
+function reportHasFatalFailure(report: Pick<FreemanMigrateReport, "statuses">): boolean {
+  return report.statuses.some((status) => Boolean(status.error));
+}
+
 function sourceIdentity(source: unknown): { nid?: string; title: string } {
   const sheet = record(source);
   return {
@@ -951,11 +1079,12 @@ async function reconcileSheet(
       })),
     })));
   } catch (error) {
+    const diagnostic = safeCanonicalSaveDiagnostic(error);
     throw reportedError(
       "canonical_save",
       "canonical_save_failed",
       "The canonical EDLS sheet and its roster could not be saved.",
-      undefined,
+      diagnostic.details,
       error,
     );
   }
@@ -1065,6 +1194,10 @@ async function runStatus(
       });
     } catch (error) {
       const failure = sheetFailure(error);
+      const diagnostic = error instanceof FreemanMigrateReportedError
+        && error.report.code === "canonical_save_failed"
+        ? safeCanonicalSaveDiagnostic(error.cause)
+        : undefined;
       logger.error("Freeman EDLS sheet import failed", {
         service: "freeman-edls-migrate",
         status,
@@ -1072,6 +1205,7 @@ async function runStatus(
         stage: failure.stage,
         code: failure.code,
         error: error instanceof Error ? error.message : String(error),
+        ...(diagnostic?.log ?? {}),
       });
       sheetResults.push({
         ...identity,
@@ -1096,7 +1230,7 @@ async function runStatus(
     updated,
     failed,
     records,
-    complete: !interrupted && sheets.length < limit && failed === 0,
+    complete: !interrupted && sheets.length < limit,
     stoppedEarly,
     interrupted,
     fetch: {
@@ -1130,7 +1264,7 @@ export async function getFreemanMigrateStatus() {
     variableName: FREEMAN_MIGRATE_STATUS_VARIABLE,
     statuses: (await readState()).statuses,
     run,
-    warning: "Legacy paging uses mutable offsets; records can move during a sweep. Use Start Over for an idempotent replay.",
+    warning: "Legacy paging uses mutable offsets; records can move during a sweep. Failed sheets do not stop later pages; fix the cause and use Start Over to replay them.",
   };
 }
 export async function resetFreemanMigrateStatus() {
@@ -1266,11 +1400,7 @@ async function runFreemanMigrateUnlocked(
       const activeCursor = { ...cursor, sweepStartedAt };
       const report = await runStatus(status, activeCursor, limit, mode, employerId, workerIdTypes, planState, shouldStop);
       const complete = report.complete;
-      next.statuses[status] = report.interrupted || report.failed > 0
-        ? cursor
-        : complete
-          ? { startDate: sweepStartedAt, page: 0, sweepStartedAt: null }
-          : { startDate: cursor.startDate, page: cursor.page + 1, sweepStartedAt };
+      next.statuses[status] = nextCursorAfterReport(cursor, sweepStartedAt, report);
       statuses.push({
         status, label: STATUS_LABELS[status], ...report,
         page: cursor.page, nextPage: next.statuses[status].page,
@@ -1558,7 +1688,12 @@ async function executeBackgroundRun(limit: number, lock: FreemanMigrationLock): 
       control.batchCount += 1;
       control.latestBatch = report;
       control.heartbeatAt = new Date().toISOString();
-      const failed = report.statuses.some((status) => status.error || status.failed > 0);
+      // A status-level error means the page itself could not be fetched or
+      // interpreted, so continuing could silently skip data. Individual sheet
+      // failures are different: their transactions rolled back, their safe
+      // details are in the report, and the cursor has advanced so later sheets
+      // can still migrate. Start Over replays those sheets after they are fixed.
+      const failed = reportHasFatalFailure(report);
       const completed = !report.stoppedEarly
         && report.statuses.length === FREEMAN_MIGRATE_STATUSES.length
         && report.statuses.every((status) => status.complete);
