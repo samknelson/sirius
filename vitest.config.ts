@@ -4,10 +4,10 @@ import path from "path";
 /**
  * The project's test runner.
  *
- * Tests live under `tests/<subject>/*.test.ts` — one directory per subject
- * (html, auth, env, …) so `npm test` reports them grouped. A new test belongs
- * in an existing subject directory, or a new one if it genuinely opens a new
- * subject; it does NOT belong in a fresh top-level script under `scripts/dev/`.
+ * Tests live under `tests/<subject>/*.test.ts`. A permanent test first has to
+ * satisfy the admission policy in replit.md; tests are not the default output
+ * of every task. Qualifying tests belong in an existing subject directory,
+ * not in a fresh top-level script under scripts/dev.
  *
  * The aliases below mirror `vite.config.ts` and the `paths` block in
  * `tsconfig.json`, so a test imports `@shared/...` / `@/...` exactly the way
