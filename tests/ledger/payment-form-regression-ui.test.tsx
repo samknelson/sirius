@@ -158,6 +158,16 @@ function allocationInputs() {
 }
 
 beforeEach(() => {
+  Object.defineProperties(URL, {
+    createObjectURL: {
+      configurable: true,
+      value: vi.fn(() => "blob:payment-preview"),
+    },
+    revokeObjectURL: {
+      configurable: true,
+      value: vi.fn(),
+    },
+  });
   vi.stubGlobal("PointerEvent", MouseEvent);
   vi.stubGlobal("ResizeObserver", class {
     observe() {}
@@ -341,6 +351,14 @@ describe("PaymentForm rendered allocation regressions", () => {
     );
 
     expect(container.querySelector('[data-testid="text-payment-attachment-name"]')?.textContent).toBe("check.png");
+    const previewToggle = container.querySelector('[data-testid="payment-attachment-preview-toggle"]')!;
+    expect(previewToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector('[data-testid="payment-attachment-preview-image"]')).toBeNull();
+    await click(previewToggle);
+    expect(container.querySelector('[data-testid="payment-attachment-preview-image"]')?.getAttribute("src"))
+      .toBe("blob:payment-preview");
+    await click(previewToggle);
+    expect(container.querySelector('[data-testid="payment-attachment-preview-image"]')).toBeNull();
     await click(container.querySelector('[data-testid="button-save"]')!);
     await waitFor(() => {
       expect(container.querySelector('[data-testid="text-payment-attachment-retry"]')).not.toBeNull();

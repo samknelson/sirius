@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Upload, Download, Pencil, Trash2, FileText, Check, X, NotebookPen } from "lucide-react";
+import { Upload, Download, Pencil, Trash2, FileText, Check, X, NotebookPen, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -101,6 +101,77 @@ export async function uploadEntityFile({
     throw new Error(body?.message || `Upload failed (${res.status})`);
   }
   return res.json();
+}
+
+export function ImageAttachmentPreview({
+  file,
+  src,
+  alt,
+  testId,
+}: {
+  file?: File | null;
+  src?: string;
+  alt: string;
+  testId: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [localUrl, setLocalUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!file) {
+      setLocalUrl(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    setLocalUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+
+  const imageSrc = file ? localUrl : src;
+
+  useEffect(() => {
+    setExpanded(false);
+    setLoadFailed(false);
+  }, [file, src]);
+
+  return (
+    <div className="mt-2">
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        aria-expanded={expanded}
+        aria-controls={`${testId}-content`}
+        onClick={() => setExpanded((current) => !current)}
+        data-testid={`${testId}-toggle`}
+      >
+        {expanded ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
+        {expanded ? "Close preview" : "Preview image"}
+      </Button>
+      {expanded && (
+        <div
+          id={`${testId}-content`}
+          className="mt-2 rounded-md border bg-muted/20 p-2"
+          data-testid={`${testId}-content`}
+        >
+          {loadFailed || !imageSrc ? (
+            <p className="text-sm text-destructive" role="alert">
+              Image preview could not be loaded. You can still download the attachment.
+            </p>
+          ) : (
+            <img
+              src={imageSrc}
+              alt={alt}
+              className="max-h-[32rem] max-w-full rounded object-contain"
+              onError={() => setLoadFailed(true)}
+              data-testid={`${testId}-image`}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function formatSize(bytes: number): string {
@@ -365,7 +436,7 @@ export function EntityFileManager({
             {visibleFiles.map((item) => (
               <div
                 key={item.id}
-                className="flex items-center gap-3 py-3"
+                className="flex items-start gap-3 py-3"
                 data-testid={`row-entity-file-${item.id}`}
               >
                 <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
@@ -426,6 +497,13 @@ export function EntityFileManager({
                             {(item.data as any).description}
                           </p>
                         )}
+                       {item.file.mimeType?.toLowerCase().startsWith("image/") && (
+                         <ImageAttachmentPreview
+                           src={`/api/files/${item.file.id}/download`}
+                           alt={`Preview of ${item.name}`}
+                           testId={`entity-file-preview-${item.id}`}
+                         />
+                       )}
                     </>
                   )}
                 </div>

@@ -23,7 +23,11 @@ import {
 } from "@/components/ledger/ParticipantAllocationBox";
 import { isValidYmd, ymdToDateForPicker, dateToYmd } from "@shared/utils/date";
 import { ImagePlus, Loader2, Plus, X } from "lucide-react";
-import { EntityFileManager, uploadEntityFile } from "@/components/entity-files/EntityFileManager";
+import {
+  EntityFileManager,
+  ImageAttachmentPreview,
+  uploadEntityFile,
+} from "@/components/entity-files/EntityFileManager";
 
 const EMPTY_PARTICIPANT_BOX: ParticipantBoxState = {
   eaId: "",
@@ -995,19 +999,20 @@ export function PaymentForm({
                 event.target.value = "";
               }}
             />
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={submitMutation.isPending || isUploadingAttachment || !!savedCreateResult}
-                onClick={() => attachmentInputRef.current?.click()}
-                data-testid="button-select-payment-attachment"
-              >
-                <ImagePlus className="mr-2 h-4 w-4" />
-                {pendingAttachment ? "Replace image" : "Select image"}
-              </Button>
-              {pendingAttachment && (
-                <>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={submitMutation.isPending || isUploadingAttachment || !!savedCreateResult}
+                  onClick={() => attachmentInputRef.current?.click()}
+                  data-testid="button-select-payment-attachment"
+                >
+                  <ImagePlus className="mr-2 h-4 w-4" />
+                  {pendingAttachment ? "Replace image" : "Select image"}
+                </Button>
+                {pendingAttachment && (
+                  <>
                   <span className="max-w-sm truncate text-sm" data-testid="text-payment-attachment-name">
                     {pendingAttachment.name}
                   </span>
@@ -1023,7 +1028,15 @@ export function PaymentForm({
                       Remove
                     </Button>
                   )}
-                </>
+                  </>
+                )}
+              </div>
+              {pendingAttachment && (
+                <ImageAttachmentPreview
+                  file={pendingAttachment}
+                  alt={`Preview of ${pendingAttachment.name}`}
+                  testId="payment-attachment-preview"
+                />
               )}
             </div>
             {savedCreateResult && (
