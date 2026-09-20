@@ -653,8 +653,12 @@ export function EdlsSheetForm({
                               handleCrewChange(index, "title", e.target.value)
                             }
                             placeholder="Crew name"
+                            maxLength={100}
                             className={!crew.title ? "border-destructive" : ""}
                           />
+                          <p className="text-xs text-muted-foreground">
+                            Crew names should not include the department, show name, or task.
+                          </p>
                           {!crew.title && (
                             <p className="text-xs text-destructive">Required</p>
                           )}
