@@ -32,6 +32,17 @@ describe("Freeman EDLS full reset danger card", () => {
     expect(routes).toContain('action: "support"');
     expect(routes).toContain("supportReference");
     expect(routes).toContain('outcome: "rolled_back"');
+    expect(routes).toContain("diagnostics");
+    expect(routes).toContain("stage");
+  });
+
+  it("shows concrete relationship identities and preservation disposition", () => {
+    expect(source).toContain("workerName");
+    expect(source).toContain("contactName");
+    expect(source).toContain("referencingSchema");
+    expect(source).toContain("relation.disposition");
+    expect(source).toContain("full-reset-blockers");
+    expect(source).toContain("full-reset-preservations");
   });
 
   it("keeps preflight and execution behind the shared admin and component gate", () => {

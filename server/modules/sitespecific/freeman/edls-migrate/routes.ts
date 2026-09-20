@@ -62,7 +62,7 @@ function sendMigrationFailure(res: Response, error: unknown, fallback: string): 
 
 function databaseFailureMetadata(error: unknown): Record<string, unknown> {
   const source = error instanceof FreemanEdlsFullResetUnexpectedError
-    ? error.cause
+    ? error.diagnostics
     : error;
   if (typeof source !== "object" || source === null) return {};
   const value = source as Record<string, unknown>;
@@ -80,7 +80,11 @@ function sendFullResetFailure(res: Response, error: unknown): void {
     return;
   }
   if (error instanceof FreemanFullResetRefusedError) {
-    res.status(409).json({ message: error.message, action: "refresh" });
+    res.status(409).json({
+      message: error.message,
+      action: "refresh",
+      blocker: error.details,
+    });
     return;
   }
 
@@ -99,6 +103,10 @@ function sendFullResetFailure(res: Response, error: unknown): void {
     message: `The reset failed and was rolled back. Existing data was left unchanged. Contact support with reference ${supportReference}.`,
     action: "support",
     supportReference,
+    stage,
+    diagnostics: error instanceof FreemanEdlsFullResetUnexpectedError
+      ? error.diagnostics
+      : {},
   });
 }
 
