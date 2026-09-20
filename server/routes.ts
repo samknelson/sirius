@@ -154,37 +154,11 @@ import { authorizeRecordGoRequest } from "./services/record-go-access";
 import { addressValidationService } from "./services/comm/validators/address";
 import { isAuthenticated } from "./auth";
 import { sendIfMaintenanceRefusal } from "./services/maintenance-flag";
+import { requirePermission, requirePermissionOrAdmin } from "./middleware/require-permission";
+import { registerWorkerDeleteRoute } from "./modules/workers/delete";
 
 // Authentication middleware
 const requireAuth = isAuthenticated;
-
-// Permission middleware
-const requirePermission = (permissionKey: string) => {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    const user = req.user as any;
-    if (!user || !user.claims) {
-      return res.status(401).json({ message: "Authentication required" });
-    }
-    
-    // Get database user ID from external ID, respecting masquerade
-    const session = req.session as any;
-    const { getEffectiveUser } = await import("./modules/masquerade");
-    const { dbUser } = await getEffectiveUser(session, user);
-    if (!dbUser) {
-      return res.status(401).json({ message: "User not found" });
-    }
-
-    const hasPermission = await storage.users.userHasPermission(
-      dbUser.id,
-      permissionKey,
-    );
-    if (!hasPermission) {
-      return res.status(403).json({ message: "Insufficient permissions" });
-    }
-
-    next();
-  };
-};
 
 export async function registerRoutes(app: Express, existingServer?: Server): Promise<Server> {
   // Unauthorized route for failed logins
@@ -1221,22 +1195,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // DELETE /api/workers/:id - Delete a worker (requires staff permission)
-  app.delete("/api/workers/:id", requireAuth, requirePermission("staff"), async (req, res) => {
-    try {
-      const { id } = req.params;
-      const deleted = await storage.workers.deleteWorker(id);
-      
-      if (!deleted) {
-        res.status(404).json({ message: "Worker not found" });
-        return;
-      }
-
-      res.status(204).send();
-    } catch (error) {
-      res.status(500).json({ message: "Failed to delete worker" });
-    }
-  });
+  registerWorkerDeleteRoute(app, requireAuth, requirePermissionOrAdmin);
 
   // Employer routes (protected with authentication and permissions)
   
