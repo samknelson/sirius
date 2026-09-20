@@ -7,6 +7,11 @@ import {
   type CommVendorConfigCandidate,
 } from "../../scripts/migrate/helpers/comm-service-config-cleanup";
 
+const noEnvironment = {
+  getValue: () => undefined,
+  isSecretPresent: () => false,
+};
+
 const config = (
   id: string,
   pluginId: string,
@@ -140,6 +145,8 @@ describe.sequential("legacy communication setting cleanup transaction", () => {
           plugin_kind varchar NOT NULL,
           plugin_id text NOT NULL,
           enabled boolean NOT NULL,
+          name text,
+          ordering integer NOT NULL DEFAULT 0,
           data jsonb
         ) ON COMMIT DROP
       `);
@@ -162,16 +169,16 @@ describe.sequential("legacy communication setting cleanup transaction", () => {
           ('postal', 'wc-vendors', 'local-postal', true, '{}')
       `);
 
-      expect(await deleteLegacyCommServiceConfigs(tx, () => false)).toBe(3);
+      expect(await deleteLegacyCommServiceConfigs(tx, noEnvironment)).toBe(3);
       const remaining = await tx.execute(sql`
         SELECT name FROM variables WHERE name LIKE 'service_config:%'
       `);
       expect(remaining.rows).toEqual([]);
-      expect(await deleteLegacyCommServiceConfigs(tx, () => false)).toBe(0);
+      expect(await deleteLegacyCommServiceConfigs(tx, noEnvironment)).toBe(0);
     });
   });
 
-  it("keeps every legacy row when one canonical selection is missing", async () => {
+  it("creates a missing postal selection while preserving existing SMS and email selections", async () => {
     await withFixture(async (tx) => {
       await tx.execute(sql`
         INSERT INTO variables (name, value) VALUES
@@ -185,13 +192,16 @@ describe.sequential("legacy communication setting cleanup transaction", () => {
           ('email', 'wc-vendors', 'local-email', true, '{}')
       `);
 
-      await expect(
-        deleteLegacyCommServiceConfigs(tx, () => false),
-      ).rejects.toThrow(/service_config:postal/);
+      expect(await deleteLegacyCommServiceConfigs(tx, noEnvironment)).toBe(3);
       const remaining = await tx.execute(sql`
         SELECT name FROM variables WHERE name LIKE 'service_config:%' ORDER BY name
       `);
-      expect(remaining.rows).toHaveLength(3);
+      expect(remaining.rows).toHaveLength(0);
+      const postal = await tx.execute(sql`
+        SELECT plugin_id, enabled FROM plugin_configs
+        WHERE plugin_id = 'local-postal'
+      `);
+      expect(postal.rows).toEqual([{ plugin_id: "local-postal", enabled: true }]);
     });
   });
 
@@ -214,7 +224,7 @@ describe.sequential("legacy communication setting cleanup transaction", () => {
         )
       `);
 
-      expect(await deleteLegacyCommServiceConfigs(tx, () => false)).toBe(1);
+      expect(await deleteLegacyCommServiceConfigs(tx, noEnvironment)).toBe(1);
       const remaining = await tx.execute(sql`
         SELECT name, value FROM variables ORDER BY name
       `);
@@ -241,13 +251,245 @@ describe.sequential("legacy communication setting cleanup transaction", () => {
         )
       `);
       const checked: string[] = [];
-      const deleted = await deleteLegacyCommServiceConfigs(tx, (name) => {
-        checked.push(name);
-        return name === "CUSTOM_SENDGRID_SECRET";
+      const deleted = await deleteLegacyCommServiceConfigs(tx, {
+        getValue: () => undefined,
+        isSecretPresent: (name) => {
+          checked.push(name);
+          return name === "CUSTOM_SENDGRID_SECRET";
+        },
       });
 
       expect(deleted).toBe(1);
       expect(checked).toEqual(["CUSTOM_SENDGRID_SECRET"]);
+    });
+  });
+
+  it("repairs the production-shaped missing SMS selection from legacy Twilio settings", async () => {
+    await withFixture(async (tx) => {
+      const sentinel = "must-not-be-copied";
+      await tx.execute(sql`
+        INSERT INTO variables (name, value) VALUES (
+          'service_config:sms',
+          ${JSON.stringify({
+            defaultProvider: "twilio",
+            providers: {
+              twilio: {
+                settings: {
+                  account_sid: "AClegacy",
+                  defaultPhoneNumber: "+15555550100",
+                  authToken: sentinel,
+                },
+              },
+            },
+          })}::jsonb
+        )
+      `);
+
+      expect(
+        await deleteLegacyCommServiceConfigs(tx, {
+          getValue: () => undefined,
+          isSecretPresent: (name) => name === "TWILIO_AUTH_TOKEN",
+        }),
+      ).toBe(1);
+      const configs = await tx.execute(sql`
+        SELECT plugin_id, enabled, data FROM plugin_configs
+      `);
+      expect(configs.rows).toEqual(expect.arrayContaining([
+        {
+          plugin_id: "twilio",
+          enabled: true,
+          data: {
+            accountSid: "AClegacy",
+            fromNumber: "+15555550100",
+            secretName: "TWILIO_AUTH_TOKEN",
+          },
+        },
+        { plugin_id: "sms-local", enabled: false, data: {} },
+      ]));
+      expect(JSON.stringify(configs.rows)).not.toContain(sentinel);
+    });
+  });
+
+  it("uses a complete environment Twilio configuration before Local", async () => {
+    await withFixture(async (tx) => {
+      await tx.execute(sql`
+        INSERT INTO variables (name, value)
+        VALUES ('service_config:sms', '{}'::jsonb)
+      `);
+      const values: Record<string, string> = {
+        TWILIO_ACCOUNT_SID: "ACenvironment",
+        TWILIO_PHONE_NUMBER: "+15555550101",
+      };
+      expect(
+        await deleteLegacyCommServiceConfigs(tx, {
+          getValue: (name) => values[name],
+          isSecretPresent: (name) => name === "TWILIO_AUTH_TOKEN",
+        }),
+      ).toBe(1);
+      const configs = await tx.execute(sql`
+        SELECT plugin_id, data FROM plugin_configs
+      `);
+      expect(configs.rows).toEqual(expect.arrayContaining([
+        {
+          plugin_id: "twilio",
+          data: {
+            accountSid: "ACenvironment",
+            fromNumber: "+15555550101",
+            secretName: "TWILIO_AUTH_TOKEN",
+          },
+        },
+        { plugin_id: "sms-local", data: {} },
+      ]));
+    });
+  });
+
+  it("uses DB-backed non-secret Twilio settings with a DB-backed credential", async () => {
+    await withFixture(async (tx) => {
+      await tx.execute(sql`
+        INSERT INTO variables (name, value) VALUES
+          ('service_config:sms', '{}'::jsonb),
+          ('ENV_TWILIO_ACCOUNT_SID', '"ACstored"'::jsonb),
+          ('ENV_TWILIO_PHONE_NUMBER', '"+15555550102"'::jsonb),
+          ('ENV_TWILIO_AUTH_TOKEN', '"credential-not-read"'::jsonb)
+      `);
+
+      expect(await deleteLegacyCommServiceConfigs(tx, noEnvironment)).toBe(1);
+      const configs = await tx.execute(sql`
+        SELECT plugin_id, data FROM plugin_configs
+      `);
+      expect(configs.rows).toEqual(expect.arrayContaining([
+        {
+          plugin_id: "twilio",
+          data: {
+            accountSid: "ACstored",
+            fromNumber: "+15555550102",
+            secretName: "TWILIO_AUTH_TOKEN",
+          },
+        },
+        { plugin_id: "sms-local", data: {} },
+      ]));
+      expect(JSON.stringify(configs.rows)).not.toContain("credential-not-read");
+    });
+  });
+
+  it("uses DB-backed remote credentials when choosing email and postal providers", async () => {
+    await withFixture(async (tx) => {
+      await tx.execute(sql`
+        INSERT INTO variables (name, value) VALUES
+          ('service_config:email', '{}'::jsonb),
+          ('service_config:postal', '{}'::jsonb),
+          ('ENV_SENDGRID_API_KEY', '"stored-email-secret"'::jsonb),
+          ('ENV_LOB_API_KEY', '"stored-postal-secret"'::jsonb)
+      `);
+
+      expect(await deleteLegacyCommServiceConfigs(tx, noEnvironment)).toBe(2);
+      const configs = await tx.execute(sql`
+        SELECT plugin_id, data FROM plugin_configs ORDER BY plugin_id
+      `);
+      expect(configs.rows).toEqual([
+        { plugin_id: "lob", data: { secretName: "LOB_API_KEY" } },
+        { plugin_id: "sendgrid", data: { secretName: "SENDGRID_API_KEY" } },
+      ]);
+    });
+  });
+
+  it("fails the owning transaction when a selected remote credential is unavailable", async () => {
+    await expect(
+      withFixture(async (tx) => {
+        await tx.execute(sql`
+          INSERT INTO variables (name, value)
+          VALUES (
+            'service_config:email',
+            '{"defaultProvider":"sendgrid"}'::jsonb
+          )
+        `);
+        await deleteLegacyCommServiceConfigs(tx, noEnvironment);
+      }),
+    ).rejects.toThrow(/named secret/i);
+  });
+
+  it("repairs and scrubs an enabled Twilio row before cleanup", async () => {
+    await withFixture(async (tx) => {
+      const sentinel = "raw-token-must-disappear";
+      await tx.execute(sql`
+        INSERT INTO variables (name, value) VALUES (
+          'service_config:sms',
+          '{"defaultProvider":"twilio","providers":{"twilio":{"settings":{"accountSid":"AClegacy","fromNumber":"+15555550103"}}}}'::jsonb
+        )
+      `);
+      await tx.execute(sql`
+        INSERT INTO plugin_configs (
+          id, plugin_kind, plugin_id, enabled, data
+        ) VALUES (
+          'twilio-existing', 'wc-vendors', 'twilio', true,
+          ${JSON.stringify({ authToken: sentinel })}::jsonb
+        )
+      `);
+
+      expect(
+        await deleteLegacyCommServiceConfigs(tx, {
+          getValue: () => undefined,
+          isSecretPresent: (name) => name === "TWILIO_AUTH_TOKEN",
+        }),
+      ).toBe(1);
+      const configs = await tx.execute(sql`
+        SELECT data FROM plugin_configs WHERE id = 'twilio-existing'
+      `);
+      expect(configs.rows).toEqual([{
+        data: {
+          accountSid: "AClegacy",
+          fromNumber: "+15555550103",
+          secretName: "TWILIO_AUTH_TOKEN",
+        },
+      }]);
+      expect(JSON.stringify(configs.rows)).not.toContain(sentinel);
+    });
+  });
+
+  it("refuses to guess between disabled SMS rows", async () => {
+    await expect(
+      withFixture(async (tx) => {
+        await tx.execute(sql`
+          INSERT INTO variables (name, value)
+          VALUES ('service_config:sms', '{"defaultProvider":"twilio"}'::jsonb)
+        `);
+        await tx.execute(sql`
+          INSERT INTO plugin_configs (
+            id, plugin_kind, plugin_id, enabled, data
+          ) VALUES
+            ('twilio-disabled', 'wc-vendors', 'twilio', false, '{}'),
+            ('local-disabled', 'wc-vendors', 'sms-local', false, '{}')
+        `);
+        await deleteLegacyCommServiceConfigs(tx, noEnvironment);
+      }),
+    ).rejects.toThrow(/single enabled/i);
+  });
+
+  it("enables the sole disabled postal row when no legacy or environment preference exists", async () => {
+    await withFixture(async (tx) => {
+      await tx.execute(sql`
+        INSERT INTO variables (name, value)
+        VALUES ('service_config:postal', '{}'::jsonb)
+      `);
+      await tx.execute(sql`
+        INSERT INTO plugin_configs (
+          id, plugin_kind, plugin_id, enabled, data
+        ) VALUES (
+          'lob-disabled', 'wc-vendors', 'lob', false,
+          '{"secretName":"LOB_API_KEY"}'::jsonb
+        )
+      `);
+
+      expect(
+        await deleteLegacyCommServiceConfigs(tx, {
+          getValue: () => undefined,
+          isSecretPresent: (name) => name === "LOB_API_KEY",
+        }),
+      ).toBe(1);
+      const configs = await tx.execute(sql`
+        SELECT plugin_id, enabled FROM plugin_configs
+      `);
+      expect(configs.rows).toEqual([{ plugin_id: "lob", enabled: true }]);
     });
   });
 });
