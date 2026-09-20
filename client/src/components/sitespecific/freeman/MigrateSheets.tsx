@@ -11,6 +11,7 @@ import {
   RotateCcw,
   ShieldAlert,
   XCircle,
+  Square,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +45,19 @@ type StatusResponse = {
   variableName: string;
   statuses: Record<StatusName, Cursor>;
   warning?: string;
+  run: {
+    lifecycle: "idle" | "starting" | "running" | "stopping" | "stopped" | "completed" | "failed";
+    limit: number | null;
+    startedAt: string | null;
+    finishedAt: string | null;
+    batchCount: number;
+    totals: {
+      fetched: number; valid: number; created: number; updated: number; failed: number;
+      records: RunRecordCounts;
+    };
+    latestBatch: RunResponse | null;
+    error: string | null;
+  };
 };
 type RunStage = "fetch" | "response" | "source" | "relation_resolution" | "validation" | "canonical_save" | "processing";
 type SheetOutcome = "would_create" | "would_update" | "created" | "updated" | "failed";
@@ -115,6 +129,8 @@ const STATUS_LABELS: Record<StatusName, string> = {
 const STATUS_KEY = "/api/sitespecific/freeman/edls-migrate/import/status";
 const RUN_KEY = "/api/sitespecific/freeman/edls-migrate/import/run";
 const RESET_KEY = "/api/sitespecific/freeman/edls-migrate/import/reset";
+const START_KEY = "/api/sitespecific/freeman/edls-migrate/import/start";
+const STOP_KEY = "/api/sitespecific/freeman/edls-migrate/import/stop";
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, credentials: "include" });
@@ -212,7 +228,13 @@ export default function MigrateSheets() {
   const queryClient = useQueryClient();
   const [limit, setLimit] = useState("100");
   const [latestRun, setLatestRun] = useState<RunResponse | null>(null);
-  const statusQuery = useQuery<StatusResponse>({ queryKey: [STATUS_KEY] });
+  const statusQuery = useQuery<StatusResponse>({
+    queryKey: [STATUS_KEY],
+    refetchInterval: (query) => {
+      const lifecycle = query.state.data?.run.lifecycle;
+      return lifecycle === "starting" || lifecycle === "running" || lifecycle === "stopping" ? 3000 : false;
+    },
+  });
   const validLimit = Math.min(100, Math.max(1, Number(limit) || 1));
 
   const runMutation = useMutation({
@@ -238,9 +260,32 @@ export default function MigrateSheets() {
     },
     onError: (error: Error) => toast({ title: "Start Over failed", description: getApiErrorMessage(error, "The import cursor could not be reset."), variant: "destructive" }),
   });
+  const startMutation = useMutation({
+    mutationFn: () => requestJson<StatusResponse>(START_KEY, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: validLimit }),
+    }),
+    onSuccess: (status) => {
+      queryClient.setQueryData([STATUS_KEY], status);
+      toast({ title: "Live migration started", description: "It will continue in the background if you leave this page." });
+    },
+    onError: (error: Error) => toast({ title: "Migration could not start", description: getApiErrorMessage(error, "A live run may already be active."), variant: "destructive" }),
+  });
+  const stopMutation = useMutation({
+    mutationFn: () => requestJson<StatusResponse>(STOP_KEY, { method: "POST" }),
+    onSuccess: (status) => {
+      queryClient.setQueryData([STATUS_KEY], status);
+      toast({ title: "Safe stop requested", description: "The active batch will finish; no new batch will start." });
+    },
+    onError: (error: Error) => toast({ title: "Stop could not be requested", description: getApiErrorMessage(error, "Try again."), variant: "destructive" }),
+  });
 
-  const busy = runMutation.isPending || resetMutation.isPending;
-  const outcomes = useMemo(() => new Map(latestRun?.statuses.map((item) => [item.status, item]) ?? []), [latestRun]);
+  const lifecycle = statusQuery.data?.run.lifecycle ?? "idle";
+  const liveActive = lifecycle === "starting" || lifecycle === "running" || lifecycle === "stopping";
+  const displayedRun = latestRun ?? statusQuery.data?.run.latestBatch ?? null;
+  const busy = runMutation.isPending || resetMutation.isPending || startMutation.isPending || stopMutation.isPending;
+  const outcomes = useMemo(() => new Map(displayedRun?.statuses.map((item) => [item.status, item]) ?? []), [displayedRun]);
   const statuses = statusQuery.data?.statuses;
 
   return (
@@ -275,6 +320,25 @@ export default function MigrateSheets() {
             Legacy paging uses mutable offsets. Records can move while a sweep is running, so review every outcome before proceeding. <strong>Start Over resets cursors but preserves nid mappings.</strong>
           </AlertDescription>
         </Alert>
+        {statusQuery.data?.run && (
+          <div className="rounded-md border p-3" data-testid="card-import-run-status">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={lifecycle === "failed" ? "destructive" : "secondary"}>{lifecycle.toUpperCase()}</Badge>
+              <span className="text-sm font-medium">{statusQuery.data.run.batchCount} completed batch(es)</span>
+              <span className="text-xs text-muted-foreground">
+                started {formatDate(statusQuery.data.run.startedAt ?? undefined)} · finished {formatDate(statusQuery.data.run.finishedAt ?? undefined)}
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+              <span>{statusQuery.data.run.totals.fetched} sheets fetched</span>
+              <span>{statusQuery.data.run.totals.created} created</span>
+              <span>{statusQuery.data.run.totals.updated} updated</span>
+              <span>{statusQuery.data.run.totals.failed} failed</span>
+            </div>
+            <RecordCountSummary records={statusQuery.data.run.totals.records} mode="live" />
+            {statusQuery.data.run.error && <p className="mt-2 text-sm text-destructive">{statusQuery.data.run.error}</p>}
+          </div>
+        )}
 
         <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3 sm:flex-row sm:items-end">
           <div className="w-full space-y-1 sm:max-w-[180px]">
@@ -286,19 +350,19 @@ export default function MigrateSheets() {
               max={100}
               value={limit}
               onChange={(event) => setLimit(event.target.value)}
-              disabled={busy}
+              disabled={busy || liveActive}
               data-testid="input-import-limit"
             />
             <p className="text-xs text-muted-foreground">1–100 records per status; default 100.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => runMutation.mutate({ mode: "test" })} disabled={busy || statusQuery.isLoading} data-testid="button-import-test">
+            <Button onClick={() => runMutation.mutate({ mode: "test" })} disabled={busy || liveActive || statusQuery.isLoading} data-testid="button-import-test">
               {runMutation.isPending && runMutation.variables?.mode === "test" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
               Run test
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={busy || statusQuery.isLoading} data-testid="button-import-live">
+                <Button variant="destructive" disabled={busy || liveActive || statusQuery.isLoading} data-testid="button-import-live">
                   <ShieldAlert className="mr-2 h-4 w-4" /> Run live
                 </Button>
               </AlertDialogTrigger>
@@ -311,10 +375,14 @@ export default function MigrateSheets() {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => runMutation.mutate({ mode: "live" })}>Run live import</AlertDialogAction>
+                  <AlertDialogAction onClick={() => startMutation.mutate()}>Start background import</AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+            <Button variant="destructive" onClick={() => stopMutation.mutate()} disabled={busy || !liveActive || lifecycle === "stopping"} data-testid="button-import-stop">
+              {stopMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Square className="mr-2 h-4 w-4" />}
+              {lifecycle === "stopping" ? "Stopping…" : "Stop safely"}
+            </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="outline" disabled={busy} data-testid="button-import-reset">
@@ -348,20 +416,20 @@ export default function MigrateSheets() {
               name={name}
               cursor={statuses?.[name]}
               outcome={outcomes.get(name)}
-              mode={latestRun?.mode}
+                mode={displayedRun?.mode}
             />
           ))}
         </div>
 
-        {latestRun && (
+        {displayedRun && (
           <div className="space-y-4 rounded-md border p-3" data-testid="card-import-outcome">
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <Badge variant={latestRun.mode === "live" ? "destructive" : "secondary"}>{latestRun.mode === "live" ? "LIVE" : "TEST"}</Badge>
+              <Badge variant={displayedRun.mode === "live" ? "destructive" : "secondary"}>{displayedRun.mode === "live" ? "LIVE" : "TEST"}</Badge>
               <span className="font-medium">Latest outcome</span>
-              <span className="text-xs text-muted-foreground">started {formatDate(latestRun.startedAt)} · limit {latestRun.limit} · {Math.round(latestRun.durationMs / 100) / 10}s</span>
+              <span className="text-xs text-muted-foreground">started {formatDate(displayedRun.startedAt)} · limit {displayedRun.limit} · {Math.round(displayedRun.durationMs / 100) / 10}s</span>
             </div>
             <div className="space-y-3">
-              {latestRun.statuses.map((item) => (
+              {displayedRun.statuses.map((item) => (
                 <section key={item.status} className="overflow-hidden rounded-md border" data-testid={`import-result-${item.status}`}>
                   <div className="flex flex-col gap-2 border-b bg-muted/30 px-3 py-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
@@ -388,11 +456,11 @@ export default function MigrateSheets() {
                       <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         <span>{item.fetched} fetched</span>
                         <span>{item.valid} succeeded</span>
-                        <span>{item.created} {latestRun.mode === "test" ? "would create" : "created"}</span>
-                        <span>{item.updated} {latestRun.mode === "test" ? "would update" : "updated"}</span>
+                        <span>{item.created} {displayedRun.mode === "test" ? "would create" : "created"}</span>
+                        <span>{item.updated} {displayedRun.mode === "test" ? "would update" : "updated"}</span>
                         <span className={item.failed ? "font-medium text-destructive" : ""}>{item.failed} failed</span>
                       </div>
-                      <RecordCountSummary records={item.records} mode={latestRun.mode} />
+                      <RecordCountSummary records={item.records} mode={displayedRun.mode} />
                     </div>
                   </div>
 

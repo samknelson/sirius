@@ -20,11 +20,14 @@ import {
 } from "./sweep";
 import {
   getFreemanMigrateStatus,
+  assertNoActiveFreemanMigrate,
   resetFreemanMigrateStatus,
   runFreemanMigrate,
+  startFreemanMigrate,
+  stopFreemanMigrate,
+  FreemanMigrateConflictError,
   withFreemanMigrateLock,
 } from "./import";
-import { withNotificationsSuppressed } from "../../../../middleware/request-context";
 
 /**
  * An unexpected error's text is written by code we do not control end to end,
@@ -37,6 +40,14 @@ function failureMessage(error: unknown, fallback: string): string {
   // and therefore cannot prove that arbitrary exception text is scrubbed.
   void error;
   return fallback;
+}
+
+function sendMigrationFailure(res: Response, error: unknown, fallback: string): void {
+  if (error instanceof FreemanMigrateConflictError) {
+    res.status(409).json({ message: error.message });
+    return;
+  }
+  res.status(500).json({ message: failureMessage(error, fallback) });
 }
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -83,12 +94,11 @@ export function registerFreemanEdlsMigrateRoutes(
     ...gate,
     async (_req: Request, res: Response) => {
       try {
+        await assertNoActiveFreemanMigrate();
         res.json(await withFreemanMigrateLock(runFreemanEdlsNodeSweep));
       } catch (error) {
         if (sendIfMaintenanceRefusal(res, error)) return;
-        res.status(500).json({
-          message: failureMessage(error, "Failed to sweep the legacy node table"),
-        });
+        sendMigrationFailure(res, error, "Failed to sweep the legacy node table");
       }
     },
   );
@@ -98,12 +108,11 @@ export function registerFreemanEdlsMigrateRoutes(
     ...gate,
     async (_req: Request, res: Response) => {
       try {
+        await assertNoActiveFreemanMigrate();
         res.json(await withFreemanMigrateLock(runFreemanEdlsFieldSweep));
       } catch (error) {
         if (sendIfMaintenanceRefusal(res, error)) return;
-        res.status(500).json({
-          message: failureMessage(error, "Failed to sweep the legacy field tables"),
-        });
+        sendMigrationFailure(res, error, "Failed to sweep the legacy field tables");
       }
     },
   );
@@ -128,14 +137,13 @@ export function registerFreemanEdlsMigrateRoutes(
     ...gate,
     async (_req: Request, res: Response) => {
       try {
+        await assertNoActiveFreemanMigrate();
         const deleted = await withFreemanMigrateLock(
           () => storage.freemanEdlsMigrateStaging.deleteAll(),
         );
         res.json({ deleted });
       } catch (error) {
-        res.status(500).json({
-          message: failureMessage(error, "Failed to clear the staged rows"),
-        });
+        sendMigrationFailure(res, error, "Failed to clear the staged rows");
       }
     },
   );
@@ -153,13 +161,42 @@ export function registerFreemanEdlsMigrateRoutes(
   );
 
   app.post(
+    "/api/sitespecific/freeman/edls-migrate/import/start",
+    ...gate,
+    async (req: Request, res: Response) => {
+      try {
+        res.status(202).json(await startFreemanMigrate({ limit: req.body?.limit }));
+      } catch (error) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
+        if (error instanceof FreemanMigrateConflictError) {
+          res.status(409).json({ message: error.message });
+        } else {
+          res.status(400).json({ message: failureMessage(error, "The live migration could not be started") });
+        }
+      }
+    },
+  );
+
+  app.post(
+    "/api/sitespecific/freeman/edls-migrate/import/stop",
+    ...gate,
+    async (_req: Request, res: Response) => {
+      try {
+        res.json(await stopFreemanMigrate());
+      } catch (error) {
+        res.status(500).json({ message: failureMessage(error, "Failed to request a safe stop") });
+      }
+    },
+  );
+
+  app.post(
     "/api/sitespecific/freeman/edls-migrate/import/reset",
     ...gate,
     async (_req: Request, res: Response) => {
       try {
         res.json(await resetFreemanMigrateStatus());
       } catch (error) {
-        res.status(500).json({ message: failureMessage(error, "Failed to reset migration progress") });
+        sendMigrationFailure(res, error, "Failed to reset migration progress");
       }
     },
   );
@@ -174,8 +211,11 @@ export function registerFreemanEdlsMigrateRoutes(
           res.status(400).json({ message: "mode must be test or live" });
           return;
         }
-        const run = () => runFreemanMigrate(mode, { limit: req.body?.limit });
-        res.json(mode === "live" ? await withNotificationsSuppressed(run) : await run());
+        if (mode === "live") {
+          res.status(400).json({ message: "Use the background start action for live migration." });
+          return;
+        }
+        res.json(await runFreemanMigrate(mode, { limit: req.body?.limit }));
       } catch (error) {
         if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(400).json({

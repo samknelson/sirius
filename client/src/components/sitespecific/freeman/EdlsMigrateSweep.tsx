@@ -94,6 +94,9 @@ interface StagedResponse {
   count: number;
   rows: StagedRow[];
 }
+interface ImportStatus {
+  run: { lifecycle: "idle" | "starting" | "running" | "stopping" | "stopped" | "completed" | "failed" };
+}
 
 const STAGED_KEY = "/api/sitespecific/freeman/edls-migrate/staged";
 
@@ -155,6 +158,10 @@ export default function EdlsMigrateSweep() {
     queryKey: ["/api/sitespecific/freeman/edls-migrate/sources"],
   });
   const stagedQuery = useQuery<StagedResponse>({ queryKey: [STAGED_KEY] });
+  const importStatusQuery = useQuery<ImportStatus>({
+    queryKey: ["/api/sitespecific/freeman/edls-migrate/import/status"],
+    refetchInterval: 3000,
+  });
 
   const nodeSweep = useMutation({
     mutationFn: () => post<NodeSweepReport>("/api/sitespecific/freeman/edls-migrate/sweep/nodes"),
@@ -231,7 +238,8 @@ export default function EdlsMigrateSweep() {
     },
   });
 
-  const busy = nodeSweep.isPending || fieldSweep.isPending || clearStaged.isPending;
+  const migrationActive = ["starting", "running", "stopping"].includes(importStatusQuery.data?.run.lifecycle ?? "");
+  const busy = nodeSweep.isPending || fieldSweep.isPending || clearStaged.isPending || migrationActive;
   const staged = stagedQuery.data;
 
   return (
@@ -301,6 +309,11 @@ export default function EdlsMigrateSweep() {
               Clear staging
             </Button>
           </div>
+          {migrationActive && (
+            <p className="text-xs text-muted-foreground">
+              Staging actions are unavailable while the live migration is active.
+            </p>
+          )}
 
           {busy && (
             <p className="text-xs text-muted-foreground" data-testid="text-sweep-running">
