@@ -100,11 +100,14 @@ interface FreemanMigrateRecordCounts {
 export interface FreemanMigrateReport {
   mode: "test" | "live";
   limit: number;
+  stoppedEarly: boolean;
   statuses: Array<{
     status: FreemanMigrateStatus; label: string;
     fetched: number; valid: number; created: number; updated: number; failed: number;
     records: FreemanMigrateRecordCounts;
     page: number; nextPage: number; complete: boolean;
+    stoppedEarly?: boolean;
+    interrupted?: boolean;
     request: {
       status: FreemanMigrateStatus;
       page: number;
@@ -955,6 +958,7 @@ async function runStatus(
   mode: "test" | "live",
   employerId: string,
   planState: FreemanMigratePlanState,
+  shouldStop?: () => Promise<boolean>,
 ) {
   const result = await wcRequest({
     vendor: { pluginId: FREEMAN_EDLS_MIGRATE_PLUGIN_ID },
@@ -991,7 +995,12 @@ async function runStatus(
   const records = emptyRecordCounts();
   const statusWorkers = new Map<string, "created" | "updated">();
   const sheetResults: FreemanMigrateSheetResult[] = [];
+  let stoppedEarly = false;
   for (const sheet of sheets) {
+    if (mode === "live" && shouldStop && await shouldStop()) {
+      stoppedEarly = true;
+      break;
+    }
     const identity = sourceIdentity(sheet);
     try {
       const sheetPlanState = mode === "test"
@@ -1050,16 +1059,22 @@ async function runStatus(
       });
     }
   }
+  if (!stoppedEarly && mode === "live" && shouldStop) {
+    stoppedEarly = await shouldStop();
+  }
+  const interrupted = stoppedEarly && sheetResults.length < sheets.length;
   const failed = sheetResults.filter((sheet) => sheet.outcome === "failed").length;
   for (const kind of statusWorkers.values()) records.workers[kind]++;
   return {
-    fetched: sheets.length,
-    valid: sheets.length - failed,
+    fetched: interrupted ? sheetResults.length : sheets.length,
+    valid: sheetResults.length - failed,
     created,
     updated,
     failed,
     records,
-    complete: sheets.length < limit && failed === 0,
+    complete: !interrupted && sheets.length < limit && failed === 0,
+    stoppedEarly,
+    interrupted,
     fetch: {
       outcome: "success" as const,
       source: result.source,
@@ -1084,6 +1099,7 @@ export async function getFreemanMigrateStatus() {
         error: "The migration server process was interrupted. Start again to resume from the last completed batch.",
       };
       await writeRunControl(run);
+      await writeStopRequest(false);
     }
   }
   return {
@@ -1115,6 +1131,7 @@ let backgroundRun: Promise<void> | null = null;
 async function runFreemanMigrateUnlocked(
   mode: "test" | "live",
   raw: unknown,
+  shouldStop?: () => Promise<boolean>,
 ): Promise<FreemanMigrateReport> {
   const { limit } = runSchema.parse(raw ?? {});
   const startedAt = new Date().toISOString();
@@ -1127,6 +1144,7 @@ async function runFreemanMigrateUnlocked(
     assignmentOwners: new Map(),
     replacedSheetIds: new Set(),
   };
+  let stoppedEarly = false;
   let employerId: string | null = null;
   let setupError: FreemanMigrateError | undefined;
   try {
@@ -1160,6 +1178,10 @@ async function runFreemanMigrateUnlocked(
     };
   }
   for (const status of FREEMAN_MIGRATE_STATUSES) {
+    if (mode === "live" && shouldStop && await shouldStop()) {
+      stoppedEarly = true;
+      break;
+    }
     const cursor = state.statuses[status] ?? { startDate: INITIAL_START_DATE, page: 0, sweepStartedAt: null };
     const request = {
       status,
@@ -1198,9 +1220,9 @@ async function runFreemanMigrateUnlocked(
       // fall into the gap between query time and watermark time.
       const sweepStartedAt = cursor.sweepStartedAt ?? new Date().toISOString();
       const activeCursor = { ...cursor, sweepStartedAt };
-      const report = await runStatus(status, activeCursor, limit, mode, employerId, planState);
+      const report = await runStatus(status, activeCursor, limit, mode, employerId, planState, shouldStop);
       const complete = report.complete;
-      next.statuses[status] = report.failed > 0
+      next.statuses[status] = report.interrupted || report.failed > 0
         ? cursor
         : complete
           ? { startDate: sweepStartedAt, page: 0, sweepStartedAt: null }
@@ -1210,6 +1232,10 @@ async function runFreemanMigrateUnlocked(
         page: cursor.page, nextPage: next.statuses[status].page,
         request: { ...request, sweepStartedAt },
       });
+      if (report.stoppedEarly) {
+        stoppedEarly = true;
+        break;
+      }
     } catch (error) {
       const failure = statusFailure(error);
       logger.error("Freeman EDLS status import failed", {
@@ -1236,8 +1262,11 @@ async function runFreemanMigrateUnlocked(
       });
     }
   }
+  if (!stoppedEarly && mode === "live" && shouldStop) {
+    stoppedEarly = await shouldStop();
+  }
   if (mode === "live") await writeState(next);
-  return { mode, limit, statuses, startedAt, durationMs: Date.now() - started };
+  return { mode, limit, stoppedEarly, statuses, startedAt, durationMs: Date.now() - started };
 }
 
 export async function runFreemanMigrate(
@@ -1399,19 +1428,21 @@ async function executeBackgroundRun(limit: number, lock: FreemanMigrationLock): 
       }, 30_000);
       let report: FreemanMigrateReport;
       try {
-        report = await runFreemanMigrateUnlocked("live", { limit });
+        report = await runFreemanMigrateUnlocked("live", { limit }, readStopRequest);
       } finally {
         clearInterval(heartbeat);
         await heartbeatWrite;
       }
       control = await readRunControl();
-      const stopRequested = await readStopRequest();
+      const stopRequested = report.stoppedEarly || await readStopRequest();
       addReportTotals(control, report);
       control.batchCount += 1;
       control.latestBatch = report;
       control.heartbeatAt = new Date().toISOString();
       const failed = report.statuses.some((status) => status.error || status.failed > 0);
-      const completed = report.statuses.every((status) => status.complete);
+      const completed = !report.stoppedEarly
+        && report.statuses.length === FREEMAN_MIGRATE_STATUSES.length
+        && report.statuses.every((status) => status.complete);
       if (failed || stopRequested || completed) {
         control.lifecycle = failed ? "failed" : stopRequested ? "stopped" : "completed";
         control.finishedAt = new Date().toISOString();
@@ -1447,10 +1478,13 @@ export async function startFreemanMigrate(raw: unknown): Promise<ReturnType<type
       throw new FreemanMigrateConflictError("A Freeman migration run is already in progress.");
     }
     const now = new Date().toISOString();
+    // Clear a previous run's stop flag before advertising this run as active.
+    // Once "starting" is visible, every subsequent stop request belongs to
+    // this run and must not be erased by startup.
+    await writeStopRequest(false);
     await writeRunControl({
       ...emptyRunControl(), lifecycle: "starting", limit, startedAt: now, heartbeatAt: now,
     });
-    await writeStopRequest(false);
     const runLock = lock;
     lock = null;
     backgroundRun = withNotificationsSuppressed(() => executeBackgroundRun(limit, runLock))
@@ -1475,9 +1509,13 @@ export async function startFreemanMigrate(raw: unknown): Promise<ReturnType<type
 }
 
 export async function stopFreemanMigrate(): Promise<ReturnType<typeof getFreemanMigrateStatus>> {
-  const control = await readRunControl();
-  if (!isActiveLifecycle(control.lifecycle)) return getFreemanMigrateStatus();
+  // The stop flag is the request and getFreemanMigrateStatus overlays the
+  // visible "stopping" lifecycle from it. Writing a copied run-control record
+  // here can overwrite a terminal state reached concurrently by the worker.
   await writeStopRequest(true);
-  await writeRunControl({ ...control, lifecycle: "stopping", stopRequested: true });
+  const control = await readRunControl();
+  if (!isActiveLifecycle(control.lifecycle)) {
+    await writeStopRequest(false);
+  }
   return getFreemanMigrateStatus();
 }
