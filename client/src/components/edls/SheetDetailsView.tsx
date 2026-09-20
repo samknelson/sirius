@@ -70,7 +70,7 @@ function formatWorkerName(worker: AssignmentWithWorker["worker"]): string {
   if (worker.family) return worker.family;
   if (worker.given) return worker.given;
   if (worker.displayName) return worker.displayName;
-  return `Worker ${worker.siriusId || worker.id.slice(0, 8)}`;
+  return `Worker ${worker.id.slice(0, 8)}`;
 }
 
 const statusColors: Record<EdlsSheetStatus, string> = {
@@ -396,14 +396,14 @@ export function SheetDetailsView({
                             >
                               {assignment.worker.memberStatusCode ?? "—"}
                             </span>
-                            <span
-                              className="text-muted-foreground w-16 text-left tabular-nums"
-                              data-testid={`text-assignment-display-id-${assignment.id}`}
-                            >
-                              {!snapshotMode && workerIdTypeConfigured
-                                ? (displayIdValues[assignment.workerId] ?? "—")
-                                : (assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—")}
-                            </span>
+                            {!snapshotMode && workerIdTypeConfigured && (
+                              <span
+                                className="text-muted-foreground w-16 text-left tabular-nums"
+                                data-testid={`text-assignment-display-id-${assignment.id}`}
+                              >
+                                {displayIdValues[assignment.workerId] ?? "—"}
+                              </span>
+                            )}
                             <span className="flex items-center gap-1.5 min-w-0">
                               {!snapshotMode && assignment.commId && assignment.commStatus && (
                                 <AssignmentCommStatusIcon
