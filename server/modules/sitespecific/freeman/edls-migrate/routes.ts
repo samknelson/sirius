@@ -300,13 +300,13 @@ export function registerFreemanEdlsMigrateRoutes(
           res.status(400).json({ message: "mode must be test or live" });
           return;
         }
-        if (mode === "live") {
-          res.status(400).json({ message: "Use the background start action for live migration." });
-          return;
-        }
         res.json(await runFreemanMigrate(mode, { limit: req.body?.limit }));
       } catch (error) {
         if (sendIfMaintenanceRefusal(res, error)) return;
+        if (error instanceof FreemanMigrateConflictError) {
+          res.status(409).json({ message: error.message });
+          return;
+        }
         res.status(400).json({
           message: failureMessage(error, "Failed to run Freeman migration"),
         });

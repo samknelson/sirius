@@ -269,8 +269,9 @@ export default function MigrateSheets() {
       body: JSON.stringify({ limit: validLimit }),
     }),
     onSuccess: (status) => {
+      setLatestRun(null);
       queryClient.setQueryData([STATUS_KEY], status);
-      toast({ title: "Live migration started", description: "It will continue in the background if you leave this page." });
+      toast({ title: "Background import started", description: "It will continue in the background if you leave this page." });
     },
     onError: (error: Error) => toast({ title: "Migration could not start", description: getApiErrorMessage(error, "A live run may already be active."), variant: "destructive" }),
   });
@@ -374,15 +375,34 @@ export default function MigrateSheets() {
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={busy || liveActive || statusQuery.isLoading} data-testid="button-import-live">
-                  <ShieldAlert className="mr-2 h-4 w-4" /> Run live
+                <Button variant="destructive" disabled={busy || liveActive || statusQuery.isLoading} data-testid="button-import-live-batch">
+                  <ShieldAlert className="mr-2 h-4 w-4" /> Run one live batch
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Run the live Freeman import?</AlertDialogTitle>
+                  <AlertDialogTitle>Run one live Freeman batch?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This writes EDLS records and may update existing records. It will process up to {validLimit} records per status. Confirm only after reviewing the paging warning and test results.
+                    This writes EDLS records, may update existing records, and advances the cursors once. It will process up to {validLimit} records for each legacy status, then return this batch&apos;s report.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => runMutation.mutate({ mode: "live" })}>Run one live batch</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={busy || liveActive || statusQuery.isLoading} data-testid="button-import-background">
+                  <Play className="mr-2 h-4 w-4" /> Start background import
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Start the background Freeman import?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This writes EDLS records and continues running batches in the background until the migration completes, fails, or is safely stopped. Each batch processes up to {validLimit} records for each legacy status.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -397,7 +417,7 @@ export default function MigrateSheets() {
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="outline" disabled={busy} data-testid="button-import-reset">
+                <Button variant="outline" disabled={busy || liveActive} data-testid="button-import-reset">
                   {resetMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
                   Start Over
                 </Button>

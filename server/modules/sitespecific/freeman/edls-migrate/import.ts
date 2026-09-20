@@ -1137,6 +1137,7 @@ export async function resetFreemanMigrateStatus() {
     throw new FreemanMigrateConflictError("Migration progress cannot be reset while a live run is active.");
   }
   return withFreemanMigrateLock(async () => {
+    await assertNoActiveFreemanMigrate();
     const state = initialState();
     await writeState(state);
     await writeRunControl(emptyRunControl());
@@ -1315,7 +1316,10 @@ export async function runFreemanMigrate(
   raw: unknown,
 ): Promise<FreemanMigrateReport> {
   if (mode === "test") return runFreemanMigrateUnlocked(mode, raw);
-  return withFreemanMigrateLock(() => runFreemanMigrateUnlocked(mode, raw));
+  return withFreemanMigrateLock(async () => {
+    await assertNoActiveFreemanMigrate();
+    return runFreemanMigrateUnlocked(mode, raw);
+  });
 }
 
 export async function withFreemanMigrateLock<T>(
