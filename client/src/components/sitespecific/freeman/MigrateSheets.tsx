@@ -523,7 +523,7 @@ export default function MigrateSheets() {
                                   <div className="space-y-1">
                                     <p>Sheet passed planning and validation.</p>
                                     {sheet.records && (
-                                      <RecordCountSummary records={sheet.records} mode={latestRun.mode} />
+                                      <RecordCountSummary records={sheet.records} mode={displayedRun.mode} />
                                     )}
                                   </div>
                                 )}
