@@ -44,6 +44,23 @@ type StatusResponse = {
   statuses: Record<StatusName, Cursor>;
   warning?: string;
 };
+type RunStage = "fetch" | "response" | "source" | "relation_resolution" | "validation" | "canonical_save" | "processing";
+type SheetOutcome = "would_create" | "would_update" | "created" | "updated" | "failed";
+type RunError = {
+  stage: RunStage;
+  code: string;
+  message: string;
+  details?: string;
+};
+type RunSheet = {
+  nid?: string;
+  title: string;
+  sourceStatus: StatusName;
+  outcome: SheetOutcome;
+  stage?: RunStage;
+  message?: string;
+  details?: string;
+};
 type RunStatus = {
   status: StatusName;
   label: string;
@@ -52,9 +69,23 @@ type RunStatus = {
   created: number;
   updated: number;
   failed: number;
+  page: number;
+  nextPage: number;
   complete: boolean;
-  error?: string;
-  failures?: Array<{ nid?: string; message: string }>;
+  request: {
+    status: StatusName;
+    page: number;
+    limit: number;
+    startDate: string;
+    sweepStartedAt: string | null;
+  };
+  fetch: {
+    outcome: "success" | "failed";
+    source?: "cache" | "network" | "none";
+    responseShape?: "success.data.success.data.sheets";
+  };
+  error?: RunError;
+  sheets: RunSheet[];
 };
 type RunResponse = {
   mode: "test" | "live";
@@ -91,7 +122,23 @@ function formatDate(value?: string) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
-function StatusRow({ name, cursor, outcome }: { name: StatusName; cursor?: Cursor; outcome?: RunStatus }) {
+function humanize(value: string) {
+  return value.replace(/_/g, " ");
+}
+
+function SheetOutcomeBadge({ outcome }: { outcome: SheetOutcome }) {
+  if (outcome === "failed") return <Badge variant="destructive">Failed</Badge>;
+  if (outcome === "created") return <Badge>Created</Badge>;
+  if (outcome === "updated") return <Badge>Updated</Badge>;
+  return <Badge variant="secondary">{outcome === "would_create" ? "Would create" : "Would update"}</Badge>;
+}
+
+function StatusRow({ name, cursor, outcome, mode }: {
+  name: StatusName;
+  cursor?: Cursor;
+  outcome?: RunStatus;
+  mode?: "test" | "live";
+}) {
   return (
     <div className="grid gap-2 border-b px-3 py-3 last:border-0 sm:grid-cols-[1fr_1.4fr_1.5fr] sm:items-center">
       <div className="flex items-center gap-2">
@@ -117,8 +164,8 @@ function StatusRow({ name, cursor, outcome }: { name: StatusName; cursor?: Curso
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span>{outcome.fetched} fetched</span>
           <span>{outcome.valid} valid</span>
-          <span>{outcome.created} created</span>
-          <span>{outcome.updated} updated</span>
+          <span>{outcome.created} {mode === "test" ? "would create" : "created"}</span>
+          <span>{outcome.updated} {mode === "test" ? "would update" : "updated"}</span>
           {outcome.failed > 0 && <span className="font-medium text-destructive">{outcome.failed} failed</span>}
         </div>
       ) : (
@@ -263,27 +310,113 @@ export default function MigrateSheets() {
           <div className="border-b bg-muted/40 px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Cursor and latest outcome {statusQuery.data?.variableName && <span className="ml-2 font-mono normal-case">{statusQuery.data.variableName}</span>}
           </div>
-          {STATUS_ORDER.map((name) => <StatusRow key={name} name={name} cursor={statuses?.[name]} outcome={outcomes.get(name)} />)}
+          {STATUS_ORDER.map((name) => (
+            <StatusRow
+              key={name}
+              name={name}
+              cursor={statuses?.[name]}
+              outcome={outcomes.get(name)}
+              mode={latestRun?.mode}
+            />
+          ))}
         </div>
 
         {latestRun && (
-          <div className="space-y-2 rounded-md border p-3" data-testid="card-import-outcome">
+          <div className="space-y-4 rounded-md border p-3" data-testid="card-import-outcome">
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <Badge variant={latestRun.mode === "live" ? "destructive" : "secondary"}>{latestRun.mode === "live" ? "LIVE" : "TEST"}</Badge>
               <span className="font-medium">Latest outcome</span>
               <span className="text-xs text-muted-foreground">started {formatDate(latestRun.startedAt)} · limit {latestRun.limit} · {Math.round(latestRun.durationMs / 100) / 10}s</span>
             </div>
-            {latestRun.statuses.some((item) => item.error || item.failures?.length) && (
-              <Alert variant="destructive">
-                <XCircle className="h-4 w-4" />
-                <AlertDescription>
-                  {latestRun.statuses.flatMap((item) => item.failures ?? []).slice(0, 10).map((failure, index) => (
-                    <div key={`${failure.nid ?? "failure"}-${index}`}>{failure.nid ? `${failure.nid}: ` : ""}{failure.message}</div>
-                  ))}
-                  {latestRun.statuses.filter((item) => item.error).map((item) => <div key={item.status}>{item.label}: {item.error}</div>)}
-                </AlertDescription>
-              </Alert>
-            )}
+            <div className="space-y-3">
+              {latestRun.statuses.map((item) => (
+                <section key={item.status} className="overflow-hidden rounded-md border" data-testid={`import-result-${item.status}`}>
+                  <div className="flex flex-col gap-2 border-b bg-muted/30 px-3 py-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{item.label}</span>
+                        <Badge variant={item.fetch.outcome === "success" ? "outline" : "destructive"}>
+                          {item.fetch.outcome === "success" ? "Fetched" : "Fetch failed"}
+                        </Badge>
+                        {item.complete && <Badge variant="secondary">Sweep complete</Badge>}
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Requested status <span className="font-mono">{item.request.status}</span>
+                        {" · "}page {item.request.page}
+                        {" · "}limit {item.request.limit}
+                        {" · "}start {formatDate(item.request.startDate)}
+                        {" · "}next page {item.nextPage}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Fetch source {item.fetch.source ?? "none"}
+                        {item.fetch.responseShape ? ` · response ${item.fetch.responseShape}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <span>{item.fetched} fetched</span>
+                      <span>{item.valid} succeeded</span>
+                      <span>{item.created} {latestRun.mode === "test" ? "would create" : "created"}</span>
+                      <span>{item.updated} {latestRun.mode === "test" ? "would update" : "updated"}</span>
+                      <span className={item.failed ? "font-medium text-destructive" : ""}>{item.failed} failed</span>
+                    </div>
+                  </div>
+
+                  {item.error && (
+                    <div className="p-3">
+                      <Alert variant="destructive">
+                        <XCircle className="h-4 w-4" />
+                        <AlertTitle>{humanize(item.error.stage)} failed</AlertTitle>
+                        <AlertDescription className="space-y-1">
+                          <p>{item.error.message}</p>
+                          {item.error.details && <p className="font-mono text-xs">{item.error.details}</p>}
+                          <p className="text-xs">Code: {item.error.code}</p>
+                        </AlertDescription>
+                      </Alert>
+                    </div>
+                  )}
+
+                  {!item.error && item.sheets.length === 0 && (
+                    <p className="px-3 py-4 text-sm text-muted-foreground">
+                      Freeman returned no sheets for this status and page.
+                    </p>
+                  )}
+
+                  {item.sheets.length > 0 && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[720px] text-left text-sm">
+                        <thead className="border-b bg-muted/20 text-xs text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2 font-medium">Sheet</th>
+                            <th className="px-3 py-2 font-medium">Source nid</th>
+                            <th className="px-3 py-2 font-medium">Outcome</th>
+                            <th className="px-3 py-2 font-medium">Details</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {item.sheets.map((sheet, index) => (
+                            <tr key={`${sheet.nid ?? "unknown"}-${index}`} className="border-b last:border-0">
+                              <td className="max-w-[260px] px-3 py-3 font-medium">{sheet.title}</td>
+                              <td className="px-3 py-3 font-mono text-xs">{sheet.nid ?? "Missing"}</td>
+                              <td className="px-3 py-3"><SheetOutcomeBadge outcome={sheet.outcome} /></td>
+                              <td className="max-w-[420px] px-3 py-3 text-xs text-muted-foreground">
+                                {sheet.outcome === "failed" ? (
+                                  <div className="space-y-1">
+                                    <p><span className="font-medium text-foreground">{humanize(sheet.stage ?? "processing")}:</span> {sheet.message}</p>
+                                    {sheet.details && <p className="font-mono">{sheet.details}</p>}
+                                  </div>
+                                ) : (
+                                  <span>Sheet passed planning and validation.</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              ))}
+            </div>
           </div>
         )}
       </CardContent>

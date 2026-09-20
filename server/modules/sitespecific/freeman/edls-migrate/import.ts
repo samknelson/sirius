@@ -35,6 +35,10 @@ export const FREEMAN_MIGRATE_STATUSES = ["draft", "request", "lock", "trash", "r
 export type FreemanMigrateStatus = (typeof FREEMAN_MIGRATE_STATUSES)[number];
 export const FREEMAN_MIGRATE_STATUS_VARIABLE = "SITESPECIFIC_FREEMAN_MIGRATE_STATUS";
 const EPOCH = "1970-01-01T00:00:00.000Z";
+// Freeman runs this through PHP strtotime() and rejects the Unix epoch because
+// strtotime("1970-01-01...") is 0, which its legacy truthiness check treats as
+// a failure. January 2 still includes all realistic EDLS history.
+const INITIAL_START_DATE = "1970-01-02T00:00:00.000Z";
 
 const progressSchema = z.object({
   startDate: z.string(),
@@ -49,22 +53,153 @@ export type FreemanMigrateState = z.infer<typeof migrateStateSchema>;
 const runSchema = z.object({ limit: z.number().int().min(1).max(100).default(100) }).strict();
 export type FreemanMigrateRun = z.infer<typeof runSchema>;
 
+type FreemanMigrateStage =
+  | "fetch"
+  | "response"
+  | "source"
+  | "relation_resolution"
+  | "validation"
+  | "canonical_save"
+  | "processing";
+type FreemanSheetOutcome =
+  | "would_create"
+  | "would_update"
+  | "created"
+  | "updated"
+  | "failed";
+
+interface FreemanMigrateError {
+  stage: FreemanMigrateStage;
+  code: string;
+  message: string;
+  details?: string;
+}
+
+interface FreemanMigrateSheetResult {
+  nid?: string;
+  title: string;
+  sourceStatus: FreemanMigrateStatus;
+  outcome: FreemanSheetOutcome;
+  stage?: FreemanMigrateStage;
+  message?: string;
+  details?: string;
+}
+
 export interface FreemanMigrateReport {
   mode: "test" | "live";
   limit: number;
   statuses: Array<{
     status: FreemanMigrateStatus; label: string;
     fetched: number; valid: number; created: number; updated: number; failed: number;
-    page: number; nextPage: number; complete: boolean; error?: string;
-    failures: Array<{ nid?: string; message: string }>;
+    page: number; nextPage: number; complete: boolean;
+    request: {
+      status: FreemanMigrateStatus;
+      page: number;
+      limit: number;
+      startDate: string;
+      sweepStartedAt: string | null;
+    };
+    fetch: {
+      outcome: "success" | "failed";
+      source?: "cache" | "network" | "none";
+      responseShape?: "success.data.success.data.sheets";
+    };
+    error?: FreemanMigrateError;
+    sheets: FreemanMigrateSheetResult[];
   }>;
   startedAt: string;
   durationMs: number;
 }
 
+class FreemanMigrateReportedError extends Error {
+  constructor(
+    readonly report: FreemanMigrateError,
+    options?: ErrorOptions,
+  ) {
+    super(report.message, options);
+    this.name = "FreemanMigrateReportedError";
+  }
+}
+
+function reportedError(
+  stage: FreemanMigrateStage,
+  code: string,
+  message: string,
+  details?: string,
+  cause?: unknown,
+): FreemanMigrateReportedError {
+  return new FreemanMigrateReportedError(
+    { stage, code, message, ...(details ? { details } : {}) },
+    cause === undefined ? undefined : { cause },
+  );
+}
+
+function sourceIdentity(source: unknown): { nid?: string; title: string } {
+  const sheet = record(source);
+  return {
+    nid: sourceNid(pick(sheet, "nid", "node_id", "nodeId", "id")) ?? undefined,
+    title: text(pick(sheet, "title", "name", "job_number", "jobNumber")) ?? "Untitled sheet",
+  };
+}
+
+function sheetFailure(error: unknown): FreemanMigrateError {
+  if (error instanceof FreemanMigrateReportedError) return error.report;
+  if (error instanceof z.ZodError) {
+    return {
+      stage: "validation",
+      code: "validation_failed",
+      message: "The sheet did not pass EDLS validation.",
+      details: error.issues
+        .slice(0, 5)
+        .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+        .join("; "),
+    };
+  }
+  const message = error instanceof Error ? error.message : "";
+  const relationPrefixes = [
+    "Ambiguous lookup value",
+    "No facility matches",
+    "No department could be resolved",
+    "The Freeman employee ID type is not configured",
+    "Freeman worker ID and employee ID resolve to different workers",
+    "More than one migrated worker has the same Freeman source identity",
+    "No employment status is configured",
+    "More than one Freeman crew lead has the same source ID",
+    "Staging target mapping points to a missing canonical sheet",
+  ];
+  if (relationPrefixes.some((prefix) => message.startsWith(prefix))) {
+    return {
+      stage: "relation_resolution",
+      code: "relation_resolution_failed",
+      message,
+    };
+  }
+  const validationMessages = new Set([
+    "The same worker is assigned more than once on this date.",
+    "A worker already has an assignment on this date.",
+  ]);
+  if (validationMessages.has(message)) {
+    return { stage: "validation", code: "validation_failed", message };
+  }
+  return {
+    stage: "processing",
+    code: "unexpected_sheet_error",
+    message: "The sheet could not be processed because of an unexpected local error.",
+  };
+}
+
+function statusFailure(error: unknown): FreemanMigrateError {
+  if (error instanceof FreemanMigrateReportedError) return error.report;
+  return {
+    stage: "processing",
+    code: "unexpected_status_error",
+    message: "This status could not be processed because of an unexpected local error.",
+  };
+}
+
 function initialState(): FreemanMigrateState {
   return { statuses: Object.fromEntries(FREEMAN_MIGRATE_STATUSES.map((status) => [
-    status, { startDate: EPOCH, page: 0, sweepStartedAt: null },
+    status, { startDate: INITIAL_START_DATE, page: 0, sweepStartedAt: null },
   ])) as FreemanMigrateState["statuses"] };
 }
 
@@ -74,6 +209,11 @@ function normalize(value: unknown): string {
 function text(value: unknown): string | null {
   const result = String(value ?? "").trim();
   return result || null;
+}
+function sourceNid(value: unknown): string | null {
+  if (typeof value === "string") return value.trim() || null;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
 }
 function pick(record: Record<string, unknown>, ...keys: string[]): unknown {
   for (const key of keys) if (record[key] !== undefined && record[key] !== null) return record[key];
@@ -103,21 +243,86 @@ function numberValue(value: unknown, fallback = 0): number {
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
 }
 
-const fetchedSheetSchema = z.object({
-  nid: z.union([z.string(), z.number()]).transform(String),
-}).passthrough();
-
-const fetchedPageSchema = z.object({
+const fetchedPageSuccessSchema = z.object({
+  success: z.literal(true),
   data: z.object({
+    success: z.literal(true),
     data: z.object({
-      sheets: z.array(fetchedSheetSchema),
+      // Identity and field validation are deliberately per-sheet. One malformed
+      // row must not suppress the report for every other row on the page.
+      sheets: z.array(z.record(z.unknown())),
       paging: z.unknown().optional(),
     }).passthrough(),
   }).passthrough(),
 }).passthrough();
 
-function unwrapSheets(value: unknown): Array<Record<string, unknown>> {
-  return fetchedPageSchema.parse(value).data.data.sheets;
+const fetchedPageFailureSchema = z.object({
+  success: z.literal(true),
+  data: z.object({
+    success: z.literal(false),
+    msg: z.string().optional(),
+  }).passthrough(),
+}).passthrough();
+
+function remoteRefusalReason(message: string | undefined): string | undefined {
+  const normalized = normalize(message);
+  if (!normalized) return undefined;
+  if (normalized.includes("start date") && normalized.includes("strtotime")) {
+    return "Freeman rejected the requested start date as invalid.";
+  }
+  if (normalized.includes("token") || normalized.includes("credential")) {
+    return "Freeman rejected the configured connection credentials.";
+  }
+  if (normalized.includes("status")) {
+    return "Freeman rejected the requested sheet status.";
+  }
+  return undefined;
+}
+
+function structuralShape(value: unknown): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return Array.isArray(value) ? "array" : typeof value;
+  }
+  const root = value as Record<string, unknown>;
+  const rootKeys = Object.keys(root).sort().slice(0, 12);
+  const data = record(root.data);
+  const dataKeys = Object.keys(data).sort().slice(0, 12);
+  return [
+    `root keys: ${rootKeys.join(", ") || "(none)"}`,
+    `data keys: ${dataKeys.join(", ") || "(none)"}`,
+  ].join("; ");
+}
+
+function unwrapSheets(value: unknown): {
+  sheets: Array<Record<string, unknown>>;
+  responseShape: "success.data.success.data.sheets";
+} {
+  const remoteFailure = fetchedPageFailureSchema.safeParse(value);
+  if (remoteFailure.success) {
+    throw reportedError(
+      "fetch",
+      "remote_failure",
+      "Freeman rejected the sheet-page request.",
+      remoteRefusalReason(remoteFailure.data.data.msg),
+    );
+  }
+  const parsed = fetchedPageSuccessSchema.safeParse(value);
+  if (!parsed.success) {
+    const issuePaths = parsed.error.issues
+      .slice(0, 5)
+      .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+      .join("; ");
+    throw reportedError(
+      "response",
+      "malformed_response",
+      "Freeman returned JSON, but it did not match the sheet-page response contract.",
+      `${issuePaths}. ${structuralShape(value)}`,
+    );
+  }
+  return {
+    sheets: parsed.data.data.data.sheets,
+    responseShape: "success.data.success.data.sheets",
+  };
 }
 
 async function readState(): Promise<FreemanMigrateState> {
@@ -126,7 +331,24 @@ async function readState(): Promise<FreemanMigrateState> {
   try {
     const parsed = typeof variable.value === "string" ? JSON.parse(variable.value) : variable.value;
     const result = migrateStateSchema.safeParse(parsed);
-    return result.success ? result.data : initialState();
+    if (!result.success) return initialState();
+    return {
+      statuses: Object.fromEntries(
+        FREEMAN_MIGRATE_STATUSES.map((status) => {
+          const cursor = result.data.statuses[status] ?? {
+            startDate: INITIAL_START_DATE,
+            page: 0,
+            sweepStartedAt: null,
+          };
+          return [
+            status,
+            cursor.startDate === EPOCH
+              ? { ...cursor, startDate: INITIAL_START_DATE }
+              : cursor,
+          ];
+        }),
+      ) as FreemanMigrateState["statuses"],
+    };
   } catch { return initialState(); }
 }
 async function writeState(state: FreemanMigrateState): Promise<void> {
@@ -179,7 +401,13 @@ async function resolveSupervisor(name: string | null, live: boolean): Promise<st
   const lastName = parts.slice(1).join(" ") || null;
   const rows = await client.select().from(users);
   const matches = rows.filter((u) => normalize(`${u.firstName ?? ""} ${u.lastName ?? ""}`) === normalize(name));
-  if (matches.length > 1) throw new Error(`Ambiguous supervisor "${name}".`);
+  if (matches.length > 1) {
+    throw reportedError(
+      "relation_resolution",
+      "ambiguous_supervisor",
+      "More than one existing user matches this sheet's supervisor name.",
+    );
+  }
   if (matches.length === 1) return matches[0].id;
   if (!live) return `planned:${normalize(name)}`;
   const normalizedName = normalize(name);
@@ -342,10 +570,16 @@ async function resolveCrewlead(
   return created.id;
 }
 
-async function reconcileSheet(source: unknown, status: FreemanMigrateStatus, live: boolean, employerId: string): Promise<"created" | "updated" | "valid"> {
+async function reconcileSheet(source: unknown, status: FreemanMigrateStatus, live: boolean, employerId: string): Promise<"created" | "updated"> {
   const sheet = record(source);
-  const nid = text(pick(sheet, "nid", "node_id", "nodeId", "id"));
-  if (!nid) throw new Error("Sheet has no source nid.");
+  const nid = sourceNid(pick(sheet, "nid", "node_id", "nodeId", "id"));
+  if (!nid) {
+    throw reportedError(
+      "source",
+      "invalid_nid",
+      "Freeman returned a sheet without a valid source nid.",
+    );
+  }
   const client = getClient();
   if (live) {
     await client.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"freeman-edls:" + nid}, 0))`);
@@ -477,19 +711,30 @@ async function reconcileSheet(source: unknown, status: FreemanMigrateStatus, liv
       sourceWorkerCount: numberValue(pick(sheet, "worker_count", "workerCount", "count")),
     },
   };
-  const result = await storage.edlsSheets.replaceFromImport(existing?.id, {
-    employerId, departmentId, title, ymd, status, supervisor, assignee: supervisor,
-    jobGroupId, facilityId, showStatusId, workerCount: finalWorkerCount,
-    notes: text(pick(sheet, "notes")), data,
-    notificationsEnabled: false,
-  }, crewPlans.map((plan) => ({
-    crew: plan.input,
-    assignments: plan.assignments.map((assignment) => ({
-      ymd,
-      workerId: assignment.workerId,
-      data: assignment.data,
-    })),
-  })));
+  let result: Awaited<ReturnType<typeof storage.edlsSheets.replaceFromImport>>;
+  try {
+    result = await storage.edlsSheets.replaceFromImport(existing?.id, {
+      employerId, departmentId, title, ymd, status, supervisor, assignee: supervisor,
+      jobGroupId, facilityId, showStatusId, workerCount: finalWorkerCount,
+      notes: text(pick(sheet, "notes")), data,
+      notificationsEnabled: false,
+    }, crewPlans.map((plan) => ({
+      crew: plan.input,
+      assignments: plan.assignments.map((assignment) => ({
+        ymd,
+        workerId: assignment.workerId,
+        data: assignment.data,
+      })),
+    })));
+  } catch (error) {
+    throw reportedError(
+      "canonical_save",
+      "canonical_save_failed",
+      "The canonical EDLS sheet and its roster could not be saved.",
+      undefined,
+      error,
+    );
+  }
   const targetId = result.sheet.id;
   await storage.freemanEdlsMigrateStaging.setTargetSheetId(nid, targetId, sheet);
   return result.kind;
@@ -505,34 +750,82 @@ async function runStatus(status: FreemanMigrateStatus, cursor: z.infer<typeof pr
     args: { start_date: cursor.startDate, page: cursor.page, limit, status },
     mode: "force",
   });
-  if (result.outcome !== "success" || !result.value?.success) throw new Error("Freeman did not return a usable sheet page.");
-  const sheets = unwrapSheets(result.value.data);
+  if (result.outcome !== "success" || !result.value) {
+    throw reportedError(
+      "fetch",
+      "request_failed",
+      "The request to Freeman could not be completed.",
+    );
+  }
+  if (!result.value.success) {
+    const outcomeMessages: Record<string, string> = {
+      network_error: "The Freeman service did not answer the request.",
+      http_error: "The Freeman service returned an HTTP error.",
+      remote_failure: "Freeman reported that the request failed.",
+      unrecognized_response: "Freeman returned an unrecognized response.",
+    };
+    const responseStatus = result.value.response?.status;
+    throw reportedError(
+      "fetch",
+      result.value.outcome,
+      outcomeMessages[result.value.outcome] ??
+        "Freeman answered, but did not return a successful sheet page.",
+      responseStatus ? `HTTP status ${responseStatus}.` : undefined,
+    );
+  }
+  const unwrapped = unwrapSheets(result.value.data);
+  const sheets = unwrapped.sheets;
   let created = 0; let updated = 0;
-  const failures: Array<{ nid?: string; message: string }> = [];
+  const sheetResults: FreemanMigrateSheetResult[] = [];
   for (const sheet of sheets) {
+    const identity = sourceIdentity(sheet);
     try {
       const outcome = mode === "live"
         ? await runInTransaction(() => reconcileSheet(sheet, status, true, employerId))
         : await reconcileSheet(sheet, status, false, employerId);
       if (outcome === "created") created++;
       else if (outcome === "updated") updated++;
+      sheetResults.push({
+        ...identity,
+        sourceStatus: status,
+        outcome: mode === "test"
+          ? outcome === "created" ? "would_create" : "would_update"
+          : outcome,
+      });
     } catch (error) {
-      const nid = text(pick(record(sheet), "nid", "node_id", "nodeId", "id")) ?? undefined;
+      const failure = sheetFailure(error);
       logger.error("Freeman EDLS sheet import failed", {
         service: "freeman-edls-migrate",
         status,
-        nid,
+        nid: identity.nid,
+        stage: failure.stage,
+        code: failure.code,
         error: error instanceof Error ? error.message : String(error),
       });
-      failures.push({
-        nid,
-        message: "Sheet import failed. Review the server logs for details.",
+      sheetResults.push({
+        ...identity,
+        sourceStatus: status,
+        outcome: "failed",
+        stage: failure.stage,
+        message: failure.message,
+        details: failure.details,
       });
     }
   }
+  const failed = sheetResults.filter((sheet) => sheet.outcome === "failed").length;
   return {
-    fetched: sheets.length, valid: sheets.length - failures.length,
-    created, updated, complete: sheets.length < limit && failures.length === 0, failures,
+    fetched: sheets.length,
+    valid: sheets.length - failed,
+    created,
+    updated,
+    failed,
+    complete: sheets.length < limit && failed === 0,
+    fetch: {
+      outcome: "success" as const,
+      source: result.source,
+      responseShape: unwrapped.responseShape,
+    },
+    sheets: sheetResults,
   };
 }
 
@@ -561,43 +854,113 @@ async function runFreemanMigrateUnlocked(
   const { limit } = runSchema.parse(raw ?? {});
   const startedAt = new Date().toISOString();
   const started = Date.now();
-  const settings = await getEdlsSettings();
-  if (!settings.employer) throw new Error("No employer is configured in EDLS settings.");
-  const employer = await storage.employers.getEmployer(settings.employer);
-  if (!employer) throw new Error("Configured EDLS employer was not found.");
   const state = await readState();
   const next = structuredClone(state);
   const statuses: FreemanMigrateReport["statuses"] = [];
+  let employerId: string | null = null;
+  let setupError: FreemanMigrateError | undefined;
+  try {
+    const settings = await getEdlsSettings();
+    if (!settings.employer) {
+      setupError = {
+        stage: "relation_resolution",
+        code: "missing_edls_employer",
+        message: "No employer is configured in EDLS settings.",
+      };
+    } else {
+      const employer = await storage.employers.getEmployer(settings.employer);
+      if (employer) employerId = employer.id;
+      else {
+        setupError = {
+          stage: "relation_resolution",
+          code: "edls_employer_not_found",
+          message: "The employer configured in EDLS settings was not found.",
+        };
+      }
+    }
+  } catch (error) {
+    logger.error("Freeman EDLS migration setup failed", {
+      service: "freeman-edls-migrate",
+      error: error instanceof Error ? error.message : String(error),
+    });
+    setupError = {
+      stage: "relation_resolution",
+      code: "setup_failed",
+      message: "The local EDLS migration setup could not be read.",
+    };
+  }
   for (const status of FREEMAN_MIGRATE_STATUSES) {
-    const cursor = state.statuses[status] ?? { startDate: EPOCH, page: 0, sweepStartedAt: null };
+    const cursor = state.statuses[status] ?? { startDate: INITIAL_START_DATE, page: 0, sweepStartedAt: null };
+    const request = {
+      status,
+      page: cursor.page,
+      limit,
+      startDate: cursor.startDate,
+      sweepStartedAt: cursor.sweepStartedAt,
+    };
+    if (setupError || !employerId) {
+      statuses.push({
+        status,
+        label: STATUS_LABELS[status],
+        fetched: 0,
+        valid: 0,
+        created: 0,
+        updated: 0,
+        failed: 0,
+        page: cursor.page,
+        nextPage: cursor.page,
+        complete: false,
+        request,
+        fetch: { outcome: "failed" },
+        error: setupError ?? {
+          stage: "relation_resolution",
+          code: "setup_failed",
+          message: "The local EDLS migration setup is incomplete.",
+        },
+        sheets: [],
+      });
+      continue;
+    }
     try {
       // Capture page-zero's watermark before fetching it. Once the sweep ends,
       // the next one starts here, so changes committed during this fetch cannot
       // fall into the gap between query time and watermark time.
       const sweepStartedAt = cursor.sweepStartedAt ?? new Date().toISOString();
       const activeCursor = { ...cursor, sweepStartedAt };
-      const report = await runStatus(status, activeCursor, limit, mode, employer.id);
+      const report = await runStatus(status, activeCursor, limit, mode, employerId);
       const complete = report.complete;
-      next.statuses[status] = report.failures.length > 0
+      next.statuses[status] = report.failed > 0
         ? cursor
         : complete
           ? { startDate: sweepStartedAt, page: 0, sweepStartedAt: null }
           : { startDate: cursor.startDate, page: cursor.page + 1, sweepStartedAt };
       statuses.push({
-        status, label: STATUS_LABELS[status], ...report, failed: report.failures.length,
+        status, label: STATUS_LABELS[status], ...report,
         page: cursor.page, nextPage: next.statuses[status].page,
+        request: { ...request, sweepStartedAt },
       });
     } catch (error) {
+      const failure = statusFailure(error);
       logger.error("Freeman EDLS status import failed", {
         service: "freeman-edls-migrate",
         status,
+        stage: failure.stage,
+        code: failure.code,
         error: error instanceof Error ? error.message : String(error),
       });
       statuses.push({
         status, label: STATUS_LABELS[status],
-        fetched: 0, valid: 0, created: 0, updated: 0, failed: 1,
+        fetched: 0, valid: 0, created: 0, updated: 0, failed: 0,
         page: cursor.page, nextPage: cursor.page, complete: false,
-        error: "Status import failed. Review the server logs for details.", failures: [],
+        request,
+        fetch: {
+          outcome: "failed",
+          ...(error instanceof FreemanMigrateReportedError && error.report.stage === "response"
+            ? { source: "network" as const }
+            : {}),
+        },
+        error: failure,
+        sheets: [],
       });
     }
   }
