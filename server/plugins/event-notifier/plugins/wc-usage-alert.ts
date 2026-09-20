@@ -9,7 +9,7 @@ import {
 
 /**
  * Tells staff when we have made a lot of calls to a third party today —
- * "we have made 1,000 Twilio phone-lookups today".
+ * "we have made 1,000 Twilio validate-phone calls today".
  *
  * The numbers are the ones the "Web Services - Outgoing" dashboard card
  * already shows. The notifier wakes on the ten minute tick and reads them

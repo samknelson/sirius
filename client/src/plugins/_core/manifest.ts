@@ -120,16 +120,21 @@ export interface PluginConfigEnvelopeFieldOptions {
 export interface PluginConfigEnvelopeField {
   name: string;
   label: string;
+  /** Safe guidance shown beside the form control. */
+  description?: string;
+  /** Safe placeholder-only example rendered as structured text. */
+  example?: string;
   type: "string" | "number";
   required?: boolean;
   /** When present, render this field as a dropdown populated from this source. */
   options?: PluginConfigEnvelopeFieldOptions;
   /**
-   * When true (with `options.choices`), render the choices as a checkbox group
-   * allowing multiple selections. The stored value is a comma-joined string of
-   * the selected choice values (e.g. "start,continue").
+   * When true, render the choices as a checkbox group allowing multiple
+   * selections. The editor keeps a comma-joined string in local form state.
    */
   multiple?: boolean;
+  /** Persist this multiple field as an array instead of a comma-joined string. */
+  multipleStorage?: "array";
   /**
    * When true, the generic admin page offers this field as a filter in its
    * filter bar (alongside the universal Plugin filter).

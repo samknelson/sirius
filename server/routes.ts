@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { stringify } from "csv-stringify/sync";
 import multer from "multer";
+import { sql } from "drizzle-orm";
 import { storage } from "./storage";
 import { pickFirstByAccountOrder, toChargeConfig } from "./plugins/ledger/charge/charge-config-resolution";
 import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
@@ -51,15 +52,13 @@ import {
   registerComponentRoutes,
   getEnabledComponentIds,
 } from "./modules/components";
-import { registerEmployerUserSettingsRoutes } from "./modules/employers/user-settings";
-import { registerTrustProviderUserSettingsRoutes } from "./modules/trust/provider/user-settings";
-import { registerWorkerUserSettingsRoutes } from "./modules/worker-user-settings";
 import { registerWorkerUsersRoutes } from "./modules/workers/users";
 import { registerWizardRoutes } from "./modules/wizards";
 import { registerWizardDispatcherRoutes } from "./plugins/wizards";
 import { registerFileRoutes } from "./modules/files";
 import { registerLedgerPaymentMethodRoutes } from "./modules/ledger/payment-methods";
-import { registerLedgerPaymentGatewayRoutes } from "./modules/ledger/payment-gateways";
+import { registerLedgerWcVendorRoutes } from "./modules/ledger/wc-vendors";
+import { registerWcVendorRoutes } from "./modules/system/wc-vendors";
 import { registerLedgerAccountRoutes } from "./modules/ledger/accounts";
 import { registerLedgerEaRoutes } from "./modules/ledger/ea";
 import { registerLedgerPaymentRoutes } from "./modules/ledger/payments";
@@ -74,9 +73,6 @@ import { registerEventBusIntrospectRoutes } from "./modules/dev/event-bus-intros
 import { registerEbsInspectionRoutes } from "./modules/system/ebs";
 import { registerWcCacheAdminRoutes } from "./modules/system/wc-cache";
 import { registerEligibilityPluginRoutes } from "./modules/eligibility-plugins";
-import { registerTwilioRoutes } from "./modules/twilio";
-import { registerEmailConfigRoutes } from "./modules/email-config";
-import { registerPostalConfigRoutes } from "./modules/postal-config";
 import { registerBootstrapRoutes } from "./modules/system/bootstrap";
 import { registerBargainingUnitsRoutes } from "./modules/bargaining-units";
 import { registerSftpClientDestinationRoutes } from "./modules/sftp-client-destinations";
@@ -156,8 +152,6 @@ import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
 import { authorizeRecordGoRequest } from "./services/record-go-access";
 import { addressValidationService } from "./services/comm/validators/address";
-import { phoneValidationService, DEFAULT_REVALIDATE_AFTER_DAYS } from "./services/comm/validators/phone";
-import { serviceRegistry } from "./services/service-registry";
 import { isAuthenticated } from "./auth";
 import { sendIfMaintenanceRefusal } from "./services/maintenance-flag";
 
@@ -315,15 +309,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerUserRoutes(app, requireAuth, requirePermission);
   registerLetterTemplateRoutes(app, requireAccess);
 
-  // Register employer user settings routes
-  registerEmployerUserSettingsRoutes(app, requireAuth, requirePermission);
-
-  // Register trust provider user settings routes
-  registerTrustProviderUserSettingsRoutes(app, requireAuth, requirePermission);
-  
-  // Register worker user settings routes
-  registerWorkerUserSettingsRoutes(app, requireAuth, requirePermission);
-  
   // Register worker users routes (create/manage user accounts for workers)
   registerWorkerUsersRoutes(app, requireAuth, requirePermission);
   
@@ -448,8 +433,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register provider-generic ledger payment-method routes
   registerLedgerPaymentMethodRoutes(app);
 
-  // Register provider-generic ledger payment-gateway admin routes (connection test)
-  registerLedgerPaymentGatewayRoutes(app);
+  // Register the ledger-owned wc-vendors routes (accepted payment types). The
+  // component-neutral vendor list + connection test are registered separately,
+  // off /api/ledger/, so they survive the ledger component being off.
+  registerLedgerWcVendorRoutes(app);
+  registerWcVendorRoutes(app);
 
   // Register ledger/accounts routes
   registerLedgerAccountRoutes(app);
@@ -497,15 +485,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // specific routes.
   const { registerPluginsConfigRoutes } = await import("./modules/system/plugins-config");
   registerPluginsConfigRoutes(app, requireAuth);
-
-  // Register Twilio configuration routes
-  registerTwilioRoutes(app);
-
-  // Register Email configuration routes
-  registerEmailConfigRoutes(app);
-
-  // Register Postal configuration routes
-  registerPostalConfigRoutes(app);
 
   // Register terminology routes
   // Terminology has no routes of its own: the configured wording is read and
@@ -1541,159 +1520,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     } catch (error) {
       res.status(500).json({
         message: "Failed to update address validation configuration",
-      });
-    }
-  });
-
-  // GET /api/variables/phone_validation_config - Get phone validation configuration
-  // Now derived from SMS provider selection, with stored settings for each provider
-  app.get(
-    "/api/variables/phone_validation_config",
-    requireAuth,
-    async (req, res) => {
-      try {
-        const smsConfig = await serviceRegistry.getCategoryConfig("sms");
-        const isTwilioMode = smsConfig.defaultProvider === "twilio";
-
-        // Get stored validation settings from both providers
-        const localSettings = await serviceRegistry.getProviderSettings(
-          "sms",
-          "local",
-        );
-        const twilioSettings = await serviceRegistry.getProviderSettings(
-          "sms",
-          "twilio",
-        );
-        const localValidation = (localSettings as any)?.phoneValidation || {};
-        const twilioValidation = (twilioSettings as any)?.phoneValidation || {};
-
-        // Return config in the legacy format for backward compatibility
-        // Fallback settings are stored with twilio provider since they control Twilio failure behavior
-        res.json({
-          mode: isTwilioMode ? "twilio" : "local",
-          local: {
-            enabled: !isTwilioMode,
-            defaultCountry: localValidation.defaultCountry || "US",
-            strictValidation: localValidation.strictValidation ?? true,
-          },
-          twilio: {
-            enabled: isTwilioMode,
-            lookupType: twilioValidation.lookupType || [
-              "line_type_intelligence",
-              "caller_name",
-            ],
-            revalidateAfterDays:
-              twilioValidation.revalidateAfterDays ?? DEFAULT_REVALIDATE_AFTER_DAYS,
-          },
-          fallback: {
-            useLocalOnTwilioFailure:
-              twilioValidation.useLocalOnTwilioFailure ?? true,
-            logValidationAttempts:
-              twilioValidation.logValidationAttempts ?? true,
-          },
-        });
-      } catch (error) {
-        res
-          .status(500)
-          .json({ message: "Failed to fetch phone validation configuration" });
-      }
-    },
-  );
-
-  // PUT /api/variables/phone_validation_config - Update phone validation configuration
-  // Now updates the SMS provider selection and stores validation settings for each provider
-  app.put("/api/variables/phone_validation_config", requireAuth, requireAccess('admin'), async (req, res) => {
-    try {
-      const { mode, local, twilio, fallback } = req.body;
-      
-      if (!mode || (mode !== "local" && mode !== "twilio")) {
-        return res.status(400).json({ message: "Invalid validation mode. Must be 'local' or 'twilio'." });
-      }
-
-      let revalidateAfterDays: number | undefined;
-      if (twilio?.revalidateAfterDays !== undefined && twilio.revalidateAfterDays !== null) {
-        revalidateAfterDays = Number(twilio.revalidateAfterDays);
-        if (!Number.isInteger(revalidateAfterDays) || revalidateAfterDays < 1) {
-          return res.status(400).json({ message: "Revalidation interval must be a whole number of days, at least 1." });
-        }
-      }
-      
-      // Store local-specific settings in the local provider
-      if (local) {
-        const localCurrentSettings = await serviceRegistry.getProviderSettings('sms', 'local');
-        const existingLocalValidation = (localCurrentSettings as any)?.phoneValidation || {};
-        const localValidationSettings = {
-          ...existingLocalValidation,
-          defaultCountry: local.defaultCountry ?? existingLocalValidation.defaultCountry ?? 'US',
-          strictValidation: local.strictValidation ?? existingLocalValidation.strictValidation ?? true
-        };
-        await serviceRegistry.saveProviderSettings("sms", "local", {
-          ...localCurrentSettings,
-          phoneValidation: localValidationSettings,
-        });
-      }
-
-      // Store twilio-specific settings and fallback settings in the twilio provider
-      // Fallback settings belong with twilio since they control Twilio failure behavior
-      const twilioCurrentSettings = await serviceRegistry.getProviderSettings("sms", "twilio");
-      const existingTwilioValidation = (twilioCurrentSettings as any)?.phoneValidation || {};
-      const twilioValidationSettings = {
-        ...existingTwilioValidation,
-        lookupType: twilio?.lookupType ?? existingTwilioValidation.lookupType ?? [
-          "line_type_intelligence",
-          "caller_name",
-        ],
-        useLocalOnTwilioFailure: fallback?.useLocalOnTwilioFailure ?? existingTwilioValidation.useLocalOnTwilioFailure ?? true,
-        logValidationAttempts: fallback?.logValidationAttempts ?? existingTwilioValidation.logValidationAttempts ?? true,
-        // How long a Twilio answer stays good for. Every path that formats a
-        // phone number runs through the validator, so without an age the app
-        // would pay for a lookup on each of them.
-        revalidateAfterDays: revalidateAfterDays ?? existingTwilioValidation.revalidateAfterDays ?? DEFAULT_REVALIDATE_AFTER_DAYS,
-      };
-      await serviceRegistry.saveProviderSettings("sms", "twilio", {
-        ...twilioCurrentSettings,
-        phoneValidation: twilioValidationSettings,
-      });
-
-      // Update the SMS provider selection
-      await serviceRegistry.setDefaultProvider("sms", mode);
-
-      // Fetch updated config from both providers for response
-      const localSettings = await serviceRegistry.getProviderSettings("sms", "local");
-      const twilioSettings = await serviceRegistry.getProviderSettings("sms", "twilio");
-      const localValidation = (localSettings as any)?.phoneValidation || {};
-      const twilioValidation = (twilioSettings as any)?.phoneValidation || {};
-
-      const smsConfig = await serviceRegistry.getCategoryConfig("sms");
-      const isTwilioMode = smsConfig.defaultProvider === "twilio";
-
-      // Return config in the legacy format
-      res.json({
-        mode: isTwilioMode ? "twilio" : "local",
-        local: {
-          enabled: !isTwilioMode,
-          defaultCountry: localValidation.defaultCountry || "US",
-          strictValidation: localValidation.strictValidation ?? true,
-        },
-        twilio: {
-          enabled: isTwilioMode,
-          lookupType: twilioValidation.lookupType || [
-            "line_type_intelligence",
-            "caller_name",
-          ],
-          revalidateAfterDays:
-            twilioValidation.revalidateAfterDays ?? DEFAULT_REVALIDATE_AFTER_DAYS,
-        },
-        fallback: {
-          useLocalOnTwilioFailure: twilioValidation.useLocalOnTwilioFailure ?? true,
-          logValidationAttempts: twilioValidation.logValidationAttempts ?? true,
-        },
-      });
-    } catch (error) {
-      console.error("Error updating phone validation config:", error);
-      res.status(500).json({
-        message: "Failed to update phone validation configuration",
-        error: error instanceof Error ? error.message : String(error),
       });
     }
   });

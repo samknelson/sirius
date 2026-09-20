@@ -24,9 +24,8 @@ import type { ResolvedServiceRoles } from "./services/service-roles";
 // Side-effect imports: trigger plugin / provider / access-policy registration.
 import "./plugins/ledger/charge";
 import { registerWmbChargePluginListener } from "./plugins/ledger/charge";
-import "./plugins/ledger/payment-gateway";
+import "./plugins/wc-vendors";
 import "./plugins/trust/eligibility";
-import "./services/comm/providers";
 
 import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
 import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
@@ -118,7 +117,15 @@ function installBaseMiddleware(app: Express, roles: ResolvedServiceRoles): void 
           ip: req.ip,
         };
 
-        if (capturedJsonResponse) {
+        // Manual WC runs intentionally return the complete WcResult to the
+        // administrator.  Do not copy that result into the generic HTTP log:
+        // provider responses can contain arbitrary payloads, and a request's
+        // arguments may contain identifiers or other sensitive input.  Keep
+        // the normal request metadata above (method, path, status, timing and
+        // IP) so the endpoint remains observable without persisting its body.
+        const isWcManualRun =
+          /^\/api\/admin\/wc-overview\/[^/]+\/[^/]+\/run$/.test(path);
+        if (capturedJsonResponse && !isWcManualRun) {
           // Redact sensitive data and create a preview string.
           // Important: Only store the string, never the object, to prevent PII leaks.
           try {
@@ -402,19 +409,24 @@ export async function bootstrapApp(
   const { registerChargePluginKind } = await import("./plugins/ledger/charge");
   const { registerTrustEligibilityKind } = await import("./plugins/trust/eligibility");
   const {
-    registerPaymentGatewayPluginKind,
-    backfillPaymentGatewaySubsidiaries,
-    backfillPaymentTypesFromGlobal,
-  } = await import("./plugins/ledger/payment-gateway");
+    registerWcVendorPluginKind,
+    backfillWcVendorSubsidiaries,
+    migrateLegacyCivicWcVendorConfigs,
+    migrateLegacyBtuScrapeWcVendorConfig,
+    migrateWcVendorOperationAssignments,
+  } = await import("./plugins/wc-vendors");
   const { initializeWebServiceSystem } = await import("./plugins/web-service");
   registerChargePluginKind();
   registerTrustEligibilityKind();
-  registerPaymentGatewayPluginKind();
+  registerWcVendorPluginKind();
   initializeWebServiceSystem();
-  // Every payment-gateway config needs a subsidiary row (the generic search
+  await migrateLegacyCivicWcVendorConfigs();
+  await migrateLegacyBtuScrapeWcVendorConfig();
+  await migrateWcVendorOperationAssignments();
+  // Every wc-vendors config needs a subsidiary row (the generic search
   // inner-joins it). Backfill pre-existing configs so they don't vanish.
-  await backfillPaymentGatewaySubsidiaries();
-  logger.info("Payment-gateway subsidiaries backfilled", { source: "startup" });
+  await backfillWcVendorSubsidiaries();
+  logger.info("Webclient-vendor configurations initialized", { source: "startup" });
 
   // Wire the shared plugin-config cache's invalidation subscription before any
   // config writes matter. The cache is generic (per-kind) and lazy; this only
@@ -447,10 +459,6 @@ export async function bootstrapApp(
     initializeEventNotifierDispatcher();
   }
   logger.info("Event-notifier dispatcher initialized", { source: "startup" });
-  // Migrate the legacy global `stripe_payment_methods` variable onto each
-  // gateway config's own `data.paymentTypes`, then retire the global.
-  await backfillPaymentTypesFromGlobal();
-  logger.info("Payment types migrated off legacy global variable", { source: "startup" });
 
   // Initialize worker ban notifications
   initWorkerBanNotifications();

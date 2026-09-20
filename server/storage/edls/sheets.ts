@@ -16,7 +16,8 @@ import {
   type EdlsSheet, 
   type InsertEdlsSheet,
   type EdlsCrew,
-  type InsertEdlsCrew
+  type InsertEdlsCrew,
+  type InsertEdlsAssignment,
 } from "@shared/schema";
 import { eq, ne, desc, sql, and, gte, lte, ilike, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -67,6 +68,10 @@ export interface PaginatedEdlsSheets {
 }
 
 export type CrewInput = Omit<InsertEdlsCrew, 'sheetId'> & { id?: string };
+export interface EdlsImportedCrewInput {
+  crew: CrewInput;
+  assignments: Array<Omit<InsertEdlsAssignment, "crewId">>;
+}
 
 /**
  * Input type for sheet validation that includes optional crews context.
@@ -162,6 +167,15 @@ export interface EdlsSheetsStorage {
    * If crews are omitted, loads existing crews to validate counts.
    */
   update(id: string, sheet: Partial<InsertEdlsSheet>, crews?: CrewInput[]): Promise<EdlsSheetWithCrews | undefined>;
+  /**
+   * Replace one imported sheet and its complete roster as one save boundary.
+   * The root snapshot/event is emitted only after every child is final.
+   */
+  replaceFromImport(
+    id: string | undefined,
+    sheet: InsertEdlsSheet,
+    crews: EdlsImportedCrewInput[],
+  ): Promise<{ kind: "created" | "updated"; sheet: EdlsSheetWithCrews }>;
   delete(id: string): Promise<boolean>;
   /**
    * Snapshot export: a self-contained, versioned bundle of the sheet with
@@ -612,6 +626,66 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       });
     },
 
+    async replaceFromImport(
+      id: string | undefined,
+      insertSheet: InsertEdlsSheet,
+      importedCrews: EdlsImportedCrewInput[],
+    ): Promise<{ kind: "created" | "updated"; sheet: EdlsSheetWithCrews }> {
+      const crewInputs = importedCrews.map(({ crew }) => crew);
+      await validate.validateOrThrow({ ...insertSheet, _crews: crewInputs });
+
+      return runInTransaction(async () => {
+        const client = getClient();
+        const [existing] = id
+          ? await client.select().from(edlsSheets).where(eq(edlsSheets.id, id))
+          : [];
+        if (id && !existing) throw new Error("Target sheet disappeared during import.");
+
+        let saved: EdlsSheet;
+        let kind: "created" | "updated";
+        if (existing) {
+          [saved] = await client.update(edlsSheets)
+            .set({ ...insertSheet, changed: sql`now()` })
+            .where(eq(edlsSheets.id, existing.id))
+            .returning();
+          kind = "updated";
+          const oldCrews = await storage.edlsCrews.getBySheetId(existing.id);
+          for (const oldCrew of oldCrews) {
+            const oldAssignments = await storage.edlsAssignments.getByCrewId(oldCrew.id);
+            for (const assignment of oldAssignments) {
+              await storage.edlsAssignments.delete(assignment.id);
+            }
+            await storage.edlsCrews.delete(oldCrew.id);
+          }
+        } else {
+          [saved] = await client.insert(edlsSheets)
+            .values({ ...insertSheet, changed: sql`now()` })
+            .returning();
+          kind = "created";
+        }
+
+        const createdCrews = crewInputs.length
+          ? await storage.edlsCrews.createMany(crewInputs.map((crew, index) => {
+            const { id: _id, ...crewData } = crew;
+            return { ...crewData, sheetId: saved.id, sequence: index };
+          }))
+          : [];
+        if (saved.status !== "trash") {
+          for (let index = 0; index < createdCrews.length; index++) {
+            for (const assignment of importedCrews[index]?.assignments ?? []) {
+              await storage.edlsAssignments.create({
+                ...assignment,
+                crewId: createdCrews[index].id,
+              });
+            }
+          }
+        }
+
+        await emitSheetSaved(saved, existing?.status ?? null);
+        return { kind, sheet: { ...saved, crews: createdCrews } };
+      });
+    },
+
     async delete(id: string): Promise<boolean> {
       const client = getClient();
       const result = await client.delete(edlsSheets).where(eq(edlsSheets.id, id)).returning();
@@ -665,6 +739,26 @@ export const edlsSheetsLoggingConfig = defineLoggingConfig<EdlsSheetsStorage>({
           sheetId: result?.id,
           title: result?.title,
           crewCount: result?.crews?.length,
+        },
+      }),
+    },
+    replaceFromImport: {
+      metadataMode: 'none',
+      getHostEntityId: (_args, result) => result?.sheet.id,
+      getDescription: async (_args, result) => {
+        const action = result?.kind === "created" ? "Created" : "Updated";
+        const title = result?.sheet.title || "Untitled";
+        const ymd = result?.sheet.ymd || "Unknown";
+        return `${action} imported sheet [${title}] [${ymd}]`;
+      },
+      after: async (_args, result) => ({
+        sheet: result?.sheet,
+        crews: result?.sheet.crews,
+        metadata: {
+          sheetId: result?.sheet.id,
+          title: result?.sheet.title,
+          ymd: result?.sheet.ymd,
+          crewCount: result?.sheet.crews.length,
         },
       }),
     },

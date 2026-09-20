@@ -5,7 +5,7 @@ import {
   pluginConfigsDispatch,
   pluginConfigsDashboard,
   pluginConfigsQuicksearch,
-  pluginConfigsPaymentGateway,
+  pluginConfigsWcVendors,
   pluginConfigsEventNotifier,
   type PluginConfigCharge,
   type InsertPluginConfigCharge,
@@ -17,8 +17,8 @@ import {
   type InsertPluginConfigDashboard,
   type PluginConfigQuicksearch,
   type InsertPluginConfigQuicksearch,
-  type PluginConfigPaymentGateway,
-  type InsertPluginConfigPaymentGateway,
+  type PluginConfigWcVendors,
+  type InsertPluginConfigWcVendors,
   type PluginConfigEventNotifier,
   type InsertPluginConfigEventNotifier,
   pluginConfigsCron,
@@ -356,18 +356,18 @@ export function createQuicksearchSubsidiaryStorage(): SubsidiaryStorage<
   };
 }
 
-export function createPaymentGatewaySubsidiaryStorage(): SubsidiaryStorage<
-  PluginConfigPaymentGateway,
-  InsertPluginConfigPaymentGateway
+export function createWcVendorsSubsidiaryStorage(): SubsidiaryStorage<
+  PluginConfigWcVendors,
+  InsertPluginConfigWcVendors
 > {
   return {
-    table: pluginConfigsPaymentGateway,
+    table: pluginConfigsWcVendors,
     async get(id) {
       const client = getClient();
       const [row] = await client
         .select()
-        .from(pluginConfigsPaymentGateway)
-        .where(eq(pluginConfigsPaymentGateway.id, id));
+        .from(pluginConfigsWcVendors)
+        .where(eq(pluginConfigsWcVendors.id, id));
       return row || undefined;
     },
     async upsert(row) {
@@ -375,19 +375,19 @@ export function createPaymentGatewaySubsidiaryStorage(): SubsidiaryStorage<
       // The table has no columns beyond the shared `id` FK, so there is nothing
       // to update on conflict — insert-if-absent, then read the row back.
       await client
-        .insert(pluginConfigsPaymentGateway)
+        .insert(pluginConfigsWcVendors)
         .values(row)
         .onConflictDoNothing();
       const [result] = await client
         .select()
-        .from(pluginConfigsPaymentGateway)
-        .where(eq(pluginConfigsPaymentGateway.id, row.id));
+        .from(pluginConfigsWcVendors)
+        .where(eq(pluginConfigsWcVendors.id, row.id));
       return result;
     },
     buildConditions() {
       // No filterable columns yet — the subsidiary exists only as an FK target.
       // The dispatcher still inner-joins it, which is exactly what guarantees a
-      // payment-gateway config is returned only once it has a subsidiary row.
+      // wc-vendors config is returned only once it has a subsidiary row.
       return [];
     },
   };

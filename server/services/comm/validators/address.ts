@@ -1,8 +1,4 @@
 import { storage } from "../../../storage";
-import {
-  getEnvironmentVariable,
-  registerEnvironmentVariable,
-} from "../../../config/env-registry";
 import { isMaintenanceModeError } from "../../maintenance-flag";
 import { geocodeWithGoogle } from "../../google-geocode";
 import { 
@@ -11,24 +7,6 @@ import {
   StructuredAddress,
   AddressParseValidation 
 } from "@shared/schema";
-
-/**
- * Resolve the Google Maps API key from the dynamically-configured env var
- * name, registering it in the env registry (as a secret) on the fly.
- */
-function resolveGoogleApiKey(apiKeyName: string): string | undefined {
-  if (!apiKeyName) return undefined;
-  // changeTakesEffect: "immediate" — this runs at the point of each Google
-  // call and the value it returns is used straight away, never cached.
-  registerEnvironmentVariable({
-    name: apiKeyName,
-    description: "Google Maps API key named by the address-validation config.",
-    secret: true,
-    category: "core",
-    changeTakesEffect: "immediate",
-  });
-  return getEnvironmentVariable(apiKeyName);
-}
 
 // Address validation configuration interface
 export interface AddressValidationConfig {
@@ -40,7 +18,8 @@ export interface AddressValidationConfig {
   };
   google: {
     enabled: boolean;
-    apiKeyName: string;
+    /** @deprecated Google credentials are configured on the WC vendor connection. */
+    apiKeyName?: string;
     components: {
       country: boolean;
       administrative_area_level_1: boolean;
@@ -268,11 +247,6 @@ class AddressValidationService {
    */
   private async validateWithGoogle(address: AddressInput): Promise<AddressValidationResult> {
     const config = await this.getConfig();
-    const apiKey = resolveGoogleApiKey(config.google.apiKeyName);
-    
-    if (!apiKey) {
-      throw new Error(`Google Maps API key not found in environment variable: ${config.google.apiKeyName}`);
-    }
 
     try {
       // Construct address string for Google validation
@@ -286,7 +260,7 @@ class AddressValidationService {
 
       // Google's geocode, shared with every other caller that asks it about
       // an address — the civic lookup included.
-      const outcome = await geocodeWithGoogle({ address: addressString }, { apiKey });
+      const outcome = await geocodeWithGoogle({ address: addressString });
       const data = outcome.response;
 
       if (!data || data.status !== 'OK' || !data.results || data.results.length === 0) {
@@ -479,16 +453,11 @@ class AddressValidationService {
     validation: AddressParseValidation;
   }> {
     const config = await this.getConfig();
-    const apiKey = resolveGoogleApiKey(config.google.apiKeyName);
-    
-    if (!apiKey) {
-      throw new Error(`Google Maps API key not found in environment variable: ${config.google.apiKeyName}`);
-    }
 
     try {
       // The same shared geocode the validate path uses: an address parsed here
       // and validated there is one answer, bought once.
-      const outcome = await geocodeWithGoogle({ address: rawAddress }, { apiKey });
+      const outcome = await geocodeWithGoogle({ address: rawAddress });
       const data = outcome.response;
 
       if (!data || data.status !== 'OK' || !data.results || data.results.length === 0) {
@@ -880,16 +849,6 @@ class AddressValidationService {
     // No guard at the head any more: the framework refuses the call it is
     // about to make, and the catch below rethrows that refusal rather than
     // letting it become `success: false`.
-    const config = await this.getConfig();
-    const apiKey = resolveGoogleApiKey(config.google.apiKeyName);
-    
-    if (!apiKey) {
-      return {
-        success: false,
-        error: "Google Maps API key not configured",
-      };
-    }
-
     try {
       const addressString = [
         address.street,
@@ -906,7 +865,7 @@ class AddressValidationService {
         };
       }
 
-      const outcome = await geocodeWithGoogle({ address: addressString }, { apiKey });
+      const outcome = await geocodeWithGoogle({ address: addressString });
       const data = outcome.response;
 
       if (!data || data.status !== 'OK' || !data.results || data.results.length === 0) {

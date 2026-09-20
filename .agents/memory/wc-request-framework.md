@@ -22,8 +22,11 @@ freshness window then buys months of silence on a lie.
 
 **How to apply:** any new adopter must look for the vendor's own fingerprint in
 the response (the field only a real answer carries), not for the absence of an
-exception. A vendor answer meaning "no such record" is `answered: true,
-store: false` — a real answer that must not be remembered.
+exception. A complete vendor answer meaning "no such record" or "invalid
+subject" is `answered: true` and uses the normal success freshness window.
+Local guesses, incomplete bodies, provider errors, and transport failures are
+`answered: false`; `store: false` is only for an intentionally ephemeral but
+otherwise complete provider answer.
 
 ## Four modes, and the fourth is not cosmetic
 
@@ -154,3 +157,31 @@ a callback that delegates: any function reachable from a `fetch:` callback
 handing off to one private method. A call that is genuinely off-framework needs
 a named entry with a written reason, and the companion rule still fails any
 unlisted file that names a vendor endpoint or SDK.
+
+
+## One door, and what the two halves may each decide
+
+Every outbound call — a transport written here, or an operation a vendor plugin
+declares — is one `wcRequest`, returning one result shape. The vendor half
+resolves connection, credential and handler and hands the call back to the core
+through a transport callback; the core keeps the cache, the count, the
+writable-database gate and the maintenance refusal.
+
+**Refusals throw; the far end's behaviour does not.** "No such connection", "no
+single default", "this vendor cannot do that" and "the site is closed" are all
+statements about US, made before anything left the building. Whatever the
+vendor itself did comes back in the result, with the provider's own error
+object on `cause` — a caller that must tell one provider error from another
+reads that instead of pattern-matching a message.
+
+**A mode that reads no network is refused by nobody.** `local` and
+`cached-only` make no call, so neither may be refused for maintenance and
+neither may run a handler. Both halves have to agree on this: the vendor half
+refuses *before* the core is reached (so a caller naming a plugin id is refused
+without a database read), and a refusal placed ahead of the mode check reports
+a closed site to a caller that only wanted an argument normalized.
+
+**A plugin with no service takes neither path.** It names no outside system, so
+there is nothing to refuse, nothing to count, and the core has no registered
+behavior to run it from — but it still owes the caller the mode and the
+writable-database decision, which is the part that is easy to drop.

@@ -49,8 +49,8 @@ function buildEdlsMenuTree(): MenuItemDef[] {
   if (workers) {
     items.push({
       ...workers,
-      href: "/workers",
-      active: { type: "prefix", value: "/workers" },
+      href: "/edls/workers",
+      active: { type: "prefix", value: "/edls/workers" },
       children: undefined,
     });
   }

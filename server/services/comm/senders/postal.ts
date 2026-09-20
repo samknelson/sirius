@@ -1,15 +1,20 @@
-import { serviceRegistry } from '../../service-registry';
 import { getSystemMode } from '../../system-mode';
 import { createCommStorage, createCommPostalStorage, createCommPostalOptinStorage } from '../../../storage/comm';
 import { storage } from '../../../storage';
 import { runInTransaction } from '../../../storage/transaction-context';
-import type { PostalTransport, PostalAddress, SendLetterParams } from '../providers/postal';
+import type { PostalAddress, SendLetterParams } from '../providers/postal';
 import { verifyPostalAddress } from '../validators/address-verification';
 import type { Comm, CommPostal } from '@shared/schema';
 import { logger } from '../../../logger';
 import { buildStatusCallbackUrl } from '../callback-handlers/url-builder';
 import { isMaintenanceModeError } from "../../maintenance-flag";
 import { ALREADY_SENT, findSentWithKey, type AlreadySentCode } from '../send-key';
+import {
+  wcRequest,
+  type WcVendorTarget,
+} from "../../webclient";
+import type { PostalVendorTypesLoaded } from "../../../plugins/wc-vendors/postal-types";
+void (undefined as unknown as PostalVendorTypesLoaded);
 
 export interface SendPostalRequest {
   contactId: string;
@@ -83,6 +88,25 @@ function buildCanonicalAddress(address: PostalAddress): string {
 export async function sendPostal(request: SendPostalRequest): Promise<SendPostalResult> {
   const { contactId, toAddress, fromAddress, description, file, templateId, mergeVariables, mailType, color, doubleSided, userId, tagIds, sendOffline, sendKey } = request;
 
+  let postalTarget: WcVendorTarget;
+  try {
+    postalTarget = { any: true };
+    const { hasWcVendorOperation } = await import("../../webclient/wc-vendor-context");
+    if (!(await hasWcVendorOperation("communications.postal.send"))) {
+      return {
+        success: false,
+        error: 'Postal sending is not supported by the current provider. Configure a provider with postal sending capability (e.g., Lob).',
+        errorCode: 'POSTAL_NOT_SUPPORTED',
+      };
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error?.message || 'Failed to resolve the postal provider',
+      errorCode: 'UNKNOWN_ERROR',
+    };
+  }
+
   if (sendOffline) {
     try {
       const returnAddress = fromAddress;
@@ -151,17 +175,10 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
   }
 
   try {
-    const postalTransport = await serviceRegistry.resolve<PostalTransport>('postal');
-
-    if (!postalTransport.supportsPostal()) {
-      return {
-        success: false,
-        error: 'Postal mail is not supported by the current provider. Configure a provider with postal capability (e.g., Lob).',
-        errorCode: 'POSTAL_NOT_SUPPORTED',
-      };
-    }
-
-    const verificationResult = await verifyPostalAddress(postalTransport, toAddress);
+    const verificationResult = await verifyPostalAddress(
+      postalTarget,
+      toAddress,
+    );
     if (!verificationResult.valid) {
       return {
         success: false,
@@ -175,7 +192,26 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
 
     let returnAddress = fromAddress;
     if (!returnAddress) {
-      returnAddress = await postalTransport.getDefaultReturnAddress();
+      const { hasWcVendorOperation } = await import("../../webclient/wc-vendor-context");
+    if (!(await hasWcVendorOperation("communications.postal.return-address.default"))) {
+        return {
+          success: false,
+          error: 'No return address provided and no default return address configured.',
+          errorCode: 'NO_RETURN_ADDRESS',
+        };
+      }
+      const defaultReturnAddress = await wcRequest({
+        vendor: { any: true },
+        operation: "communications.postal.return-address.default",
+        args: undefined,
+      });
+      if (defaultReturnAddress.outcome !== "success") {
+        if (defaultReturnAddress.cause !== undefined) throw defaultReturnAddress.cause;
+        throw new Error(
+          defaultReturnAddress.error || "Postal provider did not answer",
+        );
+      }
+      returnAddress = defaultReturnAddress.value;
     }
 
     if (!returnAddress) {
@@ -323,7 +359,19 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
         },
       };
 
-      const sendResult = await postalTransport.sendLetter(sendParams);
+      const sendResponse = await wcRequest({
+        vendor: { any: true },
+        operation: "communications.postal.send",
+        args: sendParams,
+      });
+      if (sendResponse.outcome !== "success") {
+        if (sendResponse.cause !== undefined) throw sendResponse.cause;
+        throw new Error(sendResponse.error || "Postal provider did not answer");
+      }
+      const sendResult = sendResponse.value ?? {
+        success: false,
+        error: sendResponse.error || "Postal provider did not return a result",
+      };
 
       if (!sendResult.success) {
         await commStorage.updateComm(comm.id, {

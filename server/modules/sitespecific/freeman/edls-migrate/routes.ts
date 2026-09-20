@@ -1,21 +1,16 @@
 /**
- * Admin routes for the Freeman EDLS migration connection.
+ * Admin routes for staging Freeman's legacy EDLS data.
  *
- * Both a settings report and the connection test itself. Gated exactly the way
- * the Teamsters 631 client routes are: authenticated, admin, EDLS enabled, and
- * this component enabled — the page is unreachable and the endpoints refuse
- * when the component is off.
+ * Connection configuration and testing live on the shared webclient-vendors
+ * surface. These routes retain only the migration-specific source report,
+ * sweeps, and staged-row management. They are authenticated, admin-only, and
+ * gated on both EDLS and this site-specific component.
  */
 import type { Express, Request, Response, NextFunction } from "express";
 import { requireComponent } from "../../../components";
 import { storage } from "../../../../storage";
 import { sendIfMaintenanceRefusal } from "../../../../services/maintenance-flag";
-import {
-  FREEMAN_EDLS_MIGRATE_COMPONENT_ID,
-  freemanEdlsMigratePing,
-  getFreemanEdlsMigrateSettingsStatus,
-  redactFreemanEdlsMigrateSecrets,
-} from "./client";
+import { FREEMAN_EDLS_MIGRATE_COMPONENT_ID } from "../../../../plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate";
 import {
   FREEMAN_EDLS_FIELD_TABLES,
   FREEMAN_EDLS_NODE_TABLE,
@@ -23,13 +18,36 @@ import {
   runFreemanEdlsFieldSweep,
   runFreemanEdlsNodeSweep,
 } from "./sweep";
+import {
+  getFreemanMigrateStatus,
+  assertNoActiveFreemanMigrate,
+  resetFreemanMigrateStatus,
+  runFreemanMigrate,
+  startFreemanMigrate,
+  stopFreemanMigrate,
+  FreemanMigrateConflictError,
+  withFreemanMigrateLock,
+} from "./import";
 
 /**
  * An unexpected error's text is written by code we do not control end to end,
  * so it goes through the same redaction as a result before it is sent.
  */
 function failureMessage(error: unknown, fallback: string): string {
-  return redactFreemanEdlsMigrateSecrets(error instanceof Error ? error.message : fallback);
+  // Provider refusals that are safe for display are returned inside the sweep
+  // report. An exception reaching the route is unexpected and must not echo a
+  // vendor/transport message: this boundary no longer has credential access
+  // and therefore cannot prove that arbitrary exception text is scrubbed.
+  void error;
+  return fallback;
+}
+
+function sendMigrationFailure(res: Response, error: unknown, fallback: string): void {
+  if (error instanceof FreemanMigrateConflictError) {
+    res.status(409).json({ message: error.message });
+    return;
+  }
+  res.status(500).json({ message: failureMessage(error, fallback) });
 }
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -43,39 +61,15 @@ export function registerFreemanEdlsMigrateRoutes(
   requirePermission: PermissionMiddleware,
 ) {
   const edlsComponent = requireComponent("edls");
+  const freemanComponent = requireComponent("sitespecific.freeman");
   const migrateComponent = requireComponent(FREEMAN_EDLS_MIGRATE_COMPONENT_ID);
-  const gate = [requireAuth, requirePermission("admin"), edlsComponent, migrateComponent];
-
-  app.get(
-    "/api/sitespecific/freeman/edls-migrate/settings",
-    ...gate,
-    async (_req: Request, res: Response) => {
-      try {
-        res.json(getFreemanEdlsMigrateSettingsStatus());
-      } catch (error) {
-        res.status(500).json({
-          message: failureMessage(error, "Failed to read migration settings"),
-        });
-      }
-    },
-  );
-
-  app.post(
-    "/api/sitespecific/freeman/edls-migrate/ping",
-    ...gate,
-    async (_req: Request, res: Response) => {
-      try {
-        // A failed ping is a successful report: the result carries the reason,
-        // so the endpoint answers 200 and the page renders the diagnosis.
-        res.json(await freemanEdlsMigratePing());
-      } catch (error) {
-        // A refusal is not a failed ping — nothing was asked — so it keeps its
-        // own status and the shared wording.
-        if (sendIfMaintenanceRefusal(res, error)) return;
-        res.status(500).json({ message: failureMessage(error, "Failed to run the ping") });
-      }
-    },
-  );
+  const gate = [
+    requireAuth,
+    requirePermission("admin"),
+    edlsComponent,
+    freemanComponent,
+    migrateComponent,
+  ];
 
   /**
    * What the sweeps will read, so the page can say what is about to happen
@@ -100,12 +94,11 @@ export function registerFreemanEdlsMigrateRoutes(
     ...gate,
     async (_req: Request, res: Response) => {
       try {
-        res.json(await runFreemanEdlsNodeSweep());
+        await assertNoActiveFreemanMigrate();
+        res.json(await withFreemanMigrateLock(runFreemanEdlsNodeSweep));
       } catch (error) {
         if (sendIfMaintenanceRefusal(res, error)) return;
-        res.status(500).json({
-          message: failureMessage(error, "Failed to sweep the legacy node table"),
-        });
+        sendMigrationFailure(res, error, "Failed to sweep the legacy node table");
       }
     },
   );
@@ -115,12 +108,11 @@ export function registerFreemanEdlsMigrateRoutes(
     ...gate,
     async (_req: Request, res: Response) => {
       try {
-        res.json(await runFreemanEdlsFieldSweep());
+        await assertNoActiveFreemanMigrate();
+        res.json(await withFreemanMigrateLock(runFreemanEdlsFieldSweep));
       } catch (error) {
         if (sendIfMaintenanceRefusal(res, error)) return;
-        res.status(500).json({
-          message: failureMessage(error, "Failed to sweep the legacy field tables"),
-        });
+        sendMigrationFailure(res, error, "Failed to sweep the legacy field tables");
       }
     },
   );
@@ -145,11 +137,89 @@ export function registerFreemanEdlsMigrateRoutes(
     ...gate,
     async (_req: Request, res: Response) => {
       try {
-        const deleted = await storage.freemanEdlsMigrateStaging.deleteAll();
+        await assertNoActiveFreemanMigrate();
+        const deleted = await withFreemanMigrateLock(
+          () => storage.freemanEdlsMigrateStaging.deleteAll(),
+        );
         res.json({ deleted });
       } catch (error) {
-        res.status(500).json({
-          message: failureMessage(error, "Failed to clear the staged rows"),
+        sendMigrationFailure(res, error, "Failed to clear the staged rows");
+      }
+    },
+  );
+
+  app.get(
+    "/api/sitespecific/freeman/edls-migrate/import/status",
+    ...gate,
+    async (_req: Request, res: Response) => {
+      try {
+        res.json(await getFreemanMigrateStatus());
+      } catch (error) {
+        res.status(500).json({ message: failureMessage(error, "Failed to read migration progress") });
+      }
+    },
+  );
+
+  app.post(
+    "/api/sitespecific/freeman/edls-migrate/import/start",
+    ...gate,
+    async (req: Request, res: Response) => {
+      try {
+        res.status(202).json(await startFreemanMigrate({ limit: req.body?.limit }));
+      } catch (error) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
+        if (error instanceof FreemanMigrateConflictError) {
+          res.status(409).json({ message: error.message });
+        } else {
+          res.status(400).json({ message: failureMessage(error, "The live migration could not be started") });
+        }
+      }
+    },
+  );
+
+  app.post(
+    "/api/sitespecific/freeman/edls-migrate/import/stop",
+    ...gate,
+    async (_req: Request, res: Response) => {
+      try {
+        res.json(await stopFreemanMigrate());
+      } catch (error) {
+        res.status(500).json({ message: failureMessage(error, "Failed to request a safe stop") });
+      }
+    },
+  );
+
+  app.post(
+    "/api/sitespecific/freeman/edls-migrate/import/reset",
+    ...gate,
+    async (_req: Request, res: Response) => {
+      try {
+        res.json(await resetFreemanMigrateStatus());
+      } catch (error) {
+        sendMigrationFailure(res, error, "Failed to reset migration progress");
+      }
+    },
+  );
+
+  app.post(
+    "/api/sitespecific/freeman/edls-migrate/import/run",
+    ...gate,
+    async (req: Request, res: Response) => {
+      try {
+        const mode = req.body?.mode;
+        if (mode !== "test" && mode !== "live") {
+          res.status(400).json({ message: "mode must be test or live" });
+          return;
+        }
+        if (mode === "live") {
+          res.status(400).json({ message: "Use the background start action for live migration." });
+          return;
+        }
+        res.json(await runFreemanMigrate(mode, { limit: req.body?.limit }));
+      } catch (error) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
+        res.status(400).json({
+          message: failureMessage(error, "Failed to run Freeman migration"),
         });
       }
     },

@@ -17,7 +17,7 @@ registerCronPlugin({
   async execute(context: CronJobContext): Promise<CronJobResult> {
     const isDryRun = context.mode === "test";
 
-    const fetchResult = await t631Fetch("sirius_edls_server_tos_list");
+    const fetchResult = await t631Fetch("sitespecific.t631.tos.list");
 
     if (!fetchResult.success) {
       throw new Error(`T631 fetch failed: ${fetchResult.error || "Unknown error"}`);
