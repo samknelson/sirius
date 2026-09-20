@@ -691,6 +691,13 @@ export const wsClientTabTree: HierarchicalTab[] = [
   { id: 'settings', label: 'Settings', hrefTemplate: '/admin/ws/clients/{id}', permission: 'admin' },
   { id: 'credentials', label: 'Credentials', hrefTemplate: '/admin/ws/clients/{id}/credentials', permission: 'admin' },
   { id: 'ip-rules', label: 'IP Rules', hrefTemplate: '/admin/ws/clients/{id}/ip-rules', permission: 'admin' },
+  {
+    id: 'freeman-bearer-authorization',
+    label: 'Freeman Bearer Authorization',
+    hrefTemplate: '/admin/ws/clients/{id}/freeman-bearer-authorization',
+    permission: 'admin',
+    component: 'sitespecific.freeman.authorization',
+  },
   { id: 'test', label: 'Test', hrefTemplate: '/admin/ws/clients/{id}/test', permission: 'admin' },
   { id: 'swagger', label: 'Swagger', hrefTemplate: '/admin/ws/clients/{id}/swagger', permission: 'admin' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/admin/ws/clients/{id}/logs', permission: 'admin' },

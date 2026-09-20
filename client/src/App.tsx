@@ -286,6 +286,9 @@ const WsClientIpRulesPage = lazy(() => import("@/pages/config/ws/client-ip-rules
 const WsClientTestPage = lazy(() => import("@/pages/config/ws/client-test"));
 const WsClientLogsPage = lazy(() => import("@/pages/config/ws/client-logs"));
 const WsClientSwaggerPage = lazy(() => import("@/pages/config/ws/client-swagger"));
+const WsClientFreemanBearerAuthorizationPage = lazy(
+  () => import("@/pages/config/ws/client-freeman-bearer-authorization"),
+);
 const SftpClientsPage = lazy(() => import("@/pages/config/sftp/clients"));
 const HelpsConfigPage = lazy(() => import("@/pages/config/helps"));
 const BusinessCalendarsPage = lazy(() => import("@/pages/config/business-calendars/index"));
@@ -3004,6 +3007,14 @@ function Router() {
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientIpRulesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/ws/clients/:id/freeman-bearer-authorization">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <WsClientFreemanBearerAuthorizationPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
