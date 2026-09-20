@@ -1,7 +1,10 @@
 import { createHash } from "crypto";
 import { z } from "zod";
 import { and, asc, eq, sql } from "drizzle-orm";
-import { storage } from "../../../../storage";
+import {
+  storage,
+  FreemanEdlsFullResetCountsChangedError,
+} from "../../../../storage";
 import { getClient, runInTransaction } from "../../../../storage/transaction-context";
 import {
   validate as validateEdlsSheet,
@@ -37,6 +40,7 @@ export type FreemanMigrateStatus = (typeof FREEMAN_MIGRATE_STATUSES)[number];
 export const FREEMAN_MIGRATE_STATUS_VARIABLE = "SITESPECIFIC_FREEMAN_MIGRATE_STATUS";
 
 export const FREEMAN_MIGRATE_RUN_VARIABLE = "SITESPECIFIC_FREEMAN_MIGRATE_RUN";
+export const FREEMAN_EDLS_FULL_RESET_CONFIRMATION = "DELETE ALL WORKERS";
 const EPOCH = "1970-01-01T00:00:00.000Z";
 // Freeman runs this through PHP strtotime() and rejects the Unix epoch because
 // strtotime("1970-01-01...") is 0, which its legacy truthiness check treats as
@@ -1284,7 +1288,7 @@ export async function withFreemanMigrateLock<T>(
     "freeman-edls-migrate-run",
     { timeoutMs: 0 },
   );
-  if (!lock) throw new Error("A Freeman migration run is already in progress.");
+  if (!lock) throw new FreemanMigrateConflictError("A Freeman migration run is already in progress.");
   try {
     return await fn();
   } finally {
@@ -1368,6 +1372,56 @@ export async function assertNoActiveFreemanMigrate(): Promise<void> {
   if (isActiveLifecycle(control.lifecycle)) {
     throw new FreemanMigrateConflictError("This action is unavailable while the live Freeman migration is active.");
   }
+}
+
+function fullResetSnapshot(counts: {
+  workers: number;
+  sheets: number;
+  crews: number;
+  assignments: number;
+}): string {
+  return createHash("sha256")
+    .update(JSON.stringify(counts))
+    .digest("hex");
+}
+
+export async function getFreemanEdlsFullResetPreflight() {
+  await assertNoActiveFreemanMigrate();
+  const counts = await storage.freemanEdlsFullReset.getCounts();
+  return {
+    counts,
+    snapshot: fullResetSnapshot(counts),
+    confirmation: FREEMAN_EDLS_FULL_RESET_CONFIRMATION,
+  };
+}
+
+export async function executeFreemanEdlsFullReset(raw: unknown) {
+  const input = z.object({
+    confirmation: z.literal(FREEMAN_EDLS_FULL_RESET_CONFIRMATION),
+    snapshot: z.string().length(64),
+  }).strict().parse(raw);
+
+  return withFreemanMigrateLock(async () => {
+    await assertNoActiveFreemanMigrate();
+    const counts = await storage.freemanEdlsFullReset.getCounts();
+    if (input.snapshot !== fullResetSnapshot(counts)) {
+      throw new FreemanMigrateConflictError(
+        "Reset counts changed after the warning was loaded. Refresh the counts and confirm again.",
+      );
+    }
+    try {
+      return {
+        deleted: await storage.freemanEdlsFullReset.execute(counts),
+      };
+    } catch (error) {
+      if (error instanceof FreemanEdlsFullResetCountsChangedError) {
+        throw new FreemanMigrateConflictError(
+          "Reset counts changed after the warning was loaded. Refresh the counts and confirm again.",
+        );
+      }
+      throw error;
+    }
+  });
 }
 
 let startReserved = false;

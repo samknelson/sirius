@@ -4,6 +4,14 @@ const variables = new Map<string, { id: string; name: string; value: unknown }>(
 const wcRequest = vi.fn();
 const release = vi.fn(async () => {});
 let lockAvailable = true;
+let resetCounts = { workers: 3, sheets: 2, crews: 4, assignments: 5 };
+const executeFullReset = vi.fn(async (_expected: typeof resetCounts) => ({
+  ...resetCounts,
+  workerEdls: 3,
+  grievanceAssociations: 1,
+  contactsDeleted: 2,
+  contactsAnonymized: 1,
+}));
 
 const storage = {
   variables: {
@@ -24,6 +32,10 @@ const storage = {
   },
   employers: {
     getEmployer: vi.fn(async () => ({ id: "employer-1" })),
+  },
+  freemanEdlsFullReset: {
+    getCounts: vi.fn(async () => ({ ...resetCounts })),
+    execute: executeFullReset,
   },
 };
 
@@ -83,8 +95,80 @@ beforeEach(async () => {
   variables.clear();
   vi.clearAllMocks();
   lockAvailable = true;
+  resetCounts = { workers: 3, sheets: 2, crews: 4, assignments: 5 };
   wcRequest.mockResolvedValue(successfulEmptyPage());
   await migration.resetFreemanMigrateStatus();
+});
+
+describe("Freeman EDLS full reset control", () => {
+  it("requires the exact typed confirmation", async () => {
+    const preflight = await migration.getFreemanEdlsFullResetPreflight();
+
+    await expect(migration.executeFreemanEdlsFullReset({
+      confirmation: "delete all workers",
+      snapshot: preflight.snapshot,
+    })).rejects.toThrow();
+    expect(executeFullReset).not.toHaveBeenCalled();
+  });
+
+  it("refuses execution when preflight counts are stale", async () => {
+    const preflight = await migration.getFreemanEdlsFullResetPreflight();
+    resetCounts = { ...resetCounts, workers: resetCounts.workers + 1 };
+
+    await expect(migration.executeFreemanEdlsFullReset({
+      confirmation: migration.FREEMAN_EDLS_FULL_RESET_CONFIRMATION,
+      snapshot: preflight.snapshot,
+    })).rejects.toThrow(/counts changed/i);
+    expect(executeFullReset).not.toHaveBeenCalled();
+  });
+
+  it("refuses preflight and execution while a live import is active", async () => {
+    const now = new Date().toISOString();
+    variables.set(migration.FREEMAN_MIGRATE_RUN_VARIABLE, {
+      id: migration.FREEMAN_MIGRATE_RUN_VARIABLE,
+      name: migration.FREEMAN_MIGRATE_RUN_VARIABLE,
+      value: JSON.stringify({
+        lifecycle: "running", limit: 10, stopRequested: false,
+        startedAt: now, finishedAt: null, heartbeatAt: now, batchCount: 0,
+        totals: {
+          fetched: 0, valid: 0, created: 0, updated: 0, failed: 0,
+          records: {
+            crews: { created: 0, updated: 0 },
+            assignments: { created: 0, updated: 0 },
+            workers: { created: 0, updated: 0 },
+          },
+        },
+        latestBatch: null, error: null,
+      }),
+    });
+
+    await expect(migration.getFreemanEdlsFullResetPreflight()).rejects.toThrow(/active/i);
+    await expect(migration.executeFreemanEdlsFullReset({
+      confirmation: migration.FREEMAN_EDLS_FULL_RESET_CONFIRMATION,
+      snapshot: "0".repeat(64),
+    })).rejects.toThrow(/active/i);
+    expect(executeFullReset).not.toHaveBeenCalled();
+  });
+
+  it("executes with fresh counts and returns authoritative deleted counts", async () => {
+    const preflight = await migration.getFreemanEdlsFullResetPreflight();
+    const result = await migration.executeFreemanEdlsFullReset({
+      confirmation: migration.FREEMAN_EDLS_FULL_RESET_CONFIRMATION,
+      snapshot: preflight.snapshot,
+    });
+
+    expect(result.deleted).toEqual({
+      workers: 3,
+      sheets: 2,
+      crews: 4,
+      assignments: 5,
+      workerEdls: 3,
+      grievanceAssociations: 1,
+      contactsDeleted: 2,
+      contactsAnonymized: 1,
+    });
+    expect(executeFullReset).toHaveBeenCalledWith(resetCounts);
+  });
 });
 
 describe("Freeman background migration control", () => {
