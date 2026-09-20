@@ -320,7 +320,7 @@ export default function MigrateSheets() {
         <Alert>
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
-            Legacy paging uses mutable offsets. Records can move while a sweep is running, so review every outcome before proceeding. <strong>Start Over resets cursors but preserves nid mappings.</strong>
+            Legacy paging uses mutable offsets. Records can move while a sweep is running, so review every outcome before proceeding. Failed sheets do not stop later pages. <strong>Fix their cause, then use Start Over to replay them; nid mappings are preserved.</strong>
           </AlertDescription>
         </Alert>
         {statusQuery.data?.run && (
