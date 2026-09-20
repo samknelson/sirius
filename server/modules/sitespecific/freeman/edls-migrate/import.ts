@@ -52,6 +52,7 @@ export type FreemanMigrateState = z.infer<typeof migrateStateSchema>;
 
 const runSchema = z.object({ limit: z.number().int().min(1).max(100).default(100) }).strict();
 export type FreemanMigrateRun = z.infer<typeof runSchema>;
+const supervisorEmailSchema = z.string().email();
 
 type FreemanMigrateStage =
   | "fetch"
@@ -396,6 +397,37 @@ async function resolveOptionalExistingNamed(
 async function resolveSupervisor(name: string | null, live: boolean): Promise<string | null> {
   if (!name) return null;
   const client = getClient();
+  const sourceValue = name.trim();
+  const parsedEmail = supervisorEmailSchema.safeParse(sourceValue);
+  if (parsedEmail.success) {
+    const normalizedEmail = parsedEmail.data.toLowerCase();
+    if (live) {
+      await client.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${normalizedEmail}, 0))`);
+    }
+    const [existing] = await client
+      .select({ id: users.id })
+      .from(users)
+      .where(sql`LOWER(${users.email}) = ${normalizedEmail}`)
+      .orderBy(asc(users.id))
+      .limit(1);
+    if (existing) return existing.id;
+    if (!live) return `planned:${normalizedEmail}`;
+    const [created] = await client.insert(users).values({
+      email: parsedEmail.data,
+      firstName: null,
+      lastName: null,
+      accountStatus: "pending",
+      isActive: false,
+    }).onConflictDoNothing().returning({ id: users.id });
+    if (created) return created.id;
+    const [conflicting] = await client
+      .select({ id: users.id })
+      .from(users)
+      .where(sql`LOWER(${users.email}) = ${normalizedEmail}`)
+      .orderBy(asc(users.id))
+      .limit(1);
+    return conflicting?.id ?? null;
+  }
   const parts = name.split(/\s+/).filter(Boolean);
   const firstName = parts[0] ?? name;
   const lastName = parts.slice(1).join(" ") || null;
