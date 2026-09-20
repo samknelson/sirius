@@ -27,6 +27,7 @@ import {
   optionsEmploymentStatus,
   facilities,
   users,
+  workerIds,
   workerHours,
   workers,
 } from "@shared/schema";
@@ -201,6 +202,8 @@ function sheetFailure(error: unknown): FreemanMigrateError {
     "Ambiguous lookup value",
     "No department could be resolved",
     "The Freeman employee ID type is not configured",
+    "More than one worker matches the normalized Freeman EIN",
+    "More than one worker matches the normalized Teamsters 631 ID",
     "Freeman worker ID and employee ID resolve to different workers",
     "More than one migrated worker has the same Freeman source identity",
     "No employment status is configured",
@@ -514,8 +517,14 @@ interface ResolvedWorker {
   kind: "created" | "updated";
 }
 
+interface FreemanWorkerIdTypes {
+  ein: string;
+  t631: string;
+}
+
 interface FreemanMigratePlanState {
   workers: Map<string, string>;
+  nextWorkerNumber: number;
   assignmentOwners: Map<string, string>;
   replacedSheetIds: Set<string>;
 }
@@ -525,93 +534,96 @@ async function resolveWorker(
   live: boolean,
   employerId: string,
   ymd: string,
-  fallbackKey: string,
+  idTypes: FreemanWorkerIdTypes,
   planState?: FreemanMigratePlanState,
 ): Promise<ResolvedWorker | null> {
-  const sourceId = text(pick(source, "worker_id", "workerId", "sirius_id", "siriusId", "id"));
+  if (live) {
+    // Normalized identity cannot be protected by the exact-value unique
+    // constraint. Block every worker-ID writer until this sheet transaction
+    // finishes so lookup followed by creation is atomic even against writers
+    // that do not know about Freeman's digits-only matching rule.
+    await getClient().execute(sql`LOCK TABLE ${workerIds} IN SHARE ROW EXCLUSIVE MODE`);
+  }
+  const t631Id = text(pick(source, "worker_id", "workerId"));
   const employeeId = text(pick(source, "worker_empid", "employee_id", "employeeId"));
-  const client = getClient();
-  const einTypeId = employeeId
-    ? await storage.workerIds.getTypeIdBySiriusId("freeman_ein")
-    : null;
-  if (employeeId && !einTypeId) {
-    throw new Error("The Freeman employee ID type is not configured.");
-  }
-  const existingEin = employeeId && einTypeId
-    ? await storage.workerIds.getWorkerIdByTypeAndValue(einTypeId, employeeId)
-    : undefined;
+  const normalizedEin = employeeId?.replace(/\D/g, "") || null;
+  const normalizedT631 = t631Id?.replace(/\D/g, "") || null;
   const sourceAliases = [
-    ...(sourceId ? [`worker-id:${sourceId}`] : []),
-    ...(employeeId ? [`employee-id:${employeeId}`] : []),
+    ...(normalizedEin ? [`freeman_ein:${normalizedEin}`] : []),
+    ...(normalizedT631 ? [`t631:${normalizedT631}`] : []),
   ];
-  const sourceKey = sourceAliases[0] ?? `assignment:${fallbackKey}`;
-  const rememberAliases = (workerId: string, aliases: string[]) => {
-    if (live) return;
-    for (const alias of aliases) planState?.workers.set(alias, workerId);
-  };
-  if (sourceId && /^\d+$/.test(sourceId)) {
-    const [found] = await client.select({ id: workers.id }).from(workers).where(eq(workers.siriusId, Number(sourceId)));
-    if (found) {
-      if (existingEin && existingEin.workerId !== found.id) {
-        throw new Error("Freeman worker ID and employee ID resolve to different workers.");
-      }
-      if (live && employeeId && einTypeId && !existingEin) {
-        await storage.workerIds.createWorkerId({ workerId: found.id, typeId: einTypeId, value: employeeId });
-      }
-      if (live) await ensureWorkerEmployment(found.id, employerId, ymd);
-      rememberAliases(found.id, sourceAliases);
-      return { id: found.id, kind: "updated" };
+
+  const matchByDigits = async (
+    typeId: string,
+    digits: string | null,
+    label: string,
+  ): Promise<string | null> => {
+    if (!digits) return null;
+    const matches = await storage.workerIds.getWorkerIdsByTypeAndDigits(typeId, digits);
+    const workerIds = [...new Set(matches.map((match) => match.workerId))];
+    if (workerIds.length > 1) {
+      throw new Error(`More than one worker matches the normalized ${label} ${digits}.`);
     }
+    return workerIds[0] ?? null;
+  };
+
+  // EIN remains the selection priority, but evaluate both supplied IDs so a
+  // conflicting identity or ambiguity can never be hidden by the first match.
+  const existingEinWorkerId = await matchByDigits(
+    idTypes.ein,
+    normalizedEin,
+    "Freeman EIN",
+  );
+  const existingT631WorkerId = await matchByDigits(
+    idTypes.t631,
+    normalizedT631,
+    "Teamsters 631 ID",
+  );
+  if (
+    existingEinWorkerId
+    && existingT631WorkerId
+    && existingEinWorkerId !== existingT631WorkerId
+  ) {
+    throw new Error("Freeman worker ID and employee ID resolve to different workers.");
   }
-  if (existingEin) {
-    if (live) await ensureWorkerEmployment(existingEin.workerId, employerId, ymd);
-    rememberAliases(existingEin.workerId, [`employee-id:${employeeId}`]);
-    return { id: existingEin.workerId, kind: "updated" };
+  const existingWorkerId = existingEinWorkerId ?? existingT631WorkerId;
+  if (existingWorkerId) {
+    if (live) await ensureWorkerEmployment(existingWorkerId, employerId, ymd);
+    return { id: existingWorkerId, kind: "updated" };
   }
-  const parsedName = parseWorkerName(source);
-  const existingPlaceholders = await client.select({ id: workers.id }).from(workers)
-    .where(sql`${workers.data}->'freemanMigration'->>'sourceKey' = ${sourceKey}`);
-  if (existingPlaceholders.length > 1) {
-    throw new Error("More than one migrated worker has the same Freeman source identity.");
-  }
-  if (existingPlaceholders[0]) {
-    if (live) await ensureWorkerEmployment(existingPlaceholders[0].id, employerId, ymd);
-    rememberAliases(existingPlaceholders[0].id, [sourceKey]);
-    return { id: existingPlaceholders[0].id, kind: "updated" };
-  }
+
   if (!live) {
-    const planned = sourceAliases
-      .map((alias) => planState?.workers.get(alias))
-      .find((id): id is string => Boolean(id));
+    const plannedEin = normalizedEin
+      ? planState?.workers.get(`freeman_ein:${normalizedEin}`)
+      : undefined;
+    const plannedT631 = normalizedT631
+      ? planState?.workers.get(`t631:${normalizedT631}`)
+      : undefined;
+    if (plannedEin && plannedT631 && plannedEin !== plannedT631) {
+      throw new Error("Freeman worker ID and employee ID resolve to different workers.");
+    }
+    const planned = plannedEin ?? plannedT631;
     if (planned) {
-      for (const alias of sourceAliases) planState?.workers.set(alias, planned);
       return { id: planned, kind: "updated" };
     }
-    const id = `planned-worker:${sourceKey}`;
-    for (const alias of sourceAliases.length ? sourceAliases : [sourceKey]) {
+    const id = `planned-worker:${sourceAliases[0] ?? `unidentified-${planState?.nextWorkerNumber ?? 0}`}`;
+    if (planState) planState.nextWorkerNumber++;
+    for (const alias of sourceAliases) {
       planState?.workers.set(alias, id);
     }
     return { id, kind: "created" };
   }
+  const parsedName = parseWorkerName(source);
   const { displayName, family, given } = parsedName;
   const worker = await storage.workers.createWorkerWithNameParts({ given, family, displayName });
-  if (employeeId && einTypeId) {
-    await storage.workerIds.createWorkerId({ workerId: worker.id, typeId: einTypeId, value: employeeId });
+  if (normalizedEin) {
+    await storage.workerIds.createWorkerId({ workerId: worker.id, typeId: idTypes.ein, value: normalizedEin });
   }
-  const employmentStatusId = await ensureWorkerEmployment(worker.id, employerId, ymd);
-  const [updated] = await client.update(workers).set({
-    data: {
-      freemanMigration: {
-        sourceKey,
-        sourceId,
-        employeeId,
-        employerId,
-        source,
-        employmentStatusId,
-      },
-    },
-  }).where(eq(workers.id, worker.id)).returning({ id: workers.id });
-  return { id: updated?.id ?? worker.id, kind: "created" };
+  if (normalizedT631) {
+    await storage.workerIds.createWorkerId({ workerId: worker.id, typeId: idTypes.t631, value: normalizedT631 });
+  }
+  await ensureWorkerEmployment(worker.id, employerId, ymd);
+  return { id: worker.id, kind: "created" };
 }
 
 async function ensureWorkerEmployment(
@@ -691,6 +703,7 @@ async function reconcileSheet(
   status: FreemanMigrateStatus,
   live: boolean,
   employerId: string,
+  idTypes: FreemanWorkerIdTypes,
   planState?: FreemanMigratePlanState,
 ): Promise<{
   kind: "created" | "updated";
@@ -757,7 +770,7 @@ async function reconcileSheet(
         live,
         employerId,
         ymd,
-        `${nid}:${crewIdentity}:${assignmentIndex}`,
+        idTypes,
         planState,
       );
       const extra = record(assignmentRecord.assignment_extra);
@@ -961,6 +974,7 @@ async function runStatus(
   limit: number,
   mode: "test" | "live",
   employerId: string,
+  idTypes: FreemanWorkerIdTypes,
   planState: FreemanMigratePlanState,
   shouldStop?: () => Promise<boolean>,
 ) {
@@ -1010,15 +1024,17 @@ async function runStatus(
       const sheetPlanState = mode === "test"
         ? {
           workers: new Map(planState.workers),
+          nextWorkerNumber: planState.nextWorkerNumber,
           assignmentOwners: new Map(planState.assignmentOwners),
           replacedSheetIds: new Set(planState.replacedSheetIds),
         }
         : undefined;
       const reconciled = mode === "live"
-        ? await runInTransaction(() => reconcileSheet(sheet, status, true, employerId))
-        : await reconcileSheet(sheet, status, false, employerId, sheetPlanState);
+        ? await runInTransaction(() => reconcileSheet(sheet, status, true, employerId, idTypes))
+        : await reconcileSheet(sheet, status, false, employerId, idTypes, sheetPlanState);
       if (sheetPlanState) {
         planState.workers = sheetPlanState.workers;
+        planState.nextWorkerNumber = sheetPlanState.nextWorkerNumber;
         planState.assignmentOwners = sheetPlanState.assignmentOwners;
         planState.replacedSheetIds = sheetPlanState.replacedSheetIds;
       }
@@ -1145,16 +1161,35 @@ async function runFreemanMigrateUnlocked(
   const statuses: FreemanMigrateReport["statuses"] = [];
   const planState: FreemanMigratePlanState = {
     workers: new Map(),
+    nextWorkerNumber: 0,
     assignmentOwners: new Map(),
     replacedSheetIds: new Set(),
   };
   let stoppedEarly = false;
   let employerId: string | null = null;
+  let workerIdTypes: FreemanWorkerIdTypes | null = null;
   let setupError: FreemanMigrateError | undefined;
   try {
+    const [ein, t631] = await Promise.all([
+      storage.workerIds.getTypeIdBySiriusId("freeman_ein"),
+      storage.workerIds.getTypeIdBySiriusId("t631"),
+    ]);
+    if (!ein || !t631) {
+      setupError = {
+        stage: "relation_resolution",
+        code: "missing_worker_id_types",
+        message: !ein && !t631
+          ? "The Freeman EIN and Teamsters 631 worker ID types are not configured."
+          : !ein
+            ? "The Freeman EIN worker ID type is not configured."
+            : "The Teamsters 631 worker ID type is not configured.",
+      };
+    } else {
+      workerIdTypes = { ein, t631 };
+    }
     const settings = await getEdlsSettings();
     if (!settings.employer) {
-      setupError = {
+      setupError ??= {
         stage: "relation_resolution",
         code: "missing_edls_employer",
         message: "No employer is configured in EDLS settings.",
@@ -1163,7 +1198,7 @@ async function runFreemanMigrateUnlocked(
       const employer = await storage.employers.getEmployer(settings.employer);
       if (employer) employerId = employer.id;
       else {
-        setupError = {
+        setupError ??= {
           stage: "relation_resolution",
           code: "edls_employer_not_found",
           message: "The employer configured in EDLS settings was not found.",
@@ -1194,7 +1229,7 @@ async function runFreemanMigrateUnlocked(
       startDate: cursor.startDate,
       sweepStartedAt: cursor.sweepStartedAt,
     };
-    if (setupError || !employerId) {
+    if (setupError || !employerId || !workerIdTypes) {
       statuses.push({
         status,
         label: STATUS_LABELS[status],
@@ -1224,7 +1259,7 @@ async function runFreemanMigrateUnlocked(
       // fall into the gap between query time and watermark time.
       const sweepStartedAt = cursor.sweepStartedAt ?? new Date().toISOString();
       const activeCursor = { ...cursor, sweepStartedAt };
-      const report = await runStatus(status, activeCursor, limit, mode, employerId, planState, shouldStop);
+      const report = await runStatus(status, activeCursor, limit, mode, employerId, workerIdTypes, planState, shouldStop);
       const complete = report.complete;
       next.statuses[status] = report.interrupted || report.failed > 0
         ? cursor

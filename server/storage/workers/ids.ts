@@ -36,6 +36,11 @@ export interface WorkerIdStorage {
   getWorkerIdsByTypeForWorkerIds(typeId: string, workerIdsList: string[]): Promise<{ workerId: string; value: string }[]>;
   getWorkerIdByTypeAndValue(typeId: string, value: string): Promise<WorkerId | undefined>;
   /**
+   * All rows for a type whose value has the same digits as `digits`.
+   * Non-numeric characters in stored values are ignored.
+   */
+  getWorkerIdsByTypeAndDigits(typeId: string, digits: string): Promise<WorkerId[]>;
+  /**
    * All rows for a type whose value equals `value` OR equals `value` with a
    * single leading letter (case-insensitive), e.g. "118637" also matches
    * "I118637" / "O118637". Returns every match so callers can prefer the
@@ -114,6 +119,18 @@ export function createWorkerIdStorage(): WorkerIdStorage {
         .where(and(eq(workerIds.typeId, typeId), eq(workerIds.value, value)))
         .limit(1);
       return row || undefined;
+    },
+
+    async getWorkerIdsByTypeAndDigits(typeId: string, digits: string): Promise<WorkerId[]> {
+      if (!digits || /\D/.test(digits)) return [];
+      const client = getClient();
+      return client
+        .select()
+        .from(workerIds)
+        .where(and(
+          eq(workerIds.typeId, typeId),
+          sql`regexp_replace(${workerIds.value}, '[^0-9]', '', 'g') = ${digits}`,
+        ));
     },
 
     async getWorkerIdsByTypeAndValueWithOptionalPrefix(typeId: string, value: string): Promise<WorkerId[]> {

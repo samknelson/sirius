@@ -33,6 +33,9 @@ const storage = {
   employers: {
     getEmployer: vi.fn(async () => ({ id: "employer-1" })),
   },
+  workerIds: {
+    getTypeIdBySiriusId: vi.fn(async (siriusId: string) => `${siriusId}-type`),
+  },
   freemanEdlsFullReset: {
     getCounts: vi.fn(async () => ({ ...resetCounts })),
     execute: executeFullReset,
