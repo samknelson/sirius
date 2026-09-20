@@ -7,12 +7,14 @@
  * gated on both EDLS and this site-specific component.
  */
 import type { Express, Request, Response, NextFunction } from "express";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { requireComponent } from "../../../components";
 import { storage } from "../../../../storage";
 import { logger } from "../../../../logger";
 import {
   isMaintenanceActive,
+  isMaintenanceModeError,
   sendIfMaintenanceRefusal,
 } from "../../../../services/maintenance-flag";
 import { FREEMAN_EDLS_MIGRATE_COMPONENT_ID } from "../../../../plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate";
@@ -59,34 +61,35 @@ function sendMigrationFailure(res: Response, error: unknown, fallback: string): 
   res.status(500).json({ message: failureMessage(error, fallback) });
 }
 
+type OneBatchFailureStage =
+  | "request_validation"
+  | "maintenance"
+  | "conflict"
+  | "database"
+  | "request";
 function databaseFailureMetadata(error: unknown): Record<string, unknown> {
   const source = error instanceof FreemanEdlsFullResetUnexpectedError
     ? error.diagnostics
     : error;
   if (typeof source !== "object" || source === null) return {};
-  if (error instanceof FreemanEdlsFullResetUnexpectedError) return error.diagnostics;
-  const diagnostics: Record<string, unknown> = {};
-  const causes: Array<Record<string, string>> = [];
-  const seen = new Set<object>();
-  let current: unknown = source;
-  const keys = ["name", "message", "stack", "code", "severity", "detail", "hint", "where",
-    "schema", "table", "column", "constraint", "file", "line", "routine"] as const;
-  for (let depth = 0; depth < 8 && typeof current === "object" && current !== null; depth += 1) {
-    if (seen.has(current)) break;
-    seen.add(current);
-    const value = current as Record<string, unknown>;
-    const cause: Record<string, string> = {};
-    for (const key of keys) {
-      if (typeof value[key] === "string") {
-        diagnostics[key] = value[key];
-        cause[key] = value[key] as string;
-      }
-    }
-    if (Object.keys(cause).length > 0) causes.push(cause);
-    current = value.cause;
-  }
-  if (causes.length > 1) diagnostics.causes = causes;
-  return diagnostics;
+  const value = source as Record<string, unknown>;
+  const allowed = [
+    "name",
+    "code",
+    "severity",
+    "schema",
+    "table",
+    "column",
+    "dataType",
+    "constraint",
+    "routine",
+    "entity",
+  ] as const;
+  return Object.fromEntries(
+    allowed
+      .filter((key) => typeof value[key] === "string")
+      .map((key) => [key, value[key]]),
+  );
 }
 
 async function sendFullResetFailure(res: Response, error: unknown): Promise<void> {
@@ -110,13 +113,10 @@ async function sendFullResetFailure(res: Response, error: unknown): Promise<void
   const failedRecord = error instanceof FreemanEdlsFullResetUnexpectedError
     ? error.failedRecord
     : undefined;
-  const databaseMessage = typeof diagnostics.message === "string"
-    ? diagnostics.message
-    : error instanceof Error ? error.message : "Unknown database error";
   const recordDescription = failedRecord
     ? ` Record ${failedRecord.id} in ${failedRecord.table} failed.`
     : "";
-  const message = `The full reset failed during ${stage}.${recordDescription} ${databaseMessage} Every reset deletion was rolled back.`;
+  const message = `The full reset failed during ${stage}.${recordDescription} Every reset deletion was rolled back.`;
   const logPayload = {
     stage,
     outcome: "rolled_back",
@@ -353,23 +353,156 @@ export function registerFreemanEdlsMigrateRoutes(
     "/api/sitespecific/freeman/edls-migrate/import/run",
     ...gate,
     async (req: Request, res: Response) => {
+      const correlationId = randomUUID();
+      const endpoint = req.originalUrl || req.path;
+      const mode = req.body?.mode;
+      const limit = req.body?.limit;
       try {
-        const mode = req.body?.mode;
         if (mode !== "test" && mode !== "live") {
-          res.status(400).json({ message: "mode must be test or live" });
-          return;
+          throw new z.ZodError([{
+            code: "custom",
+            path: ["mode"],
+            message: "mode must be test or live",
+          }]);
         }
-        res.json(await runFreemanMigrate(mode, { limit: req.body?.limit }));
+        res.json(await runFreemanMigrate(mode, { limit }, { correlationId }));
       } catch (error) {
-        if (sendIfMaintenanceRefusal(res, error)) return;
-        if (error instanceof FreemanMigrateConflictError) {
-          res.status(409).json({ message: error.message });
-          return;
-        }
-        res.status(400).json({
-          message: failureMessage(error, "Failed to run Freeman migration"),
+        sendOneBatchFailure(res, error, {
+          correlationId,
+          endpoint,
+          mode,
+          limit,
         });
       }
     },
   );
+}
+
+function isDatabaseError(error: unknown): boolean {
+  let current = error;
+  const seen = new Set<unknown>();
+  for (let depth = 0; current && typeof current === "object" && depth < 8; depth++) {
+    if (seen.has(current)) break;
+    seen.add(current);
+    const value = current as { code?: unknown; cause?: unknown };
+    if (typeof value.code === "string" && /^[0-9A-Z]{5}$/.test(value.code)) return true;
+    current = value.cause;
+  }
+  return false;
+}
+
+function oneBatchFailure(error: unknown): {
+  httpStatus: number;
+  stage: OneBatchFailureStage;
+  code: string;
+  message: string;
+  details?: string;
+} {
+  if (error instanceof z.ZodError) {
+    return {
+      httpStatus: 400,
+      stage: "request_validation",
+      code: "invalid_run_request",
+      message: "The migration request was invalid.",
+      details: error.issues
+        .slice(0, 5)
+        .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+        .join("; "),
+    };
+  }
+  if (isMaintenanceModeError(error)) {
+    return {
+      httpStatus: error.statusCode,
+      stage: "maintenance",
+      code: "maintenance_refusal",
+      message: error.message,
+    };
+  }
+  if (error instanceof FreemanMigrateConflictError) {
+    return {
+      httpStatus: 409,
+      stage: "conflict",
+      code: "migration_already_running",
+      message: error.message,
+    };
+  }
+  if (isDatabaseError(error)) {
+    return {
+      httpStatus: 500,
+      stage: "database",
+      code: "database_failure",
+      message: "The migration failed while reading or writing local data.",
+    };
+  }
+  return {
+    httpStatus: 500,
+    stage: "request",
+    code: "unexpected_migration_failure",
+    message: "The migration request failed unexpectedly.",
+  };
+}
+
+function sendOneBatchFailure(
+  res: Response,
+  error: unknown,
+  context: {
+    correlationId: string;
+    endpoint: string;
+    mode: unknown;
+    limit: unknown;
+  },
+): void {
+  const failure = oneBatchFailure(error);
+  logger.error("Freeman EDLS one-batch migration failed", {
+    service: "freeman-edls-migrate",
+    ...context,
+    stage: failure.stage,
+    code: failure.code,
+    error: safeUnexpectedError(error),
+  });
+  res.status(failure.httpStatus).json({
+    success: false,
+    message: failure.message,
+    stage: failure.stage,
+    code: failure.code,
+    correlationId: context.correlationId,
+    ...(failure.details ? { details: failure.details } : {}),
+  });
+}
+
+function safeStackFrames(error: Error): string[] | undefined {
+  const frames = error.stack
+    ?.split("\n")
+    .slice(1)
+    .filter((line) => /^\s*at\s+/.test(line))
+    .slice(0, 30)
+    .map((line) => line.trim());
+  return frames?.length ? frames : undefined;
+}
+
+function safeUnexpectedError(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) return { valueType: typeof error };
+  const value = error as Error & {
+    code?: unknown;
+    constraint?: unknown;
+    table?: unknown;
+    cause?: unknown;
+  };
+  const safeIdentifier = (candidate: unknown) =>
+    typeof candidate === "string" && /^[A-Za-z0-9_.-]{1,128}$/.test(candidate)
+      ? candidate
+      : undefined;
+  return {
+    name: error.name,
+    stackFrames: safeStackFrames(error),
+    code: safeIdentifier(value.code),
+    constraint: safeIdentifier(value.constraint),
+    table: safeIdentifier(value.table),
+    cause: value.cause instanceof Error
+      ? {
+        name: value.cause.name,
+        stackFrames: safeStackFrames(value.cause),
+      }
+      : undefined,
+  };
 }

@@ -23,7 +23,10 @@ const initialRows: Record<string, Array<Record<string, string>>> = {
   assignments: [{ id: "assignment-1" }, { id: "assignment-2" }, { id: "assignment-3" }],
   worker_edls: [{ id: "worker-edls-1" }],
   grievance_workers: [{ id: "grievance-worker-1" }],
-  contacts: [{ id: "contact-1" }, { id: "contact-2" }],
+  contacts: [
+    { id: "contact-1", displayName: "Sensitive Contact One" },
+    { id: "contact-2", displayName: "Sensitive Contact Two" },
+  ],
   comm: [{ contactId: "contact-1" }],
   contact_postal: [{ id: "postal-1" }],
   contact_phone: [{ id: "phone-1" }],
@@ -177,30 +180,69 @@ describe("Freeman EDLS full reset storage", () => {
     });
     const storage = createFreemanEdlsFullResetStorage();
 
-    await expect(storage.execute({
-      workers: 2,
-      sheets: 1,
-      crews: 2,
-      assignments: 3,
-    })).rejects.toMatchObject({
+    let thrown: unknown;
+    try {
+      await storage.execute({
+        workers: 2,
+        sheets: 1,
+        crews: 2,
+        assignments: 3,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toMatchObject({
       name: "FreemanEdlsFullResetUnexpectedError",
       stage: "delete_assignments",
       failedRecord: {
         table: "edls_assignments",
         id: "assignment-1",
-        snapshot: { id: "assignment-1" },
       },
       diagnostics: expect.objectContaining({
-        message: "assignment deletion trigger refused this row",
         code: "P0001",
-        detail: "The assignment is retained by a site trigger.",
-        causes: expect.arrayContaining([
-          expect.objectContaining({ message: "storage mutation wrapper" }),
-          expect.objectContaining({ code: "P0001" }),
-        ]),
+        severity: "ERROR",
+        table: "assignments",
       }),
     });
+    const serialized = JSON.stringify(thrown);
+    expect(serialized).not.toContain("snapshot");
+    expect(serialized).not.toContain("assignment deletion trigger refused this row");
+    expect(serialized).not.toContain("The assignment is retained by a site trigger.");
     expect(afterCommit).not.toHaveBeenCalled();
+  });
+
+  it("projects worker failures to identifiers without names or relationships", async () => {
+    (client as typeof client & { execute?: (query: unknown) => Promise<{ rows: never[] }> }).execute =
+      vi.fn(async () => ({ rows: [] }));
+    failAt = "workers";
+    failure = Object.assign(new Error("secret worker detail"), { code: "XX000" });
+    const storage = createFreemanEdlsFullResetStorage();
+
+    let thrown: unknown;
+    try {
+      await storage.execute({
+        workers: 2,
+        sheets: 1,
+        crews: 2,
+        assignments: 3,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toMatchObject({
+      name: "FreemanEdlsFullResetUnexpectedError",
+      stage: "delete_workers",
+      failedRecord: {
+        table: "workers",
+        id: "worker-1",
+        worker: { id: "worker-1", contactId: "contact-1" },
+      },
+    });
+    const serialized = JSON.stringify(thrown);
+    expect(serialized).not.toContain("Sensitive Contact");
+    expect(serialized).not.toContain("relationships");
+    expect(serialized).not.toContain("secret worker detail");
   });
 
   it("classifies worker relationship blockers from lightweight clients", async () => {

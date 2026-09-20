@@ -325,47 +325,33 @@ function isForeignKeyViolation(error: unknown): boolean {
     && error.code === "23503";
 }
 
-function safeDatabaseDiagnostics(error: unknown): Record<string, unknown> {
+function safeDatabaseDiagnostics(error: unknown): Record<string, string | undefined> {
   const keys = [
     "name",
-    "message",
-    "stack",
     "code",
     "severity",
-    "detail",
-    "hint",
-    "position",
-    "internalPosition",
-    "internalQuery",
-    "where",
     "schema",
     "table",
     "column",
     "dataType",
     "constraint",
-    "file",
-    "line",
     "routine",
   ] as const;
-  const diagnostics: Record<string, unknown> = {};
-  const causes: Array<Record<string, string>> = [];
-  const seen = new Set<object>();
-  let current: unknown = error;
-  for (let depth = 0; depth < 8 && typeof current === "object" && current !== null; depth += 1) {
-    if (seen.has(current)) break;
+  const diagnostics: Record<string, string> = {};
+  const seen = new Set<unknown>();
+  let current = error;
+  for (
+    let depth = 0;
+    current && typeof current === "object" && depth < 8 && !seen.has(current);
+    depth++
+  ) {
     seen.add(current);
     const value = current as Record<string, unknown>;
-    const cause: Record<string, string> = {};
     for (const key of keys) {
-      if (typeof value[key] === "string") {
-        diagnostics[key] = value[key];
-        cause[key] = value[key] as string;
-      }
+      if (typeof value[key] === "string") diagnostics[key] = value[key];
     }
-    if (Object.keys(cause).length > 0) causes.push(cause);
     current = value.cause;
   }
-  if (causes.length > 1) diagnostics.causes = causes;
   return diagnostics;
 }
 
@@ -373,13 +359,9 @@ export interface FreemanEdlsFullResetFailedRecord {
   stage: FreemanEdlsFullResetStage;
   table: string;
   id: string;
-  snapshot: Record<string, unknown>;
   worker?: {
     id: string;
-    name: string | null;
     contactId: string;
-    contactName: string | null;
-    relationships: FreemanEdlsFullResetRelation[];
   };
 }
 
@@ -440,7 +422,7 @@ async function mutateRowsWithExactFailure(
   rows: Array<Record<string, unknown> & { id: string }>,
   mutate: (ids: string[]) => Promise<Array<{ id: string }>>,
   workerDetails?: Map<string, FreemanEdlsFullResetFailedRecord["worker"]>,
-  loadSnapshot?: (id: string) => Promise<Record<string, unknown> | undefined>,
+  _loadSnapshot?: (id: string) => Promise<Record<string, unknown> | undefined>,
 ): Promise<number> {
   if (rows.length === 0) return 0;
   const client = getClient();
@@ -490,7 +472,6 @@ async function mutateRowsWithExactFailure(
             stage,
             table,
             id: row.id,
-            snapshot: await loadSnapshot?.(row.id) ?? row,
             worker: workerDetails?.get(row.id),
           },
           rowError,
@@ -516,11 +497,6 @@ async function mutateRowsWithExactFailure(
         stage,
         table,
         id: "(multi-row statement)",
-        snapshot: {
-          recordCount: candidates.length,
-          firstRecordId: candidates[0]?.id,
-          lastRecordId: candidates.at(-1)?.id,
-        },
       },
       originalError,
     );
@@ -670,28 +646,11 @@ export function createFreemanEdlsFullResetStorage(): FreemanEdlsFullResetStorage
             .where(eq(grievanceWorkers.id, id)))[0],
         );
         const fullWorkerRows = await client.select().from(workers);
-        const workerContactRows = contactIds.length > 0
-          ? await client.select({ id: contacts.id, displayName: contacts.displayName })
-            .from(contacts)
-            .where(idMatchesAny(contacts.id, contactIds))
-          : [];
-        const workerContactNames = new Map(
-          workerContactRows.map((contact) => [contact.id, contact.displayName]),
-        );
         const workerDetails = new Map<string, FreemanEdlsFullResetFailedRecord["worker"]>(
-          fullWorkerRows.map((row) => {
-            const contactName = workerContactNames.get(row.contactId) ?? null;
-            return [row.id, {
-              id: row.id,
-              name: contactName,
-              contactId: row.contactId,
-              contactName,
-              relationships: [
-                ...currentPlan.blockers,
-                ...currentPlan.preservations,
-              ].filter((relation) => relation.workerId === row.id),
-            }];
-          }),
+          fullWorkerRows.map((row) => [row.id, {
+            id: row.id,
+            contactId: row.contactId,
+          }]),
         );
         stage = "delete_workers";
         const deletedWorkers = await mutateRowsWithExactFailure(

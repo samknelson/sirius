@@ -76,13 +76,9 @@ type ResetFailedRecord = {
   stage: string;
   table: string;
   id: string;
-  snapshot: Record<string, unknown>;
   worker?: {
     id: string;
-    name: string | null;
     contactId: string;
-    contactName: string | null;
-    relationships: ResetRelation[];
   };
 };
 
@@ -312,17 +308,11 @@ export default function FullResetCard() {
                             </p>
                             {reset.error.failure.failedRecord.worker && (
                               <p>
-                                <strong>Worker:</strong>{" "}
-                                {reset.error.failure.failedRecord.worker.name ?? "Unknown"}{" "}
-                                ({reset.error.failure.failedRecord.worker.id}); contact{" "}
-                                {reset.error.failure.failedRecord.worker.contactName ?? "Unknown"}{" "}
-                                ({reset.error.failure.failedRecord.worker.contactId})
+                                <strong>Worker ID:</strong>{" "}
+                                {reset.error.failure.failedRecord.worker.id}; contact ID{" "}
+                                {reset.error.failure.failedRecord.worker.contactId}
                               </p>
                             )}
-                            <p className="mt-1 font-semibold">Complete record snapshot</p>
-                            <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded border bg-background p-2 text-xs">
-                              {JSON.stringify(reset.error.failure.failedRecord.snapshot, null, 2)}
-                            </pre>
                           </div>
                         )}
                         {reset.error.failure.diagnostics

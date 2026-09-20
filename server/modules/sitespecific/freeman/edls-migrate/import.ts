@@ -95,6 +95,7 @@ interface FreemanMigrateSheetResult {
   outcome: FreemanSheetOutcome;
   records?: FreemanMigrateRecordCounts;
   stage?: FreemanMigrateStage;
+  code?: string;
   message?: string;
   details?: string;
 }
@@ -106,6 +107,7 @@ interface FreemanMigrateRecordCounts {
 }
 
 export interface FreemanMigrateReport {
+  correlationId?: string;
   mode: "test" | "live";
   limit: number;
   stoppedEarly: boolean;
@@ -1111,6 +1113,7 @@ async function runStatus(
   idTypes: FreemanWorkerIdTypes,
   planState: FreemanMigratePlanState,
   shouldStop?: () => Promise<boolean>,
+  diagnostics?: { correlationId: string },
 ) {
   const result = await wcRequest({
     vendor: { pluginId: FREEMAN_EDLS_MIGRATE_PLUGIN_ID },
@@ -1201,7 +1204,11 @@ async function runStatus(
         : undefined;
       logger.error("Freeman EDLS sheet import failed", {
         service: "freeman-edls-migrate",
+        correlationId: diagnostics?.correlationId,
+        mode,
+        limit,
         status,
+        page: cursor.page,
         nid: identity.nid,
         stage: failure.stage,
         code: failure.code,
@@ -1213,6 +1220,7 @@ async function runStatus(
         sourceStatus: status,
         outcome: "failed",
         stage: failure.stage,
+        code: failure.code,
         message: failure.message,
         details: failure.details,
       });
@@ -1292,6 +1300,7 @@ async function runFreemanMigrateUnlocked(
   mode: "test" | "live",
   raw: unknown,
   shouldStop?: () => Promise<boolean>,
+  diagnostics?: { correlationId: string },
 ): Promise<FreemanMigrateReport> {
   const { limit } = runSchema.parse(raw ?? {});
   const startedAt = new Date().toISOString();
@@ -1348,6 +1357,11 @@ async function runFreemanMigrateUnlocked(
   } catch (error) {
     logger.error("Freeman EDLS migration setup failed", {
       service: "freeman-edls-migrate",
+      correlationId: diagnostics?.correlationId,
+      mode,
+      limit,
+      stage: "relation_resolution",
+      code: "setup_failed",
       error: error instanceof Error ? error.message : String(error),
     });
     setupError = {
@@ -1399,7 +1413,17 @@ async function runFreemanMigrateUnlocked(
       // fall into the gap between query time and watermark time.
       const sweepStartedAt = cursor.sweepStartedAt ?? new Date().toISOString();
       const activeCursor = { ...cursor, sweepStartedAt };
-      const report = await runStatus(status, activeCursor, limit, mode, employerId, workerIdTypes, planState, shouldStop);
+      const report = await runStatus(
+        status,
+        activeCursor,
+        limit,
+        mode,
+        employerId,
+        workerIdTypes,
+        planState,
+        shouldStop,
+        diagnostics,
+      );
       const complete = report.complete;
       next.statuses[status] = nextCursorAfterReport(cursor, sweepStartedAt, report);
       statuses.push({
@@ -1415,7 +1439,12 @@ async function runFreemanMigrateUnlocked(
       const failure = statusFailure(error);
       logger.error("Freeman EDLS status import failed", {
         service: "freeman-edls-migrate",
+        correlationId: diagnostics?.correlationId,
+        mode,
+        limit,
         status,
+        page: cursor.page,
+        startDate: cursor.startDate,
         stage: failure.stage,
         code: failure.code,
         error: error instanceof Error ? error.message : String(error),
@@ -1441,17 +1470,26 @@ async function runFreemanMigrateUnlocked(
     stoppedEarly = await shouldStop();
   }
   if (mode === "live") await writeState(next);
-  return { mode, limit, stoppedEarly, statuses, startedAt, durationMs: Date.now() - started };
+  return {
+    correlationId: diagnostics?.correlationId,
+    mode,
+    limit,
+    stoppedEarly,
+    statuses,
+    startedAt,
+    durationMs: Date.now() - started,
+  };
 }
 
 export async function runFreemanMigrate(
   mode: "test" | "live",
   raw: unknown,
+  diagnostics?: { correlationId: string },
 ): Promise<FreemanMigrateReport> {
-  if (mode === "test") return runFreemanMigrateUnlocked(mode, raw);
+  if (mode === "test") return runFreemanMigrateUnlocked(mode, raw, undefined, diagnostics);
   return withFreemanMigrateLock(async () => {
     await assertNoActiveFreemanMigrate();
-    return runFreemanMigrateUnlocked(mode, raw);
+    return runFreemanMigrateUnlocked(mode, raw, undefined, diagnostics);
   });
 }
 
