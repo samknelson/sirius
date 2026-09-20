@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAccessCheckBatch } from "@/hooks/use-access-check";
 import { AssignmentStatusDotsButton } from "@/components/edls/AssignmentStatusDot";
-import { StarRating } from "@/components/edls/StarRating";
+import { StarRating, StarRatingFilter } from "@/components/edls/StarRating";
 import { WorkerAssignmentDetailsDialog } from "@/components/edls/WorkerAssignmentDetailsDialog";
 
 interface Option {
@@ -124,10 +124,10 @@ export default function EdlsWorkersPage() {
             <FilterSelect label="Member status" value={params.get("memberStatusId") || "all"} options={[{ id: "all", name: "All statuses" }, ...edlsMemberStatuses]} onChange={(value) => update({ memberStatusId: value === "all" ? null : value })} testId="select-edls-worker-member-status" disabled={!data?.industryId} />
             {data?.ratingsEnabled && <FilterSelect label="Rating" value={params.get("ratingId") || "all"} options={[{ id: "all", name: "No rating" }, ...rankingOptions]} onChange={(value) => update({ ratingId: value === "all" ? null : value, ratingValue: value === "all" ? null : params.get("ratingValue") })} testId="select-edls-worker-ranking" />}
             {data?.ratingsEnabled && params.get("ratingId") && (
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Minimum rating</label>
-                <Input type="number" className="w-32" value={params.get("ratingValue") || ""} onChange={(event) => update({ ratingValue: event.target.value || null })} placeholder="Any" />
-              </div>
+              <StarRatingFilter
+                value={parseRatingFilter(params.get("ratingValue"))}
+                onChange={(value) => update({ ratingValue: value === null ? null : String(value) })}
+              />
             )}
             <FilterSelect label="ID type" value={params.get("idTypeId") || "all"} options={[{ id: "all", name: "Any ID type" }, ...(data?.idTypes ?? [])]} onChange={(value) => update({ idTypeId: value === "all" ? null : value })} testId="select-edls-worker-id-type" />
             {params.get("idTypeId") && <div className="space-y-1"><label className="text-sm font-medium">ID value</label><Input className="w-36" value={params.get("idValue") || ""} onChange={(event) => update({ idValue: event.target.value || null })} placeholder="Any value" /></div>}
@@ -185,4 +185,9 @@ function updateUrl(setLocation: (to: string) => void, changes: Record<string, st
   const params = new URLSearchParams(window.location.search);
   Object.entries(changes).forEach(([key, value]) => value ? params.set(key, value) : params.delete(key));
   setLocation(`/edls/workers${params.toString() ? `?${params.toString()}` : ""}`);
+}
+
+function parseRatingFilter(value: string | null): number | null {
+  const rating = Number(value);
+  return Number.isInteger(rating) && rating >= 1 && rating <= 4 ? rating : null;
 }
