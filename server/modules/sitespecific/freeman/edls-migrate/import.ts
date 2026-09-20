@@ -77,6 +77,7 @@ interface FreemanMigrateError {
 
 interface FreemanMigrateSheetResult {
   nid?: string;
+  sheetId?: string;
   title: string;
   sourceStatus: FreemanMigrateStatus;
   outcome: FreemanSheetOutcome;
@@ -569,7 +570,12 @@ async function resolveCrewlead(
   return created.id;
 }
 
-async function reconcileSheet(source: unknown, status: FreemanMigrateStatus, live: boolean, employerId: string): Promise<"created" | "updated"> {
+async function reconcileSheet(
+  source: unknown,
+  status: FreemanMigrateStatus,
+  live: boolean,
+  employerId: string,
+): Promise<{ kind: "created" | "updated"; sheetId?: string }> {
   const sheet = record(source);
   const nid = sourceNid(pick(sheet, "nid", "node_id", "nodeId", "id"));
   if (!nid) {
@@ -700,7 +706,7 @@ async function reconcileSheet(source: unknown, status: FreemanMigrateStatus, liv
         }
       }
     }
-    return existing ? "updated" : "created";
+    return { kind: existing ? "updated" : "created" };
   }
   const data = {
     freemanMigration: {
@@ -736,7 +742,7 @@ async function reconcileSheet(source: unknown, status: FreemanMigrateStatus, liv
   }
   const targetId = result.sheet.id;
   await storage.freemanEdlsMigrateStaging.setTargetSheetId(nid, targetId, sheet);
-  return result.kind;
+  return { kind: result.kind, sheetId: targetId };
 }
 
 const STATUS_LABELS: Record<FreemanMigrateStatus, string> = {
@@ -779,17 +785,18 @@ async function runStatus(status: FreemanMigrateStatus, cursor: z.infer<typeof pr
   for (const sheet of sheets) {
     const identity = sourceIdentity(sheet);
     try {
-      const outcome = mode === "live"
+      const reconciled = mode === "live"
         ? await runInTransaction(() => reconcileSheet(sheet, status, true, employerId))
         : await reconcileSheet(sheet, status, false, employerId);
-      if (outcome === "created") created++;
-      else if (outcome === "updated") updated++;
+      if (reconciled.kind === "created") created++;
+      else if (reconciled.kind === "updated") updated++;
       sheetResults.push({
         ...identity,
+        ...(reconciled.sheetId ? { sheetId: reconciled.sheetId } : {}),
         sourceStatus: status,
         outcome: mode === "test"
-          ? outcome === "created" ? "would_create" : "would_update"
-          : outcome,
+          ? reconciled.kind === "created" ? "would_create" : "would_update"
+          : reconciled.kind,
       });
     } catch (error) {
       const failure = sheetFailure(error);

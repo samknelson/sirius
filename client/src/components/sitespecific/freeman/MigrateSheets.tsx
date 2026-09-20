@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -54,6 +55,7 @@ type RunError = {
 };
 type RunSheet = {
   nid?: string;
+  sheetId?: string;
   title: string;
   sourceStatus: StatusName;
   outcome: SheetOutcome;
@@ -395,7 +397,19 @@ export default function MigrateSheets() {
                         <tbody>
                           {item.sheets.map((sheet, index) => (
                             <tr key={`${sheet.nid ?? "unknown"}-${index}`} className="border-b last:border-0">
-                              <td className="max-w-[260px] px-3 py-3 font-medium">{sheet.title}</td>
+                              <td className="max-w-[260px] px-3 py-3 font-medium">
+                                {sheet.sheetId ? (
+                                  <Link
+                                    href={`/edls/sheet/${sheet.sheetId}`}
+                                    className="text-primary underline-offset-4 hover:underline"
+                                    data-testid={`link-migrated-sheet-${sheet.sheetId}`}
+                                  >
+                                    {sheet.title}
+                                  </Link>
+                                ) : (
+                                  sheet.title
+                                )}
+                              </td>
                               <td className="px-3 py-3 font-mono text-xs">{sheet.nid ?? "Missing"}</td>
                               <td className="px-3 py-3"><SheetOutcomeBadge outcome={sheet.outcome} /></td>
                               <td className="max-w-[420px] px-3 py-3 text-xs text-muted-foreground">
