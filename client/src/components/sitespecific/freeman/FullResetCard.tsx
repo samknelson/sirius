@@ -40,6 +40,24 @@ type ResetPreflight = {
   counts: ResetCounts;
   snapshot: string;
   confirmation: string;
+  blockers: ResetRelation[];
+  preservations: ResetRelation[];
+};
+
+type ResetRelation = {
+  entity: "worker" | "contact";
+  workerId?: string;
+  contactId?: string;
+  relationshipType: string;
+  referencingSchema: string;
+  referencingTable: string;
+  referencingColumn: string;
+  recordId: string;
+  label: string | null;
+  constraint: string;
+  workerName: string | null;
+  contactName: string | null;
+  disposition: "intact" | "anonymized" | "blocker";
 };
 
 type ResetResult = {
@@ -47,6 +65,7 @@ type ResetResult = {
     workerEdls: number;
     grievanceAssociations: number;
     contactsDeleted: number;
+    contactsPreserved: number;
     contactsAnonymized: number;
   };
 };
@@ -83,7 +102,8 @@ export default function FullResetCard() {
   });
 
   const exactConfirmation = confirmation === preflight.data?.confirmation;
-  const blocked = preflight.isLoading || preflight.isError || reset.isPending || !exactConfirmation;
+  const blocked = preflight.isLoading || preflight.isError || reset.isPending
+    || !exactConfirmation || Boolean(preflight.data?.blockers.length);
 
   return (
     <Card className="border-destructive bg-destructive/5" data-testid="card-freeman-full-reset">
@@ -125,6 +145,7 @@ export default function FullResetCard() {
           </Alert>
         )}
         {preflight.data && (
+          <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="full-reset-counts">
             {Object.entries(preflight.data.counts).map(([label, value]) => (
               <div key={label} className="rounded-md border bg-background p-3">
@@ -133,6 +154,42 @@ export default function FullResetCard() {
               </div>
             ))}
           </div>
+          {preflight.data.blockers.length > 0 && (
+            <Alert variant="destructive" data-testid="full-reset-blockers">
+              <AlertTitle>Reset blocked by existing relationships</AlertTitle>
+              <AlertDescription>
+                Remove these relationships, then refresh the plan:
+                <ul className="mt-2 list-disc pl-5">
+                  {preflight.data.blockers.map((relation) => (
+                    <li key={`${relation.constraint}-${relation.recordId}`}>
+                      Worker {relation.workerName ?? "Unknown"} ({relation.workerId ?? "unknown"}) /
+                      contact {relation.contactName ?? "Unknown"} ({relation.contactId ?? "unknown"}):
+                      {` ${relation.referencingSchema}.${relation.referencingTable} record ${relation.recordId}`}
+                      {relation.label ? ` (${relation.label})` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+          {preflight.data.preservations.length > 0 && (
+            <Alert data-testid="full-reset-preservations">
+              <AlertTitle>Contacts retained and anonymized</AlertTitle>
+              <AlertDescription>
+                <ul className="list-disc pl-5">
+                  {preflight.data.preservations.map((relation) => (
+                    <li key={`${relation.constraint}-${relation.recordId}`}>
+                      Worker {relation.workerName ?? "Unknown"} ({relation.workerId ?? "unknown"}) /
+                      contact {relation.contactName ?? "Unknown"} ({relation.contactId ?? "unknown"}):
+                      {` ${relation.referencingSchema}.${relation.referencingTable} record ${relation.recordId}`}
+                      {relation.label ? ` (${relation.label})` : ""} — {relation.disposition}
+                    </li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+          </>
         )}
 
         <div className="flex flex-wrap gap-2">
@@ -224,8 +281,8 @@ export default function FullResetCard() {
               {result.deleted.crews} crews, {result.deleted.assignments} assignments,{" "}
               {result.deleted.workerEdls} worker EDLS rows, {result.deleted.grievanceAssociations}{" "}
               grievance associations, and {result.deleted.contactsDeleted} worker-owned contacts.
-              Anonymized {result.deleted.contactsAnonymized} contacts were retained only for
-              communication history.
+              Preserved {result.deleted.contactsPreserved} contacts and anonymized
+              {` ${result.deleted.contactsAnonymized}`} contacts.
             </AlertDescription>
           </Alert>
         )}

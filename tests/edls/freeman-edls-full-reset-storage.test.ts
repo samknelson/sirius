@@ -118,6 +118,7 @@ describe("Freeman EDLS full reset storage", () => {
       grievanceAssociations: 1,
       contactsDeleted: 1,
       contactsAnonymized: 1,
+      contactsPreserved: 0,
     });
 
     expect(runInTransaction).toHaveBeenCalledTimes(1);
@@ -242,6 +243,7 @@ describe("Freeman EDLS full reset storage", () => {
       grievanceAssociations: 0,
       contactsDeleted: 0,
       contactsAnonymized: 0,
+      contactsPreserved: 0,
     });
     expect(client.delete.mock.calls.map(([table]) => table.name)).not.toContain("contacts");
   });

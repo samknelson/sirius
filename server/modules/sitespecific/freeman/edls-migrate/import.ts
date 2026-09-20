@@ -1508,6 +1508,7 @@ export class FreemanFullResetRefusedError extends Error {
   constructor(
     message: string,
     public readonly kind: "relationship",
+    public readonly details?: Record<string, string | undefined>,
   ) {
     super(message);
     this.name = "FreemanFullResetRefusedError";
@@ -1561,23 +1562,18 @@ export async function assertNoActiveFreemanMigrate(): Promise<void> {
   }
 }
 
-function fullResetSnapshot(counts: {
-  workers: number;
-  sheets: number;
-  crews: number;
-  assignments: number;
-}): string {
+function fullResetSnapshot(plan: unknown): string {
   return createHash("sha256")
-    .update(JSON.stringify(counts))
+    .update(JSON.stringify(plan))
     .digest("hex");
 }
 
 export async function getFreemanEdlsFullResetPreflight() {
   await assertNoActiveFreemanMigrate();
-  const counts = await storage.freemanEdlsFullReset.getCounts();
+  const plan = await storage.freemanEdlsFullReset.getPlan();
   return {
-    counts,
-    snapshot: fullResetSnapshot(counts),
+    ...plan,
+    snapshot: fullResetSnapshot(plan),
     confirmation: FREEMAN_EDLS_FULL_RESET_CONFIRMATION,
   };
 }
@@ -1590,15 +1586,15 @@ export async function executeFreemanEdlsFullReset(raw: unknown) {
 
   return withFreemanMigrateLock(async () => {
     await assertNoActiveFreemanMigrate();
-    const counts = await storage.freemanEdlsFullReset.getCounts();
-    if (input.snapshot !== fullResetSnapshot(counts)) {
+    const plan = await storage.freemanEdlsFullReset.getPlan();
+    if (input.snapshot !== fullResetSnapshot(plan)) {
       throw new FreemanMigrateConflictError(
         "Reset counts changed after the warning was loaded. Refresh the counts and confirm again.",
       );
     }
     try {
       return {
-        deleted: await storage.freemanEdlsFullReset.execute(counts),
+        deleted: await storage.freemanEdlsFullReset.execute(plan),
       };
     } catch (error) {
       if (error instanceof FreemanEdlsFullResetCountsChangedError) {
@@ -1612,6 +1608,7 @@ export async function executeFreemanEdlsFullReset(raw: unknown) {
             ? "The reset was rolled back because other records still reference one or more workers. Remove those relationships, then refresh the counts and try again."
             : "The reset was rolled back because other records still reference one or more worker contacts. Remove those relationships, then refresh the counts and try again.",
           "relationship",
+            error.metadata,
         );
       }
       throw error;

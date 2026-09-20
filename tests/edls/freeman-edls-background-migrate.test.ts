@@ -5,12 +5,14 @@ const wcRequest = vi.fn();
 const release = vi.fn(async () => {});
 let lockAvailable = true;
 let resetCounts = { workers: 3, sheets: 2, crews: 4, assignments: 5 };
-const executeFullReset = vi.fn(async (_expected: typeof resetCounts) => ({
+const resetPlan = () => ({ counts: { ...resetCounts }, blockers: [], preservations: [] });
+const executeFullReset = vi.fn(async (_expected: ReturnType<typeof resetPlan>) => ({
   ...resetCounts,
   workerEdls: 3,
   grievanceAssociations: 1,
   contactsDeleted: 2,
   contactsAnonymized: 1,
+  contactsPreserved: 0,
 }));
 
 const storage = {
@@ -38,6 +40,7 @@ const storage = {
   },
   freemanEdlsFullReset: {
     getCounts: vi.fn(async () => ({ ...resetCounts })),
+    getPlan: vi.fn(async () => resetPlan()),
     execute: executeFullReset,
   },
 };
@@ -169,8 +172,9 @@ describe("Freeman EDLS full reset control", () => {
       grievanceAssociations: 1,
       contactsDeleted: 2,
       contactsAnonymized: 1,
+      contactsPreserved: 0,
     });
-    expect(executeFullReset).toHaveBeenCalledWith(resetCounts);
+    expect(executeFullReset).toHaveBeenCalledWith(resetPlan());
   });
 });
 
