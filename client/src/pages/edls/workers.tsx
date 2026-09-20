@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAccessCheckBatch } from "@/hooks/use-access-check";
 import { AssignmentStatusDotsButton } from "@/components/edls/AssignmentStatusDot";
+import { StarRating } from "@/components/edls/StarRating";
 import { WorkerAssignmentDetailsDialog } from "@/components/edls/WorkerAssignmentDetailsDialog";
 
 interface Option {
@@ -103,7 +104,7 @@ export default function EdlsWorkersPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         <div>
           <h2 className="text-xl font-semibold">Workers</h2>
-          <p className="mt-1 text-muted-foreground">Review EDLS activity, assignments, member status, IDs, and rankings.</p>
+          <p className="mt-1 text-muted-foreground">Review EDLS activity, assignments, member status, IDs, and ratings.</p>
         </div>
 
         <Card>
@@ -121,10 +122,10 @@ export default function EdlsWorkersPage() {
             </div>
             <FilterSelect label="Active in EDLS" value={params.get("active") || "all"} options={[{ id: "all", name: "All workers" }, { id: "true", name: "Active" }, { id: "false", name: "Inactive" }]} onChange={(value) => update({ active: value === "all" ? null : value })} testId="select-edls-worker-active" />
             <FilterSelect label="Member status" value={params.get("memberStatusId") || "all"} options={[{ id: "all", name: "All statuses" }, ...edlsMemberStatuses]} onChange={(value) => update({ memberStatusId: value === "all" ? null : value })} testId="select-edls-worker-member-status" disabled={!data?.industryId} />
-            {data?.ratingsEnabled && <FilterSelect label="Ranking" value={params.get("ratingId") || "all"} options={[{ id: "all", name: "No ranking" }, ...rankingOptions]} onChange={(value) => update({ ratingId: value === "all" ? null : value, ratingValue: value === "all" ? null : params.get("ratingValue") })} testId="select-edls-worker-ranking" />}
+            {data?.ratingsEnabled && <FilterSelect label="Rating" value={params.get("ratingId") || "all"} options={[{ id: "all", name: "No rating" }, ...rankingOptions]} onChange={(value) => update({ ratingId: value === "all" ? null : value, ratingValue: value === "all" ? null : params.get("ratingValue") })} testId="select-edls-worker-ranking" />}
             {data?.ratingsEnabled && params.get("ratingId") && (
               <div className="space-y-1">
-                <label className="text-sm font-medium">Minimum ranking</label>
+                <label className="text-sm font-medium">Minimum rating</label>
                 <Input type="number" className="w-32" value={params.get("ratingValue") || ""} onChange={(event) => update({ ratingValue: event.target.value || null })} placeholder="Any" />
               </div>
             )}
@@ -152,7 +153,7 @@ export default function EdlsWorkersPage() {
                     <TableHead>Worker</TableHead><TableHead>Active in EDLS</TableHead><TableHead>Member status</TableHead>
                     <TableHead>Assignments</TableHead>
                     {data?.idTypes.map((type) => <TableHead key={type.id}>{type.name}</TableHead>)}
-                    {data?.ratingsEnabled && params.get("ratingId") && <TableHead>{rankingOptions.find((option) => option.id === params.get("ratingId"))?.name ?? "Ranking"}</TableHead>}
+                    {data?.ratingsEnabled && params.get("ratingId") && <TableHead>{rankingOptions.find((option) => option.id === params.get("ratingId"))?.name ?? "Rating"}</TableHead>}
                   </TableRow></TableHeader>
                   <TableBody>{rows.map((row) => <TableRow key={row.id}>
                     <TableCell className="font-medium">{access.accessMap.get(row.id) ? <Link href={`/workers/${row.id}`} className="text-primary hover:underline">{workerName(row)}</Link> : workerName(row)}</TableCell>
@@ -160,7 +161,7 @@ export default function EdlsWorkersPage() {
                     <TableCell>{row.memberStatusName ?? "Unassigned"}{row.memberStatusCode ? <span className="ml-1 text-muted-foreground">({row.memberStatusCode})</span> : null}</TableCell>
                     <TableCell><AssignmentStatusDotsButton priorStatus={row.priorStatus} currentStatus={row.currentStatus} nextStatus={row.nextStatus} onClick={() => setDetailsWorkerId(row.id)} testId={`status-dots-${row.id}`} /></TableCell>
                     {data?.idTypes.map((type) => <TableCell key={type.id}>{row.ids?.[type.id] ?? "—"}</TableCell>)}
-                    {data?.ratingsEnabled && params.get("ratingId") && <TableCell>{row.ratingValue ?? "—"}</TableCell>}
+                    {data?.ratingsEnabled && params.get("ratingId") && <TableCell>{row.ratingValue === null ? "—" : <StarRating value={row.ratingValue} />}</TableCell>}
                   </TableRow>)}</TableBody>
                 </Table>
               </div>}

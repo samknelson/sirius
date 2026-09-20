@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { AssignmentStatusDotsButton } from "@/components/edls/AssignmentStatusDot";
+import { StarRating } from "@/components/edls/StarRating";
 import { WorkerAssignmentDetailsDialog } from "@/components/edls/WorkerAssignmentDetailsDialog";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -355,10 +356,7 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId, positionNumber }: Ass
           </span>
           <span className="text-sm truncate">{formatAssignedWorkerName(assignment.worker)}</span>
           {ratingValue !== undefined && (
-            <span className="flex items-center text-xs text-muted-foreground">
-              <Star className="h-3 w-3 mr-0.5 text-yellow-400" fill="currentColor" />
-              {ratingValue}
-            </span>
+            <StarRating value={ratingValue} />
           )}
           <span className="flex-1" />
           {extrasText && (
@@ -687,20 +685,6 @@ function StatusDots({ worker }: { worker: AvailableWorker }) {
 }
 
 type AssignmentFilter = "all" | "include" | "exclude";
-
-function StarRating({ value }: { value: number }) {
-  return (
-    <div className="flex items-center gap-0.5">
-      {[0, 1, 2, 3].map((i) => (
-        <Star
-          key={i}
-          className={`h-3 w-3 ${i < value ? "text-yellow-400" : "text-muted-foreground/30"}`}
-          fill={i < value ? "currentColor" : "none"}
-        />
-      ))}
-    </div>
-  );
-}
 
 function AvailableWorkersPanel() {
   const { 
