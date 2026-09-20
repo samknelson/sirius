@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { getAssignmentStatusDotColor } from "@/components/edls/AssignmentStatusDot";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
@@ -671,17 +672,6 @@ function formatWorkerName(worker: AvailableWorker): string {
   return worker.siriusId ? `Worker #${worker.siriusId}` : "Unknown Worker";
 }
 
-function getStatusDotColor(status: string | null): string {
-  switch (status) {
-    case "draft": return "bg-gray-400";
-    case "request": return "bg-yellow-400";
-    case "lock": return "bg-green-500";
-    case "trash": return "bg-red-500";
-    case "reserved": return "bg-blue-500";
-    default: return "bg-white border border-gray-300";
-  }
-}
-
 function formatWorkerFullName(details: WorkerAssignmentDetails): string {
   if (details.displayName) return details.displayName;
   if (details.given || details.family) {
@@ -906,13 +896,13 @@ function StatusDots({ worker }: { worker: AvailableWorker }) {
         title="Click to view assignment details"
       >
         <div 
-          className={`w-2 h-2 rounded-full ${getStatusDotColor(worker.priorStatus)}`}
+          className={`w-2 h-2 rounded-full ${getAssignmentStatusDotColor(worker.priorStatus)}`}
         />
         <div 
-          className={`w-2 h-2 rounded-full ${getStatusDotColor(worker.currentStatus)}`}
+          className={`w-2 h-2 rounded-full ${getAssignmentStatusDotColor(worker.currentStatus)}`}
         />
         <div 
-          className={`w-2 h-2 rounded-full ${getStatusDotColor(worker.nextStatus)}`}
+          className={`w-2 h-2 rounded-full ${getAssignmentStatusDotColor(worker.nextStatus)}`}
         />
       </div>
       <WorkerAssignmentModal 

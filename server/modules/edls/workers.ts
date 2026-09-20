@@ -3,6 +3,9 @@ import { z } from "zod";
 import { storage } from "../../storage";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
+import { getEdlsSettings } from "./supervisor-context";
+import { getTodayYmd } from "@shared/utils/date";
+import { isComponentEnabledSync } from "../../services/component-cache";
 
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
@@ -10,8 +13,53 @@ const setActiveSchema = z.object({
   active: z.boolean(),
 });
 
+const directoryQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+  name: z.string().optional(),
+  active: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
+  memberStatusId: z.string().optional(),
+  idTypeId: z.string().optional(),
+  idValue: z.string().optional(),
+  ratingId: z.string().optional(),
+  ratingValue: z.coerce.number().int().optional(),
+});
+
 export function registerWorkerEdlsRoutes(app: Express, requireAuth: RequireAuth) {
   const edlsComponent = requireComponent("edls");
+
+  app.get(
+    "/api/edls/workers",
+    requireAuth,
+    edlsComponent,
+    requireAccess("edls.any"),
+    async (req: Request, res: Response) => {
+      try {
+        const query = directoryQuerySchema.parse(req.query);
+        const settings = await getEdlsSettings();
+        let industryId: string | null = null;
+        if (settings.employer) {
+          industryId = (await storage.employers.getEmployer(settings.employer))?.industryId ?? null;
+        }
+        const ratingsEnabled = isComponentEnabledSync("worker.ratings");
+        const result = await storage.edlsWorkerDirectory.list({
+          ...query,
+          memberStatusId: industryId ? query.memberStatusId : undefined,
+          ratingId: ratingsEnabled ? query.ratingId : undefined,
+          ratingValue: ratingsEnabled ? query.ratingValue : undefined,
+          industryId,
+          todayYmd: getTodayYmd(),
+        });
+        res.json({ ...result, industryId, ratingsEnabled });
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({ error: "Invalid directory filters", details: error.errors });
+        }
+        console.error("Error fetching EDLS worker directory:", error);
+        res.status(500).json({ error: "Failed to fetch EDLS worker directory" });
+      }
+    },
+  );
 
   app.get(
     "/api/workers/:id/edls",

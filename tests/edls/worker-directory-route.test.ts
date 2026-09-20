@@ -1,0 +1,151 @@
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+const { list, getEmployer, getByName, componentState, accessDecision } = vi.hoisted(() => ({
+  list: vi.fn(),
+  getEmployer: vi.fn(),
+  getByName: vi.fn(),
+  componentState: { enabled: true },
+  accessDecision: { granted: true },
+}));
+
+vi.mock("../../server/storage", () => ({
+  storage: {
+    edlsWorkerDirectory: { list },
+    employers: { getEmployer },
+    variables: { getByName },
+  },
+}));
+
+vi.mock("../../server/services/component-cache", () => ({
+  isCacheInitialized: () => true,
+  loadComponentCache: vi.fn(),
+  isComponentEnabledSync: () => componentState.enabled,
+}));
+vi.mock("@shared/components", () => ({
+  getAllComponents: () => [],
+  getComponentById: (id: string) => ({ id, name: id }),
+}));
+vi.mock("../../server/services/component-lifecycle", () => ({
+  enableComponentSchema: vi.fn(),
+  disableComponentSchema: vi.fn(),
+  repairComponentSchema: vi.fn(),
+  reconcileComponentPluginConfigs: vi.fn(),
+  checkComponentSchemaDrift: vi.fn(),
+  getComponentSchemaInfo: vi.fn(),
+}));
+vi.mock("../../server/services/component-permissions", () => ({ syncComponentPermissions: vi.fn() }));
+vi.mock("../../server/services/access-policy-evaluator", () => ({
+  requireAccess: () => (_req: any, res: any, next: () => void) => {
+    if (accessDecision.granted) return next();
+    res.status(403).json({ message: "Access denied" });
+  },
+}));
+vi.mock("../../server/modules/edls/supervisor-context", () => ({
+  getEdlsSettings: vi.fn(async () => ({ employer: "employer-1" })),
+}));
+
+import { registerWorkerEdlsRoutes } from "../../server/modules/edls/workers";
+
+let middleware: Array<(req: any, res: any, next: () => void) => Promise<void> | void>;
+let handler: (req: any, res: any) => Promise<void>;
+
+beforeAll(() => {
+  registerWorkerEdlsRoutes({
+    get(path: string, ...args: unknown[]) {
+      if (path === "/api/edls/workers") {
+        middleware = args.slice(0, -1) as typeof middleware;
+        handler = args.at(-1) as typeof handler;
+      }
+    },
+    put() {},
+  } as any, ((req: any, res: any, next: () => void) => {
+    if (req.user) return next();
+    res.status(401).json({ message: "Unauthorized" });
+  }) as any);
+});
+
+beforeEach(() => {
+  componentState.enabled = true;
+  accessDecision.granted = true;
+  list.mockClear();
+  getByName.mockResolvedValue({ value: { employer: "employer-1" } });
+  getEmployer.mockResolvedValue({ industryId: "industry-1" });
+  list.mockResolvedValue({ rows: [], total: 0, page: 1, pageSize: 50, totalPages: 0, idTypes: [] });
+});
+
+async function request(query: Record<string, string> = {}, authenticated = true) {
+  const result: { status: number; body?: any } = { status: 200 };
+  const res = {
+    status(code: number) { result.status = code; return res; },
+    json(body: unknown) { result.body = body; return res; },
+  };
+  const req: any = { query };
+  if (authenticated) req.user = { claims: { sub: "user-1" } };
+  for (const step of middleware) {
+    let nextCalled = false;
+    await step(req, res, () => { nextCalled = true; });
+    if (!nextCalled) return result;
+  }
+  await handler(req, res);
+  return result;
+}
+
+describe("GET /api/edls/workers", () => {
+  it("passes filters, EDLS industry, and local date to EDLS storage", async () => {
+    const result = await request({
+      page: "2",
+      pageSize: "25",
+      name: "Ada",
+      active: "true",
+      memberStatusId: "status-1",
+      idTypeId: "id-type-1",
+      idValue: "123",
+      ratingId: "rating-1",
+      ratingValue: "4",
+    });
+
+    expect(result.status).toBe(200);
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({
+      page: 2,
+      pageSize: 25,
+      name: "Ada",
+      active: true,
+      memberStatusId: "status-1",
+      idTypeId: "id-type-1",
+      idValue: "123",
+      ratingId: "rating-1",
+      ratingValue: 4,
+      industryId: "industry-1",
+      todayYmd: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    }));
+  });
+
+  it("omits the member-status filter and reports no industry when EDLS has no configured industry", async () => {
+    getEmployer.mockResolvedValueOnce(undefined);
+    const result = await request({ memberStatusId: "status-1" });
+
+    expect(result.status).toBe(200);
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({
+      industryId: null,
+      memberStatusId: undefined,
+    }));
+    expect(result.body).toEqual(expect.objectContaining({ industryId: null }));
+  });
+
+  it("requires authentication, the EDLS component, and edls.any", async () => {
+    expect((await request({}, false)).status).toBe(401);
+    componentState.enabled = false;
+    expect((await request()).status).toBe(403);
+    componentState.enabled = true;
+    accessDecision.granted = false;
+    expect((await request()).status).toBe(403);
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it("returns a generic server error when storage fails", async () => {
+    list.mockRejectedValueOnce(new Error("database details"));
+    const result = await request();
+    expect(result.status).toBe(500);
+    expect(JSON.stringify(result.body)).not.toContain("database details");
+  });
+});

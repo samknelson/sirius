@@ -453,6 +453,14 @@ export function buildEdlsMenuItems(): MenuItemDef[] {
       gate: { anyOf: [{ policy: "staff" }, { policy: "edls.reader" }] },
     },
     {
+      id: "edls-workers",
+      label: "Workers",
+      icon: "Users",
+      href: "/edls/workers",
+      testId: "menu-edls-workers",
+      gate: { policy: "edls.any" },
+    },
+    {
       id: "edls-tos",
       label: "Absences",
       icon: "Stethoscope",

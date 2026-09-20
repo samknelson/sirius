@@ -169,6 +169,7 @@ import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfi
 import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig } from "./edls/crews";
 import { type EdlsAssignmentsStorage, createEdlsAssignmentsStorage, edlsAssignmentsLoggingConfig } from "./edls/assignments";
 import { type WorkerEdlsStorage, createWorkerEdlsStorage, workerEdlsLoggingConfig } from "./edls/workers";
+import { type EdlsWorkerDirectoryStorage, createEdlsWorkerDirectoryStorage } from "./edls/worker-directory";
 import { type WorkerDispatchEligDenormStorage, createWorkerDispatchEligDenormStorage } from "./dispatch/worker-elig-denorm";
 import { type RawSqlStorage, createRawSqlStorage } from "./raw-sql";
 import { type ReadOnlyStorage, createReadOnlyStorage } from "./read-only";
@@ -300,6 +301,7 @@ export interface IStorage {
   edlsCrews: EdlsCrewsStorage;
   edlsAssignments: EdlsAssignmentsStorage;
   workerEdls: WorkerEdlsStorage;
+  edlsWorkerDirectory: EdlsWorkerDirectoryStorage;
   snapshots: SnapshotsStorage;
   authIdentities: AuthIdentitiesStorage;
   workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
@@ -424,6 +426,7 @@ export class DatabaseStorage implements IStorage {
   edlsCrews: EdlsCrewsStorage;
   edlsAssignments: EdlsAssignmentsStorage;
   workerEdls: WorkerEdlsStorage;
+  edlsWorkerDirectory: EdlsWorkerDirectoryStorage;
   snapshots: SnapshotsStorage;
   authIdentities: AuthIdentitiesStorage;
   workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
@@ -684,6 +687,7 @@ export class DatabaseStorage implements IStorage {
     this.edlsCrews = withStorageLogging(createEdlsCrewsStorage(), edlsCrewsLoggingConfig);
     this.edlsAssignments = withStorageLogging(createEdlsAssignmentsStorage(), edlsAssignmentsLoggingConfig);
     this.workerEdls = withStorageLogging(createWorkerEdlsStorage(), workerEdlsLoggingConfig);
+    this.edlsWorkerDirectory = createEdlsWorkerDirectoryStorage();
     this.snapshots = withStorageLogging(createSnapshotsStorage(), snapshotsLoggingConfig);
     this.authIdentities = withStorageLogging(createAuthIdentitiesStorage(), authIdentitiesLoggingConfig);
     this.workerDispatchEligDenorm = createWorkerDispatchEligDenormStorage();
