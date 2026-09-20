@@ -82,6 +82,7 @@ interface FreemanMigrateSheetResult {
   title: string;
   sourceStatus: FreemanMigrateStatus;
   outcome: FreemanSheetOutcome;
+  records?: FreemanMigrateRecordCounts;
   stage?: FreemanMigrateStage;
   message?: string;
   details?: string;
@@ -1022,6 +1023,7 @@ async function runStatus(
         outcome: mode === "test"
           ? reconciled.kind === "created" ? "would_create" : "would_update"
           : reconciled.kind,
+        records: reconciled.records,
       });
     } catch (error) {
       const failure = sheetFailure(error);

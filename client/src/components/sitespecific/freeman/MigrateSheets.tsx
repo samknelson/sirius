@@ -59,6 +59,7 @@ type RunSheet = {
   title: string;
   sourceStatus: StatusName;
   outcome: SheetOutcome;
+  records?: RunRecordCounts;
   stage?: RunStage;
   message?: string;
   details?: string;
@@ -451,7 +452,12 @@ export default function MigrateSheets() {
                                     {sheet.details && <p className="font-mono">{sheet.details}</p>}
                                   </div>
                                 ) : (
-                                  <span>Sheet passed planning and validation.</span>
+                                  <div className="space-y-1">
+                                    <p>Sheet passed planning and validation.</p>
+                                    {sheet.records && (
+                                      <RecordCountSummary records={sheet.records} mode={latestRun.mode} />
+                                    )}
+                                  </div>
                                 )}
                               </td>
                             </tr>
