@@ -7,6 +7,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import MigrateSheets from "@/components/sitespecific/freeman/MigrateSheets";
+import FullResetCard from "@/components/sitespecific/freeman/FullResetCard";
 
 export default function FreemanEdlsMigratePage() {
   usePageTitle("Freeman EDLS Migration");
@@ -28,6 +29,7 @@ export default function FreemanEdlsMigratePage() {
       </Card>
 
       <MigrateSheets />
+      <FullResetCard />
     </div>
   );
 }

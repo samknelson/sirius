@@ -7,9 +7,13 @@
  * gated on both EDLS and this site-specific component.
  */
 import type { Express, Request, Response, NextFunction } from "express";
+import { z } from "zod";
 import { requireComponent } from "../../../components";
 import { storage } from "../../../../storage";
-import { sendIfMaintenanceRefusal } from "../../../../services/maintenance-flag";
+import {
+  isMaintenanceActive,
+  sendIfMaintenanceRefusal,
+} from "../../../../services/maintenance-flag";
 import { FREEMAN_EDLS_MIGRATE_COMPONENT_ID } from "../../../../plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate";
 import {
   FREEMAN_EDLS_FIELD_TABLES,
@@ -27,6 +31,8 @@ import {
   stopFreemanMigrate,
   FreemanMigrateConflictError,
   withFreemanMigrateLock,
+  getFreemanEdlsFullResetPreflight,
+  executeFreemanEdlsFullReset,
 } from "./import";
 
 /**
@@ -99,6 +105,43 @@ export function registerFreemanEdlsMigrateRoutes(
       } catch (error) {
         if (sendIfMaintenanceRefusal(res, error)) return;
         sendMigrationFailure(res, error, "Failed to sweep the legacy node table");
+      }
+    },
+  );
+
+  app.get(
+    "/api/sitespecific/freeman/edls-migrate/full-reset",
+    ...gate,
+    async (_req: Request, res: Response) => {
+      try {
+        res.json(await getFreemanEdlsFullResetPreflight());
+      } catch (error) {
+        sendMigrationFailure(res, error, "Failed to load full-reset counts");
+      }
+    },
+  );
+
+  app.post(
+    "/api/sitespecific/freeman/edls-migrate/full-reset",
+    ...gate,
+    async (req: Request, res: Response) => {
+      if (isMaintenanceActive()) {
+        res.status(503).json({
+          message: "The Freeman EDLS full reset is unavailable while the site is in maintenance mode.",
+          maintenance: true,
+        });
+        return;
+      }
+      try {
+        res.json(await executeFreemanEdlsFullReset(req.body));
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          res.status(400).json({
+            message: "Type the exact confirmation phrase and refresh the reset counts before continuing.",
+          });
+          return;
+        }
+        sendMigrationFailure(res, error, "The full reset failed. Existing data was left unchanged.");
       }
     },
   );

@@ -50,6 +50,7 @@ type StatusResponse = {
     limit: number | null;
     startedAt: string | null;
     finishedAt: string | null;
+    heartbeatAt: string | null;
     batchCount: number;
     totals: {
       fetched: number; valid: number; created: number; updated: number; failed: number;
@@ -113,6 +114,7 @@ type RunStatus = {
 type RunResponse = {
   mode: "test" | "live";
   limit: number;
+  stoppedEarly?: boolean;
   statuses: RunStatus[];
   startedAt: string;
   durationMs: number;
@@ -276,7 +278,7 @@ export default function MigrateSheets() {
     mutationFn: () => requestJson<StatusResponse>(STOP_KEY, { method: "POST" }),
     onSuccess: (status) => {
       queryClient.setQueryData([STATUS_KEY], status);
-      toast({ title: "Safe stop requested", description: "The active batch will finish; no new batch will start." });
+      toast({ title: "Safe stop requested", description: "The active sheet or page request will finish; no new sheet will start." });
     },
     onError: (error: Error) => toast({ title: "Stop could not be requested", description: getApiErrorMessage(error, "Try again."), variant: "destructive" }),
   });
@@ -328,6 +330,11 @@ export default function MigrateSheets() {
               <span className="text-xs text-muted-foreground">
                 started {formatDate(statusQuery.data.run.startedAt ?? undefined)} · finished {formatDate(statusQuery.data.run.finishedAt ?? undefined)}
               </span>
+              {liveActive && (
+                <span className="text-xs text-muted-foreground">
+                  heartbeat {formatDate(statusQuery.data.run.heartbeatAt ?? undefined)}
+                </span>
+              )}
             </div>
             <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
               <span>{statusQuery.data.run.totals.fetched} sheets fetched</span>
@@ -336,6 +343,11 @@ export default function MigrateSheets() {
               <span>{statusQuery.data.run.totals.failed} failed</span>
             </div>
             <RecordCountSummary records={statusQuery.data.run.totals.records} mode="live" />
+            {lifecycle === "stopping" && (
+              <p className="mt-2 text-sm text-muted-foreground" data-testid="text-import-stopping">
+                Finishing the active sheet transaction or page request. No new sheet will start.
+              </p>
+            )}
             {statusQuery.data.run.error && <p className="mt-2 text-sm text-destructive">{statusQuery.data.run.error}</p>}
           </div>
         )}

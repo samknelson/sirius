@@ -62,6 +62,10 @@ export async function refreshMaintenanceFlag(): Promise<void> {
   if (!armed) return; // scripts / pre-boot: enforcement not armed, nothing to apply
   const mode = await getSystemMode();
   applyMaintenanceFlag(isMaintenanceMode(mode));
+  if (!isMaintenanceActive()) {
+    const { runDeferredStartupOperations } = await import("./startup-deferrals");
+    await runDeferredStartupOperations();
+  }
 }
 
 /**
