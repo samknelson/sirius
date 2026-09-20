@@ -44,6 +44,7 @@ export const FREEMAN_MIGRATE_STATUS_VARIABLE = "SITESPECIFIC_FREEMAN_MIGRATE_STA
 
 export const FREEMAN_MIGRATE_RUN_VARIABLE = "SITESPECIFIC_FREEMAN_MIGRATE_RUN";
 export const FREEMAN_EDLS_FULL_RESET_CONFIRMATION = "DELETE ALL WORKERS";
+export const FREEMAN_EDLS_FULL_RESET_DIAGNOSTICS_VERSION = "full-reset-diagnostics-v2";
 const EPOCH = "1970-01-01T00:00:00.000Z";
 // Freeman runs this through PHP strtotime() and rejects the Unix epoch because
 // strtotime("1970-01-01...") is 0, which its legacy truthiness check treats as
@@ -1508,7 +1509,7 @@ export class FreemanFullResetRefusedError extends Error {
   constructor(
     message: string,
     public readonly kind: "relationship",
-    public readonly details?: Record<string, string | undefined>,
+    public readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "FreemanFullResetRefusedError";
@@ -1575,6 +1576,7 @@ export async function getFreemanEdlsFullResetPreflight() {
     ...plan,
     snapshot: fullResetSnapshot(plan),
     confirmation: FREEMAN_EDLS_FULL_RESET_CONFIRMATION,
+    diagnosticsVersion: FREEMAN_EDLS_FULL_RESET_DIAGNOSTICS_VERSION,
   };
 }
 
@@ -1595,6 +1597,7 @@ export async function executeFreemanEdlsFullReset(raw: unknown) {
     try {
       return {
         deleted: await storage.freemanEdlsFullReset.execute(plan),
+        diagnosticsVersion: FREEMAN_EDLS_FULL_RESET_DIAGNOSTICS_VERSION,
       };
     } catch (error) {
       if (error instanceof FreemanEdlsFullResetCountsChangedError) {

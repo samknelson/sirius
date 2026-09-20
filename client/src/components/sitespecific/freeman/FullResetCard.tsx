@@ -42,6 +42,7 @@ type ResetPreflight = {
   confirmation: string;
   blockers: ResetRelation[];
   preservations: ResetRelation[];
+  diagnosticsVersion: string;
 };
 
 type ResetRelation = {
@@ -68,13 +69,57 @@ type ResetResult = {
     contactsPreserved: number;
     contactsAnonymized: number;
   };
+  diagnosticsVersion: string;
 };
+
+type ResetFailedRecord = {
+  stage: string;
+  table: string;
+  id: string;
+  snapshot: Record<string, unknown>;
+  worker?: {
+    id: string;
+    name: string | null;
+    contactId: string;
+    contactName: string | null;
+    relationships: ResetRelation[];
+  };
+};
+
+type ResetFailure = {
+  message: string;
+  action?: string;
+  stage?: string;
+  logId?: number;
+  diagnostics?: Record<string, unknown>;
+  failedRecord?: ResetFailedRecord;
+  blocker?: unknown;
+  logPersistenceError?: Record<string, unknown>;
+  diagnosticsVersion?: string;
+};
+
+class ResetApiError extends Error {
+  constructor(public readonly failure: ResetFailure, public readonly status: number) {
+    super(failure.message);
+    this.name = "ResetApiError";
+  }
+}
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, credentials: "include" });
-  const body = await response.json().catch(() => ({ message: "Request failed" }));
-  if (!response.ok) throw new Error(body.message || `HTTP ${response.status}`);
+  const body = await response.json().catch(() => ({ message: "Request failed" })) as ResetFailure;
+  if (!response.ok) {
+    throw new ResetApiError({
+      ...body,
+      message: body.message || `HTTP ${response.status}`,
+    }, response.status);
+  }
   return body as T;
+}
+
+function displayDiagnostic(value: unknown): string {
+  if (typeof value === "string") return value;
+  return JSON.stringify(value, null, 2);
 }
 
 export default function FullResetCard() {
@@ -154,6 +199,9 @@ export default function FullResetCard() {
               </div>
             ))}
           </div>
+           <p className="text-xs text-muted-foreground" data-testid="full-reset-diagnostics-version">
+             Reset diagnostics build: <span className="font-mono">{preflight.data.diagnosticsVersion}</span>
+           </p>
           {preflight.data.blockers.length > 0 && (
             <Alert variant="destructive" data-testid="full-reset-blockers">
               <AlertTitle>Reset blocked by existing relationships</AlertTitle>
@@ -246,11 +294,70 @@ export default function FullResetCard() {
                 <Alert variant="destructive">
                   <AlertDescription className="space-y-2">
                     <p>{getApiErrorMessage(reset.error, "The reset failed. Existing data was left unchanged.")}</p>
-                    <p>
-                      If the reason says counts changed or an import is active, refresh the counts
-                      and try again. For any other failure, keep this dialog open and give the
-                      support reference to support. No reset deletion was committed.
-                    </p>
+                    {reset.error instanceof ResetApiError && (
+                      <div className="space-y-3" data-testid="full-reset-exact-failure">
+                        {reset.error.failure.stage && (
+                          <p><strong>Failed stage:</strong> <span className="font-mono">{reset.error.failure.stage}</span></p>
+                        )}
+                        {reset.error.failure.logId !== undefined && (
+                          <p><strong>Administrator log record:</strong> #{reset.error.failure.logId}</p>
+                        )}
+                        {reset.error.failure.failedRecord && (
+                          <div>
+                            <p>
+                              <strong>Failed record:</strong>{" "}
+                              <span className="font-mono">
+                                {reset.error.failure.failedRecord.table} / {reset.error.failure.failedRecord.id}
+                              </span>
+                            </p>
+                            {reset.error.failure.failedRecord.worker && (
+                              <p>
+                                <strong>Worker:</strong>{" "}
+                                {reset.error.failure.failedRecord.worker.name ?? "Unknown"}{" "}
+                                ({reset.error.failure.failedRecord.worker.id}); contact{" "}
+                                {reset.error.failure.failedRecord.worker.contactName ?? "Unknown"}{" "}
+                                ({reset.error.failure.failedRecord.worker.contactId})
+                              </p>
+                            )}
+                            <p className="mt-1 font-semibold">Complete record snapshot</p>
+                            <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded border bg-background p-2 text-xs">
+                              {JSON.stringify(reset.error.failure.failedRecord.snapshot, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                        {reset.error.failure.diagnostics
+                          && Object.keys(reset.error.failure.diagnostics).length > 0 && (
+                          <div>
+                            <p className="font-semibold">Database error</p>
+                            <dl className="max-h-64 overflow-auto rounded border bg-background p-2 text-xs">
+                              {Object.entries(reset.error.failure.diagnostics).map(([key, value]) => (
+                                <div key={key} className="grid grid-cols-[9rem_1fr] gap-2 border-b py-1 last:border-0">
+                                  <dt className="font-mono font-semibold">{key}</dt>
+                                  <dd className="whitespace-pre-wrap break-all">{displayDiagnostic(value)}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          </div>
+                        )}
+                        {reset.error.failure.blocker !== undefined && (
+                          <div>
+                            <p className="font-semibold">Blocking relationship</p>
+                            <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded border bg-background p-2 text-xs">
+                              {JSON.stringify(reset.error.failure.blocker, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                        {reset.error.failure.logPersistenceError && (
+                          <div>
+                            <p className="font-semibold">Administrator log write also failed</p>
+                            <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded border bg-background p-2 text-xs">
+                              {JSON.stringify(reset.error.failure.logPersistenceError, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <p>No reset deletion was committed. The complete failure above can be used directly; no separate support-reference lookup is required.</p>
                   </AlertDescription>
                 </Alert>
               )}

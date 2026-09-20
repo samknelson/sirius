@@ -7,7 +7,6 @@
  * gated on both EDLS and this site-specific component.
  */
 import type { Express, Request, Response, NextFunction } from "express";
-import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { requireComponent } from "../../../components";
 import { storage } from "../../../../storage";
@@ -65,16 +64,32 @@ function databaseFailureMetadata(error: unknown): Record<string, unknown> {
     ? error.diagnostics
     : error;
   if (typeof source !== "object" || source === null) return {};
-  const value = source as Record<string, unknown>;
-  const allowed = ["name", "code", "constraint", "table", "schema", "routine"] as const;
-  return Object.fromEntries(
-    allowed
-      .filter((key) => typeof value[key] === "string")
-      .map((key) => [key, value[key]]),
-  );
+  if (error instanceof FreemanEdlsFullResetUnexpectedError) return error.diagnostics;
+  const diagnostics: Record<string, unknown> = {};
+  const causes: Array<Record<string, string>> = [];
+  const seen = new Set<object>();
+  let current: unknown = source;
+  const keys = ["name", "message", "stack", "code", "severity", "detail", "hint", "where",
+    "schema", "table", "column", "constraint", "file", "line", "routine"] as const;
+  for (let depth = 0; depth < 8 && typeof current === "object" && current !== null; depth += 1) {
+    if (seen.has(current)) break;
+    seen.add(current);
+    const value = current as Record<string, unknown>;
+    const cause: Record<string, string> = {};
+    for (const key of keys) {
+      if (typeof value[key] === "string") {
+        diagnostics[key] = value[key];
+        cause[key] = value[key] as string;
+      }
+    }
+    if (Object.keys(cause).length > 0) causes.push(cause);
+    current = value.cause;
+  }
+  if (causes.length > 1) diagnostics.causes = causes;
+  return diagnostics;
 }
 
-function sendFullResetFailure(res: Response, error: unknown): void {
+async function sendFullResetFailure(res: Response, error: unknown): Promise<void> {
   if (error instanceof FreemanMigrateConflictError) {
     res.status(409).json({ message: error.message, action: "refresh" });
     return;
@@ -88,25 +103,61 @@ function sendFullResetFailure(res: Response, error: unknown): void {
     return;
   }
 
-  const supportReference = randomUUID();
   const stage = error instanceof FreemanEdlsFullResetUnexpectedError
     ? error.stage
     : "reset_boundary";
-  logger.error("Freeman EDLS full reset rolled back", {
-    service: "freeman-edls-full-reset",
-    supportReference,
+  const diagnostics = databaseFailureMetadata(error);
+  const failedRecord = error instanceof FreemanEdlsFullResetUnexpectedError
+    ? error.failedRecord
+    : undefined;
+  const databaseMessage = typeof diagnostics.message === "string"
+    ? diagnostics.message
+    : error instanceof Error ? error.message : "Unknown database error";
+  const recordDescription = failedRecord
+    ? ` Record ${failedRecord.id} in ${failedRecord.table} failed.`
+    : "";
+  const message = `The full reset failed during ${stage}.${recordDescription} ${databaseMessage} Every reset deletion was rolled back.`;
+  const logPayload = {
     stage,
     outcome: "rolled_back",
-    error: databaseFailureMetadata(error),
+    diagnostics,
+    failedRecord,
+  };
+  let logId: number | undefined;
+  let logPersistenceError: Record<string, unknown> | undefined;
+  try {
+    const log = await storage.logs.create({
+      level: "error",
+      message: "Freeman EDLS full reset rolled back",
+      source: "freeman-edls-full-reset",
+      module: "freeman-edls-full-reset",
+      operation: "reset_failed",
+      entityId: failedRecord?.id ?? null,
+      description: message,
+      meta: logPayload,
+    });
+    logId = log.id;
+  } catch (logError) {
+    logPersistenceError = databaseFailureMetadata(logError);
+  }
+  logger.error("Freeman EDLS full reset rolled back", {
+    service: "freeman-edls-full-reset",
+    logId,
+    stage,
+    outcome: "rolled_back",
+    diagnostics,
+    failedRecord,
+    logPersistenceError,
   });
   res.status(500).json({
-    message: `The reset failed and was rolled back. Existing data was left unchanged. Contact support with reference ${supportReference}.`,
-    action: "support",
-    supportReference,
+    message,
+    action: "inspect",
+    logId,
     stage,
-    diagnostics: error instanceof FreemanEdlsFullResetUnexpectedError
-      ? error.diagnostics
-      : {},
+    diagnostics,
+    failedRecord,
+    logPersistenceError,
+    diagnosticsVersion: "full-reset-diagnostics-v2",
   });
 }
 
@@ -195,7 +246,7 @@ export function registerFreemanEdlsMigrateRoutes(
           });
           return;
         }
-        sendFullResetFailure(res, error);
+        await sendFullResetFailure(res, error);
       }
     },
   );

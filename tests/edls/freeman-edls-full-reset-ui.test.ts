@@ -23,14 +23,16 @@ describe("Freeman EDLS full reset danger card", () => {
     expect(source).toContain("migration progress are retained");
   });
 
-  it("keeps reset failures visible with retry and support guidance", () => {
-    expect(source).toContain("refresh the counts");
-    expect(source).toContain("give the");
-    expect(source).toContain("support reference");
+  it("keeps complete reset failures visible without a support-reference lookup", () => {
+    expect(source).toContain("Failed stage:");
+    expect(source).toContain("Complete record snapshot");
+    expect(source).toContain("Database error");
     expect(source).toMatch(/No reset\s+deletion was committed/);
     expect(routes).toContain('action: "refresh"');
-    expect(routes).toContain('action: "support"');
-    expect(routes).toContain("supportReference");
+    expect(routes).toContain('action: "inspect"');
+    expect(routes).toContain("logId");
+    expect(routes).toContain("storage.logs.create");
+    expect(routes).toContain("failedRecord");
     expect(routes).toContain('outcome: "rolled_back"');
     expect(routes).toContain("diagnostics");
     expect(routes).toContain("stage");

@@ -37,16 +37,19 @@ let failAt: string | null = null;
 let failure: Error | null = null;
 
 const client = {
-  select: vi.fn((selection: Record<string, unknown>) => ({
+  select: vi.fn((selection: Record<string, unknown> = {}) => ({
     from: (table: { name: string }) => {
       if (Object.keys(selection).length === 1 && "contactId" in selection) {
         return { where: async () => rows[table.name] ?? [] };
       }
-      return Promise.resolve(
+      const result = Promise.resolve(
         "count" in selection
           ? [{ count: rows[table.name]?.length ?? 0 }]
           : rows[table.name] ?? [],
       );
+      return Object.assign(result, {
+        where: async () => rows[table.name] ?? [],
+      });
     },
   })),
   delete: vi.fn((table: { name: string }) => {
@@ -86,6 +89,7 @@ const { createFreemanEdlsFullResetStorage } = await import(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  delete (client as typeof client & { execute?: unknown }).execute;
   failAt = null;
   failure = null;
   rows = structuredClone(initialRows);
@@ -159,7 +163,47 @@ describe("Freeman EDLS full reset storage", () => {
     expect(emit).not.toHaveBeenCalled();
   });
 
-  it("classifies worker relationship blockers without exposing database details", async () => {
+  it("uses savepoint probes to identify the exact failing record", async () => {
+    (client as typeof client & { execute?: (query: unknown) => Promise<{ rows: never[] }> }).execute =
+      vi.fn(async () => ({ rows: [] }));
+    failAt = "assignments";
+    failure = new Error("storage mutation wrapper", {
+      cause: Object.assign(new Error("assignment deletion trigger refused this row"), {
+        code: "P0001",
+        severity: "ERROR",
+        table: "assignments",
+        detail: "The assignment is retained by a site trigger.",
+      }),
+    });
+    const storage = createFreemanEdlsFullResetStorage();
+
+    await expect(storage.execute({
+      workers: 2,
+      sheets: 1,
+      crews: 2,
+      assignments: 3,
+    })).rejects.toMatchObject({
+      name: "FreemanEdlsFullResetUnexpectedError",
+      stage: "delete_assignments",
+      failedRecord: {
+        table: "edls_assignments",
+        id: "assignment-1",
+        snapshot: { id: "assignment-1" },
+      },
+      diagnostics: expect.objectContaining({
+        message: "assignment deletion trigger refused this row",
+        code: "P0001",
+        detail: "The assignment is retained by a site trigger.",
+        causes: expect.arrayContaining([
+          expect.objectContaining({ message: "storage mutation wrapper" }),
+          expect.objectContaining({ code: "P0001" }),
+        ]),
+      }),
+    });
+    expect(afterCommit).not.toHaveBeenCalled();
+  });
+
+  it("classifies worker relationship blockers from lightweight clients", async () => {
     failAt = "workers";
     failure = Object.assign(new Error("secret row detail"), {
       code: "23503",
@@ -180,7 +224,7 @@ describe("Freeman EDLS full reset storage", () => {
     expect(afterCommit).not.toHaveBeenCalled();
   });
 
-  it("classifies contact relationship blockers without exposing database details", async () => {
+  it("classifies contact relationship blockers from lightweight clients", async () => {
     failAt = "contacts";
     failure = Object.assign(new Error("secret contact detail"), {
       code: "23503",
