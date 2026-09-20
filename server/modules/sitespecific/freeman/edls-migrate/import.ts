@@ -206,7 +206,6 @@ function sheetFailure(error: unknown): FreemanMigrateError {
     "The Freeman employee ID type is not configured",
     "More than one worker matches the normalized Freeman EIN",
     "More than one worker matches the normalized Teamsters 631 ID",
-    "Freeman worker ID and employee ID resolve to different workers",
     "More than one migrated worker has the same Freeman source identity",
     "No employment status is configured",
     "More than one Freeman crew lead has the same source ID",
@@ -569,45 +568,48 @@ async function resolveWorker(
     return workerIds[0] ?? null;
   };
 
-  // EIN remains the selection priority, but evaluate both supplied IDs so a
-  // conflicting identity or ambiguity can never be hidden by the first match.
   const existingEinWorkerId = await matchByDigits(
     idTypes.ein,
     normalizedEin,
     "Freeman EIN",
   );
+  const plannedEinWorkerId = !live && normalizedEin
+    ? planState?.workers.get(`freeman_ein:${normalizedEin}`)
+    : undefined;
+  const einWorkerId = existingEinWorkerId ?? plannedEinWorkerId;
+  if (einWorkerId) {
+    if (live) await ensureWorkerEmployment(einWorkerId, employerId, ymd);
+    return { id: einWorkerId, kind: "updated" };
+  }
+
   const existingT631WorkerId = await matchByDigits(
     idTypes.t631,
     normalizedT631,
     "Teamsters 631 ID",
   );
-  if (
-    existingEinWorkerId
-    && existingT631WorkerId
-    && existingEinWorkerId !== existingT631WorkerId
-  ) {
-    throw new Error("Freeman worker ID and employee ID resolve to different workers.");
-  }
-  const existingWorkerId = existingEinWorkerId ?? existingT631WorkerId;
-  if (existingWorkerId) {
-    if (live) await ensureWorkerEmployment(existingWorkerId, employerId, ymd);
-    return { id: existingWorkerId, kind: "updated" };
+  const plannedT631WorkerId = !live && normalizedT631
+    ? planState?.workers.get(`t631:${normalizedT631}`)
+    : undefined;
+  const t631WorkerId = existingT631WorkerId ?? plannedT631WorkerId;
+  if (t631WorkerId) {
+    if (normalizedEin) {
+      if (live) {
+        // The normalized EIN lookup above found no owner while the worker-ID
+        // table is locked, so the fallback worker can safely acquire it.
+        await storage.workerIds.createWorkerId({
+          workerId: t631WorkerId,
+          typeId: idTypes.ein,
+          value: normalizedEin,
+        });
+      } else {
+        planState?.workers.set(`freeman_ein:${normalizedEin}`, t631WorkerId);
+      }
+    }
+    if (live) await ensureWorkerEmployment(t631WorkerId, employerId, ymd);
+    return { id: t631WorkerId, kind: "updated" };
   }
 
   if (!live) {
-    const plannedEin = normalizedEin
-      ? planState?.workers.get(`freeman_ein:${normalizedEin}`)
-      : undefined;
-    const plannedT631 = normalizedT631
-      ? planState?.workers.get(`t631:${normalizedT631}`)
-      : undefined;
-    if (plannedEin && plannedT631 && plannedEin !== plannedT631) {
-      throw new Error("Freeman worker ID and employee ID resolve to different workers.");
-    }
-    const planned = plannedEin ?? plannedT631;
-    if (planned) {
-      return { id: planned, kind: "updated" };
-    }
     const id = `planned-worker:${sourceAliases[0] ?? `unidentified-${planState?.nextWorkerNumber ?? 0}`}`;
     if (planState) planState.nextWorkerNumber++;
     for (const alias of sourceAliases) {

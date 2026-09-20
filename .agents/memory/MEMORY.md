@@ -135,4 +135,5 @@
 - [One-time Freeman migration verification](freeman-migration-verification.md) — do not add permanent tests for Freeman migration; verify with checks, build, review, and startup because the feature is retired after cutover.
 - [Freeman passport response envelope](freeman-passport-response-envelope.md) — sheet pages live at success→data.success→data.data.sheets; Jan 1, 1970 is rejected because legacy PHP treats strtotime()=0 as false.
 - [Freeman migration count semantics](freeman-migration-count-semantics.md) — matched existing child records count as updated even when values did not change.
+- [Freeman worker ID precedence](freeman-worker-id-precedence.md) — normalized EIN is authoritative; consult T631 only when EIN has no match, and never fail because the two point to different workers.
 - [Maintenance-aware startup reconciliation](maintenance-startup-reconciliation.md) — register in memory unconditionally; defer only named DB-mutating boot repairs and retry them after maintenance exits.
