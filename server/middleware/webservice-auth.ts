@@ -3,6 +3,13 @@ import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { storage } from '../storage';
 import { logger, logWsRequest } from '../logger';
 import type { WsClient, WsClientCredential } from '@shared/schema';
+import { isComponentEnabledSync } from '../services/component-cache';
+import { wcRequest } from '../services/webclient/client';
+import type { FreemanAuthorizationResult } from '../plugins/wc-vendors/plugins/sitespecific-freeman-authorization';
+
+const FREEMAN_AUTHORIZATION_COMPONENT_ID = 'sitespecific.freeman.authorization';
+const FREEMAN_AUTHORIZATION_CONFIG_KEY = 'freemanBearerAuthorizationConfigId';
+const FREEMAN_AUTHORIZATION_OPERATION = 'sitespecific.freeman.authorization.bearer' as const;
 
 /**
  * Per-request identity of a web service call. The client/credential half is
@@ -66,19 +73,133 @@ async function authenticateRequest(req: Request): Promise<AuthResult> {
       if (colonIndex > 0) {
         const basicKey = decoded.slice(0, colonIndex);
         const basicSecret = decoded.slice(colonIndex + 1);
-        return authenticateWithCredentials(basicKey, basicSecret, req);
+        return authenticateWithCredentials(basicKey, basicSecret, req, false);
       }
     }
     return { success: false, error: 'Missing credentials', errorCode: 'MISSING_CREDENTIALS' };
   }
 
-  return authenticateWithCredentials(clientKey, clientSecret, req);
+  return authenticateWithCredentials(clientKey, clientSecret, req, true);
+}
+
+function freemanAuthorizationConfigId(client: WsClient): string | undefined {
+  const value = client.data?.[FREEMAN_AUTHORIZATION_CONFIG_KEY];
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function bearerToken(req: Request): string | undefined {
+  const header = req.headers.authorization;
+  const match = typeof header === 'string' ? /^Bearer\s+(\S+)\s*$/i.exec(header) : null;
+  return match?.[1];
+}
+
+function freemanFailure(
+  client: WsClient,
+  credential: WsClientCredential,
+  error: string,
+  errorCode: string,
+): AuthResult {
+  return { success: false, error, errorCode, client, credential };
+}
+
+async function authenticateFreemanBearer(
+  req: Request,
+  client: WsClient,
+  credential: WsClientCredential,
+  usedHeaderCredentials: boolean,
+  configId: string,
+): Promise<AuthResult | undefined> {
+  if (!usedHeaderCredentials) {
+    return freemanFailure(
+      client,
+      credential,
+      'This client requires X-WS-Client-Key and X-WS-Client-Secret headers.',
+      'FREEMAN_CLIENT_HEADERS_REQUIRED',
+    );
+  }
+
+  const token = bearerToken(req);
+  if (!token) {
+    return freemanFailure(
+      client,
+      credential,
+      'A valid Authorization: Bearer header is required.',
+      'FREEMAN_BEARER_REQUIRED',
+    );
+  }
+
+  let response;
+  try {
+    response = await wcRequest({
+      vendor: { configId },
+      operation: FREEMAN_AUTHORIZATION_OPERATION,
+      args: { bearerCredential: token },
+    });
+  } catch {
+    // Addressing, component, maintenance, and configuration refusals happen
+    // before a vendor request and throw from the framework. Keep their details
+    // out of this public authentication response: they may name private site
+    // configuration, and the actionable fact for this caller is the stage.
+    return freemanFailure(
+      client,
+      credential,
+      'The configured Freeman bearer authorization connection could not be used.',
+      'FREEMAN_AUTH_CONFIGURATION_UNAVAILABLE',
+    );
+  }
+
+  const result = response.value as FreemanAuthorizationResult | undefined;
+  if (!result) {
+    return freemanFailure(
+      client,
+      credential,
+      'The Freeman bearer authorization service did not return an answer.',
+      'FREEMAN_AUTH_NO_ANSWER',
+    );
+  }
+  if (result.outcome === 'network_error') {
+    return freemanFailure(
+      client,
+      credential,
+      'The Freeman bearer authorization service could not be reached.',
+      'FREEMAN_AUTH_NETWORK_ERROR',
+    );
+  }
+  if (result.outcome === 'malformed_response') {
+    return freemanFailure(
+      client,
+      credential,
+      'The Freeman bearer authorization service returned invalid JSON.',
+      'FREEMAN_AUTH_INVALID_JSON',
+    );
+  }
+  if (result.status !== 200) {
+    return freemanFailure(
+      client,
+      credential,
+      result.status === undefined
+        ? 'The Freeman bearer authorization service returned no HTTP status.'
+        : `The Freeman bearer authorization service returned HTTP ${result.status}; expected HTTP 200.`,
+      'FREEMAN_AUTH_HTTP_STATUS',
+    );
+  }
+  if (!result.success || result.outcome !== 'success') {
+    return freemanFailure(
+      client,
+      credential,
+      'The Freeman bearer authorization service refused the request.',
+      'FREEMAN_AUTH_REFUSED',
+    );
+  }
+
+  return undefined;
 }
 
 async function authenticateWithCredentials(
   clientKey: string,
   clientSecret: string,
   req: Request,
+  usedHeaderCredentials: boolean,
 ): Promise<AuthResult> {
   const validation = await storage.wsClientCredentials.validateSecret(clientKey, clientSecret);
 
@@ -103,6 +224,30 @@ async function authenticateWithCredentials(
     if (!isAllowed) {
       return { success: false, error: 'IP address not allowed', errorCode: 'IP_NOT_ALLOWED', client, credential };
     }
+  }
+
+  /*
+   * SITE-SPECIFIC EXCEPTION: Freeman clients may require a second,
+   * vendor-backed bearer-token check. This deliberately lives after the normal
+   * client credential, active-client, and IP tests, so an invalid caller can
+   * never spend an outbound request. It is hardcoded here for the one Freeman
+   * integration; a future implementation with more external authentication
+   * strategies should move this decision into an incoming-auth plugin
+   * framework rather than adding more vendor branches to this middleware.
+   */
+  const freemanConfigId = freemanAuthorizationConfigId(client);
+  if (
+    freemanConfigId &&
+    isComponentEnabledSync(FREEMAN_AUTHORIZATION_COMPONENT_ID)
+  ) {
+    const failure = await authenticateFreemanBearer(
+      req,
+      client,
+      credential,
+      usedHeaderCredentials,
+      freemanConfigId,
+    );
+    if (failure) return failure;
   }
 
   // The "last used" stamp is bookkeeping, not an input to any decision made
