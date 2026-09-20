@@ -34,6 +34,7 @@ const afterCommit = vi.fn();
 const runInTransaction = vi.fn(async (fn: () => Promise<unknown>) => fn());
 const emit = vi.fn(async () => {});
 let failAt: string | null = null;
+let failure: Error | null = null;
 
 const client = {
   select: vi.fn((selection: Record<string, unknown>) => ({
@@ -50,7 +51,7 @@ const client = {
   })),
   delete: vi.fn((table: { name: string }) => {
     const returning = async () => {
-      if (failAt === table.name) throw new Error("forced reset failure");
+      if (failAt === table.name) throw failure ?? new Error("forced reset failure");
       if (table.name === "contacts") return [{ id: "contact-2" }];
       return rows[table.name] ?? [];
     };
@@ -86,6 +87,7 @@ const { createFreemanEdlsFullResetStorage } = await import(
 beforeEach(() => {
   vi.clearAllMocks();
   failAt = null;
+  failure = null;
   rows = structuredClone(initialRows);
 });
 
@@ -148,9 +150,54 @@ describe("Freeman EDLS full reset storage", () => {
       sheets: 1,
       crews: 2,
       assignments: 3,
-    })).rejects.toThrow("forced reset failure");
+    })).rejects.toMatchObject({
+      name: "FreemanEdlsFullResetUnexpectedError",
+      stage: "delete_workers",
+    });
     expect(afterCommit).not.toHaveBeenCalled();
     expect(emit).not.toHaveBeenCalled();
+  });
+
+  it("classifies worker relationship blockers without exposing database details", async () => {
+    failAt = "workers";
+    failure = Object.assign(new Error("secret row detail"), {
+      code: "23503",
+      constraint: "hidden_worker_relation",
+    });
+    const storage = createFreemanEdlsFullResetStorage();
+
+    await expect(storage.execute({
+      workers: 2,
+      sheets: 1,
+      crews: 2,
+      assignments: 3,
+    })).rejects.toMatchObject({
+      name: "FreemanEdlsFullResetRelationshipError",
+      entity: "worker",
+      stage: "delete_workers",
+    });
+    expect(afterCommit).not.toHaveBeenCalled();
+  });
+
+  it("classifies contact relationship blockers without exposing database details", async () => {
+    failAt = "contacts";
+    failure = Object.assign(new Error("secret contact detail"), {
+      code: "23503",
+      constraint: "hidden_contact_relation",
+    });
+    const storage = createFreemanEdlsFullResetStorage();
+
+    await expect(storage.execute({
+      workers: 2,
+      sheets: 1,
+      crews: 2,
+      assignments: 3,
+    })).rejects.toMatchObject({
+      name: "FreemanEdlsFullResetRelationshipError",
+      entity: "contact",
+      stage: "delete_contacts",
+    });
+    expect(afterCommit).not.toHaveBeenCalled();
   });
 
   it("refuses stale expected counts before deleting anything", async () => {

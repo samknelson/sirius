@@ -7,9 +7,11 @@
  * gated on both EDLS and this site-specific component.
  */
 import type { Express, Request, Response, NextFunction } from "express";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { requireComponent } from "../../../components";
 import { storage } from "../../../../storage";
+import { logger } from "../../../../logger";
 import {
   isMaintenanceActive,
   sendIfMaintenanceRefusal,
@@ -33,6 +35,8 @@ import {
   withFreemanMigrateLock,
   getFreemanEdlsFullResetPreflight,
   executeFreemanEdlsFullReset,
+  FreemanFullResetRefusedError,
+  FreemanEdlsFullResetUnexpectedError,
 } from "./import";
 
 /**
@@ -54,6 +58,48 @@ function sendMigrationFailure(res: Response, error: unknown, fallback: string): 
     return;
   }
   res.status(500).json({ message: failureMessage(error, fallback) });
+}
+
+function databaseFailureMetadata(error: unknown): Record<string, unknown> {
+  const source = error instanceof FreemanEdlsFullResetUnexpectedError
+    ? error.cause
+    : error;
+  if (typeof source !== "object" || source === null) return {};
+  const value = source as Record<string, unknown>;
+  const allowed = ["name", "code", "constraint", "table", "schema", "routine"] as const;
+  return Object.fromEntries(
+    allowed
+      .filter((key) => typeof value[key] === "string")
+      .map((key) => [key, value[key]]),
+  );
+}
+
+function sendFullResetFailure(res: Response, error: unknown): void {
+  if (error instanceof FreemanMigrateConflictError) {
+    res.status(409).json({ message: error.message, action: "refresh" });
+    return;
+  }
+  if (error instanceof FreemanFullResetRefusedError) {
+    res.status(409).json({ message: error.message, action: "refresh" });
+    return;
+  }
+
+  const supportReference = randomUUID();
+  const stage = error instanceof FreemanEdlsFullResetUnexpectedError
+    ? error.stage
+    : "reset_boundary";
+  logger.error("Freeman EDLS full reset rolled back", {
+    service: "freeman-edls-full-reset",
+    supportReference,
+    stage,
+    outcome: "rolled_back",
+    error: databaseFailureMetadata(error),
+  });
+  res.status(500).json({
+    message: `The reset failed and was rolled back. Existing data was left unchanged. Contact support with reference ${supportReference}.`,
+    action: "support",
+    supportReference,
+  });
 }
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -141,7 +187,7 @@ export function registerFreemanEdlsMigrateRoutes(
           });
           return;
         }
-        sendMigrationFailure(res, error, "The full reset failed. Existing data was left unchanged.");
+        sendFullResetFailure(res, error);
       }
     },
   );

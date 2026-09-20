@@ -4,6 +4,8 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import {
   storage,
   FreemanEdlsFullResetCountsChangedError,
+  FreemanEdlsFullResetRelationshipError,
+  FreemanEdlsFullResetUnexpectedError,
 } from "../../../../storage";
 import { getClient, runInTransaction } from "../../../../storage/transaction-context";
 import {
@@ -1366,6 +1368,20 @@ export class FreemanMigrateConflictError extends Error {
   }
 }
 
+export class FreemanFullResetRefusedError extends Error {
+  constructor(
+    message: string,
+    public readonly kind: "relationship",
+  ) {
+    super(message);
+    this.name = "FreemanFullResetRefusedError";
+  }
+}
+
+export {
+  FreemanEdlsFullResetUnexpectedError,
+};
+
 async function writeRunControl(state: FreemanMigrateRunControl): Promise<void> {
   const value = JSON.stringify(state);
   const existing = await storage.variables.getByName(FREEMAN_MIGRATE_RUN_VARIABLE);
@@ -1452,6 +1468,14 @@ export async function executeFreemanEdlsFullReset(raw: unknown) {
       if (error instanceof FreemanEdlsFullResetCountsChangedError) {
         throw new FreemanMigrateConflictError(
           "Reset counts changed after the warning was loaded. Refresh the counts and confirm again.",
+        );
+      }
+      if (error instanceof FreemanEdlsFullResetRelationshipError) {
+        throw new FreemanFullResetRefusedError(
+          error.entity === "worker"
+            ? "The reset was rolled back because other records still reference one or more workers. Remove those relationships, then refresh the counts and try again."
+            : "The reset was rolled back because other records still reference one or more worker contacts. Remove those relationships, then refresh the counts and try again.",
+          "relationship",
         );
       }
       throw error;

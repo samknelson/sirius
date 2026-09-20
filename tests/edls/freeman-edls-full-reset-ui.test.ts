@@ -23,6 +23,17 @@ describe("Freeman EDLS full reset danger card", () => {
     expect(source).toContain("migration progress are retained");
   });
 
+  it("keeps reset failures visible with retry and support guidance", () => {
+    expect(source).toContain("refresh the counts");
+    expect(source).toContain("give the");
+    expect(source).toContain("support reference");
+    expect(source).toMatch(/No reset\s+deletion was committed/);
+    expect(routes).toContain('action: "refresh"');
+    expect(routes).toContain('action: "support"');
+    expect(routes).toContain("supportReference");
+    expect(routes).toContain('outcome: "rolled_back"');
+  });
+
   it("keeps preflight and execution behind the shared admin and component gate", () => {
     expect(routes).toContain('requirePermission("admin")');
     expect(routes).toContain('requireComponent("edls")');

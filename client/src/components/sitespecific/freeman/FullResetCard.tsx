@@ -187,8 +187,13 @@ export default function FullResetCard() {
               </div>
               {reset.isError && (
                 <Alert variant="destructive">
-                  <AlertDescription>
-                    {getApiErrorMessage(reset.error, "The reset failed. Existing data was left unchanged.")}
+                  <AlertDescription className="space-y-2">
+                    <p>{getApiErrorMessage(reset.error, "The reset failed. Existing data was left unchanged.")}</p>
+                    <p>
+                      If the reason says counts changed or an import is active, refresh the counts
+                      and try again. For any other failure, keep this dialog open and give the
+                      support reference to support. No reset deletion was committed.
+                    </p>
                   </AlertDescription>
                 </Alert>
               )}

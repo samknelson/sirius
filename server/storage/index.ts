@@ -10,8 +10,11 @@ export { type GrievanceStorage, type GrievanceListItem, type GrievanceWithDetail
 export {
   type FreemanEdlsFullResetCounts,
   type FreemanEdlsFullResetResult,
+  type FreemanEdlsFullResetStage,
   type FreemanEdlsFullResetStorage,
   FreemanEdlsFullResetCountsChangedError,
+  FreemanEdlsFullResetRelationshipError,
+  FreemanEdlsFullResetUnexpectedError,
   createFreemanEdlsFullResetStorage,
 } from "./sitespecific/freeman/edls-full-reset";
 export { type GrievanceSettlementStorage, createGrievanceSettlementStorage, grievanceSettlementLoggingConfig } from "./grievances/grievance-settlements";
