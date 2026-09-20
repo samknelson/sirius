@@ -18,6 +18,13 @@ import {
   runFreemanEdlsFieldSweep,
   runFreemanEdlsNodeSweep,
 } from "./sweep";
+import {
+  getFreemanMigrateStatus,
+  resetFreemanMigrateStatus,
+  runFreemanMigrate,
+  withFreemanMigrateLock,
+} from "./import";
+import { withNotificationsSuppressed } from "../../../../middleware/request-context";
 
 /**
  * An unexpected error's text is written by code we do not control end to end,
@@ -43,8 +50,15 @@ export function registerFreemanEdlsMigrateRoutes(
   requirePermission: PermissionMiddleware,
 ) {
   const edlsComponent = requireComponent("edls");
+  const freemanComponent = requireComponent("sitespecific.freeman");
   const migrateComponent = requireComponent(FREEMAN_EDLS_MIGRATE_COMPONENT_ID);
-  const gate = [requireAuth, requirePermission("admin"), edlsComponent, migrateComponent];
+  const gate = [
+    requireAuth,
+    requirePermission("admin"),
+    edlsComponent,
+    freemanComponent,
+    migrateComponent,
+  ];
 
   /**
    * What the sweeps will read, so the page can say what is about to happen
@@ -69,7 +83,7 @@ export function registerFreemanEdlsMigrateRoutes(
     ...gate,
     async (_req: Request, res: Response) => {
       try {
-        res.json(await runFreemanEdlsNodeSweep());
+        res.json(await withFreemanMigrateLock(runFreemanEdlsNodeSweep));
       } catch (error) {
         if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({
@@ -84,7 +98,7 @@ export function registerFreemanEdlsMigrateRoutes(
     ...gate,
     async (_req: Request, res: Response) => {
       try {
-        res.json(await runFreemanEdlsFieldSweep());
+        res.json(await withFreemanMigrateLock(runFreemanEdlsFieldSweep));
       } catch (error) {
         if (sendIfMaintenanceRefusal(res, error)) return;
         res.status(500).json({
@@ -114,11 +128,58 @@ export function registerFreemanEdlsMigrateRoutes(
     ...gate,
     async (_req: Request, res: Response) => {
       try {
-        const deleted = await storage.freemanEdlsMigrateStaging.deleteAll();
+        const deleted = await withFreemanMigrateLock(
+          () => storage.freemanEdlsMigrateStaging.deleteAll(),
+        );
         res.json({ deleted });
       } catch (error) {
         res.status(500).json({
           message: failureMessage(error, "Failed to clear the staged rows"),
+        });
+      }
+    },
+  );
+
+  app.get(
+    "/api/sitespecific/freeman/edls-migrate/import/status",
+    ...gate,
+    async (_req: Request, res: Response) => {
+      try {
+        res.json(await getFreemanMigrateStatus());
+      } catch (error) {
+        res.status(500).json({ message: failureMessage(error, "Failed to read migration progress") });
+      }
+    },
+  );
+
+  app.post(
+    "/api/sitespecific/freeman/edls-migrate/import/reset",
+    ...gate,
+    async (_req: Request, res: Response) => {
+      try {
+        res.json(await resetFreemanMigrateStatus());
+      } catch (error) {
+        res.status(500).json({ message: failureMessage(error, "Failed to reset migration progress") });
+      }
+    },
+  );
+
+  app.post(
+    "/api/sitespecific/freeman/edls-migrate/import/run",
+    ...gate,
+    async (req: Request, res: Response) => {
+      try {
+        const mode = req.body?.mode;
+        if (mode !== "test" && mode !== "live") {
+          res.status(400).json({ message: "mode must be test or live" });
+          return;
+        }
+        const run = () => runFreemanMigrate(mode, { limit: req.body?.limit });
+        res.json(mode === "live" ? await withNotificationsSuppressed(run) : await run());
+      } catch (error) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
+        res.status(400).json({
+          message: failureMessage(error, "Failed to run Freeman migration"),
         });
       }
     },

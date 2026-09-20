@@ -132,3 +132,4 @@
 - [Comm vendor cutovers](comm-vendor-cutovers.md) — local plugins omit delivery operations; legacy migrations preserve effective env/override selections without copying credential values.
 - [Vendor cache cutovers](vendor-cache-cutovers.md) — keep legacy namespaces, but never reuse unscoped cache hashes when the originating config cannot be proven.
 - [Nullable usage attribution deletion](nullable-usage-attribution-deletion.md) — NULLS-NOT-DISTINCT counters need merge-before-delete and count-time locking or configuration deletion loses or blocks counts.
+- [One-time Freeman migration verification](freeman-migration-verification.md) — do not add permanent tests for Freeman migration; verify with checks, build, review, and startup because the feature is retired after cutover.

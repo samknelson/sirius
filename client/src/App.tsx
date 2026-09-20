@@ -2930,7 +2930,7 @@ function Router() {
       </Route>
 
       <Route path="/admin/sitespecific/freeman/edls/migrate">
-        <ProtectedRoute permission="admin" componentAll={["edls", "sitespecific.freeman.edls_migrate"]}>
+        <ProtectedRoute permission="admin" componentAll={["edls", "sitespecific.freeman", "sitespecific.freeman.edls_migrate"]}>
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <FreemanEdlsMigratePage />

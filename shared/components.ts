@@ -892,7 +892,7 @@ export const componentRegistry: ComponentDefinition[] = [
       // foreign keys into EDLS, so it is not a schema dependency.
       tables: ["sitespecific_freeman_edls_migrate"]
     },
-    dependsOnComponents: ["edls"]
+    dependsOnComponents: ["edls", "sitespecific.freeman"]
   },
   {
     id: "sitespecific.freeman.authorization",

@@ -9,7 +9,12 @@ import {
 import { denormPluginRegistry } from "./registry";
 
 export * from "./types";
-export { denormPluginRegistry, registerDenormPlugin, getDenormPlugin } from "./registry";
+export {
+  denormPluginRegistry,
+  registerDenormPlugin,
+  getDenormPlugin,
+  recomputeDenormEntity,
+} from "./registry";
 export {
   backfillAllDenorm,
   DEFAULT_BACKFILL_LIMIT,
