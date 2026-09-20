@@ -6,6 +6,7 @@ import { entityMetadataStorage } from "../../storage/system/entity-metadata";
 import { getEnvironmentVariable } from "../../config/env-registry";
 import { runInTransaction } from "../../storage/transaction-context";
 import { addDaysYmd, getTodayYmd, isValidYmd, isYmdAfter } from "@shared/utils/date";
+import { buildTestRequestHeaders } from "./test-request-auth";
 
 type RequireAuth = (req: Request, res: Response, next: NextFunction) => void;
 type RequirePermission = (permission: string) => (req: Request, res: Response, next: NextFunction) => void;
@@ -398,6 +399,7 @@ export function registerWebServiceAdminRoutes(
   const testRequestSchema = z.object({
     clientKey: z.string().min(1, "Client key is required"),
     clientSecret: z.string().min(1, "Client secret is required"),
+    bearerToken: z.string().max(8192, "Bearer token is too long").optional(),
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
     /** Configuration id (or alias) — the first segment of the public URL. */
     configRef: z.string().min(1, "Configuration is required"),
@@ -407,7 +409,7 @@ export function registerWebServiceAdminRoutes(
     body: z.unknown().optional(),
   });
 
-  app.post("/api/admin/ws-clients/:id/test", requireAuth, requirePermission("admin"), async (req, res) => {
+  app.post("/api/admin/ws-clients/:id/test", requireAuth, requirePermission("admin"), async function executeWebServiceTestRequest(req, res) {
     const startTime = Date.now();
 
     try {
@@ -424,7 +426,7 @@ export function registerWebServiceAdminRoutes(
         });
       }
 
-      const { clientKey, clientSecret, method, configRef, operation, queryParams, body } = parseResult.data;
+      const { clientKey, clientSecret, bearerToken, method, configRef, operation, queryParams, body } = parseResult.data;
 
       // Validate the credentials
       const validation = await storage.wsClientCredentials.validateSecret(clientKey, clientSecret);
@@ -484,11 +486,7 @@ export function registerWebServiceAdminRoutes(
       const internalUrl = `http://localhost:${getEnvironmentVariable("PORT") || 5000}${fullPath}${queryString}`;
 
       // Make the internal request with auth headers
-      const headers: Record<string, string> = {
-        "X-WS-Client-Key": clientKey,
-        "X-WS-Client-Secret": clientSecret,
-        "Content-Type": "application/json",
-      };
+      const headers = buildTestRequestHeaders(client, clientKey, clientSecret, bearerToken);
 
       const fetchOptions: RequestInit = {
         method,

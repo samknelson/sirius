@@ -786,7 +786,7 @@ const OFF_FRAMEWORK_FUNCTIONS: Record<string, Record<string, string>> = {
   "server/modules/webservices/admin.ts": {
     registerWebServiceAdminRoutes:
       "The test-operation route calls this same application through a localhost URL.",
-    "anonymous function at line 410":
+    executeWebServiceTestRequest:
       "The admin test-operation route calls this same application through a localhost URL.",
   },
   "server/services/files/providers/s3.ts": {

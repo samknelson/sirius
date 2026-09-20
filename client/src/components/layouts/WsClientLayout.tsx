@@ -38,6 +38,7 @@ interface WsClientLayoutProps {
 
 interface WsClientLayoutContextValue {
   client: WsClientRecord;
+  hasTabAccess: (tabId: string) => boolean;
 }
 
 const WsClientLayoutContext = createContext<WsClientLayoutContextValue | null>(null);
@@ -71,7 +72,7 @@ export function WsClientLayout({ activeTab, children }: WsClientLayoutProps) {
     enabled: !!id,
   });
 
-  const { tabs: mainTabs } = useWsClientTabAccess(id);
+  const { tabs: mainTabs, hasAccess: hasTabAccess } = useWsClientTabAccess(id);
 
   usePageTitle(client?.name || "Client Details");
 
@@ -129,7 +130,7 @@ export function WsClientLayout({ activeTab, children }: WsClientLayoutProps) {
   }
 
   return (
-    <WsClientLayoutContext.Provider value={{ client }}>
+    <WsClientLayoutContext.Provider value={{ client, hasTabAccess }}>
       <div className="bg-background text-foreground min-h-screen">
         <RecordTitleBar
           icon={<Server className="text-primary-foreground" size={16} />}

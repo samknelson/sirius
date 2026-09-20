@@ -21,7 +21,7 @@ import {
   wsServiceAddress,
 } from "./use-ws-services";
 
-function generateCurlCommand(options: {
+export function generateCurlCommand(options: {
   baseUrl: string;
   method: string;
   path: string;
@@ -29,8 +29,9 @@ function generateCurlCommand(options: {
   requestBody: string;
   clientKey: string;
   clientSecret: string;
+  bearerToken?: string;
 }): string {
-  const { baseUrl, method, path, queryParams, requestBody, clientKey, clientSecret } = options;
+  const { baseUrl, method, path, queryParams, requestBody, clientKey, clientSecret, bearerToken } = options;
   
   let fullUrl = `${baseUrl}${path}`;
   
@@ -57,6 +58,9 @@ function generateCurlCommand(options: {
   
   parts.push(`-H "X-WS-Client-Key: ${clientKey || '<YOUR_CLIENT_KEY>'}"`);
   parts.push(`-H "X-WS-Client-Secret: ${clientSecret || '<YOUR_CLIENT_SECRET>'}"`);
+  if (bearerToken !== undefined) {
+    parts.push(`-H "Authorization: Bearer ${bearerToken || '<YOUR_BEARER_TOKEN>'}"`);
+  }
   
   if (["POST", "PUT", "PATCH"].includes(method)) {
     parts.push('-H "Content-Type: application/json"');
@@ -70,6 +74,16 @@ function generateCurlCommand(options: {
   parts.push(`"${fullUrl}"`);
   
   return parts.join(" \\\n  ");
+}
+
+export function shouldShowFreemanBearerInput(
+  clientData: Record<string, unknown> | null | undefined,
+  hasFreemanTabAccess: boolean,
+): boolean {
+  const configId = clientData?.freemanBearerAuthorizationConfigId;
+  return hasFreemanTabAccess
+    && typeof configId === "string"
+    && configId.trim().length > 0;
 }
 
 interface TestResponse {
@@ -93,12 +107,18 @@ function TestContent() {
 
   const [clientKey, setClientKey] = useState("");
   const [clientSecret, setClientSecret] = useState("");
+  const [bearerToken, setBearerToken] = useState("");
   const [method, setMethod] = useState<"GET" | "POST" | "PUT" | "PATCH" | "DELETE">("POST");
   const [configId, setConfigId] = useState("");
   const [operation, setOperation] = useState("");
   const [queryParams, setQueryParams] = useState("");
   const [requestBody, setRequestBody] = useState("");
   const [testResult, setTestResult] = useState<TestResponse | null>(null);
+  const { client, hasTabAccess } = useWsClientLayout();
+  const needsFreemanBearer = shouldShowFreemanBearerInput(
+    client.data,
+    hasTabAccess("freeman-bearer-authorization"),
+  );
 
   // The operation list is driven by what this client is ACTUALLY granted, not
   // by everything that exists: an operation the test screen offers but the
@@ -142,6 +162,7 @@ function TestContent() {
       return apiRequest("POST", `/api/admin/ws-clients/${params.id}/test`, {
         clientKey,
         clientSecret,
+        ...(needsFreemanBearer ? { bearerToken } : {}),
         method,
         configRef: configId,
         operation,
@@ -197,8 +218,9 @@ function TestContent() {
       requestBody,
       clientKey,
       clientSecret,
+      bearerToken: needsFreemanBearer ? bearerToken.trim() : undefined,
     });
-  }, [baseUrl, method, path, queryParams, requestBody, clientKey, clientSecret]);
+  }, [baseUrl, method, path, queryParams, requestBody, clientKey, clientSecret, needsFreemanBearer, bearerToken]);
 
   const handleCopyCurl = async () => {
     try {
@@ -249,6 +271,20 @@ function TestContent() {
                 data-testid="input-client-secret"
               />
             </div>
+            {needsFreemanBearer && (
+              <div className="space-y-2">
+                <Label htmlFor="bearer-token">Freeman Bearer Token</Label>
+                <Input
+                  id="bearer-token"
+                  type="password"
+                  value={bearerToken}
+                  onChange={(e) => setBearerToken(e.target.value)}
+                  placeholder="Enter bearer token"
+                  autoComplete="off"
+                  data-testid="input-bearer-token"
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
 

@@ -82,9 +82,16 @@ async function authenticateRequest(req: Request): Promise<AuthResult> {
   return authenticateWithCredentials(clientKey, clientSecret, req, true);
 }
 
-function freemanAuthorizationConfigId(client: WsClient): string | undefined {
+export function freemanAuthorizationConfigId(client: WsClient): string | undefined {
   const value = client.data?.[FREEMAN_AUTHORIZATION_CONFIG_KEY];
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+export function requiresFreemanBearerAuthorization(client: WsClient): boolean {
+  return Boolean(
+    freemanAuthorizationConfigId(client)
+    && isComponentEnabledSync(FREEMAN_AUTHORIZATION_COMPONENT_ID),
+  );
 }
 
 function bearerToken(req: Request): string | undefined {
@@ -236,10 +243,7 @@ async function authenticateWithCredentials(
    * framework rather than adding more vendor branches to this middleware.
    */
   const freemanConfigId = freemanAuthorizationConfigId(client);
-  if (
-    freemanConfigId &&
-    isComponentEnabledSync(FREEMAN_AUTHORIZATION_COMPONENT_ID)
-  ) {
+  if (freemanConfigId && requiresFreemanBearerAuthorization(client)) {
     const failure = await authenticateFreemanBearer(
       req,
       client,
