@@ -29,7 +29,10 @@ import "./plugins/trust/eligibility";
 
 import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
 import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
-import { initializeDashboardPluginSystem } from "./plugins/dashboard";
+import {
+  reconcileDashboardPluginSystem,
+  registerDashboardPluginSystem,
+} from "./plugins/dashboard";
 import { initializeQuicksearchPluginSystem } from "./plugins/quicksearch";
 import { initializeClientInjectionPluginSystem } from "./plugins/client-injection";
 import { initializeEventNotifierPluginSystem } from "./plugins/event-notifier";
@@ -50,6 +53,7 @@ import {
   getComponentCacheRevision,
   isComponentEnabledSync,
 } from "./services/component-cache";
+import { runOrDeferStartupOperation } from "./services/startup-deferrals";
 
 // Helper function to redact sensitive data from responses before logging.
 // Exported so the redaction list can be asserted directly — the fields it
@@ -271,12 +275,6 @@ export async function bootstrapApp(
   // without writing anything. See `server/services/bringup.ts`.
   await runSchemaBringUp();
 
-  // Initialize address validation service (loads or creates config). Runs
-  // after bring-up: it writes a config row, which report-only mode must not
-  // do, and it has nothing to say about the schema.
-  await addressValidationService.getConfig();
-  logger.info("Address validation service initialized", { source: "startup" });
-
   // Arm maintenance-mode enforcement (connection-level read-only lock while
   // system_mode = "maintenance"). Armed ONLY here — standalone scripts that
   // import the db module directly stay writable by design. Must run after
@@ -285,6 +283,13 @@ export async function bootstrapApp(
     const { armMaintenanceEnforcement } = await import("./services/maintenance-mode");
     await armMaintenanceEnforcement();
   }
+
+  // This loads or creates a config row, so a database already in maintenance
+  // must defer it. Schema bring-up remains ahead of maintenance enforcement by
+  // design; all application-data reconciliation begins behind this boundary.
+  await runOrDeferStartupOperation("address-validation-config", async () => {
+    await addressValidationService.getConfig();
+  });
 
   // Load DB-backed environment-variable overrides and install the sync
   // fallback into the env registry (real env values always win). Must run
@@ -356,12 +361,17 @@ export async function bootstrapApp(
       "./plugins/worker-bans"
     );
     initializeWorkerBanSystem();
-    await seedWorkerBanTypes();
+    await runOrDeferStartupOperation("worker-ban-seed-and-legacy-migration", async () => {
+      await seedWorkerBanTypes();
+    });
   }
   logger.info("Worker-ban system initialized", { source: "startup" });
 
-  // Initialize dashboard plugin system (registration + legacy migrations)
-  await initializeDashboardPluginSystem();
+  // Register in memory in every mode; database migrations are deferrable.
+  registerDashboardPluginSystem();
+  await runOrDeferStartupOperation("dashboard-config-reconciliation", async () => {
+    await reconcileDashboardPluginSystem();
+  });
   logger.info("Dashboard plugin system initialized", { source: "startup" });
 
   // Initialize client-injection plugin system (registration + adapter)
@@ -382,7 +392,7 @@ export async function bootstrapApp(
   // enabled (Task #397). Idempotent: existing rows are left untouched (admin
   // edits preserved), only missing rows are created and disabled-but-present
   // rows are re-activated. Mirrors the PUT-handler reconcile for the boot path.
-  {
+  await runOrDeferStartupOperation("component-plugin-config-reconciliation", async () => {
     const { getAllComponents } = await import("../shared/components");
     const { reconcileComponentPluginConfigs } = await import(
       "./services/component-lifecycle"
@@ -400,7 +410,7 @@ export async function bootstrapApp(
         }
       }
     });
-  }
+  });
   logger.info("Component-owned plugin configs reconciled", { source: "startup" });
 
   // Register charge + trust eligibility kinds with the unified
@@ -420,12 +430,14 @@ export async function bootstrapApp(
   registerTrustEligibilityKind();
   registerWcVendorPluginKind();
   initializeWebServiceSystem();
-  await migrateLegacyCivicWcVendorConfigs();
-  await migrateLegacyBtuScrapeWcVendorConfig();
-  await migrateWcVendorOperationAssignments();
-  // Every wc-vendors config needs a subsidiary row (the generic search
-  // inner-joins it). Backfill pre-existing configs so they don't vanish.
-  await backfillWcVendorSubsidiaries();
+  await runOrDeferStartupOperation("webclient-vendor-config-reconciliation", async () => {
+    await migrateLegacyCivicWcVendorConfigs();
+    await migrateLegacyBtuScrapeWcVendorConfig();
+    await migrateWcVendorOperationAssignments();
+    // Every wc-vendors config needs a subsidiary row (the generic search
+    // inner-joins it). Backfill pre-existing configs so they don't vanish.
+    await backfillWcVendorSubsidiaries();
+  });
   logger.info("Webclient-vendor configurations initialized", { source: "startup" });
 
   // Wire the shared plugin-config cache's invalidation subscription before any
@@ -452,10 +464,12 @@ export async function bootstrapApp(
     const { migrateNotifierTemplateTokens } = await import(
       "./plugins/event-notifier/template-token-migrations"
     );
-    await backfillEventNotifierSubsidiaries();
-    // Custom templates are stored verbatim and rendered verbatim, so a
-    // renamed token root has to be rewritten in the stored data too.
-    await migrateNotifierTemplateTokens();
+    await runOrDeferStartupOperation("event-notifier-config-reconciliation", async () => {
+      await backfillEventNotifierSubsidiaries();
+      // Custom templates are stored verbatim and rendered verbatim, so a
+      // renamed token root has to be rewritten in the stored data too.
+      await migrateNotifierTemplateTokens();
+    });
     initializeEventNotifierDispatcher();
   }
   logger.info("Event-notifier dispatcher initialized", { source: "startup" });
@@ -518,7 +532,9 @@ export async function bootstrapApp(
   logger.info("Flood configs loaded from variables", { source: "startup" });
 
   // Seed singleton plugin configs (e.g. cron jobs) that have no config row yet
-  await bootstrapSingletonPluginConfigs();
+  await runOrDeferStartupOperation("singleton-plugin-config-bootstrap", async () => {
+    await bootstrapSingletonPluginConfigs();
+  });
   logger.info("Singleton plugin configs bootstrapped", { source: "startup" });
 
   // Guarantee the admin account described by LOCAL_AUTH_EMAIL /
@@ -527,7 +543,12 @@ export async function bootstrapApp(
   // before auth setup so the credential is usable on the very first login.
   {
     const { ensureLocalAdminAccount } = await import("./auth/local-seed");
-    await ensureLocalAdminAccount();
+    await runOrDeferStartupOperation("local-admin-account-reconciliation", async () => {
+      const report = await ensureLocalAdminAccount();
+      if (report.failure) {
+        throw new Error(`Local admin account reconciliation failed: ${report.failure}`);
+      }
+    });
   }
 
   // Browser sessions and the application API belong to api-user. Web-service
@@ -566,15 +587,10 @@ export async function bootstrapApp(
     initializeWebSocket(server, sessionMiddleware);
     logger.info("WebSocket server initialized", { source: "startup" });
 
-    try {
+    await runOrDeferStartupOperation("cron-scheduler-start", async () => {
       await cronScheduler.start();
       logger.info("Cron scheduler started", { source: "startup" });
-    } catch (error) {
-      logger.error("Failed to start cron scheduler", {
-        source: "startup",
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+    });
   }
 
   // Register error handling middleware AFTER routes to catch route errors

@@ -73,6 +73,9 @@ class CronScheduler {
         jobCount: this.scheduledJobs.size,
       });
     } catch (error) {
+      // A failed load may already have scheduled some jobs. Return to a clean
+      // stopped state so a deferred maintenance-exit retry can really start.
+      await this.stop();
       logger.error('Failed to start cron scheduler', {
         service: 'cron-scheduler',
         error: error instanceof Error ? error.message : String(error),
