@@ -10,36 +10,14 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { getAssignmentStatusDotColor } from "@/components/edls/AssignmentStatusDot";
+import { AssignmentStatusDotsButton } from "@/components/edls/AssignmentStatusDot";
+import { WorkerAssignmentDetailsDialog } from "@/components/edls/WorkerAssignmentDetailsDialog";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useAccessCheck } from "@/hooks/use-access-check";
 import { useToast } from "@/hooks/use-toast";
 import type { EdlsSheetStatus, EdlsCrew, AssignmentExtra } from "@shared/schema";
-
-interface WorkerAssignmentDetail {
-  sheetId: string;
-  sheetName: string;
-  sheetYmd: string;
-  sheetStatus: string;
-  crewId: string;
-  crewName: string;
-  startTime: string | null;
-  endTime: string | null;
-  supervisorName: string | null;
-}
-
-interface WorkerAssignmentDetails {
-  workerId: string;
-  siriusId: number | null;
-  displayName: string | null;
-  given: string | null;
-  family: string | null;
-  prior: WorkerAssignmentDetail | null;
-  current: WorkerAssignmentDetail | null;
-  next: WorkerAssignmentDetail | null;
-}
 
 interface EdlsCrewWithRelations extends EdlsCrew {
   supervisorUser?: UserInfo;
@@ -672,141 +650,6 @@ function formatWorkerName(worker: AvailableWorker): string {
   return worker.siriusId ? `Worker #${worker.siriusId}` : "Unknown Worker";
 }
 
-function formatWorkerFullName(details: WorkerAssignmentDetails): string {
-  if (details.displayName) return details.displayName;
-  if (details.given || details.family) {
-    return [details.given, details.family].filter(Boolean).join(" ");
-  }
-  return details.siriusId ? `Worker #${details.siriusId}` : "Unknown Worker";
-}
-
-function getStatusCardStyle(status: string): string {
-  switch (status) {
-    case "draft": return "bg-gray-100 dark:bg-gray-800 border-l-4 border-l-gray-400";
-    case "request": return "bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-l-yellow-400";
-    case "lock": return "bg-green-50 dark:bg-green-900/20 border-l-4 border-l-green-500";
-    case "trash": return "bg-red-50 dark:bg-red-900/20 border-l-4 border-l-red-500";
-    case "reserved": return "bg-blue-50 dark:bg-blue-900/20 border-l-4 border-l-blue-500";
-    default: return "bg-muted/50";
-  }
-}
-
-function AssignmentDetailCard({ label, detail }: { label: string; detail: WorkerAssignmentDetail | null }) {
-  if (!detail) {
-    return (
-      <div className="p-3 rounded-md bg-muted/50">
-        <div className="text-xs text-muted-foreground font-medium mb-1">{label}</div>
-        <div className="text-sm text-muted-foreground italic">No assignment</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className={`p-3 rounded-md ${getStatusCardStyle(detail.sheetStatus)}`}>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-muted-foreground font-medium">{label}</span>
-        <Badge variant="outline">
-          {detail.sheetStatus}
-        </Badge>
-      </div>
-      <div className="space-y-1 text-sm">
-        <div className="flex items-center gap-2">
-          <ClipboardList className="h-3 w-3 text-muted-foreground" />
-          <Link 
-            href={`/edls/sheet/${detail.sheetId}`}
-            className="font-medium text-primary hover:underline"
-            data-testid={`link-sheet-${detail.sheetId}`}
-          >
-            {detail.sheetName}
-          </Link>
-        </div>
-        <div className="flex items-center gap-2">
-          <Calendar className="h-3 w-3 text-muted-foreground" />
-          <span>{formatYmd(detail.sheetYmd, "weekday-long")}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Users className="h-3 w-3 text-muted-foreground" />
-          <span>{detail.crewName}</span>
-        </div>
-        {detail.supervisorName && (
-          <div className="flex items-center gap-2">
-            <User className="h-3 w-3 text-muted-foreground" />
-            <span>{detail.supervisorName}</span>
-          </div>
-        )}
-        {(detail.startTime || detail.endTime) && (
-          <div className="flex items-center gap-2">
-            <Clock className="h-3 w-3 text-muted-foreground" />
-            <span>{detail.startTime || "—"} - {detail.endTime || "—"}</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-interface WorkerRatingWithType {
-  id: string;
-  workerId: string;
-  ratingId: string;
-  value: number;
-  ratingType: { id: string; name: string } | null;
-}
-
-function WorkerRatingsSection({ workerId, ratingsEnabled }: { workerId: string; ratingsEnabled: boolean }) {
-  const { data: ratings = [], isLoading } = useQuery<WorkerRatingWithType[]>({
-    queryKey: ["/api/worker-ratings/worker", workerId],
-    queryFn: async () => {
-      const response = await fetch(`/api/worker-ratings/worker/${workerId}`);
-      if (!response.ok) throw new Error("Failed to fetch worker ratings");
-      return response.json();
-    },
-    enabled: ratingsEnabled,
-  });
-
-  if (!ratingsEnabled) return null;
-  
-  if (isLoading) {
-    return (
-      <div className="border-t pt-3 space-y-2">
-        <div className="text-sm font-medium text-muted-foreground">Ratings</div>
-        <Skeleton className="h-16 w-full" />
-      </div>
-    );
-  }
-
-  if (ratings.length === 0) {
-    return (
-      <div className="border-t pt-3">
-        <div className="text-sm font-medium text-muted-foreground">Ratings</div>
-        <div className="text-sm text-muted-foreground mt-1">No ratings assigned</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="border-t pt-3">
-      <div className="text-sm font-medium text-muted-foreground mb-2">Ratings</div>
-      <div className="grid grid-cols-2 gap-2">
-        {ratings.map((rating) => (
-          <div key={rating.id} className="flex items-center justify-between bg-muted/50 rounded-md px-2 py-1.5">
-            <span className="text-sm truncate mr-2" data-testid={`text-rating-name-${rating.id}`}>{rating.ratingType?.name ?? "Unknown rating"}</span>
-            <div className="flex items-center gap-0.5 flex-shrink-0">
-              {[0, 1, 2, 3].map((i) => (
-                <Star
-                  key={i}
-                  className={`h-3 w-3 ${i < rating.value ? "text-yellow-400" : "text-muted-foreground/30"}`}
-                  fill={i < rating.value ? "currentColor" : "none"}
-                />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function WorkerAssignmentModal({ 
   worker, 
   open, 
@@ -818,16 +661,6 @@ function WorkerAssignmentModal({
 }) {
   const { sheet } = useEdlsSheetLayout();
   
-  const { data: details, isLoading } = useQuery<WorkerAssignmentDetails>({
-    queryKey: ["/api/edls/sheets", sheet.id, "workers", worker.id, "assignment-details"],
-    queryFn: async () => {
-      const response = await fetch(`/api/edls/sheets/${sheet.id}/workers/${worker.id}/assignment-details`);
-      if (!response.ok) throw new Error("Failed to fetch assignment details");
-      return response.json();
-    },
-    enabled: open,
-  });
-
   const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
     queryKey: ["/api/components/config"],
     staleTime: 60000,
@@ -835,76 +668,15 @@ function WorkerAssignmentModal({
   
   const ratingsEnabled = componentConfigs.find(c => c.componentId === "worker.ratings")?.enabled ?? false;
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Worker Assignment Details</DialogTitle>
-        </DialogHeader>
-        
-        {isLoading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-6 w-48" />
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
-          </div>
-        ) : details ? (
-          <div className="space-y-4">
-            <div className="border-b pb-3">
-              <div className="text-lg font-semibold">{formatWorkerFullName(details)}</div>
-              <div className="flex gap-2 mt-1">
-                {details.siriusId && (
-                  <Badge variant="secondary">ID: {details.siriusId}</Badge>
-                )}
-                <Badge variant="outline">Worker ID: {details.workerId.slice(0, 8)}...</Badge>
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              <AssignmentDetailCard label="Prior Assignment" detail={details.prior} />
-              <AssignmentDetailCard label="Current Assignment (Same Day)" detail={details.current} />
-              <AssignmentDetailCard label="Next Assignment" detail={details.next} />
-            </div>
-            
-            <WorkerRatingsSection workerId={worker.id} ratingsEnabled={ratingsEnabled} />
-          </div>
-        ) : (
-          <div className="text-muted-foreground">No details available</div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
+  return <WorkerAssignmentDetailsDialog workerId={worker.id} queryUrl={`/api/edls/sheets/${sheet.id}/workers/${worker.id}/assignment-details`} open={open} onOpenChange={onOpenChange} ratingsEnabled={ratingsEnabled} />;
 }
 
 function StatusDots({ worker }: { worker: AvailableWorker }) {
   const [modalOpen, setModalOpen] = useState(false);
 
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setModalOpen(true);
-  };
-
   return (
     <>
-      <div 
-        className="flex items-center gap-0.5 flex-shrink-0 cursor-pointer hover:opacity-80 p-1 -m-1 rounded"
-        onClick={handleClick}
-        onMouseDown={(e) => e.stopPropagation()}
-        data-testid={`status-dots-${worker.id}`}
-        title="Click to view assignment details"
-      >
-        <div 
-          className={`w-2 h-2 rounded-full ${getAssignmentStatusDotColor(worker.priorStatus)}`}
-        />
-        <div 
-          className={`w-2 h-2 rounded-full ${getAssignmentStatusDotColor(worker.currentStatus)}`}
-        />
-        <div 
-          className={`w-2 h-2 rounded-full ${getAssignmentStatusDotColor(worker.nextStatus)}`}
-        />
-      </div>
+      <AssignmentStatusDotsButton priorStatus={worker.priorStatus} currentStatus={worker.currentStatus} nextStatus={worker.nextStatus} onClick={() => setModalOpen(true)} testId={`status-dots-${worker.id}`} />
       <WorkerAssignmentModal 
         worker={worker} 
         open={modalOpen} 

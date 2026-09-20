@@ -37,3 +37,36 @@ export function AssignmentStatusDot({
     />
   );
 }
+
+export function AssignmentStatusDotsButton({
+  priorStatus,
+  currentStatus,
+  nextStatus,
+  onClick,
+  testId,
+}: {
+  priorStatus: string | null;
+  currentStatus: string | null;
+  nextStatus: string | null;
+  onClick: () => void;
+  testId?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="flex items-center gap-2 rounded p-1 -m-1 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      onMouseDown={(event) => event.stopPropagation()}
+      title="View assignment details"
+      data-testid={testId}
+    >
+      <span className="sr-only">View assignment details:</span>
+      <AssignmentStatusDot status={priorStatus} label="Previous" />
+      <AssignmentStatusDot status={currentStatus} label="Current" />
+      <AssignmentStatusDot status={nextStatus} label="Next" />
+    </button>
+  );
+}

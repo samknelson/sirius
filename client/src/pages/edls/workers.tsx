@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAccessCheckBatch } from "@/hooks/use-access-check";
-import { AssignmentStatusDot } from "@/components/edls/AssignmentStatusDot";
+import { AssignmentStatusDotsButton } from "@/components/edls/AssignmentStatusDot";
+import { WorkerAssignmentDetailsDialog } from "@/components/edls/WorkerAssignmentDetailsDialog";
 
 interface Option {
   id: string;
@@ -60,6 +61,7 @@ export default function EdlsWorkersPage() {
   const page = Math.max(1, Number(params.get("page") || "1"));
   const nameParam = params.get("name") || "";
   const [name, setName] = useState(nameParam);
+  const [detailsWorkerId, setDetailsWorkerId] = useState<string | null>(null);
 
   useEffect(() => setName(nameParam), [nameParam]);
   useEffect(() => {
@@ -156,7 +158,7 @@ export default function EdlsWorkersPage() {
                     <TableCell className="font-medium">{access.accessMap.get(row.id) ? <Link href={`/workers/${row.id}`} className="text-primary hover:underline">{workerName(row)}</Link> : workerName(row)}</TableCell>
                     <TableCell>{row.active ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}</TableCell>
                     <TableCell>{row.memberStatusName ?? "Unassigned"}{row.memberStatusCode ? <span className="ml-1 text-muted-foreground">({row.memberStatusCode})</span> : null}</TableCell>
-                    <TableCell><div className="flex items-center gap-3"><AssignmentStatusDot status={row.priorStatus} label="Previous" /><AssignmentStatusDot status={row.currentStatus} label="Current" /><AssignmentStatusDot status={row.nextStatus} label="Next" /></div></TableCell>
+                    <TableCell><AssignmentStatusDotsButton priorStatus={row.priorStatus} currentStatus={row.currentStatus} nextStatus={row.nextStatus} onClick={() => setDetailsWorkerId(row.id)} testId={`status-dots-${row.id}`} /></TableCell>
                     {data?.idTypes.map((type) => <TableCell key={type.id}>{row.ids?.[type.id] ?? "—"}</TableCell>)}
                     {data?.ratingsEnabled && params.get("ratingId") && <TableCell>{row.ratingValue ?? "—"}</TableCell>}
                   </TableRow>)}</TableBody>
@@ -168,6 +170,7 @@ export default function EdlsWorkersPage() {
           <p className="text-sm text-muted-foreground">{data ? `${data.total} worker${data.total === 1 ? "" : "s"}` : ""}{isFetching ? " · Updating…" : ""}</p>
           {data && data.totalPages > 1 && <div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}><ChevronLeft className="h-4 w-4 mr-1" /> Previous</Button><span className="text-sm">Page {data.page} of {data.totalPages}</span><Button variant="outline" size="sm" disabled={page >= data.totalPages} onClick={() => setPage(page + 1)}>Next <ChevronRight className="h-4 w-4 ml-1" /></Button></div>}
         </div>
+        {detailsWorkerId && <WorkerAssignmentDetailsDialog workerId={detailsWorkerId} queryUrl={`/api/edls/workers/${detailsWorkerId}/assignment-details`} open onOpenChange={(open) => { if (!open) setDetailsWorkerId(null); }} />}
       </main>
     </>
   );

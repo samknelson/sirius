@@ -62,6 +62,26 @@ export function registerWorkerEdlsRoutes(app: Express, requireAuth: RequireAuth)
   );
 
   app.get(
+    "/api/edls/workers/:id/assignment-details",
+    requireAuth,
+    edlsComponent,
+    requireAccess("edls.any"),
+    async (req: Request, res: Response) => {
+      try {
+        const details = await storage.edlsAssignments.getWorkerAssignmentDetails(
+          req.params.id,
+          getTodayYmd(),
+        );
+        if (!details) return res.status(404).json({ message: "Worker not found" });
+        res.json(details);
+      } catch (error) {
+        console.error("Error fetching EDLS worker assignment details:", error);
+        res.status(500).json({ error: "Failed to fetch worker assignment details" });
+      }
+    },
+  );
+
+  app.get(
     "/api/workers/:id/edls",
     requireAuth,
     edlsComponent,
