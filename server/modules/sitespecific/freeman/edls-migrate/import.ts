@@ -157,8 +157,8 @@ function sheetFailure(error: unknown): FreemanMigrateError {
   }
   const message = error instanceof Error ? error.message : "";
   const relationPrefixes = [
+    "Ambiguous facility value",
     "Ambiguous lookup value",
-    "No facility matches",
     "No department could be resolved",
     "The Freeman employee ID type is not configured",
     "Freeman worker ID and employee ID resolve to different workers",
@@ -380,7 +380,7 @@ async function resolveNamed(
   return created?.id ?? null;
 }
 
-async function resolveExistingNamed(
+async function resolveOptionalExistingNamed(
   table: any,
   name: string | null,
   label: string,
@@ -389,8 +389,7 @@ async function resolveExistingNamed(
   const rows = await getClient().select().from(table).orderBy(asc((table as any).name));
   const matches = rows.filter((row: any) => normalize(row.name) === normalize(name));
   if (matches.length > 1) throw new Error(`Ambiguous ${label} value "${name}".`);
-  if (matches.length === 0) throw new Error(`No ${label} matches "${name}".`);
-  return matches[0].id;
+  return matches[0]?.id ?? null;
 }
 
 async function resolveSupervisor(name: string | null, live: boolean): Promise<string | null> {
@@ -591,7 +590,7 @@ async function reconcileSheet(source: unknown, status: FreemanMigrateStatus, liv
   if (!departmentId) throw new Error("No department could be resolved.");
   const supervisor = await resolveSupervisor(text(pick(sheet, "supervisor", "supervisor_name", "supervisorName")), live);
   const showStatusId = await resolveNamed(optionsEdlsShowStatus, text(pick(sheet, "event_status", "show_status", "showStatus", "show_status_name")), live);
-  const facilityId = await resolveExistingNamed(
+  const facilityId = await resolveOptionalExistingNamed(
     facilities,
     text(pick(sheet, "facility", "facility_name", "facilityName")),
     "facility",
