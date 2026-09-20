@@ -15,6 +15,7 @@ import { useAccessCheckBatch } from "@/hooks/use-access-check";
 import { AssignmentStatusDotsButton } from "@/components/edls/AssignmentStatusDot";
 import { StarRating, StarRatingFilter } from "@/components/edls/StarRating";
 import { WorkerAssignmentDetailsDialog } from "@/components/edls/WorkerAssignmentDetailsDialog";
+import { getTodayYmd } from "@shared/utils/date";
 
 interface Option {
   id: string;
@@ -60,11 +61,15 @@ export default function EdlsWorkersPage() {
   const [, setLocation] = useLocation();
   const params = useMemo(() => new URLSearchParams(search), [search]);
   const page = Math.max(1, Number(params.get("page") || "1"));
+  const referenceDate = params.get("referenceDate") || getTodayYmd();
   const nameParam = params.get("name") || "";
   const [name, setName] = useState(nameParam);
   const [detailsWorkerId, setDetailsWorkerId] = useState<string | null>(null);
 
   useEffect(() => setName(nameParam), [nameParam]);
+  useEffect(() => {
+    if (!params.has("referenceDate")) updateUrl(setLocation, { referenceDate, page: "1" });
+  }, [params, referenceDate, setLocation]);
   useEffect(() => {
     const timer = window.setTimeout(() => {
       if (name.trim() !== nameParam) updateUrl(setLocation, { name: name.trim() || null, page: "1" });
@@ -120,6 +125,12 @@ export default function EdlsWorkersPage() {
                 <Input className="pl-9 w-56" value={name} onChange={(event) => setName(event.target.value)} placeholder="Search by name" data-testid="input-edls-worker-name" />
               </div>
             </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Reference date</label>
+              <Input type="date" className="w-40" value={referenceDate} onChange={(event) => update({ referenceDate: event.target.value || getTodayYmd() })} data-testid="input-edls-worker-reference-date" />
+            </div>
+            <FilterSelect label="Current" value={params.get("currentAssignment") || "all"} options={[{ id: "all", name: "All" }, { id: "include", name: "Has assignment" }, { id: "exclude", name: "No assignment" }]} onChange={(value) => update({ currentAssignment: value === "all" ? null : value })} testId="select-edls-worker-current-assignment" />
+            <FilterSelect label="Next" value={params.get("nextAssignment") || "all"} options={[{ id: "all", name: "All" }, { id: "include", name: "Has assignment" }, { id: "exclude", name: "No assignment" }]} onChange={(value) => update({ nextAssignment: value === "all" ? null : value })} testId="select-edls-worker-next-assignment" />
             <FilterSelect label="Active in EDLS" value={params.get("active") || "all"} options={[{ id: "all", name: "All workers" }, { id: "true", name: "Active" }, { id: "false", name: "Inactive" }]} onChange={(value) => update({ active: value === "all" ? null : value })} testId="select-edls-worker-active" />
             <FilterSelect label="Member status" value={params.get("memberStatusId") || "all"} options={[{ id: "all", name: "All statuses" }, ...edlsMemberStatuses]} onChange={(value) => update({ memberStatusId: value === "all" ? null : value })} testId="select-edls-worker-member-status" disabled={!data?.industryId} />
             {data?.ratingsEnabled && <FilterSelect label="Rating" value={params.get("ratingId") || "all"} options={[{ id: "all", name: "No rating" }, ...rankingOptions]} onChange={(value) => update({ ratingId: value === "all" ? null : value, ratingValue: value === "all" ? null : params.get("ratingValue") })} testId="select-edls-worker-ranking" />}
@@ -171,7 +182,7 @@ export default function EdlsWorkersPage() {
           <p className="text-sm text-muted-foreground">{data ? `${data.total} worker${data.total === 1 ? "" : "s"}` : ""}{isFetching ? " · Updating…" : ""}</p>
           {data && data.totalPages > 1 && <div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}><ChevronLeft className="h-4 w-4 mr-1" /> Previous</Button><span className="text-sm">Page {data.page} of {data.totalPages}</span><Button variant="outline" size="sm" disabled={page >= data.totalPages} onClick={() => setPage(page + 1)}>Next <ChevronRight className="h-4 w-4 ml-1" /></Button></div>}
         </div>
-        {detailsWorkerId && <WorkerAssignmentDetailsDialog workerId={detailsWorkerId} queryUrl={`/api/edls/workers/${detailsWorkerId}/assignment-details`} open onOpenChange={(open) => { if (!open) setDetailsWorkerId(null); }} />}
+        {detailsWorkerId && <WorkerAssignmentDetailsDialog workerId={detailsWorkerId} queryUrl={`/api/edls/workers/${detailsWorkerId}/assignment-details?referenceDate=${encodeURIComponent(referenceDate)}`} open onOpenChange={(open) => { if (!open) setDetailsWorkerId(null); }} />}
       </main>
     </>
   );

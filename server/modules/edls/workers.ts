@@ -48,6 +48,14 @@ const setActiveSchema = z.object({
   active: z.boolean(),
 });
 
+const calendarYmdSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+  const [year, month, day] = value.split("-").map(Number);
+  if (month < 1 || month > 12 || day < 1) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  return day <= daysInMonth;
+}, "Invalid calendar date");
+
 const directoryQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(50),
@@ -58,6 +66,13 @@ const directoryQuerySchema = z.object({
   idValue: z.string().optional(),
   ratingId: z.string().optional(),
   ratingValue: z.coerce.number().int().optional(),
+  referenceDate: calendarYmdSchema.optional(),
+  currentAssignment: z.enum(["include", "exclude"]).optional(),
+  nextAssignment: z.enum(["include", "exclude"]).optional(),
+});
+
+const assignmentDetailsQuerySchema = z.object({
+  referenceDate: calendarYmdSchema.optional(),
 });
 
 export function registerWorkerEdlsRoutes(app: Express, requireAuth: RequireAuth) {
@@ -77,15 +92,16 @@ export function registerWorkerEdlsRoutes(app: Express, requireAuth: RequireAuth)
           industryId = (await storage.employers.getEmployer(settings.employer))?.industryId ?? null;
         }
         const ratingsEnabled = isComponentEnabledSync("worker.ratings");
+        const referenceYmd = query.referenceDate ?? getTodayYmd();
         const result = await storage.edlsWorkerDirectory.list({
           ...query,
           memberStatusId: industryId ? query.memberStatusId : undefined,
           ratingId: ratingsEnabled ? query.ratingId : undefined,
           ratingValue: ratingsEnabled ? query.ratingValue : undefined,
           industryId,
-          todayYmd: getTodayYmd(),
+          referenceYmd,
         });
-        res.json({ ...result, industryId, ratingsEnabled });
+        res.json({ ...result, industryId, ratingsEnabled, referenceDate: referenceYmd });
       } catch (error) {
         if (error instanceof z.ZodError) {
           return res.status(400).json({ error: "Invalid directory filters", details: error.errors });
@@ -103,13 +119,17 @@ export function registerWorkerEdlsRoutes(app: Express, requireAuth: RequireAuth)
     requireAccess("edls.any"),
     async (req: Request, res: Response) => {
       try {
+        const query = assignmentDetailsQuerySchema.parse(req.query);
         const details = await storage.edlsAssignments.getWorkerAssignmentDetails(
           req.params.id,
-          getTodayYmd(),
+          query.referenceDate ?? getTodayYmd(),
         );
         if (!details) return res.status(404).json({ message: "Worker not found" });
         res.json(await addSheetAccessToAssignmentDetails(req, details));
       } catch (error) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({ error: "Invalid reference date", details: error.errors });
+        }
         console.error("Error fetching EDLS worker assignment details:", error);
         res.status(500).json({ error: "Failed to fetch worker assignment details" });
       }

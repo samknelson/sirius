@@ -114,7 +114,7 @@ async function request(query: Record<string, string> = {}, authenticated = true)
   return result;
 }
 
-async function requestAssignmentDetails(authenticated = true) {
+async function requestAssignmentDetails(authenticated = true, query: Record<string, string> = {}) {
   const result: { status: number; body?: any } = { status: 200 };
   const res = {
     status(code: number) {
@@ -126,7 +126,7 @@ async function requestAssignmentDetails(authenticated = true) {
       return res;
     },
   };
-  const req: any = { params: { id: "worker-1" } };
+  const req: any = { params: { id: "worker-1" }, query };
   if (authenticated) req.user = { claims: { sub: "user-1" } };
 
   for (const step of assignmentDetailsMiddleware) {
@@ -150,6 +150,9 @@ describe("GET /api/edls/workers", () => {
       idValue: "123",
       ratingId: "rating-1",
       ratingValue: "4",
+      referenceDate: "2026-03-15",
+      currentAssignment: "include",
+      nextAssignment: "exclude",
     });
 
     expect(result.status).toBe(200);
@@ -164,7 +167,9 @@ describe("GET /api/edls/workers", () => {
       ratingId: "rating-1",
       ratingValue: 4,
       industryId: "industry-1",
-      todayYmd: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      referenceYmd: "2026-03-15",
+      currentAssignment: "include",
+      nextAssignment: "exclude",
     }));
   });
 
@@ -197,10 +202,16 @@ describe("GET /api/edls/workers", () => {
     expect(JSON.stringify(result.body)).not.toContain("database details");
   });
 
+  it("refuses invalid dates and assignment filters", async () => {
+    expect((await request({ referenceDate: "2026-02-30" })).status).toBe(400);
+    expect((await request({ currentAssignment: "sometimes" })).status).toBe(400);
+    expect(list).not.toHaveBeenCalled();
+  });
+
   it("keeps assignment details available while reporting sheet-specific access", async () => {
     sheetAccess.set("sheet-current", true);
 
-    const result = await requestAssignmentDetails();
+    const result = await requestAssignmentDetails(true, { referenceDate: "2026-04-20" });
 
     expect(result.status).toBe(200);
     expect(result.body.prior).toEqual(expect.objectContaining({
@@ -211,6 +222,11 @@ describe("GET /api/edls/workers", () => {
       sheetId: "sheet-current",
       canViewSheet: true,
     }));
-    expect(getWorkerAssignmentDetails).toHaveBeenCalledWith("worker-1", expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
+    expect(getWorkerAssignmentDetails).toHaveBeenCalledWith("worker-1", "2026-04-20");
+  });
+
+  it("refuses an invalid assignment-details reference date", async () => {
+    expect((await requestAssignmentDetails(true, { referenceDate: "not-a-date" })).status).toBe(400);
+    expect(getWorkerAssignmentDetails).not.toHaveBeenCalled();
   });
 });

@@ -11,8 +11,10 @@ export interface EdlsWorkerDirectoryParams {
   idValue?: string;
   ratingId?: string;
   ratingValue?: number;
+  currentAssignment?: "include" | "exclude";
+  nextAssignment?: "include" | "exclude";
   industryId?: string | null;
-  todayYmd: string;
+  referenceYmd: string;
 }
 
 export interface EdlsWorkerDirectoryIdType {
@@ -81,6 +83,26 @@ export function createEdlsWorkerDirectoryStorage(): EdlsWorkerDirectoryStorage {
       if (params.ratingId && params.ratingValue !== undefined) {
         conditions.push(sql`selected_rating.value >= ${params.ratingValue}`);
       }
+      if (params.currentAssignment) {
+        const exists = sql`EXISTS (
+          SELECT 1
+          FROM edls_assignments filter_ea
+          INNER JOIN edls_crews filter_ec ON filter_ec.id = filter_ea.crew_id
+          INNER JOIN edls_sheets filter_es ON filter_es.id = filter_ec.sheet_id
+          WHERE filter_ea.worker_id = w.id AND filter_es.ymd = ${params.referenceYmd}
+        )`;
+        conditions.push(params.currentAssignment === "include" ? exists : sql`NOT ${exists}`);
+      }
+      if (params.nextAssignment) {
+        const exists = sql`EXISTS (
+          SELECT 1
+          FROM edls_assignments filter_ea
+          INNER JOIN edls_crews filter_ec ON filter_ec.id = filter_ea.crew_id
+          INNER JOIN edls_sheets filter_es ON filter_es.id = filter_ec.sheet_id
+          WHERE filter_ea.worker_id = w.id AND filter_es.ymd > ${params.referenceYmd}
+        )`;
+        conditions.push(params.nextAssignment === "include" ? exists : sql`NOT ${exists}`);
+      }
       const where = conditions.length
         ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
         : sql``;
@@ -106,6 +128,35 @@ export function createEdlsWorkerDirectoryStorage(): EdlsWorkerDirectoryStorage {
               member_status.name AS "memberStatusName", member_status.sequence AS "memberStatusSequence"`
         : sql`NULL::varchar AS "memberStatusId", NULL::varchar AS "memberStatusCode",
               NULL::varchar AS "memberStatusName", NULL::integer AS "memberStatusSequence"`;
+      const assignmentJoins = sql`
+        LEFT JOIN LATERAL (
+          SELECT es.status
+          FROM edls_assignments ea
+          INNER JOIN edls_crews ec ON ec.id = ea.crew_id
+          INNER JOIN edls_sheets es ON es.id = ec.sheet_id
+          WHERE ea.worker_id = w.id AND es.ymd < ${params.referenceYmd}
+          ORDER BY es.ymd DESC, es.id
+          LIMIT 1
+        ) prior_asg ON true
+        LEFT JOIN LATERAL (
+          SELECT es.status
+          FROM edls_assignments ea
+          INNER JOIN edls_crews ec ON ec.id = ea.crew_id
+          INNER JOIN edls_sheets es ON es.id = ec.sheet_id
+          WHERE ea.worker_id = w.id AND es.ymd = ${params.referenceYmd}
+          ORDER BY es.id
+          LIMIT 1
+        ) current_asg ON true
+        LEFT JOIN LATERAL (
+          SELECT es.status
+          FROM edls_assignments ea
+          INNER JOIN edls_crews ec ON ec.id = ea.crew_id
+          INNER JOIN edls_sheets es ON es.id = ec.sheet_id
+          WHERE ea.worker_id = w.id AND es.ymd > ${params.referenceYmd}
+          ORDER BY es.ymd ASC, es.id
+          LIMIT 1
+        ) next_asg ON true
+      `;
 
       const countResult = await client.execute(sql`
         SELECT COUNT(*)::integer AS count
@@ -143,33 +194,7 @@ export function createEdlsWorkerDirectoryStorage(): EdlsWorkerDirectoryStorage {
         LEFT JOIN worker_edls we ON we.worker_id = w.id
         ${ratingJoin}
         ${memberStatusJoin}
-        LEFT JOIN LATERAL (
-          SELECT es.status
-          FROM edls_assignments ea
-          INNER JOIN edls_crews ec ON ec.id = ea.crew_id
-          INNER JOIN edls_sheets es ON es.id = ec.sheet_id
-           WHERE ea.worker_id = w.id AND es.ymd < ${params.todayYmd}
-           ORDER BY es.ymd DESC, es.id
-          LIMIT 1
-        ) prior_asg ON true
-        LEFT JOIN LATERAL (
-          SELECT es.status
-          FROM edls_assignments ea
-          INNER JOIN edls_crews ec ON ec.id = ea.crew_id
-          INNER JOIN edls_sheets es ON es.id = ec.sheet_id
-           WHERE ea.worker_id = w.id AND es.ymd = ${params.todayYmd}
-           ORDER BY es.id
-          LIMIT 1
-        ) current_asg ON true
-        LEFT JOIN LATERAL (
-          SELECT es.status
-          FROM edls_assignments ea
-          INNER JOIN edls_crews ec ON ec.id = ea.crew_id
-          INNER JOIN edls_sheets es ON es.id = ec.sheet_id
-           WHERE ea.worker_id = w.id AND es.ymd > ${params.todayYmd}
-           ORDER BY es.ymd ASC, es.id
-          LIMIT 1
-        ) next_asg ON true
+        ${assignmentJoins}
         ${where}
         ORDER BY c.family NULLS LAST, c.given NULLS LAST, w.id
         LIMIT ${pageSize} OFFSET ${offset}
