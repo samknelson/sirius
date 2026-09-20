@@ -16,6 +16,7 @@ interface WorkerAssignmentDetail {
   startTime: string | null;
   endTime: string | null;
   supervisorName: string | null;
+  canViewSheet?: boolean;
 }
 
 interface WorkerAssignmentDetails {
@@ -112,11 +113,16 @@ function getStatusCardStyle(status: string): string {
 
 function AssignmentDetailCard({ label, detail }: { label: string; detail: WorkerAssignmentDetail | null }) {
   if (!detail) return <div className="p-3 rounded-md bg-muted/50"><div className="text-xs text-muted-foreground font-medium mb-1">{label}</div><div className="text-sm text-muted-foreground italic">No assignment</div></div>;
+  const sheetName = detail.canViewSheet === false ? (
+    <span className="font-medium">{detail.sheetName}</span>
+  ) : (
+    <Link href={`/edls/sheet/${detail.sheetId}`} className="font-medium text-primary hover:underline" data-testid={`link-sheet-${detail.sheetId}`}>{detail.sheetName}</Link>
+  );
   return (
     <div className={`p-3 rounded-md ${getStatusCardStyle(detail.sheetStatus)}`}>
       <div className="flex items-center justify-between mb-2"><span className="text-xs text-muted-foreground font-medium">{label}</span><Badge variant="outline">{detail.sheetStatus}</Badge></div>
       <div className="space-y-1 text-sm">
-        <div className="flex items-center gap-2"><ClipboardList className="h-3 w-3 text-muted-foreground" /><Link href={`/edls/sheet/${detail.sheetId}`} className="font-medium text-primary hover:underline" data-testid={`link-sheet-${detail.sheetId}`}>{detail.sheetName}</Link></div>
+        <div className="flex items-center gap-2"><ClipboardList className="h-3 w-3 text-muted-foreground" />{sheetName}</div>
         <div className="flex items-center gap-2"><Calendar className="h-3 w-3 text-muted-foreground" /><span>{formatYmd(detail.sheetYmd, "weekday-long")}</span></div>
         <div className="flex items-center gap-2"><Users className="h-3 w-3 text-muted-foreground" /><span>{detail.crewName}</span></div>
         {detail.supervisorName && <div className="flex items-center gap-2"><User className="h-3 w-3 text-muted-foreground" /><span>{detail.supervisorName}</span></div>}

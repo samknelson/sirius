@@ -1,13 +1,48 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { storage } from "../../storage";
-import { requireAccess } from "../../services/access-policy-evaluator";
+import { checkAccessInline, requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { getEdlsSettings } from "./supervisor-context";
 import { getTodayYmd } from "@shared/utils/date";
 import { isComponentEnabledSync } from "../../services/component-cache";
 
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
+
+type AssignmentDetail = NonNullable<
+  Awaited<ReturnType<typeof storage.edlsAssignments.getWorkerAssignmentDetails>>
+>["prior"];
+
+type AssignmentDetailWithAccess = Exclude<AssignmentDetail, null> & {
+  canViewSheet: boolean;
+};
+
+async function addSheetAccessToAssignmentDetails(
+  req: Request,
+  details: NonNullable<Awaited<ReturnType<typeof storage.edlsAssignments.getWorkerAssignmentDetails>>>,
+) {
+  const sheetIds = [details.prior, details.current, details.next]
+    .filter((detail): detail is Exclude<AssignmentDetail, null> => detail !== null)
+    .map((detail) => detail.sheetId);
+  const uniqueSheetIds = [...new Set(sheetIds)];
+  const accessResults = await Promise.all(
+    uniqueSheetIds.map(async (sheetId) => [
+      sheetId,
+      (await checkAccessInline(req, "edls.sheet.view", sheetId)).granted,
+    ] as const),
+  );
+  const sheetAccess = new Map(accessResults);
+
+  const withAccess = (detail: AssignmentDetail): AssignmentDetailWithAccess | null =>
+    detail ? { ...detail, canViewSheet: sheetAccess.get(detail.sheetId) === true } : null;
+
+  return {
+    ...details,
+    prior: withAccess(details.prior),
+    current: withAccess(details.current),
+    next: withAccess(details.next),
+  };
+}
 
 const setActiveSchema = z.object({
   active: z.boolean(),
@@ -73,7 +108,7 @@ export function registerWorkerEdlsRoutes(app: Express, requireAuth: RequireAuth)
           getTodayYmd(),
         );
         if (!details) return res.status(404).json({ message: "Worker not found" });
-        res.json(details);
+        res.json(await addSheetAccessToAssignmentDetails(req, details));
       } catch (error) {
         console.error("Error fetching EDLS worker assignment details:", error);
         res.status(500).json({ error: "Failed to fetch worker assignment details" });

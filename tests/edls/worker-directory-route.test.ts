@@ -1,16 +1,19 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { list, getEmployer, getByName, componentState, accessDecision } = vi.hoisted(() => ({
+const { list, getWorkerAssignmentDetails, getEmployer, getByName, componentState, accessDecision, sheetAccess } = vi.hoisted(() => ({
   list: vi.fn(),
+  getWorkerAssignmentDetails: vi.fn(),
   getEmployer: vi.fn(),
   getByName: vi.fn(),
   componentState: { enabled: true },
   accessDecision: { granted: true },
+  sheetAccess: new Map<string, boolean>(),
 }));
 
 vi.mock("../../server/storage", () => ({
   storage: {
     edlsWorkerDirectory: { list },
+    edlsAssignments: { getWorkerAssignmentDetails },
     employers: { getEmployer },
     variables: { getByName },
   },
@@ -39,6 +42,9 @@ vi.mock("../../server/services/access-policy-evaluator", () => ({
     if (accessDecision.granted) return next();
     res.status(403).json({ message: "Access denied" });
   },
+  checkAccessInline: vi.fn(async (_req: any, _policyId: string, sheetId: string) => ({
+    granted: sheetAccess.get(sheetId) ?? false,
+  })),
 }));
 vi.mock("../../server/modules/edls/supervisor-context", () => ({
   getEdlsSettings: vi.fn(async () => ({ employer: "employer-1" })),
@@ -48,6 +54,8 @@ import { registerWorkerEdlsRoutes } from "../../server/modules/edls/workers";
 
 let middleware: Array<(req: any, res: any, next: () => void) => Promise<void> | void>;
 let handler: (req: any, res: any) => Promise<void>;
+let assignmentDetailsMiddleware: typeof middleware;
+let assignmentDetailsHandler: typeof handler;
 
 beforeAll(() => {
   registerWorkerEdlsRoutes({
@@ -55,6 +63,10 @@ beforeAll(() => {
       if (path === "/api/edls/workers") {
         middleware = args.slice(0, -1) as typeof middleware;
         handler = args.at(-1) as typeof handler;
+      }
+      if (path === "/api/edls/workers/:id/assignment-details") {
+        assignmentDetailsMiddleware = args.slice(0, -1) as typeof middleware;
+        assignmentDetailsHandler = args.at(-1) as typeof handler;
       }
     },
     put() {},
@@ -68,9 +80,21 @@ beforeEach(() => {
   componentState.enabled = true;
   accessDecision.granted = true;
   list.mockClear();
+  getWorkerAssignmentDetails.mockReset();
+  sheetAccess.clear();
   getByName.mockResolvedValue({ value: { employer: "employer-1" } });
   getEmployer.mockResolvedValue({ industryId: "industry-1" });
   list.mockResolvedValue({ rows: [], total: 0, page: 1, pageSize: 50, totalPages: 0, idTypes: [] });
+  getWorkerAssignmentDetails.mockResolvedValue({
+    workerId: "worker-1",
+    siriusId: 123,
+    displayName: "Ada Worker",
+    given: "Ada",
+    family: "Worker",
+    prior: { sheetId: "sheet-prior", sheetName: "Prior", sheetYmd: "2026-01-01", sheetStatus: "lock", crewId: "crew-prior", crewName: "Crew", startTime: null, endTime: null, supervisorName: null },
+    current: { sheetId: "sheet-current", sheetName: "Current", sheetYmd: "2026-01-02", sheetStatus: "lock", crewId: "crew-current", crewName: "Crew", startTime: null, endTime: null, supervisorName: null },
+    next: null,
+  });
 });
 
 async function request(query: Record<string, string> = {}, authenticated = true) {
@@ -87,6 +111,30 @@ async function request(query: Record<string, string> = {}, authenticated = true)
     if (!nextCalled) return result;
   }
   await handler(req, res);
+  return result;
+}
+
+async function requestAssignmentDetails(authenticated = true) {
+  const result: { status: number; body?: any } = { status: 200 };
+  const res = {
+    status(code: number) {
+      result.status = code;
+      return res;
+    },
+    json(body: unknown) {
+      result.body = body;
+      return res;
+    },
+  };
+  const req: any = { params: { id: "worker-1" } };
+  if (authenticated) req.user = { claims: { sub: "user-1" } };
+
+  for (const step of assignmentDetailsMiddleware) {
+    let nextCalled = false;
+    await step(req, res, () => { nextCalled = true; });
+    if (!nextCalled) return result;
+  }
+  await assignmentDetailsHandler(req, res);
   return result;
 }
 
@@ -147,5 +195,22 @@ describe("GET /api/edls/workers", () => {
     const result = await request();
     expect(result.status).toBe(500);
     expect(JSON.stringify(result.body)).not.toContain("database details");
+  });
+
+  it("keeps assignment details available while reporting sheet-specific access", async () => {
+    sheetAccess.set("sheet-current", true);
+
+    const result = await requestAssignmentDetails();
+
+    expect(result.status).toBe(200);
+    expect(result.body.prior).toEqual(expect.objectContaining({
+      sheetId: "sheet-prior",
+      canViewSheet: false,
+    }));
+    expect(result.body.current).toEqual(expect.objectContaining({
+      sheetId: "sheet-current",
+      canViewSheet: true,
+    }));
+    expect(getWorkerAssignmentDetails).toHaveBeenCalledWith("worker-1", expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
   });
 });
