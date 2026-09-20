@@ -2,10 +2,8 @@ import { db } from "../../../server/db";
 import { sql } from "drizzle-orm";
 import { registerMigration, type Migration } from "../../../server/services/migration-runner";
 import { logger } from "../../../server/logger";
-import {
-  PHONE_LOOKUP_SERVICE,
-  PHONE_LOOKUP_REQUEST_TYPE,
-} from "../../../server/services/comm/validators/phone-lookup-request";
+const PHONE_LOOKUP_SERVICE = "Twilio";
+const PHONE_LOOKUP_REQUEST_TYPE = "phone-lookup";
 
 /**
  * Carry the phone Lookup answers we have already paid for into `wc_cache`.

@@ -10,7 +10,7 @@ import {
   type PluginConfigDispatch,
   type PluginConfigDashboard,
   type PluginConfigQuicksearch,
-  type PluginConfigPaymentGateway,
+  type PluginConfigWcVendors,
   type PluginConfigEventNotifier,
   type PluginConfigCron,
 } from "@shared/schema";
@@ -26,7 +26,7 @@ import {
   createDispatchSubsidiaryStorage,
   createDashboardSubsidiaryStorage,
   createQuicksearchSubsidiaryStorage,
-  createPaymentGatewaySubsidiaryStorage,
+  createWcVendorsSubsidiaryStorage,
   createEventNotifierSubsidiaryStorage,
   createCronSubsidiaryStorage,
   createTrustProviderEdiSubsidiaryStorage,
@@ -104,7 +104,7 @@ export type PluginConfigSubsidiary =
   | PluginConfigDispatch
   | PluginConfigDashboard
   | PluginConfigQuicksearch
-  | PluginConfigPaymentGateway
+  | PluginConfigWcVendors
   | PluginConfigEventNotifier
   | PluginConfigCron
   | null;
@@ -256,7 +256,7 @@ export function createPluginConfigStorage(): PluginConfigStorage {
     "dispatch-eligibility": createDispatchSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     dashboard: createDashboardSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     quicksearch: createQuicksearchSubsidiaryStorage() as SubsidiaryStorage<any, any>,
-    "payment-gateway": createPaymentGatewaySubsidiaryStorage() as SubsidiaryStorage<any, any>,
+    "wc-vendors": createWcVendorsSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     "event-notifier": createEventNotifierSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     cron: createCronSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     "trust-provider-edi": createTrustProviderEdiSubsidiaryStorage() as SubsidiaryStorage<any, any>,

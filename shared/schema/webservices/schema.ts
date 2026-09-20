@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, pgEnum, text, varchar, boolean, timestamp, integer, date, index, uniqueIndex, unique } from "drizzle-orm/pg-core";
+import { pgTable, pgEnum, text, varchar, boolean, timestamp, integer, date, index, uniqueIndex, unique, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { pluginConfigs } from "../../schema";
@@ -17,6 +17,7 @@ export const wsClients = pgTable("ws_clients", {
   description: text("description"),
   status: wsClientStatusEnum("status").default("active").notNull(),
   ipAllowlistEnabled: boolean("ip_allowlist_enabled").default(false).notNull(),
+  data: jsonb("data").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
 }, (table) => ({
   statusIdx: index("ws_clients_status_idx").on(table.status),
 }));
@@ -24,6 +25,7 @@ export const wsClients = pgTable("ws_clients", {
 export const insertWsClientSchema = createInsertSchema(wsClients, {
   name: z.string().min(1).max(100),
   description: z.string().optional().nullable(),
+  data: z.record(z.unknown()).optional(),
 }).omit({
   id: true,
 });

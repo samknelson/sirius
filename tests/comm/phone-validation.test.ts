@@ -32,16 +32,64 @@ const lookup = vi.fn(async (phoneNumber: string) => ({
 
 let providerId = 'twilio';
 
-const getProviderSettings = vi.fn(
-  async (_category: string, provider: string) => providerSettings[provider],
+const getPluginConfigs = vi.fn(
+  async (_kind: string, pluginId: string) => [{
+    id: `test-${pluginId}`,
+    pluginKind: 'wc-vendors',
+    pluginId,
+    enabled: pluginId === 'twilio' ? providerId === 'twilio' : providerId === 'local',
+    name: pluginId,
+    siriusId: null,
+    ordering: 0,
+    isSingleton: false,
+    data: providerSettings[pluginId === 'sms-local' ? 'local' : pluginId],
+  }],
 );
 
-vi.mock('../../server/services/service-registry', () => ({
-  serviceRegistry: {
-    resolve: async () => ({ id: providerId, validatePhone: lookup }),
-    getProviderSettings: (category: string, provider: string) =>
-      getProviderSettings(category, provider),
+vi.mock('../../server/storage', () => ({
+  storage: {
+    pluginConfigs: {
+      getByKindAndPlugin: getPluginConfigs,
+    },
   },
+}));
+
+/**
+ * The paid lookup itself is now a wc-vendor operation. Keep the real webclient
+ * transport/cache wrapper under test, and replace only the vendor context
+ * (which would otherwise resolve a real Twilio config and SDK).
+ */
+vi.mock('../../server/services/webclient/wc-vendor-context', () => ({
+  hasWcVendorOperation: async (operation: string) =>
+    operation === 'communications.phone.validate' && providerId === 'twilio',
+  runWcVendorRequest: async (options: any, transport: (request: any) => Promise<unknown>) =>
+    transport({
+      service: 'Twilio',
+      requestType: 'communications.phone.validate',
+      configurationId: 'test-twilio',
+      args: {
+        configId: 'test-twilio',
+        args: options.args,
+      },
+      mode: options.mode,
+      fetch: async () => {
+        try {
+          const value = await lookup(options.args.phoneNumber);
+          if (value.valid && value.smsPossible === undefined) {
+            return {
+              answered: false,
+              error: 'Provider answered without line-type intelligence',
+            };
+          }
+          return { answered: true, value };
+        } catch (error) {
+          return {
+            answered: false,
+            error: error instanceof Error ? error.message : 'Provider validation failed',
+          };
+        }
+      },
+    }),
 }));
 
 /**
@@ -51,6 +99,7 @@ vi.mock('../../server/services/service-registry', () => ({
  */
 interface StoredEntry {
   service: string;
+  configurationId: string | null;
   requestType: string;
   requestKey: string;
   outcome: 'success' | 'failure';
@@ -67,10 +116,11 @@ const optinWrite = vi.fn(async () => {});
 vi.mock('../../server/storage/wc-cache', () => ({
   wcRequestKeyHash: (requestKey: string) => requestKey,
   wcCacheStorage: {
-    read: async (_service: string, _requestType: string, requestKey: string) =>
+    read: async (_requestType: string, requestKey: string) =>
       store.get(requestKey),
     writeSuccess: async (
       service: string,
+      configurationId: string | null,
       requestType: string,
       requestKey: string,
       response: unknown,
@@ -78,6 +128,7 @@ vi.mock('../../server/storage/wc-cache', () => ({
       if (writeThrows) throw new Error('cannot execute INSERT in a read-only transaction');
       store.set(requestKey, {
         service,
+        configurationId,
         requestType,
         requestKey,
         outcome: 'success',
@@ -87,6 +138,7 @@ vi.mock('../../server/storage/wc-cache', () => ({
     },
     writeFailure: async (
       service: string,
+      configurationId: string | null,
       requestType: string,
       requestKey: string,
       error: string | undefined,
@@ -97,6 +149,7 @@ vi.mock('../../server/storage/wc-cache', () => ({
       if (existing?.outcome === 'success' && existing.fetchedAt >= keepSuccessNewerThan) return;
       store.set(requestKey, {
         service,
+        configurationId,
         requestType,
         requestKey,
         outcome: 'failure',
@@ -120,8 +173,12 @@ vi.mock('../../server/storage/transaction-context', () => ({
   runOutsideTransaction: <T>(fn: () => T) => fn(),
 }));
 
+await import('../../server/plugins/wc-vendors/plugins/sms-twilio');
 const { resetUnstorableHolds } = await import('../../server/services/webclient');
 const { resetPhoneValidationSettings } = await import(
+  '../../server/services/comm/validators/phone-validation-settings'
+);
+const { getPhoneValidationSettings } = await import(
   '../../server/services/comm/validators/phone-validation-settings'
 );
 const { PhoneValidationService, DEFAULT_REVALIDATE_AFTER_DAYS } = await import(
@@ -130,13 +187,14 @@ const { PhoneValidationService, DEFAULT_REVALIDATE_AFTER_DAYS } = await import(
 
 const NUMBER = '(617) 555-0142';
 const E164 = '+16175550142';
+const CACHE_KEY = E164;
 
 let service: InstanceType<typeof PhoneValidationService>;
 
 beforeEach(() => {
   lookup.mockClear();
   canStore.mockClear();
-  getProviderSettings.mockClear();
+  getPluginConfigs.mockClear();
   optinWrite.mockClear();
   store.clear();
   // The settings memo and the "paid for it, could not store it" hold both
@@ -192,7 +250,7 @@ describe('phone validation call frequency', () => {
     await service.validateAndFormat(NUMBER);
     expect(lookup).toHaveBeenCalledTimes(1);
 
-    const stale = store.get(E164)!;
+    const stale = store.get(CACHE_KEY)!;
     stale.fetchedAt = new Date(
       Date.now() - (DEFAULT_REVALIDATE_AFTER_DAYS + 1) * 24 * 60 * 60 * 1000,
     );
@@ -205,7 +263,7 @@ describe('phone validation call frequency', () => {
     providerSettings.twilio = { phoneValidation: { revalidateAfterDays: 1 } };
     await service.validateAndFormat(NUMBER);
 
-    const stored = store.get(E164)!;
+    const stored = store.get(CACHE_KEY)!;
     stored.fetchedAt = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
 
     await service.validateAndFormat(NUMBER);
@@ -260,7 +318,7 @@ describe('phone validation call frequency', () => {
     // The failure is recorded as a failure — never as a validation. It is the
     // hold itself, which is why it now survives a restart instead of living
     // in one process's memory.
-    const held = store.get(E164)!;
+    const held = store.get(CACHE_KEY)!;
     expect(held.outcome).toBe('failure');
     expect(held.response).toEqual({ error: 'twilio unreachable' });
 
@@ -276,7 +334,7 @@ describe('phone validation call frequency', () => {
     // of silence on the strength of a call that never happened.
     lookup.mockResolvedValueOnce({ valid: true, formatted: E164 } as any);
     await service.validateAndFormat(NUMBER);
-    expect(store.get(E164)?.outcome).toBe('failure');
+    expect(store.get(CACHE_KEY)?.outcome).toBe('failure');
   });
 
   it('backs off after paying for an answer it could not store', async () => {
@@ -285,7 +343,7 @@ describe('phone validation call frequency', () => {
     writeThrows = true;
     await service.validateAndFormat(NUMBER);
     expect(lookup).toHaveBeenCalledTimes(1);
-    expect(store.has(E164)).toBe(false);
+    expect(store.has(CACHE_KEY)).toBe(false);
 
     writeThrows = false;
     await service.validateAndFormat(NUMBER);
@@ -298,8 +356,32 @@ describe('phone validation call frequency', () => {
     for (let i = 0; i < 10; i++) {
       await service.validateAndFormat(NUMBER, { revalidate: 'never' });
     }
-    // One read of each provider's settings for the whole run, not ten.
-    expect(getProviderSettings).toHaveBeenCalledTimes(2);
+    // One read of each vendor's settings for the whole run, not ten.
+    expect(getPluginConfigs).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads local and Twilio settings even when local is selected', async () => {
+    providerId = 'local';
+    providerSettings.local = {
+      phoneValidation: { defaultCountry: 'GB', strictValidation: false },
+    };
+    providerSettings.twilio = {
+      phoneValidation: {
+        revalidateAfterDays: 7,
+        useLocalOnTwilioFailure: false,
+        logValidationAttempts: false,
+      },
+    };
+
+    await expect(getPhoneValidationSettings()).resolves.toMatchObject({
+      defaultCountry: 'GB',
+      strictValidation: false,
+      revalidateAfterDays: 7,
+      useLocalOnTwilioFailure: false,
+      logValidationAttempts: false,
+    });
+    expect(getPluginConfigs).toHaveBeenCalledWith('wc-vendors', 'sms-local');
+    expect(getPluginConfigs).toHaveBeenCalledWith('wc-vendors', 'twilio');
   });
 
   it('does not cache a number the provider rejects', async () => {

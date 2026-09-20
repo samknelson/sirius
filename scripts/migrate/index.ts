@@ -112,6 +112,14 @@ import "./core/1107_allow_unknown_process_provenance";
 import "./core/1108_restore_ledger_metadata";
 import "./core/1109_unify_medium_message_fields";
 import "./core/1110_create_letter_templates";
+import "./core/1111_rename_payment_gateway_kind_to_wc_vendors";
+import "./core/1112_delete_legacy_comm_service_configs";
+import "./core/1113_retarget_twilio_lookup_usage_alerts";
+import "./core/1114_wc_stats_configuration";
+import "./core/1115_merge_wc_stats_on_configuration_delete";
+import "./core/1116_rename_btu_cardcheck_vendor";
+import "./core/1117_wc_cache_configuration";
+import "./core/1118_add_ws_clients_data";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

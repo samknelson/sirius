@@ -43,6 +43,10 @@ interface WcStatsDay {
 interface WcStatsDimension {
   service: string;
   requestType: string;
+  configurationId: string | null;
+  configurationName: string | null;
+  pluginId: string | null;
+  pluginName: string | null;
 }
 
 interface WcStatsResponse {
@@ -54,6 +58,7 @@ interface WcStatsResponse {
 }
 
 const DEFAULT_RANGE_DAYS = 30;
+const UNATTRIBUTED_CONFIGURATION = "__unattributed__";
 
 // `--chart-1` already holds a whole colour (`hsl(221 83% 53%)`), so it is named
 // as-is. Wrapping it in a colour function — as the upstream chart examples do,
@@ -95,10 +100,12 @@ export default function WcStatsPage() {
   const [end, setEnd] = useState<Ymd>(today);
   const [service, setService] = useState("all");
   const [requestType, setRequestType] = useState("all");
+  const [configurationId, setConfigurationId] = useState("all");
 
   const params: Record<string, string> = { start, end };
   if (service !== "all") params.service = service;
   if (requestType !== "all") params.requestType = requestType;
+  if (configurationId !== "all") params.configurationId = configurationId;
 
   const rangeInverted = isYmdAfter(start, end);
 
@@ -118,6 +125,22 @@ export default function WcStatsPage() {
         .map((d) => d.requestType),
     ),
   ).sort();
+  const matchingDimensions = dimensions.filter(
+    (d) =>
+      (service === "all" || d.service === service) &&
+      (requestType === "all" || d.requestType === requestType),
+  );
+  const configurations = Array.from(
+    new Map(
+      matchingDimensions
+        .filter((d) => d.configurationId)
+        .map((d) => [d.configurationId as string, d]),
+    ).values(),
+  ).sort((a, b) =>
+    (a.configurationName ?? a.pluginId ?? a.configurationId ?? "").localeCompare(
+      b.configurationName ?? b.pluginId ?? b.configurationId ?? "",
+    ),
+  );
 
   const points = useMemo(() => {
     if (!data) return [];
@@ -134,6 +157,7 @@ export default function WcStatsPage() {
     setEnd(today);
     setService("all");
     setRequestType("all");
+    setConfigurationId("all");
   }
 
   return (
@@ -185,6 +209,7 @@ export default function WcStatsPage() {
                 onValueChange={(v) => {
                   setService(v);
                   setRequestType("all");
+                  setConfigurationId("all");
                 }}
               >
                 <SelectTrigger className="w-48" data-testid="select-service">
@@ -203,7 +228,13 @@ export default function WcStatsPage() {
 
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Request type</Label>
-              <Select value={requestType} onValueChange={setRequestType}>
+              <Select
+                value={requestType}
+                onValueChange={(value) => {
+                  setRequestType(value);
+                  setConfigurationId("all");
+                }}
+              >
                 <SelectTrigger className="w-56" data-testid="select-request-type">
                   <SelectValue placeholder="All request types" />
                 </SelectTrigger>
@@ -212,6 +243,38 @@ export default function WcStatsPage() {
                   {typesForService.map((t) => (
                     <SelectItem key={t} value={t}>
                       {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Vendor connection</Label>
+              <Select value={configurationId} onValueChange={setConfigurationId}>
+                <SelectTrigger className="w-64" data-testid="select-configuration">
+                  <SelectValue placeholder="Across all vendors" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Across all vendors</SelectItem>
+                  {matchingDimensions.some((d) => d.configurationId === null) && (
+                    <SelectItem value={UNATTRIBUTED_CONFIGURATION}>
+                      Historical / unattributed
+                    </SelectItem>
+                  )}
+                  {configurations.map((configuration) => (
+                    <SelectItem
+                      key={configuration.configurationId}
+                      value={configuration.configurationId as string}
+                    >
+                      {configuration.configurationName ??
+                        configuration.pluginName ??
+                        configuration.pluginId ??
+                        `Configuration ${configuration.configurationId}`}
+                      {configuration.configurationName &&
+                      (configuration.pluginName || configuration.pluginId)
+                        ? ` — ${configuration.pluginName ?? configuration.pluginId}`
+                        : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>

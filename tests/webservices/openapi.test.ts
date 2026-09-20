@@ -250,6 +250,28 @@ describe("client API document", () => {
     expect(serialized).not.toContain("do-not-publish");
   });
 
+  it("publishes the required three-header contract for a Freeman-authorized client", async () => {
+    const client = {
+      ...CLIENT,
+      data: { freemanBearerAuthorizationConfigId: "freeman-auth-config" },
+    };
+
+    const doc = await buildClientOpenApiDocument(client);
+    const serialized = JSON.stringify(doc);
+
+    expect(Object.keys(doc.components.securitySchemes as object).sort()).toEqual([
+      "freemanBearerAuth",
+      "wsClientKey",
+      "wsClientSecret",
+    ]);
+    expect(doc.security).toEqual([
+      { wsClientKey: [], wsClientSecret: [], freemanBearerAuth: [] },
+    ]);
+    expect((doc.info.description as string)).toContain("Authorization: Bearer <token>");
+    expect((doc.info.description as string)).toContain("HTTP Basic authentication cannot be used");
+    expect(serialized).not.toContain("freeman-auth-config");
+  });
+
   it("documents a declared response schema and admits an undeclared one", async () => {
     const doc = await buildClientOpenApiDocument(CLIENT);
     const get = doc.paths["/api/ws/ping/ping"].get as any;

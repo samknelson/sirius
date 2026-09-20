@@ -10,12 +10,11 @@ import { getRequestContext } from "../../middleware/request-context";
 import { getEnvironmentVariable } from "../../config/env-registry";
 import { maybeProvisionUser } from "../provisioning";
 
-const getOidcConfig = memoize(
-  async (issuerUrl: string, clientId: string) => {
-    return await client.discovery(new URL(issuerUrl), clientId);
-  },
-  { maxAge: 3600 * 1000 }
-);
+async function discoverOidcConfig(issuerUrl: string, clientId: string) {
+  return client.discovery(new URL(issuerUrl), clientId);
+}
+
+const getOidcConfig = memoize(discoverOidcConfig, { maxAge: 3600 * 1000 });
 
 function updateUserSession(
   user: any,

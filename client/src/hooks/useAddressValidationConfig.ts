@@ -9,7 +9,8 @@ export interface AddressValidationConfig {
   };
   google: {
     enabled: boolean;
-    apiKeyName: string;
+    /** Legacy read-only field; Google credentials now belong to WC vendor configs. */
+    apiKeyName?: string;
     components: {
       country: boolean;
       administrative_area_level_1: boolean;

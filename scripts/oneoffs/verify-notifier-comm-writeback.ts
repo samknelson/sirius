@@ -49,12 +49,6 @@ async function main() {
   );
   initializeEventNotifierPluginSystem();
   initializeEventNotifierDispatcher();
-  // The comm senders resolve their provider from the service registry, which
-  // boot populates; without this the SMS send throws before creating anything.
-  const { initializeServiceProviders } = await import(
-    "../../server/services/comm/providers"
-  );
-  initializeServiceProviders();
   // The OTHER notifier on this event composes from token templates. Without
   // the token registry its tokens resolve to "unknown" and it delivers a
   // degraded message — which would make the "unaffected" check below a lie.

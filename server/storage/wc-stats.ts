@@ -1,5 +1,5 @@
-import { sql, and, eq, gte, lte, asc, type SQL } from 'drizzle-orm';
-import { wcStats } from '@shared/schema';
+import { sql, and, eq, gte, lte, asc, isNull, inArray, type SQL } from 'drizzle-orm';
+import { pluginConfigs, pluginConfigsWcVendors, wcStats } from '@shared/schema';
 import type { Ymd } from '@shared/utils/date';
 import { getClient } from './transaction-context';
 
@@ -30,20 +30,36 @@ export interface WcStatsService {
 }
 
 /** A (service, request type) pair that has at least one counted call. */
+export interface WcStatsServiceType {
+  service: string;
+  requestType: string;
+  calls: number;
+}
+
+/** Calls for one live configuration and request type. */
+export interface WcStatsConfigurationOperation {
+  configurationId: string;
+  service: string;
+  requestType: string;
+  calls: number;
+  todayCalls: number;
+}
+
+/** One stored attribution dimension, including its surviving config metadata. */
 export interface WcStatsDimension {
   service: string;
   requestType: string;
-}
-
-/** One (service, request type) pair's calls, summed over the range asked for. */
-export interface WcStatsServiceType extends WcStatsDimension {
-  calls: number;
+  configurationId: string | null;
+  configurationName: string | null;
+  pluginId: string | null;
 }
 
 /** Narrowing for the stats read. Every field is optional. */
 export interface WcStatsFilters {
   service?: string;
   requestType?: string;
+  /** Undefined means all configurations; null means legacy/unattributed. */
+  configurationId?: string | null;
 }
 
 export interface WcStatsRangeParams extends WcStatsFilters {
@@ -60,7 +76,12 @@ export interface WcStatsStorage {
    * An atomic insert-or-increment on the uniqueness tuple: two calls landing
    * at once cannot read-modify-write over each other and lose a count.
    */
-  recordCall(service: string, requestType: string, ymd: Ymd): Promise<void>;
+  recordCall(
+    service: string,
+    requestType: string,
+    ymd: Ymd,
+    configurationId?: string | null,
+  ): Promise<void>;
   /** Calls per day inside the range, oldest first. Days with none are absent. */
   countsByDay(params: WcStatsRangeParams): Promise<WcStatsDay[]>;
   /**
@@ -73,6 +94,15 @@ export interface WcStatsStorage {
    * knows about still is — this reads the counts, not the registry.
    */
   countsByServiceType(params: WcStatsRangeParams): Promise<WcStatsServiceType[]>;
+  /**
+   * Calls grouped by configuration and request type. This is intentionally a
+   * single grouped read so the WC overview does not issue one stats query per
+   * row.
+   */
+  countsByConfiguration(params: WcStatsRangeParams & {
+    configurationIds: string[];
+    today?: Ymd;
+  }): Promise<WcStatsConfigurationOperation[]>;
   /**
    * Calls per service inside the range, by service name. Services with no
    * calls in the range are absent — including a service that is registered
@@ -104,6 +134,10 @@ function rangeCondition(params: WcStatsRangeParams): SQL {
   const conditions: SQL[] = [gte(wcStats.ymd, params.start), lte(wcStats.ymd, params.end)];
   if (params.service) conditions.push(eq(wcStats.service, params.service));
   if (params.requestType) conditions.push(eq(wcStats.requestType, params.requestType));
+  if (params.configurationId === null) conditions.push(isNull(wcStats.configurationId));
+  else if (params.configurationId !== undefined) {
+    conditions.push(eq(wcStats.configurationId, params.configurationId));
+  }
   return and(...conditions) as SQL;
 }
 
@@ -136,13 +170,43 @@ async function readCountsByServiceType(
 
 export function createWcStatsStorage(): WcStatsStorage {
   return {
-    async recordCall(service: string, requestType: string, ymd: Ymd): Promise<void> {
+    async recordCall(
+      service: string,
+      requestType: string,
+      ymd: Ymd,
+      configurationId: string | null = null,
+    ): Promise<void> {
       const client = getClient();
+      // Resolve the attribution in the same statement that increments it.
+      // FOR KEY SHARE makes a concurrent configuration delete wait until this
+      // count is written; if deletion won first, the scalar subquery yields
+      // NULL and the call lands in the historical/unattributed bucket instead
+      // of failing its FK and disappearing from the totals.
+      const storedConfigurationId =
+        configurationId === null
+          ? null
+          : sql<string | null>`(
+              SELECT ${pluginConfigsWcVendors.id}
+              FROM ${pluginConfigsWcVendors}
+              WHERE ${pluginConfigsWcVendors.id} = ${configurationId}
+              FOR KEY SHARE
+            )`;
       await client
         .insert(wcStats)
-        .values({ service, requestType, ymd, calls: 1 })
+        .values({
+          service,
+          requestType,
+          configurationId: storedConfigurationId,
+          ymd,
+          calls: 1,
+        })
         .onConflictDoUpdate({
-          target: [wcStats.service, wcStats.requestType, wcStats.ymd],
+          target: [
+            wcStats.service,
+            wcStats.requestType,
+            wcStats.configurationId,
+            wcStats.ymd,
+          ],
           set: { calls: sql`${wcStats.calls} + 1` },
         });
     },
@@ -165,6 +229,43 @@ export function createWcStatsStorage(): WcStatsStorage {
       return readCountsByServiceType(params);
     },
 
+    async countsByConfiguration(params): Promise<WcStatsConfigurationOperation[]> {
+      if (params.configurationIds.length === 0) return [];
+      const client = getClient();
+      const rows = await client
+        .select({
+          configurationId: wcStats.configurationId,
+          service: wcStats.service,
+          requestType: wcStats.requestType,
+          calls: sql<number>`sum(${wcStats.calls})::int`,
+          todayCalls: sql<number>`sum(case when ${wcStats.ymd} = ${params.today ?? params.end} then ${wcStats.calls} else 0 end)::int`,
+        })
+        .from(wcStats)
+        .where(and(
+          rangeCondition(params),
+          // Historical/unattributed rows have NULL and therefore cannot match
+          // this list. The caller supplies only currently enabled configs.
+          inArray(wcStats.configurationId, params.configurationIds),
+        ))
+        .groupBy(wcStats.configurationId, wcStats.service, wcStats.requestType)
+        .orderBy(
+          asc(wcStats.configurationId),
+          asc(wcStats.service),
+          asc(wcStats.requestType),
+        );
+      return rows.flatMap((row) =>
+        row.configurationId
+          ? [{
+              configurationId: row.configurationId,
+              service: row.service,
+              requestType: row.requestType,
+              calls: Number(row.calls ?? 0),
+              todayCalls: Number(row.todayCalls ?? 0),
+            }]
+          : [],
+      );
+    },
+
     async countsByService(params: WcStatsRangeParams): Promise<WcStatsService[]> {
       // A roll-up of the finer grouping, not a second query: summing the
       // request types of a service is exactly the coarser aggregate, and
@@ -181,10 +282,27 @@ export function createWcStatsStorage(): WcStatsStorage {
     async listDimensions(): Promise<WcStatsDimension[]> {
       const client = getClient();
       const rows = await client
-        .select({ service: wcStats.service, requestType: wcStats.requestType })
+        .select({
+          service: wcStats.service,
+          requestType: wcStats.requestType,
+          configurationId: wcStats.configurationId,
+          configurationName: pluginConfigs.name,
+          pluginId: pluginConfigs.pluginId,
+        })
         .from(wcStats)
-        .groupBy(wcStats.service, wcStats.requestType)
-        .orderBy(asc(wcStats.service), asc(wcStats.requestType));
+        .leftJoin(pluginConfigs, eq(wcStats.configurationId, pluginConfigs.id))
+        .groupBy(
+          wcStats.service,
+          wcStats.requestType,
+          wcStats.configurationId,
+          pluginConfigs.name,
+          pluginConfigs.pluginId,
+        )
+        .orderBy(
+          asc(wcStats.service),
+          asc(wcStats.requestType),
+          asc(wcStats.configurationId),
+        );
       return rows;
     },
   };
