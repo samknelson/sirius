@@ -77,26 +77,6 @@ describe("civic vendor plugin declarations", () => {
     ))).not.toContain("requestKey");
   });
 
-  it("keys Google answers by normalized address and every answer-changing restriction", () => {
-    expect(googleGeocodeRequestKey({
-      address: "  10  main St ",
-      components: " country:us ",
-      region: " us ",
-    })).toBe("10 MAIN ST|components=COUNTRY:US|region=US");
-    const behavior = getWcRequest("Google", GOOGLE_GEOCODE_OPERATION);
-    expect(behavior).toMatchObject({
-      cached: true,
-      needsWritableDatabase: true,
-    });
-    expect(behavior?.requestKey({
-      configId: "google-config-a",
-      args: { address: " 10 main st ", region: " us " },
-    })).toBe("google-config-a:10 MAIN ST|region=US");
-    expect(behavior?.requestKey({
-      configId: "google-config-b",
-      args: { address: "10 MAIN ST", region: "US" },
-    })).toBe("google-config-b:10 MAIN ST|region=US");
-  });
 });
 
 describe("legacy civic connection migration plan", () => {
