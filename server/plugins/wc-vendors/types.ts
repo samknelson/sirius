@@ -231,13 +231,14 @@ export function canonicalizeWcVendorOperationName(name: string): string {
 export const normalizeWcVendorOperationName = canonicalizeWcVendorOperationName;
 
 /**
- * Canonical ids are lowercase dotted paths. Hyphens are allowed inside a
- * segment because service.test-connection is a public framework contract.
+ * Canonical ids are lowercase dotted paths. Hyphens and underscores are
+ * allowed inside a segment because both spellings exist in public vendor
+ * contracts (for example service.test-connection and fetch_sheets).
  */
 export function isCanonicalWcVendorOperationName(name: string): boolean {
   return (
     name === "service.test-connection" ||
-    /^(?:[a-z][a-z0-9-]*\.)+[a-z][a-z0-9-]*$/.test(name)
+    /^(?:[a-z][a-z0-9_-]*\.)+[a-z][a-z0-9_-]*$/.test(name)
   );
 }
 
