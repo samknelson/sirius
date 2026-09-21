@@ -791,6 +791,7 @@ async function resolveWorker(
     typeId: idTypes.ein,
     value: normalizedEin,
   });
+  await storage.workerEdls.setActive(worker.id, false);
   await ensureWorkerEmployment(worker.id, employerId, ymd);
   return { id: worker.id, kind: "created" };
 }
