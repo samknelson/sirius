@@ -3,11 +3,9 @@ import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { storage } from '../storage';
 import { logger, logWsRequest } from '../logger';
 import type { WsClient, WsClientCredential } from '@shared/schema';
-import { isComponentEnabledSync } from '../services/component-cache';
 import { wcRequest } from '../services/webclient/client';
 import type { FreemanAuthorizationResult } from '../plugins/wc-vendors/plugins/sitespecific-freeman-authorization';
 
-const FREEMAN_AUTHORIZATION_COMPONENT_ID = 'sitespecific.freeman.authorization';
 const FREEMAN_AUTHORIZATION_CONFIG_KEY = 'freemanBearerAuthorizationConfigId';
 const FREEMAN_AUTHORIZATION_OPERATION = 'sitespecific.freeman.authorization.bearer' as const;
 
@@ -62,24 +60,54 @@ interface AuthResult {
 }
 
 async function authenticateRequest(req: Request): Promise<AuthResult> {
-  const clientKey = req.headers['x-ws-client-key'] as string | undefined;
+  const clientId = req.headers['x-ws-client-id'] as string | undefined;
   const clientSecret = req.headers['x-ws-client-secret'] as string | undefined;
 
-  if (!clientKey || !clientSecret) {
-    const authHeader = req.headers['authorization'];
-    if (authHeader?.startsWith('Basic ')) {
-      const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf-8');
-      const colonIndex = decoded.indexOf(':');
-      if (colonIndex > 0) {
-        const basicKey = decoded.slice(0, colonIndex);
-        const basicSecret = decoded.slice(colonIndex + 1);
-        return authenticateWithCredentials(basicKey, basicSecret, req, false);
-      }
-    }
-    return { success: false, error: 'Missing credentials', errorCode: 'MISSING_CREDENTIALS' };
+  if (clientId) {
+    return authenticateIdentifiedRequest(clientId, clientSecret, req);
   }
 
-  return authenticateWithCredentials(clientKey, clientSecret, req, true);
+  const authHeader = req.headers['authorization'];
+  if (authHeader?.startsWith('Basic ')) {
+    const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf-8');
+    const colonIndex = decoded.indexOf(':');
+    if (colonIndex > 0) {
+      const basicId = decoded.slice(0, colonIndex);
+      const basicSecret = decoded.slice(colonIndex + 1);
+      return authenticateIdentifiedRequest(basicId, basicSecret, req);
+    }
+  }
+
+  return { success: false, error: 'Missing credentials', errorCode: 'MISSING_CREDENTIALS' };
+}
+
+async function authenticateIdentifiedRequest(
+  clientId: string,
+  clientSecret: string | undefined,
+  req: Request,
+): Promise<AuthResult> {
+  const credential = await storage.wsClientCredentials.getByClientKey(clientId);
+  if (!credential) {
+    return { success: false, error: 'Invalid credentials', errorCode: 'INVALID_CREDENTIALS' };
+  }
+  const client = await storage.wsClients.get(credential.clientId);
+  if (!client) {
+    return { success: false, error: 'Client not found', errorCode: 'CLIENT_NOT_FOUND', credential };
+  }
+
+  if (requiresFreemanBearerAuthorization(client)) {
+    return authenticateSelectedClient(req, client, credential);
+  }
+  if (!clientSecret) {
+    return {
+      success: false,
+      error: 'Missing credentials',
+      errorCode: 'MISSING_CREDENTIALS',
+      client,
+      credential,
+    };
+  }
+  return authenticateWithCredentials(clientId, clientSecret, req);
 }
 
 export function freemanAuthorizationConfigId(client: WsClient): string | undefined {
@@ -88,10 +116,10 @@ export function freemanAuthorizationConfigId(client: WsClient): string | undefin
 }
 
 export function requiresFreemanBearerAuthorization(client: WsClient): boolean {
-  return Boolean(
-    freemanAuthorizationConfigId(client)
-    && isComponentEnabledSync(FREEMAN_AUTHORIZATION_COMPONENT_ID),
-  );
+  // The saved client setting is the authentication contract. Component
+  // availability may decide whether the configured vendor call can run, but
+  // must never downgrade this client to secret or Basic authentication.
+  return Boolean(freemanAuthorizationConfigId(client));
 }
 
 function bearerToken(req: Request): string | undefined {
@@ -113,18 +141,8 @@ async function authenticateFreemanBearer(
   req: Request,
   client: WsClient,
   credential: WsClientCredential,
-  usedHeaderCredentials: boolean,
   configId: string,
 ): Promise<AuthResult | undefined> {
-  if (!usedHeaderCredentials) {
-    return freemanFailure(
-      client,
-      credential,
-      'This client requires X-WS-Client-Key and X-WS-Client-Secret headers.',
-      'FREEMAN_CLIENT_HEADERS_REQUIRED',
-    );
-  }
-
   const token = bearerToken(req);
   if (!token) {
     return freemanFailure(
@@ -206,7 +224,6 @@ async function authenticateWithCredentials(
   clientKey: string,
   clientSecret: string,
   req: Request,
-  usedHeaderCredentials: boolean,
 ): Promise<AuthResult> {
   const validation = await storage.wsClientCredentials.validateSecret(clientKey, clientSecret);
 
@@ -221,6 +238,14 @@ async function authenticateWithCredentials(
     return { success: false, error: 'Client not found', errorCode: 'CLIENT_NOT_FOUND', credential };
   }
 
+  return authenticateSelectedClient(req, client, credential);
+}
+
+async function authenticateSelectedClient(
+  req: Request,
+  client: WsClient,
+  credential: WsClientCredential,
+): Promise<AuthResult> {
   if (client.status !== 'active') {
     return { success: false, error: 'Client is not active', errorCode: 'CLIENT_INACTIVE', client, credential };
   }
@@ -234,13 +259,12 @@ async function authenticateWithCredentials(
   }
 
   /*
-   * SITE-SPECIFIC EXCEPTION: Freeman clients may require a second,
-   * vendor-backed bearer-token check. This deliberately lives after the normal
-   * client credential, active-client, and IP tests, so an invalid caller can
-   * never spend an outbound request. It is hardcoded here for the one Freeman
-   * integration; a future implementation with more external authentication
-   * strategies should move this decision into an incoming-auth plugin
-   * framework rather than adding more vendor branches to this middleware.
+   * SITE-SPECIFIC EXCEPTION: for a Freeman-configured client, the issued client
+   * id selects the client but is not itself authenticated. The vendor-backed
+   * bearer is the sole credential check; X-WS-Client-Secret is intentionally
+   * ignored. A valid bearer can therefore select any Freeman-enabled client
+   * whose id it knows. That accepted limitation remains until bearer metadata
+   * or IP rules can bind the caller more narrowly.
    */
   const freemanConfigId = freemanAuthorizationConfigId(client);
   if (freemanConfigId && requiresFreemanBearerAuthorization(client)) {
@@ -248,7 +272,6 @@ async function authenticateWithCredentials(
       req,
       client,
       credential,
-      usedHeaderCredentials,
       freemanConfigId,
     );
     if (failure) return failure;

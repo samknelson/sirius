@@ -151,13 +151,14 @@ function SwaggerContent() {
             <span className="font-medium text-foreground">Authentication:</span>{" "}
             {usesFreemanBearer ? (
               <>
-                X-WS-Client-Key, X-WS-Client-Secret, and Authorization: Bearer headers are required.
+                X-WS-Client-ID and Authorization: Bearer headers are required. X-WS-Client-Secret
+                is not required or checked.{" "}
                 HTTP Basic cannot be used because the Authorization header carries the Freeman
                 bearer token. The document never contains a credential.
               </>
             ) : (
               <>
-                X-WS-Client-Key and X-WS-Client-Secret headers, or HTTP Basic with the key as
+                X-WS-Client-ID and X-WS-Client-Secret headers, or HTTP Basic with the ID as
                 username and the secret as password. The document never contains a credential.
               </>
             )}

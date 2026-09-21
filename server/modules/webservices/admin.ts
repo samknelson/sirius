@@ -7,6 +7,7 @@ import { getEnvironmentVariable } from "../../config/env-registry";
 import { runInTransaction } from "../../storage/transaction-context";
 import { addDaysYmd, getTodayYmd, isValidYmd, isYmdAfter } from "@shared/utils/date";
 import { buildTestRequestHeaders } from "./test-request-auth";
+import { requiresFreemanBearerAuthorization } from "../../middleware/webservice-auth";
 
 type RequireAuth = (req: Request, res: Response, next: NextFunction) => void;
 type RequirePermission = (permission: string) => (req: Request, res: Response, next: NextFunction) => void;
@@ -397,8 +398,8 @@ export function registerWebServiceAdminRoutes(
   // === Test Execution ===
 
   const testRequestSchema = z.object({
-    clientKey: z.string().min(1, "Client key is required"),
-    clientSecret: z.string().min(1, "Client secret is required"),
+    clientKey: z.string().min(1, "Client ID is required"),
+    clientSecret: z.string().optional().default(""),
     bearerToken: z.string().max(8192, "Bearer token is too long").optional(),
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
     /** Configuration id (or alias) — the first segment of the public URL. */
@@ -428,19 +429,26 @@ export function registerWebServiceAdminRoutes(
 
       const { clientKey, clientSecret, bearerToken, method, configRef, operation, queryParams, body } = parseResult.data;
 
-      // Validate the credentials
-      const validation = await storage.wsClientCredentials.validateSecret(clientKey, clientSecret);
-      if (!validation.valid) {
+      // Freeman bearer is the sole checked credential for configured clients.
+      // Its client id is only a selector, so no secret or credential-active
+      // check may turn it back into a second factor.
+      const usesFreemanBearer = requiresFreemanBearerAuthorization(client);
+      const validation = usesFreemanBearer
+        ? { valid: true, credential: await storage.wsClientCredentials.getByClientKey(clientKey) }
+        : await storage.wsClientCredentials.validateSecret(clientKey, clientSecret);
+      if (!validation.valid || !validation.credential) {
         return res.json({
           success: false,
           status: 401,
           error: "Invalid credentials",
-          message: "The provided client key or secret is incorrect",
+          message: usesFreemanBearer
+            ? "The provided client ID is incorrect"
+            : "The provided client ID or secret is incorrect",
           duration: Date.now() - startTime,
         });
       }
 
-      if (!validation.credential?.isActive) {
+      if (!usesFreemanBearer && !validation.credential.isActive) {
         return res.json({
           success: false,
           status: 401,
