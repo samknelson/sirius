@@ -374,10 +374,14 @@ export function registerFreemanEdlsMigrateRoutes(
   app.post(
     "/api/sitespecific/freeman/edls-migrate/import/reset",
     ...gate,
-    async (_req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       try {
-        res.json(await resetFreemanMigrateStatus());
+        res.json(await resetFreemanMigrateStatus(req.body));
       } catch (error) {
+        if (error instanceof z.ZodError) {
+          res.status(400).json({ message: "Choose a valid start date on or after January 2, 1970." });
+          return;
+        }
         sendMigrationFailure(res, error, "Failed to reset migration progress");
       }
     },
