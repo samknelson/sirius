@@ -334,7 +334,7 @@ poolInstance.on("error", (err: Error) => {
  */
 const APPLIED_TIME_ZONE = Symbol("sessionTimeZoneApplied");
 
-poolInstance.on("acquire", (client: any) => {
+async function applySessionTimeZone(client: any): Promise<void> {
   const desired = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   if (client[APPLIED_TIME_ZONE] === desired) return;
   client[APPLIED_TIME_ZONE] = desired;
@@ -342,7 +342,9 @@ poolInstance.on("acquire", (client: any) => {
   // validated at boot (server/config/system-timezone.ts refuses to start on
   // anything Intl does not recognise), and it originates from the runtime
   // rather than from a request.
-  client.query(`SET TIME ZONE '${desired.replace(/'/g, "''")}'`).catch((error: unknown) => {
+  try {
+    await client.query(`SET TIME ZONE '${desired.replace(/'/g, "''")}'`);
+  } catch (error: unknown) {
     // Unknown state: clear the marker so the next checkout retries.
     client[APPLIED_TIME_ZONE] = undefined;
     console.error(
@@ -350,8 +352,37 @@ poolInstance.on("acquire", (client: any) => {
         "defaults may be offset from those written by the app:",
       error instanceof Error ? error.message : String(error),
     );
+  }
+}
+
+/**
+ * Pool "acquire" event handlers cannot delay delivery of a checked-out client.
+ * Starting the session SET there therefore races the borrower's first query on
+ * the same client. pg currently queues that overlapping query, but warns that
+ * the behavior will be removed in pg 9.
+ *
+ * Both pool.query() and explicit pool.connect() calls pass through connect(), so
+ * delay that callback/promise until session initialization is complete. The
+ * client remains checked out for the whole wait and is handed to exactly the
+ * same borrower afterward, preserving transaction and release ownership.
+ */
+const rawPoolConnect = poolInstance.connect.bind(poolInstance);
+(poolInstance as any).connect = (callback?: (...args: any[]) => void) => {
+  if (callback) {
+    return rawPoolConnect((error: Error | undefined, client: any, release: any) => {
+      if (error || !client) {
+        callback(error, client, release);
+        return;
+      }
+      void applySessionTimeZone(client).then(() => callback(undefined, client, release));
+    });
+  }
+
+  return rawPoolConnect().then(async (client: any) => {
+    await applySessionTimeZone(client);
+    return client;
   });
-});
+};
 
 // Exported as pg.Pool for the rare infrastructure consumer that needs the
 // raw pool (application code goes through the drizzle `db` / storage layer).
