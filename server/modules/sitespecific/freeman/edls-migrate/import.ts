@@ -3,8 +3,6 @@ import { z } from "zod";
 import { and, asc, eq, sql } from "drizzle-orm";
 import {
   storage,
-  FreemanEdlsFullResetCountsChangedError,
-  FreemanEdlsFullResetRelationshipError,
   FreemanEdlsFullResetUnexpectedError,
 } from "../../../../storage";
 import { getClient, runInTransaction } from "../../../../storage/transaction-context";
@@ -1627,33 +1625,22 @@ export async function executeFreemanEdlsFullReset(raw: unknown) {
   return withFreemanMigrateLock(async () => {
     await assertNoActiveFreemanMigrate();
     const plan = await storage.freemanEdlsFullReset.getPlan();
-    if (input.snapshot !== fullResetSnapshot(plan)) {
-      throw new FreemanMigrateConflictError(
-        "Reset counts changed after the warning was loaded. Refresh the counts and confirm again.",
-      );
-    }
-    try {
-      return {
-        deleted: await storage.freemanEdlsFullReset.execute(plan),
-        diagnosticsVersion: FREEMAN_EDLS_FULL_RESET_DIAGNOSTICS_VERSION,
-      };
-    } catch (error) {
-      if (error instanceof FreemanEdlsFullResetCountsChangedError) {
-        throw new FreemanMigrateConflictError(
-          "Reset counts changed after the warning was loaded. Refresh the counts and confirm again.",
-        );
-      }
-      if (error instanceof FreemanEdlsFullResetRelationshipError) {
-        throw new FreemanFullResetRefusedError(
-          error.entity === "worker"
-            ? "The reset was rolled back because other records still reference one or more workers. Remove those relationships, then refresh the counts and try again."
-            : "The reset was rolled back because other records still reference one or more worker contacts. Remove those relationships, then refresh the counts and try again.",
-          "relationship",
-            error.metadata,
-        );
-      }
-      throw error;
-    }
+    const result = await storage.freemanEdlsFullReset.execute(plan);
+    result.stalePreflight ||= input.snapshot !== fullResetSnapshot(plan);
+    const {
+      remaining,
+      failures,
+      stalePreflight,
+      ...deleted
+    } = result;
+    return {
+      deleted,
+      remaining,
+      failures,
+      stalePreflight,
+      rerunRecommended: Object.values(remaining).some((count) => count > 0),
+      diagnosticsVersion: FREEMAN_EDLS_FULL_RESET_DIAGNOSTICS_VERSION,
+    };
   });
 }
 

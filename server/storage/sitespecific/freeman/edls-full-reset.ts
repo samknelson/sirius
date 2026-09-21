@@ -1,4 +1,4 @@
-import { eq, sql, type AnyColumn } from "drizzle-orm";
+import { sql, type AnyColumn } from "drizzle-orm";
 import type { AnyPgTable } from "drizzle-orm/pg-core";
 import {
   contactPostal,
@@ -13,7 +13,7 @@ import {
   workers,
 } from "@shared/schema";
 import { eventBus, EventType } from "../../../services/event-bus";
-import { getClient, onAfterCommit, runInTransaction } from "../../transaction-context";
+import { getClient, runInTransaction } from "../../transaction-context";
 
 export interface FreemanEdlsFullResetCounts {
   workers: number;
@@ -50,6 +50,21 @@ export interface FreemanEdlsFullResetResult extends FreemanEdlsFullResetCounts {
   contactsDeleted: number;
   contactsAnonymized: number;
   contactsPreserved: number;
+  remaining: FreemanEdlsFullResetCounts & {
+    workerEdls: number;
+    grievanceAssociations: number;
+  };
+  failures: FreemanEdlsFullResetFailure[];
+  stalePreflight: boolean;
+}
+
+export interface FreemanEdlsFullResetFailure {
+  stage: FreemanEdlsFullResetStage;
+  table: string;
+  id?: string;
+  worker?: { id: string; contactId: string };
+  diagnostics: Record<string, string | undefined>;
+  reason: "missing_table" | "record_failed" | "stage_failed";
 }
 
 export interface FreemanEdlsFullResetStorage {
@@ -59,10 +74,15 @@ export interface FreemanEdlsFullResetStorage {
 }
 
 async function count(table: AnyPgTable): Promise<number> {
-  const [row] = await getClient()
-    .select({ count: sql<number>`count(*)::int` })
-    .from(table);
-  return row?.count ?? 0;
+  try {
+    const [row] = await getClient()
+      .select({ count: sql<number>`count(*)::int` })
+      .from(table);
+    return row?.count ?? 0;
+  } catch (error) {
+    if (isMissingTable(error)) return 0;
+    throw error;
+  }
 }
 
 async function readCounts(): Promise<FreemanEdlsFullResetCounts> {
@@ -275,7 +295,6 @@ export class FreemanEdlsFullResetCountsChangedError extends Error {
 }
 
 export type FreemanEdlsFullResetStage =
-  | "lock_tables"
   | "read_counts"
   | "read_workers"
   | "delete_assignments"
@@ -378,131 +397,77 @@ class FreemanEdlsFullResetRecordMutationError extends Error {
   }
 }
 
-let savepointSequence = 0;
-
-async function executeSavepoint(command: string): Promise<void> {
-  await getClient().execute(sql.raw(command));
-}
-
 function idMatchesAny(column: AnyColumn, ids: string[]) {
   const arrayLiteral = `{${ids.map((id) =>
     `"${id.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`).join(",")}}`;
   return sql`${column} = ANY(${arrayLiteral}::varchar[])`;
 }
 
-/** @internal Exported so real-database tests can make preflight deterministic. */
-export async function lockFreemanEdlsFullResetTables(): Promise<void> {
-  if (typeof (getClient() as { execute?: unknown }).execute !== "function") return;
-  const foreignKeys = [
-    ...(await readForeignKeys("workers")),
-    ...(await readForeignKeys("contacts")),
-  ];
-  const tables = new Set([
-    '"public"."edls_assignments"',
-    '"public"."edls_crews"',
-    '"public"."edls_sheets"',
-    '"public"."worker_edls"',
-    '"public"."grievance_workers"',
-    '"public"."workers"',
-    '"public"."contact_postal"',
-    '"public"."contact_phone"',
-    '"public"."contacts"',
-    ...foreignKeys.map((foreignKey) =>
-      `${quoteIdentifier(foreignKey.schema)}.${quoteIdentifier(foreignKey.table)}`),
-  ]);
-  await getClient().execute(sql`SET LOCAL lock_timeout = '10s'`);
-  await getClient().execute(sql.raw(
-    `LOCK TABLE ${[...tables].sort().join(", ")} IN SHARE ROW EXCLUSIVE MODE`,
-  ));
+const RESET_BATCH_SIZE = 500;
+const MAX_REPORTED_FAILURES = 100;
+
+function isMissingTable(error: unknown): boolean {
+  return safeDatabaseDiagnostics(error).code === "42P01";
 }
 
-async function mutateRowsWithExactFailure(
+async function tableExists(tableName: string): Promise<boolean> {
+  const client = getClient() as { execute?: (query: ReturnType<typeof sql>) => Promise<{ rows: unknown[] }> };
+  if (typeof client.execute !== "function") return true;
+  const result = await client.execute(sql`SELECT to_regclass(${`public.${tableName}`}) IS NOT NULL AS "exists"`);
+  return (result.rows[0] as { exists?: boolean } | undefined)?.exists === true;
+}
+
+async function mutateBestEffort(
   stage: FreemanEdlsFullResetStage,
   table: string,
   rows: Array<Record<string, unknown> & { id: string }>,
-  mutate: (ids: string[]) => Promise<Array<{ id: string }>>,
+  mutate: (ids: string[]) => Promise<Array<{ id: string } & Record<string, unknown>>>,
   workerDetails?: Map<string, FreemanEdlsFullResetFailedRecord["worker"]>,
-  _loadSnapshot?: (id: string) => Promise<Record<string, unknown> | undefined>,
-): Promise<number> {
-  if (rows.length === 0) return 0;
-  const client = getClient();
+): Promise<{
+  count: number;
+  ids: string[];
+  changedRows: Array<{ id: string } & Record<string, unknown>>;
+  failures: FreemanEdlsFullResetFailure[];
+}> {
+  let count = 0;
+  const ids: string[] = [];
+  const changedRows: Array<{ id: string } & Record<string, unknown>> = [];
+  const failures: FreemanEdlsFullResetFailure[] = [];
 
-  // Lightweight storage mocks do not expose execute/savepoints. Production
-  // PostgreSQL always does; retain one bulk mutation for those isolated tests.
-  if (typeof (client as { execute?: unknown }).execute !== "function") {
-    return (await mutate(rows.map((row) => row.id))).length;
-  }
-
-  const stageSavepoint = `freeman_full_reset_stage_${savepointSequence++}`;
-  await executeSavepoint(`SAVEPOINT ${stageSavepoint}`);
-  let originalError: unknown;
-  try {
-    const changed = (await mutate(rows.map((row) => row.id))).length;
-    await executeSavepoint(`RELEASE SAVEPOINT ${stageSavepoint}`);
-    return changed;
-  } catch (error) {
-    originalError = error;
-    await executeSavepoint(`ROLLBACK TO SAVEPOINT ${stageSavepoint}`);
-    await executeSavepoint(`RELEASE SAVEPOINT ${stageSavepoint}`);
-  }
-
-  async function probe(candidates: typeof rows): Promise<unknown | undefined> {
-    const probeSavepoint = `freeman_full_reset_probe_${savepointSequence++}`;
-    await executeSavepoint(`SAVEPOINT ${probeSavepoint}`);
+  async function apply(candidates: typeof rows): Promise<void> {
+    if (candidates.length === 0) return;
     try {
-      await mutate(candidates.map((row) => row.id));
-      await executeSavepoint(`ROLLBACK TO SAVEPOINT ${probeSavepoint}`);
-      await executeSavepoint(`RELEASE SAVEPOINT ${probeSavepoint}`);
-      return undefined;
+      const changed = await runInTransaction(() => mutate(candidates.map((row) => row.id)));
+      count += changed.length;
+      ids.push(...changed.map((row) => row.id));
+      changedRows.push(...changed);
     } catch (error) {
-      await executeSavepoint(`ROLLBACK TO SAVEPOINT ${probeSavepoint}`);
-      await executeSavepoint(`RELEASE SAVEPOINT ${probeSavepoint}`);
-      return error;
-    }
-  }
-
-  async function locateFailure(candidates: typeof rows): Promise<never> {
-    if (candidates.length === 1) {
-      const row = candidates[0];
-      const rowError = await probe(candidates);
-      if (rowError) {
-        throw new FreemanEdlsFullResetRecordMutationError(
-          stage,
-          {
-            stage,
-            table,
-            id: row.id,
-            worker: workerDetails?.get(row.id),
-          },
-          rowError,
-        );
+      if (isMissingTable(error)) {
+        failures.push({ stage, table, diagnostics: safeDatabaseDiagnostics(error), reason: "missing_table" });
+        return;
       }
+      if (candidates.length === 1) {
+        const row = candidates[0];
+        failures.push({
+          stage,
+          table,
+          id: row.id,
+          worker: workerDetails?.get(row.id),
+          diagnostics: safeDatabaseDiagnostics(error),
+          reason: "record_failed",
+        });
+        return;
+      }
+      const midpoint = Math.ceil(candidates.length / 2);
+      await apply(candidates.slice(0, midpoint));
+      await apply(candidates.slice(midpoint));
     }
-
-    const midpoint = Math.max(1, Math.floor(candidates.length / 2));
-    const left = candidates.slice(0, midpoint);
-    const right = candidates.slice(midpoint);
-    const leftError = await probe(left);
-    if (leftError) return locateFailure(left);
-    if (right.length > 0) {
-      const rightError = await probe(right);
-      if (rightError) return locateFailure(right);
-    }
-
-    // A set-level trigger or aggregate invariant can reject a statement while
-    // accepting every smaller probe. Do not invent a single-record culprit.
-    throw new FreemanEdlsFullResetRecordMutationError(
-      stage,
-      {
-        stage,
-        table,
-        id: "(multi-row statement)",
-      },
-      originalError,
-    );
   }
 
-  return locateFailure(rows);
+  for (let offset = 0; offset < rows.length; offset += RESET_BATCH_SIZE) {
+    await apply(rows.slice(offset, offset + RESET_BATCH_SIZE));
+  }
+  return { count, ids, changedRows, failures };
 }
 
 export function createFreemanEdlsFullResetStorage(): FreemanEdlsFullResetStorage {
@@ -516,52 +481,40 @@ export function createFreemanEdlsFullResetStorage(): FreemanEdlsFullResetStorage
     },
 
     async execute(expected) {
-      return runInTransaction(async () => {
-        let stage: FreemanEdlsFullResetStage = "lock_tables";
-        try {
-        await lockFreemanEdlsFullResetTables();
-        stage = "read_counts";
-        const currentPlan = await readPlan();
-        const current = currentPlan.counts;
-        const expectedPlan = "blockers" in expected ? expected : {
-          counts: expected,
-          blockers: [],
-          preservations: [],
-        };
-        const hasAuthoritativePlan = "blockers" in expected;
-        const expectedCounts = expectedPlan.counts;
-        if (currentPlan.blockers.length > 0) {
-          throw new FreemanEdlsFullResetRelationshipError(
-            currentPlan.blockers[0].entity,
-            "read_workers",
-            {
-              schema: currentPlan.blockers[0].referencingSchema,
-              table: currentPlan.blockers[0].referencingTable,
-              constraint: currentPlan.blockers[0].constraint,
-              referencingType: currentPlan.blockers[0].relationshipType,
-              recordId: currentPlan.blockers[0].recordId,
-              workerId: currentPlan.blockers[0].workerId,
-              contactId: currentPlan.blockers[0].contactId,
-            },
-          );
-        }
-        if (
-          current.workers !== expectedCounts.workers
-          || current.sheets !== expectedCounts.sheets
-          || current.crews !== expectedCounts.crews
-          || current.assignments !== expectedCounts.assignments
-          || (hasAuthoritativePlan
-            && (JSON.stringify(currentPlan.blockers) !== JSON.stringify(expectedPlan.blockers)
-              || JSON.stringify(currentPlan.preservations) !== JSON.stringify(expectedPlan.preservations)))
-        ) {
-          throw new FreemanEdlsFullResetCountsChangedError();
-        }
+      const expectedPlan = "blockers" in expected ? expected : {
+        counts: expected, blockers: [], preservations: [],
+      };
+      let currentPlan: FreemanEdlsFullResetPlan;
+      try {
+        currentPlan = await readPlan();
+      } catch (error) {
+        throw new FreemanEdlsFullResetUnexpectedError("read_counts", safeDatabaseDiagnostics(error), undefined, { cause: error });
+      }
+      const stalePreflight = JSON.stringify(currentPlan) !== JSON.stringify(expectedPlan);
+      const failures: FreemanEdlsFullResetFailure[] = [];
+      const deleted = {
+        workers: 0, sheets: 0, crews: 0, assignments: 0, workerEdls: 0,
+        grievanceAssociations: 0, contactsDeleted: 0, contactsAnonymized: 0,
+      };
 
-        const client = getClient();
-        stage = "read_workers";
-        const workerRows = await client
-          .select({ id: workers.id, contactId: workers.contactId })
-          .from(workers);
+      async function readRows<T extends { id: string }>(
+        stage: FreemanEdlsFullResetStage,
+        table: string,
+        read: () => Promise<T[]>,
+      ): Promise<T[]> {
+        try {
+          return await read();
+        } catch (error) {
+          failures.push({
+            stage, table, diagnostics: safeDatabaseDiagnostics(error),
+            reason: isMissingTable(error) ? "missing_table" : "stage_failed",
+          });
+          return [];
+        }
+      }
+
+      const workerRows = await readRows("read_workers", "workers", () => getClient()
+        .select({ id: workers.id, contactId: workers.contactId }).from(workers));
         const workerIds = workerRows.map((row) => row.id);
         const contactIds = [...new Set(workerRows.map((row) => row.contactId))];
         const intactContactIds = [...new Set(
@@ -576,148 +529,104 @@ export function createFreemanEdlsFullResetStorage(): FreemanEdlsFullResetStorage
         )].filter((id) => !intactContactIds.includes(id));
         const deletableContactIds = contactIds.filter((id) =>
           !intactContactIds.includes(id) && !anonymizedContactIds.includes(id));
-        const removableContactDetailIds = [
-          ...new Set([...deletableContactIds, ...anonymizedContactIds]),
-        ];
+      async function purge(
+        stage: FreemanEdlsFullResetStage,
+        table: string,
+        rows: Array<{ id: string }>,
+        mutate: (ids: string[]) => Promise<Array<{ id: string } & Record<string, unknown>>>,
+        details?: Map<string, FreemanEdlsFullResetFailedRecord["worker"]>,
+      ) {
+        const result = await mutateBestEffort(stage, table, rows, mutate, details);
+        failures.push(...result.failures);
+        return result;
+      }
 
-        const assignmentRows = await client.select({ id: edlsAssignments.id }).from(edlsAssignments);
-        stage = "delete_assignments";
-        const deletedAssignments = await mutateRowsWithExactFailure(
-          stage,
-          "edls_assignments",
-          assignmentRows,
-          (ids) => client.delete(edlsAssignments)
+      const assignmentRows = await readRows("delete_assignments", "edls_assignments", () =>
+        getClient().select({ id: edlsAssignments.id }).from(edlsAssignments));
+      deleted.assignments = (await purge("delete_assignments", "edls_assignments", assignmentRows,
+          (ids) => getClient().delete(edlsAssignments)
             .where(idMatchesAny(edlsAssignments.id, ids))
-            .returning({ id: edlsAssignments.id }),
-          undefined,
-          async (id) => (await client.select().from(edlsAssignments)
-            .where(eq(edlsAssignments.id, id)))[0],
-        );
-        const crewRows = await client.select({ id: edlsCrews.id }).from(edlsCrews);
-        stage = "delete_crews";
-        const deletedCrews = await mutateRowsWithExactFailure(
-          stage,
-          "edls_crews",
-          crewRows,
-          (ids) => client.delete(edlsCrews)
+            .returning({ id: edlsAssignments.id }))).count;
+      const crewRows = await readRows("delete_crews", "edls_crews", () =>
+        getClient().select({ id: edlsCrews.id }).from(edlsCrews));
+      deleted.crews = (await purge("delete_crews", "edls_crews", crewRows,
+          (ids) => getClient().delete(edlsCrews)
             .where(idMatchesAny(edlsCrews.id, ids))
-            .returning({ id: edlsCrews.id }),
-          undefined,
-          async (id) => (await client.select().from(edlsCrews)
-            .where(eq(edlsCrews.id, id)))[0],
-        );
-        const sheetRows = await client.select({ id: edlsSheets.id }).from(edlsSheets);
-        stage = "delete_sheets";
-        const deletedSheets = await mutateRowsWithExactFailure(
-          stage,
-          "edls_sheets",
-          sheetRows,
-          (ids) => client.delete(edlsSheets)
+            .returning({ id: edlsCrews.id }))).count;
+      const sheetRows = await readRows("delete_sheets", "edls_sheets", () =>
+        getClient().select({ id: edlsSheets.id }).from(edlsSheets));
+      deleted.sheets = (await purge("delete_sheets", "edls_sheets", sheetRows,
+          (ids) => getClient().delete(edlsSheets)
             .where(idMatchesAny(edlsSheets.id, ids))
-            .returning({ id: edlsSheets.id }),
-          undefined,
-          async (id) => (await client.select().from(edlsSheets)
-            .where(eq(edlsSheets.id, id)))[0],
-        );
-        const workerEdlsRows = await client.select({ id: workerEdls.id }).from(workerEdls);
-        stage = "delete_worker_edls";
-        const deletedWorkerEdls = await mutateRowsWithExactFailure(
-          stage,
-          "worker_edls",
-          workerEdlsRows,
-          (ids) => client.delete(workerEdls)
+            .returning({ id: edlsSheets.id }))).count;
+      const workerEdlsRows = await readRows("delete_worker_edls", "worker_edls", () =>
+        getClient().select({ id: workerEdls.id }).from(workerEdls));
+      deleted.workerEdls = (await purge("delete_worker_edls", "worker_edls", workerEdlsRows,
+          (ids) => getClient().delete(workerEdls)
             .where(idMatchesAny(workerEdls.id, ids))
-            .returning({ id: workerEdls.id }),
-          undefined,
-          async (id) => (await client.select().from(workerEdls)
-            .where(eq(workerEdls.id, id)))[0],
-        );
-        const grievanceLinkRows = await client.select({ id: grievanceWorkers.id }).from(grievanceWorkers);
-        stage = "delete_grievance_links";
-        const deletedGrievanceLinks = await mutateRowsWithExactFailure(
-          stage,
-          "grievance_workers",
-          grievanceLinkRows,
-          (ids) => client.delete(grievanceWorkers)
+            .returning({ id: workerEdls.id }))).count;
+      const grievanceLinkRows = await readRows("delete_grievance_links", "grievance_workers", () =>
+        getClient().select({ id: grievanceWorkers.id }).from(grievanceWorkers));
+      deleted.grievanceAssociations = (await purge("delete_grievance_links", "grievance_workers", grievanceLinkRows,
+          (ids) => getClient().delete(grievanceWorkers)
             .where(idMatchesAny(grievanceWorkers.id, ids))
-            .returning({ id: grievanceWorkers.id }),
-          undefined,
-          async (id) => (await client.select().from(grievanceWorkers)
-            .where(eq(grievanceWorkers.id, id)))[0],
-        );
-        const fullWorkerRows = await client.select().from(workers);
+            .returning({ id: grievanceWorkers.id }))).count;
+      const fullWorkerRows = await readRows("read_workers", "workers", () => getClient().select().from(workers));
         const workerDetails = new Map<string, FreemanEdlsFullResetFailedRecord["worker"]>(
           fullWorkerRows.map((row) => [row.id, {
             id: row.id,
             contactId: row.contactId,
           }]),
         );
-        stage = "delete_workers";
-        const deletedWorkers = await mutateRowsWithExactFailure(
-          stage,
-          "workers",
-          fullWorkerRows,
-          (ids) => client.delete(workers)
+      const deletableContactIdSet = new Set(deletableContactIds);
+      const anonymizedContactIdSet = new Set(anonymizedContactIds);
+      const intactContactIdSet = new Set(intactContactIds);
+      const hasContactPostal = await tableExists("contact_postal");
+      const hasContactPhone = await tableExists("contact_phone");
+      if (!hasContactPostal) {
+        failures.push({
+          stage: "delete_contact_postal",
+          table: "contact_postal",
+          diagnostics: { code: "42P01", table: "contact_postal" },
+          reason: "missing_table",
+        });
+      }
+      if (!hasContactPhone) {
+        failures.push({
+          stage: "delete_phone_numbers",
+          table: "contact_phone",
+          diagnostics: { code: "42P01", table: "contact_phone" },
+          reason: "missing_table",
+        });
+      }
+      const workerResult = await purge("delete_workers", "workers", fullWorkerRows,
+        async (ids) => {
+          const client = getClient();
+          const deletedWorkerRows = await client.delete(workers)
             .where(idMatchesAny(workers.id, ids))
-            .returning({ id: workers.id }),
-          workerDetails,
-        );
-        const workerDetailsByContact = new Map<string, FreemanEdlsFullResetFailedRecord["worker"]>(
-          [...workerDetails.values()]
-            .filter((details): details is NonNullable<typeof details> => Boolean(details))
-            .map((details) => [details.contactId, details]),
-        );
-
-        if (removableContactDetailIds.length > 0) {
-          const postalRows = await client.select().from(contactPostal)
-            .where(idMatchesAny(contactPostal.contactId, removableContactDetailIds));
-          stage = "delete_contact_postal";
-          await mutateRowsWithExactFailure(
-            stage,
-            "contact_postal",
-            postalRows,
-            (ids) => client.delete(contactPostal)
-              .where(idMatchesAny(contactPostal.id, ids))
-              .returning({ id: contactPostal.id }),
-          );
-          const phoneRows = await client.select().from(phoneNumbers)
-            .where(idMatchesAny(phoneNumbers.contactId, removableContactDetailIds));
-          stage = "delete_phone_numbers";
-          await mutateRowsWithExactFailure(
-            stage,
-            "contact_phone",
-            phoneRows,
-            (ids) => client.delete(phoneNumbers)
-              .where(idMatchesAny(phoneNumbers.id, ids))
-              .returning({ id: phoneNumbers.id }),
-          );
-        }
-
-        let deletedContacts = 0;
-        if (deletableContactIds.length > 0) {
-          const deletableContacts = await client.select().from(contacts)
-            .where(idMatchesAny(contacts.id, deletableContactIds));
-          stage = "delete_contacts";
-          deletedContacts = await mutateRowsWithExactFailure(
-            stage,
-            "contacts",
-            deletableContacts,
-            (ids) => client.delete(contacts)
-              .where(idMatchesAny(contacts.id, ids))
-              .returning({ id: contacts.id }),
-            workerDetailsByContact,
-          );
-        }
-        let anonymizedContacts = 0;
-        if (anonymizedContactIds.length > 0) {
-          const contactsToAnonymize = await client.select().from(contacts)
-            .where(idMatchesAny(contacts.id, anonymizedContactIds));
-          stage = "anonymize_contacts";
-          anonymizedContacts = await mutateRowsWithExactFailure(
-            stage,
-            "contacts",
-            contactsToAnonymize,
-            (ids) => client.update(contacts)
+            .returning({ id: workers.id, contactId: workers.contactId });
+          const changedContactIds = [...new Set(deletedWorkerRows.map((row) => row.contactId))];
+          const detailContactIds = changedContactIds.filter((id) =>
+            deletableContactIdSet.has(id) || anonymizedContactIdSet.has(id));
+          if (detailContactIds.length > 0) {
+            if (hasContactPostal) {
+              await client.delete(contactPostal)
+                .where(idMatchesAny(contactPostal.contactId, detailContactIds));
+            }
+            if (hasContactPhone) {
+              await client.delete(phoneNumbers)
+                .where(idMatchesAny(phoneNumbers.contactId, detailContactIds));
+            }
+          }
+          const contactsToDelete = changedContactIds.filter((id) => deletableContactIdSet.has(id));
+          const deletedContactIds = contactsToDelete.length > 0
+            ? (await client.delete(contacts)
+              .where(idMatchesAny(contacts.id, contactsToDelete))
+              .returning({ id: contacts.id })).map((row) => row.id)
+            : [];
+          const contactsToAnonymize = changedContactIds.filter((id) => anonymizedContactIdSet.has(id));
+          const anonymizedContactIdsForBatch = contactsToAnonymize.length > 0
+            ? (await client.update(contacts)
               .set({
                 title: null,
                 given: null,
@@ -732,63 +641,46 @@ export function createFreemanEdlsFullResetStorage(): FreemanEdlsFullResetStorage
                 genderNota: null,
                 genderCalc: null,
               })
-              .where(idMatchesAny(contacts.id, ids))
-              .returning({ id: contacts.id }),
-            workerDetailsByContact,
-          );
-        }
-
-        // Match deleteWorker's cleanup contract, but only after the complete
-        // reset transaction commits. A rollback emits no orphan-cleanup work.
-        onAfterCommit(() => {
-          for (const workerId of workerIds) {
-            void eventBus.emit(EventType.WORKER_DELETE_AFTER, { workerId });
-          }
-        });
-
-        return {
-          workers: deletedWorkers,
-          sheets: deletedSheets,
-          crews: deletedCrews,
-          assignments: deletedAssignments,
-          workerEdls: deletedWorkerEdls,
-          grievanceAssociations: deletedGrievanceLinks,
-          contactsDeleted: deletedContacts,
-          contactsAnonymized: anonymizedContacts,
-          contactsPreserved: intactContactIds.length,
-        };
-        } catch (error) {
-          if (error instanceof FreemanEdlsFullResetRecordMutationError) {
-            throw new FreemanEdlsFullResetUnexpectedError(
-              error.stage,
-              safeDatabaseDiagnostics(error.databaseError),
-              error.failedRecord,
-              { cause: error.databaseError },
-            );
-          }
-          if (
-            error instanceof FreemanEdlsFullResetCountsChangedError
-            || error instanceof FreemanEdlsFullResetRelationshipError
-            || error instanceof FreemanEdlsFullResetUnexpectedError
-          ) {
-            throw error;
-          }
-          if (isForeignKeyViolation(error) && stage === "delete_workers") {
-            throw new FreemanEdlsFullResetRelationshipError("worker", stage, safeDatabaseDiagnostics(error), { cause: error });
-          }
-          if (
-            isForeignKeyViolation(error)
-            && (stage === "delete_contacts" || stage === "anonymize_contacts")
-          ) {
-            throw new FreemanEdlsFullResetRelationshipError("contact", stage, safeDatabaseDiagnostics(error), { cause: error });
-          }
-          throw new FreemanEdlsFullResetUnexpectedError(stage, {
-            entity: stage === "delete_workers" ? "worker"
-              : (stage === "delete_contacts" || stage === "anonymize_contacts" ? "contact" : undefined),
-            ...safeDatabaseDiagnostics(error),
-          }, undefined, { cause: error });
-        }
-      });
+              .where(idMatchesAny(contacts.id, contactsToAnonymize))
+              .returning({ id: contacts.id })).map((row) => row.id)
+            : [];
+          const deletedContactSet = new Set(deletedContactIds);
+          const anonymizedContactSet = new Set(anonymizedContactIdsForBatch);
+          return deletedWorkerRows.map((row) => ({
+            id: row.id,
+            contactId: row.contactId,
+            contactDeleted: deletedContactSet.has(row.contactId),
+            contactAnonymized: anonymizedContactSet.has(row.contactId),
+            contactPreserved: intactContactIdSet.has(row.contactId),
+          }));
+        },
+          workerDetails,
+        );
+      deleted.workers = workerResult.count;
+      deleted.contactsDeleted = new Set(workerResult.changedRows
+        .filter((row) => row.contactDeleted === true)
+        .map((row) => row.contactId as string)).size;
+      deleted.contactsAnonymized = new Set(workerResult.changedRows
+        .filter((row) => row.contactAnonymized === true)
+        .map((row) => row.contactId as string)).size;
+      const contactsPreserved = new Set(workerResult.changedRows
+        .filter((row) => row.contactPreserved === true)
+        .map((row) => row.contactId as string)).size;
+      for (const workerId of workerResult.ids) {
+        void eventBus.emit(EventType.WORKER_DELETE_AFTER, { workerId });
+      }
+      const remaining = {
+        ...await readCounts(),
+        workerEdls: await count(workerEdls),
+        grievanceAssociations: await count(grievanceWorkers),
+      };
+      return {
+        ...deleted,
+        contactsPreserved,
+        remaining,
+        failures: failures.slice(0, MAX_REPORTED_FAILURES),
+        stalePreflight,
+      };
     },
   };
 }

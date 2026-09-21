@@ -116,10 +116,10 @@ async function sendFullResetFailure(res: Response, error: unknown): Promise<void
   const recordDescription = failedRecord
     ? ` Record ${failedRecord.id} in ${failedRecord.table} failed.`
     : "";
-  const message = `The full reset failed during ${stage}.${recordDescription} Every reset deletion was rolled back.`;
+  const message = `The full reset could not produce a trustworthy result during ${stage}.${recordDescription} Some earlier batches may already have committed; refresh the counts before trying again.`;
   const logPayload = {
     stage,
-    outcome: "rolled_back",
+    outcome: "hard_failure",
     diagnostics,
     failedRecord,
   };
@@ -128,7 +128,7 @@ async function sendFullResetFailure(res: Response, error: unknown): Promise<void
   try {
     const log = await storage.logs.create({
       level: "error",
-      message: "Freeman EDLS full reset rolled back",
+      message: "Freeman EDLS full reset could not return a result",
       source: "freeman-edls-full-reset",
       module: "freeman-edls-full-reset",
       operation: "reset_failed",
@@ -140,11 +140,11 @@ async function sendFullResetFailure(res: Response, error: unknown): Promise<void
   } catch (logError) {
     logPersistenceError = databaseFailureMetadata(logError);
   }
-  logger.error("Freeman EDLS full reset rolled back", {
+  logger.error("Freeman EDLS full reset could not return a result", {
     service: "freeman-edls-full-reset",
     logId,
     stage,
-    outcome: "rolled_back",
+    outcome: "hard_failure",
     diagnostics,
     failedRecord,
     logPersistenceError,
@@ -238,7 +238,41 @@ export function registerFreemanEdlsMigrateRoutes(
         return;
       }
       try {
-        res.json(await executeFreemanEdlsFullReset(req.body));
+        const result = await executeFreemanEdlsFullReset(req.body);
+        const outcome = result.failures.length > 0 || result.rerunRecommended
+          ? "partial_success"
+          : "completed";
+        let logId: number | undefined;
+        try {
+          const log = await storage.logs.create({
+            level: outcome === "completed" ? "info" : "warn",
+            message: outcome === "completed"
+              ? "Freeman EDLS full reset completed"
+              : "Freeman EDLS full reset made partial progress",
+            source: "freeman-edls-full-reset",
+            module: "freeman-edls-full-reset",
+            operation: "reset_completed",
+            entityId: null,
+            description: result.rerunRecommended
+              ? "Committed deletions were retained. Eligible records remain; run the reset again."
+              : "The best-effort reset run finished with no eligible worker or EDLS records remaining.",
+            meta: {
+              outcome,
+              deleted: result.deleted,
+              remaining: result.remaining,
+              failures: result.failures,
+              stalePreflight: result.stalePreflight,
+            },
+          });
+          logId = log.id;
+        } catch (logError) {
+          logger.error("Freeman EDLS full reset result log could not be persisted", {
+            service: "freeman-edls-full-reset",
+            outcome,
+            diagnostics: databaseFailureMetadata(logError),
+          });
+        }
+        res.json({ ...result, logId });
       } catch (error) {
         if (error instanceof z.ZodError) {
           res.status(400).json({

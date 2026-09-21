@@ -69,6 +69,19 @@ type ResetResult = {
     contactsPreserved: number;
     contactsAnonymized: number;
   };
+  remaining: ResetCounts & {
+    workerEdls: number;
+    grievanceAssociations: number;
+  };
+  failures: Array<{
+    stage: string;
+    table: string;
+    id?: string;
+    reason: "missing_table" | "record_failed" | "stage_failed";
+    diagnostics: Record<string, unknown>;
+  }>;
+  stalePreflight: boolean;
+  rerunRecommended: boolean;
   diagnosticsVersion: string;
 };
 
@@ -144,7 +157,7 @@ export default function FullResetCard() {
 
   const exactConfirmation = confirmation === preflight.data?.confirmation;
   const blocked = preflight.isLoading || preflight.isError || reset.isPending
-    || !exactConfirmation || Boolean(preflight.data?.blockers.length);
+    || !exactConfirmation;
 
   return (
     <Card className="border-destructive bg-destructive/5" data-testid="card-freeman-full-reset">
@@ -174,6 +187,14 @@ export default function FullResetCard() {
             contacts are deleted.
           </AlertDescription>
         </Alert>
+        <Alert>
+          <AlertTitle>Best-effort reset</AlertTitle>
+          <AlertDescription>
+            Deletions commit in batches of at most 500 records. A failed record or missing
+            optional table is skipped while other deletions continue. Run the reset again while
+            eligible records remain.
+          </AlertDescription>
+        </Alert>
 
         {preflight.isLoading && (
           <div className="h-20 animate-pulse rounded-md bg-muted" data-testid="full-reset-loading" />
@@ -200,9 +221,10 @@ export default function FullResetCard() {
            </p>
           {preflight.data.blockers.length > 0 && (
             <Alert variant="destructive" data-testid="full-reset-blockers">
-              <AlertTitle>Reset blocked by existing relationships</AlertTitle>
+              <AlertTitle>Relationships may prevent some worker deletions</AlertTitle>
               <AlertDescription>
-                Remove these relationships, then refresh the plan:
+                The reset will skip affected workers, continue with other records, and report
+                what remains. Remove these relationships before a later run:
                 <ul className="mt-2 list-disc pl-5">
                   {preflight.data.blockers.map((relation) => (
                     <li key={`${relation.constraint}-${relation.recordId}`}>
@@ -270,8 +292,9 @@ export default function FullResetCard() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Final destructive confirmation</AlertDialogTitle>
                 <AlertDialogDescription>
-                  The counts are rechecked before deletion. If any count changed or a Freeman
-                  import started, the reset will be refused and nothing will be deleted.
+                  A Freeman import must not be active. Counts may change after this warning; the
+                  reset works from current data and reports committed deletions, skipped failures,
+                  and what remains.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <div className="space-y-2">
@@ -289,7 +312,7 @@ export default function FullResetCard() {
               {reset.isError && (
                 <Alert variant="destructive">
                   <AlertDescription className="space-y-2">
-                    <p>{getApiErrorMessage(reset.error, "The reset failed. Existing data was left unchanged.")}</p>
+                    <p>{getApiErrorMessage(reset.error, "The reset could not return a trustworthy result. Refresh the counts before trying again.")}</p>
                     {reset.error instanceof ResetApiError && (
                       <div className="space-y-3" data-testid="full-reset-exact-failure">
                         {reset.error.failure.stage && (
@@ -347,7 +370,7 @@ export default function FullResetCard() {
                         )}
                       </div>
                     )}
-                    <p>No reset deletion was committed. The complete failure above can be used directly; no separate support-reference lookup is required.</p>
+                    <p>Earlier batches may have committed. Refresh the counts before trying again.</p>
                   </AlertDescription>
                 </Alert>
               )}
@@ -372,14 +395,41 @@ export default function FullResetCard() {
 
         {result && (
           <Alert>
-            <AlertTitle>Full reset completed</AlertTitle>
-            <AlertDescription>
+            <AlertTitle>{result.rerunRecommended ? "Reset made partial progress" : "Full reset completed"}</AlertTitle>
+            <AlertDescription className="space-y-3">
+              <p>
               Deleted {result.deleted.workers} workers, {result.deleted.sheets} sheets,{" "}
               {result.deleted.crews} crews, {result.deleted.assignments} assignments,{" "}
               {result.deleted.workerEdls} worker EDLS rows, {result.deleted.grievanceAssociations}{" "}
               grievance associations, and {result.deleted.contactsDeleted} worker-owned contacts.
               Preserved {result.deleted.contactsPreserved} contacts and anonymized
               {` ${result.deleted.contactsAnonymized}`} contacts.
+              </p>
+              <p>
+                Remaining: {result.remaining.workers} workers, {result.remaining.sheets} sheets,{" "}
+                {result.remaining.crews} crews, {result.remaining.assignments} assignments,{" "}
+                {result.remaining.workerEdls} worker EDLS rows, and{" "}
+                {result.remaining.grievanceAssociations} grievance associations.
+              </p>
+              {result.stalePreflight && (
+                <p>The warning counts changed before or during this run; current rows were processed safely.</p>
+              )}
+              {result.failures.length > 0 && (
+                <div data-testid="full-reset-skipped-failures">
+                  <strong>Skipped failures ({result.failures.length} reported):</strong>
+                  <ul className="mt-1 list-disc pl-5">
+                    {result.failures.map((failure, index) => (
+                      <li key={`${failure.stage}-${failure.table}-${failure.id ?? index}`}>
+                        {failure.stage}: {failure.table}
+                        {failure.id ? ` / ${failure.id}` : ""} ({failure.reason.replaceAll("_", " ")})
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {result.rerunRecommended && (
+                <p className="font-semibold">Records remain. Refresh the counts and run the reset again.</p>
+              )}
             </AlertDescription>
           </Alert>
         )}
