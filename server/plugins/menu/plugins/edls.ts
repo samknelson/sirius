@@ -43,18 +43,6 @@ function buildEdlsMenuTree(): MenuItemDef[] {
     });
   }
 
-  // Workers is a direct link to the list (no dropdown) in this layout;
-  // gate is inherited from the default item so access can't drift.
-  const workers = pick("workers");
-  if (workers) {
-    items.push({
-      ...workers,
-      href: "/edls/workers",
-      active: { type: "prefix", value: "/edls/workers" },
-      children: undefined,
-    });
-  }
-
   items.push(buildUsersMenuItem());
   items.push(buildConfigMenuItem());
 
