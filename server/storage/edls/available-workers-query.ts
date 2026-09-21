@@ -49,60 +49,70 @@ export async function getAvailableWorkersForSheetQuery(
 
   let orderBy;
   if (industryId && ratingId) {
-    orderBy = sql`ORDER BY COALESCE(member_status.sequence, 999999), wr.value DESC, c.family, c.given`;
+    orderBy = sql`ORDER BY COALESCE(aw."memberStatusSequence", 999999), aw."ratingValue" DESC, aw.family, aw.given`;
   } else if (industryId) {
-    orderBy = sql`ORDER BY COALESCE(member_status.sequence, 999999), c.family, c.given`;
+    orderBy = sql`ORDER BY COALESCE(aw."memberStatusSequence", 999999), aw.family, aw.given`;
   } else if (ratingId) {
-    orderBy = sql`ORDER BY wr.value DESC, c.family, c.given`;
+    orderBy = sql`ORDER BY aw."ratingValue" DESC, aw.family, aw.given`;
   } else {
-    orderBy = sql`ORDER BY c.family, c.given`;
+    orderBy = sql`ORDER BY aw.family, aw.given`;
   }
 
   const result = await client.execute(sql`
+    WITH available_workers AS MATERIALIZED (
+      SELECT
+        w.id,
+        w.sirius_id as "siriusId",
+        w.contact_id as "contactId",
+        c.display_name as "displayName",
+        c.given,
+        c.family,
+        ${ratingSelect},
+        ${memberStatusSelect}
+      FROM workers w
+      INNER JOIN contacts c ON w.contact_id = c.id
+      ${edlsJoin}
+      ${ratingJoin}
+      ${memberStatusJoin}
+      ${activeWhere}
+    ),
+    assignment_statuses AS MATERIALIZED (
+      SELECT
+        ea.worker_id,
+        (
+          array_agg(es.status ORDER BY ea.ymd DESC, ea.id)
+            FILTER (WHERE ea.ymd < ${sheetYmd})
+        )[1] as "priorStatus",
+        (
+          array_agg(es.status ORDER BY ea.id)
+            FILTER (WHERE ea.ymd = ${sheetYmd})
+        )[1] as "currentStatus",
+        (
+          array_agg(es.status ORDER BY ea.ymd ASC, ea.id)
+            FILTER (WHERE ea.ymd > ${sheetYmd})
+        )[1] as "nextStatus"
+      FROM available_workers aw
+      INNER JOIN edls_assignments ea ON ea.worker_id = aw.id
+      INNER JOIN edls_crews ec ON ea.crew_id = ec.id
+      INNER JOIN edls_sheets es ON ec.sheet_id = es.id
+      GROUP BY ea.worker_id
+    )
     SELECT
-      w.id,
-      w.sirius_id as "siriusId",
-      w.contact_id as "contactId",
-      c.display_name as "displayName",
-      c.given,
-      c.family,
-      prior_asg.status as "priorStatus",
-      current_asg.status as "currentStatus",
-      next_asg.status as "nextStatus",
-      ${ratingSelect},
-      ${memberStatusSelect}
-    FROM workers w
-    INNER JOIN contacts c ON w.contact_id = c.id
-    ${edlsJoin}
-    ${ratingJoin}
-    ${memberStatusJoin}
-    LEFT JOIN LATERAL (
-      SELECT es.status
-      FROM edls_assignments ea
-      INNER JOIN edls_crews ec ON ea.crew_id = ec.id
-      INNER JOIN edls_sheets es ON ec.sheet_id = es.id
-      WHERE ea.worker_id = w.id AND ea.ymd < ${sheetYmd}
-      ORDER BY ea.ymd DESC
-      LIMIT 1
-    ) prior_asg ON true
-    LEFT JOIN LATERAL (
-      SELECT es.status
-      FROM edls_assignments ea
-      INNER JOIN edls_crews ec ON ea.crew_id = ec.id
-      INNER JOIN edls_sheets es ON ec.sheet_id = es.id
-      WHERE ea.worker_id = w.id AND ea.ymd = ${sheetYmd}
-      LIMIT 1
-    ) current_asg ON true
-    LEFT JOIN LATERAL (
-      SELECT es.status
-      FROM edls_assignments ea
-      INNER JOIN edls_crews ec ON ea.crew_id = ec.id
-      INNER JOIN edls_sheets es ON ec.sheet_id = es.id
-      WHERE ea.worker_id = w.id AND ea.ymd > ${sheetYmd}
-      ORDER BY ea.ymd ASC
-      LIMIT 1
-    ) next_asg ON true
-    ${activeWhere}
+      aw.id,
+      aw."siriusId",
+      aw."contactId",
+      aw."displayName",
+      aw.given,
+      aw.family,
+      assignment_statuses."priorStatus",
+      assignment_statuses."currentStatus",
+      assignment_statuses."nextStatus",
+      aw."ratingValue",
+      aw."memberStatusId",
+      aw."memberStatusName",
+      aw."memberStatusSequence"
+    FROM available_workers aw
+    LEFT JOIN assignment_statuses ON assignment_statuses.worker_id = aw.id
     ${orderBy}
   `);
   return result.rows as unknown as AvailableWorkerForSheet[];

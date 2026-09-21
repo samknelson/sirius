@@ -654,9 +654,14 @@ interface FreemanWorkerIdTypes {
 
 interface FreemanMigratePlanState {
   workers: Map<string, string>;
+  workersByName: Map<string, Set<string>>;
   nextWorkerNumber: number;
   assignmentOwners: Map<string, string>;
   replacedSheetIds: Set<string>;
+}
+
+function workerNameKey(given: string, family: string): string {
+  return `${given.trim().toLowerCase()}\u0000${family.trim().toLowerCase()}`;
 }
 
 async function resolveWorker(
@@ -667,6 +672,11 @@ async function resolveWorker(
   idTypes: FreemanWorkerIdTypes,
   planState?: FreemanMigratePlanState,
 ): Promise<ResolvedWorker | null> {
+  const employeeId = text(pick(source, "worker_empid", "employee_id", "employeeId"));
+  const normalizedEin = employeeId?.replace(/\D/g, "") || null;
+  if (!normalizedEin) {
+    throw new Error("The Freeman assignment has no usable employee EIN.");
+  }
   if (live) {
     // Normalized identity cannot be protected by the exact-value unique
     // constraint. Block every worker-ID writer until this sheet transaction
@@ -675,13 +685,8 @@ async function resolveWorker(
     await getClient().execute(sql`LOCK TABLE ${workerIds} IN SHARE ROW EXCLUSIVE MODE`);
   }
   const t631Id = text(pick(source, "worker_id", "workerId"));
-  const employeeId = text(pick(source, "worker_empid", "employee_id", "employeeId"));
-  const normalizedEin = employeeId?.replace(/\D/g, "") || null;
   const normalizedT631 = t631Id?.replace(/\D/g, "") || null;
-  const sourceAliases = [
-    ...(normalizedEin ? [`freeman_ein:${normalizedEin}`] : []),
-    ...(normalizedT631 ? [`t631:${normalizedT631}`] : []),
-  ];
+  const einAlias = `freeman_ein:${normalizedEin}`;
 
   const matchByDigits = async (
     typeId: string,
@@ -702,9 +707,7 @@ async function resolveWorker(
     normalizedEin,
     "Freeman EIN",
   );
-  const plannedEinWorkerId = !live && normalizedEin
-    ? planState?.workers.get(`freeman_ein:${normalizedEin}`)
-    : undefined;
+  const plannedEinWorkerId = !live ? planState?.workers.get(einAlias) : undefined;
   const einWorkerId = existingEinWorkerId ?? plannedEinWorkerId;
   if (einWorkerId) {
     if (live) await ensureWorkerEmployment(einWorkerId, employerId, ymd);
@@ -721,40 +724,74 @@ async function resolveWorker(
     : undefined;
   const t631WorkerId = existingT631WorkerId ?? plannedT631WorkerId;
   if (t631WorkerId) {
-    if (normalizedEin) {
-      if (live) {
-        // The normalized EIN lookup above found no owner while the worker-ID
-        // table is locked, so the fallback worker can safely acquire it.
-        await storage.workerIds.createWorkerId({
-          workerId: t631WorkerId,
-          typeId: idTypes.ein,
-          value: normalizedEin,
-        });
-      } else {
-        planState?.workers.set(`freeman_ein:${normalizedEin}`, t631WorkerId);
-      }
+    if (live) {
+      // The normalized EIN lookup above found no owner while the worker-ID
+      // table is locked, so the fallback worker can safely acquire it.
+      await storage.workerIds.createWorkerId({
+        workerId: t631WorkerId,
+        typeId: idTypes.ein,
+        value: normalizedEin,
+      });
+    } else {
+      planState?.workers.set(einAlias, t631WorkerId);
     }
     if (live) await ensureWorkerEmployment(t631WorkerId, employerId, ymd);
     return { id: t631WorkerId, kind: "updated" };
   }
 
+  const parsedName = parseWorkerName(source);
+  const { displayName, family, given } = parsedName;
+  if (!given || !family) {
+    throw new Error(
+      "The Freeman assignment did not match a worker by ID and does not have both a first and last name.",
+    );
+  }
+  const nameKey = workerNameKey(given, family);
+  const persistedNameMatches = await storage.workers.getWorkerIdsByExactName(given, family);
+  const plannedNameMatches = !live
+    ? [...(planState?.workersByName.get(nameKey) ?? [])]
+    : [];
+  const nameMatches = [...new Set([...persistedNameMatches, ...plannedNameMatches])];
+  if (nameMatches.length > 1) {
+    throw new Error(
+      `More than one worker matches the normalized name ${given.trim()} ${family.trim()}.`,
+    );
+  }
+  const nameWorkerId = nameMatches[0];
+  if (nameWorkerId) {
+    if (live) {
+      await storage.workerIds.createWorkerId({
+        workerId: nameWorkerId,
+        typeId: idTypes.ein,
+        value: normalizedEin,
+      });
+      await ensureWorkerEmployment(nameWorkerId, employerId, ymd);
+    } else {
+      planState?.workers.set(einAlias, nameWorkerId);
+    }
+    return {
+      id: nameWorkerId,
+      kind: nameWorkerId.startsWith("planned-worker:") ? "created" : "updated",
+    };
+  }
+
   if (!live) {
-    const id = `planned-worker:${sourceAliases[0] ?? `unidentified-${planState?.nextWorkerNumber ?? 0}`}`;
+    const id = `planned-worker:${einAlias}`;
     if (planState) planState.nextWorkerNumber++;
-    for (const alias of sourceAliases) {
-      planState?.workers.set(alias, id);
+    planState?.workers.set(einAlias, id);
+    if (planState) {
+      const ids = planState.workersByName.get(nameKey) ?? new Set<string>();
+      ids.add(id);
+      planState.workersByName.set(nameKey, ids);
     }
     return { id, kind: "created" };
   }
-  const parsedName = parseWorkerName(source);
-  const { displayName, family, given } = parsedName;
   const worker = await storage.workers.createWorkerWithNameParts({ given, family, displayName });
-  if (normalizedEin) {
-    await storage.workerIds.createWorkerId({ workerId: worker.id, typeId: idTypes.ein, value: normalizedEin });
-  }
-  if (normalizedT631) {
-    await storage.workerIds.createWorkerId({ workerId: worker.id, typeId: idTypes.t631, value: normalizedT631 });
-  }
+  await storage.workerIds.createWorkerId({
+    workerId: worker.id,
+    typeId: idTypes.ein,
+    value: normalizedEin,
+  });
   await ensureWorkerEmployment(worker.id, employerId, ymd);
   return { id: worker.id, kind: "created" };
 }
@@ -1159,6 +1196,9 @@ async function runStatus(
       const sheetPlanState = mode === "test"
         ? {
           workers: new Map(planState.workers),
+          workersByName: new Map(
+            [...planState.workersByName].map(([key, ids]) => [key, new Set(ids)]),
+          ),
           nextWorkerNumber: planState.nextWorkerNumber,
           assignmentOwners: new Map(planState.assignmentOwners),
           replacedSheetIds: new Set(planState.replacedSheetIds),
@@ -1169,6 +1209,7 @@ async function runStatus(
         : await reconcileSheet(sheet, status, false, employerId, idTypes, sheetPlanState);
       if (sheetPlanState) {
         planState.workers = sheetPlanState.workers;
+        planState.workersByName = sheetPlanState.workersByName;
         planState.nextWorkerNumber = sheetPlanState.nextWorkerNumber;
         planState.assignmentOwners = sheetPlanState.assignmentOwners;
         planState.replacedSheetIds = sheetPlanState.replacedSheetIds;
@@ -1308,6 +1349,7 @@ async function runFreemanMigrateUnlocked(
   const statuses: FreemanMigrateReport["statuses"] = [];
   const planState: FreemanMigratePlanState = {
     workers: new Map(),
+    workersByName: new Map(),
     nextWorkerNumber: 0,
     assignmentOwners: new Map(),
     replacedSheetIds: new Set(),

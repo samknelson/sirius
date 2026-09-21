@@ -93,8 +93,10 @@ describe("EDLS worker directory storage", () => {
     const pageSql = statements[1].toLowerCase();
     const assignmentsSql = statements[2].toLowerCase();
     expect(pageSql).toContain("limit $1 offset $2");
-    expect(assignmentsSql).toContain("left join lateral");
-    expect(assignmentsSql.match(/left join lateral/g)).toHaveLength(3);
+    expect(assignmentsSql).toContain("assignment_statuses as materialized");
+    expect(assignmentsSql.match(/edls_assignments/g)).toHaveLength(1);
+    expect(assignmentsSql.match(/filter \(where ea\.ymd/g)).toHaveLength(3);
+    expect(assignmentsSql).not.toContain("join lateral");
     expect(assignmentsSql).not.toContain("where we.active = true");
   });
 });
