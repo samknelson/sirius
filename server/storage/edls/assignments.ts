@@ -26,6 +26,12 @@ import { createEdlsCrewsStorage } from "./crews";
 import { isComponentEnabledSync } from "../../services/component-cache";
 import { provenanceCreatedDate } from "../system/entity-metadata-order";
 import type { SnapshotNode } from "@shared/snapshots";
+import {
+  getAvailableWorkersForSheetQuery,
+  type AvailableWorkerForSheet,
+} from "./available-workers-query";
+
+export type { AvailableWorkerForSheet } from "./available-workers-query";
 
 /**
  * The dispatch_job_group table is owned by the `dispatch.job_group`
@@ -97,22 +103,6 @@ export interface EdlsAssignmentWithWorker extends EdlsAssignment {
     memberStatusCode: string | null;
     memberStatusName: string | null;
   };
-}
-
-export interface AvailableWorkerForSheet {
-  id: string;
-  siriusId: number | null;
-  contactId: string;
-  displayName: string | null;
-  given: string | null;
-  family: string | null;
-  priorStatus: string | null;
-  currentStatus: string | null;
-  nextStatus: string | null;
-  ratingValue: number | null;
-  memberStatusId: string | null;
-  memberStatusName: string | null;
-  memberStatusSequence: number | null;
 }
 
 export interface WorkerAssignmentDetail {
@@ -307,7 +297,12 @@ export interface EdlsAssignmentsStorage {
    * a repeat.
    */
   setAccepted(id: string, accepted: boolean): Promise<boolean>;
-  getAvailableWorkersForSheet(sheetYmd: string, industryId: string | null, ratingId?: string): Promise<AvailableWorkerForSheet[]>;
+  getAvailableWorkersForSheet(
+    sheetYmd: string,
+    industryId: string | null,
+    ratingId?: string,
+    includeInactive?: boolean,
+  ): Promise<AvailableWorkerForSheet[]>;
   /**
    * Report query: every assignment on a future (ymd >= fromYmd), non-trash
    * sheet whose worker is NOT in the EDLS scheduling population (no
@@ -675,92 +670,18 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       return result.length > 0;
     },
 
-    async getAvailableWorkersForSheet(sheetYmd: string, industryId: string | null, ratingId?: string): Promise<AvailableWorkerForSheet[]> {
-      const client = getClient();
-      
-      // Build query with optional rating join
-      const ratingJoin = ratingId 
-        ? sql`INNER JOIN worker_ratings wr ON wr.worker_id = w.id AND wr.rating_id = ${ratingId}`
-        : sql``;
-      const ratingSelect = ratingId
-        ? sql`wr.value as "ratingValue"`
-        : sql`NULL::integer as "ratingValue"`;
-      
-      // Build member status join - uses worker_msh_denorm to find the member status for the employer's industry
-      const memberStatusJoin = industryId
-        ? sql`LEFT JOIN LATERAL (
-          SELECT ms.id, ms.name, ms.sequence
-          FROM worker_msh_denorm wmd
-          INNER JOIN options_worker_ms ms ON ms.id = wmd.ms_id AND ms.industry_id = ${industryId}
-          WHERE wmd.worker_id = w.id
-          LIMIT 1
-        ) member_status ON true`
-        : sql``;
-      const memberStatusSelect = industryId
-        ? sql`member_status.id as "memberStatusId", member_status.name as "memberStatusName", member_status.sequence as "memberStatusSequence"`
-        : sql`NULL::varchar as "memberStatusId", NULL::varchar as "memberStatusName", NULL::integer as "memberStatusSequence"`;
-      
-      // Order by member status sequence first (nulls last), then by rating (if provided), then by name
-      // When industryId is null, skip member status ordering since the lateral join is not included
-      let orderBy;
-      if (industryId && ratingId) {
-        orderBy = sql`ORDER BY COALESCE(member_status.sequence, 999999), wr.value DESC, c.family, c.given`;
-      } else if (industryId) {
-        orderBy = sql`ORDER BY COALESCE(member_status.sequence, 999999), c.family, c.given`;
-      } else if (ratingId) {
-        orderBy = sql`ORDER BY wr.value DESC, c.family, c.given`;
-      } else {
-        orderBy = sql`ORDER BY c.family, c.given`;
-      }
-      
-      const result = await client.execute(sql`
-        SELECT 
-          w.id,
-          w.sirius_id as "siriusId",
-          w.contact_id as "contactId",
-          c.display_name as "displayName",
-          c.given,
-          c.family,
-          prior_asg.status as "priorStatus",
-          current_asg.status as "currentStatus",
-          next_asg.status as "nextStatus",
-          ${ratingSelect},
-          ${memberStatusSelect}
-        FROM workers w
-        INNER JOIN contacts c ON w.contact_id = c.id
-        INNER JOIN worker_edls we ON we.worker_id = w.id
-        ${ratingJoin}
-        ${memberStatusJoin}
-        LEFT JOIN LATERAL (
-          SELECT es.status
-          FROM edls_assignments ea
-          INNER JOIN edls_crews ec ON ea.crew_id = ec.id
-          INNER JOIN edls_sheets es ON ec.sheet_id = es.id
-          WHERE ea.worker_id = w.id AND es.ymd < ${sheetYmd}
-          ORDER BY es.ymd DESC
-          LIMIT 1
-        ) prior_asg ON true
-        LEFT JOIN LATERAL (
-          SELECT es.status
-          FROM edls_assignments ea
-          INNER JOIN edls_crews ec ON ea.crew_id = ec.id
-          INNER JOIN edls_sheets es ON ec.sheet_id = es.id
-          WHERE ea.worker_id = w.id AND es.ymd = ${sheetYmd}
-          LIMIT 1
-        ) current_asg ON true
-        LEFT JOIN LATERAL (
-          SELECT es.status
-          FROM edls_assignments ea
-          INNER JOIN edls_crews ec ON ea.crew_id = ec.id
-          INNER JOIN edls_sheets es ON ec.sheet_id = es.id
-          WHERE ea.worker_id = w.id AND es.ymd > ${sheetYmd}
-          ORDER BY es.ymd ASC
-          LIMIT 1
-        ) next_asg ON true
-        WHERE we.active = true
-        ${orderBy}
-      `);
-      return result.rows as unknown as AvailableWorkerForSheet[];
+    async getAvailableWorkersForSheet(
+      sheetYmd: string,
+      industryId: string | null,
+      ratingId?: string,
+      includeInactive = false,
+    ): Promise<AvailableWorkerForSheet[]> {
+      return getAvailableWorkersForSheetQuery(
+        sheetYmd,
+        industryId,
+        ratingId,
+        includeInactive,
+      );
     },
 
     async getFutureOutOfPopulationAssignments(fromYmd: string): Promise<OutOfPopulationAssignmentRow[]> {

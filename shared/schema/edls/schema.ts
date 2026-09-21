@@ -1,4 +1,4 @@
-import { pgTable, varchar, date, integer, time, jsonb, unique, text, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, varchar, date, integer, time, jsonb, unique, index, text, boolean, timestamp } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -151,6 +151,7 @@ export const edlsAssignments = pgTable("edls_assignments", {
   data: jsonb("data"),
 }, (table) => [
   unique("edls_assignments_ymd_worker_id_unique").on(table.ymd, table.workerId),
+  index("edls_assignments_worker_id_ymd_idx").on(table.workerId, table.ymd),
 ]);
 
 /**
