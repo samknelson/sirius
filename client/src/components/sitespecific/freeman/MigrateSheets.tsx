@@ -79,6 +79,14 @@ type RunSheet = {
   code?: string;
   message?: string;
   details?: string;
+  omittedAssignments?: Array<{
+    crewIndex: number;
+    assignmentIndex: number;
+    stage: RunStage;
+    code: string;
+    message: string;
+    details?: string;
+  }>;
 };
 type RunRecordCounts = {
   crews: { created: number; updated: number };
@@ -710,10 +718,26 @@ export default function MigrateSheets() {
                                   </div>
                                 ) : (
                                   <div className="space-y-1">
-                                    <p>Sheet passed planning and validation.</p>
+                                    <p>
+                                      {sheet.omittedAssignments?.length
+                                        ? `Sheet ${displayedRun.mode === "test" ? "would save" : "saved"} with ${sheet.omittedAssignments.length} assignment${sheet.omittedAssignments.length === 1 ? "" : "s"} omitted.`
+                                        : "Sheet passed planning and validation."}
+                                    </p>
                                     {sheet.records && (
                                       <RecordCountSummary records={sheet.records} mode={displayedRun.mode} />
                                     )}
+                                    {sheet.omittedAssignments?.map((omission) => (
+                                      <div
+                                        key={`${omission.crewIndex}-${omission.assignmentIndex}`}
+                                        className="border-l-2 border-amber-500 pl-2"
+                                      >
+                                        <p className="font-medium text-foreground">
+                                          Crew {omission.crewIndex + 1}, assignment {omission.assignmentIndex + 1}
+                                        </p>
+                                        <p>{omission.message}</p>
+                                        {omission.details && <p className="font-mono">{omission.details}</p>}
+                                      </div>
+                                    ))}
                                   </div>
                                 )}
                               </td>
