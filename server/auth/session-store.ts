@@ -1,6 +1,10 @@
 import session from "express-session";
 import { logger } from "../logger";
 import { storage } from "../storage";
+import {
+  getSessionIdleTimeoutSettings,
+  type SessionIdleTimeoutSettings,
+} from "./session-idle-timeout";
 
 const getStorage = () => storage;
 
@@ -34,9 +38,53 @@ export class StorageSessionStore extends session.Store {
     return new Date(Date.now() + this.ttlMs);
   }
 
+  private getAcceptedActivityExpireTime(
+    settings: SessionIdleTimeoutSettings,
+  ): Date {
+    const durationMs = settings.enabled
+      ? Math.min(this.ttlMs, settings.timeoutMinutes * 60_000)
+      : this.ttlMs;
+    return new Date(Date.now() + durationMs);
+  }
+
+  private isAuthenticated(sess: session.SessionData): boolean {
+    return Boolean((sess as any)?.passport?.user);
+  }
+
+  private async applyAuthenticatedActivity(
+    sid: string,
+    sess: session.SessionData,
+    settings: SessionIdleTimeoutSettings,
+  ): Promise<session.SessionData | null> {
+    if (!this.isAuthenticated(sess)) return sess;
+
+    const now = Date.now();
+    const previous = Date.parse((sess as any).sessionIdleLastActivityAt ?? "");
+    if (
+      settings.enabled &&
+      Number.isFinite(previous) &&
+      now - previous > settings.timeoutMinutes * 60_000
+    ) {
+      await getStorage().sessions.deleteSession(sid, "idle timeout");
+      return null;
+    }
+
+    (sess as any).sessionIdleLastActivityAt = new Date(now).toISOString();
+    const expire = this.getAcceptedActivityExpireTime(settings);
+    sess.cookie.expires = expire;
+    await getStorage().sessions.upsertSession(sid, sess, expire);
+    return sess;
+  }
+
   get(sid: string, callback: (err: unknown, session?: session.SessionData | null) => void): void {
     getStorage().sessions.getSessionData(sid)
-      .then((sess: unknown) => callback(null, (sess as session.SessionData | undefined) ?? null))
+      .then(async (value: unknown) => {
+        const sess = value as session.SessionData | undefined;
+        if (!sess) return null;
+        const settings = await getSessionIdleTimeoutSettings(getStorage());
+        return this.applyAuthenticatedActivity(sid, sess, settings);
+      })
+      .then((sess) => callback(null, sess))
       .catch((err: unknown) => {
         logger.error("Session store get failed", { service: "session-store", error: err instanceof Error ? err.message : String(err) });
         callback(err);
@@ -44,7 +92,14 @@ export class StorageSessionStore extends session.Store {
   }
 
   set(sid: string, sess: session.SessionData, callback?: (err?: unknown) => void): void {
-    getStorage().sessions.upsertSession(sid, sess, this.getExpireTime(sess))
+    getSessionIdleTimeoutSettings(getStorage())
+      .then(async (settings) => {
+        if (!this.isAuthenticated(sess)) {
+          await getStorage().sessions.upsertSession(sid, sess, this.getExpireTime(sess));
+          return;
+        }
+        await this.applyAuthenticatedActivity(sid, sess, settings);
+      })
       .then(() => callback?.())
       .catch((err: unknown) => {
         logger.error("Session store set failed", { service: "session-store", error: err instanceof Error ? err.message : String(err) });
@@ -62,7 +117,11 @@ export class StorageSessionStore extends session.Store {
   }
 
   touch(sid: string, sess: session.SessionData, callback?: (err?: unknown) => void): void {
-    getStorage().sessions.touchSession(sid, this.getExpireTime(sess))
+    getSessionIdleTimeoutSettings(getStorage())
+      .then(async (settings) => {
+        if (!this.isAuthenticated(sess)) return;
+        await this.applyAuthenticatedActivity(sid, sess, settings);
+      })
       .then(() => callback?.())
       .catch((err: unknown) => {
         logger.error("Session store touch failed", { service: "session-store", error: err instanceof Error ? err.message : String(err) });
