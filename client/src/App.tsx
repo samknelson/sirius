@@ -11,7 +11,7 @@ import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
 import { HelpDisplay } from "@/components/HelpDisplay";
 import Footer from "@/components/layout/Footer";
-import { useEffect, lazy, Suspense } from "react";
+import { useEffect, useRef, lazy, Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { ServerInjections } from "@/components/ServerInjections";
@@ -27,6 +27,18 @@ import RegisterPage from "@/pages/register";
 // Lazy-loaded pages
 const Bootstrap = lazy(() => import("@/pages/bootstrap"));
 const RecordGoPage = lazy(() => import("@/pages/record-go"));
+function RecordGoResolverRoute() {
+  const navigationStarted = useRef(false);
+
+  useEffect(() => {
+    if (navigationStarted.current) return;
+    navigationStarted.current = true;
+    window.location.assign(window.location.href);
+  }, []);
+
+  return <PageLoader />;
+}
+
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
 const EdlsSchedulePage = lazy(() => import("@/pages/edls-schedule"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
@@ -549,6 +561,11 @@ function Router() {
         <Route path="/edls-sched/:id" component={EdlsScheduleRoute} />
 
       {/* Protected routes */}
+      <Route path="/go/:id">
+        <ProtectedRoute>
+          <RecordGoResolverRoute />
+        </ProtectedRoute>
+      </Route>
       <Route path="/go">
         <ProtectedRoute>
           <AuthenticatedLayout>
