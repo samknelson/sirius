@@ -13,6 +13,11 @@ import {
 import { eq, and, sql, gte, inArray, or, desc, asc } from "drizzle-orm";
 import type { DenormStaleSeed } from "./system/denorm";
 
+// Keep bulk writes comfortably below PostgreSQL's bind-parameter limit. Queue
+// inserts currently bind six values per worker, so this also keeps each
+// statement small enough for hosted database proxies.
+const ENQUEUE_WRITE_BATCH_SIZE = 500;
+
 /**
  * Stub validator - add validation logic here when needed
  */
@@ -528,33 +533,37 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
         // worker who left the employer since the previous run of this scope).
         const populationSet = new Set(populationIds);
         const removeIds = allExisting.filter(e => !populationSet.has(e.workerId)).map(e => e.id);
-        if (removeIds.length > 0) {
-          await tx.delete(trustWmbScanQueue).where(inArray(trustWmbScanQueue.id, removeIds));
+        for (let i = 0; i < removeIds.length; i += ENQUEUE_WRITE_BATCH_SIZE) {
+          await tx
+            .delete(trustWmbScanQueue)
+            .where(inArray(trustWmbScanQueue.id, removeIds.slice(i, i + ENQUEUE_WRITE_BATCH_SIZE)));
         }
 
         const existingEntries = allExisting.filter(e => populationSet.has(e.workerId));
         const existingWorkerIds = new Set(existingEntries.map(e => e.workerId));
 
-        // Insert queue entries only for workers not already in the run
-        let newCount = 0;
-        for (const workerId of populationIds) {
-          if (!existingWorkerIds.has(workerId)) {
-            await tx
-              .insert(trustWmbScanQueue)
-              .values({
+        // Insert queue entries only for workers not already in the run. This
+        // used to await one INSERT per worker while holding the transaction
+        // open, risking request and database transaction timeouts for large
+        // monthly populations.
+        const newWorkerIds = populationIds.filter(workerId => !existingWorkerIds.has(workerId));
+        for (let i = 0; i < newWorkerIds.length; i += ENQUEUE_WRITE_BATCH_SIZE) {
+          await tx
+            .insert(trustWmbScanQueue)
+            .values(
+              newWorkerIds.slice(i, i + ENQUEUE_WRITE_BATCH_SIZE).map(workerId => ({
                 statusId: status.id,
                 workerId,
                 month,
                 year,
                 status: "pending",
                 triggerSource,
-              });
-            newCount++;
-          }
+              }))
+            );
         }
 
         // Set totalQueued to actual count of workers in queue
-        const totalQueued = existingEntries.length + newCount;
+        const totalQueued = existingEntries.length + newWorkerIds.length;
         await tx
           .update(trustWmbScanStatus)
           .set({ totalQueued })
