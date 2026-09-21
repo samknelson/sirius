@@ -338,7 +338,6 @@ function sheetFailure(error: unknown): FreemanMigrateError {
     "More than one migrated worker has the same Freeman source identity",
     "No employment status is configured",
     "More than one Freeman crew lead has the same source ID",
-    "Staging target mapping points to a missing canonical sheet",
   ];
   if (relationPrefixes.some((prefix) => message.startsWith(prefix))) {
     return {
@@ -992,7 +991,6 @@ async function reconcileSheet(
   const [mapped] = mappedTarget
     ? await client.select().from(edlsSheets).where(eq(edlsSheets.id, mappedTarget))
     : [];
-  if (mappedTarget && !mapped) throw new Error("Staging target mapping points to a missing canonical sheet.");
   const [existingByNid] = await client.select().from(edlsSheets)
     .where(sql`${edlsSheets.data}->'freemanMigration'->>'nid' = ${nid}`);
   const existing = mapped ?? existingByNid;
