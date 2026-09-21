@@ -45,6 +45,12 @@ function getSession(store: StorageSessionStore): Promise<any> {
   });
 }
 
+function touchSession(store: StorageSessionStore, session: any): Promise<void> {
+  return new Promise((resolve, reject) => {
+    store.touch("sid-1", session, (error) => (error ? reject(error) : resolve()));
+  });
+}
+
 describe("session idle timeout settings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -77,26 +83,24 @@ describe("session idle timeout settings", () => {
     expect(sessionIdleTimeoutSchema.safeParse({ enabled: true, timeoutMinutes: 5.5 }).success).toBe(false);
   });
 
-  it("accepts and starts tracking a pre-existing authenticated session", async () => {
+  it("accepts a pre-existing authenticated session without treating the read as activity", async () => {
     fakes.settingValue = { enabled: true, timeoutMinutes: 30 };
     fakes.sessionData = authenticatedSession();
 
     const result = await getSession(new StorageSessionStore({ ttlMs: 7 * 24 * 60 * 60_000 }));
 
-    expect(result.sessionIdleLastActivityAt).toBe(NOW.toISOString());
-    expect(fakes.upsertSession).toHaveBeenCalledOnce();
+    expect(result.sessionIdleLastActivityAt).toBeUndefined();
+    expect(fakes.upsertSession).not.toHaveBeenCalled();
     expect(fakes.deleteSession).not.toHaveBeenCalled();
   });
 
-  it("rolls accepted activity and aligns expiry to the shorter idle limit", async () => {
+  it("checks accepted activity without rolling it during session loading", async () => {
     fakes.settingValue = { enabled: true, timeoutMinutes: 30 };
     fakes.sessionData = authenticatedSession(new Date(NOW.getTime() - 10 * 60_000).toISOString());
 
     await getSession(new StorageSessionStore({ ttlMs: 7 * 24 * 60 * 60_000 }));
 
-    const [, saved, expire] = fakes.upsertSession.mock.calls[0];
-    expect(expire).toEqual(new Date(NOW.getTime() + 30 * 60_000));
-    expect(saved.cookie.expires).toEqual(expire);
+    expect(fakes.upsertSession).not.toHaveBeenCalled();
   });
 
   it("rejects an idle session without renewing it", async () => {
@@ -125,9 +129,22 @@ describe("session idle timeout settings", () => {
     fakes.sessionData = authenticatedSession(new Date(NOW.getTime() - 60_000).toISOString());
     const ttlMs = 7 * 24 * 60 * 60_000;
 
-    await getSession(new StorageSessionStore({ ttlMs }));
+    await touchSession(new StorageSessionStore({ ttlMs }), fakes.sessionData);
 
     expect(fakes.upsertSession.mock.calls[0][2]).toEqual(new Date(NOW.getTime() + ttlMs));
+  });
+
+  it("does not renew a read-only idle status check", async () => {
+    fakes.settingValue = { enabled: true, timeoutMinutes: 30 };
+    const session = {
+      ...authenticatedSession(new Date(NOW.getTime() - 10 * 60_000).toISOString()),
+      sessionIdleReadOnlyCheck: true,
+    };
+
+    await touchSession(new StorageSessionStore({ ttlMs: 7 * 24 * 60 * 60_000 }), session);
+
+    expect(session.sessionIdleReadOnlyCheck).toBeUndefined();
+    expect(fakes.upsertSession).not.toHaveBeenCalled();
   });
 
   it("does not create or refresh anonymous sessions", async () => {

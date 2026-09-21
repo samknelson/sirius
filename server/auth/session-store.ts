@@ -55,6 +55,7 @@ export class StorageSessionStore extends session.Store {
     sid: string,
     sess: session.SessionData,
     settings: SessionIdleTimeoutSettings,
+    renew: boolean,
   ): Promise<session.SessionData | null> {
     if (!this.isAuthenticated(sess)) return sess;
 
@@ -69,6 +70,8 @@ export class StorageSessionStore extends session.Store {
       return null;
     }
 
+    if (!renew) return sess;
+
     (sess as any).sessionIdleLastActivityAt = new Date(now).toISOString();
     const expire = this.getAcceptedActivityExpireTime(settings);
     sess.cookie.expires = expire;
@@ -82,7 +85,7 @@ export class StorageSessionStore extends session.Store {
         const sess = value as session.SessionData | undefined;
         if (!sess) return null;
         const settings = await getSessionIdleTimeoutSettings(getStorage());
-        return this.applyAuthenticatedActivity(sid, sess, settings);
+        return this.applyAuthenticatedActivity(sid, sess, settings, false);
       })
       .then((sess) => callback(null, sess))
       .catch((err: unknown) => {
@@ -94,11 +97,15 @@ export class StorageSessionStore extends session.Store {
   set(sid: string, sess: session.SessionData, callback?: (err?: unknown) => void): void {
     getSessionIdleTimeoutSettings(getStorage())
       .then(async (settings) => {
+        if ((sess as any).sessionIdleReadOnlyCheck) {
+          delete (sess as any).sessionIdleReadOnlyCheck;
+          return;
+        }
         if (!this.isAuthenticated(sess)) {
           await getStorage().sessions.upsertSession(sid, sess, this.getExpireTime(sess));
           return;
         }
-        await this.applyAuthenticatedActivity(sid, sess, settings);
+        await this.applyAuthenticatedActivity(sid, sess, settings, true);
       })
       .then(() => callback?.())
       .catch((err: unknown) => {
@@ -119,8 +126,12 @@ export class StorageSessionStore extends session.Store {
   touch(sid: string, sess: session.SessionData, callback?: (err?: unknown) => void): void {
     getSessionIdleTimeoutSettings(getStorage())
       .then(async (settings) => {
+        if ((sess as any).sessionIdleReadOnlyCheck) {
+          delete (sess as any).sessionIdleReadOnlyCheck;
+          return;
+        }
         if (!this.isAuthenticated(sess)) return;
-        await this.applyAuthenticatedActivity(sid, sess, settings);
+        await this.applyAuthenticatedActivity(sid, sess, settings, true);
       })
       .then(() => callback?.())
       .catch((err: unknown) => {

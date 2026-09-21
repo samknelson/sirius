@@ -138,3 +138,4 @@
 - [Freeman worker ID precedence](freeman-worker-id-precedence.md) — normalized EIN is authoritative; consult T631 only when EIN has no match, and never fail because the two point to different workers.
 - [Maintenance-aware startup reconciliation](maintenance-startup-reconciliation.md) — register in memory unconditionally; defer only named DB-mutating boot repairs and retry them after maintenance exits.
 - [Postgres checkout initialization](postgres-checkout-initialization.md) — pool acquire/connect events do not delay borrowers; session setup must finish inside the public connect handoff.
+- [Idle-session status checks](idle-session-status-checks.md) — polling the current idle deadline must be read-only; only explicit or normal authenticated activity may renew it.

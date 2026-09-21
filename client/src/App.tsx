@@ -1,6 +1,6 @@
 import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClientProvider, useMutation, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -11,8 +11,18 @@ import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
 import { HelpDisplay } from "@/components/HelpDisplay";
 import Footer from "@/components/layout/Footer";
-import { useEffect, useRef, lazy, Suspense } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ApiError, apiRequest } from "@/lib/queryClient";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { ServerInjections } from "@/components/ServerInjections";
 
@@ -4253,6 +4263,86 @@ function Router() {
   );
 }
 
+type SessionIdleStatus = {
+  enabled: boolean;
+  deadline: string | null;
+};
+
+function SessionIdleWarning() {
+  const { isAuthenticated } = useAuth();
+  const [now, setNow] = useState(() => Date.now());
+  const statusQuery = useQuery<SessionIdleStatus>({
+    queryKey: ["/api/auth/session-idle"],
+    enabled: isAuthenticated,
+    refetchInterval: 30_000,
+    staleTime: 0,
+    retry: false,
+  });
+  const continueMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/auth/session-idle/continue") as Promise<SessionIdleStatus>,
+    onSuccess: (status) => {
+      queryClient.setQueryData(["/api/auth/session-idle"], status);
+      setNow(Date.now());
+    },
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 401) {
+        window.location.assign("/api/logout");
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (!isAuthenticated || !statusQuery.data?.enabled) return;
+    const interval = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(interval);
+  }, [isAuthenticated, statusQuery.data?.enabled]);
+
+  useEffect(() => {
+    if (statusQuery.error instanceof ApiError && statusQuery.error.status === 401) {
+      window.location.assign("/api/logout");
+    }
+  }, [statusQuery.error]);
+
+  const deadlineMs = Date.parse(statusQuery.data?.deadline ?? "");
+  const remainingMs = deadlineMs - now;
+  const open =
+    isAuthenticated &&
+    statusQuery.data?.enabled === true &&
+    Number.isFinite(deadlineMs) &&
+    remainingMs <= 2 * 60_000;
+  const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1_000));
+  const remainingLabel =
+    remainingSeconds >= 60
+      ? `${Math.ceil(remainingSeconds / 60)} minute${Math.ceil(remainingSeconds / 60) === 1 ? "" : "s"}`
+      : `${remainingSeconds} second${remainingSeconds === 1 ? "" : "s"}`;
+
+  return (
+    <AlertDialog open={open}>
+      <AlertDialogContent data-testid="session-idle-warning">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Your session is about to expire</AlertDialogTitle>
+          <AlertDialogDescription>
+            You will be signed out after {remainingLabel} without authenticated activity.
+            Continue your session to avoid losing unsaved work.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogAction
+            data-testid="button-continue-session"
+            disabled={continueMutation.isPending}
+            onClick={(event) => {
+              event.preventDefault();
+              continueMutation.mutate();
+            }}
+          >
+            {continueMutation.isPending ? "Continuing..." : "Continue session"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -4262,6 +4352,7 @@ function App() {
             <PageTitleProvider>
               <Toaster />
               <ServerInjections />
+              <SessionIdleWarning />
               <WebSocketProvider>
                 <Router />
               </WebSocketProvider>
