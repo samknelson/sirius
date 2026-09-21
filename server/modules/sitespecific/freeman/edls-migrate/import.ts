@@ -37,8 +37,9 @@ import {
   FREEMAN_EDLS_MIGRATE_PLUGIN_ID,
 } from "../../../../plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate";
 
-export const FREEMAN_MIGRATE_STATUSES = ["draft", "request", "lock", "trash", "reserved"] as const;
+export const FREEMAN_MIGRATE_STATUSES = ["draft", "request", "lock", "reserved"] as const;
 export type FreemanMigrateStatus = (typeof FREEMAN_MIGRATE_STATUSES)[number];
+const LEGACY_FREEMAN_MIGRATE_STATUSES = [...FREEMAN_MIGRATE_STATUSES, "trash"] as const;
 export const FREEMAN_MIGRATE_STATUS_VARIABLE = "SITESPECIFIC_FREEMAN_MIGRATE_STATUS";
 
 export const FREEMAN_MIGRATE_RUN_VARIABLE = "SITESPECIFIC_FREEMAN_MIGRATE_RUN";
@@ -57,6 +58,9 @@ const progressSchema = z.object({
 });
 export const migrateStateSchema = z.object({
   statuses: z.record(z.enum(FREEMAN_MIGRATE_STATUSES), progressSchema),
+}).strict();
+const legacyMigrateStateSchema = z.object({
+  statuses: z.record(z.enum(LEGACY_FREEMAN_MIGRATE_STATUSES), progressSchema),
 }).strict();
 export type FreemanMigrateState = z.infer<typeof migrateStateSchema>;
 
@@ -549,7 +553,10 @@ async function readState(): Promise<FreemanMigrateState> {
   if (!variable?.value) return initialState();
   try {
     const parsed = typeof variable.value === "string" ? JSON.parse(variable.value) : variable.value;
-    const result = migrateStateSchema.safeParse(parsed);
+    // Older runs persisted a cursor for the retired Trash status. Read that
+    // shape long enough to preserve the four active cursors, then normalize
+    // the value back to the current state contract below.
+    const result = legacyMigrateStateSchema.safeParse(parsed);
     if (!result.success) return initialState();
     return {
       statuses: Object.fromEntries(
@@ -1144,7 +1151,6 @@ async function reconcileSheet(
   for (const plan of crewPlans) {
     if (consumeCount(existingCrewIdentityCounts, plan.identity)) records.crews.updated++;
     else records.crews.created++;
-    if (status === "trash") continue;
     for (const assignment of plan.assignments) {
       if (consumeCount(existingAssignmentWorkerCounts, assignment.workerId)) {
         assignment.recordKind = "updated";
@@ -1163,49 +1169,47 @@ async function reconcileSheet(
     const seenAssignments = new Set<string>();
     const assignmentKeys: string[] = [];
     const assignmentOwner = existing?.id ?? `planned-sheet:${nid}`;
-    if (status !== "trash") {
-      for (let crewIndex = 0; crewIndex < crewPlans.length; crewIndex++) {
-        const plan = crewPlans[crewIndex];
-        const acceptedAssignments: typeof plan.assignments = [];
-        for (const assignment of plan.assignments) {
-          const key = `${ymd}:${assignment.workerId}`;
-          let error: Error | undefined;
-          if (seenAssignments.has(key)) {
-            error = new Error("The same worker is assigned more than once on this date.");
-          }
-          const plannedOwner = planState?.assignmentOwners.get(key);
-          if (!error && plannedOwner && plannedOwner !== assignmentOwner) {
+    for (let crewIndex = 0; crewIndex < crewPlans.length; crewIndex++) {
+      const plan = crewPlans[crewIndex];
+      const acceptedAssignments: typeof plan.assignments = [];
+      for (const assignment of plan.assignments) {
+        const key = `${ymd}:${assignment.workerId}`;
+        let error: Error | undefined;
+        if (seenAssignments.has(key)) {
+          error = new Error("The same worker is assigned more than once on this date.");
+        }
+        const plannedOwner = planState?.assignmentOwners.get(key);
+        if (!error && plannedOwner && plannedOwner !== assignmentOwner) {
+          error = new Error("A worker already has an assignment on this date.");
+        }
+        if (!error && !assignment.workerId.startsWith("planned-worker:")) {
+          const conflicts = await client.select({
+            sheetId: edlsCrews.sheetId,
+          }).from(edlsAssignments)
+            .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
+            .where(and(
+              eq(edlsAssignments.ymd, ymd),
+              eq(edlsAssignments.workerId, assignment.workerId),
+            ));
+          if (conflicts.some((conflict) => (
+            conflict.sheetId !== existing?.id
+            && !planState?.replacedSheetIds.has(conflict.sheetId)
+          ))) {
             error = new Error("A worker already has an assignment on this date.");
           }
-          if (!error && !assignment.workerId.startsWith("planned-worker:")) {
-            const conflicts = await client.select({
-              sheetId: edlsCrews.sheetId,
-            }).from(edlsAssignments)
-              .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
-              .where(and(
-                eq(edlsAssignments.ymd, ymd),
-                eq(edlsAssignments.workerId, assignment.workerId),
-              ));
-            if (conflicts.some((conflict) => (
-              conflict.sheetId !== existing?.id
-              && !planState?.replacedSheetIds.has(conflict.sheetId)
-            ))) {
-              error = new Error("A worker already has an assignment on this date.");
-            }
-          }
-          if (error) {
-            omittedAssignments.push(
-              assignmentOmission(error, crewIndex, assignment.sourceIndex, "preparation"),
-            );
-            if (assignment.recordKind) records.assignments[assignment.recordKind]--;
-            continue;
-          }
-          seenAssignments.add(key);
-          assignmentKeys.push(key);
-          acceptedAssignments.push(assignment);
         }
-        plan.assignments = acceptedAssignments;
+        if (error) {
+          omittedAssignments.push(
+            assignmentOmission(error, crewIndex, assignment.sourceIndex, "preparation"),
+          );
+          if (assignment.recordKind) records.assignments[assignment.recordKind]--;
+          continue;
+        }
+        seenAssignments.add(key);
+        assignmentKeys.push(key);
+        acceptedAssignments.push(assignment);
       }
+      plan.assignments = acceptedAssignments;
     }
     if (planState) {
       for (const [key, owner] of planState.assignmentOwners) {
@@ -1282,7 +1286,7 @@ async function reconcileSheet(
 }
 
 const STATUS_LABELS: Record<FreemanMigrateStatus, string> = {
-  draft: "Draft", request: "Requested", lock: "Scheduled", trash: "Discarded", reserved: "Reserved",
+  draft: "Draft", request: "Requested", lock: "Scheduled", reserved: "Reserved",
 };
 async function runStatus(
   status: FreemanMigrateStatus,
