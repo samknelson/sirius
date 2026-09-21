@@ -93,3 +93,33 @@ export async function runInTransaction<T>(
   }
   return result;
 }
+
+/**
+ * Run one recoverable unit inside the current transaction.
+ *
+ * PostgreSQL aborts a transaction after any failed statement until it is
+ * rolled back. A nested Drizzle transaction supplies the SAVEPOINT needed by
+ * callers that intentionally catch an item-level failure and continue the
+ * surrounding transaction. Deferred callbacks are isolated with the
+ * savepoint too: callbacks queued by a rolled-back item are discarded, while
+ * callbacks from a successful item join the outer transaction's queue.
+ */
+export async function runInSavepoint<T>(fn: () => Promise<T>): Promise<T> {
+  const existingTx = transactionStorage.getStore();
+  if (!existingTx) return runInTransaction(fn);
+
+  const outerAfterCommit = afterCommitStorage.getStore();
+  if (!outerAfterCommit) {
+    throw new Error("A savepoint requires an outer transaction with after-commit tracking.");
+  }
+
+  const nestedAfterCommit: Array<() => void> = [];
+  const result = await existingTx.transaction((savepoint) =>
+    afterCommitStorage.run(
+      nestedAfterCommit,
+      () => transactionStorage.run(savepoint, fn),
+    )
+  );
+  outerAfterCommit.push(...nestedAfterCommit);
+  return result;
+}

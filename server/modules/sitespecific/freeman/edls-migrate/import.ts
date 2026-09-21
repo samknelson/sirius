@@ -5,7 +5,7 @@ import {
   storage,
   FreemanEdlsFullResetUnexpectedError,
 } from "../../../../storage";
-import { getClient, runInTransaction } from "../../../../storage/transaction-context";
+import { getClient, runInSavepoint, runInTransaction } from "../../../../storage/transaction-context";
 import {
   validate as validateEdlsSheet,
   type CrewInput,
@@ -96,6 +96,16 @@ interface FreemanMigrateSheetResult {
   stage?: FreemanMigrateStage;
   code?: string;
   message?: string;
+  details?: string;
+  omittedAssignments?: FreemanAssignmentOmission[];
+}
+
+interface FreemanAssignmentOmission {
+  crewIndex: number;
+  assignmentIndex: number;
+  stage: FreemanMigrateStage;
+  code: string;
+  message: string;
   details?: string;
 }
 
@@ -358,6 +368,42 @@ function sheetFailure(error: unknown): FreemanMigrateError {
     stage: "processing",
     code: "unexpected_sheet_error",
     message: "The sheet could not be processed because of an unexpected local error.",
+  };
+}
+
+function assignmentOmission(
+  error: unknown,
+  crewIndex: number,
+  assignmentIndex: number,
+  phase: "preparation" | "save",
+): FreemanAssignmentOmission {
+  if (phase === "save") {
+    const diagnostic = safeCanonicalSaveDiagnostic(error);
+    return {
+      crewIndex,
+      assignmentIndex,
+      stage: "canonical_save",
+      code: "assignment_save_failed",
+      message: "The assignment could not be saved and was omitted.",
+      details: diagnostic.details,
+    };
+  }
+
+  const failure = sheetFailure(error);
+  const messages: Partial<Record<FreemanMigrateStage, string>> = {
+    relation_resolution: "The assignment's worker or classification could not be resolved.",
+    validation: "The assignment did not pass EDLS validation.",
+  };
+  return {
+    crewIndex,
+    assignmentIndex,
+    stage: failure.stage,
+    code: "assignment_preparation_failed",
+    message: messages[failure.stage]
+      ?? "The assignment could not be prepared and was omitted.",
+    ...(failure.stage === "validation" && failure.details
+      ? { details: failure.details }
+      : {}),
   };
 }
 
@@ -660,6 +706,29 @@ interface FreemanMigratePlanState {
   replacedSheetIds: Set<string>;
 }
 
+function clonePlanState(state: FreemanMigratePlanState): FreemanMigratePlanState {
+  return {
+    workers: new Map(state.workers),
+    workersByName: new Map(
+      [...state.workersByName].map(([key, ids]) => [key, new Set(ids)]),
+    ),
+    nextWorkerNumber: state.nextWorkerNumber,
+    assignmentOwners: new Map(state.assignmentOwners),
+    replacedSheetIds: new Set(state.replacedSheetIds),
+  };
+}
+
+function replacePlanState(
+  target: FreemanMigratePlanState,
+  source: FreemanMigratePlanState,
+): void {
+  target.workers = source.workers;
+  target.workersByName = source.workersByName;
+  target.nextWorkerNumber = source.nextWorkerNumber;
+  target.assignmentOwners = source.assignmentOwners;
+  target.replacedSheetIds = source.replacedSheetIds;
+}
+
 function workerNameKey(given: string, family: string): string {
   return `${given.trim().toLowerCase()}\u0000${family.trim().toLowerCase()}`;
 }
@@ -901,6 +970,7 @@ async function reconcileSheet(
   sheetId?: string;
   records: FreemanMigrateRecordCounts;
   workers: Array<{ id: string; kind: "created" | "updated" }>;
+  omittedAssignments: FreemanAssignmentOmission[];
 }> {
   const sheet = record(source);
   const nid = sourceNid(pick(sheet, "nid", "node_id", "nodeId", "id"));
@@ -931,6 +1001,7 @@ async function reconcileSheet(
     startYmd: ymd, endYmd: ymd,
   });
   const crews = sourceCrew(sheet);
+  const omittedAssignments: FreemanAssignmentOmission[] = [];
   const crewPlans: Array<{
     identity: string;
     input: CrewInput;
@@ -938,6 +1009,8 @@ async function reconcileSheet(
       workerId: string;
       workerKind: "created" | "updated";
       data: Record<string, unknown>;
+      sourceIndex: number;
+      recordKind?: "created" | "updated";
     }>;
   }> = [];
   for (let index = 0; index < crews.length; index++) {
@@ -952,35 +1025,56 @@ async function reconcileSheet(
       workerId: string;
       workerKind: "created" | "updated";
       data: Record<string, unknown>;
+      sourceIndex: number;
+      recordKind?: "created" | "updated";
     }> = [];
     for (let assignmentIndex = 0; assignmentIndex < assignments.length; assignmentIndex++) {
       const assignment = assignments[assignmentIndex];
       const assignmentRecord = record(assignment);
-      const resolvedWorker = await resolveWorker(
-        assignmentRecord,
-        live,
-        employerId,
-        ymd,
-        idTypes,
-        planState,
-      );
-      const extra = record(assignmentRecord.assignment_extra);
-      const classificationId = await resolveNamed(
-        optionsClassifications,
-        text(pick(extra, "classification")),
-        live,
-      );
-      if (resolvedWorker) {
-        workersResolved.push({
-          workerId: resolvedWorker.id,
-          workerKind: resolvedWorker.kind,
-          data: {
-            startTime: text(pick(extra, "time")),
-            note: text(pick(extra, "note")),
-            classificationId,
-            freemanMigration: { source: assignmentRecord },
-          },
-        });
+      const assignmentPlanState = !live && planState
+        ? clonePlanState(planState)
+        : planState;
+      const prepare = async () => {
+        const resolvedWorker = await resolveWorker(
+          assignmentRecord,
+          live,
+          employerId,
+          ymd,
+          idTypes,
+          assignmentPlanState,
+        );
+        const extra = record(assignmentRecord.assignment_extra);
+        const classificationId = await resolveNamed(
+          optionsClassifications,
+          text(pick(extra, "classification")),
+          live,
+        );
+        return { resolvedWorker, extra, classificationId };
+      };
+      try {
+        const prepared = live
+          ? await runInSavepoint(prepare)
+          : await prepare();
+        if (assignmentPlanState && planState && assignmentPlanState !== planState) {
+          replacePlanState(planState, assignmentPlanState);
+        }
+        if (prepared.resolvedWorker) {
+          workersResolved.push({
+            workerId: prepared.resolvedWorker.id,
+            workerKind: prepared.resolvedWorker.kind,
+            sourceIndex: assignmentIndex,
+            data: {
+              startTime: text(pick(prepared.extra, "time")),
+              note: text(pick(prepared.extra, "note")),
+              classificationId: prepared.classificationId,
+              freemanMigration: { source: assignmentRecord },
+            },
+          });
+        }
+      } catch (error) {
+        omittedAssignments.push(
+          assignmentOmission(error, index, assignmentIndex, "preparation"),
+        );
       }
     }
     const count = numberValue(pick(crew, "worker_count", "workerCount", "count"), workersResolved.length);
@@ -1053,8 +1147,10 @@ async function reconcileSheet(
     if (status === "trash") continue;
     for (const assignment of plan.assignments) {
       if (consumeCount(existingAssignmentWorkerCounts, assignment.workerId)) {
+        assignment.recordKind = "updated";
         records.assignments.updated++;
       } else {
+        assignment.recordKind = "created";
         records.assignments.created++;
       }
     }
@@ -1068,34 +1164,47 @@ async function reconcileSheet(
     const assignmentKeys: string[] = [];
     const assignmentOwner = existing?.id ?? `planned-sheet:${nid}`;
     if (status !== "trash") {
-      for (const plan of crewPlans) {
+      for (let crewIndex = 0; crewIndex < crewPlans.length; crewIndex++) {
+        const plan = crewPlans[crewIndex];
+        const acceptedAssignments: typeof plan.assignments = [];
         for (const assignment of plan.assignments) {
           const key = `${ymd}:${assignment.workerId}`;
+          let error: Error | undefined;
           if (seenAssignments.has(key)) {
-            throw new Error("The same worker is assigned more than once on this date.");
+            error = new Error("The same worker is assigned more than once on this date.");
+          }
+          const plannedOwner = planState?.assignmentOwners.get(key);
+          if (!error && plannedOwner && plannedOwner !== assignmentOwner) {
+            error = new Error("A worker already has an assignment on this date.");
+          }
+          if (!error && !assignment.workerId.startsWith("planned-worker:")) {
+            const conflicts = await client.select({
+              sheetId: edlsCrews.sheetId,
+            }).from(edlsAssignments)
+              .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
+              .where(and(
+                eq(edlsAssignments.ymd, ymd),
+                eq(edlsAssignments.workerId, assignment.workerId),
+              ));
+            if (conflicts.some((conflict) => (
+              conflict.sheetId !== existing?.id
+              && !planState?.replacedSheetIds.has(conflict.sheetId)
+            ))) {
+              error = new Error("A worker already has an assignment on this date.");
+            }
+          }
+          if (error) {
+            omittedAssignments.push(
+              assignmentOmission(error, crewIndex, assignment.sourceIndex, "preparation"),
+            );
+            if (assignment.recordKind) records.assignments[assignment.recordKind]--;
+            continue;
           }
           seenAssignments.add(key);
           assignmentKeys.push(key);
-          const plannedOwner = planState?.assignmentOwners.get(key);
-          if (plannedOwner && plannedOwner !== assignmentOwner) {
-            throw new Error("A worker already has an assignment on this date.");
-          }
-          if (assignment.workerId.startsWith("planned-worker:")) continue;
-          const conflicts = await client.select({
-            sheetId: edlsCrews.sheetId,
-          }).from(edlsAssignments)
-            .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
-            .where(and(
-              eq(edlsAssignments.ymd, ymd),
-              eq(edlsAssignments.workerId, assignment.workerId),
-            ));
-          if (conflicts.some((conflict) => (
-            conflict.sheetId !== existing?.id
-            && !planState?.replacedSheetIds.has(conflict.sheetId)
-          ))) {
-            throw new Error("A worker already has an assignment on this date.");
-          }
+          acceptedAssignments.push(assignment);
         }
+        plan.assignments = acceptedAssignments;
       }
     }
     if (planState) {
@@ -1111,6 +1220,7 @@ async function reconcileSheet(
       kind: existing ? "updated" : "created",
       records,
       workers: Array.from(workerKinds, ([id, kind]) => ({ id, kind })),
+      omittedAssignments,
     };
   }
   const data = {
@@ -1147,12 +1257,27 @@ async function reconcileSheet(
     );
   }
   const targetId = result.sheet.id;
+  for (const omission of result.omittedAssignments) {
+    const omitted = crewPlans[omission.crewIndex]
+      ?.assignments[omission.assignmentIndex];
+    const sourceIndex = omitted?.sourceIndex ?? omission.assignmentIndex;
+    if (omitted?.recordKind) records.assignments[omitted.recordKind]--;
+    omittedAssignments.push(
+      assignmentOmission(
+        omission.error,
+        omission.crewIndex,
+        sourceIndex,
+        "save",
+      ),
+    );
+  }
   await storage.freemanEdlsMigrateStaging.setTargetSheetId(nid, targetId, sheet);
   return {
     kind: result.kind,
     sheetId: targetId,
     records,
     workers: Array.from(workerKinds, ([id, kind]) => ({ id, kind })),
+    omittedAssignments,
   };
 }
 
@@ -1254,6 +1379,9 @@ async function runStatus(
           ? reconciled.kind === "created" ? "would_create" : "would_update"
           : reconciled.kind,
         records: reconciled.records,
+        ...(reconciled.omittedAssignments.length
+          ? { omittedAssignments: reconciled.omittedAssignments }
+          : {}),
       });
     } catch (error) {
       const failure = sheetFailure(error);

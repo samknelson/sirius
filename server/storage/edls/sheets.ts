@@ -22,7 +22,7 @@ import {
 import { eq, ne, desc, sql, and, gte, lte, ilike, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { defineLoggingConfig } from "../middleware/logging";
-import { getClient, runInTransaction, onAfterCommit } from "../transaction-context";
+import { getClient, runInSavepoint, runInTransaction, onAfterCommit } from "../transaction-context";
 import { eventBus, EventType } from "../../services/event-bus";
 import { logger } from "../../logger";
 import { storage } from "../index";
@@ -71,6 +71,12 @@ export type CrewInput = Omit<InsertEdlsCrew, 'sheetId'> & { id?: string };
 export interface EdlsImportedCrewInput {
   crew: CrewInput;
   assignments: Array<Omit<InsertEdlsAssignment, "crewId">>;
+}
+
+export interface EdlsImportAssignmentOmission {
+  crewIndex: number;
+  assignmentIndex: number;
+  error: unknown;
 }
 
 /**
@@ -175,7 +181,11 @@ export interface EdlsSheetsStorage {
     id: string | undefined,
     sheet: InsertEdlsSheet,
     crews: EdlsImportedCrewInput[],
-  ): Promise<{ kind: "created" | "updated"; sheet: EdlsSheetWithCrews }>;
+  ): Promise<{
+    kind: "created" | "updated";
+    sheet: EdlsSheetWithCrews;
+    omittedAssignments: EdlsImportAssignmentOmission[];
+  }>;
   delete(id: string): Promise<boolean>;
   /**
    * Snapshot export: a self-contained, versioned bundle of the sheet with
@@ -630,7 +640,11 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       id: string | undefined,
       insertSheet: InsertEdlsSheet,
       importedCrews: EdlsImportedCrewInput[],
-    ): Promise<{ kind: "created" | "updated"; sheet: EdlsSheetWithCrews }> {
+    ): Promise<{
+      kind: "created" | "updated";
+      sheet: EdlsSheetWithCrews;
+      omittedAssignments: EdlsImportAssignmentOmission[];
+    }> {
       const crewInputs = importedCrews.map(({ crew }) => crew);
       await validate.validateOrThrow({ ...insertSheet, _crews: crewInputs });
 
@@ -670,19 +684,33 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
             return { ...crewData, sheetId: saved.id, sequence: index };
           }))
           : [];
+        const omittedAssignments: EdlsImportAssignmentOmission[] = [];
         if (saved.status !== "trash") {
           for (let index = 0; index < createdCrews.length; index++) {
-            for (const assignment of importedCrews[index]?.assignments ?? []) {
-              await storage.edlsAssignments.create({
-                ...assignment,
-                crewId: createdCrews[index].id,
-              });
+            const assignments = importedCrews[index]?.assignments ?? [];
+            for (let assignmentIndex = 0; assignmentIndex < assignments.length; assignmentIndex++) {
+              try {
+                await runInSavepoint(() => storage.edlsAssignments.create({
+                  ...assignments[assignmentIndex],
+                  crewId: createdCrews[index].id,
+                }));
+              } catch (error) {
+                omittedAssignments.push({
+                  crewIndex: index,
+                  assignmentIndex,
+                  error,
+                });
+              }
             }
           }
         }
 
         await emitSheetSaved(saved, existing?.status ?? null);
-        return { kind, sheet: { ...saved, crews: createdCrews } };
+        return {
+          kind,
+          sheet: { ...saved, crews: createdCrews },
+          omittedAssignments,
+        };
       });
     },
 
