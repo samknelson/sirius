@@ -25,6 +25,7 @@ import {
   optionsEdlsShowStatus,
   optionsEdlsTasks,
   optionsEmploymentStatus,
+  optionsWorkerMs,
   facilities,
   users,
   workerIds,
@@ -774,6 +775,18 @@ async function resolveWorker(
     };
   }
 
+  const memberStatusSiriusId = text(pick(source, "worker_ms"));
+  const [memberStatus] = memberStatusSiriusId
+    ? await getClient()
+      .select({
+        id: optionsWorkerMs.id,
+        industryId: optionsWorkerMs.industryId,
+      })
+      .from(optionsWorkerMs)
+      .where(eq(optionsWorkerMs.siriusId, memberStatusSiriusId))
+      .limit(1)
+    : [];
+
   if (!live) {
     const id = `planned-worker:${einAlias}`;
     if (planState) planState.nextWorkerNumber++;
@@ -792,6 +805,14 @@ async function resolveWorker(
     value: normalizedEin,
   });
   await storage.workerEdls.setActive(worker.id, false);
+  if (memberStatus) {
+    await storage.workerMsh.createWorkerMsh({
+      workerId: worker.id,
+      date: ymd,
+      msId: memberStatus.id,
+      industryId: memberStatus.industryId,
+    });
+  }
   await ensureWorkerEmployment(worker.id, employerId, ymd);
   return { id: worker.id, kind: "created" };
 }
