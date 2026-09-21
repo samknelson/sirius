@@ -35,6 +35,7 @@ import {
   type EdlsPassportExportQuery,
   type EdlsPassportExportPage,
 } from "./passport-export";
+import { getEdlsSheetsPageOrder } from "./sheets-page-order";
 
 /**
  * The dispatch_job_group table is owned by the `dispatch.job_group`
@@ -375,10 +376,11 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       const joinedQuery = withJobGroups
         ? baseQuery.leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
         : baseQuery;
+      const pageOrder = getEdlsSheetsPageOrder();
       
       const rows = whereCondition
-        ? await joinedQuery.where(whereCondition).orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit)
-        : await joinedQuery.orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit);
+        ? await joinedQuery.where(whereCondition).orderBy(...pageOrder).limit(limit).offset(page * limit)
+        : await joinedQuery.orderBy(...pageOrder).limit(limit).offset(page * limit);
       
       const data: EdlsSheetWithRelations[] = rows.map(row => ({
         ...row.sheet,

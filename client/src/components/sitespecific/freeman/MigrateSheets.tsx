@@ -39,7 +39,7 @@ import { Label } from "@/components/ui/label";
 import { getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-type StatusName = "draft" | "request" | "lock" | "trash" | "reserved";
+type StatusName = "draft" | "request" | "lock" | "reserved";
 type Cursor = { startDate?: string; page?: number; sweepStartedAt?: string };
 type StatusResponse = {
   variableName: string;
@@ -130,12 +130,11 @@ type RunResponse = {
   durationMs: number;
 };
 
-const STATUS_ORDER: StatusName[] = ["draft", "request", "lock", "trash", "reserved"];
+const STATUS_ORDER: StatusName[] = ["draft", "request", "lock", "reserved"];
 const STATUS_LABELS: Record<StatusName, string> = {
   draft: "Draft",
   request: "Requested",
   lock: "Scheduled",
-  trash: "Discarded",
   reserved: "Reserved",
 };
 const STATUS_KEY = "/api/sitespecific/freeman/edls-migrate/import/status";
