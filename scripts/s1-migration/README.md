@@ -428,8 +428,9 @@ doesn't match. It must never point at production.
 
 - `load-benefit-history.ts` — T17: `sirius_trust_worker_benefit` coverage
   spans → per-month `trust_wmb` rows through `storage.trust.wmb`
-  (notification+charge suppressed). Expansion is calendar-month inclusive of
-  both endpoints. OPEN spans (no end date) require an explicit
+  (notification+charge suppressed). A month is covered only when the span
+  includes that month's 15th; an S1 termination before the checkpoint marks
+  that month uncovered. OPEN spans (no end date) require an explicit
   `--open-end-through YYYY-MM` horizon — the loader refuses to guess the
   fund's intent (prod needs a ruling: likely the freeze month). Dependent
   rows: `field_sirius_contact_relation` → id_map `relation`; the relation's

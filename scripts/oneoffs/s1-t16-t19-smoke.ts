@@ -41,7 +41,7 @@ const N = {
   election1: 99900301, // typed FirstTime, closed span
   election2: 99900302, // untyped, open, carries relation
   election3: 99900303, // untyped, inactive → end-dated from changed
-  wb1: 99900401, // closed span 2024-01-15 → 2024-03-10 (3 months, b1)
+  wb1: 99900401, // closed span 2024-01-15 → 2024-03-10 (Jan-Feb checkpoints, b1)
   wb2: 99900402, // open span 2026-06-01 → through 2026-08 (3 months, b1)
   wb3: 99900403, // dependent via relation (1 month, b1, worker w2)
   wb4: 99900404, // inactive, end-dated from changed (4 months, b2)
@@ -80,7 +80,8 @@ function runLoader(script: string, args: string[]): { status: number; report: Re
   let report: Record<string, any> = {};
   if (idx >= 0) {
     try {
-      report = JSON.parse(out.slice(idx + 1));
+      const result = JSON.parse(out.slice(idx + 1)) as Record<string, any>;
+      report = { ...result, ...result.summary, ...result.detail };
     } catch {
       /* report stays empty; caller's asserts will fail loudly */
     }
@@ -282,7 +283,7 @@ async function main() {
     const t17 = runLoader("load-benefit-history.ts", ["--open-end-through", "2026-08", "--allow-rejects", "benefit_unmapped"]);
     check("t17 exit 0", t17.status === 0, t17.status);
     check("t17 resolvedSpans 5", t17.report.resolvedSpans === 5, t17.report.resolvedSpans);
-    check("t17 monthsCreated 12", t17.report.monthsCreated === 12, t17.report.monthsCreated);
+    check("t17 monthsCreated 11", t17.report.monthsCreated === 11, t17.report.monthsCreated);
     check("t17 openSpans 1", t17.report.openSpans === 1, t17.report.openSpans);
     check("t17 dependentSpans 1", t17.report.dependentSpans === 1, t17.report.dependentSpans);
     check("t17 employerFromElection 1", t17.report.employerFromElection === 1, t17.report.employerFromElection);
@@ -300,11 +301,19 @@ async function main() {
     );
     check("t17 wb5 employer from election", w5Rows[0]?.employer_id === e1, w5Rows[0]);
 
+    // Simulate a row created by the former end-month-inclusive logic. The
+    // reconciliation must retract March while preserving Jan-Feb.
+    await storage.trust.wmb.createWorkerBenefit({
+      workerId: w1, employerId: e1, benefitId: b1, month: 3, year: 2024,
+      sourceRelationId: null,
+    });
+
     console.log("T17 run 2 (idempotent adopt):");
     const t17b = runLoader("load-benefit-history.ts", ["--open-end-through", "2026-08", "--allow-rejects", "benefit_unmapped"]);
     check("t17b exit 0", t17b.status === 0, t17b.status);
     check("t17b monthsCreated 0", t17b.report.monthsCreated === 0, t17b.report.monthsCreated);
-    check("t17b monthsAdopted 12", t17b.report.monthsAdopted === 12, t17b.report.monthsAdopted);
+    check("t17b monthsDeleted 1 (old termination month)", t17b.report.monthsDeleted === 1, t17b.report.monthsDeleted);
+    check("t17b monthsAdopted 11", t17b.report.monthsAdopted === 11, t17b.report.monthsAdopted);
     check("t17b anchorsAdopted 5", t17b.report.anchorsAdopted === 5, t17b.report.anchorsAdopted);
     check("t17b verify clean", t17b.report.verifyFailures === 0, t17b.report.verifyFailures);
 

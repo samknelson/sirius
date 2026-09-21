@@ -67,6 +67,35 @@ export function compareYm(a: Ym, b: Ym): number {
   return a.y !== b.y ? a.y - b.y : a.m - b.m;
 }
 
+function nextYm(ym: Ym): Ym {
+  return ym.m === 12 ? { y: ym.y + 1, m: 1 } : { y: ym.y, m: ym.m + 1 };
+}
+
+function previousYm(ym: Ym): Ym {
+  return ym.m === 1 ? { y: ym.y - 1, m: 12 } : { y: ym.y, m: ym.m - 1 };
+}
+
+/**
+ * Convert an inclusive S1 date span to S2 covered months. A month is covered
+ * only when its 15th falls inside the span. S1 termination dates therefore
+ * describe the first uncovered period when they precede that checkpoint.
+ *
+ * A bounded span can legitimately return start > end: it contains no monthly
+ * checkpoint and must expand to zero rows. A null end remains open-ended.
+ */
+export function coveredMonthRangeAtCheckpoint(
+  startYmd: string,
+  endYmd: string | null,
+): { start: Ym; end: Ym | null } {
+  const startMonth = ymOfYmd(startYmd);
+  const start = Number(startYmd.slice(8, 10)) <= 15 ? startMonth : nextYm(startMonth);
+  if (endYmd == null) return { start, end: null };
+
+  const endMonth = ymOfYmd(endYmd);
+  const end = Number(endYmd.slice(8, 10)) >= 15 ? endMonth : previousYm(endMonth);
+  return { start, end };
+}
+
 /** Safety valve for span expansion: a span longer than this many months is
  * almost certainly a bad date (e.g. year 9999) — reject, never expand. */
 export const MAX_SPAN_MONTHS = 1200;

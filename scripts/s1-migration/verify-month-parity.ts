@@ -12,7 +12,7 @@
  *   S2 view:  trust_wmb rows (worker, employer, benefit) for that month —
  *             what S2 believes about who held which benefit.
  *   S1 view:  staged sirius_trust_worker_benefit coverage SPANS whose
- *             inclusive month range covers that month, resolved through the
+ *             span includes that month's 15th, resolved through the
  *             exact T17 rules (id_map crosswalk, dependents via relations →
  *             worker_2, employer fallback via the linked election then the
  *             S1 employer NID / S2 Sirius ID 15283150 (`UNKNOWN`),
@@ -79,11 +79,10 @@ import { ensureIdMap, getMappings } from "./lib/idmap";
 import { RejectLog, pagedStaged, stagedCountOf, chunk, strOf, targetNidOf, toYmd, epochToYmd, yesNo } from "./lib/loader-utils";
 import {
   resolveBenefitNidMap,
-  ymOfYmd,
   ymKey,
   parseYm,
   compareYm,
-  monthsBetweenInclusive,
+  coveredMonthRangeAtCheckpoint,
   MAX_SPAN_MONTHS,
   type Ym,
 } from "./lib/resolvers";
@@ -229,12 +228,13 @@ const stagedSpansSource: EvidenceSource = {
           endYmd = changedYmd;
           inactiveEnded = true;
         }
-        const startYm = ymOfYmd(startYmd);
-        let endYm: Ym | null = endYmd ? ymOfYmd(endYmd) : null;
-        if (endYm && compareYm(endYm, startYm) < 0) {
+        if (endYmd && endYmd < startYmd) {
           unresolved.add("end_before_start", { nid: s.nid }, s.nid);
           continue;
         }
+        const coveredRange = coveredMonthRangeAtCheckpoint(startYmd, endYmd);
+        const startYm = coveredRange.start;
+        let endYm = coveredRange.end;
         // open spans: EXACT T17 semantics — no horizon means the loader never
         // loaded them, so the harness refuses to guess about them either
         if (!endYm) {
@@ -250,9 +250,9 @@ const stagedSpansSource: EvidenceSource = {
           endYm = OPEN_END_THROUGH;
         }
         // mirror the loader's bad-date tripwire: absurd spans were never loaded
-        try {
-          if (monthsBetweenInclusive(startYm, endYm).length > MAX_SPAN_MONTHS) throw new Error("too long");
-        } catch {
+        const spanMonths =
+          (endYm.y * 12 + endYm.m - 1) - (startYm.y * 12 + startYm.m - 1) + 1;
+        if (spanMonths > MAX_SPAN_MONTHS) {
           unresolved.add("span_too_long", { nid: s.nid }, s.nid);
           continue;
         }

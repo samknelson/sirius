@@ -12,7 +12,12 @@ process.env.TZ = "Pacific/Kiritimati";
 
 import { describe, expect, it } from "vitest";
 import { epochToYmd, parseUtcInstant, toYmd } from "../../scripts/s1-migration/lib/loader-utils";
-import { epochToLaYm, epochToLaYmd, laStatementYmd } from "../../scripts/s1-migration/lib/resolvers";
+import {
+  coveredMonthRangeAtCheckpoint,
+  epochToLaYm,
+  epochToLaYmd,
+  laStatementYmd,
+} from "../../scripts/s1-migration/lib/resolvers";
 import { currentLaMonth } from "../../scripts/s1-migration/sync-config";
 
 const sec = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
@@ -35,6 +40,41 @@ describe("date-only values (dob, coverage/policy dates): the string IS the value
     expect(toYmd("2025-02-30 00:00:00")).toBeNull();
     expect(toYmd("2023-02-29 00:00:00")).toBeNull();
     expect(toYmd("not a date")).toBeNull();
+  });
+});
+
+describe("S1 benefit spans use the 15th as the covered-month checkpoint", () => {
+  it("excludes a first-of-following-month termination", () => {
+    expect(coveredMonthRangeAtCheckpoint("2024-01-01", "2024-02-01")).toEqual({
+      start: { y: 2024, m: 1 },
+      end: { y: 2024, m: 1 },
+    });
+  });
+
+  it("handles both sides of the checkpoint without manufacturing a month", () => {
+    expect(coveredMonthRangeAtCheckpoint("2024-01-14", "2024-01-14")).toEqual({
+      start: { y: 2024, m: 1 },
+      end: { y: 2023, m: 12 },
+    });
+    expect(coveredMonthRangeAtCheckpoint("2024-01-16", "2024-02-14")).toEqual({
+      start: { y: 2024, m: 2 },
+      end: { y: 2024, m: 1 },
+    });
+    expect(coveredMonthRangeAtCheckpoint("2024-01-15", "2024-02-15")).toEqual({
+      start: { y: 2024, m: 1 },
+      end: { y: 2024, m: 2 },
+    });
+    expect(coveredMonthRangeAtCheckpoint("2024-01-16", "2024-02-16")).toEqual({
+      start: { y: 2024, m: 2 },
+      end: { y: 2024, m: 2 },
+    });
+  });
+
+  it("keeps open-ended spans open while shifting a post-checkpoint start", () => {
+    expect(coveredMonthRangeAtCheckpoint("2024-01-16", null)).toEqual({
+      start: { y: 2024, m: 2 },
+      end: null,
+    });
   });
 });
 

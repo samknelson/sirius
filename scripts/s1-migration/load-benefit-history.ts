@@ -56,8 +56,9 @@
  * GRAIN CONVERSION (unchanged from the freeze loader): S1
  * `sirius_trust_worker_benefit` rows are coverage SPANS (date_start ..
  * optional date_end); S2 `trust_wmb` is MONTH grain (month int + year int,
- * unique per worker/employer/benefit/month). End date mid-month → that month
- * is still covered (inclusive). Spans longer than MAX_SPAN_MONTHS (100
+ * unique per worker/employer/benefit/month). A month is covered when the S1
+ * span includes that month's 15th; an S1 end date before the checkpoint is
+ * the first uncovered month. Spans longer than MAX_SPAN_MONTHS (100
  * years) are rejects. An open span STARTING after the horizon is no longer a
  * reject (future-dated S1 enrollments must not fail a daily sync): it holds
  * an empty month set until the horizon catches up, counted as
@@ -109,10 +110,10 @@ import { RejectLog, pagedStaged, stagedCountOf, chunk, strOf, targetNidOf, toYmd
 import { makeProgressLogger } from "./lib/progress";
 import {
   resolveBenefitNidMap,
-  ymOfYmd,
   ymKey,
   parseYm,
   compareYm,
+  coveredMonthRangeAtCheckpoint,
   epochToLaYm,
   MAX_SPAN_MONTHS,
   type Ym,
@@ -137,7 +138,7 @@ const DRY_RUN = process.argv.includes("--dry-run");
  * date conventions) changes so scratch rows re-resolve on their next run. */
 // UNKNOWN fallback only changes rows that formerly rejected and therefore
 // have no accepted scratch entry; they already re-resolve on every run.
-const LOGIC_VERSION = 1;
+const LOGIC_VERSION = 2;
 const FORCE_RECONCILE = parseForceReconcile();
 const ALLOWED_FINDINGS = parseAllowedFindings();
 const ALLOWED_REJECTS: string[] = (() => {
@@ -635,12 +636,13 @@ async function main() {
       inactiveEndDated++;
     }
 
-    const startYm = ymOfYmd(startYmd);
-    const endYm: Ym | null = endYmd ? ymOfYmd(endYmd) : null;
-    if (endYm && compareYm(endYm, startYm) < 0) {
+    if (endYmd && endYmd < startYmd) {
       rejects.add("end_before_start", { nid }, nid);
       continue;
     }
+    const coveredRange = coveredMonthRangeAtCheckpoint(startYmd, endYmd);
+    const startYm = coveredRange.start;
+    const endYm = coveredRange.end;
     const startIdx = idxOfYm(startYm);
     const endIdx = endYm ? idxOfYm(endYm) : null;
     if (endIdx == null) {
