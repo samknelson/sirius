@@ -105,6 +105,24 @@ S1 keeps person data on a separate `sirius_contact` node referenced by the worke
 
 ### 5b. Elections — bundle `node/sirius_trust_worker_election` → `worker_trust_elections`
 
+#### Appeal election exemptions
+
+The nine exact normalized election titles below are also reconciled into
+`trust_benefit_eligibility_exemptions`.  Delta titles map to the Delta benefit
+and `sitespecific-bao-start-delta`; HealthNet titles map to HealthNet and
+`sitespecific-bao-start-healthnet`; Kaiser titles map to Kaiser and
+`sitespecific-bao-start-kaiser`.  Matching is exact after lower-casing and
+removing non-alphanumeric characters; unknown appeal titles are rejected.
+Rows carry `data.source.kind=s1_appeal_election` and the immutable S1 election
+NID.  Only rows with that provenance are reconciled or removed. Manual rows
+and native `bao_appeal` rows are never adopted.
+
+Catalog: `EVENT CENTER Plan - Delta Appeal`, `Participation Agreement - Delta
+Appeal`, `RESTAURANT Plan - Delta Appeal`, `UNITE HERE Plan - Delta Appeal`,
+`EVENT CENTER Plan - HealthNet Appeal`, `UNITE HERE Plan - HealthNet Appeal`,
+`EVENT CENTER Plan - Kaiser Appeal`, `RESTAURANT Plan - Kaiser Appeal`, and
+`UNITE HERE Plan - Kaiser Appeal`.
+
 | S1 field | S2 destination | Class |
 |---|---|---|
 | `field_sirius_trust_benefits` (`_target_id`, multi delta≤3) | `worker_trust_elections.benefit_ids` (array of S2 benefit ids) | NEEDS-TRANSFORM T16 |

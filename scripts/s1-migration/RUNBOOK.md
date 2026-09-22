@@ -336,6 +336,14 @@ Key ordering facts:
 - **relationships after contacts/workers** — running relationships first breaks
   worker-number sequence initialization (setval ordering).
 - **policies after employers**, **elections after policies + benefit config**.
+- Appeal elections are reconciled by T16 using the nine-title catalog in
+  `docs/s1-migration/02-mapping.md`. The exemption row keeps its identity when
+  the worker, benefit, or dates are corrected; a valid withdrawal is end-dated.
+  Empty or partial election or policy staging never sweeps migration-owned exemptions. Operators
+  must resolve `appeal_*` reject classes before final-freeze. After a retry,
+  confirm `appealExemptions.deletionSweepComplete=true`, zero
+  `appeal_exemption_verify_failed`, and the create/update/unchanged/deleted
+  counts against the prior report; reruns are safe and idempotent.
 - log-notes needs contacts AND workers (handler refs resolve to a real worker
   through either a mapped worker or mapped contact), and users must run before
   log-notes so imported notes can resolve their S1 creator accounts; dev also needs

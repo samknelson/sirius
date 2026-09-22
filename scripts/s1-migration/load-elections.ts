@@ -69,6 +69,7 @@ import { ensureIdMap, getMappings, putMapping, advanceFingerprints } from "./lib
 import {
   RejectLog,
   pagedStaged,
+  loadStaged,
   stagedCountOf,
   chunk,
   strOf,
@@ -93,6 +94,14 @@ import {
   sweepDeletions,
   type SyncFinding,
 } from "./lib/sync";
+import {
+  APPEAL_CATALOG,
+  appealForPolicyTitle,
+  benefitKindForExactName,
+  classifyAppealExemption,
+  deletedAppealElectionNids,
+  normalizeAppealName,
+} from "./lib/appeal-catalog";
 
 const LOADER = "t16-elections";
 const BUNDLE = "sirius_trust_worker_election";
@@ -100,7 +109,7 @@ const DRY_RUN = process.argv.includes("--dry-run");
 /** Loader logic version — BUMP whenever resolution logic (type map, date
  * conventions, data stash shape) changes so mapped rows re-reconcile on
  * their next run. */
-const LOGIC_VERSION = 1;
+const LOGIC_VERSION = 2;
 const FORCE_RECONCILE = parseForceReconcile();
 const ALLOWED_FINDINGS = parseAllowedFindings();
 const ALLOWED_REJECTS: string[] = (() => {
@@ -138,7 +147,7 @@ const CANONICAL_TYPES: Record<string, EnrollmentType> = {
   cobra: "cobra",
 };
 
-const normalizeTypeName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+const normalizeTypeName = normalizeAppealName;
 
 /** All reasons are row-skipping (fatal for that election). */
 const FATAL_REASONS = [
@@ -157,6 +166,15 @@ const FATAL_REASONS = [
   "election_create_failed",
   "election_update_failed",
   "mapped_row_missing",
+  "appeal_name_unmapped",
+  "appeal_worker_unmapped",
+  "appeal_benefit_unmapped",
+  "appeal_start_missing",
+  "appeal_bad_end_date",
+  "appeal_end_not_after_start",
+  "appeal_withdrawal_missing",
+  "appeal_exemption_write_failed",
+  "appeal_exemption_verify_failed",
 ] as const;
 
 function classifyError(e: unknown): string {
@@ -207,6 +225,241 @@ function rowMatches(row: CurrentRow, w: ResolvedElection): boolean {
     JSON.stringify(row.relationship_ids ?? []) === JSON.stringify(w.relationshipIds) &&
     canonicalJson(rowData) === canonicalJson(w.data)
   );
+}
+
+async function reconcileAppealExemptions(
+  report: Record<string, unknown>,
+  rejects: RejectLog,
+  summary: ReturnType<typeof emptySummary>,
+  stagedCount: number,
+): Promise<void> {
+  const stagedBenefits = await loadStaged("sirius_trust_benefit");
+  const policyRows = [...await loadStaged("sirius_json_definition"), ...await loadStaged("sirius_trust_policy")];
+  const policyByNid = new Map<number, typeof policyRows>();
+  for (const p of policyRows) policyByNid.set(p.nid, [...(policyByNid.get(p.nid) ?? []), p]);
+  const benefitRes = await resolveBenefitNidMap(LOADER, DRY_RUN);
+  const benefitByKind = new Map<string, { target?: string; reason?: "missing" | "ambiguous" | "target_unmapped"; candidates: number }>();
+  for (const kind of ["delta", "healthnet", "kaiser"] as const) {
+    const candidates = stagedBenefits.filter((benefit) => benefitKindForExactName(benefit.title) === kind);
+    if (candidates.length !== 1) {
+      benefitByKind.set(kind, {
+        reason: candidates.length === 0 ? "missing" : "ambiguous",
+        candidates: candidates.length,
+      });
+      continue;
+    }
+    const target = benefitRes.map.get(candidates[0].nid);
+    benefitByKind.set(kind, target
+      ? { target, candidates: 1 }
+      : { reason: "target_unmapped", candidates: 1 });
+  }
+  const ownedNids = (await db.execute(sql`
+    SELECT DISTINCT (data->'source'->>'electionNid')::int AS nid
+      FROM trust_benefit_eligibility_exemptions
+     WHERE data->'source'->>'kind' = ${"s1_appeal_election"}
+  `) as unknown as { rows: Array<{ nid: number }> }).rows.map((row) => Number(row.nid));
+  const ownedNidSet = new Set(ownedNids);
+  const stagedElectionNids = new Set<number>();
+  const seenAppeals = new Set<number>();
+  const ownedForDry = DRY_RUN
+    ? await storage.trustBenefitEligibilityExemptions.listByS1AppealElectionNids(ownedNids)
+    : [];
+  let created = 0;
+  let updated = 0;
+  let unchanged = 0;
+  const expected = new Map<number, { worker: string; benefitId: string; plugin: string; start: string; end: string | null }>();
+  for await (const appealRows of pagedStaged(BUNDLE)) {
+    const pageWorkerNids = appealRows
+      .filter((row) => {
+        const policyNid = targetNidOf(row.fields, "field_sirius_trust_policy");
+        const matches = policyNid == null ? [] : (policyByNid.get(policyNid) ?? []);
+        return matches.some((match) => appealForPolicyTitle(match.title) != null);
+      })
+      .map((row) => targetNidOf(row.fields, "field_sirius_worker"))
+      .filter((nid): nid is number => nid != null);
+    const pageWorkerMap = await getMappings("worker", pageWorkerNids);
+    for (const row of appealRows) {
+    stagedElectionNids.add(row.nid);
+    const policyNid = targetNidOf(row.fields, "field_sirius_trust_policy");
+    const policyMatches = policyNid == null ? [] : (policyByNid.get(policyNid) ?? []);
+    const policyTitles = [...new Set(policyMatches.map((p) => normalizeTypeName(p.title ?? "")))];
+    const catalog = policyMatches.length === 1 && policyTitles.length === 1 ? appealForPolicyTitle(policyMatches[0]?.title) : undefined;
+    if (!catalog) {
+      if (policyTitles.some((t) => t.includes("appeal")) || ownedNidSet.has(row.nid)) {
+        const reason = policyNid == null
+          ? "policy_ref_missing"
+          : policyMatches.length === 0
+            ? "policy_source_missing"
+            : policyMatches.length > 1
+              ? "policy_source_ambiguous"
+              : "policy_name_unmapped";
+        rejects.add("appeal_name_unmapped", { nid: row.nid, policyNid, reason }, row.nid);
+      }
+      continue;
+    }
+    seenAppeals.add(row.nid);
+    const workerNid = targetNidOf(row.fields, "field_sirius_worker");
+    const worker = workerNid == null ? undefined : pageWorkerMap.get(workerNid)?.s2Id;
+    if (!worker) {
+      rejects.add("appeal_worker_unmapped", { nid: row.nid }, row.nid);
+      continue;
+    }
+    const startRaw = strOf(row.fields, "field_sirius_date_start");
+    const start = startRaw ? toYmd(startRaw) : null;
+    if (!start) {
+      rejects.add("appeal_start_missing", { nid: row.nid }, row.nid);
+      continue;
+    }
+    const endRaw = strOf(row.fields, "field_sirius_date_end");
+    let end = endRaw ? toYmd(endRaw) : null;
+    if (endRaw && !end) {
+      rejects.add("appeal_bad_end_date", { nid: row.nid }, row.nid);
+      continue;
+    }
+    if (yesNo(strOf(row.fields, "field_sirius_active")) === false && !end) {
+      end = row.changed == null ? null : epochToYmd(row.changed);
+      if (!end) {
+        rejects.add("appeal_withdrawal_missing", { nid: row.nid }, row.nid);
+        continue;
+      }
+    }
+    if (end && end <= start) {
+      rejects.add("appeal_end_not_after_start", { nid: row.nid }, row.nid);
+      continue;
+    }
+    const benefitResolution = benefitByKind.get(catalog.benefit);
+    const benefitId = benefitResolution?.target;
+    if (!benefitId) {
+      rejects.add("appeal_benefit_unmapped", {
+        nid: row.nid,
+        benefit: catalog.benefit,
+        reason: benefitResolution?.reason ?? "missing",
+        candidates: benefitResolution?.candidates ?? 0,
+      }, row.nid);
+      continue;
+    }
+    expected.set(row.nid, { worker, benefitId, plugin: catalog.plugin, start, end });
+    if (DRY_RUN) {
+      const disposition = classifyAppealExemption(
+        ownedForDry.map((exemption) => ({
+          sourceKind: exemption.source?.kind ?? null,
+          electionNid: exemption.source?.kind === "s1_appeal_election" ? Number(exemption.source.electionNid) : null,
+          workerId: exemption.subscriberWorkerId,
+          benefitId: exemption.benefitId,
+          plugins: exemption.eligibilityPlugins,
+          startYmd: exemption.startYmd,
+          endYmd: exemption.endYmd ?? null,
+        })),
+        { electionNid: row.nid, workerId: worker, benefitId, plugin: catalog.plugin, startYmd: start, endYmd: end },
+      );
+      if (disposition === "duplicate") {
+        rejects.add("appeal_exemption_write_failed", { nid: row.nid, code: "duplicate_owned_rows" }, row.nid);
+      } else if (disposition === "create") created++;
+      else if (disposition === "update") updated++;
+      else unchanged++;
+      continue;
+    }
+    try {
+      const result = await storage.trustBenefitEligibilityExemptions.upsertForS1AppealElection({
+        electionNid: row.nid,
+        electionName: policyMatches[0]?.title ?? "",
+        policyNid,
+        policyName: policyMatches[0]?.title ?? null,
+        subscriberWorkerId: worker,
+        benefitId,
+        eligibilityPlugins: [catalog.plugin],
+        startYmd: start,
+        endYmd: end,
+        active: yesNo(strOf(row.fields, "field_sirius_active")),
+      });
+      if (result.created) created++;
+      else if (result.changed) updated++;
+      else unchanged++;
+    } catch (e) {
+      rejects.add("appeal_exemption_write_failed", { nid: row.nid, code: classifyError(e) }, row.nid);
+    }
+    }
+  }
+  if (!DRY_RUN && expected.size > 0) {
+    const owned = await storage.trustBenefitEligibilityExemptions.listByS1AppealElectionNids([...expected.keys()]);
+    for (const nid of expected.keys()) {
+      const matches = owned.filter((e) => e.source?.kind === "s1_appeal_election" && Number(e.source.electionNid) === nid);
+      const want = expected.get(nid)!;
+      const exact = matches.length === 1 && matches[0].subscriberWorkerId === want.worker &&
+        matches[0].benefitId === want.benefitId &&
+        JSON.stringify(matches[0].eligibilityPlugins) === JSON.stringify([want.plugin]) &&
+        matches[0].startYmd === want.start && (matches[0].endYmd ?? null) === want.end;
+      if (!exact) {
+        rejects.add("appeal_exemption_verify_failed", { nid, matches: matches.length }, nid);
+        report.appealVerifyFailures = Number(report.appealVerifyFailures ?? 0) + 1;
+      }
+    }
+  }
+  // Never sweep from empty staging. On a non-empty, complete bundle only,
+  // remove owned rows whose immutable election source disappeared.
+  let deleted = 0;
+  // A bundle containing no recognized appeal rows may be a partial/filtered
+  // staging result; do not infer that all previously owned appeals vanished.
+  async function bundleCompleteness(bundle: string, count: number): Promise<{ planned: boolean; complete: boolean }> {
+    const result = await db.execute(sql`
+    WITH latest AS (
+      SELECT generation, bundles FROM s1_staging.range_generations
+      ORDER BY created_at DESC LIMIT 1
+    ), evidence AS (
+      SELECT e.* FROM s1_staging.range_evidence e JOIN latest l ON l.generation = e.generation
+      WHERE e.bundle = ${bundle}
+    )
+    SELECT
+      EXISTS (SELECT 1 FROM latest l
+        WHERE l.bundles @> ${JSON.stringify([{ bundle }])}::jsonb) AS planned,
+      EXISTS (SELECT 1 FROM latest l
+        WHERE l.bundles @> ${JSON.stringify([{ bundle }])}::jsonb
+        AND EXISTS (SELECT 1 FROM evidence)
+        AND NOT EXISTS (SELECT 1 FROM evidence WHERE status <> 'verified')
+        AND ${count} = (SELECT COALESCE(SUM(staged_count), 0) FROM evidence)
+      ) AS complete
+    `) as unknown as { rows: Array<{ planned: boolean; complete: boolean }> };
+    return result.rows[0] ?? { planned: false, complete: false };
+  }
+  const electionCompleteness = stagedCount > 0
+    ? await bundleCompleteness(BUNDLE, stagedCount)
+    : { planned: false, complete: false };
+  const policyCompleteness = await Promise.all(
+    ["sirius_json_definition", "sirius_trust_policy"].map(async (bundle) => {
+      const count = await stagedCountOf(bundle);
+      return { bundle, ...await bundleCompleteness(bundle, count) };
+    }),
+  );
+  const plannedPolicies = policyCompleteness.filter((entry) => entry.planned);
+  const completeness = electionCompleteness.complete
+    && plannedPolicies.length > 0
+    && plannedPolicies.every((entry) => entry.complete);
+  const deletedNids = deletedAppealElectionNids(ownedNids, stagedElectionNids, completeness);
+  if (DRY_RUN) {
+    deleted = deletedNids.length;
+  } else {
+    for (const nid of deletedNids) {
+      if (await storage.trustBenefitEligibilityExemptions.deleteForS1AppealElection(nid)) deleted++;
+    }
+  }
+  summary.created += created;
+  summary.updated += updated;
+  summary.unchanged += unchanged;
+  summary.deleted += deleted;
+  report.appealExemptions = {
+    catalogSize: Object.keys(APPEAL_CATALOG).length,
+    created,
+    updated,
+    unchanged,
+    deleted,
+    stagedAppeals: seenAppeals.size,
+    stagedElections: stagedElectionNids.size,
+    deletionSweepComplete: completeness,
+    deletionEvidence: {
+      elections: electionCompleteness,
+      policies: policyCompleteness,
+    },
+  };
 }
 
 async function main() {
@@ -666,6 +919,11 @@ async function main() {
     report.sweep = { skipped: "staging empty — refusing to sweep (would delete every migrated election)" };
   }
 
+  // Appeal exemptions are reconciled only after the election sweep has
+  // completed, so source deletion and withdrawal semantics share the same
+  // staging completeness guard.
+  await reconcileAppealExemptions(report, rejects, summary, report.staged as number);
+
   report.pages = pages;
   report.resolved = resolvedCount;
   report.fastPathSkips = fastPathSkips;
@@ -681,6 +939,7 @@ async function main() {
   report.adoptedByProvenance = adoptedByProvenance;
   report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;
+  verifyFailures += Number(report.appealVerifyFailures ?? 0);
   report.verifyFailures = verifyFailures;
   if (verifySamples.length > 0) report.verifyFailureSamples = verifySamples;
 
