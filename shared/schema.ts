@@ -606,6 +606,14 @@ export const trustWmbScanQueue = pgTable("trust_wmb_scan_queue", {
   // A worker appears at most once per scan run; the same worker/month can
   // exist across multiple runs (full run + employer-scoped run).
   uniqueStatusWorker: unique().on(table.statusId, table.workerId),
+  // Worker reads must not scan every run; keep the claim/remaining-run
+  // indexes small by excluding terminal history (task 612).
+  workerIdx: index("trust_wmb_scan_queue_worker_idx").on(table.workerId),
+  pendingClaimIdx: index("trust_wmb_scan_queue_pending_claim_idx")
+    .on(table.scheduledFor.asc().nullsLast(), table.id.asc())
+    .where(sql`(status)::text = 'pending'::text`),
+  activeRunIdx: index("trust_wmb_scan_queue_active_run_idx").on(table.statusId)
+    .where(sql`(status)::text = ANY (ARRAY['pending'::text, 'processing'::text])`),
 }));
 
 export const variables = pgTable("variables", {
