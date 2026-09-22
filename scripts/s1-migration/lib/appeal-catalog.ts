@@ -32,8 +32,9 @@ export const APPEAL_CATALOG: Record<string, AppealMapping> = {
   unitehereplankaiserappeal: { benefit: "kaiser", plugin: "sitespecific-bao-start-kaiser" },
 };
 
-/** Exact source names; aliases are limited to names evidenced by S1 fixtures. */
+/** Exact normalized source names; Delta is evidenced by staged nid 2457515. */
 export const BENEFIT_NAME_CATALOG: Record<string, AppealBenefit> = {
+  delta: "delta",
   deltadental: "delta",
   healthnet: "healthnet",
   kaiser: "kaiser",
@@ -43,6 +44,31 @@ export const appealForPolicyTitle = (title: string | null | undefined) =>
   title == null ? undefined : APPEAL_CATALOG[normalizeAppealName(title)];
 export const benefitKindForExactName = (name: string | null | undefined) =>
   name == null ? undefined : BENEFIT_NAME_CATALOG[normalizeAppealName(name)];
+
+export type AppealBenefitResolution = {
+  target?: string;
+  reason?: "missing" | "ambiguous" | "target_unmapped";
+  candidates: number;
+};
+
+/** A name alias only selects an S1 node. Its target must still resolve via
+ * the ordinary benefit NID map, and exactly one staged node must match. */
+export function resolveAppealBenefitKinds(
+  staged: readonly { nid: number; title: string | null }[],
+  mappedNids: ReadonlyMap<number, string>,
+): Map<AppealBenefit, AppealBenefitResolution> {
+  const result = new Map<AppealBenefit, AppealBenefitResolution>();
+  for (const kind of ["delta", "healthnet", "kaiser"] as const) {
+    const candidates = staged.filter((benefit) => benefitKindForExactName(benefit.title) === kind);
+    if (candidates.length !== 1) {
+      result.set(kind, { reason: candidates.length ? "ambiguous" : "missing", candidates: candidates.length });
+      continue;
+    }
+    const target = mappedNids.get(candidates[0].nid);
+    result.set(kind, target ? { target, candidates: 1 } : { reason: "target_unmapped", candidates: 1 });
+  }
+  return result;
+}
 
 /** Pure lifecycle classifier used by dry-run and unit coverage. */
 export function classifyAppealExemption(

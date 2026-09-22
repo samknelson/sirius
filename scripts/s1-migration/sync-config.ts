@@ -309,7 +309,9 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       "employee-ids": {},
       // §5 RULED 2026-08-09: benefit_unmapped (deleted benefit nid 2457521)
       // applies to elections as well as benefit-history.
-      elections: { allowRejects: ["end_not_after_start", "worker_unmapped", "benefit_unmapped"] },
+      // User ruling: invalid appeal date spans skip their exemption but remain
+      // counted. Unmapped appeal benefits are NOT ruled and still block the gate.
+      elections: { allowRejects: ["end_not_after_start", "worker_unmapped", "benefit_unmapped", "appeal_end_not_after_start"] },
       "benefit-history": {
         allowRejects: [
           "start_missing",

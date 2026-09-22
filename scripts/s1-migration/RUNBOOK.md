@@ -340,10 +340,31 @@ Key ordering facts:
   `docs/s1-migration/02-mapping.md`. The exemption row keeps its identity when
   the worker, benefit, or dates are corrected; a valid withdrawal is end-dated.
   Empty or partial election or policy staging never sweeps migration-owned exemptions. Operators
-  must resolve `appeal_*` reject classes before final-freeze. After a retry,
+  must resolve `appeal_*` reject classes before final-freeze **except**
+  `appeal_end_not_after_start`: the user explicitly approved skipping those
+  invalid date spans while keeping them counted/sampled in `rejects`.
+  `appeal_benefit_unmapped` is NOT allowed: missing, ambiguous, or unmapped
+  staged benefit identities require investigation, not a silent exemption gap.
+  After a retry,
   confirm `appealExemptions.deletionSweepComplete=true`, zero
   `appeal_exemption_verify_failed`, and the create/update/unchanged/deleted
   counts against the prior report; reruns are safe and idempotent.
+  The 2026-09-22 staged inventory showed 1,381 Delta-title appeals (7 EC,
+  3 PA, 1 Restaurant, 1,370 UH), 8 HealthNet (6 EC, 2 UH), and 114 Kaiser
+  (11 EC, 4 Restaurant, 99 UH). Their unique staged benefit nodes were
+  `Delta` nid 2457515, `Health Net` nid 2457510, and `Kaiser` nid 2457502;
+  all three had existing benefit ID-map targets. These are pre-date/worker-filter
+  totals, **not** a claim that all 1,381 Delta rows were benefit rejects.
+  The earlier T16 report had 1,372 `appeal_benefit_unmapped` and 14
+  `appeal_end_not_after_start`. The exact `Delta` alias is now recognized;
+  it still resolves through the mapped benefit NID, never a hard-coded target.
+  On the production target, rerun `load-elections.ts --dry-run --allow-rejects
+  end_not_after_start,worker_unmapped,benefit_unmapped,appeal_end_not_after_start`
+  first; inspect `rejects`, `appealExemptions`, and the reject gate. If
+  `appeal_benefit_unmapped` is zero and no new disallowed reason appears, run
+  the same command without `--dry-run`, then repeat it to confirm
+  `appealExemptions.created=0`, `updated=0`, and verify failures zero. Date
+  rejects remain visible; a disallowed benefit reject still fails the gate.
 - log-notes needs contacts AND workers (handler refs resolve to a real worker
   through either a mapped worker or mapped contact), and users must run before
   log-notes so imported notes can resolve their S1 creator accounts; dev also needs

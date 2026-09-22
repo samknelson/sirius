@@ -123,6 +123,19 @@ Appeal`, `RESTAURANT Plan - Delta Appeal`, `UNITE HERE Plan - Delta Appeal`,
 `EVENT CENTER Plan - Kaiser Appeal`, `RESTAURANT Plan - Kaiser Appeal`, and
 `UNITE HERE Plan - Kaiser Appeal`.
 
+Staged inventory supplied 2026-09-22 (all 1,503 recognized appeal rows, before
+worker/date rejects): Delta 1,381, HealthNet 8, Kaiser 114. The exact staged
+benefit titles/NIDs are `Delta`/2457515, `Health Net`/2457510, and
+`Kaiser`/2457502; each has a unique existing S2 `benefit` id-map target.
+`Delta` is an evidenced exact alias alongside `Delta Dental`, **not** a
+hard-coded S2 target or fuzzy lookup. A second candidate or an absent NID
+mapping still rejects as `appeal_benefit_unmapped`. The earlier T16 report
+counted 1,372 such rejects; its 25 samples were all Delta but did not establish
+the full reject distribution. The approved `appeal_end_not_after_start` class
+skips invalid spans and stays counted (14 in that report); it does not authorize
+skipping unmapped benefits. A post-fix T16 rerun is still required to establish
+the final counts.
+
 | S1 field | S2 destination | Class |
 |---|---|---|
 | `field_sirius_trust_benefits` (`_target_id`, multi delta≤3) | `worker_trust_elections.benefit_ids` (array of S2 benefit ids) | NEEDS-TRANSFORM T16 |

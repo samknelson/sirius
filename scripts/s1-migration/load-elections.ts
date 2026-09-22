@@ -101,6 +101,7 @@ import {
   classifyAppealExemption,
   deletedAppealElectionNids,
   normalizeAppealName,
+  resolveAppealBenefitKinds,
 } from "./lib/appeal-catalog";
 
 const LOADER = "t16-elections";
@@ -238,21 +239,7 @@ async function reconcileAppealExemptions(
   const policyByNid = new Map<number, typeof policyRows>();
   for (const p of policyRows) policyByNid.set(p.nid, [...(policyByNid.get(p.nid) ?? []), p]);
   const benefitRes = await resolveBenefitNidMap(LOADER, DRY_RUN);
-  const benefitByKind = new Map<string, { target?: string; reason?: "missing" | "ambiguous" | "target_unmapped"; candidates: number }>();
-  for (const kind of ["delta", "healthnet", "kaiser"] as const) {
-    const candidates = stagedBenefits.filter((benefit) => benefitKindForExactName(benefit.title) === kind);
-    if (candidates.length !== 1) {
-      benefitByKind.set(kind, {
-        reason: candidates.length === 0 ? "missing" : "ambiguous",
-        candidates: candidates.length,
-      });
-      continue;
-    }
-    const target = benefitRes.map.get(candidates[0].nid);
-    benefitByKind.set(kind, target
-      ? { target, candidates: 1 }
-      : { reason: "target_unmapped", candidates: 1 });
-  }
+  const benefitByKind = resolveAppealBenefitKinds(stagedBenefits, benefitRes.map);
   const ownedNids = (await db.execute(sql`
     SELECT DISTINCT (data->'source'->>'electionNid')::int AS nid
       FROM trust_benefit_eligibility_exemptions

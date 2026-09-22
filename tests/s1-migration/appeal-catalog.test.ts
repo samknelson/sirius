@@ -5,8 +5,10 @@ import {
   benefitKindForExactName,
   classifyAppealExemption,
   deletedAppealElectionNids,
+  resolveAppealBenefitKinds,
   type AppealOwnedRow,
 } from "../../scripts/s1-migration/lib/appeal-catalog";
+import { PROFILES } from "../../scripts/s1-migration/sync-config";
 import {
   TRUST_EXEMPTION_SOURCE_S1_APPEAL_ELECTION,
   createTrustBenefitEligibilityExemptionRequestSchema,
@@ -28,8 +30,39 @@ describe("S1 appeal catalog", () => {
     expect(appealForPolicyTitle("Unknown Appeal")).toBeUndefined();
     expect(benefitKindForExactName("Delta Dental Plus")).toBeUndefined();
     expect(benefitKindForExactName("Delta Dental")).toBe("delta");
+    expect(benefitKindForExactName("Delta")).toBe("delta");
     expect(benefitKindForExactName("Health Net")).toBe("healthnet");
     expect(benefitKindForExactName("Kaiser")).toBe("kaiser");
+  });
+
+  it("resolves the evidenced Delta title only through its unique mapped S1 NID", () => {
+    const staged = [
+      { nid: 2457515, title: "Delta" },
+      { nid: 2457510, title: "Health Net" },
+      { nid: 2457502, title: "Kaiser" },
+      { nid: 99, title: "Delta Plus" },
+    ];
+    const mapped = new Map([[2457515, "target-delta"], [2457510, "target-healthnet"], [2457502, "target-kaiser"]]);
+    const resolved = resolveAppealBenefitKinds(staged, mapped);
+    expect(resolved.get("delta")).toEqual({ target: "target-delta", candidates: 1 });
+    expect(resolved.get("healthnet")).toEqual({ target: "target-healthnet", candidates: 1 });
+    expect(resolved.get("kaiser")).toEqual({ target: "target-kaiser", candidates: 1 });
+    expect(resolveAppealBenefitKinds(staged, new Map()).get("delta")).toEqual({
+      reason: "target_unmapped", candidates: 1,
+    });
+    expect(resolveAppealBenefitKinds([{ nid: 1, title: "Unknown" }], mapped).get("delta")).toEqual({
+      reason: "missing", candidates: 0,
+    });
+    expect(resolveAppealBenefitKinds([...staged, { nid: 100, title: "Delta Dental" }], mapped).get("delta")).toEqual({
+      reason: "ambiguous", candidates: 2,
+    });
+  });
+
+  it("allows the ruled appeal date reject in production but never unmapped appeal benefits", () => {
+    const allowed = PROFILES.production.steps.elections.allowRejects ?? [];
+    expect(allowed).toContain("appeal_end_not_after_start");
+    expect(allowed).not.toContain("appeal_benefit_unmapped");
+    expect(PROFILES.dev.steps.elections.allowRejects).not.toContain("appeal_benefit_unmapped");
   });
 
   it("classifies create, stable rerun, correction, and withdrawal without adopting foreign rows", () => {
