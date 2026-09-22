@@ -138,3 +138,4 @@
 - [Payment editor lifecycle](payment-editor-lifecycle.md) — intact allocations can disappear during control initialization; distinguish deliberate account changes from hydration and preserve local drafts.
 - [Ledger currency discovery](ledger-currency-discovery.md) — nonfinancial units must not invalidate account discovery; monetary validation belongs to payable responses.
 - [Browser fixture lifecycle](browser-fixture-lifecycle.md) — print failures before bounded Vite cleanup; wait for closing confirmation portals before typing into the underlying editor.
+- [Queue existence/index coupling](queue-existence-index-coupling.md) — LIMIT 1 can regress without an active-run index; measure populated and empty probes and deploy them together.

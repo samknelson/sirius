@@ -823,9 +823,10 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
           })
           .where(eq(trustWmbScanStatus.id, job.statusId));
 
-        // Check if all jobs are complete
+        // Only existence matters. The active-run partial index makes this
+        // bounded even near the end of a run with extensive completed history.
         const [remaining] = await tx
-          .select({ count: sql<number>`count(*)` })
+          .select({ id: trustWmbScanQueue.id })
           .from(trustWmbScanQueue)
           .where(
             and(
@@ -835,9 +836,10 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
                 eq(trustWmbScanQueue.status, "processing")
               )
             )
-          );
+          )
+          .limit(1);
 
-        if (Number(remaining.count) === 0) {
+        if (!remaining) {
           const [completedStatus] = await tx
             .update(trustWmbScanStatus)
             .set({

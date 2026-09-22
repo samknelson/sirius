@@ -1,0 +1,191 @@
+{
+  "fixtureOnly": true,
+  "reports": [
+    {
+      "scenario": "slow",
+      "benefitsVisibleMs": 32486,
+      "timings": [
+        {
+          "path": "/api/variables/by-name/site_terminology",
+          "startMs": 32383,
+          "endMs": 32386,
+          "durationMs": 4
+        },
+        {
+          "path": "/api/auth/user",
+          "startMs": 32383,
+          "endMs": 32387,
+          "durationMs": 3
+        },
+        {
+          "path": "/api/access/tabs",
+          "startMs": 32423,
+          "endMs": 32425,
+          "durationMs": 3
+        },
+        {
+          "path": "/api/workers/worker-fixture",
+          "startMs": 32423,
+          "endMs": 32426,
+          "durationMs": 2
+        },
+        {
+          "path": "/api/workers/worker-fixture/benefits/current",
+          "startMs": 32458,
+          "endMs": 32461,
+          "durationMs": 3
+        },
+        {
+          "path": "/api/workers/worker-fixture/wmb-scan-state",
+          "startMs": 32458,
+          "endMs": 33705,
+          "durationMs": 1247
+        },
+        {
+          "path": "/api/contacts/contact-fixture",
+          "startMs": 32459,
+          "endMs": 32461,
+          "durationMs": 2
+        }
+      ]
+    },
+    {
+      "scenario": "error",
+      "benefitsVisibleMs": 406,
+      "timings": [
+        {
+          "path": "/api/variables/by-name/site_terminology",
+          "startMs": 339,
+          "endMs": 343,
+          "durationMs": 5
+        },
+        {
+          "path": "/api/auth/user",
+          "startMs": 339,
+          "endMs": 344,
+          "durationMs": 5
+        },
+        {
+          "path": "/api/access/tabs",
+          "startMs": 371,
+          "endMs": 374,
+          "durationMs": 4
+        },
+        {
+          "path": "/api/workers/worker-fixture",
+          "startMs": 371,
+          "endMs": 375,
+          "durationMs": 4
+        },
+        {
+          "path": "/api/workers/worker-fixture/benefits/current",
+          "startMs": 387,
+          "endMs": 390,
+          "durationMs": 3
+        },
+        {
+          "path": "/api/workers/worker-fixture/wmb-scan-state",
+          "startMs": 388,
+          "endMs": 390,
+          "durationMs": 3
+        },
+        {
+          "path": "/api/contacts/contact-fixture",
+          "startMs": 389,
+          "endMs": 391,
+          "durationMs": 2
+        }
+      ]
+    },
+    {
+      "scenario": "details",
+      "benefitsVisibleMs": 382,
+      "timings": [
+        {
+          "path": "/api/variables/by-name/site_terminology",
+          "startMs": 276,
+          "endMs": 280,
+          "durationMs": 5
+        },
+        {
+          "path": "/api/auth/user",
+          "startMs": 277,
+          "endMs": 281,
+          "durationMs": 5
+        },
+        {
+          "path": "/api/access/tabs",
+          "startMs": 307,
+          "endMs": 314,
+          "durationMs": 7
+        },
+        {
+          "path": "/api/workers/worker-fixture",
+          "startMs": 308,
+          "endMs": 315,
+          "durationMs": 7
+        },
+        {
+          "path": "/api/contacts/contact-fixture/addresses",
+          "startMs": 338,
+          "endMs": 346,
+          "durationMs": 9
+        },
+        {
+          "path": "/api/contacts/contact-fixture/phone-numbers",
+          "startMs": 338,
+          "endMs": 347,
+          "durationMs": 9
+        },
+        {
+          "path": "/api/workers/worker-fixture/ids",
+          "startMs": 338,
+          "endMs": 347,
+          "durationMs": 9
+        },
+        {
+          "path": "/api/options/worker-id-type",
+          "startMs": 339,
+          "endMs": 348,
+          "durationMs": 9
+        },
+        {
+          "path": "/api/workers/worker-fixture/benefits",
+          "startMs": 339,
+          "endMs": 348,
+          "durationMs": 9
+        },
+        {
+          "path": "/api/options/worker-ws",
+          "startMs": 340,
+          "endMs": 349,
+          "durationMs": 9
+        },
+        {
+          "path": "/api/options/worker-ms",
+          "startMs": 340,
+          "endMs": 349,
+          "durationMs": 9
+        },
+        {
+          "path": "/api/options/industry",
+          "startMs": 340,
+          "endMs": 349,
+          "durationMs": 9
+        },
+        {
+          "path": "/api/workers/worker-fixture/hours",
+          "startMs": 341,
+          "endMs": 350,
+          "durationMs": 9
+        },
+        {
+          "path": "/api/contacts/contact-fixture",
+          "startMs": 342,
+          "endMs": 350,
+          "durationMs": 9
+        }
+      ]
+    }
+  ]
+}
