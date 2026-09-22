@@ -424,10 +424,12 @@ async function reconcileAppealExemptions(
   const electionCompleteness = stagedCount > 0
     ? await bundleCompleteness(BUNDLE, stagedCount)
     : { planned: false, complete: false };
-  const policyCompleteness = await Promise.all([
-    ["sirius_json_definition", policyRows.filter((row) => row.bundle === "sirius_json_definition").length] as const,
-    ["sirius_trust_policy", policyRows.filter((row) => row.bundle === "sirius_trust_policy").length] as const,
-  ].map(async ([bundle, count]) => ({ bundle, ...await bundleCompleteness(bundle, count) })));
+  const policyCompleteness = await Promise.all(
+    ["sirius_json_definition", "sirius_trust_policy"].map(async (bundle) => {
+      const count = await stagedCountOf(bundle);
+      return { bundle, ...await bundleCompleteness(bundle, count) };
+    }),
+  );
   const plannedPolicies = policyCompleteness.filter((entry) => entry.planned);
   const completeness = electionCompleteness.complete
     && plannedPolicies.length > 0
