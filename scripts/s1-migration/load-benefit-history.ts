@@ -24,13 +24,15 @@
  *        - missing months → created via storage.trust.wmb.createWorkerBenefit
  *        - stale months (live row for a MIGRATED worker at or before the
  *          horizon with no desired counterpart) → deleteWorkerBenefit
+ *        - a loader-owned month produced by the former inclusive-end rule is
+ *          reconciled at its exact termination month even beyond the horizon
  *        - source_relation_id divergence → delete + recreate (repair)
  *      All S2 writes are per-row storage calls inside notification+charge
  *      suppression, keyset-paged, and proportional to actual churn. Rows
  *      AFTER the horizon are never deleted (post-freeze scan rows are S2's),
- *      only counted as `staleBeyondHorizon`. Rows of non-migrated workers
- *      are untouchable by construction (deletion scope requires a non-stub
- *      id_map worker mapping).
+ *      except for that narrowly proven legacy artifact; other rows are only
+ *      counted as `staleBeyondHorizon`. Rows of non-migrated workers are
+ *      untouchable by construction.
  *   3. OPEN-END ADVANCEMENT. `--open-end-through YYYY-MM` is now OPTIONAL
  *      and defaults to the current month in fund-local time (LA). Each daily
  *      run therefore extends open spans by exactly the delta; a span closed
@@ -138,7 +140,7 @@ const DRY_RUN = process.argv.includes("--dry-run");
  * date conventions) changes so scratch rows re-resolve on their next run. */
 // UNKNOWN fallback only changes rows that formerly rejected and therefore
 // have no accepted scratch entry; they already re-resolve on every run.
-const LOGIC_VERSION = 2;
+const LOGIC_VERSION = 3;
 const FORCE_RECONCILE = parseForceReconcile();
 const ALLOWED_FINDINGS = parseAllowedFindings();
 const ALLOWED_REJECTS: string[] = (() => {
@@ -244,11 +246,13 @@ async function ensureScratchTables(): Promise<void> {
       employer_from_election boolean NOT NULL DEFAULT false,
       start_idx int NOT NULL,
       end_idx int,
+      legacy_end_idx int,
       consumed_fingerprint text,
       logic_version int,
       last_synced_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+  await db.execute(sql`ALTER TABLE s1_staging.t17_desired_spans ADD COLUMN IF NOT EXISTS legacy_end_idx int`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS t17_desired_spans_worker_idx ON s1_staging.t17_desired_spans (worker_id)`);
   // deletion-scope + anchor probes join id_map by (entity, s2_id)
   await db.execute(sql`CREATE INDEX IF NOT EXISTS id_map_entity_s2_id_idx ON s1_staging.id_map (entity, s2_id)`);
@@ -283,8 +287,13 @@ async function ensureScratchTables(): Promise<void> {
       wmb_id varchar NOT NULL,
       worker_id varchar NOT NULL,
       month int NOT NULL,
-      year int NOT NULL
+      year int NOT NULL,
+      is_legacy_termination boolean NOT NULL DEFAULT false
     )
+  `);
+  await db.execute(sql`
+    ALTER TABLE s1_staging.t17_stale_rows
+      ADD COLUMN IF NOT EXISTS is_legacy_termination boolean NOT NULL DEFAULT false
   `);
   await db.execute(sql`
     CREATE UNLOGGED TABLE IF NOT EXISTS s1_staging.t17_rel_repair (
@@ -339,6 +348,13 @@ const staleWhere = (hIdx: number) => sql`
     SELECT 1 FROM s1_staging.t17_diff_months d
      WHERE d.worker_id = w.worker_id AND d.employer_id = w.employer_id
        AND d.benefit_id = w.benefit_id AND d.month = w.month AND d.year = w.year
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM ${SPANS()} legacy
+     WHERE legacy.worker_id = w.worker_id
+       AND legacy.employer_id = w.employer_id
+       AND legacy.benefit_id = w.benefit_id
+       AND legacy.legacy_end_idx = (w.year * 12 + w.month - 1)
   )`;
 const relDivergeJoin = () => sql`
   FROM trust_wmb w
@@ -645,6 +661,10 @@ async function main() {
     const endYm = coveredRange.end;
     const startIdx = idxOfYm(startYm);
     const endIdx = endYm ? idxOfYm(endYm) : null;
+    const legacyEndIdx =
+      endYmd && Number(endYmd.slice(8, 10)) < 15
+        ? idxOfYm({ y: Number(endYmd.slice(0, 4)), m: Number(endYmd.slice(5, 7)) })
+        : null;
     if (endIdx == null) {
       openSpans++;
       if (startIdx > H_IDX) openAfterHorizon++; // empty month set until the horizon advances
@@ -667,6 +687,7 @@ async function main() {
       employerFromElection: viaElection,
       startIdx,
       endIdx,
+      legacyEndIdx,
     });
     }
     resolvedSpans += resolved.length;
@@ -681,12 +702,12 @@ async function main() {
       await db.execute(sql`
         INSERT INTO ${SPANS()}
           (nid, worker_id, employer_id, benefit_id, source_relation_id, employer_from_election,
-           start_idx, end_idx, consumed_fingerprint, logic_version, last_synced_at)
+           start_idx, end_idx, legacy_end_idx, consumed_fingerprint, logic_version, last_synced_at)
         VALUES ${sql.join(
           batch.map(
             (r) => sql`(${r.nid}::bigint, ${r.workerId}::varchar, ${r.employerId}::varchar, ${r.benefitId}::varchar,
               ${r.sourceRelationId}::varchar, ${r.employerFromElection}::boolean, ${r.startIdx}::int,
-              ${r.endIdx}::int, ${r.contentHash}::text, ${LOGIC_VERSION}::int, now())`,
+              ${r.endIdx}::int, ${r.legacyEndIdx}::int, ${r.contentHash}::text, ${LOGIC_VERSION}::int, now())`,
           ),
           sql`, `,
         )}
@@ -698,6 +719,7 @@ async function main() {
           employer_from_election = EXCLUDED.employer_from_election,
           start_idx = EXCLUDED.start_idx,
           end_idx = EXCLUDED.end_idx,
+          legacy_end_idx = EXCLUDED.legacy_end_idx,
           consumed_fingerprint = EXCLUDED.consumed_fingerprint,
           logic_version = EXCLUDED.logic_version,
           last_synced_at = now()
@@ -870,10 +892,138 @@ async function main() {
   `);
   await db.execute(sql`TRUNCATE s1_staging.t17_stale_rows RESTART IDENTITY`);
   await db.execute(sql`
-    INSERT INTO s1_staging.t17_stale_rows (wmb_id, worker_id, month, year)
-    SELECT w.id, w.worker_id, w.month, w.year
+    INSERT INTO s1_staging.t17_stale_rows (wmb_id, worker_id, month, year, is_legacy_termination)
+    SELECT w.id, w.worker_id, w.month, w.year, false
       FROM trust_wmb w
      WHERE ${staleWhere(H_IDX)}
+  `);
+  // A pre-checkpoint end date used to be expanded through its calendar month.
+  // Reconcile that exact legacy artifact independently of the open-span
+  // horizon, but only when the imported span has a live loader-owned anchor
+  // and its worker/relation mapping is still authoritative. A desired row from
+  // any overlapping span always wins.
+  const legacyTermination = {
+    deleted: 0,
+    eligible: await countOf(sql`
+      SELECT count(DISTINCT w.id)::bigint AS c
+        FROM trust_wmb w
+        JOIN ${SPANS()} s
+          ON s.worker_id = w.worker_id AND s.employer_id = w.employer_id
+         AND s.benefit_id = w.benefit_id
+         AND s.legacy_end_idx = (w.year * 12 + w.month - 1)
+       WHERE EXISTS (
+               SELECT 1 FROM s1_staging.id_map a
+                WHERE a.entity = 'wb' AND a.s1_id = s.nid AND a.stub = false
+                  AND a.loader = ${LOADER}
+             )
+         AND (
+               (s.source_relation_id IS NULL AND EXISTS (
+                 SELECT 1 FROM s1_staging.id_map m
+                  WHERE m.entity = 'worker' AND m.s2_id = s.worker_id AND m.stub = false
+               ))
+               OR
+               (s.source_relation_id IS NOT NULL AND EXISTS (
+                 SELECT 1 FROM s1_staging.id_map m
+                  WHERE m.entity = 'relation' AND m.s2_id = s.source_relation_id AND m.stub = false
+               ))
+             )
+         AND NOT EXISTS (
+               SELECT 1 FROM s1_staging.t17_diff_months d
+                WHERE d.worker_id = w.worker_id AND d.employer_id = w.employer_id
+                  AND d.benefit_id = w.benefit_id AND d.month = w.month AND d.year = w.year
+             )
+    `),
+    protectedOverlap: await countOf(sql`
+      SELECT count(DISTINCT w.id)::bigint AS c
+        FROM trust_wmb w
+        JOIN ${SPANS()} s
+          ON s.worker_id = w.worker_id AND s.employer_id = w.employer_id
+         AND s.benefit_id = w.benefit_id
+         AND s.legacy_end_idx = (w.year * 12 + w.month - 1)
+       WHERE EXISTS (
+         SELECT 1 FROM s1_staging.t17_diff_months d
+          WHERE d.worker_id = w.worker_id AND d.employer_id = w.employer_id
+            AND d.benefit_id = w.benefit_id AND d.month = w.month AND d.year = w.year
+       )
+    `),
+    protectedMissingOrStubMapping: await countOf(sql`
+      SELECT count(DISTINCT w.id)::bigint AS c
+        FROM trust_wmb w
+        JOIN ${SPANS()} s
+          ON s.worker_id = w.worker_id AND s.employer_id = w.employer_id
+         AND s.benefit_id = w.benefit_id
+         AND s.legacy_end_idx = (w.year * 12 + w.month - 1)
+       WHERE NOT EXISTS (
+               SELECT 1 FROM s1_staging.t17_diff_months d
+                WHERE d.worker_id = w.worker_id AND d.employer_id = w.employer_id
+                  AND d.benefit_id = w.benefit_id AND d.month = w.month AND d.year = w.year
+             )
+         AND NOT (
+               (s.source_relation_id IS NULL AND EXISTS (
+                 SELECT 1 FROM s1_staging.id_map m
+                  WHERE m.entity = 'worker' AND m.s2_id = s.worker_id AND m.stub = false
+               ))
+               OR
+               (s.source_relation_id IS NOT NULL AND EXISTS (
+                 SELECT 1 FROM s1_staging.id_map m
+                  WHERE m.entity = 'relation' AND m.s2_id = s.source_relation_id AND m.stub = false
+               ))
+             )
+    `),
+    protectedOwnership: await countOf(sql`
+      SELECT count(DISTINCT w.id)::bigint AS c
+        FROM trust_wmb w
+        JOIN ${SPANS()} s
+          ON s.worker_id = w.worker_id AND s.employer_id = w.employer_id
+         AND s.benefit_id = w.benefit_id
+         AND s.legacy_end_idx = (w.year * 12 + w.month - 1)
+       WHERE NOT EXISTS (
+               SELECT 1 FROM s1_staging.t17_diff_months d
+                WHERE d.worker_id = w.worker_id AND d.employer_id = w.employer_id
+                  AND d.benefit_id = w.benefit_id AND d.month = w.month AND d.year = w.year
+             )
+         AND EXISTS (
+               SELECT 1 FROM s1_staging.id_map m
+                WHERE (m.entity = 'worker' AND s.source_relation_id IS NULL AND m.s2_id = s.worker_id AND m.stub = false)
+                   OR (m.entity = 'relation' AND s.source_relation_id IS NOT NULL AND m.s2_id = s.source_relation_id AND m.stub = false)
+             )
+         AND NOT EXISTS (
+               SELECT 1 FROM s1_staging.id_map a
+                WHERE a.entity = 'wb' AND a.s1_id = s.nid AND a.stub = false
+                  AND a.loader = ${LOADER}
+             )
+    `),
+  };
+  await db.execute(sql`
+    INSERT INTO s1_staging.t17_stale_rows (wmb_id, worker_id, month, year, is_legacy_termination)
+    SELECT DISTINCT w.id, w.worker_id, w.month, w.year, true
+      FROM trust_wmb w
+      JOIN ${SPANS()} s
+        ON s.worker_id = w.worker_id AND s.employer_id = w.employer_id
+       AND s.benefit_id = w.benefit_id
+       AND s.legacy_end_idx = (w.year * 12 + w.month - 1)
+     WHERE EXISTS (
+             SELECT 1 FROM s1_staging.id_map a
+              WHERE a.entity = 'wb' AND a.s1_id = s.nid AND a.stub = false
+                AND a.loader = ${LOADER}
+           )
+       AND (
+             (s.source_relation_id IS NULL AND EXISTS (
+               SELECT 1 FROM s1_staging.id_map m
+                WHERE m.entity = 'worker' AND m.s2_id = s.worker_id AND m.stub = false
+             ))
+             OR
+             (s.source_relation_id IS NOT NULL AND EXISTS (
+               SELECT 1 FROM s1_staging.id_map m
+                WHERE m.entity = 'relation' AND m.s2_id = s.source_relation_id AND m.stub = false
+             ))
+           )
+       AND NOT EXISTS (
+             SELECT 1 FROM s1_staging.t17_diff_months d
+              WHERE d.worker_id = w.worker_id AND d.employer_id = w.employer_id
+                AND d.benefit_id = w.benefit_id AND d.month = w.month AND d.year = w.year
+           )
+    ON CONFLICT DO NOTHING
   `);
   await db.execute(sql`TRUNCATE s1_staging.t17_rel_repair RESTART IDENTITY`);
   await db.execute(sql`
@@ -901,6 +1051,13 @@ async function main() {
           WHERE d.worker_id = w.worker_id AND d.employer_id = w.employer_id
             AND d.benefit_id = w.benefit_id AND d.month = w.month AND d.year = w.year
        )
+        AND NOT EXISTS (
+          SELECT 1 FROM ${SPANS()} legacy
+           WHERE legacy.worker_id = w.worker_id
+             AND legacy.employer_id = w.employer_id
+             AND legacy.benefit_id = w.benefit_id
+             AND legacy.legacy_end_idx = (w.year * 12 + w.month - 1)
+        )
   `);
 
   // ---- apply: creates, deletes, rel repairs (per-row storage writes inside
@@ -959,9 +1116,9 @@ async function main() {
     progress.phase("diff-delete", staleCount);
     cursor = 0;
     for (;;) {
-      const rows = rowsOf<{ seq: string | number; wmb_id: string; month: number; year: number }>(
+      const rows = rowsOf<{ seq: string | number; wmb_id: string; month: number; year: number; is_legacy_termination: boolean }>(
         await db.execute(sql`
-          SELECT seq, wmb_id, month, year FROM s1_staging.t17_stale_rows
+          SELECT seq, wmb_id, month, year, is_legacy_termination FROM s1_staging.t17_stale_rows
            WHERE seq > ${cursor} ORDER BY seq LIMIT ${PAGE}
         `),
       );
@@ -976,6 +1133,7 @@ async function main() {
             }),
           );
           monthsDeleted++;
+          if (r.is_legacy_termination) legacyTermination.deleted++;
         } catch (error) {
           rejects.add("wmb_delete_failed", {
             ym: `${r.year}-${String(r.month).padStart(2, "0")}`,
@@ -1188,6 +1346,8 @@ async function main() {
   report.diff = { missing: missingCount, stale: staleCount, relDiverged: relCount };
   report.monthsCreated = monthsCreated;
   report.monthsDeleted = monthsDeleted;
+  if (DRY_RUN) legacyTermination.deleted = legacyTermination.eligible;
+  report.legacyTerminationReconciliation = legacyTermination;
   report.relRepaired = relRepaired;
   report.anchors = { created: anchorsCreated, repointed: anchorsRepointed, retired: anchorsRetired };
   report.rejects = rejects.counts;

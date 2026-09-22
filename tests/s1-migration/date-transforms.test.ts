@@ -45,9 +45,9 @@ describe("date-only values (dob, coverage/policy dates): the string IS the value
 
 describe("S1 benefit spans use the 15th as the covered-month checkpoint", () => {
   it("excludes a first-of-following-month termination", () => {
-    expect(coveredMonthRangeAtCheckpoint("2024-01-01", "2024-02-01")).toEqual({
-      start: { y: 2024, m: 1 },
-      end: { y: 2024, m: 1 },
+    expect(coveredMonthRangeAtCheckpoint("2026-07-01", "2026-08-01")).toEqual({
+      start: { y: 2026, m: 7 },
+      end: { y: 2026, m: 7 },
     });
   });
 

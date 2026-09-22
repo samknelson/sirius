@@ -139,3 +139,4 @@
 - [Ledger currency discovery](ledger-currency-discovery.md) — nonfinancial units must not invalidate account discovery; monetary validation belongs to payable responses.
 - [Browser fixture lifecycle](browser-fixture-lifecycle.md) — print failures before bounded Vite cleanup; wait for closing confirmation portals before typing into the underlying editor.
 - [Queue existence/index coupling](queue-existence-index-coupling.md) — LIMIT 1 can regress without an active-run index; measure populated and empty probes and deploy them together.
+- [Legacy month reconciliation proof](legacy-month-reconciliation-proof.md) — crossing a loader horizon is safe only for the exact old-rule month with loader anchor + live mapping proof; overlaps always win.

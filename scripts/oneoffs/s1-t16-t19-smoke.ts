@@ -46,6 +46,7 @@ const N = {
   wb3: 99900403, // dependent via relation (1 month, b1, worker w2)
   wb4: 99900404, // inactive, end-dated from changed (4 months, b2)
   wb5: 99900405, // no shop → employer from election1 (1 month, b2)
+  wbOverlap: 99900406, // temporary March overlap used by reconciliation checks
   payment: 99900501,
   ar1: 99900601, // +50.00 charge referencing wb1 (→ trust_wmb anchor)
   ar2: 99900602, // -25.00 allocation referencing payment (→ ledger_payment)
@@ -313,9 +314,63 @@ async function main() {
     check("t17b exit 0", t17b.status === 0, t17b.status);
     check("t17b monthsCreated 0", t17b.report.monthsCreated === 0, t17b.report.monthsCreated);
     check("t17b monthsDeleted 1 (old termination month)", t17b.report.monthsDeleted === 1, t17b.report.monthsDeleted);
+    check(
+      "t17b legacy termination reconciliation reported",
+      t17b.report.legacyTerminationReconciliation?.deleted === 1 &&
+        t17b.report.legacyTerminationReconciliation?.protectedOverlap === 0 &&
+        t17b.report.legacyTerminationReconciliation?.protectedOwnership === 0,
+      t17b.report.legacyTerminationReconciliation,
+    );
     check("t17b monthsAdopted 11", t17b.report.monthsAdopted === 11, t17b.report.monthsAdopted);
     check("t17b anchorsAdopted 5", t17b.report.anchorsAdopted === 5, t17b.report.anchorsAdopted);
     check("t17b verify clean", t17b.report.verifyFailures === 0, t17b.report.verifyFailures);
+
+    // A row with the legacy shape is report-only when the span's loader anchor
+    // is missing; restoring the anchor makes it eligible again.
+    const wb1Map = await getMappings("wb", [N.wb1]);
+    const wb1Anchor = wb1Map.get(N.wb1)?.s2Id;
+    check("t17 reconciliation fixture has wb anchor", Boolean(wb1Anchor), wb1Map.get(N.wb1));
+    await storage.trust.wmb.createWorkerBenefit({
+      workerId: w1, employerId: e1, benefitId: b1, month: 3, year: 2024,
+      sourceRelationId: null,
+    });
+    await db.execute(sql`DELETE FROM s1_staging.id_map WHERE entity = 'wb' AND s1_id = ${N.wb1}`);
+    const t17Protected = runLoader("load-benefit-history.ts", ["--open-end-through", "2026-08", "--allow-rejects", "benefit_unmapped"]);
+    check("t17 protected ownership exits 0", t17Protected.status === 0, t17Protected.status);
+    check("t17 protected ownership does not delete", t17Protected.report.monthsDeleted === 0, t17Protected.report.monthsDeleted);
+    check(
+      "t17 protected ownership is reported",
+      t17Protected.report.legacyTerminationReconciliation?.protectedOwnership === 1,
+      t17Protected.report.legacyTerminationReconciliation,
+    );
+    if (wb1Anchor) {
+      await putMapping("wb", N.wb1, wb1Anchor, { stub: false, loader: "t17-benefit-history" });
+    }
+
+    // A second S1 span legitimately covering the same month wins over the
+    // legacy candidate. Removing it and invoking without a horizon flag then
+    // exercises the same repair under the loader/orchestrator default.
+    await upsertRecords([{
+      ...base, bundle: "sirius_trust_worker_benefit", nid: N.wbOverlap, title: null,
+      fields: {
+        field_sirius_trust_benefit: N.benefit1, field_sirius_trust_subscriber: w1Nid,
+        field_grievance_shop: e1Nid, field_sirius_date_start: "2024-03-15 00:00:00",
+        field_sirius_date_end: "2024-03-20 00:00:00", field_sirius_active: "Yes",
+      },
+    }]);
+    const t17Overlap = runLoader("load-benefit-history.ts", ["--open-end-through", "2026-08", "--allow-rejects", "benefit_unmapped"]);
+    check("t17 overlap exits 0", t17Overlap.status === 0, t17Overlap.status);
+    check("t17 overlap preserves March", t17Overlap.report.monthsDeleted === 0, t17Overlap.report.monthsDeleted);
+    check(
+      "t17 overlap protection is reported",
+      t17Overlap.report.legacyTerminationReconciliation?.protectedOverlap === 1,
+      t17Overlap.report.legacyTerminationReconciliation,
+    );
+    await db.execute(sql`DELETE FROM s1_staging.records WHERE bundle = 'sirius_trust_worker_benefit' AND nid = ${N.wbOverlap}`);
+    const t17Default = runLoader("load-benefit-history.ts", ["--allow-rejects", "benefit_unmapped"]);
+    check("t17 default-horizon repair exits 0", t17Default.status === 0, t17Default.status);
+    check("t17 default horizon source reported", t17Default.report.openEndThroughSource === "default-current-la-month", t17Default.report.openEndThroughSource);
+    check("t17 default-horizon repair deletes legacy month", t17Default.report.legacyTerminationReconciliation?.deleted === 1, t17Default.report.legacyTerminationReconciliation);
 
     // ---- T19 payments ---------------------------------------------------------
     console.log("T19 run 1 (typed create):");

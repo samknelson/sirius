@@ -89,7 +89,7 @@ export const FLEET: FleetStep[] = [
   { id: "relationships", script: "load-relationships.ts", loader: "t15-relationships", logicVersion: 2, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
   { id: "employee-ids", script: "load-employee-ids.ts", loader: "n4-employee-ids", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
   { id: "elections", script: "load-elections.ts", loader: "t16-elections", logicVersion: 2, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
-  { id: "benefit-history", script: "load-benefit-history.ts", loader: "t17-benefit-history", logicVersion: 2, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
+  { id: "benefit-history", script: "load-benefit-history.ts", loader: "t17-benefit-history", logicVersion: 3, supportsForceReconcile: true, supportsAllowFindings: true, supportsAllowRejects: true },
   { id: "payments", script: "load-payments.ts", loader: "t19-payments", logicVersion: 1, supportsForceReconcile: true, supportsAllowFindings: false, supportsAllowRejects: true },
   { id: "hours", script: "load-hours.ts", loader: "t20-hours", logicVersion: 2, supportsForceReconcile: false, supportsAllowFindings: false, supportsAllowRejects: false, extraArgs: ["--migration-mode"] },
   { id: "ledger", script: "load-ledger.ts", loader: "t18-ledger", logicVersion: 2, supportsForceReconcile: true, supportsAllowFindings: false, supportsAllowRejects: true },
