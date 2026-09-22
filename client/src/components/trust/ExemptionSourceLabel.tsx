@@ -1,13 +1,19 @@
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
-import { TRUST_EXEMPTION_SOURCE_BAO_APPEAL, type TrustBenefitEligibilityExemptionSource } from "@shared/schema";
+import {
+  TRUST_EXEMPTION_SOURCE_BAO_APPEAL,
+  TRUST_EXEMPTION_SOURCE_S1_APPEAL_ELECTION,
+  type TrustBenefitEligibilityExemptionSource,
+} from "@shared/schema";
 
 /** Human label per provenance kind, as staff know the originating record. */
 export function exemptionSourceLabel(source: TrustBenefitEligibilityExemptionSource): string {
   switch (source.kind) {
     case TRUST_EXEMPTION_SOURCE_BAO_APPEAL:
       return "Benefit Appeal";
+    case TRUST_EXEMPTION_SOURCE_S1_APPEAL_ELECTION:
+      return "S1 Appeal Election";
   }
 }
 
@@ -47,6 +53,12 @@ export function ExemptionSourceLabel({
             </Link>
           )}
         </div>
+      );
+    case TRUST_EXEMPTION_SOURCE_S1_APPEAL_ELECTION:
+      return (
+        <Badge variant="secondary" data-testid={`source-exemption-${exemptionId}`}>
+          {exemptionSourceLabel(source)}
+        </Badge>
       );
   }
 }

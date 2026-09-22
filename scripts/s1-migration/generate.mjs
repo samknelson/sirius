@@ -553,6 +553,15 @@ for (const [nm, fixedNid] of BENEFIT_DEFS) {
 // adopt-only path resolves them (stage with --all — see header DEPENDENCIES).
 const POLICY_DEFS = [
   ['Participation Agreement','PA'],['Restaurant Plan','R'],['Event Center Plan','EC'],['COBRA','COBRA'],
+  ['EVENT CENTER Plan - Delta Appeal','EC'],
+  ['Participation Agreement - Delta Appeal','PA'],
+  ['RESTAURANT Plan - Delta Appeal','RES'],
+  ['UNITE HERE Plan - Delta Appeal','UH'],
+  ['EVENT CENTER Plan - HealthNet Appeal','EC'],
+  ['UNITE HERE Plan - HealthNet Appeal','UH'],
+  ['EVENT CENTER Plan - Kaiser Appeal','EC'],
+  ['RESTAURANT Plan - Kaiser Appeal','RES'],
+  ['UNITE HERE Plan - Kaiser Appeal','UH'],
 ];
 const policyNids = [];
 for (const [nm, code] of POLICY_DEFS) {
@@ -990,7 +999,7 @@ for (let i = 0; i < Math.min(40, workers.length); i++) {
   }
   // policy ref on all but one election (prod 242,545/243,328)
   if (i !== 39) {
-    await fd('field_data_field_sirius_trust_policy', [{bundle:'sirius_trust_worker_election', entity_id:nid, values:{field_sirius_trust_policy_target_id:policyNids[i % 5 === 0 ? (i / 5) % policyNids.length | 0 : 0]}}]);
+    await fd('field_data_field_sirius_trust_policy', [{bundle:'sirius_trust_worker_election', entity_id:nid, values:{field_sirius_trust_policy_target_id:policyNids[i < policyNids.length ? i : 0]}}]);
   } else trap('election_without_policy_ref');
   // dates + active: start on ALL; end on ~70%; 2 inactive-no-end rows
   // (end-dated from node.changed — the T14 reconcile path, NOT a reject)

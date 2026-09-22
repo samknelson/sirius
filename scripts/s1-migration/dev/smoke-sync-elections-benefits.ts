@@ -206,6 +206,13 @@ async function phaseElections(): Promise<void> {
   if (!e1.result) return;
   check("t16 run1: reject gate pass", e1.result.rejectGate.status === "pass", JSON.stringify(e1.result.rejectGate));
   check("t16 run1: verify clean", Number(e1.result.detail.verifyFailures) === 0);
+  check("t16 appeal catalog: nine explicit mappings loaded", Number((e1.result.detail.appealExemptions as any)?.catalogSize) === 9);
+  const appealPolicyNames = await oneNum(sql`
+    SELECT COUNT(DISTINCT data->'source'->>'policyName')::int AS c
+      FROM trust_benefit_eligibility_exemptions
+     WHERE data->'source'->>'kind' = 's1_appeal_election'
+  `);
+  check("t16 appeal fixtures: all nine policy names reconciled", appealPolicyNames === 9, `policyNames=${appealPolicyNames}`);
   const omadaTarget = (await getMappings("benefit", [OMADA_BENEFIT_NID])).get(OMADA_BENEFIT_NID)?.s2Id;
   check("t16 Omada: staged benefit has one target mapping", Boolean(omadaTarget));
   const omadaElectionCount = omadaTarget ? await oneNum(sql`
@@ -225,6 +232,13 @@ async function phaseElections(): Promise<void> {
     "t16 run2: rejects match run1 (rejected rows re-resolve, not accumulate)",
     JSON.stringify(e2.result!.detail.rejects) === JSON.stringify(e1.result.detail.rejects),
     JSON.stringify(e2.result!.detail.rejects),
+  );
+  check("t16 appeal run2: reconciliation report present", e2.result!.detail.appealExemptions != null);
+  const appeal2 = e2.result!.detail.appealExemptions as any;
+  check(
+    "t16 appeal run2: zero exemption churn",
+    Number(appeal2.created) === 0 && Number(appeal2.updated) === 0 && Number(appeal2.deleted) === 0,
+    JSON.stringify(appeal2),
   );
 
   // --- S1 end-date edit → S2 updated (S1 wins), fingerprint advances ---

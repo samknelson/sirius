@@ -1655,6 +1655,7 @@ export {
   createTrustBenefitEligibilityExemptionRequestSchema,
   updateTrustBenefitEligibilityExemptionRequestSchema,
   TRUST_EXEMPTION_SOURCE_BAO_APPEAL,
+   TRUST_EXEMPTION_SOURCE_S1_APPEAL_ELECTION,
   trustBenefitEligibilityExemptionSourceSchema,
   trustBenefitEligibilityExemptionDataFor,
   readTrustBenefitEligibilityExemptionSource,

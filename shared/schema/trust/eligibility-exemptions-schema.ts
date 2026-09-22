@@ -57,12 +57,26 @@ export type InsertTrustBenefitEligibilityExemption = z.infer<typeof insertTrustB
  * stale as the record changes, and the record is one lookup away.
  */
 export const TRUST_EXEMPTION_SOURCE_BAO_APPEAL = "bao_appeal" as const;
+export const TRUST_EXEMPTION_SOURCE_S1_APPEAL_ELECTION = "s1_appeal_election" as const;
 
 export const trustBenefitEligibilityExemptionSourceSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal(TRUST_EXEMPTION_SOURCE_BAO_APPEAL),
     /** `sitespecific_bao_cases.id` of the Benefit Appeal whose approval granted the exemption. */
     caseId: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal(TRUST_EXEMPTION_SOURCE_S1_APPEAL_ELECTION),
+    /** Immutable S1 election nid; this is the migration ownership key. */
+    electionNid: z.string().regex(/^\d+$/),
+    /** Exact mapped S1 policy/election name, retained for audit/debugging. */
+    electionName: z.string().min(1),
+    policyNid: z.string().regex(/^\d+$/).nullable().optional(),
+    policyName: z.string().min(1).nullable().optional(),
+    /** Source lifecycle facts are retained for migration auditability. */
+    startYmd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    endYmd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    active: z.boolean().nullable().optional(),
   }),
 ]);
 
