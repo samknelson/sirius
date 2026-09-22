@@ -4,6 +4,16 @@ export const DAILY_SYNC_COMMAND = [
   "scripts/s1-migration/run-scheduled-daily.ts",
 ] as const;
 
+export const SCHEDULED_SYNC_ARGS = [
+  "tsx",
+  "scripts/s1-migration/sync.ts",
+  "--mode",
+  "daily",
+  "--profile",
+  "production",
+  "--skip-seeders",
+] as const;
+
 export const FORBIDDEN_SCHEDULED_FLAGS = [
   "--skip-stage",
   "--force-reconcile",
@@ -21,6 +31,7 @@ export type DailySyncReport = {
   durationSec?: unknown;
   forceReconcile?: unknown;
   skipStage?: unknown;
+  skipSeeders?: unknown;
   keepGoing?: unknown;
   gates?: unknown;
   fleetTotals?: unknown;
@@ -59,6 +70,7 @@ export function assertScheduledDailyReport(report: DailySyncReport): void {
   if (report.profile !== "production") violations.push("profile must be production");
   if (report.forceReconcile !== false) violations.push("forceReconcile must be false");
   if (report.skipStage !== false) violations.push("skipStage must be false");
+  if (report.skipSeeders !== true) violations.push("skipSeeders must be true");
   if (report.keepGoing !== false) violations.push("keepGoing must be false");
   if (report.result !== "PASS" && report.result !== "FAIL") violations.push("result must be PASS or FAIL");
   if (violations.length) throw new Error(`scheduled daily report contract failed: ${violations.join("; ")}`);

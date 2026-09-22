@@ -335,7 +335,9 @@ scripts/s1-migration/aws/configure-daily-sync.sh apply
 
 - `cron(1 0 ? * MON-FRI *)`, `America/Los_Angeles`: one Fargate task at
   00:01 Pacific, Monday through Friday, running
-  `npx tsx scripts/s1-migration/run-scheduled-daily.ts`.
+  `npx tsx scripts/s1-migration/run-scheduled-daily.ts`. The no-argument
+  wrapper always launches production daily sync with `--skip-seeders` and
+  rejects a result report unless `skipSeeders: true`.
 - `cron(0 9 ? * MON-FRI *)`, `America/Los_Angeles`: one Fargate task at
   09:00 Pacific, Monday through Friday, running
   `npx tsx scripts/s1-migration/check-scheduled-daily-late.ts`.
@@ -398,6 +400,15 @@ the ordinary wrapper with the same task/network configuration. Do not add
 `--skip-stage`, `--force-reconcile`, or allowances to scheduled recovery. If an
 exceptional operator repair needs such a flag, run `sync.ts` directly under
 the existing runbook approval process; it is not a scheduler rerun.
+
+Ordinary scheduled daily runs intentionally skip `seed-trust-config` and
+`seed-policy-benefits`. EC and UH exclude four inactive historical benefits;
+rerunning the seeders would fail their ownership checks or restore assignments
+that operations deliberately removed. The aggregate fleet report must show
+both seeder steps as skipped while all remaining fleet and parity gates run.
+This is only the automated Phase 2 policy. Phase 3 final-freeze remains the
+separate approved `sync.ts --mode final-freeze` procedure, which refuses
+`--skip-seeders` and runs both seeders.
 
 While a wet sync holds the write fence, reads remain available and application
 mutations receive retryable 503 responses. The web service stays at desired

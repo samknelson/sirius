@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import { getRawProcessEnv } from "./lib/script-env";
 import {
   assertNoForbiddenScheduledFlags,
+  SCHEDULED_SYNC_ARGS,
   sanitizeDailySummary,
   summaryMessage,
   type DailySyncReport,
@@ -26,7 +27,7 @@ async function run(): Promise<void> {
     childExit = await new Promise<number>((resolve, reject) => {
       const child = spawn(
         "npx",
-        ["tsx", "scripts/s1-migration/sync.ts", "--mode", "daily", "--profile", "production"],
+        [...SCHEDULED_SYNC_ARGS],
         { stdio: "inherit", env: { ...getRawProcessEnv(), S1_RESULT_JSON_PATH: resultPath } },
       );
       child.once("error", reject);

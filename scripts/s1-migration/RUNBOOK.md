@@ -1230,6 +1230,15 @@ or append configuration during that run. Existing staged benefit mappings must
 already resolve; downstream loaders remain fail-closed if S1 introduces an
 unmapped benefit. Final-freeze refuses this flag and always runs both seeders.
 
+The no-argument production scheduler wrapper always supplies
+`--skip-seeders`. EC and UH intentionally exclude four inactive historical
+benefits, so an ordinary automated daily run must not let the seeders restore
+those assignments or fail on their deliberate removal. Its report contract
+requires `skipSeeders: true`; both seeder fleet records remain visible as
+intentional skips, and the rest of the fleet and parity gates run normally.
+This scheduled daily rule does not change the separately approved
+final-freeze procedure, which runs both seeders.
+
 **Config is checked in** (`sync-config.ts`), never ad-hoc shell flags: fleet
 order (§3, including beneficiaries + cardchecks), per-loader `--allow-rejects`
 (§5 rulings), per-loader LOGIC_VERSION expectations, open-end policy
