@@ -339,7 +339,7 @@ Key ordering facts:
 - Appeal elections are reconciled by T16 using the nine-title catalog in
   `docs/s1-migration/02-mapping.md`. The exemption row keeps its identity when
   the worker, benefit, or dates are corrected; a valid withdrawal is end-dated.
-  Empty or partial staging never sweeps migration-owned exemptions. Operators
+  Empty or partial election or policy staging never sweeps migration-owned exemptions. Operators
   must resolve `appeal_*` reject classes before final-freeze. After a retry,
   confirm `appealExemptions.deletionSweepComplete=true`, zero
   `appeal_exemption_verify_failed`, and the create/update/unchanged/deleted

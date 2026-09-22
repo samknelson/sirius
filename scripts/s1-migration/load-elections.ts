@@ -253,11 +253,16 @@ async function reconcileAppealExemptions(
       ? { target, candidates: 1 }
       : { reason: "target_unmapped", candidates: 1 });
   }
-  const seen = new Set<number>();
+  const ownedNids = (await db.execute(sql`
+    SELECT DISTINCT (data->'source'->>'electionNid')::int AS nid
+      FROM trust_benefit_eligibility_exemptions
+     WHERE data->'source'->>'kind' = ${"s1_appeal_election"}
+  `) as unknown as { rows: Array<{ nid: number }> }).rows.map((row) => Number(row.nid));
+  const ownedNidSet = new Set(ownedNids);
+  const stagedElectionNids = new Set<number>();
+  const seenAppeals = new Set<number>();
   const ownedForDry = DRY_RUN
-    ? await storage.trustBenefitEligibilityExemptions.listByS1AppealElectionNids(
-        (await db.execute(sql`SELECT DISTINCT (data->'source'->>'electionNid')::int AS nid FROM trust_benefit_eligibility_exemptions WHERE data->'source'->>'kind' = ${"s1_appeal_election"}`) as unknown as { rows: Array<{ nid: number }> }).rows.map((r) => Number(r.nid)),
-      )
+    ? await storage.trustBenefitEligibilityExemptions.listByS1AppealElectionNids(ownedNids)
     : [];
   let created = 0;
   let updated = 0;
@@ -274,17 +279,25 @@ async function reconcileAppealExemptions(
       .filter((nid): nid is number => nid != null);
     const pageWorkerMap = await getMappings("worker", pageWorkerNids);
     for (const row of appealRows) {
+    stagedElectionNids.add(row.nid);
     const policyNid = targetNidOf(row.fields, "field_sirius_trust_policy");
     const policyMatches = policyNid == null ? [] : (policyByNid.get(policyNid) ?? []);
     const policyTitles = [...new Set(policyMatches.map((p) => normalizeTypeName(p.title ?? "")))];
     const catalog = policyMatches.length === 1 && policyTitles.length === 1 ? appealForPolicyTitle(policyMatches[0]?.title) : undefined;
     if (!catalog) {
-      if (policyTitles.some((t) => t.includes("appeal"))) {
-        rejects.add("appeal_name_unmapped", { nid: row.nid, policyNid, ambiguous: policyMatches.length > 1 }, row.nid);
+      if (policyTitles.some((t) => t.includes("appeal")) || ownedNidSet.has(row.nid)) {
+        const reason = policyNid == null
+          ? "policy_ref_missing"
+          : policyMatches.length === 0
+            ? "policy_source_missing"
+            : policyMatches.length > 1
+              ? "policy_source_ambiguous"
+              : "policy_name_unmapped";
+        rejects.add("appeal_name_unmapped", { nid: row.nid, policyNid, reason }, row.nid);
       }
       continue;
     }
-    seen.add(row.nid);
+    seenAppeals.add(row.nid);
     const workerNid = targetNidOf(row.fields, "field_sirius_worker");
     const worker = workerNid == null ? undefined : pageWorkerMap.get(workerNid)?.s2Id;
     if (!worker) {
@@ -387,27 +400,39 @@ async function reconcileAppealExemptions(
   let deleted = 0;
   // A bundle containing no recognized appeal rows may be a partial/filtered
   // staging result; do not infer that all previously owned appeals vanished.
-  const completeness = stagedCount > 0 && (await db.execute(sql`
+  async function bundleCompleteness(bundle: string, count: number): Promise<{ planned: boolean; complete: boolean }> {
+    const result = await db.execute(sql`
     WITH latest AS (
       SELECT generation, bundles FROM s1_staging.range_generations
       ORDER BY created_at DESC LIMIT 1
     ), evidence AS (
       SELECT e.* FROM s1_staging.range_evidence e JOIN latest l ON l.generation = e.generation
-      WHERE e.bundle = ${BUNDLE}
+      WHERE e.bundle = ${bundle}
     )
-    SELECT EXISTS (SELECT 1 FROM latest l
-      WHERE l.bundles @> ${JSON.stringify([{ bundle: BUNDLE }])}::jsonb
+    SELECT
+      EXISTS (SELECT 1 FROM latest l
+        WHERE l.bundles @> ${JSON.stringify([{ bundle }])}::jsonb) AS planned,
+      EXISTS (SELECT 1 FROM latest l
+        WHERE l.bundles @> ${JSON.stringify([{ bundle }])}::jsonb
         AND EXISTS (SELECT 1 FROM evidence)
         AND NOT EXISTS (SELECT 1 FROM evidence WHERE status <> 'verified')
-        AND ${stagedCount} = (SELECT COALESCE(SUM(staged_count), 0) FROM evidence)
-    ) AS complete
-  `) as unknown as { rows: Array<{ complete: boolean }> }).rows[0]?.complete === true;
-  const ownedNids = (await db.execute(sql`
-    SELECT DISTINCT (data->'source'->>'electionNid')::int AS nid
-      FROM trust_benefit_eligibility_exemptions
-     WHERE data->'source'->>'kind' = ${"s1_appeal_election"}
-  `) as unknown as { rows: Array<{ nid: number }> }).rows.map((r) => Number(r.nid));
-  const deletedNids = deletedAppealElectionNids(ownedNids, seen, completeness);
+        AND ${count} = (SELECT COALESCE(SUM(staged_count), 0) FROM evidence)
+      ) AS complete
+    `) as unknown as { rows: Array<{ planned: boolean; complete: boolean }> };
+    return result.rows[0] ?? { planned: false, complete: false };
+  }
+  const electionCompleteness = stagedCount > 0
+    ? await bundleCompleteness(BUNDLE, stagedCount)
+    : { planned: false, complete: false };
+  const policyCompleteness = await Promise.all([
+    ["sirius_json_definition", policyRows.filter((row) => row.bundle === "sirius_json_definition").length] as const,
+    ["sirius_trust_policy", policyRows.filter((row) => row.bundle === "sirius_trust_policy").length] as const,
+  ].map(async ([bundle, count]) => ({ bundle, ...await bundleCompleteness(bundle, count) })));
+  const plannedPolicies = policyCompleteness.filter((entry) => entry.planned);
+  const completeness = electionCompleteness.complete
+    && plannedPolicies.length > 0
+    && plannedPolicies.every((entry) => entry.complete);
+  const deletedNids = deletedAppealElectionNids(ownedNids, stagedElectionNids, completeness);
   if (DRY_RUN) {
     deleted = deletedNids.length;
   } else {
@@ -419,7 +444,20 @@ async function reconcileAppealExemptions(
   summary.updated += updated;
   summary.unchanged += unchanged;
   summary.deleted += deleted;
-  report.appealExemptions = { catalogSize: Object.keys(APPEAL_CATALOG).length, created, updated, unchanged, deleted, stagedAppeals: seen.size, deletionSweepComplete: completeness };
+  report.appealExemptions = {
+    catalogSize: Object.keys(APPEAL_CATALOG).length,
+    created,
+    updated,
+    unchanged,
+    deleted,
+    stagedAppeals: seenAppeals.size,
+    stagedElections: stagedElectionNids.size,
+    deletionSweepComplete: completeness,
+    deletionEvidence: {
+      elections: electionCompleteness,
+      policies: policyCompleteness,
+    },
+  };
 }
 
 async function main() {

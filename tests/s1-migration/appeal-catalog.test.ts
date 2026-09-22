@@ -70,6 +70,15 @@ describe("S1 appeal catalog", () => {
     expect(deletedAppealElectionNids([20], new Set(), true)).toEqual([20]);
   });
 
+  it("retains owned exemptions while their election still exists, even when classification fails", () => {
+    const stagedElectionNids = new Set([10, 20, 30]);
+    // The staged set deliberately includes unknown-title, ambiguous-policy, and
+    // missing-policy rows; classification success is not a deletion condition.
+    expect(deletedAppealElectionNids([10, 20, 30], stagedElectionNids, true)).toEqual([]);
+    expect(deletedAppealElectionNids([10, 20, 30], new Set([10, 30]), true)).toEqual([20]);
+    expect(deletedAppealElectionNids([10, 20, 30], new Set(), false)).toEqual([]);
+  });
+
   it("validates truthful migration provenance without exposing provenance on staff create", () => {
     const source = trustBenefitEligibilityExemptionSourceSchema.parse({
       kind: TRUST_EXEMPTION_SOURCE_S1_APPEAL_ELECTION,
