@@ -127,7 +127,7 @@ function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
         <section className="coverage-first-upcoming" aria-labelledby="coverage-first-upcoming-heading">
           <div className="mb-3">
             <h3 id="coverage-first-upcoming-heading" className="font-semibold">Looking ahead</h3>
-            <p className="max-w-prose text-xs leading-relaxed text-muted-foreground mt-[2px] ml-[0px]">
+            <p className="w-full max-w-none text-xs leading-relaxed text-muted-foreground mt-[2px] ml-[0px]">
               Future work months help track upcoming thresholds. They are not current coverage decisions, and “pending” is not a denial.
             </p>
           </div>
