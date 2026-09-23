@@ -91,71 +91,83 @@ try {
   await page.setViewport({ width: 1200, height: 900 });
   await page.goto(`${origin}/tests/sitespecific/bao-worker-coverage/browser.html`, { waitUntil: "networkidle0" });
   await page.waitForSelector('[data-testid="card-dashboard-bao-worker-coverage"]');
-  await page.waitForSelector(".bao-worker-coverage-status--bad");
+  await page.waitForFunction(() => document.querySelector('[aria-label="Not covered"]'));
 
-  const verifyVisibleCore = async () => {
+  const verifyVisibleCore = async (host) => {
     const values = await page.evaluate(() => {
-      const card = document.querySelector(".bao-worker-coverage-card");
-      const status = document.querySelector(".bao-worker-coverage-current-status");
-      const footer = document.querySelector(".bao-worker-coverage-footer a");
+      const card = document.querySelector('[data-testid="card-dashboard-bao-worker-coverage"]');
+      const status = card?.querySelector('[role="status"]');
+      const footer = card?.querySelector('[data-testid="link-bao-worker-coverage-monthly-hours"]');
       if (!card || !status || !footer) throw new Error("Coverage card status or footer is missing");
       const rect = card.getBoundingClientRect();
       const statusRect = status.getBoundingClientRect();
       const footerRect = footer.getBoundingClientRect();
+      const future = card.querySelector('[aria-label="Future coverage"]');
+      const current = card.querySelector('[aria-label="Current coverage"]');
+      const metrics = card.querySelector(".bao-coverage-metrics");
+      const periods = card.querySelector(".bao-coverage-periods");
+      const colors = [getComputedStyle(card).color, getComputedStyle(card).backgroundColor];
       return {
         viewportWidth: window.innerWidth,
         documentWidth: document.documentElement.scrollWidth,
         cardLeft: rect.left,
         cardRight: rect.right,
+        cardWidth: rect.width,
         statusVisible: statusRect.width > 0 && statusRect.height > 0,
         footerVisible: footerRect.width > 0 && footerRect.height > 0,
-        statusLabel: status.querySelector(".sr-only")?.textContent?.trim(),
+        statusLabel: status.getAttribute("aria-label"),
         footerHref: footer.getAttribute("href"),
         footerText: footer.textContent?.trim(),
-        footerNote: document.querySelector(".bao-worker-coverage-footer")?.textContent?.trim(),
+        footerNote: card.textContent?.trim(),
+        futureLabels: [...future.querySelectorAll("article")].map(node => node.textContent.trim()),
+        currentText: current.textContent.trim(),
+        metricsColumns: getComputedStyle(metrics).gridTemplateColumns.split(" ").length,
+        periodColumns: getComputedStyle(periods).gridTemplateColumns.split(" ").length,
+        blocking: [...current.querySelectorAll("[data-blocking]")].map(node => node.getAttribute("data-blocking")),
+        colors,
+        widestChild: Math.max(...[...card.querySelectorAll("section, article, [data-blocking]")].map(node => node.getBoundingClientRect().right)),
       };
     });
-    assert.equal(values.documentWidth, values.viewportWidth, `horizontal overflow at ${values.viewportWidth}px`);
-    assert.ok(values.cardLeft >= 0 && values.cardRight <= values.viewportWidth, `card exceeds viewport at ${values.viewportWidth}px`);
+    assert.ok(values.documentWidth <= values.viewportWidth, `horizontal overflow in ${host} at ${values.viewportWidth}px`);
+    assert.ok(values.cardLeft >= 0 && values.cardRight <= values.viewportWidth, `card exceeds viewport in ${host}`);
+    assert.ok(values.widestChild <= values.cardRight, `card content overflows in ${host}`);
     assert.ok(values.statusVisible, `coverage status is not visible at ${values.viewportWidth}px`);
     assert.ok(values.footerVisible, `footer link is not visible at ${values.viewportWidth}px`);
     assert.equal(values.statusLabel, "Not covered");
     assert.equal(values.footerHref, "/workers/fixture-worker/employment/monthly");
     assert.equal(values.footerText, "View your full monthly hours breakdown");
     assert.ok(values.footerNote.includes("Contact the fund with any questions or concerns."));
+    assert.ok(values.currentText.includes("99.75 hrs"));
+    assert.ok(values.currentText.includes("100 hrs"));
+    assert.ok(values.currentText.includes("-$12.50"));
+    assert.deepEqual(values.blocking, ["hours"]);
+    assert.equal(values.futureLabels.length, 2);
+    assert.ok(values.futureLabels[0].includes("Hours threshold met"));
+    assert.ok(values.futureLabels[0].includes("125.25 hrs / 100 hrs"));
+    assert.ok(values.futureLabels[1].includes("Hours threshold pending"));
+    assert.ok(values.futureLabels[1].includes("Coverage month"));
+    assert.notEqual(values.colors[0], values.colors[1], `unreadable card in ${host}`);
+    return values;
   };
 
-  await verifyVisibleCore();
-  const desktop = await page.evaluate(() => ({
-    headerDisplay: getComputedStyle(document.querySelector(".bao-worker-coverage-table-head")).display,
-    rowColumns: getComputedStyle(document.querySelector(".bao-worker-coverage-table-row")).gridTemplateColumns,
-    labels: [...document.querySelectorAll(".bao-worker-coverage-table-head span")].map(node => node.textContent.trim()),
-  }));
-  assert.notEqual(desktop.headerDisplay, "none");
-  assert.deepEqual(desktop.labels, ["Work Month", "Reported Hours", "Coverage Month", "Hours Threshold Met"]);
-  assert.equal((await page.$$(".bao-worker-coverage-row--met")).length, 1);
-  assert.equal((await page.$$(".bao-worker-coverage-row--pending")).length, 1);
-
-  await page.setViewport({ width: 375, height: 812 });
-  await verifyVisibleCore();
-  const mobile = await page.evaluate(() => {
-    const header = document.querySelector(".bao-worker-coverage-table-head");
-    const row = document.querySelector(".bao-worker-coverage-table-row");
-    const reported = row?.children[1];
-    const rect = row?.getBoundingClientRect();
-    return {
-      headerDisplay: header && getComputedStyle(header).display,
-      rowColumns: row && getComputedStyle(row).gridTemplateColumns,
-      responsiveLabel: reported && getComputedStyle(reported, "::before").content,
-      rowLeft: rect?.left,
-      rowRight: rect?.right,
-    };
-  });
-  assert.equal(mobile.headerDisplay, "none");
-  assert.equal(mobile.responsiveLabel, '"Reported"');
-  assert.ok(mobile.rowLeft >= 0 && mobile.rowRight <= 375, "mobile future row exceeds viewport");
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate(theme => document.documentElement.classList.toggle("dark", theme === "dark"), theme);
+    for (const host of ["dashboard", "staff"]) {
+      await page.setViewport({ width: 1200, height: 900 });
+      await page.evaluate(host => {
+        document.querySelector("main").style.maxWidth = host === "staff" ? "640px" : "";
+      }, host);
+      const desktop = await verifyVisibleCore(`${host} ${theme} desktop`);
+      assert.equal(desktop.metricsColumns, host === "staff" ? 2 : 3);
+      assert.equal(desktop.periodColumns, 2);
+      await page.setViewport({ width: 375, height: 812 });
+      const mobile = await verifyVisibleCore(`${host} ${theme} phone`);
+      assert.equal(mobile.periodColumns, 1);
+      assert.ok(mobile.cardWidth < 375);
+    }
+  }
   assert.deepEqual(failures, []);
-  console.log("BAO worker coverage browser checks passed at 1200px and 375px");
+  console.log("BAO worker coverage browser checks passed in dashboard/staff widths, light/dark, desktop/phone");
 } finally {
   if (failures.length) console.error("Browser fixture errors:", failures);
   await browser?.close();

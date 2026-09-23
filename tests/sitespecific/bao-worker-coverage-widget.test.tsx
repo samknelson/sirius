@@ -1,9 +1,8 @@
-import { readFile } from "node:fs/promises";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Router } from "wouter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BaoCoverageSummary } from "../../client/src/plugins/dashboard/bao-worker-coverage/BaoWorkerCoverage";
-import { BaoWorkerCoverage } from "../../client/src/plugins/dashboard/bao-worker-coverage/BaoWorkerCoverage";
+import { BaoWorkerCoverage, BaoWorkerCoverageView } from "../../client/src/plugins/dashboard/bao-worker-coverage/BaoWorkerCoverage";
 
 const dashboardContent = vi.hoisted(() => ({
   result: { data: null as BaoCoverageSummary | null, isLoading: false, isError: false },
@@ -60,112 +59,109 @@ describe("BAO worker coverage dashboard widget", () => {
     dashboardContent.result = { data: null, isLoading: false, isError: false };
   });
 
-  it("shows covered current coverage without marking unrelated balances as a cause", () => {
+  it("shows actual covered status, months, exact hours and balance without marking a cause", () => {
     const html = renderWidget(summary());
-
     expect(html).toContain("February 2027");
     expect(html).toContain("November 2026");
-    expect(html).toContain("100 hrs");
     expect(html).toContain("100 hrs");
     expect(html).toContain("$0.00");
     expect(html).toContain('aria-label="Current coverage"');
     expect(html).toContain('aria-label="Future coverage"');
-    expect(html).toContain('title="Coverage confirmed"');
-    expect(html).toContain("Coverage confirmed");
-    expect(html).not.toContain("is-highlighted");
+    expect(html).toContain('aria-label="Coverage confirmed"');
+    expect(html).not.toContain("Blocking coverage");
   });
 
-  it("highlights only the hours cell when hours are a known blocking cause", () => {
-    const html = renderWidget(summary({
+  it("emphasizes only confirmed blocking causes, not unknown or merely below-threshold hours", () => {
+    const base = summary();
+    const hours = renderWidget(summary({
       current: {
-        ...summary().current,
-        coverage: "not-covered",
+        ...base.current, coverage: "not-covered",
         hours: { reported: 99.75, required: 100, thresholdMet: false },
         causes: { hours: true, balance: null },
       },
     }));
+    expect(hours).toContain('aria-label="Not covered"');
+    expect(hours).toContain("99.75 hrs");
+    expect(hours).toContain('data-blocking="hours"');
+    expect(hours).not.toContain('data-blocking="balance"');
 
-    expect(html).toContain('title="Not covered"');
-    expect(html).toContain("99.75 hrs");
-    expect(html).toContain("bao-worker-coverage-hours is-highlighted");
-    expect(html).not.toContain("bao-worker-coverage-balance is-highlighted");
-  });
-
-  it("highlights only the balance cell when balance is a known blocking cause", () => {
-    const html = renderWidget(summary({
-      current: {
-        ...summary().current,
-        coverage: "not-covered",
-        causes: { hours: null, balance: true },
-      },
-      balance: {
-        available: true,
-        totals: [{ currency: "USD", amount: "-12.50", formatted: "-$12.50" }],
-      },
+    const balance = renderWidget(summary({
+      current: { ...base.current, coverage: "not-covered", causes: { hours: null, balance: true } },
+      balance: { available: true, totals: [{ currency: "USD", amount: "-12.50", formatted: "-$12.50" }] },
     }));
+    expect(balance).toContain("-$12.50");
+    expect(balance).toContain('data-blocking="balance"');
+    expect(balance).not.toContain('data-blocking="hours"');
 
-    expect(html).toContain("-$12.50");
-    expect(html).toContain("bao-worker-coverage-balance is-highlighted");
-    expect(html).not.toContain("bao-worker-coverage-hours is-highlighted");
+    const unknown = renderWidget(summary({
+      current: { ...base.current, coverage: "not-covered", causes: { hours: false, balance: null } },
+    }));
+    expect(unknown).not.toContain("Blocking coverage");
   });
 
-  it("shows future hours recovery separately from current noncoverage", () => {
+  it("keeps future threshold outcomes separate from actual current coverage", () => {
+    const base = summary();
     const html = renderWidget(summary({
-      current: {
-        ...summary().current,
-        coverage: "not-covered",
-        causes: { hours: true, balance: null },
-      },
+      current: { ...base.current, coverage: "not-covered", causes: { hours: true, balance: null } },
       future: [
-        {
-          ...summary().future[0],
-          hours: { reported: 125.25, required: 100, thresholdMet: true },
-          status: "met",
-        },
-        {
-          ...summary().future[1],
-          hours: { reported: 100, required: 100, thresholdMet: true },
-          status: "met",
-        },
+        { ...base.future[0], hours: { reported: 125.25, required: 100, thresholdMet: true }, status: "met" },
+        { ...base.future[1], hours: { reported: 100, required: 100, thresholdMet: true }, status: "met" },
       ],
     }));
-
-    expect(html).toContain('title="Not covered"');
-    expect(html.match(/title="Hours threshold met"/g)).toHaveLength(2);
+    expect(html).toContain('aria-label="Not covered"');
+    expect(html.match(/aria-label="Hours threshold met"/g)).toHaveLength(2);
     expect(html).toContain("125.25 hrs");
-    expect(html).toContain("is-highlighted");
-    expect(html).toContain("bao-worker-coverage-row--met");
+    expect(html).toContain("Reported / required");
+    expect(html).toContain("not a current coverage decision");
   });
 
-  it("distinguishes pending and below future rows with accessible neutral/red statuses", () => {
-    const html = renderWidget(summary({
+  it("distinguishes pending, below, stale and unavailable without implying noncoverage", () => {
+    const base = summary();
+    const future = renderWidget(summary({
       future: [
-        { ...summary().future[0], status: "pending" },
-        { ...summary().future[1], status: "below" },
+        { ...base.future[0], status: "pending" },
+        { ...base.future[1], status: "below" },
       ],
     }));
-
-    expect(html).toContain("bao-worker-coverage-row--pending");
-    expect(html).toContain('title="Hours threshold pending"');
-    expect(html).toContain("bao-worker-coverage-row--below");
-    expect(html).toContain('title="Hours threshold not met"');
-    expect(html).toContain('class="sr-only"');
-    expect(html).toContain('aria-hidden="true"');
+    expect(future).toContain('aria-label="Hours threshold pending"');
+    expect(future).toContain('aria-label="Hours threshold not met"');
+    expect(future).toContain('aria-hidden="true"');
+    for (const [coverage, label] of [["stale", "Coverage needs updating"], ["unavailable", "Coverage unavailable"]] as const) {
+      const html = renderWidget(summary({ current: { ...base.current, coverage } }));
+      expect(html).toContain(`aria-label="${label}"`);
+      expect(html).not.toContain('aria-label="Not covered"');
+      expect(html).not.toContain("Blocking coverage");
+    }
   });
 
-  it("keeps responsive mobile row markup and the worker monthly-hours footer link", async () => {
-    const html = renderWidget(summary());
-    const css = await readFile(
-      new URL("../../client/src/plugins/dashboard/bao-worker-coverage/bao-worker-coverage.css", import.meta.url),
-      "utf8",
-    );
-
-    expect(css).toContain("@media(max-width:700px)");
-    expect(css).toContain(".bao-worker-coverage-table-head{display:none}");
-    expect(css).toContain(".bao-worker-coverage-table-row{grid-template-columns:1fr 1fr");
-    expect(css).toContain('content:"Coverage month"');
+  it("preserves multi-currency balances, empty hours/future, link and contact message in both hosts", () => {
+    const base = summary();
+    const data = summary({
+      current: { ...base.current, hours: null },
+      balance: { available: true, totals: [
+        { currency: "USD", amount: "4.00", formatted: "$4.00" },
+        { currency: "CAD", amount: "3.00", formatted: "$3.00" },
+      ] },
+      future: [],
+    });
+    const html = renderWidget(data);
+    expect(html).toContain("$4.00, CAD $3.00");
+    expect(html).toContain("No future coverage periods to show.");
+    expect(html).toContain("Reported:");
+    expect(html).toContain("—");
     expect(html).toContain('href="/workers/worker%2F123/employment/monthly"');
-    expect(html).toContain("View your full monthly hours breakdown");
     expect(html).toContain("Contact the fund with any questions or concerns.");
+    expect(renderToStaticMarkup(
+      <Router hook={() => ["/", () => {}]}><BaoWorkerCoverageView data={data} /></Router>,
+    )).toContain("No future coverage periods to show.");
+  });
+
+  it("preserves loading, error, unlinked and unavailable messages", () => {
+    dashboardContent.result = { data: null, isLoading: true, isError: false };
+    expect(renderToStaticMarkup(<BaoWorkerCoverage userId="" userRoles={[]} />)).toContain('aria-busy="true"');
+    dashboardContent.result = { data: null, isLoading: false, isError: true };
+    expect(renderToStaticMarkup(<BaoWorkerCoverage userId="" userRoles={[]} />)).toContain("Coverage information is temporarily unavailable.");
+    expect(renderWidget(summary({ state: "unlinked" }))).toContain("Your worker account is not linked");
+    expect(renderWidget(summary({ state: "unavailable" }))).toContain("Coverage information is unavailable.");
   });
 });

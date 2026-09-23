@@ -1,7 +1,29 @@
-.bao-worker-coverage-card{--bao-blue:#173f70;--bao-line:#7c9dbc;width:100%;overflow:hidden;border:1px solid #c9cdd2;border-radius:15px;background:#fff;color:var(--bao-blue);box-shadow:0 1px 2px rgba(20,48,74,.08);font-size:.95rem}
-.bao-worker-coverage-title{display:flex;min-height:58px;align-items:center;justify-content:center;border-bottom:1px solid var(--bao-line);padding:13px 18px;text-align:center;font-size:1.18rem;font-weight:700}
-.bao-worker-coverage-current{display:grid;grid-template-columns:1.1fr 1.75fr .9fr 1.25fr auto;gap:20px;align-items:center;min-height:94px;border-bottom:1px solid var(--bao-line);padding:16px 22px}
-.bao-worker-coverage-field{display:flex;flex-direction:column;gap:2px;min-width:0}.bao-worker-coverage-field strong,.bao-worker-coverage-hours span{font-size:1.02rem;line-height:1.25}.bao-worker-coverage-label{font-weight:700}.bao-worker-coverage-hours{gap:0}.bao-worker-coverage-current-status{justify-self:end}
-.bao-worker-coverage-field.is-highlighted{border-radius:6px;background:#fff0ef;box-shadow:0 0 0 5px #fff0ef}.bao-worker-coverage-status{display:inline-flex;align-items:center;justify-content:center}.bao-worker-coverage-status svg{width:27px;height:27px}.bao-worker-coverage-status--good{color:#159447}.bao-worker-coverage-status--bad{color:#bd3d36}.bao-worker-coverage-status--pending{color:#6c7784}
-.bao-worker-coverage-table-head,.bao-worker-coverage-table-row{display:grid;grid-template-columns:1.05fr 1.45fr 1.4fr 1.35fr;gap:18px;align-items:center;padding:17px 22px}.bao-worker-coverage-table-head{min-height:65px;border-bottom:1px solid var(--bao-line);font-size:1.02rem;font-weight:700}.bao-worker-coverage-table-row{min-height:68px;border-bottom:1px solid var(--bao-line);font-size:1.03rem}.bao-worker-coverage-table-row:last-child{border-bottom:0}.bao-worker-coverage-row--met{background:#f3fbf5}.bao-worker-coverage-row--below{background:#fff0ef}.bao-worker-coverage-row--pending{background:#f5f6f8}.bao-worker-coverage-arrow{display:inline;vertical-align:middle;width:20px;height:20px;margin:0 10px;color:#31577e}.bao-worker-coverage-empty,.bao-worker-coverage-message{padding:24px;color:#43596f}.bao-worker-coverage-message{display:flex;flex-direction:column;gap:5px}.bao-worker-coverage-message strong{color:var(--bao-blue)}.bao-worker-coverage-footer{display:flex;gap:8px 16px;justify-content:space-between;flex-wrap:wrap;padding:12px 22px 16px;font-size:.86rem}.bao-worker-coverage-footer a{color:var(--bao-blue);font-weight:600;text-decoration:underline;text-underline-offset:3px}.bao-worker-coverage-loading{display:grid;gap:14px;padding:22px}
-@media(max-width:700px){.bao-worker-coverage-current{grid-template-columns:1fr 1fr;gap:16px;padding:18px}.bao-worker-coverage-current-status{grid-column:2;grid-row:1}.bao-worker-coverage-table-head{display:none}.bao-worker-coverage-table-row{grid-template-columns:1fr 1fr;gap:10px 16px;padding:16px 18px}.bao-worker-coverage-table-row span:nth-child(1)::before{content:"Work month";display:block;font-size:.72rem;font-weight:700;opacity:.72}.bao-worker-coverage-table-row span:nth-child(2)::before{content:"Reported";display:block;font-size:.72rem;font-weight:700;opacity:.72}.bao-worker-coverage-table-row span:nth-child(3)::before{content:"Coverage month";display:block;font-size:.72rem;font-weight:700;opacity:.72}.bao-worker-coverage-table-row span:nth-child(4)::before{content:"Threshold";display:block;font-size:.72rem;font-weight:700;opacity:.72}}
+/* Layout responds to the card's available width in both dashboard and staff hosts. */
+.bao-worker-coverage-card {
+  container-type: inline-size;
+}
+
+.bao-coverage-metrics,
+.bao-coverage-periods {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@container (min-width: 640px) {
+  .bao-coverage-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 410px) {
+  .bao-coverage-periods {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 340px) {
+  .bao-coverage-metrics,
+  .bao-coverage-periods,
+  .bao-coverage-periods article > div:last-child {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

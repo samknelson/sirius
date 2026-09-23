@@ -1,5 +1,6 @@
-import { ArrowRight, Check, Minus, X } from "lucide-react";
+import { Check, Clock3, X } from "lucide-react";
 import { Link } from "wouter";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardPluginProps } from "../registry";
 import { useDashboardContent } from "../useDashboardContent";
@@ -32,26 +33,34 @@ function exactHours(value: number | null | undefined) {
   return value === null || value === undefined || !Number.isFinite(value) ? "—" : `${String(value)} hrs`;
 }
 
-function StatusIcon({ kind, label }: { kind: "good" | "bad" | "pending"; label: string }) {
-  const Icon = kind === "good" ? Check : kind === "bad" ? X : Minus;
+const currentStatus = {
+  covered: { label: "Coverage confirmed", Icon: Check, tone: "border-accent/50 bg-accent/10 text-foreground", iconTone: "text-accent" },
+  "not-covered": { label: "Not covered", Icon: X, tone: "border-destructive/40 bg-destructive/10 text-destructive", iconTone: "text-destructive" },
+  stale: { label: "Coverage needs updating", Icon: Clock3, tone: "border-border bg-muted text-foreground", iconTone: "text-muted-foreground" },
+  unavailable: { label: "Coverage unavailable", Icon: Clock3, tone: "border-border bg-muted text-foreground", iconTone: "text-muted-foreground" },
+} as const;
+
+const futureStatus = {
+  met: { label: "Hours threshold met", Icon: Check, tone: "text-foreground", iconTone: "text-accent" },
+  below: { label: "Hours threshold not met", Icon: X, tone: "text-destructive", iconTone: "text-destructive" },
+  pending: { label: "Hours threshold pending", Icon: Clock3, tone: "text-muted-foreground", iconTone: "text-muted-foreground" },
+} as const;
+
+function CoverageShell({ children, label }: { children: React.ReactNode; label?: string }) {
   return (
-    <span className={`bao-worker-coverage-status bao-worker-coverage-status--${kind}`} title={label}>
-      <Icon aria-hidden="true" strokeWidth={3} />
-      <span className="sr-only">{label}</span>
-    </span>
+    <Card className="bao-worker-coverage-card w-full min-w-0" aria-label={label} data-testid="card-dashboard-bao-worker-coverage">
+      {children}
+    </Card>
   );
 }
 
-function CurrentStatus({ coverage }: { coverage: BaoCoverageSummary["current"]["coverage"] }) {
-  if (coverage === "covered") return <StatusIcon kind="good" label="Coverage confirmed" />;
-  if (coverage === "not-covered") return <StatusIcon kind="bad" label="Not covered" />;
-  return <StatusIcon kind="pending" label={coverage === "stale" ? "Coverage needs updating" : "Coverage unavailable"} />;
-}
-
-function FutureStatus({ status }: { status: BaoCoverageSummary["future"][number]["status"] }) {
-  if (status === "met") return <StatusIcon kind="good" label="Hours threshold met" />;
-  if (status === "below") return <StatusIcon kind="bad" label="Hours threshold not met" />;
-  return <StatusIcon kind="pending" label="Hours threshold pending" />;
+function CoverageHeading() {
+  return (
+    <CardHeader className="pb-3">
+      <CardTitle className="text-base">Coverage</CardTitle>
+      <CardDescription>Current coverage and upcoming work-month hours</CardDescription>
+    </CardHeader>
+  );
 }
 
 export function BaoWorkerCoverage(_props: DashboardPluginProps) {
@@ -60,34 +69,35 @@ export function BaoWorkerCoverage(_props: DashboardPluginProps) {
 
   if (isLoading) {
     return (
-      <section className="bao-worker-coverage-card" aria-label="Coverage loading" data-testid="card-dashboard-bao-worker-coverage">
-        <div className="bao-worker-coverage-loading">
-          <Skeleton className="h-5 w-52" /><Skeleton className="h-20 w-full" />
-          <Skeleton className="h-5 w-64" /><Skeleton className="h-20 w-full" />
-        </div>
-      </section>
+      <CoverageShell label="Coverage loading">
+        <CoverageHeading />
+        <CardContent className="space-y-3" aria-busy="true">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-20 w-full" />
+        </CardContent>
+      </CoverageShell>
     );
   }
 
-  if (isError) {
-    return <section className="bao-worker-coverage-card" role="alert" data-testid="card-dashboard-bao-worker-coverage">
-      <div className="bao-worker-coverage-message"><strong>Coverage information is temporarily unavailable.</strong><span>Please try again later.</span></div>
-    </section>;
+  let message: { title: string; detail: string } | null = null;
+  if (isError) message = { title: "Coverage information is temporarily unavailable.", detail: "Please try again later." };
+  else if (!data || data.state === "unlinked") message = { title: "Coverage information is not available.", detail: "Your worker account is not linked to benefits coverage yet." };
+  else if (data.state === "unavailable") message = { title: "Coverage information is unavailable.", detail: "Please try again later." };
+
+  if (message) {
+    return (
+      <CoverageShell>
+        <CoverageHeading />
+        <CardContent role={isError ? "alert" : undefined} className="space-y-1 text-sm">
+          <p className="font-medium">{message.title}</p>
+          <p className="text-muted-foreground">{message.detail}</p>
+        </CardContent>
+      </CoverageShell>
+    );
   }
 
-  if (!data || data.state === "unlinked") {
-    return <section className="bao-worker-coverage-card" data-testid="card-dashboard-bao-worker-coverage">
-      <div className="bao-worker-coverage-message"><strong>Coverage information is not available.</strong><span>Your worker account is not linked to benefits coverage yet.</span></div>
-    </section>;
-  }
-
-  if (data.state === "unavailable") {
-    return <section className="bao-worker-coverage-card" data-testid="card-dashboard-bao-worker-coverage">
-      <div className="bao-worker-coverage-message"><strong>Coverage information is unavailable.</strong><span>Please try again later.</span></div>
-    </section>;
-  }
-
-  return <BaoWorkerCoverageView data={data} />;
+  return <BaoWorkerCoverageView data={data!} />;
 }
 
 /** Shared presentation for the member dashboard and admin worker record. */
@@ -102,39 +112,86 @@ export function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
         entry.currency === "USD" ? entry.formatted : `${entry.currency} ${entry.formatted}`
       ).join(", ")
     : "—";
+  const status = currentStatus[data.current.coverage];
 
   return (
-    <section className="bao-worker-coverage-card" data-testid="card-dashboard-bao-worker-coverage">
-      <header className="bao-worker-coverage-title">Am I Covered Now?</header>
-      <div className="bao-worker-coverage-current" aria-label="Current coverage">
-        <div className="bao-worker-coverage-field"><span className="bao-worker-coverage-label">Work Hours</span><strong>{data.current.workMonth.label}</strong></div>
-        <div className={`bao-worker-coverage-field bao-worker-coverage-hours ${hoursHighlight ? "is-highlighted" : ""}`}>
-          <span><b>Reported:</b> {exactHours(data.current.hours?.reported)}</span>
-          <span><b>Required:</b> {exactHours(data.current.hours?.required)}</span>
-        </div>
-        <div className={`bao-worker-coverage-field bao-worker-coverage-balance ${balanceHighlight ? "is-highlighted" : ""}`}>
-          <span className="bao-worker-coverage-label">Balance</span><strong>{balanceText}</strong>
-        </div>
-        <div className="bao-worker-coverage-field"><span className="bao-worker-coverage-label">Current Coverage</span><strong>{data.current.coverageMonth.label}</strong></div>
-        <div className="bao-worker-coverage-current-status"><CurrentStatus coverage={data.current.coverage} /></div>
-      </div>
-
-      <header className="bao-worker-coverage-title bao-worker-coverage-title--future">Have I Met My Hours for Future Coverage?</header>
-      <div className="bao-worker-coverage-future" aria-label="Future coverage">
-        <div className="bao-worker-coverage-table-head"><span>Work Month</span><span>Reported Hours</span><span>Coverage Month</span><span>Hours Threshold Met</span></div>
-        {data.future.length === 0 ? <div className="bao-worker-coverage-empty">No future coverage periods to show.</div> : data.future.map((period) => (
-          <div className={`bao-worker-coverage-table-row bao-worker-coverage-row--${period.status}`} key={`${period.workMonth.year}-${period.workMonth.month}`}>
-            <span>{period.workMonth.label}</span>
-            <span>{exactHours(period.hours.reported)} <ArrowRight className="bao-worker-coverage-arrow" aria-hidden="true" /></span>
-            <span>{period.coverageMonth.label}</span>
-            <span><FutureStatus status={period.status} /></span>
+    <CoverageShell>
+      <CoverageHeading />
+      <CardContent className="space-y-6 text-sm">
+        <section aria-label="Current coverage" className="rounded-lg border p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground">Current coverage</h3>
+              <p className="mt-1 text-base font-semibold">{data.current.coverageMonth.label}</p>
+            </div>
+            <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium ${status.tone}`} role="status" aria-label={status.label}>
+              <status.Icon className={`h-4 w-4 shrink-0 ${status.iconTone}`} aria-hidden="true" />
+              {status.label}
+            </span>
           </div>
-        ))}
-      </div>
-      <footer className="bao-worker-coverage-footer">
-        <Link href={monthlyHoursHref} data-testid="link-bao-worker-coverage-monthly-hours">View your full monthly hours breakdown</Link>
-        <span>Contact the fund with any questions or concerns.</span>
-      </footer>
-    </section>
+          <div className="bao-coverage-metrics mt-5 grid gap-3">
+            <div className="min-w-0 rounded-md bg-muted/50 p-3">
+              <span className="block text-xs text-muted-foreground">Work month</span>
+              <strong className="mt-1 block font-medium">{data.current.workMonth.label}</strong>
+            </div>
+            <div className={`min-w-0 rounded-md p-3 ${hoursHighlight ? "border border-destructive/40 bg-destructive/10" : "bg-muted/50"}`} data-blocking={hoursHighlight ? "hours" : undefined} aria-label={hoursHighlight ? "Hours are blocking current coverage" : undefined}>
+              <span className="block text-xs text-muted-foreground">Work hours</span>
+              <div className="mt-1 tabular-nums"><span className="text-muted-foreground">Reported:</span> <strong className="font-medium">{exactHours(data.current.hours?.reported)}</strong></div>
+              <div className="tabular-nums"><span className="text-muted-foreground">Required:</span> <strong className="font-medium">{exactHours(data.current.hours?.required)}</strong></div>
+              {hoursHighlight && <span className="mt-1 block text-xs font-medium text-destructive">Blocking coverage</span>}
+            </div>
+            <div className={`min-w-0 rounded-md p-3 ${balanceHighlight ? "border border-destructive/40 bg-destructive/10" : "bg-muted/50"}`} data-blocking={balanceHighlight ? "balance" : undefined} aria-label={balanceHighlight ? "Balance is blocking current coverage" : undefined}>
+              <span className="block text-xs text-muted-foreground">Balance</span>
+              <strong className="mt-1 block break-words font-medium">{balanceText}</strong>
+              {balanceHighlight && <span className="mt-1 block text-xs font-medium text-destructive">Blocking coverage</span>}
+            </div>
+          </div>
+        </section>
+
+        <section aria-label="Future coverage">
+          <div className="mb-3">
+            <h3 className="font-semibold">Upcoming work months</h3>
+            <p className="text-sm text-muted-foreground">Hours thresholds for future coverage months, not a current coverage decision.</p>
+          </div>
+          {data.future.length === 0 ? (
+            <p className="rounded-md border p-4 text-muted-foreground">No future coverage periods to show.</p>
+          ) : (
+            <div className="bao-coverage-periods grid gap-3">
+              {data.future.map((period) => {
+                const threshold = futureStatus[period.status];
+                return (
+                  <article className="min-w-0 rounded-md border p-4" key={`${period.workMonth.year}-${period.workMonth.month}`}>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <span className="block text-xs text-muted-foreground">Work month</span>
+                        <strong className="font-medium">{period.workMonth.label}</strong>
+                      </div>
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${threshold.tone}`} aria-label={threshold.label}>
+                        <threshold.Icon className={`h-4 w-4 shrink-0 ${threshold.iconTone}`} aria-hidden="true" />
+                        {threshold.label}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-3 border-t pt-3">
+                      <div className="min-w-0">
+                        <span className="block text-xs text-muted-foreground">Reported / required</span>
+                        <span className="tabular-nums">{exactHours(period.hours.reported)} / {exactHours(period.hours.required)}</span>
+                      </div>
+                      <div className="min-w-0">
+                        <span className="block text-xs text-muted-foreground">Coverage month</span>
+                        <span>{period.coverageMonth.label}</span>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+        <div className="flex flex-wrap justify-between gap-x-4 gap-y-2 border-t pt-4 text-sm">
+          <Link href={monthlyHoursHref} className="font-medium text-primary underline underline-offset-4 hover:no-underline" data-testid="link-bao-worker-coverage-monthly-hours">View your full monthly hours breakdown</Link>
+          <span className="text-muted-foreground">Contact the fund with any questions or concerns.</span>
+        </div>
+      </CardContent>
+    </CoverageShell>
   );
 }
