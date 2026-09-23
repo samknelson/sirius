@@ -277,20 +277,6 @@ function EAInvoiceViewContent() {
         </CardContent>
       </Card>
 
-      <Card className="border-2 border-primary/20 statement-section">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">Outgoing Balance</CardTitle>
-            <span
-              className={`text-2xl font-bold ${parseFloat(invoiceDetails.outgoingBalance) < 0 ? "text-red-600 dark:text-red-400" : ""}`}
-              data-testid="outgoing-balance"
-            >
-              {formatAmount(invoiceDetails.outgoingBalance)}
-            </span>
-          </div>
-        </CardHeader>
-      </Card>
-
       <div className="border-t border-border pt-4 mt-4">
         <Card className="statement-section bg-muted/30">
           <CardHeader className="pb-3">
@@ -341,6 +327,20 @@ function EAInvoiceViewContent() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="border-2 border-primary/20 statement-section">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">Outgoing Balance</CardTitle>
+            <span
+              className={`text-2xl font-bold ${parseFloat(invoiceDetails.outgoingBalance) < 0 ? "text-red-600 dark:text-red-400" : ""}`}
+              data-testid="outgoing-balance"
+            >
+              {formatAmount(invoiceDetails.outgoingBalance)}
+            </span>
+          </div>
+        </CardHeader>
+      </Card>
 
       {invoiceDetails.invoiceFooter && (
         // Same provenance and same policy as the invoice header above.

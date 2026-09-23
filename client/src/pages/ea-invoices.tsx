@@ -283,8 +283,8 @@ function EAInvoicesContent() {
                       <Info className="h-3 w-3 text-muted-foreground" />
                     </span>
                   </TableHead>
-                  <TableHead className="text-right">Outgoing Balance</TableHead>
                   <TableHead className="text-right border-l-2 border-border">Payments Applied</TableHead>
+                  <TableHead className="text-right">Outgoing Balance</TableHead>
                   <TableHead className="text-right">
                     <span className="inline-flex items-center gap-1" title="Invoiced Amount + Payments Applied (positive = underpaid)">
                       Invoice Balance
@@ -325,18 +325,18 @@ function EAInvoicesContent() {
                         onClick={() => setModalState({ invoice, section: "invoicedAmount" })}
                         testId={`cell-invoiced-${invoice.year}-${invoice.month}`}
                       />
-                      <TableCell
-                        className={`text-right ${amountClass(invoice.outgoingBalance)}`}
-                        data-testid={`cell-outgoing-${invoice.year}-${invoice.month}`}
-                      >
-                        {formatAmount(invoice.outgoingBalance)}
-                      </TableCell>
                       <ClickableAmountCell
                         amount={invoice.paymentsAppliedSubtotal}
                         onClick={() => setModalState({ invoice, section: "paymentsApplied" })}
                         testId={`cell-applied-${invoice.year}-${invoice.month}`}
                         className="border-l-2 border-border"
                       />
+                      <TableCell
+                        className={`text-right ${amountClass(invoice.outgoingBalance)}`}
+                        data-testid={`cell-outgoing-${invoice.year}-${invoice.month}`}
+                      >
+                        {formatAmount(invoice.outgoingBalance)}
+                      </TableCell>
                       {(() => {
                         const invoiceBalance = (
                           parseFloat(invoicedAmount) + parseFloat(invoice.paymentsAppliedSubtotal)
