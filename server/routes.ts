@@ -630,7 +630,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Shared parser for the workers-with-details listing filters. Both the paginated
   // listing and the "all matching IDs" endpoint route through this single helper
   // so the two query interpretations cannot drift.
-  const parseWorkersWithDetailsFilters = (query: Request['query']) => {
+  const parseWorkersWithDetailsFilters = (query: Record<string, unknown>) => {
     const nameIdSearch = typeof query.nameIdSearch === 'string' ? query.nameIdSearch : undefined;
     const contactSearch = typeof query.contactSearch === 'string' ? query.contactSearch : undefined;
     const sortOrderParam = query.sortOrder as string;
@@ -648,7 +648,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     const contactStatusParam = query.contactStatus as string;
     const validContactStatuses = ['all', 'has_email', 'missing_email', 'has_phone', 'missing_phone', 'has_address', 'missing_address', 'complete', 'incomplete'];
     const contactStatus = validContactStatuses.includes(contactStatusParam) ? (contactStatusParam as any) : 'all';
-    const hasMultipleEmployers = query.hasMultipleEmployers === 'true';
+     const hasMultipleEmployers = query.hasMultipleEmployers === 'true' || query.hasMultipleEmployers === true;
     const jobTitle = typeof query.jobTitle === 'string' && query.jobTitle.trim() ? query.jobTitle.trim() : undefined;
     const memberStatusId = typeof query.memberStatusId === 'string' && query.memberStatusId !== 'all' ? query.memberStatusId : undefined;
     const representativeId = typeof query.representativeId === 'string' && query.representativeId !== 'all' ? query.representativeId : undefined;
@@ -678,6 +678,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // GET /api/workers/with-details/paginated - Get paginated workers with contact data
   app.get("/api/workers/with-details/paginated", requireAccess("worker.list"), async (req, res) => {
     try {
+      if ('ssn' in req.query || 'ssnFilter' in req.query) return res.status(400).json({ message: "SSN filters require a secure request body" });
       const rawPage = parseInt(req.query.page as string);
       const rawPageSize = parseInt(req.query.pageSize as string);
       const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
@@ -702,6 +703,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // GET /api/workers/with-details/all-ids - Return all matching contact IDs for the same filters as the paginated list
   app.get("/api/workers/with-details/all-ids", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
+      if ('ssn' in req.query || 'ssnFilter' in req.query) return res.status(400).json({ message: "SSN filters require a secure request body" });
       const filters = parseWorkersWithDetailsFilters(req.query);
       const contactIds = await storage.workers.getAllMatchingContactIds(filters);
       res.json({ contactIds, total: contactIds.length });
@@ -713,6 +715,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       res.status(500).json({ message: "Failed to fetch matching workers" });
     }
   });
+
+  // Sensitive searches are exclusively POSTed and authorized against the
+  // effective (possibly masqueraded) user before any database read.
+  const { registerWorkerSsnListRoutes } = await import("./modules/workers/ssn-list-routes");
+  registerWorkerSsnListRoutes(
+    app, requireAccess("worker.list"), requireAuth, requirePermission,
+    storage.workers, parseWorkersWithDetailsFilters,
+  );
 
   // POST /api/workers/latest-dues - Get latest dues payment info for a batch of workers
   app.post("/api/workers/latest-dues", requireAuth, requirePermission("staff"), async (req, res) => {

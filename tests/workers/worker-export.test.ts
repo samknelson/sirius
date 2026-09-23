@@ -4,6 +4,7 @@ import express from "express";
 import { parse } from "csv-parse/sync";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerWorkerExportRoute } from "../../server/modules/workers/export";
+import { parseWorkerSsnFilter } from "../../server/modules/workers/ssn-filter";
 import type { WorkerWithDetails } from "../../server/storage/workers";
 
 const batchCalls: Array<{
@@ -57,6 +58,7 @@ function makeWorker(index: number, extra: Record<string, unknown> = {}) {
 
 beforeAll(async () => {
   const app = express();
+  app.use(express.json());
   const passThrough: any = (_req: any, _res: any, next: any) => next();
   getBatch = vi.fn(async (params: Record<string, unknown>, offset: number, limit: number) => {
     batchCalls.push({ params, offset, limit });
@@ -216,5 +218,58 @@ describe("GET /api/workers/export", () => {
       expect.any(Error),
     );
     errorSpy.mockRestore();
+  });
+});
+
+describe("SSN-filtered worker exports", () => {
+  it("normalizes full and last-four input, and rejects unsupported fragments without reading rows", async () => {
+    expect(parseWorkerSsnFilter(" 123-45-6789 ")).toEqual({ mode: "full", digits: "123456789" });
+    expect(parseWorkerSsnFilter("67-89")).toEqual({ mode: "last4", digits: "6789" });
+    for (const fragment of ["123", "12345", "12345678", "1234567890", "12x4", ""]) {
+      expect(() => parseWorkerSsnFilter(fragment)).toThrow("Enter a full SSN or exactly the last four digits.");
+      const response = await fetch(`${baseUrl}/api/workers/export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ssn: fragment }),
+      });
+      expect(response.status).toBe(400);
+    }
+    expect(getBatch).not.toHaveBeenCalled();
+  });
+
+  it("uses a body-only filter on every export batch without exposing the matching SSN", async () => {
+    rows = [makeWorker(1)];
+    const response = await fetch(`${baseUrl}/api/workers/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ssn: "123-45-6789", nameIdSearch: "Ada", includeBenefits: true }),
+    });
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    const records = parse(text, { columns: true }) as Record<string, string>[];
+    expect(records).toHaveLength(1);
+    expect(records[0]["First Name"]).toBe('Ada, "A"');
+    expect(records[0]).not.toHaveProperty("SSN");
+    expect(text).not.toContain("123456789");
+    expect(text).not.toContain("123-45-6789");
+    expect(batchCalls[0].params).toMatchObject({
+      ssnFilter: { mode: "full", digits: "123456789" },
+      nameIdSearch: "Ada",
+      includeBenefits: true,
+    });
+
+    const lastFour = await fetch(`${baseUrl}/api/workers/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ssn: "6789" }),
+    });
+    expect(lastFour.status).toBe(200);
+    expect(batchCalls.at(-1)?.params.ssnFilter).toEqual({ mode: "last4", digits: "6789" });
+  });
+
+  it("refuses query-string SSNs even on the legacy export", async () => {
+    const response = await fetch(`${baseUrl}/api/workers/export?ssn=123456789`);
+    expect(response.status).toBe(400);
+    expect(getBatch).not.toHaveBeenCalled();
   });
 });

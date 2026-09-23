@@ -19,6 +19,7 @@ import {
   normalizeWorkerBenefitRoleFilters,
   WorkerBenefitRoleFilterError,
 } from "@shared/worker-benefit-role-filters";
+import { parseWorkerSsnFilter, WorkerSsnFilterError } from "./ssn-filter";
 
 export interface WorkerExportDependencies {
   workers: Pick<WorkerStorage, "getWorkersForExportBatch">;
@@ -48,13 +49,14 @@ function workerToCsvRow(
   employerNameMap: Map<string, string>,
   memberStatusNameMap: Map<string, string>,
   includeBenefits: boolean,
+  includeSsn: boolean,
 ): Record<string, string> {
   const row: Record<string, string> = {
     "First Name": worker.given || "",
     "Middle Name": worker.middle || "",
     "Last Name": worker.family || "",
-    SSN: formatSSN(worker.ssn),
   };
+  if (includeSsn) row.SSN = formatSSN(worker.ssn);
 
   for (const idType of showOnListsTypes) {
     row[idType.name] = workerIdMap.get(worker.id)?.get(idType.id) || "";
@@ -96,12 +98,13 @@ function workerToCsvRow(
 function buildColumns(
   showOnListsTypes: ShowOnListsIdType[],
   includeBenefits: boolean,
+  includeSsn: boolean,
 ): string[] {
   return [
     "First Name",
     "Middle Name",
     "Last Name",
-    "SSN",
+    ...(includeSsn ? ["SSN"] : []),
     ...showOnListsTypes.map((type) => type.name),
     "Job Title",
     "Bargaining Unit",
@@ -124,11 +127,7 @@ export function registerWorkerExportRoute(
   requirePermission: (permissionKey: string) => RequestHandler,
   dependencies: WorkerExportDependencies,
 ): void {
-  app.get(
-    "/api/workers/export",
-    requireAuth,
-    requirePermission("staff"),
-    async (req, res) => {
+  const handler: RequestHandler = async (req, res) => {
       let streamingStarted = false;
       let clientDisconnected = false;
       const onClientClose = () => {
@@ -176,19 +175,24 @@ export function registerWorkerExportRoute(
       };
 
       try {
+        if (req.method === "GET" && ("ssn" in req.query || "ssnFilter" in req.query)) {
+          return res.status(400).json({ message: "SSN filters require a secure request body" });
+        }
+        const query = req.method === "POST" ? req.body ?? {} : req.query;
+        const ssnFilter = req.method === "POST" ? parseWorkerSsnFilter(query.ssn) : undefined;
         const nameIdSearch =
-          typeof req.query.nameIdSearch === "string"
-            ? req.query.nameIdSearch
+          typeof query.nameIdSearch === "string"
+            ? query.nameIdSearch
             : undefined;
         const contactSearch =
-          typeof req.query.contactSearch === "string"
-            ? req.query.contactSearch
+          typeof query.contactSearch === "string"
+            ? query.contactSearch
             : undefined;
         const sortOrder =
-          req.query.sortOrder === "desc" ? "desc" : "asc";
+          query.sortOrder === "desc" ? "desc" : "asc";
         const validSortByValues = ["lastName", "firstName", "employer"] as const;
         const sortByParam =
-          typeof req.query.sortBy === "string" ? req.query.sortBy : "";
+          typeof query.sortBy === "string" ? query.sortBy : "";
         const sortBy = (validSortByValues as readonly string[]).includes(
           sortByParam,
         )
@@ -196,26 +200,26 @@ export function registerWorkerExportRoute(
           : "lastName";
 
         const employerId =
-          typeof req.query.employerId === "string" &&
-          req.query.employerId !== "all"
-            ? req.query.employerId
+          typeof query.employerId === "string" &&
+          query.employerId !== "all"
+            ? query.employerId
             : undefined;
         const employerTypeId =
-          typeof req.query.employerTypeId === "string" &&
-          req.query.employerTypeId !== "all"
-            ? req.query.employerTypeId
+          typeof query.employerTypeId === "string" &&
+          query.employerTypeId !== "all"
+            ? query.employerTypeId
             : undefined;
         const bargainingUnitId =
-          typeof req.query.bargainingUnitId === "string" &&
-          req.query.bargainingUnitId !== "all"
-            ? req.query.bargainingUnitId
+          typeof query.bargainingUnitId === "string" &&
+          query.bargainingUnitId !== "all"
+            ? query.bargainingUnitId
             : undefined;
         const benefitId =
-          typeof req.query.benefitId === "string" &&
-          req.query.benefitId !== "all"
-            ? req.query.benefitId
+          typeof query.benefitId === "string" &&
+          query.benefitId !== "all"
+            ? query.benefitId
             : undefined;
-        const hasMultipleEmployers = req.query.hasMultipleEmployers === "true";
+        const hasMultipleEmployers = query.hasMultipleEmployers === "true" || query.hasMultipleEmployers === true;
         const validContactStatuses = [
           "all",
           "has_email",
@@ -228,32 +232,32 @@ export function registerWorkerExportRoute(
           "incomplete",
         ];
         const contactStatusParam =
-          typeof req.query.contactStatus === "string"
-            ? req.query.contactStatus
+          typeof query.contactStatus === "string"
+            ? query.contactStatus
             : "";
         const contactStatus = validContactStatuses.includes(contactStatusParam)
           ? (contactStatusParam as WorkersExportParams["contactStatus"])
           : "all";
         const jobTitle =
-          typeof req.query.jobTitle === "string" &&
-          req.query.jobTitle.trim()
-            ? req.query.jobTitle.trim()
+          typeof query.jobTitle === "string" &&
+          query.jobTitle.trim()
+            ? query.jobTitle.trim()
             : undefined;
         const memberStatusId =
-          typeof req.query.memberStatusId === "string" &&
-          req.query.memberStatusId !== "all"
-            ? req.query.memberStatusId
+          typeof query.memberStatusId === "string" &&
+          query.memberStatusId !== "all"
+            ? query.memberStatusId
             : undefined;
         const representativeId =
-          typeof req.query.representativeId === "string" &&
-          req.query.representativeId !== "all"
-            ? req.query.representativeId
+          typeof query.representativeId === "string" &&
+          query.representativeId !== "all"
+            ? query.representativeId
             : undefined;
-        const includeBenefits = req.query.includeBenefits === "true";
+        const includeBenefits = query.includeBenefits === "true" || query.includeBenefits === true;
         // Validate before reading export metadata or sending CSV headers. An
         // invalid filter is a client error, not a failed or partial export.
         const roleFilters = normalizeWorkerBenefitRoleFilters(
-          req.query,
+          query,
           isCacheInitialized() && isComponentEnabledSync("trust.benefits"),
         );
 
@@ -266,7 +270,7 @@ export function registerWorkerExportRoute(
         const memberStatusNameMap = new Map<string, string>(
           memberStatusOptions.map((option) => [option.id, option.name]),
         );
-        const columns = buildColumns(showOnListsTypes, includeBenefits);
+        const columns = buildColumns(showOnListsTypes, includeBenefits, !ssnFilter);
 
         const filename = `workers_export_${new Date()
           .toISOString()
@@ -288,6 +292,7 @@ export function registerWorkerExportRoute(
         while (!clientDisconnected && !res.destroyed) {
           const workers = await dependencies.workers.getWorkersForExportBatch(
             {
+              ssnFilter,
               nameIdSearch,
               contactSearch,
               sortBy,
@@ -349,6 +354,7 @@ export function registerWorkerExportRoute(
               employerNameMap,
               memberStatusNameMap,
               includeBenefits,
+              !ssnFilter,
             ),
           );
 
@@ -364,10 +370,10 @@ export function registerWorkerExportRoute(
 
         if (!clientDisconnected && !res.destroyed) res.end();
       } catch (error) {
-        if (error instanceof WorkerBenefitRoleFilterError) {
+        if (error instanceof WorkerBenefitRoleFilterError || error instanceof WorkerSsnFilterError) {
           return res.status(400).json({ message: error.message });
         }
-        console.error("Failed to export workers:", error);
+        console.error("Failed to export workers:", req.method === "POST" ? "Worker export failed" : error);
         if (streamingStarted || res.headersSent) {
           // Once CSV bytes have been sent, a JSON error would corrupt the
           // download and Express cannot safely send a second response.
@@ -378,6 +384,7 @@ export function registerWorkerExportRoute(
       } finally {
         res.removeListener("close", onClientClose);
       }
-    },
-  );
+    };
+  app.get("/api/workers/export", requireAuth, requirePermission("staff"), handler);
+  app.post("/api/workers/export", requireAuth, requirePermission("staff"), requirePermission("workers.ssn"), handler);
 }
