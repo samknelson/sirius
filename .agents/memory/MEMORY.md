@@ -148,3 +148,4 @@
 - [WMB inferred event ownership](wmb-inferred-event-ownership.md) — coverage gaps are not failed scans; preserve inferred terminations through denorm recompute, but let confirmed scans win collisions.
 - [Navigation measurement and scroll width](nav-measurement-scrollwidth.md) — invisible absolute width probes still enlarge scrollWidth unless clipped inside a zero-width wrapper.
 - [Feed validation final-error classification](feed-validation-final-error-classification.md) — classify unmapped-only rows after subclass error adjustments, not before BAO removes accepted dollar-format errors.
+- [Mockup artifact install timing](mockup-artifact-install-timing.md) — artifact workflow can start before scaffold dependencies are ready; wait for install before diagnosing missing Vite.

@@ -1,0 +1,29 @@
+/* Layout responds to the card's available width in both dashboard and staff hosts. */
+.bao-worker-coverage-card {
+  container-type: inline-size;
+}
+
+.bao-coverage-metrics,
+.bao-coverage-periods {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@container (min-width: 640px) {
+  .bao-coverage-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 410px) {
+  .bao-coverage-periods {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 340px) {
+  .bao-coverage-metrics,
+  .bao-coverage-periods,
+  .bao-coverage-periods article > div:last-child {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
