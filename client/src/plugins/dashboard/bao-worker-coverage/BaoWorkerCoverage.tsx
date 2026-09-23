@@ -87,6 +87,12 @@ export function BaoWorkerCoverage(_props: DashboardPluginProps) {
     </section>;
   }
 
+  return <BaoWorkerCoverageView data={data} />;
+}
+
+/** Shared presentation for the member dashboard and admin worker record. */
+export function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
+  if (data.state !== "available") return null;
   const monthlyHoursHref = `/workers/${encodeURIComponent(data.workerId)}/employment/monthly`;
   const currentNotCovered = data.current.coverage === "not-covered";
   const hoursHighlight = currentNotCovered && data.current.causes.hours === true;

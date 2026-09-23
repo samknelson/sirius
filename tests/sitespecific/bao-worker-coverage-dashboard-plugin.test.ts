@@ -31,9 +31,13 @@ vi.mock("../../server/services/access-policy-evaluator", () => ({
 
 import { baoWorkerCoveragePlugin } from "../../server/plugins/dashboard/plugins/bao-worker-coverage";
 import {
+  checkStaffWorkerCoverageAccess,
   checkTargetPluginGating,
   resolveDashboardTargetUser,
 } from "../../server/plugins/dashboard/registry";
+
+const memberContent = (baoWorkerCoveragePlugin.content as Record<string, (ctx: any) => Promise<unknown>>)[""];
+const staffContent = (baoWorkerCoveragePlugin.content as Record<string, (ctx: any) => Promise<unknown>>)["staff-worker"];
 
 describe("BAO worker coverage dashboard authorization", () => {
   beforeEach(() => {
@@ -56,7 +60,7 @@ describe("BAO worker coverage dashboard authorization", () => {
       },
     };
 
-    await expect((baoWorkerCoveragePlugin.content as (ctx: any) => Promise<unknown>)(ctx)).resolves.toEqual({
+    await expect(memberContent(ctx)).resolves.toEqual({
       state: "available",
       workerId: "linked-worker",
     });
@@ -74,7 +78,7 @@ describe("BAO worker coverage dashboard authorization", () => {
       dbUser: { id: "unlinked-user" },
       storage: { users: { userHasPermission: vi.fn().mockResolvedValue(true) } },
     };
-    await expect((baoWorkerCoveragePlugin.content as (ctx: any) => Promise<unknown>)(ctx)).resolves.toMatchObject({
+    await expect(memberContent(ctx)).resolves.toMatchObject({
       state: "unlinked",
     });
     expect(buildSummary).not.toHaveBeenCalled();
@@ -85,7 +89,7 @@ describe("BAO worker coverage dashboard authorization", () => {
       dbUser: { id: "staff-only-user" },
       storage: { users: { userHasPermission: vi.fn().mockResolvedValue(false) } },
     };
-    await expect((baoWorkerCoveragePlugin.content as (ctx: any) => Promise<unknown>)(ctx))
+    await expect(memberContent(ctx))
       .rejects.toMatchObject({ status: 403 });
     expect(linkedWorker).not.toHaveBeenCalled();
   });
@@ -111,5 +115,41 @@ describe("BAO worker coverage dashboard authorization", () => {
     await expect(checkTargetPluginGating(baoWorkerCoveragePlugin, targetUser)).resolves.toEqual({
       ok: true,
     });
+  });
+
+  it("authorizes only staff with access to the requested worker for staff content", async () => {
+    const user = { id: "staff-user" } as User;
+    const req = { query: { workerId: "selected-worker" } } as any;
+    checkAccess.mockResolvedValueOnce({ granted: false });
+    await expect(checkStaffWorkerCoverageAccess(baoWorkerCoveragePlugin, req, user))
+      .resolves.toMatchObject({ ok: false, status: 403 });
+    expect(checkAccess).toHaveBeenCalledTimes(1);
+
+    checkAccess.mockResolvedValueOnce({ granted: true }).mockResolvedValueOnce({ granted: false });
+    await expect(checkStaffWorkerCoverageAccess(baoWorkerCoveragePlugin, req, user))
+      .resolves.toMatchObject({ ok: false, status: 403 });
+
+    await expect(checkStaffWorkerCoverageAccess(
+      baoWorkerCoveragePlugin,
+      { query: { workerId: "selected-worker", targetUserId: "other-user" } } as any,
+      user,
+    )).resolves.toMatchObject({ ok: false, status: 400 });
+
+    await expect(checkStaffWorkerCoverageAccess(baoWorkerCoveragePlugin, req, user))
+      .resolves.toEqual({ ok: true, workerId: "selected-worker" });
+    expect(checkAccess).toHaveBeenCalledWith("staff", user);
+    expect(checkAccess).toHaveBeenCalledWith("worker.view", user, "selected-worker");
+    componentEnabled.mockResolvedValueOnce(false);
+    await expect(checkStaffWorkerCoverageAccess(baoWorkerCoveragePlugin, req, user))
+      .resolves.toMatchObject({ ok: false, status: 403 });
+  });
+
+  it("uses the selected worker on the authorized staff dashboard action", async () => {
+    const storage = { workers: { getWorker: vi.fn().mockResolvedValue({ id: "selected-worker" }) } };
+    buildSummary.mockResolvedValue({ state: "available", workerId: "selected-worker" });
+    await expect(staffContent({ query: { workerId: "selected-worker" }, storage }))
+      .resolves.toMatchObject({ workerId: "selected-worker" });
+    expect(buildSummary).toHaveBeenCalledWith(storage, "selected-worker");
+    expect(linkedWorker).not.toHaveBeenCalled();
   });
 });

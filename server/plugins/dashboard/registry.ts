@@ -149,6 +149,28 @@ export async function checkTargetPluginGating(
   return { ok: true };
 }
 
+/** Authorize the dashboard coverage action that addresses a staff-selected worker. */
+export async function checkStaffWorkerCoverageAccess(
+  plugin: DashboardPlugin,
+  req: Request,
+  user: User,
+): Promise<{ ok: true; workerId: string } | { ok: false; status: number; message: string }> {
+  const workerId = req.query.workerId;
+  if (typeof workerId !== "string" || !workerId.trim() || req.query.targetUserId) {
+    return { ok: false, status: 400, message: "A workerId is required without targetUserId" };
+  }
+  const staff = await checkAccess("staff", user);
+  const workerAccess = staff.granted
+    ? await checkAccess("worker.view", user, workerId)
+    : { granted: false };
+  if (!staff.granted || !workerAccess.granted) {
+    return { ok: false, status: 403, message: "Staff access to this worker is required" };
+  }
+  const gating = await enforcePluginGating(pluginToMetadata(plugin), req);
+  if (!gating.ok) return gating;
+  return { ok: true, workerId };
+}
+
 function pluginToMetadata(p: DashboardPlugin): BasePluginMetadata {
   return {
     id: p.id,
@@ -546,6 +568,28 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     const { dbUser: sessionDbUser } = await getEffectiveUser(session, user);
     if (!sessionDbUser) {
       res.status(401).json({ message: "User not found" });
+      return;
+    }
+
+    // Explicit staff worker-record view of the BAO dashboard's own content.
+    // It must not inherit the member-dashboard identity or role-config rules:
+    // the member dashboard is scoped to the linked worker, while this action
+    // is scoped to a worker the administrator may inspect.
+    if (plugin.id === "bao-worker-coverage" && action === "staff-worker") {
+      const access = await checkStaffWorkerCoverageAccess(plugin, req, sessionDbUser);
+      if (!access.ok) {
+        res.status(access.status).json({ message: access.message });
+        return;
+      }
+      res.json(await resolver({
+        userId: sessionDbUser.id,
+        dbUser: sessionDbUser,
+        userRoles: [],
+        query: { workerId: access.workerId },
+        settings: {},
+        req,
+        storage,
+      }));
       return;
     }
 

@@ -97,6 +97,7 @@ const SharedPaymentReceipt = lazy(() => import("@/pages/shared-payment-receipt")
 const WorkerSitespecificBaoEchp = lazy(() => import("@/pages/worker-sitespecific-bao-echp"));
 const Stewards = lazy(() => import("@/pages/stewards"));
 const WorkerBenefitsCurrent = lazy(() => import("@/pages/worker-benefits-current"));
+const WorkerBenefitsSummary = lazy(() => import("@/pages/worker-benefits-summary"));
 const WorkerBenefitsHistory = lazy(() => import("@/pages/worker-benefits-history"));
 const WorkerBenefitsEligibility = lazy(() => import("@/pages/worker-benefits-eligibility"));
 const WorkerBenefitsExemptions = lazy(() => import("@/pages/worker-benefits-exemptions"));
@@ -1183,6 +1184,14 @@ function Router() {
         <ProtectedRoute tabId="bargaining-unit" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBargainingUnit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/benefits/summary">
+        <ProtectedRoute tabId="benefits-summary" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerBenefitsSummary />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

@@ -198,6 +198,7 @@ export const workerTabTree: HierarchicalTab[] = [
   { 
     id: 'benefits', label: 'Benefits', hrefTemplate: '/workers/{id}/benefits/current', policyId: 'worker.view',
     children: [
+      { id: 'benefits-summary', label: 'Summary', hrefTemplate: '/workers/{id}/benefits/summary', permission: 'staff', component: 'sitespecific.bao' },
       { id: 'benefits-current', label: 'Current', hrefTemplate: '/workers/{id}/benefits/current', policyId: 'worker.view' },
       { id: 'benefits-history', label: 'History', hrefTemplate: '/workers/{id}/benefits/history', policyId: 'worker.view' },
       { id: 'benefits-eligibility', label: 'Eligibility', hrefTemplate: '/workers/{id}/benefits/eligibility', policyId: 'worker.view' },
