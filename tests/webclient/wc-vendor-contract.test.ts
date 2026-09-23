@@ -58,6 +58,7 @@ import { getWcRequest, wcRequest } from "../../server/services/webclient";
 import {
   describeWcVendor,
   hasWcVendorOperation,
+  WcVendorNoAssignedOperationError,
 } from "../../server/services/webclient/wc-vendor-context";
 import {
   MaintenanceModeError,
@@ -570,8 +571,7 @@ describe("the wc-vendor plugin contract", () => {
       },
     ]);
 
-    await expect(
-      wcRequest({
+    const request = wcRequest({
         vendor: { any: true },
         operation: "communications.sms.send",
         args: {
@@ -579,9 +579,13 @@ describe("the wc-vendor plugin contract", () => {
           body: "Test",
           statusCallbackUrl: "https://example.test/status",
         },
-      }),
-    ).rejects.toMatchObject({
+      });
+    await expect(request).rejects.toBeInstanceOf(
+      WcVendorNoAssignedOperationError,
+    );
+    await expect(request).rejects.toMatchObject({
       status: 501,
+      operation: "communications.sms.send",
       message: expect.stringContaining(
         "No enabled webclient vendor configuration is assigned to 'communications.sms.send'",
       ),

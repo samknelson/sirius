@@ -5,6 +5,7 @@ import { requireComponent } from "../../components";
 import { logger } from "../../../logger";
 import { wcRequest } from "../../../services/webclient";
 import type { T631FetchResult } from "../../../plugins/wc-vendors/plugins/sitespecific-t631";
+import { WcVendorNoAssignedOperationError } from "../../../services/webclient/wc-vendor-context";
 import { checkFlood, recordFloodEvent } from "../../../flood/service";
 import {
   T631_ARRIVAL_IP_FLOOD_EVENT,
@@ -36,6 +37,12 @@ async function resolveWorkerId(typeId: string, value: string): Promise<string | 
 const authenticationFailed = (workerIdInput: string): T631ArrivalResult => ({
   authenticated: false,
   message: `Authentication failed for worker [${workerIdInput}].`,
+});
+
+const providerConfigurationError = (): T631ArrivalResult => ({
+  authenticated: false,
+  message:
+    "Configuration error: please make sure that there is a default provider for the operation sitespecific.t631.server_switch.authenticate.",
 });
 
 async function arrive(
@@ -94,7 +101,10 @@ async function arrive(
       !Array.isArray(remoteBody) &&
       (remoteBody as { data?: unknown }).data === true;
 
-  } catch {
+  } catch (error) {
+    if (error instanceof WcVendorNoAssignedOperationError) {
+      return providerConfigurationError();
+    }
     logger.error("T631 public arrival authentication request failed", {
       source: "sitespecific-t631-arrive",
     });

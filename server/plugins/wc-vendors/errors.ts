@@ -32,3 +32,18 @@ export class WcVendorRequestError extends WcVendorError {
     this.name = "WcVendorRequestError";
   }
 }
+
+/**
+ * Automatic operation routing has no enabled, component-available connection
+ * assigned to the requested operation.
+ */
+export class WcVendorNoAssignedOperationError extends WcVendorRequestError {
+  constructor(public readonly operation: string) {
+    super(
+      501,
+      `No enabled webclient vendor configuration is assigned to '${operation}'. ` +
+        "Assign exactly one configuration to this operation.",
+    );
+    this.name = "WcVendorNoAssignedOperationError";
+  }
+}

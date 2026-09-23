@@ -64,6 +64,10 @@ import { storage } from "../../server/storage";
 import { registerT631ArrivalRoutes } from "../../server/modules/sitespecific/t631/arrive";
 import { redactSensitiveUrlQuery } from "../../server/utils/redact-url-query";
 import {
+  WcVendorNoAssignedOperationError,
+  WcVendorRequestError,
+} from "../../server/services/webclient/wc-vendor-context";
+import {
   T631_ARRIVAL_IP_FLOOD_EVENT,
   T631_ARRIVAL_WORKER_FLOOD_EVENT,
   t631ArrivalIpFloodEvent,
@@ -419,5 +423,47 @@ describe("public T631 arrival route", () => {
       "T631 public arrival authentication request failed",
       { source: "sitespecific-t631-arrive" },
     );
+  });
+
+  it("reports a missing operation provider without consuming either flood budget", async () => {
+    scenario.exact.set("666666", { workerId: "worker-exact" });
+    wcRequest.mockRejectedValue(
+      new WcVendorNoAssignedOperationError(
+        "sitespecific.t631.server_switch.authenticate",
+      ),
+    );
+
+    const response = await post({ worker_id: "666666", token: "secret" });
+
+    expect(response).toEqual({
+      status: 200,
+      body: {
+        authenticated: false,
+        message:
+          "Configuration error: please make sure that there is a default provider for the operation sitespecific.t631.server_switch.authenticate.",
+      },
+    });
+    expect(recordFloodEvent).not.toHaveBeenCalled();
+    expect(logError).not.toHaveBeenCalled();
+    expect(JSON.stringify(response.body)).not.toContain("secret");
+  });
+
+  it("keeps ambiguous operation providers as a generic failed authentication", async () => {
+    scenario.exact.set("666666", { workerId: "worker-exact" });
+    wcRequest.mockRejectedValue(
+      new WcVendorRequestError(
+        409,
+        "Multiple providers include secret diagnostics",
+      ),
+    );
+
+    const response = await post({ worker_id: "666666", token: "secret" });
+
+    expect(response.body).toEqual({
+      authenticated: false,
+      message: "Authentication failed for worker [666666].",
+    });
+    expect(recordFloodEvent).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(response.body)).not.toContain("diagnostics");
   });
 });
