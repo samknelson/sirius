@@ -9,7 +9,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Portal as TooltipPortal } from "@radix-ui/react-tooltip";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   findActiveItemPath,
   isPathInSection,
@@ -44,6 +44,7 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
 }
 
 function ConfigurationLayoutContents({ children }: ConfigurationLayoutProps) {
+  const layoutRef = useRef<HTMLDivElement>(null);
   const [location] = useLocation();
   const [desktopMenuOpen, setDesktopMenuOpen] = useState(loadConfigurationMenuOpen);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -68,6 +69,53 @@ function ConfigurationLayoutContents({ children }: ConfigurationLayoutProps) {
   const [sectionState, setSectionState] = useState(() =>
     createConfigurationSectionOpenState(location, activeSectionIds),
   );
+
+  useLayoutEffect(() => {
+    if (!isDesktop || !layoutRef.current) return;
+    const layout = layoutRef.current;
+    // The header is in normal document flow (and can grow for masquerading).
+    // Measure the layout's visible top, not a hard-coded header height. As the
+    // document scrolls, the sticky sidebar can use the newly available space.
+    const measure = () => {
+      const top = Math.max(0, layout.getBoundingClientRect().top);
+      layout.style.setProperty("--configuration-top", `${top}px`);
+    };
+    let frame = 0;
+    const scheduleMeasure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    };
+    measure();
+    const observer = new ResizeObserver(scheduleMeasure);
+    // Any preceding normal-flow sibling, at any ancestor level, can move us
+    // without resizing us (notably the asynchronously loaded HelpDisplay).
+    // Observe their sizes and refresh the set when siblings are added/removed.
+    const observePrecedingContent = () => {
+      observer.disconnect();
+      observer.observe(layout);
+      for (let node: Element | null = layout; node && node !== document.body; node = node.parentElement) {
+        for (let sibling = node.previousElementSibling; sibling; sibling = sibling.previousElementSibling) {
+          observer.observe(sibling, { box: "border-box" });
+        }
+      }
+      scheduleMeasure();
+    };
+    const mutations = new MutationObserver(observePrecedingContent);
+    for (let parent = layout.parentElement; parent; parent = parent.parentElement) {
+      mutations.observe(parent, { childList: true });
+    }
+    observePrecedingContent();
+    window.addEventListener("scroll", scheduleMeasure, { passive: true });
+    window.addEventListener("resize", scheduleMeasure);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      mutations.disconnect();
+      window.removeEventListener("scroll", scheduleMeasure);
+      window.removeEventListener("resize", scheduleMeasure);
+      layout.style.removeProperty("--configuration-top");
+    };
+  }, [isDesktop]);
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 768px)");
@@ -248,12 +296,12 @@ function ConfigurationLayoutContents({ children }: ConfigurationLayoutProps) {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="relative flex min-h-[100dvh] min-w-0 bg-gray-50 dark:bg-gray-900">
+      <div ref={layoutRef} className="relative flex min-h-[100dvh] min-w-0 bg-gray-50 dark:bg-gray-900 md:min-h-[calc(100dvh-var(--configuration-top,0px))]">
         {mobileMenuOpen && <button type="button" className="fixed inset-0 z-30 bg-black/50 md:hidden" aria-label="Close configuration menu" onClick={() => setMobileMenuOpen(false)} />}
         <aside
           id="configuration-menu"
           className={cn(
-            "z-40 shrink-0 flex-col border-r border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950 md:sticky md:top-0 md:flex md:h-[100dvh] md:transition-[width] md:duration-200 motion-reduce:md:transition-none",
+            "z-40 shrink-0 flex-col border-r border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950 md:sticky md:top-[var(--configuration-top,0px)] md:flex md:h-[calc(100dvh-var(--configuration-top,0px))] md:transition-[width] md:duration-200 motion-reduce:md:transition-none",
             desktopMenuOpen ? "md:w-64" : "md:w-14",
             mobileMenuOpen ? "fixed inset-y-0 left-0 flex w-72" : "hidden",
           )}

@@ -214,6 +214,27 @@ try {
   // ready deterministic in both expanded and flyout renderers.
   const desktopToggle = '[data-testid="button-configuration-menu-desktop"]';
   const sidebarSelector = 'aside[aria-label="Configuration menu"]';
+  const assertViewportControl = async () => {
+    // Bounding boxes do not auto-scroll, unlike click/focus/visibility helpers.
+    await page.waitForFunction(() => {
+      const aside = document.querySelector('aside[aria-label="Configuration menu"]');
+      const toggle = aside?.querySelector('[data-testid="button-configuration-menu-desktop"]');
+      if (!toggle) return false;
+      const rect = toggle.getBoundingClientRect();
+      const sidebar = aside.getBoundingClientRect();
+      return rect.height > 0 && rect.top >= 0 && rect.bottom <= innerHeight
+        && Math.abs(sidebar.bottom - innerHeight) <= 1;
+    }).catch(async error => {
+      console.error("Viewport control geometry", await box(page, desktopToggle),
+        await box(page, sidebarSelector), await box(page, "#site-header"),
+        await page.evaluate(() => ({ scrollY, height: innerHeight,
+          offset: document.querySelector("aside")?.parentElement?.style.cssText })));
+      throw error;
+    });
+    const toggle = await box(page, desktopToggle);
+    assert.ok(toggle.top >= 0 && toggle.bottom <= page.viewport().height,
+      "the desktop control is inside the viewport without scrolling it into view");
+  };
   const assertBottomControl = async (label, state) => {
     assert.deepEqual(await page.$eval(sidebarSelector, aside => {
       const toggle = aside.querySelector('[data-testid="button-configuration-menu-desktop"]');
@@ -234,6 +255,10 @@ try {
     }, `${label} follows the section list without a home link`);
   };
   await assertBottomControl("Collapse configuration menu", "true");
+  assert.equal(await page.evaluate(() => scrollY), 0, "initial load has not scrolled");
+  await assertViewportControl();
+  assert.equal((await box(page, sidebarSelector)).top, (await box(page, "#site-header")).bottom,
+    "sidebar starts below the shared header");
   await page.click('[data-testid="nav-config-dropdown-lists"]');
   await page.waitForSelector('[data-testid="text-dropdown-lists-loading"]');
   assert.match(
@@ -243,6 +268,7 @@ try {
   );
   await page.click(desktopToggle);
   await waitForSidebarWidth(page, 56);
+  await assertViewportControl();
   await page.click('[data-testid="nav-config-rail-dropdown-lists"]');
   const dropdownFlyout = '[data-testid="configuration-flyout-dropdown-lists"]';
   await page.waitForSelector(`${dropdownFlyout} [data-testid="text-dropdown-lists-loading"]`);
@@ -354,6 +380,7 @@ try {
     window.scrollTo(0, 200);
   });
   await page.waitForFunction(() => window.scrollY > 0);
+  await assertViewportControl();
   assert.equal(Math.round((await box(page, desktopToggle)).top), Math.round(railToggleTop),
     "the collapsed rail stays fixed while the page scrolls");
   await page.evaluate(() => {
@@ -375,6 +402,7 @@ try {
   // At a short desktop viewport, the rail scrolls independently while its
   // bottom control remains fixed, and flyouts stay within the available viewport.
   await page.setViewport({ width: 1280, height: 320, deviceScaleFactor: 1 });
+  await assertViewportControl();
   const railScroll = '[data-testid="configuration-nav-scroll"]';
   assert.equal(await page.$eval(railScroll, node => node.scrollHeight > node.clientHeight), true,
     "the short rail has an independently scrollable section region");
@@ -467,6 +495,8 @@ try {
     "whole-menu state survives navigation");
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForSelector(desktopToggle);
+  assert.equal(await page.evaluate(() => scrollY), 0, "collapsed reload starts without document scrolling");
+  await assertViewportControl();
   assert.equal(await page.$eval(desktopToggle, node => node.getAttribute("aria-expanded")), "false",
     "whole-menu state survives remount and refresh");
 
@@ -495,11 +525,14 @@ try {
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForSelector('aside[aria-label="Configuration menu"]');
   assert.equal(await page.$eval(desktopToggle, node => node.getAttribute("aria-expanded")), "true");
+  assert.equal(await page.evaluate(() => scrollY), 0, "expanded reload starts without document scrolling");
+  await assertViewportControl();
 
   // Only the navigation region scrolls; its bottom control remains fixed and usable.
   await page.setViewport({ width: 1280, height: 420, deviceScaleFactor: 1 });
   const navScroll = '[data-testid="configuration-nav-scroll"]';
   await page.waitForSelector(navScroll);
+  await assertViewportControl();
   assert.equal(await page.$eval(navScroll, node => node.scrollHeight > node.clientHeight), true,
     "a long configuration menu has an independently scrollable navigation region");
   const toggleBefore = await box(page, desktopToggle);
@@ -513,6 +546,49 @@ try {
     "the bottom toggle remains inside the viewport");
   assert.ok(toggleAfter.top >= (await box(page, navScroll)).bottom,
     "the expanded navigation scrolls above the bottom control");
+
+  // A growing header (for example, the masquerade banner) must not push the
+  // footer offscreen. Then exercise partial/full header scroll in both states.
+  await page.$eval("#site-header", header => { header.style.paddingTop = "52px"; });
+  await assertViewportControl();
+  // HelpDisplay arrives asynchronously between the header and site content.
+  // Its insertion changes the layout's position, not its dimensions.
+  await page.evaluate(() => new Promise(resolve => setTimeout(() => {
+    const help = document.createElement("section");
+    help.id = "fixture-delayed-help";
+    help.textContent = "Delayed contextual help";
+    help.style.height = "48px";
+    document.getElementById("root").before(help);
+    resolve();
+  }, 50)));
+  await assertViewportControl();
+  await page.$eval("#fixture-delayed-help", help => { help.style.height = "72px"; });
+  await assertViewportControl();
+  await page.click(desktopToggle);
+  await waitForSidebarWidth(page, 56);
+  await assertViewportControl();
+  await page.$eval("#fixture-delayed-help", help => help.remove());
+  await assertViewportControl();
+  await page.click(desktopToggle);
+  await waitForSidebarWidth(page, 256);
+  await assertViewportControl();
+  await page.evaluate(() => { document.querySelector("main").style.minHeight = "200vh"; });
+  for (const scrollTop of [35, 240]) {
+    await page.evaluate(y => window.scrollTo(0, y), scrollTop);
+    await assertViewportControl();
+    await page.click(desktopToggle);
+    await waitForSidebarWidth(page, 56);
+    await assertViewportControl();
+    await page.click(desktopToggle);
+    await waitForSidebarWidth(page, 256);
+    await assertViewportControl();
+  }
+  await page.evaluate(() => {
+    window.scrollTo(0, 0);
+    document.querySelector("main").style.minHeight = "";
+    document.getElementById("site-header").style.paddingTop = "";
+  });
+  await assertViewportControl();
 
   // Preserve collapsed desktop preference before crossing the mobile breakpoint.
   await page.click(desktopToggle);
@@ -538,6 +614,8 @@ try {
   })), { firstControlLabel: "Close configuration menu", homeLinks: 0, headerText: "", desktopToggleVisible: false },
   "the mobile drawer begins with its close control, not a redundant heading or desktop toggle");
   const mobileSidebar = await box(page, 'aside[aria-label="Configuration menu"]');
+  assert.equal(mobileSidebar.top, 0, "mobile drawer still starts at the viewport top");
+  assert.equal(mobileSidebar.bottom, 760, "mobile drawer still uses the full viewport height");
   assert.ok(mobileSidebar.left >= 0 && mobileSidebar.right <= 640,
     "mobile configuration menu stays inside the viewport");
   assert.equal(await page.$eval('aside[aria-label="Configuration menu"]', element =>

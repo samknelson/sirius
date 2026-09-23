@@ -6,6 +6,12 @@
     <title>Configuration navigation browser fixture</title>
   </head>
   <body>
+    <!-- Match Header's normal-flow 48px banner + 40px desktop nav + border.
+         Keep this outside the React root so initial-load geometry is realistic. -->
+    <header id="site-header" class="border-b bg-white dark:bg-gray-950">
+      <div class="flex h-12 items-center border-b px-6">Shared site header</div>
+      <nav class="hidden h-10 items-center px-6 md:flex">Site navigation</nav>
+    </header>
     <div id="root"></div>
     <script type="module" src="/tests/config-navigation/browser-entry.tsx"></script>
   </body>
