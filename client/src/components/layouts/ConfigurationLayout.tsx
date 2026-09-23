@@ -1,12 +1,12 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, BookOpen, Palette } from "lucide-react";
+import { ChevronDown, BookOpen, Menu, Palette, X } from "lucide-react";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { useState, useMemo } from "react";
+import { createContext, useContext, useEffect, useState, useMemo } from "react";
 import {
   isPathInSection,
   findActiveItemPath,
@@ -14,15 +14,36 @@ import {
   type NavSection,
 } from "@/config/navigation-registry";
 import { useAccessibleConfigSections, useConfigNavigation } from "@/hooks/useConfigNavigation";
+import { cn } from "@/lib/utils";
+import {
+  createConfigurationSectionOpenState,
+  loadConfigurationMenuOpen,
+  reconcileConfigurationSectionNavigation,
+  saveConfigurationMenuOpen,
+  toggleConfigurationSection,
+} from "./configuration-sidebar-state";
 
 interface ConfigurationLayoutProps {
   children: React.ReactNode;
 }
 
-export default function ConfigurationLayout({ children }: ConfigurationLayoutProps) {
-  const [location] = useLocation();
+const ConfigurationLayoutContext = createContext(false);
 
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+export default function ConfigurationLayout({ children }: ConfigurationLayoutProps) {
+  const isNested = useContext(ConfigurationLayoutContext);
+  if (isNested) return <>{children}</>;
+
+  return (
+    <ConfigurationLayoutContext.Provider value>
+      <ConfigurationLayoutContents>{children}</ConfigurationLayoutContents>
+    </ConfigurationLayoutContext.Provider>
+  );
+}
+
+function ConfigurationLayoutContents({ children }: ConfigurationLayoutProps) {
+  const [location] = useLocation();
+  const [desktopMenuOpen, setDesktopMenuOpen] = useState(loadConfigurationMenuOpen);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Sections come resolved (the options lists are named by the registry) and
   // already filtered by permission, policy and component.
@@ -37,16 +58,41 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
 
   const isSectionActive = (section: NavSection) => isPathInSection(activeItemPath, section);
 
+  const activeSectionIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const section of accessibleSections) {
+      if (!isPathInSection(activeItemPath, section)) continue;
+      ids.push(section.id);
+      for (const subsection of section.subsections ?? []) {
+        if (isPathInSection(activeItemPath, subsection)) ids.push(subsection.id);
+      }
+    }
+    return ids;
+  }, [accessibleSections, activeItemPath]);
+
+  const [sectionState, setSectionState] = useState(() =>
+    createConfigurationSectionOpenState(location, activeSectionIds)
+  );
+
+  useEffect(() => {
+    setSectionState(previous =>
+      reconcileConfigurationSectionNavigation(previous, location, activeSectionIds)
+    );
+  }, [location, activeSectionIds]);
+
+  useEffect(() => {
+    saveConfigurationMenuOpen(desktopMenuOpen);
+  }, [desktopMenuOpen]);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location]);
+
   const toggleSection = (sectionId: string) => {
-    setOpenSections(prev => ({
-      ...prev,
-      [sectionId]: !prev[sectionId],
-    }));
+    setSectionState(previous => toggleConfigurationSection(previous, sectionId));
   };
 
-  const isSectionOpen = (section: NavSection) => {
-    return openSections[section.id] || isSectionActive(section);
-  };
+  const isSectionOpen = (section: NavSection) => !!sectionState.openSections[section.id];
 
   const renderNavItem = (item: NavItem, isNested: boolean = false) => {
     const Icon = item.icon;
@@ -56,19 +102,22 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       <Link key={item.path} href={item.path}>
         <Button
           variant={isActive ? (isNested ? "secondary" : "default") : "ghost"}
-          className={`w-full justify-start ${isNested ? "text-sm" : ""}`}
+          className={cn(
+            "h-auto min-h-10 w-full items-start justify-start whitespace-normal py-2 text-left",
+            isNested && "text-sm",
+          )}
           data-testid={item.testId}
         >
-          <Icon className="mr-2 h-4 w-4" />
-          {item.label}
+          <Icon className="mr-2 mt-0.5 h-4 w-4 shrink-0" />
+          <span className="min-w-0 flex-1 break-words">{item.label}</span>
         </Button>
       </Link>
     );
   };
 
-  const renderSubsection = (subsection: NavSection, parentActive: boolean) => {
+  const renderSubsection = (subsection: NavSection) => {
     const isActive = isPathInSection(activeItemPath, subsection);
-    const isOpen = openSections[subsection.id] || isActive;
+    const isOpen = isSectionOpen(subsection);
     const Icon = subsection.icon;
 
     return (
@@ -80,14 +129,14 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
         <CollapsibleTrigger asChild>
           <Button
             variant={isActive ? "secondary" : "ghost"}
-            className="w-full justify-start text-sm"
+            className="h-auto min-h-10 w-full items-start justify-start whitespace-normal py-2 text-left text-sm"
             data-testid={`nav-config-${subsection.id}`}
           >
-            <Icon className="mr-2 h-4 w-4" />
-            {subsection.title}
-            <ChevronDown 
-              className="ml-auto h-4 w-4 transition-transform duration-200" 
-              style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} 
+            <Icon className="mr-2 mt-0.5 h-4 w-4 shrink-0" />
+            <span className="min-w-0 flex-1 break-words">{subsection.title}</span>
+            <ChevronDown
+              className="ml-2 mt-0.5 h-4 w-4 shrink-0 transition-transform duration-200"
+              style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
             />
           </Button>
         </CollapsibleTrigger>
@@ -112,14 +161,14 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
         <CollapsibleTrigger asChild>
           <Button
             variant={isActive ? "default" : "ghost"}
-            className="w-full justify-start"
+            className="h-auto min-h-10 w-full items-start justify-start whitespace-normal py-2 text-left"
             data-testid={getSectionTestId(section)}
           >
-            <Icon className="mr-2 h-4 w-4" />
-            {getSectionDisplayTitle(section)}
-            <ChevronDown 
-              className="ml-auto h-4 w-4 transition-transform duration-200" 
-              style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} 
+            <Icon className="mr-2 mt-0.5 h-4 w-4 shrink-0" />
+            <span className="min-w-0 flex-1 break-words">{getSectionDisplayTitle(section)}</span>
+            <ChevronDown
+              className="ml-2 mt-0.5 h-4 w-4 shrink-0 transition-transform duration-200"
+              style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
             />
           </Button>
         </CollapsibleTrigger>
@@ -135,32 +184,93 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
             </p>
           )}
           {section.items.map(item => renderNavItem(item, true))}
-          {section.subsections?.map(sub => renderSubsection(sub, isActive))}
+          {section.subsections?.map(sub => renderSubsection(sub))}
         </CollapsibleContent>
       </Collapsible>
     );
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="w-64 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800">
-        <div className="p-6">
-          <Link href="/config">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6 hover:text-primary cursor-pointer">
-              Configuration
-            </h2>
-          </Link>
+    <div className="relative flex min-h-screen min-w-0 bg-gray-50 dark:bg-gray-900">
+      {mobileMenuOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          aria-label="Close configuration menu"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+      <aside
+        id="configuration-menu"
+        className={cn(
+          "z-40 w-72 shrink-0 flex-col border-r border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950",
+          "max-h-screen overflow-x-hidden overflow-y-auto md:sticky md:top-0 md:w-64",
+          mobileMenuOpen ? "fixed inset-y-0 left-0 flex" : "hidden",
+          desktopMenuOpen ? "md:flex" : "md:hidden",
+        )}
+        aria-label="Configuration menu"
+      >
+        <div className="p-4 sm:p-6">
+          <div className="mb-6 flex items-start gap-2">
+            <Link href="/config" className="min-w-0 flex-1">
+              <h2 className="text-lg font-semibold text-gray-900 hover:text-primary dark:text-gray-100">
+                Configuration
+              </h2>
+            </Link>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="ml-auto shrink-0 md:hidden"
+              aria-label="Close configuration menu"
+              aria-controls="configuration-menu"
+              aria-expanded={mobileMenuOpen}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
           <nav className="space-y-2">
             {accessibleSections.map(section => renderSection(section))}
           </nav>
         </div>
-      </div>
+      </aside>
 
-      <div className="flex-1 p-6">
-        <div className="max-w-7xl mx-auto">
+      <main className="min-w-0 flex-1 p-4 sm:p-6">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-4">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="md:hidden"
+              aria-label={mobileMenuOpen ? "Hide configuration menu" : "Show configuration menu"}
+              aria-controls="configuration-menu"
+              aria-expanded={mobileMenuOpen}
+              onClick={() => setMobileMenuOpen(open => !open)}
+              data-testid="button-configuration-menu-mobile"
+            >
+              <Menu className="mr-2 h-4 w-4" />
+              Configuration menu
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="hidden md:inline-flex"
+              aria-label={desktopMenuOpen ? "Hide configuration menu" : "Show configuration menu"}
+              aria-controls="configuration-menu"
+              aria-expanded={desktopMenuOpen}
+              onClick={() => setDesktopMenuOpen(open => !open)}
+              data-testid="button-configuration-menu-desktop"
+            >
+              <Menu className="mr-2 h-4 w-4" />
+              {desktopMenuOpen ? "Hide menu" : "Show menu"}
+            </Button>
+          </div>
           {children}
         </div>
-      </div>
+      </main>
     </div>
   );
 }

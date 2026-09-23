@@ -88,6 +88,20 @@ export const configSections: NavSection[] = [
     ],
   },
   {
+    id: "user-management",
+    title: "User Management",
+    description: "User accounts, roles, permissions, policies, and sessions",
+    icon: UserCog,
+    items: [
+      { path: "/admin/users/list", label: "Users", icon: Users, testId: "nav-config-users", permission: "admin" },
+      { path: "/admin/users/roles", label: "Roles", icon: UserCog, testId: "nav-config-roles", permission: "admin" },
+      { path: "/admin/users/permissions", label: "Permissions", icon: Key, testId: "nav-config-permissions", permission: "admin" },
+      { path: "/admin/users/policies", label: "Policies", icon: Shield, testId: "nav-config-user-policies", permission: "admin" },
+      { path: "/admin/users/sessions", label: "Sessions", icon: Clock, testId: "nav-config-sessions", permission: "admin" },
+      { path: "/admin/users/flood-events", label: "Flood Events", icon: Activity, testId: "nav-config-flood-events", permission: "admin" },
+    ],
+  },
+  {
     id: "theme",
     title: "Theme & Appearance",
     description: "Site branding, terminology, and dashboard customization",
@@ -512,7 +526,87 @@ export function findActiveItemPath(path: string, sections: NavSection[] = config
     section.items.forEach(item => consider(item.path));
     section.subsections?.forEach(sub => sub.items.forEach(item => consider(item.path)));
   }
-  return best;
+  if (best) return best;
+
+  // Export and import are sibling operations of a catalog-derived list route,
+  // rather than descendants of its `/list` URL. Keep that list highlighted.
+  const optionsOperation = path.match(/^\/config\/options\/([^/]+)\/(?:export|import)$/);
+  if (optionsOperation) {
+    const listPath = optionsListPath(optionsOperation[1]);
+    if (getAllNavItems(sections).some(item => item.path === listPath)) return listPath;
+  }
+
+  const alias = configurationRouteAliases.find(({ prefix }) => path.startsWith(prefix));
+  if (
+    alias
+    && getAllNavItems(sections).some(item => item.path === alias.ownerPath)
+  ) {
+    return alias.ownerPath;
+  }
+
+  return null;
+}
+
+/**
+ * Routes which continue a configuration-owned list under a non-prefix path.
+ * Most drill-ins need no entry here: `findActiveItemPath` already treats a
+ * navigation path as owning its descendants. These are the deliberate naming
+ * exceptions where a plural list route becomes a singular entity route.
+ */
+const configurationRouteAliases: ReadonlyArray<{
+  prefix: string;
+  ownerPath: string;
+}> = [
+  { prefix: "/config/dispatch-job-type/", ownerPath: "/config/dispatch-job-types" },
+  { prefix: "/config/sftp/client/", ownerPath: "/config/sftp/clients" },
+  { prefix: "/grievance-timeline-template/", ownerPath: "/grievance-timeline-templates" },
+  { prefix: "/contract/", ownerPath: "/contracts" },
+  { prefix: "/sitespecific/btu/csg/", ownerPath: "/sitespecific/btu/csgs" },
+  // The sidebar's legacy admin URL redirects to the canonical cron route.
+  { prefix: "/cron-jobs", ownerPath: "/admin/cron-jobs" },
+];
+
+/**
+ * Configuration pages intentionally retained for old links but no longer
+ * offered as sidebar destinations. They still need the same page chrome while
+ * they explain the replacement or administer configuration data.
+ */
+const standaloneConfigurationRoutes = new Set([
+  "/config/phone-numbers",
+  "/config/bargaining-units",
+]);
+
+/**
+ * Return the navigation item which owns a configuration surface.
+ *
+ * This is also the layout boundary's source of truth. It intentionally does
+ * not classify every `/admin` or site-specific route as configuration: only a
+ * registered navigation destination, its descendants, and the handful of
+ * singular drill-in aliases above receive configuration chrome.
+ */
+export function findConfigurationRouteOwner(
+  path: string,
+  sections: NavSection[] = configSections,
+): string | null {
+  const directOwner = findActiveItemPath(path, sections);
+  if (directOwner) return directOwner;
+
+  // Generic option-list items are catalog-derived and therefore absent from
+  // the static registry used before the catalog request completes.
+  if (path === "/config/options" || path.startsWith("/config/options/")) {
+    return "/config/options";
+  }
+  return null;
+}
+
+/** Whether the authenticated route should retain configuration navigation. */
+export function isConfigurationRoute(
+  path: string,
+  sections: NavSection[] = configSections,
+): boolean {
+  return path === "/config"
+    || standaloneConfigurationRoutes.has(path)
+    || findConfigurationRouteOwner(path, sections) !== null;
 }
 
 /**

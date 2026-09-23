@@ -256,6 +256,7 @@ const CronJobRun = lazy(() => import("@/pages/cron-job-run"));
 const CronJobHistory = lazy(() => import("@/pages/cron-job-history"));
 import AdminLayout from "@/components/layouts/AdminLayout";
 import ConfigurationLayout from "@/components/layouts/ConfigurationLayout";
+import { isConfigurationRoute } from "@/config/navigation-registry";
 const UsersListPage = lazy(() => import("@/pages/config/users/list"));
 const RolesPage = lazy(() => import("@/pages/config/users/roles"));
 const PermissionsPage = lazy(() => import("@/pages/config/users/permissions"));
@@ -500,11 +501,16 @@ function PageLoader() {
 }
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
+  const [location] = useLocation();
+  const content = isConfigurationRoute(location)
+    ? <ConfigurationLayout>{children}</ConfigurationLayout>
+    : children;
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       <Header />
       <HelpDisplay />
-      <main id="site-content" className="flex-1">{children}</main>
+      <main id="site-content" className="flex-1">{content}</main>
       <Footer />
     </div>
   );
@@ -2641,7 +2647,8 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      {/* Admin user management routes - no ConfigurationLayout sidebar */}
+      {/* User management is configuration-owned; AuthenticatedLayout supplies
+          the shared sidebar to these routes and their drill-ins. */}
       <Route path="/admin/letter-templates">
         <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
