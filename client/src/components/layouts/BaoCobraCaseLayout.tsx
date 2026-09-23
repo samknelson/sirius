@@ -83,6 +83,13 @@ export function BaoCobraCaseLayout({ activeTab, children }: BaoCobraCaseLayoutPr
             )}
           </div>
           <div className="flex items-center space-x-4">
+            {!subtitle && !error && !isLoading && cobraCase && (
+              <Link href={`/workers/${cobraCase.coveredPersonWorkerId}`}>
+                <Button variant="outline" size="sm" data-testid="button-cobra-covered-person-worker">
+                  View Covered Person's Worker Record
+                </Button>
+              </Link>
+            )}
             <Link href="/cobra/cases">
               <Button variant="ghost" size="sm" data-testid="button-back-to-cobra-cases">
                 <ArrowLeft size={16} className="mr-2" />
