@@ -1,7 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
-import { createCommStorage, createCommSmsOptinStorage, createCommEmailOptinStorage, createCommPostalOptinStorage, createCommInappStorage, createCommInteractionStorage, storage } from "../storage";
-import { INTERACTION_CHANNELS } from "@shared/schema";
+import { createCommStorage, createCommSmsOptinStorage, createCommEmailOptinStorage, createCommPostalOptinStorage, createCommInappStorage, storage } from "../storage";
 import { COMM_STATUSES } from "@shared/commStatus";
 import { sendSms } from "../services/comm/senders/sms";
 import { sendEmail } from "../services/comm/senders/email";
@@ -16,7 +15,6 @@ import { broadcastAlertUpdate } from "../services/websocket";
 import { getEffectiveUser } from "./masquerade";
 import { resolveContactLinks } from "./contact-links";
 import { createCommTagsStorage } from "../storage/comm-tags";
-import { createUnifiedOptionsStorage } from "../storage/unified-options";
 import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
 import { deriveEmailPlainText, isSafeRelativePath } from "../delivery/shape";
 
@@ -29,15 +27,6 @@ const smsOptinStorage = createCommSmsOptinStorage();
 const emailOptinStorage = createCommEmailOptinStorage();
 const postalOptinStorage = createCommPostalOptinStorage();
 const commInappStorage = createCommInappStorage();
-const commInteractionStorage = createCommInteractionStorage();
-const unifiedOptionsStorage = createUnifiedOptionsStorage();
-
-const logInteractionSchema = z.object({
-  channel: z.enum(INTERACTION_CHANNELS),
-  callReasonId: z.string().uuid("Invalid call reason id"),
-  notes: z.string().max(10000, "Notes too long (max 10000 characters)").optional(),
-  occurredAt: z.string().datetime({ offset: true }).optional(),
-});
 
 const tagIdsSchema = z.array(z.string().uuid("Invalid tag id")).optional();
 
@@ -504,50 +493,10 @@ export function registerCommRoutes(
     }
   });
 
-  // POST /api/contacts/:contactId/interaction - Log a call/office-visit interaction (N21)
-  app.post("/api/contacts/:contactId/interaction", requireAuth, requirePermission("staff"), async (req, res) => {
-    try {
-      const { contactId } = req.params;
-
-      const parsed = logInteractionSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({
-          message: "Invalid request body",
-          errors: parsed.error.flatten(),
-        });
-      }
-
-      const contact = await storage.contacts.getContact(contactId);
-      if (!contact) {
-        return res.status(404).json({ message: "Contact not found" });
-      }
-
-      const { channel, callReasonId, notes, occurredAt } = parsed.data;
-      const reason = await unifiedOptionsStorage.get("call-reason", callReasonId);
-      if (!reason) {
-        return res.status(400).json({ message: "Unknown call reason" });
-      }
-
-      const currentUser = (req as any).user;
-      const loggedBy = currentUser?.dbUser?.id ?? currentUser?.claims?.sub ?? null;
-      const result = await commInteractionStorage.createInteractionWithComm({
-        contactId,
-        channel,
-        callReasonId,
-        notes: notes || null,
-        occurredAt: occurredAt ? new Date(occurredAt) : null,
-        commData: loggedBy ? { loggedBy } : null,
-      });
-
-      res.status(201).json({
-        message: "Interaction logged successfully",
-        comm: result.comm,
-        commInteraction: result.interaction,
-      });
-    } catch (error) {
-      console.error("Failed to log interaction:", error);
-      res.status(500).json({ message: "Failed to log interaction" });
-    }
+  // Retired manual call/visit creation. Respond explicitly rather than letting
+  // the SPA fallback return index.html with a misleading 200 for old clients.
+  app.post("/api/contacts/:contactId/interaction", (_req, res) => {
+    res.status(410).json({ message: "Manual interaction logging is no longer available" });
   });
 
   app.get("/api/phone-numbers/:phoneNumber/sms-optin", requireAuth, requirePermission("staff"), async (req, res) => {
