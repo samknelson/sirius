@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 
-type Option = { id: string; name: string; closed?: boolean; data?: { contextIds?: string[] } };
+type Option = { id: string; name: string; closed?: boolean; caseTypeId?: string; data?: { contextIds?: string[] } };
 type AssigneeContext = {
   selfId: string;
   canAssignOthers: boolean;
@@ -47,18 +47,25 @@ export default function BaoCaseNewPage() {
   const { data: tags = [] } = useQuery<Option[]>({ queryKey: ["/api/options/bao-notes-tag"] });
   const applicableTypes = noteTypes.filter((o) => o.data?.contextIds?.includes(entityType));
   const appealType = caseTypes.find((t) => t.id === caseTypeId)?.workflowCode === "benefit_appeal";
+  const statusChoices = statuses.filter((s) => Boolean(caseTypeId) && s.caseTypeId === caseTypeId && !s.closed);
+  // A refetch can remove or reclassify the selected status without changing
+  // the form's state. Never display or submit a status no longer offered.
+  const validStatusId = statusChoices.some((s) => s.id === statusId) ? statusId : "";
   const mutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/sitespecific/bao/cases", {
-      entityType, entityId, deadlineYmd, statusId, caseTypeId: caseTypeId || undefined,
-      benefitId: appealType ? benefitId : undefined,
-      denialReasonId: appealType ? denialReasonId : undefined,
-      // Without the assign permission the case is always created assigned to
-      // the actor (the server enforces this either way — omit the field).
-      ...(canAssignOthers && assigneeUserId ? { assigneeUserId } : {}),
-      ...(fixedNoteId ? { noteId: fixedNoteId } : {
-        initialNote: { typeId, subject, body: body || null, tagIds },
-      }),
-    }),
+    mutationFn: () => {
+      if (!validStatusId) throw new Error("Select an open status for the selected case type.");
+      return apiRequest("POST", "/api/sitespecific/bao/cases", {
+        entityType, entityId, deadlineYmd, statusId: validStatusId, caseTypeId: caseTypeId || undefined,
+        benefitId: appealType ? benefitId : undefined,
+        denialReasonId: appealType ? denialReasonId : undefined,
+        // Without the assign permission the case is always created assigned to
+        // the actor (the server enforces this either way — omit the field).
+        ...(canAssignOthers && assigneeUserId ? { assigneeUserId } : {}),
+        ...(fixedNoteId ? { noteId: fixedNoteId } : {
+          initialNote: { typeId, subject, body: body || null, tagIds },
+        }),
+      });
+    },
     onSuccess: (created) => navigate(`/bao/cases/${created.id}`),
     onError: (error: Error) => toast({ title: "Could not create case", description: getApiErrorMessage(error, "Failed to create case."), variant: "destructive" }),
   });
@@ -72,7 +79,7 @@ export default function BaoCaseNewPage() {
           <div><Label>Case type</Label><Select value={caseTypeId} onValueChange={(v) => { setCaseTypeId(v); setStatus(""); }}><SelectTrigger><SelectValue placeholder="Select case type" /></SelectTrigger><SelectContent>{caseTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent></Select></div>
           {appealType && <><div><Label>Benefit</Label><Select value={benefitId} onValueChange={setBenefitId}><SelectTrigger><SelectValue placeholder="Select benefit" /></SelectTrigger><SelectContent>{benefits.filter((b) => b.isActive).map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent></Select></div><div><Label>Denial reason</Label><Select value={denialReasonId} onValueChange={setDenialReasonId}><SelectTrigger><SelectValue placeholder="Select denial reason" /></SelectTrigger><SelectContent>{denialReasons.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}</SelectContent></Select></div></>}
           <div><Label>Deadline</Label><Input type="date" value={deadlineYmd} onChange={(e) => setDeadline(e.target.value)} /></div>
-          <div><Label>Status</Label><Select value={statusId} onValueChange={setStatus}><SelectTrigger><SelectValue placeholder="Select open status" /></SelectTrigger><SelectContent>{statuses.filter((s) => !s.closed).map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+           <div><Label>Status</Label><Select value={validStatusId} onValueChange={setStatus} disabled={!caseTypeId}><SelectTrigger><SelectValue placeholder={caseTypeId ? "Select open status" : "Select a case type first"} /></SelectTrigger><SelectContent>{statusChoices.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
           {canAssignOthers
             ? <div><Label>Assignee (defaults to you)</Label><Select value={assigneeUserId} onValueChange={setAssignee}><SelectTrigger><SelectValue placeholder="Current effective user" /></SelectTrigger><SelectContent>{assignees.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select></div>
             : <div><Label>Assignee</Label><p className="text-sm text-muted-foreground" data-testid="text-assignee-self">Assigned to you</p></div>}
@@ -82,7 +89,7 @@ export default function BaoCaseNewPage() {
             <div><Label>Note</Label><Textarea value={body} onChange={(e) => setBody(e.target.value)} /></div>
             {tags.length > 0 && <div><Label>Tags</Label><div className="flex flex-wrap gap-3 rounded border p-3">{tags.map((tag) => <label key={tag.id} className="flex items-center gap-2 text-sm"><Checkbox checked={tagIds.includes(tag.id)} onCheckedChange={(checked) => setTagIds((old) => checked ? [...new Set([...old, tag.id])] : old.filter((id) => id !== tag.id))} />{tag.name}</label>)}</div></div>}
           </>}
-          <Button disabled={mutation.isPending || !entityId || !deadlineYmd || !statusId || !caseTypeId || (appealType && (!benefitId || !denialReasonId)) || (!fixedNoteId && (!typeId || !subject.trim()))} onClick={() => mutation.mutate()} data-testid="button-save-bao-case">Create Case</Button>
+          <Button disabled={mutation.isPending || !entityId || !deadlineYmd || !validStatusId || !caseTypeId || (appealType && (!benefitId || !denialReasonId)) || (!fixedNoteId && (!typeId || !subject.trim()))} onClick={() => mutation.mutate()} data-testid="button-save-bao-case">Create Case</Button>
         </CardContent></Card>
       </main>
     </div>
