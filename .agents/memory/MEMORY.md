@@ -140,3 +140,4 @@
 - [Postgres checkout initialization](postgres-checkout-initialization.md) — pool acquire/connect events do not delay borrowers; session setup must finish inside the public connect handoff.
 - [Idle-session status checks](idle-session-status-checks.md) — polling the current idle deadline must be read-only; only explicit or normal authenticated activity may renew it.
 - [Configured external auth fails closed](configured-external-auth-fail-closed.md) — saved external-auth selection is the contract; disabled/unavailable verifier must refuse, never fall back to a default credential mode.
+- [Credentials in SPA entry URLs](spa-entry-url-credentials.md) — remove before app bootstrap, set initial no-referrer policy, dispatch once, and never retain in query caches or page state.

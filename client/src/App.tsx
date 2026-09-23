@@ -51,6 +51,7 @@ function RecordGoResolverRoute() {
 
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
 const EdlsSchedulePage = lazy(() => import("@/pages/edls-schedule"));
+const T631ArrivalPage = lazy(() => import("@/pages/sitespecific/t631-arrive"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const Bookmarks = lazy(() => import("@/pages/bookmarks"));
 const AccountPassword = lazy(() => import("@/pages/account-password"));
@@ -516,6 +517,24 @@ function EdlsScheduleRoute() {
   return <EdlsSchedulePage />;
 }
 
+function T631ArrivalRoute() {
+  const { isAuthenticated, authReady } = useAuth();
+
+  if (!authReady) {
+    return <PageLoader />;
+  }
+
+  if (isAuthenticated) {
+    return (
+      <AuthenticatedLayout>
+        <T631ArrivalPage />
+      </AuthenticatedLayout>
+    );
+  }
+
+  return <T631ArrivalPage />;
+}
+
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
   const [location, setLocation] = useLocation();
@@ -569,6 +588,7 @@ function Router() {
         <Route path="/auth-error" component={AuthErrorPage} />
         <Route path="/sms/optin/:token" component={SmsOptinPage} />
         <Route path="/edls-sched/:id" component={EdlsScheduleRoute} />
+        <Route path="/sitespecific/t631/arrive" component={T631ArrivalRoute} />
 
       {/* Protected routes */}
       <Route path="/go/:id">

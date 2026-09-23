@@ -20,6 +20,7 @@ import { syncComponentPermissions } from "./services/component-permissions";
 import { initializeWebSocket } from "./services/websocket";
 import { registerWebServiceDispatcher } from "./modules/webservices";
 import type { ResolvedServiceRoles } from "./services/service-roles";
+import { redactSensitiveUrlQuery } from "./utils/redact-url-query";
 
 // Side-effect imports: trigger plugin / provider / access-policy registration.
 import "./plugins/ledger/charge";
@@ -603,7 +604,7 @@ export async function bootstrapApp(
       source: "express",
       statusCode: status,
       error: err.stack || err.toString(),
-      url: _req.url,
+      url: redactSensitiveUrlQuery(_req.url),
       method: _req.method,
       headersSent: res.headersSent,
     });
