@@ -14,23 +14,27 @@ function StripePaymentForm({
   amount,
   onComplete,
   returnUrl,
-}: Pick<PaymentGatewayPayProps, "amount" | "onComplete" | "returnUrl">) {
+  clientSecret,
+  savedMethod,
+}: Pick<PaymentGatewayPayProps, "amount" | "onComplete" | "returnUrl" | "clientSecret" | "savedMethod">) {
   const stripe = useStripe();
   const elements = useElements();
   const [processing, setProcessing] = useState(false);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!stripe || !elements || processing) return;
+    if (!stripe || (!savedMethod && !elements) || processing) return;
     setProcessing(true);
     try {
-      const result = await stripe.confirmPayment({
-        elements,
-        redirect: "if_required",
-        // Stripe may leave the page for 3DS.  Returning to this page lets the
-        // parent reconcile the attempt from the server/webhook.
-        confirmParams: { return_url: returnUrl },
-      });
+      const result = savedMethod
+        ? await stripe.handleNextAction({ clientSecret })
+        : await stripe.confirmPayment({
+          elements: elements!,
+          redirect: "if_required",
+          // Stripe may leave the page for 3DS. Returning to the receipt
+          // reconciles the attempt from the server/webhook.
+          confirmParams: { return_url: returnUrl },
+        });
       if (result.error) onComplete("failed", result.error.message);
       else onComplete("processing");
     } catch (error) {
@@ -45,10 +49,10 @@ function StripePaymentForm({
 
   return (
     <form onSubmit={submit} className="space-y-4" data-testid="form-stripe-pay">
-      <PaymentElement />
-      <Button type="submit" disabled={!stripe || !elements || processing} data-testid="button-confirm-stripe-pay">
+      {!savedMethod && <PaymentElement />}
+      <Button type="submit" disabled={!stripe || (!savedMethod && !elements) || processing} data-testid="button-confirm-stripe-pay">
         {processing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-        Pay {amount}
+        {savedMethod ? `Complete verification for ${amount}` : `Pay ${amount}`}
       </Button>
     </form>
   );
@@ -60,6 +64,7 @@ export function StripePayComponent({
   amount,
   onComplete,
   returnUrl,
+  savedMethod,
 }: PaymentGatewayPayProps) {
   const publishableKey =
     typeof publicConfig.publishableKey === "string"
@@ -82,7 +87,7 @@ export function StripePayComponent({
   };
   return (
     <Elements stripe={stripe} options={options}>
-      <StripePaymentForm amount={amount} onComplete={onComplete} returnUrl={returnUrl} />
+      <StripePaymentForm amount={amount} onComplete={onComplete} returnUrl={returnUrl} clientSecret={clientSecret} savedMethod={savedMethod} />
     </Elements>
   );
 }

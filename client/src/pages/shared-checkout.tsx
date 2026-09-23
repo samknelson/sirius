@@ -124,12 +124,15 @@ export default function SharedCheckoutPage() {
       if (current !== generation.current) {
         // An in-flight request may reserve funds. Keep its receipt accessible.
         navigate(`/pay/receipt/${encodeURIComponent(created.id)}`);
-      } else if (created.status !== "requires_action" || method) {
+      } else if (created.status !== "requires_action") {
         navigate(`/pay/receipt/${encodeURIComponent(created.id)}`);
       } else if (created.clientSecret && Pay) {
         setSession(created);
       } else {
-        navigate(`/pay/receipt/${encodeURIComponent(created.id)}`);
+        // Do not strand a payment requiring browser action on a polling-only
+        // receipt. A missing secret or component is a configuration error.
+        setError("Secure payment confirmation is unavailable. Contact support with this payment's confirmation number.");
+        setSession(created);
       }
     } catch (cause) {
       if (current === generation.current) setError(getApiErrorMessage(cause, "Could not start payment. Please try again."));
@@ -179,13 +182,15 @@ export default function SharedCheckoutPage() {
         {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
       </CardContent></Card>
     </>}
-    {session && Pay && <Card><CardHeader><CardTitle>Secure payment confirmation</CardTitle></CardHeader><CardContent>
-      <Pay clientSecret={session.clientSecret!} publicConfig={session.publicConfig ?? {}} amount={money(entered / 100, currency)}
+    {session && <Card><CardHeader><CardTitle>Secure payment confirmation</CardTitle></CardHeader><CardContent>
+      {Pay && session.clientSecret && <Pay clientSecret={session.clientSecret} publicConfig={session.publicConfig ?? {}} amount={money(entered / 100, currency)}
+        savedMethod={!!method}
         returnUrl={`${window.location.origin}/pay/receipt/${encodeURIComponent(session.id)}`}
         onComplete={(status, message) => {
           if (status === "failed") setError(message || "Provider confirmation failed. Please retry the secure payment form.");
           else navigate(`/pay/receipt/${encodeURIComponent(session.id)}`);
-        }} />
+        }} />}
+      {(!Pay || !session.clientSecret) && <p role="alert">Provider confirmation is unavailable. Use the status link below or contact support with confirmation {session.id}.</p>}
       <Link href={`/pay/receipt/${encodeURIComponent(session.id)}`} className="mt-3 inline-block underline">Check this payment's status</Link>
     </CardContent></Card>}
     {data.entityType === "worker" && <Link href={`/workers/${data.entityId}/ledger/accounts`} className="inline-block text-sm underline">Back to accounts</Link>}

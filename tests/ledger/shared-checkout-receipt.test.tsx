@@ -23,8 +23,9 @@ vi.mock("wouter", () => ({
 }));
 vi.mock("@/plugins/payment-gateway/registry", () => ({
   hasPaymentGatewayPayComponent: () => payEnabled.value,
-  resolvePaymentGatewayPayComponent: () => (props: { clientSecret: string; onComplete: () => void }) =>
-    <button data-testid="mock-pay" onClick={props.onComplete}>Confirm provider payment</button>,
+  resolvePaymentGatewayPayComponent: () => (props: { clientSecret: string; savedMethod?: boolean; onComplete: (status: "processing") => void }) =>
+    <div><span>{props.savedMethod ? "Saved method action required" : "New method entry"}</span>
+      <button data-testid="mock-pay" onClick={() => props.onComplete("processing")}>Confirm provider payment</button></div>,
 }));
 
 import Checkout from "@/pages/shared-checkout";
@@ -194,6 +195,26 @@ describe("shared checkout", () => {
         statementSelection: [{ invoiceNumber: "INV-100", amount: "40.00" }],
         consent: { version: "v1", text: "I authorize this payment.", accepted: true },
       }));
+    expect(text()).toContain("Saved method action required");
+    expect(navigate).not.toHaveBeenCalled();
+    await act(async () => { button("Confirm provider payment").click(); });
+    expect(navigate).toHaveBeenCalledWith("/pay/receipt/session-1");
+  });
+
+  it("keeps a saved card requiring 3DS on the provider action before showing the receipt", async () => {
+    await render();
+    await fill("checkout-amount", "12.00");
+    const card = Array.from(container!.querySelectorAll("label")).find(node => node.textContent?.includes("Visa"));
+    await act(async () => { (card!.querySelector("input") as HTMLInputElement).click(); });
+    await clickCheckboxContaining("I authorize");
+    await act(async () => { button("Review payment").click(); });
+    await act(async () => { button("Submit payment").click(); });
+    await settle();
+    expect(apiRequest).toHaveBeenCalledWith("POST", expect.stringContaining("/sessions"),
+      expect.objectContaining({ paymentMethodId: "pm-card" }));
+    expect(text()).toContain("Saved method action required");
+    expect(navigate).not.toHaveBeenCalled();
+    await act(async () => { button("Confirm provider payment").click(); });
     expect(navigate).toHaveBeenCalledWith("/pay/receipt/session-1");
   });
 

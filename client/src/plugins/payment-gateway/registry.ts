@@ -25,6 +25,8 @@ export interface PaymentGatewayPayProps {
   publicConfig: Record<string, unknown>;
   amount: string;
   returnUrl: string;
+  /** The server already confirmed this saved method; only its next action remains. */
+  savedMethod?: boolean;
   onComplete: (
     status: "succeeded" | "processing" | "failed",
     message?: string,
