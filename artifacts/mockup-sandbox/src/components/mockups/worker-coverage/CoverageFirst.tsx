@@ -1,5 +1,5 @@
 import { AlertCircle, Check, Clock3, ShieldCheck, WalletCards, X } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { BaoCoverageSummary } from "./_data";
 import { baoCoverageSummary } from "./_data";
@@ -24,13 +24,11 @@ function CoverageShell({ children, label }: { children: React.ReactNode; label?:
 
 function CoverageHeading() {
   return (
-    <CardHeader className="coverage-first-header gap-1 pb-4">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+    <CardHeader className="coverage-first-header">
+      <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-[hsl(170_38%_38%)]" aria-hidden="true" />
-        Benefits coverage
+        <CardTitle className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Coverage at a glance</CardTitle>
       </div>
-      <CardTitle className="text-[1.15rem] tracking-[-0.02em]">Coverage at a glance</CardTitle>
-      <CardDescription>Current coverage first, with the work months behind it.</CardDescription>
     </CardHeader>
   );
 }
