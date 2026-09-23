@@ -15,6 +15,7 @@ import {
   optionsDepartment,
   optionsEdlsShowStatus,
   optionsEdlsTasks,
+  optionsClassifications,
   type EdlsAssignment, 
   type InsertEdlsAssignment
 } from "@shared/schema";
@@ -165,6 +166,12 @@ export interface AssignmentForWorker {
   employer: { id: string; name: string } | null;
   showStatus: { id: string; name: string } | null;
   task: { id: string; name: string } | null;
+  /**
+   * The assignment's resolved Extra classification. The stored option id
+   * remains in `data`; callers that display the assignment use this narrow
+   * projection rather than exposing or independently resolving the catalog.
+   */
+  classification?: { name: string; code: string | null } | null;
   /**
    * The worker's own answer to this assignment: null unanswered, true
    * accepted, false declined. Carried here because the public schedule page
@@ -769,6 +776,8 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           showStatusName: optionsEdlsShowStatus.name,
           taskId: optionsEdlsTasks.id,
           taskName: optionsEdlsTasks.name,
+          classificationName: optionsClassifications.name,
+          classificationCode: optionsClassifications.code,
           jobGroupId: withJobGroups ? dispatchJobGroups.id : sql<string | null>`NULL::varchar`,
           jobGroupName: withJobGroups ? dispatchJobGroups.name : sql<string | null>`NULL::text`,
         })
@@ -781,6 +790,13 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         .leftJoin(employers, eq(edlsSheets.employerId, employers.id))
         .leftJoin(optionsEdlsShowStatus, eq(edlsSheets.showStatusId, optionsEdlsShowStatus.id))
         .leftJoin(optionsEdlsTasks, eq(edlsCrews.taskId, optionsEdlsTasks.id))
+        .leftJoin(
+          optionsClassifications,
+          eq(
+            optionsClassifications.id,
+            sql<string>`${edlsAssignments.data}->>'classificationId'`,
+          ),
+        )
         .$dynamic();
 
       const rows = await (withJobGroups
@@ -814,6 +830,12 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         employer: r.employerId ? { id: r.employerId, name: r.employerName! } : null,
         showStatus: r.showStatusId ? { id: r.showStatusId, name: r.showStatusName! } : null,
         task: r.taskId ? { id: r.taskId, name: r.taskName! } : null,
+        classification: r.classificationName
+          ? {
+              name: r.classificationName,
+              code: r.classificationCode,
+            }
+          : null,
         accepted: r.accepted,
         data: (r.assignmentData as Record<string, unknown> | null) ?? null,
       }));

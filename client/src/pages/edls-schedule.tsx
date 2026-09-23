@@ -29,6 +29,7 @@ interface ScheduleAssignment {
   employer: { id: string; name: string } | null;
   showStatus: { id: string; name: string } | null;
   task: { id: string; name: string } | null;
+  classification?: { name: string; code: string | null } | null;
   /**
    * This worker's own answer: null not answered yet, true accepted, false
    * declined. Optional so an older payload without the field reads as
@@ -208,6 +209,13 @@ function AssignmentDetails({
           <h3 className="text-sm font-semibold uppercase tracking-wide">Crew</h3>
           <Field label="Crew" value={assignment.crewTitle ?? ""} testId="text-crew" />
           <Field label="Task" value={assignment.task?.name ?? ""} testId="text-task" />
+          {assignment.classification && (
+            <Field
+              label="Classification"
+              value={assignment.classification.code || assignment.classification.name}
+              testId="text-classification"
+            />
+          )}
           <Field label="Start Time" value={effectiveStartTime(assignment)} testId="text-start-time" />
           <Field label="Checkin Location" value={assignment.location ?? ""} testId="text-checkin-location" />
         </div>
