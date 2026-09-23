@@ -244,7 +244,17 @@ export default function BaoCobraCases() {
                         )}
                       </TableCell>
                       <TableCell data-testid={`text-case-subscriber-${c.id}`}>
-                        {c.subscriberName ?? "—"}
+                        {c.subscriberName ? (
+                          <Link
+                            href={`/workers/${c.subscriberWorkerId}`}
+                            className="text-primary hover:underline"
+                            data-testid={`link-case-subscriber-${c.id}`}
+                          >
+                            {c.subscriberName}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge
