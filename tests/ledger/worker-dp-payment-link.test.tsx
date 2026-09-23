@@ -43,7 +43,7 @@ describe("worker domestic-partner payment navigation", () => {
     const root = createRoot(container);
     await act(async () => { root.render(<Page />); });
     const link = container.querySelector('[data-testid="button-dp-pay"]') as HTMLAnchorElement | null;
-    expect(link?.getAttribute("href")).toBe("/workers/worker-42/ledger/pay?eaId=ea-dp-7");
+    expect(link?.getAttribute("href")).toBe("/pay/ea-dp-7");
     await act(async () => root.unmount());
   });
 });

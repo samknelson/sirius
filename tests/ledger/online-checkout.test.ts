@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
       gatewayCustomers: { get: vi.fn(), upsert: vi.fn() },
       paymentAttempts: {
         getByIdempotencyKey: vi.fn(), getReservedAmount: vi.fn(), create: vi.fn(),
-        updateStatus: vi.fn(), lockEa: vi.fn(), expireReservations: vi.fn(),
+        updateStatus: vi.fn(), lockEa: vi.fn(), lockAttempt: vi.fn(), expireReservations: vi.fn(),
         get: vi.fn(),
       },
     },
@@ -86,6 +86,7 @@ beforeEach(() => {
     amount: "12.34", currency: "USD", status, ...extra,
   }));
   mocks.storage.ledger.paymentAttempts.lockEa.mockResolvedValue(undefined);
+  mocks.storage.ledger.paymentAttempts.lockAttempt.mockResolvedValue(undefined);
   mocks.storage.ledger.paymentAttempts.expireReservations.mockResolvedValue(undefined);
   mocks.storage.ledger.invoices.listForEa.mockResolvedValue([{ invoiceNumber: "INV-1", invoiceBalance: "40.00" }]);
   mocks.storage.variables.getByName.mockResolvedValue({ value: { consumer: { version: "v1", text: "Pay now" }, business: { version: "v1", text: "Pay now" } } });
@@ -231,7 +232,12 @@ describe("online checkout HTTP contract", () => {
       status: "requires_action", providerIntentRef: "pi-cancel",
     };
     mocks.storage.ledger.paymentAttempts.get.mockResolvedValue(attempt);
-    gateway.plugin.cancelPayment.mockResolvedValue({ status: "canceled" });
+    gateway.plugin.retrievePayment.mockResolvedValue({
+      status: "requires_action", providerRef: "pi-cancel", amountMinor: 1234, currency: "USD",
+    });
+    gateway.plugin.cancelPayment.mockResolvedValue({
+      status: "canceled", providerRef: "pi-cancel", amountMinor: 1234, currency: "USD",
+    });
     mocks.storage.ledger.paymentAttempts.updateStatus.mockResolvedValue({ ...attempt, status: "canceled" });
     let response = await fetch(`${base}/api/ledger/checkout/sessions/attempt-cancel`, { method: "GET" });
     expect(response.status).toBe(200);
