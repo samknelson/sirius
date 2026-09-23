@@ -122,6 +122,12 @@ export interface LedgerEntryStorage {
   getAll(): Promise<Ledger[]>;
   get(id: string): Promise<Ledger | undefined>;
   getByEaId(eaId: string): Promise<Ledger[]>;
+  /** Posted COBRA evidence on one worker/account/statement month. Money is integer cents. */
+  getCobraStatementMonthEvidence(workerId: string, accountId: string, caseId: string, ym: string): Promise<{
+    balanceCents: number;
+    caseChargeCents: number;
+    hasAllocation: boolean;
+  } | null>;
   getOutstandingStatementMonths(
     eaId: string,
     excluded: { year: number; month: number },
@@ -988,6 +994,55 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       const client = getClient();
       return await client.select().from(ledger)
         .where(eq(ledger.eaId, eaId));
+    },
+
+    async getCobraStatementMonthEvidence(workerId, accountId, caseId, ym) {
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) {
+        throw new Error("COBRA statement month must be YYYY-MM");
+      }
+      const [year, month] = ym.split("-").map(Number);
+      const nextYm = month === 12
+        ? `${year + 1}-01`
+        : `${year}-${String(month + 1).padStart(2, "0")}`;
+      const client = getClient();
+      // Bound the scan by EA and statement date; sum ALL entries for the
+      // month's balance, but only this case's net premium proves a charge.
+      // A reversed premium (base + offsets = 0) is not a live charge.
+      const result = await client.execute(sqlRaw`
+        SELECT
+          SUM(l.amount * 100)::bigint AS balance_cents,
+          SUM(CASE WHEN l.charge_plugin = 'sitespecific-bao-cobra'
+                       AND l.reference_type IN ('cobra_case', 'cobra_case_adjustment')
+                       AND l.reference_id = ${caseId}
+                   THEN l.amount * 100 ELSE 0 END)::bigint AS case_charge_cents,
+          BOOL_OR(l.charge_plugin = 'sitespecific-bao-cobra'
+                  AND l.reference_type = 'cobra_case'
+                  AND l.reference_id = ${caseId}
+                  AND l.amount > 0) AS has_base_charge,
+          BOOL_OR(l.charge_plugin = 'payment-simple-allocation'
+                  AND l.reference_type = 'payment'
+                  AND l.amount < 0
+                  AND NULLIF(l.data->>'allocationId', '') IS NOT NULL) AS has_allocation
+        FROM ledger_ea ea
+        JOIN ledger l ON l.ea_id = ea.id
+          AND l.statement_ymd >= ${`${ym}-01`}::date
+          AND l.statement_ymd < ${`${nextYm}-01`}::date
+        WHERE ea.entity_type = 'worker'
+          AND ea.entity_id = ${workerId}
+          AND ea.account_id = ${accountId}
+      `);
+      const row = result.rows[0] as {
+        balance_cents: string | null;
+        case_charge_cents: string | null;
+        has_base_charge: boolean | null;
+        has_allocation: boolean | null;
+      } | undefined;
+      if (!row?.balance_cents) return null;
+      return {
+        balanceCents: Number(row.balance_cents),
+        caseChargeCents: row.has_base_charge ? Number(row.case_charge_cents) : 0,
+        hasAllocation: row.has_allocation === true,
+      };
     },
 
     async getOutstandingStatementMonths(

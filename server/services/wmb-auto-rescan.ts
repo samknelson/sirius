@@ -523,7 +523,7 @@ async function handleLedgerEntrySaved(payload: LedgerEntrySavedPayload): Promise
   if (isWmbScanWrite()) return;
   // Ledger storage defers the emit to after commit. The entry's statement
   // month is the accrual month the charge/adjustment applies to; the DP and
-  // COBRA payment-gating rules read paid/delinquent state from ledger
+  // COBRA payment-gating rules read statement-month entries from ledger
   // entries, so rescan that month plus the current month.
   const months = dedupeMonths([
     ...(payload.statementYmd ? [monthFromYmd(payload.statementYmd)] : []),
