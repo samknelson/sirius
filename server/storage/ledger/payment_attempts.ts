@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, sql, lt, isNull, asc, or } from "drizzle-orm";
 import { getClient } from "../transaction-context";
 import {
   ledgerPaymentAttemptEvents,
@@ -6,6 +6,7 @@ import {
   ledgerEa,
   type InsertLedgerPaymentAttempt,
   type LedgerPaymentAttempt,
+  ledgerPaymentMethods,
 } from "@shared/schema";
 
 type AttemptUpdate = Partial<Pick<LedgerPaymentAttempt, "providerIntentRef" | "lastProviderEventCreated" | "failureMessage" | "failureCode" | "reservationExpiresAt" | "completedAt">>;
@@ -30,6 +31,12 @@ export interface PaymentAttemptStorage {
   lockAttempt(id: string): Promise<void>;
   expireReservations(eaId: string): Promise<void>;
   getReservedAmount(eaId: string): Promise<number>;
+  listForRecovery(limit: number, olderThan: Date): Promise<LedgerPaymentAttempt[]>;
+  listPendingEvents(limit: number): Promise<InboxEvent[]>;
+  setDefaultIfAbsent(id: string, entityType: string, entityId: string, gatewayConfigId: string): Promise<void>;
+  markMethodSaved(id: string): Promise<void>;
+  markEventIgnored(gatewayConfigId: string, providerEventId: string, reason: string): Promise<void>;
+  touchRecovery(id: string): Promise<void>;
 }
 
 export function createPaymentAttemptStorage(): PaymentAttemptStorage {
@@ -111,7 +118,7 @@ export function createPaymentAttemptStorage(): PaymentAttemptStorage {
       // Retain only normalized financial evidence, never raw provider objects.
       const payload: Record<string, unknown> = {};
       const source = input.payload && typeof input.payload === "object" ? input.payload as Record<string, unknown> : {};
-      for (const key of ["type", "providerIntentRef", "providerRef", "status", "amount", "amountMinor", "currency", "paymentMethodType", "failureCode"]) {
+      for (const key of ["type", "providerIntentRef", "providerRef", "status", "amount", "amountMinor", "currency", "paymentMethodType", "methodRef", "failureCode"]) {
         if (typeof source[key] === "string" || typeof source[key] === "number") payload[key] = source[key];
       }
       const [row] = await getClient().insert(ledgerPaymentAttemptEvents).values({ ...input, gatewayConfigId, payload })
@@ -127,6 +134,11 @@ export function createPaymentAttemptStorage(): PaymentAttemptStorage {
     },
     async markEventError(gatewayConfigId, providerEventId, error) {
       await getClient().update(ledgerPaymentAttemptEvents).set({ error }).where(and(eq(ledgerPaymentAttemptEvents.gatewayConfigId, gatewayConfigId), eq(ledgerPaymentAttemptEvents.providerEventId, providerEventId)));
+    },
+    async markEventIgnored(gatewayConfigId, providerEventId, reason) {
+      await getClient().update(ledgerPaymentAttemptEvents).set({ processedAt: new Date(), error: reason })
+        .where(and(eq(ledgerPaymentAttemptEvents.gatewayConfigId, gatewayConfigId),
+          eq(ledgerPaymentAttemptEvents.providerEventId, providerEventId)));
     },
     async completeEvent(gatewayConfigId, providerEventId, error) {
       if (error !== undefined) await this.markEventError(gatewayConfigId, providerEventId, error);
@@ -146,18 +158,10 @@ export function createPaymentAttemptStorage(): PaymentAttemptStorage {
       await getClient().execute(sql`SELECT id FROM ${ledgerPaymentAttempts} WHERE id = ${id} FOR UPDATE`);
     },
     async expireReservations(eaId) {
-      await getClient().update(ledgerPaymentAttempts)
-        .set({ status: "expired", failureMessage: "Payment confirmation expired", completedAt: new Date(), updatedAt: new Date() })
-        .where(and(
-          eq(ledgerPaymentAttempts.ledgerEaId, eaId),
-          sql`${ledgerPaymentAttempts.status} IN ('created','requires_action')`,
-           // Once a provider reference exists this is a chargeable intent.
-           // Do not expire it locally: reconciliation/webhooks are the source
-           // of truth and an abandoned browser must not create a second charge.
-           sql`${ledgerPaymentAttempts.providerIntentRef} IS NULL`,
-          sql`${ledgerPaymentAttempts.reservationExpiresAt} IS NOT NULL`,
-          sql`${ledgerPaymentAttempts.reservationExpiresAt} <= now()`,
-        ));
+      // A missing reference does not prove the provider never created a
+      // chargeable intent (the process can die before saving its response).
+      // Recovery must first recreate with the same provider idempotency key.
+      void eaId;
     },
     async getReservedAmount(eaId) {
       const [row] = await getClient()
@@ -165,18 +169,45 @@ export function createPaymentAttemptStorage(): PaymentAttemptStorage {
         .from(ledgerPaymentAttempts)
         .where(and(
           eq(ledgerPaymentAttempts.ledgerEaId, eaId),
-          sql`(
-            ${ledgerPaymentAttempts.status} = 'processing'
-            OR (
-              ${ledgerPaymentAttempts.status} IN ('created','requires_action')
-              AND (
-                ${ledgerPaymentAttempts.reservationExpiresAt} IS NULL
-                OR ${ledgerPaymentAttempts.reservationExpiresAt} > now()
-              )
-            )
-          )`,
+          sql`${ledgerPaymentAttempts.status} IN ('created','requires_action','processing')`,
         ));
       return Number(row?.total ?? 0);
+    },
+    async listForRecovery(limit, olderThan) {
+      return getClient().select().from(ledgerPaymentAttempts)
+        .where(and(lt(ledgerPaymentAttempts.createdAt, olderThan), or(
+          sql`${ledgerPaymentAttempts.status} IN ('created','requires_action','processing')`,
+          and(eq(ledgerPaymentAttempts.status, "succeeded"), isNull(ledgerPaymentAttempts.ledgerPaymentId)),
+          and(eq(ledgerPaymentAttempts.status, "succeeded"), eq(ledgerPaymentAttempts.saveMethod, true),
+            sql`${ledgerPaymentAttempts.metadata}->>'methodSavedAt' IS NULL`),
+        )))
+        .orderBy(asc(ledgerPaymentAttempts.updatedAt), asc(ledgerPaymentAttempts.id)).limit(limit);
+    },
+    async listPendingEvents(limit) {
+      return getClient().select().from(ledgerPaymentAttemptEvents)
+        .where(and(isNull(ledgerPaymentAttemptEvents.processedAt), sql`${ledgerPaymentAttemptEvents.receivedAt} < now() - interval '1 minute'`))
+        .orderBy(sql`CASE WHEN ${ledgerPaymentAttemptEvents.error} IS NULL THEN 0 ELSE 1 END`,
+          asc(ledgerPaymentAttemptEvents.receivedAt), asc(ledgerPaymentAttemptEvents.id)).limit(limit);
+    },
+    async setDefaultIfAbsent(id, entityType, entityId, gatewayConfigId) {
+      // Serialize default selection across separate attempts and processes.
+      await getClient().execute(sql`SELECT pg_advisory_xact_lock(hashtext(${entityType + ":" + entityId + ":" + gatewayConfigId}))`);
+      const [current] = await getClient().select({ id: ledgerPaymentMethods.id }).from(ledgerPaymentMethods)
+        .where(and(eq(ledgerPaymentMethods.entityType, entityType), eq(ledgerPaymentMethods.entityId, entityId),
+          eq(ledgerPaymentMethods.gatewayConfigId, gatewayConfigId), eq(ledgerPaymentMethods.isActive, true),
+          eq(ledgerPaymentMethods.isDefault, true))).limit(1);
+      if (!current) await getClient().update(ledgerPaymentMethods).set({ isDefault: true })
+        .where(and(eq(ledgerPaymentMethods.id, id), eq(ledgerPaymentMethods.entityType, entityType),
+          eq(ledgerPaymentMethods.entityId, entityId), eq(ledgerPaymentMethods.gatewayConfigId, gatewayConfigId)));
+    },
+    async markMethodSaved(id) {
+      await getClient().update(ledgerPaymentAttempts)
+        .set({ metadata: sql`COALESCE(${ledgerPaymentAttempts.metadata}, '{}'::jsonb) || jsonb_build_object('methodSavedAt', now()::text)` })
+        .where(eq(ledgerPaymentAttempts.id, id));
+    },
+    async touchRecovery(id) {
+      await getClient().update(ledgerPaymentAttempts).set({ updatedAt: new Date() })
+        .where(eq(ledgerPaymentAttempts.id, id));
     },
   };
 }

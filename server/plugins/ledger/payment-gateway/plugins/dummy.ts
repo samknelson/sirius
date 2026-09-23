@@ -86,7 +86,7 @@ function decodePayment(providerRef: string): DummyPaymentPayload {
     (payment.methodRef !== undefined &&
       (typeof payment.methodRef !== "string" || payment.methodRef.length > 1024)) ||
     (payment.methodType !== undefined &&
-      payment.methodType !== "card") ||
+      payment.methodType !== "card" && payment.methodType !== "us_bank_account") ||
     !payment.status ||
     !statuses.includes(payment.status)
   ) {
@@ -119,7 +119,7 @@ function assertPaymentInput(
   const allowed = new Set(configuredPaymentTypes(ctx));
   if (
     paymentTypes.length === 0 ||
-    paymentTypes.some((type) => type !== "card" || !allowed.has(type))
+    paymentTypes.some((type) => !["card", "us_bank_account"].includes(type) || !allowed.has(type))
   ) {
     throw new Error("The requested payment type is not enabled for this gateway");
   }
@@ -269,6 +269,11 @@ export const dummyPaymentGatewayPlugin: PaymentGatewayPlugin = {
       id: "card",
       name: "Credit/Debit Card",
       description: "Hand-typed test card (no real charges are made)",
+    },
+    {
+      id: "us_bank_account",
+      name: "Test ACH Bank Account",
+      description: "Simulated ACH lifecycle (no real charges are made)",
     },
   ],
 

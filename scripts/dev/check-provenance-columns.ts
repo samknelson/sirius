@@ -157,6 +157,10 @@ const ALLOWLIST: Record<string, string> = {
     "KEEP — snapshot author display name retained with process output",
   "ledger_gateway_customers.created_at":
     "KEEP — gateway customer mapping creation time retained on excluded ledger state",
+  "ledger_payment_attempts.created_at":
+    "KEEP — provider attempt age drives bounded recovery and safe expiry",
+  "ledger_payment_attempts.updated_at":
+    "KEEP — recovery scan ordering prevents one stuck attempt from blocking newer attempts",
 
   // ── RETIRE: not moved yet, one task per area ─────────────────────────────
   "wizard_report_data.created_at":

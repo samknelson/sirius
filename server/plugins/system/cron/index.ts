@@ -195,6 +195,7 @@ import "./plugins/workerCertificationActiveScan";
 import "./plugins/logCleanup";
 import "./plugins/btuMemberStatusScan";
 import "./plugins/ledgerChargeCron";
+import "./plugins/onlinePaymentRecovery";
 import "./plugins/baoCobraBilling";
 import "./plugins/baoDpBilling";
 import "./plugins/baoCobraStatusScan";

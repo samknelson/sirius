@@ -7,6 +7,10 @@ export function shouldApplyPaymentEvent(
 ): boolean {
   if (currentCreated && incomingCreated && incomingCreated < currentCreated) return false;
   if (currentStatus === "succeeded" && incomingStatus !== "succeeded") return false;
+  // A confirmed terminal outcome cannot be undone by a late or conflicting
+  // terminal event. A provider-confirmed success after a local expiry remains
+  // recoverable; it represents real funds, not a new checkout.
+  if (["failed", "canceled"].includes(currentStatus) && incomingStatus !== currentStatus && incomingStatus !== "succeeded") return false;
   const rank = (s: string) => s === "created" || s === "requires_action" ? 0 : s === "processing" ? 1 : 2;
   return rank(incomingStatus) >= rank(currentStatus);
 }

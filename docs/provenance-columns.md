@@ -104,6 +104,11 @@ off. Their seeding migration relies on the routine's stated skip.
 
 ## KEEP — operational timestamps, not provenance
 
+Online payment attempts retain `created_at` as the 10-minute recovery and
+24-hour cancellation threshold, and `updated_at` as the recovery scan's
+ordering key. These are operational provider-state clocks, not a displayed
+record-history answer.
+
 These stay. They are business data that happens to be a timestamp: something
 *reads* each one to decide what to do. The lint rule allowlists the ones whose
 names look like provenance; the rest never matched it in the first place and
@@ -129,6 +134,7 @@ are listed here so the inventory is complete.
 | `wizards` | `date` | The run's business date. | no |
 | `wizard_report_data` | `created_at` | Bulk output of a report run, one row per result row. The data-retention purge reads a row's age to decide whether the run's output has outlived its wizard's retention setting, and it is the order the rows are read back in (the results table and the EDI file both). Same call as `ebs_status`. | yes |
 | `ledger` and payment batches | `date` | Accounting dates. | no |
+| `ledger_payment_attempts` | `created_at`, `updated_at` | Provider attempt age controls recovery and safe cancellation; update time orders bounded scans. | yes |
 | `winston_logs` | `timestamp` | The log entry's own time; the entry IS the event. | no |
 | `entity_notes` | `timestamp` | A note's posted time, shown on the note. | no |
 | `sessions` | (all) | Cookie-keyed session store, not a record table. | no |

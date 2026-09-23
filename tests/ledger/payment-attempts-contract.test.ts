@@ -26,11 +26,12 @@ describe("worker Stripe payment attempt backend", () => {
   it("expires abandoned reservations and still records funds settled after a balance change", () => {
     const route = readFileSync("server/modules/ledger/payment-attempts.ts", "utf8");
     const storage = readFileSync("server/storage/ledger/payment_attempts.ts", "utf8");
+    const settlement = readFileSync("server/modules/ledger/payment-settlement.ts", "utf8");
     expect(route).toContain("expireReservations");
-    expect(route).toContain("payment.canceled");
+    expect(settlement).toContain('payment.canceled');
     expect(route).not.toContain("Settled payment exceeds the current payable balance");
     expect(storage).toContain("reservationExpiresAt");
-    expect(storage).toContain("Payment confirmation expired");
+    expect(storage).toContain("A missing reference does not prove");
   });
 
   it("requires an enabled component and signed webhook before charging", () => {
@@ -96,11 +97,13 @@ describe("worker Stripe payment attempt backend", () => {
 
   it("only persists a saved method from a provider-verified success", () => {
     const route = readFileSync("server/modules/ledger/payment-attempts.ts", "utf8");
+    const settlement = readFileSync("server/modules/ledger/payment-settlement.ts", "utf8");
     const methods = readFileSync("server/storage/ledger/payment_methods.ts", "utf8");
-    expect(route).toContain("status === \"succeeded\" && attempt.saveMethod");
-    expect(route).toContain("event.methodRef");
-    expect(route).toContain("retrievePayment");
-    expect(route).toContain("upsertProviderMethod");
+    expect(settlement).toContain('attempt?.status === "succeeded" && attempt.saveMethod');
+    expect(settlement).toContain("evidence.methodRef");
+    expect(settlement).toContain("retrievePayment");
+    expect(settlement).toContain("upsertProviderMethod");
+    expect(route).toContain("processPaymentEvidence");
     expect(methods).toContain("onConflictDoUpdate");
     expect(methods).toContain("gatewayConfigId, ledgerPaymentMethods.providerMethodRef");
   });

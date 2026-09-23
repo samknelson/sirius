@@ -2,9 +2,7 @@ import type { Express, Request, Response } from "express";
 import { checkAccessInline } from "../../services/access-policy-evaluator";
 import { storage } from "../../storage";
 import { resolveGateway } from "./payment-gateway-context";
-import { triggerPaymentChargePlugins } from "./payments";
-import { randomUUID } from "node:crypto";
-import { paymentEventMatchesAmount, selectFinancialPaymentType, shouldApplyPaymentEvent } from "./payment-attempt-state";
+import { selectFinancialPaymentType } from "./payment-attempt-state";
 import { getEffectiveUser } from "../masquerade";
 import { createUnifiedOptionsStorage } from "../../storage/unified-options";
 import { runInTransaction } from "../../storage/transaction-context";
@@ -17,6 +15,7 @@ import { enforceFloodLimit, FloodError } from "../../flood/service";
 import { CHECKOUT_FLOOD_EVENT } from "../../flood/events";
 import { PaymentCancellationError } from "../../plugins/ledger/payment-gateway/types";
 import { ensureCustomer } from "./payment-methods";
+import { processPaymentEvidence, evidenceFromPayment, settlementError, logSettlementFailure, SettlementRefusal } from "./payment-settlement";
 
 const options = createUnifiedOptionsStorage();
 const raw = (req: Request) => (req as Request & { rawBody?: Buffer }).rawBody;
@@ -548,7 +547,7 @@ export function registerLedgerPaymentAttemptRoutes(
         if (!loaded.settings.allowPartial && cents !== Math.max(0, Math.round((balance - reserved) * 100))) {
           throw new PaymentAttemptConflictError("This account requires payment of its full available balance");
         }
-        return storage.ledger.paymentAttempts.create({ workerId: req.params.entityType === "worker" ? req.params.entityId : null, ledgerEaId: loaded.ea.id, gatewayConfigId: loaded.account.gatewayConfigId!, accountId: loaded.account.id, entityType: req.params.entityType, entityId: req.params.entityId, createdByUserId: dbUser?.id ?? null, createdAt: new Date(), updatedAt: new Date(), saveMethod: body.saveMethod, consent: { ...body.consent, acceptedAt: new Date().toISOString(), authorizationVersion: selectedText.version, authorizationText: selectedText.text }, statementSelection: body.statementSelection, idempotencyKey: body.idempotencyKey, amount: (cents / 100).toFixed(2), currency: loaded.account.currencyCode, status: "requires_action", reservationExpiresAt: null, metadata: { source: "online_checkout", paymentMethodRef: savedMethod?.providerMethodRef ?? null, paymentTypes } } as any);
+        return storage.ledger.paymentAttempts.create({ workerId: req.params.entityType === "worker" ? req.params.entityId : null, ledgerEaId: loaded.ea.id, gatewayConfigId: loaded.account.gatewayConfigId!, accountId: loaded.account.id, entityType: req.params.entityType, entityId: req.params.entityId, createdByUserId: dbUser?.id ?? null, createdAt: new Date(), updatedAt: new Date(), saveMethod: body.saveMethod, consent: { ...body.consent, acceptedAt: new Date().toISOString(), authorizationVersion: selectedText.version, authorizationText: selectedText.text }, statementSelection: body.statementSelection, idempotencyKey: body.idempotencyKey, amount: (cents / 100).toFixed(2), currency: loaded.account.currencyCode, status: "requires_action", reservationExpiresAt: null, metadata: { source: "online_checkout", paymentMethodRef: savedMethod?.providerMethodRef ?? null, paymentTypes, invoicePeriods: body.statementSelection.map(s => { const invoice = invoiceMap.get(s.invoiceNumber)!; return { invoiceNumber: s.invoiceNumber, statementYmd: `${invoice.year}-${String(invoice.month).padStart(2, "0")}-01` }; }) } } as any);
       });
       if ((attempt as any).__created === false) {
         // A competing request inserted the same key after our initial lookup.
@@ -585,10 +584,10 @@ export function registerLedgerPaymentAttemptRoutes(
       if (cancel) {
         if (!attempt.providerIntentRef || !resolved.plugin.cancelPayment) return error(res, 409, "Payment cannot be canceled");
         const result = await resolved.plugin.cancelPayment(resolved.context, attempt.providerIntentRef);
-        await storage.ledger.paymentAttempts.updateStatus(attempt.id, result.status, { failureMessage: result.failureMessage });
+        await processPaymentEvidence(attempt.id, attempt.gatewayConfigId, evidenceFromPayment(result));
       } else if (attempt.providerIntentRef && resolved.plugin.retrievePayment) {
         const result = await resolved.plugin.retrievePayment(resolved.context, attempt.providerIntentRef);
-        await storage.ledger.paymentAttempts.updateStatus(attempt.id, result.status, { failureMessage: result.failureMessage });
+        await processPaymentEvidence(attempt.id, attempt.gatewayConfigId, evidenceFromPayment(result));
       }
       return res.json(safeAttempt(await storage.ledger.paymentAttempts.get(attempt.id)));
     } catch (e) {
@@ -685,7 +684,12 @@ export function registerLedgerPaymentAttemptRoutes(
       }
       const headers = Object.fromEntries(Object.entries(req.headers)
         .filter((entry): entry is [string, string] => typeof entry[1] === "string"));
-      const event = resolved.plugin.verifyWebhook(resolved.context, body, headers);
+      let event;
+      try {
+        event = resolved.plugin.verifyWebhook(resolved.context, body, headers);
+      } catch {
+        return error(res, 400, "Invalid webhook signature or payload");
+      }
       const object = (event.payload ?? {}) as Record<string, unknown>;
       const metadata = (object.metadata ?? {}) as Record<string, unknown>;
       const attemptId = typeof metadata.attemptId === "string" ? metadata.attemptId : undefined;
@@ -711,8 +715,8 @@ export function registerLedgerPaymentAttemptRoutes(
         req.params.gatewayConfigId, event.eventId,
       );
       if (event.type === "unsupported") {
-        await complete();
-        return res.json({ received: true });
+        await storage.ledger.paymentAttempts.markEventIgnored(req.params.gatewayConfigId, event.eventId, "Unsupported provider event");
+        return res.json({ received: true, unsupported: true });
       }
       if (!attempt) {
         // The provider may beat the create response that stores its reference.
@@ -723,119 +727,29 @@ export function registerLedgerPaymentAttemptRoutes(
         return res.json({ received: true });
       }
       if (attempt.gatewayConfigId !== req.params.gatewayConfigId) {
-        throw new Error("Webhook event does not belong to this payment gateway");
+        throw new SettlementRefusal("Payment gateway mismatch");
       }
       if (!providerRef) {
-        throw new Error("Webhook event does not identify a provider payment");
+        throw new SettlementRefusal("Payment reference mismatch");
       }
       if (attempt.providerIntentRef && attempt.providerIntentRef !== providerRef) {
-        throw new Error("Webhook event does not belong to this payment attempt");
+        throw new SettlementRefusal("Payment reference mismatch");
       }
-      const status = event.type === "payment.succeeded" ? "succeeded"
-        : event.type === "payment.processing" ? "processing"
-          : event.type === "payment.failed" ? "failed"
-            : event.type === "payment.canceled" ? "canceled" : undefined;
-      if (status === "succeeded" && !paymentEventMatchesAmount(attempt, event)) {
-        throw new Error("Provider payment amount or currency does not match the payment attempt");
-      }
-      // `saveMethod` only asks the provider to configure future usage at
-      // checkout time. Never create a local payment-method row from the
-      // browser's method id: the provider-signed success event is the source
-      // of truth. Stripe (and other gateways) normally include the method on
-      // the event; retrieve once as a fallback for providers that only put it
-      // on the canonical payment object.
-      if (status === "succeeded" && attempt.saveMethod) {
-        let providerMethodRef = event.methodRef;
-        let methodSummary = event.methodSummary;
-        if (!providerMethodRef && providerRef && resolved.plugin.retrievePayment) {
-          const payment = await resolved.plugin.retrievePayment(
-            resolved.context,
-            providerRef,
-          );
-          providerMethodRef = payment.methodRef;
-          methodSummary = payment.methodSummary;
-        }
-        if (!providerMethodRef) throw new Error("Provider did not confirm the requested saved payment method");
-        await storage.ledger.paymentMethods.upsertProviderMethod({
-          entityType: attempt.entityType,
-          entityId: attempt.entityId,
-          gatewayConfigId: attempt.gatewayConfigId,
-          providerMethodRef,
-          consent: attempt.consent,
-          data: methodSummary ? { summary: methodSummary } : undefined,
-        });
-      }
-      if (!shouldApplyPaymentEvent(attempt.status, attempt.lastProviderEventCreated, status ?? attempt.status, event.providerCreated)) {
-        await complete();
-        return res.json({ received: true, stale: true });
-      }
-      if (status) {
-        const updated = await storage.ledger.paymentAttempts.updateStatus(attempt.id, status, {
-          providerIntentRef: providerRef ?? attempt.providerIntentRef,
-          lastProviderEventCreated: event.providerCreated ?? attempt.lastProviderEventCreated,
-          failureCode: event.failureCode,
-          failureMessage: status === "failed" ? "Payment failed" : status === "canceled" ? "Payment canceled" : undefined,
-        });
-        if (status === "succeeded" && updated && !updated.ledgerPaymentId) {
-          const types = await options.list("ledger-payment-type");
-          const storedPaymentTypeId =
-            attempt.metadata &&
-            typeof attempt.metadata === "object" &&
-            typeof (attempt.metadata as Record<string, unknown>).ledgerPaymentTypeId === "string"
-              ? (attempt.metadata as Record<string, unknown>).ledgerPaymentTypeId as string
-              : undefined;
-          const paymentType =
-            types.find(
-              (type) =>
-                type.id === storedPaymentTypeId &&
-                type.category === "financial" &&
-                type.currencyCode?.toUpperCase() === attempt.currency.toUpperCase(),
-            ) ?? selectFinancialPaymentType(types, attempt.currency);
-          if (!paymentType) {
-            throw new Error(`No financial ledger payment type is configured for ${attempt.currency}`);
-          }
-          const ledgerPaymentId = randomUUID();
-          const posted = await runInTransaction(async () => {
-            // Serialize duplicate deliveries before inserting the payment.
-            // The payment must exist before its immediate FK can be linked.
-            await storage.ledger.paymentAttempts.lockAttempt(attempt.id);
-            const lockedAttempt = await storage.ledger.paymentAttempts.get(attempt.id);
-            if (!lockedAttempt) throw new Error("Payment attempt no longer exists");
-            if (lockedAttempt.ledgerPaymentId) {
-              return false;
-            }
-            const createdPayment = await storage.ledger.payments.create({
-              id: ledgerPaymentId,
-              status: "cleared", allocated: false, amount: attempt.amount,
-              paymentType: paymentType.id, ledgerEaId: attempt.ledgerEaId,
-              dateReceived: new Date(), dateCleared: new Date(),
-              memo: "Worker online payment", details: {
-                provider: resolved.plugin.id, paymentAttemptId: attempt.id,
-                providerIntentRef: providerRef,
-                proposedAllocation: [{ eaId: attempt.ledgerEaId, amount: attempt.amount, statementYmd: "" }],
-              },
-            } as any);
-            if (!(await storage.ledger.paymentAttempts.claimLedgerPosting(attempt.id, ledgerPaymentId))) {
-              // Roll back the inserted payment rather than leaving an orphan.
-              throw new Error("Payment attempt could not claim ledger posting");
-            }
-            await triggerPaymentChargePlugins(createdPayment);
-            return true;
-          });
-          if (!posted) {
-            await complete();
-            return res.json({ received: true, duplicate: true });
-          }
-        }
-      }
+      const transition = await processPaymentEvidence(attempt.id, req.params.gatewayConfigId, event);
       await complete();
-      return res.json({ received: true, ...(newlyRecorded ? {} : { duplicate: true }) });
+      return res.json({ received: true, ...(transition === "stale" ? { stale: true } : {}), ...(newlyRecorded ? {} : { duplicate: true }) });
     } catch (e) {
       if (receivedEventId) {
+        if (e instanceof SettlementRefusal &&
+            ["Payment gateway mismatch", "Payment reference mismatch", "Payment amount or currency mismatch"].includes(e.message)) {
+          await storage.ledger.paymentAttempts.markEventIgnored(req.params.gatewayConfigId, receivedEventId, e.message);
+          return res.json({ received: true, ignored: true });
+        }
         await storage.ledger.paymentAttempts.completeEvent(
           req.params.gatewayConfigId, receivedEventId,
-          e instanceof Error ? e.message : "Webhook processing failed",
+          settlementError(e),
         );
+        await logSettlementFailure(null, settlementError(e));
       }
       return error(res, receivedEventId ? 500 : 400, receivedEventId ? "Webhook processing failed" : "Invalid webhook");
     }

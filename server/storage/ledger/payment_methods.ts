@@ -169,8 +169,8 @@ export function createPaymentMethodStorage(): PaymentMethodStorage {
           ),
           set: {
             isActive: true,
-            ...(input.consent !== undefined ? { consent: input.consent } : {}),
-            ...(input.data !== undefined ? { data: input.data } : {}),
+            // Existing ownership and the original opt-in provenance belong
+            // to the first attachment. A later checkout cannot rewrite them.
           },
         })
         .returning();
