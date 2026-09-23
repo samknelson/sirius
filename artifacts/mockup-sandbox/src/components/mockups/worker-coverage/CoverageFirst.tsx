@@ -1,4 +1,4 @@
-import { AlertCircle, Check, Clock3, ShieldCheck, WalletCards, X } from "lucide-react";
+import { AlertCircle, ArrowRight, Check, Clock3, ShieldCheck, WalletCards, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { BaoCoverageSummary } from "./_data";
@@ -138,23 +138,30 @@ function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
               {data.future.map((period) => {
                 const threshold = futureStatus[period.status];
                 const ThresholdIcon = threshold.Icon;
-                return (
-                  <article className="coverage-first-period" key={`${period.workMonth.year}-${period.workMonth.month}`}>
-                    <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground">Work month</p>
-                      <h4 className="mt-0.5 font-medium">{period.workMonth.label}</h4>
-                    </div>
-                    <div className="min-w-0 text-left sm:text-right">
-                      <span className={`coverage-first-future-status ${threshold.tone}`}>
-                        <ThresholdIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                        {threshold.label}
-                      </span>
-                      <p className="mt-1 text-xs tabular-nums text-muted-foreground">
-                        {exactHours(period.hours.reported)} / {exactHours(period.hours.required)} · {period.coverageMonth.label}
-                      </p>
-                    </div>
-                  </article>
-                );
+                 return (
+                   <article className="coverage-first-period" key={`${period.workMonth.year}-${period.workMonth.month}`}>
+                     <div className="coverage-first-flow">
+                       <div className="min-w-0">
+                         <p className="text-xs text-muted-foreground">Hours worked in</p>
+                         <h4 className="mt-0.5 font-medium">{period.workMonth.label}</h4>
+                         <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+                           {exactHours(period.hours.reported)} / {exactHours(period.hours.required)} required
+                         </p>
+                       </div>
+                       <ArrowRight className="coverage-first-flow-arrow" aria-hidden="true" />
+                       <div className="min-w-0">
+                          <p className="text-xs text-muted-foreground">Hours count toward</p>
+                         <h4 className="mt-0.5 font-medium">{period.coverageMonth.label}</h4>
+                       </div>
+                     </div>
+                     <div className="coverage-first-period-status">
+                       <span className={`coverage-first-future-status ${threshold.tone}`}>
+                         <ThresholdIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                         {threshold.label}
+                       </span>
+                     </div>
+                   </article>
+                 );
               })}
             </div>
           )}
