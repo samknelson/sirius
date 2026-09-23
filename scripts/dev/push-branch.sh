@@ -45,7 +45,8 @@ fetch_branch() {
 reconcile_equivalent_remote_history() {
   local branch="$1"
   local remote_ref="$TRACKING_NAMESPACE/$branch"
-  local base patch_file index_file old_main main_tree remote_tree matching_main_commit reconciled_main cherry_output
+  local base patch_file index_file old_main main_tree remote_tree matching_main_commit reconciled_main cherry_output candidate
+  local -a changed_paths=()
 
   if git merge-base --is-ancestor "$remote_ref" main; then
     return
@@ -82,6 +83,35 @@ reconcile_equivalent_remote_history() {
     git update-ref refs/heads/main "$reconciled_main" "$old_main"
     echo "Reconciled origin/$branch: its complete tree matches main commit $matching_main_commit."
     return
+  fi
+
+  # The remote tip may match an earlier main snapshot on every path it changed,
+  # while unrelated files in that snapshot differ and later main commits edit
+  # those same paths again. Compare the remote's complete changed-path snapshot
+  # with actual ancestors of main (not just its current tree). --no-renames
+  # includes both sides of a rename, and -z preserves unusual path names.
+  mapfile -d '' -t changed_paths < <(
+    git diff --no-renames --name-only -z "$base" "$remote_ref"
+  )
+  if [ "${#changed_paths[@]}" -gt 0 ]; then
+    while IFS= read -r candidate; do
+      if git diff --quiet "$remote_ref" "$candidate" -- "${changed_paths[@]}"; then
+        old_main=$(git rev-parse main)
+        main_tree=$(git rev-parse 'main^{tree}')
+        reconciled_main=$(
+          printf 'Reconcile %s before deployment push\n\nRemote tip matches main ancestor %s on every changed path; keep the current main tree unchanged.\n' \
+            "origin/$branch" "$candidate" |
+            GIT_AUTHOR_NAME="$WORKFLOW_GIT_NAME" \
+            GIT_AUTHOR_EMAIL="$WORKFLOW_GIT_EMAIL" \
+            GIT_COMMITTER_NAME="$WORKFLOW_GIT_NAME" \
+            GIT_COMMITTER_EMAIL="$WORKFLOW_GIT_EMAIL" \
+            git commit-tree "$main_tree" -p "$old_main" -p "$remote_ref"
+        )
+        git update-ref refs/heads/main "$reconciled_main" "$old_main"
+        echo "Reconciled origin/$branch: its changed paths match main ancestor $candidate."
+        return
+      fi
+    done < <(git rev-list --ancestry-path "$base..main")
   fi
 
   # A production hotfix is commonly committed once on main and once on the
