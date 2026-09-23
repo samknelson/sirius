@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatYmd } from "@shared/utils/date";
+import { WorkerEdlsScheduleCard } from "@/components/edls/WorkerEdlsScheduleCard";
 
 /**
  * One row of the worker's schedule, as narrowed by
@@ -63,83 +64,86 @@ function WorkerEdlsAssignmentsContent() {
   const assignments = [...(data ?? [])].reverse();
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Assignments</CardTitle>
-        <CardDescription>
-          Every crew this worker is assigned to — past, present and future.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-          </div>
-        ) : isError ? (
-          <p className="text-sm text-destructive" data-testid="text-assignments-error">
-            Could not load this worker's assignments.
-          </p>
-        ) : assignments.length === 0 ? (
-          <p className="text-sm text-muted-foreground" data-testid="text-no-assignments">
-            This worker has no EDLS assignments.
-          </p>
-        ) : (
-          <Table data-testid="table-edls-assignments">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Status</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Sheet</TableHead>
-                <TableHead>Crew</TableHead>
-                {showEvent && <TableHead>Event</TableHead>}
-                <TableHead>Facility</TableHead>
-                <TableHead>Department</TableHead>
-                <TableHead className="w-12" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {assignments.map((a) => (
-                <TableRow key={a.assignmentId} data-testid={`row-assignment-${a.assignmentId}`}>
-                  <TableCell>
-                    <Badge variant={statusVariant(a.sheetStatus)} data-testid={`badge-status-${a.assignmentId}`}>
-                      {a.sheetStatus}
-                    </Badge>
-                  </TableCell>
-                  <TableCell data-testid={`text-date-${a.assignmentId}`}>{formatYmd(a.ymd)}</TableCell>
-                  <TableCell data-testid={`text-sheet-${a.assignmentId}`}>{a.sheetTitle}</TableCell>
-                  <TableCell data-testid={`text-crew-${a.assignmentId}`}>{a.crewTitle}</TableCell>
-                  {showEvent && (
-                    <TableCell data-testid={`text-event-${a.assignmentId}`}>
-                      {a.jobGroup?.name || "—"}
-                    </TableCell>
-                  )}
-                  <TableCell data-testid={`text-facility-${a.assignmentId}`}>
-                    {a.facility?.name || "—"}
-                  </TableCell>
-                  <TableCell data-testid={`text-department-${a.assignmentId}`}>
-                    {a.department?.name || "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Link href={`/edls/sheet/${a.sheetId}`}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        title="View sheet"
-                        data-testid={`link-sheet-${a.assignmentId}`}
-                      >
-                        <ExternalLink size={16} />
-                      </Button>
-                    </Link>
-                  </TableCell>
+    <div className="space-y-4">
+      <WorkerEdlsScheduleCard />
+      <Card>
+        <CardHeader>
+          <CardTitle>Assignments</CardTitle>
+          <CardDescription>
+            Every crew this worker is assigned to — past, present and future.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+            </div>
+          ) : isError ? (
+            <p className="text-sm text-destructive" data-testid="text-assignments-error">
+              Could not load this worker's assignments.
+            </p>
+          ) : assignments.length === 0 ? (
+            <p className="text-sm text-muted-foreground" data-testid="text-no-assignments">
+              This worker has no EDLS assignments.
+            </p>
+          ) : (
+            <Table data-testid="table-edls-assignments">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Sheet</TableHead>
+                  <TableHead>Crew</TableHead>
+                  {showEvent && <TableHead>Event</TableHead>}
+                  <TableHead>Facility</TableHead>
+                  <TableHead>Department</TableHead>
+                  <TableHead className="w-12" />
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
+              </TableHeader>
+              <TableBody>
+                {assignments.map((a) => (
+                  <TableRow key={a.assignmentId} data-testid={`row-assignment-${a.assignmentId}`}>
+                    <TableCell>
+                      <Badge variant={statusVariant(a.sheetStatus)} data-testid={`badge-status-${a.assignmentId}`}>
+                        {a.sheetStatus}
+                      </Badge>
+                    </TableCell>
+                    <TableCell data-testid={`text-date-${a.assignmentId}`}>{formatYmd(a.ymd)}</TableCell>
+                    <TableCell data-testid={`text-sheet-${a.assignmentId}`}>{a.sheetTitle}</TableCell>
+                    <TableCell data-testid={`text-crew-${a.assignmentId}`}>{a.crewTitle}</TableCell>
+                    {showEvent && (
+                      <TableCell data-testid={`text-event-${a.assignmentId}`}>
+                        {a.jobGroup?.name || "—"}
+                      </TableCell>
+                    )}
+                    <TableCell data-testid={`text-facility-${a.assignmentId}`}>
+                      {a.facility?.name || "—"}
+                    </TableCell>
+                    <TableCell data-testid={`text-department-${a.assignmentId}`}>
+                      {a.department?.name || "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Link href={`/edls/sheet/${a.sheetId}`}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="View sheet"
+                          data-testid={`link-sheet-${a.assignmentId}`}
+                        >
+                          <ExternalLink size={16} />
+                        </Button>
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

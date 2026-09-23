@@ -47,6 +47,25 @@ export function registerWorkerAatRoutes(
 
   // Generate / regenerate the access UUID. Creates the row on first use.
   app.post(
+    "/api/workers/:workerId/aat/ensure-uuid",
+    requireAuth,
+    aatComponent,
+    requireAccess("worker.mine", workerIdParam),
+    async (req: Request, res: Response) => {
+      try {
+        const { record } = await storage.workerAat.ensureAccessUuid(
+          req.params.workerId,
+        );
+        res.set("Cache-Control", "private, no-store");
+        res.json({ accessUuid: record.accessUuid });
+      } catch (error) {
+        console.error("Error ensuring worker access UUID:", error);
+        res.status(500).json({ error: "Failed to ensure access UUID" });
+      }
+    },
+  );
+
+  app.post(
     "/api/workers/:workerId/aat/uuid",
     requireAuth,
     aatComponent,

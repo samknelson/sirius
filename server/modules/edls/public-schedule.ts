@@ -8,6 +8,10 @@ import { checkFlood, recordFloodEvent } from "../../flood/service";
 import { EDLS_SCHEDULE_ANSWER_FLOOD_EVENT } from "../../flood/events";
 import { logger } from "../../logger";
 import type { AssignmentForWorker } from "../../storage/edls/assignments";
+import {
+  buildContext,
+  checkAccess,
+} from "../../services/access-policy-evaluator";
 
 /**
  * Sheet statuses a worker may see on the public schedule page. Draft/request
@@ -24,6 +28,21 @@ export interface PublicWorkerSchedule {
   startYmd: string;
   endYmd: string;
   assignments: AssignmentForWorker[];
+  workerBackPath?: string;
+}
+
+async function getWorkerBackPath(
+  req: Request,
+  workerId: string,
+): Promise<string | undefined> {
+  try {
+    const context = await buildContext(req);
+    if (!context.user) return undefined;
+    const access = await checkAccess("worker.view", context.user, workerId);
+    return access.granted ? `/workers/${workerId}` : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Family-name-first display, e.g. "Banales, Gabriel". */
@@ -116,6 +135,8 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
     edlsComponent,
     aatComponent,
     async (req: Request, res: Response) => {
+      res.set("Cache-Control", "private, no-store");
+      res.vary("Cookie");
       const denied = () => res.status(403).json({ message: "Access denied" });
 
       try {
@@ -140,6 +161,11 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
           endYmd,
           assignments: resolved.assignments,
         };
+        const workerBackPath = await getWorkerBackPath(
+          req,
+          resolved.workerId,
+        );
+        if (workerBackPath) payload.workerBackPath = workerBackPath;
         res.json(payload);
       } catch (error) {
         console.error("Failed to fetch public EDLS schedule:", error);

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "wouter";
+import { Link, useParams } from "wouter";
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ShieldAlert, ThumbsDown, ThumbsUp } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { addDaysYmd, ymdToLocalDate, type Ymd } from "@shared/utils/date";
+import { useAuth } from "@/contexts/AuthContext";
 
 /** Number of dated sections rendered, counting today. Mirrors the endpoint's window. */
 const SCHEDULE_DAYS = 7;
@@ -42,6 +43,7 @@ interface PublicWorkerSchedule {
   startYmd: string;
   endYmd: string;
   assignments: ScheduleAssignment[];
+  workerBackPath?: string;
 }
 
 /** "Sunday, August 23, 2026" — full weekday, matching the legacy page's headings. */
@@ -237,9 +239,12 @@ function AccessDenied() {
 
 export default function EdlsSchedulePage() {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
+  const scheduleUrl = `/api/public/edls/schedule/${id}`;
 
   const { data, isLoading, isError } = useQuery<PublicWorkerSchedule>({
-    queryKey: [`/api/public/edls/schedule/${id}`],
+    queryKey: [scheduleUrl, { viewer: user?.id ?? "public" }],
+    queryFn: () => apiRequest("GET", scheduleUrl),
     enabled: !!id,
   });
 
@@ -278,6 +283,13 @@ export default function EdlsSchedulePage() {
       <h1 className="text-2xl font-bold" data-testid="text-schedule-title">
         Upcoming Schedule for {data.workerName}
       </h1>
+      {data.workerBackPath && (
+        <Link href={data.workerBackPath}>
+          <Button type="button" variant="outline" data-testid="button-back-to-worker">
+            Back to worker
+          </Button>
+        </Link>
+      )}
 
       {days.map((day) => (
         <Card key={day.ymd} data-testid={`card-day-${day.ymd}`}>

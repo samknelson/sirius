@@ -8,6 +8,7 @@ import { useAccessCheck } from "@/hooks/use-access-check";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { WorkerEdlsScheduleCard } from "@/components/edls/WorkerEdlsScheduleCard";
 
 interface WorkerEdlsState {
   workerId: string;
@@ -59,37 +60,40 @@ function WorkerEdlsContent() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>EDLS</CardTitle>
-        <CardDescription>
-          Toggle whether this worker is active in the Employer Day Labor Scheduler.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isLoading || !data ? (
-          <Skeleton className="h-8 w-48" />
-        ) : (
-          <div className="flex items-center space-x-3">
-            <Switch
-              id="edls-active"
-              checked={data.active}
-              disabled={!canEdit || setActive.isPending}
-              onCheckedChange={(checked) => setActive.mutate(checked)}
-              data-testid="switch-edls-active"
-            />
-            <Label htmlFor="edls-active" data-testid="label-edls-active">
-              {data.active ? "Active in EDLS" : "Inactive in EDLS"}
-            </Label>
-          </div>
-        )}
-        {!canEdit && (
-          <p className="text-sm text-muted-foreground mt-2">
-            You do not have permission to change this setting.
-          </p>
-        )}
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <WorkerEdlsScheduleCard />
+      <Card>
+        <CardHeader>
+          <CardTitle>EDLS</CardTitle>
+          <CardDescription>
+            Toggle whether this worker is active in the Employer Day Labor Scheduler.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading || !data ? (
+            <Skeleton className="h-8 w-48" />
+          ) : (
+            <div className="flex items-center space-x-3">
+              <Switch
+                id="edls-active"
+                checked={data.active}
+                disabled={!canEdit || setActive.isPending}
+                onCheckedChange={(checked) => setActive.mutate(checked)}
+                data-testid="switch-edls-active"
+              />
+              <Label htmlFor="edls-active" data-testid="label-edls-active">
+                {data.active ? "Active in EDLS" : "Inactive in EDLS"}
+              </Label>
+            </div>
+          )}
+          {!canEdit && (
+            <p className="text-sm text-muted-foreground mt-2">
+              You do not have permission to change this setting.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
