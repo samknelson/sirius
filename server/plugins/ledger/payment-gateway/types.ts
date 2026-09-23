@@ -131,6 +131,99 @@ export interface GatewayConnectionTest {
 
 export type GatewayChargeStatus = "requires_action" | "processing" | "succeeded" | "failed";
 
+/**
+ * Provider-independent lifecycle for one-time online payments. `created`
+ * means the provider is waiting for browser confirmation; `requires_action`
+ * is retained for compatibility with the original worker payment flow.
+ */
+export type NormalizedPaymentStatus =
+  | "created"
+  | "requires_action"
+  | "processing"
+  | "succeeded"
+  | "failed"
+  | "canceled";
+
+export interface NormalizedPayment {
+  providerRef: string;
+  status: NormalizedPaymentStatus;
+  amountMinor: number;
+  currency: string;
+  clientSecret?: string | null;
+  methodRef?: string;
+  methodType?: string;
+  failureCode?: string;
+  failureMessage?: string;
+  methodSummary?: GatewayMethodSummary;
+}
+
+export type NormalizedGatewayEventType =
+  | "payment.processing"
+  | "payment.succeeded"
+  | "payment.failed"
+  | "payment.canceled"
+  | "unsupported";
+
+/**
+ * A verified webhook event. Unsupported provider events are deliberately
+ * returned rather than discarded so the generic webhook inbox can retain
+ * their original type and payload for future handling.
+ */
+export interface NormalizedGatewayEvent {
+  eventId: string;
+  type: NormalizedGatewayEventType;
+  providerEventType: string;
+  providerRef?: string;
+  methodRef?: string;
+  amountMinor?: number;
+  currency?: string;
+  failureCode?: string;
+  failureMessage?: string;
+  methodSummary?: GatewayMethodSummary;
+  providerCreated?: number;
+  payload: unknown;
+}
+
+export interface CreatePaymentSessionInput {
+  /** Application id, also used as provider idempotency key and metadata. */
+  sessionId: string;
+  amountMinor: number;
+  currency: string;
+  customerRef?: string;
+  savedMethodRef?: string;
+  saveMethod: boolean;
+  paymentTypes: string[];
+  description: string;
+  metadata: Record<string, string>;
+}
+
+export interface GatewayPaymentSession {
+  providerRef: string;
+  clientSecret: string;
+  publicConfig: Record<string, unknown>;
+  status: NormalizedPaymentStatus;
+}
+
+export type PaymentCancellationErrorCode =
+  | "cancellation_not_supported"
+  | "payment_not_cancelable";
+
+/**
+ * Expected provider refusal to cancel. Callers can distinguish this from a
+ * transport/provider outage without interpreting provider-specific messages.
+ */
+export class PaymentCancellationError extends Error {
+  readonly retryable = false;
+
+  constructor(
+    public readonly code: PaymentCancellationErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "PaymentCancellationError";
+  }
+}
+
 export interface GatewayPaymentIntent {
   providerIntentRef: string;
   status: GatewayChargeStatus;
@@ -184,6 +277,8 @@ export interface PaymentGatewayPlugin extends BasePluginMetadata {
    * component registry.
    */
   addComponentId?: string;
+  /** Client component used to confirm a one-time payment session. */
+  payComponentId?: string;
   /**
    * Catalog of payment method types this provider supports, surfaced to the
    * provider-generic payment-types editor. The admin picks from this list per
@@ -236,6 +331,31 @@ export interface PaymentGatewayPlugin extends BasePluginMetadata {
     signature: string,
   ): GatewayWebhookEvent;
 
+  /**
+   * Create a one-time payment session. The generic ledger service owns all
+   * authorization and persistence; this method only calls the provider.
+   */
+  createPaymentSession?(
+    ctx: PaymentGatewayContext,
+    args: CreatePaymentSessionInput,
+  ): Promise<GatewayPaymentSession>;
+  /** Retrieve and normalize provider state for reconciliation. */
+  retrievePayment?(
+    ctx: PaymentGatewayContext,
+    providerRef: string,
+  ): Promise<NormalizedPayment>;
+  /** Verify a webhook signature and normalize even unsupported event types. */
+  verifyWebhook?(
+    ctx: PaymentGatewayContext,
+    rawBody: Buffer,
+    headers: Record<string, string>,
+  ): NormalizedGatewayEvent;
+  /** Cancel a provider payment while it is still cancelable. */
+  cancelPayment?(
+    ctx: PaymentGatewayContext,
+    providerRef: string,
+  ): Promise<NormalizedPayment>;
+
   // --- Provider-only behaviour (no storage/DB access) --------------------
   /** Test the provider connection using this config's resolved credentials. */
   testConnection(ctx: PaymentGatewayContext): Promise<GatewayConnectionTest>;
@@ -287,4 +407,5 @@ export interface PaymentGatewayManifestEntry {
   description?: string;
   requiredComponent?: string;
   addComponentId?: string;
+  payComponentId?: string;
 }

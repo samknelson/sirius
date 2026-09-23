@@ -25,6 +25,10 @@ import {
   WORKER_SIRIUS_ID_AUTHORITY_VARIABLE,
   workerSiriusIdAuthoritySchema,
 } from "@shared/worker-sirius-id-authority";
+import {
+  ONLINE_PAYMENT_AUTHORIZATION_VARIABLE,
+  onlinePaymentAuthorizationTextsSchema,
+} from "@shared/ledger/online-payments";
 
 /**
  * Unified per-variable registry.
@@ -120,6 +124,15 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
   // Entity notes framework: the areas notes are switched on for (admin
   // read/write). A context's PRESENCE is the setting; unknown ids rejected.
   entity_notes_config: { schema: entityNotesConfigSchema },
+
+  // Versioned ACH/save-method authorization language. There is deliberately
+  // no source-code fallback: a checkout cannot collect consent until an admin
+  // has configured both the consumer and business text.
+  [ONLINE_PAYMENT_AUTHORIZATION_VARIABLE]: {
+    readTier: "authenticated",
+    component: "ledger",
+    schema: onlinePaymentAuthorizationTextsSchema,
+  },
 
   // Worker TOS absence banner HTML (any authenticated user can read,
   // staff can write; gated by the worker.tos component)

@@ -17,6 +17,10 @@ async function checkEaAccessInline(req: Request, res: Response, ea: { entityType
   return true;
 }
 
+function isEaHistoryDeleteConflict(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === "23503";
+}
+
 export function registerLedgerEaRoutes(app: Express) {
   // GET /api/ledger/ea - Get all ledger EA entries (staff only), optionally filtered by accountId
   app.get("/api/ledger/ea", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
@@ -161,9 +165,15 @@ export function registerLedgerEaRoutes(app: Express) {
       
       if (!await checkEaAccessInline(req, res, existing, 'ledger.ea.edit')) return;
       
-      const success = await storage.ledger.ea.delete(id);
+      await storage.ledger.ea.delete(id);
       res.status(204).send();
     } catch (error) {
+      if (isEaHistoryDeleteConflict(error)) {
+        res.status(409).json({
+          message: "This ledger account participant has financial history and cannot be deleted.",
+        });
+        return;
+      }
       res.status(500).json({ message: "Failed to delete ledger EA entry" });
     }
   });

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import {
   selectFinancialPaymentType,
   shouldApplyPaymentEvent,
+  paymentEventMatchesAmount,
 } from "../../server/modules/ledger/payment-attempt-state";
 
 describe("worker Stripe payment attempt backend", () => {
@@ -15,7 +16,7 @@ describe("worker Stripe payment attempt backend", () => {
   it("verifies raw Stripe signatures before applying webhook state", () => {
     const source = readFileSync("server/modules/ledger/payment-attempts.ts", "utf8");
     expect(source).toContain("rawBody");
-    expect(source).toContain("constructWebhookEvent");
+    expect(source).toContain("verifyWebhook");
     expect(source).toContain("recordEvent");
     expect(source).toContain("stale");
     expect(source).toContain("attempt.gatewayConfigId !== req.params.gatewayConfigId");
@@ -26,7 +27,7 @@ describe("worker Stripe payment attempt backend", () => {
     const route = readFileSync("server/modules/ledger/payment-attempts.ts", "utf8");
     const storage = readFileSync("server/storage/ledger/payment_attempts.ts", "utf8");
     expect(route).toContain("expireReservations");
-    expect(route).toContain("payment_intent.canceled");
+    expect(route).toContain("payment.canceled");
     expect(route).not.toContain("Settled payment exceeds the current payable balance");
     expect(storage).toContain("reservationExpiresAt");
     expect(storage).toContain("Payment confirmation expired");
@@ -77,5 +78,19 @@ describe("worker Stripe payment attempt backend", () => {
     expect(shouldApplyPaymentEvent("processing", 20, "succeeded", 21)).toBe(true);
     expect(shouldApplyPaymentEvent("succeeded", 21, "failed", 21)).toBe(false);
     expect(shouldApplyPaymentEvent("succeeded", 21, "processing", 20)).toBe(false);
+    expect(shouldApplyPaymentEvent("succeeded", 21, "canceled", 22)).toBe(false);
+    expect(shouldApplyPaymentEvent("succeeded", 21, "expired", 22)).toBe(false);
+    // Replayed success must resume a posting interrupted after event receipt.
+    expect(shouldApplyPaymentEvent("succeeded", 21, "succeeded", 21)).toBe(true);
+  });
+
+  it("requires exact amount and currency before posting a provider success", () => {
+    const attempt = { amount: "12.34", currency: "USD" };
+    expect(paymentEventMatchesAmount(attempt, { amountMinor: 1234, currency: "usd" })).toBe(true);
+    expect(paymentEventMatchesAmount(attempt, { amountMinor: 1235, currency: "USD" })).toBe(false);
+    expect(paymentEventMatchesAmount(attempt, { amountMinor: 1234, currency: "CAD" })).toBe(false);
+    expect(paymentEventMatchesAmount(attempt, { amountMinor: 1234 })).toBe(false);
+    expect(paymentEventMatchesAmount(attempt, { currency: "USD" })).toBe(false);
+    expect(paymentEventMatchesAmount(attempt, { amountMinor: 1234.1, currency: "USD" })).toBe(false);
   });
 });

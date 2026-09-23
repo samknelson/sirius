@@ -23,6 +23,7 @@ export const paymentGatewayRegistry = new PluginRegistry<
     description: p.description,
     requiredComponent: p.requiredComponent,
     addComponentId: p.addComponentId,
+    payComponentId: p.payComponentId,
   }),
 });
 

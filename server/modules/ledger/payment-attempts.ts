@@ -4,7 +4,8 @@ import { storage } from "../../storage";
 import { resolveGateway } from "./payment-gateway-context";
 import { triggerPaymentChargePlugins } from "./payments";
 import { randomUUID } from "node:crypto";
-import { selectFinancialPaymentType, shouldApplyPaymentEvent } from "./payment-attempt-state";
+import { paymentEventMatchesAmount, selectFinancialPaymentType, shouldApplyPaymentEvent } from "./payment-attempt-state";
+import { getEffectiveUser } from "../masquerade";
 import { createUnifiedOptionsStorage } from "../../storage/unified-options";
 import { runInTransaction } from "../../storage/transaction-context";
 import { getComponentChecker } from "../../services/access-policy-evaluator";
@@ -239,6 +240,7 @@ export function registerLedgerPaymentAttemptRoutes(
       }
       const customer = await storage.ledger.gatewayCustomers.get("worker", workerId, method.gatewayConfigId);
       if (!customer) return error(res, 409, "Payment customer is not configured");
+      const { dbUser } = await getEffectiveUser(req.session as any, req.user as any);
       const attempt = await runInTransaction(async () => {
         await storage.ledger.paymentAttempts.lockEa(ea.id);
         await storage.ledger.paymentAttempts.expireReservations(ea.id);
@@ -256,6 +258,9 @@ export function registerLedgerPaymentAttemptRoutes(
         }
         return storage.ledger.paymentAttempts.create({
           workerId, ledgerEaId: ea.id, gatewayConfigId: method.gatewayConfigId,
+          accountId: account.id, entityType: "worker", entityId: workerId,
+          createdByUserId: dbUser?.id ?? null,
+          createdAt: new Date(), updatedAt: new Date(),
           paymentMethodId, idempotencyKey, amount: String(amount), currency,
           status: "requires_action",
           reservationExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
@@ -301,7 +306,7 @@ export function registerLedgerPaymentAttemptRoutes(
   app.get("/api/ledger/payment-attempts/:attemptId", requireAuth, async (req, res) => {
     const attempt = await storage.ledger.paymentAttempts.get(req.params.attemptId);
     if (!attempt) return error(res, 404, "Payment attempt not found");
-    if (!(await assertWorker(req, attempt.workerId))) return error(res, 403, "Access denied");
+    if (!attempt.workerId || !(await assertWorker(req, attempt.workerId))) return error(res, 403, "Access denied");
     return res.json({
       id: attempt.id,
       status: workerVisibleStatus(attempt),
@@ -393,47 +398,78 @@ export function registerLedgerPaymentAttemptRoutes(
 
   app.post("/api/ledger/payment-gateways/:gatewayConfigId/webhook", async (req, res) => {
     const body = raw(req);
-    const signature = req.header("stripe-signature");
-    if (!body || !signature) return error(res, 400, "Signed raw webhook body is required");
+    if (!body) return error(res, 400, "Signed raw webhook body is required");
+    let receivedEventId: string | undefined;
     try {
       const resolved = await resolveGateway(req.params.gatewayConfigId, { allowDisabled: true });
-      if (!resolved.plugin.constructWebhookEvent) {
+      if (!resolved.plugin.verifyWebhook) {
         return error(res, 404, "This payment gateway does not accept webhooks");
       }
-      const event = resolved.plugin.constructWebhookEvent(resolved.context, body, signature);
-      const object = (event.data ?? {}) as Record<string, unknown>;
+      const headers = Object.fromEntries(Object.entries(req.headers)
+        .filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+      const event = resolved.plugin.verifyWebhook(resolved.context, body, headers);
+      const object = (event.payload ?? {}) as Record<string, unknown>;
       const metadata = (object.metadata ?? {}) as Record<string, unknown>;
       const attemptId = typeof metadata.attemptId === "string" ? metadata.attemptId : undefined;
-      const providerRef = typeof object.id === "string" ? object.id : undefined;
-      const attempt = attemptId
-        ? await storage.ledger.paymentAttempts.get(attemptId)
-        : providerRef ? await storage.ledger.paymentAttempts.getByProviderIntent(providerRef) : undefined;
-      if (!attempt) return res.json({ received: true });
+      const providerRef = event.providerRef;
+      const metadataAttempt = attemptId
+        ? await storage.ledger.paymentAttempts.get(attemptId) : undefined;
+      const attempt = metadataAttempt ?? (providerRef
+        ? await storage.ledger.paymentAttempts.getByProviderIntent(providerRef, req.params.gatewayConfigId) : undefined);
+      // Keep only reconciliation fields, never the raw provider object (which
+      // may contain a client secret, billing details or free-form metadata).
+      const newlyRecorded = await storage.ledger.paymentAttempts.recordEvent({
+        gatewayConfigId: req.params.gatewayConfigId,
+        attemptId: attempt?.gatewayConfigId === req.params.gatewayConfigId ? attempt.id : null,
+        providerEventId: event.eventId, eventType: event.providerEventType,
+        providerCreated: event.providerCreated ?? null,
+        payload: {
+          type: event.type, providerRef, amountMinor: event.amountMinor,
+          currency: event.currency, methodRef: event.methodRef,
+        },
+      });
+      receivedEventId = event.eventId;
+      const complete = async () => storage.ledger.paymentAttempts.completeEvent(
+        req.params.gatewayConfigId, event.eventId,
+      );
+      if (event.type === "unsupported") {
+        await complete();
+        return res.json({ received: true });
+      }
+      if (!attempt) {
+        // The provider may beat the create response that stores its reference.
+        // Retain this as unfinished for replay/reconciliation, not completed.
+        await storage.ledger.paymentAttempts.completeEvent(
+          req.params.gatewayConfigId, event.eventId, "Payment attempt not found",
+        );
+        return res.json({ received: true });
+      }
       if (attempt.gatewayConfigId !== req.params.gatewayConfigId) {
-        return error(res, 400, "Webhook event does not belong to this payment gateway");
+        throw new Error("Webhook event does not belong to this payment gateway");
       }
       if (!providerRef) {
-        return error(res, 400, "Webhook event does not identify a provider payment");
+        throw new Error("Webhook event does not identify a provider payment");
       }
       if (attempt.providerIntentRef && attempt.providerIntentRef !== providerRef) {
-        return error(res, 400, "Webhook event does not belong to this payment attempt");
+        throw new Error("Webhook event does not belong to this payment attempt");
       }
-      const newlyRecorded = await storage.ledger.paymentAttempts.recordEvent({
-        attemptId: attempt.id, providerEventId: event.id, eventType: event.type,
-        providerCreated: event.created ?? 0, payload: event.data,
-      });
-      const status = event.type === "payment_intent.succeeded" ? "succeeded"
-        : event.type === "payment_intent.processing" ? "processing"
-          : event.type === "payment_intent.payment_failed" || event.type === "payment_intent.canceled"
-            ? "failed" : undefined;
-      if (!shouldApplyPaymentEvent(attempt.status, attempt.lastProviderEventCreated, status ?? attempt.status, event.created)) {
+      const status = event.type === "payment.succeeded" ? "succeeded"
+        : event.type === "payment.processing" ? "processing"
+          : event.type === "payment.failed" ? "failed"
+            : event.type === "payment.canceled" ? "canceled" : undefined;
+      if (status === "succeeded" && !paymentEventMatchesAmount(attempt, event)) {
+        throw new Error("Provider payment amount or currency does not match the payment attempt");
+      }
+      if (!shouldApplyPaymentEvent(attempt.status, attempt.lastProviderEventCreated, status ?? attempt.status, event.providerCreated)) {
+        await complete();
         return res.json({ received: true, stale: true });
       }
       if (status) {
         const updated = await storage.ledger.paymentAttempts.updateStatus(attempt.id, status, {
           providerIntentRef: providerRef ?? attempt.providerIntentRef,
-          lastProviderEventCreated: event.created ?? attempt.lastProviderEventCreated,
-          failureMessage: typeof object.last_payment_error === "object" ? "Payment failed" : undefined,
+          lastProviderEventCreated: event.providerCreated ?? attempt.lastProviderEventCreated,
+          failureCode: event.failureCode,
+          failureMessage: status === "failed" ? "Payment failed" : status === "canceled" ? "Payment canceled" : undefined,
         });
         if (status === "succeeded" && updated && !updated.ledgerPaymentId) {
           const types = await options.list("ledger-payment-type");
@@ -451,15 +487,16 @@ export function registerLedgerPaymentAttemptRoutes(
                 type.currencyCode?.toUpperCase() === attempt.currency.toUpperCase(),
             ) ?? selectFinancialPaymentType(types, attempt.currency);
           if (!paymentType) {
-            return error(
-              res,
-              503,
-              `No financial ledger payment type is configured for ${attempt.currency}`,
-            );
+            throw new Error(`No financial ledger payment type is configured for ${attempt.currency}`);
           }
           const ledgerPaymentId = randomUUID();
           const posted = await runInTransaction(async () => {
-            if (!(await storage.ledger.paymentAttempts.claimLedgerPosting(attempt.id, ledgerPaymentId))) {
+            // Serialize duplicate deliveries before inserting the payment.
+            // The payment must exist before its immediate FK can be linked.
+            await storage.ledger.paymentAttempts.lockAttempt(attempt.id);
+            const lockedAttempt = await storage.ledger.paymentAttempts.get(attempt.id);
+            if (!lockedAttempt) throw new Error("Payment attempt no longer exists");
+            if (lockedAttempt.ledgerPaymentId) {
               return false;
             }
             const createdPayment = await storage.ledger.payments.create({
@@ -468,22 +505,34 @@ export function registerLedgerPaymentAttemptRoutes(
               paymentType: paymentType.id, ledgerEaId: attempt.ledgerEaId,
               dateReceived: new Date(), dateCleared: new Date(),
               memo: "Worker online payment", details: {
-                provider: "stripe", paymentAttemptId: attempt.id,
+                provider: resolved.plugin.id, paymentAttemptId: attempt.id,
                 providerIntentRef: providerRef,
                 proposedAllocation: [{ eaId: attempt.ledgerEaId, amount: attempt.amount, statementYmd: "" }],
               },
             } as any);
+            if (!(await storage.ledger.paymentAttempts.claimLedgerPosting(attempt.id, ledgerPaymentId))) {
+              // Roll back the inserted payment rather than leaving an orphan.
+              throw new Error("Payment attempt could not claim ledger posting");
+            }
             await triggerPaymentChargePlugins(createdPayment);
             return true;
           });
           if (!posted) {
+            await complete();
             return res.json({ received: true, duplicate: true });
           }
         }
       }
+      await complete();
       return res.json({ received: true, ...(newlyRecorded ? {} : { duplicate: true }) });
     } catch (e) {
-      return error(res, 400, e instanceof Error ? e.message : "Invalid webhook");
+      if (receivedEventId) {
+        await storage.ledger.paymentAttempts.completeEvent(
+          req.params.gatewayConfigId, receivedEventId,
+          e instanceof Error ? e.message : "Webhook processing failed",
+        );
+      }
+      return error(res, receivedEventId ? 500 : 400, receivedEventId ? "Webhook processing failed" : "Invalid webhook");
     }
   });
 }

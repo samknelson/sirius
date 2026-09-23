@@ -262,6 +262,8 @@ import "./core/1196_add_payment_attempt_reservation_expiry";
 import "./core/1197_repair_auth_identity_timestamps";
 import "./core/1198_index_wmb_worker_queue";
 import "./core/1199_worker_export_order_indexes";
+import "./core/1200_generalize_online_payments";
+import "./core/1201_restore_payment_attempt_immediate_fk";
 
 export {
   runMigrations,

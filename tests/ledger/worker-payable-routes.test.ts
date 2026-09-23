@@ -19,8 +19,14 @@ const mocks = vi.hoisted(() => ({
       accounts: { get: vi.fn() },
       paymentMethods: { get: vi.fn() },
       gatewayCustomers: { get: vi.fn() },
+      payments: { create: vi.fn() },
       paymentAttempts: {
         get: vi.fn(),
+        getByProviderIntent: vi.fn(),
+        lockAttempt: vi.fn(),
+        claimLedgerPosting: vi.fn(),
+        recordEvent: vi.fn(),
+        completeEvent: vi.fn(),
         getByIdempotencyKey: vi.fn(),
         getReservedAmount: vi.fn(),
         lockEa: vi.fn(),
@@ -48,6 +54,12 @@ vi.mock("../../server/storage/transaction-context", () => ({
 }));
 vi.mock("../../server/modules/ledger/payments", () => ({
   triggerPaymentChargePlugins: vi.fn(),
+}));
+vi.mock("../../server/modules/masquerade", () => ({
+  getEffectiveUser: vi.fn().mockResolvedValue({
+    dbUser: { id: "payer-user-1" },
+    originalUser: null,
+  }),
 }));
 
 const { registerLedgerPaymentAttemptRoutes } = await import(
@@ -97,7 +109,9 @@ const gateway = (status: string = "requires_action") => ({
 
 beforeAll(async () => {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ verify: (req, _res, body) => {
+    (req as typeof req & { rawBody: Buffer }).rawBody = body;
+  } }));
   registerLedgerPaymentAttemptRoutes(app, (_req, _res, next) => next());
   server = http.createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -123,6 +137,47 @@ beforeEach(() => {
 });
 
 describe("worker payable account routes", () => {
+  it.each([false, true])("locks before inserting and links afterward (already posted: %s)", async (alreadyPosted) => {
+    const attempt = {
+      id: "attempt-1", gatewayConfigId: "gateway-1", providerIntentRef: "pi-fixture",
+      amount: "40.00", currency: "USD", status: "succeeded",
+      ledgerEaId: "ea-dp", ledgerPaymentId: null, lastProviderEventCreated: 1,
+    };
+    mocks.resolveGateway.mockResolvedValue({
+      ...gateway(),
+      plugin: {
+        id: "dummy",
+        verifyWebhook: vi.fn().mockReturnValue({
+          eventId: "event-1", type: "payment.succeeded",
+          providerEventType: "payment.succeeded", providerRef: "pi-fixture",
+          amountMinor: 4000, currency: "USD", providerCreated: 2, payload: {},
+        }),
+      },
+    });
+    mocks.storage.ledger.paymentAttempts.getByProviderIntent.mockResolvedValue(attempt);
+    mocks.storage.ledger.paymentAttempts.updateStatus.mockResolvedValue(attempt);
+    mocks.storage.ledger.paymentAttempts.get.mockResolvedValue({
+      ...attempt, ledgerPaymentId: alreadyPosted ? "payment-existing" : null,
+    });
+    mocks.storage.ledger.paymentAttempts.claimLedgerPosting.mockResolvedValue(true);
+    mocks.storage.ledger.payments.create.mockResolvedValue({ id: "payment-new" });
+    const response = await fetch(`${baseUrl}/api/ledger/payment-gateways/gateway-1/webhook`, {
+      method: "POST", headers: { "content-type": "application/json", "dummy-signature": "fixture" },
+      body: "{}",
+    });
+    expect(response.status).toBe(200);
+    expect(mocks.storage.ledger.paymentAttempts.lockAttempt).toHaveBeenCalledWith("attempt-1");
+    if (alreadyPosted) {
+      expect(mocks.storage.ledger.payments.create).not.toHaveBeenCalled();
+      expect(mocks.storage.ledger.paymentAttempts.claimLedgerPosting).not.toHaveBeenCalled();
+    } else {
+      expect(mocks.storage.ledger.paymentAttempts.lockAttempt.mock.invocationCallOrder[0])
+        .toBeLessThan(mocks.storage.ledger.payments.create.mock.invocationCallOrder[0]);
+      expect(mocks.storage.ledger.payments.create.mock.invocationCallOrder[0])
+        .toBeLessThan(mocks.storage.ledger.paymentAttempts.claimLedgerPosting.mock.invocationCallOrder[0]);
+    }
+  });
+
   it("requires explicit EA selection rather than choosing an arbitrary worker account", async () => {
     mocks.storage.ledger.ea.getByEntity.mockResolvedValue([
       workerEa("ea-health", "account-health"),
@@ -339,6 +394,14 @@ describe("worker payment submission contract", () => {
       expect((await response.json()).status).toBe(visibleStatus);
       expect(mocks.storage.ledger.paymentAttempts.lockEa).toHaveBeenCalledWith(
         "ea-dp",
+      );
+      expect(mocks.storage.ledger.paymentAttempts.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accountId: "account-dp",
+          entityType: "worker",
+          entityId: "worker-1",
+          createdByUserId: "payer-user-1",
+        }),
       );
     },
   );

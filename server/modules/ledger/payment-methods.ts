@@ -30,6 +30,13 @@ interface EntityDescriptor {
   metadata: Record<string, string>;
 }
 
+/** Consent evidence is internal, not part of method-management responses. */
+function publicPaymentMethod<T extends { consent?: unknown }>(method: T | undefined) {
+  if (!method) return method;
+  const { consent: _consent, ...publicFields } = method;
+  return publicFields;
+}
+
 interface EntityConfig {
   /** Entity-scoped access policy id. */
   policy: string;
@@ -415,7 +422,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
         isDefault: !hasMethodForGateway,
       });
 
-      res.json(created);
+      res.json(publicPaymentMethod(created));
     } catch (error) {
       sendError(res, error, "Failed to add payment method");
     }
@@ -434,7 +441,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
       await resolveMethodGateway(method.gatewayConfigId);
 
       const updated = await storage.ledger.paymentMethods.update(pmId, { isActive });
-      res.json(updated);
+      res.json(publicPaymentMethod(updated));
     } catch (error) {
       sendError(res, error, "Failed to update payment method");
     }
@@ -454,7 +461,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
         entityId,
         method.gatewayConfigId,
       );
-      res.json(updated);
+      res.json(publicPaymentMethod(updated));
     } catch (error) {
       sendError(res, error, "Failed to set payment method as default");
     }

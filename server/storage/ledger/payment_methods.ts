@@ -50,14 +50,14 @@ export function createPaymentMethodStorage(): PaymentMethodStorage {
     async getAll(): Promise<LedgerPaymentMethodWithCreatedDate[]> {
       const client = getClient();
       const rows = await client
-        .select({ method: ledgerPaymentMethods, createdDate: entityMetadata.createdDate })
+        .select({ method: ledgerPaymentMethods, createdDate: entityMetadata.createdDate, createdBy: entityMetadata.createdBy })
         .from(ledgerPaymentMethods)
         .leftJoin(entityMetadata, and(
           eq(entityMetadata.contextId, "ledger_paymentmethods"),
           eq(entityMetadata.entityId, ledgerPaymentMethods.id),
         ))
         .orderBy(newestFirst);
-      return rows.map(row => ({ ...row.method, createdDate: row.createdDate }));
+      return rows.map(row => ({ ...row.method, consent: publicConsent(row.method.consent), createdDate: row.createdDate, createdBy: row.createdBy }));
     },
 
     async get(id: string): Promise<LedgerPaymentMethod | undefined> {
@@ -70,7 +70,7 @@ export function createPaymentMethodStorage(): PaymentMethodStorage {
     async getByEntity(entityType: string, entityId: string): Promise<LedgerPaymentMethodWithCreatedDate[]> {
       const client = getClient();
       const rows = await client
-        .select({ method: ledgerPaymentMethods, createdDate: entityMetadata.createdDate })
+        .select({ method: ledgerPaymentMethods, createdDate: entityMetadata.createdDate, createdBy: entityMetadata.createdBy })
         .from(ledgerPaymentMethods)
         .leftJoin(entityMetadata, and(
           eq(entityMetadata.contextId, "ledger_paymentmethods"),
@@ -81,14 +81,14 @@ export function createPaymentMethodStorage(): PaymentMethodStorage {
           eq(ledgerPaymentMethods.entityId, entityId)
         ))
         .orderBy(desc(ledgerPaymentMethods.isDefault), newestFirst);
-      return rows.map(row => ({ ...row.method, createdDate: row.createdDate }));
+      return rows.map(row => ({ ...row.method, consent: publicConsent(row.method.consent), createdDate: row.createdDate, createdBy: row.createdBy }));
     },
 
     async create(insertPaymentMethod: InsertLedgerPaymentMethod): Promise<LedgerPaymentMethod> {
       validate.validateOrThrow(insertPaymentMethod);
       const client = getClient();
       const [paymentMethod] = await client.insert(ledgerPaymentMethods)
-        .values(insertPaymentMethod)
+        .values({ ...insertPaymentMethod, providerMethodRef: insertPaymentMethod.paymentMethod })
         .returning();
       return paymentMethod;
     },
@@ -97,7 +97,7 @@ export function createPaymentMethodStorage(): PaymentMethodStorage {
       validate.validateOrThrow(id);
       const client = getClient();
       const [paymentMethod] = await client.update(ledgerPaymentMethods)
-        .set(paymentMethodUpdate)
+        .set({ ...paymentMethodUpdate, ...(paymentMethodUpdate.paymentMethod !== undefined ? { providerMethodRef: paymentMethodUpdate.paymentMethod } : {}) })
         .where(eq(ledgerPaymentMethods.id, id))
         .returning();
       return paymentMethod || undefined;
@@ -150,20 +150,44 @@ export const paymentMethodLoggingConfig = defineLoggingConfig<PaymentMethodStora
   table: 'ledger_paymentmethods',
   methods: {
     create: {
+      logArgs: (args) => [auditMethod(args[0])],
+      after: async (_args, result) => auditMethod(result),
       getEntityId: (args, result) => result?.id || 'new payment method',
       metadataEntityId: (_args, result) => result?.id,
     },
     update: {
+      logArgs: (args) => [args[0], auditMethod(args[1])],
+      before: async (args, storage) => auditMethod(await storage.get(args[0])),
+      after: async (_args, result) => auditMethod(result),
       metadataEntityId: (args, result, beforeState) => result?.id ?? beforeState?.id ?? args[0],
     },
     delete: {
+      logArgs: (args) => [args[0]],
+      before: async (args, storage) => auditMethod(await storage.get(args[0])),
+      after: async () => undefined,
       metadataEntityId: (args, result, beforeState) => result?.id ?? beforeState?.id ?? args[0],
     },
     setAsDefault: {
       getEntityId: (args) => args[0],
       metadataEntityId: (args) => args[0],
-      before: async (args, storage) => await storage.get(args[0]),
-      after: async (args, result) => result,
+      logArgs: (args) => args.slice(0, 4),
+      before: async (args, storage) => auditMethod(await storage.get(args[0])),
+      after: async (_args, result) => auditMethod(result),
     },
   },
 });
+
+function publicConsent(value: unknown): unknown {
+  if (!value || typeof value !== "object") return null;
+  const consent = value as Record<string, unknown>;
+  return { textVersion: consent.textVersion, acceptedAt: consent.acceptedAt };
+}
+
+function auditMethod(value: Partial<LedgerPaymentMethod> | undefined) {
+  if (!value) return undefined;
+  return {
+    id: value.id, entityType: value.entityType, entityId: value.entityId,
+    gatewayConfigId: value.gatewayConfigId, isActive: value.isActive,
+    isDefault: value.isDefault,
+  };
+}

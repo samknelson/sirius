@@ -1,4 +1,9 @@
-import { randomBytes } from "crypto";
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from "crypto";
 import type {
   PaymentGatewayPlugin,
   PaymentGatewayContext,
@@ -9,7 +14,14 @@ import type {
   GatewayMethodDetails,
   GatewayConnectionTest,
   GatewayCustomerDetails,
+  CreatePaymentSessionInput,
+  GatewayPaymentIntent,
+  GatewayPaymentSession,
+  NormalizedGatewayEvent,
+  NormalizedPayment,
+  NormalizedPaymentStatus,
 } from "../types";
+import { PaymentCancellationError } from "../types";
 import { registerPaymentGatewayPlugin } from "../registry";
 
 /**
@@ -20,6 +32,123 @@ import { registerPaymentGatewayPlugin } from "../registry";
  * list/detail views.
  */
 const DUMMY_METHOD_PREFIX = "dummy_pm_";
+const DUMMY_PAYMENT_PREFIX = "dummy_pi_";
+const DUMMY_WEBHOOK_TEST_KEY = "sirius-dummy-gateway-testing-only";
+
+interface DummyPaymentPayload {
+  v: 1;
+  key: string;
+  amountMinor: number;
+  currency: string;
+  status: NormalizedPaymentStatus;
+  methodRef?: string;
+  methodType?: string;
+}
+
+function encodePayment(payload: DummyPaymentPayload): string {
+  return `${DUMMY_PAYMENT_PREFIX}${Buffer.from(JSON.stringify(payload)).toString("base64url")}`;
+}
+
+function decodePayment(providerRef: string): DummyPaymentPayload {
+  if (
+    providerRef.length > 4096 ||
+    !providerRef.startsWith(DUMMY_PAYMENT_PREFIX)
+  ) {
+    throw new Error("Malformed dummy payment reference");
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(
+      Buffer.from(providerRef.slice(DUMMY_PAYMENT_PREFIX.length), "base64url").toString("utf8"),
+    );
+  } catch {
+    throw new Error("Malformed dummy payment reference");
+  }
+  const payment = value as Partial<DummyPaymentPayload>;
+  const statuses: NormalizedPaymentStatus[] = [
+    "created",
+    "requires_action",
+    "processing",
+    "succeeded",
+    "failed",
+    "canceled",
+  ];
+  if (
+    !payment ||
+    payment.v !== 1 ||
+    typeof payment.key !== "string" ||
+    !/^[a-f0-9]{24}$/.test(payment.key) ||
+    typeof payment.amountMinor !== "number" ||
+    !Number.isSafeInteger(payment.amountMinor) ||
+    payment.amountMinor <= 0 ||
+    typeof payment.currency !== "string" ||
+    !/^[A-Z]{3}$/.test(payment.currency) ||
+    (payment.methodRef !== undefined &&
+      (typeof payment.methodRef !== "string" || payment.methodRef.length > 1024)) ||
+    (payment.methodType !== undefined &&
+      payment.methodType !== "card") ||
+    !payment.status ||
+    !statuses.includes(payment.status)
+  ) {
+    throw new Error("Malformed dummy payment reference");
+  }
+  if (payment.methodRef) decodeMethodRef(payment.methodRef);
+  return payment as DummyPaymentPayload;
+}
+
+function configuredPaymentTypes(ctx: PaymentGatewayContext): string[] {
+  const data =
+    ctx.config.data && typeof ctx.config.data === "object"
+      ? ctx.config.data as Record<string, unknown>
+      : {};
+  return Array.isArray(data.paymentTypes)
+    ? data.paymentTypes.filter((type): type is string => typeof type === "string")
+    : ["card"];
+}
+
+function assertPaymentInput(
+  ctx: PaymentGatewayContext,
+  amountMinor: number,
+  paymentTypes: string[],
+): void {
+  if (!Number.isSafeInteger(amountMinor) || amountMinor < 100) {
+    throw new Error(
+      "Payment amount must be at least 100 minor units ($1.00 for USD)",
+    );
+  }
+  const allowed = new Set(configuredPaymentTypes(ctx));
+  if (
+    paymentTypes.length === 0 ||
+    paymentTypes.some((type) => type !== "card" || !allowed.has(type))
+  ) {
+    throw new Error("The requested payment type is not enabled for this gateway");
+  }
+}
+
+function normalizedDummyPayment(
+  providerRef: string,
+): NormalizedPayment {
+  const payment = decodePayment(providerRef);
+  return {
+    providerRef,
+    status: payment.status,
+    amountMinor: payment.amountMinor,
+    currency: payment.currency,
+    methodRef: payment.methodRef,
+    methodType: payment.methodType,
+    failureCode: payment.status === "failed" ? "dummy_declined" : undefined,
+    failureMessage: payment.status === "failed" ? "Dummy payment was declined" : undefined,
+  };
+}
+
+function dummyOutcome(
+  metadata: Record<string, string>,
+): "succeeded" | "failed" | "processing" {
+  const outcome = metadata.dummyOutcome;
+  return outcome === "failed" || outcome === "processing" || outcome === "succeeded"
+    ? outcome
+    : "succeeded";
+}
 
 /**
  * The exact, allowed key set for a decoded dummy token. Anything else (e.g. a
@@ -131,6 +260,7 @@ export const dummyPaymentGatewayPlugin: PaymentGatewayPlugin = {
     "A fake payment gateway for testing the full payment lifecycle without a real provider. Stores only the card brand, expiry, and last 4 digits.",
   requiredComponent: "ledger.dummy_gateway",
   addComponentId: "dummy:DummyAddPaymentMethod",
+  payComponentId: "dummy:DummyPayComponent",
   // No real credentials needed — works even when DUMMY_GATEWAY is unset.
   requiresSecret: false,
 
@@ -141,6 +271,155 @@ export const dummyPaymentGatewayPlugin: PaymentGatewayPlugin = {
       description: "Hand-typed test card (no real charges are made)",
     },
   ],
+
+  async createPaymentIntent(ctx, args): Promise<GatewayPaymentIntent> {
+    const methodType = args.paymentMethodType ?? "card";
+    assertPaymentInput(ctx, args.amount, [methodType]);
+    decodeMethodRef(args.paymentMethodRef);
+    const status = dummyOutcome(args.metadata ?? {});
+    const providerRef = encodePayment({
+      v: 1,
+      key: createHash("sha256").update(args.idempotencyKey).digest("hex").slice(0, 24),
+      amountMinor: args.amount,
+      currency: args.currency.toUpperCase(),
+      status,
+      methodRef: args.paymentMethodRef,
+      methodType,
+    });
+    return {
+      providerIntentRef: providerRef,
+      status,
+      clientSecret: `dummy_secret_${createHash("sha256").update(providerRef).digest("hex")}`,
+      amount: args.amount,
+      currency: args.currency.toUpperCase(),
+      paymentMethodType: methodType,
+      failureMessage: status === "failed" ? "Dummy payment was declined" : null,
+    };
+  },
+
+  async retrievePaymentIntent(_ctx, providerRef): Promise<GatewayPaymentIntent> {
+    const payment = normalizedDummyPayment(providerRef);
+    return {
+      providerIntentRef: providerRef,
+      status: payment.status === "canceled" ? "failed" : payment.status === "created"
+        ? "requires_action" : payment.status,
+      clientSecret: `dummy_secret_${createHash("sha256").update(providerRef).digest("hex")}`,
+      amount: payment.amountMinor,
+      currency: payment.currency,
+      paymentMethodType: payment.methodType,
+      failureMessage: payment.failureMessage ?? null,
+    };
+  },
+
+  async createPaymentSession(
+    ctx,
+    args: CreatePaymentSessionInput,
+  ): Promise<GatewayPaymentSession> {
+    assertPaymentInput(ctx, args.amountMinor, args.paymentTypes);
+    if ((args.saveMethod || args.savedMethodRef) && !args.customerRef) {
+      throw new Error("A customer is required to save or use a saved payment method");
+    }
+    if (args.savedMethodRef) decodeMethodRef(args.savedMethodRef);
+    const status = dummyOutcome(args.metadata);
+    const methodType = args.paymentTypes[0];
+    const providerRef = encodePayment({
+      v: 1,
+      key: createHash("sha256").update(args.sessionId).digest("hex").slice(0, 24),
+      amountMinor: args.amountMinor,
+      currency: args.currency.toUpperCase(),
+      status,
+      methodRef: args.savedMethodRef,
+      methodType,
+    });
+    return {
+      providerRef,
+      clientSecret: `dummy_secret_${createHash("sha256").update(providerRef).digest("hex")}`,
+      publicConfig: { gateway: "dummy", paymentTypes: args.paymentTypes },
+      status,
+    };
+  },
+
+  async retrievePayment(_ctx, providerRef): Promise<NormalizedPayment> {
+    return normalizedDummyPayment(providerRef);
+  },
+
+  async cancelPayment(_ctx, providerRef): Promise<NormalizedPayment> {
+    const payment = normalizedDummyPayment(providerRef);
+    if (
+      payment.status === "succeeded" ||
+      payment.status === "failed" ||
+      payment.status === "canceled"
+    ) {
+      throw new PaymentCancellationError(
+        "payment_not_cancelable",
+        `Dummy payment is already ${payment.status} and cannot be canceled`,
+      );
+    }
+    throw new PaymentCancellationError(
+      "cancellation_not_supported",
+      "The stateless dummy provider does not support payment cancellation",
+    );
+  },
+
+  verifyWebhook(ctx, rawBody, headers): NormalizedGatewayEvent {
+    const supplied = headers["x-dummy-signature"];
+    const key = ctx.webhookSecret || ctx.apiKey || DUMMY_WEBHOOK_TEST_KEY;
+    const expected = createHmac("sha256", key).update(rawBody).digest("hex");
+    if (
+      !supplied ||
+      supplied.length !== expected.length ||
+      !timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))
+    ) {
+      throw new Error("Invalid dummy webhook signature");
+    }
+    let payload: unknown;
+    try {
+      payload = JSON.parse(rawBody.toString("utf8"));
+    } catch {
+      throw new Error("Invalid dummy webhook payload");
+    }
+    const body = payload as Record<string, unknown>;
+    if (
+      typeof body.eventId !== "string" ||
+      body.eventId.length === 0 ||
+      body.eventId.length > 255 ||
+      typeof body.type !== "string" ||
+      body.type.length === 0 ||
+      body.type.length > 100
+    ) {
+      throw new Error("Invalid dummy webhook payload");
+    }
+    const knownTypes = new Set([
+      "payment.processing",
+      "payment.succeeded",
+      "payment.failed",
+      "payment.canceled",
+    ]);
+    const providerRef =
+      typeof body.providerRef === "string" && body.providerRef.length <= 4096
+        ? body.providerRef
+        : undefined;
+    const payment = providerRef ? normalizedDummyPayment(providerRef) : undefined;
+    return {
+      eventId: body.eventId,
+      type: knownTypes.has(body.type)
+        ? body.type as NormalizedGatewayEvent["type"]
+        : "unsupported",
+      providerEventType: body.type,
+      providerRef,
+      methodRef: payment?.methodRef,
+      amountMinor: payment?.amountMinor,
+      currency: payment?.currency,
+      failureCode: body.type === "payment.failed" ? "dummy_declined" : undefined,
+      failureMessage:
+        body.type === "payment.failed" ? "Dummy payment was declined" : undefined,
+      payload: {
+        eventId: body.eventId,
+        type: body.type,
+        ...(providerRef ? { providerRef } : {}),
+      },
+    };
+  },
 
   async testConnection(_ctx: PaymentGatewayContext): Promise<GatewayConnectionTest> {
     return {

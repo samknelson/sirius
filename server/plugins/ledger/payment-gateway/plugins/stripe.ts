@@ -12,6 +12,11 @@ import type {
   GatewayCustomerDetails,
   GatewayPaymentIntent,
   GatewayWebhookEvent,
+  CreatePaymentSessionInput,
+  GatewayPaymentSession,
+  NormalizedGatewayEvent,
+  NormalizedPayment,
+  NormalizedPaymentStatus,
 } from "../types";
 import { registerPaymentGatewayPlugin } from "../registry";
 
@@ -26,14 +31,45 @@ function configData(ctx: PaymentGatewayContext): Record<string, unknown> {
   return data && typeof data === "object" ? (data as Record<string, unknown>) : {};
 }
 
-function assertWorkerTestCredentials(ctx: PaymentGatewayContext): void {
+function configuredPaymentTypes(ctx: PaymentGatewayContext): string[] {
+  const configured = configData(ctx).paymentTypes;
+  return Array.isArray(configured)
+    ? configured.filter((type): type is string => typeof type === "string")
+    : ["card", "us_bank_account"];
+}
+
+function assertAllowedPaymentTypes(
+  ctx: PaymentGatewayContext,
+  requested: string[],
+): void {
+  const allowed = new Set(configuredPaymentTypes(ctx));
+  const supported = new Set(STRIPE_PAYMENT_TYPES.map((type) => type.id));
+  if (
+    requested.length === 0 ||
+    requested.some((type) => !allowed.has(type) || !supported.has(type))
+  ) {
+    throw new GatewaySetupError(
+      "The requested payment type is not enabled for this gateway.",
+    );
+  }
+}
+
+function assertPaymentAmount(amountMinor: number): void {
+  if (!Number.isSafeInteger(amountMinor) || amountMinor < 100) {
+    throw new GatewaySetupError(
+      "Payment amount must be at least 100 minor units ($1.00 for USD).",
+    );
+  }
+}
+
+function assertOnlinePaymentTestCredentials(ctx: PaymentGatewayContext): void {
   const publishableKey =
     typeof configData(ctx).publishableKey === "string"
       ? String(configData(ctx).publishableKey)
       : "";
   if (!ctx.apiKey.startsWith("sk_test_") || !publishableKey.startsWith("pk_test_")) {
     const error = new Error(
-      "Worker Stripe payments require matching Stripe test-mode secret and publishable keys.",
+      "Online Stripe payments require matching Stripe test-mode secret and publishable keys.",
     );
     (error as Error & { statusCode?: number }).statusCode = 503;
     throw error;
@@ -117,6 +153,7 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
     "Stripe payment gateway. Each configuration names the secret that holds the Stripe API credentials.",
   requiredComponent: "ledger.stripe",
   addComponentId: "stripe:StripeAddPaymentMethod",
+  payComponentId: "stripe:StripePayComponent",
 
   // The publishable key the browser needs to load Stripe Elements. Stored in
   // the config's `data` json (no schema change). Required: there is no env
@@ -156,11 +193,16 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
   supportedPaymentTypes: STRIPE_PAYMENT_TYPES,
 
   async createPaymentIntent(ctx, args): Promise<GatewayPaymentIntent> {
-    assertWorkerTestCredentials(ctx);
-    const configured = configData(ctx).paymentTypes;
-    const type = args.paymentMethodType ?? (Array.isArray(configured)
-      ? (configured as string[]).find((t) => t === "card" || t === "us_bank_account") ?? "card"
-      : "card");
+    assertOnlinePaymentTestCredentials(ctx);
+    assertPaymentAmount(args.amount);
+    const configured = configuredPaymentTypes(ctx);
+    const type = args.paymentMethodType ??
+      configured.find((t) => t === "card" || t === "us_bank_account") ??
+      configured[0];
+    if (!type) {
+      throw new GatewaySetupError("This gateway has no enabled payment types.");
+    }
+    assertAllowedPaymentTypes(ctx, [type]);
     const intent = await client(ctx).paymentIntents.create({
       amount: args.amount,
       currency: args.currency.toLowerCase(),
@@ -186,6 +228,83 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
     }
     const event = client(ctx).webhooks.constructEvent(rawBody, signature, webhookSecret);
     return { id: event.id, type: event.type, data: event.data.object, created: event.created };
+  },
+
+  async createPaymentSession(
+    ctx,
+    args: CreatePaymentSessionInput,
+  ): Promise<GatewayPaymentSession> {
+    assertOnlinePaymentTestCredentials(ctx);
+    assertPaymentAmount(args.amountMinor);
+    assertAllowedPaymentTypes(ctx, args.paymentTypes);
+    if ((args.saveMethod || args.savedMethodRef) && !args.customerRef) {
+      throw new GatewaySetupError(
+        "A provider customer is required to save or use a saved payment method.",
+      );
+    }
+
+    const data = configData(ctx);
+    const publishableKey =
+      typeof data.publishableKey === "string" ? data.publishableKey : "";
+    const intent = await client(ctx).paymentIntents.create(
+      {
+        amount: args.amountMinor,
+        currency: args.currency.toLowerCase(),
+        customer: args.customerRef,
+        payment_method: args.savedMethodRef,
+        payment_method_types:
+          args.paymentTypes as Stripe.PaymentIntentCreateParams["payment_method_types"],
+        confirm: args.savedMethodRef ? true : undefined,
+        setup_future_usage: args.saveMethod ? "off_session" : undefined,
+        description: args.description,
+        metadata: {
+          ...args.metadata,
+          attemptId: args.sessionId,
+        },
+      },
+      { idempotencyKey: args.sessionId },
+    );
+    const normalized = normalizeStripePaymentIntent(intent);
+    return {
+      providerRef: normalized.providerRef,
+      clientSecret: normalized.clientSecret ?? "",
+      publicConfig: {
+        publishableKey,
+        paymentTypes: args.paymentTypes,
+      },
+      status: normalized.status,
+    };
+  },
+
+  async retrievePayment(ctx, providerRef): Promise<NormalizedPayment> {
+    const intent = await client(ctx).paymentIntents.retrieve(providerRef, {
+      expand: ["payment_method"],
+    });
+    return normalizeStripePaymentIntent(intent);
+  },
+
+  verifyWebhook(ctx, rawBody, headers): NormalizedGatewayEvent {
+    const webhookSecret = ctx.webhookSecret;
+    if (!webhookSecret) {
+      const error = new Error("Stripe webhook signing secret is not configured");
+      (error as Error & { statusCode?: number }).statusCode = 503;
+      throw error;
+    }
+    const signature = headers["stripe-signature"];
+    if (!signature) {
+      const error = new Error("Stripe webhook signature is required");
+      (error as Error & { statusCode?: number }).statusCode = 400;
+      throw error;
+    }
+    const event = client(ctx).webhooks.constructEvent(rawBody, signature, webhookSecret);
+    return normalizeStripeWebhookEvent(event);
+  },
+
+  async cancelPayment(ctx, providerRef): Promise<NormalizedPayment> {
+    assertOnlinePaymentTestCredentials(ctx);
+    return normalizeStripePaymentIntent(
+      await client(ctx).paymentIntents.cancel(providerRef),
+    );
   },
 
   async testConnection(ctx: PaymentGatewayContext): Promise<GatewayConnectionTest> {
@@ -400,6 +519,157 @@ function normalizeIntent(intent: Stripe.PaymentIntent): GatewayPaymentIntent {
     paymentMethodType: typeof intent.payment_method === "object" && intent.payment_method
       ? intent.payment_method.type : null,
     failureMessage: intent.last_payment_error?.message ?? null,
+  };
+}
+
+export function normalizeStripePaymentStatus(
+  intent: Pick<Stripe.PaymentIntent, "status" | "last_payment_error">,
+): NormalizedPaymentStatus {
+  switch (intent.status) {
+    case "succeeded":
+      return "succeeded";
+    case "processing":
+    case "requires_capture":
+      return "processing";
+    case "canceled":
+      return "canceled";
+    case "requires_action":
+    case "requires_confirmation":
+      return "requires_action";
+    case "requires_payment_method":
+      return intent.last_payment_error ? "failed" : "created";
+    default:
+      // Fail closed if Stripe adds a status: never mistake an unknown state
+      // for settled money.
+      return "failed";
+  }
+}
+
+function stripeMethodSummary(
+  method: Stripe.PaymentMethod,
+): GatewayMethodSummary {
+  return {
+    type: method.type,
+    card: method.card
+      ? {
+          brand: method.card.brand,
+          last4: method.card.last4,
+          expMonth: method.card.exp_month,
+          expYear: method.card.exp_year,
+        }
+      : null,
+    us_bank_account: method.us_bank_account
+      ? {
+          bank_name: method.us_bank_account.bank_name,
+          last4: method.us_bank_account.last4,
+          account_holder_type: method.us_bank_account.account_holder_type,
+          account_type: method.us_bank_account.account_type,
+        }
+      : null,
+  };
+}
+
+function boundedString(value: unknown, max = 255): string | undefined {
+  return typeof value === "string" && value.length <= max ? value : undefined;
+}
+
+/**
+ * Webhook inbox payloads intentionally carry only a bounded routing/audit
+ * descriptor. Stripe's raw object can contain client secrets, billing details,
+ * and other payer data that this application must not persist.
+ */
+function safeStripeEventPayload(
+  object: Stripe.Event.Data.Object,
+): Record<string, unknown> {
+  const record = object as unknown as Record<string, unknown>;
+  const safe: Record<string, unknown> = {};
+  const objectType = boundedString(record.object, 80);
+  const id = boundedString(record.id);
+  if (objectType) safe.object = objectType;
+  if (id) safe.id = id;
+  if (objectType === "payment_intent") {
+    const status = boundedString(record.status, 80);
+    const currency = boundedString(record.currency, 10);
+    const method =
+      typeof record.payment_method === "string"
+        ? boundedString(record.payment_method)
+        : boundedString(
+            (record.payment_method as Record<string, unknown> | null)?.id,
+          );
+    if (status) safe.status = status;
+    if (typeof record.amount === "number" && Number.isSafeInteger(record.amount)) {
+      safe.amount = record.amount;
+    }
+    if (currency) safe.currency = currency;
+    if (method) safe.paymentMethodRef = method;
+    const metadata =
+      record.metadata && typeof record.metadata === "object"
+        ? record.metadata as Record<string, unknown>
+        : undefined;
+    const attemptId = boundedString(metadata?.attemptId);
+    if (attemptId) safe.metadata = { attemptId };
+  }
+  return safe;
+}
+
+export function normalizeStripePaymentIntent(
+  intent: Stripe.PaymentIntent,
+): NormalizedPayment {
+  const method =
+    intent.payment_method && typeof intent.payment_method === "object"
+      ? intent.payment_method
+      : undefined;
+  return {
+    providerRef: intent.id,
+    status: normalizeStripePaymentStatus(intent),
+    amountMinor: intent.amount,
+    currency: intent.currency.toUpperCase(),
+    clientSecret: intent.client_secret,
+    methodRef:
+      typeof intent.payment_method === "string"
+        ? intent.payment_method
+        : intent.payment_method?.id,
+    methodType: method?.type,
+    failureCode: intent.last_payment_error?.code,
+    failureMessage: intent.last_payment_error?.message,
+    methodSummary: method ? stripeMethodSummary(method) : undefined,
+  };
+}
+
+export function normalizeStripeWebhookEvent(
+  event: Stripe.Event,
+): NormalizedGatewayEvent {
+  const normalizedType: NormalizedGatewayEvent["type"] =
+    event.type === "payment_intent.processing"
+      ? "payment.processing"
+      : event.type === "payment_intent.succeeded"
+        ? "payment.succeeded"
+        : event.type === "payment_intent.payment_failed"
+          ? "payment.failed"
+          : event.type === "payment_intent.canceled"
+            ? "payment.canceled"
+            : "unsupported";
+  const object = event.data.object;
+  const isPaymentIntent =
+    object &&
+    typeof object === "object" &&
+    (object as { object?: string }).object === "payment_intent";
+  const payment = isPaymentIntent
+    ? normalizeStripePaymentIntent(object as Stripe.PaymentIntent)
+    : undefined;
+  return {
+    eventId: event.id,
+    type: normalizedType,
+    providerEventType: event.type,
+    providerRef: payment?.providerRef,
+    methodRef: payment?.methodRef,
+    amountMinor: payment?.amountMinor,
+    currency: payment?.currency,
+    failureCode: payment?.failureCode,
+    failureMessage: payment?.failureMessage,
+    methodSummary: payment?.methodSummary,
+    providerCreated: event.created,
+    payload: safeStripeEventPayload(object),
   };
 }
 
