@@ -68,6 +68,7 @@ describe("BAO worker coverage dashboard widget", () => {
     expect(html).toContain('aria-label="Current coverage"');
     expect(html).toContain('aria-label="Future coverage"');
     expect(html).toContain('aria-label="Coverage confirmed"');
+    expect(html).toContain('aria-label="Hours met"');
     expect(html).not.toContain("Blocking coverage");
   });
 
@@ -82,6 +83,7 @@ describe("BAO worker coverage dashboard widget", () => {
     }));
     expect(hours).toContain('aria-label="Not covered"');
     expect(hours).toContain("99.75 hrs");
+    expect(hours).toContain('aria-label="Hours not met"');
     expect(hours).toContain('data-blocking="hours"');
     expect(hours).not.toContain('data-blocking="balance"');
 
@@ -92,6 +94,12 @@ describe("BAO worker coverage dashboard widget", () => {
     expect(balance).toContain("-$12.50");
     expect(balance).toContain('data-blocking="balance"');
     expect(balance).not.toContain('data-blocking="hours"');
+
+    const nonBlockingBalance = renderWidget(summary({
+      balance: { available: true, totals: [{ currency: "USD", amount: "12.50", formatted: "$12.50" }] },
+    }));
+    expect(nonBlockingBalance).toContain('coverage-first-detail--attention" aria-label="Account balance is non-zero"');
+    expect(nonBlockingBalance).not.toContain('data-blocking="balance"');
 
     const unknown = renderWidget(summary({
       current: { ...base.current, coverage: "not-covered", causes: { hours: false, balance: null } },
@@ -111,8 +119,9 @@ describe("BAO worker coverage dashboard widget", () => {
     expect(html).toContain('aria-label="Not covered"');
     expect(html.match(/aria-label="Hours threshold met"/g)).toHaveLength(2);
     expect(html).toContain("125.25 hrs");
-    expect(html).toContain("Reported / required");
-    expect(html).toContain("not a current coverage decision");
+    expect(html).toContain("Hours worked in");
+    expect(html).toContain("Hours grant coverage in");
+    expect(html).toContain("They are not current coverage decisions");
   });
 
   it("distinguishes pending, below, stale and unavailable without implying noncoverage", () => {
@@ -147,10 +156,10 @@ describe("BAO worker coverage dashboard widget", () => {
     const html = renderWidget(data);
     expect(html).toContain("$4.00, CAD $3.00");
     expect(html).toContain("No future coverage periods to show.");
-    expect(html).toContain("Reported:");
+    expect(html).toContain("of — required");
     expect(html).toContain("—");
     expect(html).toContain('href="/workers/worker%2F123/employment/monthly"');
-    expect(html).toContain("Contact the fund with any questions or concerns.");
+    expect(html).toContain("Questions? Contact the fund.");
     expect(renderToStaticMarkup(
       <Router hook={() => ["/", () => {}]}><BaoWorkerCoverageView data={data} /></Router>,
     )).toContain("No future coverage periods to show.");
