@@ -84,6 +84,8 @@ vi.mock("@/components/ui/checkbox", () => ({
 
 import ElectionsCurrentPage from "../../client/src/pages/workers/elections-current";
 import ElectionsListPage from "../../client/src/pages/workers/elections-list";
+import { ElectionForm } from "../../client/src/components/trust/ElectionForm";
+import type { WorkerTrustElection } from "../../shared/schema";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -122,6 +124,16 @@ let container: HTMLDivElement | null = null;
 let electionHistory: TestElection[] = [];
 let currentElection: TestElection | null = newestElection;
 let requestedUrls: string[] = [];
+let benefitOptions: Array<{
+  id: string;
+  name: string;
+  benefitType?: string | null;
+  benefitTypeName?: string | null;
+  benefitTypeSequence?: number | null;
+  benefitTypeShowOnEnrollmentWizards?: boolean | null;
+}> = [];
+let testQueryClient: QueryClient;
+let benefitsGate: Promise<void> | null = null;
 
 function json(data: unknown): Response {
   return new Response(JSON.stringify(data), {
@@ -157,8 +169,8 @@ async function waitFor(test: () => void): Promise<void> {
   throw lastError;
 }
 
-async function renderPage(Page: React.ComponentType): Promise<void> {
-  const queryClient = new QueryClient({
+async function renderPage(Page: React.ComponentType, waitForCreate = true): Promise<void> {
+  testQueryClient = new QueryClient({
     defaultOptions: {
       queries: {
         retry: false,
@@ -177,12 +189,14 @@ async function renderPage(Page: React.ComponentType): Promise<void> {
   root = createRoot(container);
   await act(async () => {
     root!.render(
-      <QueryClientProvider client={queryClient}>
+      <QueryClientProvider client={testQueryClient}>
         <Page />
       </QueryClientProvider>,
     );
   });
-  await waitFor(() => expect(byTestId<HTMLButtonElement>("button-create-election").disabled).toBe(false));
+  if (waitForCreate) {
+    await waitFor(() => expect(byTestId<HTMLButtonElement>("button-create-election").disabled).toBe(false));
+  }
 }
 
 async function click(testId: string): Promise<void> {
@@ -209,6 +223,11 @@ beforeEach(() => {
   electionHistory = [newestElection, olderElection];
   currentElection = newestElection;
   requestedUrls = [];
+  benefitsGate = null;
+  benefitOptions = [
+    { id: "benefit-medical", name: "Medical" },
+    { id: "benefit-dental", name: "Dental" },
+  ];
   apiRequest.mockReset();
   apiRequest.mockResolvedValue({ ...newestElection, id: "created" });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
@@ -225,10 +244,8 @@ beforeEach(() => {
       ]);
     }
     if (url.includes("/trust-benefits")) {
-      return json([
-        { id: "benefit-medical", name: "Medical" },
-        { id: "benefit-dental", name: "Dental" },
-      ]);
+      if (benefitsGate) await benefitsGate;
+      return json(benefitOptions);
     }
     if (url.includes("/relations")) {
       return json([{
@@ -279,6 +296,112 @@ describe.each([
 
     expectCarriedDefaults();
   });
+
+  it("groups enabled, unset and untyped benefits, and omits hidden carry-forward IDs on save", async () => {
+    electionHistory = [{
+      ...newestElection,
+      benefitIds: ["benefit-medical", "benefit-dental", "benefit-unset", "benefit-untyped"],
+    }, olderElection];
+    benefitOptions = [
+      { id: "benefit-dental", name: "Dental", benefitType: "hidden", benefitTypeName: "Hidden", benefitTypeSequence: 0, benefitTypeShowOnEnrollmentWizards: false },
+      { id: "benefit-untyped", name: "No type" },
+      { id: "benefit-orphan", name: "Missing type record", benefitType: "deleted-type", benefitTypeName: null },
+      { id: "benefit-unset", name: "Unspecified", benefitType: "late", benefitTypeName: "Late", benefitTypeSequence: 20 },
+      { id: "benefit-medical", name: "Medical", benefitType: "early", benefitTypeName: "Early", benefitTypeSequence: 1, benefitTypeShowOnEnrollmentWizards: true },
+      { id: "benefit-second", name: "A second benefit", benefitType: "early", benefitTypeName: "Early", benefitTypeSequence: 1 },
+    ];
+    await renderPage(Page);
+    await click("button-create-election");
+    await waitFor(() => expect(byTestId("heading-benefit-type-early").textContent).toBe("Early"));
+
+    const headings = [...container!.querySelectorAll('[data-testid^="heading-benefit-type-"]')];
+    expect(headings.map((node) => node.textContent)).toEqual(["Early", "Late", "Other"]);
+    expect(container?.querySelector('[data-testid="checkbox-benefit-benefit-dental"]')).toBeNull();
+    expect(container?.querySelector('[data-testid="heading-benefit-type-hidden"]')).toBeNull();
+    expect(byTestId("heading-benefit-type-early").parentElement?.textContent).toContain("A second benefitMedical");
+    expect(byTestId("heading-benefit-type-__other__").parentElement?.textContent).toContain("Missing type record");
+    expect(byTestId("heading-benefit-type-__other__").parentElement?.textContent).toContain("No type");
+    expect(byTestId<HTMLInputElement>("checkbox-benefit-benefit-medical").checked).toBe(true);
+    expect(byTestId<HTMLInputElement>("checkbox-benefit-benefit-unset").checked).toBe(true);
+    expect(byTestId<HTMLInputElement>("checkbox-benefit-benefit-untyped").checked).toBe(true);
+    expect(byTestId<HTMLInputElement>("checkbox-relation-relation-spouse").checked).toBe(true);
+
+    await act(async () => {
+      byTestId<HTMLInputElement>("checkbox-benefit-benefit-second").click();
+    });
+    await click("button-save");
+    await waitFor(() => expect(apiRequest).toHaveBeenCalled());
+    expect(apiRequest.mock.calls[0][2]).toMatchObject({
+      benefitIds: ["benefit-medical", "benefit-unset", "benefit-untyped", "benefit-second"],
+      relationshipIds: ["relation-spouse"],
+    });
+  });
+});
+
+it("keeps carry-forward selections until benefit metadata arrives, then filters hidden types", async () => {
+  let release!: () => void;
+  benefitsGate = new Promise<void>((resolve) => { release = resolve; });
+  benefitOptions = [
+    { id: "benefit-medical", name: "Medical", benefitType: "visible", benefitTypeName: "Visible" },
+    { id: "benefit-dental", name: "Dental", benefitType: "hidden", benefitTypeName: "Hidden", benefitTypeShowOnEnrollmentWizards: false },
+  ];
+  electionHistory = [{
+    ...newestElection,
+    benefitIds: ["benefit-medical", "benefit-dental"],
+  }];
+  await renderPage(ElectionsListPage);
+  await click("button-create-election");
+  expect(byTestId<HTMLButtonElement>("button-save").disabled).toBe(true);
+  await waitFor(() => expect(byTestId<HTMLInputElement>("checkbox-relation-relation-spouse").checked).toBe(true));
+  await act(async () => { release(); });
+  await waitFor(() => expect(byTestId<HTMLInputElement>("checkbox-benefit-benefit-medical").checked).toBe(true));
+  expect(container?.querySelector('[data-testid="checkbox-benefit-benefit-dental"]')).toBeNull();
+  await click("button-save");
+  await waitFor(() => expect(apiRequest).toHaveBeenCalled());
+  expect(apiRequest.mock.calls[0][2]).toMatchObject({
+    benefitIds: ["benefit-medical"],
+    relationshipIds: ["relation-spouse"],
+  });
+});
+
+it("drops a selected benefit when its type is hidden while the create form is open", async () => {
+  benefitOptions = [
+    { id: "benefit-medical", name: "Medical", benefitType: "medical", benefitTypeName: "Medical", benefitTypeShowOnEnrollmentWizards: true },
+    { id: "benefit-dental", name: "Dental" },
+  ];
+  await renderPage(ElectionsCurrentPage);
+  await openElectionDialog();
+  benefitOptions = [
+    { ...benefitOptions[0], benefitTypeShowOnEnrollmentWizards: false },
+    benefitOptions[1],
+  ];
+  await act(async () => {
+    await testQueryClient.invalidateQueries({ queryKey: ["/api/trust-benefits"] });
+  });
+  await waitFor(() => expect(container?.querySelector('[data-testid="checkbox-benefit-benefit-medical"]')).toBeNull());
+  await click("button-save");
+  await waitFor(() => expect(apiRequest).toHaveBeenCalled());
+  expect(apiRequest.mock.calls[0][2]).toMatchObject({ benefitIds: [], relationshipIds: ["relation-spouse"] });
+});
+
+it("leaves the edit election checklist and submitted selections unchanged", async () => {
+  benefitOptions = [
+    { id: "benefit-medical", name: "Medical", benefitType: "hidden", benefitTypeName: "Hidden", benefitTypeShowOnEnrollmentWizards: false },
+    { id: "benefit-dental", name: "Dental" },
+  ];
+  await renderPage(
+    () => <ElectionForm mode="edit" workerId="worker-1" election={newestElection as WorkerTrustElection} />,
+    false,
+  );
+  await waitFor(() => expect(byTestId<HTMLInputElement>("checkbox-benefit-benefit-medical").checked).toBe(true));
+  expect(container?.querySelector('[data-testid^="heading-benefit-type-"]')).toBeNull();
+  await click("button-save");
+  await waitFor(() => expect(apiRequest).toHaveBeenCalled());
+  expect(apiRequest).toHaveBeenCalledWith(
+    "PATCH",
+    "/api/trust-elections/newest",
+    expect.objectContaining({ benefitIds: ["benefit-medical"], relationshipIds: ["relation-spouse"] }),
+  );
 });
 
 it("opens a blank, today-dated form for a worker with no election history", async () => {

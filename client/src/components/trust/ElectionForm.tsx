@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,10 @@ interface EmployerOption {
 interface TrustBenefitOption {
   id: string;
   name: string;
+  benefitType?: string | null;
+  benefitTypeName?: string | null;
+  benefitTypeSequence?: number | null;
+  benefitTypeShowOnEnrollmentWizards?: boolean | null;
 }
 interface RelationOption {
   id: string;
@@ -43,6 +47,46 @@ function ymdFromDate(value: string | null | undefined): string {
   const d = new Date(value);
   if (isNaN(d.getTime())) return "";
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+const OTHER_TYPE_ID = "__other__";
+const EMPTY_BENEFITS: TrustBenefitOption[] = [];
+
+function offeredBenefitGroups(benefits: TrustBenefitOption[]) {
+  const groups = new Map<string, {
+    id: string;
+    name: string;
+    sequence: number | null;
+    rows: TrustBenefitOption[];
+  }>();
+  for (const benefit of benefits) {
+    if (benefit.benefitTypeShowOnEnrollmentWizards === false) continue;
+    const id = benefit.benefitType && benefit.benefitTypeName
+      ? benefit.benefitType
+      : OTHER_TYPE_ID;
+    let group = groups.get(id);
+    if (!group) {
+      group = {
+        id,
+        name: id === OTHER_TYPE_ID ? "Other" : benefit.benefitTypeName!,
+        sequence: id === OTHER_TYPE_ID ? null : benefit.benefitTypeSequence ?? null,
+        rows: [],
+      };
+      groups.set(id, group);
+    }
+    group.rows.push(benefit);
+  }
+  return [...groups.values()]
+    .sort((a, b) => {
+      if (a.id === OTHER_TYPE_ID) return 1;
+      if (b.id === OTHER_TYPE_ID) return -1;
+      return (a.sequence ?? Number.MAX_SAFE_INTEGER) - (b.sequence ?? Number.MAX_SAFE_INTEGER)
+        || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+    })
+    .map((group) => ({
+      ...group,
+      rows: group.rows.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
+    }));
 }
 
 export function getCreateElectionDefaults(
@@ -94,6 +138,24 @@ export function ElectionForm({
   const [benefitIds, setBenefitIds] = useState<string[]>([]);
   const [relationshipIds, setRelationshipIds] = useState<string[]>([]);
 
+  const { data: employers = [] } = useQuery<EmployerOption[]>({
+    queryKey: ["/api/employers/lookup"],
+    enabled,
+  });
+  const { data: benefits = EMPTY_BENEFITS, isSuccess: benefitsLoaded, isFetching: benefitsFetching, isError: benefitsError } = useQuery<TrustBenefitOption[]>({
+    queryKey: ["/api/trust-benefits"],
+    enabled,
+  });
+  const { data: relations = [] } = useQuery<RelationOption[]>({
+    queryKey: ["/api/workers", workerId, "relations"],
+    enabled,
+  });
+  const createGroups = useMemo(() => offeredBenefitGroups(benefits), [benefits]);
+  const offeredIds = useMemo(
+    () => new Set(createGroups.flatMap((group) => group.rows.map((row) => row.id))),
+    [createGroups],
+  );
+
   useEffect(() => {
     if (!enabled) return;
     if (mode === "edit" && election) {
@@ -112,18 +174,11 @@ export function ElectionForm({
     }
   }, [enabled, mode, election, createDefaults]);
 
-  const { data: employers = [] } = useQuery<EmployerOption[]>({
-    queryKey: ["/api/employers/lookup"],
-    enabled,
-  });
-  const { data: benefits = [] } = useQuery<TrustBenefitOption[]>({
-    queryKey: ["/api/trust-benefits"],
-    enabled,
-  });
-  const { data: relations = [] } = useQuery<RelationOption[]>({
-    queryKey: ["/api/workers", workerId, "relations"],
-    enabled,
-  });
+  useEffect(() => {
+    if (enabled && mode === "create" && benefitsLoaded) {
+      setBenefitIds((previous) => previous.filter((id) => offeredIds.has(id)));
+    }
+  }, [enabled, mode, benefitsLoaded, offeredIds]);
 
   const createMutation = useMutation({
     mutationFn: async (body: CreateWorkerTrustElectionRequest): Promise<WorkerTrustElection> =>
@@ -158,6 +213,10 @@ export function ElectionForm({
   }
 
   function handleSave() {
+    if (mode === "create" && (!benefitsLoaded || benefitsFetching)) {
+      toast({ title: "Benefits unavailable", description: "Wait for benefits to load before saving.", variant: "destructive" });
+      return;
+    }
     if (!employerId) {
       toast({ title: "Validation", description: "Employer is required.", variant: "destructive" });
       return;
@@ -171,7 +230,7 @@ export function ElectionForm({
         employerId,
         startYmd,
         endYmd: endYmd || null,
-        benefitIds,
+        benefitIds: benefitIds.filter((id) => offeredIds.has(id)),
         relationshipIds,
       });
     } else {
@@ -243,10 +302,30 @@ export function ElectionForm({
       <div className="space-y-2">
         <Label>Benefits</Label>
         <div className="max-h-40 overflow-auto rounded-md border p-2 space-y-1">
-          {benefits.length === 0 && (
+          {mode === "create" && benefitsError && (
+            <div className="text-sm text-destructive">Unable to load benefits. Try again before saving.</div>
+          )}
+          {mode === "create" && !benefitsLoaded && !benefitsError && (
+            <div className="text-sm text-muted-foreground">Loading benefits...</div>
+          )}
+          {(mode === "create" ? benefitsLoaded && createGroups.length === 0 : benefits.length === 0) && (
             <div className="text-sm text-muted-foreground">No benefits available.</div>
           )}
-          {benefits.map((b) => (
+          {mode === "create" ? createGroups.map((group) => (
+            <section key={group.id} aria-labelledby={`election-benefit-type-${group.id}`} className="space-y-1">
+              <h3 id={`election-benefit-type-${group.id}`} className="text-sm font-semibold" data-testid={`heading-benefit-type-${group.id}`}>{group.name}</h3>
+              {group.rows.map((b) => (
+                <label key={b.id} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={benefitIds.includes(b.id)}
+                    onCheckedChange={() => toggle(benefitIds, setBenefitIds, b.id)}
+                    data-testid={`checkbox-benefit-${b.id}`}
+                  />
+                  {b.name}
+                </label>
+              ))}
+            </section>
+          )) : benefits.map((b) => (
             <label key={b.id} className="flex items-center gap-2 text-sm">
               <Checkbox
                 checked={benefitIds.includes(b.id)}
@@ -289,7 +368,7 @@ export function ElectionForm({
             {cancelLabel}
           </Button>
         )}
-        <Button onClick={handleSave} disabled={isPending} data-testid="button-save">
+        <Button onClick={handleSave} disabled={isPending || (mode === "create" && (!benefitsLoaded || benefitsFetching))} data-testid="button-save">
           {isPending ? "Saving..." : "Save"}
         </Button>
       </div>
