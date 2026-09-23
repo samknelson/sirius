@@ -5,6 +5,8 @@ import { ChevronRight, FileText } from "lucide-react";
 import { Loader2 } from "lucide-react";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
+import { EmployerPayAction, type EmployerCheckout } from "@/components/ledger/EmployerPayAction";
 
 interface EALayoutProps {
   activeTab: string;
@@ -35,6 +37,7 @@ interface EALayoutContextValue {
   ea: LedgerEA | undefined;
   account: LedgerAccount | undefined;
   currencyCode: string;
+  employerCheckout: EmployerCheckout | undefined;
 }
 
 const EALayoutContext = createContext<EALayoutContextValue | null>(null);
@@ -68,6 +71,13 @@ export function EALayout({ activeTab, children }: EALayoutProps) {
   const { data: worker } = useQuery<{ id: string; firstName: string; lastName: string }>({
     queryKey: ['/api/workers', ea?.entityId],
     enabled: !!ea?.entityId && ea?.entityType === 'worker',
+  });
+  const checkout = useQuery<EmployerCheckout>({
+    queryKey: ["employer-checkout-entry", ea?.entityId, id],
+    queryFn: () => apiRequest("GET", `/api/ledger/checkout/employer/${encodeURIComponent(ea!.entityId)}/${encodeURIComponent(id)}`),
+    enabled: ea?.entityType === "employer",
+    retry: false,
+    refetchOnMount: "always",
   });
 
   // Set page title based on account name
@@ -215,7 +225,18 @@ export function EALayout({ activeTab, children }: EALayoutProps) {
         </nav>
       </div>
 
-      <EALayoutContext.Provider value={{ ea, account, currencyCode: account?.currencyCode || "USD" }}>
+      {ea.entityType === "employer" && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <EmployerPayAction eaId={ea.id} checkout={checkout.data} />
+          {checkout.isError && <p className="text-sm text-muted-foreground" data-testid="employer-payment-guidance">
+            {(checkout.error as { status?: number })?.status === 403
+              ? "Billing contact status alone does not grant payment access. Ask an administrator to enable online payments for your contact at this employer."
+              : getApiErrorMessage(checkout.error, "Online payment is unavailable for this account.")}
+          </p>}
+          {checkout.data && Number(checkout.data.available) <= 0 && <p className="text-sm text-muted-foreground">No amount is currently available to pay online.</p>}
+        </div>
+      )}
+      <EALayoutContext.Provider value={{ ea, account, currencyCode: account?.currencyCode || "USD", employerCheckout: checkout.data }}>
         {children}
       </EALayoutContext.Provider>
     </div>

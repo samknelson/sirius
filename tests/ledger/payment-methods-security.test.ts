@@ -40,4 +40,20 @@ describe("saved payment-method mutation contract", () => {
       "assertMethodMutationAuthority",
     );
   });
+
+  it("exposes a read-authorized method-management capability check", () => {
+    const start = source.indexOf('app.get(`${base}/capabilities`');
+    const end = source.indexOf("\n  });", start);
+    const route = source.slice(start, end);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(route).toContain("assertMethodReadAccess(req, entityType, entityId)");
+    expect(route).toContain("assertMethodMutationAuthority(req, entityType, entityId)");
+    expect(route).toContain("res.json({ canManageMethods })");
+  });
+
+  it("returns creator display names while keeping creator IDs private", () => {
+    expect(source).toContain("createdBy: _createdBy");
+    expect(source).toContain("addedByName");
+    expect(source).toContain("storage.users.getUser(pm.createdBy)");
+  });
 });

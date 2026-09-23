@@ -424,6 +424,9 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
       return row;
     },
     async hasPaymentGrantForUser(userId: string, employerId: string, capability) {
+      // Keep this as a live, employer-scoped grant lookup: callers rely on
+      // revocations taking effect immediately, and grants on another
+      // employer-contact link must never authorize this employer.
       const column = capability === "pay"
         ? employerContactPaymentGrants.canPay
         : employerContactPaymentGrants.canManageMethods;

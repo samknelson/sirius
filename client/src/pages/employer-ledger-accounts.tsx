@@ -41,6 +41,13 @@ export default function EmployerLedgerAccounts() {
   const { data: accounts = [] } = useQuery<LedgerAccount[]>({
     queryKey: ["/api/ledger/accounts"],
   });
+  const payable = useQuery<Array<{ eaId: string; available: string }>>({
+    queryKey: ["employer-online-pay-accounts", employerId],
+    queryFn: () => apiRequest("GET", `/api/ledger/pay-accounts/employer/${encodeURIComponent(employerId)}`),
+    enabled: !!employerId,
+    retry: false,
+    refetchOnMount: "always",
+  });
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -143,6 +150,11 @@ export default function EmployerLedgerAccounts() {
         </div>
       </CardHeader>
       <CardContent>
+        {payable.isError && <p className="mb-4 text-sm text-muted-foreground" data-testid="employer-payment-guidance">
+          {(payable.error as { status?: number })?.status === 403
+            ? "Billing contact status alone does not grant payment access. Ask an administrator to enable online payments for your contact at this employer."
+            : getApiErrorMessage(payable.error, "Online payment is unavailable right now.")}
+        </p>}
         {isFormOpen && (
           <Card className="mb-6" data-testid="card-add-entry-form">
             <CardHeader>
@@ -223,7 +235,7 @@ export default function EmployerLedgerAccounts() {
                   className="border rounded-lg p-4 hover:border-primary/50 transition-colors"
                   data-testid={`card-entry-${entry.id}`}
                 >
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between gap-2">
                     <Link
                       href={`/ea/${entry.id}`}
                       className="flex-1 hover:opacity-80 transition-opacity"
@@ -239,6 +251,9 @@ export default function EmployerLedgerAccounts() {
                         <p className="text-sm text-muted-foreground mt-1">{account.description}</p>
                       )}
                     </Link>
+                    {Number(payable.data?.find(p => p.eaId === entry.id)?.available ?? 0) > 0 && (
+                      <Button asChild size="sm"><Link href={`/pay/${encodeURIComponent(entry.id)}`}>Pay online</Link></Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"

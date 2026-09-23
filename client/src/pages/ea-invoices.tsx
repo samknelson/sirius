@@ -1,4 +1,5 @@
-import { EALayout } from "@/components/layouts/EALayout";
+import { EALayout, useEALayout } from "@/components/layouts/EALayout";
+import { EmployerPayAction } from "@/components/ledger/EmployerPayAction";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -221,6 +222,7 @@ function ClickableAmountCell({
 
 function EAInvoicesContent() {
   const { id } = useParams<{ id: string }>();
+  const { ea, employerCheckout } = useEALayout();
   const [modalState, setModalState] = useState<SectionModalState | null>(null);
 
   const { data: invoices, isLoading } = useQuery<InvoiceSummary[]>({
@@ -363,6 +365,7 @@ function EAInvoicesContent() {
                               <Eye className="h-4 w-4" />
                             </Link>
                           </Button>
+                          {ea?.entityType === "employer" && <EmployerPayAction eaId={id} checkout={employerCheckout} invoiceNumber={invoice.invoiceNumber} />}
                           <Button
                             variant="ghost"
                             size="sm"

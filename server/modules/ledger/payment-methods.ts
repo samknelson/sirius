@@ -39,7 +39,7 @@ interface EntityDescriptor {
 /** Consent evidence is internal, not part of method-management responses. */
 function publicPaymentMethod<T extends { consent?: unknown }>(method: T | undefined) {
   if (!method) return method;
-  const { consent: _consent, ...publicFields } = method;
+  const { consent: _consent, createdBy: _createdBy, ...publicFields } = method as T & { createdBy?: unknown };
   return publicFields;
 }
 
@@ -315,6 +315,25 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
   if (requireAuth) app.use("/api/ledger/payment-methods", requireAuth);
   const base = "/api/ledger/payment-methods/:entityType/:entityId";
 
+  // Read-only consumers may inspect methods without receiving any mutation
+  // controls. Keep the capability decision server-authoritative.
+  app.get(`${base}/capabilities`, async (req: Request, res: Response) => {
+    try {
+      const { entityType, entityId } = req.params;
+      await assertMethodReadAccess(req, entityType, entityId);
+      let canManageMethods = false;
+      try {
+        await assertMethodMutationAuthority(req, entityType, entityId);
+        canManageMethods = true;
+      } catch (error) {
+        if ((error as { status?: number })?.status !== 403) throw error;
+      }
+      res.json({ canManageMethods });
+    } catch (error) {
+      sendError(res, error, "Failed to check payment method permissions");
+    }
+  });
+
   app.get(`${base}/authorization`, async (req: Request, res: Response) => {
     try {
       const { entityType, entityId } = req.params;
@@ -413,8 +432,21 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
 
       // Resolve each distinct gateway config once.
       const resolvedByConfig = new Map<string, ResolvedGateway | null>();
+      const creatorNameById = new Map<string, string | null>();
       const enriched = [];
       for (const pm of methods) {
+        let addedByName: string | null = null;
+        if (pm.createdBy) {
+          if (creatorNameById.has(pm.createdBy)) {
+            addedByName = creatorNameById.get(pm.createdBy) ?? null;
+          } else {
+            const creator = await storage.users.getUser(pm.createdBy);
+            addedByName = creator
+              ? [creator.firstName, creator.lastName].filter(Boolean).join(" ").trim() || creator.email || null
+              : null;
+            creatorNameById.set(pm.createdBy, addedByName);
+          }
+        }
         let resolved = resolvedByConfig.get(pm.gatewayConfigId);
         if (resolved === undefined) {
           try {
@@ -426,7 +458,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
         }
 
         if (!resolved || !(await isPluginComponentEnabled(resolved))) {
-           enriched.push({ ...publicPaymentMethod(pm), providerError: "Payment gateway unavailable" });
+          enriched.push({ ...publicPaymentMethod(pm), addedByName, providerError: "Payment gateway unavailable" });
           continue;
         }
 
@@ -435,9 +467,9 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
             resolved.context,
             pm.paymentMethod,
           );
-           enriched.push({ ...publicPaymentMethod(pm), providerDetails });
+          enriched.push({ ...publicPaymentMethod(pm), addedByName, providerDetails });
         } catch {
-           enriched.push({ ...publicPaymentMethod(pm), providerError: "Payment method not found at provider" });
+          enriched.push({ ...publicPaymentMethod(pm), addedByName, providerError: "Payment method not found at provider" });
         }
       }
 

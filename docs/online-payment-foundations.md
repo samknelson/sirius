@@ -92,6 +92,31 @@ The existing webhook URL remains supported.
    This foundation does not authorize live charges, add checkout UI, or enable
    notifications, refunds, disputes, or recurring payments.
 
+## Employer checkout rollout
+
+Employer checkout is now wired to the same account checkout and receipt as
+worker payments. Keep each ledger account's online payment setting disabled
+until its gateway, financial payment types, and business authorization text
+have been checked. Enable `employer` in the account's payer types only on
+accounts intended to accept employer payments. Account restrictions (including
+ACH-only, minimum amount and full-balance requirements) are enforced by the
+server at session creation, not just by the form. Invoice links carry only an
+invoice number; checkout obtains its balance from the current server response.
+
+Staff grant `Pay employer balances` and `Manage saved payment methods`
+independently on each employer-contact relationship's user administration
+page. Billing contact type alone grants neither capability. A contact with
+only pay authority may make a one-time payment or use an existing saved
+method but cannot save or manage methods. Staff and masquerading sessions
+cannot check out. Revocation is checked on every payment request.
+
+Before live activation, rehearse successful and failed dummy gateway outcomes
+for worker and employer accounts, ACH processing/settlement and receipt
+refreshes, plus staff manual payment allocation. Then verify card and bank
+flows against **real Stripe test mode** (tracked separately), including
+webhook delivery and delayed ACH outcomes. The dummy gateway checks do not
+prove Stripe behavior; do not treat them as permission to enable live charging.
+
 The existing worker test checkout remains a compatibility path during this
 staged rollout; the new account settings are a contract for its authorized
 replacement, not a silent change to historical worker access rules.

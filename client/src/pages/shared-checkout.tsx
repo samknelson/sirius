@@ -39,6 +39,9 @@ export default function SharedCheckoutPage() {
   const [busy, setBusy] = useState(false);
   const generation = useRef(0);
   const submitting = useRef(false);
+  // The URL selects an invoice, never its amount. Only the checkout response
+  // supplies a current balance and confirms it belongs to this EA.
+  const invoiceSelection = new URLSearchParams(window.location.search).get("invoice");
   const ea = useQuery<{ entityType: string; entityId: string }>({
     queryKey: ["checkout-ea", eaId],
     queryFn: () => apiRequest("GET", `/api/ledger/ea/${encodeURIComponent(eaId)}`),
@@ -108,6 +111,19 @@ export default function SharedCheckoutPage() {
     setAccepted(false);
     setReview(false);
   }, [eaId]);
+  useEffect(() => {
+    if (!data || !invoiceSelection || session || submitting.current) return;
+    const invoice = data.invoices.find(i => i.invoiceNumber === invoiceSelection);
+    if (!invoice || Number(invoice.invoiceBalance) <= 0) {
+      setError("This invoice is no longer available to pay. Choose an amount from the current account balance.");
+      return;
+    }
+    const payable = Math.min(Number(invoice.invoiceBalance), Number(data.available));
+    if (payable <= 0) return;
+    const value = payable.toFixed(2);
+    setAllocations({ [invoice.invoiceNumber]: value });
+    setAmount(value);
+  }, [data, invoiceSelection]);
   const submit = async () => {
     if (!data || !scope || !valid || !accepted || (method && !chosenMethod) || (save && !canSave) || submitting.current) return;
     submitting.current = true;
@@ -167,7 +183,7 @@ export default function SharedCheckoutPage() {
       </CardContent></Card>
       <Card><CardHeader><CardTitle className="text-lg">Payment method</CardTitle></CardHeader><CardContent className="space-y-3">
         {methods.isLoading ? <p role="status">Loading saved methods…</p> : methods.isError ? <Alert variant="destructive"><AlertDescription>Saved methods could not be loaded. <Button variant="link" onClick={() => void methods.refetch()}>Retry</Button></AlertDescription></Alert> : null}
-        <label className="flex items-center gap-2"><input type="radio" name="method" checked={!method} disabled={!!session || busy} onChange={() => change(() => { setMethod(""); setSave(false); })} />New card or bank account</label>
+        <label className="flex items-center gap-2"><input type="radio" name="method" checked={!method} disabled={!!session || busy} onChange={() => change(() => { setMethod(""); setSave(false); })} />{data.paymentTypes.includes("us_bank_account") ? "New bank transfer (recommended)" : "New card"}</label>
         {compatibleMethods.map(m => <label key={m.id} className="flex items-center gap-2 break-words"><input type="radio" name="method" checked={method === m.id} disabled={!!session || busy} onChange={() => change(() => { setMethod(m.id); setSave(false); })} />{m.providerDetails?.card ? `${m.providerDetails.card.brand} •••• ${m.providerDetails.card.last4}` : m.providerDetails?.us_bank_account ? `${m.providerDetails.us_bank_account.bank_name || "Bank"} •••• ${m.providerDetails.us_bank_account.last4}` : "Saved method"}</label>)}
         {!method && <label className="flex items-center gap-2 text-sm"><Checkbox checked={save} disabled={!canSave || !!session || busy} onCheckedChange={value => change(() => setSave(value === true))} />Save this method for future payments</label>}
         {!canSave && !method && <p className="text-sm text-muted-foreground">Saving is unavailable for this account or your access level. This payment can still be made without saving.</p>}
@@ -183,7 +199,7 @@ export default function SharedCheckoutPage() {
       </CardContent></Card>
     </>}
     {session && <Card><CardHeader><CardTitle>Secure payment confirmation</CardTitle></CardHeader><CardContent>
-      {Pay && session.clientSecret && <Pay clientSecret={session.clientSecret} publicConfig={session.publicConfig ?? {}} amount={money(entered / 100, currency)}
+      {Pay && session.clientSecret && <Pay clientSecret={session.clientSecret} publicConfig={{ ...session.publicConfig, preferredPaymentType: data.entityType === "employer" ? "us_bank_account" : undefined }} amount={money(entered / 100, currency)}
         savedMethod={!!method}
         returnUrl={`${window.location.origin}/pay/receipt/${encodeURIComponent(session.id)}`}
         onComplete={(status, message) => {
@@ -194,5 +210,6 @@ export default function SharedCheckoutPage() {
       <Link href={`/pay/receipt/${encodeURIComponent(session.id)}`} className="mt-3 inline-block underline">Check this payment's status</Link>
     </CardContent></Card>}
     {data.entityType === "worker" && <Link href={`/workers/${data.entityId}/ledger/accounts`} className="inline-block text-sm underline">Back to accounts</Link>}
+    {data.entityType === "employer" && <Link href={`/ea/${eaId}`} className="inline-block text-sm underline">Back to account</Link>}
   </main>;
 }

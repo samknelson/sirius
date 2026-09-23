@@ -54,6 +54,7 @@ interface PaymentMethod {
    * one added moments ago, whose history is written just after it is saved.
    */
   createdDate: string | null;
+  addedByName: string | null;
   providerDetails?: {
     type: string;
     card?: {
@@ -124,11 +125,17 @@ function PaymentMethodsContent() {
     queryKey: [PM_BASE, ENTITY_TYPE, entityId, "gateways"],
     enabled: !!entityId,
   });
+  const { data: methodCapabilities, error: methodCapabilitiesError } = useQuery<{ canManageMethods: boolean }>({
+    queryKey: [PM_BASE, ENTITY_TYPE, entityId, "capabilities"],
+    queryFn: () => apiRequest("GET", `${PM_BASE}/${ENTITY_TYPE}/${entityId}/capabilities`),
+    enabled: !!entityId,
+  });
   const { data: checkoutAuthorization } = useQuery<{ authorization: PaymentConsent | null }>({
     queryKey: [PM_BASE, ENTITY_TYPE, entityId, "authorization"],
     queryFn: () => apiRequest("GET", `${PM_BASE}/${ENTITY_TYPE}/${entityId}/authorization`),
-    enabled: !!entityId,
+    enabled: !!entityId && methodCapabilities?.canManageMethods === true,
   });
+  const canManageMethods = methodCapabilities?.canManageMethods === true;
 
   const toggleActiveMutation = useMutation({
     mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
@@ -371,17 +378,33 @@ function PaymentMethodsContent() {
               <CardTitle>Payment Methods</CardTitle>
               <CardDescription>Manage saved payment methods for this employer</CardDescription>
             </div>
-            <Button
-              data-testid="button-add-payment-method"
-              onClick={handleOpenAddDialog}
-              disabled={!hasGateways}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Add Payment Method
-            </Button>
+            {canManageMethods && (
+              <Button
+                data-testid="button-add-payment-method"
+                onClick={handleOpenAddDialog}
+                disabled={!hasGateways}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Payment Method
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
+          {methodCapabilities?.canManageMethods === false && (
+            <Alert className="mb-6" data-testid="alert-payment-methods-view-only">
+              <AlertDescription>
+                You can view saved payment methods, but your account does not have permission to manage them.
+              </AlertDescription>
+            </Alert>
+          )}
+          {methodCapabilitiesError && (
+            <Alert className="mb-6" variant="destructive" data-testid="alert-payment-methods-permissions-error">
+              <AlertDescription>
+                Unable to verify payment method permissions. Management controls are unavailable.
+              </AlertDescription>
+            </Alert>
+          )}
           {!hasGateways && (
             <Alert className="mb-6" variant="destructive">
               <AlertDescription data-testid="text-no-gateways">
@@ -494,18 +517,16 @@ function PaymentMethodsContent() {
                             <p className="text-sm text-muted-foreground">{pm.paymentMethod}</p>
                           </>
                         )}
-                        {pm.createdDate && (
-                          <p
-                            className="text-sm text-muted-foreground"
-                            data-testid={`text-added-${pm.id}`}
-                          >
-                            Added {new Date(pm.createdDate).toLocaleDateString()}
-                          </p>
-                        )}
+                        <p className="text-sm text-muted-foreground" data-testid={`text-added-${pm.id}`}>
+                          Added by {pm.addedByName || "Unavailable"} ·{" "}
+                          {pm.createdDate && !Number.isNaN(new Date(pm.createdDate).getTime())
+                            ? new Date(pm.createdDate).toLocaleDateString()
+                            : "Date unavailable"}
+                        </p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      {pm.isActive ? (
+                      {canManageMethods && (pm.isActive ? (
                         <Button
                           variant="outline"
                           size="sm"
@@ -527,8 +548,8 @@ function PaymentMethodsContent() {
                           <Check className="mr-2 h-4 w-4" />
                           Enable
                         </Button>
-                      )}
-                      {!pm.isDefault && pm.isActive && (
+                      ))}
+                      {canManageMethods && !pm.isDefault && pm.isActive && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -550,15 +571,17 @@ function PaymentMethodsContent() {
                           <Eye className="h-4 w-4" />
                         </Button>
                       )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDelete(pm)}
-                        disabled={deleteMutation.isPending}
-                        data-testid={`button-delete-${pm.id}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {canManageMethods && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDelete(pm)}
+                          disabled={deleteMutation.isPending}
+                          data-testid={`button-delete-${pm.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>

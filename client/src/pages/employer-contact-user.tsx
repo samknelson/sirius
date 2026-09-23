@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { UserPlus, Save, AlertCircle, CheckCircle2, KeyRound } from "lucide-react";
 import { Role } from "@/lib/entity-types";
+import { useAccessCheck } from "@/hooks/use-access-check";
 
 interface EmployerContactUserResponse {
   hasUser: boolean;
@@ -36,6 +37,7 @@ function EmployerContactUserContent() {
   const { employerContact } = useEmployerContactLayout();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { canAccess: canManagePaymentGrants } = useAccessCheck("staff", employerContact.employerId);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -45,6 +47,47 @@ function EmployerContactUserContent() {
   // Fetch user data
   const { data, isLoading, error } = useQuery<EmployerContactUserResponse>({
     queryKey: ["/api/employer-contacts", employerContact.id, "user"],
+  });
+
+  const { data: paymentGrant, isLoading: paymentGrantLoading } = useQuery<{
+    canPay: boolean;
+    canManageMethods: boolean;
+  }>({
+    queryKey: ["/api/employer-contacts", employerContact.id, "payment-grant"],
+    enabled: canManagePaymentGrants,
+  });
+  const [canPay, setCanPay] = useState(false);
+  const [canManageMethods, setCanManageMethods] = useState(false);
+
+  useEffect(() => {
+    if (paymentGrant) {
+      setCanPay(paymentGrant.canPay);
+      setCanManageMethods(paymentGrant.canManageMethods);
+    }
+  }, [paymentGrant]);
+
+  const savePaymentGrantMutation = useMutation({
+    mutationFn: async () => apiRequest(
+      "PUT",
+      `/api/employer-contacts/${employerContact.id}/payment-grant`,
+      { canPay, canManageMethods },
+    ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/employer-contacts", employerContact.id, "payment-grant"],
+      });
+      toast({
+        title: "Payment authority updated",
+        description: "Permissions are updated; revoked access takes effect immediately.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Payment authority update failed",
+        description: getApiErrorMessage(error, "Failed to update payment authority."),
+        variant: "destructive",
+      });
+    },
   });
 
   // Fetch all roles to display names
@@ -185,6 +228,7 @@ function EmployerContactUserContent() {
   const optionalRoles = allRoles.filter(r => data.optionalRoleIds.includes(r.id));
 
   return (
+    <div className="space-y-6">
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
@@ -360,6 +404,60 @@ function EmployerContactUserContent() {
         </form>
       </CardContent>
     </Card>
+    {canManagePaymentGrants && (
+      <Card>
+        <CardHeader>
+          <CardTitle>Online Payment Authority</CardTitle>
+          <CardDescription>
+            Grant payment and saved-payment-method access independently for this employer contact.
+            These permissions do not apply to this contact's links at other employers.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {paymentGrantLoading ? (
+            <Skeleton className="h-16 w-full" />
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="grant-can-pay">Pay employer balances</Label>
+                  <p className="text-sm text-muted-foreground">Allow this contact to submit online payments.</p>
+                </div>
+                <Switch
+                  id="grant-can-pay"
+                  checked={canPay}
+                  onCheckedChange={setCanPay}
+                  data-testid="switch-employer-contact-can-pay"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="grant-can-manage-methods">Manage saved payment methods</Label>
+                  <p className="text-sm text-muted-foreground">Allow this contact to add or remove payment methods.</p>
+                </div>
+                <Switch
+                  id="grant-can-manage-methods"
+                  checked={canManageMethods}
+                  onCheckedChange={setCanManageMethods}
+                  data-testid="switch-employer-contact-can-manage-methods"
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  onClick={() => savePaymentGrantMutation.mutate()}
+                  disabled={paymentGrantLoading || savePaymentGrantMutation.isPending}
+                  data-testid="button-save-employer-payment-grant"
+                >
+                  {savePaymentGrantMutation.isPending ? "Saving..." : "Save Payment Authority"}
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    )}
+    </div>
   );
 }
 

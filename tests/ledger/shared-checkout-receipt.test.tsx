@@ -55,10 +55,13 @@ const methods = [
 ];
 
 function response(method: string, url: string, body?: any): unknown {
-  if (method === "GET" && url === "/api/ledger/ea/ea-1") return { entityType: "worker", entityId: "worker-1" };
-  if (method === "GET" && url.includes("/checkout/worker/worker-1/ea-1")) return checkout;
-  if (method === "GET" && url === "/api/ledger/payment-methods/worker/worker-1") return methods;
-  if (method === "GET" && url === "/api/ledger/payment-methods/worker/worker-1/authorization") {
+  const entityType = employerFixture ? "employer" : "worker";
+  const entityId = employerFixture ? "employer-1" : "worker-1";
+  if (method === "GET" && url === "/api/ledger/ea/ea-1") return { entityType, entityId };
+  if (method === "GET" && url.includes(`/checkout/${entityType}/${entityId}/ea-1`)) return employerFixture ?? checkout;
+  if (method === "GET" && url === `/api/ledger/payment-methods/${entityType}/${entityId}`) return methods;
+  if (method === "GET" && url === `/api/ledger/payment-methods/${entityType}/${entityId}/authorization`) {
+    if (employerFixture) throw new Error("No method-management grant");
     return { authorization: { version: "v1", text: "I authorize this payment." } };
   }
   if (method === "POST" && url.includes("/sessions")) {
@@ -66,6 +69,7 @@ function response(method: string, url: string, body?: any): unknown {
   }
   throw new Error(`Unexpected request ${method} ${url} ${JSON.stringify(body)}`);
 }
+let employerFixture: typeof checkout | null = null;
 
 async function render(page: "checkout" | "receipt" = "checkout") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -123,9 +127,39 @@ afterEach(async () => {
   root = null;
   container = null;
   vi.unstubAllGlobals();
+  employerFixture = null;
+  window.history.replaceState({}, "", "/");
 });
 
 describe("shared checkout", () => {
+  it("preselects only the server-verified employer invoice balance and permits one-time ACH without saving", async () => {
+    employerFixture = { ...checkout, entityType: "employer", entityId: "employer-1",
+      paymentTypes: ["us_bank_account"], authorization: { version: "business-v2", text: "I authorize the business debit." } };
+    window.history.replaceState({}, "", "/pay/ea-1?invoice=INV-100");
+    await render();
+    expect((container!.querySelector("#checkout-amount") as HTMLInputElement).value).toBe("40.00");
+    expect((container!.querySelector("#invoice-INV-100") as HTMLInputElement).value).toBe("40.00");
+    expect(text()).toContain("New bank transfer (recommended)");
+    expect(text()).not.toContain("Visa •••• 4242");
+    expect(text()).toContain("I authorize the business debit.");
+    const saveBox = Array.from(container!.querySelectorAll("label")).find(n => n.textContent?.includes("Save this method"))!.querySelector('[role="checkbox"]') as HTMLElement;
+    expect(saveBox.hasAttribute("disabled") || saveBox.hasAttribute("data-disabled")).toBe(true);
+    await clickCheckboxContaining("I authorize the business debit.");
+    await act(async () => { button("Review payment").click(); });
+    await act(async () => { button("Submit payment").click(); });
+    await settle();
+    expect(apiRequest).toHaveBeenCalledWith("POST", "/api/ledger/checkout/employer/employer-1/ea-1/sessions",
+      expect.objectContaining({ amount: "40.00", saveMethod: false,
+        statementSelection: [{ invoiceNumber: "INV-100", amount: "40.00" }],
+        consent: { version: "business-v2", text: "I authorize the business debit.", accepted: true } }));
+  });
+
+  it("does not accept a forged invoice balance from the link", async () => {
+    employerFixture = { ...checkout, entityType: "employer", entityId: "employer-1" };
+    window.history.replaceState({}, "", "/pay/ea-1?invoice=INV-100&amount=1");
+    await render();
+    expect((container!.querySelector("#checkout-amount") as HTMLInputElement).value).toBe("40.00");
+  });
   it("renders one-time checkout data, statements, saved card and hides provider-error methods", async () => {
     await render();
     expect(text()).toContain("Domestic Partner account");

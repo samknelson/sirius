@@ -1,5 +1,6 @@
 import { sanitizeHtml } from "@shared/utils/html";
-import { EALayout } from "@/components/layouts/EALayout";
+import { EALayout, useEALayout } from "@/components/layouts/EALayout";
+import { EmployerPayAction } from "@/components/ledger/EmployerPayAction";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -153,6 +154,7 @@ function StatementSection({ title, explainer, section, defaultOpen = false, inde
 
 function EAInvoiceViewContent() {
   const { id, month, year } = useParams<{ id: string; month: string; year: string }>();
+  const { ea, employerCheckout } = useEALayout();
 
   const { data: invoiceDetails, isLoading, error } = useQuery<InvoiceDetails>({
     queryKey: [`/api/ledger/ea/${id}/invoices/${month}/${year}`],
@@ -199,10 +201,13 @@ function EAInvoiceViewContent() {
             Back to Invoices
           </Button>
         </Link>
+        <div className="flex flex-wrap items-center gap-2">
+        {ea?.entityType === "employer" && <EmployerPayAction eaId={id} checkout={employerCheckout} invoiceNumber={invoiceDetails.invoiceNumber} />}
         <Button variant="outline" size="sm" onClick={() => window.print()}>
           <Printer className="h-4 w-4 mr-2" />
           Print
         </Button>
+        </div>
       </div>
 
       <div className="statement-title">

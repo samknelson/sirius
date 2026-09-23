@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../../storage";
 import { insertContactSchema, type InsertContact } from "@shared/schema";
-import { requireAccess } from "../../services/access-policy-evaluator";
+import { buildContext, requireAccess } from "../../services/access-policy-evaluator";
 import { checkClerkConflict, provisionClerkAccount } from "../../services/clerk-provisioning";
 import { credentialUserInOkta, OktaCredentialingError} from "../../services/okta-credentialing";
 import { isOktaProviderActive } from "../../auth/okta-admin";
@@ -404,6 +404,23 @@ export function registerEmployerContactRoutes(
     }
   });
 
+  // GET /api/employer-contacts/:id/payment-grant - Read the grant for this
+  // employer-contact link only. Separate links (including links at another
+  // employer) have independent grants.
+  app.get("/api/employer-contacts/:id/payment-grant", requireAuth, requireAccess('employer.manage', getEmployerIdFromContactId), async (req, res) => {
+    try {
+      const contact = await storage.employerContacts.get(req.params.id);
+      if (!contact) return res.status(404).json({ message: "Employer contact not found" });
+      const grant = await storage.employerContacts.getPaymentGrant(req.params.id);
+      return res.json({
+        canPay: grant?.canPay ?? false,
+        canManageMethods: grant?.canManageMethods ?? false,
+      });
+    } catch {
+      return res.status(500).json({ message: "Failed to fetch payment grant" });
+    }
+  });
+
   // PUT /api/employer-contacts/:id/payment-grant - Staff-only payment authority.
   app.put("/api/employer-contacts/:id/payment-grant", requireAuth, requireAccess('staff'), async (req, res) => {
     const parsed = z.object({
@@ -414,6 +431,19 @@ export function registerEmployerContactRoutes(
     try {
       const contact = await storage.employerContacts.get(req.params.id);
       if (!contact) return res.status(404).json({ message: "Employer contact not found" });
+      // Do not let a user grant themselves employer payment authority, even if
+      // they also hold staff permission. Resolve the effective user so this
+      // remains correct when sessions support delegated identities.
+      if ((req as any).session?.masqueradeUserId) {
+        return res.status(403).json({ message: "Payment grants cannot be changed while masquerading" });
+      }
+      const context = await buildContext(req);
+      const actorEmail = context.user?.email?.trim().toLowerCase();
+      const contactEmail = contact.contact.email?.trim().toLowerCase();
+      if (!actorEmail) return res.status(403).json({ message: "Unable to verify payment-grant administrator" });
+      if (actorEmail && contactEmail && actorEmail === contactEmail) {
+        return res.status(403).json({ message: "You cannot grant payment authority to yourself" });
+      }
       const grant = await storage.employerContacts.setPaymentGrant(req.params.id, parsed.data);
       return res.json(grant);
     } catch {

@@ -16,7 +16,9 @@ function StripePaymentForm({
   returnUrl,
   clientSecret,
   savedMethod,
-}: Pick<PaymentGatewayPayProps, "amount" | "onComplete" | "returnUrl" | "clientSecret" | "savedMethod">) {
+  paymentTypes,
+  preferBank,
+}: Pick<PaymentGatewayPayProps, "amount" | "onComplete" | "returnUrl" | "clientSecret" | "savedMethod"> & { paymentTypes?: string[]; preferBank: boolean }) {
   const stripe = useStripe();
   const elements = useElements();
   const [processing, setProcessing] = useState(false);
@@ -49,7 +51,8 @@ function StripePaymentForm({
 
   return (
     <form onSubmit={submit} className="space-y-4" data-testid="form-stripe-pay">
-      {!savedMethod && <PaymentElement />}
+      {!savedMethod && <PaymentElement options={preferBank && paymentTypes?.includes("us_bank_account")
+        ? { paymentMethodOrder: ["us_bank_account", "card"] } : undefined} />}
       <Button type="submit" disabled={!stripe || (!savedMethod && !elements) || processing} data-testid="button-confirm-stripe-pay">
         {processing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
         {savedMethod ? `Complete verification for ${amount}` : `Pay ${amount}`}
@@ -85,9 +88,12 @@ export function StripePayComponent({
     clientSecret,
     appearance: { theme: "stripe" },
   };
+  const paymentTypes = Array.isArray(publicConfig.paymentTypes)
+    ? publicConfig.paymentTypes.filter((type): type is string => typeof type === "string")
+    : undefined;
   return (
     <Elements stripe={stripe} options={options}>
-      <StripePaymentForm amount={amount} onComplete={onComplete} returnUrl={returnUrl} clientSecret={clientSecret} savedMethod={savedMethod} />
+      <StripePaymentForm amount={amount} onComplete={onComplete} returnUrl={returnUrl} clientSecret={clientSecret} savedMethod={savedMethod} paymentTypes={paymentTypes} preferBank={publicConfig.preferredPaymentType === "us_bank_account"} />
     </Elements>
   );
 }
