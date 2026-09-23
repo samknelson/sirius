@@ -20,9 +20,6 @@ export async function assertOnlinePaymentAuthority(
   entityId: string,
   capability: "pay" | "methods",
 ): Promise<string> {
-  if ((req as any).session?.masqueradeUserId) {
-    throw new OnlinePaymentAuthorityError("Online payment actions are unavailable while masquerading");
-  }
   const context = await buildContext(req);
   if (!context.user) throw new OnlinePaymentAuthorityError("Authentication required");
   const staff = await checkAccessInline(req, "staff");

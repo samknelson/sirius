@@ -59,6 +59,11 @@ const gateway = {
 beforeAll(async () => {
   const app = express();
   app.use(express.json());
+  // Stand in for the authenticated session after masquerade middleware resolves it.
+  app.use((req, _res, next) => {
+    (req as any).session = { masqueradeUserId: req.header("x-target-user") };
+    next();
+  });
   registerLedgerPaymentAttemptRoutes(app, (_req, _res, next) => next());
   server = http.createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -265,5 +270,69 @@ describe("online checkout HTTP contract", () => {
     const cross = await checkout(valid({ idempotencyKey: "cross-ea" }));
     expect(cross.status).toBe(409);
     expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();
+  });
+
+  it.each(["worker", "employer"] as const)("keeps %s sessions and receipts with the target after masquerade changes", async (kind) => {
+    const entityId = kind === "worker" ? "worker-1" : "employer-1";
+    const scope = `${kind}/${entityId}/ea-1`;
+    const target = `${kind}-target`;
+    const grants = new Set(["pay", "methods"]);
+    mocks.authority.mockImplementation(async (req, type, id, capability) => {
+      if (req.session.masqueradeUserId !== target || type !== kind || id !== entityId || !grants.has(capability)) {
+        throw new mocks.AuthorityError("Access denied");
+      }
+      return target;
+    });
+    mocks.storage.ledger.ea.get.mockResolvedValue({ ...ea, entityType: kind, entityId });
+    mocks.storage.ledger.ea.getByEntity.mockResolvedValue([{ ...ea, entityType: kind, entityId }]);
+    mocks.storage.ledger.accounts.get.mockResolvedValue({
+      id: "acct-1", name: "Health", currencyCode: "USD", isActive: true, gatewayConfigId: "gw-1",
+      data: { onlinePayments: { enabled: true, payerTypes: [kind], allowPartial: true, minAmount: 1, paymentTypes: ["card"] } },
+    });
+    const attempt = {
+      id: "target-attempt", entityType: kind, entityId, ledgerEaId: "ea-1",
+      gatewayConfigId: "gw-1", createdByUserId: target, amount: "12.34", currency: "USD",
+      saveMethod: false, status: "requires_action", providerIntentRef: null,
+      consent: { version: "v1", text: "Pay now" }, statementSelection: [],
+      metadata: { paymentMethodRef: null },
+    };
+    mocks.storage.ledger.paymentAttempts.create.mockResolvedValue(attempt);
+    mocks.storage.ledger.paymentAttempts.get.mockResolvedValue(attempt);
+    const headers = { "x-target-user": target };
+    let response = await fetch(`${base}/api/ledger/pay-accounts/${kind}/${entityId}`, { headers });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject([{ eaId: "ea-1" }]);
+    response = await fetch(`${base}/api/ledger/checkout/${scope}`, { headers });
+    expect(response.status).toBe(200);
+    grants.delete("methods");
+    response = await fetch(`${base}/api/ledger/checkout/${scope}/sessions`, {
+      method: "POST", headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify(valid({ saveMethod: true })),
+    });
+    expect(response.status).toBe(403);
+    expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();
+    response = await fetch(`${base}/api/ledger/checkout/${scope}/sessions`, {
+      method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(valid()),
+    });
+    expect(response.status).toBe(201);
+    expect(mocks.storage.ledger.paymentAttempts.create).toHaveBeenCalledWith(expect.objectContaining({
+      createdByUserId: target, entityType: kind, entityId,
+    }));
+    const receiptUrl = `${base}/api/ledger/checkout/sessions/target-attempt`;
+    expect((await fetch(receiptUrl, { headers })).status).toBe(200);
+    expect((await fetch(receiptUrl)).status).toBe(403); // original staff
+    expect((await fetch(receiptUrl, { headers: { "x-target-user": "other-target" } })).status).toBe(403);
+    expect((await fetch(`${receiptUrl}/cancel`, { method: "POST" })).status).toBe(403);
+    expect((await fetch(`${receiptUrl}/cancel`, { method: "POST", headers: { "x-target-user": "other-target" } })).status).toBe(403);
+    mocks.storage.ledger.paymentAttempts.getByIdempotencyKey.mockResolvedValue(attempt);
+    expect((await fetch(`${base}/api/ledger/checkout/${scope}/sessions`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(valid()),
+    })).status).toBe(403);
+    grants.delete("pay");
+    expect((await fetch(receiptUrl, { headers })).status).toBe(403);
+    expect((await fetch(`${receiptUrl}/cancel`, { method: "POST", headers })).status).toBe(403);
+    expect((await fetch(`${base}/api/ledger/checkout/${scope}/sessions`, {
+      method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(valid()),
+    })).status).toBe(403);
   });
 });

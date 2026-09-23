@@ -157,6 +157,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!response.ok) {
         throw new Error('Failed to stop masquerade');
       }
+      // Checkout data belongs to the effective user, not the browser session.
+      // Do not retain a target's receipt or payment methods in the staff cache.
+      queryClient.removeQueries({ predicate: (query) => {
+        const key = query.queryKey[0];
+        return typeof key === 'string' && (
+          key.startsWith('checkout') ||
+          key.endsWith('online-pay-accounts') ||
+          key.startsWith('/api/ledger/payment-methods')
+        );
+      } });
       await queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
       await queryClient.invalidateQueries({ queryKey: ['/api/access/policies/staff'] });
       await queryClient.invalidateQueries({ queryKey: ['/api/my-employers'] });

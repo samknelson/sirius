@@ -41,11 +41,32 @@ describe("assertOnlinePaymentAuthority", () => {
     expect(checkAccessInline).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects masquerade sessions without consulting cached policy state", async () => {
-    await expect(assertOnlinePaymentAuthority(request({ masqueradeUserId: "target" }), "employer", "emp-1", "pay"))
+  it("uses the masqueraded user's identity and fresh capability on every request", async () => {
+    buildContext.mockImplementation(async (req) => ({
+      user: { id: req.session?.masqueradeUserId ?? "staff-user" },
+    }));
+    const grants = new Set(["target:worker.ledger.pay:worker-1", "target:worker.ledger.methods:worker-1",
+      "contact:employer.ledger.pay:emp-1"]);
+    checkAccessInline.mockImplementation(async (req, policy, entityId) => {
+      const actor = req.session?.masqueradeUserId ?? "staff-user";
+      if (policy === "staff") return { granted: actor === "staff-user" };
+      return { granted: grants.has(`${actor}:${policy}:${entityId}`) };
+    });
+    const target = request({ masqueradeUserId: "target", originalUserId: "staff-user" });
+    const contact = request({ masqueradeUserId: "contact", originalUserId: "staff-user" });
+    await expect(assertOnlinePaymentAuthority(target, "worker", "worker-1", "pay")).resolves.toBe("target");
+    await expect(assertOnlinePaymentAuthority(target, "worker", "worker-1", "methods")).resolves.toBe("target");
+    await expect(assertOnlinePaymentAuthority(target, "worker", "worker-2", "pay")).rejects.toBeInstanceOf(OnlinePaymentAuthorityError);
+    await expect(assertOnlinePaymentAuthority(contact, "employer", "emp-1", "pay")).resolves.toBe("contact");
+    await expect(assertOnlinePaymentAuthority(contact, "employer", "emp-1", "methods")).rejects.toBeInstanceOf(OnlinePaymentAuthorityError);
+    await expect(assertOnlinePaymentAuthority(contact, "employer", "emp-2", "pay")).rejects.toBeInstanceOf(OnlinePaymentAuthorityError);
+    grants.delete("contact:employer.ledger.pay:emp-1");
+    await expect(assertOnlinePaymentAuthority(contact, "employer", "emp-1", "pay")).rejects.toBeInstanceOf(OnlinePaymentAuthorityError);
+    grants.delete("target:worker.ledger.pay:worker-1");
+    await expect(assertOnlinePaymentAuthority(target, "worker", "worker-1", "pay")).rejects.toBeInstanceOf(OnlinePaymentAuthorityError);
+    await expect(assertOnlinePaymentAuthority(request({ masqueradeUserId: "other", originalUserId: "staff-user" }), "worker", "worker-1", "pay"))
       .rejects.toBeInstanceOf(OnlinePaymentAuthorityError);
-    expect(buildContext).not.toHaveBeenCalled();
-    expect(checkAccessInline).not.toHaveBeenCalled();
+    await expect(assertOnlinePaymentAuthority(request(), "worker", "worker-1", "pay")).rejects.toBeInstanceOf(OnlinePaymentAuthorityError);
   });
 
   it("uses the employer capability policy directly for fresh grants", async () => {

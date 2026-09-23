@@ -11,6 +11,9 @@ const h = vi.hoisted(() => ({
 vi.mock("../../server/modules/ledger/online-payment-authority", () => ({
   assertOnlinePaymentAuthority: h.authority,
 }));
+vi.mock("../../server/services/access-policy-evaluator", () => ({
+  checkAccessInline: vi.fn().mockResolvedValue({ granted: true }),
+}));
 vi.mock("../../server/storage", () => ({
   storage: {
     employers: { getEmployer: vi.fn() },
@@ -31,6 +34,10 @@ let baseUrl: string;
 beforeAll(async () => {
   const app = express();
   app.use(express.json());
+  app.use((req, _res, next) => {
+    (req as any).session = { masqueradeUserId: req.header("x-target-user") };
+    next();
+  });
   registerLedgerPaymentMethodRoutes(app);
   server = http.createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -51,6 +58,23 @@ beforeEach(() => {
 });
 
 describe("payment-method customer side effects", () => {
+  it("only advertises method management for the target with a separate methods grant", async () => {
+    h.authority.mockImplementation(async (req, type, id, capability) => {
+      if (req.session.masqueradeUserId === "contact-1" &&
+          type === "employer" && id === "employer-1" && capability === "methods") {
+        return "contact-1";
+      }
+      throw Object.assign(new Error("No methods grant"), { status: 403 });
+    });
+    const url = `${baseUrl}/api/ledger/payment-methods/employer/employer-1/capabilities`;
+    expect(await (await fetch(url)).json()).toEqual({ canManageMethods: false });
+    expect(await (await fetch(url, { headers: { "x-target-user": "other-contact" } })).json())
+      .toEqual({ canManageMethods: false });
+    expect(await (await fetch(url, { headers: { "x-target-user": "contact-1" } })).json())
+      .toEqual({ canManageMethods: true });
+    expect(h.authority).toHaveBeenCalledWith(expect.anything(), "employer", "employer-1", "methods");
+  });
+
   it("denies an unauthorized customer lookup before any provider or mapping writes", async () => {
     const response = await fetch(
       `${baseUrl}/api/ledger/payment-methods/employer/employer-1/customer/gateway-1`,

@@ -321,13 +321,10 @@ export function registerLedgerPaymentAttemptRoutes(
     const attempt = await storage.ledger.paymentAttempts.get(req.params.attemptId);
     if (!attempt) return error(res, 404, "Payment attempt not found");
     if (!attempt.workerId) return error(res, 403, "Access denied");
-    const staff = await checkAccessInline(req, "staff");
-    if (!staff.granted) {
-      try {
-        const actor = await assertOnlinePaymentAuthority(req, "worker", attempt.workerId, "pay");
-        if (!attempt.createdByUserId || actor !== attempt.createdByUserId) return error(res, 403, "Only the checkout creator can view this payment");
-      } catch (e) { if (e instanceof OnlinePaymentAuthorityError) return error(res, 403, e.message); throw e; }
-    }
+    try {
+      const actor = await assertOnlinePaymentAuthority(req, "worker", attempt.workerId, "pay");
+      if (!attempt.createdByUserId || actor !== attempt.createdByUserId) return error(res, 403, "Only the checkout creator can view this payment");
+    } catch (e) { if (e instanceof OnlinePaymentAuthorityError) return error(res, 403, e.message); throw e; }
     return res.json({
       id: attempt.id,
       status: workerVisibleStatus(attempt),
@@ -539,7 +536,6 @@ export function registerLedgerPaymentAttemptRoutes(
         ? await storage.ledger.gatewayCustomers.get(req.params.entityType, req.params.entityId, loaded.account.gatewayConfigId!)
         : undefined;
       if (savedMethod && !savedCustomer) return error(res, 409, "Payment customer is not configured");
-      const { dbUser } = await getEffectiveUser(req.session as any, req.user as any);
       const attempt = await runInTransaction(async () => {
         await storage.ledger.paymentAttempts.lockEa(loaded.ea.id);
         await storage.ledger.paymentAttempts.expireReservations(loaded.ea.id);
@@ -549,7 +545,7 @@ export function registerLedgerPaymentAttemptRoutes(
         if (!loaded.settings.allowPartial && cents !== Math.max(0, Math.round((balance - reserved) * 100))) {
           throw new PaymentAttemptConflictError("This account requires payment of its full available balance");
         }
-        return storage.ledger.paymentAttempts.create({ workerId: req.params.entityType === "worker" ? req.params.entityId : null, ledgerEaId: loaded.ea.id, gatewayConfigId: loaded.account.gatewayConfigId!, accountId: loaded.account.id, entityType: req.params.entityType, entityId: req.params.entityId, createdByUserId: dbUser?.id ?? null, createdAt: new Date(), updatedAt: new Date(), saveMethod: body.saveMethod, consent: { ...body.consent, acceptedAt: new Date().toISOString(), authorizationVersion: selectedText.version, authorizationText: selectedText.text }, statementSelection: body.statementSelection, idempotencyKey: body.idempotencyKey, amount: (cents / 100).toFixed(2), currency: loaded.account.currencyCode, status: "requires_action", reservationExpiresAt: null, metadata: { source: "online_checkout", paymentMethodRef: savedMethod?.providerMethodRef ?? null, paymentTypes, invoicePeriods: body.statementSelection.map(s => { const invoice = invoiceMap.get(s.invoiceNumber)!; return { invoiceNumber: s.invoiceNumber, statementYmd: `${invoice.year}-${String(invoice.month).padStart(2, "0")}-01` }; }) } } as any);
+        return storage.ledger.paymentAttempts.create({ workerId: req.params.entityType === "worker" ? req.params.entityId : null, ledgerEaId: loaded.ea.id, gatewayConfigId: loaded.account.gatewayConfigId!, accountId: loaded.account.id, entityType: req.params.entityType, entityId: req.params.entityId, createdByUserId: userId, createdAt: new Date(), updatedAt: new Date(), saveMethod: body.saveMethod, consent: { ...body.consent, acceptedAt: new Date().toISOString(), authorizationVersion: selectedText.version, authorizationText: selectedText.text }, statementSelection: body.statementSelection, idempotencyKey: body.idempotencyKey, amount: (cents / 100).toFixed(2), currency: loaded.account.currencyCode, status: "requires_action", reservationExpiresAt: null, metadata: { source: "online_checkout", paymentMethodRef: savedMethod?.providerMethodRef ?? null, paymentTypes, invoicePeriods: body.statementSelection.map(s => { const invoice = invoiceMap.get(s.invoiceNumber)!; return { invoiceNumber: s.invoiceNumber, statementYmd: `${invoice.year}-${String(invoice.month).padStart(2, "0")}-01` }; }) } } as any);
       });
       if ((attempt as any).__created === false) {
         // A competing request inserted the same key after our initial lookup.
@@ -566,21 +562,12 @@ export function registerLedgerPaymentAttemptRoutes(
   const checkoutStatus = async (req: Request, res: Response, cancel: boolean) => {
     const attempt = await storage.ledger.paymentAttempts.get(req.params.attemptId);
     if (!attempt) return error(res, 404, "Payment attempt not found");
-    if (cancel) {
-      let actorId: string;
-      try { actorId = await assertOnlinePaymentAuthority(req, attempt.entityType as "worker" | "employer", attempt.entityId, "pay"); }
-      catch (e) { if (e instanceof OnlinePaymentAuthorityError) return error(res, 403, e.message); throw e; }
-      if (!attempt.createdByUserId || actorId !== attempt.createdByUserId) return error(res, 403, "Only the checkout creator can cancel it");
-    } else {
-      const staff = await checkAccessInline(req, "staff");
-      if (!staff.granted) {
-        try {
-          const actor = await assertOnlinePaymentAuthority(req, attempt.entityType as "worker" | "employer", attempt.entityId, "pay");
-          if (!attempt.createdByUserId || actor !== attempt.createdByUserId) return error(res, 403, "Only the checkout creator can view this payment");
-        }
-        catch (e) { if (e instanceof OnlinePaymentAuthorityError) return error(res, 403, e.message); throw e; }
+    try {
+      const actorId = await assertOnlinePaymentAuthority(req, attempt.entityType as "worker" | "employer", attempt.entityId, "pay");
+      if (!attempt.createdByUserId || actorId !== attempt.createdByUserId) {
+        return error(res, 403, cancel ? "Only the checkout creator can cancel it" : "Only the checkout creator can view this payment");
       }
-    }
+    } catch (e) { if (e instanceof OnlinePaymentAuthorityError) return error(res, 403, e.message); throw e; }
     try {
       const resolved = await resolveGateway(attempt.gatewayConfigId);
       if (cancel) {
