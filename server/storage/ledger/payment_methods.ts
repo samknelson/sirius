@@ -28,6 +28,14 @@ export interface PaymentMethodStorage {
   update(id: string, method: Partial<InsertLedgerPaymentMethod>): Promise<LedgerPaymentMethod | undefined>;
   delete(id: string): Promise<boolean>;
   setAsDefault(paymentMethodId: string, entityType: string, entityId: string, gatewayConfigId: string): Promise<LedgerPaymentMethod | undefined>;
+  upsertProviderMethod(input: {
+    entityType: string;
+    entityId: string;
+    gatewayConfigId: string;
+    providerMethodRef: string;
+    consent?: unknown;
+    data?: unknown;
+  }): Promise<LedgerPaymentMethod>;
 }
 
 /**
@@ -136,6 +144,41 @@ export function createPaymentMethodStorage(): PaymentMethodStorage {
         .returning();
 
       return paymentMethod || undefined;
+    },
+
+    async upsertProviderMethod(input): Promise<LedgerPaymentMethod> {
+      const client = getClient();
+      const [method] = await client
+        .insert(ledgerPaymentMethods)
+        .values({
+          entityType: input.entityType,
+          entityId: input.entityId,
+          gatewayConfigId: input.gatewayConfigId,
+          paymentMethod: input.providerMethodRef,
+          providerMethodRef: input.providerMethodRef,
+          consent: input.consent ?? null,
+          data: input.data ?? {},
+          isActive: true,
+          isDefault: false,
+        })
+        .onConflictDoUpdate({
+          target: [ledgerPaymentMethods.gatewayConfigId, ledgerPaymentMethods.providerMethodRef],
+          setWhere: and(
+            eq(ledgerPaymentMethods.entityType, input.entityType),
+            eq(ledgerPaymentMethods.entityId, input.entityId),
+          ),
+          set: {
+            isActive: true,
+            ...(input.consent !== undefined ? { consent: input.consent } : {}),
+            ...(input.data !== undefined ? { data: input.data } : {}),
+          },
+        })
+        .returning();
+      if (!method) throw new Error("Provider payment method could not be stored");
+      if (method.entityType !== input.entityType || method.entityId !== input.entityId) {
+        throw new Error("Provider payment method belongs to a different entity");
+      }
+      return method;
     }
   };
 }

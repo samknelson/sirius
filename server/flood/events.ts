@@ -322,6 +322,19 @@ export const edlsScheduleAnswerFloodEvent: FloodEventDefinition = {
   },
 };
 
+/** Checkout session creation is deliberately bounded per payer and address. */
+export const CHECKOUT_FLOOD_EVENT = "ledger-checkout";
+export const checkoutFloodEvent: FloodEventDefinition = {
+  name: CHECKOUT_FLOOD_EVENT,
+  threshold: 5,
+  windowSeconds: 600,
+  getIdentifier: (context: FloodContext): string => {
+    if (!context.userId || !context.eaId) throw new Error("userId and eaId are required for ledger checkout");
+    return `${context.userId}|${context.eaId}`;
+  },
+  resolveIdentifierName: async (identifier) => identifier.split("|")[0] || null,
+};
+
 export function registerFloodEvents(): void {
   registerFloodEvent(quicksearchFloodEvent);
   registerFloodEvent(postalPdfPreviewFloodEvent);
@@ -331,6 +344,7 @@ export function registerFloodEvents(): void {
   registerFloodEvent(wmbImmediateScanFloodEvent);
   registerFloodEvent(wmbImmediateScanWorkerFloodEvent);
   registerFloodEvent(edlsScheduleAnswerFloodEvent);
+  registerFloodEvent(checkoutFloodEvent);
   for (const event of notificationFloodEvents) {
     registerFloodEvent(event);
   }

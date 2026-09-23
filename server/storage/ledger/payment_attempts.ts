@@ -58,9 +58,15 @@ export function createPaymentAttemptStorage(): PaymentAttemptStorage {
         ...input, accountId: ea.accountId, entityType: ea.entityType, entityId: ea.entityId,
         createdAt: new Date(), updatedAt: new Date(),
       }).onConflictDoNothing({ target: ledgerPaymentAttempts.idempotencyKey }).returning();
-      if (row) return row;
+       if (row) {
+         // Internal marker lets the checkout service distinguish an insert from
+         // the conflict row returned by the idempotency unique constraint.
+         (row as LedgerPaymentAttempt & { __created?: boolean }).__created = true;
+         return row;
+       }
       const existing = await this.getByIdempotencyKey(input.idempotencyKey);
       if (!existing) throw new Error("Payment attempt was not created");
+       (existing as LedgerPaymentAttempt & { __created?: boolean }).__created = false;
       return existing;
     },
     async updateStatus(id, status, fields = {}) {
@@ -145,6 +151,10 @@ export function createPaymentAttemptStorage(): PaymentAttemptStorage {
         .where(and(
           eq(ledgerPaymentAttempts.ledgerEaId, eaId),
           sql`${ledgerPaymentAttempts.status} IN ('created','requires_action')`,
+           // Once a provider reference exists this is a chargeable intent.
+           // Do not expire it locally: reconciliation/webhooks are the source
+           // of truth and an abandoned browser must not create a second charge.
+           sql`${ledgerPaymentAttempts.providerIntentRef} IS NULL`,
           sql`${ledgerPaymentAttempts.reservationExpiresAt} IS NOT NULL`,
           sql`${ledgerPaymentAttempts.reservationExpiresAt} <= now()`,
         ));

@@ -404,6 +404,23 @@ export function registerEmployerContactRoutes(
     }
   });
 
+  // PUT /api/employer-contacts/:id/payment-grant - Staff-only payment authority.
+  app.put("/api/employer-contacts/:id/payment-grant", requireAuth, requireAccess('staff'), async (req, res) => {
+    const parsed = z.object({
+      canPay: z.boolean(),
+      canManageMethods: z.boolean(),
+    }).strict().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid payment grant", errors: parsed.error.errors });
+    try {
+      const contact = await storage.employerContacts.get(req.params.id);
+      if (!contact) return res.status(404).json({ message: "Employer contact not found" });
+      const grant = await storage.employerContacts.setPaymentGrant(req.params.id, parsed.data);
+      return res.json(grant);
+    } catch {
+      return res.status(500).json({ message: "Failed to update payment grant" });
+    }
+  });
+
   // GET /api/employer-contacts/:contactId/user - Get user linked to employer contact
   app.get("/api/employer-contacts/:contactId/user", requireAccess('employer.manage', getEmployerIdFromContactId), async (req, res) => {
     try {

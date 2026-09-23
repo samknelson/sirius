@@ -45,30 +45,21 @@ const methods = [{
 }];
 
 function responseFor(method: string, url: string, body?: unknown) {
-  if (method === "GET" && url.endsWith("/ledger/payable-accounts")) return [{
-    eaId: "ea-9",
-    accountId: "account-9",
-    accountName: "Domestic Partner",
-    currencyCode: "USD",
-    gatewayConfigId: "gw-stripe",
-    eligible: true,
+  if (method === "GET" && url.endsWith("/ledger/pay-accounts/worker/worker-42")) return [{
+    eaId: "ea-9", accountId: "account-9", accountName: "Domestic Partner",
+    currency: "USD", gatewayConfigId: "gw-stripe",
   }];
-  if (method === "GET" && url.includes("/ledger/payable?eaId=ea-9")) return {
-    eaId: "ea-9",
-    accountId: "account-9",
-    accountName: "Domestic Partner",
-    balance: "125.50",
-    availableBalance: "125.50",
-    reservedAmount: "0.00",
-    currencyCode: "USD",
-    gatewayConfigId: "gw-stripe",
-  };
   if (method === "GET" && url.endsWith("/worker/worker-42")) return methods;
   if (method === "GET" && url.endsWith("/worker/worker-42/gateways")) return [{ id: "gw-stripe", pluginId: "stripe", name: "Stripe" }];
+  if (method === "GET" && url.endsWith("/checkout/worker/worker-42/ea-9")) return {
+    eaId: "ea-9", account: { id: "account-9", name: "Domestic Partner", currency: "USD" },
+    balance: "125.50", available: "125.50", invoices: [], paymentTypes: ["card"],
+    authorization: { selected: { version: "v1", text: "Payment authorization" } },
+  };
   if (method === "POST" && url.endsWith("/worker/worker-42/setup")) return { clientSecret: "seti_secret", componentId: "stripe:add", publicConfig: { publishableKey: "pk_test" } };
   if (method === "POST" && url.endsWith("/worker/worker-42")) return { id: "pm-new" };
-  if (method === "POST" && url.includes("payment-intent")) return { id: "attempt-1", status: "succeeded", clientSecret: null, publicConfig: {} };
-  if (method === "GET" && url.endsWith("/payment-attempts/attempt-1")) return { id: "attempt-1", status: "succeeded", ledgerPaymentId: "payment-1" };
+  if (method === "POST" && url.includes("/checkout/worker/worker-42/ea-9/sessions")) return { id: "attempt-1", status: "succeeded", clientSecret: null, publicConfig: {} };
+  if (method === "GET" && url.endsWith("/checkout/sessions/attempt-1")) return { id: "attempt-1", status: "succeeded", ledgerPaymentId: "payment-1" };
   throw new Error(`Unexpected request ${method} ${url} ${JSON.stringify(body)}`);
 }
 
@@ -156,9 +147,9 @@ describe("worker ledger checkout", () => {
   it("keeps USD payable when another account has nonfinancial ledger units", async () => {
     const reason = "Online payments do not support POINTS";
     apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
-      if (method === "GET" && url.endsWith("/ledger/payable-accounts")) return Promise.resolve([
-        { eaId: "ea-9", accountId: "account-9", accountName: "USD account", currencyCode: "USD", gatewayConfigId: "gw-stripe", eligible: true },
-        { eaId: "ea-points", accountId: "account-points", accountName: "Points account", currencyCode: "POINTS", gatewayConfigId: null, eligible: false, error: reason },
+      if (method === "GET" && url.endsWith("/ledger/pay-accounts/worker/worker-42")) return Promise.resolve([
+        { eaId: "ea-9", accountId: "account-9", accountName: "USD account", currency: "USD", gatewayConfigId: "gw-stripe" },
+        { eaId: "ea-points", accountId: "account-points", accountName: "Points account", currency: "POINTS", gatewayConfigId: null, eligible: false, error: reason },
       ]);
       return Promise.resolve(responseFor(method, url, body));
     });
@@ -167,6 +158,7 @@ describe("worker ledger checkout", () => {
     await waitFor(() => expect(container?.textContent).toContain("$125.50"));
     await inputAmount("5.00");
     await act(async () => { testId<HTMLButtonElement>("button-select-worker-payment-method-pm-card").click(); });
+    await act(async () => { testId<HTMLInputElement>("checkbox-worker-payment-consent").click(); });
     expect(testId<HTMLButtonElement>("button-worker-start-payment").disabled).toBe(false);
     await choose(testId("select-worker-payment-account"), `Points account — ${reason}`);
     await waitFor(() => expect(container?.textContent).toContain(reason));
@@ -177,34 +169,36 @@ describe("worker ledger checkout", () => {
 
   it("requires an explicit choice when multiple accounts are available", async () => {
     apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
-      if (method === "GET" && url.endsWith("/ledger/payable-accounts")) return Promise.resolve([
-        { eaId: "ea-9", accountId: "account-9", accountName: "First account", currencyCode: "USD", gatewayConfigId: "gw-stripe", eligible: true },
-        { eaId: "ea-10", accountId: "account-10", accountName: "Second account", currencyCode: "USD", gatewayConfigId: "gw-stripe", eligible: true },
+      if (method === "GET" && url.endsWith("/ledger/pay-accounts/worker/worker-42")) return Promise.resolve([
+        { eaId: "ea-9", accountId: "account-9", accountName: "First account", currency: "USD", gatewayConfigId: "gw-stripe" },
+        { eaId: "ea-10", accountId: "account-10", accountName: "Second account", currency: "USD", gatewayConfigId: "gw-stripe" },
       ]);
-      if (method === "GET" && url.includes("eaId=ea-10")) return Promise.resolve({
-        eaId: "ea-10", accountId: "account-10", accountName: "Second account", balance: "10.00",
-        availableBalance: "10.00", reservedAmount: "0.00", currencyCode: "USD", gatewayConfigId: "gw-stripe",
+      if (method === "GET" && url.endsWith("/checkout/worker/worker-42/ea-10")) return Promise.resolve({
+        eaId: "ea-10", account: { id: "account-10", name: "Second account", currency: "USD" },
+        balance: "10.00", available: "10.00", invoices: [], paymentTypes: ["card"],
+        authorization: { selected: { version: "v1", text: "Payment authorization" } },
       });
       return Promise.resolve(responseFor(method, url, body));
     });
     await render();
-    expect(apiRequest.mock.calls.some((call) => String(call[1]).includes("/ledger/payable?"))).toBe(false);
+      expect(apiRequest.mock.calls.some((call) => String(call[1]).includes("/ledger/checkout/worker/"))).toBe(false);
     expect(container?.textContent).toContain("No account is chosen automatically");
     await choose(testId("select-worker-payment-account"), "Second account");
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("GET", "/api/workers/worker-42/ledger/payable?eaId=ea-10"));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("GET", "/api/ledger/checkout/worker/worker-42/ea-10"));
     await waitFor(() => expect(container?.textContent).toContain("$10.00"));
   });
 
   it("allows changing away from a URL-preselected account", async () => {
     window.history.replaceState({}, "", "/workers/worker-42/ledger/pay?eaId=ea-9");
     apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
-      if (method === "GET" && url.endsWith("/ledger/payable-accounts")) return Promise.resolve([
-        { eaId: "ea-9", accountId: "account-9", accountName: "First account", currencyCode: "USD", gatewayConfigId: "gw-stripe", eligible: true },
-        { eaId: "ea-10", accountId: "account-10", accountName: "Second account", currencyCode: "USD", gatewayConfigId: "gw-stripe", eligible: true },
+      if (method === "GET" && url.endsWith("/ledger/pay-accounts/worker/worker-42")) return Promise.resolve([
+        { eaId: "ea-9", accountId: "account-9", accountName: "First account", currency: "USD", gatewayConfigId: "gw-stripe" },
+        { eaId: "ea-10", accountId: "account-10", accountName: "Second account", currency: "USD", gatewayConfigId: "gw-stripe" },
       ]);
-      if (method === "GET" && url.includes("eaId=ea-10")) return Promise.resolve({
-        eaId: "ea-10", accountId: "account-10", accountName: "Second account", balance: "10.00",
-        availableBalance: "10.00", reservedAmount: "0.00", currencyCode: "USD", gatewayConfigId: "gw-stripe",
+      if (method === "GET" && url.endsWith("/checkout/worker/worker-42/ea-10")) return Promise.resolve({
+        eaId: "ea-10", account: { id: "account-10", name: "Second account", currency: "USD" },
+        balance: "10.00", available: "10.00", invoices: [], paymentTypes: ["card"],
+        authorization: { selected: { version: "v1", text: "Payment authorization" } },
       });
       return Promise.resolve(responseFor(method, url, body));
     });
@@ -220,20 +214,22 @@ describe("worker ledger checkout", () => {
     let releaseIntent!: (value: unknown) => void;
     const pendingIntent = new Promise((resolve) => { releaseIntent = resolve; });
     apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
-      if (method === "GET" && url.endsWith("/ledger/payable-accounts")) return Promise.resolve([
-        { eaId: "ea-9", accountId: "account-9", accountName: "First account", currencyCode: "USD", gatewayConfigId: "gw-stripe", eligible: true },
-        { eaId: "ea-10", accountId: "account-10", accountName: "Second account", currencyCode: "USD", gatewayConfigId: "gw-stripe", eligible: true },
+      if (method === "GET" && url.endsWith("/ledger/pay-accounts/worker/worker-42")) return Promise.resolve([
+        { eaId: "ea-9", accountId: "account-9", accountName: "First account", currency: "USD", gatewayConfigId: "gw-stripe" },
+        { eaId: "ea-10", accountId: "account-10", accountName: "Second account", currency: "USD", gatewayConfigId: "gw-stripe" },
       ]);
-      if (method === "GET" && url.includes("eaId=ea-10")) return Promise.resolve({
-        eaId: "ea-10", accountId: "account-10", accountName: "Second account", balance: "10.00",
-        availableBalance: "10.00", reservedAmount: "0.00", currencyCode: "USD", gatewayConfigId: "gw-stripe",
+      if (method === "GET" && url.endsWith("/checkout/worker/worker-42/ea-10")) return Promise.resolve({
+        eaId: "ea-10", account: { id: "account-10", name: "Second account", currency: "USD" },
+        balance: "10.00", available: "10.00", invoices: [], paymentTypes: ["card"],
+        authorization: { selected: { version: "v1", text: "Payment authorization" } },
       });
-      if (method === "POST" && url.includes("payment-intent")) return pendingIntent;
+       if (method === "POST" && url.includes("/checkout/worker/worker-42/ea-9/sessions")) return pendingIntent;
       return Promise.resolve(responseFor(method, url, body));
     });
     await render();
     await inputAmount("5.00");
     await act(async () => { testId<HTMLButtonElement>("button-select-worker-payment-method-pm-card").click(); });
+    await act(async () => { testId<HTMLInputElement>("checkbox-worker-payment-consent").click(); });
     await act(async () => { testId<HTMLButtonElement>("button-worker-start-payment").click(); });
     await choose(testId("select-worker-payment-account"), "Second account");
     await act(async () => {
@@ -248,13 +244,13 @@ describe("worker ledger checkout", () => {
     window.history.replaceState({}, "", "/workers/worker-42/ledger/pay?eaId=missing-ea");
     await render();
     expect(container?.textContent).toContain("requested payment account was not found");
-    expect(apiRequest.mock.calls.some((call) => String(call[1]).includes("/ledger/payable?"))).toBe(false);
+    expect(apiRequest.mock.calls.some((call) => String(call[1]).includes("/api/ledger/checkout/worker/"))).toBe(false);
   });
 
   it("does not turn a missing balance into a false $0 balance", async () => {
     apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
       const value = responseFor(method, url, body);
-      if (url.includes("/ledger/payable?")) {
+      if (url.includes("/api/ledger/checkout/worker/")) {
         const { balance: _balance, ...withoutBalance } = value as Record<string, unknown>;
         return Promise.resolve(withoutBalance);
       }
@@ -268,9 +264,9 @@ describe("worker ledger checkout", () => {
   it("rejects malformed monetary and currency data instead of enabling payment", async () => {
     apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
       const value = responseFor(method, url, body);
-      return Promise.resolve(url.includes("/ledger/payable?") ? {
+      return Promise.resolve(url.includes("/api/ledger/checkout/worker/") ? {
         ...(value as object),
-        currencyCode: "not-a-currency",
+        account: { ...(value as any).account, currency: "not-a-currency" },
       } : value);
     });
     await render();
@@ -281,10 +277,10 @@ describe("worker ledger checkout", () => {
   it("describes a credit balance separately from a zero balance", async () => {
     apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
       const value = responseFor(method, url, body);
-      return Promise.resolve(url.includes("/ledger/payable?") ? {
+      return Promise.resolve(url.includes("/api/ledger/checkout/worker/") ? {
         ...(value as object),
-        balance: "-15.00",
-        availableBalance: "0.00",
+        account: { ...(value as any).account, currency: "USD" },
+        balance: "-15.00", available: "0.00",
       } : value);
     });
     await render();
@@ -295,10 +291,9 @@ describe("worker ledger checkout", () => {
   it("keeps payment methods available when the account balance is zero", async () => {
     apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
       const value = responseFor(method, url, body);
-      return Promise.resolve(url.includes("/ledger/payable?") ? {
+      return Promise.resolve(url.includes("/api/ledger/checkout/worker/") ? {
         ...(value as object),
-        balance: "0.00",
-        availableBalance: "0.00",
+        balance: "0.00", available: "0.00",
       } : value);
     });
     await render();
@@ -312,14 +307,15 @@ describe("worker ledger checkout", () => {
     gatewayRegistry.enabled = true;
     apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
       const value = responseFor(method, url, body);
-      return Promise.resolve(url.includes("/ledger/payable?") ? {
+      return Promise.resolve(url.includes("/api/ledger/checkout/worker/") ? {
         ...(value as object),
-        balance: "0.00",
-        availableBalance: "0.00",
+        balance: "0.00", available: "0.00",
       } : value);
     });
     await render();
     await act(async () => { testId<HTMLButtonElement>("button-worker-add-payment-method").click(); });
+    await waitFor(() => expect(document.querySelector('[data-testid="checkbox-worker-method-consent"]')).toBeTruthy());
+    await act(async () => { (document.querySelector('[data-testid="checkbox-worker-method-consent"]') as HTMLInputElement).click(); });
     const gatewayTrigger = document.querySelector('[data-testid="select-worker-payment-gateway"]');
     expect(gatewayTrigger).toBeTruthy();
     await choose(gatewayTrigger!, "Stripe");
@@ -330,7 +326,7 @@ describe("worker ledger checkout", () => {
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(
       "POST",
       "/api/ledger/payment-methods/worker/worker-42",
-      { gatewayConfigId: "gw-stripe", methodToken: "pm-new-token" },
+      { gatewayConfigId: "gw-stripe", methodToken: "pm-new-token", consent: { selected: { version: "v1", text: "Payment authorization" }, accepted: true } },
     ));
   });
 
@@ -366,6 +362,7 @@ describe("worker ledger checkout", () => {
     expect(button.disabled).toBe(true);
     await act(async () => { testId<HTMLButtonElement>("button-select-worker-payment-method-pm-card").click(); });
     await inputAmount("125.50");
+    await act(async () => { testId<HTMLInputElement>("checkbox-worker-payment-consent").click(); });
     await waitFor(() => expect(button.disabled).toBe(false));
   });
 
@@ -373,26 +370,52 @@ describe("worker ledger checkout", () => {
     await render();
     await inputAmount("25.00");
     await act(async () => { testId<HTMLButtonElement>("button-select-worker-payment-method-pm-card").click(); });
+    await act(async () => { testId<HTMLInputElement>("checkbox-worker-payment-consent").click(); });
     await act(async () => { testId<HTMLButtonElement>("button-worker-start-payment").click(); });
 
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("POST", "/api/workers/worker-42/ledger/payment-intent", {
-      eaId: "ea-9",
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("POST", "/api/ledger/checkout/worker/worker-42/ea-9/sessions", {
       amount: "25.00",
       paymentMethodId: "pm-card",
+      saveMethod: false,
+        consent: { selected: { version: "v1", text: "Payment authorization" }, accepted: true },
       idempotencyKey: "idem-123",
     }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("GET", "/api/ledger/payment-attempts/attempt-1"));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("GET", "/api/ledger/checkout/sessions/attempt-1"));
     await waitFor(() => expect(container?.textContent).toContain("Payment successful"));
+  });
+
+  it("can pay with a new method without a saved method", async () => {
+    apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
+      if (method === "GET" && url.endsWith("/ledger/payment-methods/worker/worker-42")) return Promise.resolve([]);
+      return Promise.resolve(responseFor(method, url, body));
+    });
+    await render();
+    await inputAmount("25.00");
+    await act(async () => { testId<HTMLInputElement>("checkbox-worker-payment-consent").click(); });
+    await act(async () => { testId<HTMLButtonElement>("button-worker-start-payment").click(); });
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(
+      "POST", "/api/ledger/checkout/worker/worker-42/ea-9/sessions",
+      expect.objectContaining({
+        amount: "25.00",
+        saveMethod: false,
+        consent: { selected: { version: "v1", text: "Payment authorization" }, accepted: true },
+        idempotencyKey: "idem-123",
+      }),
+    ));
+    expect(apiRequest.mock.calls.some(([method, url]) =>
+      method === "POST" && url === "/api/ledger/payment-methods/worker/worker-42",
+    )).toBe(false);
   });
 
   it("shows ACH processing rather than card success when the API returns processing", async () => {
     apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
       const value = responseFor(method, url, body);
-      return Promise.resolve(url.includes("payment-intent") ? { ...value, status: "processing" } : value);
+       return Promise.resolve(url.includes("/checkout/worker/worker-42/ea-9/sessions") ? { ...value, status: "processing" } : value);
     });
     await render();
     await inputAmount("25.00");
     await act(async () => { testId<HTMLButtonElement>("button-select-worker-payment-method-pm-card").click(); });
+    await act(async () => { testId<HTMLInputElement>("checkbox-worker-payment-consent").click(); });
     await act(async () => { testId<HTMLButtonElement>("button-worker-start-payment").click(); });
     await waitFor(() => expect(container?.textContent).toContain("Payment processing"));
     expect(container?.textContent).toContain("payment is being processed");

@@ -369,13 +369,9 @@ describe("worker payment submission contract", () => {
     );
   });
 
-  it.each([
-    ["requires_action", "requires_action", 201],
-    ["processing", "processing", 201],
-    ["succeeded", "processing", 201],
-  ])(
-    "preserves the %s provider lifecycle as worker-visible %s",
-    async (providerStatus, visibleStatus, expectedHttp) => {
+  it.each(["requires_action", "processing", "succeeded"])(
+    "refuses retired legacy charge creation (%s)",
+    async (providerStatus) => {
       mocks.resolveGateway.mockResolvedValue(gateway(providerStatus));
       const response = await fetch(
         `${baseUrl}/api/workers/worker-1/ledger/payment-intent`,
@@ -390,23 +386,12 @@ describe("worker payment submission contract", () => {
           }),
         },
       );
-      expect(response.status).toBe(expectedHttp);
-      expect((await response.json()).status).toBe(visibleStatus);
-      expect(mocks.storage.ledger.paymentAttempts.lockEa).toHaveBeenCalledWith(
-        "ea-dp",
-      );
-      expect(mocks.storage.ledger.paymentAttempts.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          accountId: "account-dp",
-          entityType: "worker",
-          entityId: "worker-1",
-          createdByUserId: "payer-user-1",
-        }),
-      );
+       expect(response.status).toBe(410);
+       expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();
     },
   );
 
-  it("marks a reserved attempt failed when the provider rejects it", async () => {
+  it("refuses the retired legacy provider rejection path", async () => {
     const resolved = gateway();
     resolved.plugin.createPaymentIntent.mockRejectedValue(new Error("declined"));
     mocks.resolveGateway.mockResolvedValue(resolved);
@@ -423,15 +408,11 @@ describe("worker payment submission contract", () => {
         }),
       },
     );
-    expect(response.status).toBe(402);
-    expect(mocks.storage.ledger.paymentAttempts.updateStatus).toHaveBeenCalledWith(
-      "attempt-1",
-      "failed",
-      { failureMessage: "declined" },
-    );
+     expect(response.status).toBe(410);
+     expect(mocks.storage.ledger.paymentAttempts.updateStatus).not.toHaveBeenCalled();
   });
 
-  it("uses the selected EA's locked available balance authoritatively", async () => {
+  it("refuses legacy balance charging", async () => {
     mocks.storage.ledger.paymentAttempts.getReservedAmount.mockResolvedValue(70);
     const response = await fetch(
       `${baseUrl}/api/workers/worker-1/ledger/payment-intent`,
@@ -446,14 +427,11 @@ describe("worker payment submission contract", () => {
         }),
       },
     );
-    expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({
-      message: "Payment amount exceeds the available balance",
-    });
+     expect(response.status).toBe(410);
     expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();
   });
 
-  it("uses the shared currency eligibility before creating an attempt", async () => {
+  it("refuses legacy currency charging", async () => {
     mocks.storage.ledger.accounts.get.mockResolvedValue(
       account("account-dp", { currencyCode: "SHARES" }),
     );
@@ -470,10 +448,7 @@ describe("worker payment submission contract", () => {
         }),
       },
     );
-    expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({
-      message: "Online worker payments do not support SHARES accounts",
-    });
+     expect(response.status).toBe(410);
     expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();
   });
 });

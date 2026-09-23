@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from "express";
+import { z } from "zod";
 import { storage } from "../../storage";
 import {
   checkAccessInline,
@@ -10,6 +11,11 @@ import {
   GatewayResolutionError,
   type ResolvedGateway,
 } from "./payment-gateway-context";
+import { assertOnlinePaymentAuthority } from "./online-payment-authority";
+import {
+  ONLINE_PAYMENT_AUTHORIZATION_VARIABLE,
+  onlinePaymentAuthorizationTextsSchema,
+} from "@shared/ledger/online-payments";
 
 /**
  * Provider-generic payment-method management.
@@ -86,6 +92,57 @@ class HttpError extends Error {
   }
 }
 
+const paymentMethodConsentSchema = z.object({
+  version: z.string().trim().min(1),
+  text: z.string().trim().min(1),
+  accepted: z.literal(true),
+}).strict();
+
+const setupBodySchema = z.object({
+  gatewayConfigId: z.string().trim().min(1),
+  consent: paymentMethodConsentSchema,
+}).strict();
+
+const attachBodySchema = setupBodySchema.extend({
+  methodToken: z.string().trim().min(1),
+}).strict();
+const patchBodySchema = z.object({ isActive: z.boolean() }).strict();
+const emptyMutationBodySchema = z.object({}).strict();
+
+/**
+ * Validate the consent against the current configured copy. The complete
+ * version/text is snapshotted on the method, while the public response strips
+ * that evidence in publicPaymentMethod().
+ */
+async function currentMethodConsent(
+  entityType: string,
+  consent: z.infer<typeof paymentMethodConsentSchema>,
+) {
+  const variable = await storage.variables.getByName(
+    ONLINE_PAYMENT_AUTHORIZATION_VARIABLE,
+  );
+  const configured = onlinePaymentAuthorizationTextsSchema.safeParse(variable?.value);
+  if (!configured.success) {
+    throw new HttpError(503, "Online payment authorization is not configured");
+  }
+  const selected = configured.data[entityType === "worker" ? "consumer" : "business"];
+  if (consent.version !== selected.version || consent.text !== selected.text) {
+    throw new HttpError(400, "Current payment authorization must be accepted");
+  }
+  return {
+    ...consent,
+    acceptedAt: new Date().toISOString(),
+    authorizationVersion: selected.version,
+    authorizationText: selected.text,
+  };
+}
+
+function parseMutationBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.infer<T> {
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) throw new HttpError(400, "Invalid payment method request");
+  return parsed.data;
+}
+
 /** Resolve the entity config or 400. */
 function entityConfigOrThrow(entityType: string): EntityConfig {
   const cfg = ENTITY_CONFIG[entityType];
@@ -106,6 +163,27 @@ async function assertEntityAccess(
   if (!granted) {
     throw new HttpError(403, reason || "Access denied");
   }
+}
+
+/** Enforce the stricter authority used only by saved-method mutations. */
+async function assertMethodMutationAuthority(
+  req: Request,
+  entityType: string,
+  entityId: string,
+): Promise<void> {
+  entityConfigOrThrow(entityType);
+  await assertOnlinePaymentAuthority(
+    req,
+    entityType as "worker" | "employer",
+    entityId,
+    "methods",
+  );
+}
+
+async function assertMethodReadAccess(req: Request, entityType: string, entityId: string): Promise<void> {
+  entityConfigOrThrow(entityType);
+  const result = await checkAccessInline(req, `${entityType}.ledger`, entityId);
+  if (!result.granted) await assertMethodMutationAuthority(req, entityType, entityId);
 }
 
 /** Non-throwing check: is the resolved plugin's required component enabled? */
@@ -146,7 +224,7 @@ async function resolveMethodGateway(gatewayConfigId: string): Promise<ResolvedGa
  * via the plugin and recording the mapping on first use. Returns the provider
  * customer reference.
  */
-async function ensureCustomer(
+export async function ensureCustomer(
   entityType: string,
   entityId: string,
   resolved: ResolvedGateway,
@@ -237,12 +315,25 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
   if (requireAuth) app.use("/api/ledger/payment-methods", requireAuth);
   const base = "/api/ledger/payment-methods/:entityType/:entityId";
 
+  app.get(`${base}/authorization`, async (req: Request, res: Response) => {
+    try {
+      const { entityType, entityId } = req.params;
+      await assertMethodMutationAuthority(req, entityType, entityId);
+      const variable = await storage.variables.getByName(ONLINE_PAYMENT_AUTHORIZATION_VARIABLE);
+      const texts = onlinePaymentAuthorizationTextsSchema.safeParse(variable?.value);
+      if (!texts.success) throw new HttpError(503, "Online payment authorization is not configured");
+      res.json({ authorization: texts.data[entityType === "worker" ? "consumer" : "business"] });
+    } catch (cause) {
+      sendError(res, cause, "Failed to load payment authorization");
+    }
+  });
+
   // List the gateway configs available for the picker (enabled configs whose
   // plugin component is enabled).
   app.get(`${base}/gateways`, async (req: Request, res: Response) => {
     try {
       const { entityType, entityId } = req.params;
-      await assertEntityAccess(req, entityType, entityId);
+      await assertMethodReadAccess(req, entityType, entityId);
 
       const configs = await storage.pluginConfigs.getByKind("payment-gateway");
       const checker = getComponentChecker();
@@ -274,8 +365,10 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
       if (!gatewayConfigId) {
         throw new HttpError(400, "gatewayConfigId is required");
       }
-      await assertEntityAccess(req, entityType, entityId);
-
+      // ensureCustomer may create and repair provider customer mappings, so
+      // this endpoint is not a side-effect-free read. Require the same
+      // methods authority as every saved-method mutation before invoking it.
+      await assertMethodMutationAuthority(req, entityType, entityId);
       // Always confirm the entity still exists locally, even when a customer
       // mapping is already present — otherwise a stale mapping would expose
       // provider customer details for a deleted entity (parity with the old
@@ -311,7 +404,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
   app.get(base, async (req: Request, res: Response) => {
     try {
       const { entityType, entityId } = req.params;
-      await assertEntityAccess(req, entityType, entityId);
+      await assertMethodReadAccess(req, entityType, entityId);
 
       const methods = await storage.ledger.paymentMethods.getByEntity(
         entityType,
@@ -333,7 +426,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
         }
 
         if (!resolved || !(await isPluginComponentEnabled(resolved))) {
-          enriched.push({ ...pm, providerError: "Payment gateway unavailable" });
+           enriched.push({ ...publicPaymentMethod(pm), providerError: "Payment gateway unavailable" });
           continue;
         }
 
@@ -342,9 +435,9 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
             resolved.context,
             pm.paymentMethod,
           );
-          enriched.push({ ...pm, providerDetails });
+           enriched.push({ ...publicPaymentMethod(pm), providerDetails });
         } catch {
-          enriched.push({ ...pm, providerError: "Payment method not found at provider" });
+           enriched.push({ ...publicPaymentMethod(pm), providerError: "Payment method not found at provider" });
         }
       }
 
@@ -359,11 +452,12 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
   app.post(`${base}/setup`, async (req: Request, res: Response) => {
     try {
       const { entityType, entityId } = req.params;
-      const { gatewayConfigId } = req.body ?? {};
-      if (!gatewayConfigId) {
-        throw new HttpError(400, "gatewayConfigId is required");
-      }
-      await assertEntityAccess(req, entityType, entityId);
+      const body = parseMutationBody(setupBodySchema, req.body);
+      const { gatewayConfigId } = body;
+      // Starting a provider setup session can create the provider customer,
+      // so it is protected like the saved-method mutations.
+      await assertMethodMutationAuthority(req, entityType, entityId);
+      await currentMethodConsent(entityType, body.consent);
 
       const resolved = await resolveGateway(gatewayConfigId);
       await assertPluginComponent(resolved);
@@ -387,14 +481,10 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
   app.post(base, async (req: Request, res: Response) => {
     try {
       const { entityType, entityId } = req.params;
-      const { gatewayConfigId, methodToken } = req.body ?? {};
-      if (!gatewayConfigId) {
-        throw new HttpError(400, "gatewayConfigId is required");
-      }
-      if (!methodToken) {
-        throw new HttpError(400, "methodToken is required");
-      }
-      await assertEntityAccess(req, entityType, entityId);
+      const body = parseMutationBody(attachBodySchema, req.body);
+      const { gatewayConfigId, methodToken } = body;
+      await assertMethodMutationAuthority(req, entityType, entityId);
+      const consent = await currentMethodConsent(entityType, body.consent);
 
       const resolved = await resolveGateway(gatewayConfigId);
       await assertPluginComponent(resolved);
@@ -418,6 +508,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
         entityId,
         paymentMethod: methodToken,
         gatewayConfigId,
+        consent,
         isActive: true,
         isDefault: !hasMethodForGateway,
       });
@@ -432,11 +523,8 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
   app.patch(`${base}/:pmId`, async (req: Request, res: Response) => {
     try {
       const { entityType, entityId, pmId } = req.params;
-      const { isActive } = req.body ?? {};
-      if (typeof isActive !== "boolean") {
-        throw new HttpError(400, "isActive must be a boolean");
-      }
-      await assertEntityAccess(req, entityType, entityId);
+      const { isActive } = parseMutationBody(patchBodySchema, req.body ?? {});
+      await assertMethodMutationAuthority(req, entityType, entityId);
       const method = await loadOwnedMethod(pmId, entityType, entityId);
       await resolveMethodGateway(method.gatewayConfigId);
 
@@ -451,7 +539,8 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
   app.post(`${base}/:pmId/set-default`, async (req: Request, res: Response) => {
     try {
       const { entityType, entityId, pmId } = req.params;
-      await assertEntityAccess(req, entityType, entityId);
+      parseMutationBody(emptyMutationBodySchema, req.body ?? {});
+      await assertMethodMutationAuthority(req, entityType, entityId);
       const method = await loadOwnedMethod(pmId, entityType, entityId);
       await resolveMethodGateway(method.gatewayConfigId);
 
@@ -501,7 +590,8 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
   app.delete(`${base}/:pmId`, async (req: Request, res: Response) => {
     try {
       const { entityType, entityId, pmId } = req.params;
-      await assertEntityAccess(req, entityType, entityId);
+      parseMutationBody(emptyMutationBodySchema, req.body ?? {});
+      await assertMethodMutationAuthority(req, entityType, entityId);
       const method = await loadOwnedMethod(pmId, entityType, entityId);
 
       const resolved = await resolveMethodGateway(method.gatewayConfigId);

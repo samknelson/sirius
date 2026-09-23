@@ -524,6 +524,21 @@ export const trustProviders = pgTable("trust_providers", {
   data: jsonb("data"),
 });
 
+/** Per-employer-contact authorization for online payments. */
+export const employerContactPaymentGrants = pgTable("employer_contact_payment_grants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employerContactId: varchar("employer_contact_id").notNull(),
+  canPay: boolean("can_pay").notNull().default(false),
+  canManageMethods: boolean("can_manage_methods").notNull().default(false),
+}, (table) => [
+  foreignKey({
+    name: "ec_payment_grants_contact_fk",
+    columns: [table.employerContactId],
+    foreignColumns: [employerContacts.id],
+  }).onDelete("cascade"),
+  unique("employer_contact_payment_grants_contact_unique").on(table.employerContactId),
+]);
+
 export const trustProviderContacts = pgTable("trust_provider_contacts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").notNull().references(() => trustProviders.id, { onDelete: 'cascade' }),
@@ -2105,6 +2120,7 @@ export type BargainingUnit = typeof bargainingUnits.$inferSelect;
 
 export type InsertEmployerContact = z.infer<typeof insertEmployerContactSchema>;
 export type EmployerContact = typeof employerContacts.$inferSelect;
+export type EmployerContactPaymentGrant = typeof employerContactPaymentGrants.$inferSelect;
 
 export type InsertTrustProviderContact = z.infer<typeof insertTrustProviderContactSchema>;
 export type TrustProviderContact = typeof trustProviderContacts.$inferSelect;

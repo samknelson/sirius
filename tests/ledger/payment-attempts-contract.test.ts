@@ -93,4 +93,15 @@ describe("worker Stripe payment attempt backend", () => {
     expect(paymentEventMatchesAmount(attempt, { currency: "USD" })).toBe(false);
     expect(paymentEventMatchesAmount(attempt, { amountMinor: 1234.1, currency: "USD" })).toBe(false);
   });
+
+  it("only persists a saved method from a provider-verified success", () => {
+    const route = readFileSync("server/modules/ledger/payment-attempts.ts", "utf8");
+    const methods = readFileSync("server/storage/ledger/payment_methods.ts", "utf8");
+    expect(route).toContain("status === \"succeeded\" && attempt.saveMethod");
+    expect(route).toContain("event.methodRef");
+    expect(route).toContain("retrievePayment");
+    expect(route).toContain("upsertProviderMethod");
+    expect(methods).toContain("onConflictDoUpdate");
+    expect(methods).toContain("gatewayConfigId, ledgerPaymentMethods.providerMethodRef");
+  });
 });

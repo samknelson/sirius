@@ -87,6 +87,11 @@ interface SetupResponse {
   componentId: string | null;
   publicConfig: Record<string, unknown>;
 }
+interface PaymentConsent {
+  version: string;
+  text: string;
+  accepted: true;
+}
 
 function PaymentMethodsContent() {
   const { employer } = useEmployerLayout();
@@ -104,6 +109,7 @@ function PaymentMethodsContent() {
   const [publicConfig, setPublicConfig] = useState<Record<string, unknown>>({});
   const [isLoadingSetup, setIsLoadingSetup] = useState(false);
   const [confirmedMethodToken, setConfirmedMethodToken] = useState<string | null>(null);
+  const [consentAccepted, setConsentAccepted] = useState(false);
 
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [providerDetails, setProviderDetails] = useState<any>(null);
@@ -116,6 +122,11 @@ function PaymentMethodsContent() {
 
   const { data: gateways } = useQuery<GatewayOption[]>({
     queryKey: [PM_BASE, ENTITY_TYPE, entityId, "gateways"],
+    enabled: !!entityId,
+  });
+  const { data: checkoutAuthorization } = useQuery<{ authorization: PaymentConsent | null }>({
+    queryKey: [PM_BASE, ENTITY_TYPE, entityId, "authorization"],
+    queryFn: () => apiRequest("GET", `${PM_BASE}/${ENTITY_TYPE}/${entityId}/authorization`),
     enabled: !!entityId,
   });
 
@@ -174,7 +185,9 @@ function PaymentMethodsContent() {
 
   const addPaymentMethodMutation = useMutation({
     mutationFn: async ({ gatewayConfigId, methodToken }: { gatewayConfigId: string; methodToken: string }) => {
-      return apiRequest("POST", `${PM_BASE}/${ENTITY_TYPE}/${entityId}`, { gatewayConfigId, methodToken });
+      const consent = checkoutAuthorization?.authorization;
+      if (!consent || !consentAccepted) throw new Error("Current payment authorization must be accepted.");
+      return apiRequest("POST", `${PM_BASE}/${ENTITY_TYPE}/${entityId}`, { gatewayConfigId, methodToken, consent: { ...consent, accepted: true } });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: listKey });
@@ -197,6 +210,7 @@ function PaymentMethodsContent() {
     setAddComponentId(null);
     setPublicConfig({});
     setConfirmedMethodToken(null);
+    setConsentAccepted(false);
   };
 
   const handleDelete = (pm: PaymentMethod) => {
@@ -214,20 +228,19 @@ function PaymentMethodsContent() {
     setAddDialogOpen(true);
     setConfirmedMethodToken(null);
     setClientSecret(null);
-    // Auto-select the only gateway, otherwise let the user pick.
-    if (gateways && gateways.length === 1) {
-      void startSetup(gateways[0].id);
-    } else {
-      setSelectedGatewayId(null);
-    }
+    // The authorization must be explicitly accepted before setup can create
+    // a provider customer, so gateway selection remains user-driven.
+    setSelectedGatewayId(null);
   };
 
   const startSetup = async (gatewayConfigId: string) => {
     setSelectedGatewayId(gatewayConfigId);
     setIsLoadingSetup(true);
     try {
+      const consent = checkoutAuthorization?.authorization;
+      if (!consent || !consentAccepted) throw new Error("Current payment authorization must be accepted.");
       const data: SetupResponse = await apiRequest("POST", `${PM_BASE}/${ENTITY_TYPE}/${entityId}/setup`, {
-        gatewayConfigId,
+        gatewayConfigId, consent: { ...consent, accepted: true },
       });
       setClientSecret(data.clientSecret);
       setAddComponentId(data.componentId);
@@ -812,6 +825,10 @@ function PaymentMethodsContent() {
             </div>
           ) : !clientSecret ? (
             <div className="space-y-4 py-2">
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" checked={consentAccepted} onChange={(event) => setConsentAccepted(event.target.checked)} disabled={!checkoutAuthorization?.authorization} data-testid="checkbox-employer-payment-consent" />
+                <span>{checkoutAuthorization?.authorization?.text || "Loading payment authorization…"}</span>
+              </label>
               <Select value={selectedGatewayId ?? undefined} onValueChange={(v) => void startSetup(v)}>
                 <SelectTrigger data-testid="select-gateway">
                   <SelectValue placeholder="Select a payment gateway" />

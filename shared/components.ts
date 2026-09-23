@@ -152,6 +152,22 @@ export const componentRegistry: ComponentDefinition[] = [
       {
         key: "worker.ledger",
         description: "Access to worker ledger functionality for worker users"
+      },
+      {
+        key: "worker.ledger.pay",
+        description: "Pay worker ledger balances online"
+      },
+      {
+        key: "worker.ledger.methods",
+        description: "Manage worker saved payment methods"
+      },
+      {
+        key: "employer.ledger.pay",
+        description: "Pay employer ledger balances with an explicit grant"
+      },
+      {
+        key: "employer.ledger.methods",
+        description: "Manage employer saved payment methods with an explicit grant"
       }
     ]
   },

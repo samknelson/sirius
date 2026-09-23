@@ -36,6 +36,7 @@ type Intent = {
   publicConfig: Record<string, unknown>; status?: "requires_action" | "succeeded" | "processing" | "failed";
   checkoutEpoch?: number;
 };
+type Consent = { version: string; text: string; accepted: true };
 
 const BASE = "/api/ledger/payment-methods";
 
@@ -122,6 +123,7 @@ function WorkerPaymentContent() {
   const [result, setResult] = useState<"succeeded" | "processing" | "failed">();
   const [attemptId, setAttemptId] = useState<string>();
   const [paymentAmount, setPaymentAmount] = useState("");
+  const [consentAccepted, setConsentAccepted] = useState(false);
   const accountEpoch = useRef(0);
   const setupGeneration = useRef(0);
   const lastAppliedRequest = useRef<string | null | undefined>(undefined);
@@ -130,7 +132,12 @@ function WorkerPaymentContent() {
   const key = ["worker-payment", worker.id];
   const accounts = useQuery<PayableAccount[]>({
     queryKey: [...key, "payable-accounts"],
-    queryFn: async () => parseAccounts(await apiRequest("GET", `/api/workers/${worker.id}/ledger/payable-accounts`)),
+    queryFn: async () => {
+      const rows = await apiRequest("GET", `/api/ledger/pay-accounts/worker/${worker.id}`);
+      return parseAccounts(rows.map((row: Record<string, unknown>) => ({
+        ...row, currencyCode: row.currency, eligible: true,
+      })));
+    },
     staleTime: 0,
     refetchOnMount: "always",
   });
@@ -140,7 +147,14 @@ function WorkerPaymentContent() {
   const payable = useQuery<Payable>({
     queryKey: [...key, "payable", selectedEaId],
     queryFn: async () => {
-      const value = parsePayable(await apiRequest("GET", `/api/workers/${worker.id}/ledger/payable?eaId=${encodeURIComponent(selectedEaId!)}`));
+      const row = await apiRequest("GET", `/api/ledger/checkout/worker/${worker.id}/${selectedEaId}`);
+      const value = parsePayable({
+        eaId: row.eaId, accountId: row.account.id, accountName: row.account.name,
+        currencyCode: row.account.currency, balance: row.balance,
+        availableBalance: row.available,
+        reservedAmount: (Math.max(0, Math.round((Number(row.balance) - Number(row.available)) * 100)) / 100).toFixed(2),
+        gatewayConfigId: selectedAccount?.gatewayConfigId,
+      });
       if (value.eaId !== selectedEaId || value.accountId !== selectedAccount?.accountId) {
         throw new Error("Payable balance response does not match the selected account.");
       }
@@ -150,6 +164,12 @@ function WorkerPaymentContent() {
     staleTime: 0,
     refetchOnMount: "always",
   });
+  const checkout = useQuery<{ authorization: Consent | null }>({
+    queryKey: [...key, "checkout", selectedEaId],
+    queryFn: () => apiRequest("GET", `/api/ledger/checkout/worker/${worker.id}/${selectedEaId}`),
+    enabled: Boolean(selectedEaId && selectedAccount?.eligible),
+    staleTime: 0,
+  });
 
   const resetAccountState = (nextEaId?: string) => {
     accountEpoch.current += 1;
@@ -157,6 +177,7 @@ function WorkerPaymentContent() {
     setSelectedEaId(nextEaId);
     setSelected(undefined);
     setPaymentAmount("");
+    setConsentAccepted(false);
     setIntent(undefined);
     setResult(undefined);
     setAttemptId(undefined);
@@ -187,7 +208,7 @@ function WorkerPaymentContent() {
 
   const attach = useMutation({
     mutationFn: ({ methodToken, setupEpoch, setupGateway }: { methodToken: string; setupEpoch: number; setupGateway: string }) =>
-      apiRequest("POST", `${BASE}/worker/${worker.id}`, { gatewayConfigId: setupGateway, methodToken })
+      apiRequest("POST", `${BASE}/worker/${worker.id}`, { gatewayConfigId: setupGateway, methodToken, consent: checkout.data?.authorization && { ...checkout.data.authorization, accepted: true } })
         .then((data) => ({ data, setupEpoch })),
     onSuccess: ({ setupEpoch }) => {
       void queryClient.invalidateQueries({ queryKey: [...key, "methods"] });
@@ -210,7 +231,9 @@ function WorkerPaymentContent() {
     setSetupError(undefined);
     setSetupLoading(true);
     try {
-      const value = await apiRequest("POST", `${BASE}/worker/${worker.id}/setup`, { gatewayConfigId: id });
+      const consent = checkout.data?.authorization;
+      if (!consent) throw new Error("Payment authorization is not available. Please try again.");
+      const value = await apiRequest("POST", `${BASE}/worker/${worker.id}/setup`, { gatewayConfigId: id, consent: { ...consent, accepted: true } });
       if (epoch !== setupGeneration.current) return;
       if (
         !value || typeof value !== "object" ||
@@ -232,8 +255,8 @@ function WorkerPaymentContent() {
   };
 
   const beginPayment = useMutation({
-    mutationFn: ({ eaId, epoch }: { eaId: string; epoch: number }) => apiRequest("POST", `/api/workers/${worker.id}/ledger/payment-intent`, {
-      eaId, amount: paymentAmount, paymentMethodId: selected, idempotencyKey: crypto.randomUUID(),
+    mutationFn: ({ eaId, epoch }: { eaId: string; epoch: number }) => apiRequest("POST", `/api/ledger/checkout/worker/${worker.id}/${eaId}/sessions`, {
+      amount: paymentAmount, paymentMethodId: selected, saveMethod: false, consent: checkout.data?.authorization && { ...checkout.data.authorization, accepted: true }, idempotencyKey: crypto.randomUUID(),
     }).then((data: Intent) => ({ data, epoch })),
     onSuccess: ({ data, epoch }) => {
       if (epoch !== accountEpoch.current) return;
@@ -249,10 +272,13 @@ function WorkerPaymentContent() {
     },
   });
   const attemptStatus = useQuery<{ status: "requires_action" | "processing" | "succeeded" | "failed" }>({
-    queryKey: ["/api/ledger/payment-attempts/status", attemptId],
-    queryFn: () => apiRequest("GET", `/api/ledger/payment-attempts/${attemptId}`),
+    queryKey: ["/api/ledger/checkout/sessions", attemptId],
+    queryFn: () => apiRequest("GET", `/api/ledger/checkout/sessions/${attemptId}`),
     enabled: !!attemptId && result === "processing",
     refetchInterval: 5000,
+  });
+  const cancelCheckout = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/ledger/checkout/sessions/${id}/cancel`),
   });
   useEffect(() => {
     if (result !== "processing") return;
@@ -326,8 +352,8 @@ function WorkerPaymentContent() {
       <CardContent className="space-y-3">
         {methods.isLoading ? <Loader2 className="h-5 w-5 animate-spin" />
           : methods.isError ? <Alert variant="destructive"><AlertDescription>{getApiErrorMessage(methods.error, "Unable to load saved payment methods.")} <Button variant="link" className="h-auto p-0" onClick={() => methods.refetch()}>Retry</Button></AlertDescription></Alert>
-          : compatibleMethods.length === 0 ? <p className="text-sm text-muted-foreground" data-testid="text-worker-no-payment-methods">{selectedAccount?.gatewayConfigId ? "No saved methods are available for this account." : "Add a payment method to continue."}</p>
-          : <div className="space-y-2">{compatibleMethods.map((method) => {
+          : compatibleMethods.length === 0 ? <p className="text-sm text-muted-foreground" data-testid="text-worker-no-payment-methods">No saved methods are available for this account. You can still pay with a new card or bank account without saving it.</p>
+          : <div className="space-y-2"><Button type="button" variant={selected ? "outline" : "secondary"} onClick={() => setSelected(undefined)} data-testid="button-worker-new-payment-method">Pay with a new card or bank account without saving</Button>{compatibleMethods.map((method) => {
             const card = method.providerDetails?.card; const bank = method.providerDetails?.us_bank_account;
             return <div key={method.id} className={`rounded-lg border p-3 ${selected === method.id ? "border-primary bg-primary/5" : ""}`} data-testid={`worker-payment-method-${method.id}`}>
               <div className="flex items-center justify-between"><button type="button" disabled={Boolean(method.providerError)} className="flex items-center gap-3 text-left disabled:cursor-not-allowed disabled:opacity-60" aria-pressed={selected === method.id} onClick={() => setSelected(method.id)} data-testid={`button-select-worker-payment-method-${method.id}`}>
@@ -336,13 +362,14 @@ function WorkerPaymentContent() {
               {method.providerError && <p className="mt-2 text-sm text-destructive" data-testid={`text-worker-payment-method-error-${method.id}`}>{method.providerError}</p>}
             </div>;
           })}</div>}
-        {hasBalance && availableAmount > 0.005 && <><Button disabled={!selected || !validAmount || beginPayment.isPending} onClick={() => selectedEaId && beginPayment.mutate({ eaId: selectedEaId, epoch: accountEpoch.current })} data-testid="button-worker-start-payment">{beginPayment.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Review and pay</Button>{!selected && <p className="text-sm text-muted-foreground">Select a saved method, or add one above.</p>}</>}
+         {hasBalance && availableAmount > 0.005 && <><label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={consentAccepted} onChange={(e) => setConsentAccepted(e.target.checked)} disabled={!checkout.data?.authorization} data-testid="checkbox-worker-payment-consent" /><span>{checkout.data?.authorization?.text || "Loading payment authorization…"}</span></label><Button disabled={!validAmount || !consentAccepted || beginPayment.isPending} onClick={() => selectedEaId && beginPayment.mutate({ eaId: selectedEaId, epoch: accountEpoch.current })} data-testid="button-worker-start-payment">{beginPayment.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Review and pay</Button>{!selected && <p className="text-sm text-muted-foreground">Enter payment details securely on the next step. This method will not be saved.</p>}</>}
       </CardContent>
     </Card>
 
     {intent?.clientSecret && !result && <Card><CardHeader><CardTitle>Confirm payment</CardTitle><CardDescription>Complete the secure Stripe confirmation below.</CardDescription></CardHeader><CardContent><WorkerStripePaymentForm clientSecret={intent.clientSecret} publicConfig={intent.publicConfig} amount={money(enteredAmount)} onComplete={(status, message) => { if (intent.checkoutEpoch !== accountEpoch.current) return; setResult(status === "succeeded" ? "processing" : status); if (message) toast({ title: "Payment failed", description: message, variant: "destructive" }); }} /></CardContent></Card>}
-    {result && <Card><CardContent className="py-10 text-center space-y-3">{result === "succeeded" ? <Check className="mx-auto h-10 w-10 text-green-600" /> : result === "processing" ? <Loader2 className="mx-auto h-10 w-10 animate-spin text-primary" /> : <X className="mx-auto h-10 w-10 text-destructive" />}<h2 className="text-xl font-semibold">{result === "succeeded" ? "Payment successful" : result === "processing" ? "Payment processing" : "Payment failed"}</h2><p className="text-sm text-muted-foreground">{result === "processing" ? "Your payment is being processed. Your balance will update after the funds are recorded." : result === "succeeded" ? "Your payment has been recorded successfully." : "No funds were collected. Please try another payment method."}</p><Button variant="outline" onClick={() => { setResult(undefined); setIntent(undefined); setSelected(undefined); }}>Make another payment</Button></CardContent></Card>}
-    <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) { setupGeneration.current += 1; setSetup(undefined); setSetupLoading(false); setSetupError(undefined); } }}><DialogContent><DialogHeader><DialogTitle>Add payment method</DialogTitle><DialogDescription>Your sensitive payment details go directly to the payment provider.</DialogDescription></DialogHeader>
+     {result && <Card><CardContent className="py-10 text-center space-y-3">{result === "succeeded" ? <Check className="mx-auto h-10 w-10 text-green-600" /> : result === "processing" ? <Loader2 className="mx-auto h-10 w-10 animate-spin text-primary" /> : <X className="mx-auto h-10 w-10 text-destructive" />}<h2 className="text-xl font-semibold">{result === "succeeded" ? "Payment successful" : result === "processing" ? "Payment processing" : "Payment failed"}</h2><p className="text-sm text-muted-foreground">{result === "processing" ? "Your payment is being processed. Your balance will update after the funds are recorded." : result === "succeeded" ? "Your payment has been recorded successfully." : "No funds were collected. Please try another payment method."}</p><Button variant="outline" onClick={() => { if (attemptId && result !== "succeeded") void cancelCheckout.mutateAsync(attemptId); setResult(undefined); setIntent(undefined); setAttemptId(undefined); setSelected(undefined); }}>Make another payment</Button></CardContent></Card>}
+     <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) { setupGeneration.current += 1; setSetup(undefined); setSetupLoading(false); setSetupError(undefined); } }}><DialogContent><DialogHeader><DialogTitle>Add payment method</DialogTitle><DialogDescription>Your sensitive payment details go directly to the payment provider.</DialogDescription></DialogHeader>
+       <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={consentAccepted} onChange={(e) => setConsentAccepted(e.target.checked)} disabled={!checkout.data?.authorization} data-testid="checkbox-worker-method-consent" /><span>{checkout.data?.authorization?.text || "Loading payment authorization…"}</span></label>
       {gateways.isLoading ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading payment providers…</div>
         : gateways.isError ? <Alert variant="destructive"><AlertDescription>{getApiErrorMessage(gateways.error, "Unable to load payment providers.")} <Button variant="link" className="h-auto p-0" onClick={() => gateways.refetch()}>Retry</Button></AlertDescription></Alert>
         : compatibleGateways.length === 0 ? <Alert variant="destructive"><AlertDescription>No payment provider is configured for this account. Contact an administrator to configure online payments.</AlertDescription></Alert>
