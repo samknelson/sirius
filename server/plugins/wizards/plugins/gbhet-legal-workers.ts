@@ -109,6 +109,8 @@ export function buildGbhetValidateStep(feed: FeedWizard): WizardStepHandler {
     component: "GbhetValidate",
     getState: (wizard) => {
       const data = (wizard.data as any) || {};
+      if (data.progress?.validate?.status === "in_progress") return "in_progress";
+      if (data.progress?.validate?.status === "failed") return "failed";
       const vr = data.validationResults;
       if (!vr) return wizard.currentStep === "validate" ? "in_progress" : "pending";
       const clean =
@@ -118,13 +120,19 @@ export function buildGbhetValidateStep(feed: FeedWizard): WizardStepHandler {
       return wizard.currentStep === "validate" ? "in_progress" : "pending";
     },
     run: async (ctx: WizardStepContext) => {
+      // At most ~50 writes even for a very large upload. Each write is
+      // conditional on the active run and cannot replace terminal results.
+      let lastPercent = -1;
       await feed.validateFeedData(ctx.wizardId, 100, (p) => {
         const pct =
           p.total > 0
             ? Math.min(99, Math.round((p.processed / p.total) * 100))
             : 0;
-        void ctx.reportProgress(pct);
-      });
+        if (pct >= lastPercent + 2) {
+          lastPercent = pct;
+          void ctx.reportProgress(pct);
+        }
+      }, ctx.runId);
       // validationResults (incl. unmappedStatuses / ssnWarnings) persisted by
       // the base method; nothing to merge here.
     },

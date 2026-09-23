@@ -478,13 +478,14 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   async validateFeedData(
     wizardId: string,
     batchSize: number = 100,
-    onProgress?: (progress: { processed: number; total: number; validRows: number; invalidRows: number }) => void
+    onProgress?: (progress: { processed: number; total: number; validRows: number; invalidRows: number }) => void,
+    runId?: string,
   ): Promise<ValidationResults> {
     const wizard = await storage.wizards.getById(wizardId);
     const ctx: RunContext = freshRunContext(wizard?.entityId || '');
 
     return runContextStorage.run(ctx, async () => {
-      const results = await super.validateFeedData(wizardId, batchSize, onProgress);
+      const results = await super.validateFeedData(wizardId, batchSize, onProgress, runId);
 
       let needsResave = false;
 
@@ -517,13 +518,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
       }
 
       if (needsResave) {
-        const wizardObj = await storage.wizards.getById(wizardId);
-        if (wizardObj) {
-          const wizardData = wizardObj.data as any;
-          await storage.wizards.update(wizardId, {
-            data: { ...wizardData, validationResults: results }
-          });
-        }
+        await storage.wizards.mergeData(wizardId, { validationResults: results }, runId ? 'validate' : undefined, runId);
       }
 
       return results;
@@ -656,16 +651,22 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
       }
     }
     
+    this.classifyUnmappedRow(rowIndex, errors);
+    return errors;
+  }
+
+  /** Subclasses may adjust errors after parent validation; classify the final row again. */
+  protected classifyUnmappedRow(rowIndex: number, errors: ValidationError[]): void {
     const ctx = runContextStorage.getStore();
-    if (ctx && errors.length > 0) {
+    if (ctx) {
       const hasUnmapped = errors.some(e => e.message === 'unmapped_employment_status');
       const hasOtherErrors = errors.some(e => e.message !== 'unmapped_employment_status');
       if (hasUnmapped && !hasOtherErrors) {
         ctx.unmappedOnlyRows.add(rowIndex);
+      } else {
+        ctx.unmappedOnlyRows.delete(rowIndex);
       }
     }
-
-    return errors;
   }
 
   /**

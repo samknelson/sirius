@@ -385,13 +385,16 @@ export abstract class FeedWizard extends BaseWizard {
   async validateFeedData(
     wizardId: string,
     batchSize: number = 100,
-    onProgress?: (progress: { processed: number; total: number; validRows: number; invalidRows: number }) => void
+    onProgress?: (progress: { processed: number; total: number; validRows: number; invalidRows: number }) => void,
+    runId?: string,
   ): Promise<ValidationResults> {
     // Single shared download/parse/map path (cached by file id) — this used
     // to duplicate the parsing logic inline.
     const tValidate = Date.now();
     const loaded = await this.loadMappedRows(wizardId);
-    const { wizardData, mappedRows } = loaded;
+    const { mappedRows } = loaded;
+    feedProfile('validateFeedData:load-parse-map', tValidate, { rows: mappedRows.length });
+    const tRows = Date.now();
     const mode = loaded.mode as 'create' | 'update';
 
     const totalRows = mappedRows.length;
@@ -454,15 +457,11 @@ export abstract class FeedWizard extends BaseWizard {
       errorSummary,
       completedAt: new Date()
     };
-    feedProfile('validateFeedData', tValidate, { rows: totalRows });
+    feedProfile('validateFeedData:rows', tRows, { rows: totalRows });
 
     // Save validation results to wizard data
-    await storage.wizards.update(wizardId, {
-      data: {
-        ...wizardData,
-        validationResults: results
-      }
-    });
+    await storage.wizards.mergeData(wizardId, { validationResults: results }, runId ? 'validate' : undefined, runId);
+    feedProfile('validateFeedData:total-persisted', tValidate, { rows: totalRows });
 
     return results;
   }

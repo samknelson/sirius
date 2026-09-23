@@ -15,6 +15,7 @@ import type {
   WizardStepResult,
 } from "./types";
 import type { Wizard } from "@shared/schema";
+import { randomUUID } from "node:crypto";
 
 type AuthMiddleware = (
   req: Request,
@@ -123,49 +124,20 @@ function buildStepContext(
   input: Record<string, unknown>,
   req: Request,
   file?: WizardStepContext["file"],
+  runId?: string,
 ): WizardStepContext {
   return {
     wizardId: wizard.id,
     wizard,
+    runId,
     input,
     file,
     req,
     storage,
     reportProgress: async (percentComplete: number) => {
-      // Guard against a late-landing progress write (plugins may fire
-      // these without awaiting) resurrecting a step that has already
-      // reached a terminal state — otherwise the poller spins forever.
-      const fresh = await storage.wizards.getById(wizard.id);
-      if (!fresh) return;
-      const data: any = fresh.data || {};
-      const current = data.progress?.[stepId]?.status;
-      if (current === "completed" || current === "failed") return;
-      data.progress = data.progress || {};
-      data.progress[stepId] = {
-        ...data.progress[stepId],
-        status: "in_progress",
-        percentComplete,
-      };
-      await storage.wizards.update(wizard.id, { data });
+      if (runId) await storage.wizards.writeStepProgress(wizard.id, stepId, runId, { percentComplete });
     },
   };
-}
-
-/**
- * Read-modify-write a single step's progress entry. `storage.wizards.update`
- * replaces the `data` jsonb wholesale, so every mutation reloads first.
- */
-async function patchProgress(
-  wizardId: string,
-  stepId: string,
-  patch: Record<string, unknown>,
-): Promise<void> {
-  const fresh = await storage.wizards.getById(wizardId);
-  if (!fresh) return;
-  const data: any = fresh.data || {};
-  data.progress = data.progress || {};
-  data.progress[stepId] = { ...data.progress[stepId], ...patch };
-  await storage.wizards.update(wizardId, { data });
 }
 
 /**
@@ -331,34 +303,38 @@ export function registerWizardDispatcherRoutes(
           .json({ message: `Step '${step.id}' does not support run` });
       }
 
-      await patchProgress(loaded.wizard.id, step.id, {
+      const runId = randomUUID();
+      const started = await storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
         status: "in_progress",
         percentComplete: 0,
-        error: undefined,
-      });
+         error: null,
+         startedAt: new Date().toISOString(),
+         heartbeatAt: new Date().toISOString(),
+      }, true);
+      if (!started) return res.status(409).json({ message: "This step is already running. Wait for it to finish, or retry if progress has stopped for two minutes." });
       // Kick off the work and respond immediately.
       res.status(202).json({ started: true });
 
       const input = (req.body?.input ?? {}) as Record<string, unknown>;
       void (async () => {
+        const heartbeat = setInterval(() => {
+          void storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
+            heartbeatAt: new Date().toISOString(),
+          }).catch(error => logger.warn("Wizard run heartbeat failed", {
+            service: SERVICE, wizardId: loaded.wizard.id, step: step.id,
+            error: error instanceof Error ? error.message : String(error),
+          }));
+        }, 30_000);
         try {
           const fresh = await storage.wizards.getById(loaded.wizard.id);
           if (!fresh) return;
-          const ctx = buildStepContext(fresh, step.id, input, req);
+          const ctx = buildStepContext(fresh, step.id, input, req, undefined, runId);
           const out = await step.run!(ctx);
-          const after = await storage.wizards.getById(loaded.wizard.id);
-          const data: any = after?.data || {};
-          if (out && out.data) Object.assign(data, out.data);
-          data.progress = data.progress || {};
-          data.progress[step.id] = {
-            ...data.progress[step.id],
+          await storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
             status: "completed",
             completedAt: new Date().toISOString(),
             percentComplete: 100,
-          };
-          const updates: Record<string, unknown> = { data };
-          if (out && out.status) updates.status = out.status;
-          await storage.wizards.update(loaded.wizard.id, updates);
+          }, false, out?.data ?? {}, out?.status);
         } catch (error) {
           logger.error("Wizard dispatch run failed", {
             service: SERVICE,
@@ -366,11 +342,13 @@ export function registerWizardDispatcherRoutes(
             step: step.id,
             error: error instanceof Error ? error.message : String(error),
           });
-          await patchProgress(loaded.wizard.id, step.id, {
+          await storage.wizards.writeStepProgress(loaded.wizard.id, step.id, runId, {
             status: "failed",
             error:
               error instanceof Error ? error.message : "Run failed",
           });
+        } finally {
+          clearInterval(heartbeat);
         }
       })();
     },

@@ -1,4 +1,5 @@
-import { FeedConfig, FeedData, createMonthlyDateRange, getCurrentMonth, FeedField, ValidationError } from '../feed.js';
+import { AsyncLocalStorage } from 'async_hooks';
+import { FeedConfig, FeedData, createMonthlyDateRange, getCurrentMonth, FeedField, ValidationError, type ValidationResults } from '../feed.js';
 import { WizardStep } from '../base.js';
 import { GbhetLegalWorkersWizard } from './gbhet_legal_workers.js';
 import { storage } from '../../../../storage/index.js';
@@ -23,6 +24,10 @@ function pad2(n: number): string {
 function normalizeStatus(value: string): string {
   return String(value).toLowerCase().replace(/\s+/g, '');
 }
+
+// Fund configuration is constant during one validation pass. Never share it
+// across runs: re-validation must see a changed setting.
+const validationSettings = new AsyncLocalStorage<{ retiredMode?: Awaited<ReturnType<typeof getDcRetiredDisabilityRowMode>> }>();
 
 /** Day-of-month used for the (earlier) Active row when an FMLA month is split. */
 export const FMLA_SPLIT_ACTIVE_DAY = 1;
@@ -121,6 +126,10 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
   displayName = 'BAO Monthly Hours Upload';
   description = 'Monthly hours upload for a BAO employer';
   isMonthly = true;
+
+  async validateFeedData(wizardId: string, batchSize = 100, onProgress?: (progress: { processed: number; total: number; validRows: number; invalidRows: number }) => void, runId?: string): Promise<ValidationResults> {
+    return validationSettings.run({}, () => super.validateFeedData(wizardId, batchSize, onProgress, runId));
+  }
 
   /**
    * BAO employer files commonly use slash-delimited two-digit birth years.
@@ -259,7 +268,10 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
       try {
         const option = await this.resolveEmploymentStatusOption(row.employmentStatus);
         if (option && isRetiredDisabilityStatusOption(option)) {
-          const mode = await getDcRetiredDisabilityRowMode();
+          const settings = validationSettings.getStore();
+          const mode = settings
+            ? (settings.retiredMode ??= await getDcRetiredDisabilityRowMode())
+            : await getDcRetiredDisabilityRowMode();
           if (mode === 'reject') {
             errors.push({
               rowIndex,
@@ -275,6 +287,7 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
       }
     }
 
+    this.classifyUnmappedRow(rowIndex, errors);
     return errors;
   }
 

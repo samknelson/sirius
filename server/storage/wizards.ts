@@ -1,7 +1,7 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { wizards, wizardReportData, wizardEmployerMonthly, type Wizard, type InsertWizard, type WizardReportData, type InsertWizardReportData } from "@shared/schema";
-import { eq, and, desc, or, ne } from "drizzle-orm";
+import { eq, and, desc, or, ne, sql } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { db } from './db';
 import { runInTransaction } from './transaction-context';
@@ -49,6 +49,10 @@ export interface WizardStorage {
   /** The completed wizard of `type` for a given employer + reporting period, if any. */
   findCompletedMonthlyWizardForPeriod(employerId: string, year: number, month: number, type: string): Promise<Wizard | undefined>;
   update(id: string, updates: Partial<Omit<InsertWizard, 'id'>>): Promise<Wizard | undefined>;
+  /** Merge top-level wizard data keys without replacing concurrent progress writes. */
+  mergeData(id: string, patch: Record<string, unknown>, activeStep?: string, runId?: string): Promise<Wizard | undefined>;
+  /** Atomic, run-scoped progress write; late writes cannot revive a terminal run. */
+  writeStepProgress(id: string, step: string, runId: string, patch: Record<string, unknown>, start?: boolean, dataPatch?: Record<string, unknown>, wizardStatus?: string): Promise<Wizard | undefined>;
   delete(id: string): Promise<boolean>;
   saveReportData(wizardId: string, pk: string, data: any): Promise<WizardReportData>;
   getReportData(wizardId: string): Promise<WizardReportData[]>;
@@ -182,6 +186,38 @@ export function createWizardStorage(): WizardStorage {
         )
         .returning();
       return wizard || undefined;
+    },
+
+    async mergeData(id, patch, activeStep, runId) {
+      const [wizard] = await getClient().update(wizards)
+        .set({ data: sql`coalesce(${wizards.data}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb` })
+        .where(and(eq(wizards.id, id), ne(wizards.status, "deleting"),
+          activeStep && runId
+            ? sql`${wizards.data} #>> ARRAY['progress', ${activeStep}::text, 'runId']::text[] = ${runId}
+                AND ${wizards.data} #>> ARRAY['progress', ${activeStep}::text, 'status']::text[] = 'in_progress'`
+            : undefined,
+        )).returning();
+      return wizard;
+    },
+
+    async writeStepProgress(id, step, runId, patch, start = false, dataPatch = {}, wizardStatus) {
+      const current = sql`coalesce(${wizards.data}, '{}'::jsonb)`;
+      const entry = sql`coalesce(${current} #> ARRAY['progress', ${step}::text]::text[], '{}'::jsonb)`;
+      const next = sql`jsonb_set(${current} || ${JSON.stringify(dataPatch)}::jsonb,
+        '{progress}'::text[],
+        coalesce(${current}->'progress', '{}'::jsonb) ||
+          jsonb_build_object(${step}::text, ${entry} || ${JSON.stringify({ ...patch, runId })}::jsonb), true)`;
+      const [wizard] = await getClient().update(wizards).set({
+        data: next,
+        ...(wizardStatus ? { status: wizardStatus } : {}),
+      })
+        .where(and(eq(wizards.id, id), ne(wizards.status, "deleting"),
+          start
+            ? sql`(coalesce(${entry}->>'status', '') <> 'in_progress'
+                OR coalesce((${entry}->>'heartbeatAt')::timestamptz < now() - interval '2 minutes', true))`
+            : sql`${entry}->>'runId' = ${runId} AND ${entry}->>'status' = 'in_progress'`
+        )).returning();
+      return wizard;
     },
 
     async delete(id: string): Promise<boolean> {

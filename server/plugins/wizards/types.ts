@@ -50,6 +50,8 @@ export interface WizardUploadFile {
 export interface WizardStepContext {
   wizardId: string;
   wizard: Wizard;
+  /** Ownership token for an asynchronously running step. */
+  runId?: string;
   /** Parsed + schema-validated input for submit handlers. */
   input: Record<string, unknown>;
   /** Uploaded file for `upload` steps. */
