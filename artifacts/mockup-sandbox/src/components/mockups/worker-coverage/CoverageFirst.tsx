@@ -150,7 +150,7 @@ function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
                        </div>
                        <ArrowRight className="coverage-first-flow-arrow" aria-hidden="true" />
                        <div className="min-w-0">
-                          <p className="text-xs text-muted-foreground">Hours count toward</p>
+                          <p className="text-xs text-muted-foreground">Hours grant coverage in</p>
                          <h4 className="mt-0.5 font-medium">{period.coverageMonth.label}</h4>
                        </div>
                      </div>

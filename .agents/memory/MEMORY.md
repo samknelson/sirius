@@ -149,4 +149,4 @@
 - [Navigation measurement and scroll width](nav-measurement-scrollwidth.md) — invisible absolute width probes still enlarge scrollWidth unless clipped inside a zero-width wrapper.
 - [Feed validation final-error classification](feed-validation-final-error-classification.md) — classify unmapped-only rows after subclass error adjustments, not before BAO removes accepted dollar-format errors.
 - [Mockup artifact install timing](mockup-artifact-install-timing.md) — artifact workflow can start before scaffold dependencies are ready; wait for install before diagnosing missing Vite.
-- [Worker coverage month relationship](worker-coverage-month-relationship.md) — user prefers explicit work-month → later coverage-month mapping; future hours thresholds are not coverage decisions.
+- [Worker coverage month relationship](worker-coverage-month-relationship.md) — user prefers explicit work-month → coverage-month mapping and “Hours grant coverage in”; future thresholds remain separate from decisions.
