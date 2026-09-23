@@ -49,7 +49,7 @@ const server = await bounded("Vite createServer", createServer({
     name: "postal-browser-entry",
     configureServer(s) {
       s.middlewares.use((req, _res, next) => {
-        if (/^\/(workers\/[^/]+\/comm\/send-postal|bulk\/[^/]+\/message)(\?|$)/.test(req.url || "")) {
+        if (/^\/(editor-fixture|workers\/[^/]+\/comm\/send-postal|bulk\/[^/]+\/message)(\?|$)/.test(req.url || "")) {
           req.url = "/tests/postal-templates/browser.html";
         }
         next();
@@ -179,6 +179,62 @@ try {
     await page.waitForSelector(sel("dialog-load-letter-template"), { hidden: true });
     await expectFields(content);
   }
+  console.log("Checking imported template editor round trips");
+  await page.goto(`${origin}/editor-fixture`);
+  await click("fixture-editor-raw-mode");
+  const imported = '<!doctype html><html><head><style>.letter {color: #123456;} td {padding: 8px;}</style></head><body><div class="letter"><p>BEFORE</p><table><tr><td>Cell</td></tr></table><a href="{{contact.field(name=\"url\")}}">Link</a><p style="color:{{contact.field(name=\"color\")}}">AFTER</p></div></body></html>';
+  await replaceByTyping("fixture-editor-raw", imported);
+  assert.equal(await page.$eval(sel("fixture-source"), el => el.textContent), imported, "Incomplete raw/source editing must remain literal");
+  await click("fixture-editor-raw-mode");
+  assert.equal(await page.$eval(`${sel("fixture-editor")} table td`, el => el.textContent), "Cell");
+  assert.match(await page.$eval(sel("fixture-source"), el => el.textContent), /padding:\s*8px/);
+  assert.match(await page.$eval(sel("fixture-source"), el => el.textContent), /\{\{contact.field\(name="url"\)\}\}/);
+  assert.match(await page.$eval(sel("fixture-source"), el => el.textContent), /\{\{contact.field\(name="color"\)\}\}/);
+  await page.$eval(sel("fixture-editor"), el => {
+    const range = document.createRange(); range.selectNodeContents(el); range.collapse(false);
+    const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/plain", '<table><tr><td style="text-align:right">PLAIN HTML</td></tr></table>');
+    el.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData }));
+  });
+  assert.equal(await page.$$eval(`${sel("fixture-editor")} table`, els => els.length), 2, "Plain clipboard HTML becomes a table, not literal angle brackets");
+  await page.$eval(sel("fixture-editor"), el => {
+    const text = el.querySelector("p").firstChild;
+    const range = document.createRange();
+    range.setStart(text, 0); range.setEnd(text, text.length);
+    const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  });
+  await click("fixture-editor-bold");
+  assert.match(await page.$eval(sel("fixture-source"), el => el.textContent), /<(?:b|strong)>BEFORE/);
+  await page.$eval(sel("fixture-editor"), el => {
+    const text = el.querySelector("p").firstChild;
+    const range = document.createRange(); range.selectNodeContents(text);
+    const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/html", '<div style="text-align:center">PASTED</div>');
+    el.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData }));
+  });
+  assert.match(await page.$eval(sel("fixture-source"), el => el.textContent), /PASTED/);
+  assert.doesNotMatch(await page.$eval(sel("fixture-source"), el => el.textContent), /BEFORE/);
+  await click("fixture-editor-page-break");
+  const canonical = await page.$eval(sel("fixture-source"), el => el.textContent);
+  assert.match(canonical, /data-template-page-break/);
+  assert.doesNotMatch(canonical, /Page break/, "Editor guide must never become authored text");
+  await click("fixture-save");
+  await page.reload();
+  await click("fixture-reopen");
+  assert.equal(await page.$eval(sel("fixture-source"), el => el.textContent), canonical);
+  await click("fixture-editor-raw-mode");
+  assert.equal(await value("fixture-editor-raw"), canonical);
+  await click("fixture-editor-raw-mode");
+  assert.match(await page.$eval(sel("fixture-source"), el => el.textContent), /\{\{contact.field\(name="url"\)\}\}/);
+  assert.equal(await page.$(sel("fixture-unrelated-page-break")), null);
+  await click("fixture-unrelated-raw-mode");
+  await replaceByTyping("fixture-unrelated-raw", '<p style="color:red">Ordinary editor</p>');
+  await click("fixture-unrelated-raw-mode");
+  assert.equal(await page.$eval(`${sel("fixture-unrelated")} p`, el => el.getAttribute("style")), null);
+  console.log("PASS imported layout, source/apply, attribute tokens, selection paste/toolbar, page break and local save/reopen; unrelated editor unchanged");
   console.log("Opening one-off compose");
   await page.goto(`${origin}/workers/worker-fixture/comm/send-postal`);
   await page.waitForSelector(sel("fixture-staff"));

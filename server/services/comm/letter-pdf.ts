@@ -2,13 +2,13 @@ import { access, constants } from "node:fs/promises";
 import type { Browser } from "puppeteer-core";
 import { getEnvironmentVariable } from "../../config/env-registry";
 import {
-  ensureLetterPage,
   isRemoteLetterDocument,
   LETTER_PAGE_GEOMETRY,
   unwrapLetterPage,
   wrapLetterPage,
 } from "../../../shared/utils/html/letter-page";
 import { LetterRenderQueue } from "./letter-render-queue";
+import { prepareLetterImages } from "./letter-images";
 
 export const MAX_LETTER_BODY_BYTES = 200_000;
 const renderQueue = new LetterRenderQueue();
@@ -29,7 +29,7 @@ async function chromiumPath(): Promise<string> {
 }
 
 /**
- * Accept only body markup (or our exact shell), then sanitize and REBUILD.
+ * Normalize imported documents/body markup (or our exact shell) and REBUILD.
  * Neither a copied marker nor caller CSS can change the printable area.
  */
 export async function prepareLetterHtml(input: string): Promise<string> {
@@ -39,17 +39,15 @@ export async function prepareLetterHtml(input: string): Promise<string> {
   if (!input.trim() || isRemoteLetterDocument(input)) {
     throw new Error("A composed letter requires body text, not a document URL.");
   }
-  const checked = ensureLetterPage(input);
-  if (!checked.ok) throw new Error(checked.error);
-  const { sanitizeHtml } = await import("../../../shared/utils/html/sanitize");
-  const body = sanitizeHtml(unwrapLetterPage(checked.file), "rich-document");
+  const { normalizeTemplateHtml } = await import("../../../shared/utils/html");
+  const body = normalizeTemplateHtml(unwrapLetterPage(input), { preserveTokens: false });
   if (!body.trim()) throw new Error("The letter has no printable content.");
   return wrapLetterPage(body);
 }
 
 /**
  * Same PDF engine for compose, notifier delivery and staff preview.
- * No remote resources, scripts, caller CSS, or persistent browser state.
+ * No browser network, scripts, unsafe CSS, or persistent browser state.
  * Bounded concurrency/time/size; a renderer failure refuses the send instead
  * of silently falling back to Lob's broken HTML pagination.
  */
@@ -71,8 +69,31 @@ export async function renderLetterPdf(
       const page = await browser.newPage();
       await page.setJavaScriptEnabled(false);
       await page.setRequestInterception(true);
-      page.on("request", (request) => { void request.abort(); });
+      page.on("request", (request) => {
+        // The only resources Chromium may consume are already bounded and
+        // verified raster bytes supplied by our server-side downloader.
+        if (request.url().startsWith("data:image/png;base64,") ||
+            request.url().startsWith("data:image/jpeg;base64,")) {
+          void request.continue();
+        } else {
+          void request.abort();
+        }
+      });
       await page.setContent(html, { waitUntil: "load", timeout: 10_000 });
+      const sources = await page.$$eval("img", (images) =>
+        images.map((image) => image.getAttribute("src") ?? ""));
+      const imageData = await prepareLetterImages(sources);
+      await page.evaluate(async (data) => {
+        const images = Array.from(document.querySelectorAll("img"));
+        await Promise.race([
+          Promise.all(images.map(async (image, index) => {
+            image.removeAttribute("srcset");
+            image.src = data[index];
+            await image.decode();
+          })),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Letter image decoding timed out.")), 10_000)),
+        ]);
+      }, imageData);
       const bytes = await page.pdf({
         preferCSSPageSize: true,
         printBackground: true,

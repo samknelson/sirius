@@ -56,6 +56,7 @@ export {
   type HtmlSanitizePolicyName,
 } from "./policies";
 export { sanitizeHtml, sanitizeHtmlReportingChange } from "./sanitize";
+export { normalizeTemplateHtml } from "./template";
 export {
   LETTER_PAGE_HTML,
   LETTER_PAGE_GEOMETRY,

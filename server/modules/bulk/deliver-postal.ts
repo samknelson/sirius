@@ -14,6 +14,7 @@ import { parseTokenChain } from "@shared/tokens";
 import {
   mediumField,
   shapeRenderedValue,
+  prepareAuthoredValue,
   tokenCleanerFor,
 } from "../../delivery/shape";
 import { recordBulkUndeliverable } from "./undeliverable";
@@ -89,7 +90,7 @@ export async function deliverPostal(
     ? shapeRenderedValue(
         BODY_HTML_SPEC,
         (
-          await renderTokens(postalContent.bodyHtml, ctx, {
+          await renderTokens(prepareAuthoredValue(BODY_HTML_SPEC, postalContent.bodyHtml), ctx, {
             strictUnknown: true,
             clean: tokenCleanerFor(BODY_HTML_SPEC) ?? undefined,
           })

@@ -371,6 +371,7 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess, compos
           <Label htmlFor="body">Message</Label>
           <div data-testid="input-email-body">
             <SimpleHtmlEditor
+              templateMode="email"
               value={bodyHtml}
               onChange={setBodyHtml}
               placeholder="Type your message here..."

@@ -13,6 +13,7 @@ import {
   authoredFieldValue,
   deriveEmailPlainText,
   shapeRenderedValue,
+  prepareAuthoredValue,
   tokenCleanerFor,
   type MediumName,
   type TokenValueCleaner,
@@ -160,7 +161,7 @@ export async function composeFromTemplates(
     // declaration decides which of the two a missing key means.
     const template = authoredFieldValue(spec, channelTemplates[spec.key]);
     if (template === undefined) continue;
-    const rendered = await render(template, tokenCleanerFor(spec));
+    const rendered = await render(prepareAuthoredValue(spec, template), tokenCleanerFor(spec));
     shaped[spec.key] = shapeRenderedValue(spec, rendered);
     if (spec.safety === "relative-url" && rendered.trim() && !shaped[spec.key]) {
       // Alert UIs hand non-relative links to window.open, so a rendered

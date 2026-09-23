@@ -306,10 +306,13 @@ export interface TemplateStudioProps {
 }
 
 /** Plain text, unless the editor is a rich-text one. */
-function specsFromFieldModes(fields: StudioField[]): DeliveryFieldSpec[] {
+function specsFromFieldModes(fields: StudioField[], channel: StudioChannel): DeliveryFieldSpec[] {
   return fields.map((f) => ({
     key: f.key,
     syntax: f.mode === "html" ? ("html" as const) : ("text" as const),
+    ...(f.mode === "html" && (channel === "email" || channel === "postal")
+      ? { htmlPolicy: "template-html" as const }
+      : {}),
   }));
 }
 
@@ -716,8 +719,8 @@ export function TemplateStudio({
   // the finished template text, the roots it may address and the
   // context to render against. The server looks nothing up.
   const specs = useMemo(
-    () => fieldSpecs ?? specsFromFieldModes(fields),
-    [fieldSpecs, fields],
+    () => fieldSpecs ?? specsFromFieldModes(fields, channel),
+    [fieldSpecs, fields, channel],
   );
   const specsJson = JSON.stringify(specs);
 
@@ -1050,14 +1053,13 @@ export function TemplateStudio({
               {subject?.rendered || <span className="italic text-muted-foreground">(no subject — email would not send)</span>}
             </p>
           </div>
-          <div
-            className="px-4 py-3 prose prose-sm max-w-none dark:prose-invert overflow-x-auto"
+          <iframe
+            title="Email body preview"
+            sandbox=""
+            referrerPolicy="no-referrer"
+            className="w-full min-h-96 border-0 bg-white"
             data-testid="studio-preview-email-body"
-            // Already sanitized server-side: `server/delivery/shape.ts` runs
-            // sanitizeHtml(value, "rich-document") over HTML fields, and
-            // preview goes through that same shaping as delivery so the two
-            // cannot disagree. No second pass needed here.
-            dangerouslySetInnerHTML={{ __html: body?.rendered || "<p><em>(empty body)</em></p>" }}
+            srcDoc={`<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>body { font: 14px Arial, sans-serif; padding: 12px; overflow-wrap: anywhere; } img { max-width: 100%; } table { border-collapse: collapse; }</style></head><body>${body?.rendered || "<p><em>(empty body)</em></p>"}</body></html>`}
           />
           <div className="px-4 pb-3 space-y-1">
             <FieldIssues field={subject} />
@@ -1195,6 +1197,7 @@ export function TemplateStudio({
                     }}
                   >
                     <SimpleHtmlEditor
+                      templateMode={channel === "email" || channel === "postal" ? channel : undefined}
                       data-testid={`studio-editor-${f.key}`}
                       value={values[f.key] ?? ""}
                       onChange={(v) => onValueChange(f.key, v)}

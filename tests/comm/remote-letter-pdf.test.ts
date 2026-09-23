@@ -29,6 +29,7 @@ vi.mock("node:https", () => ({
 }));
 
 import { downloadRemoteLetterPdf } from "../../server/services/comm/remote-letter-pdf";
+import { prepareLetterImages, rasterImageType } from "../../server/services/comm/letter-images";
 
 async function letterPdf(width = 612, height = 792): Promise<Buffer> {
   const pdf = await PDFDocument.create();
@@ -184,5 +185,37 @@ describe("downloadRemoteLetterPdf", () => {
     await rejection;
     expect(network.responses[0].destroy).toHaveBeenCalled();
     expect(network.requests[0].destroy).toHaveBeenCalled();
+  });
+
+  it("pins raster image downloads and embeds only verified PNG bytes", async () => {
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9ioAAAAASUVORK5CYII=", "base64");
+    network.replies.push({ headers: { "content-type": "image/png" }, body: png });
+    const result = await prepareLetterImages(["https://images.example/logo.png"]);
+    expect(result).toEqual([`data:image/png;base64,${png.toString("base64")}`]);
+    expect(network.pinned).toEqual(["8.8.8.8/4"]);
+  });
+
+  it("refuses images redirected into a private network", async () => {
+    network.replies.push({ status: 302, headers: { location: "https://127.0.0.1/logo.png" } });
+    await expect(prepareLetterImages(["https://images.example/logo.png"])).rejects.toThrow("private or reserved");
+    expect(network.request).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses unsupported images, excessive counts and oversized pixel buffers", async () => {
+    await expect(prepareLetterImages(Array(11).fill("https://images.example/a.png"))).rejects.toThrow("at most 10");
+    network.replies.push({ headers: { "content-type": "image/svg+xml" }, body: Buffer.from("<svg/>") });
+    await expect(prepareLetterImages(["https://images.example/a.svg"])).rejects.toThrow("not image/png or image/jpeg");
+    expect(() => rasterImageType(Buffer.from("<svg/>"))).toThrow("only PNG and JPEG");
+    const bomb = Buffer.alloc(24);
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(bomb);
+    bomb.write("IHDR", 12);
+    bomb.writeUInt32BE(10000, 16);
+    bomb.writeUInt32BE(10000, 20);
+    expect(() => rasterImageType(bomb)).toThrow("dimensions");
+  });
+
+  it("rejects oversized raster responses before reading the body", async () => {
+    network.replies.push({ headers: { "content-type": "image/png", "content-length": "1048577" } });
+    await expect(prepareLetterImages(["https://images.example/a.png"])).rejects.toThrow("byte limit");
   });
 });

@@ -1,4 +1,4 @@
-import { sanitizeHtml } from "@shared/utils/html";
+import { sanitizeHtml, normalizeTemplateHtml } from "@shared/utils/html";
 import { isSafeRelativePath, type DeliveryFieldSpec } from "@shared/delivery-fields";
 
 /**
@@ -53,6 +53,13 @@ export {
  * (delivery sends the stored value verbatim), so the caller passes the
  * raw value through.
  */
+/** Normalize before evaluation, preserving token syntax even in attributes/CSS. */
+export function prepareAuthoredValue(spec: DeliveryFieldSpec, value: string): string {
+  return spec.syntax === "html" && spec.htmlPolicy === "template-html"
+    ? normalizeTemplateHtml(value)
+    : value;
+}
+
 export function shapeRenderedValue(
   spec: DeliveryFieldSpec,
   rendered: string,
@@ -63,7 +70,9 @@ export function shapeRenderedValue(
     // Token values were escaped on the way in; the completed body then
     // goes through the tag/attribute allowlist, because authored markup
     // can reach storage without passing the rich-text editor.
-    value = sanitizeHtml(value, "rich-document");
+    value = spec.htmlPolicy === "template-html"
+      ? normalizeTemplateHtml(value, { preserveTokens: false })
+      : sanitizeHtml(value, "rich-document");
   }
   if (spec.safety === "relative-url") {
     // Trim first, then validate: delivery sends the trimmed URL, so a

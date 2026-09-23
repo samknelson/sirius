@@ -184,7 +184,7 @@ export async function renderTemplatePreview({
 
   // ── Render ────────────────────────────────────────────────────────────────
   const { renderTokens, createTokenEvalContext } = await import("../plugins/tokens");
-  const { applyFieldEligibility, shapeRenderedValue, tokenCleanerFor } = await import(
+  const { applyFieldEligibility, prepareAuthoredValue, shapeRenderedValue, tokenCleanerFor } = await import(
     "../delivery/shape"
   );
 
@@ -223,7 +223,7 @@ export async function renderTemplatePreview({
       cache,
       seeds,
     });
-    const result = await renderTokens(template, ctx, {
+    const result = await renderTokens(prepareAuthoredValue(spec, template), ctx, {
       strictUnknown: true,
       // The destination's own cleaning function, read from the same
       // declaration delivery reads it from.

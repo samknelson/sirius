@@ -85,9 +85,9 @@ const UNSANITIZED_RENDER_ALLOWLIST: Record<
       "help details are sanitized server-side under 'rich-document' — on write in server/modules/helps.ts, and on read for built-ins in server/help/system/index.ts",
   },
   "client/src/components/template-studio/TemplateStudio.tsx": {
-    sites: 2,
+    sites: 1,
     reason:
-      "preview fields (email body, generic html fields) are sanitized server-side under 'rich-document' by server/delivery/shape.ts, the same shaping delivery uses, so preview and delivery cannot disagree; the postal letter body is no longer rendered here at all — it goes to LetterPagePreview, which renders the wrapped page in a script-less sandboxed frame",
+      "generic HTML preview fields are sanitized server-side under 'rich-document' by server/delivery/shape.ts, the same shaping delivery uses; email uses the template-html delivery policy and a script-less CSP sandboxed iframe instead of dangerouslySetInnerHTML; postal goes to LetterPagePreview for the actual server-rendered PDF",
   },
   "client/src/components/ui/chart.tsx": {
     sites: 1,

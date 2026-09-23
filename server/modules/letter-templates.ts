@@ -7,6 +7,7 @@ import {
   type MediumName,
 } from "@shared/delivery-fields";
 import { extractTokenExpressions } from "@shared/tokens";
+import { prepareAuthoredValue } from "../delivery/shape";
 import { storage } from "../storage";
 import {
   listTokenContexts,
@@ -41,6 +42,14 @@ const listQuery = z.object({
   medium: z.enum(MEDIUM_NAMES).optional(),
   context_id: z.string().trim().min(1).optional(),
 });
+
+/** Stored templates and legacy templates reopened for editing share one shape. */
+function normalizeContent(medium: MediumName, content: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(content).map(([key, value]) => {
+    const spec = MEDIUM_FIELDS[medium].find((field) => field.key === key);
+    return [key, spec ? prepareAuthoredValue(spec, value) : value];
+  }));
+}
 
 function validateContextIds(contextIds: string[]): string | undefined {
   const offered = new Set(
@@ -123,10 +132,14 @@ export function registerLetterTemplateRoutes(
   app.get("/api/admin/letter-templates", staff, async (req, res) => {
     try {
       const query = listQuery.parse(req.query);
-      res.json(await storage.letterTemplates.getAll({
+      const rows = await storage.letterTemplates.getAll({
         medium: query.medium,
         contextId: query.context_id,
-      }));
+      });
+      res.json(rows.map((row) => ({
+        ...row,
+        content: normalizeContent(row.medium as MediumName, row.content as Record<string, string>),
+      })));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({
@@ -141,6 +154,7 @@ export function registerLetterTemplateRoutes(
   app.post("/api/admin/letter-templates", staff, async (req, res) => {
     try {
       const input = createInput.parse(req.body);
+      input.content = normalizeContent(input.medium, input.content);
       const problem = validationMessage(input);
       if (problem) return res.status(400).json({ message: problem });
       const created = await storage.letterTemplates.create({
@@ -166,7 +180,10 @@ export function registerLetterTemplateRoutes(
     try {
       const row = await storage.letterTemplates.get(req.params.id);
       if (!row) return res.status(404).json({ message: "Letter template not found" });
-      res.json(row);
+      res.json({
+        ...row,
+        content: normalizeContent(row.medium as MediumName, row.content as Record<string, string>),
+      });
     } catch (error) {
       console.error("Failed to load letter template:", error);
       res.status(500).json({ message: "Failed to load letter template" });
@@ -178,6 +195,10 @@ export function registerLetterTemplateRoutes(
       const current = await storage.letterTemplates.get(req.params.id);
       if (!current) return res.status(404).json({ message: "Letter template not found" });
       const input = updateInput.parse(req.body);
+      input.content = normalizeContent(
+        (input.medium ?? current.medium) as MediumName,
+        input.content ?? current.content as Record<string, string>,
+      );
       const problem = validationMessage(input, current);
       if (problem) return res.status(400).json({ message: problem });
       const updated = await storage.letterTemplates.update(req.params.id, input);

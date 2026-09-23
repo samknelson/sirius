@@ -96,6 +96,14 @@ warning at all. A run must never cross a block boundary or `<br>` —
 DOM (never the live one, or you move the author's caret), and repair
 runs back to front so one pass fixes a document with any number of them.
 
+## Authored token source is not DOM-ready HTML
+
+Keep exact token expressions in authored source, but shield them before a browser parses that source as HTML. Restore the expressions when serializing; after evaluation, validate the completed CSS and URLs rather than trusting the authored token placeholders.
+
+**Why:** quoted token arguments inside a quoted HTML attribute can terminate that attribute during DOM parsing. Entity-encoding the token permanently instead changes the expression seen by the token evaluator. HTML escaping of evaluated text also does not establish that a resulting CSS value or URL is safe.
+
+**How to apply:** distinguish authored-source normalization from final-output normalization. A visual editor must keep its temporary token markers local to its DOM and never persist them.
+
 ## Read-only surfaces show token text, never a friendlier stand-in
 
 Anywhere a saved tokenized string or a browsable chain is DISPLAYED, the

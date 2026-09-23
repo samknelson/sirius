@@ -17,9 +17,9 @@ describe("prepareLetterHtml", () => {
     `);
 
     expect(isLetterPage(html)).toBe(true);
-    expect(html).toContain("<p>Safe text</p>");
+    expect(html).toContain('<p class="injected">Safe text</p>');
     expect(html).toContain('<a target="_blank" rel="noopener noreferrer">Link</a>');
-    expect(html).not.toMatch(/position\s*:\s*fixed|onclick|javascript:|<script|<iframe|injected/);
+    expect(html).not.toMatch(/position\s*:\s*fixed|onclick|javascript:|<script|<iframe/);
     expect(html).toContain("@page :first { margin-top: 3in; }");
   });
 
@@ -44,9 +44,11 @@ describe("prepareLetterHtml", () => {
     );
   });
 
-  it("refuses raw whole HTML documents", async () => {
-    await expect(
-      prepareLetterHtml("<!doctype html><html><body><p>Wrong shell</p></body></html>"),
-    ).rejects.toThrow("Send only the letter body, not a whole HTML document");
+  it("normalizes imported whole documents into the canonical page", async () => {
+    const html = await prepareLetterHtml("<!doctype html><html><head><style>p { color: red } @page { margin:0 }</style></head><body><p>Imported text</p></body></html>");
+    expect(isLetterPage(html)).toBe(true);
+    expect(html).toContain('<p style="color:red">Imported text</p>');
+    expect(html).toContain("@page :first { margin-top: 3in; }");
+    expect(html).not.toContain("@page { margin:0 }");
   });
 });

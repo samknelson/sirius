@@ -34,7 +34,7 @@ export const LETTER_PAGE_HTML = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
   <style>
     @page {
       size: ${G.sheetWidthIn}in ${G.sheetHeightIn}in;
@@ -55,6 +55,7 @@ export const LETTER_PAGE_HTML = `<!DOCTYPE html>
     table { width: 100%; table-layout: fixed; border-collapse: collapse; }
     th, td { overflow-wrap: anywhere; vertical-align: top; padding: 3pt; }
     thead { display: table-header-group; }
+    img { max-width: 100%; height: auto; }
     a { color: inherit; text-decoration: underline; }
     .date { margin-bottom: 24pt; }
     .greeting { margin-bottom: 12pt; }
@@ -99,7 +100,7 @@ export function ensureLetterPage(
   const body = unwrapLetterPage(file);
   // Whole documents and body-breaking fragments cannot supply their own shell.
   // The renderer additionally sanitizes every accepted body (including a
-  // canonical shell's body), removing CSS and any active markup.
+  // canonical shell's body), constraining CSS and removing active markup.
   if (/<\/?(?:html|head|body)(?:\s|>)|<!doctype/i.test(body)) {
     return {
       ok: false,

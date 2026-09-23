@@ -114,6 +114,8 @@ export interface DeliveryFieldSpec {
   key: string;
   /** How the field is written. Required — see the author check. */
   syntax: DeliveryFieldSyntax;
+  /** Rich imported message layouts, rather than generic authored body copy. */
+  htmlPolicy?: "template-html";
   /** Safety rule for the finished value, when the field has one. */
   safety?: DeliveryFieldSafety;
   /**
@@ -188,7 +190,7 @@ export const MEDIUM_FIELDS: Record<MediumName, DeliveryFieldSpec[]> = {
     // Authored HTML: token values are escaped on the way in, then the
     // finished body is sanitized (a body can be written through the API
     // without passing the rich-text editor).
-    { key: "bodyHtml", syntax: "html", trim: true },
+    { key: "bodyHtml", syntax: "html", htmlPolicy: "template-html", trim: true },
   ],
   /** One trimmed, required body. A text with nothing in it is not a text. */
   sms: [{ key: "body", syntax: "text", trim: true, requiredForMessage: true }],
@@ -212,7 +214,7 @@ export const MEDIUM_FIELDS: Record<MediumName, DeliveryFieldSpec[]> = {
     { key: "linkLabel", syntax: "text", trim: true, blankWithout: "linkUrl" },
   ],
   postal: [
-    { key: "bodyHtml", syntax: "html", trim: true, requiredForMessage: true },
+    { key: "bodyHtml", syntax: "html", htmlPolicy: "template-html", trim: true, requiredForMessage: true },
     { key: "description", syntax: "text", trim: true },
   ],
 };
@@ -376,6 +378,10 @@ export function validateDeliveryFieldSpecs(specs: unknown): string[] {
     }
     if (field.safety !== undefined && !safeties.has(field.safety)) {
       problems.push(`field '${field.key}' declares unknown safety rule '${field.safety}'`);
+    }
+    if (field.htmlPolicy !== undefined &&
+        (field.htmlPolicy !== "template-html" || field.syntax !== "html")) {
+      problems.push(`field '${field.key}' has an invalid HTML content policy`);
     }
     if (field.tokenized !== undefined && typeof field.tokenized !== "boolean") {
       problems.push(`field '${field.key}' has a non-boolean tokenized`);

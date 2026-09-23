@@ -58,6 +58,16 @@ const RICH_DOCUMENT_TAGS = [
 const RICH_DOCUMENT_ATTR = ["href", "target", "rel", "colspan", "rowspan", "scope"];
 
 export const HTML_SANITIZE_POLICIES = {
+  /** Imported message bodies; CSS is additionally validated by sanitize.ts. */
+  "template-document": {
+    description: "Imported email and letter bodies with safe inline presentation",
+    tags: [...RICH_DOCUMENT_TAGS, "div", "span", "img", "hr", "blockquote",
+      "pre", "code", "s", "strike", "sub", "sup", "caption", "colgroup", "col"],
+    attributes: [...RICH_DOCUMENT_ATTR, "style", "class", "id", "src", "alt",
+      "title", "width", "height", "align", "valign", "bgcolor", "border",
+      "cellpadding", "cellspacing", "span", "dir"],
+    uriPattern: SAFE_URI_PATTERN,
+  },
   /**
    * Long-form staff-authored body copy that may include tables and
    * headings: help entries, and the HTML fields of delivered/previewed

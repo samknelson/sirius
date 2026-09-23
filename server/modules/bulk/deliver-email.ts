@@ -7,6 +7,7 @@ import {
   deriveEmailPlainText,
   mediumField,
   shapeRenderedValue,
+  prepareAuthoredValue,
   tokenCleanerFor,
 } from "../../delivery/shape";
 import { recordBulkUndeliverable } from "./undeliverable";
@@ -29,7 +30,7 @@ export async function renderEmailBodyHtmlForDelivery(
 ): Promise<string> {
   if (!bodyHtml) return "";
   const rendered = (
-    await renderTokens(bodyHtml, ctx, {
+    await renderTokens(prepareAuthoredValue(BODY_HTML_SPEC, bodyHtml), ctx, {
       clean: tokenCleanerFor(BODY_HTML_SPEC) ?? undefined,
       strictUnknown: true,
     })

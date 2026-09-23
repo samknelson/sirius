@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { type TokenPickerEntry as TokenDefinition } from "@shared/tokens";
-import { escapeHtml, sanitizeHtml } from "@shared/utils/html";
+import { escapeHtml, sanitizeHtml, normalizeTemplateHtml } from "@shared/utils/html";
 
 const SPECIAL_CHARACTERS = [
   { name: 'Copyright', symbol: '©' },
@@ -56,6 +56,8 @@ interface SimpleHtmlEditorProps {
   tokens?: TokenDefinition[];
   minHeight?: number;
   disabled?: boolean;
+  /** Layout-preserving editing is only for email and postal message bodies. */
+  templateMode?: "email" | "postal";
   /** Receives the imperative insert API (insert snippet at last caret). */
   editorApiRef?: React.MutableRefObject<SimpleHtmlEditorApi | null>;
   "data-testid"?: string;
@@ -274,6 +276,7 @@ export function SimpleHtmlEditor({
   tokens: tokensProp,
   minHeight = 120,
   disabled = false,
+  templateMode,
   editorApiRef,
   "data-testid": testId,
 }: SimpleHtmlEditorProps) {
@@ -283,6 +286,27 @@ export function SimpleHtmlEditor({
   const [isFocused, setIsFocused] = useState(false);
   const [rawMode, setRawMode] = useState(false);
   const [rawHtml, setRawHtml] = useState(value);
+  const cleanHtml = useCallback((html: string) => templateMode
+    ? normalizeTemplateHtml(html, { preserveTokens: enableTokens })
+    : sanitizeEditorHtml(html), [templateMode, enableTokens]);
+
+  // HTML's attribute quoting cannot represent the quotes inside a token
+  // verbatim. Protect attribute tokens only while the browser owns the DOM;
+  // text tokens stay ordinary editable text.
+  const attributeTokens = useRef(new Map<string, string>());
+  const tokenMarkerPrefix = useRef(`sirius${crypto.randomUUID().replace(/-/g, "")}token`);
+  const protectAttributeTokens = (html: string) => html.replace(
+    /<[^>]*>/g,
+    (tag) => tag.replace(/\{\{[^{}]*\}\}/g, (token) => {
+      const marker = `${tokenMarkerPrefix.current}${attributeTokens.current.size}slot`;
+      attributeTokens.current.set(marker, token);
+      return marker;
+    }),
+  );
+  const restoreAttributeTokens = (html: string) => {
+    for (const [marker, token] of attributeTokens.current) html = html.split(marker).join(token);
+    return html;
+  };
 
   // ───── Token picker state (only used when enableTokens) ─────
   const [slashOpen, setSlashOpen] = useState(false);
@@ -337,14 +361,15 @@ export function SimpleHtmlEditor({
     if (editorRef.current && !isFocused && !rawMode) {
       // Tokens are shown as the text they are; only stale chip markup
       // from the old editor needs converting on the way in.
-      const rendered = sanitizeEditorHtml(
+      const cleaned = cleanHtml(
         enableTokens ? legacyChipsToText(value) : value,
       );
+      const rendered = templateMode && enableTokens ? protectAttributeTokens(cleaned) : cleaned;
       if (editorRef.current.innerHTML !== rendered) {
         editorRef.current.innerHTML = rendered;
       }
     }
-  }, [value, isFocused, rawMode, enableTokens]);
+  }, [value, isFocused, rawMode, enableTokens, cleanHtml]);
 
   useEffect(() => {
     if (!rawMode) {
@@ -421,12 +446,21 @@ export function SimpleHtmlEditor({
     } else {
       serialized = editorRef.current.innerHTML;
     }
-    onChange(sanitizeEditorHtml(serialized));
+    onChange(cleanHtml(restoreAttributeTokens(serialized)));
   };
 
   const execCommand = (command: string, value?: string) => {
+    if (disabled) return;
+    editorRef.current?.focus();
+    const saved = lastRichRangeRef.current;
+    const selection = window.getSelection();
+    if (saved && selection && editorRef.current?.contains(saved.startContainer)) {
+      selection.removeAllRanges();
+      selection.addRange(saved);
+    }
     document.execCommand(command, false, value);
     editorRef.current?.focus();
+    saveRichSelection();
     handleInput();
   };
 
@@ -446,7 +480,8 @@ export function SimpleHtmlEditor({
   const toggleRawMode = () => {
     closeSlash();
     if (rawMode) {
-      onChange(rawHtml);
+      onChange(templateMode ? cleanHtml(rawHtml) : rawHtml);
+      setIsFocused(false);
       setRawMode(false);
     } else {
       setRawHtml(value);
@@ -459,6 +494,18 @@ export function SimpleHtmlEditor({
     setRawHtml(newValue);
     onChange(newValue);
     if (enableTokens) detectSlashRaw(e.target);
+  };
+
+  const handleTemplatePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    if (!templateMode || disabled) return;
+    event.preventDefault();
+    const html = event.clipboardData.getData("text/html");
+    const text = event.clipboardData.getData("text/plain");
+    const source = html || (/<(?:!doctype|html|body|p|div|table|span|h[1-6]|img)\b/i.test(text)
+      ? text : escapeHtml(text).replace(/\r?\n/g, "<br>"));
+    const cleaned = cleanHtml(source);
+    saveRichSelection();
+    execCommand("insertHTML", enableTokens ? protectAttributeTokens(cleaned) : cleaned);
   };
 
   const handleEditorKeyDown = (e: React.KeyboardEvent) => {
@@ -487,7 +534,7 @@ export function SimpleHtmlEditor({
         }
       }
     }
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (!rawMode && e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       document.execCommand('insertHTML', false, '<br><br>');
       handleInput();
@@ -627,7 +674,8 @@ export function SimpleHtmlEditor({
   return (
     <div ref={containerRef} className={cn("relative border border-input rounded-md", className)}>
       {/* Toolbar */}
-      <div className="flex items-center gap-1 p-2 border-b border-border bg-muted/30">
+      <div className="flex flex-wrap items-center gap-1 p-2 border-b border-border bg-muted/30"
+        onMouseDown={(event) => { if (!rawMode) event.preventDefault(); }}>
         {!rawMode && (
           <>
             <Button
@@ -653,6 +701,13 @@ export function SimpleHtmlEditor({
               <Italic size={16} />
             </Button>
             <div className="w-px h-6 bg-border mx-1" />
+            {templateMode === "postal" && (
+              <Button type="button" variant="ghost" size="sm" disabled={disabled}
+                onClick={() => execCommand("insertHTML", '<div data-template-page-break="true" style="break-before: page;"></div><p><br></p>')}
+                data-testid={testId ? `${testId}-page-break` : undefined}>
+                Insert page break
+              </Button>
+            )}
             <Button
               type="button"
               variant="ghost"
@@ -762,6 +817,8 @@ export function SimpleHtmlEditor({
           // content preference — same affordance as the raw-HTML textarea.
           style={{ minHeight, resize: "vertical", overflow: "auto" }}
           onInput={handleEditorInput}
+          onPaste={handleTemplatePaste}
+          data-template-editor={templateMode}
           onFocus={() => setIsFocused(true)}
           onBlur={() => {
             saveRichSelection();
@@ -773,6 +830,7 @@ export function SimpleHtmlEditor({
             saveRichSelection();
             if (enableTokens) detectSlashRich();
           }}
+          onMouseUp={saveRichSelection}
           onClick={(e) => {
             saveRichSelection();
             handleEditorClick();
@@ -835,6 +893,17 @@ export function SimpleHtmlEditor({
       )}
 
       <style>{`
+        [data-template-editor] table { border-collapse: collapse; }
+        [data-template-editor] td, [data-template-editor] th { min-width: 2em; }
+        [data-template-editor] img { max-width: 100%; }
+        [data-template-editor="postal"] [data-template-page-break]::before {
+          content: "Page break";
+          display: block;
+          border-top: 1px dashed #888;
+          color: #666;
+          font: 11px sans-serif;
+          margin: 12px 0;
+        }
         [contenteditable][data-placeholder]:empty:before {
           content: attr(data-placeholder);
           color: var(--muted-foreground);

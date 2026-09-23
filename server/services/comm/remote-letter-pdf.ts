@@ -16,6 +16,8 @@ interface DownloadState {
   expired: boolean;
   request?: ClientRequest;
   response?: IncomingMessage;
+  contentTypes: readonly string[];
+  maxBytes: number;
 }
 
 function fail(message: string): Error {
@@ -133,7 +135,7 @@ function requestHop(url: URL, redirects: number, state: DownloadState): Promise<
         method: "GET",
         agent: false,
         lookup: pinnedLookup(address) as never,
-        headers: { Accept: "application/pdf" },
+        headers: { Accept: state.contentTypes.join(", ") },
       }, (res) => {
         state.response = res;
         const status = res.statusCode ?? 0;
@@ -164,14 +166,14 @@ function requestHop(url: URL, redirects: number, state: DownloadState): Promise<
 
         const contentType = String(res.headers["content-type"] ?? "")
           .split(";", 1)[0].trim().toLowerCase();
-        if (contentType !== "application/pdf") {
+        if (!state.contentTypes.includes(contentType)) {
           res.destroy();
-          return finish(fail("the response is not application/pdf."));
+          return finish(fail(`the response is not ${state.contentTypes.join(" or ")}.`));
         }
         const declaredLength = Number(res.headers["content-length"]);
-        if (Number.isFinite(declaredLength) && declaredLength > MAX_PDF_BYTES) {
+        if (Number.isFinite(declaredLength) && declaredLength > state.maxBytes) {
           res.destroy();
-          return finish(fail("the PDF exceeds the 5 MB limit."));
+          return finish(fail("the resource exceeds the download byte limit."));
         }
 
         const chunks: Buffer[] = [];
@@ -179,9 +181,9 @@ function requestHop(url: URL, redirects: number, state: DownloadState): Promise<
         res.on("data", (chunk: Buffer | Uint8Array | string) => {
           const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
           size += bytes.length;
-          if (size > MAX_PDF_BYTES) {
+          if (size > state.maxBytes) {
             res.destroy();
-            finish(fail("the PDF exceeds the 5 MB limit."));
+            finish(fail("the resource exceeds the download byte limit."));
             return;
           }
           chunks.push(bytes);
@@ -222,10 +224,21 @@ async function validatePdf(bytes: Buffer): Promise<void> {
  * Downloads an existing PDF for Lob without allowing the URL to become an
  * SSRF or HTML-rendering escape hatch.
  */
-export function downloadRemoteLetterPdf(url: string): Promise<Buffer> {
+export async function downloadRemoteLetterPdf(url: string): Promise<Buffer> {
   assertExternalServiceAllowed("Lob", "download remote letter PDF");
+  const bytes = await downloadPublicHttpsResource(url, {
+    contentTypes: ["application/pdf"], maxBytes: MAX_PDF_BYTES,
+  });
+  await validatePdf(bytes);
+  return bytes;
+}
 
-  const state: DownloadState = { expired: false };
+/** Shared pinned, bounded transport. Never permits browser-controlled networking. */
+export function downloadPublicHttpsResource(
+  url: string,
+  options: { contentTypes: readonly string[]; maxBytes: number },
+): Promise<Buffer> {
+  const state: DownloadState = { expired: false, ...options };
   return new Promise<Buffer>((resolve, reject) => {
     let settled = false;
     const settle = (error?: Error, value?: Buffer) => {
@@ -253,8 +266,7 @@ export function downloadRemoteLetterPdf(url: string): Promise<Buffer> {
       return;
     }
     void requestHop(parsed, 0, state)
-      .then(async (bytes) => {
-        await validatePdf(bytes);
+      .then((bytes) => {
         settle(undefined, bytes);
       })
       .catch((error) => settle(error instanceof Error ? error : fail("the download failed.")));

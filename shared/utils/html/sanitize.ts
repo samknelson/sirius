@@ -10,6 +10,7 @@
  * pulls jsdom under Node. Boot-path code imports `./escape` directly.
  */
 import DOMPurify from "isomorphic-dompurify";
+import { templateDeclarations } from "./template-css";
 import { decodeHtmlEntities } from "./entities";
 import {
   HTML_SANITIZE_POLICIES,
@@ -73,7 +74,53 @@ export function sanitizeHtml(
   if (allowlist.attributes) config.ALLOWED_ATTR = [...allowlist.attributes];
   if (allowlist.uriPattern) config.ALLOWED_URI_REGEXP = allowlist.uriPattern;
 
+  if (policy === "template-document") {
+    return sanitizeTemplateBody(html);
+  }
   return DOMPurify.sanitize(html, config);
+}
+
+/** Internal import boundary; tokenPrefix is a collision-free opaque sentinel. */
+export function sanitizeTemplateBody(html: string, tokenPrefix?: string): string {
+  const policy = HTML_SANITIZE_POLICIES["template-document"];
+  const root = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: policy.tags,
+    ALLOWED_ATTR: policy.attributes,
+    ALLOWED_URI_REGEXP: policy.uriPattern,
+    RETURN_DOM: true,
+  }) as HTMLElement;
+  root.querySelectorAll("*").forEach((el) => {
+    if (el.hasAttribute("style")) {
+      const style = templateDeclarations(el.getAttribute("style")!, tokenPrefix)
+        .map(({ property, value, important }) => `${property}:${value}${important ? "!important" : ""}`).join(";");
+      if (style) el.setAttribute("style", style);
+      else el.removeAttribute("style");
+    }
+    if (el.hasAttribute("src")) {
+      const src = el.getAttribute("src")!;
+      if (!(tokenPrefix && src.includes(tokenPrefix))) {
+        try {
+          const url = new URL(src);
+          if (!/^https?:\/\/[^\s\\]+$/i.test(src) || !url.hostname || url.username || url.password) {
+            el.removeAttribute("src");
+          }
+        } catch { el.removeAttribute("src"); }
+      }
+    }
+  });
+  return root.innerHTML;
+}
+
+/** Detached, inert DOM used only while importing a template. Never mount it. */
+export function parseTemplateDocument(html: string): HTMLElement {
+  const policy = HTML_SANITIZE_POLICIES["template-document"];
+  return DOMPurify.sanitize(html, {
+    WHOLE_DOCUMENT: true,
+    RETURN_DOM: true,
+    ALLOWED_TAGS: [...policy.tags, "html", "head", "body", "style"],
+    ALLOWED_ATTR: policy.attributes,
+    ALLOWED_URI_REGEXP: policy.uriPattern,
+  }) as HTMLElement;
 }
 
 /**

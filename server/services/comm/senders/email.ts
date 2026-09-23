@@ -66,7 +66,14 @@ async function alreadySent(contactId: string, sendKey: string): Promise<SendEmai
 }
 
 export async function sendEmail(request: SendEmailRequest): Promise<SendEmailResult> {
-  const { contactId, toEmail, toName, subject, bodyText, bodyHtml, fromEmail, fromName, replyTo, userId, tagIds, sendOffline, sendKey } = request;
+  const { contactId, toEmail, toName, subject, fromEmail, fromName, replyTo, userId, tagIds, sendOffline, sendKey } = request;
+  // One-off forms can bypass token composition. Apply the same final policy
+  // here too, before recording or handing HTML to the transport.
+  const { normalizeTemplateHtml, htmlToPlainText } = await import("@shared/utils/html");
+  const bodyHtml = request.bodyHtml === undefined
+    ? undefined
+    : normalizeTemplateHtml(request.bodyHtml, { preserveTokens: false });
+  const bodyText = bodyHtml === undefined ? request.bodyText : htmlToPlainText(bodyHtml);
 
   if (sendOffline) {
     try {
