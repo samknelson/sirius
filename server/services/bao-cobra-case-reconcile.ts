@@ -17,6 +17,7 @@
 
 import { storage } from "../storage";
 import { logger } from "../logger";
+import { isInferredTermination } from "../storage/trust/wmb-events";
 import {
   openCobraCasesForTermination,
   type WmbTerminationGroup,
@@ -78,6 +79,8 @@ export async function reconcileCobraCases(
   // Group med/dental terminate events per (worker, year, month).
   const groups = new Map<string, WmbTerminationGroup>();
   for (const event of events) {
+    // A coverage gap is not evidence that any COBRA-qualifying rule failed.
+    if (isInferredTermination(event.data)) continue;
     const kind = kindByBenefit.get(event.benefitId);
     if (!kind) continue; // COBRA only applies to medical/dental coverage.
 

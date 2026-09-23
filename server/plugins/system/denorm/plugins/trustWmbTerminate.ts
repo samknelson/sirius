@@ -41,7 +41,9 @@ interface ScanSummaryAction {
  * event). Compute rebuilds the full terminate set from the PERSISTED scan
  * queue result summaries (`trust_wmb_scan_queue.result_summary`), which is
  * also exactly what backfill replays — event path and backfill share one code
- * path. The table is shared with the sibling trust-wmb-start /
+ * path. Storage preserves coverage-inferred terminations not present in the
+ * scan result set; confirmed scan events replace inferred rows on collision.
+ * The table is shared with the sibling trust-wmb-start /
  * trust-wmb-restart plugins (each owns its own `event_type` slice), hence
  * `soleWriter: false`.
  */

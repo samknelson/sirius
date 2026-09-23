@@ -144,3 +144,4 @@
 - [Worker-list sensitive filters](worker-list-sensitive-filters.md) — body-only searches, opaque cache generations, and consistent selection/export without exposing lookup values.
 - [Worker export traversal consistency](worker-export-traversal-consistency.md) — keyset batches preserve a total order without a long-lived snapshot; edits to filter/sort keys during a download may move rows.
 - [Online payment rollout](online-payment-foundation-boundary.md) — reuse existing attempts and pending ACH recovery; historical payer/consent stay unknown; foundation does not authorize live charging.
+- [WMB inferred event ownership](wmb-inferred-event-ownership.md) — coverage gaps are not failed scans; preserve inferred terminations through denorm recompute, but let confirmed scans win collisions.
