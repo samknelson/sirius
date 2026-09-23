@@ -167,6 +167,9 @@ try {
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });
   const page = await browser.newPage();
+  await page.evaluateOnNewDocument(() => {
+    window.__initialConfigPreference = localStorage.getItem("configuration-menu-open");
+  });
   const failures = [];
   page.on("pageerror", error => failures.push(error.message));
   await page.setRequestInterception(true);
@@ -200,7 +203,9 @@ try {
     waitUntil: "domcontentloaded",
     timeout: 90_000,
   });
-  await page.waitForSelector('[data-testid="nav-config-trust"]');
+  await page.waitForSelector('[data-testid="nav-config-rail-trust"]');
+  assert.equal(await page.evaluate(() => window.__initialConfigPreference), null,
+    "the first load starts with no saved configuration menu preference");
   assert.equal(
     await page.$eval('[data-testid="fixture-location"]', node => node.textContent),
     "/trust-benefits/benefit-fixture",
@@ -254,11 +259,19 @@ try {
       expanded: state,
     }, `${label} follows the section list without a home link`);
   };
-  await assertBottomControl("Collapse configuration menu", "true");
+  await assertBottomControl("Expand configuration menu", "false");
   assert.equal(await page.evaluate(() => scrollY), 0, "initial load has not scrolled");
+  await waitForSidebarWidth(page, 56);
   await assertViewportControl();
   assert.equal((await box(page, sidebarSelector)).top, (await box(page, "#site-header")).bottom,
     "sidebar starts below the shared header");
+  assert.equal(await page.$eval('[data-testid="nav-config-rail-trust"]', node => node.getAttribute("aria-label")),
+    "Trust", "first-load rail sections have accessible names");
+  await page.click(desktopToggle);
+  await waitForSidebarWidth(page, 256);
+  await assertBottomControl("Collapse configuration menu", "true");
+  assert.equal(await page.evaluate(() => localStorage.getItem("configuration-menu-open")), "true",
+    "expanding saves the explicit desktop choice");
   await page.click('[data-testid="nav-config-dropdown-lists"]');
   await page.waitForSelector('[data-testid="text-dropdown-lists-loading"]');
   assert.match(

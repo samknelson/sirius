@@ -17,9 +17,9 @@ export function loadConfigurationMenuOpen(
   storage: StorageReader | undefined = browserStorage(),
 ): boolean {
   try {
-    return storage?.getItem(CONFIGURATION_MENU_STORAGE_KEY) !== "false";
+    return storage?.getItem(CONFIGURATION_MENU_STORAGE_KEY) === "true";
   } catch {
-    return true;
+    return false;
   }
 }
 

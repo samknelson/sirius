@@ -72,16 +72,18 @@ describe("configuration whole-menu preference", () => {
       },
     });
     try {
-      expect(loadConfigurationMenuOpen()).toBe(true);
+      expect(loadConfigurationMenuOpen()).toBe(false);
       expect(() => saveConfigurationMenuOpen(false)).not.toThrow();
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  it("defaults open and restores a saved closed preference", () => {
-    expect(loadConfigurationMenuOpen({ getItem: () => null })).toBe(true);
+  it("defaults collapsed and restores both saved preferences", () => {
+    expect(loadConfigurationMenuOpen({ getItem: () => null })).toBe(false);
+    expect(loadConfigurationMenuOpen({ getItem: () => "true" })).toBe(true);
     expect(loadConfigurationMenuOpen({ getItem: () => "false" })).toBe(false);
+    expect(loadConfigurationMenuOpen({ getItem: () => "unrecognized" })).toBe(false);
   });
 
   it("writes the preference under a stable key", () => {
@@ -97,7 +99,7 @@ describe("configuration whole-menu preference", () => {
       getItem: () => {
         throw new Error("blocked");
       },
-    })).toBe(true);
+    })).toBe(false);
 
     expect(() => saveConfigurationMenuOpen(true, {
       setItem: () => {
