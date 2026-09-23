@@ -303,14 +303,14 @@ export function StatementPicker({
       ) : (
         <div className="border rounded-md max-h-[240px] overflow-y-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50 sticky top-0">
+            <thead>
               <tr>
-                <th className="text-left p-2 font-medium w-8"></th>
-                <th className="text-left p-2 font-medium">Period</th>
-                <th className="text-right p-2 font-medium">Charges</th>
-                <th className="text-right p-2 font-medium">Balance</th>
+                <th className="sticky top-0 z-10 bg-muted text-left p-2 font-medium w-8"></th>
+                <th className="sticky top-0 z-10 bg-muted text-left p-2 font-medium">Period</th>
+                <th className="sticky top-0 z-10 bg-muted text-right p-2 font-medium">Charges</th>
+                <th className="sticky top-0 z-10 bg-muted text-right p-2 font-medium">Balance</th>
                 {multiMode && (
-                  <th className="text-right p-2 font-medium w-28">Apply</th>
+                  <th className="sticky top-0 z-10 bg-muted text-right p-2 font-medium w-28">Apply</th>
                 )}
               </tr>
             </thead>

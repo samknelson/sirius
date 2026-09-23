@@ -33,6 +33,16 @@ const paymentTypes = [
   { id: "check", name: "Check", category: "financial", currencyCode: "USD" },
 ];
 
+const statementInvoices = Array.from({ length: 18 }, (_, index) => ({
+  month: (index % 12) + 1,
+  year: 2024 + Math.floor(index / 12),
+  totalAmount: "25.00",
+  entryCount: 1,
+  incomingBalance: "0.00",
+  invoiceBalance: "25.00",
+  outgoingBalance: "25.00",
+}));
+
 function makePayment(overrides: Record<string, unknown> = {}) {
   return {
     id: "payment-1",
@@ -232,6 +242,65 @@ afterEach(() => {
 });
 
 describe("PaymentForm rendered allocation regressions", () => {
+  it.each(["create", "edit", "batch"] as const)(
+    "keeps the %s statement header opaque above a long list through selection and split mode",
+    async (context) => {
+      apiRequest.mockImplementation(async (method: string, url: string) => {
+        if (method === "GET" && (url === "/api/ledger/ea" || url.startsWith("/api/ledger/ea?"))) return eas;
+        if (method === "GET" && url.endsWith("/invoices")) return statementInvoices;
+        throw new Error(`Unexpected API call: ${method} ${url}`);
+      });
+      if (context === "edit") {
+        queryClient.setQueryData(["/api/ledger/payments", "payment-1"], serverPayment);
+      }
+      renderForm(context === "edit"
+        ? { mode: "edit", paymentId: "payment-1" }
+        : { mode: "create", accountId: "account-1", ...(context === "batch" ? { batchId: "batch-1" } : {}) });
+      if (context !== "edit") {
+        await waitFor(() => expect(participantCards()).toHaveLength(1));
+        await choose(participantCards()[0].querySelector('[role="combobox"]')!, "Acme");
+      }
+      await waitFor(() => expect(participantCards()[0]?.querySelectorAll("tbody tr")).toHaveLength(18));
+      const card = participantCards()[0];
+      const scrollContainer = card.querySelector("table")!.parentElement!;
+      expect(scrollContainer.className).toContain("max-h-[240px]");
+      expect(scrollContainer.className).toContain("overflow-y-auto");
+      const assertHeader = (labels: string[]) => {
+        const headings = Array.from(card.querySelectorAll("thead th"));
+        expect(headings.map((cell) => cell.textContent)).toEqual(["", ...labels]);
+        for (const cell of headings) {
+          expect(cell.classList.contains("sticky")).toBe(true);
+          expect(cell.classList.contains("top-0")).toBe(true);
+          expect(cell.classList.contains("z-10")).toBe(true);
+          expect(cell.classList.contains("bg-muted")).toBe(true);
+          expect(cell.className).not.toMatch(/bg-muted\//);
+        }
+      };
+      assertHeader(["Period", "Charges", "Balance"]);
+
+      await click(card.querySelectorAll("tbody tr")[0]);
+      await waitFor(() => expect(card.textContent).toContain("Split across multiple statements"));
+      await click(Array.from(card.querySelectorAll("button")).find(
+        (button) => button.textContent?.includes("Split across multiple statements"),
+      )!);
+      assertHeader(["Period", "Charges", "Balance", "Apply"]);
+      await click(card.querySelectorAll("tbody tr")[1]);
+      expect(card.querySelectorAll('input[placeholder="Amount required"]')).toHaveLength(2);
+      await changeInput(card.querySelector('input[placeholder="Amount required"]')!, "12.50");
+      expect((card.querySelector('input[placeholder="Amount required"]') as HTMLInputElement).value).toBe("12.50");
+
+      await click(Array.from(card.querySelectorAll("button")).find(
+        (button) => button.textContent?.includes("Enter manually"),
+      )!);
+      expect(card.querySelector("table")).toBeNull();
+      expect(card.textContent).toContain("Pick from statements");
+      await click(Array.from(card.querySelectorAll("button")).find(
+        (button) => button.textContent?.includes("Pick from statements"),
+      )!);
+      assertHeader(["Period", "Charges", "Balance"]);
+    },
+  );
+
   it.each(["cold", "cached"] as const)(
     "keeps the first participant visible when %s edit account options arrive late",
     async (cacheState) => {
