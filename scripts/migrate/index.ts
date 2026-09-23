@@ -265,6 +265,7 @@ import "./core/1199_worker_export_order_indexes";
 import "./core/1200_generalize_online_payments";
 import "./core/1201_restore_payment_attempt_immediate_fk";
 import "./core/1202_create_employer_contact_payment_grants";
+import "./core/1203_payment_type_direction";
 
 export {
   runMigrations,

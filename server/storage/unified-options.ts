@@ -1,12 +1,13 @@
 import { createNoopValidator } from './utils/validation';
-import { getClient } from './transaction-context';
-import { eq, asc, getTableName, SQL } from "drizzle-orm";
+import { getClient, runInTransaction } from './transaction-context';
+import { eq, asc, and, getTableName, SQL } from "drizzle-orm";
 import { PgTable, TableConfig } from "drizzle-orm/pg-core";
 import { 
   optionsGender, 
   optionsWorkerIdType, 
   optionsTrustBenefitType, 
   optionsLedgerPaymentType,
+  ledgerPayments,
   optionsEmployerContactType,
   optionsEmployerType,
   optionsDepartment,
@@ -586,11 +587,12 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     loggingModule: "options.ledgerPaymentTypes",
     bespokePath: "/config/ledger/payment-types",
     requiredFields: ["name", "category"],
-    optionalFields: ["description", "sequence", "currencyCode", "data"],
+    optionalFields: ["description", "sequence", "currencyCode", "direction", "data"],
     supportsSequencing: true,
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Payment type name", showInTable: true, columnHeader: "Name" },
       { name: "category", label: "Category", inputType: "text", required: true, placeholder: "Payment category", showInTable: true, columnHeader: "Category" },
+      { name: "direction", label: "Ledger Effect", inputType: "enum", required: false, enumOptions: [{ value: "credit", label: "Credit" }, { value: "charge", label: "Charge" }], showInTable: true, columnHeader: "Ledger Effect" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: false },
       { name: "currencyCode", label: "Currency Code", inputType: "text", required: false, placeholder: "e.g., USD", showInTable: true, columnHeader: "Currency" },
     ],
@@ -1179,6 +1181,10 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
 
     async create(type: OptionsTypeName, data: Record<string, any>): Promise<any> {
       validate.validateOrThrow(type);
+      if (type === "ledger-payment-type" && data.direction !== undefined &&
+          data.direction !== "charge" && data.direction !== "credit") {
+        throw new Error("Ledger effect must be Charge or Credit");
+      }
       const metadata = getTable(type) as any;
       
       if (metadata.supportsParent && data.parent) {
@@ -1197,6 +1203,26 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
 
     async update(type: OptionsTypeName, id: string, data: Record<string, any>): Promise<any | undefined> {
       validate.validateOrThrow(type);
+      if (type === "ledger-payment-type" && data.direction !== undefined) {
+        if (data.direction !== "charge" && data.direction !== "credit") {
+          throw new Error("Ledger effect must be Charge or Credit");
+        }
+        return runInTransaction(async () => {
+          const client = getClient();
+          const [current] = await client.select({ direction: optionsLedgerPaymentType.direction })
+            .from(optionsLedgerPaymentType).where(eq(optionsLedgerPaymentType.id, id)).for("update");
+          if (current && current.direction !== data.direction) {
+            const [posted] = await client.select({ id: ledgerPayments.id })
+              .from(ledgerPayments)
+              .where(and(eq(ledgerPayments.paymentType, id), eq(ledgerPayments.status, "cleared")))
+              .limit(1);
+            if (posted) throw new Error("This type has cleared payments. Changing its ledger effect requires an audited historical correction.");
+          }
+          const [result] = await client.update(optionsLedgerPaymentType)
+            .set(data).where(eq(optionsLedgerPaymentType.id, id)).returning();
+          return result;
+        });
+      }
       const metadata = getTable(type) as any;
       
       if (metadata.supportsParent && data.parent !== undefined) {

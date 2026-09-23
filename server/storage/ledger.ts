@@ -17,7 +17,7 @@ import type {
   Ledger,
   InsertLedger
 } from "@shared/schema";
-import { eq, ne, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray, notInArray, gte, lte, lt, ilike } from "drizzle-orm";
+import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray, notInArray, gte, lte, lt, ilike } from "drizzle-orm";
 import { alias as pgAlias } from "drizzle-orm/pg-core";
 import { defineLoggingConfig, withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { formatAmount, getCurrency } from "@shared/currency";
@@ -786,7 +786,8 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         throw new Error("Account not found");
       }
       
-      const [paymentType] = await client.select().from(optionsLedgerPaymentType).where(eq(optionsLedgerPaymentType.id, insertPayment.paymentType));
+      const [paymentType] = await client.select().from(optionsLedgerPaymentType)
+        .where(eq(optionsLedgerPaymentType.id, insertPayment.paymentType)).for("share");
       if (!paymentType) {
         throw new Error("Payment type not found");
       }
@@ -821,7 +822,8 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
       const client = getClient();
       // If payment type or EA is being changed, validate the effective pair.
       if (paymentUpdate.paymentType || paymentUpdate.ledgerEaId) {
-        const [existingPayment] = await client.select().from(ledgerPayments).where(eq(ledgerPayments.id, id));
+        const [existingPayment] = await client.select().from(ledgerPayments)
+          .where(eq(ledgerPayments.id, id)).for("update");
         if (!existingPayment) {
           return undefined;
         }
@@ -838,9 +840,18 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
           throw new Error("Account not found");
         }
         
-        const [paymentType] = await client.select().from(optionsLedgerPaymentType).where(eq(optionsLedgerPaymentType.id, effectivePaymentTypeId));
+        const [paymentType] = await client.select().from(optionsLedgerPaymentType)
+          .where(eq(optionsLedgerPaymentType.id, effectivePaymentTypeId)).for("share");
         if (!paymentType) {
           throw new Error("Payment type not found");
+        }
+        if (existingPayment.status === "cleared" && paymentUpdate.paymentType &&
+            paymentUpdate.paymentType !== existingPayment.paymentType) {
+          const [oldType] = await client.select({ direction: optionsLedgerPaymentType.direction })
+            .from(optionsLedgerPaymentType).where(eq(optionsLedgerPaymentType.id, existingPayment.paymentType));
+          if (!oldType || oldType.direction !== paymentType.direction) {
+            throw new Error("Changing the ledger effect of a cleared payment requires an audited historical correction");
+          }
         }
         
         if (paymentType.currencyCode !== account.currencyCode) {
@@ -1625,6 +1636,10 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       // referenceType-first: migrated (s1-import) allocations reference a
       // payment without the payment-simple-allocation charge plugin.
       const isPaymentExpr = sqlRaw<boolean>`(${ledger.referenceType} = 'payment' OR ${ledger.chargePlugin} = 'payment-simple-allocation')`;
+      // A payment-backed positive entry represents a charge, not a receipt or
+      // credit applied. Adjustment payment types also stay on the charge side
+      // regardless of sign; their invoice classification is more specific.
+      const isPaymentCreditExpr = sqlRaw<boolean>`(${isPaymentExpr} AND ${ledger.amount} < 0 AND COALESCE(${optionsLedgerPaymentType.category}, 'financial') <> 'adjustment')`;
 
       const whereConds = [eq(ledgerEa.accountId, accountId)];
       if (basis === 'cash') {
@@ -1638,13 +1653,18 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       const rows = await client
         .select({
           ym: bucketExpr,
-          isPayment: isPaymentExpr,
+          isPayment: isPaymentCreditExpr,
           total: sum(ledger.amount),
         })
         .from(ledger)
         .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+        .leftJoin(ledgerPayments, and(
+          eq(ledger.referenceType, 'payment'),
+          eq(ledger.referenceId, ledgerPayments.id),
+        ))
+        .leftJoin(optionsLedgerPaymentType, eq(ledgerPayments.paymentType, optionsLedgerPaymentType.id))
         .where(and(...whereConds))
-        .groupBy(bucketExpr, isPaymentExpr);
+        .groupBy(bucketExpr, isPaymentCreditExpr);
 
       const map = new Map<string, { charges: string; payments: string }>();
       for (const k of monthKeys) map.set(k, { charges: '0.00', payments: '0.00' });
@@ -1675,9 +1695,11 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       const startStr = `${ym}-01`;
       const endExclusiveStr = `${nextYm}-01`;
 
+      const isPaymentExpr = sqlRaw<boolean>`(${ledger.referenceType} = 'payment' OR ${ledger.chargePlugin} = 'payment-simple-allocation')`;
+      const isPaymentCreditExpr = sqlRaw<boolean>`(${isPaymentExpr} AND ${ledger.amount} < 0 AND COALESCE(${optionsLedgerPaymentType.category}, 'financial') <> 'adjustment')`;
       const sideCond = side === 'payments'
-        ? eq(ledger.chargePlugin, 'payment-simple-allocation')
-        : ne(ledger.chargePlugin, 'payment-simple-allocation');
+        ? isPaymentCreditExpr
+        : sqlRaw<boolean>`NOT ${isPaymentCreditExpr}`;
 
       const whereConds = [eq(ledgerEa.accountId, accountId), sideCond];
       if (basis === 'cash') {
@@ -1692,6 +1714,11 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         .select({ entry: ledger })
         .from(ledger)
         .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+        .leftJoin(ledgerPayments, and(
+          eq(ledger.referenceType, 'payment'),
+          eq(ledger.referenceId, ledgerPayments.id),
+        ))
+        .leftJoin(optionsLedgerPaymentType, eq(ledgerPayments.paymentType, optionsLedgerPaymentType.id))
         .where(and(...whereConds))
         .orderBy(desc(ledger.date), desc(ledger.id))
         .limit(1000);
@@ -2138,7 +2165,7 @@ interface SectionSubtotals {
   paymentsAppliedCents: bigint;
 }
 
-function classifyEntriesForPeriod(
+export function classifyEntriesForPeriod(
   monthEntryIds: Set<string>,
   allEntries: { id: string; amount: string; date: Date | null; statementYmd: string | null; referenceType: string | null; referenceId: string | null }[],
   paymentInfoMap: Map<string, PaymentInfo>,
@@ -2155,15 +2182,17 @@ function classifyEntriesForPeriod(
 
     if (entry.referenceType === 'payment' && entry.referenceId) {
       const payInfo = paymentInfoMap.get(entry.referenceId);
-      if (payInfo?.category !== 'adjustment') {
+      const amountCents = toCents(entry.amount);
+      if (payInfo?.category !== 'adjustment' && amountCents > 0) {
+        // Positive payment-backed ledger entries are charges, not payments.
+        chargesCents += amountCents;
+      } else if (payInfo?.category !== 'adjustment' && amountCents < 0) {
         const stmtYmd = entry.statementYmd;
         const stmtDate = stmtYmd && isValidYmd(stmtYmd) ? ymdToDateForPicker(stmtYmd) : null;
         const entryInPeriod = stmtDate &&
           stmtDate.getMonth() + 1 === month &&
           stmtDate.getFullYear() === year;
-        if (entryInPeriod) {
-          paymentsReceivedCents += toCents(entry.amount);
-        }
+        if (entryInPeriod) paymentsReceivedCents += amountCents;
       }
     } else {
       const amt = parseFloat(entry.amount);
@@ -2189,17 +2218,18 @@ function classifyEntriesForPeriod(
       const stmtMonth = stmtDate ? stmtDate.getMonth() + 1 : null;
       const stmtYear = stmtDate ? stmtDate.getFullYear() : null;
 
+      const amountCents = toCents(entry.amount);
       if (payInfo.category === 'adjustment' &&
           stmtMonth === month && stmtYear === year) {
         if (!sectionedIds.has(entry.id)) {
           sectionedIds.add(entry.id);
-          adjustmentsCents += toCents(entry.amount);
+          adjustmentsCents += amountCents;
         }
       } else if (payInfo.category !== 'adjustment' &&
-          stmtMonth === month && stmtYear === year) {
+          amountCents < 0 && stmtMonth === month && stmtYear === year) {
         if (!sectionedIds.has(entry.id)) {
           sectionedIds.add(entry.id);
-          paymentsAppliedCents += toCents(entry.amount);
+          paymentsAppliedCents += amountCents;
         }
       }
     }
@@ -2471,19 +2501,22 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
             paymentStatementYear: stmtDate ? stmtDate.getFullYear() : null,
           };
 
-          if (payInfo?.category !== 'adjustment') {
+          const amountCents = toCents(entry.amount);
+          if (payInfo?.category !== 'adjustment' && amountCents > 0) {
+            // Positive payment-backed entries are billed charges.
+            charges.push(sectionEntry);
+          } else if (payInfo?.category !== 'adjustment' && amountCents < 0) {
             const entryInPeriod = stmtDate &&
               stmtDate.getMonth() + 1 === month &&
               stmtDate.getFullYear() === year;
-
-            if (entryInPeriod) {
-              paymentsReceived.push(sectionEntry);
-            }
+            if (entryInPeriod) paymentsReceived.push(sectionEntry);
           }
         } else {
           const amt = parseFloat(entry.amount);
           if (amt > 0) {
             charges.push({ ...entry, paymentTypeCategory: null, paymentStatementMonth: null, paymentStatementYear: null });
+          } else if (amt < 0) {
+            adjustments.push({ ...entry, paymentTypeCategory: null, paymentStatementMonth: null, paymentStatementYear: null });
           }
         }
       }
@@ -2511,6 +2544,7 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
               });
             }
           } else if (payInfo.category !== 'adjustment' &&
+              toCents(entry.amount) < 0 &&
               stmtMonth === month && stmtYear === year) {
             if (!sectionedEntryIds.has(entry.id)) {
               sectionedEntryIds.add(entry.id);

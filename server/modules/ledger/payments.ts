@@ -450,7 +450,10 @@ async function checkPaymentEaAccessInline(req: Request, res: Response, ea: { ent
   return true;
 }
 
-export async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<LedgerNotification[]> {
+export async function triggerPaymentChargePlugins(
+  payment: LedgerPayment,
+  options?: { onlyPluginIds?: string[]; suppressSavedEvent?: boolean },
+): Promise<LedgerNotification[]> {
   try {
     const allNotifications: LedgerNotification[] = [];
     const expectedSimpleAllocationKeys = new Set<string>();
@@ -480,7 +483,7 @@ export async function triggerPaymentChargePlugins(payment: LedgerPayment): Promi
           details,
         };
 
-        onAfterCommit(() => {
+        if (!options?.suppressSavedEvent) onAfterCommit(() => {
           eventBus.emit(EventType.PAYMENT_SAVED, payload).catch(err => {
             logger.error("Failed to emit PAYMENT_SAVED event for allocation", {
               service: "ledger-payments",
@@ -496,7 +499,7 @@ export async function triggerPaymentChargePlugins(payment: LedgerPayment): Promi
           ...payload,
         };
 
-        const result = await executeChargePlugins(context, { throwOnFailure: true });
+        const result = await executeChargePlugins(context, { throwOnFailure: true, onlyPluginIds: options?.onlyPluginIds });
         allNotifications.push(...result.notifications);
         for (const transaction of result.totalTransactions) {
           if (transaction.chargePlugin === "payment-simple-allocation") {
@@ -543,7 +546,7 @@ export async function triggerPaymentChargePlugins(payment: LedgerPayment): Promi
       details,
     };
 
-    onAfterCommit(() => {
+    if (!options?.suppressSavedEvent) onAfterCommit(() => {
       eventBus.emit(EventType.PAYMENT_SAVED, payload).catch(err => {
         logger.error("Failed to emit PAYMENT_SAVED event", {
           service: "ledger-payments",
@@ -558,7 +561,7 @@ export async function triggerPaymentChargePlugins(payment: LedgerPayment): Promi
       ...payload,
     };
 
-    const result = await executeChargePlugins(context, { throwOnFailure: true });
+    const result = await executeChargePlugins(context, { throwOnFailure: true, onlyPluginIds: options?.onlyPluginIds });
     allNotifications.push(...result.notifications);
     for (const transaction of result.totalTransactions) {
       if (transaction.chargePlugin === "payment-simple-allocation") {

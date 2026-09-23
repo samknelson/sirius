@@ -43,11 +43,14 @@ describe("worker Stripe payment attempt backend", () => {
 
   it("selects a financial ledger payment type in the attempt currency", () => {
     const types = [
-      { id: "usd-adjustment", category: "adjustment", currencyCode: "USD" },
-      { id: "usd-payment", category: "financial", currencyCode: "USD" },
-      { id: "cad-payment", category: "financial", currencyCode: "CAD" },
-    ];
+      { id: "usd-adjustment", category: "adjustment", currencyCode: "USD", direction: "credit" },
+      { id: "usd-charge", category: "financial", currencyCode: "USD", direction: "charge" },
+      { id: "usd-payment", category: "financial", currencyCode: "USD", direction: "credit" },
+      { id: "cad-payment", category: "financial", currencyCode: "CAD", direction: "credit" },
+    ] as Array<{ id: string; category: string; currencyCode: string; direction: "charge" | "credit" }>;
     expect(selectFinancialPaymentType(types, "cad")?.id).toBe("cad-payment");
+    expect(selectFinancialPaymentType(types, "usd")?.id).toBe("usd-payment");
+    expect(selectFinancialPaymentType([types[1]], "USD")).toBeUndefined();
     expect(selectFinancialPaymentType(types, "EUR")).toBeUndefined();
 
     const source = readFileSync("server/modules/ledger/payment-attempts.ts", "utf8");

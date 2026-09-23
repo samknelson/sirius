@@ -58,6 +58,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
     configId: string,
     currencyLabel: string,
     paymentTypeName: string,
+    direction: "charge" | "credit",
     statementYmd?: string
   ): ExpectedEntry | null {
     if (paymentContext.status !== "cleared") {
@@ -72,10 +73,10 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
     }
 
     const paymentAmount = parseFloat(paymentContext.amount);
-    const allocatedAmount = -paymentAmount;
+    const allocatedAmount = direction === "charge" ? paymentAmount : -paymentAmount;
     const transactionDate = paymentContext.dateReceived || paymentContext.dateCleared || new Date();
     
-    const description = `${currencyLabel} Payment: ${paymentTypeName}`;
+    const description = `${currencyLabel} ${direction === "charge" ? "Charge" : "Payment"}: ${paymentTypeName}`;
 
     const ymdSuffix = statementYmd ? `:${statementYmd}` : "";
     const keySuffix = paymentContext.allocationId
@@ -157,6 +158,9 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
 
       // Look up payment type and currency for description
       const paymentType = await unifiedOptionsStorage.get("ledger-payment-type", paymentContext.paymentTypeId);
+      if (!paymentType || !["charge", "credit"].includes(paymentType.direction)) {
+        throw new Error("Payment type has no valid ledger effect");
+      }
       const paymentTypeName = paymentType?.name || "Unknown";
       const currencyCode = paymentType?.currencyCode || "USD";
       const currency = getCurrency(currencyCode);
@@ -164,7 +168,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
 
       const resolvedStatementYmd = paymentContext.allocationStatementYmd || undefined;
 
-      const expectedEntry = this.computeExpectedEntry(paymentContext, config.id, currencyLabel, paymentTypeName, resolvedStatementYmd);
+      const expectedEntry = this.computeExpectedEntry(paymentContext, config.id, currencyLabel, paymentTypeName, paymentType.direction, resolvedStatementYmd);
 
       const notifications: LedgerNotification[] = [];
 
@@ -225,7 +229,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
         notifications.push({
           type: actionType,
           amount: expectedEntry.amount,
-          description: `Ledger entry ${actionType}: -$${Math.abs(parseFloat(expectedEntry.amount)).toFixed(2)}`,
+           description: `Ledger entry ${actionType}: ${expectedEntry.amount}`,
         });
 
         return {
@@ -294,8 +298,8 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
         type: ourEntries.length > 0 ? "updated" : "created",
         amount: expectedEntry.amount,
         description: ourEntries.length > 0
-          ? `Ledger entry updated: -$${Math.abs(parseFloat(expectedEntry.amount)).toFixed(2)}`
-          : `Ledger entry created: -$${Math.abs(parseFloat(expectedEntry.amount)).toFixed(2)}`,
+          ? `Ledger entry updated: ${expectedEntry.amount}`
+          : `Ledger entry created: ${expectedEntry.amount}`,
       });
 
       return {
@@ -412,12 +416,15 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
 
       // Look up payment type and currency for description
       const verifyPaymentType = await unifiedOptionsStorage.get("ledger-payment-type", payment.paymentType);
+       if (!verifyPaymentType || !["charge", "credit"].includes(verifyPaymentType.direction)) {
+         throw new Error("Payment type has no valid ledger effect");
+       }
       const verifyPaymentTypeName = verifyPaymentType?.name || "Unknown";
       const verifyCurrencyCode = verifyPaymentType?.currencyCode || "USD";
       const verifyCurrency = getCurrency(verifyCurrencyCode);
       const verifyCurrencyLabel = verifyCurrency?.label || verifyCurrencyCode;
 
-      const expectedEntry = this.computeExpectedEntry(paymentContext, config.id, verifyCurrencyLabel, verifyPaymentTypeName);
+       const expectedEntry = this.computeExpectedEntry(paymentContext, config.id, verifyCurrencyLabel, verifyPaymentTypeName, verifyPaymentType.direction);
 
       if (!expectedEntry) {
         return {

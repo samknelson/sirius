@@ -145,6 +145,7 @@
 - [Worker-list sensitive filters](worker-list-sensitive-filters.md) — body-only searches, opaque cache generations, and consistent selection/export without exposing lookup values.
 - [Worker export traversal consistency](worker-export-traversal-consistency.md) — keyset batches preserve a total order without a long-lived snapshot; edits to filter/sort keys during a download may move rows.
 - [Online payment rollout](online-payment-foundation-boundary.md) — reuse existing attempts and pending ACH recovery; historical payer/consent stay unknown; foundation does not authorize live charging.
+- [Payment direction historical correction](payment-direction-historical-correction.md) — changing a type's charge/credit meaning after clearing needs a reviewed snapshot and payment-plugin reconciliation, never a blind sign flip.
 - [WMB inferred event ownership](wmb-inferred-event-ownership.md) — coverage gaps are not failed scans; preserve inferred terminations through denorm recompute, but let confirmed scans win collisions.
 - [Navigation measurement and scroll width](nav-measurement-scrollwidth.md) — invisible absolute width probes still enlarge scrollWidth unless clipped inside a zero-width wrapper.
 - [Feed validation final-error classification](feed-validation-final-error-classification.md) — classify unmapped-only rows after subclass error adjustments, not before BAO removes accepted dollar-format errors.

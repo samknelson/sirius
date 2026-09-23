@@ -31,6 +31,7 @@ export type FinancialPaymentType = {
   id: string;
   category?: string | null;
   currencyCode?: string | null;
+  direction?: "charge" | "credit" | null;
 };
 
 /** Pick only a financial payment type that can post to the attempt's currency. */
@@ -42,6 +43,7 @@ export function selectFinancialPaymentType<T extends FinancialPaymentType>(
   return types.find(
     (type) =>
       type.category === "financial" &&
+      type.direction === "credit" &&
       type.currencyCode?.trim().toUpperCase() === normalizedCurrency,
   );
 }

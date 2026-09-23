@@ -544,6 +544,10 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
           message: "A BAO case status that is in use cannot change case type.",
         });
       }
+      if (req.params.type === "ledger-payment-type" &&
+          error?.message === "This type has cleared payments. Changing its ledger effect requires an audited historical correction.") {
+        return res.status(409).json({ message: error.message });
+      }
       const mapped = optionDbErrorMessage(error);
       if (mapped) {
         return res.status(mapped.status).json({ message: mapped.message });

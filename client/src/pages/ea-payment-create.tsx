@@ -36,6 +36,7 @@ interface WithholdingUpload {
 }
 
 type PaymentCategory = "financial" | "adjustment";
+type PaymentTypeWithDirection = LedgerPaymentType & { direction?: "charge" | "credit" };
 
 const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
 
@@ -73,7 +74,7 @@ function EAPaymentCreateContent() {
   });
   const currencyCode = accountData?.currencyCode || "USD";
 
-  const { data: paymentTypes = [] } = useQuery<LedgerPaymentType[]>({
+  const { data: paymentTypes = [] } = useQuery<PaymentTypeWithDirection[]>({
     queryKey: ["/api/ledger/payment-types"],
   });
 
@@ -148,6 +149,7 @@ function EAPaymentCreateContent() {
   const watchedPaymentType = form.watch("paymentType");
   const selectedPaymentType = paymentTypes.find(pt => pt.id === watchedPaymentType);
   const category: PaymentCategory = (selectedPaymentType?.category as PaymentCategory) || "financial";
+  const direction = selectedPaymentType?.direction || "credit";
 
   useEffect(() => {
     if (category === "adjustment") {
@@ -373,6 +375,9 @@ function EAPaymentCreateContent() {
                       </SelectContent>
                     </Select>
                     <FormMessage />
+                    <p className="text-xs text-muted-foreground" data-testid="text-payment-direction">
+                      Effect: <span className="font-medium text-foreground">{direction === "charge" ? "Charge" : "Credit"}</span>
+                    </p>
                   </FormItem>
                 )}
               />

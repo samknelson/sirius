@@ -36,12 +36,18 @@ interface LedgerPaymentType {
   description: string | null;
   currencyCode: string;
   category: "financial" | "adjustment";
+  direction?: "charge" | "credit";
   sequence: number;
 }
 
 const paymentCategories = [
   { value: "financial", label: "Financial" },
   { value: "adjustment", label: "Adjustment" },
+] as const;
+
+const paymentDirections = [
+  { value: "charge", label: "Charge" },
+  { value: "credit", label: "Credit" },
 ] as const;
 
 const currencies = getAllCurrencies();
@@ -60,13 +66,14 @@ export default function LedgerPaymentTypesPage() {
   const [formDescription, setFormDescription] = useState("");
   const [formCurrencyCode, setFormCurrencyCode] = useState("USD");
   const [formCategory, setFormCategory] = useState<"financial" | "adjustment">("financial");
+  const [formDirection, setFormDirection] = useState<"charge" | "credit">("credit");
   
   const { data: paymentTypes = [], isLoading } = useQuery<LedgerPaymentType[]>({
     queryKey: ["/api/options/ledger-payment-type"],
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: { name: string; description: string | null; currencyCode: string; category: "financial" | "adjustment" }) => {
+    mutationFn: async (data: { name: string; description: string | null; currencyCode: string; category: "financial" | "adjustment"; direction: "charge" | "credit" }) => {
       // Find the highest sequence number
       const maxSequence = paymentTypes.reduce((max, type) => Math.max(max, type.sequence), -1);
       return apiRequest("POST", "/api/options/ledger-payment-type", { 
@@ -93,12 +100,13 @@ export default function LedgerPaymentTypesPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { id: string; name: string; description: string | null; currencyCode: string; category: "financial" | "adjustment" }) => {
+    mutationFn: async (data: { id: string; name: string; description: string | null; currencyCode: string; category: "financial" | "adjustment"; direction: "charge" | "credit" }) => {
       return apiRequest("PUT", `/api/options/ledger-payment-type/${data.id}`, {
         name: data.name,
         description: data.description,
         currencyCode: data.currencyCode,
         category: data.category,
+        direction: data.direction,
       });
     },
     onSuccess: () => {
@@ -156,6 +164,7 @@ export default function LedgerPaymentTypesPage() {
     setFormDescription("");
     setFormCurrencyCode("USD");
     setFormCategory("financial");
+    setFormDirection("credit");
   };
 
   const handleEdit = (type: LedgerPaymentType) => {
@@ -164,6 +173,7 @@ export default function LedgerPaymentTypesPage() {
     setFormDescription(type.description || "");
     setFormCurrencyCode(type.currencyCode || "USD");
     setFormCategory(type.category || "financial");
+    setFormDirection(type.direction || "credit");
   };
 
   const handleCancelEdit = () => {
@@ -186,6 +196,7 @@ export default function LedgerPaymentTypesPage() {
       description: formDescription.trim() || null,
       currencyCode: formCurrencyCode,
       category: formCategory,
+      direction: formDirection,
     });
   };
 
@@ -203,6 +214,7 @@ export default function LedgerPaymentTypesPage() {
       description: formDescription.trim() || null,
       currencyCode: formCurrencyCode,
       category: formCategory,
+      direction: formDirection,
     });
   };
 
@@ -266,6 +278,7 @@ export default function LedgerPaymentTypesPage() {
                   <TableHead>Order</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Category</TableHead>
+                  <TableHead>Effect</TableHead>
                   <TableHead>Currency</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -324,6 +337,24 @@ export default function LedgerPaymentTypesPage() {
                         </Select>
                       ) : (
                         paymentCategories.find(c => c.value === type.category)?.label || "Financial"
+                      )}
+                    </TableCell>
+                    <TableCell data-testid={`text-direction-${type.id}`}>
+                      {editingId === type.id ? (
+                        <Select value={formDirection} onValueChange={(value) => setFormDirection(value as "charge" | "credit")}>
+                          <SelectTrigger data-testid={`select-edit-direction-${type.id}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {paymentDirections.map((direction) => (
+                              <SelectItem key={direction.value} value={direction.value}>
+                                {direction.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        paymentDirections.find((direction) => direction.value === (type.direction || "credit"))?.label || "Credit"
                       )}
                     </TableCell>
                     <TableCell data-testid={`text-currency-${type.id}`}>
@@ -446,6 +477,24 @@ export default function LedgerPaymentTypesPage() {
               <p className="text-xs text-muted-foreground">
                 Financial: includes merchant, status, date received, check/transaction number.
                 Adjustment: includes user, date entered, effective date (always cleared).
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-direction">Effect</Label>
+              <Select value={formDirection} onValueChange={(value) => setFormDirection(value as "charge" | "credit")}>
+                <SelectTrigger id="add-direction" data-testid="select-add-direction">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {paymentDirections.map((direction) => (
+                    <SelectItem key={direction.value} value={direction.value}>
+                      {direction.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Choose whether this payment type adds a charge or records a credit.
               </p>
             </div>
             <div className="space-y-2">

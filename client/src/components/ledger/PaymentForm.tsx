@@ -61,6 +61,7 @@ export interface LedgerNotification {
 }
 
 type PaymentCategory = "financial" | "adjustment";
+type PaymentTypeWithDirection = LedgerPaymentType & { direction?: "charge" | "credit" };
 
 interface StatementAllocationEntry {
   month: number;
@@ -182,7 +183,7 @@ export function PaymentForm({
     enabled: mode === "edit" && !!paymentId,
   });
 
-  const { data: paymentTypes = [] } = useQuery<LedgerPaymentType[]>({
+  const { data: paymentTypes = [] } = useQuery<PaymentTypeWithDirection[]>({
     queryKey: ["/api/ledger/payment-types"],
   });
 
@@ -240,6 +241,7 @@ export function PaymentForm({
   const watchedPaymentType = form.watch("paymentType");
   const selectedPaymentType = paymentTypes.find((pt) => pt.id === watchedPaymentType);
   const category: PaymentCategory = (selectedPaymentType?.category as PaymentCategory) || "financial";
+  const direction = selectedPaymentType?.direction || "credit";
 
   const editSessionKey =
     mode === "edit" && payment
@@ -733,6 +735,9 @@ export function PaymentForm({
                   </SelectContent>
                 </Select>
                 <FormMessage />
+                <p className="text-xs text-muted-foreground" data-testid="text-payment-direction">
+                  Effect: <span className="font-medium text-foreground">{direction === "charge" ? "Charge" : "Credit"}</span>
+                </p>
               </FormItem>
             )}
           />

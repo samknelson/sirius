@@ -691,9 +691,12 @@ export const optionsLedgerPaymentType = pgTable("options_ledger_payment_type", {
   description: text("description"),
   currencyCode: varchar("currency_code", { length: 10 }).notNull().default("USD"),
   category: varchar("category", { length: 20 }).notNull().default("financial").$type<"financial" | "adjustment">(),
+  direction: varchar("direction", { length: 6 }).notNull().default("credit").$type<"charge" | "credit">(),
   sequence: integer("sequence").notNull().default(0),
   data: jsonb("data"),
-});
+}, (table) => [
+  check("options_ledger_payment_type_direction_check", sql`${table.direction} IN ('charge', 'credit')`),
+]);
 
 export const optionsEmployerContactType = pgTable("options_employer_contact_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1973,7 +1976,9 @@ export const insertTrustBenefitTypeSchema = createInsertSchema(optionsTrustBenef
   id: true,
 });
 
-export const insertLedgerPaymentTypeSchema = createInsertSchema(optionsLedgerPaymentType).omit({
+export const insertLedgerPaymentTypeSchema = createInsertSchema(optionsLedgerPaymentType, {
+  direction: z.enum(["charge", "credit"]),
+}).omit({
   id: true,
 });
 

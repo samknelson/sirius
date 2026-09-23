@@ -60,6 +60,7 @@ export async function settlePayment(attemptId: string, gatewayId: string, eviden
       const options = await types.list("ledger-payment-type");
       const preferred = (attempt.metadata as Record<string, unknown> | null)?.ledgerPaymentTypeId;
       const paymentType = options.find(t => t.id === preferred && t.category === "financial" &&
+        t.direction === "credit" &&
         t.currencyCode?.toUpperCase() === attempt.currency.toUpperCase()) ??
         selectFinancialPaymentType(options, attempt.currency);
       if (!paymentType) throw new SettlementRefusal("No financial ledger payment type is configured");

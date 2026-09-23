@@ -9,6 +9,7 @@ const methodUpsert = vi.fn();
 const retrieve = vi.fn();
 const cancel = vi.fn();
 const createSession = vi.fn();
+let configuredTypes: Array<{ id: string; category: string; currencyCode: string; direction: "charge" | "credit" }> = [];
 const events = {
   lockAttempt: vi.fn(),
   get: vi.fn(async () => ({ ...attempt })),
@@ -56,9 +57,7 @@ vi.mock("../../server/storage/transaction-context", () => {
   };
 });
 vi.mock("../../server/storage/unified-options", () => ({
-  createUnifiedOptionsStorage: () => ({ list: vi.fn(async () => [
-    { id: "financial-usd", category: "financial", currencyCode: "USD" },
-  ]) }),
+  createUnifiedOptionsStorage: () => ({ list: vi.fn(async () => configuredTypes) }),
 }));
 vi.mock("../../server/modules/ledger/payments", () => ({
   createPaymentFromRequestBody: paymentCreate,
@@ -86,6 +85,7 @@ const success = (overrides: Record<string, unknown> = {}) => ({
 describe("online settlement", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    configuredTypes = [{ id: "financial-usd", category: "financial", currencyCode: "USD", direction: "credit" }];
     attempt = {
       id: "attempt-1", gatewayConfigId: "gateway-1", providerIntentRef: "ref-1",
       status: "processing", amount: "100.00", currency: "USD", ledgerEaId: "ea-1",
@@ -125,6 +125,13 @@ describe("online settlement", () => {
     });
     expect(allocation).toHaveBeenCalledOnce();
     expect(attempt.ledgerPaymentId).toBe("payment-1");
+  });
+
+  it("ignores a preferred charge-directed type when recording received funds", async () => {
+    configuredTypes.unshift({ id: "charge-usd", category: "financial", currencyCode: "USD", direction: "charge" });
+    attempt.metadata.ledgerPaymentTypeId = "charge-usd";
+    await processPaymentEvidence("attempt-1", "gateway-1", success());
+    expect(paymentCreate.mock.calls[0][0].paymentType).toBe("financial-usd");
   });
 
   it("does not insert two payments for concurrent confirmations", async () => {
