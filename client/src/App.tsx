@@ -1,4 +1,4 @@
-import { Switch, Route, Redirect, useLocation } from "wouter";
+import { Switch, Route, Redirect, useLocation, useParams } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -91,6 +91,9 @@ const WorkerRatings = lazy(() => import("@/pages/worker-ratings"));
 const WorkerAat = lazy(() => import("@/pages/worker-aat"));
 const WorkerLedgerAccounts = lazy(() => import("@/pages/worker-ledger-accounts"));
 const WorkerLedgerPayment = lazy(() => import("@/pages/worker-ledger-payment"));
+const WorkerPaymentMethods = lazy(() => import("@/pages/worker-payment-methods"));
+const SharedCheckoutPage = lazy(() => import("@/pages/shared-checkout"));
+const SharedPaymentReceipt = lazy(() => import("@/pages/shared-payment-receipt"));
 const WorkerSitespecificBaoEchp = lazy(() => import("@/pages/worker-sitespecific-bao-echp"));
 const Stewards = lazy(() => import("@/pages/stewards"));
 const WorkerBenefitsCurrent = lazy(() => import("@/pages/worker-benefits-current"));
@@ -514,6 +517,14 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
+// The canonical worker payment URL includes the ledger entry ID. Keep the
+// original query-string URL working for bookmarks and old notifications while
+// allowing the payment page to continue consuming its established query input.
+function WorkerLedgerPaymentEntryRedirect() {
+  const { id, eaId } = useParams<{ id: string; eaId: string }>();
+  return <Redirect to={`/workers/${id}/ledger/pay?eaId=${encodeURIComponent(eaId)}`} />;
+}
+
 /**
  * The public EDLS worker schedule is the one route both audiences share: an
  * anonymous visitor holding the link gets bare content (no header, menu or
@@ -584,6 +595,22 @@ function Router() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Switch>
+        {/* Keep receipt ahead of the generic EA parameter route. */}
+        <Route path="/pay/receipt/:sessionId">
+          <ProtectedRoute component="ledger">
+            <AuthenticatedLayout>
+              <SharedPaymentReceipt />
+            </AuthenticatedLayout>
+          </ProtectedRoute>
+        </Route>
+        <Route path="/pay/:eaId">
+          <ProtectedRoute component="ledger">
+            <AuthenticatedLayout>
+              <SharedCheckoutPage />
+            </AuthenticatedLayout>
+          </ProtectedRoute>
+        </Route>
+
         {/* Public routes */}
         <Route path="/bootstrap" component={Bootstrap} />
         <Route path="/login" component={LoginPage} />
@@ -1276,6 +1303,22 @@ function Router() {
         <ProtectedRoute tabId="accounts" entityType="worker">
           <AuthenticatedLayout>
             <WorkerLedgerAccounts />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/ledger/payment-methods">
+        <ProtectedRoute tabId="payment-methods" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerPaymentMethods />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/ledger/pay/:eaId">
+        <ProtectedRoute policy="worker.ledger" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerLedgerPaymentEntryRedirect />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

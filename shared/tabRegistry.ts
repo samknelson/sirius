@@ -252,6 +252,7 @@ export const workerTabTree: HierarchicalTab[] = [
     id: 'accounting', label: 'Accounting', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.mine', component: 'ledger|sitespecific.bao', navigateToFirstAccessibleChild: true,
     children: [
       { id: 'accounts', label: 'Accounts', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.ledger', component: 'ledger' },
+      { id: 'payment-methods', label: 'Payment Methods', hrefTemplate: '/workers/{id}/ledger/payment-methods', policyId: 'worker.ledger.methods', component: 'ledger' },
       { id: 'sitespecific-bao-echp', label: 'Event Center Hours Purchase', hrefTemplate: '/workers/{id}/ledger/sitespecific/bao/echp', policyId: 'worker.mine', component: 'sitespecific.bao' },
     ]
   },

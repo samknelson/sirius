@@ -44,6 +44,11 @@ function WorkerLedgerAccountsContent() {
   const { data: accounts = [] } = useQuery<LedgerAccount[]>({
     queryKey: ["/api/ledger/accounts"],
   });
+  const { data: payableAccounts = [] } = useQuery<Array<{ eaId: string; available: string }>>({
+    queryKey: ["worker-online-pay-accounts", workerId],
+    queryFn: () => apiRequest("GET", `/api/ledger/pay-accounts/worker/${workerId}`),
+    retry: false,
+  });
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -128,12 +133,12 @@ function WorkerLedgerAccountsContent() {
               <CardTitle>Accounts</CardTitle>
               <CardDescription>Manage ledger account entries for this worker</CardDescription>
             </div>
-              <Button asChild variant="outline" data-testid="button-worker-pay-balance">
+               {payableAccounts.length > 0 && <Button asChild variant="outline" data-testid="button-worker-pay-balance">
                 <Link href={`/workers/${workerId}/ledger/pay`}>
                  <ExternalLink className="h-4 w-4 mr-2" />
                  Make a payment
                </Link>
-             </Button>
+              </Button>}
             {isFormOpen ? (
               <Button
                 onClick={() => setIsFormOpen(false)}
@@ -142,7 +147,7 @@ function WorkerLedgerAccountsContent() {
                 Cancel
               </Button>
             ) : (
-              <Button
+               <Button
                 onClick={() => setIsFormOpen(true)}
                 data-testid="button-toggle-form"
               >
@@ -258,19 +263,19 @@ function WorkerLedgerAccountsContent() {
                         >
                           {formatAmount(balanceNum, currencyCode)}
                         </span>
-                        <Button
+                         {payableAccounts.some(payable => payable.eaId === entry.id && Number(payable.available) > 0) && <Button
                           asChild
                           variant="ghost"
                           size="icon"
                           data-testid={`button-pay-entry-${entry.id}`}
                         >
                           <Link
-                            href={`/workers/${workerId}/ledger/pay?eaId=${encodeURIComponent(entry.id)}`}
+                            href={`/pay/${encodeURIComponent(entry.id)}`}
                             aria-label={`Pay ${account?.name || "account"} balance`}
                           >
                             <CreditCard className="h-4 w-4" />
                           </Link>
-                        </Button>
+                         </Button>}
                         <Button
                           variant="ghost"
                           size="icon"

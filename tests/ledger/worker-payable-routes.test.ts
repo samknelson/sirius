@@ -52,9 +52,15 @@ vi.mock("../../server/storage/unified-options", () => ({
 vi.mock("../../server/storage/transaction-context", () => ({
   runInTransaction: (callback: () => unknown) => callback(),
 }));
-vi.mock("../../server/modules/ledger/payments", () => ({
-  triggerPaymentChargePlugins: vi.fn(),
-}));
+vi.mock("../../server/modules/ledger/payments", async () => {
+  const actual = await vi.importActual<typeof import("../../server/modules/ledger/payments")>(
+    "../../server/modules/ledger/payments",
+  );
+  return {
+    ...actual,
+    triggerPaymentChargePlugins: vi.fn(),
+  };
+});
 vi.mock("../../server/modules/masquerade", () => ({
   getEffectiveUser: vi.fn().mockResolvedValue({
     dbUser: { id: "payer-user-1" },
@@ -140,7 +146,7 @@ describe("worker payable account routes", () => {
   it.each([false, true])("locks before inserting and links afterward (already posted: %s)", async (alreadyPosted) => {
     const attempt = {
       id: "attempt-1", gatewayConfigId: "gateway-1", providerIntentRef: "pi-fixture",
-      amount: "40.00", currency: "USD", status: "succeeded",
+      amount: "40.00", currency: "USD", status: "succeeded", accountId: "account-dp",
       ledgerEaId: "ea-dp", ledgerPaymentId: null, lastProviderEventCreated: 1,
     };
     mocks.resolveGateway.mockResolvedValue({
@@ -159,6 +165,9 @@ describe("worker payable account routes", () => {
     mocks.storage.ledger.paymentAttempts.get.mockResolvedValue({
       ...attempt, ledgerPaymentId: alreadyPosted ? "payment-existing" : null,
     });
+    // Settlement now validates the payment EA (and its account) before
+    // inserting the ledger payment.
+    mocks.storage.ledger.ea.get.mockResolvedValue(workerEa("ea-dp", "account-dp"));
     mocks.storage.ledger.paymentAttempts.claimLedgerPosting.mockResolvedValue(true);
     mocks.storage.ledger.payments.create.mockResolvedValue({ id: "payment-new" });
     const response = await fetch(`${baseUrl}/api/ledger/payment-gateways/gateway-1/webhook`, {

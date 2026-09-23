@@ -4,31 +4,26 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { apiRequest, gatewayRegistry } = vi.hoisted(() => ({
+const { apiRequest, navigate, location } = vi.hoisted(() => ({
   apiRequest: vi.fn(),
-  gatewayRegistry: { enabled: false },
+  navigate: vi.fn(),
+  location: { path: "/workers/worker-42/ledger/pay" },
 }));
 
+vi.mock("wouter", () => ({
+  Link: ({ href, children, ...props }: { href: string; children: React.ReactNode } & React.AnchorHTMLAttributes<HTMLAnchorElement>) =>
+    <a href={href} {...props}>{children}</a>,
+  useLocation: () => [location.path, navigate],
+  useSearch: () => location.path.includes("?") ? location.path.slice(location.path.indexOf("?") + 1) : "",
+}));
 vi.mock("@/components/layouts/WorkerLayout", () => ({
   WorkerLayout: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useWorkerLayout: () => ({ worker: { id: "worker-42" } }),
 }));
-vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/lib/queryClient", async () => {
   const actual = await vi.importActual<typeof import("@/lib/queryClient")>("@/lib/queryClient");
   return { ...actual, apiRequest };
 });
-vi.mock("@/plugins/payment-gateway/registry", () => ({
-  hasPaymentGatewayComponent: () => gatewayRegistry.enabled,
-  resolvePaymentGatewayComponent: () => ({ onSuccess }: { onSuccess: (token: string) => void }) =>
-    React.createElement("button", {
-      "data-testid": "mock-add-payment-method",
-      onClick: () => onSuccess("pm-new-token"),
-    }, "Save provider method"),
-}));
-vi.mock("@/components/ledger/WorkerStripePaymentForm", () => ({
-  WorkerStripePaymentForm: () => <div data-testid="mock-stripe-payment-form" />,
-}));
 
 import Page from "@/pages/worker-ledger-payment";
 
@@ -36,103 +31,48 @@ import Page from "@/pages/worker-ledger-payment";
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
-const methods = [{
-  id: "pm-card",
-  gatewayConfigId: "gw-stripe",
-  isActive: true,
-  isDefault: true,
-  providerDetails: { card: { brand: "visa", last4: "4242", expMonth: 12, expYear: 2030 } },
-}];
 
-function responseFor(method: string, url: string, body?: unknown) {
-  if (method === "GET" && url.endsWith("/ledger/pay-accounts/worker/worker-42")) return [{
-    eaId: "ea-9", accountId: "account-9", accountName: "Domestic Partner",
-    currency: "USD", gatewayConfigId: "gw-stripe",
-  }];
-  if (method === "GET" && url.endsWith("/worker/worker-42")) return methods;
-  if (method === "GET" && url.endsWith("/worker/worker-42/gateways")) return [{ id: "gw-stripe", pluginId: "stripe", name: "Stripe" }];
-  if (method === "GET" && url.endsWith("/checkout/worker/worker-42/ea-9")) return {
-    eaId: "ea-9", account: { id: "account-9", name: "Domestic Partner", currency: "USD" },
-    balance: "125.50", available: "125.50", invoices: [], paymentTypes: ["card"],
-    authorization: { selected: { version: "v1", text: "Payment authorization" } },
-  };
-  if (method === "POST" && url.endsWith("/worker/worker-42/setup")) return { clientSecret: "seti_secret", componentId: "stripe:add", publicConfig: { publishableKey: "pk_test" } };
-  if (method === "POST" && url.endsWith("/worker/worker-42")) return { id: "pm-new" };
-  if (method === "POST" && url.includes("/checkout/worker/worker-42/ea-9/sessions")) return { id: "attempt-1", status: "succeeded", clientSecret: null, publicConfig: {} };
-  if (method === "GET" && url.endsWith("/checkout/sessions/attempt-1")) return { id: "attempt-1", status: "succeeded", ledgerPaymentId: "payment-1" };
-  throw new Error(`Unexpected request ${method} ${url} ${JSON.stringify(body)}`);
-}
+const accounts = [
+  { eaId: "ea-domestic", accountName: "Domestic Partner", balance: "125.00", available: "125.00", currency: "USD" },
+  { eaId: "ea-family", accountName: "Family Account", balance: "40.00", available: "40.00", currency: "USD" },
+];
 
 async function render() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root!.render(<QueryClientProvider client={queryClient}><Page /></QueryClientProvider>);
+    root!.render(<QueryClientProvider client={client}><Page /></QueryClientProvider>);
     await Promise.resolve();
   });
-  // Account discovery selects the sole account, which then enables the balance
-  // query on a subsequent render.
-  for (let i = 0; i < 4; i++) {
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  await settle();
+}
+
+async function settle() {
+  for (let i = 0; i < 5; i++) {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
   }
 }
 
-function testId<T extends HTMLElement>(id: string) {
-  const element = container?.querySelector(`[data-testid="${id}"]`);
-  expect(element, `missing ${id}`).toBeTruthy();
-  return element as T;
+function text() {
+  return container?.textContent ?? "";
 }
 
-async function inputAmount(value: string) {
-  const input = testId<HTMLInputElement>("input-worker-payment-amount");
-  await act(async () => {
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-    setter?.call(input, value);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-    await Promise.resolve();
-  });
-}
-
-async function waitFor(check: () => void) {
-  for (let i = 0; i < 20; i++) {
-    try {
-      check();
-      return;
-    } catch {
-      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
-    }
-  }
-  check();
-}
-
-async function choose(trigger: Element, optionText: string) {
-  await act(async () => {
-    trigger.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowDown" }));
-  });
-  await waitFor(() => expect(Array.from(document.querySelectorAll('[role="option"]')).some(
-    (option) => option.textContent?.includes(optionText),
-  )).toBe(true));
-  const option = Array.from(document.querySelectorAll('[role="option"]')).find(
-    (candidate) => candidate.textContent?.includes(optionText),
-  )!;
-  await act(async () => {
-    option.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0 }));
-    option.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
+function payLink(eaId: string) {
+  const link = container?.querySelector(`a[href="/pay/${eaId}"]`);
+  expect(link, `missing pay link for ${eaId}`).toBeTruthy();
+  return link as HTMLAnchorElement;
 }
 
 beforeEach(() => {
-  window.history.replaceState({}, "", "/");
-  HTMLElement.prototype.scrollIntoView = vi.fn();
+  location.path = "/workers/worker-42/ledger/pay";
+  navigate.mockReset();
   apiRequest.mockReset();
-  gatewayRegistry.enabled = false;
-  apiRequest.mockImplementation((method: string, url: string, body?: unknown) =>
-    Promise.resolve(responseFor(method, url, body)),
-  );
-  vi.stubGlobal("crypto", { randomUUID: () => "idem-123" });
+  apiRequest.mockImplementation((method: string, url: string) => {
+    if (method === "GET" && url === "/api/ledger/pay-accounts/worker/worker-42") return Promise.resolve(accounts);
+    throw new Error(`Unexpected request ${method} ${url}`);
+  });
 });
 
 afterEach(async () => {
@@ -140,285 +80,43 @@ afterEach(async () => {
   container?.remove();
   root = null;
   container = null;
-  vi.unstubAllGlobals();
 });
 
-describe("worker ledger checkout", () => {
-  it("keeps USD payable when another account has nonfinancial ledger units", async () => {
-    const reason = "Online payments do not support POINTS";
-    apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
-      if (method === "GET" && url.endsWith("/ledger/pay-accounts/worker/worker-42")) return Promise.resolve([
-        { eaId: "ea-9", accountId: "account-9", accountName: "USD account", currency: "USD", gatewayConfigId: "gw-stripe" },
-        { eaId: "ea-points", accountId: "account-points", accountName: "Points account", currency: "POINTS", gatewayConfigId: null, eligible: false, error: reason },
-      ]);
-      return Promise.resolve(responseFor(method, url, body));
-    });
+describe("worker payment account chooser", () => {
+  it("requires an explicit account choice when multiple accounts are available", async () => {
     await render();
-    await choose(testId("select-worker-payment-account"), "USD account");
-    await waitFor(() => expect(container?.textContent).toContain("$125.50"));
-    await inputAmount("5.00");
-    await act(async () => { testId<HTMLButtonElement>("button-select-worker-payment-method-pm-card").click(); });
-    await act(async () => { testId<HTMLInputElement>("checkbox-worker-payment-consent").click(); });
-    expect(testId<HTMLButtonElement>("button-worker-start-payment").disabled).toBe(false);
-    await choose(testId("select-worker-payment-account"), `Points account — ${reason}`);
-    await waitFor(() => expect(container?.textContent).toContain(reason));
-    expect(container?.querySelector('[data-testid="text-worker-payment-paid"]')).toBeNull();
-    expect(container?.querySelector('[data-testid="button-worker-start-payment"]')).toBeNull();
-    expect(apiRequest.mock.calls.some((call) => String(call[1]).includes("eaId=ea-points"))).toBe(false);
+
+    expect(text()).toContain("Choose an account to pay");
+    expect(text()).toContain("Domestic Partner");
+    expect(text()).toContain("Family Account");
+    expect(navigate).not.toHaveBeenCalled();
+    expect(payLink("ea-domestic").getAttribute("href")).toBe("/pay/ea-domestic");
+    expect(payLink("ea-family").getAttribute("href")).toBe("/pay/ea-family");
   });
 
-  it("requires an explicit choice when multiple accounts are available", async () => {
-    apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
-      if (method === "GET" && url.endsWith("/ledger/pay-accounts/worker/worker-42")) return Promise.resolve([
-        { eaId: "ea-9", accountId: "account-9", accountName: "First account", currency: "USD", gatewayConfigId: "gw-stripe" },
-        { eaId: "ea-10", accountId: "account-10", accountName: "Second account", currency: "USD", gatewayConfigId: "gw-stripe" },
-      ]);
-      if (method === "GET" && url.endsWith("/checkout/worker/worker-42/ea-10")) return Promise.resolve({
-        eaId: "ea-10", account: { id: "account-10", name: "Second account", currency: "USD" },
-        balance: "10.00", available: "10.00", invoices: [], paymentTypes: ["card"],
-        authorization: { selected: { version: "v1", text: "Payment authorization" } },
-      });
-      return Promise.resolve(responseFor(method, url, body));
-    });
+  it("disables accounts with no available balance while leaving payable accounts selectable", async () => {
+    apiRequest.mockResolvedValueOnce([
+      { ...accounts[0], available: "0.00" },
+      accounts[1],
+    ]);
     await render();
-      expect(apiRequest.mock.calls.some((call) => String(call[1]).includes("/ledger/checkout/worker/"))).toBe(false);
-    expect(container?.textContent).toContain("No account is chosen automatically");
-    await choose(testId("select-worker-payment-account"), "Second account");
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("GET", "/api/ledger/checkout/worker/worker-42/ea-10"));
-    await waitFor(() => expect(container?.textContent).toContain("$10.00"));
+
+    expect(container?.querySelector('a[href="/pay/ea-domestic"]')).toBeNull();
+    expect(payLink("ea-family").getAttribute("href")).toBe("/pay/ea-family");
   });
 
-  it("allows changing away from a URL-preselected account", async () => {
-    window.history.replaceState({}, "", "/workers/worker-42/ledger/pay?eaId=ea-9");
-    apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
-      if (method === "GET" && url.endsWith("/ledger/pay-accounts/worker/worker-42")) return Promise.resolve([
-        { eaId: "ea-9", accountId: "account-9", accountName: "First account", currency: "USD", gatewayConfigId: "gw-stripe" },
-        { eaId: "ea-10", accountId: "account-10", accountName: "Second account", currency: "USD", gatewayConfigId: "gw-stripe" },
-      ]);
-      if (method === "GET" && url.endsWith("/checkout/worker/worker-42/ea-10")) return Promise.resolve({
-        eaId: "ea-10", account: { id: "account-10", name: "Second account", currency: "USD" },
-        balance: "10.00", available: "10.00", invoices: [], paymentTypes: ["card"],
-        authorization: { selected: { version: "v1", text: "Payment authorization" } },
-      });
-      return Promise.resolve(responseFor(method, url, body));
-    });
+  it("redirects a valid old deep link to the shared account checkout", async () => {
+    location.path = "/workers/worker-42/ledger/pay?eaId=ea-family";
     await render();
-    await waitFor(() => expect(container?.textContent).toContain("$125.50"));
-    await choose(testId("select-worker-payment-account"), "Second account");
-    await waitFor(() => expect(container?.textContent).toContain("$10.00"));
-    expect(testId("select-worker-payment-account").textContent).toContain("Second account");
+
+    expect(navigate).toHaveBeenCalledWith("/pay/ea-family", { replace: true });
   });
 
-  it("ignores an in-flight payment response after the account changes", async () => {
-    window.history.replaceState({}, "", "/workers/worker-42/ledger/pay?eaId=ea-9");
-    let releaseIntent!: (value: unknown) => void;
-    const pendingIntent = new Promise((resolve) => { releaseIntent = resolve; });
-    apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
-      if (method === "GET" && url.endsWith("/ledger/pay-accounts/worker/worker-42")) return Promise.resolve([
-        { eaId: "ea-9", accountId: "account-9", accountName: "First account", currency: "USD", gatewayConfigId: "gw-stripe" },
-        { eaId: "ea-10", accountId: "account-10", accountName: "Second account", currency: "USD", gatewayConfigId: "gw-stripe" },
-      ]);
-      if (method === "GET" && url.endsWith("/checkout/worker/worker-42/ea-10")) return Promise.resolve({
-        eaId: "ea-10", account: { id: "account-10", name: "Second account", currency: "USD" },
-        balance: "10.00", available: "10.00", invoices: [], paymentTypes: ["card"],
-        authorization: { selected: { version: "v1", text: "Payment authorization" } },
-      });
-       if (method === "POST" && url.includes("/checkout/worker/worker-42/ea-9/sessions")) return pendingIntent;
-      return Promise.resolve(responseFor(method, url, body));
-    });
+  it("reports an unavailable old deep-link account without redirecting", async () => {
+    location.path = "/workers/worker-42/ledger/pay?eaId=missing-account";
     await render();
-    await inputAmount("5.00");
-    await act(async () => { testId<HTMLButtonElement>("button-select-worker-payment-method-pm-card").click(); });
-    await act(async () => { testId<HTMLInputElement>("checkbox-worker-payment-consent").click(); });
-    await act(async () => { testId<HTMLButtonElement>("button-worker-start-payment").click(); });
-    await choose(testId("select-worker-payment-account"), "Second account");
-    await act(async () => {
-      releaseIntent({ id: "stale-attempt", status: "processing", clientSecret: null, publicConfig: {} });
-      await pendingIntent;
-    });
-    await waitFor(() => expect(container?.textContent).toContain("Second account amount due"));
-    expect(container?.textContent).not.toContain("Payment processing");
-  });
 
-  it("reports an invalid URL account instead of falling back to the sole account", async () => {
-    window.history.replaceState({}, "", "/workers/worker-42/ledger/pay?eaId=missing-ea");
-    await render();
-    expect(container?.textContent).toContain("requested payment account was not found");
-    expect(apiRequest.mock.calls.some((call) => String(call[1]).includes("/api/ledger/checkout/worker/"))).toBe(false);
-  });
-
-  it("does not turn a missing balance into a false $0 balance", async () => {
-    apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
-      const value = responseFor(method, url, body);
-      if (url.includes("/api/ledger/checkout/worker/")) {
-        const { balance: _balance, ...withoutBalance } = value as Record<string, unknown>;
-        return Promise.resolve(withoutBalance);
-      }
-      return Promise.resolve(value);
-    });
-    await render();
-    await waitFor(() => expect(container?.textContent).toContain("Payment response is missing balance."));
-    expect(container?.textContent).not.toContain("$0.00");
-  });
-
-  it("rejects malformed monetary and currency data instead of enabling payment", async () => {
-    apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
-      const value = responseFor(method, url, body);
-      return Promise.resolve(url.includes("/api/ledger/checkout/worker/") ? {
-        ...(value as object),
-        account: { ...(value as any).account, currency: "not-a-currency" },
-      } : value);
-    });
-    await render();
-    await waitFor(() => expect(container?.textContent).toContain("unsupported currencyCode"));
-    expect(container?.querySelector('[data-testid="button-worker-start-payment"]')).toBeNull();
-  });
-
-  it("describes a credit balance separately from a zero balance", async () => {
-    apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
-      const value = responseFor(method, url, body);
-      return Promise.resolve(url.includes("/api/ledger/checkout/worker/") ? {
-        ...(value as object),
-        account: { ...(value as any).account, currency: "USD" },
-        balance: "-15.00", available: "0.00",
-      } : value);
-    });
-    await render();
-    await waitFor(() => expect(container?.textContent).toContain("account has a credit of $15.00"));
-    expect(container?.textContent).not.toContain("You have no balance due on this account.");
-  });
-
-  it("keeps payment methods available when the account balance is zero", async () => {
-    apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
-      const value = responseFor(method, url, body);
-      return Promise.resolve(url.includes("/api/ledger/checkout/worker/") ? {
-        ...(value as object),
-        balance: "0.00", available: "0.00",
-      } : value);
-    });
-    await render();
-    await waitFor(() => expect(container?.textContent).toContain("You have no balance due on this account."));
-    expect(testId("worker-payment-method-pm-card")).toBeTruthy();
-    expect(testId("button-worker-add-payment-method")).toBeTruthy();
-    expect(container?.querySelector('[data-testid="button-worker-start-payment"]')).toBeNull();
-  });
-
-  it("can set up and attach a payment method while the balance is zero", async () => {
-    gatewayRegistry.enabled = true;
-    apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
-      const value = responseFor(method, url, body);
-      return Promise.resolve(url.includes("/api/ledger/checkout/worker/") ? {
-        ...(value as object),
-        balance: "0.00", available: "0.00",
-      } : value);
-    });
-    await render();
-    await act(async () => { testId<HTMLButtonElement>("button-worker-add-payment-method").click(); });
-    await waitFor(() => expect(document.querySelector('[data-testid="checkbox-worker-method-consent"]')).toBeTruthy());
-    await act(async () => { (document.querySelector('[data-testid="checkbox-worker-method-consent"]') as HTMLInputElement).click(); });
-    const gatewayTrigger = document.querySelector('[data-testid="select-worker-payment-gateway"]');
-    expect(gatewayTrigger).toBeTruthy();
-    await choose(gatewayTrigger!, "Stripe");
-    await waitFor(() => expect(document.querySelector('[data-testid="mock-add-payment-method"]')).toBeTruthy());
-    await act(async () => {
-      (document.querySelector('[data-testid="mock-add-payment-method"]') as HTMLButtonElement).click();
-    });
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(
-      "POST",
-      "/api/ledger/payment-methods/worker/worker-42",
-      { gatewayConfigId: "gw-stripe", methodToken: "pm-new-token", consent: { selected: { version: "v1", text: "Payment authorization" }, accepted: true } },
-    ));
-  });
-
-  it("shows actionable saved-method and gateway loading failures", async () => {
-    apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
-      if (method === "GET" && url.endsWith("/worker/worker-42")) return Promise.reject(new Error("Saved methods are temporarily unavailable."));
-      if (method === "GET" && url.endsWith("/worker/worker-42/gateways")) return Promise.reject(new Error("Gateway configuration could not be loaded."));
-      return Promise.resolve(responseFor(method, url, body));
-    });
-    await render();
-    expect(container?.textContent).toContain("Saved methods are temporarily unavailable.");
-    await act(async () => { testId<HTMLButtonElement>("button-worker-add-payment-method").click(); });
-    await waitFor(() => expect(document.body.textContent).toContain("Gateway configuration could not be loaded."));
-    expect(document.body.textContent).toContain("Retry");
-  });
-
-  it("explains when no payment gateway is configured", async () => {
-    apiRequest.mockImplementation((method: string, url: string, body?: unknown) =>
-      Promise.resolve(method === "GET" && url.endsWith("/worker/worker-42/gateways") ? [] : responseFor(method, url, body)),
-    );
-    await render();
-    await act(async () => { testId<HTMLButtonElement>("button-worker-add-payment-method").click(); });
-    await waitFor(() => expect(document.body.textContent).toContain("No payment provider is configured for this account."));
-  });
-
-  it("bounds amount to greater than zero and no more than payable balance", async () => {
-    await render();
-    const button = testId<HTMLButtonElement>("button-worker-start-payment");
-    expect(button.disabled).toBe(true);
-    await inputAmount("0");
-    expect(button.disabled).toBe(true);
-    await inputAmount("125.51");
-    expect(button.disabled).toBe(true);
-    await act(async () => { testId<HTMLButtonElement>("button-select-worker-payment-method-pm-card").click(); });
-    await inputAmount("125.50");
-    await act(async () => { testId<HTMLInputElement>("checkbox-worker-payment-consent").click(); });
-    await waitFor(() => expect(button.disabled).toBe(false));
-  });
-
-  it("selects a saved method and sends worker, EA, amount, method, and idempotency key", async () => {
-    await render();
-    await inputAmount("25.00");
-    await act(async () => { testId<HTMLButtonElement>("button-select-worker-payment-method-pm-card").click(); });
-    await act(async () => { testId<HTMLInputElement>("checkbox-worker-payment-consent").click(); });
-    await act(async () => { testId<HTMLButtonElement>("button-worker-start-payment").click(); });
-
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("POST", "/api/ledger/checkout/worker/worker-42/ea-9/sessions", {
-      amount: "25.00",
-      paymentMethodId: "pm-card",
-      saveMethod: false,
-        consent: { selected: { version: "v1", text: "Payment authorization" }, accepted: true },
-      idempotencyKey: "idem-123",
-    }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("GET", "/api/ledger/checkout/sessions/attempt-1"));
-    await waitFor(() => expect(container?.textContent).toContain("Payment successful"));
-  });
-
-  it("can pay with a new method without a saved method", async () => {
-    apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
-      if (method === "GET" && url.endsWith("/ledger/payment-methods/worker/worker-42")) return Promise.resolve([]);
-      return Promise.resolve(responseFor(method, url, body));
-    });
-    await render();
-    await inputAmount("25.00");
-    await act(async () => { testId<HTMLInputElement>("checkbox-worker-payment-consent").click(); });
-    await act(async () => { testId<HTMLButtonElement>("button-worker-start-payment").click(); });
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(
-      "POST", "/api/ledger/checkout/worker/worker-42/ea-9/sessions",
-      expect.objectContaining({
-        amount: "25.00",
-        saveMethod: false,
-        consent: { selected: { version: "v1", text: "Payment authorization" }, accepted: true },
-        idempotencyKey: "idem-123",
-      }),
-    ));
-    expect(apiRequest.mock.calls.some(([method, url]) =>
-      method === "POST" && url === "/api/ledger/payment-methods/worker/worker-42",
-    )).toBe(false);
-  });
-
-  it("shows ACH processing rather than card success when the API returns processing", async () => {
-    apiRequest.mockImplementation((method: string, url: string, body?: unknown) => {
-      const value = responseFor(method, url, body);
-       return Promise.resolve(url.includes("/checkout/worker/worker-42/ea-9/sessions") ? { ...value, status: "processing" } : value);
-    });
-    await render();
-    await inputAmount("25.00");
-    await act(async () => { testId<HTMLButtonElement>("button-select-worker-payment-method-pm-card").click(); });
-    await act(async () => { testId<HTMLInputElement>("checkbox-worker-payment-consent").click(); });
-    await act(async () => { testId<HTMLButtonElement>("button-worker-start-payment").click(); });
-    await waitFor(() => expect(container?.textContent).toContain("Payment processing"));
-    expect(container?.textContent).toContain("payment is being processed");
-    expect(container?.textContent).not.toContain("Payment successful");
+    expect(text()).toContain("The requested account is not available for online payment");
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

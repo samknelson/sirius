@@ -1,6 +1,6 @@
 import { createContext, useContext, ReactNode, useMemo } from "react";
 import { User, CalendarOff } from "lucide-react";
-import { Link, useParams } from "wouter";
+import { Link, useLocation, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Worker, Contact, WorkerTos } from "@shared/schema";
 import { sanitizeHtml } from "@shared/utils/html";
@@ -132,6 +132,13 @@ function WorkerTosBannerInner({ workerId }: { workerId: string }) {
 
 export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
   const { id } = useParams<{ id: string }>();
+  const [location] = useLocation();
+  // The payment page is shared by the account payment flow and the saved
+  // payment-methods tab. Its page component predates the split tab and still
+  // supplies "accounts", so use the canonical URL to highlight the correct
+  // child without changing that page's payment behavior.
+  const effectiveActiveTab =
+    location === `/workers/${id}/ledger/payment-methods` ? "payment-methods" : activeTab;
   
   const { 
     tabs,
@@ -203,8 +210,8 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
   const mainTabs = tabs;
   
   const activeRoot = useMemo(() => {
-    return getActiveRoot(activeTab);
-  }, [activeTab, getActiveRoot]);
+    return getActiveRoot(effectiveActiveTab);
+  }, [effectiveActiveTab, getActiveRoot]);
 
   const subTabs = useMemo(() => {
     let children = activeRoot?.children;
@@ -335,7 +342,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex flex-wrap items-center gap-2 py-2 pl-4">
                 {subTabs.map((tab) => (
-                  tab.id === activeTab ? (
+                  tab.id === effectiveActiveTab ? (
                     <Button
                       key={tab.id}
                       variant="secondary"

@@ -359,6 +359,7 @@ export function registerLedgerPaymentAttemptRoutes(
   const safeAttempt = (a: any, extra: Record<string, unknown> = {}) => ({
     id: a.id, entityType: a.entityType, entityId: a.entityId, eaId: a.ledgerEaId,
     amount: a.amount, currency: a.currency, status: workerVisibleStatus(a),
+    ledgerPaymentId: a.ledgerPaymentId ?? null,
     failureMessage: a.status === "failed" ? a.failureMessage : null, ...extra,
   });
   const safePublicConfig = (config: Record<string, unknown>) => Object.fromEntries(
@@ -419,9 +420,10 @@ export function registerLedgerPaymentAttemptRoutes(
         .filter((type) => supportedTypes.length === 0 || supportedTypes.includes(type));
       return res.json({
         entityType: req.params.entityType, entityId: req.params.entityId, eaId: loaded.ea.id,
-        account: { id: loaded.account.id, name: loaded.account.name, currency: loaded.account.currencyCode },
+        account: { id: loaded.account.id, name: loaded.account.name, currency: loaded.account.currencyCode, gatewayConfigId: loaded.account.gatewayConfigId },
         balance: balance.toFixed(2), available: Math.max(0, balance - reserved).toFixed(2),
         invoices, paymentTypes, payComponentId: loaded.resolved.plugin.payComponentId ?? null,
+        reusableMethodsSupported: !!loaded.resolved.plugin.attachMethod,
         settings: loaded.settings,
         authorization: authorization.success
           ? authorization.data[req.params.entityType === "worker" ? "consumer" : "business"]
