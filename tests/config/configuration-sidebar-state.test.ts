@@ -13,31 +13,43 @@ describe("configuration sidebar section state", () => {
     const initial = createConfigurationSectionOpenState("/config/a", ["system", "nested"]);
     expect(initial.openSections).toEqual({ system: true, nested: true });
 
-    const collapsed = toggleConfigurationSection(initial, "system");
+    const collapsed = toggleConfigurationSection(initial, "system", ["system", "theme"]);
     expect(collapsed.openSections.system).toBe(false);
 
     expect(
-      reconcileConfigurationSectionNavigation(collapsed, "/config/a", ["system", "nested"]),
+      reconcileConfigurationSectionNavigation(collapsed, "/config/a", ["system", "nested"], ["system", "theme"]),
     ).toBe(collapsed);
   });
 
-  it("opens ancestors for a new path without resetting other user choices", () => {
+  it("opens only one top-level section while preserving nested choices", () => {
     let state = createConfigurationSectionOpenState("/config/a", ["system"]);
-    state = toggleConfigurationSection(state, "system");
-    state = toggleConfigurationSection(state, "theme");
+    state = toggleConfigurationSection(state, "nested", ["system", "theme", "workers"]);
+    state = toggleConfigurationSection(state, "theme", ["system", "theme", "workers"]);
+    expect(state.openSections).toEqual({ system: false, nested: true, theme: true, workers: false });
+    state = toggleConfigurationSection(state, "system", ["system", "theme", "workers"]);
+    expect(state.openSections).toEqual({ system: true, nested: true, theme: false, workers: false });
 
     const navigated = reconcileConfigurationSectionNavigation(
       state,
       "/config/workers/settings",
       ["workers", "worker-details"],
+      ["system", "theme", "workers"],
     );
 
     expect(navigated.openSections).toEqual({
       system: false,
-      theme: true,
+      theme: false,
+      nested: true,
       workers: true,
       "worker-details": true,
     });
+  });
+
+  it("lets the open section close without opening a replacement", () => {
+    const initial = createConfigurationSectionOpenState("/config/ledger", ["ledger"]);
+    const closed = toggleConfigurationSection(initial, "ledger", ["ledger", "dropdown-lists"]);
+    expect(closed.openSections.ledger).toBe(false);
+    expect(closed.openSections["dropdown-lists"]).toBeUndefined();
   });
 
   it("opens an active ancestor that arrives after dynamic navigation resolves", () => {
@@ -46,6 +58,7 @@ describe("configuration sidebar section state", () => {
       loading,
       "/config/options/gender/list",
       ["dropdown-lists"],
+      ["system", "dropdown-lists"],
     );
     expect(ready.openSections["dropdown-lists"]).toBe(true);
   });

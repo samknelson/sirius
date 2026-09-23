@@ -53,6 +53,7 @@ function ConfigurationLayoutContents({ children }: ConfigurationLayoutProps) {
   );
   const { sections } = useConfigNavigation();
   const { sections: accessibleSections } = useAccessibleConfigSections();
+  const topLevelSectionIds = useMemo(() => accessibleSections.map(section => section.id), [accessibleSections]);
   const activeItemPath = useMemo(() => findActiveItemPath(location, sections), [location, sections]);
   const activeSectionIds = useMemo(() => {
     const ids: string[] = [];
@@ -81,11 +82,11 @@ function ConfigurationLayoutContents({ children }: ConfigurationLayoutProps) {
 
   useEffect(() => {
     setSectionState(previous =>
-      reconcileConfigurationSectionNavigation(previous, location, activeSectionIds),
+      reconcileConfigurationSectionNavigation(previous, location, activeSectionIds, topLevelSectionIds),
     );
     setMobileMenuOpen(false);
     setOpenFlyoutId(null);
-  }, [location, activeSectionIds]);
+  }, [location, activeSectionIds, topLevelSectionIds]);
 
   useEffect(() => {
     saveConfigurationMenuOpen(desktopMenuOpen);
@@ -93,7 +94,7 @@ function ConfigurationLayoutContents({ children }: ConfigurationLayoutProps) {
   }, [desktopMenuOpen]);
 
   const toggleSection = (sectionId: string) => {
-    setSectionState(previous => toggleConfigurationSection(previous, sectionId));
+    setSectionState(previous => toggleConfigurationSection(previous, sectionId, topLevelSectionIds));
   };
   const isSectionOpen = (section: NavSection) => !!sectionState.openSections[section.id];
   const isSectionActive = (section: NavSection) => isPathInSection(activeItemPath, section);
@@ -260,18 +261,7 @@ function ConfigurationLayoutContents({ children }: ConfigurationLayoutProps) {
         >
           {isDesktop && !desktopMenuOpen ? (
             <div className="flex h-full min-h-0 flex-col items-center gap-2 py-3">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Link href="/config" onClick={closeNavigation} aria-label="Configuration home" aria-current={location === "/config" ? "page" : undefined} className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground", location === "/config" && "bg-muted text-foreground")}>
-                    <Menu className="h-4 w-4" />
-                  </Link>
-                </TooltipTrigger>
-                <TooltipContent side="right">Configuration home</TooltipContent>
-              </Tooltip>
-              <nav data-testid="configuration-nav-scroll" className="flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto [&>button]:shrink-0" aria-label="Configuration sections">
-                {accessibleSections.map(renderRailSection)}
-              </nav>
-              <div className="mt-auto shrink-0 border-t pt-2">
+              <div className="shrink-0 border-b pb-2">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button type="button" variant="ghost" size="icon" aria-label="Expand configuration menu" aria-controls="configuration-menu" aria-expanded={false} onClick={() => setDesktopMenuOpen(true)} data-testid="button-configuration-menu-desktop">
@@ -281,22 +271,24 @@ function ConfigurationLayoutContents({ children }: ConfigurationLayoutProps) {
                   <TooltipContent side="right">Expand menu</TooltipContent>
                 </Tooltip>
               </div>
+              <nav data-testid="configuration-nav-scroll" className="flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto [&>button]:shrink-0" aria-label="Configuration sections">
+                {accessibleSections.map(renderRailSection)}
+              </nav>
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-2 px-4 pb-3 pt-4">
-                <Link href="/config" onClick={closeNavigation} className="min-w-0 flex-1 text-lg font-semibold text-foreground hover:text-primary">Configuration</Link>
+              <div className="flex shrink-0 justify-end px-3 pb-2 pt-3 md:hidden">
                 <Button type="button" variant="ghost" size="icon" className="md:hidden" aria-label="Close configuration menu" aria-controls="configuration-menu" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(false)}><X className="h-5 w-5" /></Button>
               </div>
-              <nav id="configuration-nav-scroll" data-testid="configuration-nav-scroll" className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-4" aria-label="Configuration sections">
-                {accessibleSections.map(renderSection)}
-              </nav>
-              <div className="hidden shrink-0 border-t p-2 md:block">
+              <div className="hidden shrink-0 border-b p-2 md:block">
                 <Button type="button" variant="ghost" className="w-full justify-start text-muted-foreground" aria-label="Collapse configuration menu" aria-controls="configuration-menu" aria-expanded onClick={() => setDesktopMenuOpen(false)} data-testid="button-configuration-menu-desktop">
                   <PanelLeftClose className="mr-2 h-4 w-4" />
                   <span>Collapse menu</span>
                 </Button>
               </div>
+              <nav id="configuration-nav-scroll" data-testid="configuration-nav-scroll" className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-4" aria-label="Configuration sections">
+                {accessibleSections.map(renderSection)}
+              </nav>
             </>
           )}
         </aside>

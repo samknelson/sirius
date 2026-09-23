@@ -213,6 +213,27 @@ try {
   // hooks. The deferred fixture response makes loading -> error -> retry ->
   // ready deterministic in both expanded and flyout renderers.
   const desktopToggle = '[data-testid="button-configuration-menu-desktop"]';
+  const sidebarSelector = 'aside[aria-label="Configuration menu"]';
+  const assertTopControl = async (label, state) => {
+    assert.deepEqual(await page.$eval(sidebarSelector, aside => {
+      const toggle = aside.querySelector('[data-testid="button-configuration-menu-desktop"]');
+      const nav = aside.querySelector('[data-testid="configuration-nav-scroll"]');
+      return {
+        firstControl: [...aside.querySelectorAll("button, a")].find(element => element.getClientRects().length) === toggle,
+        beforeSections: !!toggle && !!nav && !!(toggle.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING),
+        noHomeLink: !aside.querySelector('a[href="/config"]'),
+        label: toggle?.getAttribute("aria-label"),
+        expanded: toggle?.getAttribute("aria-expanded"),
+      };
+    }), {
+      firstControl: true,
+      beforeSections: true,
+      noHomeLink: true,
+      label,
+      expanded: state,
+    }, `${label} is first and precedes the section list without a home link`);
+  };
+  await assertTopControl("Collapse configuration menu", "true");
   await page.click('[data-testid="nav-config-dropdown-lists"]');
   await page.waitForSelector('[data-testid="text-dropdown-lists-loading"]');
   assert.match(
@@ -250,19 +271,29 @@ try {
   await waitForAbsent(page, dropdownFlyout);
   await page.click(desktopToggle);
   await waitForSidebarWidth(page, 256);
+  await page.click('[data-testid="nav-config-trust"]');
   await page.waitForSelector('[data-testid="nav-config-open-enrollment-windows"]');
   assert.ok(await page.$('[data-testid="nav-config-open-enrollment-windows"]'),
     "enabled Trust entries are visible");
   assert.equal(await page.$('[data-testid="nav-config-bao-thresholds"]'), null,
     "component-filtered Trust entries are absent");
+  await page.click('[data-testid="nav-config-dropdown-lists"]');
   await page.waitForSelector('[data-testid="nav-config-options-gender"]');
   assert.equal(
     await page.$eval('[data-testid="nav-config-options-gender"]', node => node.textContent.trim()),
     "Gender",
     "catalog-derived entries are rendered under the dynamic section",
   );
+  await page.click('[data-testid="nav-config-ledger"]');
+  assert.equal(await page.$eval('[data-testid="nav-config-ledger"]', node => node.getAttribute("aria-expanded")), "true");
+  assert.equal(await page.$eval('[data-testid="nav-config-dropdown-lists"]', node => node.getAttribute("aria-expanded")), "false",
+    "opening Ledger closes Dropdown Lists");
+  await page.click('[data-testid="nav-config-dropdown-lists"]');
+  assert.equal(await page.$eval('[data-testid="nav-config-ledger"]', node => node.getAttribute("aria-expanded")), "false",
+    "opening Dropdown Lists closes Ledger");
 
   // A fixture-only subsection exercises the production recursive renderer.
+  await page.click('[data-testid="nav-config-trust"]');
   await page.click('[data-testid="nav-config-fixture-subsection"]');
   await page.waitForSelector('[data-testid="nav-config-fixture-subsection-destination"]');
   await navigate(page, "/trust-benefits/subsection-fixture");
@@ -306,11 +337,29 @@ try {
     "a newly active destination opens its ancestor",
   );
 
-  // The footer toggle collapses to a persistent 56px rail.
+  // The top toggle collapses to a persistent 56px rail.
   await page.focus(desktopToggle);
   await page.keyboard.press("Enter");
   assert.equal(await page.$eval(desktopToggle, node => node.getAttribute("aria-expanded")), "false");
   await waitForSidebarWidth(page, 56);
+  await assertTopControl("Expand configuration menu", "false");
+  assert.equal(await page.$eval(sidebarSelector, aside => aside.scrollHeight <= aside.clientHeight), true,
+    "the collapsed sidebar itself does not scroll");
+  assert.equal(await page.$eval('[data-testid="configuration-nav-scroll"]',
+    nav => nav.scrollHeight <= nav.clientHeight), true,
+  "the collapsed icon list does not scroll at a normal desktop height");
+  const railToggleTop = (await box(page, desktopToggle)).top;
+  await page.evaluate(() => {
+    document.querySelector("main").style.minHeight = "200vh";
+    window.scrollTo(0, 200);
+  });
+  await page.waitForFunction(() => window.scrollY > 0);
+  assert.equal(Math.round((await box(page, desktopToggle)).top), Math.round(railToggleTop),
+    "the collapsed rail stays fixed while the page scrolls");
+  await page.evaluate(() => {
+    window.scrollTo(0, 0);
+    document.querySelector("main").style.minHeight = "";
+  });
   assert.equal(Math.round((await box(page, 'aside[aria-label="Configuration menu"]')).width), 56,
     "collapsed desktop navigation is a 56px rail");
   assert.ok(await page.$('[data-testid="nav-config-rail-system"]'),
@@ -324,20 +373,22 @@ try {
   );
 
   // At a short desktop viewport, the rail scrolls independently while its
-  // footer remains fixed, and flyouts stay within the available viewport.
+  // top control remains fixed, and flyouts stay within the available viewport.
   await page.setViewport({ width: 1280, height: 320, deviceScaleFactor: 1 });
   const railScroll = '[data-testid="configuration-nav-scroll"]';
   assert.equal(await page.$eval(railScroll, node => node.scrollHeight > node.clientHeight), true,
     "the short rail has an independently scrollable section region");
-  const railFooterBefore = await box(page, desktopToggle);
+  const railToggleBefore = await box(page, desktopToggle);
   await page.$eval(railScroll, node => {
     node.scrollTop = node.scrollHeight;
   });
-  const railFooterAfter = await box(page, desktopToggle);
-  assert.equal(Math.round(railFooterAfter.top), Math.round(railFooterBefore.top),
-    "scrolling the short rail does not move its footer");
-  assert.ok(railFooterAfter.top >= 0 && railFooterAfter.bottom <= 320,
-    "the rail footer remains inside a short viewport");
+  const railToggleAfter = await box(page, desktopToggle);
+  assert.equal(Math.round(railToggleAfter.top), Math.round(railToggleBefore.top),
+    "scrolling the short rail does not move its top control");
+  assert.ok(railToggleAfter.top >= 0 && railToggleAfter.bottom <= 320,
+    "the rail top control remains inside a short viewport");
+  assert.ok(railToggleAfter.bottom <= (await box(page, railScroll)).top,
+    "the collapsed navigation scrolls below the top control");
   await page.$eval(railScroll, node => {
     node.scrollTop = 0;
   });
@@ -432,10 +483,11 @@ try {
   await page.keyboard.press("Escape");
   await waitForAbsent(page, systemFlyout);
 
-  // The rail footer restores the expanded sidebar.
+  // The rail top control restores the expanded sidebar.
   await page.click(desktopToggle);
   assert.equal(await page.$eval(desktopToggle, node => node.getAttribute("aria-expanded")), "true");
   await waitForSidebarWidth(page, 256);
+  await assertTopControl("Collapse configuration menu", "true");
   assert.equal(Math.round((await box(page, 'aside[aria-label="Configuration menu"]')).width), 256);
   await page.screenshot({
     path: path.join(root, "screenshots/config-navigation-dark-expanded.png"),
@@ -444,21 +496,23 @@ try {
   await page.waitForSelector('aside[aria-label="Configuration menu"]');
   assert.equal(await page.$eval(desktopToggle, node => node.getAttribute("aria-expanded")), "true");
 
-  // Only the navigation region scrolls; its footer remains fixed and usable.
+  // Only the navigation region scrolls; its top control remains fixed and usable.
   await page.setViewport({ width: 1280, height: 420, deviceScaleFactor: 1 });
   const navScroll = '[data-testid="configuration-nav-scroll"]';
   await page.waitForSelector(navScroll);
   assert.equal(await page.$eval(navScroll, node => node.scrollHeight > node.clientHeight), true,
     "a long configuration menu has an independently scrollable navigation region");
-  const footerBefore = await box(page, desktopToggle);
+  const toggleBefore = await box(page, desktopToggle);
   await page.$eval(navScroll, node => {
     node.scrollTop = node.scrollHeight;
   });
-  const footerAfter = await box(page, desktopToggle);
-  assert.equal(Math.round(footerAfter.top), Math.round(footerBefore.top),
-    "scrolling links does not move the footer toggle");
-  assert.ok(footerAfter.bottom <= 420 && footerAfter.top >= 0,
-    "the footer toggle remains inside the viewport");
+  const toggleAfter = await box(page, desktopToggle);
+  assert.equal(Math.round(toggleAfter.top), Math.round(toggleBefore.top),
+    "scrolling links does not move the top toggle");
+  assert.ok(toggleAfter.bottom <= 420 && toggleAfter.top >= 0,
+    "the top toggle remains inside the viewport");
+  assert.ok(toggleAfter.bottom <= (await box(page, navScroll)).top,
+    "the expanded navigation scrolls below the top control");
 
   // Preserve collapsed desktop preference before crossing the mobile breakpoint.
   await page.click(desktopToggle);
@@ -475,6 +529,14 @@ try {
   await page.keyboard.press("Enter");
   await page.waitForFunction(() =>
     getComputedStyle(document.querySelector('aside[aria-label="Configuration menu"]')).display !== "none");
+  assert.deepEqual(await page.$eval(sidebarSelector, aside => ({
+    firstControlLabel: [...aside.querySelectorAll("button, a")]
+      .find(element => element.getClientRects().length)?.getAttribute("aria-label"),
+    homeLinks: aside.querySelectorAll('a[href="/config"]').length,
+    headerText: aside.querySelector("div")?.textContent?.trim(),
+    desktopToggleVisible: !!aside.querySelector('[data-testid="button-configuration-menu-desktop"]')?.getClientRects().length,
+  })), { firstControlLabel: "Close configuration menu", homeLinks: 0, headerText: "", desktopToggleVisible: false },
+  "the mobile drawer begins with its close control, not a redundant heading or desktop toggle");
   const mobileSidebar = await box(page, 'aside[aria-label="Configuration menu"]');
   assert.ok(mobileSidebar.left >= 0 && mobileSidebar.right <= 640,
     "mobile configuration menu stays inside the viewport");
@@ -498,7 +560,10 @@ try {
     path: path.join(root, "screenshots/config-navigation-mobile-200-percent.png"),
     fullPage: true,
   });
-  await page.click(mobileToggle);
+  await page.focus(`${sidebarSelector} button[aria-label="Close configuration menu"]`);
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() =>
+    getComputedStyle(document.querySelector('aside[aria-label="Configuration menu"]')).display === "none");
   await page.setViewport({ width: 1280, height: 760, deviceScaleFactor: 1 });
   await page.waitForSelector(desktopToggle);
   await waitForSidebarWidth(page, 56);

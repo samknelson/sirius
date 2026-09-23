@@ -64,6 +64,7 @@ export function reconcileConfigurationSectionNavigation(
   state: ConfigurationSectionOpenState,
   location: string,
   activeSectionIds: readonly string[],
+  topLevelSectionIds: readonly string[],
 ): ConfigurationSectionOpenState {
   const nextActiveIds = activeIdsKey(activeSectionIds);
   if (state.location === location && state.activeSectionIds === nextActiveIds) {
@@ -71,6 +72,12 @@ export function reconcileConfigurationSectionNavigation(
   }
 
   const openSections = { ...state.openSections };
+  const activeTopLevelId = activeSectionIds.find(id => topLevelSectionIds.includes(id));
+  if (activeTopLevelId) {
+    for (const id of topLevelSectionIds) {
+      if (id !== activeTopLevelId) openSections[id] = false;
+    }
+  }
   for (const sectionId of activeSectionIds) openSections[sectionId] = true;
 
   return {
@@ -83,12 +90,17 @@ export function reconcileConfigurationSectionNavigation(
 export function toggleConfigurationSection(
   state: ConfigurationSectionOpenState,
   sectionId: string,
+  topLevelSectionIds: readonly string[],
 ): ConfigurationSectionOpenState {
+  const openSections = { ...state.openSections };
+  if (topLevelSectionIds.includes(sectionId) && !openSections[sectionId]) {
+    for (const id of topLevelSectionIds) {
+      if (id !== sectionId) openSections[id] = false;
+    }
+  }
+  openSections[sectionId] = !openSections[sectionId];
   return {
     ...state,
-    openSections: {
-      ...state.openSections,
-      [sectionId]: !state.openSections[sectionId],
-    },
+    openSections,
   };
 }
