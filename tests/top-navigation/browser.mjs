@@ -75,13 +75,53 @@ try {
   const compact = value => page.waitForFunction(expected =>
     document.querySelector("#site-menu")?.getAttribute("data-compact") === expected,
   {}, String(value));
+  const assertCompactGeometry = async () => {
+    const geometry = await page.$eval(nav, el => {
+      const row = el.getBoundingClientRect();
+      const buttons = [...el.querySelectorAll('[data-testid^="nav-"]')].map(
+        button => button.getBoundingClientRect());
+      return {
+        left: buttons[0].left - row.left,
+        right: row.right - buttons.at(-1).right,
+        gaps: buttons.slice(1).map((button, index) => button.left - buttons[index].right),
+        clusterWidth: buttons.at(-1).right - buttons[0].left,
+        rowWidth: row.width,
+        overflow: el.scrollWidth > el.clientWidth || document.documentElement.scrollWidth > innerWidth,
+        visible: buttons.every(button => button.left >= row.left && button.right <= row.right),
+      };
+    });
+    assert.equal(geometry.overflow, false, "compact navigation must not overflow horizontally");
+    assert.equal(geometry.visible, true, "all compact controls must remain visible");
+    assert.ok(Math.abs(geometry.left - geometry.right) <= 2,
+      `compact navigation must be centered in the full row: ${JSON.stringify(geometry)}`);
+    assert.ok(geometry.gaps.every(gap => Math.abs(gap - geometry.gaps[0]) <= 1),
+      `compact controls must have even gaps: ${JSON.stringify(geometry.gaps)}`);
+    assert.ok(geometry.clusterWidth < geometry.rowWidth / 2,
+      "compact controls should remain a bounded cluster, not fill the row");
+  };
+  const assertLabeledAlignment = async () => {
+    const geometry = await page.$eval(nav, el => ({
+      left: el.querySelector('[data-testid^="nav-"]').getBoundingClientRect().left -
+        el.getBoundingClientRect().left,
+      padding: parseFloat(getComputedStyle(el).paddingLeft),
+      overflow: el.scrollWidth > el.clientWidth,
+    }));
+    assert.ok(Math.abs(geometry.left - geometry.padding) <= 1,
+      `labeled navigation should remain left-aligned: ${JSON.stringify(geometry)}`);
+    assert.equal(geometry.overflow, false);
+  };
   await page.setViewport({ width: 1200, height: 760 });
   await page.goto(`${origin}/home`, { waitUntil: "domcontentloaded", timeout: 90_000 });
   await page.waitForSelector('[data-testid="nav-settings"]');
   await compact(false);
   assert.match(await page.$eval('[data-testid="nav-workers"]', el => el.textContent), /Workers/);
+  await assertLabeledAlignment();
   await page.setViewport({ width: 768, height: 760 });
   await compact(true);
+  await assertCompactGeometry();
+  if (process.env.TOP_NAV_SCREENSHOT) {
+    await page.screenshot({ path: process.env.TOP_NAV_SCREENSHOT });
+  }
   assert.deepEqual(await page.$eval(nav, el => ({
     overflow: el.scrollWidth > el.clientWidth,
     entries: [...el.querySelectorAll('[data-testid^="nav-"]')].map(button =>
@@ -111,14 +151,28 @@ try {
     document.querySelector('[data-testid="fixture-location"]')?.textContent === "/employers");
   assert.equal(await page.$eval('[data-testid="nav-employers"]', el =>
     el.getAttribute("aria-current")), "page");
+  await page.setViewport({ width: 800, height: 760 });
+  await compact(true);
+  await assertCompactGeometry();
   await page.setViewport({ width: 1200, height: 760 });
   await compact(false);
+  await assertLabeledAlignment();
   await page.evaluate(next => window.setFixtureMenu(next), {
     ...menu, items: menu.items.map(item => ({ ...item, label: `${item.label} — extended navigation label` })),
   });
   await compact(true);
+  await assertCompactGeometry();
+  await page.evaluate(next => window.setFixtureMenu(next), {
+    ...menu, items: [
+      ...menu.items.map(item => ({ ...item, label: `${item.label} — extended navigation label` })),
+      { id: "reports", icon: "FileText", label: "Reports and activity — extended navigation label", href: "/reports" },
+    ],
+  });
+  await page.waitForSelector('[data-testid="nav-reports"]');
+  await assertCompactGeometry();
   await page.evaluate(next => window.setFixtureMenu(next), menu);
   await compact(false);
+  await assertLabeledAlignment();
   const termMenu = { ...menu, items: menu.items.map(item => item.id === "workers"
     ? { ...item, label: undefined, labelTerm: { key: "worker", plural: true } } : item) };
   await page.evaluate(next => window.setFixtureMenu(next), termMenu);
@@ -128,6 +182,7 @@ try {
     plural: "People who work across all our partner organizations and departments in every region",
   } }));
   await compact(true);
+  await assertCompactGeometry();
   assert.match(await page.$eval('[data-testid="nav-workers"]', el => el.getAttribute("aria-label")), /partner organizations/);
   await page.evaluate(() => window.setFixtureTerminology(null));
   await compact(false);
@@ -146,6 +201,7 @@ try {
   await page.waitForSelector('[data-testid="mobile-nav-workers-list"]');
   await page.setViewport({ width: 768, height: 760 });
   await compact(true);
+  await assertCompactGeometry();
   assert.deepEqual(failures, []);
   console.log("Top navigation browser checks passed");
 } finally {

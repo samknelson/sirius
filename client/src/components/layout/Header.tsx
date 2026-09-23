@@ -464,7 +464,7 @@ export default function Header() {
       </div>
 
       {/* Row 2: Desktop Navigation Links - hidden on mobile */}
-      <nav ref={desktopNavRef} id="site-menu" data-compact={compactNav} className={`relative hidden md:flex items-center h-10 px-4 md:px-6 ${compactNav ? "gap-2" : "gap-4"}`}>
+      <nav ref={desktopNavRef} id="site-menu" data-compact={compactNav} className={`relative hidden md:flex items-center h-10 px-4 md:px-6 ${compactNav ? "justify-center gap-2" : "gap-4"}`}>
         {/* This copy never participates in layout or interaction. It always has labeled widths,
             so switching to icons cannot make the measured width shrink and oscillate. */}
         <div aria-hidden="true" className="pointer-events-none invisible absolute left-0 top-0 h-0 w-0 overflow-hidden">
