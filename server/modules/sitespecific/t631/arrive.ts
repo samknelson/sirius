@@ -5,6 +5,11 @@ import { requireComponent } from "../../components";
 import { logger } from "../../../logger";
 import { wcRequest } from "../../../services/webclient";
 import type { T631FetchResult } from "../../../plugins/wc-vendors/plugins/sitespecific-t631";
+import { checkFlood, recordFloodEvent } from "../../../flood/service";
+import {
+  T631_ARRIVAL_IP_FLOOD_EVENT,
+  T631_ARRIVAL_WORKER_FLOOD_EVENT,
+} from "../../../flood/events";
 
 const arrivalRequestSchema = z.object({
   worker_id: z.string().refine((value) => value.trim().length > 0),
@@ -28,7 +33,16 @@ async function resolveWorkerId(typeId: string, value: string): Promise<string | 
   return normalized[0]?.workerId;
 }
 
-async function arrive(workerIdInput: string, token: string): Promise<T631ArrivalResult> {
+const authenticationFailed = (workerIdInput: string): T631ArrivalResult => ({
+  authenticated: false,
+  message: `Authentication failed for worker [${workerIdInput}].`,
+});
+
+async function arrive(
+  workerIdInput: string,
+  token: string,
+  ip: string,
+): Promise<T631ArrivalResult> {
   const typeId = await storage.workerIds.getTypeIdBySiriusId("t631");
   if (!typeId) {
     return {
@@ -45,6 +59,27 @@ async function arrive(workerIdInput: string, token: string): Promise<T631Arrival
     };
   }
 
+  const floodContext = { workerIdInput, ip };
+  let limited = false;
+  for (const eventName of [
+    T631_ARRIVAL_WORKER_FLOOD_EVENT,
+    T631_ARRIVAL_IP_FLOOD_EVENT,
+  ]) {
+    try {
+      if (!(await checkFlood(eventName, floodContext)).allowed) {
+        limited = true;
+      }
+    } catch (error) {
+      logger.warn("T631 public arrival flood check failed; allowing authentication", {
+        source: "sitespecific-t631-arrive",
+        event: eventName,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  if (limited) return authenticationFailed(workerIdInput);
+
+  let authenticated = false;
   try {
     const result = await wcRequest({
       vendor: { any: true },
@@ -53,26 +88,34 @@ async function arrive(workerIdInput: string, token: string): Promise<T631Arrival
       mode: "force",
     });
     const remoteBody = result.value?.data;
-    const authenticated =
+    authenticated =
       remoteBody !== null &&
       typeof remoteBody === "object" &&
       !Array.isArray(remoteBody) &&
       (remoteBody as { data?: unknown }).data === true;
 
-    if (!authenticated) {
-      return {
-        authenticated: false,
-        message: `Authentication failed for worker [${workerIdInput}].`,
-      };
-    }
   } catch {
     logger.error("T631 public arrival authentication request failed", {
       source: "sitespecific-t631-arrive",
     });
-    return {
-      authenticated: false,
-      message: `Authentication failed for worker [${workerIdInput}].`,
-    };
+  }
+
+  if (!authenticated) {
+    for (const eventName of [
+      T631_ARRIVAL_WORKER_FLOOD_EVENT,
+      T631_ARRIVAL_IP_FLOOD_EVENT,
+    ]) {
+      try {
+        await recordFloodEvent(eventName, floodContext);
+      } catch (error) {
+        logger.warn("T631 public arrival flood recording failed", {
+          source: "sitespecific-t631-arrive",
+          event: eventName,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return authenticationFailed(workerIdInput);
   }
 
   const workerName = await storage.workers.getWorkerDisplayName(workerId);
@@ -109,7 +152,7 @@ export function registerT631ArrivalRoutes(app: Express): void {
 
       try {
         res.status(200).json(
-          await arrive(parsed.data.worker_id, parsed.data.token),
+          await arrive(parsed.data.worker_id, parsed.data.token, req.ip || "unknown"),
         );
       } catch {
         logger.error("T631 public arrival lookup failed", {

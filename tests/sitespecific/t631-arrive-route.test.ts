@@ -1,6 +1,14 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { componentState, scenario, wcRequest, logError } = vi.hoisted(() => ({
+const {
+  componentState,
+  scenario,
+  wcRequest,
+  checkFlood,
+  recordFloodEvent,
+  logError,
+  logWarn,
+} = vi.hoisted(() => ({
   componentState: { enabled: true },
   scenario: {
     typeId: "t631-type" as string | null,
@@ -9,7 +17,10 @@ const { componentState, scenario, wcRequest, logError } = vi.hoisted(() => ({
     workerName: "Example Worker",
   },
   wcRequest: vi.fn(),
+  checkFlood: vi.fn(),
+  recordFloodEvent: vi.fn(),
   logError: vi.fn(),
+  logWarn: vi.fn(),
 }));
 
 vi.mock("../../server/storage", () => ({
@@ -44,13 +55,20 @@ vi.mock("../../server/modules/components", () => ({
 }));
 
 vi.mock("../../server/services/webclient", () => ({ wcRequest }));
+vi.mock("../../server/flood/service", () => ({ checkFlood, recordFloodEvent }));
 vi.mock("../../server/logger", () => ({
-  logger: { error: logError },
+  logger: { error: logError, warn: logWarn },
 }));
 
 import { storage } from "../../server/storage";
 import { registerT631ArrivalRoutes } from "../../server/modules/sitespecific/t631/arrive";
 import { redactSensitiveUrlQuery } from "../../server/utils/redact-url-query";
+import {
+  T631_ARRIVAL_IP_FLOOD_EVENT,
+  T631_ARRIVAL_WORKER_FLOOD_EVENT,
+  t631ArrivalIpFloodEvent,
+  t631ArrivalWorkerFloodEvent,
+} from "../../server/flood/events";
 
 type Middleware = (
   req: any,
@@ -83,7 +101,12 @@ beforeEach(() => {
   scenario.normalized = [];
   scenario.workerName = "Example Worker";
   wcRequest.mockReset();
+  checkFlood.mockReset();
+  recordFloodEvent.mockReset();
   logError.mockReset();
+  logWarn.mockReset();
+  checkFlood.mockResolvedValue({ allowed: true });
+  recordFloodEvent.mockResolvedValue(undefined);
   wcRequest.mockResolvedValue({
     source: "network",
     outcome: "success",
@@ -97,7 +120,7 @@ beforeEach(() => {
   ).mockClear();
 });
 
-async function post(body: unknown) {
+async function post(body: unknown, ip = "203.0.113.10") {
   const result: { status: number; body?: any } = { status: 200 };
   const res = {
     status(code: number) {
@@ -110,7 +133,7 @@ async function post(body: unknown) {
     },
   };
 
-  const req = { body };
+  const req = { body, ip };
   for (const middleware of routeMiddleware) {
     let nextCalled = false;
     await middleware(req, res, () => {
@@ -122,6 +145,31 @@ async function post(body: unknown) {
 }
 
 describe("public T631 arrival route", () => {
+  it("defines independent five-per-minute worker and IP flood budgets", () => {
+    expect(t631ArrivalWorkerFloodEvent).toMatchObject({
+      name: T631_ARRIVAL_WORKER_FLOOD_EVENT,
+      threshold: 5,
+      windowSeconds: 60,
+    });
+    expect(t631ArrivalIpFloodEvent).toMatchObject({
+      name: T631_ARRIVAL_IP_FLOOD_EVENT,
+      threshold: 5,
+      windowSeconds: 60,
+    });
+    expect(
+      t631ArrivalWorkerFloodEvent.getIdentifier({
+        workerIdInput: "666666",
+        ip: "203.0.113.10",
+      }),
+    ).toBe("666666");
+    expect(
+      t631ArrivalIpFloodEvent.getIdentifier({
+        workerIdInput: "666666",
+        ip: "203.0.113.10",
+      }),
+    ).toBe("203.0.113.10");
+  });
+
   it("component-gates the page and sets a no-referrer response policy", async () => {
     expect(pagePath).toBe("/sitespecific/t631/arrive");
     expect(pageMiddleware).toHaveLength(2);
@@ -180,6 +228,8 @@ describe("public T631 arrival route", () => {
       },
     });
     expect(wcRequest).not.toHaveBeenCalled();
+    expect(checkFlood).not.toHaveBeenCalled();
+    expect(recordFloodEvent).not.toHaveBeenCalled();
   });
 
   it("returns a 200 error when the t631 worker ID type is absent", async () => {
@@ -190,6 +240,8 @@ describe("public T631 arrival route", () => {
     expect(response.body.message).toBe(
       "The T631 worker ID type does not exist on this server.",
     );
+    expect(checkFlood).not.toHaveBeenCalled();
+    expect(recordFloodEvent).not.toHaveBeenCalled();
   });
 
   it("prefers an exact worker ID and does not run either fallback", async () => {
@@ -266,6 +318,68 @@ describe("public T631 arrival route", () => {
       "The worker with id [666666] does not exist on this server.",
     );
     expect(wcRequest).not.toHaveBeenCalled();
+    expect(checkFlood).not.toHaveBeenCalled();
+    expect(recordFloodEvent).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    T631_ARRIVAL_WORKER_FLOOD_EVENT,
+    T631_ARRIVAL_IP_FLOOD_EVENT,
+  ])("blocks the outbound call when the %s budget is exhausted", async (blockedEvent) => {
+    scenario.exact.set("666666", { workerId: "worker-exact" });
+    checkFlood.mockImplementation(async (eventName: string) => ({
+      allowed: eventName !== blockedEvent,
+    }));
+
+    const response = await post(
+      { worker_id: "666666", token: "secret" },
+      "203.0.113.10",
+    );
+
+    expect(response).toEqual({
+      status: 200,
+      body: {
+        authenticated: false,
+        message: "Authentication failed for worker [666666].",
+      },
+    });
+    expect(checkFlood).toHaveBeenCalledTimes(2);
+    expect(wcRequest).not.toHaveBeenCalled();
+    expect(recordFloodEvent).not.toHaveBeenCalled();
+  });
+
+  it("records both token-free buckets after a failed remote authentication", async () => {
+    scenario.exact.set("666666", { workerId: "worker-exact" });
+    wcRequest.mockResolvedValue({
+      source: "network",
+      outcome: "success",
+      fresh: true,
+      value: { data: { data: false } },
+    });
+
+    await post({ worker_id: "666666", token: "secret" }, "203.0.113.10");
+
+    const context = { workerIdInput: "666666", ip: "203.0.113.10" };
+    expect(recordFloodEvent).toHaveBeenNthCalledWith(
+      1,
+      T631_ARRIVAL_WORKER_FLOOD_EVENT,
+      context,
+    );
+    expect(recordFloodEvent).toHaveBeenNthCalledWith(
+      2,
+      T631_ARRIVAL_IP_FLOOD_EVENT,
+      context,
+    );
+    expect(JSON.stringify(recordFloodEvent.mock.calls)).not.toContain("secret");
+  });
+
+  it("records neither bucket after successful authentication", async () => {
+    scenario.exact.set("666666", { workerId: "worker-exact" });
+
+    await post({ worker_id: "666666", token: "secret" });
+
+    expect(checkFlood).toHaveBeenCalledTimes(2);
+    expect(recordFloodEvent).not.toHaveBeenCalled();
   });
 
   it.each([false, "true", 1, null, undefined])(
