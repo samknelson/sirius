@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Link } from "wouter";
 
 interface WorkerBenefit extends TrustWmb {
   benefit: TrustBenefit;
@@ -27,7 +28,7 @@ interface WorkerBenefit extends TrustWmb {
   sourceRelation: {
     id: string;
     relationTypeName: string | null;
-    sourceWorkerId: string;
+    sourceWorkerId: string | null;
     sourceWorkerName: string;
   } | null;
 }
@@ -304,10 +305,18 @@ function WorkerBenefitsContent() {
                     <Badge variant="outline">{benefit.benefit.name}</Badge>
                   </TableCell>
                   <TableCell data-testid={`text-benefit-source-${benefit.id}`}>
-                    {benefit.sourceRelation ? (
+                    {benefit.sourceRelationId ? (
                       <span className="text-muted-foreground">
-                        via {benefit.sourceRelation.sourceWorkerName}
-                        {benefit.sourceRelation.relationTypeName
+                        via{" "}
+                        {benefit.sourceRelation?.sourceWorkerId ? (
+                          <Link
+                            href={`/workers/${benefit.sourceRelation.sourceWorkerId}`}
+                            className="text-primary underline-offset-2 hover:underline focus-visible:underline"
+                          >
+                            {benefit.sourceRelation.sourceWorkerName}
+                          </Link>
+                        ) : benefit.sourceRelation?.sourceWorkerName ?? "Unknown worker"}
+                        {benefit.sourceRelation?.relationTypeName
                           ? ` (${benefit.sourceRelation.relationTypeName})`
                           : ""}
                       </span>

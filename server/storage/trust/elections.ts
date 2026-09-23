@@ -265,14 +265,18 @@ async function hydrateElections(rows: WorkerTrustElection[]): Promise<WorkerTrus
     }));
     const relationships = (election.relationshipIds ?? []).map((id) => {
       const rel = relMap.get(id);
-      if (!rel) return { id, label: 'Unknown relationship' };
-      const otherId = rel.worker1 === election.workerId ? rel.worker2 : rel.worker1;
+      if (!rel) return { id, label: 'Unknown relationship', coveredWorkerId: null };
+      // A stale or unrelated relationship is not a safe navigation target.
+      const otherId = rel.worker1 === election.workerId
+        ? rel.worker2
+        : rel.worker2 === election.workerId ? rel.worker1 : null;
+      if (!otherId) return { id, label: 'Unknown relationship', coveredWorkerId: null };
       const w = workerNameMap.get(otherId);
       const name = w
         ? [w.given, w.family].filter(Boolean).join(' ').trim() || w.displayName || 'Unknown worker'
         : 'Unknown worker';
       const type = rel.relationTypeName || 'relation';
-      return { id, label: `${name} (${type})` };
+      return { id, label: `${name} (${type})`, coveredWorkerId: w ? otherId : null };
     });
     const ownWorker = workerNameMap.get(election.workerId);
     const workerName = ownWorker

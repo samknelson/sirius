@@ -50,7 +50,7 @@ export interface WorkerTrustElectionView extends WorkerTrustElection {
   policyName: string | null;
   employerName: string | null;
   benefits: { id: string; name: string }[];
-  relationships: { id: string; label: string }[];
+  relationships: { id: string; label: string; coveredWorkerId: string | null }[];
 }
 
 const ymdOrDate = z

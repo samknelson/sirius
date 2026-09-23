@@ -13,7 +13,6 @@ function ElectionDetailsContent() {
   const policyName = election.policyName ?? "Unknown policy";
   const employerName = election.employerName ?? "Unknown employer";
   const benefitLabels = (election.benefits ?? []).map((b) => b.name);
-  const relationLabels = (election.relationships ?? []).map((r) => r.label);
 
   return (
     <Card>
@@ -65,11 +64,18 @@ function ElectionDetailsContent() {
           <div className="col-span-2">
             <dt className="text-muted-foreground">Covered relationships</dt>
             <dd data-testid="text-relationships">
-              {relationLabels.length > 0 ? (
+              {election.relationships?.length ? (
                 <div className="flex flex-wrap gap-1">
-                  {relationLabels.map((label, i) => (
+                  {election.relationships.map((relation, i) => (
                     <Badge key={i} variant="secondary" data-testid={`chip-relation-${i}`}>
-                      {label}
+                      {relation.coveredWorkerId ? (
+                        <Link
+                          href={`/workers/${relation.coveredWorkerId}`}
+                          className="text-primary underline-offset-2 hover:underline focus-visible:underline"
+                        >
+                          {relation.label}
+                        </Link>
+                      ) : relation.label}
                     </Badge>
                   ))}
                 </div>

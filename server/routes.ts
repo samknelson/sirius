@@ -1741,19 +1741,22 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             .filter((id: string | null): id is string => !!id),
         ),
       );
-      const sourceRelationById = new Map<string, { id: string; relationTypeName: string | null; sourceWorkerId: string; sourceWorkerName: string }>();
+      const sourceRelationById = new Map<string, { id: string; relationTypeName: string | null; sourceWorkerId: string | null; sourceWorkerName: string }>();
       if (relationIds.length > 0 && isComponentEnabledSync("worker.relations")) {
         const relations = await storage.workerRelations.listByIdsWithType(relationIds);
-        const nameByWorkerId = new Map<string, string>();
+        const nameByWorkerId = new Map<string, { id: string | null; name: string }>();
         for (const rel of relations) {
           if (!nameByWorkerId.has(rel.worker1)) {
-            nameByWorkerId.set(rel.worker1, await storage.workers.getWorkerDisplayName(rel.worker1));
+            const worker = await storage.workers.getWorker(rel.worker1);
+            nameByWorkerId.set(rel.worker1, worker
+              ? { id: rel.worker1, name: await storage.workers.getWorkerDisplayName(rel.worker1) }
+              : { id: null, name: "Unknown worker" });
           }
           sourceRelationById.set(rel.id, {
             id: rel.id,
             relationTypeName: rel.relationTypeName,
-            sourceWorkerId: rel.worker1,
-            sourceWorkerName: nameByWorkerId.get(rel.worker1) ?? rel.worker1,
+            sourceWorkerId: nameByWorkerId.get(rel.worker1)!.id,
+            sourceWorkerName: nameByWorkerId.get(rel.worker1)!.name,
           });
         }
       }

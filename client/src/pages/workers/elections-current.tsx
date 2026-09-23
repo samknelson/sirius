@@ -254,7 +254,19 @@ function ElectionsCurrentContent() {
                 <dt className="text-muted-foreground">Relationships</dt>
                 <dd data-testid="text-current-relationships">
                   {current.relationships && current.relationships.length > 0
-                    ? current.relationships.map((r) => r.label).join(", ")
+                    ? current.relationships.map((relation, i) => (
+                        <span key={relation.id}>
+                          {i > 0 && ", "}
+                          {relation.coveredWorkerId ? (
+                            <Link
+                              href={`/workers/${relation.coveredWorkerId}`}
+                              className="text-primary underline-offset-2 hover:underline focus-visible:underline"
+                            >
+                              {relation.label}
+                            </Link>
+                          ) : relation.label}
+                        </span>
+                      ))
                     : "—"}
                 </dd>
               </div>
