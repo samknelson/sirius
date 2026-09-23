@@ -179,6 +179,7 @@ import "./plugins/benefit-summary";
 import "./plugins/system-status";
 import "./plugins/bao-dc-summary";
 import "./plugins/bao-dp-summary";
+import "./plugins/bao-worker-coverage";
 import "./plugins/wc-usage";
 import "./plugins/ws-usage-byplugin";
 import "./plugins/ws-usage-byclient";

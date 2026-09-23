@@ -361,6 +361,10 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     }
     const validRoleIds = new Set(roles.map((r) => r.id));
     const firstRoleId = roles[0].id;
+    // This new member-only card must be offered to worker roles on first boot,
+    // not whichever role happens to sort first in the general dashboard seed.
+    const workerRoleIds = (await storage.users.getRolesWithPermission("worker"))
+      .map((role) => role.id);
     const configs = await storage.pluginConfigs.getByKind("dashboard");
     for (const cfg of configs) {
       try {
@@ -369,6 +373,15 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
 
         let roleIds: string[] = [firstRoleId];
         let stripRoles = false;
+        if (cfg.pluginId === "bao-worker-coverage") {
+          roleIds = workerRoleIds;
+          if (roleIds.length === 0) {
+            logger.warn("Worker coverage card has no worker-permitted role to seed", {
+              service: SERVICE,
+            });
+            continue;
+          }
+        }
         if (cfg.pluginId === "welcome-messages") {
           const data = (cfg.data ?? {}) as Record<string, unknown>;
           if ("roles" in data) stripRoles = true;
