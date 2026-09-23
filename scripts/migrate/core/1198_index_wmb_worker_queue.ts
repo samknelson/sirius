@@ -20,7 +20,10 @@ export async function installQueueReadIndexes(connectionPool: Pick<Pool, "connec
   try {
     const previous = await client.query("SELECT current_setting('lock_timeout') AS lock_timeout, current_setting('statement_timeout') AS statement_timeout");
     settings = previous.rows[0];
-    await client.query("SELECT set_config('lock_timeout', '5s', false), set_config('statement_timeout', '60s', false)");
+    // A live queue can have writes in flight during deployment. Five seconds
+    // was too short even for a concurrent index build on staging; allow a
+    // bounded wait without letting startup block indefinitely.
+    await client.query("SELECT set_config('lock_timeout', '30s', false), set_config('statement_timeout', '90s', false)");
     const table = await client.query("SELECT to_regclass('public.trust_wmb_scan_queue') AS oid");
     if (!table.rows[0]?.oid) return; // optional component disabled
 

@@ -24,8 +24,8 @@ describe("WMB queue index migration", () => {
     const statements = f.query.mock.calls.map(([sql]) => sql);
     expect(statements.filter(s => s.startsWith("CREATE INDEX CONCURRENTLY"))).toHaveLength(3);
     expect(statements.some(s => /\bBEGIN\b/.test(s))).toBe(false);
-    expect(statements[1]).toContain("'5s'");
-    expect(statements[1]).toContain("'60s'");
+    expect(statements[1]).toContain("'30s'");
+    expect(statements[1]).toContain("'90s'");
     expect(f.query.mock.calls.at(-1)?.[0]).toContain("set_config");
     expect(f.release).toHaveBeenCalledWith(false);
     expect(migration.version).toBe(1198);
