@@ -187,7 +187,7 @@ export const workerTabTree: HierarchicalTab[] = [
     ]
   },
   { 
-    id: 'employment', label: 'Employment', hrefTemplate: '/workers/{id}/employment/current', policyId: 'worker.view',
+    id: 'employment', label: 'Employment', hrefTemplate: '/workers/{id}/employment/monthly', policyId: 'worker.view',
     children: [
       { id: 'current', label: 'Current', hrefTemplate: '/workers/{id}/employment/current', policyId: 'worker.view' },
       { id: 'history', label: 'History', hrefTemplate: '/workers/{id}/employment/history', policyId: 'worker.view' },
