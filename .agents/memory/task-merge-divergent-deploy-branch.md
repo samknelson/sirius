@@ -10,23 +10,23 @@ and `main` end up with identical content under different SHAs → the
 "Push to bao-dev" workflow fails with `non-fast-forward` on both refs.
 
 **Rule:** A user-triggered deployment push may auto-reconcile divergent remote
-history only when either (a) the remote tip's complete tree exactly matches a
-commit already reachable from `main`, or (b) the remote branch's complete net
-patch since its merge base reverse-applies cleanly to committed `main`. The
-resulting reconciliation commit must reuse `main`'s exact tree and add the
-remote tip only as a parent.
+history only with positive evidence that its work was incorporated: an exact
+tree match with a main ancestor, an exact match on every remote-changed path
+with ONE main ancestor after the merge base, patch-equivalent remote-only
+commits without merges, or a clean reverse application of the remote's net
+patch to committed main. The resulting reconciliation commit must reuse
+main's exact tree and add the remote tip only as a parent.
 
-**Why:** Patch IDs are not reliable here because the same task may be applied
-against a different parent/context during the platform merge. Exact full-tree
-matching handles a rewritten task snapshot even after later tasks edit the same
-lines (where reverse-apply cannot work); the reverse-patch fallback remains
-conservative for other equivalent histories. Keeping the tree unchanged avoids
-resurrecting the older duplicate.
+**Why:** Task merges can rewrite history and flatten changes into an earlier
+main snapshot. Later main commits can edit the same paths again, defeating
+reverse-apply; unrelated changes in the snapshot can defeat a full-tree match.
+Comparing the entire set of remote-changed paths to a single historical main
+snapshot proves the remote state existed on main without accepting a
+per-file patchwork or overwriting later work.
 
 **How to apply:** Fetch both the selected deployment branch and
-`bao-replit-main`, check each independently, and refuse the push if either patch
-does not reverse-apply. Push both refs atomically so one cannot advance while
-the other fails. Give the generated reconciliation commit an explicit
-workflow-only author/committer identity; workflow shells may have no Git
-identity configured. The workflow remains user-triggered; never push a bao
-branch outside that workflow.
+`bao-replit-main`, check each independently, and refuse the push if neither
+the historical-snapshot nor patch-equivalence checks prove incorporation.
+Push both refs atomically so one cannot advance while the other fails.
+The workflow remains user-triggered; never push a bao branch outside that
+workflow.
