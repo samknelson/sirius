@@ -157,7 +157,7 @@ export interface WorkerWithDetails {
 }
 
 export interface PaginatedWorkersResult {
-  data: WorkerWithDetails[];
+  data: Array<Omit<WorkerWithDetails, "ssn">>;
   total: number;
   page: number;
   pageSize: number;
@@ -165,6 +165,7 @@ export interface PaginatedWorkersResult {
 }
 
 export interface WorkersExportParams extends WorkerBenefitRoleFilters {
+  ssnFilter?: import("../modules/workers/ssn-filter").WorkerSsnFilter;
   nameIdSearch?: string;
   contactSearch?: string;
   sortBy?: 'lastName' | 'firstName' | 'employer';
@@ -182,6 +183,7 @@ export interface WorkersExportParams extends WorkerBenefitRoleFilters {
 }
 
 export interface WorkersPaginationParams extends WorkerBenefitRoleFilters {
+  ssnFilter?: import("../modules/workers/ssn-filter").WorkerSsnFilter;
   page?: number;
   pageSize?: number;
   nameIdSearch?: string;
@@ -344,6 +346,7 @@ export interface WorkerStorage {
 }
 
 interface InternalSearchParams {
+  ssnFilter?: import("../modules/workers/ssn-filter").WorkerSsnFilter;
   isSubscriber?: WorkerBenefitRoleFilters["isSubscriber"];
   isDependent?: WorkerBenefitRoleFilters["isDependent"];
   subscriberSinceFrom?: WorkerBenefitRoleFilters["subscriberSinceFrom"];
@@ -504,7 +507,12 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
     )`;
   });
 
-  const searchCondition = sql`${nameIdSearchCondition} ${contactSearchCondition}`;
+  const ssnCondition = params.ssnFilter
+    ? params.ssnFilter.mode === "full"
+      ? sql`AND regexp_replace(w.ssn, '[^0-9]', '', 'g') = ${params.ssnFilter.digits}`
+      : sql`AND right(regexp_replace(w.ssn, '[^0-9]', '', 'g'), 4) = ${params.ssnFilter.digits}`
+    : sql``;
+  const searchCondition = sql`${nameIdSearchCondition} ${contactSearchCondition} ${ssnCondition}`;
 
   const employerCondition = employerId 
     ? sql`AND EXISTS (
@@ -881,6 +889,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       const pageSize = params.pageSize ?? 50;
 
       const { rows, total } = await _searchWorkers({
+        ssnFilter: params.ssnFilter,
         nameIdSearch: params.nameIdSearch,
         contactSearch: params.contactSearch,
         sortOrder: params.sortOrder,
@@ -905,7 +914,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       });
 
       return {
-        data: rows,
+        data: rows.map(({ ssn: _ssn, ...worker }) => worker),
         total: total!,
         page,
         pageSize,
@@ -915,6 +924,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
     async getWorkersForExportBatch(params: WorkersExportParams, offset: number, limit: number): Promise<WorkerWithDetails[]> {
       const { rows } = await _searchWorkers({
+        ssnFilter: params.ssnFilter,
         nameIdSearch: params.nameIdSearch,
         contactSearch: params.contactSearch,
         sortBy: params.sortBy,
@@ -943,6 +953,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
     async getAllMatchingContactIds(params: Omit<WorkersPaginationParams, 'page' | 'pageSize' | 'sortField'>): Promise<string[]> {
       const { rows } = await _searchWorkers({
+        ssnFilter: params.ssnFilter,
         nameIdSearch: params.nameIdSearch,
         contactSearch: params.contactSearch,
         sortOrder: params.sortOrder,

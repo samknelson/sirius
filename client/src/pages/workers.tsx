@@ -43,6 +43,7 @@ function withoutWorkerBenefitRoleFilters(filters: WorkerFilters): WorkerFilters 
 export default function Workers() {
   const [location] = useLocation();
   const { hasPermission } = useAuth();
+  const canSearchSsn = hasPermission("workers.ssn");
   const { toast } = useToast();
   const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
     queryKey: ["/api/components/config"],
@@ -56,6 +57,11 @@ export default function Workers() {
   // (mirrors the BTU deployment's apply-button filter model).
   const [nameIdInput, setNameIdInput] = useState("");
   const [contactInput, setContactInput] = useState("");
+  const [ssnInput, setSsnInput] = useState("");
+  const [appliedSsn, setAppliedSsn] = useState("");
+  // The query cache key contains only a generation, never the SSN.
+  const [ssnGeneration, setSsnGeneration] = useState(0);
+  const [listSession] = useState(() => crypto.randomUUID());
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [sortBy, setSortBy] = useState<"lastName" | "firstName" | "employer">("lastName");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -76,6 +82,13 @@ export default function Workers() {
   const [appliedFilters, setAppliedFilters] = useState<WorkerFilters>(defaultFilters);
 
   const handleApplySearch = useCallback(() => {
+    if (canSearchSsn && ssnInput.trim()) {
+      const digits = ssnInput.replace(/\D/g, "");
+      if (!/^[\d\s-]+$/.test(ssnInput) || (digits.length !== 9 && digits.length !== 4)) {
+        toast({ title: "Invalid SSN", description: "Enter a full SSN or exactly the last four digits.", variant: "destructive" });
+        return;
+      }
+    }
     let normalizedRoleFilters: WorkerBenefitRoleFilters;
     try {
       normalizedRoleFilters = normalizeWorkerBenefitRoleFilters(filters, trustBenefitsEnabled);
@@ -92,6 +105,8 @@ export default function Workers() {
 
     setAppliedNameId(nameIdInput);
     setAppliedContact(contactInput);
+    setAppliedSsn(canSearchSsn ? ssnInput.trim() : "");
+    setSsnGeneration(value => value + 1);
     // Applied state is canonicalized so requests and exports can never include
     // the pending-only `any` or blank values.
     setAppliedFilters({
@@ -102,7 +117,15 @@ export default function Workers() {
     // Applying is an explicit recipient-set boundary, even when the effective
     // filter values happen to be unchanged.
     setSelectedIds(new Set());
-  }, [nameIdInput, contactInput, filters, toast, trustBenefitsEnabled]);
+  }, [nameIdInput, contactInput, ssnInput, filters, toast, trustBenefitsEnabled, canSearchSsn]);
+
+  useEffect(() => {
+    if (!canSearchSsn) {
+      setSsnInput("");
+      setAppliedSsn("");
+      setSsnGeneration(value => value + 1);
+    }
+  }, [canSearchSsn]);
 
   // Filter controls just accumulate locally; applying happens via the button.
   const handleFiltersChange = useCallback((newFilters: WorkerFilters) => {
@@ -160,7 +183,10 @@ export default function Workers() {
   }, [filterSignature]);
 
   const { data: paginatedData, isLoading } = useQuery<PaginatedWorkersResponse>({
-    queryKey: ["/api/workers/with-details/paginated", { page, pageSize, ...filterParams }],
+    queryKey: ["workers-list", listSession, { page, pageSize, ...filterParams }, ssnGeneration],
+    queryFn: () => appliedSsn && canSearchSsn
+      ? apiRequest("POST", "/api/workers/with-details/paginated", { page, pageSize, ...filterParams, ssn: appliedSsn })
+      : apiRequest("GET", serializeQueryKey(["/api/workers/with-details/paginated", { page, pageSize, ...filterParams }])),
   });
 
   const workers = paginatedData?.data ?? [];
@@ -177,8 +203,9 @@ export default function Workers() {
     try {
       // Reuse the exact same query-key serialization as the paginated list query
       // so the all-ids request receives identical query parameters.
-      const url = serializeQueryKey(["/api/workers/with-details/all-ids", filterParams]);
-      const res = await apiRequest("GET", url);
+      const res = appliedSsn && canSearchSsn
+        ? await apiRequest("POST", "/api/workers/with-details/all-ids", { ...filterParams, ssn: appliedSsn })
+        : await apiRequest("GET", serializeQueryKey(["/api/workers/with-details/all-ids", filterParams]));
       setSelectedIds(new Set(res.contactIds));
       toast({
         title: "Selected all matching workers",
@@ -193,7 +220,29 @@ export default function Workers() {
     } finally {
       setIsSelectingAll(false);
     }
-  }, [filterParams, toast]);
+  }, [filterParams, appliedSsn, canSearchSsn, toast]);
+
+  const handleSecureExport = useCallback(async (filters: Record<string, string>) => {
+    try {
+      const response = await fetch("/api/workers/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ...filters, ssn: appliedSsn }),
+      });
+      if (!response.ok) throw new Error("Failed to export workers");
+      const blobUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `workers_export_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } catch {
+      toast({ title: "Failed to export workers", variant: "destructive" });
+    }
+  }, [appliedSsn, toast]);
 
   const tabs = [
     { id: "list", label: "List", href: "/workers" },
@@ -255,6 +304,9 @@ export default function Workers() {
           onNameIdChange={setNameIdInput}
           contactQuery={contactInput}
           onContactChange={setContactInput}
+          ssnQuery={canSearchSsn ? ssnInput : undefined}
+          onSsnChange={setSsnInput}
+          onSecureExport={appliedSsn && canSearchSsn ? handleSecureExport : undefined}
           onApplySearch={handleApplySearch}
           appliedNameId={appliedNameId}
           appliedContact={appliedContact}

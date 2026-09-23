@@ -16,6 +16,7 @@ describe("worker export role-filter validation", () => {
       get: vi.fn((_path: string, ...handlers: Array<unknown>) => {
         handler = handlers[handlers.length - 1] as typeof handler;
       }),
+      post: vi.fn(),
     };
     const getBatch = vi.fn();
     const getShowOnListsIdTypes = vi.fn();

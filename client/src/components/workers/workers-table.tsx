@@ -66,6 +66,9 @@ interface WorkersTableProps {
   onNameIdChange?: (query: string) => void;
   contactQuery?: string;
   onContactChange?: (query: string) => void;
+  ssnQuery?: string;
+  onSsnChange?: (query: string) => void;
+  onSecureExport?: (filters: Record<string, string>) => void;
   onApplySearch?: () => void;
   appliedNameId?: string;
   appliedContact?: string;
@@ -167,6 +170,9 @@ export function WorkersTable({
   onNameIdChange,
   contactQuery: externalContactQuery,
   onContactChange,
+  ssnQuery,
+  onSsnChange,
+  onSecureExport,
   onApplySearch,
   appliedNameId: externalAppliedNameId,
   appliedContact: externalAppliedContact,
@@ -843,6 +849,10 @@ export function WorkersTable({
       params.set(key, value);
     }
     if (trustBenefitsEnabled) params.set('includeBenefits', 'true');
+    if (onSecureExport) {
+      onSecureExport(Object.fromEntries(params.entries()));
+      return;
+    }
     
     // Trigger download by opening the export URL
     const exportUrl = `/api/workers/export?${params.toString()}`;
@@ -917,7 +927,7 @@ export function WorkersTable({
             </div>
           </div>
           
-          {/* Two-field search (Name/ID vs Contact) with a single Apply button.
+          {/* Search fields with a single Apply button.
               Nothing re-queries until Apply is pressed (Enter also applies). */}
           <div className="flex gap-2 mb-3 flex-wrap">
             <div className="relative flex-1 min-w-48">
@@ -952,6 +962,23 @@ export function WorkersTable({
                 data-testid="input-search-contact"
               />
             </div>
+            {ssnQuery !== undefined && (
+              <div className="relative flex-1 min-w-48">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  aria-label="Search by SSN"
+                  placeholder="Full SSN or last four..."
+                  value={ssnQuery}
+                  onChange={(e) => onSsnChange?.(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") onApplySearch?.(); }}
+                  className="pl-10"
+                  data-testid="input-search-ssn"
+                />
+              </div>
+            )}
             <Button
               onClick={() => onApplySearch?.()}
               data-testid="button-apply-search"

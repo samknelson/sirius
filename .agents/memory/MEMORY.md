@@ -141,3 +141,4 @@
 - [Queue existence/index coupling](queue-existence-index-coupling.md) — LIMIT 1 can regress without an active-run index; measure populated and empty probes and deploy them together.
 - [Legacy month reconciliation proof](legacy-month-reconciliation-proof.md) — crossing a loader horizon is safe only for the exact old-rule month with loader anchor + live mapping proof; overlaps always win.
 - [Appeal benefit inventory format](appeal-benefit-inventory-format.md) — for T16 appeal unmapped triage, supply a read-only staging query rather than expanding loader reports.
+- [Worker-list sensitive filters](worker-list-sensitive-filters.md) — body-only searches, opaque cache generations, and consistent selection/export without exposing lookup values.
