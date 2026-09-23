@@ -26,6 +26,10 @@ in review rather than in testing:
 - **Overlapping secrets.** If one secret is a prefix of another and you replace the short
   one first, the long one's tail survives. Sort candidates longest-first.
 - **Transport errors** quote the request they failed on.
+- **Expected secret slots are not the whole request.** A public argument, URL, header,
+  or diagnostic label can equal or contain the submitted token. Replacing only the
+  known token field still leaks it through those collisions; scrub the complete request
+  diagnostics structure too.
 
 **Fragment masking is a leak, not a mitigation.** A "first four and last four" rendering
 is still credential bytes in a log line, and those two ends are exactly what someone
@@ -44,5 +48,7 @@ spellings like the base64 Basic header, which is the token merely re-spelt), and
 every outbound string through it: response headers (keys *and* values), status text, raw
 body, parsed body, transport error message, and any short `error` summary — building the
 summary from the already-scrubbed diagnostics rather than reaching back to the raw
-response. Test against *fragments* of a canary, not just the whole string; a test that
+response. Route the complete request diagnostics object through the same recursive
+scrubber, even when its sensitive slots were already replaced explicitly. Test against
+*fragments* of a canary, not just the whole string; a test that
 only looks for the complete value passes a masked leak.
