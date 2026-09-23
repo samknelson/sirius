@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CONFIGURATION_MENU_STORAGE_KEY,
   createConfigurationSectionOpenState,
@@ -52,6 +52,20 @@ describe("configuration sidebar section state", () => {
 });
 
 describe("configuration whole-menu preference", () => {
+  it("keeps navigation available when accessing localStorage itself throws", () => {
+    vi.stubGlobal("window", {
+      get localStorage() {
+        throw new Error("Storage access denied");
+      },
+    });
+    try {
+      expect(loadConfigurationMenuOpen()).toBe(true);
+      expect(() => saveConfigurationMenuOpen(false)).not.toThrow();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("defaults open and restores a saved closed preference", () => {
     expect(loadConfigurationMenuOpen({ getItem: () => null })).toBe(true);
     expect(loadConfigurationMenuOpen({ getItem: () => "false" })).toBe(false);

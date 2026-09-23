@@ -128,7 +128,36 @@ async function navigate(page, pathname) {
   {}, pathname);
 }
 
+async function waitForAbsent(page, selector) {
+  await page.waitForFunction(value => !document.querySelector(value), {}, selector);
+}
+
+async function setDarkMode(page, dark) {
+  await page.evaluate(enabled => {
+    document.documentElement.classList.toggle("dark", enabled);
+  }, dark);
+}
+
+async function waitForSidebarWidth(page, expectedWidth) {
+  await page.waitForFunction(width => {
+    const sidebar = document.querySelector('aside[aria-label="Configuration menu"]');
+    return sidebar && Math.round(sidebar.getBoundingClientRect().width) === width;
+  }, {}, expectedWidth);
+}
+
+async function waitForPendingCatalog(readPending, timeout = 5_000) {
+  const deadline = Date.now() + timeout;
+  while (!readPending()) {
+    if (Date.now() >= deadline) {
+      throw new Error("Timed out waiting for the fixture catalog request");
+    }
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  return readPending();
+}
+
 let browser;
+let pendingCatalogRequest = null;
 try {
   await server.listen();
   const origin = `http://127.0.0.1:${server.config.server.port}`;
@@ -149,6 +178,12 @@ try {
     }
     if (!url.pathname.startsWith("/api/")) return request.continue();
     try {
+      // Hold the dynamic catalog until the test has observed its honest
+      // loading state. All other answers still use the real production hooks.
+      if (url.pathname === "/api/catalogs/options-lists" && !pendingCatalogRequest) {
+        pendingCatalogRequest = request;
+        return;
+      }
       await request.respond({
         status: 200,
         contentType: "application/json",
@@ -174,18 +209,74 @@ try {
   assert.equal(await page.$$eval('aside[aria-label="Configuration menu"]', nodes => nodes.length), 1,
     "nested configuration layouts must render one sidebar");
 
-  // Access filtering and dynamic catalog resolution both run through the real hooks.
+  // Access filtering and dynamic catalog resolution both run through the real
+  // hooks. The deferred fixture response makes loading -> error -> retry ->
+  // ready deterministic in both expanded and flyout renderers.
+  const desktopToggle = '[data-testid="button-configuration-menu-desktop"]';
+  await page.click('[data-testid="nav-config-dropdown-lists"]');
+  await page.waitForSelector('[data-testid="text-dropdown-lists-loading"]');
+  assert.match(
+    await page.$eval('[data-testid="text-dropdown-lists-loading"]', node => node.textContent),
+    /Loading/,
+    "dynamic sections expose their loading status",
+  );
+  await page.click(desktopToggle);
+  await waitForSidebarWidth(page, 56);
+  await page.click('[data-testid="nav-config-rail-dropdown-lists"]');
+  const dropdownFlyout = '[data-testid="configuration-flyout-dropdown-lists"]';
+  await page.waitForSelector(`${dropdownFlyout} [data-testid="text-dropdown-lists-loading"]`);
+  await (await waitForPendingCatalog(() => pendingCatalogRequest)).respond({
+    status: 503,
+    contentType: "application/json",
+    body: JSON.stringify({ message: "Fixture catalog unavailable" }),
+  });
+  pendingCatalogRequest = null;
+  await page.waitForSelector(`${dropdownFlyout} [data-testid="text-dropdown-lists-error"]`);
+  assert.match(
+    await page.$eval(`${dropdownFlyout} [data-testid="text-dropdown-lists-error"]`,
+      node => node.textContent),
+    /Couldn't load/,
+    "dynamic flyouts expose their error status",
+  );
+  await page.evaluate(() => window.retryConfigurationCatalog?.());
+  await (await waitForPendingCatalog(() => pendingCatalogRequest)).respond({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(fixture("/api/catalogs/options-lists")),
+  });
+  pendingCatalogRequest = null;
+  await page.waitForSelector(`${dropdownFlyout} [data-testid="nav-config-options-gender"]`);
+  await page.keyboard.press("Escape");
+  await waitForAbsent(page, dropdownFlyout);
+  await page.click(desktopToggle);
+  await waitForSidebarWidth(page, 256);
   await page.waitForSelector('[data-testid="nav-config-open-enrollment-windows"]');
   assert.ok(await page.$('[data-testid="nav-config-open-enrollment-windows"]'),
     "enabled Trust entries are visible");
   assert.equal(await page.$('[data-testid="nav-config-bao-thresholds"]'), null,
     "component-filtered Trust entries are absent");
-  await page.click('[data-testid="nav-config-dropdown-lists"]');
   await page.waitForSelector('[data-testid="nav-config-options-gender"]');
   assert.equal(
     await page.$eval('[data-testid="nav-config-options-gender"]', node => node.textContent.trim()),
     "Gender",
     "catalog-derived entries are rendered under the dynamic section",
+  );
+
+  // A fixture-only subsection exercises the production recursive renderer.
+  await page.click('[data-testid="nav-config-fixture-subsection"]');
+  await page.waitForSelector('[data-testid="nav-config-fixture-subsection-destination"]');
+  await navigate(page, "/trust-benefits/subsection-fixture");
+  assert.equal(
+    await page.$eval('[data-testid="nav-config-fixture-subsection"]',
+      node => node.getAttribute("aria-expanded")),
+    "true",
+    "navigation opens an active subsection ancestor",
+  );
+  assert.equal(
+    await page.$eval('[data-testid="nav-config-fixture-subsection-destination"]',
+      node => node.getAttribute("aria-current")),
+    "page",
+    "the active subsection destination is exposed to assistive technology",
   );
 
   // Long production Trust labels wrap without colliding with icons or content.
@@ -194,7 +285,14 @@ try {
   assert.ok(trustItem.right <= sidebar.right && trustItem.scrollWidth <= trustItem.clientWidth,
     "long Trust labels remain within the sidebar");
   assert.equal(await page.$eval('aside[aria-label="Configuration menu"]', element =>
-    getComputedStyle(element).overflowX), "hidden");
+    element.scrollWidth <= element.clientWidth), true,
+  "expanded sidebar has no horizontal overflow");
+
+  await mkdir(path.join(root, "screenshots"), { recursive: true });
+  await setDarkMode(page, false);
+  await page.screenshot({
+    path: path.join(root, "screenshots/config-navigation-light-expanded.png"),
+  });
 
   // An active section remains user-collapsible, and a new destination opens its ancestor.
   await page.click('[data-testid="nav-config-trust"]');
@@ -208,11 +306,111 @@ try {
     "a newly active destination opens its ancestor",
   );
 
-  // Keyboard toggle plus persistence across navigation and full remount/refresh.
-  const desktopToggle = '[data-testid="button-configuration-menu-desktop"]';
+  // The footer toggle collapses to a persistent 56px rail.
   await page.focus(desktopToggle);
   await page.keyboard.press("Enter");
   assert.equal(await page.$eval(desktopToggle, node => node.getAttribute("aria-expanded")), "false");
+  await waitForSidebarWidth(page, 56);
+  assert.equal(Math.round((await box(page, 'aside[aria-label="Configuration menu"]')).width), 56,
+    "collapsed desktop navigation is a 56px rail");
+  assert.ok(await page.$('[data-testid="nav-config-rail-system"]'),
+    "collapsed rail exposes a trigger for each permitted section");
+  assert.equal(await page.$('[data-testid="nav-config-rail-sitespecific-bao"]'), null,
+    "component-filtered sections are absent from the rail");
+  assert.match(
+    await page.$eval('[data-testid="nav-config-rail-system"]', node => node.className),
+    /before:bg-primary/,
+    "the active rail section has a persistent indicator",
+  );
+
+  // At a short desktop viewport, the rail scrolls independently while its
+  // footer remains fixed, and flyouts stay within the available viewport.
+  await page.setViewport({ width: 1280, height: 320, deviceScaleFactor: 1 });
+  const railScroll = '[data-testid="configuration-nav-scroll"]';
+  assert.equal(await page.$eval(railScroll, node => node.scrollHeight > node.clientHeight), true,
+    "the short rail has an independently scrollable section region");
+  const railFooterBefore = await box(page, desktopToggle);
+  await page.$eval(railScroll, node => {
+    node.scrollTop = node.scrollHeight;
+  });
+  const railFooterAfter = await box(page, desktopToggle);
+  assert.equal(Math.round(railFooterAfter.top), Math.round(railFooterBefore.top),
+    "scrolling the short rail does not move its footer");
+  assert.ok(railFooterAfter.top >= 0 && railFooterAfter.bottom <= 320,
+    "the rail footer remains inside a short viewport");
+  await page.$eval(railScroll, node => {
+    node.scrollTop = 0;
+  });
+  const systemRail = '[data-testid="nav-config-rail-system"]';
+  const systemFlyout = '[data-testid="configuration-flyout-system"]';
+  await page.focus(systemRail);
+  await page.keyboard.press("Enter");
+  await page.waitForSelector(systemFlyout);
+  const shortFlyout = await box(page, systemFlyout);
+  assert.ok(shortFlyout.top >= 0 && shortFlyout.bottom <= 320,
+    "flyouts remain within a short viewport");
+  assert.equal(await page.$eval(systemFlyout, node => node.getAttribute("aria-label")), "System");
+  await page.keyboard.press("Tab");
+  assert.equal(await page.evaluate(selector => {
+    const active = document.activeElement;
+    return active?.matches("a[href]") && !!active.closest(selector);
+  }, systemFlyout), true, "Tab moves keyboard focus into flyout links");
+  await page.keyboard.press("Escape");
+  await waitForAbsent(page, systemFlyout);
+  await page.setViewport({ width: 1280, height: 760, deviceScaleFactor: 1 });
+
+  await page.screenshot({
+    path: path.join(root, "screenshots/config-navigation-light-collapsed.png"),
+  });
+
+  // Rail flyouts support keyboard operation and restore focus on Escape.
+  await page.focus(systemRail);
+  await page.keyboard.press("Enter");
+  await page.waitForSelector(systemFlyout);
+  assert.equal(await page.$eval(systemRail, node => node.getAttribute("aria-expanded")), "true");
+  assert.ok(await page.$(`${systemFlyout} [data-testid="nav-config-auth-settings"]`),
+    "permitted links are present in a flyout");
+  assert.equal(await page.$(`${systemFlyout} [data-testid="nav-admin-debug-event-bus"]`), null,
+    "component-filtered links stay absent from a flyout");
+  await page.screenshot({
+    path: path.join(root, "screenshots/config-navigation-light-flyout.png"),
+  });
+  await page.keyboard.press("Escape");
+  await waitForAbsent(page, systemFlyout);
+  assert.equal(
+    await page.evaluate(selector => document.activeElement === document.querySelector(selector), systemRail),
+    true,
+    "Escape closes the flyout and returns focus to its rail trigger",
+  );
+
+  // Outside interaction dismisses without changing location.
+  await page.keyboard.press("Enter");
+  await page.waitForSelector(systemFlyout);
+  await page.click('[data-testid="fixture-page"]');
+  await waitForAbsent(page, systemFlyout);
+  assert.equal(
+    await page.$eval('[data-testid="fixture-location"]', node => node.textContent),
+    "/config/system-mode",
+  );
+
+  // Navigation and even selecting the already-active link dismiss flyouts.
+  const trustRail = '[data-testid="nav-config-rail-trust"]';
+  const trustFlyout = '[data-testid="configuration-flyout-trust"]';
+  await page.click(trustRail);
+  await page.waitForSelector(trustFlyout);
+  assert.ok(await page.$(
+    `${trustFlyout} [data-testid="nav-config-fixture-subsection-destination"]`,
+  ), "flyouts render permitted subsection destinations");
+  await page.click(`${trustFlyout} [data-testid="nav-trust-benefits"]`);
+  await page.waitForFunction(() =>
+    document.querySelector('[data-testid="fixture-location"]')?.textContent === "/trust-benefits");
+  await waitForAbsent(page, trustFlyout);
+  await page.click(trustRail);
+  await page.waitForSelector(trustFlyout);
+  await page.click(`${trustFlyout} [data-testid="nav-trust-benefits"]`);
+  await waitForAbsent(page, trustFlyout);
+
+  // Collapsed preference survives navigation and a full remount/refresh.
   await navigate(page, "/config/auth-settings");
   assert.equal(await page.$eval(desktopToggle, node => node.getAttribute("aria-expanded")), "false",
     "whole-menu state survives navigation");
@@ -220,12 +418,51 @@ try {
   await page.waitForSelector(desktopToggle);
   assert.equal(await page.$eval(desktopToggle, node => node.getAttribute("aria-expanded")), "false",
     "whole-menu state survives remount and refresh");
-  await page.focus(desktopToggle);
-  await page.keyboard.press("Space");
+
+  // Dark-mode captures cover the rail, flyout and expanded menu.
+  await setDarkMode(page, true);
+  await page.screenshot({
+    path: path.join(root, "screenshots/config-navigation-dark-collapsed.png"),
+  });
+  await page.click(systemRail);
+  await page.waitForSelector(systemFlyout);
+  await page.screenshot({
+    path: path.join(root, "screenshots/config-navigation-dark-flyout.png"),
+  });
+  await page.keyboard.press("Escape");
+  await waitForAbsent(page, systemFlyout);
+
+  // The rail footer restores the expanded sidebar.
+  await page.click(desktopToggle);
   assert.equal(await page.$eval(desktopToggle, node => node.getAttribute("aria-expanded")), "true");
+  await waitForSidebarWidth(page, 256);
+  assert.equal(Math.round((await box(page, 'aside[aria-label="Configuration menu"]')).width), 256);
+  await page.screenshot({
+    path: path.join(root, "screenshots/config-navigation-dark-expanded.png"),
+  });
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForSelector('aside[aria-label="Configuration menu"]');
   assert.equal(await page.$eval(desktopToggle, node => node.getAttribute("aria-expanded")), "true");
+
+  // Only the navigation region scrolls; its footer remains fixed and usable.
+  await page.setViewport({ width: 1280, height: 420, deviceScaleFactor: 1 });
+  const navScroll = '[data-testid="configuration-nav-scroll"]';
+  await page.waitForSelector(navScroll);
+  assert.equal(await page.$eval(navScroll, node => node.scrollHeight > node.clientHeight), true,
+    "a long configuration menu has an independently scrollable navigation region");
+  const footerBefore = await box(page, desktopToggle);
+  await page.$eval(navScroll, node => {
+    node.scrollTop = node.scrollHeight;
+  });
+  const footerAfter = await box(page, desktopToggle);
+  assert.equal(Math.round(footerAfter.top), Math.round(footerBefore.top),
+    "scrolling links does not move the footer toggle");
+  assert.ok(footerAfter.bottom <= 420 && footerAfter.top >= 0,
+    "the footer toggle remains inside the viewport");
+
+  // Preserve collapsed desktop preference before crossing the mobile breakpoint.
+  await page.click(desktopToggle);
+  assert.equal(await page.$eval(desktopToggle, node => node.getAttribute("aria-expanded")), "false");
 
   // A 640-CSS-pixel viewport represents a desktop viewport at 200% zoom.
   await navigate(page, "/trust-benefits/benefit-fixture");
@@ -249,17 +486,38 @@ try {
   assert.ok(mobileTrustItem.right <= mobileSidebar.right
     && mobileTrustItem.scrollWidth <= mobileTrustItem.clientWidth,
     "long Trust labels wrap inside the 200%-equivalent mobile menu");
+  assert.ok(await page.$('[data-testid="nav-config-trust"]'),
+    "mobile drawer remains the expanded navigation regardless of desktop preference");
+  assert.equal(
+    await page.evaluate(() => localStorage.getItem("configuration-menu-open")),
+    "false",
+    "opening the mobile drawer does not overwrite the collapsed desktop preference",
+  );
 
-  await mkdir(path.join(root, "screenshots"), { recursive: true });
   await page.screenshot({
     path: path.join(root, "screenshots/config-navigation-mobile-200-percent.png"),
     fullPage: true,
   });
+  await page.click(mobileToggle);
+  await page.setViewport({ width: 1280, height: 760, deviceScaleFactor: 1 });
+  await page.waitForSelector(desktopToggle);
+  await waitForSidebarWidth(page, 56);
+  assert.equal(Math.round((await box(page, 'aside[aria-label="Configuration menu"]')).width), 56,
+    "returning to desktop restores its collapsed preference");
+
   assert.deepEqual(failures, [], "No browser exceptions, console errors, or unexpected networking");
-  console.log("PASS config navigation: desktop, mobile, persistence, filtering, nesting");
-  console.log(`Screenshot: screenshots/config-navigation-mobile-200-percent.png`);
+  console.log("PASS config navigation: rail, flyouts, persistence, filtering, scrolling, mobile");
+  console.log("Screenshots: screenshots/config-navigation-{light,dark}-{expanded,collapsed,flyout}.png");
+  console.log("Screenshot: screenshots/config-navigation-mobile-200-percent.png");
   await page.close();
+} catch (error) {
+  console.error("FAIL config navigation browser coverage");
+  console.error(error);
+  process.exitCode = 1;
 } finally {
+  if (pendingCatalogRequest && !pendingCatalogRequest.isInterceptResolutionHandled()) {
+    await pendingCatalogRequest.abort().catch(() => {});
+  }
   await browser?.close();
   await server.close();
 }

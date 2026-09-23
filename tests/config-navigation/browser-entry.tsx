@@ -9,7 +9,37 @@ import { queryClient } from "@/lib/queryClient";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import ConfigurationLayout from "@/components/layouts/ConfigurationLayout";
+import { configSections } from "@/config/navigation-registry";
 import "@/index.css";
+
+// Fixture-only subsection: production registry rendering and access filtering
+// still own its behavior, while the browser suite can cover both menu depths.
+const trustSection = configSections.find(section => section.id === "trust");
+if (trustSection && !trustSection.subsections?.some(section => section.id === "fixture-subsection")) {
+  trustSection.subsections = [
+    ...(trustSection.subsections ?? []),
+    {
+      id: "fixture-subsection",
+      title: "Fixture subsection",
+      description: "Browser-only subsection coverage",
+      icon: trustSection.icon,
+      items: [{
+        path: "/trust-benefits/subsection-fixture",
+        label: "Subsection destination",
+        icon: trustSection.icon,
+        testId: "nav-config-fixture-subsection-destination",
+        permission: "staff",
+      }],
+    },
+  ];
+}
+
+(window as typeof window & { retryConfigurationCatalog?: () => Promise<void> })
+  .retryConfigurationCatalog = async () => {
+    void queryClient.invalidateQueries({
+      queryKey: ["catalogs", "config-nav-admin", "/api/catalogs/options-lists"],
+    });
+  };
 
 function FixturePage() {
   const [location] = useLocation();

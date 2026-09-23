@@ -4,8 +4,13 @@ type StorageReader = Pick<Storage, "getItem">;
 type StorageWriter = Pick<Storage, "setItem">;
 
 function browserStorage(): Storage | undefined {
-  if (typeof window === "undefined") return undefined;
-  return window.localStorage;
+  try {
+    if (typeof window === "undefined") return undefined;
+    return window.localStorage;
+  } catch {
+    // Browsers can deny access to the property itself, before getItem is called.
+    return undefined;
+  }
 }
 
 export function loadConfigurationMenuOpen(
