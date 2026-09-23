@@ -80,5 +80,12 @@ describe("scheduled S1 daily automation", () => {
     expect(() => assertScheduledDailyReport(withoutSkipSeeders)).toThrow(/skipSeeders/);
     expect(() => assertScheduledDailyReport({ ...passing, forceReconcile: true })).toThrow(/forceReconcile/);
     expect(() => assertScheduledDailyReport({ ...passing, profile: "dev" })).toThrow(/profile/);
+    expect(() => assertScheduledDailyReport({ ...passing, gates: { ...passing.gates, fleet: "fail" } }))
+      .toThrow(/fleet gate/);
+    expect(() => assertScheduledDailyReport({ ...passing, gates: { ...passing.gates, parity: "skipped" } }))
+      .toThrow(/parity gate/);
+    expect(() => assertScheduledDailyReport({ ...passing, gates: {} })).toThrow(/stage gate/);
+    expect(() => assertScheduledDailyReport({ ...passing, result: "FAIL", gates: { fleet: "fail" } }))
+      .not.toThrow();
   });
 });

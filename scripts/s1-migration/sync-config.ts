@@ -107,6 +107,22 @@ export function shouldSkipSeeder(mode: SyncMode, skipSeeders: boolean, stepId: s
   return skipSeeders && SEEDER_STEP_IDS.has(stepId);
 }
 
+/** A deliberate daily seeder skip is not a failed loader, but no other skip
+ * (or missing fleet record) can satisfy the fleet gate. */
+export function fleetGateStatus(
+  records: ReadonlyArray<{ id: string; status: string }>,
+  mode: SyncMode,
+  skipSeeders: boolean,
+  abortedAt?: string,
+): "pass" | "fail" {
+  if (abortedAt || records.length !== FLEET.length) return "fail";
+  return records.every((record, index) =>
+    record.id === FLEET[index].id &&
+    (record.status === "pass" ||
+      (record.status === "skipped" && shouldSkipSeeder(mode, skipSeeders, record.id)))
+  ) ? "pass" : "fail";
+}
+
 export interface StepPolicy {
   /** RULED allow-reject classes for this loader in this profile (§5). */
   allowRejects?: string[];
@@ -309,9 +325,16 @@ export const PROFILES: Record<SyncProfileName, SyncProfile> = {
       "employee-ids": {},
       // §5 RULED 2026-08-09: benefit_unmapped (deleted benefit nid 2457521)
       // applies to elections as well as benefit-history.
-      // User ruling: invalid appeal date spans skip their exemption but remain
-      // counted. Unmapped appeal benefits are NOT ruled and still block the gate.
-      elections: { allowRejects: ["end_not_after_start", "worker_unmapped", "benefit_unmapped", "appeal_end_not_after_start"] },
+      elections: {
+        allowRejects: [
+          "end_not_after_start",
+          "worker_unmapped",
+          "benefit_unmapped",
+          // Approved historical appeal spans with end <= start cannot
+          // produce an exemption; keep the reject visible in each run.
+          "appeal_end_not_after_start",
+        ],
+      },
       "benefit-history": {
         allowRejects: [
           "start_missing",

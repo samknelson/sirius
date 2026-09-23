@@ -81,6 +81,7 @@ import {
   FLEET,
   PROFILES,
   shouldSkipSeeder,
+  fleetGateStatus,
   validateSyncConfig,
   resolveOpenEndThrough,
   parityMonths,
@@ -622,7 +623,9 @@ async function main() {
     report.result = failures.length === 0 ? "PASS" : "FAIL";
     const gates = {
       stage: (report.stage as { status?: string } | undefined)?.status ?? "not-run",
-      fleet: Array.isArray(report.fleet) && (report.fleet as Array<{ status: string }>).every((s) => s.status === "pass") && !report.fleetAbortedAt ? "pass" : "fail",
+      fleet: Array.isArray(report.fleet)
+        ? fleetGateStatus(report.fleet as Array<{ id: string; status: string }>, MODE, SKIP_SEEDERS, report.fleetAbortedAt as string | undefined)
+        : "fail",
       findingsMode:
         MODE === "final-freeze"
           ? Array.isArray(report.finalFreezeBlocked) && (report.finalFreezeBlocked as unknown[]).length > 0

@@ -73,6 +73,12 @@ export function assertScheduledDailyReport(report: DailySyncReport): void {
   if (report.skipSeeders !== true) violations.push("skipSeeders must be true");
   if (report.keepGoing !== false) violations.push("keepGoing must be false");
   if (report.result !== "PASS" && report.result !== "FAIL") violations.push("result must be PASS or FAIL");
+  if (report.result === "PASS") {
+    const gates = stringMap(report.gates);
+    for (const gate of ["stage", "fleet", "parity"]) {
+      if (gates[gate] !== "pass") violations.push(`PASS requires ${gate} gate to pass`);
+    }
+  }
   if (violations.length) throw new Error(`scheduled daily report contract failed: ${violations.join("; ")}`);
 }
 
