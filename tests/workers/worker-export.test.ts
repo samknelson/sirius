@@ -5,17 +5,18 @@ import { parse } from "csv-parse/sync";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerWorkerExportRoute } from "../../server/modules/workers/export";
 import { parseWorkerSsnFilter } from "../../server/modules/workers/ssn-filter";
-import type { WorkerWithDetails } from "../../server/storage/workers";
+import type { WorkerExportCursor, WorkerWithDetails } from "../../server/storage/workers";
 
 const batchCalls: Array<{
   params: Record<string, unknown>;
-  offset: number;
+  cursor: WorkerExportCursor | null;
   limit: number;
 }> = [];
 const workerIdCalls: string[][] = [];
 const employerIdCalls: string[][] = [];
 let rows: WorkerWithDetails[] = [];
 let getBatch: ReturnType<typeof vi.fn>;
+let getStatusOptions: ReturnType<typeof vi.fn>;
 let baseUrl = "";
 let server: http.Server;
 
@@ -60,9 +61,16 @@ beforeAll(async () => {
   const app = express();
   app.use(express.json());
   const passThrough: any = (_req: any, _res: any, next: any) => next();
-  getBatch = vi.fn(async (params: Record<string, unknown>, offset: number, limit: number) => {
-    batchCalls.push({ params, offset, limit });
-    return rows.slice(offset, offset + limit);
+  getBatch = vi.fn(async (params: Record<string, unknown>, cursor: WorkerExportCursor | null, limit: number) => {
+    const offset = cursor ? Number(cursor.values[0]) : 0;
+    const batchRows = rows.slice(offset, offset + limit);
+    batchCalls.push({ params, cursor, limit });
+    return {
+      rows: batchRows,
+      nextCursor: offset + batchRows.length < rows.length
+        ? { values: [String(offset + batchRows.length)] }
+        : null,
+    };
   });
 
   registerWorkerExportRoute(app, passThrough, () => passThrough, {
@@ -93,7 +101,7 @@ beforeAll(async () => {
         }));
       }),
     },
-    getMemberStatusOptions: vi.fn(async () => [
+    getMemberStatusOptions: getStatusOptions = vi.fn(async () => [
       { id: "member-status-1", name: "Good Standing" },
     ]),
   });
@@ -115,13 +123,35 @@ beforeEach(() => {
   workerIdCalls.length = 0;
   employerIdCalls.length = 0;
   getBatch.mockReset();
-  getBatch.mockImplementation(async (params: Record<string, unknown>, offset: number, limit: number) => {
-    batchCalls.push({ params, offset, limit });
-    return rows.slice(offset, offset + limit);
+  getStatusOptions.mockReset();
+  getStatusOptions.mockResolvedValue([{ id: "member-status-1", name: "Good Standing" }]);
+  getBatch.mockImplementation(async (params: Record<string, unknown>, cursor: WorkerExportCursor | null, limit: number) => {
+    const offset = cursor ? Number(cursor.values[0]) : 0;
+    const batchRows = rows.slice(offset, offset + limit);
+    batchCalls.push({ params, cursor, limit });
+    return {
+      rows: batchRows,
+      nextCursor: offset + batchRows.length < rows.length
+        ? { values: [String(offset + batchRows.length)] }
+        : null,
+    };
   });
 });
 
 describe("GET /api/workers/export", () => {
+  it("returns JSON on a metadata failure before CSV headers are sent", async () => {
+    getStatusOptions.mockRejectedValueOnce(new Error("metadata unavailable"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const response = await fetch(`${baseUrl}/api/workers/export`);
+      expect(response.status).toBe(500);
+      expect(response.headers.get("content-type")).toContain("application/json");
+      expect(await response.json()).toEqual({ message: "Failed to export workers" });
+      expect(getBatch).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
   it("streams complete ordered batches with stable columns, enrichment, and CSV escaping", async () => {
     rows = Array.from({ length: 251 }, (_, index) => makeWorker(index + 1));
 
@@ -145,7 +175,10 @@ describe("GET /api/workers/export", () => {
     });
     expect(firstRecord.Street).toBe("1 Main\nSuite 2");
     expect(lastRecord["First Name"]).toBe("Given 251");
-    expect(batchCalls.map((call) => call.offset)).toEqual([0, 250]);
+    expect(batchCalls.map((call) => call.cursor)).toEqual([
+      null,
+      { values: ["250"] },
+    ]);
     expect(batchCalls.every((call) => call.limit === 250)).toBe(true);
     expect(batchCalls[0].params).toMatchObject({
       nameIdSearch: "Ada",
@@ -160,6 +193,65 @@ describe("GET /api/workers/export", () => {
     expect(employerIdCalls).toEqual([["employer-1"], ["employer-1"]]);
   });
 
+  it("completes an exact multiple without dropping the final batch", async () => {
+    rows = Array.from({ length: 500 }, (_, index) => makeWorker(index + 1));
+
+    const response = await fetch(`${baseUrl}/api/workers/export`);
+
+    expect(response.status).toBe(200);
+    expect(parse(await response.text(), { columns: true })).toHaveLength(500);
+    expect(batchCalls.map((call) => call.cursor)).toEqual([
+      null,
+      { values: ["250"] },
+    ]);
+  });
+
+  it("finishes after a slow batch and a paused download consumer", async () => {
+    rows = Array.from({ length: 750 }, (_, index) => makeWorker(index + 1));
+    getBatch.mockImplementation(async (_params: unknown, cursor: WorkerExportCursor | null, limit: number) => {
+      const offset = cursor ? Number(cursor.values[0]) : 0;
+      if (offset === 250) await new Promise(resolve => setTimeout(resolve, 35));
+      const selected = rows.slice(offset, offset + limit);
+      return {
+        rows: selected,
+        nextCursor: offset + selected.length < rows.length ? { values: [String(offset + selected.length)] } : null,
+      };
+    });
+    const csv = await new Promise<string>((resolve, reject) => {
+      http.get(`${baseUrl}/api/workers/export`, response => {
+        response.pause();
+        setTimeout(() => response.resume(), 40);
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        response.on("end", () => resolve(Buffer.concat(chunks).toString()));
+        response.on("aborted", () => reject(new Error("download aborted")));
+        response.on("error", reject);
+      }).on("error", reject);
+    });
+    expect(parse(csv, { columns: true })).toHaveLength(750);
+    expect(new Set((parse(csv, { columns: true }) as Array<Record<string, string>>).map(row => row["Employee ID"])).size).toBe(750);
+  });
+
+  it("closes a complete CSV through a short idle-timeout proxy", async () => {
+    rows = Array.from({ length: 1000 }, (_, index) => makeWorker(index + 1));
+    const proxy = http.createServer((request, response) => {
+      const upstream = http.get(`${baseUrl}${request.url}`, upstreamResponse => {
+        response.writeHead(upstreamResponse.statusCode ?? 502, upstreamResponse.headers);
+        upstreamResponse.pipe(response);
+      });
+      upstream.setTimeout(500, () => upstream.destroy(new Error("idle proxy timeout")));
+      upstream.on("error", () => response.destroy());
+    });
+    await new Promise<void>(resolve => proxy.listen(0, resolve));
+    try {
+      const url = `http://127.0.0.1:${(proxy.address() as AddressInfo).port}/api/workers/export`;
+      const csv = await (await fetch(url)).text();
+      expect(parse(csv, { columns: true })).toHaveLength(1000);
+    } finally {
+      await new Promise<void>((resolve, reject) => proxy.close(error => error ? reject(error) : resolve()));
+    }
+  });
+
   it("does not request or emit benefit data when the option is absent", async () => {
     rows = [makeWorker(1)];
 
@@ -171,10 +263,13 @@ describe("GET /api/workers/export", () => {
   });
 
   it("ends without another database batch after the client disconnects", async () => {
-    let resolveBatch!: (value: WorkerWithDetails[]) => void;
+    let resolveBatch!: (value: {
+      rows: WorkerWithDetails[];
+      nextCursor: WorkerExportCursor | null;
+    }) => void;
     getBatch.mockImplementationOnce(
       () =>
-        new Promise<WorkerWithDetails[]>((resolve) => {
+        new Promise<{ rows: WorkerWithDetails[]; nextCursor: WorkerExportCursor | null }>((resolve) => {
           resolveBatch = resolve;
         }),
     );
@@ -184,7 +279,10 @@ describe("GET /api/workers/export", () => {
         // Headers are flushed before the first batch query. Disconnect at
         // that point, then let the in-flight read finish.
         request.destroy();
-        setTimeout(() => resolveBatch([makeWorker(1)]), 25);
+         setTimeout(
+           () => resolveBatch({ rows: [makeWorker(1)], nextCursor: null }),
+           25,
+         );
         resolve();
         response.on("error", () => undefined);
       });
@@ -215,9 +313,29 @@ describe("GET /api/workers/export", () => {
     expect(statusCode).toBe(200);
     expect(errorSpy).toHaveBeenCalledWith(
       "Failed to export workers:",
-      expect.any(Error),
+      expect.objectContaining({ method: "GET", stage: "stream", type: "Error" }),
     );
     errorSpy.mockRestore();
+  });
+
+  it("aborts rather than completing a partially written CSV", async () => {
+    rows = Array.from({ length: 500 }, (_, index) => makeWorker(index + 1));
+    getBatch.mockImplementationOnce(async () => ({ rows: rows.slice(0, 250), nextCursor: { values: ["250"] } }));
+    getBatch.mockRejectedValueOnce(new Error("late batch failed"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const outcome = await new Promise<string>((resolve, reject) => {
+        http.get(`${baseUrl}/api/workers/export`, response => {
+          response.on("data", () => undefined);
+          response.on("end", () => resolve("ended"));
+          response.on("aborted", () => resolve("aborted"));
+          response.on("error", (error: Error) => error.message.includes("aborted") ? resolve("aborted") : reject(error));
+        }).on("error", reject);
+      });
+      expect(outcome).toBe("aborted");
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });
 

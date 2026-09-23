@@ -142,3 +142,4 @@
 - [Legacy month reconciliation proof](legacy-month-reconciliation-proof.md) — crossing a loader horizon is safe only for the exact old-rule month with loader anchor + live mapping proof; overlaps always win.
 - [Appeal benefit inventory format](appeal-benefit-inventory-format.md) — for T16 appeal unmapped triage, supply a read-only staging query rather than expanding loader reports.
 - [Worker-list sensitive filters](worker-list-sensitive-filters.md) — body-only searches, opaque cache generations, and consistent selection/export without exposing lookup values.
+- [Worker export traversal consistency](worker-export-traversal-consistency.md) — keyset batches preserve a total order without a long-lived snapshot; edits to filter/sort keys during a download may move rows.

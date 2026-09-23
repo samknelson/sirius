@@ -307,6 +307,8 @@ export const contacts = pgTable("contacts", {
   // Case-insensitive uniqueness (migration 1125): two contacts must not hold
   // emails differing only by case — matches the S1 loaders' lower() dedupe.
   uniqueIndex("contacts_email_lower_unique").on(sql`lower(${table.email})`),
+  index("contacts_worker_export_family_given_idx").on(table.family, table.given),
+  index("contacts_worker_export_given_family_idx").on(table.given, table.family),
 ]);
 
 export const workers = pgTable("workers", {
@@ -319,7 +321,9 @@ export const workers = pgTable("workers", {
   ssn: text("ssn").unique(),
   bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
   data: jsonb("data"),
-});
+}, (table) => [
+  index("workers_contact_id_idx").on(table.contactId),
+]);
 
 // Worker ban types — admin-configurable options rows. Each row names a ban
 // type and selects (in data.pluginIds) which registered worker-ban plugins

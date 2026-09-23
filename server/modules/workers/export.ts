@@ -9,6 +9,8 @@ import type {
   WorkerStorage,
   WorkerWithDetails,
   WorkersExportParams,
+  WorkerExportCursor,
+  WorkerExportBatch,
 } from "../../storage/workers";
 import { buildContentDisposition } from "../../utils/content-disposition";
 import {
@@ -32,6 +34,33 @@ export interface WorkerExportDependencies {
 }
 
 const EXPORT_BATCH_SIZE = 250;
+const EXPORT_STAGE_TIMEOUT_MS = 90_000;
+
+function withExportTimeout<T>(
+  promise: Promise<T>,
+  stage: string,
+  onTimeout?: () => void,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => {
+        onTimeout?.();
+        reject(new Error(`Worker export ${stage} timed out`));
+      },
+      EXPORT_STAGE_TIMEOUT_MS,
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 
 function formatSSN(ssn: string | null): string {
   if (!ssn) return "";
@@ -130,6 +159,9 @@ export function registerWorkerExportRoute(
   const handler: RequestHandler = async (req, res) => {
       let streamingStarted = false;
       let clientDisconnected = false;
+      const exportStartedAt = Date.now();
+      let firstByteAt: number | undefined;
+      let totalBytes = 0;
       const onClientClose = () => {
         // `close` also follows a normal `end`; writableEnded distinguishes
         // that case from a client that went away while the export was running.
@@ -142,10 +174,14 @@ export function registerWorkerExportRoute(
           return false;
         }
 
+        const bytes = Buffer.byteLength(chunk);
         const accepted = res.write(chunk);
+        totalBytes += bytes;
+        firstByteAt ??= Date.now();
         if (accepted) return true;
 
-        return await new Promise<boolean>((resolve, reject) => {
+        let cancelWait = () => {};
+        return await withExportTimeout(new Promise<boolean>((resolve, reject) => {
           let settled = false;
           const cleanup = () => {
             res.removeListener("drain", onDrain);
@@ -166,12 +202,13 @@ export function registerWorkerExportRoute(
             finish(false);
           };
           const onError = (error: Error) => finish(false, error);
+          cancelWait = () => finish(false);
 
           res.once("drain", onDrain);
           res.once("close", onClose);
           res.once("error", onError);
           if (clientDisconnected || res.destroyed) finish(false);
-        });
+        }), "response backpressure", cancelWait);
       };
 
       try {
@@ -263,10 +300,13 @@ export function registerWorkerExportRoute(
 
         // These labels define the CSV shape and are read once. Per-worker
         // enrichment is intentionally done below for only the current batch.
-        const [showOnListsTypes, memberStatusOptions] = await Promise.all([
-          dependencies.workerIds.getShowOnListsIdTypes(),
-          dependencies.getMemberStatusOptions(),
-        ]);
+        const [showOnListsTypes, memberStatusOptions] = await withExportTimeout(
+          Promise.all([
+            dependencies.workerIds.getShowOnListsIdTypes(),
+            dependencies.getMemberStatusOptions(),
+          ]),
+          "export metadata",
+        );
         const memberStatusNameMap = new Map<string, string>(
           memberStatusOptions.map((option) => [option.id, option.name]),
         );
@@ -288,9 +328,14 @@ export function registerWorkerExportRoute(
           return;
         }
 
-        let offset = 0;
+        let cursor: WorkerExportCursor | null = null;
+        let totalRows = 0;
+        let batchNumber = 0;
         while (!clientDisconnected && !res.destroyed) {
-          const workers = await dependencies.workers.getWorkersForExportBatch(
+          const batchStartedAt = Date.now();
+          const readStartedAt = Date.now();
+          const batch: WorkerExportBatch = await withExportTimeout(
+            dependencies.workers.getWorkersForExportBatch(
             {
               ssnFilter,
               nameIdSearch,
@@ -309,30 +354,42 @@ export function registerWorkerExportRoute(
               includeBenefits,
               ...roleFilters,
             },
-            offset,
+            cursor,
             EXPORT_BATCH_SIZE,
+            ),
+            "batch read",
           );
+          const readMs = Date.now() - readStartedAt;
+          const workers: WorkerWithDetails[] = batch.rows;
 
           if (clientDisconnected || res.destroyed) return;
-          if (workers.length === 0) break;
+          if (workers.length === 0) {
+            cursor = batch.nextCursor;
+            break;
+          }
 
           const workerIdsList = workers.map((worker) => worker.id);
-          const employerIds = [
+          const employerIds: string[] = [
             ...new Set(
               workers.flatMap(
-                (worker) =>
+                (worker: WorkerWithDetails) =>
                   ((worker as any).denorm_employer_ids as string[] | null) ||
                   [],
               ),
-            ),
+            ) as Set<string>,
           ];
-          const [workerIdRecords, employerRecords] = await Promise.all([
-            dependencies.workerIds.getWorkerIdsForListByWorkerIds(
-              workerIdsList,
-              showOnListsTypes,
-            ),
-            dependencies.employers.getByIds(employerIds),
-          ]);
+          const enrichmentStartedAt = Date.now();
+          const [workerIdRecords, employerRecords] = await withExportTimeout(
+            Promise.all([
+              dependencies.workerIds.getWorkerIdsForListByWorkerIds(
+                workerIdsList,
+                showOnListsTypes,
+              ),
+              dependencies.employers.getByIds(employerIds),
+            ]),
+            "batch enrichment",
+          );
+          const enrichmentMs = Date.now() - enrichmentStartedAt;
 
           const workerIdMap = new Map<string, Map<string, string>>();
           for (const workerIdRecord of workerIdRecords) {
@@ -346,7 +403,7 @@ export function registerWorkerExportRoute(
           const employerNameMap = new Map(
             employerRecords.map((employer) => [employer.id, employer.name]),
           );
-          const csvRows = workers.map((worker) =>
+          const csvRows = workers.map((worker: WorkerWithDetails) =>
             workerToCsvRow(
               worker,
               showOnListsTypes,
@@ -358,22 +415,60 @@ export function registerWorkerExportRoute(
             ),
           );
 
-          if (!(await writeChunk(stringify(csvRows, { header: false, columns })))) {
+          const csvChunk = stringify(csvRows, { header: false, columns });
+          const writeStartedAt = Date.now();
+          if (!(await writeChunk(csvChunk))) {
             return;
           }
-          offset += workers.length;
-          // A short batch proves that no further matching rows exist. An exact
-          // multiple makes one final empty, bounded read, which avoids a count
-          // query and keeps the export reader independent of total-result state.
-          if (workers.length < EXPORT_BATCH_SIZE) break;
+          const writeMs = Date.now() - writeStartedAt;
+          totalRows += workers.length;
+          batchNumber += 1;
+          cursor = batch.nextCursor;
+          console.info("worker export batch", {
+            batch: batchNumber,
+            rows: workers.length,
+            readMs,
+            enrichmentMs,
+            writeMs,
+            durationMs: Date.now() - batchStartedAt,
+            bytes: Buffer.byteLength(csvChunk),
+          });
+          if (!cursor) break;
         }
 
-        if (!clientDisconnected && !res.destroyed) res.end();
+        if (!clientDisconnected && !res.destroyed) {
+          const finished = new Promise<boolean>(resolve => {
+            const onFinish = () => { cleanup(); resolve(true); };
+            const onClose = () => { cleanup(); resolve(false); };
+            const cleanup = () => {
+              res.removeListener("finish", onFinish);
+              res.removeListener("close", onClose);
+            };
+            res.once("finish", onFinish);
+            res.once("close", onClose);
+          });
+          res.end();
+          if (await withExportTimeout(finished, "response completion")) {
+            console.info("worker export complete", {
+              batches: batchNumber,
+              rows: totalRows,
+              bytes: totalBytes,
+              firstByteMs: firstByteAt === undefined ? null : firstByteAt - exportStartedAt,
+              durationMs: Date.now() - exportStartedAt,
+            });
+          }
+        }
       } catch (error) {
         if (error instanceof WorkerBenefitRoleFilterError || error instanceof WorkerSsnFilterError) {
           return res.status(400).json({ message: error.message });
         }
-        console.error("Failed to export workers:", req.method === "POST" ? "Worker export failed" : error);
+        // SQL errors may carry prepared-statement parameters, including a
+        // body-only SSN search. Never put the thrown object in export logs.
+        console.error("Failed to export workers:", {
+          method: req.method, stage: streamingStarted ? "stream" : "setup",
+          type: error instanceof Error ? error.name : "unknown",
+          durationMs: Date.now() - exportStartedAt,
+        });
         if (streamingStarted || res.headersSent) {
           // Once CSV bytes have been sent, a JSON error would corrupt the
           // download and Express cannot safely send a second response.

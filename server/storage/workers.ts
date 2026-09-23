@@ -182,6 +182,16 @@ export interface WorkersExportParams extends WorkerBenefitRoleFilters {
   includeBenefits?: boolean;
 }
 
+/** Opaque to the route; values follow the selected sort keys, including NULLs. */
+export interface WorkerExportCursor {
+  values: Array<string | null>;
+}
+
+export interface WorkerExportBatch {
+  rows: WorkerWithDetails[];
+  nextCursor: WorkerExportCursor | null;
+}
+
 export interface WorkersPaginationParams extends WorkerBenefitRoleFilters {
   ssnFilter?: import("../modules/workers/ssn-filter").WorkerSsnFilter;
   page?: number;
@@ -238,12 +248,10 @@ export interface WorkerStorage {
   searchWorkers(query: string, limit?: number): Promise<WorkerSearchResult>;
   getWorkersWithDetails(): Promise<WorkerWithDetails[]>;
   getWorkersWithDetailsPaginated(params: WorkersPaginationParams): Promise<PaginatedWorkersResult>;
-  /**
-   * Read one bounded, deterministically ordered export batch. The offset is
-   * deliberately owned by the export caller so it can stop between batches
-   * when the response client disconnects.
-   */
-  getWorkersForExportBatch(params: WorkersExportParams, offset: number, limit: number): Promise<WorkerWithDetails[]>;
+  /** Keyset traversal; no transaction/connection is held between batches.
+   * A concurrent edit to a sort/filter key can move a row across the cursor;
+   * rows with unchanged keys are visited once in deterministic order. */
+  getWorkersForExportBatch(params: WorkersExportParams, cursor: WorkerExportCursor | null, limit: number): Promise<WorkerExportBatch>;
   getAllMatchingContactIds(params: Omit<WorkersPaginationParams, 'page' | 'pageSize' | 'sortField'>): Promise<string[]>;
   getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]>;
   getContactExportDataByIds(workerIdsList: string[]): Promise<WorkerContactExportRow[]>;
@@ -369,8 +377,32 @@ interface InternalSearchParams {
   includeBenefits?: boolean;
   page?: number;
   pageSize?: number;
-  exportOffset?: number;
+  exportCursor?: WorkerExportCursor | null;
   exportLimit?: number;
+}
+
+function exportKeyAfter(
+  keys: ReturnType<typeof sql>[],
+  cursor: WorkerExportCursor | null,
+  descending: boolean,
+  nullsLast: boolean[],
+): ReturnType<typeof sql> {
+  if (!cursor) return sql``;
+  if (cursor.values.length !== keys.length) throw new Error("Invalid worker export cursor");
+  const equal = (index: number) => sql`${keys[index]} IS NOT DISTINCT FROM ${cursor.values[index]}`;
+  const after = (index: number) => {
+    const value = cursor.values[index];
+    // PostgreSQL's default is ASC NULLS LAST and DESC NULLS FIRST;
+    // employer name explicitly uses NULLS LAST in both directions.
+    if (value === null) return nullsLast[index] ? sql`FALSE` : sql`${keys[index]} IS NOT NULL`;
+    return sql`(${keys[index]} ${descending ? sql`<` : sql`>`} ${value}
+      OR ${nullsLast[index] ? sql`${keys[index]} IS NULL` : sql`FALSE`})`;
+  };
+  let predicate = after(keys.length - 1);
+  for (let i = keys.length - 2; i >= 0; i--) {
+    predicate = sql`(${after(i)} OR (${equal(i)} AND ${predicate}))`;
+  }
+  return sql`AND ${predicate}`;
 }
 
 interface InternalSearchResult {
@@ -625,7 +657,7 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
   const allConditions = sql`${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition} ${multipleEmployersCondition} ${jobTitleCondition} ${memberStatusCondition} ${representativeCondition} ${roleCondition}`;
 
   const isPaginated = params.page !== undefined && params.pageSize !== undefined;
-  const isExportBatch = params.exportOffset !== undefined && params.exportLimit !== undefined;
+  const isExportBatch = params.exportLimit !== undefined;
   let total: number | undefined;
 
   if (isPaginated) {
@@ -652,6 +684,39 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
   } else {
     orderByClause = sql`ORDER BY c.family ${orderDirection}, c.given ${orderDirection}, w.id ${orderDirection}`;
   }
+
+  const employerSort = sql`(
+    SELECT MIN(e.name) FROM employers e
+    JOIN worker_employment_denorm wed ON e.id = wed.employer_id
+    WHERE wed.worker_id = w.id
+  )`;
+  const exportKeys = sortBy === 'employer'
+    ? [employerSort, sql`c.family`, sql`c.given`, sql`w.id`]
+    : sortBy === 'firstName'
+      ? [sql`c.given`, sql`c.family`, sql`w.id`]
+      : [sql`c.family`, sql`c.given`, sql`w.id`];
+  const exportNullsLast = exportKeys.map((_, i) => sortBy === 'employer' && i === 0 ? true : sortOrder !== 'desc');
+  const keyAlias = (i: number) => sql.raw(`sort${i}`);
+  const exportSelection = isExportBatch ? sql`
+    WITH selected AS MATERIALIZED (
+      SELECT w.id, ${sql.join(exportKeys.map((key, i) => sql`${key} AS ${keyAlias(i)}`), sql`, `)}
+      FROM workers w
+      INNER JOIN contacts c ON w.contact_id = c.id
+      WHERE 1=1 ${allConditions}
+      ${exportKeyAfter(exportKeys, params.exportCursor ?? null, sortOrder === 'desc', exportNullsLast)}
+      ORDER BY ${sql.join(exportKeys.map((_, i) =>
+        sql`${keyAlias(i)} ${orderDirection} ${exportNullsLast[i] ? sql`NULLS LAST` : sql`NULLS FIRST`}`), sql`, `)}
+      LIMIT ${params.exportLimit}
+    )
+  ` : sql``;
+  const exportSortColumns = isExportBatch
+    ? sql`, ${sql.join(exportKeys.map((_, i) => sql`selected.${keyAlias(i)} AS ${sql.raw(`export_sort${i}`)}`), sql`, `)}`
+    : sql``;
+  const exportJoin = isExportBatch ? sql`INNER JOIN selected ON selected.id = w.id` : sql``;
+  const exportOrder = isExportBatch
+    ? sql`ORDER BY ${sql.join(exportKeys.map((_, i) =>
+      sql`selected.${keyAlias(i)} ${orderDirection} ${exportNullsLast[i] ? sql`NULLS LAST` : sql`NULLS FIRST`}`), sql`, `)}`
+    : orderByClause;
 
   const bargainingUnitColumns = bargainingUnitsEnabled
     ? sql`bu.sirius_id as bargaining_unit_code, bu.name as bargaining_unit_name,`
@@ -721,11 +786,10 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
 
   const paginationClause = isPaginated
     ? sql`LIMIT ${params.pageSize} OFFSET ${(params.page! - 1) * params.pageSize!}`
-    : isExportBatch
-      ? sql`LIMIT ${params.exportLimit} OFFSET ${params.exportOffset}`
     : sql``;
 
   const result = await client.execute(sql`
+    ${exportSelection}
     SELECT 
       w.id,
       w.sirius_id,
@@ -755,7 +819,9 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
       ws.name as work_status_name,
       ${bargainingUnitColumns}
       ${benefitColumns}
+      ${exportSortColumns}
     FROM workers w
+    ${exportJoin}
     INNER JOIN contacts c ON w.contact_id = c.id
     LEFT JOIN worker_wsh_denorm wwd ON wwd.worker_id = w.id
     LEFT JOIN options_worker_ws ws ON ws.id = wwd.ws_id
@@ -783,8 +849,8 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
         cpo.id ASC
       LIMIT 1
     ) a ON true
-    WHERE 1=1 ${allConditions}
-    ${orderByClause}
+    WHERE 1=1 ${isExportBatch ? sql`` : allConditions}
+    ${exportOrder}
     ${paginationClause}
   `);
 
@@ -922,8 +988,14 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       };
     },
 
-    async getWorkersForExportBatch(params: WorkersExportParams, offset: number, limit: number): Promise<WorkerWithDetails[]> {
-      const { rows } = await _searchWorkers({
+    async getWorkersForExportBatch(params: WorkersExportParams, cursor: WorkerExportCursor | null, limit: number): Promise<WorkerExportBatch> {
+      if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new Error("Invalid worker export batch size");
+      // The route's timer cannot cancel a query already running on a pooled
+      // connection. SET LOCAL confines the server-side deadline to this batch
+      // and releases the connection on timeout/rollback.
+      const { rows } = await runInTransaction(async () => {
+        await getClient().execute(sql`SET LOCAL statement_timeout = '85s'`);
+        return _searchWorkers({
         ssnFilter: params.ssnFilter,
         nameIdSearch: params.nameIdSearch,
         contactSearch: params.contactSearch,
@@ -945,10 +1017,22 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         dependentSinceFrom: params.dependentSinceFrom,
         dependentSinceThrough: params.dependentSinceThrough,
         includeBenefits: params.includeBenefits,
-        exportOffset: offset,
+        exportCursor: cursor,
         exportLimit: limit,
+        });
       });
-      return rows;
+      const keyCount = params.sortBy === 'employer' ? 4 : 3;
+      const last = rows.at(-1) as (WorkerWithDetails & Record<string, string | null>) | undefined;
+      return {
+        rows: rows.map(row => {
+          const copy = { ...row } as WorkerWithDetails & Record<string, unknown>;
+          for (let i = 0; i < keyCount; i++) delete copy[`export_sort${i}`];
+          return copy;
+        }),
+        nextCursor: last
+          ? { values: Array.from({ length: keyCount }, (_, i) => last[`export_sort${i}`]) }
+          : null,
+      };
     },
 
     async getAllMatchingContactIds(params: Omit<WorkersPaginationParams, 'page' | 'pageSize' | 'sortField'>): Promise<string[]> {

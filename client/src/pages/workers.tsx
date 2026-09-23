@@ -14,6 +14,7 @@ import {
   normalizeWorkerBenefitRoleFilters,
   type WorkerBenefitRoleFilters,
 } from "@shared/worker-benefit-role-filters";
+import { fetchSecureWorkerExport } from "@/lib/secure-worker-export";
 
 interface PaginatedWorkersResponse {
   data: any[];
@@ -224,14 +225,9 @@ export default function Workers() {
 
   const handleSecureExport = useCallback(async (filters: Record<string, string>) => {
     try {
-      const response = await fetch("/api/workers/export", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ ...filters, ssn: appliedSsn }),
-      });
-      if (!response.ok) throw new Error("Failed to export workers");
-      const blobUrl = URL.createObjectURL(await response.blob());
+      const blobUrl = URL.createObjectURL(
+        await fetchSecureWorkerExport(filters, appliedSsn),
+      );
       const link = document.createElement("a");
       link.href = blobUrl;
       link.download = `workers_export_${new Date().toISOString().slice(0, 10)}.csv`;

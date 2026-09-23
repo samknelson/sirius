@@ -4,7 +4,7 @@ import express from "express";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerWorkerSsnListRoutes } from "../../server/modules/workers/ssn-list-routes";
 import { registerWorkerExportRoute } from "../../server/modules/workers/export";
-import type { WorkerWithDetails } from "../../server/storage/workers";
+import type { WorkerExportCursor, WorkerWithDetails } from "../../server/storage/workers";
 
 const workers = [
   { id: "one", contact_id: "contact-one", ssn: "123-45-6789", given: "One", family: "Worker" },
@@ -39,7 +39,16 @@ beforeAll(async () => {
     return { data: page.map(({ ssn: _ssn, ...row }) => row), total: selected.length, page: params.page, pageSize: params.pageSize, totalPages: Math.ceil(selected.length / params.pageSize) };
   });
   allIds.mockImplementation(async (params) => matches(params.ssnFilter, params.nameIdSearch).map(row => row.contact_id));
-  batch.mockImplementation(async (params, offset, limit) => matches(params.ssnFilter, params.nameIdSearch).slice(offset, offset + limit) as unknown as WorkerWithDetails[]);
+  batch.mockImplementation(async (params, cursor: WorkerExportCursor | null, limit: number) => {
+    const offset = cursor ? Number(cursor.values[0]) : 0;
+    const selected = matches(params.ssnFilter, params.nameIdSearch).slice(offset, offset + limit) as unknown as WorkerWithDetails[];
+    return {
+      rows: selected,
+      nextCursor: offset + selected.length < matches(params.ssnFilter, params.nameIdSearch).length
+        ? { values: [String(offset + selected.length)] }
+        : null,
+    };
+  });
   registerWorkerSsnListRoutes(app, pass, pass, permission, {
     getWorkersWithDetailsPaginated: list,
     getAllMatchingContactIds: allIds,
