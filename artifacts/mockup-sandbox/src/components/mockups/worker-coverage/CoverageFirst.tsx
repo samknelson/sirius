@@ -53,6 +53,7 @@ function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
 
   const current = currentStatus[data.current.coverage];
   const StatusIcon = current.Icon;
+  const hoursMet = data.current.hours?.thresholdMet;
   const monthlyHoursHref = `/workers/${encodeURIComponent(data.workerId)}/employment/monthly`;
   const hoursHighlight = data.current.coverage === "not-covered" && data.current.causes.hours === true;
   const balanceHighlight = data.current.coverage === "not-covered" && data.current.causes.balance === true;
@@ -62,6 +63,9 @@ function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
           .map((entry) => (entry.currency === "USD" ? entry.formatted : `${entry.currency} ${entry.formatted}`))
           .join(", ")
       : "Not available";
+  const balanceNonZero =
+    data.balance.available &&
+    data.balance.totals.some((entry) => Number.isFinite(Number(entry.amount)) && Number(entry.amount) !== 0);
 
   return (
     <CoverageShell>
@@ -103,12 +107,22 @@ function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
                 <span className="text-xs font-medium uppercase tracking-[0.08em]">Work hours</span>
               </div>
               <div className="mt-3 flex items-baseline gap-1.5 tabular-nums">
+                {hoursMet !== undefined && (
+                  hoursMet ? (
+                    <Check className="h-4 w-4 shrink-0 text-[hsl(145_52%_37%)]" aria-label="Hours met" />
+                  ) : (
+                    <X className="h-4 w-4 shrink-0 text-[hsl(0_62%_50%)]" aria-label="Hours not met" />
+                  )
+                )}
                 <strong className="text-lg font-semibold">{exactHours(data.current.hours?.reported)}</strong>
                 <span className="text-xs text-muted-foreground">of {exactHours(data.current.hours?.required)} required</span>
               </div>
               {hoursHighlight && <p className="mt-1 text-xs font-medium text-[hsl(8_58%_43%)]">Affects this decision</p>}
             </div>
-            <div className={`coverage-first-detail ${balanceHighlight ? "coverage-first-detail--attention" : ""}`} aria-label={balanceHighlight ? "Balance is blocking current coverage" : undefined}>
+            <div
+              className={`coverage-first-detail ${balanceHighlight || balanceNonZero ? "coverage-first-detail--attention" : ""}`}
+              aria-label={balanceHighlight ? "Balance is blocking current coverage" : balanceNonZero ? "Account balance is non-zero" : undefined}
+            >
               <div className="flex items-center gap-2 text-muted-foreground">
                 <WalletCards className="h-4 w-4" aria-hidden="true" />
                 <span className="text-xs font-medium uppercase tracking-[0.08em]">Account balance</span>
