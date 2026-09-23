@@ -184,7 +184,7 @@ export default function Header() {
       <Button
         variant={isItemActive(item, location) ? "default" : "ghost"}
         size={compactNav ? "icon" : "sm"}
-        className={compactNav ? "h-9 w-9 shrink-0" : "shrink-0"}
+        className={compactNav ? "h-9 w-full" : "w-full"}
         aria-label={compactNav ? itemLabel(item) : undefined}
         aria-current={!dropdown && isItemActive(item, location) ? "page" : undefined}
         data-testid={item.testId || `nav-${item.id}`}
@@ -241,7 +241,7 @@ export default function Header() {
 
   const renderDesktopLeaf = (item: ResolvedMenuItem) => {
     return (
-      <Link key={item.id} href={item.href!}>
+      <Link href={item.href!} className="block w-full">
         {withCompactTooltip(item, desktopControl(item, false))}
       </Link>
     );
@@ -250,7 +250,7 @@ export default function Header() {
   const renderDesktopDropdown = (item: ResolvedMenuItem) => {
     const trigger = <DropdownMenuTrigger asChild>{desktopControl(item, true)}</DropdownMenuTrigger>;
     return (
-      <DropdownMenu key={item.id}>
+      <DropdownMenu>
         {withCompactTooltip(item, trigger)}
         <DropdownMenuContent align="start">
           {item.children!.map((child) => {
@@ -464,7 +464,7 @@ export default function Header() {
       </div>
 
       {/* Row 2: Desktop Navigation Links - hidden on mobile */}
-      <nav ref={desktopNavRef} id="site-menu" data-compact={compactNav} className={`relative hidden md:flex items-center h-10 px-4 md:px-6 ${compactNav ? "justify-center gap-2" : "gap-4"}`}>
+      <nav ref={desktopNavRef} id="site-menu" data-compact={compactNav} className="relative hidden md:flex items-center h-10 px-4 md:px-6">
         {/* This copy never participates in layout or interaction. It always has labeled widths,
             so switching to icons cannot make the measured width shrink and oscillate. */}
         <div aria-hidden="true" className="pointer-events-none invisible absolute left-0 top-0 h-0 w-0 overflow-hidden">
@@ -482,13 +482,13 @@ export default function Header() {
           </div>
         </div>
         <TooltipProvider delayDuration={300}>
-          {desktopItems.map((item) =>
-            item.children && item.children.length > 0
-              ? renderDesktopDropdown(item)
-              : item.href
-                ? renderDesktopLeaf(item)
-                : null,
-          )}
+          {desktopItems.map((item) => (
+            <div key={item.id} className={`flex flex-1 ${compactNav ? "min-w-0" : "min-w-max"}`}>
+              {item.children && item.children.length > 0
+                ? renderDesktopDropdown(item)
+                : renderDesktopLeaf(item)}
+            </div>
+          ))}
         </TooltipProvider>
       </nav>
     </header>
