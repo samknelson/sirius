@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTerm } from "@/contexts/TerminologyContext";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import {
   LogOut,
@@ -61,6 +61,8 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useSiteSettings, useSystemMode } from "@/lib/use-variable";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Portal as TooltipPortal } from "@radix-ui/react-tooltip";
 import type { ResolvedMenu, ResolvedMenuItem } from "@shared/menu-types";
 
 /** Map server-provided icon names to lucide components. */
@@ -122,6 +124,9 @@ export default function Header() {
   const { toast } = useToast();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileExpanded, setMobileExpanded] = useState<Record<string, boolean>>({});
+  const [compactNav, setCompactNav] = useState(false);
+  const desktopNavRef = useRef<HTMLElement>(null);
+  const labeledWidthRef = useRef<HTMLDivElement>(null);
 
   const settings = useSiteSettings();
   const systemMode = useSystemMode();
@@ -148,6 +153,58 @@ export default function Header() {
     }
     return item.label || item.id;
   };
+  const desktopItems = menuItems.filter(item => (item.children && item.children.length > 0) || item.href);
+  const desktopLabels = desktopItems.map(item => itemLabel(item)).join("\u0000");
+
+  useLayoutEffect(() => {
+    const nav = desktopNavRef.current;
+    const labeled = labeledWidthRef.current;
+    if (!nav || !labeled) return;
+    const measure = () => {
+      const style = getComputedStyle(nav);
+      const available = nav.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      setCompactNav(labeled.getBoundingClientRect().width > available + 0.5);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(nav);
+    observer.observe(labeled);
+    // Font loading may change text metrics without changing the viewport.
+    let active = true;
+    void document.fonts.ready.then(() => { if (active) measure(); });
+    return () => {
+      active = false;
+      observer.disconnect();
+    };
+  }, [desktopLabels, menu?.plugin]);
+
+  const desktopControl = (item: ResolvedMenuItem, dropdown: boolean) => {
+    const Icon = getIcon(item.icon);
+    return (
+      <Button
+        variant={isItemActive(item, location) ? "default" : "ghost"}
+        size={compactNav ? "icon" : "sm"}
+        className={compactNav ? "h-9 w-9 shrink-0" : "shrink-0"}
+        aria-label={compactNav ? itemLabel(item) : undefined}
+        aria-current={!dropdown && isItemActive(item, location) ? "page" : undefined}
+        data-testid={item.testId || `nav-${item.id}`}
+      >
+        <Icon className={`h-4 w-4 ${compactNav ? "" : "mr-2"}`} />
+        {!compactNav && itemLabel(item)}
+        {dropdown && !compactNav && <ChevronDown className="h-4 w-4 ml-2" />}
+      </Button>
+    );
+  };
+
+  const withCompactTooltip = (item: ResolvedMenuItem, control: ReactNode) =>
+    compactNav ? (
+      <Tooltip>
+        <TooltipTrigger asChild>{control}</TooltipTrigger>
+        <TooltipPortal>
+          <TooltipContent side="bottom" className="motion-reduce:animate-none">{itemLabel(item)}</TooltipContent>
+        </TooltipPortal>
+      </Tooltip>
+    ) : control;
 
   const handleLogout = async () => {
     try {
@@ -183,36 +240,18 @@ export default function Header() {
   };
 
   const renderDesktopLeaf = (item: ResolvedMenuItem) => {
-    const Icon = getIcon(item.icon);
     return (
       <Link key={item.id} href={item.href!}>
-        <Button
-          variant={isItemActive(item, location) ? "default" : "ghost"}
-          size="sm"
-          data-testid={item.testId || `nav-${item.id}`}
-        >
-          <Icon className="h-4 w-4 mr-2" />
-          {itemLabel(item)}
-        </Button>
+        {withCompactTooltip(item, desktopControl(item, false))}
       </Link>
     );
   };
 
   const renderDesktopDropdown = (item: ResolvedMenuItem) => {
-    const Icon = getIcon(item.icon);
+    const trigger = <DropdownMenuTrigger asChild>{desktopControl(item, true)}</DropdownMenuTrigger>;
     return (
       <DropdownMenu key={item.id}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant={isItemActive(item, location) ? "default" : "ghost"}
-            size="sm"
-            data-testid={item.testId || `nav-${item.id}`}
-          >
-            <Icon className="h-4 w-4 mr-2" />
-            {itemLabel(item)}
-            <ChevronDown className="h-4 w-4 ml-2" />
-          </Button>
-        </DropdownMenuTrigger>
+        {withCompactTooltip(item, trigger)}
         <DropdownMenuContent align="start">
           {item.children!.map((child) => {
             const ChildIcon = getIcon(child.icon);
@@ -425,14 +464,32 @@ export default function Header() {
       </div>
 
       {/* Row 2: Desktop Navigation Links - hidden on mobile */}
-      <nav id="site-menu" className="hidden md:flex items-center space-x-4 h-10 px-4 md:px-6 overflow-x-auto">
-        {menuItems.map((item) =>
-          item.children && item.children.length > 0
-            ? renderDesktopDropdown(item)
-            : item.href
-              ? renderDesktopLeaf(item)
-              : null,
-        )}
+      <nav ref={desktopNavRef} id="site-menu" data-compact={compactNav} className={`relative hidden md:flex items-center h-10 px-4 md:px-6 ${compactNav ? "gap-2" : "gap-4"}`}>
+        {/* This copy never participates in layout or interaction. It always has labeled widths,
+            so switching to icons cannot make the measured width shrink and oscillate. */}
+        <div aria-hidden="true" className="pointer-events-none invisible absolute left-0 top-0 h-0 w-0 overflow-hidden">
+          <div ref={labeledWidthRef} className="flex w-max items-center gap-4">
+            {desktopItems.map(item => {
+              const Icon = getIcon(item.icon);
+              return (
+                <span key={item.id} className={buttonVariants({ size: "sm", variant: "ghost" })}>
+                  <Icon className="h-4 w-4 mr-2" />
+                  {itemLabel(item)}
+                  {!!item.children?.length && <ChevronDown className="h-4 w-4 ml-2" />}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+        <TooltipProvider delayDuration={300}>
+          {desktopItems.map((item) =>
+            item.children && item.children.length > 0
+              ? renderDesktopDropdown(item)
+              : item.href
+                ? renderDesktopLeaf(item)
+                : null,
+          )}
+        </TooltipProvider>
       </nav>
     </header>
   );

@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:browser:postal-templates": "node tests/postal-templates/browser.mjs",
     "test:browser:config-navigation": "node tests/config-navigation/browser.mjs",
+    "test:browser:top-navigation": "node tests/top-navigation/browser.mjs",
     "test:watch": "vitest",
     "lint": "tsx scripts/dev/lint.ts",
     "db:push": "tsx scripts/db-push.ts",
