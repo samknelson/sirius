@@ -90,14 +90,7 @@ function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
           </p>
         </section>
 
-        <section aria-labelledby="coverage-first-supporting-heading">
-          <div className="mb-3 flex items-end justify-between gap-3">
-            <div>
-              <h3 id="coverage-first-supporting-heading" className="font-semibold">Supporting details</h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">These details explain the current result.</p>
-            </div>
-            <span className="text-xs text-muted-foreground">Reported record</span>
-          </div>
+        <section aria-label="Current coverage supporting details">
           <div className="coverage-first-details">
             <div className={`coverage-first-detail ${hoursHighlight ? "coverage-first-detail--attention" : ""}`} aria-label={hoursHighlight ? "Hours are blocking current coverage" : undefined}>
               <div className="flex items-center gap-2 text-muted-foreground">
@@ -129,9 +122,6 @@ function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
               {balanceHighlight && <p className="mt-1 text-xs font-medium text-[hsl(8_58%_43%)]">Affects this decision</p>}
             </div>
           </div>
-          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-            Balance and hours are shown as supporting information. Neither one alone guarantees coverage.
-          </p>
         </section>
 
         <section className="coverage-first-upcoming" aria-labelledby="coverage-first-upcoming-heading">
