@@ -1203,23 +1203,25 @@ export function TemplateStudio({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          "max-w-[96vw] sm:max-w-[96vw] lg:max-w-[1400px] h-[92vh] flex flex-col p-0 gap-0",
+          "max-w-[96vw] sm:max-w-[96vw] lg:max-w-[1400px] h-[92vh] flex flex-col p-0 gap-0 [&>button:last-child]:top-2",
           maximized &&
             "lg:!left-0 lg:!top-0 lg:!translate-x-0 lg:!translate-y-0 lg:!w-screen lg:!max-w-none lg:!h-screen lg:!max-h-screen lg:!rounded-none",
         )}
         data-testid="dialog-template-studio"
         data-maximized={maximized}
       >
-        <DialogHeader className="px-6 py-4 pr-14 border-b shrink-0 text-left">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <DialogTitle data-testid="studio-title">{title}</DialogTitle>
+        <DialogHeader className="px-4 py-1 pr-12 border-b shrink-0 text-left space-y-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
+              <DialogTitle className="min-w-0 break-words text-base leading-tight" data-testid="studio-title">{title}</DialogTitle>
+              {description && <DialogDescription className="text-xs leading-tight">{description}</DialogDescription>}
             </div>
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="flex shrink-0 items-center gap-0.5">
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
+                className="h-8 w-8"
                 aria-label={rightColumnCollapsed ? "Show right column" : "Hide right column"}
                 title={rightColumnCollapsed ? "Show right column" : "Hide right column"}
                 aria-expanded={!rightColumnCollapsed}
@@ -1237,7 +1239,7 @@ export function TemplateStudio({
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="hidden lg:inline-flex"
+                className="hidden h-8 w-8 lg:inline-flex"
                 aria-label={maximized ? "Restore studio size" : "Maximize studio"}
                 title={maximized ? "Restore studio size" : "Maximize studio"}
                 data-testid="button-studio-toggle-maximize"
@@ -1251,9 +1253,8 @@ export function TemplateStudio({
               </Button>
             </div>
           </div>
-          {description && <DialogDescription>{description}</DialogDescription>}
           {hostNotice && (
-            <div className="pt-1" data-testid="studio-host-notice">
+            <div data-testid="studio-host-notice">
               {hostNotice}
             </div>
           )}
