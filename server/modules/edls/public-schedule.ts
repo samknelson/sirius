@@ -17,8 +17,8 @@ import {
 /** Requested assignments are visible as drafts; Draft and Trash stay hidden. */
 const PUBLIC_SHEET_STATUSES = ["request", "lock", "reserved"];
 
-/** Only confirmed sheet statuses allow a worker's final answer. */
-const ANSWERABLE_SHEET_STATUSES = ["lock", "reserved"];
+/** A Reserved sheet is still under review; only Locked is final and answerable. */
+const ANSWERABLE_SHEET_STATUSES = ["lock"];
 
 /** Number of calendar days shown, counting today. */
 const SCHEDULE_DAYS = 7;

@@ -181,7 +181,7 @@ function AssignmentAnswer({
   );
 }
 
-function AssignmentDetails({
+export function AssignmentDetails({
   assignment,
   scheduleId,
   now,
@@ -190,6 +190,19 @@ function AssignmentDetails({
   scheduleId: string;
   now: number;
 }) {
+  if (assignment.sheetStatus === "reserved") {
+    return (
+      <div
+        className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+        data-testid={`assignment-${assignment.assignmentId}`}
+      >
+        <p data-testid={`text-reserved-review-${assignment.assignmentId}`}>
+          The assignment for this day is being reviewed. This page will be updated when the assignment is final.
+        </p>
+      </div>
+    );
+  }
+
   const isRequested = assignment.sheetStatus === "request";
   return (
     <div
