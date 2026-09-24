@@ -198,10 +198,10 @@ function AssignmentDetails({
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-2">
           <h3 className="text-sm font-semibold uppercase tracking-wide">Job Information</h3>
-          <Field label="Event" value={assignment.sheetTitle ?? ""} testId="text-event" />
+          <Field label="Event" value={assignment.jobGroup?.name ?? ""} testId="text-event" />
           <Field label="Event Status" value={assignment.showStatus?.name ?? ""} testId="text-event-status" />
           <Field label="Department" value={assignment.department?.name ?? ""} testId="text-department" />
-          <Field label="Job #" value={assignment.jobGroup?.name ?? ""} testId="text-job-number" />
+          <Field label="Job #" value={assignment.sheetTitle ?? ""} testId="text-job-number" />
           <Field label="Facility" value={assignment.facility?.name ?? ""} testId="text-facility" />
         </div>
         <div className="space-y-2">
