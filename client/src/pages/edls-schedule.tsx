@@ -326,7 +326,7 @@ export default function EdlsSchedulePage() {
           <CardContent className="space-y-6">
             {day.assignments.length === 0 ? (
               <p className="text-sm text-muted-foreground" data-testid={`text-no-assignment-${day.ymd}`}>
-                There is no assignment for {formatDayHeading(day.ymd)}
+                No assignments
               </p>
             ) : (
               day.assignments.map((assignment) => (
