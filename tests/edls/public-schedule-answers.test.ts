@@ -259,18 +259,18 @@ describe("public EDLS schedule answers", () => {
     expect(setAccepted).toHaveBeenCalledWith(ASSIGNMENT_ID, false);
   });
 
-  it.each([true, false])("refuses direct Reserved answers (accepted=%s)", async (accepted) => {
+  it.each([true, false])("allows direct Reserved answers (accepted=%s)", async (accepted) => {
     scenario.visibleAssignments[0].sheetStatus = "reserved";
     expect(await answer(ACCESS_TOKEN, ASSIGNMENT_ID, accepted)).toEqual({
-      status: 403,
-      body: { message: "Access denied" },
+      status: 200,
+      body: { assignmentId: ASSIGNMENT_ID, accepted },
     });
-    expect(setAccepted).not.toHaveBeenCalled();
+    expect(setAccepted).toHaveBeenCalledWith(ASSIGNMENT_ID, accepted);
   });
 
-  it("refuses answers to visible Requested assignments", async () => {
+  it.each([true, false])("refuses direct Requested answers (accepted=%s)", async (accepted) => {
     scenario.visibleAssignments[0].sheetStatus = "request";
-    expect(await answer(ACCESS_TOKEN)).toEqual({
+    expect(await answer(ACCESS_TOKEN, ASSIGNMENT_ID, accepted)).toEqual({
       status: 403,
       body: { message: "Access denied" },
     });

@@ -14,11 +14,11 @@ import {
   checkAccess,
 } from "../../services/access-policy-evaluator";
 
-/** Requested assignments are visible as drafts; Draft and Trash stay hidden. */
+/** Requested assignments remain visible as review notices; Draft and Trash stay hidden. */
 const PUBLIC_SHEET_STATUSES = ["request", "lock", "reserved"];
 
-/** A Reserved sheet is still under review; only Locked is final and answerable. */
-const ANSWERABLE_SHEET_STATUSES = ["lock"];
+/** Requested is under review; Locked and Reserved can receive a worker's final answer. */
+const ANSWERABLE_SHEET_STATUSES = ["lock", "reserved"];
 
 /** Number of calendar days shown, counting today. */
 const SCHEDULE_DAYS = 7;

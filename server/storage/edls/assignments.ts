@@ -623,7 +623,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       return runInTransaction(async () => {
         const client = getClient();
         // A sheet status edit also locks the sheet row. Lock it here before
-        // answering so a concurrent move to Requested or Reserved cannot race this write.
+        // answering so a concurrent move to Requested cannot race this write.
         const sheet = await client.execute(sql`
           SELECT s.status
           FROM edls_sheets s
@@ -632,7 +632,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           WHERE a.id = ${id}
           FOR UPDATE OF s
         `);
-        if (!sheet.rows.length || sheet.rows[0].status !== "lock") {
+        if (!sheet.rows.length || !["lock", "reserved"].includes(String(sheet.rows[0].status))) {
           return false;
         }
 
@@ -651,7 +651,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
                 SELECT 1 FROM ${edlsCrews} c
                 JOIN ${edlsSheets} s ON s.id = c.sheet_id
                 WHERE c.id = ${edlsAssignments.crewId}
-                  AND s.status = 'lock'
+                  AND s.status IN ('lock', 'reserved')
               )`,
             ),
           )

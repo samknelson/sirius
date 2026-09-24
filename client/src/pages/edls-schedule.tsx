@@ -190,35 +190,21 @@ export function AssignmentDetails({
   scheduleId: string;
   now: number;
 }) {
-  if (assignment.sheetStatus === "reserved") {
+  if (assignment.sheetStatus === "request") {
     return (
       <div
         className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
         data-testid={`assignment-${assignment.assignmentId}`}
       >
-        <p data-testid={`text-reserved-review-${assignment.assignmentId}`}>
+        <p data-testid={`text-requested-review-${assignment.assignmentId}`}>
           The assignment for this day is being reviewed. This page will be updated when the assignment is final.
         </p>
       </div>
     );
   }
 
-  const isRequested = assignment.sheetStatus === "request";
   return (
-    <div
-      className={isRequested
-        ? "space-y-4 rounded-lg bg-slate-700 p-4 text-slate-50 [&_.text-muted-foreground]:text-slate-200"
-        : "space-y-4"}
-      data-testid={`assignment-${assignment.assignmentId}`}
-    >
-      {isRequested && (
-        <Badge
-          className="bg-slate-100 text-slate-900 hover:bg-slate-100"
-          data-testid={`badge-draft-${assignment.assignmentId}`}
-        >
-          Draft - Awaiting Confirmation
-        </Badge>
-      )}
+    <div className="space-y-4" data-testid={`assignment-${assignment.assignmentId}`}>
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-2">
           <Field label="Event" value={assignment.jobGroup?.name ?? ""} testId="text-event" />
@@ -241,9 +227,9 @@ export function AssignmentDetails({
           <Field label="Checkin Location" value={assignment.location ?? ""} testId="text-checkin-location" />
         </div>
       </div>
-      {!isRequested && <AssignmentAnswer scheduleId={scheduleId} assignment={assignment} />}
+      <AssignmentAnswer scheduleId={scheduleId} assignment={assignment} />
       <p
-        className={isRequested ? "text-right text-xs text-slate-200" : "text-right text-xs text-muted-foreground"}
+        className="text-right text-xs text-muted-foreground"
         data-testid={`text-updated-${assignment.assignmentId}`}
       >
         {assignmentUpdateAge(assignment.updatedAt, now)}

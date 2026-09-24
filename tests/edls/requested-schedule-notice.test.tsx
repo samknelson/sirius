@@ -9,7 +9,7 @@ const assignment = {
   ymd: "2026-09-25",
   sheetId: "sheet-1",
   sheetTitle: "Private job details",
-  sheetStatus: "reserved",
+  sheetStatus: "request",
   updatedAt: "2026-09-24T12:00:00.000Z",
   crewId: "crew-1",
   crewTitle: "Private crew details",
@@ -28,12 +28,12 @@ const assignment = {
 
 const notice = "The assignment for this day is being reviewed. This page will be updated when the assignment is final.";
 
-function renderAssignment(sheetStatus: string) {
+function renderAssignment(sheetStatus: string, accepted: boolean | null = null) {
   const client = new QueryClient();
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <AssignmentDetails
-        assignment={{ ...assignment, sheetStatus }}
+        assignment={{ ...assignment, sheetStatus, accepted }}
         scheduleId="schedule-1"
         now={Date.parse("2026-09-24T13:00:00.000Z")}
       />
@@ -41,29 +41,30 @@ function renderAssignment(sheetStatus: string) {
   );
 }
 
-describe("Reserved EDLS assignment on the public schedule", () => {
-  it("shows only the review notice, with no details, answer controls or update age", () => {
-    const html = renderAssignment("reserved");
+describe("Requested EDLS assignment on the public schedule", () => {
+  it("shows only the review notice, without draft details, answer controls, or update age", () => {
+    const html = renderAssignment("request");
     expect(html).toContain(notice);
     expect(html).not.toContain("Private job details");
     expect(html).not.toContain("Private crew details");
     expect(html).not.toContain("Private check-in details");
+    expect(html).not.toContain("Draft - Awaiting Confirmation");
     expect(html).not.toContain("button-accept");
     expect(html).not.toContain("button-decline");
     expect(html).not.toContain("text-updated");
   });
 
-  it("returns to the assignment view when Locked; Requested retains its draft view", () => {
-    const locked = renderAssignment("lock");
-    expect(locked).not.toContain(notice);
-    expect(locked).toContain("Private job details");
-    expect(locked).toContain("button-accept");
-    expect(locked).toContain("text-updated");
+  it.each(["lock", "reserved"])("returns to the assignment and answer view when %s", (status) => {
+    const html = renderAssignment(status);
+    expect(html).not.toContain(notice);
+    expect(html).toContain("Private job details");
+    expect(html).toContain("button-accept");
+    expect(html).toContain("text-updated");
+  });
 
-    const requested = renderAssignment("request");
-    expect(requested).not.toContain(notice);
-    expect(requested).toContain("Private job details");
-    expect(requested).toContain("Draft - Awaiting Confirmation");
-    expect(requested).not.toContain("button-accept");
+  it("still shows an already recorded answer on a Reserved assignment", () => {
+    const html = renderAssignment("reserved", true);
+    expect(html).toContain("You accepted this assignment.");
+    expect(html).not.toContain("button-accept");
   });
 });
