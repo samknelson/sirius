@@ -1,5 +1,69 @@
 # Worker Stripe payments
 
+## Non-production worker sign-in fixture
+
+The dedicated worker fixture is **not** the break-glass admin, an Okta user, or
+an impersonation. Provision it only against an isolated development/test
+database with `NODE_ENV=development` (or `test`) and the explicit
+`ALLOW_WORKER_PAYMENT_FIXTURE=1` opt-in. Never point this command at production,
+even from a development shell. Its reserved email is
+`worker-payment-fixture@example.invalid`; it creates a contact, worker, active
+user, worker-only role assignment, and a local identity explicitly linked to
+the worker. Colliding or partially owned records are refused, not adopted.
+The worker role must already have `worker`, `worker.ledger`,
+`worker.ledger.pay`, and `worker.ledger.methods` (and no elevated permissions).
+Ledger must be enabled. The script will not change role permissions, account
+balances, payment wording, or gateway configuration.
+
+Save `WORKER_PAYMENT_FIXTURE_PASSWORD` as a **development secret** (8–200
+characters; password + optional `AUTH_LOCAL_PEPPER` at most 72 UTF-8 bytes).
+Do not supply it on the command line, in a checked-in file, or in shell
+history. Use the same `AUTH_LOCAL_PEPPER` as the running local-auth provider.
+Enable `local` in `AUTH_PROVIDER`, with `AUTH_LOCAL_ENABLED` not `false`.
+Run from the dev/test deployment shell:
+
+```sh
+ALLOW_WORKER_PAYMENT_FIXTURE=1 npx tsx scripts/oneoffs/worker-payment-fixture.ts
+```
+
+The only output is the fixture's **non-secret** user ID, worker ID, and email.
+Keep the worker ID for test runs. Rerunning with the same secret is safe;
+changing the secret rotates the local password, without changing the worker
+association or granting additional roles. Sign in at `/login` as the fixture
+email and that secret. To disable it, run
+`ALLOW_WORKER_PAYMENT_FIXTURE=1 npx tsx scripts/oneoffs/worker-payment-fixture.ts deactivate`;
+this deactivates the user and removes its password hash. Sign out of any
+existing browser session and revoke sessions according to your environment's
+session policy. Re-provision to reactivate with a newly supplied secret.
+
+For a repeatable **real HTTP session** check, set `WORKER_FIXTURE_BASE_URL`
+to the running non-production application's HTTPS origin (or local loopback)
+and run:
+
+```sh
+ALLOW_WORKER_PAYMENT_FIXTURE=1 npx tsx scripts/oneoffs/verify-worker-payment-fixture.ts
+```
+
+This checks the actual login page, local login endpoint, session cookie on
+subsequent requests, own worker record, denial for another worker's record,
+checkout and methods, and denial of admin access. It checks ledger component
+and permission prerequisites separately from payment configuration. If an
+enabled Stripe gateway has **test** keys, pass its non-secret config ID as the
+single argument to check saved-method provider entry:
+
+```sh
+ALLOW_WORKER_PAYMENT_FIXTURE=1 npx tsx scripts/oneoffs/verify-worker-payment-fixture.ts <test-gateway-config-id>
+```
+
+The verifier refuses non-test publishable keys and the Stripe setup endpoint
+refuses non-test secret keys before creating a SetupIntent. It never prints
+the session cookie, client secret, password, hash, or Stripe key. If consumer
+authorization, enabled gateway, a payable account with positive available
+balance, or test credentials are missing, the verifier reports a **setup
+blocker**; do not invent debt or legal text to get a green result. The method
+setup check can create a test-mode Stripe customer and SetupIntent, but does
+not attach a method, charge funds, settle payments, or exercise webhooks.
+
 Worker self-payments use the configured `payment-gateway` row, never a global
 Stripe credential. Set its `data.secretName` to the test secret (for example
 `STRIPE_DEFAULT`), `data.publishableKey` to the matching `pk_test_` key, and

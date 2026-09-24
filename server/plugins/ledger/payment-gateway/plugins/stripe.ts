@@ -407,6 +407,9 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
     ctx: PaymentGatewayContext,
     args: { customerRef: string },
   ): Promise<GatewaySetupSession> {
+    // SetupIntent is provider entry too: never let a test-only worker fixture
+    // (or any other caller) create a live-mode payment method session.
+    assertOnlinePaymentTestCredentials(ctx);
     const data = configData(ctx);
     const configured = Array.isArray(data.paymentTypes)
       ? (data.paymentTypes as string[])
