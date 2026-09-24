@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import {
   Table,
   TableBody,
@@ -82,7 +82,7 @@ function WorkerWorkStatusContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create work status entry",
+        description: getApiErrorMessage(error, "Failed to create work status entry"),
         variant: "destructive",
       });
     },
@@ -111,7 +111,7 @@ function WorkerWorkStatusContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update work status entry",
+        description: getApiErrorMessage(error, "Failed to update work status entry"),
         variant: "destructive",
       });
     },
@@ -136,7 +136,7 @@ function WorkerWorkStatusContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete work status entry",
+        description: getApiErrorMessage(error, "Failed to delete work status entry"),
         variant: "destructive",
       });
     },

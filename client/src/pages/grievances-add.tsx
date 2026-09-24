@@ -10,7 +10,7 @@ import {
   type WorkerSearchHit,
 } from "@/components/grievances/grievance-worker-section";
 import { GrievanceEmployerSection } from "@/components/grievances/grievance-employer-section";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState } from "react";
@@ -149,7 +149,7 @@ export default function GrievancesAdd() {
     } catch (error: any) {
       toast({
         title: "Failed to create grievance",
-        description: error?.message ?? "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
     } finally {

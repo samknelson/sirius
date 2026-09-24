@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage, getEligibilityFailures } from "@/lib/queryClient";
+import { EligibilityFailureList } from "@/components/dispatch/EligibilityFailureList";
 import { Save, Loader2 } from "lucide-react";
 
 function DispatchEditContent() {
@@ -36,10 +37,19 @@ function DispatchEditContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/dispatches/job", dispatch.jobId] });
       setLocation(`/dispatch/${dispatch.id}`);
     },
-    onError: () => {
+    onError: (error) => {
+      const failures = getEligibilityFailures(error);
       toast({
-        title: "Error",
-        description: "Failed to update the dispatch. Please try again.",
+        title: failures.length > 0 ? "Worker not eligible" : "Error",
+        description:
+          failures.length > 0 ? (
+            <EligibilityFailureList
+              intro="This change was refused because the worker fails these eligibility criteria:"
+              failures={failures}
+            />
+          ) : (
+            getApiErrorMessage(error, "Failed to update the dispatch. Please try again.")
+          ),
         variant: "destructive",
       });
     },

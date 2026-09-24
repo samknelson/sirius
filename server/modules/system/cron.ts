@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../../storage";
-import type { PluginConfigWithSubsidiary } from "../../storage/plugin-configs";
+import type { PluginConfigWithSubsidiary } from "../../storage/system/plugin-configs";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { cronScheduler } from "../../cron";
 import { cronPluginRegistry } from "../../plugins/system/cron";
@@ -21,8 +21,6 @@ interface LegacyCronJob {
   schedule: string;
   isEnabled: boolean;
   settings: Record<string, unknown> | null;
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 /** Project a plugin-config envelope into the legacy flat cron-job shape. */
@@ -35,8 +33,6 @@ function toLegacyCronJob(envelope: PluginConfigWithSubsidiary): LegacyCronJob {
     schedule: (subsidiary as { schedule?: string } | null)?.schedule ?? "",
     isEnabled: config.enabled,
     settings: (config.data as Record<string, unknown>) ?? null,
-    createdAt: config.createdAt,
-    updatedAt: config.updatedAt,
   };
 }
 

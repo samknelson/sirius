@@ -1,8 +1,9 @@
+import { getEnvironmentVariable } from "../config/env-registry";
 const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
 
-const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
-const publicPaths = process.env.PUBLIC_OBJECT_SEARCH_PATHS?.split(',') || ['public'];
-const privateDir = process.env.PRIVATE_OBJECT_DIR || '.private';
+const bucketId = getEnvironmentVariable("DEFAULT_OBJECT_STORAGE_BUCKET_ID");
+const publicPaths = getEnvironmentVariable("PUBLIC_OBJECT_SEARCH_PATHS")?.split(',') || ['public'];
+const privateDir = getEnvironmentVariable("PRIVATE_OBJECT_DIR") || '.private';
 
 export class ObjectStorageNotConfiguredError extends Error {
   constructor(message: string) {
@@ -180,6 +181,17 @@ async function signObjectURL({
 }
 
 export class ObjectStorageService {
+  /**
+   * When constructed with an explicit bucketId (the files-service replit
+   * provider does this), that bucket is used; otherwise falls back to the
+   * legacy DEFAULT_OBJECT_STORAGE_BUCKET_ID env var.
+   */
+  constructor(private readonly explicitBucketId?: string) {}
+
+  private bucket(): string {
+    return this.explicitBucketId ?? ensureBucketId();
+  }
+
   async uploadFile(options: UploadFileOptions): Promise<{ storagePath: string; size: number }> {
     const { fileName, fileContent, mimeType, accessLevel, customPath } = options;
 
@@ -187,7 +199,7 @@ export class ObjectStorageService {
     const storagePath = customPath || `${directory}/${Date.now()}-${fileName}`;
 
     // Get signed URL for upload
-    const fullPath = `/${ensureBucketId()}/${storagePath}`;
+    const fullPath = `/${this.bucket()}/${storagePath}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
     
     const signedUrl = await signObjectURL({
@@ -217,7 +229,7 @@ export class ObjectStorageService {
   }
 
   async downloadFile(storagePath: string): Promise<Buffer> {
-    const fullPath = `/${ensureBucketId()}/${storagePath}`;
+    const fullPath = `/${this.bucket()}/${storagePath}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
     const signedUrl = await signObjectURL({
@@ -238,7 +250,7 @@ export class ObjectStorageService {
   }
 
   async deleteFile(storagePath: string): Promise<void> {
-    const fullPath = `/${ensureBucketId()}/${storagePath}`;
+    const fullPath = `/${this.bucket()}/${storagePath}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
     const signedUrl = await signObjectURL({
@@ -258,7 +270,7 @@ export class ObjectStorageService {
   }
 
   async getFileMetadata(storagePath: string): Promise<FileMetadata> {
-    const fullPath = `/${ensureBucketId()}/${storagePath}`;
+    const fullPath = `/${this.bucket()}/${storagePath}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
     const signedUrl = await signObjectURL({
@@ -272,8 +284,17 @@ export class ObjectStorageService {
       method: 'HEAD',
     });
 
-    if (!response.ok) {
+    if (response.status === 404) {
       throw new Error('File not found');
+    }
+    if (!response.ok) {
+      // Non-404 failures (auth, rate limiting, transient 5xx) must be
+      // distinguishable from a genuinely absent object — the consistency
+      // sweep relies on this to avoid marking rows missing when the bucket
+      // is merely inaccessible.
+      throw new ObjectStorageConnectionError(
+        `Metadata request for "${storagePath}" failed with HTTP ${response.status}`,
+      );
     }
 
     const contentLength = response.headers.get('content-length');
@@ -290,7 +311,7 @@ export class ObjectStorageService {
   }
 
   async generateSignedUrl(storagePath: string, expiresIn: number = 3600): Promise<string> {
-    const fullPath = `/${ensureBucketId()}/${storagePath}`;
+    const fullPath = `/${this.bucket()}/${storagePath}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
     return await signObjectURL({

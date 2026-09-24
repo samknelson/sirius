@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Save, RefreshCw, Search } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -82,7 +82,7 @@ export default function LedgerSettingsPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to save setting.",
+        description: getApiErrorMessage(error, "Failed to save setting."),
         variant: "destructive",
       });
     },

@@ -49,11 +49,14 @@ export function registerWorkerTosRoutes(
 ) {
   const tosComponent = requireComponent("worker.tos");
 
+  // Read access follows worker view access (entity-level), so a worker
+  // can see their own absence status (e.g. the layout banner). All
+  // mutation routes below stay staff-gated.
   app.get(
     "/api/workers/:workerId/tos",
     requireAuth,
     tosComponent,
-    requireAccess('staff'),
+    requireAccess('worker.view', (req) => req.params.workerId),
     async (req: Request, res: Response) => {
       try {
         const records = await storage.workerTos.getByWorker(req.params.workerId);

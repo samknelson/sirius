@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Calculator, Search, User, DollarSign, TrendingUp, AlertCircle, Info, Table } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface WorkerSearchResult {
@@ -187,7 +187,7 @@ export default function PensionPayoutCalculatorPage() {
     onError: (error: Error) => {
       toast({
         title: "Calculation Failed",
-        description: error.message,
+        description: getApiErrorMessage(error, "An unexpected error occurred"),
         variant: "destructive",
       });
     },

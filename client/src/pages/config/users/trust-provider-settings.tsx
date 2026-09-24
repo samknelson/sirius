@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { Shield, Info, Save } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Role } from "@/lib/entity-types";
 
 interface TrustProviderUserSettingsResponse {
@@ -55,7 +55,7 @@ export default function TrustProviderUserSettingsPage() {
     onError: (error: any) => {
       toast({
         title: "Update Failed",
-        description: error?.message || "Failed to update trust provider user settings.",
+        description: getApiErrorMessage(error, "Failed to update trust provider user settings."),
         variant: "destructive",
       });
     },

@@ -21,7 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { Eye, CheckCircle2, XCircle } from "lucide-react";
 import { CronJobLayout } from "@/components/layouts/CronJobLayout";
 import { CronJobRun } from "@/lib/cron-types";

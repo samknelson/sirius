@@ -26,6 +26,8 @@ const dispatchStatusDenormPlugin: DenormPlugin<DispatchEligDenormPayload> = {
     singleton: true,
   },
   entityType: "worker",
+  reads: ["workers", "workerDispatchStatus"],
+  writes: [{ storage: "workerDispatchEligDenorm", soleWriter: false }],
   eventHandlers: [
     {
       event: EventType.DISPATCH_STATUS_SAVED,

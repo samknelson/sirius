@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest, ApiError } from "@/lib/queryClient";
+import { queryClient, apiRequest, ApiError, getApiErrorMessage } from "@/lib/queryClient";
 import { Save, Briefcase } from "lucide-react";
 
 interface EmploymentStatus {
@@ -78,7 +78,7 @@ export default function HtaHomeEmploymentStatusesPage() {
     onError: (error: Error) => {
       toast({
         title: "Error saving settings",
-        description: error.message,
+        description: getApiErrorMessage(error, "The operation failed."),
         variant: "destructive",
       });
     },

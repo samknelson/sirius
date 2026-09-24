@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Trash2, Plus, Eye, Phone, MapPin, User } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import type { TrustProviderType, PhoneNumber, ContactPostal } from "@shared/schema";
 import { generateDisplayName } from "@shared/schema";
 
@@ -158,7 +158,7 @@ function TrustProviderContactsContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create provider contact",
+        description: getApiErrorMessage(error, "Failed to create provider contact"),
         variant: "destructive",
       });
     },
@@ -179,7 +179,7 @@ function TrustProviderContactsContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete provider contact",
+        description: getApiErrorMessage(error, "Failed to delete provider contact"),
         variant: "destructive",
       });
     },

@@ -92,6 +92,8 @@ export function createBaoImmediateEligibilityStorage(): BaoImmediateEligibilityS
 
 export const baoImmediateEligibilityLoggingConfig: StorageLoggingConfig<BaoImmediateEligibilityStorage> = {
   module: 'sitespecific.bao.immediate-eligibility',
+  table: 'sitespecific_bao_employer_immediate_eligibility',
+  hostTable: 'employers',
   methods: {
     create: {
       enabled: true,

@@ -6,6 +6,7 @@ import { requireComponent } from "../components";
 import { generateInvoicePdf } from "../../utils/pdfGenerator";
 import { isValidYmd, ymdToDateForPicker } from "@shared/utils/date";
 import { getCompanyMapIfEnabled } from "../employers/employers";
+import { buildContentDisposition } from "../../utils/content-disposition";
 
 async function checkEaAccessInline(req: Request, res: Response, ea: { entityType: string; entityId: string }, policyId: string): Promise<boolean> {
   const result = await checkAccessInline(req, policyId, ea.entityId, { entityType: ea.entityType, entityId: ea.entityId });
@@ -340,7 +341,7 @@ export function registerLedgerEaRoutes(app: Express) {
       const filename = `${invoice.invoiceNumber}.pdf`;
 
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Content-Disposition", buildContentDisposition("attachment", filename));
       res.setHeader("Content-Length", pdfBuffer.length);
       
       res.send(pdfBuffer);

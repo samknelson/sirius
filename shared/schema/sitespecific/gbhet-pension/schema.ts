@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, jsonb, integer, numeric, unique, boolean } from "drizzle-orm/pg-core";
+import { foreignKey, pgTable, text, varchar, jsonb, integer, numeric, unique, boolean } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -64,9 +64,9 @@ export const gbhetPensionAnnualSummary = pgTable("gbhet_pension_annual_summary",
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
   year: integer("year").notNull(),
   totalPensionHours: numeric("total_pension_hours", { precision: 10, scale: 2 }).notNull().default("0"),
-  classificationId: varchar("classification_id").references(() => optionsClassifications.id, { onDelete: 'set null' }),
+  classificationId: varchar("classification_id"),
   isSpecialDesignation: boolean("is_special_designation").notNull().default(false),
-  tierId: varchar("tier_id").references(() => gbhetPensionAccrualTiers.id, { onDelete: 'set null' }),
+  tierId: varchar("tier_id"),
   accrualPct: numeric("accrual_pct", { precision: 6, scale: 4 }),
   monthlyBenefitRate: numeric("monthly_benefit_rate", { precision: 12, scale: 2 }),
   annualAccrual: numeric("annual_accrual", { precision: 12, scale: 2 }),
@@ -75,6 +75,16 @@ export const gbhetPensionAnnualSummary = pgTable("gbhet_pension_annual_summary",
   data: jsonb("data"),
 }, (table) => [
   unique("gbhet_pension_annual_summary_worker_year_unique").on(table.workerId, table.year),
+  foreignKey({
+    name: "gbhet_pension_annual_summary_classification_id_options_classifi",
+    columns: [table.classificationId],
+    foreignColumns: [optionsClassifications.id],
+  }).onDelete("set null"),
+  foreignKey({
+    name: "gbhet_pension_annual_summary_tier_id_gbhet_pension_accrual_tier",
+    columns: [table.tierId],
+    foreignColumns: [gbhetPensionAccrualTiers.id],
+  }).onDelete("set null"),
 ]);
 
 export const insertGbhetPensionAnnualSummarySchema = createInsertSchema(gbhetPensionAnnualSummary).omit({

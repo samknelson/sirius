@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { EmployerLayout, useEmployerLayout } from "@/components/layouts/EmployerLayout";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,7 +48,12 @@ interface PaymentMethod {
   gatewayConfigId: string;
   isActive: boolean;
   isDefault: boolean;
-  createdAt: string;
+  /**
+   * When this method was added, from the record's history — a method keeps no
+   * such column of its own. Null for a method nothing has recorded, including
+   * one added moments ago, whose history is written just after it is saved.
+   */
+  createdDate: string | null;
   providerDetails?: {
     type: string;
     card?: {
@@ -125,7 +130,7 @@ function PaymentMethodsContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update payment method",
+        description: getApiErrorMessage(error, "Failed to update payment method"),
         variant: "destructive",
       });
     },
@@ -142,7 +147,7 @@ function PaymentMethodsContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to set default payment method",
+        description: getApiErrorMessage(error, "Failed to set default payment method"),
         variant: "destructive",
       });
     },
@@ -161,7 +166,7 @@ function PaymentMethodsContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete payment method",
+        description: getApiErrorMessage(error, "Failed to delete payment method"),
         variant: "destructive",
       });
     },
@@ -179,7 +184,7 @@ function PaymentMethodsContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to save payment method. You can retry.",
+        description: getApiErrorMessage(error, "Failed to save payment method. You can retry."),
         variant: "destructive",
       });
     },
@@ -230,7 +235,7 @@ function PaymentMethodsContent() {
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to initialize payment method setup",
+        description: getApiErrorMessage(error, "Failed to initialize payment method setup"),
         variant: "destructive",
       });
       resetAddDialog();
@@ -264,7 +269,7 @@ function PaymentMethodsContent() {
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to load payment method details",
+        description: getApiErrorMessage(error, "Failed to load payment method details"),
         variant: "destructive",
       });
       setDetailsDialogOpen(false);
@@ -475,6 +480,14 @@ function PaymentMethodsContent() {
                             <h4 className="font-medium">Payment Method</h4>
                             <p className="text-sm text-muted-foreground">{pm.paymentMethod}</p>
                           </>
+                        )}
+                        {pm.createdDate && (
+                          <p
+                            className="text-sm text-muted-foreground"
+                            data-testid={`text-added-${pm.id}`}
+                          >
+                            Added {new Date(pm.createdDate).toLocaleDateString()}
+                          </p>
                         )}
                       </div>
                     </div>

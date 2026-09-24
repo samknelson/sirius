@@ -1,8 +1,9 @@
 import { createNoopValidator } from '../utils/validation';
-import { getClient } from '../transaction-context';
+import { getClient, onAfterCommit } from '../transaction-context';
 import { employers, type Employer, type InsertEmployer } from "@shared/schema";
-import { eq, sql, inArray } from "drizzle-orm";
+import { eq, sql, inArray, or, ilike, asc } from "drizzle-orm";
 import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
+import { eventBus, EventType } from "../../services/event-bus";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -23,7 +24,14 @@ export interface EmployerWorker {
 
 export interface EmployerStorage {
   getAllEmployers(): Promise<Employer[]>;
+  /** Every employer whose `is_active` flag is true. */
+  listActive(): Promise<Employer[]>;
   getEmployer(id: string): Promise<Employer | undefined>;
+  /**
+   * Employers whose name or Sirius id matches `query` (empty matches
+   * everything), name-ordered and capped at `limit`. A picker read.
+   */
+  searchByName(query: string, limit: number): Promise<Employer[]>;
   getBySiriusId(siriusId: string): Promise<Employer | undefined>;
   getByIds(ids: string[]): Promise<Employer[]>;
   getEmployerWorkers(employerId: string): Promise<EmployerWorker[]>;
@@ -40,10 +48,28 @@ export function createEmployerStorage(): EmployerStorage {
       return await client.select().from(employers);
     },
 
+    async listActive(): Promise<Employer[]> {
+      const client = getClient();
+      return await client.select().from(employers).where(eq(employers.isActive, true));
+    },
+
     async getEmployer(id: string): Promise<Employer | undefined> {
       const client = getClient();
       const [employer] = await client.select().from(employers).where(eq(employers.id, id));
       return employer || undefined;
+    },
+
+    async searchByName(query: string, limit: number): Promise<Employer[]> {
+      const client = getClient();
+      const term = `%${query.trim()}%`;
+      return await client
+        .select()
+        .from(employers)
+        .where(
+          or(ilike(employers.name, term), ilike(employers.siriusId, term)),
+        )
+        .orderBy(asc(employers.name))
+        .limit(limit);
     },
 
     async getBySiriusId(siriusId: string): Promise<Employer | undefined> {
@@ -131,6 +157,15 @@ export function createEmployerStorage(): EmployerStorage {
     async deleteEmployer(id: string): Promise<boolean> {
       const client = getClient();
       const result = await client.delete(employers).where(eq(employers.id, id)).returning();
+      if (result.length > 0) {
+        // Announce the deletion once it is durable, so the areas that hang off
+        // an employer with no foreign key (notes, file attachments) clean up
+        // now rather than waiting for their nightly sweep. Best-effort: a
+        // failed emit or handler never fails the delete.
+        onAfterCommit(() => {
+          void eventBus.emit(EventType.EMPLOYER_DELETE_AFTER, { employerId: id });
+        });
+      }
       return result.length > 0;
     }
   };
@@ -138,10 +173,14 @@ export function createEmployerStorage(): EmployerStorage {
 
 export const employerLoggingConfig = defineLoggingConfig<EmployerStorage>({
   module: 'employers',
+  table: 'employers',
   getter: 'getEmployer',
   hostEntityId: (args, result, before) => result?.id ?? before?.id ?? args[0],
   methods: {
-    createEmployer: { getEntityId: (args, result) => result?.id || args[0]?.name || 'new employer' },
+    createEmployer: {
+      getEntityId: (args, result) => result?.id || args[0]?.name || 'new employer',
+      metadataEntityId: (_args, result) => result?.id,
+    },
     updateEmployer: {},
     deleteEmployer: {},
   },

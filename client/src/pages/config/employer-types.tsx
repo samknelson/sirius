@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { 
   Loader2, Plus, Edit, Trash2, Save, X,
   Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, CircleHelp,
@@ -110,7 +110,7 @@ export default function EmployerTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create employer type.",
+        description: getApiErrorMessage(error, "Failed to create employer type."),
         variant: "destructive",
       });
     },
@@ -136,7 +136,7 @@ export default function EmployerTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update employer type.",
+        description: getApiErrorMessage(error, "Failed to update employer type."),
         variant: "destructive",
       });
     },
@@ -157,7 +157,7 @@ export default function EmployerTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete employer type.",
+        description: getApiErrorMessage(error, "Failed to delete employer type."),
         variant: "destructive",
       });
     },

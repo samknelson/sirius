@@ -1,6 +1,6 @@
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,6 +8,17 @@ import type { BargainingUnit } from "@shared/schema";
 import { createContext, useContext } from "react";
 import { useBargainingUnitTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
+
+const BARGAINING_UNIT_BACK_LINK = {
+  href: "/bargaining-units",
+  label: "Back to Bargaining Units",
+  testId: "button-back-to-bargaining-units",
+};
 
 interface BargainingUnitLayoutContextValue {
   bargainingUnit: BargainingUnit;
@@ -46,26 +57,10 @@ export default function BargainingUnitLayout({ children, activeTab }: Bargaining
   if (isLoading || !bargainingUnit) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Users className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/bargaining-units">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-bargaining-units">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Bargaining Units
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<Users className="text-primary-foreground" size={16} />}
+          backLink={BARGAINING_UNIT_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -83,26 +78,11 @@ export default function BargainingUnitLayout({ children, activeTab }: Bargaining
   if (error) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Users className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Bargaining Unit Not Found</h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/bargaining-units">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-bargaining-units">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Bargaining Units
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<Users className="text-primary-foreground" size={16} />}
+          label="Bargaining Unit Not Found"
+          backLink={BARGAINING_UNIT_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -126,28 +106,13 @@ export default function BargainingUnitLayout({ children, activeTab }: Bargaining
   return (
     <BargainingUnitLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Users className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground" data-testid={`text-bargaining-unit-name-${bargainingUnit.id}`}>
-                  {bargainingUnit.name}
-                </h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/bargaining-units">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-bargaining-units">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Bargaining Units
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<Users className="text-primary-foreground" size={16} />}
+          title={bargainingUnit.name}
+          titleTestId={`text-bargaining-unit-name-${bargainingUnit.id}`}
+          backLink={BARGAINING_UNIT_BACK_LINK}
+          recordId={bargainingUnit.id}
+        />
 
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

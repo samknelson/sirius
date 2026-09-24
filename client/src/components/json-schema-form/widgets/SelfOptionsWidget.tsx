@@ -15,7 +15,11 @@ import type { SchemaFormContext } from "../SchemaForm";
  * being edited is excluded to prevent self-parenting.
  */
 export function SelfOptionsWidget(props: WidgetProps<unknown, never, SchemaFormContext>) {
-  const { id, value, label, disabled, readonly, onChange, formContext, required } = props;
+  const { id, value, label, disabled, readonly, onChange, required, registry } = props;
+  // RJSF v6 no longer passes `formContext` as a direct widget prop; it
+  // lives on the registry. Fall back to the prop for safety.
+  const formContext: SchemaFormContext | undefined =
+    registry?.formContext ?? (props as { formContext?: SchemaFormContext }).formContext;
   const items: Array<{ id: string; name: string }> = formContext?.selfItems ?? [];
   const editingId = formContext?.editingId ?? null;
   const candidates = items.filter((i: { id: string }) => i.id !== editingId);

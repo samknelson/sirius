@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { pluginManifestQueryKey } from "@/plugins/_core";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
@@ -37,9 +37,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { Pencil, Trash2 } from "lucide-react";
 import type { TrustBenefitEligibilityExemption } from "@shared/schema";
+import { useModalSeed } from "@/hooks/use-modal-seed";
 
 interface EligibilityPlugin {
   id: string;
@@ -89,8 +90,10 @@ function ExemptionFormDialog({
   const [description, setDescription] = useState<string>("");
   const [selectedPlugins, setSelectedPlugins] = useState<string[]>([]);
 
-  useEffect(() => {
-    if (!open) return;
+  // Seeded during the render that opens the dialog: the inputs must be
+  // controlled by the exemption's values on their first render, not corrected
+  // one render later.
+  useModalSeed(open, `${mode}:${exemption?.id ?? "new"}`, () => {
     if (mode === "edit" && exemption) {
       setBenefitId(exemption.benefitId ?? "");
       setStartYmd(ymdFromValue(exemption.startYmd));
@@ -104,7 +107,7 @@ function ExemptionFormDialog({
       setDescription("");
       setSelectedPlugins([]);
     }
-  }, [open, mode, exemption]);
+  });
 
   function togglePlugin(id: string) {
     setSelectedPlugins((prev) =>
@@ -132,7 +135,7 @@ function ExemptionFormDialog({
       onOpenChange(false);
     },
     onError: (err: Error) => {
-      toast({ title: "Error", description: err.message || "Failed to save", variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(err, "Failed to save"), variant: "destructive" });
     },
   });
 
@@ -302,7 +305,7 @@ function ExemptionsContent() {
       setDeleteTarget(null);
     },
     onError: (err: Error) => {
-      toast({ title: "Error", description: err.message || "Failed to delete", variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(err, "Failed to delete"), variant: "destructive" });
     },
   });
 

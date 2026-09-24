@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import type { BargainingUnit } from "@shared/schema";
 
 export default function BargainingUnitsPage() {
@@ -57,7 +57,7 @@ export default function BargainingUnitsPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create bargaining unit.",
+        description: getApiErrorMessage(error, "Failed to create bargaining unit."),
         variant: "destructive",
       });
     },

@@ -7,6 +7,7 @@ import {
   type GrievanceStepsDenorm,
 } from "@shared/schema";
 import { eq, and, asc, isNull, isNotNull, or } from "drizzle-orm";
+import type { GrievanceTimelineAdjustment } from "@shared/schema";
 
 /** One computed timeline step row, ready for insertion (plugin-supplied). */
 export interface GrievanceTimelineStepRow {
@@ -17,6 +18,22 @@ export interface GrievanceTimelineStepRow {
   isCurrent: boolean;
   /** Template-step ordering so the UI can render steps in sequence. */
   sequence: number;
+  /**
+   * When the step's start entry carried a timeline adjustment: the adjustment
+   * itself plus the original (unadjusted) computed due date, recorded in the
+   * row's `data` json so the timeline tab can show both.
+   */
+  adjustment?: GrievanceTimelineAdjustment | null;
+  originalDueYmd?: string | null;
+  /**
+   * The grievance status that STARTED this step (the status of the start
+   * entry) and, when the step has completed, the status that COMPLETED it
+   * (the status of the completing entry). Recorded in the row's `data` json
+   * so the timeline tab can show which specific status began and ended each
+   * step. `completeStatusId` is null while the step is still open.
+   */
+  startStatusId?: string | null;
+  completeStatusId?: string | null;
 }
 
 export interface GrievanceTimelineStepItem extends GrievanceStepsDenorm {
@@ -57,6 +74,29 @@ export interface GrievanceStepsDenormStorage {
    * rows cascade).
    */
   findDenormWidowIds(configId: string, limit: number): Promise<string[]>;
+  /**
+   * Open (not-yet-completed) timeline steps that carry a due date. One row per
+   * open occurrence; a step has at most one open occurrence by construction of
+   * the timeline derivation. Deleted grievances are excluded automatically (the
+   * denorm rows cascade away with the grievance). Read-only; used by the
+   * grievance-deadline-reminder scheduler to enumerate reminder candidates.
+   * Pass `grievanceId` to scope to a single grievance (the event-driven fast
+   * path); omit it to enumerate every open step (the backfill/widow sweep).
+   */
+  listOpenStepsWithDueDate(
+    grievanceId?: string,
+  ): Promise<Array<{ grievanceId: string; stepId: string; dueYmd: string }>>;
+  /**
+   * The single open occurrence of one step on one grievance, with its due date
+   * and joined step name — or null when the step is completed, has no due date,
+   * or does not exist. Read-only; used by the reminder scheduler's `compute`
+   * and `isScheduledEventLive` to price a reminder and to re-verify it just
+   * before firing.
+   */
+  getOpenStep(
+    grievanceId: string,
+    stepId: string,
+  ): Promise<{ dueYmd: string; stepName: string | null } | null>;
 }
 
 export function createGrievanceStepsDenormStorage(): GrievanceStepsDenormStorage {
@@ -85,11 +125,16 @@ export function createGrievanceStepsDenormStorage(): GrievanceStepsDenormStorage
         )
         .where(eq(grievanceStepsDenorm.grievanceId, grievanceId));
       // Template-step order is carried in `data.sequence` (jsonb); sort here
-      // so callers always see steps in timeline order.
+      // so callers always see steps in timeline order. A step can have more
+      // than one occurrence (started, completed, started again), so within the
+      // same sequence order chronologically by start date.
       return rows.sort((a, b) => {
         const sa = (a.data as { sequence?: number } | null)?.sequence ?? 0;
         const sb = (b.data as { sequence?: number } | null)?.sequence ?? 0;
-        return sa - sb;
+        if (sa !== sb) return sa - sb;
+        const da = a.startedYmd ?? "";
+        const db = b.startedYmd ?? "";
+        return da < db ? -1 : da > db ? 1 : 0;
       });
     },
 
@@ -112,7 +157,14 @@ export function createGrievanceStepsDenormStorage(): GrievanceStepsDenormStorage
           dueYmd: row.dueYmd,
           completedYmd: row.completedYmd,
           isCurrent: row.isCurrent,
-          data: { sequence: row.sequence },
+          data: {
+            sequence: row.sequence,
+            ...(row.adjustment
+              ? { adjustment: row.adjustment, originalDueYmd: row.originalDueYmd ?? null }
+              : {}),
+            ...(row.startStatusId ? { startStatusId: row.startStatusId } : {}),
+            ...(row.completeStatusId ? { completeStatusId: row.completeStatusId } : {}),
+          },
         })),
       );
     },
@@ -145,6 +197,64 @@ export function createGrievanceStepsDenormStorage(): GrievanceStepsDenormStorage
         )
         .limit(limit);
       return rows.map((r) => r.entityId);
+    },
+
+    async listOpenStepsWithDueDate(
+      grievanceId?: string,
+    ): Promise<Array<{ grievanceId: string; stepId: string; dueYmd: string }>> {
+      const client = getClient();
+      const where = grievanceId
+        ? and(
+            isNull(grievanceStepsDenorm.completedYmd),
+            isNotNull(grievanceStepsDenorm.dueYmd),
+            eq(grievanceStepsDenorm.grievanceId, grievanceId),
+          )
+        : and(
+            isNull(grievanceStepsDenorm.completedYmd),
+            isNotNull(grievanceStepsDenorm.dueYmd),
+          );
+      const rows = await client
+        .select({
+          grievanceId: grievanceStepsDenorm.grievanceId,
+          stepId: grievanceStepsDenorm.stepId,
+          dueYmd: grievanceStepsDenorm.dueYmd,
+        })
+        .from(grievanceStepsDenorm)
+        .where(where);
+      return rows
+        .filter((r): r is { grievanceId: string; stepId: string; dueYmd: string } =>
+          r.dueYmd != null,
+        )
+        .map((r) => ({ grievanceId: r.grievanceId, stepId: r.stepId, dueYmd: r.dueYmd }));
+    },
+
+    async getOpenStep(
+      grievanceId: string,
+      stepId: string,
+    ): Promise<{ dueYmd: string; stepName: string | null } | null> {
+      const client = getClient();
+      const rows = await client
+        .select({
+          dueYmd: grievanceStepsDenorm.dueYmd,
+          stepName: optionsGrievanceSteps.name,
+        })
+        .from(grievanceStepsDenorm)
+        .leftJoin(
+          optionsGrievanceSteps,
+          eq(grievanceStepsDenorm.stepId, optionsGrievanceSteps.id),
+        )
+        .where(
+          and(
+            eq(grievanceStepsDenorm.grievanceId, grievanceId),
+            eq(grievanceStepsDenorm.stepId, stepId),
+            isNull(grievanceStepsDenorm.completedYmd),
+            isNotNull(grievanceStepsDenorm.dueYmd),
+          ),
+        )
+        .limit(1);
+      const row = rows[0];
+      if (!row || row.dueYmd == null) return null;
+      return { dueYmd: row.dueYmd, stepName: row.stepName };
     },
   };
 }

@@ -12,11 +12,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useState, useCallback, useMemo } from "react";
 import { Award, Plus, ExternalLink } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-import { addMonths, format } from "date-fns";
+import { addMonths } from "date-fns";
+import { formatLocalFields } from "@/lib/date-format";
+import { toYmd, formatYmd } from "@shared/utils/date";
 import { Link } from "wouter";
 import type { WorkerCertification, OptionsCertification } from "@shared/schema";
 
@@ -85,13 +87,13 @@ function CertificationsContent() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to add certification.",
+        description: getApiErrorMessage(error, "Failed to add certification."),
         variant: "destructive",
       });
     },
   });
 
-  const getTodayDate = () => format(new Date(), 'yyyy-MM-dd');
+  const getTodayDate = () => formatLocalFields(new Date(), 'yyyy-MM-dd');
 
   const calculateEndDate = useCallback((certId: string, startDate: string) => {
     if (!certId || !startDate) return "";
@@ -101,7 +103,7 @@ function CertificationsContent() {
     if (typeof defaultDuration === 'number' && defaultDuration > 0) {
       const start = new Date(startDate);
       const end = addMonths(start, defaultDuration);
-      return format(end, 'yyyy-MM-dd');
+      return formatLocalFields(end, 'yyyy-MM-dd');
     }
     return "";
   }, [availableCertifications]);
@@ -158,9 +160,12 @@ function CertificationsContent() {
     });
   };
 
+  // Certification start/end are calendar DATE columns — they name a day, not a
+  // moment. Rendered straight from the Ymd, with no Date in between, so no
+  // zone (the browser's or a chosen one) can move them onto the day before.
   const formatDate = (date: string | null) => {
-    if (!date) return "-";
-    return new Date(date).toLocaleDateString();
+    const ymd = toYmd(date);
+    return ymd ? formatYmd(ymd, "short") : "-";
   };
 
   if (isLoading) {

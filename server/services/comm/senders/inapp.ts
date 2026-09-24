@@ -1,9 +1,32 @@
 import { createCommStorage, createCommInappStorage } from '../../../storage/comm';
 import { storage } from '../../../storage';
 import { runInTransaction } from '../../../storage/transaction-context';
-import { notifyAlertCountChange } from '../../../modules/comm';
 import type { Comm, CommInapp } from '@shared/schema';
 import { storageLogger } from '../../../logger';
+import { ALREADY_SENT, findSentWithKey, type AlreadySentCode } from '../send-key';
+
+/**
+ * Broadcast the user's new unread count, after the current turn.
+ *
+ * `server/modules/comm` imports this sender, so importing it back statically
+ * closes a module-initialization cycle: under a transform that does not hoist
+ * function exports across the cycle (Vite's SSR transform, which the test
+ * runner uses), `modules/comm` evaluates before the storage barrel it calls
+ * into and dies with "createCommStorage is not a function". The work is
+ * already deferred to the next tick, so importing it there costs nothing.
+ *
+ * `notifyAlertCountChange` handles its own errors; the catch here only covers
+ * a failure to load the module at all.
+ */
+function scheduleAlertCountNotification(userId: string): void {
+  setImmediate(() => {
+    void import('../../../modules/comm')
+      .then((m) => m.notifyAlertCountChange(userId))
+      .catch((error) => {
+        storageLogger.error('Failed to broadcast alert update', { error });
+      });
+  });
+}
 
 export interface SendInappRequest {
   contactId: string;
@@ -14,6 +37,12 @@ export interface SendInappRequest {
   linkLabel?: string;
   initiatedBy?: string;
   tagIds?: string[];
+  /**
+   * Optional send-once key. See `comm.sendKey` in `shared/schema.ts`: the
+   * first send with this key to this contact goes out, every later one is
+   * refused with {@link ALREADY_SENT} and no second alert is created.
+   */
+  sendKey?: string;
 }
 
 export interface SendInappResult {
@@ -21,7 +50,13 @@ export interface SendInappResult {
   comm?: Comm;
   commInapp?: CommInapp;
   error?: string;
-  errorCode?: 'VALIDATION_ERROR' | 'STORAGE_ERROR' | 'UNKNOWN_ERROR';
+  errorCode?: 'VALIDATION_ERROR' | 'STORAGE_ERROR' | 'UNKNOWN_ERROR' | AlreadySentCode;
+  /**
+   * The send was refused because its key was already spent. This is NOT a
+   * failure — nothing was attempted and nothing broke. `comm` carries the
+   * message that did go out, when it can still be read.
+   */
+  alreadySent?: boolean;
 }
 
 export interface MarkAsReadResult {
@@ -34,8 +69,23 @@ export interface MarkAsReadResult {
 const commStorage = createCommStorage();
 const commInappStorage = createCommInappStorage();
 
+/**
+ * The answer when the claim insert came back empty: this key is spent, so the
+ * message already went out and no second alert may be created.
+ */
+async function alreadySent(contactId: string, sendKey: string): Promise<SendInappResult> {
+  const existing = await findSentWithKey({ medium: 'inapp', contactId, sendKey });
+  return {
+    success: false,
+    alreadySent: true,
+    comm: existing,
+    error: 'An in-app message with this send key has already been sent to this contact',
+    errorCode: ALREADY_SENT,
+  };
+}
+
 export async function sendInapp(request: SendInappRequest): Promise<SendInappResult> {
-  const { contactId, userId, title, body, linkUrl, linkLabel, initiatedBy, tagIds } = request;
+  const { contactId, userId, title, body, linkUrl, linkLabel, initiatedBy, tagIds, sendKey } = request;
 
   try {
     if (!contactId) {
@@ -86,6 +136,8 @@ export async function sendInapp(request: SendInappRequest): Promise<SendInappRes
       };
     }
 
+    // This insert is the send-once claim: if a key was supplied and it is
+    // already spent, nothing is written and no alert is created.
     const comm = await runInTransaction(async () => {
       const created = await commStorage.createComm({
         medium: 'inapp',
@@ -93,7 +145,9 @@ export async function sendInapp(request: SendInappRequest): Promise<SendInappRes
         status: 'sent',
         sent: new Date(),
         data: { initiatedBy: initiatedBy || 'system' },
+        sendKey: sendKey ?? null,
       });
+      if (!created) return null;
 
       if (tagIds && tagIds.length > 0) {
         await storage.commTags.setTags(created.id, tagIds);
@@ -101,6 +155,8 @@ export async function sendInapp(request: SendInappRequest): Promise<SendInappRes
 
       return created;
     });
+
+    if (!comm) return await alreadySent(contactId, sendKey!);
 
     let commInappRecord: CommInapp;
     try {
@@ -131,7 +187,7 @@ export async function sendInapp(request: SendInappRequest): Promise<SendInappRes
       };
     }
 
-    setImmediate(() => notifyAlertCountChange(userId));
+    scheduleAlertCountNotification(userId);
 
     return {
       success: true,
@@ -202,7 +258,7 @@ export async function markInappAsRead(alertId: string, userId: string): Promise<
       },
     });
 
-    setImmediate(() => notifyAlertCountChange(userId));
+    scheduleAlertCountNotification(userId);
 
     return {
       success: true,

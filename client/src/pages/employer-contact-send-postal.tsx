@@ -8,7 +8,7 @@ function EmployerContactSendPostalContent() {
     email: employerContact.contact.email,
     displayName: employerContact.contact.displayName,
   } : null;
-  return <CommSendWrapper channel="postal" contact={contact} />;
+  return <CommSendWrapper channel="postal" contact={contact} composeTarget={{ scope: "employer_contact", recordId: employerContact.id }} />;
 }
 
 export default function EmployerContactSendPostal() {

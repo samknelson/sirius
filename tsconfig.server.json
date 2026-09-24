@@ -1,0 +1,17 @@
+{
+  // Half of the split typecheck (`npm run check`) — see tsconfig.client.json
+  // for the other half and for why the program is split at all.
+  //
+  // This half's entry roots are server + shared + tests. They are roots, not
+  // an exclusive partition: a file reached by import is checked too, so a test
+  // that imports a `@/…` client module pulls that module in here as well (and
+  // the client half likewise pulls in the server types it imports). Between
+  // them the two halves resolve to exactly the file set the root config does.
+  "extends": "./tsconfig.json",
+  "include": ["server/**/*", "shared/**/*", "tests/**/*"],
+  "compilerOptions": {
+    // A build-info file per program: the two halves would otherwise clobber
+    // each other's cache and re-check everything on every run.
+    "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo.server"
+  }
+}

@@ -6,9 +6,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Wand2, ArrowLeft, Trash2, AlertTriangle, Clock, Undo2 } from "lucide-react";
-import { format } from "date-fns";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Wand2, ArrowLeft, Trash2, AlertTriangle, Clock, Undo2, FileText } from "lucide-react";
+import { format } from "@/lib/date-format";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { RetentionSettings } from "@/components/wizards/RetentionSettings";
 import { FrameworkWizardBody } from "@/components/wizards/framework/FrameworkWizardBody";
@@ -81,7 +81,7 @@ export default function WizardView() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete wizard",
+        description: getApiErrorMessage(error, "Failed to delete wizard"),
         variant: "destructive",
       });
     },
@@ -199,6 +199,14 @@ export default function WizardView() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {wizardType?.isReport && (
+              <Link href={`/reports/${wizard.type}`}>
+                <Button variant="outline" size="sm" data-testid="button-view-report-type">
+                  <FileText size={16} className="mr-2" />
+                  View all runs
+                </Button>
+              </Link>
+            )}
             {employer && (
               <Link href={`/employers/${employer.id}/wizards`}>
                 <Button variant="outline" size="sm" data-testid="button-back-to-employer">

@@ -25,7 +25,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { format, parseISO, isAfter, isBefore, startOfDay, endOfDay } from "date-fns";
+import { parseISO, isAfter, isBefore, startOfDay, endOfDay } from "date-fns";
+import { format } from "@/lib/date-format";
 import type { Event, EventType, EventOccurrence } from "@shared/schema";
 
 const iconMap: Record<string, LucideIcon> = {

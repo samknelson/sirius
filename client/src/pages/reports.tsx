@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { FileText, ChevronRight, Clock, BarChart3 } from "lucide-react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { Wizard, WizardType } from "@/lib/wizard-types";
 
 interface ReportsProps {
@@ -19,13 +19,16 @@ export default function Reports({ activeCategory }: ReportsProps = {}) {
     queryKey: ["/api/wizard-types"],
   });
 
-  const reportTypes = allWizardTypes?.filter(wt => wt.name.startsWith('report_')) || [];
+  // A wizard type is a report if it carries the isReport flag (plugin
+  // wizards) or follows the legacy `report_` naming convention.
+  const reportTypes = allWizardTypes?.filter(wt => wt.isReport || wt.name.startsWith('report_')) || [];
+  const reportTypeNames = new Set(reportTypes.map(rt => rt.name));
 
   const { data: allWizards, isLoading: wizardsLoading } = useQuery<Wizard[]>({
     queryKey: ["/api/wizards"],
   });
 
-  const reportWizards = allWizards?.filter(w => w.type.startsWith('report_')) || [];
+  const reportWizards = allWizards?.filter(w => reportTypeNames.has(w.type)) || [];
 
   // Get unique categories
   const categories = Array.from(new Set(reportTypes.map(rt => rt.category).filter(Boolean))) as string[];
@@ -134,6 +137,15 @@ export default function Reports({ activeCategory }: ReportsProps = {}) {
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <CardTitle className="text-lg">{type.displayName}</CardTitle>
+                    {/* The report type's id, shown so it can be copied into
+                        places that address a wizard type by id (token
+                        arguments, URLs) rather than by display name. */}
+                    <code
+                      className="mt-1 block font-mono text-xs text-muted-foreground"
+                      data-testid={`text-report-type-id-${type.name}`}
+                    >
+                      {type.name}
+                    </code>
                     {type.description && (
                       <CardDescription className="mt-1">
                         {type.description}

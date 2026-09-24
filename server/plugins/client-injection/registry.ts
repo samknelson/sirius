@@ -1,5 +1,6 @@
 import type { Request } from "express";
 import { PluginRegistry } from "../_core";
+import { getRawProcessEnv } from "../../config/env-registry";
 import type {
   ClientInjectionPlugin,
   ClientInjectionManifestEntry,
@@ -85,7 +86,9 @@ export async function resolveClientInjections(
     };
 
     if (impl.resolve) {
-      const resolved = await impl.resolve({ req, env: process.env });
+      // Sanctioned raw-env passthrough: the impl filters the environment
+      // itself (individual reads must use getEnvironmentVariable instead).
+      const resolved = await impl.resolve({ req, env: getRawProcessEnv() });
       if (resolved === null || resolved === undefined) continue;
       if (resolved.src !== undefined) src = resolved.src;
       if (resolved.code !== undefined) code = resolved.code;

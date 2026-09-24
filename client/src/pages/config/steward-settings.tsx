@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Role } from "@/lib/entity-types";
 
 const VARIABLE_NAME = "worker_steward_config";
@@ -109,7 +109,7 @@ export default function StewardSettingsPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to save steward settings.",
+        description: getApiErrorMessage(error, "Failed to save steward settings."),
         variant: "destructive",
       });
     },

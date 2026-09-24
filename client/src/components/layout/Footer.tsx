@@ -1,20 +1,18 @@
-import { useQuery } from "@tanstack/react-query";
-import DOMPurify from "isomorphic-dompurify";
-import { SiteSettings } from "@/lib/system-types";
+import { sanitizeHtml } from "@shared/utils/html";
+import { useSiteSettings } from "@/lib/use-variable";
 
 export default function Footer() {
-  const { data: settings } = useQuery<SiteSettings>({
-    queryKey: ["/api/site-settings"],
-  });
+  const settings = useSiteSettings();
 
   if (!settings?.footer) {
     return null;
   }
 
-  const sanitizedFooter = DOMPurify.sanitize(settings.footer);
+  const sanitizedFooter = sanitizeHtml(settings.footer, "library-default");
 
   return (
     <footer 
+      id="site-footer"
       className="bg-white dark:bg-gray-950 border-t border-gray-200 dark:border-gray-800 mt-auto"
       data-testid="site-footer"
     >

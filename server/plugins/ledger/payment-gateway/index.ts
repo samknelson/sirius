@@ -118,12 +118,17 @@ export function registerPaymentGatewayPluginKind(): void {
  */
 export async function backfillPaymentGatewaySubsidiaries(): Promise<void> {
   const { storage } = await import("../../../storage");
+  const { withFrameworkWrite } = await import("../../../middleware/request-context");
   const configs = await storage.pluginConfigs.getByKind("payment-gateway");
   for (const cfg of configs) {
     try {
       const envelope = await storage.pluginConfigs.getWithSubsidiary(cfg.id);
       if (!envelope || envelope.subsidiary) continue; // already has a row
-      await storage.pluginConfigs.upsertSubsidiary("payment-gateway", { id: cfg.id });
+      // Backfilling a missing subsidiary row is the framework's own doing
+      // (see `withFrameworkWrite`): no person, and no audit entry per boot.
+      await withFrameworkWrite(() =>
+        storage.pluginConfigs.upsertSubsidiary("payment-gateway", { id: cfg.id }),
+      );
       logger.info(`Backfilled payment-gateway subsidiary for config ${cfg.id}`, {
         service: "payment-gateway-plugins",
       });
@@ -144,9 +149,15 @@ export async function backfillPaymentGatewaySubsidiaries(): Promise<void> {
  * old global value onto any config that has no `paymentTypes` of its own, then
  * deletes the global so it is no longer the source of truth. Runs at boot after
  * the kind is registered; re-running is a no-op (the variable is gone).
+ *
+ * Safe when two tasks boot at once (Task #1350): both read the same legacy
+ * value and write the same list onto the same configs, so the losing write is
+ * byte-identical to the winning one, and whichever task deletes the global
+ * second simply finds it gone.
  */
 export async function backfillPaymentTypesFromGlobal(): Promise<void> {
   const { storage } = await import("../../../storage");
+  const { withFrameworkWrite } = await import("../../../middleware/request-context");
   const variable = await storage.variables.getByName("stripe_payment_methods");
   if (!variable) return; // already migrated / never set
 
@@ -168,9 +179,13 @@ export async function backfillPaymentTypesFromGlobal(): Promise<void> {
         continue; // config already has its own list
       }
       try {
-        await storage.pluginConfigs.update(cfg.id, {
-          data: { ...data, paymentTypes: legacyTypes },
-        });
+        // Moving a legacy global onto each config is the framework's own
+        // doing (see `withFrameworkWrite`): no person, no audit entry.
+        await withFrameworkWrite(() =>
+          storage.pluginConfigs.update(cfg.id, {
+            data: { ...data, paymentTypes: legacyTypes },
+          }),
+        );
         logger.info(
           `Backfilled payment types onto gateway config ${cfg.id} from legacy global variable`,
           { service: "payment-gateway-plugins" },

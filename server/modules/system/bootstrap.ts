@@ -59,6 +59,15 @@ export function registerBootstrapRoutes(app: Express) {
         roleId: adminRole.id
       });
 
+      // If a local credential is configured via env for this email, attach it
+      // now so the operator can log in immediately without a restart.
+      try {
+        const { ensureLocalAdminAccount } = await import("../../auth/local-seed");
+        await ensureLocalAdminAccount();
+      } catch (seedError) {
+        console.error("Local credential seeding after bootstrap failed:", seedError);
+      }
+
       res.json({
         message: "Bootstrap completed successfully",
         user: {

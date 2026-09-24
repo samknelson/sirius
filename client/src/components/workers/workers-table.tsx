@@ -501,8 +501,6 @@ export function WorkersTable({
         deliverabilityStatus: 'unknown',
         lastVerifiedAt: null,
         needsReview: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
       };
     }
     

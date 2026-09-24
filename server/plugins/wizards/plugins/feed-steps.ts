@@ -1,7 +1,7 @@
 import { parse as parseCSV } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import type { FeedWizard, FeedField } from "../engine/feed";
-import { objectStorageService } from "../../../services/objectStorage";
+import { fileSystemService } from "../../../services/files";
 import { getEffectiveUser } from "../../../modules/masquerade";
 import type {
   WizardStepHandler,
@@ -164,11 +164,11 @@ export function buildUploadStep(
           : {};
 
       const customPath = `wizards/${ctx.wizardId}/${Date.now()}_${file.originalname}`;
-      const uploadResult = await objectStorageService.uploadFile({
+      const uploadResult = await fileSystemService.upload({
         fileName: file.originalname,
         fileContent: file.buffer,
         mimeType: file.mimetype,
-        accessLevel: "private",
+        fileSystemId: "private",
         customPath,
       });
 
@@ -182,7 +182,7 @@ export function buildUploadStep(
         uploadedBy: dbUser.id,
         entityType: "wizard",
         entityId: ctx.wizardId,
-        accessLevel: "private",
+        fileSystemId: "private",
       });
 
       return {

@@ -8,7 +8,7 @@ function TrustProviderContactSendPostalContent() {
     email: trustProviderContact.contact.email,
     displayName: trustProviderContact.contact.displayName,
   } : null;
-  return <CommSendWrapper channel="postal" contact={contact} />;
+  return <CommSendWrapper channel="postal" contact={contact} composeTarget={{ scope: "provider_contact", recordId: trustProviderContact.id }} />;
 }
 
 export default function TrustProviderContactSendPostal() {

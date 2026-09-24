@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -58,7 +58,7 @@ export default function Bootstrap() {
     } catch (error: any) {
       toast({
         title: "Bootstrap Failed",
-        description: error.message || "Failed to create admin account",
+        description: getApiErrorMessage(error, "Failed to create admin account"),
         variant: "destructive",
       });
       setIsSubmitting(false);

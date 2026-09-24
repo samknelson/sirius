@@ -1,11 +1,15 @@
 import { getClient, runInTransaction, onAfterCommit } from "../transaction-context";
 import {
   grievances,
+  grievanceNameDenorm,
   grievanceStatusHistory,
+  optionsGrievanceCategory,
   optionsGrievanceStatus,
+  TIMELINE_ADJUSTMENT_DATA_KEY,
   type GrievanceStatusHistory,
+  type GrievanceTimelineAdjustment,
 } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
 import { eventBus, EventType } from "../../services/event-bus";
 
@@ -15,14 +19,80 @@ import { eventBus, EventType } from "../../services/event-bus";
  * grievance's timeline steps from committed data. Best-effort: a failed emit
  * never fails the write.
  */
-function emitStatusHistorySaved(grievanceId: string): void {
+/**
+ * The grievance's derived current status at a point in time: id + resolved
+ * name, both null when the grievance has no history (or the status option is
+ * missing). Captured before and after a mutation so the emitted event can
+ * describe a genuine status transition.
+ */
+interface CurrentStatusRef {
+  /**
+   * The status-history ROW that is current at this point in time. A consumer
+   * that renders the transition (the status notifier) loads this exact row, so
+   * a later transition can't make it describe a status the entry never had.
+   */
+  entryId: string | null;
+  statusId: string | null;
+  statusName: string | null;
+}
+
+/**
+ * Read the grievance's current status (the `is_current` entry) with its
+ * resolved name. Call inside the mutation transaction: before `recomputeIsCurrent`
+ * to capture the previous status, and after it to capture the new one.
+ */
+async function getCurrentStatus(grievanceId: string): Promise<CurrentStatusRef> {
+  const client = getClient();
+  const [row] = await client
+    .select({
+      entryId: grievanceStatusHistory.id,
+      statusId: grievanceStatusHistory.statusId,
+      statusName: optionsGrievanceStatus.name,
+    })
+    .from(grievanceStatusHistory)
+    .leftJoin(
+      optionsGrievanceStatus,
+      eq(grievanceStatusHistory.statusId, optionsGrievanceStatus.id),
+    )
+    .where(
+      and(
+        eq(grievanceStatusHistory.grievanceId, grievanceId),
+        eq(grievanceStatusHistory.isCurrent, true),
+      ),
+    )
+    .limit(1);
+  return {
+    entryId: row?.entryId ?? null,
+    statusId: row?.statusId ?? null,
+    statusName: row?.statusName ?? null,
+  };
+}
+
+function emitStatusHistorySaved(
+  grievanceId: string,
+  previous: CurrentStatusRef,
+  next: CurrentStatusRef,
+): void {
   onAfterCommit(() => {
-    void eventBus.emit(EventType.GRIEVANCE_STATUS_HISTORY_SAVED, { grievanceId });
+    void eventBus.emit(EventType.GRIEVANCE_STATUS_HISTORY_SAVED, {
+      grievanceId,
+      previousStatusId: previous.statusId,
+      previousStatusName: previous.statusName,
+      newStatusId: next.statusId,
+      newStatusName: next.statusName,
+      newStatusHistoryId: next.entryId,
+    });
   });
 }
 
 export interface GrievanceStatusHistoryItem extends GrievanceStatusHistory {
   statusName: string | null;
+  /**
+   * The `open` flag of the referenced grievance status (null if the status
+   * row is missing). A closed status (`false`) terminates the current
+   * timeline step in the `grievance_timeline` denorm.
+   */
+  statusOpen: boolean | null;
 }
 
 /**
@@ -42,6 +112,12 @@ export interface GrievanceStatusHistoryStorage {
     grievanceId: string,
     entryId: string,
   ): Promise<GrievanceStatusHistory | undefined>;
+  /**
+   * One entry by its own id, without knowing which grievance it is on —
+   * the grievance id comes back ON the row. For callers holding only an
+   * entry id (the preview picker hands back what it listed).
+   */
+  getById(entryId: string): Promise<GrievanceStatusHistory | undefined>;
   create(
     grievanceId: string,
     data: { statusId: string; date: Date; data?: unknown },
@@ -52,6 +128,17 @@ export interface GrievanceStatusHistoryStorage {
     data: { statusId?: string; date?: Date },
   ): Promise<GrievanceStatusHistory | undefined>;
   delete(grievanceId: string, entryId: string): Promise<boolean>;
+  /**
+   * Set or clear (pass null) the timeline adjustment stored under the
+   * `timelineAdjustment` key of the entry's `data` jsonb. Merges — other keys
+   * in `data` are preserved. Fires the status-history-saved event so the
+   * timeline denorm recomputes.
+   */
+  setTimelineAdjustment(
+    grievanceId: string,
+    entryId: string,
+    adjustment: GrievanceTimelineAdjustment | null,
+  ): Promise<GrievanceStatusHistory | undefined>;
 }
 
 /**
@@ -116,6 +203,7 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
           isCurrent: grievanceStatusHistory.isCurrent,
           data: grievanceStatusHistory.data,
           statusName: optionsGrievanceStatus.name,
+          statusOpen: optionsGrievanceStatus.open,
         })
         .from(grievanceStatusHistory)
         .leftJoin(
@@ -125,6 +213,16 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
         .where(eq(grievanceStatusHistory.grievanceId, grievanceId))
         .orderBy(desc(grievanceStatusHistory.date));
       return rows;
+    },
+
+
+    async getById(entryId: string): Promise<GrievanceStatusHistory | undefined> {
+      const client = getClient();
+      const [row] = await client
+        .select()
+        .from(grievanceStatusHistory)
+        .where(eq(grievanceStatusHistory.id, entryId));
+      return row || undefined;
     },
 
     async get(
@@ -151,6 +249,9 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
       return runInTransaction(async () => {
         const client = getClient();
         await lockGrievance(grievanceId);
+        // Capture the current status BEFORE the mutation so an edit to the
+        // currently-current entry doesn't make `previous` read back the new value.
+        const previous = await getCurrentStatus(grievanceId);
         const [row] = await client
           .insert(grievanceStatusHistory)
           .values({
@@ -162,11 +263,12 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
           })
           .returning();
         await recomputeIsCurrent(grievanceId);
+        const next = await getCurrentStatus(grievanceId);
         const [fresh] = await client
           .select()
           .from(grievanceStatusHistory)
           .where(eq(grievanceStatusHistory.id, row.id));
-        emitStatusHistorySaved(grievanceId);
+        emitStatusHistorySaved(grievanceId, previous, next);
         return fresh;
       });
     },
@@ -179,6 +281,7 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
       return runInTransaction(async () => {
         const client = getClient();
         await lockGrievance(grievanceId);
+        const previous = await getCurrentStatus(grievanceId);
         const set: Partial<typeof grievanceStatusHistory.$inferInsert> = {};
         if (data.statusId !== undefined) set.statusId = data.statusId;
         if (data.date !== undefined) set.date = data.date;
@@ -194,11 +297,12 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
           .returning();
         if (!row) return undefined;
         await recomputeIsCurrent(grievanceId);
+        const next = await getCurrentStatus(grievanceId);
         const [fresh] = await client
           .select()
           .from(grievanceStatusHistory)
           .where(eq(grievanceStatusHistory.id, row.id));
-        emitStatusHistorySaved(grievanceId);
+        emitStatusHistorySaved(grievanceId, previous, next);
         return fresh || undefined;
       });
     },
@@ -207,6 +311,7 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
       return runInTransaction(async () => {
         const client = getClient();
         await lockGrievance(grievanceId);
+        const previous = await getCurrentStatus(grievanceId);
         const result = await client
           .delete(grievanceStatusHistory)
           .where(
@@ -218,8 +323,53 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
           .returning();
         if (result.length === 0) return false;
         await recomputeIsCurrent(grievanceId);
-        emitStatusHistorySaved(grievanceId);
+        const next = await getCurrentStatus(grievanceId);
+        emitStatusHistorySaved(grievanceId, previous, next);
         return true;
+      });
+    },
+
+    async setTimelineAdjustment(
+      grievanceId: string,
+      entryId: string,
+      adjustment: GrievanceTimelineAdjustment | null,
+    ): Promise<GrievanceStatusHistory | undefined> {
+      return runInTransaction(async () => {
+        const client = getClient();
+        await lockGrievance(grievanceId);
+        const [existing] = await client
+          .select()
+          .from(grievanceStatusHistory)
+          .where(
+            and(
+              eq(grievanceStatusHistory.id, entryId),
+              eq(grievanceStatusHistory.grievanceId, grievanceId),
+            ),
+          )
+          .for("update");
+        if (!existing) return undefined;
+        // Merge into the existing `data` jsonb — preserve unrelated keys.
+        const currentData =
+          existing.data && typeof existing.data === "object"
+            ? { ...(existing.data as Record<string, unknown>) }
+            : {};
+        if (adjustment === null) {
+          delete currentData[TIMELINE_ADJUSTMENT_DATA_KEY];
+        } else {
+          currentData[TIMELINE_ADJUSTMENT_DATA_KEY] = adjustment;
+        }
+        const newData = Object.keys(currentData).length > 0 ? currentData : null;
+        const [row] = await client
+          .update(grievanceStatusHistory)
+          .set({ data: newData })
+          .where(eq(grievanceStatusHistory.id, existing.id))
+          .returning();
+        // A timeline-adjustment edit never changes the derived current status,
+        // so report no transition (previous === current) — the timeline denorm
+        // still recomputes off `grievanceId`, but a status notifier won't fire.
+        const current = await getCurrentStatus(grievanceId);
+        emitStatusHistorySaved(grievanceId, current, current);
+        return row || undefined;
       });
     },
   };
@@ -228,6 +378,8 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
 export const grievanceStatusHistoryLoggingConfig: StorageLoggingConfig<GrievanceStatusHistoryStorage> =
   {
     module: "grievanceStatusHistory",
+    table: 'grievance_status_history',
+    hostTable: 'grievances',
     methods: {
       create: {
         enabled: true,
@@ -248,6 +400,16 @@ export const grievanceStatusHistoryLoggingConfig: StorageLoggingConfig<Grievance
         getEntityId: (args) => args[1],
         getHostEntityId: (args) => args[0],
         getDescription: async () => `Removed status history entry from grievance`,
+      },
+      setTimelineAdjustment: {
+        enabled: true,
+        getEntityId: (args) => args[1],
+        getHostEntityId: (args) => args[0],
+        after: async (_args, result) => result,
+        getDescription: async (args) =>
+          args[2] === null
+            ? `Removed timeline adjustment from grievance status history entry`
+            : `Set timeline adjustment on grievance status history entry`,
       },
     },
   };

@@ -9,6 +9,7 @@ import { eq, desc, sql } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 import { eventBus, EventType } from "../services/event-bus";
 import { logger } from "../logger";
+import { parseYmdParts } from '@shared/utils/date';
 
 /**
  * Stub validator - add validation logic here when needed
@@ -22,6 +23,11 @@ export interface WorkerWshStorage {
    * (by date, then createdAt, then id; null if none). This is the source of
    * truth the `worker_ws` denorm plugin reads when recomputing
    * `worker_wsh_denorm`.
+   *
+   * `createdAt` is load-bearing here, not decoration: nothing stops a worker
+   * holding two entries for one effective date, and the entry made LAST is the
+   * current one. That is why the column survived the provenance retirement its
+   * `worker_msh` twin went through — see `docs/provenance-columns.md`.
    */
   getCurrentWorkStatusId(workerId: string): Promise<string | null>;
   createWorkerWsh(data: { workerId: string; date: string; wsId: string; data?: any }): Promise<WorkerWsh>;
@@ -137,6 +143,8 @@ export function createWorkerWshStorage(
 
 export const workerWshLoggingConfig: StorageLoggingConfig<WorkerWshStorage> = {
   module: 'worker-wsh',
+  table: 'worker_wsh',
+  hostTable: 'workers',
   methods: {
     createWorkerWsh: {
       enabled: true,
@@ -147,8 +155,8 @@ export const workerWshLoggingConfig: StorageLoggingConfig<WorkerWshStorage> = {
         const date = result?.date || args[0]?.date || 'Unknown';
         let formattedDate = date;
         if (date !== 'Unknown' && typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          const [year, month, day] = date.split('-');
-          formattedDate = `${parseInt(month)}/${parseInt(day)}/${year}`;
+          const { year, month, day } = parseYmdParts(date);
+          formattedDate = `${month}/${day}/${year}`;
         }
         return `Created Work Status Entry [${workStatusName} ${formattedDate}]`;
       },
@@ -184,8 +192,8 @@ export const workerWshLoggingConfig: StorageLoggingConfig<WorkerWshStorage> = {
         const date = result?.date || beforeState?.wsh?.date || 'Unknown';
         let formattedDate = date;
         if (date !== 'Unknown' && typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          const [year, month, day] = date.split('-');
-          formattedDate = `${parseInt(month)}/${parseInt(day)}/${year}`;
+          const { year, month, day } = parseYmdParts(date);
+          formattedDate = `${month}/${day}/${year}`;
         }
         return `Updated Work Status Entry [${oldStatusName} → ${newStatusName} ${formattedDate}]`;
       },
@@ -240,8 +248,8 @@ export const workerWshLoggingConfig: StorageLoggingConfig<WorkerWshStorage> = {
         const date = beforeState?.wsh?.date || 'Unknown';
         let formattedDate = date;
         if (date !== 'Unknown' && typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          const [year, month, day] = date.split('-');
-          formattedDate = `${parseInt(month)}/${parseInt(day)}/${year}`;
+          const { year, month, day } = parseYmdParts(date);
+          formattedDate = `${month}/${day}/${year}`;
         }
         return `Deleted Work Status Entry [${workStatusName} ${formattedDate}]`;
       },

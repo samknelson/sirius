@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest , getApiErrorMessage } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -78,7 +78,7 @@ export default function GrievanceTimelineTemplatesPage() {
     } catch (error) {
       toast({
         title: "Could not create timeline template",
-        description: error instanceof Error ? error.message : undefined,
+        description: getApiErrorMessage(error, "Could not create the timeline template."),
         variant: "destructive",
       });
     } finally {

@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Input } from "@/components/ui/input";
 import { Upload, Trash2, Loader2, FileSpreadsheet, AlertTriangle } from "lucide-react";
 
@@ -118,7 +118,7 @@ function AiFactorsSection() {
       setCsvText("");
     },
     onError: (error) => {
-      toast({ title: "Import Failed", description: error instanceof Error ? error.message : "An error occurred", variant: "destructive" });
+      toast({ title: "Import Failed", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 
@@ -314,7 +314,7 @@ function PayoutFactorsSection() {
       setCsvText("");
     },
     onError: (error) => {
-      toast({ title: "Import Failed", description: error instanceof Error ? error.message : "An error occurred", variant: "destructive" });
+      toast({ title: "Import Failed", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 
@@ -331,7 +331,7 @@ function PayoutFactorsSection() {
       setBulkCsvText("");
     },
     onError: (error) => {
-      toast({ title: "Bulk Import Failed", description: error instanceof Error ? error.message : "An error occurred", variant: "destructive" });
+      toast({ title: "Bulk Import Failed", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 
@@ -870,7 +870,7 @@ function EarlyRetirementFactorsSection() {
       setCsvText("");
     },
     onError: (error) => {
-      toast({ title: "Import Failed", description: error instanceof Error ? error.message : "An error occurred", variant: "destructive" });
+      toast({ title: "Import Failed", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 
@@ -991,7 +991,7 @@ function InterestRatesSection() {
       setCsvText("");
     },
     onError: (error) => {
-      toast({ title: "Import Failed", description: error instanceof Error ? error.message : "An error occurred", variant: "destructive" });
+      toast({ title: "Import Failed", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 

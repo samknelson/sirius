@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { PageHeader } from "@/components/layout/PageHeader";
 
 export default function CompanyAdd() {
@@ -38,7 +38,7 @@ export default function CompanyAdd() {
       setLocation("/companies");
     },
     onError: (error: any) => {
-      const message = error.message || "Failed to create company. Please try again.";
+      const message = getApiErrorMessage(error, "Failed to create company. Please try again.");
       toast({
         title: "Error",
         description: message,

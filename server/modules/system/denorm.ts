@@ -40,6 +40,21 @@ export function registerDenormRoutes(
     return plugin?.metadata.name ?? pluginId;
   }
 
+  // Registry-only view of every denorm plugin's declared storage
+  // relationships (reads + writes with sole-writer claims). No DB access —
+  // the declarations live on the plugin objects themselves.
+  app.get("/api/denorm/relationships", requireAccess("admin"), (_req, res) => {
+    const result = denormPluginRegistry.list().map((plugin) => ({
+      pluginId: plugin.metadata.id,
+      pluginName: plugin.metadata.name,
+      entityType: plugin.entityType,
+      events: (plugin.eventHandlers ?? []).map((h) => h.event),
+      reads: plugin.reads,
+      writes: plugin.writes,
+    }));
+    res.json(result);
+  });
+
   // List every denorm plugin config with its status breakdown.
   app.get("/api/denorm/configs", requireAccess("admin"), async (_req, res) => {
     try {

@@ -6,10 +6,11 @@ import {
   optionsIndustry,
   type WorkerMsh,
 } from "@shared/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 import { eventBus, EventType } from "../services/event-bus";
 import { logger } from "../logger";
+import { parseYmdParts } from '@shared/utils/date';
 
 export const validate = createNoopValidator();
 
@@ -21,6 +22,13 @@ export interface WorkerMshStorage {
    * `worker_ms` denorm plugin reads when recomputing `worker_msh_denorm`.
    */
   getCurrentMemberStatusIds(workerId: string): Promise<string[]>;
+  /**
+   * All workers whose CURRENT member status (latest history entry per
+   * industry, same tie-breaking as getCurrentMemberStatusIds) is one of the
+   * given status option IDs. Authoritative (reads worker_msh directly, not
+   * the denorm table). Returns one row per (worker, matching status).
+   */
+  getWorkerIdsWithCurrentMs(msIds: string[]): Promise<Array<{ workerId: string; msId: string }>>;
   createWorkerMsh(data: { workerId: string; date: string; msId: string; industryId: string; data?: any }): Promise<WorkerMsh>;
   updateWorkerMsh(id: string, data: { date?: string; msId?: string; industryId?: string; data?: any }): Promise<WorkerMsh | undefined>;
   deleteWorkerMsh(id: string): Promise<boolean>;
@@ -62,11 +70,17 @@ export function createWorkerMshStorage(
           date: workerMsh.date,
           msId: workerMsh.msId,
           industryId: workerMsh.industryId,
-          createdAt: workerMsh.createdAt,
         })
         .from(workerMsh)
         .where(eq(workerMsh.workerId, workerId))
-        .orderBy(desc(workerMsh.date), sql`${workerMsh.createdAt} DESC NULLS LAST`, desc(workerMsh.id));
+        // Date alone settles it: unique (worker_id, industry_id, date) means
+        // one worker cannot hold two member statuses for one industry on one
+        // date, so the latest per industry is unambiguous. `id` remains only
+        // to keep the ordering total and repeatable. (This used to tie-break
+        // on a `created_at` column that the constraint makes unreachable.
+        // The local timestamp is retained for process-table compatibility,
+        // but it is not needed for this current-status ordering.
+        .orderBy(desc(workerMsh.date), desc(workerMsh.id));
 
       const latestByIndustry = new Map<string, string>();
       for (const entry of allEntries) {
@@ -76,6 +90,31 @@ export function createWorkerMshStorage(
       }
 
       return Array.from(latestByIndustry.values());
+    },
+
+    async getWorkerIdsWithCurrentMs(msIds: string[]): Promise<Array<{ workerId: string; msId: string }>> {
+      if (msIds.length === 0) return [];
+      const client = getClient();
+      const latest = client
+        .selectDistinctOn([workerMsh.workerId, workerMsh.industryId], {
+          workerId: workerMsh.workerId,
+          msId: workerMsh.msId,
+        })
+        .from(workerMsh)
+        // Same tie-breaking as getCurrentMemberStatusIds: date decides, and
+        // the unique (worker_id, industry_id, date) constraint guarantees it
+        // can decide on its own.
+        .orderBy(
+          workerMsh.workerId,
+          workerMsh.industryId,
+          desc(workerMsh.date),
+          desc(workerMsh.id),
+        )
+        .as("latest");
+      return client
+        .select({ workerId: latest.workerId, msId: latest.msId })
+        .from(latest)
+        .where(inArray(latest.msId, msIds));
     },
 
     async getWorkerMsh(workerId: string): Promise<any[]> {
@@ -149,6 +188,8 @@ export function createWorkerMshStorage(
 
 export const workerMshLoggingConfig: StorageLoggingConfig<WorkerMshStorage> = {
   module: 'worker-msh',
+  table: 'worker_msh',
+  hostTable: 'workers',
   methods: {
     createWorkerMsh: {
       enabled: true,
@@ -160,8 +201,8 @@ export const workerMshLoggingConfig: StorageLoggingConfig<WorkerMshStorage> = {
         const date = result?.date || args[0]?.date || 'Unknown';
         let formattedDate = date;
         if (date !== 'Unknown' && typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          const [year, month, day] = date.split('-');
-          formattedDate = `${parseInt(month)}/${parseInt(day)}/${year}`;
+          const { year, month, day } = parseYmdParts(date);
+          formattedDate = `${month}/${day}/${year}`;
         }
         return `Created Member Status Entry [${memberStatusName} (${industryName}) ${formattedDate}]`;
       },
@@ -201,8 +242,8 @@ export const workerMshLoggingConfig: StorageLoggingConfig<WorkerMshStorage> = {
         const date = result?.date || beforeState?.msh?.date || 'Unknown';
         let formattedDate = date;
         if (date !== 'Unknown' && typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          const [year, month, day] = date.split('-');
-          formattedDate = `${parseInt(month)}/${parseInt(day)}/${year}`;
+          const { year, month, day } = parseYmdParts(date);
+          formattedDate = `${month}/${day}/${year}`;
         }
         return `Updated Member Status Entry [${oldStatusName} → ${newStatusName} (${industryName}) ${formattedDate}]`;
       },
@@ -264,8 +305,8 @@ export const workerMshLoggingConfig: StorageLoggingConfig<WorkerMshStorage> = {
         const date = beforeState?.msh?.date || 'Unknown';
         let formattedDate = date;
         if (date !== 'Unknown' && typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          const [year, month, day] = date.split('-');
-          formattedDate = `${parseInt(month)}/${parseInt(day)}/${year}`;
+          const { year, month, day } = parseYmdParts(date);
+          formattedDate = `${month}/${day}/${year}`;
         }
         return `Deleted Member Status Entry [${memberStatusName} (${industryName}) ${formattedDate}]`;
       },

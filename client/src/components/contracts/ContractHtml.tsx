@@ -1,4 +1,4 @@
-import { sanitizeContractHtml } from "@/components/ui/simple-html-editor";
+import { sanitizeHtml } from "@shared/utils/html";
 import { cn } from "@/lib/utils";
 
 interface ContractHtmlProps {
@@ -9,10 +9,11 @@ interface ContractHtmlProps {
 
 /**
  * Shared read-only renderer for contract section bodies. Sanitizes the stored
- * HTML with the same allow-list the editor uses before rendering it.
+ * HTML under `authored-document` — the same policy that defines what the
+ * rich-text editor lets an author write — before rendering it.
  */
 export function ContractHtml({ html, className, "data-testid": testId }: ContractHtmlProps) {
-  const clean = html ? sanitizeContractHtml(html) : "";
+  const clean = html ? sanitizeHtml(html, "authored-document") : "";
   if (!clean.trim()) {
     return (
       <p className="text-muted-foreground text-sm italic" data-testid={testId}>

@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useParams, useLocation } from "wouter";
 import { Loader2, ArrowLeft, User, FileText, Calendar, CheckCircle, XCircle, Clock, Square, CheckSquare, DollarSign, Shield } from "lucide-react";
 import { Cardcheck, CardcheckDefinition, Worker, Contact, BargainingUnit } from "@shared/schema";
+import { escapeHtml, sanitizeHtml } from "@shared/utils/html";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccessCheck } from "@/hooks/use-access-check";
 import { Button } from "@/components/ui/button";
@@ -10,8 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest, ApiError } from "@/lib/queryClient";
-import { format } from "date-fns";
+import { queryClient, apiRequest, ApiError, getApiErrorMessage } from "@/lib/queryClient";
+import { format } from "@/lib/date-format";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -98,12 +99,6 @@ export default function CardcheckViewPage() {
 
   const canSign = allCheckboxesChecked && isRateValid;
 
-  const escapeHtml = (text: string): string => {
-    const div = document.createElement("div");
-    div.textContent = text;
-    return div.innerHTML;
-  };
-
   const buildDocRender = (): string => {
     let docRender = definition?.body || "";
     
@@ -145,7 +140,7 @@ export default function CardcheckViewPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to revoke cardcheck.",
+        description: getApiErrorMessage(error, "Failed to revoke cardcheck."),
         variant: "destructive",
       });
     },
@@ -170,7 +165,7 @@ export default function CardcheckViewPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete cardcheck.",
+        description: getApiErrorMessage(error, "Failed to delete cardcheck."),
         variant: "destructive",
       });
     },
@@ -426,9 +421,20 @@ export default function CardcheckViewPage() {
                   <CardTitle>Document Content</CardTitle>
                 </CardHeader>
                 <CardContent>
+                  {/*
+                    Unsigned preview of the definition body. Stored
+                    admin-authored HTML, unsanitized upstream, so it is
+                    sanitized here under `authored-document` — the policy that
+                    matches what the definition editor can produce. The signed
+                    snapshot built from this same body goes through
+                    SignatureModal, which sanitizes what it displays AND what
+                    it submits so the two cannot disagree.
+                  */}
                   <div 
                     className="prose prose-sm max-w-none dark:prose-invert"
-                    dangerouslySetInnerHTML={{ __html: definition.body }}
+                    dangerouslySetInnerHTML={{
+                      __html: sanitizeHtml(definition.body, "authored-document"),
+                    }}
                     data-testid="text-body"
                   />
                 </CardContent>

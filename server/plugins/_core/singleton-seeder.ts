@@ -1,7 +1,14 @@
-import { storage } from "../../storage";
-import { runInTransaction } from "../../storage/transaction-context";
-import { SingletonViolationError } from "../../storage/plugin-configs";
+// NOTE: storage (and its transaction-context / plugin-configs helpers) are
+// imported lazily inside `bootstrapSingletonPluginConfigs` rather than at module
+// top level. This module is re-exported by the `_core` barrel, and some
+// consumers of that barrel (e.g. the wizard registry, reached via
+// `server/storage/wizards.ts`) sit inside the storage boot chain. A top-level
+// `import ... from "../../storage"` here therefore closes a
+// storage→_core→storage cycle that leaves classes undefined at init time in the
+// esbuild production bundle. These symbols are only used at seed time (inside
+// the async function), so the lazy import is behavior-neutral.
 import { logger } from "../../logger";
+import { withFrameworkWrite } from "../../middleware/request-context";
 import { listPluginKinds, getPluginKind } from "./kinds";
 import { getPluginConfigAdapter } from "./config-adapter";
 
@@ -24,6 +31,14 @@ export async function bootstrapSingletonPluginConfigs(): Promise<void> {
   logger.info("Bootstrapping singleton plugin configs", {
     service: "singleton-seeder",
   });
+
+  // Lazy imports (see the module-level note): pulling storage in here rather
+  // than at module top level breaks the storage↔_core init cycle.
+  const { storage } = await import("../../storage");
+  const { runInTransaction } = await import("../../storage/transaction-context");
+  const { SingletonViolationError } = await import(
+    "../../storage/system/plugin-configs"
+  );
 
   let created = 0;
   let skipped = 0;
@@ -56,18 +71,24 @@ export async function bootstrapSingletonPluginConfigs(): Promise<void> {
         // mirror that here so seeded rows match route-created rows.
         base.siriusId = (flat as { siriusId?: string | null }).siriusId ?? null;
 
-        await runInTransaction(async () => {
-          // The storage layer reads singleton-ness from the plugin manifest
-          // (this plugin is `meta.singleton`), so the create call no longer
-          // needs an explicit flag.
-          const row = await storage.pluginConfigs.create(base as any);
-          if (subsidiary) {
-            await storage.pluginConfigs.upsertSubsidiary(kind, {
-              id: row.id,
-              ...subsidiary,
-            });
-          }
-        });
+        // Seeding a row a plugin needs to exist is the framework's own doing,
+        // not an administrator's: the configuration gets its provenance stamp
+        // (with no person) and no audit entry, so a restart that seeds a newly
+        // added cron job does not read as somebody having created it.
+        await withFrameworkWrite(() =>
+          runInTransaction(async () => {
+            // The storage layer reads singleton-ness from the plugin manifest
+            // (this plugin is `meta.singleton`), so the create call no longer
+            // needs an explicit flag.
+            const row = await storage.pluginConfigs.create(base as any);
+            if (subsidiary) {
+              await storage.pluginConfigs.upsertSubsidiary(kind, {
+                id: row.id,
+                ...subsidiary,
+              });
+            }
+          }),
+        );
 
         logger.info(`Seeded singleton plugin config: ${meta.id}`, {
           service: "singleton-seeder",

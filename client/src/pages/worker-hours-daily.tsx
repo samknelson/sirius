@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import {
   Table,
   TableBody,
@@ -129,7 +129,7 @@ function WorkerHoursContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create hours entry",
+        description: getApiErrorMessage(error, "Failed to create hours entry"),
         variant: "destructive",
       });
     },

@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Puzzle, RefreshCw } from "lucide-react";
 import type { EligibilityPluginMetadata } from "@shared/schema";
 
@@ -34,7 +34,7 @@ export default function DispatchBackfillPage() {
     onError: (error: Error) => {
       toast({
         title: "Backfill failed",
-        description: error.message,
+        description: getApiErrorMessage(error, "The operation failed."),
         variant: "destructive",
       });
       setBackfillingPlugin(null);

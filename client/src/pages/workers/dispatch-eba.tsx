@@ -3,11 +3,12 @@ import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useRef, useMemo, useCallback } from "react";
 import { CalendarDays, Loader2 } from "lucide-react";
 import { addDays, startOfDay, isSameDay } from "date-fns";
 import type { WorkerDispatchEba } from "@shared/schema";
+import { useVariableValue } from "@/lib/use-variable";
 
 function formatYmd(date: Date): string {
   const y = date.getFullYear();
@@ -85,10 +86,12 @@ function DispatchEbaContent() {
   const { toast } = useToast();
   const pendingDateRef = useRef<string | null>(null);
 
-  const { data: ebaSettings } = useQuery<{ advanceDays: number }>({
-    queryKey: ["/api/dispatch-eba/settings"],
-  });
-  const advanceDays = ebaSettings?.advanceDays ?? 30;
+  const { data: ebaSettingsValue } = useVariableValue("dispatch_eba_settings");
+  const rawAdvanceDays = (ebaSettingsValue as { advanceDays?: unknown } | null)?.advanceDays;
+  const advanceDays =
+    typeof rawAdvanceDays === "number" && Number.isInteger(rawAdvanceDays) && rawAdvanceDays >= 1
+      ? rawAdvanceDays
+      : 30;
 
   const { data: entries = [], isLoading } = useQuery<WorkerDispatchEba[]>({
     queryKey: ["/api/worker-dispatch-eba/worker", worker.id],
@@ -104,9 +107,9 @@ function DispatchEbaContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/worker-dispatch-eba/worker", worker.id] });
       pendingDateRef.current = null;
     },
-    onError: () => {
+    onError: (error) => {
       pendingDateRef.current = null;
-      toast({ title: "Error", description: "Failed to update availability.", variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(error, "Failed to update availability."), variant: "destructive" });
     },
   });
 

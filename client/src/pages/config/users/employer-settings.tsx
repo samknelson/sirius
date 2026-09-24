@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { Briefcase, Info, Save } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Role } from "@/lib/entity-types";
 
 interface EmployerUserSettingsResponse {
@@ -55,7 +55,7 @@ export default function EmployerUserSettingsPage() {
     onError: (error: any) => {
       toast({
         title: "Update Failed",
-        description: error?.message || "Failed to update employer user settings.",
+        description: getApiErrorMessage(error, "Failed to update employer user settings."),
         variant: "destructive",
       });
     },

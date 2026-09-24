@@ -1,8 +1,7 @@
 import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
-import { createDispatchJobStorage } from "../../../../storage/dispatch/jobs";
-import { createEmployerCompanyStorage } from "../../../../storage/employers/companies";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../registry";
+import { toYmd, isValidYmd, parseYmdParts } from "@shared/utils/date";
 
 const HTA_HOME_EMPLOYER_CATEGORY = "sitespecific:hta:home-employer";
 const HTA_HOME_COMPANY_CATEGORY = "sitespecific:hta:home-company";
@@ -33,21 +32,12 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
   requiredComponent: "sitespecific.hta",
 
   async getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): Promise<EligibilityCondition | EligibilityCondition[] | null> {
-    const jobStorage = createDispatchJobStorage();
-    const job = await jobStorage.getWithRelations(context.jobId);
+    const job = context.job;
 
-    if (!job) {
-      logger.warn(`Job not found for HTA home employer eligibility check`, {
-        service: "dispatch-elig-hta-home-employer",
-        jobId: context.jobId,
-      });
-      return null;
-    }
-
-    const startYmd = String(job.startYmd).split("T")[0].split(" ")[0];
-    const [yearStr, monthStr] = startYmd.split("-");
-    const year = parseInt(yearStr, 10);
-    const month = parseInt(monthStr, 10);
+    const startYmd = toYmd(String(job.startYmd)) ?? "";
+    const { year, month } = isValidYmd(startYmd)
+      ? parseYmdParts(startYmd)
+      : { year: NaN, month: NaN };
 
     if (isNaN(year) || isNaN(month)) {
       logger.warn(`Invalid start date for HTA home employer eligibility`, {
@@ -69,8 +59,7 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
       values: employerValues,
     });
 
-    const ecStorage = createEmployerCompanyStorage();
-    const ec = await ecStorage.getByEmployerId(job.employerId);
+    const ec = await context.getEmployerCompany();
     if (ec) {
       const companyValues = window.map(({ ym }) => `${ym}:${ec.companyId}`);
       conditions.push({

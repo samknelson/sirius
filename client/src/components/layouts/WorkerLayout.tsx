@@ -1,8 +1,11 @@
 import { createContext, useContext, ReactNode, useMemo } from "react";
-import { User, ArrowLeft } from "lucide-react";
+import { User, CalendarOff } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Worker, Contact } from "@shared/schema";
+import { Worker, Contact, WorkerTos } from "@shared/schema";
+import { sanitizeHtml } from "@shared/utils/html";
+import { useVariableValue } from "@/lib/use-variable";
+import { TOS_BANNER_VARIABLE_NAME, TOS_BANNER_DEFAULT_HTML } from "@/lib/worker-tos-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,6 +16,17 @@ import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { useAccessCheck } from "@/hooks/use-access-check";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
+
+const WORKER_BACK_LINK = {
+  href: "/workers",
+  label: "Back to Workers",
+  testId: "button-back-to-workers",
+};
 
 interface WorkerLayoutContextValue {
   worker: Worker;
@@ -64,6 +78,58 @@ function WorkerEdlsBadgeInner({ workerId }: { workerId: string }) {
   );
 }
 
+function WorkerTosBanner({ workerId }: { workerId: string }) {
+  const { hasComponent } = useAuth();
+  if (!hasComponent("worker.tos")) return null;
+  return <WorkerTosBannerInner workerId={workerId} />;
+}
+
+function WorkerTosBannerInner({ workerId }: { workerId: string }) {
+  // Same query key as the worker TOS page so starting/stopping an
+  // absence updates the banner immediately. Fail quiet: while loading
+  // or on error (e.g. insufficient access) render nothing.
+  const { data: records, isError } = useQuery<WorkerTos[]>({
+    queryKey: ["/api/workers", workerId, "tos"],
+    retry: false,
+  });
+
+  const { data: bannerValue } = useVariableValue(TOS_BANNER_VARIABLE_NAME);
+
+  const openAbsence = records?.find((r) => r.endDate === null);
+
+  const html = useMemo(() => {
+    const raw =
+      typeof bannerValue === "string" && bannerValue ? bannerValue : TOS_BANNER_DEFAULT_HTML;
+    return sanitizeHtml(raw, "authored-document");
+  }, [bannerValue]);
+
+  if (isError || !openAbsence) return null;
+
+  return (
+    <div
+      className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 text-amber-900 dark:text-amber-100 px-4 py-3 mb-6 flex items-start gap-3"
+      role="alert"
+      data-testid={`banner-worker-tos-${workerId}`}
+    >
+      <CalendarOff className="h-5 w-5 mt-0.5 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div
+          className="text-sm [&_a]:underline [&_a]:font-medium"
+          data-testid="text-tos-banner-message"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+        <Link
+          href={`/workers/${workerId}/employment/tos`}
+          className="text-sm font-medium underline mt-1 inline-block"
+          data-testid="link-tos-banner-page"
+        >
+          Go to Time Off Sick
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
   const { id } = useParams<{ id: string }>();
   
@@ -97,6 +163,33 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     retry: false,
   });
 
+  // The Identity > Dashboard tab should only appear when the worker actually
+  // has a linked user account. The tab registry has no data-driven predicates,
+  // so hide it client-side. Only fetch the (staff-gated) linkage lookup when
+  // access already granted the tab, so non-staff worker pages pay no extra query.
+  const dashboardTabGranted = useMemo(
+    () => tabs.some((t) => t.children?.some((c) => c.id === "dashboard")),
+    [tabs],
+  );
+  const { data: dashboardUser } = useQuery<{ hasUser: boolean }>({
+    queryKey: [`/api/workers/${id}/dashboard-user`],
+    enabled: !!id && dashboardTabGranted,
+    retry: false,
+  });
+
+  // Same pattern for Dispatch > Interviews: only show the tab when the
+  // worker actually has at least one interview row. Fetch only when access
+  // already granted the tab.
+  const interviewsTabGranted = useMemo(
+    () => tabs.some((t) => t.children?.some((c) => c.id === "dispatch-t631-interviews")),
+    [tabs],
+  );
+  const { data: interviewsExist } = useQuery<{ exists: boolean }>({
+    queryKey: [`/api/sitespecific/t631/interviews/views/worker/${id}/exists`],
+    enabled: !!id && interviewsTabGranted,
+    retry: false,
+  });
+
   const isLoading = workerLoading || tabsLoading;
   const isError = !!workerError;
 
@@ -113,32 +206,28 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     return getActiveRoot(activeTab);
   }, [activeTab, getActiveRoot]);
 
-  const subTabs = activeRoot?.children;
+  const subTabs = useMemo(() => {
+    let children = activeRoot?.children;
+    if (!children) return children;
+    // Hide the Dashboard tab until the linkage lookup confirms a linked user.
+    if (!dashboardUser?.hasUser) {
+      children = children.filter((t) => t.id !== "dashboard");
+    }
+    // Hide the Interviews tab until the lookup confirms interview rows exist.
+    if (!interviewsExist?.exists) {
+      children = children.filter((t) => t.id !== "dispatch-t631-interviews");
+    }
+    return children;
+  }, [activeRoot, dashboardUser, interviewsExist]);
 
   if (workerError) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <User className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">Worker Not Found</span>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/workers">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-workers">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Workers
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<User className="text-primary-foreground" size={16} />}
+          label="Worker Not Found"
+          backLink={WORKER_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -165,26 +254,10 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
   if (isLoading || !worker) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <User className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/workers">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-workers">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Workers
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<User className="text-primary-foreground" size={16} />}
+          backLink={WORKER_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -210,31 +283,20 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     <WorkerLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
         {/* Header */}
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <User className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground" data-testid={`text-worker-name-${worker.id}`}>
-                  {contact?.displayName || `Worker ${worker.id.slice(0, 8)}`}
-                </h1>
-                <BookmarkButton entityType="worker" entityId={worker.id} entityName={contact?.displayName || `Worker ${worker.id.slice(0, 8)}`} />
-                <WorkerEdlsBadge workerId={worker.id} />
-              </div>
-              <div className="flex items-center space-x-4">
-                <DebugRecordViewer record={worker} entityLabel="Worker" />
-                <Link href="/workers">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-workers">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Workers
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<User className="text-primary-foreground" size={16} />}
+          title={contact?.displayName || `Worker ${worker.id.slice(0, 8)}`}
+          titleTestId={`text-worker-name-${worker.id}`}
+          badges={
+            <>
+              <BookmarkButton entityType="worker" entityId={worker.id} entityName={contact?.displayName || `Worker ${worker.id.slice(0, 8)}`} />
+              <WorkerEdlsBadge workerId={worker.id} />
+            </>
+          }
+          actions={<DebugRecordViewer record={worker} entityLabel="Worker" />}
+          backLink={WORKER_BACK_LINK}
+          recordId={worker.id}
+        />
 
         {/* Main Tab Navigation - rendered dynamically from registry */}
         <div className="bg-card border-b border-border">
@@ -301,6 +363,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
 
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <WorkerTosBanner workerId={worker.id} />
           {children}
         </main>
       </div>

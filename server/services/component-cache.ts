@@ -8,6 +8,18 @@ const COMPONENTS_VARIABLE_NAME = "components";
 
 let cachedComponentState: ComponentEnabledMap | null = null;
 let cacheInitialized = false;
+let cacheRevision = 0;
+
+/**
+ * Bumped whenever the cached component state changes. Anything that
+ * derives a cache from which plugins are component-enabled keys itself
+ * on this, so enabling a component can't leave a stale derived cache
+ * behind (e.g. a token field catalog that then rejects at delivery time
+ * what validation accepted).
+ */
+export function getComponentCacheRevision(): number {
+  return cacheRevision;
+}
 
 export async function loadComponentCache(): Promise<ComponentEnabledMap> {
   const variable = await storage.variables.getByName(COMPONENTS_VARIABLE_NAME);
@@ -19,6 +31,7 @@ export async function loadComponentCache(): Promise<ComponentEnabledMap> {
   }
   
   cacheInitialized = true;
+  cacheRevision++;
   logger.debug("Component cache loaded", { 
     service: "component-cache",
     componentCount: Object.keys(cachedComponentState).length 
@@ -41,6 +54,7 @@ export function isCacheInitialized(): boolean {
 export function invalidateComponentCache(): void {
   cachedComponentState = null;
   cacheInitialized = false;
+  cacheRevision++;
   logger.debug("Component cache invalidated", { service: "component-cache" });
 }
 
@@ -51,6 +65,7 @@ export async function updateComponentCache(componentId: string, enabled: boolean
   
   cachedComponentState = cachedComponentState || {};
   cachedComponentState[componentId] = enabled;
+  cacheRevision++;
   
   const existingVariable = await storage.variables.getByName(COMPONENTS_VARIABLE_NAME);
   

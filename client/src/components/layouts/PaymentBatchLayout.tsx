@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ChevronRight, Package } from "lucide-react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useLedgerPaymentBatchTabAccess } from "@/hooks/useTabAccess";
 import type { LedgerPaymentBatch } from "@shared/schema/ledger/payment-batch/schema";
@@ -67,38 +68,33 @@ export function PaymentBatchLayout({ activeTab, children }: PaymentBatchLayoutPr
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
-      <div className="flex items-center justify-between mb-6">
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="breadcrumb">
-          <Link href={`/ledger/accounts/${batch.accountId}`} className="hover:text-foreground transition-colors">
-            Account
-          </Link>
-          <ChevronRight size={16} />
-          <Link href={`/ledger/accounts/${batch.accountId}/batches`} className="hover:text-foreground transition-colors">
-            Batches
-          </Link>
-          <ChevronRight size={16} />
-          <span className="text-foreground font-medium">
-            {batch.name}
-          </span>
-        </nav>
-        <Link href={`/ledger/accounts/${batch.accountId}/batches`}>
-          <Button variant="ghost" size="sm" data-testid="button-back-to-batches">
-            <ArrowLeft size={16} className="mr-2" />
-            Back to Batches
-          </Button>
-        </Link>
-      </div>
-
-      <div className="flex items-start gap-4 mb-6">
-        <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-primary/10">
-          <Package className="h-6 w-6 text-primary" />
-        </div>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold text-foreground" data-testid="heading-batch-name">
-            {batch.name}
-          </h1>
-        </div>
-      </div>
+      <RecordTitleBar
+        variant="page"
+        icon={<Package className="h-6 w-6 text-primary" />}
+        title={batch.name}
+        titleTestId="heading-batch-name"
+        breadcrumb={
+          <nav className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="breadcrumb">
+            <Link href={`/ledger/accounts/${batch.accountId}`} className="hover:text-foreground transition-colors">
+              Account
+            </Link>
+            <ChevronRight size={16} />
+            <Link href={`/ledger/accounts/${batch.accountId}/batches`} className="hover:text-foreground transition-colors">
+              Batches
+            </Link>
+            <ChevronRight size={16} />
+            <span className="text-foreground font-medium">
+              {batch.name}
+            </span>
+          </nav>
+        }
+        backLink={{
+          href: `/ledger/accounts/${batch.accountId}/batches`,
+          label: "Back to Batches",
+          testId: "button-back-to-batches",
+        }}
+        recordId={batch.id}
+      />
 
       <div className="border-b border-border mb-6">
         <nav className="flex gap-6" data-testid="nav-tabs">

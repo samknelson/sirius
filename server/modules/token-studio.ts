@@ -1,0 +1,594 @@
+import type { Express, Request, Response } from "express";
+import type { IStorage } from "../storage";
+import type { TokenEntityType, TokenRootSeed } from "../plugins/tokens/types";
+import type { TokenPreviewRoot } from "../plugins/tokens/preview-roots";
+import type { DeliveryFieldSpec } from "@shared/delivery-fields";
+
+type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => void) => void;
+type RequireAuth = (req: Request, res: Response, next: () => void) => void;
+
+/**
+ * Template Studio endpoints: the token GRAPH every surface writes
+ * against, the sample-persona PREVIEW SEEDS a surface with no records of
+ * its own previews with, and THE ONE preview route every tokenized field
+ * renders through.
+ *
+ * The preview request describes itself completely — the template text
+ * to render, how each field is shaped at delivery time, and the context
+ * to render it against. Nothing is registered anywhere and the server
+ * never looks up "who is asking": adding a tokenized field somewhere
+ * new takes no registration step of any kind.
+ *
+ * A preview renders against NAMED SAMPLE DATA by default. A caller with
+ * a real record in hand may name it instead, by kind and id — and that
+ * is a read of the record, so it is gated exactly like any other read
+ * of it (see `server/plugins/tokens/preview-entities.ts`).
+ */
+/**
+ * `?context=bulk_message` — WHAT IS BEING WRITTEN, and therefore both
+ * which roots the answer covers and who may have it.
+ *
+ * The caller names a context, never a root list. The roots are the
+ * context's own statement about itself, read server-side, so a caller
+ * cannot ask this route about roots its surface does not offer.
+ */
+function contextIdOf(req: Request): string {
+  return typeof req.query.context === "string" ? req.query.context.trim() : "";
+}
+
+const CONTEXT_REQUIRED =
+  "context is required: name the token context these templates are written " +
+  "in, e.g. ?context=bulk_message";
+
+/**
+ * THE GATE, RESOLVED FROM WHAT IS BEING ASKED ABOUT.
+ *
+ * The token graph is the same for every surface, so it is built once,
+ * here, for whichever context is named — which means this route is
+ * answering for surfaces gated three different ways (bulk authors,
+ * composing staff, admins) and cannot carry one policy of its own. It
+ * takes the context's, per request.
+ *
+ * Fail closed at every step: no context named is a 400, an unknown one
+ * a 404, and one that states no policy a 403 (see
+ * `resolveTokenContextGate`, where those refusals live). Nothing here
+ * falls back to `admin` — a fallback gate would silently answer for a
+ * context whose own gate someone forgot to write down.
+ */
+function requireTokenContextAccess(requireAccess: RequireAccess) {
+  return async (req: Request, res: Response, next: () => void) => {
+    const contextId = contextIdOf(req);
+    if (!contextId) {
+      res.status(400).json({ message: CONTEXT_REQUIRED });
+      return;
+    }
+    const { resolveTokenContextGate } = await import(
+      "../plugins/tokens/contexts"
+    );
+    const gate = resolveTokenContextGate(contextId);
+    if (!gate.ok) {
+      res.status(gate.status).json({ message: gate.message });
+      return;
+    }
+    requireAccess(gate.policyId)(req, res, next);
+  };
+}
+
+type ResolvedPreviewContext =
+  | { seeds?: TokenRootSeed[]; sampleSetIds?: Record<string, string> }
+  | { status: number; message: string };
+
+/**
+ * The one form a preview context comes in, named in every refusal so a
+ * caller that gets the shape wrong is told what the shape is.
+ */
+const PREVIEW_CONTEXT_FORM = `{ seeds: [{ rootName, record: { kind, id } } | { rootName, sampleSetId }] }`;
+
+/**
+ * `seeds: [ … ]` — what each root renders as: one entry per root, and
+ * each entry names EITHER a real record or a sample persona.
+ *
+ * One entry per root because a root renders as one thing. A named
+ * record is resolved and gated INDIVIDUALLY — per kind, per record,
+ * through the kind's own `previewEntity` declaration — so a preview can
+ * mix real roots with sample ones and a kind that has declared nothing
+ * about how it is gated cannot be named at all. A named persona is
+ * checked against what its root's kind actually declares, because a
+ * preview that silently rendered a different persona than the one asked
+ * for would be describing somebody else's data.
+ */
+async function resolveSeeds(
+  raw: unknown,
+  available: TokenPreviewRoot[],
+  ctx: { storage: IStorage; req: Request },
+): Promise<ResolvedPreviewContext> {
+  if (!Array.isArray(raw)) {
+    return { status: 400, message: "Preview context seeds must be an array" };
+  }
+  if (raw.length === 0) return {};
+
+  const [{ resolveTokenPreviewEntity }, { listSampleSetChoicesForKind }] =
+    await Promise.all([
+      import("../plugins/tokens/preview-entities"),
+      import("../plugins/tokens/sample-sets"),
+    ]);
+
+  const seeds: TokenRootSeed[] = [];
+  const sampleSetIds: Record<string, string> = {};
+  const seen = new Set<string>();
+  for (const rawSeed of raw) {
+    if (!rawSeed || typeof rawSeed !== "object" || Array.isArray(rawSeed)) {
+      return { status: 400, message: "Invalid preview context seed" };
+    }
+    const seed = rawSeed as Record<string, unknown>;
+    const rootName = typeof seed.rootName === "string" ? seed.rootName : "";
+    const root = available.find((r) => r.name === rootName);
+    if (!root) {
+      return {
+        status: 400,
+        message: `No preview root named "${rootName}"`,
+      };
+    }
+    if (seen.has(root.name)) {
+      return {
+        status: 400,
+        message: `Preview root "${root.name}" is seeded more than once`,
+      };
+    }
+    seen.add(root.name);
+
+    const hasRecord = seed.record !== undefined && seed.record !== null;
+    const hasSample = seed.sampleSetId !== undefined && seed.sampleSetId !== null;
+    if (hasRecord === hasSample) {
+      return {
+        status: 400,
+        message:
+          `Preview root "${root.name}" must name either a record or a ` +
+          `sample persona, not ${hasRecord ? "both" : "neither"}`,
+      };
+    }
+
+    if (hasSample) {
+      const sampleSetId = seed.sampleSetId;
+      if (typeof sampleSetId !== "string" || !sampleSetId) {
+        return { status: 400, message: "A preview sample persona needs an id" };
+      }
+      const offered = listSampleSetChoicesForKind(root.kind);
+      if (!offered.some((choice) => choice.id === sampleSetId)) {
+        return {
+          status: 400,
+          message:
+            `Preview root "${root.name}" has no sample persona ` +
+            `"${sampleSetId}"`,
+        };
+      }
+      sampleSetIds[root.name] = sampleSetId;
+      continue;
+    }
+
+    const record = seed.record as Record<string, unknown>;
+    if (typeof record !== "object" || Array.isArray(record)) {
+      return { status: 400, message: "Invalid preview context record" };
+    }
+    const kind = typeof record.kind === "string" ? record.kind : "";
+    const id = typeof record.id === "string" ? record.id : "";
+    if (!kind || !id) {
+      return {
+        status: 400,
+        message: "A preview context record needs a kind and an id",
+      };
+    }
+    if (kind !== root.kind) {
+      return {
+        status: 400,
+        message:
+          `Preview root "${root.name}" takes a record of kind ` +
+          `"${root.kind}", not "${kind}"`,
+      };
+    }
+
+    const result = await resolveTokenPreviewEntity(kind, id, {
+      storage: ctx.storage,
+      req: ctx.req,
+    });
+    if (!result.ok) return { status: result.status, message: result.message };
+
+    seeds.push({ name: root.name, entity: result.entity });
+  }
+
+  // A seeded contact is also the render's recipient, exactly as on
+  // delivery; `renderTemplatePreview` derives that from the seed.
+  return { seeds, sampleSetIds };
+}
+
+/**
+ * Turn the request's `context` into render seeds.
+ *
+ * ONE form, because there is only one kind of thing a preview renders
+ * against: REAL records. Seeding one is a read of it, so the kind's own
+ * declaration decides whether this caller may read it, and an
+ * undeclared kind is refused rather than assumed safe.
+ *
+ * A shape this route no longer has is REFUSED, not ignored. A caller
+ * sending one is describing a render it will not get, and quietly
+ * rendering something else would be the lie a preview must never tell.
+ */
+async function resolvePreviewContext(
+  raw: unknown,
+  ctx: { storage: IStorage; req: Request; rootNames: string[] },
+): Promise<ResolvedPreviewContext> {
+  if (raw === undefined || raw === null) return {};
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    return { status: 400, message: "Invalid preview context" };
+  }
+  const context = raw as Record<string, unknown>;
+  // PRESENCE, not truthiness: `{"entity": null}` is valid JSON, and a
+  // key that is present but empty is still a caller describing a shape
+  // this route no longer has. Own-property so an inherited key can't
+  // masquerade as one the caller sent.
+  const sent = (key: string): boolean =>
+    Object.prototype.hasOwnProperty.call(context, key);
+
+  // A single record used to be its own notation, identical to a
+  // one-element list.
+  if (sent("entity")) {
+    return {
+      status: 400,
+      message:
+        `A preview context has no single "entity" form — give ` +
+        PREVIEW_CONTEXT_FORM,
+    };
+  }
+
+  // Records used to be the only thing a context could name, with the
+  // persona chosen once for the whole render. Now every root says what
+  // it renders as, so records arrive as seeds alongside personas.
+  if (sent("entities")) {
+    return {
+      status: 400,
+      message:
+        `A preview context no longer takes an "entities" list — say what ` +
+        `each root renders as: ` +
+        PREVIEW_CONTEXT_FORM,
+    };
+  }
+
+  // Raw root VALUES used to be a second form, trusted differently
+  // because they reached no record. Nothing ever sent them, so they are
+  // gone — along with the guards that kept them from reaching one.
+  if (sent("roots")) {
+    return {
+      status: 400,
+      message:
+        `A preview context no longer takes raw root values — name the ` +
+        `records to render against: ` +
+        PREVIEW_CONTEXT_FORM,
+    };
+  }
+
+  // The discriminant existed only to choose between those two trust
+  // levels. With one form there is nothing to discriminate.
+  if (sent("source")) {
+    return {
+      status: 400,
+      message:
+        `A preview context has only one form and does not name it — ` +
+        `give ` +
+        PREVIEW_CONTEXT_FORM,
+    };
+  }
+
+  const { listTokenPreviewRoots } = await import(
+    "../plugins/tokens/preview-roots"
+  );
+  const available = listTokenPreviewRoots(ctx.rootNames);
+  if (!sent("seeds")) {
+    return {
+      status: 400,
+      message: `A preview context names what each root renders as: ` + PREVIEW_CONTEXT_FORM,
+    };
+  }
+  return resolveSeeds(context.seeds, available, ctx);
+}
+
+export function registerTokenStudioRoutes(
+  app: Express,
+  requireAuth: RequireAuth,
+  requireAccess: RequireAccess,
+  storage: IStorage,
+) {
+  /**
+   * THE TOKEN GRAPH, for every surface there is: what may be written in
+   * the named context — the picker entries, the segment specs the
+   * client validates chains against, and the field index behind
+   * `field(name=…)`.
+   *
+   * ONE ROUTE, because there is one graph. It is derived from the token
+   * plugin registry and the roots the context names, and nothing about
+   * it varies with who is asking or which screen they opened: bulk
+   * messaging, a compose screen and a notifier's config asking about the
+   * same roots must get the same answer, or an author is offered a token
+   * their save will reject. What DOES vary per surface — which real
+   * records may be previewed against — is the other half of what this
+   * used to answer, and now lives on each host's own preview-seeds
+   * route.
+   *
+   * No root list comes back: the caller named a context, and it reads
+   * that context's roots from the `token-contexts` catalog. An echo of
+   * them here would be a second answer to a question the context has
+   * already settled.
+   */
+  app.get(
+    "/api/token-studio/graph",
+    requireAuth,
+    requireTokenContextAccess(requireAccess),
+    async (req, res) => {
+      try {
+        const {
+          buildSegmentSpecsForRoots,
+          buildTokenFieldIndex,
+          buildTokenPickerEntries,
+        } = await import("../plugins/tokens");
+        const { tokenContextRootNames } = await import(
+          "../plugins/tokens/contexts"
+        );
+        const rootNames = tokenContextRootNames(contextIdOf(req));
+        res.json({
+          segments: buildSegmentSpecsForRoots(rootNames),
+          fieldIndex: buildTokenFieldIndex(),
+          pickerEntries: buildTokenPickerEntries(rootNames),
+        });
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({ message: error.message || "Failed to load the token graph" });
+      }
+    },
+  );
+
+  /**
+   * PREVIEW SEEDS for a surface that holds no records: what each of the
+   * context's roots may be previewed as, which here is a sample persona
+   * apiece.
+   *
+   * A host that DOES know which records its author may preview against
+   * — the message's own recipients, the contact whose tab this is — has
+   * its own preview-seeds route and never asks this one. This is the
+   * answer for an ad-hoc tokenized field somewhere in the admin UI:
+   * there is no record such a field is "about", so it opens ready to
+   * preview against named sample people rather than a search box.
+   */
+  app.get(
+    "/api/token-studio/preview-seeds",
+    requireAuth,
+    requireTokenContextAccess(requireAccess),
+    async (req, res) => {
+      try {
+        const { buildPreviewSeeds } = await import(
+          "../plugins/tokens/preview-seeds"
+        );
+        const { tokenContextRootNames } = await import(
+          "../plugins/tokens/contexts"
+        );
+        // The context's roots, and only those: the seed panel is the
+        // same list as the token browser, so an author cannot preview
+        // against a record their tokens can't address.
+        res.json(
+          await buildPreviewSeeds(
+            { storage, req },
+            { rootNames: tokenContextRootNames(contextIdOf(req)) },
+          ),
+        );
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({ message: error.message || "Failed to load preview seeds" });
+      }
+    },
+  );
+
+  /**
+   * THE BROWSABLE TOKEN TREE, for every surface there is — the same
+   * question `/api/token-studio/graph` answers, asked one level at a
+   * time so a deep relation graph costs one small request per level
+   * instead of one giant catalog.
+   *
+   * ONE FAMILY, gated exactly like the graph: the caller names its
+   * CONTEXT and the roots are that context's own statement about
+   * itself, read server-side. Bulk messaging and the compose screens
+   * used to each serve their own copy behind their own gate, which was
+   * three near-identical endpoints and three chances for one surface's
+   * picker to offer a token its save would reject.
+   *
+   * The caller cannot name roots. It could once, which let one screen
+   * browse another screen's roots — a picker offering tokens the render
+   * then refuses.
+   */
+  app.get(
+    "/api/token-studio/tree/roots",
+    requireAuth,
+    requireTokenContextAccess(requireAccess),
+    async (req, res) => {
+      try {
+        const { listTokenTreeRoots } = await import("../plugins/tokens");
+        const { tokenContextRootNames } = await import(
+          "../plugins/tokens/contexts"
+        );
+        res.json({
+          roots: listTokenTreeRoots(tokenContextRootNames(contextIdOf(req))),
+        });
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({ message: error.message || "Failed to load token tree" });
+      }
+    },
+  );
+
+  /**
+   * One level of the token tree: what an entity type offers next.
+   *
+   * Scoped by the context too, by walking the graph from its roots. A
+   * type expanded in isolation answers for a graph this context cannot
+   * reach, which is the same widening `?roots=` used to allow, one hop
+   * further in.
+   */
+  app.get(
+    "/api/token-studio/tree/type/:type",
+    requireAuth,
+    requireTokenContextAccess(requireAccess),
+    async (req, res) => {
+      try {
+        const { expandTokenType, tokenTypesReachableFrom } = await import(
+          "../plugins/tokens"
+        );
+        const { tokenContextRootNames } = await import(
+          "../plugins/tokens/contexts"
+        );
+        const rootNames = tokenContextRootNames(contextIdOf(req));
+        const type = req.params.type as TokenEntityType;
+        if (!tokenTypesReachableFrom(rootNames).has(type)) {
+          return res
+            .status(404)
+            .json({ message: "No such type in this token context" });
+        }
+        res.json(expandTokenType(type));
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({ message: error.message || "Failed to expand token type" });
+      }
+    },
+  );
+
+  /**
+   * Search the tree: `?context=bulk_message&q=ssn`. Matches root,
+   * relation and field names at any depth and returns each hit with the
+   * complete token expression and its path, so the picker never has to
+   * pull the whole graph down to offer search.
+   */
+  app.get(
+    "/api/token-studio/tree/search",
+    requireAuth,
+    requireTokenContextAccess(requireAccess),
+    async (req, res) => {
+      try {
+        const { searchTokenTree } = await import("../plugins/tokens");
+        const { tokenContextRootNames } = await import(
+          "../plugins/tokens/contexts"
+        );
+        const q = typeof req.query.q === "string" ? req.query.q : "";
+        res.json({
+          hits: searchTokenTree(tokenContextRootNames(contextIdOf(req)), q),
+        });
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({ message: error.message || "Failed to search tokens" });
+      }
+    },
+  );
+
+  /**
+   * THE preview route. POST body (JSON):
+   *   `fields` — the fields being previewed and how DELIVERY shapes
+   *     each one, taken from the shared delivery declarations in
+   *     `shared/delivery-fields.ts` (never hand-written): a field with
+   *     no declared syntax has no defined cleaning or shaping, so its
+   *     preview and its delivered output could silently disagree, and
+   *     it is rejected here.
+   *   `values` — { fieldKey: template } — FINISHED template strings.
+   *     Any caller-specific composition (a notifier's default-vs-override
+   *     merge, a rich-text body flattened to plain text) has already
+   *     happened on the caller's side.
+   *   `?context=…` — the token context these templates are written in.
+   *     Its declared roots are the named record roots those templates may
+   *     address; the caller cannot supply a different root list.
+   *   `context` — what each root renders as, one entry per root:
+   *     `{ seeds: [{ rootName, record: { kind, id } } |
+   *                { rootName, sampleSetId }, …] }`.
+   *     Naming a record is a read of it, so the kind's own
+   *     `previewEntity` declaration gates each one before it is seeded,
+   *     and a kind that has not declared how it is gated cannot be used
+   *     at all. Roots left out keep sample data.
+   *   Omit `context` to preview every root against sample data.
+   */
+  app.post(
+    "/api/template-studio/preview",
+    requireAuth,
+    requireTokenContextAccess(requireAccess),
+    async (req: Request, res: Response) => {
+      try {
+        const body = req.body ?? {};
+        const { tokenContextRootNames } = await import(
+          "../plugins/tokens/contexts"
+        );
+        const rootNames = tokenContextRootNames(contextIdOf(req));
+
+        if (Object.prototype.hasOwnProperty.call(body, "rootNames")) {
+          return res.status(400).json({
+            message:
+              "A preview no longer takes rootNames — name the token context in " +
+              `the request query: ${CONTEXT_REQUIRED}`,
+          });
+        }
+
+        // Field declarations, validated exactly as the author-time
+        // check validates the shared tables they come from.
+        const { validateDeliveryFieldSpecs } = await import(
+          "@shared/delivery-fields"
+        );
+        const problems = validateDeliveryFieldSpecs(body.fields);
+        if (problems.length > 0) {
+          return res
+            .status(400)
+            .json({ message: `Invalid preview fields: ${problems.join("; ")}` });
+        }
+        const fields = body.fields as DeliveryFieldSpec[];
+
+        const templates: Record<string, string> = {};
+        const rawValues =
+          body.values && typeof body.values === "object" ? body.values : {};
+        for (const [key, value] of Object.entries(rawValues)) {
+          if (typeof value === "string") templates[key] = value;
+        }
+
+        // The persona used to be chosen once for the whole render.
+        // It is now per root, inside the context — refused by PRESENCE
+        // here for the same reason every retired shape is: a caller
+        // sending it is describing a render it will not get.
+        if (Object.prototype.hasOwnProperty.call(body, "sampleSetId")) {
+          return res.status(400).json({
+            message:
+              `A preview no longer takes one sample persona for the whole ` +
+              `render — each root names its own: ${PREVIEW_CONTEXT_FORM}`,
+          });
+        }
+
+        const resolved = await resolvePreviewContext(body.context, {
+          storage,
+          req,
+          rootNames,
+        });
+        if ("status" in resolved) {
+          return res.status(resolved.status).json({ message: resolved.message });
+        }
+
+        const { renderTemplatePreview } = await import("./template-preview");
+        const preview = await renderTemplatePreview({
+          storage,
+          fields,
+          templates,
+          rootNames,
+          seeds: resolved.seeds,
+          sampleSetIds: resolved.sampleSetIds,
+        });
+        res.json(preview);
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({ message: error.message || "Failed to render preview" });
+      }
+    },
+  );
+}

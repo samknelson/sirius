@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Loader2, Plus, Pencil, Trash2, CalendarClock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -115,7 +115,7 @@ function ImmediateEligibilityContent() {
     onError: (err: any) => {
       toast({
         title: "Save Failed",
-        description: err?.message || "Failed to save immediate eligibility.",
+        description: getApiErrorMessage(err, "Failed to save immediate eligibility."),
         variant: "destructive",
       });
     },
@@ -139,7 +139,7 @@ function ImmediateEligibilityContent() {
     onError: (err: any) => {
       toast({
         title: "Update Failed",
-        description: err?.message || "Failed to update immediate eligibility.",
+        description: getApiErrorMessage(err, "Failed to update immediate eligibility."),
         variant: "destructive",
       });
     },
@@ -160,7 +160,7 @@ function ImmediateEligibilityContent() {
     onError: (err: any) => {
       toast({
         title: "Clear Failed",
-        description: err?.message || "Failed to clear immediate eligibility.",
+        description: getApiErrorMessage(err, "Failed to clear immediate eligibility."),
         variant: "destructive",
       });
     },

@@ -1,6 +1,5 @@
 import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
-import { createDispatchJobStorage } from "../../../../storage/dispatch/jobs";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../registry";
 
 const SKILL_CATEGORY = "skill";
@@ -19,19 +18,8 @@ export const dispatchSkillPlugin: DispatchEligPlugin = {
   description: "Filters workers based on required skills for the job",
   requiredComponent: "worker.skills",
 
-  async getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): Promise<EligibilityCondition | null> {
-    const jobStorage = createDispatchJobStorage();
-    const job = await jobStorage.getWithRelations(context.jobId);
-
-    if (!job) {
-      logger.warn(`Job not found for skill eligibility check`, {
-        service: "dispatch-elig-skill",
-        jobId: context.jobId,
-      });
-      return null;
-    }
-
-    const jobData = job.data as JobData | null;
+  getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): EligibilityCondition | null {
+    const jobData = context.job.data as JobData | null;
     const requiredSkills = jobData?.requiredSkills || [];
 
     if (requiredSkills.length === 0) {

@@ -37,6 +37,21 @@ function registerDenormKind(): void {
     // Managing denorm plugins is admin-only infrastructure, mirroring cron.
     requiredPolicy: "admin",
     sortEntries: (a, b) => a.id.localeCompare(b.id),
+    // Validate a config's editable `data` payload against the plugin's own JSON
+    // schema (when it declares one) when the generic admin Edit modal saves.
+    // Denorm has no subsidiary envelope, so `config` here is exactly the
+    // per-plugin settings object stored in `data`.
+    validateConfig: async (plugin, config) => {
+      if (!plugin.configSchema) return { valid: true };
+      const { validateAgainstSchema } = await import(
+        "../../../lib/json-schema-validator"
+      );
+      const result = validateAgainstSchema(
+        plugin.configSchema,
+        (config ?? {}) as Record<string, unknown>,
+      );
+      return { valid: result.valid, errors: result.errors };
+    },
   });
   // Denorm configs carry no relational dimension, so the base envelope is the
   // whole config — no subsidiary table.
@@ -88,14 +103,33 @@ import "./plugins/workerWs";
 import "./plugins/workerEmployment";
 import "./plugins/grievanceName";
 import "./plugins/grievanceTimeline";
+import "./plugins/tosAbsenceReminder";
+import "./plugins/dispatch/jobEvent";
+import "./plugins/grievanceDeadlineReminder";
+import "./plugins/employerMonthly";
+// Trust WMB lifecycle-event denorm plugins (shared trust_wmb_events table,
+// one event_type slice each).
+import "./plugins/trustWmbStart";
+import "./plugins/trustWmbRestart";
+import "./plugins/trustWmbTerminate";
 // Dispatch-eligibility denorm plugins (write side of dispatch eligibility).
 import "./plugins/dispatch/accepted";
+// Auto Sign-In: sets workers back to Available when their accepted primary
+// dispatch ends (gated by the dispatch.asi component).
+import "./plugins/dispatch/asi-sign-in";
 import "./plugins/dispatch/ban";
+import "./plugins/dispatch/banFacility";
+import "./plugins/dispatch/banJobType";
+import "./plugins/dispatch/department";
 import "./plugins/dispatch/dnc";
+// Passed-interview facts for T631 (gated by sitespecific.t631.interviews).
+import "./plugins/dispatch/sitespecific-t631-interview";
 import "./plugins/dispatch/eba";
 import "./plugins/dispatch/hfe";
 import "./plugins/dispatch/hta-home-employer";
+import "./plugins/dispatch/primary-unavailable";
 import "./plugins/dispatch/singleshift";
 import "./plugins/dispatch/skill";
 import "./plugins/dispatch/status";
 import "./plugins/dispatch/ws";
+import "./plugins/workerBanActive";

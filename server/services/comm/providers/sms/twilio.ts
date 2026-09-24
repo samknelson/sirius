@@ -2,6 +2,51 @@ import type { ConnectionTestResult } from '../base';
 import type { SmsTransport, PhoneValidationResult, SmsSendResult, SmsProviderSettings } from './index';
 import { getTwilioClient, getTwilioFromPhoneNumber, clearTwilioCredentialsCache } from '../../../../lib/twilio-client';
 import { parsePhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
+import { assertExternalServiceAllowed } from '../../../maintenance-flag';
+import { registerUncachedWcRequest, wcUncachedRequest } from '../../../webclient';
+
+/**
+ * Twilio's uncached operations.
+ *
+ * The carrier lookup is not here: its answer IS worth keeping, so it is a
+ * cached entry registered by the phone validator, and this provider's
+ * `validatePhone` is the call that entry makes.
+ *
+ * A send needs a writable database and the read-only operations do not: a
+ * message that goes out while nothing can be written down is a message the
+ * comm record will never show, whereas refusing an operator a connection test
+ * or a number list on a read-only connection takes away the diagnosis and
+ * spends nothing.
+ */
+const SEND_SMS = 'send-sms';
+const TEST_CONNECTION = 'test-connection';
+const READ_CONFIGURATION = 'read-configuration';
+const LIST_PHONE_NUMBERS = 'list-phone-numbers';
+
+registerUncachedWcRequest({
+  service: 'Twilio',
+  requestType: SEND_SMS,
+  operation: 'send SMS',
+  needsWritableDatabase: true,
+});
+registerUncachedWcRequest({
+  service: 'Twilio',
+  requestType: TEST_CONNECTION,
+  operation: 'test connection',
+  needsWritableDatabase: false,
+});
+registerUncachedWcRequest({
+  service: 'Twilio',
+  requestType: READ_CONFIGURATION,
+  operation: 'read account configuration',
+  needsWritableDatabase: false,
+});
+registerUncachedWcRequest({
+  service: 'Twilio',
+  requestType: LIST_PHONE_NUMBERS,
+  operation: 'list phone numbers',
+  needsWritableDatabase: false,
+});
 
 export class TwilioSmsProvider implements SmsTransport {
   readonly id = 'twilio';
@@ -18,65 +63,84 @@ export class TwilioSmsProvider implements SmsTransport {
   }
 
   async testConnection(): Promise<ConnectionTestResult> {
-    try {
-      clearTwilioCredentialsCache();
-      const client = await getTwilioClient();
-      const accounts = await client.api.accounts.list({ limit: 1 });
-      const account = accounts[0];
+    // The framework's refusal comes back out of here rather than becoming a
+    // connection result: a maintenance refusal is not a failed connection.
+    const { value, error } = await wcUncachedRequest<ConnectionTestResult>({
+      service: 'Twilio',
+      requestType: TEST_CONNECTION,
+      fetch: async () => {
+        try {
+          clearTwilioCredentialsCache();
+          const client = await getTwilioClient();
+          const accounts = await client.api.accounts.list({ limit: 1 });
+          const account = accounts[0];
 
-      if (!account) {
-        return {
-          success: false,
-          error: 'No Twilio account found',
-        };
-      }
+          if (!account) {
+            return { answered: true, value: { success: false, error: 'No Twilio account found' } };
+          }
 
-      return {
-        success: true,
-        message: `Connected to ${account.friendlyName}`,
-        details: {
-          accountSid: account.sid,
-          accountName: account.friendlyName,
-          status: account.status,
-        },
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error?.message || 'Failed to connect to Twilio',
-      };
-    }
+          return {
+            answered: true,
+            value: {
+              success: true,
+              message: `Connected to ${account.friendlyName}`,
+              details: {
+                accountSid: account.sid,
+                accountName: account.friendlyName,
+                status: account.status,
+              },
+            },
+          };
+        } catch (error: any) {
+          return { answered: false, error: error?.message || 'Failed to connect to Twilio' };
+        }
+      },
+    });
+
+    return value ?? { success: false, error: error || 'Failed to connect to Twilio' };
   }
 
   async getConfiguration(): Promise<Record<string, unknown>> {
-    try {
-      const client = await getTwilioClient();
-      const accounts = await client.api.accounts.list({ limit: 1 });
-      const account = accounts[0];
+    const { value, error } = await wcUncachedRequest<Record<string, unknown>>({
+      service: 'Twilio',
+      requestType: READ_CONFIGURATION,
+      fetch: async () => {
+        try {
+          const client = await getTwilioClient();
+          const accounts = await client.api.accounts.list({ limit: 1 });
+          const account = accounts[0];
 
-      let configuredPhoneNumber: string | undefined;
-      try {
-        configuredPhoneNumber = await getTwilioFromPhoneNumber();
-      } catch {
-        // Phone number not configured in env
-      }
+          let configuredPhoneNumber: string | undefined;
+          try {
+            configuredPhoneNumber = await getTwilioFromPhoneNumber();
+          } catch {
+            // Phone number not configured in env
+          }
 
-      return {
-        connected: !!account,
-        accountSid: account?.sid,
-        accountName: account?.friendlyName,
-        configuredPhoneNumber,
-        defaultFromNumber: this.settings.defaultFromNumber || configuredPhoneNumber,
-      };
-    } catch (error: any) {
-      return {
-        connected: false,
-        error: error?.message || 'Failed to get Twilio configuration',
-      };
-    }
+          return {
+            answered: true,
+            value: {
+              connected: !!account,
+              accountSid: account?.sid,
+              accountName: account?.friendlyName,
+              configuredPhoneNumber,
+              defaultFromNumber: this.settings.defaultFromNumber || configuredPhoneNumber,
+            },
+          };
+        } catch (error: any) {
+          return { answered: false, error: error?.message || 'Failed to get Twilio configuration' };
+        }
+      },
+    });
+
+    return value ?? { connected: false, error: error || 'Failed to get Twilio configuration' };
   }
 
   async validatePhone(phoneNumber: string): Promise<PhoneValidationResult> {
+    // The carrier lookup below treats a Twilio error as "trust the local
+    // parse" and returns valid:true. A maintenance refusal must not be read
+    // that way, so it is raised before any of that runs.
+    assertExternalServiceAllowed('Twilio', 'look up phone number');
     try {
       const parsed = parsePhoneNumber(phoneNumber, 'US');
       
@@ -191,48 +255,64 @@ export class TwilioSmsProvider implements SmsTransport {
     from?: string;
     statusCallbackUrl?: string;
   }): Promise<SmsSendResult> {
-    try {
-      const client = await getTwilioClient();
-      const fromNumber = params.from || await this.getDefaultFromNumber();
+    // Twilio's own error carries a code and a help link the send screen shows.
+    // The framework hands back only the message, so the full shape is kept
+    // here, where it is built.
+    let failure: SmsSendResult | undefined;
 
-      if (!fromNumber) {
-        return {
-          success: false,
-          error: 'No from phone number configured',
-        };
-      }
+    const { value, error } = await wcUncachedRequest<SmsSendResult>({
+      service: 'Twilio',
+      requestType: SEND_SMS,
+      fetch: async () => {
+        try {
+          const client = await getTwilioClient();
+          const fromNumber = params.from || await this.getDefaultFromNumber();
 
-      const messageParams: any = {
-        to: params.to,
-        from: fromNumber,
-        body: params.body,
-      };
+          if (!fromNumber) {
+            // Our own refusal, not Twilio's: nothing was sent, so nothing
+            // answered.
+            return { answered: false, error: 'No from phone number configured' };
+          }
 
-      if (params.statusCallbackUrl) {
-        messageParams.statusCallback = params.statusCallbackUrl;
-      }
+          const messageParams: any = {
+            to: params.to,
+            from: fromNumber,
+            body: params.body,
+          };
 
-      const message = await client.messages.create(messageParams);
+          if (params.statusCallbackUrl) {
+            messageParams.statusCallback = params.statusCallbackUrl;
+          }
 
-      return {
-        success: true,
-        messageId: message.sid,
-        status: message.status,
-        details: {
-          dateSent: message.dateSent,
-          direction: message.direction,
-        },
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error?.message || 'Failed to send SMS',
-        details: {
-          code: error?.code,
-          moreInfo: error?.moreInfo,
-        },
-      };
-    }
+          const message = await client.messages.create(messageParams);
+
+          return {
+            answered: true,
+            value: {
+              success: true,
+              messageId: message.sid,
+              status: message.status,
+              details: {
+                dateSent: message.dateSent,
+                direction: message.direction,
+              },
+            },
+          };
+        } catch (error: any) {
+          failure = {
+            success: false,
+            error: error?.message || 'Failed to send SMS',
+            details: {
+              code: error?.code,
+              moreInfo: error?.moreInfo,
+            },
+          };
+          return { answered: false, error: failure.error };
+        }
+      },
+    });
+
+    return value ?? failure ?? { success: false, error: error || 'Failed to send SMS' };
   }
 
   async getAvailablePhoneNumbers(): Promise<Array<{
@@ -241,19 +321,51 @@ export class TwilioSmsProvider implements SmsTransport {
     friendlyName: string;
     capabilities: { sms: boolean; voice: boolean; mms: boolean };
   }>> {
-    const client = await getTwilioClient();
-    const numbers = await client.incomingPhoneNumbers.list({ limit: 50 });
+    type AvailableNumber = {
+      sid: string;
+      phoneNumber: string;
+      friendlyName: string;
+      capabilities: { sms: boolean; voice: boolean; mms: boolean };
+    };
 
-    return numbers.map((num) => ({
-      sid: num.sid,
-      phoneNumber: num.phoneNumber,
-      friendlyName: num.friendlyName,
-      capabilities: {
-        sms: num.capabilities?.sms || false,
-        voice: num.capabilities?.voice || false,
-        mms: num.capabilities?.mms || false,
+    // This one has always thrown rather than answering with an empty list — an
+    // empty list is a real answer ("this account has no numbers") and the
+    // screen that asks shows it as one — so Twilio's own error is carried back
+    // out as itself.
+    let thrown: unknown;
+
+    const { value, error } = await wcUncachedRequest<AvailableNumber[]>({
+      service: 'Twilio',
+      requestType: LIST_PHONE_NUMBERS,
+      fetch: async () => {
+        let numbers;
+        try {
+          const client = await getTwilioClient();
+          numbers = await client.incomingPhoneNumbers.list({ limit: 50 });
+        } catch (error: any) {
+          thrown = error;
+          return { answered: false, error: error?.message || 'Failed to list Twilio phone numbers' };
+        }
+
+        return {
+          answered: true,
+          value: numbers.map((num) => ({
+            sid: num.sid,
+            phoneNumber: num.phoneNumber,
+            friendlyName: num.friendlyName,
+            capabilities: {
+              sms: num.capabilities?.sms || false,
+              voice: num.capabilities?.voice || false,
+              mms: num.capabilities?.mms || false,
+            },
+          })),
+        };
       },
-    }));
+    });
+
+    if (value) return value;
+    if (thrown !== undefined) throw thrown;
+    throw new Error(error || 'Failed to list Twilio phone numbers');
   }
 
   async getDefaultFromNumber(): Promise<string | undefined> {

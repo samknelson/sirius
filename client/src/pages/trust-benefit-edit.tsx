@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Save } from "lucide-react";
 import { TrustBenefitLayout, useTrustBenefitLayout } from "@/components/layouts/TrustBenefitLayout";
 import { TrustBenefitType } from "@shared/schema";
@@ -42,7 +42,7 @@ function TrustBenefitEditContent() {
       });
     },
     onError: (error: any) => {
-      const message = error.message || "Failed to update trust benefit. Please try again.";
+      const message = getApiErrorMessage(error, "Failed to update trust benefit. Please try again.");
       toast({
         title: "Error",
         description: message,

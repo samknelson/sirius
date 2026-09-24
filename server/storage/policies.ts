@@ -114,6 +114,7 @@ const policyDescribe = {
 
 export const policyLoggingConfig = defineLoggingConfig<PolicyStorage>({
   module: 'policies',
+  table: 'policies',
   state: { key: 'policy' },
   getter: 'getPolicyById',
   methods: {

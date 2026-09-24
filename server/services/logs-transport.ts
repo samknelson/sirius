@@ -21,7 +21,10 @@ interface LogsTransportInfo {
   duration?: number;
   client_name?: string;
   credential_id?: string;
-  bundle_code?: string;
+  config_id?: string;
+  config_alias?: string;
+  plugin_id?: string;
+  ws_operation?: string;
   error_code?: string;
   [key: string]: unknown;
 }

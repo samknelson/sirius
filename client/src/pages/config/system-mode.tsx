@@ -1,13 +1,13 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { getApiErrorMessage } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { Server, AlertTriangle, CheckCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SystemMode, SystemModeResponse } from "@/lib/system-types";
+import { SystemMode } from "@/lib/system-types";
+import { useSystemMode, useSetVariable } from "@/lib/use-variable";
 
 const modeDescriptions: Record<SystemMode, { label: string; description: string; color: string }> = {
   dev: {
@@ -25,31 +25,31 @@ const modeDescriptions: Record<SystemMode, { label: string; description: string;
     description: "Live mode - production environment with real transactions and data",
     color: "bg-green-50 border-green-300 dark:bg-green-900/20 dark:border-green-600",
   },
+  maintenance: {
+    label: "Maintenance",
+    description:
+      "Maintenance mode - the database is locked read-only for the whole site. Browsing and reads work normally, but any action that saves data will fail until maintenance mode is turned off. Use while running major imports or migrations.",
+    color: "bg-red-50 border-red-300 dark:bg-red-900/20 dark:border-red-600",
+  },
 };
 
 export default function SystemModePage() {
   usePageTitle("System Mode");
   const { toast } = useToast();
 
-  const { data: systemMode, isLoading } = useQuery<SystemModeResponse>({
-    queryKey: ["/api/system-mode"],
-  });
+  const { mode: currentMode, isLoading } = useSystemMode();
 
-  const updateModeMutation = useMutation({
-    mutationFn: async (mode: SystemMode) => {
-      return await apiRequest("PUT", "/api/system-mode", { mode });
-    },
-    onSuccess: (_, mode) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/system-mode"] });
+  const updateModeMutation = useSetVariable("system_mode", {
+    onSuccess: () => {
       toast({
         title: "System Mode Updated",
-        description: `System mode has been changed to ${modeDescriptions[mode].label}`,
+        description: "System mode has been changed.",
       });
     },
     onError: (error) => {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update system mode",
+        description: getApiErrorMessage(error, "Failed to update system mode"),
         variant: "destructive",
       });
     },
@@ -87,14 +87,14 @@ export default function SystemModePage() {
             </div>
           ) : (
             <RadioGroup
-              value={systemMode?.mode || "dev"}
+              value={currentMode}
               onValueChange={handleModeChange}
               className="space-y-4"
               disabled={updateModeMutation.isPending}
             >
               {(Object.keys(modeDescriptions) as SystemMode[]).map((mode) => {
                 const { label, description, color } = modeDescriptions[mode];
-                const isSelected = systemMode?.mode === mode;
+                const isSelected = currentMode === mode;
                 
                 return (
                   <div

@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { connectionDataSchema, PROTOCOL_DEFAULTS } from "@shared/schema/system/sftp-client-schema";
 import type { ConnectionData } from "@shared/schema/system/sftp-client-schema";
@@ -122,7 +122,7 @@ function ConnectionContent() {
       toast({ title: "Connection saved", description: "Connection settings have been updated." });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to save connection", description: error.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to save connection", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 

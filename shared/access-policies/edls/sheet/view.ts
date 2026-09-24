@@ -10,12 +10,19 @@ const policy = definePolicy({
   
   describeRequirements: () => [
     { permission: 'staff' },
+    { permission: 'edls.manager' },
+    { permission: 'edls.coordinator' },
+    { permission: 'edls.worker.advisor' },
     { all: [{ permission: 'edls.supervisor' }, { attribute: 'assigned as supervisor or assignee on the sheet' }] }
   ],
   
   async evaluate(ctx: PolicyContext) {
     if (await ctx.hasPermission('staff')) {
       return { granted: true, reason: 'Staff access' };
+    }
+    
+    if (await ctx.hasAnyPermission(['edls.manager', 'edls.coordinator', 'edls.worker.advisor'])) {
+      return { granted: true, reason: 'User has EDLS view permission' };
     }
     
     if (await ctx.hasPermission('edls.supervisor')) {

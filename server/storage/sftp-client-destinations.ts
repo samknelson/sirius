@@ -75,6 +75,7 @@ export function createSftpClientDestinationStorage(): SftpClientDestinationStora
 
 export const sftpClientDestinationLoggingConfig: StorageLoggingConfig<SftpClientDestinationStorage> = {
   module: 'sftpClientDestinations',
+  table: 'sftp_client_destinations',
   methods: {
     create: {
       enabled: true,

@@ -124,10 +124,12 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
 
 export const trustBenefitLoggingConfig = defineLoggingConfig<TrustBenefitStorage>({
   module: 'trustBenefits',
+  table: 'trust_benefits',
   getter: 'getTrustBenefit',
   methods: {
     createTrustBenefit: {
       getEntityId: (args) => args[0]?.name || 'new trust benefit',
+      metadataEntityId: (_args, result) => result?.id,
     },
     updateTrustBenefit: {},
     deleteTrustBenefit: {},

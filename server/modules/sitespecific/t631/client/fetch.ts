@@ -2,6 +2,23 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { randomBytes } from "crypto";
 import { requireComponent } from "../../../components";
 import { z } from "zod";
+import { getEnvironmentVariable, registerEnvironmentVariables } from "../../../../config/env-registry";
+import { sendIfMaintenanceRefusal } from "../../../../services/maintenance-flag";
+import { registerUncachedWcRequest, wcUncachedRequest } from "../../../../services/webclient";
+
+// changeTakesEffect: "immediate" for all five. getConfig() re-reads every one
+// of them through the registry on each t631Fetch call and keeps nothing
+// between calls. The same five are also registered by the T631 status plugin
+// (server/plugins/system/status/plugins/sitespecific-t631-client.ts), which
+// reads them per status scan — registration is last-one-wins, so both copies
+// must carry the same classification.
+registerEnvironmentVariables([
+  { name: "SITESPECIFIC_T631_CLIENT_URL", description: "Base URL of the remote T631 service.", secret: false, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+  { name: "SITESPECIFIC_T631_CLIENT_ACCOUNT_ID", description: "Account id for the remote T631 service.", secret: false, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+  { name: "SITESPECIFIC_T631_CLIENT_ACCESS_TOKEN", description: "Access token for the remote T631 service.", secret: true, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+  { name: "SITESPECIFIC_T631_CLIENT_EMPLOYER_ID", description: "Employer id for the remote T631 service.", secret: false, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+  { name: "SITESPECIFIC_T631_CLIENT_EMPLOYER_TOKEN", description: "Employer token for the remote T631 service.", secret: true, category: "sitespecific.t631.client", changeTakesEffect: "immediate", },
+]);
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -40,11 +57,11 @@ interface T631FetchResult {
 }
 
 function getConfig(): T631Config {
-  const url = process.env.SITESPECIFIC_T631_CLIENT_URL;
-  const accountId = process.env.SITESPECIFIC_T631_CLIENT_ACCOUNT_ID;
-  const accessToken = process.env.SITESPECIFIC_T631_CLIENT_ACCESS_TOKEN;
-  const employerId = process.env.SITESPECIFIC_T631_CLIENT_EMPLOYER_ID;
-  const employerToken = process.env.SITESPECIFIC_T631_CLIENT_EMPLOYER_TOKEN;
+  const url = getEnvironmentVariable("SITESPECIFIC_T631_CLIENT_URL");
+  const accountId = getEnvironmentVariable("SITESPECIFIC_T631_CLIENT_ACCOUNT_ID");
+  const accessToken = getEnvironmentVariable("SITESPECIFIC_T631_CLIENT_ACCESS_TOKEN");
+  const employerId = getEnvironmentVariable("SITESPECIFIC_T631_CLIENT_EMPLOYER_ID");
+  const employerToken = getEnvironmentVariable("SITESPECIFIC_T631_CLIENT_EMPLOYER_TOKEN");
 
   if (!url || !accountId || !accessToken || !employerId || !employerToken) {
     const missing = [];
@@ -74,7 +91,66 @@ const VALID_ACTIONS = [
 
 type T631Action = typeof VALID_ACTIONS[number];
 
+/**
+ * One uncached framework entry per action.
+ *
+ * Registered in a loop because the action IS the request type — a new member
+ * of VALID_ACTIONS is a new outbound operation, and a list that had to be
+ * extended by hand alongside it would quietly leave the new one ungated.
+ *
+ * None of them needs a writable database: t631Fetch records nothing itself, it
+ * hands the remote system's answer back to a caller that decides what to keep,
+ * and the diagnostics page that runs a ping is exactly what an operator
+ * reaches for while the site is read-only.
+ */
+for (const action of VALID_ACTIONS) {
+  registerUncachedWcRequest({
+    service: "T631",
+    requestType: action,
+    operation: `run ${action}`,
+    needsWritableDatabase: false,
+  });
+}
+
+/**
+ * Ask the remote T631 service for one action.
+ *
+ * Never throws for a remote or network condition — every one of those comes
+ * back as a result the diagnostics page can show. The single exception is a
+ * `MaintenanceModeError`, which is deliberately left to propagate: it is not
+ * something T631 said, and describing it as a failed request would tell an
+ * operator the remote system is broken when nobody asked it anything. Callers
+ * either report it as the refusal it is or let it reach the route, where
+ * `sendIfMaintenanceRefusal` answers with the shared wording.
+ */
 export async function t631Fetch(action: T631Action): Promise<T631FetchResult> {
+  // Missing configuration has always been thrown rather than reported as a
+  // failed request, so it is carried back out as itself.
+  let thrown: unknown;
+  let outcome: T631FetchResult | undefined;
+
+  await wcUncachedRequest<T631FetchResult>({
+    service: "T631",
+    requestType: action,
+    fetch: async () => {
+      try {
+        outcome = await performT631Fetch(action);
+        return { answered: outcome.success, error: outcome.error };
+      } catch (error) {
+        thrown = error;
+        return { answered: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  });
+
+  if (outcome) return outcome;
+  if (thrown !== undefined) throw thrown;
+  // Only reachable if the framework declined to make the call, which this
+  // entry cannot ask for: it does not need a writable database.
+  throw new Error(`T631 ${action} was not attempted.`);
+}
+
+async function performT631Fetch(action: T631Action): Promise<T631FetchResult> {
   const startTime = Date.now();
   const timestamp = new Date().toISOString();
 
@@ -168,6 +244,10 @@ const fetchRequestSchema = z.object({
   action: z.enum(VALID_ACTIONS),
 });
 
+const syncWorkersRequestSchema = z.object({
+  dryRun: z.boolean().default(true),
+});
+
 export function registerT631ClientFetchRoutes(
   app: Express,
   requireAuth: AuthMiddleware,
@@ -197,7 +277,57 @@ export function registerT631ClientFetchRoutes(
 
         res.json(result);
       } catch (error) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
         const message = error instanceof Error ? error.message : "Failed to execute T631 fetch";
+        res.status(500).json({ message });
+      }
+    }
+  );
+
+  app.post(
+    "/api/sitespecific/t631/client/sync-workers",
+    requireAuth,
+    requirePermission("admin"),
+    edlsComponent,
+    t631Component,
+    async (req: Request, res: Response) => {
+      try {
+        const parsed = syncWorkersRequestSchema.safeParse(req.body ?? {});
+        if (!parsed.success) {
+          return res.status(400).json({
+            message: `Invalid request: ${parsed.error.errors.map(e => e.message).join(", ")}`,
+          });
+        }
+        const { dryRun } = parsed.data;
+
+        const fetchResult = await t631Fetch("sirius_edls_server_worker_list");
+        if (!fetchResult.success) {
+          return res.status(502).json({
+            message: `T631 fetch failed: ${fetchResult.error || "Unknown error"}`,
+          });
+        }
+        const responseBody = fetchResult.data;
+        if (!responseBody || typeof responseBody !== "object") {
+          return res.status(502).json({ message: "T631 fetch returned empty or non-object response body" });
+        }
+        const typed = responseBody as { success?: boolean; data?: unknown };
+        if (typed.success !== true) {
+          return res.status(502).json({ message: "T631 response indicates failure (success !== true)" });
+        }
+        if (!typed.data || typeof typed.data !== "object") {
+          return res.status(502).json({ message: "T631 response missing 'data' field or data is not an object" });
+        }
+
+        const { syncWorkerEins } = await import("./sync-workers");
+        const syncResult = await syncWorkerEins(
+          responseBody as Parameters<typeof syncWorkerEins>[0],
+          dryRun,
+        );
+
+        res.json({ dryRun, ...syncResult });
+      } catch (error) {
+        if (sendIfMaintenanceRefusal(res, error)) return;
+        const message = error instanceof Error ? error.message : "Failed to sync T631 worker EINs";
         res.status(500).json({ message });
       }
     }

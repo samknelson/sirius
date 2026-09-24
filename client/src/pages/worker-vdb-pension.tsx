@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Loader2, Calculator, CheckCircle2, XCircle } from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface PensionTopSummary {
@@ -82,7 +82,7 @@ function WorkerVdbPensionContent() {
     onError: (error) => {
       toast({
         title: "SLA Calculation Failed",
-        description: error instanceof Error ? error.message : "An error occurred",
+        description: getApiErrorMessage(error, "An error occurred"),
         variant: "destructive",
       });
     },

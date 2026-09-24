@@ -9,6 +9,7 @@ import { PageTitleProvider } from "@/contexts/PageTitleContext";
 import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
+import { HelpDisplay } from "@/components/HelpDisplay";
 import Footer from "@/components/layout/Footer";
 import { useEffect, lazy, Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,6 +18,7 @@ import { ServerInjections } from "@/components/ServerInjections";
 
 // Essential pages loaded eagerly for fast initial render
 import LoginPage from "@/pages/login";
+import AuthErrorPage from "@/pages/auth-error";
 import UnauthorizedPage from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import VerifyWorkerPage from "@/pages/verify-worker";
@@ -24,9 +26,12 @@ import RegisterPage from "@/pages/register";
 
 // Lazy-loaded pages
 const Bootstrap = lazy(() => import("@/pages/bootstrap"));
+const RecordGoPage = lazy(() => import("@/pages/record-go"));
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
+const EdlsSchedulePage = lazy(() => import("@/pages/edls-schedule"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const Bookmarks = lazy(() => import("@/pages/bookmarks"));
+const AccountPassword = lazy(() => import("@/pages/account-password"));
 const AlertsPage = lazy(() => import("@/pages/alerts").then(m => ({ default: m.default })));
 const AlertsRedirect = lazy(() => import("@/pages/alerts").then(m => ({ default: m.AlertsRedirect })));
 const Reports = lazy(() => import("@/pages/reports"));
@@ -43,14 +48,28 @@ const WorkerGender = lazy(() => import("@/pages/worker-gender"));
 const WorkerWorkStatus = lazy(() => import("@/pages/worker-work-status"));
 const WorkerMemberStatus = lazy(() => import("@/pages/worker-member-status"));
 const WorkerUserPage = lazy(() => import("@/pages/worker-user"));
+const WorkerDashboardPage = lazy(() => import("@/pages/worker-dashboard"));
 const WorkerBargainingUnit = lazy(() => import("@/pages/worker-bargaining-unit"));
 const WorkerSteward = lazy(() => import("@/pages/worker-steward"));
 const WorkerDispatchStatus = lazy(() => import("@/pages/workers/dispatch-status"));
 const WorkerDispatchDoNotCall = lazy(() => import("@/pages/workers/dispatch-do-not-call"));
+const WorkerDispatchDepartments = lazy(() => import("@/pages/workers/dispatch-departments"));
 const WorkerDispatchHoldForEmployer = lazy(() => import("@/pages/workers/dispatch-hold-for-employer"));
+const WorkerDispatchT631Interviews = lazy(() => import("@/pages/workers/dispatch-t631-interviews"));
+const DispatchJobT631InterviewsPage = lazy(() => import("@/pages/dispatch/job-t631-interviews"));
+const DispatchJobT631InterviewOffersPage = lazy(() => import("@/pages/dispatch/job-t631-interview-offers"));
+const DispatchJobEmployerContactsPage = lazy(() => import("@/pages/dispatch/job-employer-contacts"));
 const WorkerDispatchEba = lazy(() => import("@/pages/workers/dispatch-eba"));
+const WorkerDispatchAsi = lazy(() => import("@/pages/workers/dispatch-asi"));
 const WorkerBans = lazy(() => import("@/pages/workers/bans"));
+const WorkerNotes = lazy(() => import("@/pages/workers/notes"));
+const WorkerFiles = lazy(() => import("@/pages/workers/files"));
+const EmployerNotes = lazy(() => import("@/pages/employers/notes"));
+const EmployerFiles = lazy(() => import("@/pages/employers/files"));
+const TrustProviderNotesPage = lazy(() => import("@/pages/trust-provider-notes"));
+const TrustProviderFilesPage = lazy(() => import("@/pages/trust-provider-files"));
 const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
+const WorkerEdlsAssignments = lazy(() => import("@/pages/worker-edls-assignments"));
 const WorkerSecondShift = lazy(() => import("@/pages/worker-sitespecific-freeman-2shift"));
 const WorkerBaoBeneficiaries = lazy(() => import("@/pages/worker-sitespecific-bao-beneficiaries"));
 const WorkerSkills = lazy(() => import("@/pages/worker-skills"));
@@ -63,6 +82,7 @@ const WorkerTos = lazy(() => import("@/pages/worker-tos"));
 const WorkerCertifications = lazy(() => import("@/pages/worker-certifications"));
 const WorkerCertificationView = lazy(() => import("@/pages/worker-certification-view"));
 const WorkerRatings = lazy(() => import("@/pages/worker-ratings"));
+const WorkerAat = lazy(() => import("@/pages/worker-aat"));
 const WorkerLedgerAccounts = lazy(() => import("@/pages/worker-ledger-accounts"));
 const WorkerSitespecificBaoEchp = lazy(() => import("@/pages/worker-sitespecific-bao-echp"));
 const Stewards = lazy(() => import("@/pages/stewards"));
@@ -96,8 +116,14 @@ const GrievanceView = lazy(() => import("@/pages/grievance-view"));
 const GrievanceEdit = lazy(() => import("@/pages/grievance-edit"));
 const GrievanceStatusHistory = lazy(() => import("@/pages/grievance-status-history"));
 const GrievanceLogs = lazy(() => import("@/pages/grievance-logs"));
+const GrievanceNotes = lazy(() => import("@/pages/grievance-notes"));
 const GrievanceTimeline = lazy(() => import("@/pages/grievance-timeline"));
 const GrievanceSettlements = lazy(() => import("@/pages/grievance-settlements"));
+const GrievanceFiles = lazy(() => import("@/pages/grievance-files"));
+const CatalogsConfigPage = lazy(() => import("@/pages/config/catalogs"));
+const CatalogDetailConfigPage = lazy(() => import("@/pages/config/catalog-detail"));
+const EntityFilesConfigPage = lazy(() => import("@/pages/config/entity-files"));
+const EntityNotesConfigPage = lazy(() => import("@/pages/config/entity-notes"));
 const GrievanceTimelineTemplatesPage = lazy(() => import("@/pages/config/grievance-timeline-templates"));
 const GrievanceTimelineTemplateView = lazy(() => import("@/pages/grievance-timeline-template-view"));
 const GrievanceTimelineTemplateEdit = lazy(() => import("@/pages/grievance-timeline-template-edit"));
@@ -171,6 +197,7 @@ const ContractFullTextPage = lazy(() => import("@/pages/contracts/full-text"));
 const ContractSectionManagePage = lazy(() => import("@/pages/contracts/section-manage"));
 const ContractLogsPage = lazy(() => import("@/pages/contracts/logs"));
 const TrustProvidersPage = lazy(() => import("@/pages/trust-providers"));
+const TrustProviderEdiDashboardPage = lazy(() => import("@/pages/trust/provider-edi-dashboard"));
 const TrustProviderViewPage = lazy(() => import("@/pages/trust-provider-view"));
 const TrustProviderEditPage = lazy(() => import("@/pages/trust-provider-edit"));
 const TrustProviderContactsPage = lazy(() => import("@/pages/trust-provider-contacts"));
@@ -187,10 +214,6 @@ const TrustProviderContactSendSms = lazy(() => import("@/pages/trust-provider-co
 const TrustProviderContactSendEmail = lazy(() => import("@/pages/trust-provider-contact-send-email"));
 const TrustProviderContactSendPostal = lazy(() => import("@/pages/trust-provider-contact-send-postal"));
 const TrustProviderContactSendInApp = lazy(() => import("@/pages/trust-provider-contact-send-inapp"));
-const TrustProviderEdiPage = lazy(() => import("@/pages/trust-provider-edi"));
-const TrustProviderEdiDetailsPage = lazy(() => import("@/pages/trust-provider-edi-details"));
-const TrustProviderEdiEditPage = lazy(() => import("@/pages/trust-provider-edi-edit"));
-const TrustProviderEdiLogsPage = lazy(() => import("@/pages/trust-provider-edi-logs"));
 const TrustProviderLogsPage = lazy(() => import("@/pages/trust-provider-logs"));
 const BargainingUnitsPage = lazy(() => import("@/pages/bargaining-units"));
 const BargainingUnitViewPage = lazy(() => import("@/pages/bargaining-unit-view"));
@@ -199,6 +222,8 @@ const BargainingUnitDeletePage = lazy(() => import("@/pages/bargaining-unit-dele
 const AdminUsersPage = lazy(() => import("@/pages/admin/users"));
 const UserAccountPage = lazy(() => import("@/pages/admin/user-account"));
 const UserLogs = lazy(() => import("@/pages/admin/user-logs"));
+
+const UserDashboardPage = lazy(() => import("@/pages/admin/user-dashboard"));
 const UserEmail = lazy(() => import("@/pages/admin/user-email"));
 const UserPhoneNumbers = lazy(() => import("@/pages/admin/user-phone-numbers"));
 const UserAddresses = lazy(() => import("@/pages/admin/user-addresses"));
@@ -209,9 +234,10 @@ const UserSendPostal = lazy(() => import("@/pages/admin/user-send-postal"));
 const UserSendInApp = lazy(() => import("@/pages/admin/user-send-inapp"));
 const AdminRolesPage = lazy(() => import("@/pages/admin/roles"));
 const AdminPermissionsPage = lazy(() => import("@/pages/admin/permissions"));
+const LetterTemplatesPage = lazy(() => import("@/pages/admin/letter-templates"));
+const LetterTemplateDetailPage = lazy(() => import("@/pages/admin/letter-template-detail"));
 const WmbScanQueue = lazy(() => import("@/pages/admin/wmb-scan-queue"));
 const WmbScanDetail = lazy(() => import("@/pages/admin/wmb-scan-detail"));
-const AdminQuickstarts = lazy(() => import("@/pages/admin-quickstarts"));
 const CronJobs = lazy(() => import("@/pages/cron-jobs"));
 const EventBusDebug = lazy(() => import("@/pages/admin/debug/event-bus"));
 const CronJobView = lazy(() => import("@/pages/cron-job-view"));
@@ -232,6 +258,9 @@ const FloodEventsConfigPage = lazy(() => import("@/pages/flood-events-config"));
 const PostalAddressesConfigPage = lazy(() => import("@/pages/config/addresses"));
 const PhoneNumbersConfigPage = lazy(() => import("@/pages/config/phone-numbers"));
 const DynamicOptionsPage = lazy(() => import("@/pages/config/options"));
+
+const OptionsExportPage = lazy(() => import("@/pages/config/options-export"));
+const OptionsIndexPage = lazy(() => import("@/pages/config/options-index"));
 const StewardSettingsPage = lazy(() => import("@/pages/config/steward-settings"));
 const EventTypesPage = lazy(() => import("@/pages/config/event-types"));
 const DispatchJobTypesPage = lazy(() => import("@/pages/config/dispatch-job-types"));
@@ -239,6 +268,7 @@ const DispatchJobTypeViewPage = lazy(() => import("@/pages/config/dispatch-job-t
 const DispatchJobTypeEditPage = lazy(() => import("@/pages/config/dispatch-job-type-edit"));
 const DispatchJobTypeDeletePage = lazy(() => import("@/pages/config/dispatch-job-type-delete"));
 const DispatchJobTypeNotificationsPage = lazy(() => import("@/pages/config/dispatch-job-type-notifications"));
+const DispatchJobTypeEligibilityPluginsPage = lazy(() => import("@/pages/config/dispatch-job-type-eligibility-plugins"));
 const DispatchDncConfigPage = lazy(() => import("@/pages/config/dispatch-dnc"));
 const DispatchJobTypeRunSettingsPage = lazy(() => import("@/pages/config/dispatch-job-type-run-settings"));
 const DispatchEbaSettingsPage = lazy(() => import("@/pages/config/dispatch-eba-settings"));
@@ -248,21 +278,33 @@ const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
 const T631FetchPage = lazy(() => import("@/pages/config/edls/t631-fetch"));
+const FreemanEdlsMigratePage = lazy(() => import("@/pages/admin/sitespecific/freeman/edls-migrate"));
+const T631MemberStatusSyncPage = lazy(() => import("@/pages/config/edls/t631-ms"));
 const BaoMemberStatusThresholdsPage = lazy(() => import("@/pages/config/trust/sitespecific/bao/thresholds"));
-const WsBundlesPage = lazy(() => import("@/pages/config/ws/bundles"));
+const WsServicesPage = lazy(() => import("@/pages/config/ws/services"));
+const WsStatsPage = lazy(() => import("@/pages/admin/ws-stats"));
 const WsClientsPage = lazy(() => import("@/pages/config/ws/clients"));
 const WsClientSettingsPage = lazy(() => import("@/pages/config/ws/client-settings"));
 const WsClientCredentialsPage = lazy(() => import("@/pages/config/ws/client-credentials"));
 const WsClientIpRulesPage = lazy(() => import("@/pages/config/ws/client-ip-rules"));
 const WsClientTestPage = lazy(() => import("@/pages/config/ws/client-test"));
 const WsClientLogsPage = lazy(() => import("@/pages/config/ws/client-logs"));
+const WsClientSwaggerPage = lazy(() => import("@/pages/config/ws/client-swagger"));
 const SftpClientsPage = lazy(() => import("@/pages/config/sftp/clients"));
+const HelpsConfigPage = lazy(() => import("@/pages/config/helps"));
+const BusinessCalendarsPage = lazy(() => import("@/pages/config/business-calendars/index"));
+const BusinessCalendarDetailPage = lazy(() => import("@/pages/config/business-calendars/detail"));
+const BusinessCalendarClosedDaysPage = lazy(() => import("@/pages/config/business-calendars/closed-days"));
+const BusinessCalendarVacationsPage = lazy(() => import("@/pages/config/business-calendars/vacations"));
+const BusinessCalendarOpenDaysPage = lazy(() => import("@/pages/config/business-calendars/open-days"));
+const BusinessCalendarTestPage = lazy(() => import("@/pages/config/business-calendars/test"));
 const SftpClientDetailsPage = lazy(() => import("@/pages/config/sftp/client-details"));
 const SftpClientConnectionPage = lazy(() => import("@/pages/config/sftp/client-connection"));
 const SftpClientTestPage = lazy(() => import("@/pages/config/sftp/client-test"));
 const SftpClientLogsPage = lazy(() => import("@/pages/config/sftp/client-logs"));
 const SftpClientEditPage = lazy(() => import("@/pages/config/sftp/client-edit"));
 const WorkerBanConfigPage = lazy(() => import("@/pages/config/workers-ban"));
+const WorkersTosConfigPage = lazy(() => import("@/pages/config/config-workers-tos"));
 const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));
 const DispatchJobDetailsPage = lazy(() => import("@/pages/dispatch/job-details"));
 const DispatchJobEditPage = lazy(() => import("@/pages/dispatch/job-edit"));
@@ -271,6 +313,7 @@ const DispatchJobDispatchesCbnPage = lazy(() => import("@/pages/dispatch/job-dis
 const DispatchJobEligibleWorkersPage = lazy(() => import("@/pages/dispatch/job-eligible-workers"));
 const DispatchJobEligibleWorkersCheckPage = lazy(() => import("@/pages/dispatch/job-eligible-check"));
 const DispatchJobNewPage = lazy(() => import("@/pages/dispatch/job-new"));
+const DispatchJobForePage = lazy(() => import("@/pages/dispatch/job-fore"));
 const DispatchJobRunPage = lazy(() => import("@/pages/dispatch/job-run"));
 const DispatchJobRunSettingsPage = lazy(() => import("@/pages/dispatch/job-run-settings"));
 const DispatchJobRunBatchPage = lazy(() => import("@/pages/dispatch/job-run-batch"));
@@ -292,6 +335,10 @@ const DispatchEditPage = lazy(() => import("@/pages/dispatch/dispatch-edit"));
 const DispatchManagePage = lazy(() => import("@/pages/dispatch/dispatch-manage"));
 const MasqueradePage = lazy(() => import("@/pages/config/masquerade"));
 const SystemModePage = lazy(() => import("@/pages/config/system-mode"));
+const AuthSettingsPage = lazy(() => import("@/pages/config/auth-settings"));
+const EnvPage = lazy(() => import("@/pages/config/env"));
+const TimeZoneConfigPage = lazy(() => import("@/pages/config/timezone"));
+const SystemStatusPage = lazy(() => import("@/pages/config/system-status"));
 const DefaultPolicyPage = lazy(() => import("@/pages/config/default-policy"));
 const TwilioConfigPage = lazy(() => import("@/pages/config/twilio"));
 const EmailConfigPage = lazy(() => import("@/pages/config/email"));
@@ -306,8 +353,17 @@ const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-
 // any navigation registry; reachable only via this route for verification.
 const GenericPluginConfigsPage = lazy(() => import("@/pages/admin/plugin-configs"));
 const PluginConfigsIndexPage = lazy(() => import("@/pages/admin/plugin-configs-index"));
+const FileBrowserPage = lazy(() => import("@/pages/admin/file-browser"));
+const FileBrowserDetailPage = lazy(() => import("@/pages/admin/file-browser-detail"));
 const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
 const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
+const EbsInspectionPage = lazy(() => import("@/pages/admin/ebs"));
+const WcOverviewPage = lazy(() => import("@/pages/admin/wc-overview"));
+const WcCachePage = lazy(() => import("@/pages/admin/wc-cache"));
+const WcStatsPage = lazy(() => import("@/pages/admin/wc-stats"));
+const MetadataListPage = lazy(() => import("@/pages/admin/metadata-list"));
+const MetadataBackfillPage = lazy(() => import("@/pages/admin/metadata-backfill"));
+const RestartPage = lazy(() => import("@/pages/admin/restart"));
 const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
 const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
 const LedgerAccountView = lazy(() => import("@/pages/config/ledger/account-view"));
@@ -364,10 +420,13 @@ const EdlsSheetsPage = lazy(() => import("@/pages/edls/sheets"));
 const EdlsTosPage = lazy(() => import("@/pages/edls/tos"));
 const EdlsSheetDetailsPage = lazy(() => import("@/pages/edls/sheet-details"));
 const EdlsSheetAssignmentsPage = lazy(() => import("@/pages/edls/sheet-assignments"));
+const EdlsSheetNextAssignmentsPage = lazy(() => import("@/pages/edls/sheet-next-assignments"));
 const EdlsSheetManagePage = lazy(() => import("@/pages/edls/sheet-manage"));
 const EdlsSheetEditPage = lazy(() => import("@/pages/edls/sheet-edit"));
 const EdlsSheetLogsPage = lazy(() => import("@/pages/edls/sheet-logs"));
+const EdlsSheetSnapshotsPage = lazy(() => import("@/pages/edls/sheet-snapshots"));
 const FreemanCrewleadsPage = lazy(() => import("@/pages/sitespecific/freeman/crewleads-list"));
+const FreemanChangelogPage = lazy(() => import("@/pages/sitespecific/freeman/changelog"));
 const BulkMessagesPage = lazy(() => import("@/pages/bulk-messages"));
 const BulkMessageDetailsPage = lazy(() => import("@/pages/bulk-message-details"));
 const BulkMessageEditPage = lazy(() => import("@/pages/bulk-message-edit"));
@@ -405,10 +464,37 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       <Header />
-      <main className="flex-1">{children}</main>
+      <HelpDisplay />
+      <main id="site-content" className="flex-1">{children}</main>
       <Footer />
     </div>
   );
+}
+
+/**
+ * The public EDLS worker schedule is the one route both audiences share: an
+ * anonymous visitor holding the link gets bare content (no header, menu or
+ * footer), while a signed-in staff member sees the same page inside the normal
+ * site chrome. The choice waits for the auth check to settle so the layout
+ * never flips on load. Deliberately local to this route — every other public
+ * route is unwrapped unconditionally.
+ */
+function EdlsScheduleRoute() {
+  const { isAuthenticated, authReady } = useAuth();
+
+  if (!authReady) {
+    return <PageLoader />;
+  }
+
+  if (isAuthenticated) {
+    return (
+      <AuthenticatedLayout>
+        <EdlsSchedulePage />
+      </AuthenticatedLayout>
+    );
+  }
+
+  return <EdlsSchedulePage />;
 }
 
 function Router() {
@@ -461,9 +547,19 @@ function Router() {
         <Route path="/verify-worker" component={VerifyWorkerPage} />
         <Route path="/register" component={RegisterPage} />
         <Route path="/unauthorized" component={UnauthorizedPage} />
+        <Route path="/auth-error" component={AuthErrorPage} />
         <Route path="/sms/optin/:token" component={SmsOptinPage} />
+        <Route path="/edls-sched/:id" component={EdlsScheduleRoute} />
 
       {/* Protected routes */}
+      <Route path="/go">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <RecordGoPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/add">
         <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
@@ -576,6 +672,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/grievance/:id/notes">
+        <ProtectedRoute tabId="notes" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceNotes />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/grievance/:id/timeline">
         <ProtectedRoute tabId="timeline" entityType="grievance">
           <AuthenticatedLayout>
@@ -588,6 +692,14 @@ function Router() {
         <ProtectedRoute tabId="settlements" entityType="grievance">
           <AuthenticatedLayout>
             <GrievanceSettlements />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance/:id/files">
+        <ProtectedRoute tabId="files" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceFiles />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -796,10 +908,34 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/workers/:id/dashboard">
+        <ProtectedRoute tabId="dashboard" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerDashboardPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/:id/bans">
         <ProtectedRoute tabId="bans" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBans />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/notes">
+        <ProtectedRoute tabId="notes" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerNotes />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/files">
+        <ProtectedRoute tabId="files" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerFiles />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -813,9 +949,17 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/edls">
-        <ProtectedRoute tabId="edls" entityType="worker">
+        <ProtectedRoute tabId="edls-status" entityType="worker">
           <AuthenticatedLayout>
             <WorkerEdls />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/edls/assignments">
+        <ProtectedRoute tabId="edls-assignments" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerEdlsAssignments />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -916,6 +1060,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/workers/:id/aat">
+        <ProtectedRoute tabId="aat" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerAat />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/:id/union/bargaining-unit">
         <ProtectedRoute tabId="bargaining-unit" entityType="worker">
           <AuthenticatedLayout>
@@ -988,6 +1140,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/workers/:id/dispatch/departments">
+        <ProtectedRoute tabId="dispatch-departments" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerDispatchDepartments />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/:id/dispatch/hold-for-employer">
         <ProtectedRoute tabId="dispatch-hfe" entityType="worker">
           <AuthenticatedLayout>
@@ -1000,6 +1160,22 @@ function Router() {
         <ProtectedRoute tabId="dispatch-eba" entityType="worker">
           <AuthenticatedLayout>
             <WorkerDispatchEba />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/dispatch/sitespecific_t631_interviews">
+        <ProtectedRoute tabId="dispatch-t631-interviews" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerDispatchT631Interviews />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/dispatch/asi">
+        <ProtectedRoute tabId="dispatch-asi" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerDispatchAsi />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1213,6 +1389,14 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
+
+      <Route path="/account/password">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <AccountPassword />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
       
       <Route path="/alerts/unread">
         <ProtectedRoute>
@@ -1282,6 +1466,22 @@ function Router() {
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <Reports activeCategory="BTU" />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/reports/edls">
+        <ProtectedRoute permission="admin" component="edls">
+          <AuthenticatedLayout>
+            <Reports activeCategory="EDLS" />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/reports/trust">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <Reports activeCategory="Trust" />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1634,6 +1834,22 @@ function Router() {
         <ProtectedRoute tabId="logs" entityType="employer">
           <AuthenticatedLayout>
             <EmployerLogs />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/employers/:id/notes">
+        <ProtectedRoute tabId="notes" entityType="employer">
+          <AuthenticatedLayout>
+            <EmployerNotes />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/employers/:id/files">
+        <ProtectedRoute tabId="files" entityType="employer">
+          <AuthenticatedLayout>
+            <EmployerFiles />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2025,6 +2241,22 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/trust/provider/:id/notes">
+        <ProtectedRoute tabId="notes" entityType="provider">
+          <AuthenticatedLayout>
+            <TrustProviderNotesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/provider/:id/files">
+        <ProtectedRoute tabId="files" entityType="provider">
+          <AuthenticatedLayout>
+            <TrustProviderFilesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/trust-provider-contacts/:id/user">
         <ProtectedRoute policy="trust.provider.manage" component="trust.providers">
           <AuthenticatedLayout>
@@ -2137,38 +2369,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/trust/provider/:id/edi">
-        <ProtectedRoute permission="admin" component="trust.providers.edi">
-          <AuthenticatedLayout>
-            <TrustProviderEdiPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/trust/provider-edi/:id/edit">
-        <ProtectedRoute permission="admin" component="trust.providers.edi">
-          <AuthenticatedLayout>
-            <TrustProviderEdiEditPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/trust/provider-edi/:id/logs">
-        <ProtectedRoute permission="admin" component="trust.providers.edi">
-          <AuthenticatedLayout>
-            <TrustProviderEdiLogsPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/trust/provider-edi/:id">
-        <ProtectedRoute permission="admin" component="trust.providers.edi">
-          <AuthenticatedLayout>
-            <TrustProviderEdiDetailsPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
       <Route path="/bulk/list">
         <ProtectedRoute policy="bulk.edit">
           <AuthenticatedLayout>
@@ -2265,6 +2465,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/trust/provider-edi">
+        <ProtectedRoute permission="admin" component="trust.providers.edi">
+          <AuthenticatedLayout>
+            <TrustProviderEdiDashboardPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       {/* Bargaining Units routes */}
       <Route path="/bargaining-units/:id/edit">
         <ProtectedRoute tabId="edit" entityType="bargaining_unit">
@@ -2308,6 +2516,24 @@ function Router() {
       </Route>
 
       {/* Admin user management routes - no ConfigurationLayout sidebar */}
+      <Route path="/admin/letter-templates">
+        <ProtectedRoute permission="staff">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <LetterTemplatesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/letter-templates/:id">
+        <ProtectedRoute permission="staff">
+          <AuthenticatedLayout>
+            <LetterTemplateDetailPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/admin/users/list">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -2444,6 +2670,48 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      {/* The literal index is registered before the drill-in, so it cannot be
+          matched as a catalog whose name happens to be missing. */}
+      <Route path="/config/catalogs">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <CatalogsConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/catalogs/:catalogId">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <CatalogDetailConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/entity-files">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EntityFilesConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/entity-notes">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EntityNotesConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/phone-numbers">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -2454,7 +2722,19 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/options/:type">
+      {/* The index of every dropdown list. Registered before the
+          parameterized options routes so "options" isn't read as a type. */}
+      <Route path="/config/options">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <OptionsIndexPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/options/:type/list">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -2462,6 +2742,31 @@ function Router() {
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/options/:type/export">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <OptionsExportPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/options/:type/import">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <OptionsImportPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Existing links and bookmarks to the plain options URL land on the list */}
+      <Route path="/config/options/:type">
+        {(params) => <Redirect to={`/config/options/${params.type}/list`} />}
       </Route>
 
       <Route path="/config/steward-settings">
@@ -2514,6 +2819,14 @@ function Router() {
         <ProtectedRoute tabId="notifications" entityType="dispatch_job_type">
           <AuthenticatedLayout>
             <DispatchJobTypeNotificationsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/dispatch-job-type/:id/eligibility-plugins">
+        <ProtectedRoute tabId="eligibility-plugins" entityType="dispatch_job_type">
+          <AuthenticatedLayout>
+            <DispatchJobTypeEligibilityPluginsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2616,6 +2929,26 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/edls/t631-ms">
+        <ProtectedRoute permission="admin" componentAll={["edls", "sitespecific.t631.client"]}>
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <T631MemberStatusSyncPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/sitespecific/freeman/edls/migrate">
+        <ProtectedRoute permission="admin" componentAll={["edls", "sitespecific.freeman.edls_migrate"]}>
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <FreemanEdlsMigratePage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/trust/sitespecific/bao/thresholds">
         <ProtectedRoute permission="admin" component="sitespecific.bao">
           <AuthenticatedLayout>
@@ -2626,17 +2959,37 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/bundles">
+      {/* Web Services - Incoming: what other people call on us. The three tabs
+          are one page, so `/admin/ws` is the page's own address and lands on
+          the default tab. The client detail pages live under the Clients tab's
+          URL because that is where you get to them from. */}
+      <Route path="/admin/ws">
+        <ProtectedRoute permission="admin">
+          <Redirect to="/admin/ws/services" />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/ws/services">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <WsBundlesPage />
+              <WsServicesPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients/:id/logs">
+      <Route path="/admin/ws/stats">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WsStatsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/ws/clients/:id/logs">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientLogsPage />
@@ -2644,7 +2997,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients/:id/test">
+      <Route path="/admin/ws/clients/:id/test">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientTestPage />
@@ -2652,7 +3005,15 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients/:id/ip-rules">
+      <Route path="/admin/ws/clients/:id/swagger">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <WsClientSwaggerPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/ws/clients/:id/ip-rules">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientIpRulesPage />
@@ -2660,7 +3021,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients/:id/credentials">
+      <Route path="/admin/ws/clients/:id/credentials">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientCredentialsPage />
@@ -2668,7 +3029,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients/:id">
+      <Route path="/admin/ws/clients/:id">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WsClientSettingsPage />
@@ -2676,7 +3037,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ws/clients">
+      <Route path="/admin/ws/clients">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -2736,11 +3097,91 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/helps">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <HelpsConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/business-calendars">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BusinessCalendarsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/business-calendars/:id">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BusinessCalendarDetailPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/business-calendars/:id/closed-days">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BusinessCalendarClosedDaysPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/business-calendars/:id/vacations">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BusinessCalendarVacationsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/business-calendars/:id/open-days">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BusinessCalendarOpenDaysPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/business-calendars/:id/test">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BusinessCalendarTestPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/workers/ban">
         <ProtectedRoute permission="admin" component="worker.ban">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <WorkerBanConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/workers/tos">
+        <ProtectedRoute permission="admin" component="worker.tos">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WorkersTosConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -2822,6 +3263,59 @@ function Router() {
         <ProtectedRoute tabId="eligible-workers-list" entityType="dispatch_job">
           <AuthenticatedLayout>
             <DispatchJobEligibleWorkersPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* entityId passed explicitly: URL extraction can't parse /dispatch/job/:id */}
+      <Route path="/dispatch/job/:id/sitespecific_t631_interviews">
+        {(params) => (
+          <ProtectedRoute
+            tabId="sitespecific-t631-interviews"
+            entityType="dispatch_job"
+            entityId={params.id}
+          >
+            <AuthenticatedLayout>
+              <DispatchJobT631InterviewsPage />
+            </AuthenticatedLayout>
+          </ProtectedRoute>
+        )}
+      </Route>
+
+      {/* entityId passed explicitly: URL extraction can't parse /dispatch/job/:id */}
+      <Route path="/dispatch/job/:id/sitespecific_t631_interviews/offers">
+        {(params) => (
+          <ProtectedRoute
+            tabId="sitespecific-t631-interviews-offers"
+            entityType="dispatch_job"
+            entityId={params.id}
+          >
+            <AuthenticatedLayout>
+              <DispatchJobT631InterviewOffersPage />
+            </AuthenticatedLayout>
+          </ProtectedRoute>
+        )}
+      </Route>
+
+      {/* entityId passed explicitly: URL extraction can't parse /dispatch/job/:id */}
+      <Route path="/dispatch/job/:id/employer_contacts">
+        {(params) => (
+          <ProtectedRoute
+            tabId="dispatch-job-employer-contacts"
+            entityType="dispatch_job"
+            entityId={params.id}
+          >
+            <AuthenticatedLayout>
+              <DispatchJobEmployerContactsPage />
+            </AuthenticatedLayout>
+          </ProtectedRoute>
+        )}
+      </Route>
+
+      <Route path="/dispatch/job/:id/foreperson">
+        <ProtectedRoute tabId="foreperson" entityType="dispatch_job">
+          <AuthenticatedLayout>
+            <DispatchJobForePage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2979,6 +3473,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/edls/sheet/:id/next-assignments">
+        <ProtectedRoute tabId="next-assignments" entityType="edls_sheet">
+          <AuthenticatedLayout>
+            <EdlsSheetNextAssignmentsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/edls/sheet/:id/assignments">
         <ProtectedRoute tabId="assignments" entityType="edls_sheet">
           <AuthenticatedLayout>
@@ -3011,10 +3513,26 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/edls/sheet/:id/logs/snapshots">
+        <ProtectedRoute tabId="snapshots" entityType="edls_sheet">
+          <AuthenticatedLayout>
+            <EdlsSheetSnapshotsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/edls/freeman/crewleads">
         <ProtectedRoute policy="edls.any" component="sitespecific.freeman">
           <AuthenticatedLayout>
             <FreemanCrewleadsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/static/sitespecific/freeman/changelog">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <FreemanChangelogPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -3063,6 +3581,46 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <SystemModePage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/auth-settings">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <AuthSettingsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/env">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EnvPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/timezone">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <TimeZoneConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/system-status">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <SystemStatusPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -3190,6 +3748,27 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      {/* Admin raw file browser over the configured filesystems. */}
+      <Route path="/admin/file-browser/:id">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <FileBrowserDetailPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/file-browser">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <FileBrowserPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       {/* Generic plugin-config admin (unified config surface). Dashboard
           plugins are served here via the "Dashboard Plugins" nav entry
           (/admin/plugin-configs/dashboard); other kinds remain reachable by
@@ -3221,6 +3800,102 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <DenormConfigDetailPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Restart the app / reload configuration in place (Task #1258). */}
+      <Route path="/admin/restart">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <RestartPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Read-only EBS (deferred event bus) inspection. */}
+      <Route path="/admin/ebs">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EbsInspectionPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Web Services - Outgoing: what we call on other people. Admin-gated
+          throughout to match the endpoints — the stored responses are whatever
+          the vendor returned. `/admin/wc` is the page's own address and lands
+          on the default tab. */}
+      <Route path="/admin/wc">
+        <ProtectedRoute permission="admin">
+          <Redirect to="/admin/wc/overview" />
+        </ProtectedRoute>
+      </Route>
+
+      {/* What we are able to call: the registry as it stands in this process. */}
+      <Route path="/admin/wc/overview">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WcOverviewPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Cached third-party responses. */}
+      <Route path="/admin/wc/cache">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WcCachePage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* How often we actually called out, per service and request type. */}
+      <Route path="/admin/wc/stats">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WcStatsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Record history: the provenance rows themselves, and filling them in
+          for records that predate the bookkeeping. `/admin/metadata` is the
+          page's own address and lands on the default tab. */}
+      <Route path="/admin/metadata">
+        <ProtectedRoute permission="admin">
+          <Redirect to="/admin/metadata/list" />
+        </ProtectedRoute>
+      </Route>
+
+      {/* Every record history row in the system. */}
+      <Route path="/admin/metadata/list">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <MetadataListPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Filling in history for records that have none. */}
+      <Route path="/admin/metadata/backfill">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <MetadataBackfillPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -3341,6 +4016,15 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      {/* Staff view of another user's dashboard */}
+      <Route path="/users/:id/dashboard">
+        <ProtectedRoute tabId="dashboard" entityType="user">
+          <AuthenticatedLayout>
+            <UserDashboardPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/users/:id/logs">
         <ProtectedRoute tabId="logs" entityType="user">
           <AuthenticatedLayout>
@@ -3457,14 +4141,6 @@ function Router() {
             <AdminLayout>
               <AdminPermissionsPage />
             </AdminLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/admin/quickstarts">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <AdminQuickstarts />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -3604,3 +4280,5 @@ function App() {
 }
 
 export default App;
+
+const OptionsImportPage = lazy(() => import("@/pages/config/options-import"));

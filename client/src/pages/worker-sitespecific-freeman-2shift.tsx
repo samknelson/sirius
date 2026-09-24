@@ -8,9 +8,9 @@ import { AlertTriangle, RefreshCw } from "lucide-react";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { useAccessCheck } from "@/hooks/use-access-check";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 
-type MissingWorkerIdSiriusId = "freeman" | "2nd";
+type MissingWorkerIdSiriusId = "freeman_ein" | "2nd";
 type MissingMemberStatusSiriusId = "2nd";
 
 interface ConfigErrorDetail {
@@ -182,8 +182,7 @@ function ToSection({
       toast({ title: "2nd shift worker synced", description: `Updated ${name}.` });
     },
     onError: (err: unknown) => {
-      const description =
-        err instanceof Error ? err.message : "Could not sync the 2nd shift worker.";
+      const description = getApiErrorMessage(err, "Could not sync the 2nd shift worker.");
       toast({ title: "Sync failed", description, variant: "destructive" });
     },
   });

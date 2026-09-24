@@ -1,4 +1,4 @@
-import { getClient } from './transaction-context';
+import { getClient, onAfterCommit } from './transaction-context';
 import {
   workers,
   contacts,
@@ -23,6 +23,8 @@ import {
 } from "./utils/validation";
 import { parseSSN, validateSSN } from "@shared/utils/ssn";
 import { isComponentEnabledSync } from "../services/component-cache";
+import { provenanceCreatedDate } from "./system/entity-metadata-order";
+import { eventBus, EventType } from "../services/event-bus";
 
 export const ssnValidate = createAsyncStorageValidator<{ ssn: string | null; workerId?: string }, never, { ssn: string | null }>(
   async (data) => {
@@ -178,6 +180,18 @@ export interface WorkerSearchResult {
   total: number;
 }
 
+/**
+ * A worker resolved down to the single phone number an SMS to them would
+ * actually go to: their contact's ACTIVE PRIMARY number. Workers with no such
+ * number are simply absent, so a caller pre-filtering recipients never has to
+ * guess which of several numbers the send layer would pick.
+ */
+export interface WorkerSmsContact {
+  workerId: string;
+  contactId: string;
+  phoneNumber: string;
+}
+
 export interface WorkerStorage {
   getAllWorkers(): Promise<Worker[]>;
   /**
@@ -212,6 +226,13 @@ export interface WorkerStorage {
   getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
   getWorkerByContactEmail(email: string): Promise<Worker | undefined>;
   getWorkerByContactId(contactId: string): Promise<Worker | undefined>;
+  /**
+   * Contact and textable number for many workers in one query, for callers
+   * assembling an SMS recipient list from worker ids alone. Workers with no
+   * contact or no active primary number are left out rather than coming back
+   * unreachable. Unordered; key off `workerId`.
+   */
+  getSmsContactsByWorkerIds(workerIdsList: string[]): Promise<WorkerSmsContact[]>;
   getWorkersByHomeEmployerId(employerId: string): Promise<Array<{
     id: string;
     siriusId: number | null;
@@ -221,6 +242,7 @@ export interface WorkerStorage {
     family: string | null;
   }>>;
   createWorker(name: string): Promise<Worker>;
+  createWorkerWithNameParts(parts: { given: string | null; family: string | null; displayName: string }): Promise<Worker>;
   // Update methods that delegate to contact storage (contact storage already has logging)
   updateWorkerContactName(workerId: string, name: string): Promise<Worker | undefined>;
   updateWorkerContactNameComponents(workerId: string, components: {
@@ -500,18 +522,27 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
     LEFT JOIN worker_wsh_denorm wwd ON wwd.worker_id = w.id
     LEFT JOIN options_worker_ws ws ON ws.id = wwd.ws_id
     ${bargainingUnitJoin}
+    -- Primary first, then oldest, for both laterals. "Oldest" now comes from
+    -- the record's provenance created date — seeded from the retired
+    -- created_at columns these used to read — so each list row shows the same
+    -- number and address it did before. A record whose provenance has not
+    -- landed sorts last rather than first, and the id keeps the order total.
     LEFT JOIN LATERAL (
-      SELECT phone_number, is_primary
-      FROM contact_phone
-      WHERE contact_id = c.id
-      ORDER BY is_primary DESC NULLS LAST, created_at ASC
+      SELECT cp.phone_number, cp.is_primary
+      FROM contact_phone cp
+      WHERE cp.contact_id = c.id
+      ORDER BY cp.is_primary DESC NULLS LAST,
+        ${provenanceCreatedDate("contact_phone", sql`cp.id`)} ASC NULLS LAST,
+        cp.id ASC
       LIMIT 1
     ) p ON true
     LEFT JOIN LATERAL (
-      SELECT id, friendly_name, street, city, state, postal_code, country, is_primary
-      FROM contact_postal
-      WHERE contact_id = c.id AND is_active = true
-      ORDER BY is_primary DESC NULLS LAST, created_at ASC
+      SELECT cpo.id, cpo.friendly_name, cpo.street, cpo.city, cpo.state, cpo.postal_code, cpo.country, cpo.is_primary
+      FROM contact_postal cpo
+      WHERE cpo.contact_id = c.id AND cpo.is_active = true
+      ORDER BY cpo.is_primary DESC NULLS LAST,
+        ${provenanceCreatedDate("contact_postal", sql`cpo.id`)} ASC NULLS LAST,
+        cpo.id ASC
       LIMIT 1
     ) a ON true
     WHERE 1=1 ${allConditions}
@@ -968,6 +999,37 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return worker ? stripWorkerData(worker) : undefined;
     },
 
+    async getSmsContactsByWorkerIds(workerIdsList: string[]): Promise<WorkerSmsContact[]> {
+      if (workerIdsList.length === 0) return [];
+      const client = getClient();
+      // Same lateral pick as every other SMS pre-filter in the app: the
+      // active primary number, oldest first as the tiebreak, so this read and
+      // the send layer agree on the number the message goes to. "Oldest" is
+      // the record's provenance created date, seeded from the retired
+      // `contact_phone.created_at`, so the number picked is the one this read
+      // has always picked; a number with no provenance yet sorts last and the
+      // id settles the rest.
+      const result = await client.execute(sql`
+        SELECT
+          w.id as "workerId",
+          c.id as "contactId",
+          ph.phone_number as "phoneNumber"
+        FROM workers w
+        INNER JOIN contacts c ON w.contact_id = c.id
+        INNER JOIN LATERAL (
+          SELECT p.phone_number
+          FROM contact_phone p
+          WHERE p.contact_id = c.id
+            AND p.is_active = true
+            AND p.is_primary = true
+          ORDER BY ${provenanceCreatedDate("contact_phone", sql`p.id`)} ASC NULLS LAST, p.id ASC
+          LIMIT 1
+        ) ph ON true
+        WHERE w.id IN (${sql.join(workerIdsList.map((id) => sql`${id}`), sql`, `)})
+      `);
+      return result.rows as unknown as WorkerSmsContact[];
+    },
+
     async getWorkersByHomeEmployerId(employerId: string): Promise<Array<{
       id: string;
       siriusId: number | null;
@@ -1020,6 +1082,22 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .values({ contactId: contact.id })
         .returning();
       
+      return stripWorkerData(worker);
+    },
+
+    async createWorkerWithNameParts(parts: { given: string | null; family: string | null; displayName: string }): Promise<Worker> {
+      const client = getClient();
+      const contact = await contactsStorage.createContact({
+        given: parts.given || null,
+        family: parts.family || null,
+        displayName: parts.displayName,
+      });
+
+      const [worker] = await client
+        .insert(workers)
+        .values({ contactId: contact.id })
+        .returning();
+
       return stripWorkerData(worker);
     },
 
@@ -1144,6 +1222,13 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // If worker was deleted, also delete the corresponding contact using contact storage
       if (result.length > 0) {
         await contactsStorage.deleteContact(worker.contactId);
+        // Announce the deletion once it is durable, so the areas that hang off
+        // a worker with no foreign key (notes, file attachments) clean up now
+        // rather than waiting for their nightly sweep. Best-effort: a failed
+        // emit or handler never fails the delete.
+        onAfterCommit(() => {
+          void eventBus.emit(EventType.WORKER_DELETE_AFTER, { workerId: id });
+        });
       }
       
       return result.length > 0;
@@ -1186,6 +1271,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
  */
 export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
   module: 'workers',
+  table: 'workers',
   methods: {
     createWorker: {
       enabled: true,
@@ -1206,6 +1292,27 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
           }
         };
       }
+    },
+    createWorkerWithNameParts: {
+      enabled: true,
+      getEntityId: (args, result) => result?.id || 'new worker',
+      getHostEntityId: (args, result) => result?.id,
+      after: async (args, result, storage) => {
+        const client = getClient();
+        const [contact] = await client.select().from(contacts).where(eq(contacts.id, result.contactId));
+        return {
+          worker: result,
+          contact: contact,
+          metadata: {
+            inputParts: args[0],
+            workerId: result.id,
+            contactId: result.contactId,
+            siriusId: result.siriusId,
+            note: 'Worker creation also created an associated contact record (logged separately in contacts module)'
+          }
+        };
+      },
+      getDescription: async (args) => `Created worker "${args[0]?.displayName ?? ''}"`
     },
     deleteWorker: {
       enabled: true,

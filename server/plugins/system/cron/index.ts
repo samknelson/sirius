@@ -108,23 +108,29 @@ export function initializeCronPluginSystem(): void {
 }
 
 // Plugin registrations (side-effect imports — each file self-registers).
-import "./plugins/deleteExpiredReports";
-import "./plugins/deleteOldCronLogs";
+// NOTE: the five legacy cleanup jobs (delete-expired-hfe, delete-expired-reports,
+// delete-expired-flood-events, dispatch-eba-cleanup, delete-old-cron-logs) were
+// consolidated into data-retention plugins swept by the single dataRetention cron.
+import "./plugins/dataRetention";
 import "./plugins/processWmbBatch";
-import "./plugins/deleteExpiredFloodEvents";
-import "./plugins/deleteExpiredHfe";
-import "./plugins/sweepExpiredBanElig";
-import "./plugins/workerBanActiveScan";
 import "./plugins/workerCertificationActiveScan";
 import "./plugins/logCleanup";
 import "./plugins/memberStatusScan";
-import "./plugins/dispatchEbaCleanup";
 import "./plugins/dispatchJobPoll";
 import "./plugins/bulkDeliver";
 import "./plugins/t631DispatchJobGroupFetch";
 import "./plugins/t631FacilityFetch";
 import "./plugins/t631TosFetch";
+import "./plugins/t631WorkerFetch";
 import "./plugins/gbhetPensionSlaReconcile";
 import "./plugins/gbhetPensionSharesReconcile";
 import "./plugins/denormBackfill";
 import "./plugins/denormStale";
+import "./plugins/ebsPump";
+import "./plugins/fileConsistencySweep";
+import "./plugins/sessionPrune";
+import "./plugins/entityNotesOrphanSweep";
+import "./plugins/entityFilesOrphanSweep";
+import "./plugins/entityMetadataOrphanSweep";
+import "./plugins/wcCacheSweep";
+import "./plugins/cronTickEmitter";

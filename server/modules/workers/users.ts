@@ -97,6 +97,45 @@ export function registerWorkerUsersRoutes(
     }
   });
 
+  // GET /api/workers/:id/dashboard-user - Narrow, staff-gated resolution of the
+  // worker's linked user for the worker Dashboard tab. Deliberately returns only
+  // id/name/email (same shape as /api/dashboard-plugins/target-user/:id), NOT the
+  // admin-only payload above, so non-admin staff can use the tab. All dashboard
+  // target authorization stays in the dashboard endpoints themselves.
+  app.get("/api/workers/:id/dashboard-user", requireAuth, requireAccess('staff'), async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const worker = await storage.workers.getWorker(id);
+      if (!worker) {
+        return res.status(404).json({ message: "Worker not found" });
+      }
+
+      const contact = await storage.contacts.getContact(worker.contactId);
+      if (!contact || !contact.email) {
+        return res.json({ hasUser: false, user: null });
+      }
+
+      const user = await storage.users.getUserByEmail(contact.email);
+      if (!user) {
+        return res.json({ hasUser: false, user: null });
+      }
+
+      return res.json({
+        hasUser: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching worker dashboard user:", error);
+      res.status(500).json({ message: "Failed to fetch worker dashboard user" });
+    }
+  });
+
   // POST /api/workers/:id/user - Create or update user linked to worker
   app.post("/api/workers/:id/user", requireAccess('admin'), async (req, res) => {
     try {

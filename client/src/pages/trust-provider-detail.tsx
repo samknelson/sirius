@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import type { TrustProvider } from "@shared/schema";
 
 export default function TrustProviderDetailPage() {
@@ -42,7 +42,7 @@ export default function TrustProviderDetailPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update trust provider.",
+        description: getApiErrorMessage(error, "Failed to update trust provider."),
         variant: "destructive",
       });
     },

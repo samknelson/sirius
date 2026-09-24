@@ -1,7 +1,8 @@
 import type { Express } from "express";
 import type { IStorage } from "../storage/database";
 import { insertEsigSchema, insertFileSchema } from "@shared/schema";
-import { objectStorageService, ObjectStorageNotConfiguredError, ObjectStorageConnectionError } from "../services/objectStorage";
+import { ObjectStorageNotConfiguredError, ObjectStorageConnectionError } from "../services/objectStorage";
+import { fileSystemService, FileSystemNotConfiguredError } from "../services/files";
 import multer from "multer";
 import crypto from "crypto";
 
@@ -207,11 +208,11 @@ export function registerEsigsRoutes(
       const storageName = fileExtension ? `${fileUuid}.${fileExtension}` : fileUuid;
 
       // Upload to object storage in "esigs" folder
-      const uploadResult = await objectStorageService.uploadFile({
+      const uploadResult = await fileSystemService.upload({
+        fileSystemId: "private",
         fileName: storageName,
         fileContent: req.file.buffer,
         mimeType: req.file.mimetype,
-        accessLevel: "private",
         customPath: `private/esigs/${storageName}`,
       });
 
@@ -224,7 +225,7 @@ export function registerEsigsRoutes(
         uploadedBy: dbUser.id,
         entityType: "esig",
         entityId: null,
-        accessLevel: "private",
+        fileSystemId: "private",
         metadata: {},
       };
 
@@ -237,6 +238,10 @@ export function registerEsigsRoutes(
       });
     } catch (error: any) {
       console.error("Failed to upload document:", error);
+      
+      if (error instanceof FileSystemNotConfiguredError) {
+        return res.status(503).json({ message: error.message });
+      }
       
       if (error instanceof ObjectStorageNotConfiguredError) {
         return res.status(503).json({ 

@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import { createElement, type ComponentType } from "react";
 
 /**
  * Shared client-side helper for kinds whose plugins ship a React
@@ -43,13 +43,58 @@ export function createPluginComponentRegistry<TProps>(opts: {
       const component = registry.get(id);
       if (!component) {
         const [namespace, name] = id.split(":");
-        throw new Error(
+        console.error(
           `Plugin component "${id}" (kind=${opts.kind}) not found. ` +
             `Add client/src/plugins/${opts.kind}/${namespace}/${name}.tsx ` +
             `exporting a function named "${name}".`,
         );
+        return createMissingComponentFallback<TProps>({
+          kind: opts.kind,
+          id,
+          namespace,
+          name,
+        });
       }
       return component;
     },
   };
+}
+
+/**
+ * Fallback rendered when a plugin-declared component id has no matching
+ * file. Rendering an inline error card instead of throwing keeps the
+ * surrounding page (e.g. /wizards/:id) alive when a component file is
+ * missing or mistyped. Built with `createElement` so this file can stay
+ * a plain `.ts` module.
+ */
+function createMissingComponentFallback<TProps>(info: {
+  kind: string;
+  id: string;
+  namespace: string;
+  name: string;
+}): ComponentType<TProps> {
+  const MissingPluginComponent = () =>
+    createElement(
+      "div",
+      {
+        className:
+          "rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-sm",
+        "data-testid": `error-missing-plugin-component-${info.namespace}-${info.name}`,
+      },
+      createElement(
+        "p",
+        { className: "font-medium text-destructive" },
+        `This view failed to load: component "${info.name}" is missing.`,
+      ),
+      createElement(
+        "p",
+        { className: "mt-2 text-muted-foreground" },
+        `The "${info.namespace}" plugin (kind=${info.kind}) declares a component ` +
+          `"${info.id}" that has no matching file. Expected ` +
+          `client/src/plugins/${info.kind}/${info.namespace}/${info.name}.tsx ` +
+          `exporting a function named "${info.name}".`,
+      ),
+    );
+  MissingPluginComponent.displayName = `MissingPluginComponent(${info.id})`;
+  return MissingPluginComponent;
 }

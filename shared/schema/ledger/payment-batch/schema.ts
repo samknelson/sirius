@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, jsonb, numeric, integer } from "drizzle-orm/pg-core";
+import { foreignKey, pgTable, varchar, text, jsonb, numeric, integer } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -23,10 +23,21 @@ export type InsertLedgerPaymentBatch = z.infer<typeof insertLedgerPaymentBatchSc
 
 export const ledgerPaymentBatchAssignments = pgTable("ledger_payment_batch_assignments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  batchId: varchar("batch_id").notNull().references(() => ledgerPaymentBatches.id, { onDelete: "cascade" }),
-  paymentId: varchar("payment_id").notNull().unique().references(() => ledgerPayments.id, { onDelete: "restrict" }),
+  batchId: varchar("batch_id").notNull(),
+  paymentId: varchar("payment_id").notNull().unique(),
   data: jsonb("data"),
-});
+}, (table) => [
+  foreignKey({
+    name: "ledger_payment_batch_assignments_batch_id_ledger_payment_batche",
+    columns: [table.batchId],
+    foreignColumns: [ledgerPaymentBatches.id],
+  }).onDelete("cascade"),
+  foreignKey({
+    name: "ledger_payment_batch_assignments_payment_id_ledger_payments_id_",
+    columns: [table.paymentId],
+    foreignColumns: [ledgerPayments.id],
+  }).onDelete("restrict"),
+]);
 
 export const insertLedgerPaymentBatchAssignmentSchema = createInsertSchema(ledgerPaymentBatchAssignments).omit({
   id: true,

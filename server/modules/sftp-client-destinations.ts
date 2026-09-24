@@ -4,6 +4,7 @@ import { insertSftpClientDestinationSchema, connectionDataSchema } from "../../s
 import { requireComponent } from "./components";
 import { z } from "zod";
 import * as fileTransfer from "../services/file-transfer-client";
+import { buildContentDisposition } from "../utils/content-disposition";
 
 type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
@@ -190,7 +191,7 @@ export function registerSftpClientDestinationRoutes(
       const pathLib = await import("path");
       const fileName = pathLib.basename(filePath);
 
-      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
+      res.setHeader("Content-Disposition", buildContentDisposition("attachment", fileName));
       res.setHeader("Content-Type", "application/octet-stream");
 
       await fileTransfer.streamDownload(parsed.data, filePath, id, res);

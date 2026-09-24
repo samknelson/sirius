@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, AlertTriangle } from "lucide-react";
 import EventLayout, { useEventLayout } from "@/components/layouts/EventLayout";
 
@@ -27,7 +27,7 @@ function EventDeleteContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete event.",
+        description: getApiErrorMessage(error, "Failed to delete event."),
         variant: "destructive",
       });
     },

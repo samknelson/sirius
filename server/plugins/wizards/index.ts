@@ -1,4 +1,9 @@
-import { registerPluginKind } from "../_core";
+// Import `registerPluginKind` from the defining submodule, NOT the `../_core`
+// barrel: the barrel re-exports the singleton seeder (which imports storage),
+// and this module sits inside the storage boot chain via
+// `server/storage/wizards.ts`. Going through the barrel would re-form the
+// storage↔_core init cycle that crashes the production bundle.
+import { registerPluginKind } from "../_core/kinds";
 import { wizardPluginRegistry } from "./registry";
 
 export {
@@ -19,6 +24,8 @@ import "./plugins/report-workers-duplicate-ssn";
 import "./plugins/report-employer-users";
 import "./plugins/report-ledger-integrity";
 import "./plugins/report-btu-workers-invalid-cardcheck";
+import "./plugins/report-edls-soop";
+import "./plugins/report-edls-scheduled-too-soon";
 import "./plugins/btu-worker-import";
 import "./plugins/btu-dues-allocation";
 import "./plugins/btu-cardcheck-import";
@@ -29,6 +36,8 @@ import "./plugins/hta-union-import";
 import "./plugins/gbhet-legal-workers";
 import "./plugins/gbhe-local26-hourly";
 import "./plugins/employer-onboarding";
+import "./plugins/worker-ratings-import";
+import "./plugins/trust-provider-edi";
 
 let kindRegistered = false;
 

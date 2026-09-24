@@ -11,7 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Pencil, Trash2, Clock, MapPin, School, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -101,7 +101,7 @@ function SchoolAttributesContent() {
     onError: (error: any) => {
       toast({
         title: "Create Failed",
-        description: error?.message || "Failed to create school attributes.",
+        description: getApiErrorMessage(error, "Failed to create school attributes."),
         variant: "destructive",
       });
     },
@@ -129,7 +129,7 @@ function SchoolAttributesContent() {
     onError: (error: any) => {
       toast({
         title: "Update Failed",
-        description: error?.message || "Failed to update school attributes.",
+        description: getApiErrorMessage(error, "Failed to update school attributes."),
         variant: "destructive",
       });
     },
@@ -150,7 +150,7 @@ function SchoolAttributesContent() {
     onError: (error: any) => {
       toast({
         title: "Delete Failed",
-        description: error?.message || "Failed to delete school attributes.",
+        description: getApiErrorMessage(error, "Failed to delete school attributes."),
         variant: "destructive",
       });
     },

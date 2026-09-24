@@ -1,7 +1,7 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { cronJobRuns, users, type CronJobRun, type InsertCronJobRun } from "@shared/schema";
-import { eq, desc, and, lt } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -18,12 +18,11 @@ export interface CronJobRunStorage {
   list(filters?: { jobName?: string; status?: string }): Promise<CronJobRunWithUser[]>;
   getById(id: string): Promise<CronJobRunWithUser | undefined>;
   getLatestByJobName(jobName: string): Promise<CronJobRunWithUser | undefined>;
+  getLastSuccessfulLiveRun(jobName: string): Promise<CronJobRun | undefined>;
   create(run: InsertCronJobRun): Promise<CronJobRun>;
   update(id: string, updates: Partial<Omit<InsertCronJobRun, 'id'>>): Promise<CronJobRun | undefined>;
   delete(id: string): Promise<boolean>;
   deleteByJobName(jobName: string): Promise<number>;
-  countOldRuns(cutoffDate: Date): Promise<number>;
-  deleteOldRuns(cutoffDate: Date): Promise<number>;
 }
 
 export function createCronJobRunStorage(): CronJobRunStorage {
@@ -113,6 +112,30 @@ export function createCronJobRunStorage(): CronJobRunStorage {
       return run || undefined;
     },
 
+    /**
+     * The most recent run of this job that actually did its work: live mode,
+     * finished successfully. A job that decides what to do from how long it has
+     * been since it last ran needs exactly this and not `getLatestByJobName` —
+     * that one answers with the run currently in flight (the scheduler inserts
+     * the row before executing), with a test run, or with a run that failed.
+     */
+    async getLastSuccessfulLiveRun(jobName: string): Promise<CronJobRun | undefined> {
+      const client = getClient();
+      const [run] = await client
+        .select()
+        .from(cronJobRuns)
+        .where(
+          and(
+            eq(cronJobRuns.jobName, jobName),
+            eq(cronJobRuns.status, 'success'),
+            eq(cronJobRuns.mode, 'live'),
+          ),
+        )
+        .orderBy(desc(cronJobRuns.startedAt))
+        .limit(1);
+      return run || undefined;
+    },
+
     async create(insertRun: InsertCronJobRun): Promise<CronJobRun> {
       validate.validateOrThrow(insertRun);
       const client = getClient();
@@ -144,24 +167,6 @@ export function createCronJobRunStorage(): CronJobRunStorage {
       const result = await client
         .delete(cronJobRuns)
         .where(eq(cronJobRuns.jobName, jobName))
-        .returning();
-      return result.length;
-    },
-
-    async countOldRuns(cutoffDate: Date): Promise<number> {
-      const client = getClient();
-      const result = await client
-        .select()
-        .from(cronJobRuns)
-        .where(lt(cronJobRuns.startedAt, cutoffDate));
-      return result.length;
-    },
-
-    async deleteOldRuns(cutoffDate: Date): Promise<number> {
-      const client = getClient();
-      const result = await client
-        .delete(cronJobRuns)
-        .where(lt(cronJobRuns.startedAt, cutoffDate))
         .returning();
       return result.length;
     }

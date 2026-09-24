@@ -1,8 +1,17 @@
 import type { IStorage } from "../../storage";
 import { sendSms, type SendSmsResult } from "../../services/comm/senders/sms";
 import type { DeliverContactResult } from "./deliver";
-import { renderTemplate } from "../../../shared/bulk-tokens";
-import { buildRecipientContext } from "./token-context";
+import { renderTokens, createTokenEvalContext } from "../../plugins/tokens";
+import type { TokenRootSeed } from "../../plugins/tokens/types";
+import {
+  mediumField,
+  shapeRenderedValue,
+  tokenCleanerFor,
+} from "../../delivery/shape";
+import { recordBulkUndeliverable } from "./undeliverable";
+
+// By key, never by position — see `deliver-email.ts`.
+const BODY_SPEC = mediumField("sms", "body");
 
 export async function resolvePhoneNumber(storage: IStorage, contactId: string): Promise<string | null> {
   const phones = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);
@@ -16,6 +25,7 @@ export async function deliverSms(
   storage: IStorage,
   messageId: string,
   contactId: string,
+  seeds: TokenRootSeed[],
   userId?: string,
   tagIds?: string[],
   offline?: boolean,
@@ -28,8 +38,22 @@ export async function deliverSms(
   if (!phone) {
     return { success: false, error: "Contact has no phone number", errorCode: "NO_ADDRESS" };
   }
-  const ctx = await buildRecipientContext(storage, contactId);
-  const renderedBody = renderTemplate(smsContent.body || "", ctx, { strictUnknown: true }).output;
+  const ctx = createTokenEvalContext(storage, contactId, { seeds });
+  const renderedBody = shapeRenderedValue(
+    BODY_SPEC,
+    (
+      await renderTokens(smsContent.body || "", ctx, {
+        strictUnknown: true,
+        clean: tokenCleanerFor(BODY_SPEC) ?? undefined,
+      })
+    ).output,
+  );
+  if (!renderedBody) {
+    // An SMS with nothing in it is not a message. Recorded as a failed
+    // communication against this recipient rather than handed to the
+    // provider as an empty send.
+    return recordBulkUndeliverable("sms", messageId, contactId, ["body"], tagIds);
+  }
   const result: SendSmsResult = await sendSms({
     contactId,
     toPhoneNumber: phone,

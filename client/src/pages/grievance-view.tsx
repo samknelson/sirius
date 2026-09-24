@@ -68,12 +68,6 @@ function GrievanceDetailsContent() {
                   {GRIEVANCE_CARDINALITY_LABELS[grievance.cardinality] ?? grievance.cardinality}
                 </p>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">Record ID</label>
-                <p className="text-foreground font-mono text-sm" data-testid="text-grievance-id">
-                  {grievance.id}
-                </p>
-              </div>
             </div>
           </div>
 

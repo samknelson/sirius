@@ -1,7 +1,7 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { wizards, wizardReportData, wizardEmployerMonthly, type Wizard, type InsertWizard, type WizardReportData, type InsertWizardReportData } from "@shared/schema";
-import { eq, and, desc, or, lt } from "drizzle-orm";
+import { eq, and, desc, or } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { db } from './db';
 
@@ -20,6 +20,7 @@ import { runInTransaction } from './transaction-context';
  * Stub validator - add validation logic here when needed
  */
 export const validate = createNoopValidator<InsertWizard, Wizard>();
+
 
 export interface MonthlyWizardCreateParams {
   wizard: InsertWizard;
@@ -50,8 +51,8 @@ export interface WizardStorage {
   getReportData(wizardId: string): Promise<WizardReportData[]>;
   getLatestReportData(wizardId: string): Promise<WizardReportData | undefined>;
   deleteReportData(wizardId: string): Promise<number>;
-  countExpiredReportData(wizardId: string, cutoffDate: Date): Promise<number>;
-  deleteExpiredReportData(wizardId: string, cutoffDate: Date): Promise<number>;
+  /** Delete a single wizard_report_data row by its id. */
+  deleteReportDataById(id: string): Promise<boolean>;
 }
 
 export function createWizardStorage(): WizardStorage {
@@ -228,42 +229,43 @@ export function createWizardStorage(): WizardStorage {
       return result.length;
     },
 
-    async countExpiredReportData(wizardId: string, cutoffDate: Date): Promise<number> {
-      const client = getClient();
-      const result = await client
-        .select()
-        .from(wizardReportData)
-        .where(
-          and(
-            eq(wizardReportData.wizardId, wizardId),
-            lt(wizardReportData.createdAt, cutoffDate)
-          )
-        );
-      return result.length;
-    },
-
-    async deleteExpiredReportData(wizardId: string, cutoffDate: Date): Promise<number> {
+    async deleteReportDataById(id: string): Promise<boolean> {
       const client = getClient();
       const result = await client
         .delete(wizardReportData)
-        .where(
-          and(
-            eq(wizardReportData.wizardId, wizardId),
-            lt(wizardReportData.createdAt, cutoffDate)
-          )
-        )
+        .where(eq(wizardReportData.id, id))
         .returning();
-      return result.length;
+      return result.length > 0;
     }
   };
 }
 
+/**
+ * Only the wizard record itself is logged.
+ *
+ * The report-data methods below (`saveReportData`, `deleteReportData`,
+ * `deleteReportDataById`) are deliberately absent, and that is the decision
+ * about `wizard_report_data`: its rows are bulk output of a run, written one
+ * per result row — thousands for a single import — and read back only as the
+ * run's result set. They are not records anyone edits, so there is nothing to
+ * ask "who changed this?" about, and putting them in the framework would turn
+ * one wizard run into one log entry and one provenance row per row of output.
+ * The run itself is already logged, on the wizard, which is the grain that
+ * answers the question a person actually asks.
+ *
+ * `wizard_report_data.created_at` therefore stays. It is not provenance: the
+ * data-retention purge reads it to decide which output has outlived its
+ * wizard's retention setting, and it is the order the rows are read back in.
+ * See `docs/provenance-columns.md` (KEEP), same call as `ebs_status`.
+ */
 export const wizardLoggingConfig: StorageLoggingConfig<WizardStorage> = {
   module: 'wizards',
+  table: 'wizards',
   methods: {
     create: {
       enabled: true,
       getEntityId: (args) => args[0]?.type || 'new wizard',
+      metadataEntityId: (_args, result) => result?.id,
       getHostEntityId: (args, result) => {
         return result?.entityId || null;
       },

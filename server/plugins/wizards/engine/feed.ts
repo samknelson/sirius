@@ -4,13 +4,13 @@ import type { InsertFile, File } from '@shared/schema';
 import { parse as parseCSV } from 'csv-parse/sync';
 import { stringify as stringifyCSV } from 'csv-stringify/sync';
 import * as XLSX from 'xlsx';
-import { objectStorageService } from '../../../services/objectStorage.js';
+import { fileSystemService } from '../../../services/files/index.js';
 
 /**
  * Filter out completely empty columns from parsed rows
  * A column is considered empty if all cells in that column are null, undefined, or empty string
  */
-function filterEmptyColumns(rows: any[][]): any[][] {
+export function filterEmptyColumns(rows: any[][]): any[][] {
   if (rows.length === 0) return rows;
   
   const maxCols = Math.max(...rows.map(row => row.length));
@@ -35,7 +35,7 @@ function isOldMappingFormat(mapping: Record<string, string>): boolean {
   return keys.length > 0 && keys.every(k => k.startsWith('col_'));
 }
 
-function normalizeColumnMapping(mapping: Record<string, string>): Record<string, string> {
+export function normalizeColumnMapping(mapping: Record<string, string>): Record<string, string> {
   if (isOldMappingFormat(mapping)) {
     return mapping;
   }
@@ -48,7 +48,7 @@ function normalizeColumnMapping(mapping: Record<string, string>): Record<string,
   return converted;
 }
 
-function validateMappingDuplicates(rawMapping: Record<string, string>): void {
+export function validateMappingDuplicates(rawMapping: Record<string, string>): void {
   if (isOldMappingFormat(rawMapping)) {
     const fieldIds = Object.values(rawMapping).filter(id => id && id !== '_unmapped');
     const duplicates = fieldIds.filter((id, index) => fieldIds.indexOf(id) !== index);
@@ -323,7 +323,7 @@ export abstract class FeedWizard extends BaseWizard {
       throw new Error('File not found');
     }
 
-    const buffer = await objectStorageService.downloadFile(file.storagePath);
+    const buffer = await fileSystemService.download(file.fileSystemId, file.storagePath);
 
     let rawRows: any[] = [];
     if (file.mimeType === 'text/csv') {
@@ -568,7 +568,7 @@ export abstract class FeedWizard extends BaseWizard {
       throw new Error('File not found');
     }
 
-    const buffer = await objectStorageService.downloadFile(file.storagePath);
+    const buffer = await fileSystemService.download(file.fileSystemId, file.storagePath);
 
     let rawRows: any[] = [];
     if (file.mimeType === 'text/csv') {
@@ -1034,11 +1034,11 @@ export abstract class FeedWizard extends BaseWizard {
 
     // Upload to object storage in same folder as wizard attachments
     const customPath = `wizards/${wizardId}/${Date.now()}_${resultsFileName}`;
-    const uploadResult = await objectStorageService.uploadFile({
+    const uploadResult = await fileSystemService.upload({
       fileName: resultsFileName,
       fileContent: csvBuffer,
       mimeType: 'text/csv',
-      accessLevel: 'private',
+      fileSystemId: 'private',
       customPath
     });
 
@@ -1054,7 +1054,7 @@ export abstract class FeedWizard extends BaseWizard {
       uploadedBy,
       entityType: 'wizard',
       entityId: wizardId,
-      accessLevel: 'private'
+      fileSystemId: 'private'
     });
 
     return resultsFile.id;
@@ -1163,7 +1163,7 @@ export abstract class FeedWizard extends BaseWizard {
       uploadedBy: fileData.uploadedBy,
       entityType: fileData.entityType,
       entityId: fileData.entityId,
-      accessLevel: fileData.accessLevel,
+      fileSystemId: fileData.fileSystemId,
       metadata: {
         ...existingMetadata,
         wizardId

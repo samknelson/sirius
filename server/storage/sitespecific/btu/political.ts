@@ -225,10 +225,12 @@ export function createBtuPoliticalStorage(): BtuPoliticalStorage {
 
 export const btuPoliticalLoggingConfig: StorageLoggingConfig<BtuPoliticalStorage> = {
   module: 'btu_political',
+  table: 'sitespecific_btu_political_officials',
   methods: {
     upsertOfficial: {
       enabled: true,
       getEntityId: (_args, result) => result?.id || 'unknown',
+      metadataEntityId: (_args, result) => result?.id,
     },
     deleteOfficial: {
       enabled: true,
@@ -237,6 +239,9 @@ export const btuPoliticalLoggingConfig: StorageLoggingConfig<BtuPoliticalStorage
     setWorkerReps: {
       enabled: true,
       getEntityId: (args) => args[0] || 'unknown',
+      // Rewrites a worker's rep links; neither an official nor the worker
+      // itself is the record here.
+      metadataMode: 'none',
     },
   },
 };

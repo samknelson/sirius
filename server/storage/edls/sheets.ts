@@ -10,6 +10,7 @@ import {
   employers,
   users,
   optionsDepartment,
+  optionsEdlsShowStatus,
   dispatchJobGroups,
   facilities,
   type EdlsSheet, 
@@ -17,11 +18,31 @@ import {
   type EdlsCrew,
   type InsertEdlsCrew
 } from "@shared/schema";
-import { eq, ne, desc, sql, and, gte, lte, type SQL } from "drizzle-orm";
+import { eq, ne, desc, sql, and, gte, lte, ilike, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { defineLoggingConfig } from "../middleware/logging";
-import { getClient, runInTransaction } from "../transaction-context";
+import { getClient, runInTransaction, onAfterCommit } from "../transaction-context";
+import { eventBus, EventType } from "../../services/event-bus";
+import { logger } from "../../logger";
 import { storage } from "../index";
+import { isComponentEnabledSync } from "../../services/component-cache";
+import { getRequestContext } from "../../middleware/request-context";
+import { entityMetadataStorage } from "../system/entity-metadata";
+import type { SnapshotNode } from "@shared/snapshots";
+import {
+  getEdlsPassportExportPage,
+  type EdlsPassportExportQuery,
+  type EdlsPassportExportPage,
+} from "./passport-export";
+
+/**
+ * The dispatch_job_group table is owned by the `dispatch.job_group`
+ * component; it may not exist in the database when that component is
+ * disabled. All reads must gate their join on this check.
+ */
+function jobGroupsEnabled(): boolean {
+  return isComponentEnabledSync("dispatch.job_group");
+}
 
 export interface EdlsSheetWithCrews extends EdlsSheet {
   crews: EdlsCrew[];
@@ -34,6 +55,7 @@ export interface EdlsSheetWithRelations extends EdlsSheet {
   assigneeUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
   jobGroup?: { id: string; name: string };
   facility?: { id: string; name: string };
+  showStatus?: { id: string; name: string };
   assignedCount?: number;
 }
 
@@ -109,6 +131,18 @@ export interface EdlsSheetsFilterOptions {
   status?: string;
   jobGroupId?: string;
   facilityId?: string;
+  showStatusId?: string;
+  departmentId?: string;
+  /**
+   * Case-insensitive "contains" match on the sheet title (the job number).
+   * A blank string is not a filter — the caller is expected to drop it.
+   */
+  title?: string;
+  /**
+   * Only sheets whose `changed` timestamp is at or after this instant — i.e.
+   * sheets created or edited since that point in time.
+   */
+  changedSince?: Date;
 }
 
 export interface EdlsSheetsStorage {
@@ -129,6 +163,69 @@ export interface EdlsSheetsStorage {
    */
   update(id: string, sheet: Partial<InsertEdlsSheet>, crews?: CrewInput[]): Promise<EdlsSheetWithCrews | undefined>;
   delete(id: string): Promise<boolean>;
+  /**
+   * Snapshot export: a self-contained, versioned bundle of the sheet with
+   * its relations rendered as ref stubs and its crews (each with their
+   * assignments) nested as child bundles. Returns undefined if the sheet
+   * does not exist. See `shared/snapshots.ts` for the bundle contract.
+   */
+  export(id: string): Promise<SnapshotNode | undefined>;
+  /**
+   * Freeman passport export: one page of "Scheduled" (`lock`) sheets with
+   * their crews and assignments, plus the total for paging. See
+   * `./passport-export.ts` for the shape and the absent-tolerance rules.
+   */
+  getPassportExportPage(query: EdlsPassportExportQuery): Promise<EdlsPassportExportPage>;
+}
+
+/**
+ * Record the save in the sheet's history and emit `EDLS_SHEET_SAVED` after the
+ * surrounding transaction commits. `previousStatus` is null on create (the
+ * sheet "arrives" at its initial status) and the pre-update status on update;
+ * consumers gate on the transition themselves. The event is emitted after
+ * commit so a listener can never observe (or notify about) a write that later
+ * rolled back.
+ *
+ * MUST be called from inside the save's transaction. The history entry is
+ * written there, with the save, rather than by a listener afterwards: see
+ * `captureEntitySnapshot`. Consumers that read that history back — the EDLS
+ * worker SMS notifier compares each save's roster against the previous one's —
+ * depend on every earlier save's entry already being committed by the time
+ * they run, which only holds if the entry commits with the save.
+ */
+async function emitSheetSaved(sheet: EdlsSheet, previousStatus: string | null): Promise<void> {
+  // Sheet history is part of the save transaction so the snapshot can read
+  // the exact revision that its export represents. The logging wrapper opts
+  // out for this root method; crew/assignment wrappers contribute their
+  // transactional subrecord touches before this final root mutation.
+  await entityMetadataStorage.recordMutation({
+    tableName: "edls_sheets",
+    entityId: sheet.id,
+    at: new Date(),
+    actorId: getRequestContext()?.userId ?? null,
+    created: previousStatus === null,
+  });
+
+  const payload = {
+    sheetId: sheet.id,
+    previousStatus,
+    newStatus: sheet.status,
+    sheet,
+  };
+
+  const { captureEntitySnapshot } = await import("../../services/snapshots/capture");
+  await captureEntitySnapshot(EventType.EDLS_SHEET_SAVED, payload);
+
+  onAfterCommit(() => {
+    eventBus
+      .emit(EventType.EDLS_SHEET_SAVED, payload)
+      .catch((err) => {
+        logger.error(
+          `Failed to emit EDLS_SHEET_SAVED for sheet ${sheet.id}: ${err instanceof Error ? err.message : String(err)}`,
+          { service: "edls-sheets-storage" },
+        );
+      });
+  });
 }
 
 export function createEdlsSheetsStorage(): EdlsSheetsStorage {
@@ -140,6 +237,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
 
     async getPaginated(page: number, limit: number, filters?: EdlsSheetsFilterOptions): Promise<PaginatedEdlsSheets> {
       const client = getClient();
+      const withJobGroups = jobGroupsEnabled();
       const supervisorUsers = alias(users, 'supervisor_user');
       const assigneeUsers = alias(users, 'assignee_user');
       
@@ -163,6 +261,21 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       }
       if (filters?.facilityId) {
         conditions.push(eq(edlsSheets.facilityId, filters.facilityId));
+      }
+      if (filters?.showStatusId) {
+        conditions.push(eq(edlsSheets.showStatusId, filters.showStatusId));
+      }
+      if (filters?.departmentId) {
+        conditions.push(eq(edlsSheets.departmentId, filters.departmentId));
+      }
+      if (filters?.title) {
+        // `ilike` needs the wildcards escaped, or a title containing % or _
+        // would match far more than the caller typed.
+        const pattern = `%${filters.title.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+        conditions.push(ilike(edlsSheets.title, pattern));
+      }
+      if (filters?.changedSince) {
+        conditions.push(gte(edlsSheets.changed, filters.changedSince));
       }
       
       const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
@@ -208,13 +321,22 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
             email: assigneeUsers.email,
           },
           assignedCount: assignedCountSubquery,
-          jobGroup: {
-            id: dispatchJobGroups.id,
-            name: dispatchJobGroups.name,
-          },
+          jobGroup: withJobGroups
+            ? {
+                id: dispatchJobGroups.id,
+                name: dispatchJobGroups.name,
+              }
+            : {
+                id: sql<string | null>`NULL::varchar`,
+                name: sql<string | null>`NULL::text`,
+              },
           facility: {
             id: facilities.id,
             name: facilities.name,
+          },
+          showStatus: {
+            id: optionsEdlsShowStatus.id,
+            name: optionsEdlsShowStatus.name,
           },
         })
         .from(edlsSheets)
@@ -222,12 +344,17 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         .leftJoin(optionsDepartment, eq(edlsSheets.departmentId, optionsDepartment.id))
         .leftJoin(supervisorUsers, eq(edlsSheets.supervisor, supervisorUsers.id))
         .leftJoin(assigneeUsers, eq(edlsSheets.assignee, assigneeUsers.id))
-        .leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
-        .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id));
+        .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id))
+        .leftJoin(optionsEdlsShowStatus, eq(edlsSheets.showStatusId, optionsEdlsShowStatus.id))
+        .$dynamic();
+      
+      const joinedQuery = withJobGroups
+        ? baseQuery.leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
+        : baseQuery;
       
       const rows = whereCondition
-        ? await baseQuery.where(whereCondition).orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit)
-        : await baseQuery.orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit);
+        ? await joinedQuery.where(whereCondition).orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit)
+        : await joinedQuery.orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit);
       
       const data: EdlsSheetWithRelations[] = rows.map(row => ({
         ...row.sheet,
@@ -235,8 +362,11 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         department: row.department?.id ? row.department : undefined,
         supervisorUser: row.supervisorUser?.id ? row.supervisorUser : undefined,
         assigneeUser: row.assigneeUser?.id ? row.assigneeUser : undefined,
-        jobGroup: row.jobGroup?.id ? row.jobGroup : undefined,
+        jobGroup: row.jobGroup?.id && row.jobGroup.name != null
+          ? { id: row.jobGroup.id, name: row.jobGroup.name }
+          : undefined,
         facility: row.facility?.id ? row.facility : undefined,
+        showStatus: row.showStatus?.id ? row.showStatus : undefined,
         assignedCount: row.assignedCount ?? 0,
       }));
       
@@ -249,12 +379,39 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       return sheet || undefined;
     },
 
+    async getPassportExportPage(query: EdlsPassportExportQuery): Promise<EdlsPassportExportPage> {
+      return getEdlsPassportExportPage(query);
+    },
+
+    async export(id: string): Promise<SnapshotNode | undefined> {
+      const sheet = await this.getWithRelations(id);
+      if (!sheet) return undefined;
+
+      // Member status is industry-scoped; resolve the sheet employer's
+      // industry the same way the live assignments endpoint does.
+      let industryId: string | null = null;
+      if (sheet.employerId) {
+        const employer = await storage.employers.getEmployer(sheet.employerId);
+        industryId = employer?.industryId ?? null;
+      }
+
+      const crews = await storage.edlsCrews.exportBySheetId(id, industryId);
+      return {
+        version: 1,
+        data: {
+          ...sheet,
+          crews,
+        },
+      };
+    },
+
     async getWithRelations(id: string): Promise<EdlsSheetWithRelations | undefined> {
       const client = getClient();
+      const withJobGroups = jobGroupsEnabled();
       const supervisorUsers = alias(users, 'supervisor_user');
       const assigneeUsers = alias(users, 'assignee_user');
       
-      const [row] = await client
+      const relationsQuery = client
         .select({
           sheet: edlsSheets,
           employer: {
@@ -277,13 +434,22 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
             lastName: assigneeUsers.lastName,
             email: assigneeUsers.email,
           },
-          jobGroup: {
-            id: dispatchJobGroups.id,
-            name: dispatchJobGroups.name,
-          },
+          jobGroup: withJobGroups
+            ? {
+                id: dispatchJobGroups.id,
+                name: dispatchJobGroups.name,
+              }
+            : {
+                id: sql<string | null>`NULL::varchar`,
+                name: sql<string | null>`NULL::text`,
+              },
           facility: {
             id: facilities.id,
             name: facilities.name,
+          },
+          showStatus: {
+            id: optionsEdlsShowStatus.id,
+            name: optionsEdlsShowStatus.name,
           },
         })
         .from(edlsSheets)
@@ -291,9 +457,15 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         .leftJoin(optionsDepartment, eq(edlsSheets.departmentId, optionsDepartment.id))
         .leftJoin(supervisorUsers, eq(edlsSheets.supervisor, supervisorUsers.id))
         .leftJoin(assigneeUsers, eq(edlsSheets.assignee, assigneeUsers.id))
-        .leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
         .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id))
-        .where(eq(edlsSheets.id, id));
+        .leftJoin(optionsEdlsShowStatus, eq(edlsSheets.showStatusId, optionsEdlsShowStatus.id))
+        .$dynamic();
+      
+      const [row] = withJobGroups
+        ? await relationsQuery
+            .leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
+            .where(eq(edlsSheets.id, id))
+        : await relationsQuery.where(eq(edlsSheets.id, id));
       
       if (!row) return undefined;
       
@@ -303,8 +475,11 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         department: row.department || undefined,
         supervisorUser: row.supervisorUser?.id ? row.supervisorUser : undefined,
         assigneeUser: row.assigneeUser?.id ? row.assigneeUser : undefined,
-        jobGroup: row.jobGroup?.id ? row.jobGroup : undefined,
+        jobGroup: row.jobGroup?.id && row.jobGroup.name != null
+          ? { id: row.jobGroup.id, name: row.jobGroup.name }
+          : undefined,
         facility: row.facility?.id ? row.facility : undefined,
+        showStatus: row.showStatus?.id ? row.showStatus : undefined,
       };
     },
 
@@ -315,18 +490,32 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         .orderBy(desc(edlsSheets.ymd));
     },
 
+
     async create(insertSheet: InsertEdlsSheet, crews: CrewInput[]): Promise<EdlsSheetWithCrews> {
       await validate.validateOrThrow({ ...insertSheet, _crews: crews });
       
       return runInTransaction(async () => {
         const client = getClient();
-        const [sheet] = await client.insert(edlsSheets).values(insertSheet).returning();
+        // `changed` is storage-owned: refreshed on every save so no caller can
+        // forget it, and stamped by the DATABASE rather than by `new Date()`.
+        // See the note on `update` below: consumers order it against
+        // timestamps the database wrote, and two clocks would order wrongly.
+        //
+        // Who created the sheet is NOT recorded here. That is provenance, and
+        // this table is logged, so the framework stamps it in
+        // `entity_metadata` from the acting user.
+        const [sheet] = await client
+          .insert(edlsSheets)
+          .values({ ...insertSheet, changed: sql`now()` })
+          .returning();
         
         const crewsWithSheetId = crews.map((c, index) => {
           const { id: _, ...crewData } = c;
           return { ...crewData, sheetId: sheet.id, sequence: index };
         });
         const createdCrews = await storage.edlsCrews.createMany(crewsWithSheetId);
+        
+        await emitSheetSaved(sheet, null);
         
         return { ...sheet, crews: createdCrews };
       });
@@ -351,10 +540,23 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
           : safeSheetUpdate;
         await validate.validateOrThrow(validationInput, existingSheet);
         
-        // Update the sheet
-        const [updatedSheet] = Object.keys(safeSheetUpdate).length > 0
-          ? await client.update(edlsSheets).set(safeSheetUpdate).where(eq(edlsSheets.id, id)).returning()
-          : [existingSheet];
+        // Update the sheet. `changed` is refreshed on every save — including a
+        // crews-only save, where no sheet column changes — so no caller can
+        // forget it.
+        //
+        // The stamp comes from the DATABASE (`now()`), deliberately not from
+        // `new Date()` on the app host. It is not just a display value: it is
+        // this save's IDENTITY, captured into the sheet's snapshot bundle and
+        // read back later to tell one save's history from another's (the EDLS
+        // worker SMS notifier compares rosters between saves that way). Every
+        // app host stamping from its own clock would order the same sheet's
+        // saves differently depending on which host handled them; one database
+        // clock has no skew to reason about.
+        const [updatedSheet] = await client
+          .update(edlsSheets)
+          .set({ ...safeSheetUpdate, changed: sql`now()` })
+          .where(eq(edlsSheets.id, id))
+          .returning();
         
         // If status changed to "trash", delete all assignments individually for audit logging
         if (safeSheetUpdate.status === 'trash' && existingSheet.status !== 'trash') {
@@ -404,6 +606,8 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         // Load final crews state
         const allCrews = await storage.edlsCrews.getBySheetId(id);
         
+        await emitSheetSaved(updatedSheet, existingSheet.status);
+        
         return { ...updatedSheet, crews: allCrews };
       });
     },
@@ -418,12 +622,15 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
 
 export const edlsSheetsLoggingConfig = defineLoggingConfig<EdlsSheetsStorage>({
   module: 'edls-sheets',
+  table: 'edls_sheets',
   // Note: no module-level stateKey — `before` for update/delete stores the raw
   // sheet row (legacy shape). The explicit `after` hooks on create/update
   // wrap the result as `{ sheet, crews, metadata }` to preserve byte-identical
   // log payloads.
   methods: {
     create: {
+      // emitSheetSaved records the root row before snapshot capture.
+      metadataMode: 'none',
       state: { fallbackId: 'new sheet' },
       getHostEntityId: (_args, result) => result?.id,
       getDescription: async (args, result) => {
@@ -443,6 +650,8 @@ export const edlsSheetsLoggingConfig = defineLoggingConfig<EdlsSheetsStorage>({
       }),
     },
     update: {
+      // emitSheetSaved records the root row after all child mutations.
+      metadataMode: 'none',
       getHostEntityId: (args) => args[0],
       getDescription: async (_args, result, beforeState) => {
         const title = result?.title || beforeState?.title || 'Untitled';

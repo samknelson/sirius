@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { apiRequest, queryClient, ApiError } from "@/lib/queryClient";
+import { apiRequest, queryClient, ApiError, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -84,10 +84,7 @@ function WorkerEchpContent() {
       queryClient.invalidateQueries({ queryKey: eligibilityKey });
     },
     onError: (error: unknown) => {
-      const message =
-        error instanceof ApiError
-          ? error.data?.message ?? error.message
-          : "Something went wrong. Please try again.";
+      const message = getApiErrorMessage(error, "Something went wrong. Please try again.");
       toast({
         variant: "destructive",
         title: "Unable to purchase",

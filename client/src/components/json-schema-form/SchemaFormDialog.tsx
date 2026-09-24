@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,7 @@ import type { JsonSchema } from "@shared/json-schema-form";
 import type { IChangeEvent } from "@rjsf/core";
 import { SchemaForm, type SchemaFormContext } from "./SchemaForm";
 import { useToast } from "@/hooks/use-toast";
+import { useModalSeed } from "@/hooks/use-modal-seed";
 
 /**
  * The dialog's footer Save button is OUTSIDE the rjsf form, so it
@@ -32,6 +33,14 @@ export interface SchemaFormDialogProps<T extends Record<string, unknown> = Recor
   schema: JsonSchema | RJSFSchema;
   uiSchema?: UiSchema;
   initialData: T;
+  /**
+   * Identifies the record `initialData` belongs to. Opening the dialog with a
+   * different key re-seeds the working copy from `initialData`. Defaults to
+   * `initialData`'s contents, which is right whenever the caller hands over a
+   * fresh object per record; pass an explicit id when the caller mutates data
+   * that should NOT restart editing.
+   */
+  seedKey?: string;
   formContext?: SchemaFormContext;
   onSave: (data: T) => void;
   isSaving?: boolean;
@@ -52,6 +61,7 @@ export function SchemaFormDialog<T extends Record<string, unknown> = Record<stri
   schema,
   uiSchema,
   initialData,
+  seedKey,
   formContext,
   onSave,
   isSaving = false,
@@ -62,9 +72,13 @@ export function SchemaFormDialog<T extends Record<string, unknown> = Record<stri
   const submitBtnRef = useRef<HTMLButtonElement>(null);
   const { toast } = useToast();
 
-  useEffect(() => {
-    if (open) setFormData(initialData);
-  }, [open, initialData]);
+  // Seeded in the render phase, not an effect: the SchemaForm mounts inside
+  // the dialog's portal and initializes itself from whatever `formData` it is
+  // first handed, so a working copy that arrives one render later never
+  // reaches it (blank fields on the first open after a page load).
+  useModalSeed(open, seedKey ?? JSON.stringify(initialData ?? null), () =>
+    setFormData(initialData),
+  );
 
   /**
    * RJSF silently swallows submits when AJV validation fails. Without

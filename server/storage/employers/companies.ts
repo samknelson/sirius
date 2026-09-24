@@ -150,9 +150,13 @@ async function lookupNames(employerId: string, companyId: string): Promise<{ emp
 
 export const companyLoggingConfig = defineLoggingConfig<CompanyStorage>({
   module: 'companies',
+  table: 'companies',
   hostEntityId: (args, result, before) => result?.id ?? before?.id ?? args[0],
   methods: {
-    create: { getEntityId: (args, result) => result?.id || args[0]?.name || 'new company' },
+    create: {
+      getEntityId: (args, result) => result?.id || args[0]?.name || 'new company',
+      metadataEntityId: (_args, result) => result?.id,
+    },
     update: {},
     delete: {},
   },
@@ -160,6 +164,8 @@ export const companyLoggingConfig = defineLoggingConfig<CompanyStorage>({
 
 export const employerCompanyLoggingConfig: StorageLoggingConfig<EmployerCompanyStorage> = {
   module: 'employer-companies',
+  table: 'employer_companies',
+  hostTable: 'employers',
   methods: {
     create: {
       enabled: true,

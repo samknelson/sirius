@@ -5,6 +5,7 @@ import { ArrowLeft, ChevronRight, Building, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useFacilityTabAccess } from "@/hooks/useTabAccess";
+import { RecordTitleBar } from "@/components/shared/RecordTitleBar";
 import type { Facility, Contact } from "@shared/schema";
 
 export type FacilityWithContact = Facility & { contact: Contact };
@@ -68,37 +69,30 @@ export function FacilityLayout({ activeTab, children }: FacilityLayoutProps) {
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
-      <div className="flex items-center justify-between mb-6">
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="breadcrumb">
-          <Link href="/facilities" className="hover:text-foreground transition-colors">
-            Facilities
-          </Link>
-          <ChevronRight size={16} />
-          <span className="text-foreground font-medium">{facility.name}</span>
-        </nav>
-        <Link href="/facilities">
-          <Button variant="ghost" size="sm" data-testid="button-back">
-            <ArrowLeft size={16} className="mr-2" />
-            Back to Facilities
-          </Button>
-        </Link>
-      </div>
-
-      <div className="flex items-start gap-4 mb-6">
-        <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-primary/10">
-          <Building className="h-6 w-6 text-primary" />
-        </div>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold text-foreground" data-testid="heading-facility-name">
-            {facility.name}
-          </h1>
-          {facility.siriusId && (
+      <RecordTitleBar
+        variant="page"
+        icon={<Building className="h-6 w-6 text-primary" />}
+        title={facility.name}
+        titleTestId="heading-facility-name"
+        subtitle={
+          facility.siriusId && (
             <p className="text-muted-foreground mt-1 text-sm" data-testid="text-sirius-id">
               Sirius ID: {facility.siriusId}
             </p>
-          )}
-        </div>
-      </div>
+          )
+        }
+        breadcrumb={
+          <nav className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="breadcrumb">
+            <Link href="/facilities" className="hover:text-foreground transition-colors">
+              Facilities
+            </Link>
+            <ChevronRight size={16} />
+            <span className="text-foreground font-medium">{facility.name}</span>
+          </nav>
+        }
+        backLink={{ href: "/facilities", label: "Back to Facilities" }}
+        recordId={facility.id}
+      />
 
       <div className="border-b border-border mb-2">
         <nav className="flex gap-6 flex-wrap" data-testid="nav-tabs">

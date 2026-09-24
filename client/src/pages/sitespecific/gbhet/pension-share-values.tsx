@@ -23,7 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Plus, Trash2, Loader2, Pencil } from "lucide-react";
 
 interface ShareValue {
@@ -70,7 +70,7 @@ export default function PensionShareValuesPage() {
       toast({ title: editingId ? "Share value updated" : "Share value added" });
     },
     onError: (err) => {
-      toast({ title: "Failed", description: err instanceof Error ? err.message : "Error", variant: "destructive" });
+      toast({ title: "Failed", description: getApiErrorMessage(err, "Error"), variant: "destructive" });
     },
   });
 

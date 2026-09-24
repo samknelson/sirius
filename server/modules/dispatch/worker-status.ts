@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { insertWorkerDispatchStatusSchema, workerDispatchStatusEnum } from "@shared/schema";
-import { createWorkerDispatchStatusStorage, workerDispatchStatusLoggingConfig } from "../../storage/dispatch/worker-status";
+import { createWorkerDispatchStatusStorage, workerDispatchStatusLoggingConfig, WorkerOnPrimaryDispatchError } from "../../storage/dispatch/worker-status";
 import { withStorageLogging } from "../../storage/middleware/logging";
 import { requireComponent } from "../components";
 import { z } from "zod";
@@ -64,6 +64,9 @@ export function registerWorkerDispatchStatusRoutes(
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid data", details: error.errors });
       }
+      if (error instanceof WorkerOnPrimaryDispatchError) {
+        return res.status(409).json({ error: error.message });
+      }
       console.error("Error creating worker dispatch status:", error);
       res.status(500).json({ error: "Failed to create worker dispatch status" });
     }
@@ -78,6 +81,9 @@ export function registerWorkerDispatchStatusRoutes(
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid data", details: error.errors });
+      }
+      if (error instanceof WorkerOnPrimaryDispatchError) {
+        return res.status(409).json({ error: error.message });
       }
       console.error("Error updating worker dispatch status:", error);
       res.status(500).json({ error: "Failed to update worker dispatch status" });
@@ -94,6 +100,9 @@ export function registerWorkerDispatchStatusRoutes(
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid data", details: error.errors });
       }
+      if (error instanceof WorkerOnPrimaryDispatchError) {
+        return res.status(409).json({ error: error.message });
+      }
       console.error("Error updating worker dispatch seniority date:", error);
       res.status(500).json({ error: "Failed to update worker dispatch seniority date" });
     }
@@ -107,6 +116,9 @@ export function registerWorkerDispatchStatusRoutes(
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid data", details: error.errors });
+      }
+      if (error instanceof WorkerOnPrimaryDispatchError) {
+        return res.status(409).json({ error: error.message });
       }
       console.error("Error updating worker dispatch status:", error);
       res.status(500).json({ error: "Failed to update worker dispatch status" });
@@ -124,6 +136,9 @@ export function registerWorkerDispatchStatusRoutes(
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid data", details: error.errors });
+      }
+      if (error instanceof WorkerOnPrimaryDispatchError) {
+        return res.status(409).json({ error: error.message });
       }
       console.error("Error updating worker dispatch status:", error);
       res.status(500).json({ error: "Failed to update worker dispatch status" });

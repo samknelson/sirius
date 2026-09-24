@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode } from "react";
-import { Clock, ArrowLeft } from "lucide-react";
+import { Clock } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,17 @@ import { Badge } from "@/components/ui/badge";
 import { CronJob } from "@/lib/cron-types";
 import { useCronJobTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
+
+const CRON_JOBS_BACK_LINK = {
+  href: "/cron-jobs",
+  label: "Back to Cron Jobs",
+  testId: "button-back-to-cron-jobs",
+};
 
 interface CronJobLayoutContextValue {
   job: CronJob;
@@ -58,26 +69,11 @@ export function CronJobLayout({ activeTab, children }: CronJobLayoutProps) {
   if (error) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Clock className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Cron Job Not Found</h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/cron-jobs">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-cron-jobs">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Cron Jobs
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<Clock className="text-primary-foreground" size={16} />}
+          label="Cron Job Not Found"
+          backLink={CRON_JOBS_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -105,26 +101,10 @@ export function CronJobLayout({ activeTab, children }: CronJobLayoutProps) {
   if (isLoading || !job) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Clock className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/cron-jobs">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-cron-jobs">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Cron Jobs
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<Clock className="text-primary-foreground" size={16} />}
+          backLink={CRON_JOBS_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -149,39 +129,25 @@ export function CronJobLayout({ activeTab, children }: CronJobLayoutProps) {
     <CronJobLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
         {/* Header */}
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Clock className="text-primary-foreground" size={16} />
-                </div>
-                <div>
-                  <h1 className="text-xl font-semibold text-foreground" data-testid={`text-cron-job-name-${job.name}`}>
-                    {job.name}
-                  </h1>
-                  {job.description && (
-                    <p className="text-sm text-muted-foreground">{job.description}</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 ml-4">
-                  <Badge variant={job.isEnabled ? "default" : "secondary"} data-testid="badge-job-status">
-                    {job.isEnabled ? "Enabled" : "Disabled"}
-                  </Badge>
-                  <span className="text-sm text-muted-foreground font-mono">{job.schedule}</span>
-                </div>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/cron-jobs">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-cron-jobs">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Cron Jobs
-                  </Button>
-                </Link>
-              </div>
+        <RecordTitleBar
+          icon={<Clock className="text-primary-foreground" size={16} />}
+          title={job.name}
+          titleTestId={`text-cron-job-name-${job.name}`}
+          subtitle={
+            job.description && (
+              <p className="text-sm text-muted-foreground">{job.description}</p>
+            )
+          }
+          badges={
+            <div className="flex items-center gap-2 ml-4">
+              <Badge variant={job.isEnabled ? "default" : "secondary"} data-testid="badge-job-status">
+                {job.isEnabled ? "Enabled" : "Disabled"}
+              </Badge>
+              <span className="text-sm text-muted-foreground font-mono">{job.schedule}</span>
             </div>
-          </div>
-        </header>
+          }
+          backLink={CRON_JOBS_BACK_LINK}
+        />
 
         {/* Tab Navigation */}
         <div className="bg-card border-b border-border">

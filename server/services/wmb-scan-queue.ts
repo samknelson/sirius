@@ -68,6 +68,35 @@ export async function processNextQueueJob(
       summary: result.summary,
     });
 
+    // Per-worker scan-result event (the aggregate TRUST_WMB_SCAN_COMPLETED
+    // fires separately when the whole month finishes). Listeners such as the
+    // trust-wmb-terminate denorm plugin react to this. Emit failures are
+    // logged but never fail the job.
+    try {
+      await eventBus.emit(EventType.TRUST_WMB_SCAN_WORKER_COMPLETED, {
+        queueId: job.id,
+        workerId: job.workerId,
+        month: job.month,
+        year: job.year,
+        actions: result.actions.map(a => ({
+          benefitId: a.benefitId,
+          benefitName: a.benefitName,
+          scanType: a.scanType,
+          eligible: a.eligible,
+          action: a.action,
+          executed: a.executed,
+          pluginResults: a.pluginResults,
+        })),
+      });
+    } catch (emitError: any) {
+      logger.error("Failed to emit per-worker WMB scan completion event", {
+        service: "wmb-scan-queue",
+        jobId: job.id,
+        workerId: job.workerId,
+        error: emitError?.message ?? String(emitError),
+      });
+    }
+
     if (jobResultInfo.scanCompleted && jobResultInfo.completedStatus) {
       setImmediate(() => emitScanCompletedEvent(jobResultInfo.completedStatus!));
     }

@@ -158,7 +158,13 @@ function parseCSV(content: string): string[][] {
 }
 
 function main() {
-  const csvPath = path.join(process.cwd(), 'attached_assets/School_Workday_Times_by_employee_Group_SY26_-_Sheet1_1769933619759.csv');
+  const csvPath = process.argv[2];
+  if (!csvPath) {
+    throw new Error(
+      'Usage: npx tsx scripts/oneoffs/parse-school-schedules.ts <school-schedules-csv-path> [output-json-path]',
+    );
+  }
+
   const content = fs.readFileSync(csvPath, 'utf-8');
   
   const rows = parseCSV(content);
@@ -197,7 +203,7 @@ function main() {
     });
   }
   
-  const outputPath = path.join(process.cwd(), 'attached_assets/parsed-school-schedules.json');
+  const outputPath = process.argv[3] ?? path.join(process.cwd(), 'attached_assets/parsed-school-schedules.json');
   fs.writeFileSync(outputPath, JSON.stringify(allSchools, null, 2));
   
   console.log(`\nGenerated ${allSchools.length} school schedule records`);

@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Trash2, Plus, Eye, Phone, MapPin, User } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useAccessCheck } from "@/hooks/use-access-check";
 import type { EmployerContactType, PhoneNumber, ContactPostal } from "@shared/schema";
 import { generateDisplayName } from "@shared/schema";
@@ -188,7 +188,7 @@ function EmployerContactsContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create employer contact",
+        description: getApiErrorMessage(error, "Failed to create employer contact"),
         variant: "destructive",
       });
     },
@@ -208,7 +208,7 @@ function EmployerContactsContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete employer contact",
+        description: getApiErrorMessage(error, "Failed to delete employer contact"),
         variant: "destructive",
       });
     },

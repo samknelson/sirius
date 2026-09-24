@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { CreditCard, Info, Save, XCircle } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import {
   Select,
   SelectContent,
@@ -108,7 +108,7 @@ export default function PaymentGatewayPaymentTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Update Failed",
-        description: error?.message || "Failed to update payment types.",
+        description: getApiErrorMessage(error, "Failed to update payment types."),
         variant: "destructive",
       });
     },

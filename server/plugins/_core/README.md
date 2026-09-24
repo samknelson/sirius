@@ -49,7 +49,7 @@ All five go through:
 - `registerPluginKind` (`kinds.ts`) — kind-level registration.
 - `enforcePluginGating` / `enforceKindGating` (`gating.ts`) — single
   source of truth for component + access-policy gating.
-- `registerPluginsManifestRoutes` (`server/modules/plugins-manifest.ts`)
+- `registerPluginsManifestRoutes` (`server/modules/system/plugins-manifest.ts`)
   — the unified `GET /api/plugins/:kind/manifest` endpoint.
 - `createPluginComponentRegistry` + `pluginManifestUrl`
   (`client/src/plugins/_core/`) — client-side component lookup and
@@ -66,8 +66,8 @@ This document covers two scenarios:
 ## URL surface (shared across every kind)
 
 Every kind speaks the same generic HTTP surface. The dispatcher lives
-in `server/modules/plugins-manifest.ts` (manifest) and
-`server/modules/plugins-admin.ts` (admin). A kind opts in to each
+in `server/modules/system/plugins-manifest.ts` (manifest) and
+`server/modules/system/plugins-admin.ts` (admin). A kind opts in to each
 admin capability by providing the matching callback on
 `PluginKindRegistration`; routes whose callback is not supplied
 return 404.
@@ -102,7 +102,7 @@ configurable infrastructure, not per-user content.
 If you want a new admin capability that doesn't fit one of these
 five callbacks, add it to `PluginKindRegistration` in
 `server/plugins/_core/kinds.ts` AND wire the matching route in
-`server/modules/plugins-admin.ts` — don't bolt a kind-specific
+`server/modules/system/plugins-admin.ts` — don't bolt a kind-specific
 admin endpoint onto a kind's own module file. The whole point of
 the framework is that every kind speaks the same URL surface.
 

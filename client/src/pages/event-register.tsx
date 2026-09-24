@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import EventLayout, { useEventLayout } from "@/components/layouts/EventLayout";
 import { UserPlus, Search } from "lucide-react";
 
@@ -56,7 +56,7 @@ function EventRegisterContent() {
     onError: (error: any) => {
       toast({
         title: "Registration failed",
-        description: error.message || "Failed to register worker",
+        description: getApiErrorMessage(error, "Failed to register worker"),
         variant: "destructive",
       });
     },

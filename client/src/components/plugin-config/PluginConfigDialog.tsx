@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import type { PluginConfigField } from "@shared/plugin-config";
 import { PluginConfigForm, validatePluginConfig } from "./PluginConfigForm";
+import { useModalSeed } from "@/hooks/use-modal-seed";
 
 export interface PluginConfigDialogProps {
   open: boolean;
@@ -29,12 +30,13 @@ export function PluginConfigDialog({
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    if (open) {
-      setFormData({ ...currentConfig });
-      setValidationErrors({});
-    }
-  }, [open, currentConfig]);
+  // Seeded during the render that opens the dialog, so the field inputs are
+  // controlled by the current config on their first render rather than
+  // mounting empty and being corrected a render later.
+  useModalSeed(open, JSON.stringify(currentConfig ?? null), () => {
+    setFormData({ ...currentConfig });
+    setValidationErrors({});
+  });
 
   const handleSave = () => {
     const errors = validatePluginConfig(fields, formData);

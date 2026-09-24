@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../../../storage";
-import { objectStorageService } from "../../../services/objectStorage";
+import { fileSystemService } from "../../../services/files";
 import { createBtuWorkerImportStorage } from "../../../storage/sitespecific/btu/worker-import";
 import { insertFileSchema } from "@shared/schema";
 import multer from "multer";
@@ -75,11 +75,11 @@ export function registerBtuSigImportRoutes(
           return res.status(400).json({ message: "Invalid wizard type" });
         }
 
-        const uploadResult = await objectStorageService.uploadFile({
+        const uploadResult = await fileSystemService.upload({
           fileName: req.file.originalname,
           fileContent: req.file.buffer,
           mimeType: 'application/zip',
-          accessLevel: 'private',
+          fileSystemId: 'private',
         });
 
         const fileData = {
@@ -90,7 +90,7 @@ export function registerBtuSigImportRoutes(
           uploadedBy: userId,
           entityType: 'wizard',
           entityId: wizardId,
-          accessLevel: 'private',
+          fileSystemId: 'private',
           metadata: { wizardType: 'btu_cardcheck_sig_import' },
         };
 
@@ -292,7 +292,7 @@ export function registerBtuSigImportRoutes(
           return res.status(400).json({ message: "No matched files to process" });
         }
 
-        const zipBuffer = await objectStorageService.downloadFile(zipStoragePath);
+        const zipBuffer = await fileSystemService.download("private", zipStoragePath);
         const zip = new AdmZip(zipBuffer);
 
         const results = {
@@ -338,11 +338,11 @@ export function registerBtuSigImportRoutes(
 
             const pdfBuffer = pdfEntry.getData();
 
-            const pdfUploadResult = await objectStorageService.uploadFile({
+            const pdfUploadResult = await fileSystemService.upload({
               fileName: matchedFile.filename,
               fileContent: pdfBuffer,
               mimeType: 'application/pdf',
-              accessLevel: 'private',
+              fileSystemId: 'private',
             });
 
             const pdfFileData = insertFileSchema.parse({
@@ -353,7 +353,7 @@ export function registerBtuSigImportRoutes(
               uploadedBy: userId,
               entityType: 'esig',
               entityId: null,
-              accessLevel: 'private',
+              fileSystemId: 'private',
               metadata: {
                 bpsId: matchedFile.bpsId,
                 wizardId,

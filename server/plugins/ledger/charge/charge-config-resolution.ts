@@ -1,5 +1,5 @@
 import type { ChargePluginConfig, PluginConfigCharge } from "@shared/schema";
-import type { PluginConfigWithSubsidiary } from "../../../storage/plugin-configs";
+import type { PluginConfigWithSubsidiary } from "../../../storage/system/plugin-configs";
 
 /**
  * Charge plugin config resolution helpers.
@@ -32,8 +32,6 @@ export function toChargeConfig(env: PluginConfigWithSubsidiary): ChargePluginCon
     employerId: subsidiary?.employerId ?? null,
     account: subsidiary?.account ?? null,
     settings: config.data,
-    createdAt: config.createdAt,
-    updatedAt: config.updatedAt,
   };
 }
 

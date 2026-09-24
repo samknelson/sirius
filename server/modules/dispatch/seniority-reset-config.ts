@@ -1,10 +1,6 @@
-import type { Express, Request, Response } from "express";
 import type { IStorage } from "../../storage";
 import { z } from "zod";
-import { dispatchStatusEnum, type DispatchStatus } from "@shared/schema/dispatch/schema";
-
-type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => void) => void;
-type RequireAuth = (req: Request, res: Response, next: () => void) => void;
+import { dispatchStatusEnum } from "@shared/schema/dispatch/schema";
 
 const VARIABLE_NAME = "dispatch_seniority_reset_settings";
 
@@ -30,64 +26,7 @@ export async function getSeniorityResetSettings(storage: IStorage): Promise<Disp
   }
 }
 
-export function registerDispatchSeniorityResetConfigRoutes(
-  app: Express,
-  requireAuth: RequireAuth,
-  requireAccess: RequireAccess,
-  storage: IStorage
-) {
-  app.get(
-    "/api/config/dispatch/seniority-reset",
-    requireAuth,
-    requireAccess('admin'),
-    async (_req, res) => {
-      try {
-        const settings = await getSeniorityResetSettings(storage);
-        res.json({ config: settings });
-      } catch (error: any) {
-        console.error("Error fetching dispatch seniority-reset config:", error);
-        res.status(500).json({ message: error.message || "Failed to fetch config" });
-      }
-    }
-  );
-
-  app.put(
-    "/api/config/dispatch/seniority-reset",
-    requireAuth,
-    requireAccess('admin'),
-    async (req, res) => {
-      try {
-        const parseResult = dispatchSeniorityResetSettingsSchema.safeParse(req.body);
-        if (!parseResult.success) {
-          return res.status(400).json({
-            message: "Invalid configuration format",
-            errors: parseResult.error.errors,
-          });
-        }
-
-        const config: DispatchSeniorityResetSettings = {
-          triggerStatuses: Array.from(new Set(parseResult.data.triggerStatuses)) as DispatchStatus[],
-        };
-
-        const existingVariable = await storage.variables.getByName(VARIABLE_NAME);
-
-        if (existingVariable) {
-          await storage.variables.update(existingVariable.id, { value: config });
-        } else {
-          await storage.variables.create({
-            name: VARIABLE_NAME,
-            value: config,
-          });
-        }
-
-        res.json({
-          message: "Configuration saved",
-          config,
-        });
-      } catch (error: any) {
-        console.error("Error saving dispatch seniority-reset config:", error);
-        res.status(500).json({ message: error.message || "Failed to save config" });
-      }
-    }
-  );
-}
+// Reads and writes now go through the generic variable routes
+// (GET/PUT /api/variables/by-name/dispatch_seniority_reset_settings),
+// governed by the variable registry (admin + dispatch component, with
+// schema validation and trigger-status dedup).

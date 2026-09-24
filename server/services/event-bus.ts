@@ -1,6 +1,15 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { logger } from "../logger";
 
+import type {
+  DispatchJob,
+  DispatchJobFore,
+  EdlsSheet,
+  Grievance,
+  GrievanceSettlement,
+  WorkerDispatchStatus,
+} from "@shared/schema";
+
 export const EVENT_BUS_MAX_EMIT_DEPTH = 100;
 
 export class EventBusEmitDepthExceededError extends Error {
@@ -19,6 +28,36 @@ export class EventBusEmitDepthExceededError extends Error {
   }
 }
 
+/**
+ * The event vocabulary.
+ *
+ * NAMING CONVENTION (the standard for every event added from now on)
+ * -----------------------------------------------------------------
+ * An event name is `<entity>.<action>` with the transaction PHASE appended as
+ * the last segment:
+ *
+ *   - `<entity>.<action>.before` — emitted BEFORE the transaction opens.
+ *   - `<entity>.<action>`        — emitted INSIDE the transaction, so a
+ *                                  handler's writes commit or roll back with
+ *                                  the write that announced them.
+ *   - `<entity>.<action>.after`  — emitted AFTER the transaction commits (via
+ *                                  `onAfterCommit`), so nothing is announced
+ *                                  for a write that rolled back. Best effort:
+ *                                  a failing handler cannot undo the write.
+ *
+ * Only the phases actually needed are declared and emitted — there is no
+ * requirement that a storage layer emit all three for an action.
+ *
+ * Events are PER ENTITY: `worker.delete.after`, never a generic
+ * `entity.delete.after` carrying a type discriminator. Nothing else in this
+ * system dispatches on a payload field, and a per-entity event lets a handler
+ * subscribe to exactly the record types it can act on.
+ *
+ * LEGACY: the `<entity>.saved` names below predate this convention. They are
+ * the target of a future rename to `<entity>.save[.before|.after]` — deliberately
+ * NOT done yet, because each name is subscribed to by name. Do not invent a
+ * third spelling: new events use the convention above.
+ */
 export enum EventType {
   HOURS_SAVED = "hours.saved",
   PAYMENT_SAVED = "payment.saved",
@@ -29,7 +68,12 @@ export enum EventType {
   DISPATCH_EBA_SAVED = "dispatch.eba.saved",
   DISPATCH_STATUS_SAVED = "dispatch.status.saved",
   DISPATCH_SAVED = "dispatch.saved",
+  DISPATCH_JOB_SAVED = "dispatch.job.saved",
+  DISPATCH_FORE_SAVED = "dispatch.fore.saved",
+  SITESPECIFIC_T631_INTERVIEW_SAVED = "sitespecific.t631.interview.saved",
+  DISPATCH_DEPARTMENT_SAVED = "dispatch.department.saved",
   WORKER_BAN_SAVED = "worker.ban.saved",
+  WORKER_BAN_DENORM_FLIPPED = "worker.ban.denorm-flipped",
   WORKER_SKILL_SAVED = "worker.skill.saved",
   WORKER_WS_CHANGED = "worker.ws.changed",
   WORKER_WSH_SAVED = "worker.wsh.saved",
@@ -40,8 +84,28 @@ export enum EventType {
   GRIEVANCE_TIMELINE_CHANGED = "grievance.timeline.changed",
   GRIEVANCE_ASSIGNMENT_SAVED = "grievance.assignment.saved",
   GRIEVANCE_SETTLEMENT_SAVED = "grievance.settlement.saved",
+  EDLS_SHEET_SAVED = "edls.sheet.saved",
   TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
+  TRUST_WMB_SCAN_WORKER_COMPLETED = "trust.wmb.scan.worker.completed",
+  TOS_ABSENCE_REMINDER = "tos.absence.reminder",
+  // Wall-clock heartbeats from the tick emitter cron; see CronTickPayload.
+  // One type per period so the bus routes a tick only to the handlers that
+  // asked for that period, rather than waking every subscriber every time.
+  CRON_TICK_10M = "cron.tick.10m",
+  CRON_TICK_1H = "cron.tick.1h",
+  CRON_TICK_2H = "cron.tick.2h",
+  CRON_TICK_4H = "cron.tick.4h",
+  CRON_TICK_8H = "cron.tick.8h",
+  CRON_TICK_DAY = "cron.tick.day",
+  GRIEVANCE_DEADLINE_REMINDER = "grievance.deadline.reminder",
+  EMPLOYER_MONTHLY = "employer.monthly",
   PLUGIN_CONFIG_SAVED = "plugin.config.saved",
+  // Record deletions, announced after the delete commits. One per record type
+  // that can carry notes or file attachments; see the payloads below.
+  WORKER_DELETE_AFTER = "worker.delete.after",
+  EMPLOYER_DELETE_AFTER = "employer.delete.after",
+  TRUST_PROVIDER_DELETE_AFTER = "trust.provider.delete.after",
+  GRIEVANCE_DELETE_AFTER = "grievance.delete.after",
   CRON = "cron",
   LOG = "log",
 }
@@ -116,6 +180,21 @@ export interface DispatchStatusSavedPayload {
   statusId: string;
   workerId: string;
   status: string;
+  /**
+   * The availability row as this write left it (the pre-delete row on
+   * delete). Carried rather than re-read at consumption time: the row is
+   * mutable, so a consumer that loads it by id can describe a LATER write
+   * than the one it was handed — or find it gone and stay silent about a
+   * change that did happen.
+   */
+  row: WorkerDispatchStatus;
+  /**
+   * The status value before this write, when known: null on create (no prior
+   * row), the pre-write value on update/upsert. Lets consumers (e.g. the
+   * dispatch-status notifier) skip saves that did not actually change the
+   * status. Absent on delete events.
+   */
+  previousStatus?: string | null;
   isDeleted?: boolean;
 }
 
@@ -127,6 +206,59 @@ export interface DispatchSavedPayload {
   previousStatus?: string;
 }
 
+/**
+ * Emitted after a dispatch job create or update commits (via the after-commit
+ * hook, so listeners never see pre-commit data). Deliberately minimal: jobs
+ * storage stays consumer-unaware; listeners (e.g. the `dispatch_job_event`
+ * denorm plugin) re-read whatever job state they need.
+ */
+export interface DispatchJobSavedPayload {
+  jobId: string;
+}
+
+export interface DispatchDepartmentSavedPayload {
+  entryId: string;
+  workerId: string;
+  departmentId: string;
+  preference: string;
+  isDeleted?: boolean;
+}
+
+export interface SitespecificT631InterviewSavedPayload {
+  interviewId: string;
+  workerId: string;
+  jobId: string;
+  /** The interview's status after the save (or at deletion). */
+  status: string;
+  /**
+   * Status before the save: null on create (no prior row), the previous
+   * value on update/delete. Notifiers compare against `status` to detect
+   * real transitions. `undefined` only on legacy emits that predate the field.
+   */
+  previousStatus: string | null;
+  /** True when the save is a deletion (notifiers generally skip these). */
+  isDeleted: boolean;
+}
+
+export interface DispatchForeSavedPayload {
+  foreId: string;
+  jobId: string;
+  workerId: string;
+  /** Whether the worker was added to or removed from the job's forepersons. */
+  action: "added" | "removed";
+  /**
+   * The membership row this event added or removed, and the job it is on,
+   * both as of the event. Whole rows rather than a couple of copied
+   * values: a consumer can then describe either record in full without a
+   * lookup that would race the next write — and a removal's membership row
+   * is already gone by the time anyone consumes this. The job is never
+   * missing: a membership only exists while its job does, and both are
+   * captured in the transaction that writes the membership.
+   */
+  fore: DispatchJobFore;
+  job: DispatchJob;
+}
+
 export interface WorkerBanSavedPayload {
   banId: string;
   workerId: string;
@@ -135,6 +267,19 @@ export interface WorkerBanSavedPayload {
   endDate: Date | null;
   active: boolean;
   isDeleted?: boolean;
+}
+
+/**
+ * Emitted (after commit) by the worker_ban_active denorm plugin when a ban's
+ * cached denorm_active flag flips due to date rollover. Consumed ONLY by
+ * worker-level denorm plugins (dispatch_ban) to refresh worker facts — a
+ * distinct event so the flip cannot re-trigger worker_ban_active itself or
+ * ban-saved side effects like notifications.
+ */
+export interface WorkerBanDenormFlippedPayload {
+  banId: string;
+  workerId: string;
+  active: boolean;
 }
 
 export interface WorkerSkillSavedPayload {
@@ -173,10 +318,28 @@ export interface GrievanceSavedPayload {
 /**
  * Emitted after any grievance status-history mutation (create/update/delete)
  * commits. Consumed by the `grievance_timeline` denorm plugin to recompute the
- * grievance's timeline steps.
+ * grievance's timeline steps (which only needs `grievanceId`).
+ *
+ * Also carries the grievance's derived *current* status before and after the
+ * mutation, so a notifier can detect a genuine transition ("grievance attained
+ * status X") without re-querying: the current status is the latest-dated
+ * status-history entry. Both ids are null when the grievance has no history at
+ * that point in time (e.g. `previous*` on the very first entry, `new*` after
+ * the last entry is deleted). Status names are resolved for rendering and may be
+ * null if the referenced status option is missing.
+ *
+ * `newStatusHistoryId` identifies the status-history ROW that is current after
+ * the mutation. A consumer that has to render the transition loads that exact
+ * row rather than re-reading "the grievance's current status", which a later
+ * transition could have moved on by then.
  */
 export interface GrievanceStatusHistorySavedPayload {
   grievanceId: string;
+  previousStatusId: string | null;
+  previousStatusName: string | null;
+  newStatusId: string | null;
+  newStatusName: string | null;
+  newStatusHistoryId: string | null;
 }
 
 /**
@@ -201,11 +364,67 @@ export interface GrievanceSettlementSavedPayload {
   settlementId: string;
   operation: "created" | "updated" | "deleted";
   /**
-   * The settlement's amount (numeric string, may be null). Carried on the
-   * payload so the message can render it even for deletes, where the row no
-   * longer exists by the time the notifier runs.
+   * The settlement row as of the event (the pre-delete row on delete).
+   * Carried in full so a consumer can describe the settlement even for a
+   * delete, where the row no longer exists by the time it runs.
    */
-  amount: string | null;
+  row: GrievanceSettlement;
+  /**
+   * The grievance the settlement is on, as of the event, with the parts its
+   * display title is composed from (both live outside the row: the name is
+   * denormalised, the category name is a join). A settlement notice names
+   * the grievance, so re-reading it at delivery time would let a later
+   * rename change the wording — or a later deletion drop the notice.
+   */
+  grievance: Grievance | null;
+  grievanceTitleParts: { name: string | null; categoryName: string | null } | null;
+}
+
+/**
+ * Emitted after an EDLS sheet create or update commits. Carries the sheet's
+ * status before and after the write so a notifier can detect a genuine
+ * arrival at a status: `previousStatus` is null on create (the sheet "arrives"
+ * at its initial status), and equals the pre-update status on update. The
+ * whole sheet row rides on the payload so consumers can describe it without
+ * re-querying a row that may have changed since.
+ *
+ * The save's history entry is NOT carried here and is not a listener's job: it
+ * is written inside the save's own transaction, so a consumer of this event
+ * can rely on the history of every earlier save already being committed. See
+ * `captureEntitySnapshot`.
+ */
+export interface EdlsSheetSavedPayload {
+  sheetId: string;
+  previousStatus: string | null;
+  newStatus: string;
+  sheet: EdlsSheet;
+}
+
+/**
+ * Per-worker scan-result event, emitted after one worker's WMB scan queue job
+ * result is recorded (successfully). Carries the per-benefit actions
+ * (including per-plugin eligibility results) so listeners — e.g. the
+ * trust-wmb-terminate denorm plugin — can react without re-reading the queue.
+ */
+export interface TrustWmbScanWorkerCompletedPayload {
+  queueId: string;
+  workerId: string;
+  month: number;
+  year: number;
+  actions: Array<{
+    benefitId: string;
+    benefitName: string;
+    scanType: string;
+    eligible: boolean;
+    action: string;
+    executed?: boolean;
+    pluginResults: Array<{
+      pluginKey: string;
+      eligible: boolean;
+      reason?: string;
+      warning?: string;
+    }>;
+  }>;
 }
 
 export interface TrustWmbScanCompletedPayload {
@@ -218,6 +437,115 @@ export interface TrustWmbScanCompletedPayload {
   benefitsStarted: number;
   benefitsContinued: number;
   benefitsTerminated: number;
+}
+
+/**
+ * The heartbeat periods the tick emitter can emit, finest first.
+ *
+ * Declared here rather than beside the emitter because the payload type needs
+ * it and the emitter needs `EventType`; keeping the vocabulary in the bus is
+ * what stops that becoming an import cycle.
+ */
+export type CronTickPeriod = "10m" | "1h" | "2h" | "4h" | "8h" | "day";
+
+/**
+ * A periodic heartbeat: "this much wall-clock time has just elapsed".
+ *
+ * Emitted by the `cron-tick-emitter` cron job, one event type per period, so
+ * a plugin that needs waking up regularly subscribes to the tick it wants
+ * instead of growing a cron job of its own. See `server/plugins/system/cron/
+ * tick.ts` for what a tick does and does not promise — in short, it is
+ * best-effort and level-triggered: a prompt to go and look at current state,
+ * never a guarantee that this instant was observed exactly once.
+ */
+export interface CronTickPayload {
+  /** Which heartbeat this is, e.g. "10m" or "day". */
+  period: CronTickPeriod;
+  /**
+   * Local wall-clock start of the period this tick stands for, as an ISO
+   * string — 12:00 for the noon hourly tick, local midnight for the daily
+   * one. A handler that records what it has already done for a period keys
+   * off this rather than off the moment the tick happened to be delivered.
+   *
+   * It is also the only honest measure of how behind a tick is: a subscriber
+   * that cares compares it against the wall clock itself. The emitter does not
+   * say how many boundaries went by unobserved, because it emits only ONE
+   * catch-up tick per period however many were missed — a count would be a
+   * number nothing is entitled to act on.
+   */
+  slotStartedAt: string;
+}
+
+/**
+ * A single TOS/absence reminder that fell due. Emitted by the generic EBS pump
+ * cron from an `ebs_denorm` row scheduled by the `tos_absence_reminder` denorm
+ * plugin; delivered by the `tos-absence-notifier` event-notifier plugin.
+ * `offset` is the number of days after `absenceStartDate` this reminder fires.
+ */
+export interface TosAbsenceReminderPayload {
+  tosId: string;
+  workerId: string;
+  contactId: string | null;
+  offset: number;
+  absenceStartDate: string;
+}
+
+/**
+ * A single grievance deadline reminder that fell due. Emitted by the generic
+ * EBS pump cron from an `ebs_denorm` row scheduled by the
+ * `grievance_deadline_reminder` denorm plugin; delivered by the
+ * `grievance-deadline-notifier` event-notifier plugin. `offset` is the number
+ * of days BEFORE `dueDate` this reminder fires; `dueDate` is the step's due
+ * date (YYYY-MM-DD). `stepName` is the timeline step's display name (null if it
+ * can no longer be resolved).
+ */
+export interface GrievanceDeadlineReminderPayload {
+  grievanceId: string;
+  stepId: string;
+  stepName: string | null;
+  dueDate: string;
+  offset: number;
+}
+
+/**
+ * A single employer-monthly event that fell due. Emitted by the generic EBS
+ * pump cron from an `ebs_denorm` row scheduled by the `employer_monthly` denorm
+ * plugin. `month` is the calendar month this event is for, in `YYYY-MM` form.
+ * This is currently a producer-only event: no consumer is registered yet
+ * (downstream ledger interest/penalty work will subscribe later), so the pump
+ * logging "No handlers" for it is expected.
+ */
+export interface EmployerMonthlyPayload {
+  employerId: string;
+  month: string;
+}
+
+/**
+ * One record has been deleted, and the delete has committed.
+ *
+ * These four exist so the polymorphic areas that hang off a record — its
+ * notes (`entity_notes`) and its file attachments (`entity_files`), neither
+ * of which has a foreign key back to the record — can clean up at the moment
+ * of deletion instead of waiting for a nightly sweep. A handler runs after
+ * the commit and best effort: it can never fail or roll back the delete.
+ *
+ * Only the record's id is carried. A handler that needs more cannot have it —
+ * the row is gone by the time the event is delivered.
+ */
+export interface WorkerDeleteAfterPayload {
+  workerId: string;
+}
+
+export interface EmployerDeleteAfterPayload {
+  employerId: string;
+}
+
+export interface TrustProviderDeleteAfterPayload {
+  trustProviderId: string;
+}
+
+export interface GrievanceDeleteAfterPayload {
+  grievanceId: string;
 }
 
 export interface CronPayload {
@@ -258,7 +586,12 @@ export interface EventPayloadMap {
   [EventType.DISPATCH_EBA_SAVED]: DispatchEbaSavedPayload;
   [EventType.DISPATCH_STATUS_SAVED]: DispatchStatusSavedPayload;
   [EventType.DISPATCH_SAVED]: DispatchSavedPayload;
+  [EventType.DISPATCH_JOB_SAVED]: DispatchJobSavedPayload;
+  [EventType.DISPATCH_FORE_SAVED]: DispatchForeSavedPayload;
+  [EventType.SITESPECIFIC_T631_INTERVIEW_SAVED]: SitespecificT631InterviewSavedPayload;
+  [EventType.DISPATCH_DEPARTMENT_SAVED]: DispatchDepartmentSavedPayload;
   [EventType.WORKER_BAN_SAVED]: WorkerBanSavedPayload;
+  [EventType.WORKER_BAN_DENORM_FLIPPED]: WorkerBanDenormFlippedPayload;
   [EventType.WORKER_SKILL_SAVED]: WorkerSkillSavedPayload;
   [EventType.WORKER_WS_CHANGED]: WorkerWsChangedPayload;
   [EventType.WORKER_WSH_SAVED]: WorkerWshSavedPayload;
@@ -269,8 +602,23 @@ export interface EventPayloadMap {
   [EventType.GRIEVANCE_TIMELINE_CHANGED]: GrievanceTimelineChangedPayload;
   [EventType.GRIEVANCE_ASSIGNMENT_SAVED]: GrievanceAssignmentSavedPayload;
   [EventType.GRIEVANCE_SETTLEMENT_SAVED]: GrievanceSettlementSavedPayload;
+  [EventType.EDLS_SHEET_SAVED]: EdlsSheetSavedPayload;
   [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
+  [EventType.TRUST_WMB_SCAN_WORKER_COMPLETED]: TrustWmbScanWorkerCompletedPayload;
+  [EventType.TOS_ABSENCE_REMINDER]: TosAbsenceReminderPayload;
+  [EventType.CRON_TICK_10M]: CronTickPayload;
+  [EventType.CRON_TICK_1H]: CronTickPayload;
+  [EventType.CRON_TICK_2H]: CronTickPayload;
+  [EventType.CRON_TICK_4H]: CronTickPayload;
+  [EventType.CRON_TICK_8H]: CronTickPayload;
+  [EventType.CRON_TICK_DAY]: CronTickPayload;
+  [EventType.GRIEVANCE_DEADLINE_REMINDER]: GrievanceDeadlineReminderPayload;
+  [EventType.EMPLOYER_MONTHLY]: EmployerMonthlyPayload;
   [EventType.PLUGIN_CONFIG_SAVED]: PluginConfigSavedPayload;
+  [EventType.WORKER_DELETE_AFTER]: WorkerDeleteAfterPayload;
+  [EventType.EMPLOYER_DELETE_AFTER]: EmployerDeleteAfterPayload;
+  [EventType.TRUST_PROVIDER_DELETE_AFTER]: TrustProviderDeleteAfterPayload;
+  [EventType.GRIEVANCE_DELETE_AFTER]: GrievanceDeleteAfterPayload;
   [EventType.CRON]: CronPayload;
   [EventType.LOG]: LogPayload;
 }
@@ -393,7 +741,35 @@ class EventBus {
     return false;
   }
 
+  /**
+   * Emit an event to every subscribed handler. Failures are swallowed (logged +
+   * recorded in the ring buffer) so a bad handler can never break the emitter.
+   * Callers that need to KNOW whether delivery succeeded (e.g. the EBS pump,
+   * which must only mark a scheduled event `sent` when every handler ran
+   * cleanly) should use {@link emitWithFailures} instead.
+   */
   async emit<T extends EventType>(eventType: T, payload: EventPayloadMap[T]): Promise<void> {
+    await this.dispatch(eventType, payload);
+  }
+
+  /**
+   * Like {@link emit}, but returns the per-handler failures instead of
+   * swallowing them. An empty array means every handler ran cleanly. The depth
+   * guard still applies and throws {@link EventBusEmitDepthExceededError} on an
+   * emit storm — a thrown depth error is NOT a handler failure and is surfaced
+   * to the caller directly.
+   */
+  async emitWithFailures<T extends EventType>(
+    eventType: T,
+    payload: EventPayloadMap[T],
+  ): Promise<EmitFailure[]> {
+    return this.dispatch(eventType, payload);
+  }
+
+  private async dispatch<T extends EventType>(
+    eventType: T,
+    payload: EventPayloadMap[T],
+  ): Promise<EmitFailure[]> {
     // Storm protection: per-async-chain emit depth tracking.
     const parent = this.emitDepthAls.getStore();
     const nextDepth = parent ? parent.depth + 1 : 1;
@@ -425,7 +801,7 @@ class EventBus {
           service: "event-bus",
         });
         this.recordEmit(eventType, payload, [], 0);
-        return;
+        return [];
       }
 
       logger.debug(`Emitting event: ${eventType} to ${handlers.length} handler(s)`, {
@@ -449,7 +825,17 @@ class EventBus {
       );
       const durationMs = Date.now() - startedAt;
 
-      const failures = results.filter(r => r.status === "rejected");
+      const failures: EmitFailure[] = [];
+      results.forEach((r, idx) => {
+        if (r.status === "rejected") {
+          const h = handlers[idx];
+          failures.push({
+            handlerId: h?.id ?? "unknown",
+            handlerName: h?.name ?? "unknown",
+            message: r.reason instanceof Error ? r.reason.message : String(r.reason),
+          });
+        }
+      });
       if (failures.length > 0) {
         logger.warn(`${failures.length}/${handlers.length} handlers failed for event: ${eventType}`, {
           service: "event-bus",
@@ -457,6 +843,7 @@ class EventBus {
       }
 
       this.recordEmit(eventType, payload, handlers, durationMs, results);
+      return failures;
     });
   }
 

@@ -4,7 +4,7 @@ import { storage } from '../../../../storage/index.js';
 import { createBtuWorkerImportStorage } from '../../../../storage/sitespecific/btu/worker-import.js';
 import { parse as parseCSV } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
-import { objectStorageService } from '../../../../services/objectStorage.js';
+import { fileSystemService } from '../../../../services/files/index.js';
 import { cardchecks } from '@shared/schema/cardcheck/schema';
 import { eq } from 'drizzle-orm';
 
@@ -246,7 +246,7 @@ export class BtuCardcheckImportWizard extends FeedWizard {
       throw new Error('File not found');
     }
 
-    const buffer = await objectStorageService.downloadFile(file.storagePath);
+    const buffer = await fileSystemService.download(file.fileSystemId, file.storagePath);
 
     let rawRows: any[] = [];
     if (file.mimeType === 'text/csv') {

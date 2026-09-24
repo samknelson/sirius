@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, varchar, jsonb, unique } from "drizzle-orm/pg-core";
+import { foreignKey, pgTable, text, timestamp, varchar, jsonb, unique } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -59,10 +59,26 @@ export const sitespecificBtuEmployerMap = pgTable("sitespecific_btu_employer_map
   jobTitle: varchar("job_title"),
   employerName: varchar("employer_name"),
   secondaryEmployerName: varchar("secondary_employer_name"),
-  bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
-  employmentStatusId: varchar("employment_status_id").references(() => optionsEmploymentStatus.id, { onDelete: 'set null' }),
-  territoryId: varchar("territory_id").references(() => btuTerritories.id, { onDelete: 'set null' }),
-});
+  bargainingUnitId: varchar("bargaining_unit_id"),
+  employmentStatusId: varchar("employment_status_id"),
+  territoryId: varchar("territory_id"),
+}, (table) => [
+  foreignKey({
+    name: "sitespecific_btu_employer_map_bargaining_unit_id_bargaining_uni",
+    columns: [table.bargainingUnitId],
+    foreignColumns: [bargainingUnits.id],
+  }).onDelete("set null"),
+  foreignKey({
+    name: "sitespecific_btu_employer_map_employment_status_id_options_empl",
+    columns: [table.employmentStatusId],
+    foreignColumns: [optionsEmploymentStatus.id],
+  }).onDelete("set null"),
+  foreignKey({
+    name: "sitespecific_btu_employer_map_territory_id_btu_territories_id_f",
+    columns: [table.territoryId],
+    foreignColumns: [btuTerritories.id],
+  }).onDelete("set null"),
+]);
 
 export const insertBtuEmployerMapSchema = createInsertSchema(sitespecificBtuEmployerMap).omit({
   id: true,
@@ -142,10 +158,16 @@ export const sitespecificBtuSchoolAttributes = pgTable("sitespecific_btu_school_
   employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
   schoolTypeIds: text("school_type_ids").array(),
   schedules: jsonb("schedules"),
-  regionId: varchar("region_id").references(() => sitespecificBtuRegions.id, { onDelete: 'set null' }),
+  regionId: varchar("region_id"),
   gradeStart: varchar("grade_start", { length: 10 }),
   gradeEnd: varchar("grade_end", { length: 10 }),
-});
+}, (table) => [
+  foreignKey({
+    name: "sitespecific_btu_school_attributes_region_id_sitespecific_btu_r",
+    columns: [table.regionId],
+    foreignColumns: [sitespecificBtuRegions.id],
+  }).onDelete("set null"),
+]);
 
 // Zod schema for schedule items
 export const btuScheduleItemSchema = z.object({

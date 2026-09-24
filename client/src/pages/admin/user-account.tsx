@@ -1,4 +1,16 @@
 import { useState } from 'react';
+import { useLocation } from 'wouter';
+import { getApiErrorMessage } from "@/lib/queryClient";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
@@ -7,9 +19,60 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, UserCheck, UserX, Shield } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Loader2, UserCheck, UserX, Shield, KeyRound, Trash2 } from 'lucide-react';
 import { UserLayout, useUserLayout } from '@/components/layouts/UserLayout';
+import { useRecordMetadata } from '@/hooks/useRecordMetadata';
 import { Role } from '@/lib/entity-types';
+import { format } from '@/lib/date-format';
+import type {
+  RecordMetadataStamp,
+} from '@/components/shared/RecordHistoryDialog';
+
+interface ProvidersResponse {
+  providers: { type: string; isDefault: boolean }[];
+}
+
+/**
+ * One of the account's stamps, as the record's history reports it.
+ *
+ * The account row carries no dates of its own — when it was created and when
+ * it last changed are provenance, and provenance also knows who did it where
+ * the system was watching. Everything this shows therefore comes from the same
+ * place the record history dialog in the title bar reads, and says plainly
+ * when there is nothing recorded rather than showing an invented date.
+ */
+function AccountStamp({
+  label,
+  stamp,
+  state,
+  testId,
+}: {
+  label: string;
+  stamp: RecordMetadataStamp | null;
+  state: 'loading' | 'error' | 'ready';
+  testId: string;
+}) {
+  return (
+    <div>
+      <Label className="text-sm font-medium text-muted-foreground">{label}</Label>
+      <p data-testid={testId}>
+        {state === 'loading'
+          ? 'Loading…'
+          : state === 'error'
+            ? "This account's history could not be read."
+            : stamp?.date
+              ? format(new Date(stamp.date), 'MMM d, yyyy h:mm a')
+              : 'Not recorded'}
+      </p>
+      {state === 'ready' && stamp?.date && (
+        <p className="text-sm text-muted-foreground" data-testid={`${testId}-by`}>
+          {stamp.personName ?? 'person not recorded'}
+        </p>
+      )}
+    </div>
+  );
+}
 
 function UserAccountContent() {
   const { user } = useUserLayout();
@@ -18,6 +81,88 @@ function UserAccountContent() {
   const { data: allRoles = [], isLoading: rolesLoading } = useQuery<Role[]>({
     queryKey: ['/api/admin/roles'],
   });
+
+  const { data: providersData } = useQuery<ProvidersResponse>({
+    queryKey: ['/api/auth/providers'],
+  });
+
+  const {
+    metadata: history,
+    state: historyState,
+    canViewMetadata,
+  } = useRecordMetadata(user.id);
+  const localEnabled = !!providersData?.providers?.some((p) => p.type === 'local');
+
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [, setLocation] = useLocation();
+
+  // What the admin must type to confirm the delete (the email, or the user id
+  // when the account has no email).
+  const deleteConfirmTarget = user.email || user.id;
+
+  const deleteUserMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest('DELETE', `/api/admin/users/${user.id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
+      queryClient.removeQueries({ queryKey: ['/api/admin/users', user.id] });
+      toast({
+        title: 'User deleted',
+        description: 'The account was permanently deleted.',
+      });
+      setDeleteDialogOpen(false);
+      setLocation('/config/users');
+    },
+    onError: (error) => {
+      toast({
+        title: 'Failed to delete user',
+        description: getApiErrorMessage(error, 'The user could not be deleted.'),
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const setPasswordMutation = useMutation({
+    mutationFn: async (password: string) => {
+      return await apiRequest('POST', `/api/admin/users/${user.id}/local-password`, { password });
+    },
+    onSuccess: () => {
+      setNewPassword('');
+      setConfirmPassword('');
+      toast({ title: 'Password set', description: 'The local login password was updated.' });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Failed to set password',
+        description: getApiErrorMessage(error, "The operation failed."),
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleSetPassword = () => {
+    if (newPassword.length < 8) {
+      toast({
+        title: 'Password too short',
+        description: 'Password must be at least 8 characters.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast({
+        title: 'Passwords do not match',
+        description: 'Please re-enter the password.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setPasswordMutation.mutate(newPassword);
+  };
 
   const { data: userRoles = [], isLoading: userRolesLoading } = useQuery<Role[]>({
     queryKey: ['/api/admin/users', user.id, 'roles'],
@@ -47,7 +192,7 @@ function UserAccountContent() {
     onError: (error) => {
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message.replace(/^\d+:\s*/, '') : 'Failed to update user status',
+        description: getApiErrorMessage(error, 'Failed to update user status'),
         variant: 'destructive',
       });
     },
@@ -68,7 +213,7 @@ function UserAccountContent() {
     onError: (error) => {
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message.replace(/^\d+:\s*/, '') : 'Failed to assign role',
+        description: getApiErrorMessage(error, 'Failed to assign role'),
         variant: 'destructive',
       });
     },
@@ -90,7 +235,7 @@ function UserAccountContent() {
     onError: (error) => {
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message.replace(/^\d+:\s*/, '') : 'Failed to unassign role',
+        description: getApiErrorMessage(error, 'Failed to unassign role'),
         variant: 'destructive',
       });
     },
@@ -157,10 +302,22 @@ function UserAccountContent() {
                 {user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.firstName || user.lastName || 'Not provided'}
               </p>
             </div>
-            <div>
-              <Label className="text-sm font-medium text-muted-foreground">Created At</Label>
-              <p data-testid="text-created">{new Date(user.createdAt).toLocaleDateString()}</p>
-            </div>
+            {canViewMetadata && (
+              <>
+                <AccountStamp
+                  label="Created"
+                  stamp={history?.created ?? null}
+                  state={historyState.status}
+                  testId="text-created"
+                />
+                <AccountStamp
+                  label="Last Changed"
+                  stamp={history?.modified ?? null}
+                  state={historyState.status}
+                  testId="text-updated"
+                />
+              </>
+            )}
             <div>
               <Label className="text-sm font-medium text-muted-foreground">Last Login</Label>
               <p data-testid="text-lastlogin">
@@ -265,6 +422,146 @@ function UserAccountContent() {
           )}
         </CardContent>
       </Card>
+
+      {/* Local Password Card — only when local login is enabled */}
+      {localEnabled && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5" />
+              Local Login Password
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {user.email ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Set or reset this user's email + password login. The user will sign in with{' '}
+                  <span className="font-medium">{user.email}</span> and the password you set here.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="new-local-password">New password</Label>
+                    <Input
+                      id="new-local-password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      data-testid="input-new-local-password"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="confirm-local-password">Confirm password</Label>
+                    <Input
+                      id="confirm-local-password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      data-testid="input-confirm-local-password"
+                    />
+                  </div>
+                </div>
+                <Button
+                  onClick={handleSetPassword}
+                  disabled={setPasswordMutation.isPending || !newPassword || !confirmPassword}
+                  data-testid="button-set-local-password"
+                >
+                  {setPasswordMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <KeyRound className="h-4 w-4 mr-2" />
+                  )}
+                  Set Password
+                </Button>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground" data-testid="text-no-email-password">
+                This user has no email address, so a local login cannot be created.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Danger Zone */}
+      <Card className="border-destructive/50">
+        <CardHeader>
+          <CardTitle className="text-destructive">Danger Zone</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium">Permanently delete this user</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Removes the account, its roles, sign-in identities, and active sessions.
+                This cannot be undone. Consider deactivating instead if you may need the account later.
+              </p>
+            </div>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setDeleteConfirmText('');
+                setDeleteDialogOpen(true);
+              }}
+              data-testid="button-delete-user"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete User
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Permanently delete this user?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  This permanently deletes the account
+                  {user.email ? <> for <span className="font-medium">{user.email}</span></> : null},
+                  including its roles, sign-in identities, and active sessions.
+                  Audit log history is kept. <span className="font-medium">This cannot be undone.</span>
+                </p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="delete-confirm-input">
+                    Type <span className="font-mono font-medium">{deleteConfirmTarget}</span> to confirm
+                  </Label>
+                  <Input
+                    id="delete-confirm-input"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    autoComplete="off"
+                    data-testid="input-delete-confirm"
+                  />
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-delete-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteConfirmText !== deleteConfirmTarget || deleteUserMutation.isPending}
+              onClick={(e) => {
+                e.preventDefault(); // keep dialog open until the request finishes
+                deleteUserMutation.mutate();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-delete-confirm"
+            >
+              {deleteUserMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete Permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

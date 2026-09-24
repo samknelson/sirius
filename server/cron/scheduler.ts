@@ -1,6 +1,6 @@
 import * as cron from 'node-cron';
 import { storage } from "../storage";
-import type { PluginConfigWithSubsidiary } from "../storage/plugin-configs";
+import type { PluginConfigWithSubsidiary } from "../storage/system/plugin-configs";
 import { logger } from "../logger";
 import {
   cronPluginRegistry,

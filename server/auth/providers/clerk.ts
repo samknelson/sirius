@@ -4,6 +4,7 @@ import type { AuthProvider, ClerkProviderConfig, AuthenticatedUser } from "../ty
 import { storage } from "../../storage";
 import { storageLogger, logger } from "../../logger";
 import { getRequestContext } from "../../middleware/request-context";
+import { maybeProvisionUser } from "../provisioning";
 import { parseSSN } from "@shared/utils/ssn";
 import { z } from "zod";
 
@@ -122,8 +123,22 @@ async function resolveClerkUser(
   const user = await storage.users.getUserByEmail(email);
 
   if (!user) {
-    logger.info("No provisioned account found for email", { email });
-    return { allowed: false };
+    const provisioned = await maybeProvisionUser("clerk", {
+      externalId: clerkUserId,
+      email,
+      firstName,
+      lastName,
+      displayName: `${firstName || ""} ${lastName || ""}`.trim() || undefined,
+      profileImageUrl,
+    });
+    if (!provisioned) {
+      logger.info("No provisioned account found for email", { email });
+      return { allowed: false };
+    }
+
+    await storage.users.updateUserLastLogin(provisioned.user.id);
+    logLoginEvent(provisioned.user, clerkUserId, true);
+    return { allowed: true, user: provisioned.user };
   }
 
   if (!user.isActive) {

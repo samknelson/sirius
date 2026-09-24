@@ -5,11 +5,18 @@ import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { z } from "zod";
 import { getSupervisorContext, validateSupervisorForSave, getEdlsSettings } from "./supervisor-context";
+import { isComponentEnabledSync } from "../../services/component-cache";
 import { getEffectiveUser } from "../masquerade";
 
 const crewInputSchema = insertEdlsCrewsSchema.omit({ sheetId: true });
 
-const sheetWithCrewsSchema = insertEdlsSheetsSchema.omit({ employerId: true }).extend({
+/**
+ * `notificationsEnabled` is omitted on purpose: the dedicated toggle endpoint
+ * below is the ONLY way the flag changes. It would otherwise ride in on any
+ * sheet create or edit, since both request schemas derive from the table's
+ * insert schema.
+ */
+const sheetWithCrewsSchema = insertEdlsSheetsSchema.omit({ employerId: true, notificationsEnabled: true }).extend({
   crews: z.array(crewInputSchema).min(1, "At least one crew is required"),
 });
 
@@ -30,11 +37,26 @@ export function registerEdlsSheetsRoutes(
         dateTo,
         status,
         jobGroupId,
-        facilityId
+        facilityId,
+        showStatusId,
+        departmentId,
+        title,
+        changedSince
       } = req.query;
       
       const page = parseInt(pageParam as string) || 0;
       const limit = Math.min(parseInt(limitParam as string) || 100, 100);
+      
+      // "Changed on or after" — an ISO timestamp. Reject an unparseable value
+      // rather than silently listing everything.
+      let changedSinceDate: Date | undefined;
+      if (typeof changedSince === 'string' && changedSince !== '') {
+        changedSinceDate = new Date(changedSince);
+        if (Number.isNaN(changedSinceDate.getTime())) {
+          res.status(400).json({ message: "changedSince must be a valid ISO timestamp" });
+          return;
+        }
+      }
       
       const result = await storage.edlsSheets.getPaginated(
         page, 
@@ -46,6 +68,12 @@ export function registerEdlsSheetsRoutes(
           status: status as string | undefined,
           jobGroupId: jobGroupId as string | undefined,
           facilityId: facilityId as string | undefined,
+          showStatusId: showStatusId as string | undefined,
+          departmentId: departmentId as string | undefined,
+          // A blank or whitespace-only title narrows nothing; treat it as absent
+          // rather than matching every sheet against '%%'.
+          title: typeof title === 'string' && title.trim() !== '' ? title.trim() : undefined,
+          changedSince: changedSinceDate,
         }
       );
       res.json(result);
@@ -134,6 +162,10 @@ export function registerEdlsSheetsRoutes(
         res.status(400).json({ message: "date query parameter is required (YYYY-MM-DD)" });
         return;
       }
+      if (!isComponentEnabledSync("dispatch.job_group")) {
+        res.json([]);
+        return;
+      }
       const results = await storage.dispatchJobGroups.getActiveOnDate(date);
       res.json(results);
     } catch (error) {
@@ -214,6 +246,8 @@ export function registerEdlsSheetsRoutes(
         assignee: sheetData.assignee || supervisorValidation.supervisorId,
         jobGroupId: sheetData.jobGroupId || null,
         facilityId: sheetData.facilityId || null,
+        showStatusId: sheetData.showStatusId || null,
+        notes: sheetData.notes || null,
       };
       
       const crewsTotalWorkerCount = crews.reduce((sum, crew) => sum + crew.workerCount, 0);
@@ -291,6 +325,8 @@ export function registerEdlsSheetsRoutes(
         employerId: edlsSettings.employer,
         jobGroupId: parsedSheetData.jobGroupId !== undefined ? (parsedSheetData.jobGroupId || null) : undefined,
         facilityId: parsedSheetData.facilityId !== undefined ? (parsedSheetData.facilityId || null) : undefined,
+        showStatusId: parsedSheetData.showStatusId !== undefined ? (parsedSheetData.showStatusId || null) : undefined,
+        notes: parsedSheetData.notes !== undefined ? (parsedSheetData.notes || null) : undefined,
       };
       
       if (!sheetData.departmentId) {
@@ -437,6 +473,38 @@ export function registerEdlsSheetsRoutes(
     } catch (error) {
       console.error("Failed to fetch assignments:", error);
       res.status(500).json({ message: "Failed to fetch assignments" });
+    }
+  });
+
+  app.get("/api/edls/sheets/:id/next-assignments", requireAuth, edlsComponent, requireAccess('edls.sheet.view', req => req.params.id), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const sheet = await storage.edlsSheets.get(id);
+      if (!sheet) {
+        res.status(404).json({ message: "Sheet not found" });
+        return;
+      }
+
+      const assignments = await storage.edlsAssignments.getBySheetId(id);
+      const workerIds = Array.from(new Set(assignments.map(a => a.workerId)));
+
+      // Next assignment = earliest assignment on a non-trashed sheet strictly
+      // after this sheet's date (one sheet per worker per day is DB-enforced).
+      const upcoming = await storage.edlsAssignments.getAssignmentsForWorkerIds(
+        workerIds,
+        { afterYmd: sheet.ymd },
+      );
+
+      const next: Record<string, unknown | null> = {};
+      for (const workerId of workerIds) {
+        const list = upcoming.get(workerId) ?? [];
+        next[workerId] = list.length > 0 ? list[0] : null;
+      }
+
+      res.json({ next });
+    } catch (error) {
+      console.error("Failed to fetch next assignments:", error);
+      res.status(500).json({ message: "Failed to fetch next assignments" });
     }
   });
 
@@ -633,6 +701,10 @@ export function registerEdlsSheetsRoutes(
     trashLock: z.boolean(),
   });
 
+  const notificationsEnabledSchema = z.object({
+    notificationsEnabled: z.boolean(),
+  });
+
   app.patch(
     "/api/edls/sheets/:id/trash-lock",
     requireAuth,
@@ -662,6 +734,49 @@ export function registerEdlsSheetsRoutes(
       } catch (error) {
         console.error("Failed to update trash lock:", error);
         res.status(500).json({ message: "Failed to update trash lock" });
+      }
+    }
+  );
+
+  /**
+   * The only write path for the sheet's worker-notification opt-in. Same
+   * middleware chain and the same `edls.sheet.edit` authorization as the trash
+   * lock above, which is what refuses the change on a Scheduled or Trash
+   * sheet. Unlike the trash lock this is a plain column, not a key in the
+   * sheet's `data` JSONB.
+   *
+   * Turning the flag on sends nothing by itself: the worker notifier fires on
+   * a status arrival, and a sheet that already passed its trigger status is
+   * not revisited.
+   */
+  app.patch(
+    "/api/edls/sheets/:id/notifications-enabled",
+    requireAuth,
+    edlsComponent,
+    requireAccess('edls.sheet.edit', (req) => req.params.id),
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const parsed = notificationsEnabledSchema.safeParse(req.body);
+        
+        if (!parsed.success) {
+          res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+          return;
+        }
+        
+        const existingSheet = await storage.edlsSheets.get(id);
+        if (!existingSheet) {
+          res.status(404).json({ message: "Sheet not found" });
+          return;
+        }
+        
+        const updatedSheet = await storage.edlsSheets.update(id, {
+          notificationsEnabled: parsed.data.notificationsEnabled,
+        });
+        res.json(updatedSheet);
+      } catch (error) {
+        console.error("Failed to update sheet notifications flag:", error);
+        res.status(500).json({ message: "Failed to update notifications setting" });
       }
     }
   );
@@ -755,6 +870,11 @@ export function registerEdlsSheetsRoutes(
         // Copy data but exclude trashLock (new sheet should start without protection)
         const sourceData = (sourceSheet.data as Record<string, any>) || {};
         const { trashLock: _, ...copiedData } = sourceData;
+        
+        // `notificationsEnabled` is deliberately not carried over either: a
+        // copy starts with worker notifications OFF whatever the source sheet
+        // had, so it is simply left off the insert and takes the column
+        // default.
         
         const newSheetData = {
           ymd: targetDate,

@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import {
   Table,
   TableBody,
@@ -90,7 +90,7 @@ function WorkerBenefitsContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create benefit entry",
+        description: getApiErrorMessage(error, "Failed to create benefit entry"),
         variant: "destructive",
       });
     },
@@ -115,7 +115,7 @@ function WorkerBenefitsContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete benefit entry",
+        description: getApiErrorMessage(error, "Failed to delete benefit entry"),
         variant: "destructive",
       });
     },

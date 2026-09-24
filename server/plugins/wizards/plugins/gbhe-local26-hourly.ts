@@ -270,10 +270,15 @@ function buildLocal26ValidateStep(): WizardStepHandler {
             throw new Error(`Invalid target status ID: ${m.targetStatusId}`);
           }
         }
-        await ctx.storage.wizardEmploymentStatusMappings.upsertBatch(
-          employerId,
-          statusMappings,
-        );
+        // Use the per-row storage method so each change is recorded by the
+        // storage logging wrapper, including changes submitted together.
+        for (const mapping of statusMappings) {
+          await ctx.storage.wizardEmploymentStatusMappings.upsert(
+            employerId,
+            mapping.sourceStatus,
+            mapping.targetStatusId,
+          );
+        }
       }
       if (Array.isArray(locationMappings) && locationMappings.length > 0) {
         // Target employers must be ones THIS user can access — the mapping

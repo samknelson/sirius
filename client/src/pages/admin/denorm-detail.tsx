@@ -23,7 +23,7 @@ import {
   PlayCircle,
   ExternalLink,
 } from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface DenormStatusCounts {
@@ -119,10 +119,10 @@ export default function DenormConfigDetailPage() {
         }. The backfill sweep will rebuild them.`,
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Failed to clear records",
-        description: "Something went wrong while clearing this denorm config.",
+        description: getApiErrorMessage(error, "Something went wrong while clearing this denorm config."),
         variant: "destructive",
       });
     },
@@ -152,10 +152,10 @@ export default function DenormConfigDetailPage() {
             }.`,
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Failed to run backfill",
-        description: "Something went wrong while running the backfill.",
+        description: getApiErrorMessage(error, "Something went wrong while running the backfill."),
         variant: "destructive",
       });
     },
@@ -186,10 +186,10 @@ export default function DenormConfigDetailPage() {
         variant: !dryRun && result.totalErrored > 0 ? "destructive" : undefined,
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Failed to run recompute",
-        description: "Something went wrong while running the recompute.",
+        description: getApiErrorMessage(error, "Something went wrong while running the recompute."),
         variant: "destructive",
       });
     },

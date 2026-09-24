@@ -8,6 +8,7 @@ import { CommSms } from "./CommSms";
 import { CommPostal } from "./CommPostal";
 import { CommInApp } from "./CommInApp";
 import { PhoneNumber, Address } from "@/lib/entity-types";
+import type { ComposeTemplateTarget } from "@shared/comm-compose";
 import type { LucideIcon } from "lucide-react";
 
 export type CommChannel = "email" | "sms" | "postal" | "inapp";
@@ -56,12 +57,24 @@ interface CommSendWrapperProps {
   channel: CommChannel;
   contact: ContactData | null | undefined;
   customErrorDescription?: string;
+  /**
+   * WHAT THIS MESSAGE IS ABOUT — the record whose page the author is
+   * on, which is what the Template Studio writes against.
+   *
+   * The wrapper knows the contact, and the contact is never enough: the
+   * same person can be a worker here and an employer's contact there,
+   * and the tokens available differ. Only the page knows which, so the
+   * page says. A page that says nothing gets a compose screen with no
+   * template affordance, which is what these screens were before.
+   */
+  composeTarget?: ComposeTemplateTarget;
 }
 
 export function CommSendWrapper({ 
   channel, 
   contact, 
-  customErrorDescription 
+  customErrorDescription,
+  composeTarget,
 }: CommSendWrapperProps) {
   const config = channelConfigs[channel];
   const Icon = config.icon;
@@ -159,6 +172,7 @@ export function CommSendWrapper({
           contactId={contact.id} 
           email={contact.email}
           contactName={contact.displayName}
+          composeTarget={composeTarget}
         />
       );
     case "sms":
@@ -166,6 +180,7 @@ export function CommSendWrapper({
         <CommSms 
           contactId={contact.id} 
           phoneNumbers={phoneNumbers || []} 
+          composeTarget={composeTarget}
         />
       );
     case "postal":
@@ -174,10 +189,11 @@ export function CommSendWrapper({
           contactId={contact.id} 
           addresses={addresses || []}
           contactName={contact.displayName}
+          composeTarget={composeTarget}
         />
       );
     case "inapp":
-      return <CommInApp contactId={contact.id} />;
+      return <CommInApp contactId={contact.id} composeTarget={composeTarget} />;
     default:
       return null;
   }

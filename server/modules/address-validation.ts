@@ -3,6 +3,7 @@ import { addressValidationService, AddressInput } from "../services/comm/validat
 import { z } from "zod";
 import { ParseAddressRequest } from "@shared/schema";
 import { requireAccess } from "../services/access-policy-evaluator";
+import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
 
 // Middleware types
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void;
@@ -39,6 +40,7 @@ export function registerAddressValidationRoutes(
       
       res.json(result);
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       console.error("Address parsing error:", error);
       res.status(500).json({ message: "Failed to parse address" });
     }
@@ -60,6 +62,7 @@ export function registerAddressValidationRoutes(
         });
       }
       
+      if (sendIfMaintenanceRefusal(res, error)) return;
       console.error("Address validation error:", error);
       res.status(500).json({ message: "Failed to validate address" });
     }
@@ -71,6 +74,7 @@ export function registerAddressValidationRoutes(
       const config = await addressValidationService.getConfig();
       res.json(config);
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       console.error("Failed to get validation config:", error);
       res.status(500).json({ message: "Failed to get validation configuration" });
     }
@@ -83,6 +87,7 @@ export function registerAddressValidationRoutes(
       const updatedConfig = await addressValidationService.getConfig();
       res.json(updatedConfig);
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       console.error("Failed to update validation config:", error);
       res.status(500).json({ message: "Failed to update validation configuration" });
     }

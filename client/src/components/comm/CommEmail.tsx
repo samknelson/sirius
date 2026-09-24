@@ -18,9 +18,15 @@ import {
   CheckCircle,
   XCircle
 } from "lucide-react";
+import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CommTagPicker } from "./CommTagPicker";
+import {
+  ComposeTemplateStudio,
+  refuseUnrenderedTokens,
+} from "./ComposeTemplateStudio";
+import type { ComposeTemplateTarget } from "@shared/comm-compose";
 
 interface EmailOptinResponse {
   exists: boolean;
@@ -42,12 +48,17 @@ interface CommEmailProps {
   email?: string | null;
   contactName?: string;
   onSendSuccess?: () => void;
+  /** The record this screen is about, for composing from a template. */
+  composeTarget?: ComposeTemplateTarget;
 }
 
-export function CommEmail({ contactId, email, contactName, onSendSuccess }: CommEmailProps) {
+export function CommEmail({ contactId, email, contactName, onSendSuccess, composeTarget }: CommEmailProps) {
   const { toast } = useToast();
   const [subject, setSubject] = useState("");
-  const [bodyText, setBodyText] = useState("");
+  // An email body is HTML — the same field the bulk and notifier
+  // surfaces author. The plain-text alternative part is derived from it
+  // at send, never written here.
+  const [bodyHtml, setBodyHtml] = useState("");
   const [isOptinDialogOpen, setIsOptinDialogOpen] = useState(false);
   const [tagIds, setTagIds] = useState<string[]>([]);
   
@@ -93,7 +104,7 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
   });
 
   const sendEmailMutation = useMutation({
-    mutationFn: async (data: { email: string; name?: string; subject: string; bodyText: string; tagIds?: string[]; sendOffline?: boolean }) => {
+    mutationFn: async (data: { email: string; name?: string; subject: string; bodyHtml: string; tagIds?: string[]; sendOffline?: boolean }) => {
       return await apiRequest("POST", `/api/contacts/${contactId}/email`, data);
     },
     onSuccess: (_data, variables) => {
@@ -104,7 +115,7 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
           : "Your email has been sent successfully.",
       });
       setSubject("");
-      setBodyText("");
+      setBodyHtml("");
       setTagIds([]);
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId, "comm"] });
       onSendSuccess?.();
@@ -120,12 +131,13 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
   });
 
   const handleSend = (sendOffline = false) => {
-    if (!hasEmail || !subject.trim() || !bodyText.trim()) return;
+    if (!hasEmail || !subject.trim() || !bodyHtml.trim()) return;
+    if (composeTarget && refuseUnrenderedTokens({ subject, bodyHtml }, toast)) return;
     sendEmailMutation.mutate({
       email: email!.trim(),
       name: contactName?.trim() || undefined,
       subject: subject.trim(),
-      bodyText: bodyText.trim(),
+      bodyHtml: bodyHtml.trim(),
       tagIds: tagIds.length > 0 ? tagIds : undefined,
       sendOffline: sendOffline || undefined,
     });
@@ -134,7 +146,7 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
   const canSend = 
     hasEmail &&
     subject.trim().length > 0 && 
-    bodyText.trim().length > 0;
+    bodyHtml.trim().length > 0;
 
   const optinModal = hasEmail && (
     <Dialog open={isOptinDialogOpen} onOpenChange={setIsOptinDialogOpen}>
@@ -317,6 +329,26 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
             </div>
           </div>
 
+        {composeTarget && (
+          <div className="flex justify-end">
+            <ComposeTemplateStudio
+              target={composeTarget}
+              channel="email"
+              title="Compose Email"
+              fields={[
+                { key: "subject", label: "Subject", mode: "line", maxLength: 500 },
+                { key: "bodyHtml", label: "Message", mode: "html" },
+              ]}
+              values={{ subject, bodyHtml }}
+              onApply={(rendered) => {
+                setSubject(rendered.subject ?? "");
+                setBodyHtml(rendered.bodyHtml ?? "");
+              }}
+              testId="button-compose-email-template"
+            />
+          </div>
+        )}
+
         <div className="space-y-2">
           <Label htmlFor="subject">Subject</Label>
           <Input
@@ -337,14 +369,17 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
 
         <div className="space-y-2">
           <Label htmlFor="body">Message</Label>
-          <Textarea
-            id="body"
-            placeholder="Type your message here..."
-            value={bodyText}
-            onChange={(e) => setBodyText(e.target.value)}
-            rows={8}
-            data-testid="input-email-body"
-          />
+          <div data-testid="input-email-body">
+            <SimpleHtmlEditor
+              value={bodyHtml}
+              onChange={setBodyHtml}
+              placeholder="Type your message here..."
+              minHeight={200}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            A plain-text version is generated automatically for recipients whose mail client can't display HTML.
+          </p>
         </div>
 
         <CommTagPicker medium="email" value={tagIds} onChange={setTagIds} />
@@ -354,7 +389,7 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
           variant="ghost"
           onClick={() => {
             setSubject("");
-            setBodyText("");
+            setBodyHtml("");
             setTagIds([]);
           }}
           disabled={sendEmailMutation.isPending}

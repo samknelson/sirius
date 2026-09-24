@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { formatYmd } from "@shared/utils/date";
+import { format } from "@/lib/date-format";
+import { useRecordMetadata } from "@/hooks/useRecordMetadata";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DispatchJobLayout, useDispatchJobLayout } from "@/components/layouts/DispatchJobLayout";
@@ -10,7 +12,8 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { renderIcon } from "@/components/ui/icon-picker";
-import type { OptionsSkill } from "@shared/schema";
+import type { OptionsSkill, JobTypeData, DispatchJobData } from "@shared/schema";
+import type { DispatchJobForeWithWorker } from "../../../../server/storage/dispatch/fore";
 
 interface DispatchStatusCounts {
   pending: number;
@@ -35,10 +38,6 @@ interface ComponentConfig {
   enabled: boolean;
 }
 
-interface JobData {
-  requiredSkills?: string[];
-}
-
 const iconMap: Record<string, LucideIcon> = {
   Briefcase, Truck, HardHat, Wrench, Clock, Calendar,
   ClipboardList, Package, MapPin, Users,
@@ -55,7 +54,12 @@ function formatTime12h(time: string): string {
 
 function DispatchJobDetailsContent() {
   const { job } = useDispatchJobLayout();
-  const jobData = job.data as JobData | null;
+  const jobData = job.data as DispatchJobData | null;
+
+  // When the job was created, and by whom, comes from the record's history —
+  // the same reading the history badge at the top of this page opens, so the
+  // two cannot show different creation dates for one job.
+  const { state: created, canViewMetadata } = useRecordMetadata(job.id);
 
   const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
     queryKey: ["/api/components/config"],
@@ -71,6 +75,41 @@ function DispatchJobDetailsContent() {
   });
 
   const requiredSkills = jobData?.requiredSkills || [];
+
+  const ebaComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "dispatch.eba" && c.enabled
+  );
+
+  const foreComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "dispatch.fore" && c.enabled
+  );
+
+  const departmentComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "dispatch.department" && c.enabled
+  );
+
+  const facilityComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "dispatch.facility" && c.enabled
+  );
+
+  const { data: jobFacility } = useQuery<{ facilityId: string; facility?: { id: string; name: string } | null } | null>({
+    queryKey: ["/api/dispatch-jobs", job.id, "facility"],
+    enabled: facilityComponentEnabled,
+  });
+
+  const { data: jobDepartment } = useQuery<{ departmentId: string; department?: { id: string; name: string } | null } | null>({
+    queryKey: ["/api/dispatch-job-departments/job", job.id],
+    enabled: departmentComponentEnabled,
+  });
+
+  const { data: forepersons = [] } = useQuery<DispatchJobForeWithWorker[]>({
+    queryKey: ["/api/dispatch-jobs", job.id, "fore"],
+    enabled: foreComponentEnabled,
+  });
+  const jobTypeData = job.jobType?.data as JobTypeData | null | undefined;
+  const showAllowEba = ebaComponentEnabled && jobTypeData?.primary === "both";
+  // Absent flag = allow (default behavior).
+  const allowEbaWorkers = jobData?.allowEbaWorkers !== false;
 
   const JobTypeIcon = job.jobType?.data && typeof job.jobType.data === 'object' && 'icon' in job.jobType.data
     ? iconMap[job.jobType.data.icon as string] || Briefcase
@@ -118,6 +157,25 @@ function DispatchJobDetailsContent() {
               <span className="text-foreground">{job.jobType?.name || "No type"}</span>
             </div>
           </div>
+          {departmentComponentEnabled && (
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Department</h3>
+              <p className="text-foreground" data-testid="text-department">
+                {jobDepartment?.department?.name || "No department"}
+              </p>
+            </div>
+          )}
+          {facilityComponentEnabled && (
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Facility</h3>
+              <div className="flex items-center gap-2" data-testid="text-facility">
+                <MapPin className="h-4 w-4 text-muted-foreground" />
+                <span className="text-foreground">
+                  {jobFacility?.facility?.name || "No facility"}
+                </span>
+              </div>
+            </div>
+          )}
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-1">Start Date</h3>
             <p className="text-foreground" data-testid="text-startdate">
@@ -148,12 +206,49 @@ function DispatchJobDetailsContent() {
               </div>
             </div>
           )}
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-1">Created</h3>
-            <p className="text-foreground" data-testid="text-created">
-              {new Date(job.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-            </p>
-          </div>
+          {showAllowEba && (
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Allow EBA Workers</h3>
+              <div data-testid="text-allow-eba">
+                {allowEbaWorkers ? (
+                  <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                    <CheckCircle className="h-4 w-4" />
+                    <span>Yes</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <XCircle className="h-4 w-4" />
+                    <span>No</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          {canViewMetadata && (
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Created</h3>
+              <div data-testid="text-created">
+                {created.status === "loading" ? (
+                  <p className="text-muted-foreground">Loading…</p>
+                ) : created.status === "error" ? (
+                  <p className="text-muted-foreground">
+                    This job's history could not be read.
+                  </p>
+                ) : created.metadata?.created.date ? (
+                  <>
+                    <p className="text-foreground">
+                      {format(new Date(created.metadata.created.date), "MMMM d, yyyy")}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {created.metadata.created.personName ?? "person not recorded"}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-muted-foreground">Not recorded</p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
         {job.description && (
           <div>
@@ -211,6 +306,30 @@ function DispatchJobDetailsContent() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+        {foreComponentEnabled && (
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-2">Forepersons</h3>
+            {forepersons.length === 0 ? (
+              <p className="text-muted-foreground text-sm" data-testid="text-no-forepersons">
+                No Forepersons designated for this job.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2" data-testid="forepersons-list">
+                {forepersons.map((fore) => (
+                  <Badge
+                    key={fore.id}
+                    variant="secondary"
+                    className="gap-1"
+                    data-testid={`badge-foreperson-${fore.id}`}
+                  >
+                    <HardHat className="h-3 w-3" />
+                    {fore.worker?.contact?.displayName || "Unknown Worker"}
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {skillsComponentEnabled && requiredSkills.length > 0 && (

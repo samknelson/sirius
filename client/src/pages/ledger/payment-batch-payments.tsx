@@ -15,7 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Plus, Trash2, AlertCircle, CheckCircle2, MinusCircle } from "lucide-react";
 import { PaymentForm } from "@/components/ledger/PaymentForm";
 import type { LedgerPayment, LedgerPaymentType, LedgerAccount } from "@shared/schema";
@@ -81,7 +81,7 @@ function PaymentDetailHeader({
       onRemoved();
     },
     onError: (err: Error) => {
-      toast({ title: "Failed", description: err.message, variant: "destructive" });
+      toast({ title: "Failed", description: getApiErrorMessage(err, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { FileText, Plus, ChevronLeft } from "lucide-react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { WizardLauncher } from "@/components/wizards/WizardLauncher";
 import { Wizard, WizardType } from "@/lib/wizard-types";
 

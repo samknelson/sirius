@@ -2,7 +2,11 @@ import type { Request, Response } from "express";
 import { logger } from "../../logger";
 import { storage } from "../../storage";
 import { runInTransaction } from "../../storage/transaction-context";
+import { withFrameworkWrite } from "../../middleware/request-context";
 import { getEffectiveUser } from "../../modules/masquerade";
+import { checkAccess } from "../../services/access-policy-evaluator";
+import { isComponentEnabled } from "../../modules/components";
+import type { User } from "@shared/schema";
 import { validateAgainstSchema } from "../../lib/json-schema-validator";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { PluginConfig } from "@shared/schema";
@@ -61,6 +65,88 @@ export interface DashboardConfigItem extends DashboardManifestEntry {
   configName: string | null;
   /** The config row's ordering (primary sort key for items). */
   ordering: number;
+}
+
+/**
+ * Resolve the optional `?targetUserId=` override for staff viewing another
+ * user's dashboard (Task: staff view of another user's dashboard).
+ *
+ * - No `targetUserId` in the query → `{ ok: true, target: null }` (normal
+ *   self-view; behavior unchanged).
+ * - With a target: the CALLER must pass the `staff` access policy (evaluated
+ *   against the effective session user — masquerade included), and the target
+ *   must exist. Otherwise a 403/404 result is returned for the route to relay.
+ */
+export async function resolveDashboardTargetUser(
+  req: Request,
+  sessionDbUser: User,
+): Promise<
+  | { ok: true; target: User | null }
+  | { ok: false; status: number; message: string }
+> {
+  const raw = req.query.targetUserId;
+  const targetUserId = typeof raw === "string" && raw ? raw : undefined;
+  if (!targetUserId) return { ok: true, target: null };
+  const staff = await checkAccess("staff", sessionDbUser);
+  if (!staff.granted) {
+    return {
+      ok: false,
+      status: 403,
+      message: "Staff access required to view another user's dashboard",
+    };
+  }
+  const target = await storage.users.getUser(targetUserId);
+  if (!target) {
+    return { ok: false, status: 404, message: "Target user not found" };
+  }
+  return { ok: true, target };
+}
+
+/**
+ * Target-mode gating: evaluate a dashboard plugin's component, access-policy,
+ * and client `requiredPermissions` (any-of) gates against the TARGET user, so
+ * a staff target view exposes exactly — and only — what the target could see.
+ * Shared by the items pre-filter and the `/content` front-door.
+ */
+export async function checkTargetPluginGating(
+  plugin: DashboardPlugin,
+  target: User,
+): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
+  if (plugin.requiredComponent && !(await isComponentEnabled(plugin.requiredComponent))) {
+    return {
+      ok: false,
+      status: 403,
+      message: `Component '${plugin.requiredComponent}' not enabled`,
+    };
+  }
+  if (plugin.requiredPolicy) {
+    const policyResult = await checkAccess(plugin.requiredPolicy, target);
+    if (!policyResult.granted) {
+      return {
+        ok: false,
+        status: 403,
+        message: policyResult.reason || "Access denied",
+      };
+    }
+  }
+  const requiredPermissions = plugin.client?.requiredPermissions ?? [];
+  if (requiredPermissions.length > 0) {
+    let holdsAny = false;
+    for (const perm of requiredPermissions) {
+      if (await storage.users.userHasPermission(target.id, perm)) {
+        holdsAny = true;
+        break;
+      }
+    }
+    if (!holdsAny) {
+      return {
+        ok: false,
+        status: 403,
+        message: "Target user is not permitted to view this dashboard widget",
+      };
+    }
+  }
+  return { ok: true };
 }
 
 function pluginToMetadata(p: DashboardPlugin): BasePluginMetadata {
@@ -208,22 +294,38 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     for (const plugin of this.list()) {
       if (!plugin.client) continue;
       try {
-        const existing = await storage.pluginConfigs.getByKindAndPlugin(
-          "dashboard",
-          plugin.id,
+        // "None exists, so create one" cannot be made atomic here: a plugin is
+        // ALLOWED to have several configs (admins add them deliberately), so
+        // there is no unique key to conflict on. With two tasks booting
+        // against one database (Task #1350) the unserialized version seeds the
+        // same widget twice and the duplicate is permanent and user-visible.
+        // A transaction-scoped advisory lock makes the pair one turn: the
+        // second task's SELECT runs after the first task's INSERT commits.
+        await storage.advisoryLock.withTransactionLock(
+          `dashboard-config-seed:${plugin.id}`,
+          async () => {
+            const existing = await storage.pluginConfigs.getByKindAndPlugin(
+              "dashboard",
+              plugin.id,
+            );
+            if (existing.length > 0) return;
+            // The framework's own doing (see `withFrameworkWrite`): the row
+            // gets its provenance stamp with no person, and no audit entry.
+            await withFrameworkWrite(() =>
+              storage.pluginConfigs.create({
+                pluginKind: "dashboard",
+                pluginId: plugin.id,
+                enabled: this.defaultEnabled(plugin),
+                name: null,
+                ordering: 0,
+                data: plugin.defaultSettings ?? {},
+              }),
+            );
+            logger.info(`Seeded default dashboard config for ${plugin.id}`, {
+              service: SERVICE,
+            });
+          },
         );
-        if (existing.length > 0) continue;
-        await storage.pluginConfigs.create({
-          pluginKind: "dashboard",
-          pluginId: plugin.id,
-          enabled: this.defaultEnabled(plugin),
-          name: null,
-          ordering: 0,
-          data: plugin.defaultSettings ?? {},
-        });
-        logger.info(`Seeded default dashboard config for ${plugin.id}`, {
-          service: SERVICE,
-        });
       } catch (error) {
         logger.error(`Failed to seed default dashboard config for ${plugin.id}`, {
           service: SERVICE,
@@ -234,15 +336,16 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
   }
 
   /**
-   * Idempotently ensure every dashboard config has a role subsidiary row.
-   * Runs at boot AFTER the legacy/welcome backfills and the default seed, so
-   * any config created by those steps also gets a role. The render and search
-   * paths inner-join the subsidiary, so a config without one would silently
-   * vanish — this guarantees the invariant holds.
+   * Idempotently ensure every dashboard config has a roles subsidiary row
+   * with a NON-EMPTY roles array. Runs at boot AFTER the legacy/welcome
+   * backfills and the default seed, so any config created by those steps also
+   * gets roles. The render and search paths inner-join the subsidiary, so a
+   * config without one would silently vanish — this guarantees the invariant
+   * holds.
    *
-   * Role selection per config without an existing row:
-   *   - welcome-messages configs adopt their legacy `data.roles[0]` (when it
-   *     names a still-valid role), then have `roles` stripped from `data`.
+   * Roles selection per config without an existing row:
+   *   - welcome-messages configs adopt ALL still-valid roles from their
+   *     legacy `data.roles` list, then have `roles` stripped from `data`.
    *   - everything else defaults to the first role in the roles table.
    *
    * Configs that already have a subsidiary row are left untouched, so
@@ -262,31 +365,36 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     for (const cfg of configs) {
       try {
         const envelope = await storage.pluginConfigs.getWithSubsidiary(cfg.id);
-        if (!envelope || envelope.subsidiary) continue; // already has a role
+        if (!envelope || envelope.subsidiary) continue; // already has roles
 
-        let roleId = firstRoleId;
+        let roleIds: string[] = [firstRoleId];
         let stripRoles = false;
         if (cfg.pluginId === "welcome-messages") {
           const data = (cfg.data ?? {}) as Record<string, unknown>;
           if ("roles" in data) stripRoles = true;
           const list = Array.isArray(data.roles) ? data.roles : [];
-          const candidate = list.find(
+          const candidates = list.filter(
             (r): r is string => typeof r === "string" && validRoleIds.has(r),
           );
-          if (candidate) roleId = candidate;
+          if (candidates.length > 0) roleIds = candidates;
         }
 
-        await runInTransaction(async () => {
-          await storage.pluginConfigs.upsertSubsidiary("dashboard", {
-            id: cfg.id,
-            role: roleId,
-          });
-          if (stripRoles) {
-            const data = { ...((cfg.data ?? {}) as Record<string, unknown>) };
-            delete data.roles;
-            await storage.pluginConfigs.update(cfg.id, { data });
-          }
-        });
+        // Backfilling the invariant is the framework's own doing (see
+        // `withFrameworkWrite`): stamped with no person, and no audit entry
+        // for a row nobody edited.
+        await withFrameworkWrite(() =>
+          runInTransaction(async () => {
+            await storage.pluginConfigs.upsertSubsidiary("dashboard", {
+              id: cfg.id,
+              roles: roleIds,
+            });
+            if (stripRoles) {
+              const data = { ...((cfg.data ?? {}) as Record<string, unknown>) };
+              delete data.roles;
+              await storage.pluginConfigs.update(cfg.id, { data });
+            }
+          }),
+        );
         logger.info(`Backfilled dashboard role for config ${cfg.id}`, {
           service: SERVICE,
         });
@@ -317,35 +425,46 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     const handled = new Set<string>();
     for (const plugin of plugins) {
       try {
-        const existing = await storage.pluginConfigs.getByKindAndPlugin("dashboard", plugin.id);
-        if (existing.length > 0) {
-          handled.add(plugin.id);
-          continue;
-        }
-        const enabledVar = await storage.variables.getByName(`dashboard_plugin_${plugin.id}`);
-        const settingsVar = await storage.variables.getByName(
-          `dashboard_plugin_${plugin.id}_settings`,
+        // Same turn-taking as seedDefaultConfigs, and deliberately the SAME
+        // lock name: this backfill and that seeder both answer "does this
+        // plugin have a config row yet?", so they must serialize against each
+        // other too, not just against another copy of themselves (Task #1350).
+        await storage.advisoryLock.withTransactionLock(
+          `dashboard-config-seed:${plugin.id}`,
+          async () => {
+            const existing = await storage.pluginConfigs.getByKindAndPlugin("dashboard", plugin.id);
+            if (existing.length > 0) return;
+            const enabledVar = await storage.variables.getByName(`dashboard_plugin_${plugin.id}`);
+            const settingsVar = await storage.variables.getByName(
+              `dashboard_plugin_${plugin.id}_settings`,
+            );
+            let data: unknown = settingsVar ? settingsVar.value : undefined;
+            const hasLegacy = !!enabledVar || !!settingsVar;
+            if (!hasLegacy && plugin.migrateLegacySettings) {
+              const migrated = await plugin.migrateLegacySettings();
+              if (migrated && typeof migrated === "object" && Object.keys(migrated).length > 0) {
+                data = migrated;
+              }
+            }
+            if (data !== undefined || enabledVar) {
+              const enabled = enabledVar ? Boolean(enabledVar.value) : this.defaultEnabled(plugin);
+              // A legacy setting moving to its new home is the framework's own
+              // doing, not the doing of whoever set the old variable years ago
+              // (see `withFrameworkWrite`).
+              await withFrameworkWrite(() =>
+                storage.pluginConfigs.create({
+                  pluginKind: "dashboard",
+                  pluginId: plugin.id,
+                  enabled,
+                  name: null,
+                  ordering: 0,
+                  data: data ?? {},
+                }),
+              );
+              logger.info(`Backfilled dashboard plugin config for ${plugin.id}`, { service: SERVICE });
+            }
+          },
         );
-        let data: unknown = settingsVar ? settingsVar.value : undefined;
-        const hasLegacy = !!enabledVar || !!settingsVar;
-        if (!hasLegacy && plugin.migrateLegacySettings) {
-          const migrated = await plugin.migrateLegacySettings();
-          if (migrated && typeof migrated === "object" && Object.keys(migrated).length > 0) {
-            data = migrated;
-          }
-        }
-        if (data !== undefined || enabledVar) {
-          const enabled = enabledVar ? Boolean(enabledVar.value) : this.defaultEnabled(plugin);
-          await storage.pluginConfigs.create({
-            pluginKind: "dashboard",
-            pluginId: plugin.id,
-            enabled,
-            name: null,
-            ordering: 0,
-            data: data ?? {},
-          });
-          logger.info(`Backfilled dashboard plugin config for ${plugin.id}`, { service: SERVICE });
-        }
         handled.add(plugin.id);
       } catch (error) {
         logger.error(`Failed to backfill dashboard plugin config for ${plugin.id}`, {
@@ -409,20 +528,41 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
       }
     }
 
-    const gating = await enforcePluginGating(pluginToMetadata(plugin), req);
-    if (!gating.ok) {
-      res.status(gating.status).json({ message: gating.message });
-      return;
-    }
-
     const user = (req as any).user;
     const session = (req as any).session;
-    const { dbUser } = await getEffectiveUser(session, user);
-    if (!dbUser) {
+    const { dbUser: sessionDbUser } = await getEffectiveUser(session, user);
+    if (!sessionDbUser) {
       res.status(401).json({ message: "User not found" });
       return;
     }
 
+    // Optional staff target-view override: with `?targetUserId=` the caller
+    // must be staff, and gating + identity resolve from the TARGET user so
+    // the widget renders exactly what the target would see. Without it, the
+    // request-based gating path is unchanged.
+    const targetResult = await resolveDashboardTargetUser(req, sessionDbUser);
+    if (!targetResult.ok) {
+      res.status(targetResult.status).json({ message: targetResult.message });
+      return;
+    }
+    const target = targetResult.target;
+
+    const meta = pluginToMetadata(plugin);
+    if (target) {
+      const gate = await checkTargetPluginGating(plugin, target);
+      if (!gate.ok) {
+        res.status(gate.status).json({ message: gate.message });
+        return;
+      }
+    } else {
+      const gating = await enforcePluginGating(meta, req);
+      if (!gating.ok) {
+        res.status(gating.status).json({ message: gating.message });
+        return;
+      }
+    }
+
+    const dbUser = target ?? sessionDbUser;
     const userRoles = await storage.users.getUserRoles(dbUser.id);
     const configIdRaw = req.query.configId;
     const configId =
@@ -459,11 +599,14 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     }
 
     // Authoritative role enforcement: a widget is visible only to viewers who
-    // hold its config's role. A missing role or a role the viewer doesn't hold
-    // means the content is hidden.
+    // hold ANY of its config's roles. Missing roles or no overlap with the
+    // viewer's roles means the content is hidden.
     const userRoleIds = new Set(userRoles.map((r) => r.id));
-    const role = (envelope.subsidiary as { role?: string } | null)?.role;
-    if (!role || !userRoleIds.has(role)) {
+    const configRoles = (envelope.subsidiary as { roles?: string[] } | null)?.roles;
+    if (
+      !Array.isArray(configRoles) ||
+      !configRoles.some((r) => userRoleIds.has(r))
+    ) {
       res.status(403).json({ message: "Not authorized to view this dashboard widget" });
       return;
     }

@@ -2,7 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { EdlsSheetForm, type SheetFormData } from "@/components/edls/EdlsSheetForm";
 import type { EdlsCrew } from "@shared/schema";
@@ -36,7 +36,7 @@ function EdlsSheetEditContent() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update sheet",
+        description: getApiErrorMessage(error, "Failed to update sheet"),
         variant: "destructive",
       });
     },

@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { storage } from "../../storage";
+import { PrimaryDispatchConflictError, PRIMARY_DISPATCH_CONFLICT_MESSAGE } from "../../storage/dispatch/dispatches";
 import { insertDispatchSchema, dispatchStatusEnum } from "@shared/schema";
 import { requireAccess, buildContext, getAccessStorage } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
@@ -85,14 +86,50 @@ export function registerDispatchesRoutes(
         res.status(400).json({ message: "Worker not found" });
         return;
       }
-      
+
+      // Server-side enforcement of the job's full eligibility criteria — the
+      // UI only offers eligible workers, but the route must not trust that.
+      const rejection = await eligibilityRejection(parsed.data.workerId, parsed.data.jobId, "create");
+      if (rejection) {
+        res.status(403).json(rejection);
+        return;
+      }
+
       const dispatch = await storage.dispatches.create(parsed.data);
       res.status(201).json(dispatch);
     } catch (error: any) {
+      if (error instanceof PrimaryDispatchConflictError) {
+        res.status(409).json({ message: error.message });
+        return;
+      }
       console.error("Failed to create dispatch:", error?.message || error);
       res.status(500).json({ message: "Failed to create dispatch" });
     }
   });
+
+  /**
+   * Generic eligibility point check for creating or accepting a dispatch.
+   * Evaluates the FULL set of eligibility plugins enabled for the job (the
+   * same set the eligible-worker listing uses) and returns a 403 response
+   * body listing each failed plugin's name and message, or null when the
+   * worker is eligible. Applies to everyone — staff must clear the
+   * underlying condition (e.g. lift a ban) instead.
+   */
+  async function eligibilityRejection(
+    workerId: string,
+    jobId: string,
+    action: "create" | "accept",
+  ): Promise<Record<string, unknown> | null> {
+    const { createDispatchEligibleWorkersStorage } = await import("../../storage/dispatch/eligible-workers");
+    const result = await createDispatchEligibleWorkersStorage().checkWorkerAcceptance(jobId, workerId);
+    if (result.allowed) return null;
+    const reasons = result.failures.map((f) => `${f.pluginName}: ${f.explanation}`);
+    const verb = action === "create" ? "for" : "to accept";
+    return {
+      message: `This worker is not eligible ${verb} this dispatch (${reasons.join("; ")})`,
+      eligibilityFailures: result.failures,
+    };
+  }
 
   app.put("/api/dispatches/:id", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
@@ -112,6 +149,15 @@ export function registerDispatchesRoutes(
           res.status(400).json({ message: `Invalid status. Must be one of: ${dispatchStatusEnum.join(', ')}` });
           return;
         }
+        // Same eligibility point check as /set-status — the generic update
+        // route must not be a bypass for accepting an ineligible worker.
+        if (status === "accepted" && existing.status !== "accepted") {
+          const rejection = await eligibilityRejection(existing.workerId, existing.jobId, "accept");
+          if (rejection) {
+            res.status(403).json(rejection);
+            return;
+          }
+        }
         updates.status = status;
       }
       
@@ -130,6 +176,10 @@ export function registerDispatchesRoutes(
       const dispatch = await storage.dispatches.update(id, updates);
       res.json(dispatch);
     } catch (error) {
+      if (error instanceof PrimaryDispatchConflictError) {
+        res.status(409).json({ message: error.message });
+        return;
+      }
       res.status(500).json({ message: "Failed to update dispatch" });
     }
   });
@@ -209,10 +259,24 @@ export function registerDispatchesRoutes(
         return;
       }
 
+      // Eligibility point check: the job's full eligibility criteria block
+      // acceptance for everyone; staff must clear them (e.g. lift a ban) first.
+      if (status === "accepted") {
+        const dispatch = await storage.dispatches.get(id);
+        if (dispatch && dispatch.status !== "accepted") {
+          const rejection = await eligibilityRejection(dispatch.workerId, dispatch.jobId, "accept");
+          if (rejection) {
+            res.status(403).json(rejection);
+            return;
+          }
+        }
+      }
+
       const result = await storage.dispatches.setStatus(id, status);
       
       if (!result.success) {
-        res.status(400).json({ message: result.error });
+        const isPrimaryConflict = result.error === PRIMARY_DISPATCH_CONFLICT_MESSAGE;
+        res.status(isPrimaryConflict ? 409 : 400).json({ message: result.error });
         return;
       }
 

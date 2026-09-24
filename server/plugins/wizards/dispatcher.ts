@@ -5,6 +5,7 @@ import { logger } from "../../logger";
 import { validateAgainstSchema } from "../../lib/json-schema-validator";
 import { enforcePluginGating } from "../_core";
 import { wizardPluginRegistry } from "./registry";
+import { buildContentDisposition } from "../../utils/content-disposition";
 import { enforceWizardEntityAccess } from "./entity-access";
 import type {
   WizardPlugin,
@@ -475,7 +476,7 @@ export function registerWizardDispatcherRoutes(
         res.setHeader("Content-Type", "text/csv");
         res.setHeader(
           "Content-Disposition",
-          `attachment; filename="${filename}"`,
+          buildContentDisposition("attachment", filename),
         );
         res.send(csv);
       } catch (error) {
@@ -536,10 +537,10 @@ export function registerWizardDispatcherRoutes(
             status: "completed",
             completedAt: new Date().toISOString(),
           };
-          // Run steps own their progress lifecycle: only the run route may
-          // stamp `in_progress` (it means "a run is executing right now").
-          // Stamping it on navigation makes the client show a phantom
-          // "Running…" state with the Run button disabled.
+          // Never stamp "in_progress" onto a `run` step: the run dispatcher
+          // owns run progress, and "in_progress" there means "a run is
+          // executing" (spinner + disabled Run button), not "step is
+          // active". Position is already tracked by `currentStep`.
           if (
             next.kind !== "run" &&
             data.progress[next.id]?.status !== "completed"
@@ -561,9 +562,16 @@ export function registerWizardDispatcherRoutes(
             return res.status(400).json({ message: "Already on first step" });
           }
           const prev = steps[idx - 1];
-          // Same run-step guard as "next": never fabricate a running state,
-          // and never downgrade a completed/failed run by going back to it.
-          if (prev.kind !== "run") {
+          // Preserve completed/failed progress when navigating back, and
+          // never force "in_progress" onto a `run` step (that status means
+          // "a run is executing" and would show a stuck spinner while
+          // blocking Next). `currentStep` alone tracks position.
+          const prevStatus = data.progress[prev.id]?.status;
+          if (
+            prev.kind !== "run" &&
+            prevStatus !== "completed" &&
+            prevStatus !== "failed"
+          ) {
             data.progress[prev.id] = {
               ...data.progress[prev.id],
               status: "in_progress",

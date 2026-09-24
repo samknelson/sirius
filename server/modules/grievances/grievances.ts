@@ -3,7 +3,7 @@ import { z } from "zod";
 import { storage } from "../../storage";
 import { requireComponent } from "../components";
 import { buildContext, getAccessStorage } from "../../services/access-policy-evaluator";
-import { GRIEVANCE_CARDINALITIES } from "@shared/schema";
+import { GRIEVANCE_CARDINALITIES, grievanceTimelineAdjustmentSchema } from "@shared/schema";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PolicyMiddleware = (
@@ -146,23 +146,10 @@ const updateStatusHistorySchema = z
     message: "At least one field must be provided",
   });
 
-// Deadline highlighting thresholds (in days) for grievance timeline deadlines.
-// Stored in the `grievance.deadline_thresholds` variable; invalid or missing
-// values fall back to the defaults. `green` = more than this many days out is
-// green; `red` = fewer than this many days out (or overdue) is red; in
-// between is yellow.
-const DEADLINE_THRESHOLDS_VARIABLE = "grievance.deadline_thresholds";
-
-const deadlineThresholdsSchema = z
-  .object({
-    green: z.number().int().min(0),
-    red: z.number().int().min(0),
-  })
-  .refine((v) => v.green >= v.red, {
-    message: "green must be greater than or equal to red",
-  });
-
-const DEFAULT_DEADLINE_THRESHOLDS = { green: 20, red: 5 } as const;
+// Timeline adjustment on a status history entry: null clears it.
+const setTimelineAdjustmentSchema = z.object({
+  adjustment: grievanceTimelineAdjustmentSchema.nullable(),
+});
 
 const setContractSchema = z.object({
   contractId: z.string().uuid("A valid contract is required"),
@@ -364,26 +351,11 @@ export function registerGrievanceRoutes(
     }
   });
 
-  // ----- Deadline threshold config (read-only for staff) -----
-  // The variable itself is edited through the admin variables UI; this
-  // endpoint just exposes the validated value (with defaults) to the client.
-
-  app.get("/api/config/grievances/deadline-thresholds", ...gate, async (_req, res) => {
-    try {
-      const variable = await storage.variables.getByName(DEADLINE_THRESHOLDS_VARIABLE);
-      let thresholds: { green: number; red: number } = { ...DEFAULT_DEADLINE_THRESHOLDS };
-      if (variable) {
-        const parsed = deadlineThresholdsSchema.safeParse(variable.value);
-        if (parsed.success) {
-          thresholds = parsed.data;
-        }
-      }
-      res.json(thresholds);
-    } catch (error) {
-      console.error("Failed to fetch grievance deadline thresholds:", error);
-      res.status(500).json({ message: "Failed to fetch deadline thresholds" });
-    }
-  });
+  // ----- Deadline threshold config -----
+  // The variable itself is edited through the admin variables UI.
+  // Deadline thresholds are read via GET /api/variables/by-name/
+  // grievance.deadline_thresholds (staff + grievance component in the
+  // variable read-access registry); the client validates and defaults.
 
   // ----- Timeline steps (read-only) -----
   // Computed rows from grievance_steps_denorm — written ONLY by the
@@ -503,6 +475,33 @@ export function registerGrievanceRoutes(
       res.status(500).json({ message: "Failed to update status history entry" });
     }
   });
+
+  app.put(
+    "/api/grievances/:id/status-history/:entryId/timeline-adjustment",
+    ...gate,
+    async (req, res) => {
+      try {
+        const parsed = setTimelineAdjustmentSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res
+            .status(400)
+            .json({ message: "Invalid request body", errors: parsed.error.flatten() });
+        }
+        const updated = await storage.grievanceStatusHistory.setTimelineAdjustment(
+          req.params.id,
+          req.params.entryId,
+          parsed.data.adjustment,
+        );
+        if (!updated) {
+          return res.status(404).json({ message: "Status history entry not found" });
+        }
+        res.json(updated);
+      } catch (error) {
+        console.error("Failed to set grievance timeline adjustment:", error);
+        res.status(500).json({ message: "Failed to set timeline adjustment" });
+      }
+    },
+  );
 
   app.delete("/api/grievances/:id/status-history/:entryId", ...gate, async (req, res) => {
     try {

@@ -57,6 +57,19 @@ export interface DenormStorage {
   /** All denorm rows in a given status (e.g. `stale` for a recompute sweep). */
   listByStatus(status: DenormStatus): Promise<Denorm[]>;
   /**
+   * Of the given `entityIds`, return the subset that already have a denorm row
+   * for `configId`. This is the anti-join a plugin's `backfill` uses to avoid
+   * re-enqueuing entities it already tracks — the plugin builds its full
+   * candidate id set (e.g. open TOS × configured offsets) and subtracts these.
+   */
+  existingEntityIdsForConfig(configId: string, entityIds: string[]): Promise<string[]>;
+  /**
+   * Return up to `limit` `entity_id`s that have a denorm row for `configId`.
+   * This is the source set for a plugin's `findWidows` scan: the plugin maps
+   * these back to their underlying entity and returns the dead ones.
+   */
+  listEntityIdsForConfig(configId: string, limit: number): Promise<string[]>;
+  /**
    * Fetch up to `limit` `stale` denorm rows for a single config, oldest stale
    * first. This is the batch the recompute sweep (`recomputeStaleDenorm`) drains
    * each run; capping per run lets a large backlog drain over successive runs.
@@ -81,12 +94,15 @@ export interface DenormStorage {
    */
   upsertStatus(input: DenormStatusInput): Promise<Denorm>;
   /**
-   * Bulk-insert backfill seeds as `stale` rows, skipping any (entity, config)
-   * pair that already has a row (`ON CONFLICT DO NOTHING` on the
-   * (entity_id, config_id) unique index). Returns the number of rows actually
-   * inserted. This is the enqueue half of the backfill sweep: it only ever
-   * *adds* missing rows and never clobbers an existing row (e.g. a freshly
-   * event-written `ok` row), so backfill stays idempotent.
+   * Bulk-insert backfill seeds as `stale` rows; any (entity, config)
+   * pair that already has a row is re-marked stale (`ON CONFLICT DO UPDATE`
+   * on the (entity_id, config_id) unique index, setting status/stale_at only).
+   * Returns the number of rows inserted or re-marked. This is the enqueue half
+   * of the backfill sweep. Re-marking an existing row stale is safe and
+   * idempotent: plugins whose backfill anti-joins on "no denorm row" never
+   * return ids that conflict, and plugins that scan for live violations
+   * (e.g. `dispatch_primary_unavailable`) NEED the re-mark so a re-violation
+   * with an old computed row still gets re-enqueued for recompute.
    */
   insertStaleBatch(seeds: DenormStaleSeed[]): Promise<number>;
   /**
@@ -106,6 +122,14 @@ export interface DenormStorage {
    * foreign key. A config with no rows is a harmless no-op that returns 0.
    */
   clearForConfig(configId: string): Promise<number>;
+  /**
+   * Mark every existing denorm row for a config as `stale` (staleAt = now),
+   * returning the number of rows updated. Unlike `clearForConfig` this keeps
+   * the current payload rows in place while the recompute job refreshes them —
+   * the operator tool for "the derivation rule changed, recompute everything
+   * without a window of missing data".
+   */
+  markAllStaleForConfig(configId: string): Promise<number>;
 }
 
 export function createDenormStorage(): DenormStorage {
@@ -122,6 +146,26 @@ export function createDenormStorage(): DenormStorage {
     async listByStatus(status: DenormStatus): Promise<Denorm[]> {
       const client = getClient();
       return client.select().from(denorm).where(eq(denorm.status, status));
+    },
+
+    async existingEntityIdsForConfig(configId: string, entityIds: string[]): Promise<string[]> {
+      if (entityIds.length === 0) return [];
+      const client = getClient();
+      const rows = await client
+        .select({ entityId: denorm.entityId })
+        .from(denorm)
+        .where(and(eq(denorm.configId, configId), inArray(denorm.entityId, entityIds)));
+      return rows.map((r) => r.entityId);
+    },
+
+    async listEntityIdsForConfig(configId: string, limit: number): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .select({ entityId: denorm.entityId })
+        .from(denorm)
+        .where(eq(denorm.configId, configId))
+        .limit(limit);
+      return rows.map((r) => r.entityId);
     },
 
     async getStaleBatchForConfig(configId: string, limit: number): Promise<Denorm[]> {
@@ -214,7 +258,10 @@ export function createDenormStorage(): DenormStorage {
       const inserted = await client
         .insert(denorm)
         .values(values)
-        .onConflictDoNothing({ target: [denorm.entityId, denorm.configId] })
+        .onConflictDoUpdate({
+          target: [denorm.entityId, denorm.configId],
+          set: { status: "stale", staleAt: now },
+        })
         .returning({ id: denorm.id });
       return inserted.length;
     },
@@ -227,6 +274,16 @@ export function createDenormStorage(): DenormStorage {
         .where(and(eq(denorm.configId, configId), inArray(denorm.entityId, entityIds)))
         .returning({ id: denorm.id });
       return deleted.length;
+    },
+
+    async markAllStaleForConfig(configId: string): Promise<number> {
+      const client = getClient();
+      const updated = await client
+        .update(denorm)
+        .set({ status: "stale", staleAt: new Date() })
+        .where(eq(denorm.configId, configId))
+        .returning({ id: denorm.id });
+      return updated.length;
     },
 
     async clearForConfig(configId: string): Promise<number> {

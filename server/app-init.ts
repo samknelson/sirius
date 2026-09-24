@@ -9,16 +9,16 @@ import { setupAuth } from "./auth";
 import { initAccessControl, registerEntityLoader } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
+import { installWebServiceMaintenanceGate } from "./modules/webservices/maintenance";
 import { cronScheduler } from "./cron";
 import { initializeCronPluginSystem } from "./plugins/system/cron";
 import { initializeDenormPluginSystem } from "./plugins/system/denorm";
+import { initializeDataRetentionPluginSystem } from "./plugins/system/data-retention";
+import { initializeSystemStatusPluginSystem } from "./plugins/system/status";
 import { bootstrapSingletonPluginConfigs } from "./plugins/_core";
 import { initDispatchSeniorityReset } from "./services/dispatch/seniority-reset";
-import { loadComponentCache } from "./services/component-cache";
+import { runSchemaBringUp } from "./services/bringup";
 import { syncComponentPermissions } from "./services/component-permissions";
-import { runMigrations } from "../scripts/migrate";
-import { enforceStartupSchemaDrift } from "./services/schema-drift-check";
-import { runPendingComponentMigrationsAtStartup } from "./services/migration-runner";
 import { initializeWebSocket } from "./services/websocket";
 import { getSession } from "./auth";
 
@@ -32,20 +32,37 @@ import "./services/comm/providers";
 import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
 import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
 import { initializeDashboardPluginSystem } from "./plugins/dashboard";
+import { initializeQuicksearchPluginSystem } from "./plugins/quicksearch";
 import { initializeClientInjectionPluginSystem } from "./plugins/client-injection";
 import { initializeEventNotifierPluginSystem } from "./plugins/event-notifier";
 import { initializeWizardPluginSystem } from "./plugins/wizards";
+import { initializeTrustProviderEdiSystem } from "./plugins/trust/provider-edi";
+import { initializeMenuPluginSystem } from "./plugins/menu";
+import { initializeTokenPluginSystem } from "./plugins/tokens";
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
 import { initDispatchNotifications } from "./services/dispatch/notifications";
 import "@shared/access-policies/loader";
 import { registerEntityAccessModule } from "./modules/entity-access";
 import { isComponentEnabled } from "./modules/components";
+import {
+  closeCatalogRegistration,
+  setCatalogComponentSource,
+} from "@shared/catalog";
+import {
+  getComponentCacheRevision,
+  isComponentEnabledSync,
+} from "./services/component-cache";
 
-// Helper function to redact sensitive data from responses before logging
-function redactSensitiveData(data: any): any {
+// Helper function to redact sensitive data from responses before logging.
+// Exported so the redaction list can be asserted directly — the fields it
+// covers are a security boundary, not an implementation detail.
+export function redactSensitiveData(data: any): any {
   if (!data || typeof data !== 'object') return data;
 
-  const sensitiveFields = ['ssn', 'password', 'token', 'secret'];
+  // `accesscode` / `accessuuid` are the worker.aat access-token pair: they are
+  // bearer-like credentials (a future link is authorized by the UUID alone),
+  // so they must never reach a response preview in the admin log viewer.
+  const sensitiveFields = ['ssn', 'password', 'token', 'secret', 'accesscode', 'accessuuid'];
   const redacted = Array.isArray(data) ? [...data] : { ...data };
 
   for (const key in redacted) {
@@ -66,6 +83,13 @@ function redactSensitiveData(data: any): any {
  * requests that arrive during startup are parsed/logged consistently.
  */
 function installBaseMiddleware(app: Express): void {
+  // Before the parsers, deliberately: while the site is in maintenance mode
+  // every web service call is refused outright, and a malformed or oversized
+  // body must not be answered "your request is bad" when the real answer is
+  // "the site is down". Scoped to the web service mount; the site itself stays
+  // browsable during maintenance.
+  installWebServiceMaintenanceGate(app);
+
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 
@@ -139,11 +163,51 @@ function installBaseMiddleware(app: Express): void {
  * the "ready" signal are intentionally left to each entry point.
  */
 export async function bootstrapApp(app: Express, server: Server): Promise<void> {
+  // FIRST, before anything reads a clock or writes a row. Every naive
+  // timestamp column stores a wall-clock reading in this process's zone, so
+  // the zone has to be settled before the schema bring-up, the first
+  // migration and the first defaulted row — not merely before the app serves
+  // traffic. A zone applied afterwards cannot repair rows already written in
+  // the container's zone. Throws on an unrecognised zone name rather than
+  // letting Node silently ignore it and run the whole site in UTC.
+  //
+  // TZ may be supplied by an in-app override rather than the environment, and
+  // overrides live in the database — so this reads that ONE row directly
+  // instead of waiting for the override cache, which is not installed until
+  // after the migrations have already written timestamps. The peek is
+  // fail-soft: an unreachable or not-yet-created variables table is the schema
+  // bring-up's failure to report, not this step's.
+  {
+    const { applySystemTimeZone } = await import("./config/system-timezone");
+    let applied = applySystemTimeZone();
+    if (!applied.configured) {
+      const { peekEnvOverride } = await import("./services/env-overrides");
+      const stored = await peekEnvOverride("TZ");
+      if (stored) applied = applySystemTimeZone(() => stored);
+    }
+    logger.info(
+      applied.configured
+        ? `System time zone: ${applied.zone}`
+        : `System time zone: ${applied.zone} (TZ unset — using the container default)`,
+      { source: "startup", timeZone: applied.zone, configured: applied.configured },
+    );
+  }
+
   installBaseMiddleware(app);
 
   // Initialize the permission system
   initializePermissions();
   logger.info("Permission system initialized with core permissions", { source: "startup" });
+
+  // Hand the shared catalog framework its view of component state. Catalogs
+  // are declared in shared/, which cannot reach the component cache, so the
+  // check is injected here. Until it is, every catalog read refuses rather
+  // than guessing enabled or disabled.
+  setCatalogComponentSource({
+    isEnabled: isComponentEnabledSync,
+    getRevision: getComponentCacheRevision,
+  });
+  logger.info("Catalog component source wired", { source: "startup" });
 
   // Initialize access control system with unified policy evaluator
   initAccessControl(
@@ -182,43 +246,84 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   initDispatchSeniorityReset();
   logger.info("Dispatch seniority reset initialized", { source: "startup" });
 
-  // Initialize address validation service (loads or creates config)
+  // Schema bring-up, as ONE phase: classify the database, bootstrap it if it
+  // is empty and allowed, apply core migrations (a failure here is fatal —
+  // the app must never reach the drift gate half-migrated), load the
+  // component cache, apply per-component migrations, and enforce the drift
+  // gate. It prints the bring-up report exactly once, on success and on
+  // failure alike, and under BRINGUP_REPORT_ONLY=1 it reports and stops
+  // without writing anything. See `server/services/bringup.ts`.
+  await runSchemaBringUp();
+
+  // Initialize address validation service (loads or creates config). Runs
+  // after bring-up: it writes a config row, which report-only mode must not
+  // do, and it has nothing to say about the schema.
   await addressValidationService.getConfig();
   logger.info("Address validation service initialized", { source: "startup" });
 
-  // Run database migrations
-  const migrationResult = await runMigrations();
-  if (migrationResult.ran > 0) {
-    logger.info("Database migrations completed", {
-      source: "startup",
-      ran: migrationResult.ran,
-      skipped: migrationResult.skipped
-    });
-  } else {
-    logger.debug("No pending migrations", { source: "startup" });
-  }
-  if (migrationResult.errors.length > 0) {
-    logger.error("Migration errors occurred", {
-      source: "startup",
-      errors: migrationResult.errors
-    });
+  // Arm maintenance-mode enforcement (connection-level read-only lock while
+  // system_mode = "maintenance"). Armed ONLY here — standalone scripts that
+  // import the db module directly stay writable by design. Must run after
+  // migrations/drift (needs the variables table) and before routes/crons.
+  {
+    const { armMaintenanceEnforcement } = await import("./services/maintenance-mode");
+    await armMaintenanceEnforcement();
   }
 
-  // Load component cache
-  await loadComponentCache();
-  logger.info("Component cache initialized", { source: "startup" });
+  // Load DB-backed environment-variable overrides and install the sync
+  // fallback into the env registry (real env values always win). Must run
+  // after migrations (needs the variables table) and before any init step
+  // that reads overridable variables (e.g. FILESYSTEMS, auth setup).
+  {
+    const { initEnvOverrides } = await import("./services/env-overrides");
+    await initEnvOverrides();
 
-  // Run any pending per-component migrations for components that are already
-  // enabled. Without this, a new component migration would never run for
-  // already-enabled components, and the startup drift gate below would refuse
-  // to boot. New components still run migrations via the enable flow.
-  await runPendingComponentMigrationsAtStartup();
+    // Safety net, normally a no-op: the stored override was already read
+    // directly at the top of this function. It fires only if the peek could
+    // not reach the database while the bring-up could. Still safe to move the
+    // zone here — the cron scheduler has not been started and no
+    // request-serving formatter exists yet — but anything written in between
+    // is already in the old zone, which is why the early peek exists. Pooled
+    // database sessions realign on their next checkout (server/storage/db.ts).
+    {
+      const { applySystemTimeZone } = await import("./config/system-timezone");
+      const applied = applySystemTimeZone();
+      if (applied.changed) {
+        logger.warn(
+          `System time zone moved to ${applied.zone} only after the schema bring-up; ` +
+            `any timestamps written during bring-up are in the previous zone`,
+          { source: "startup", timeZone: applied.zone },
+        );
+      }
+    }
 
-  // Refuse to boot if the live database has drifted from the expected schema
-  // (core + every enabled schema-managing component). See
-  // `server/services/schema-drift-check.ts` for the rationale and the
-  // SKIP_SCHEMA_DRIFT_CHECK=1 dev escape hatch.
-  await enforceStartupSchemaDrift();
+    // Task #1258. Refuse to boot when the reloadable-subsystem registry and
+    // the per-variable change-effect classification disagree — otherwise the
+    // Environment Variables page and the Restart & Reload page would tell an
+    // operator different things about the same variable.
+    const { assertReloadClassificationConsistency } = await import(
+      "./services/reload-registry"
+    );
+    assertReloadClassificationConsistency();
+
+    // Baseline the effective value of every restart-only variable, so the
+    // Restart & Reload page can report which ones are genuinely WAITING on a
+    // restart rather than merely capable of needing one. Must run after the
+    // overrides are installed: an override present at boot is part of what
+    // this process is already using.
+    const { captureRestartBaseline } = await import("./services/env-restart-pending");
+    captureRestartBaseline();
+  }
+
+  // Initialize environment-defined filesystems (FILESYSTEMS env var).
+  // Throws on malformed config; warns for any file_system_id referenced by
+  // files rows but absent from the environment.
+  {
+    const { initFileSystems } = await import("./services/files");
+    const referencedIds = await storage.files.listDistinctFileSystemIds();
+    initFileSystems(referencedIds);
+    logger.info("Filesystem registry initialized", { source: "startup" });
+  }
 
   // Register permissions from enabled components
   syncComponentPermissions();
@@ -227,6 +332,17 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Initialize dispatch eligibility plugin system
   await initializeDispatchEligSystem();
   logger.info("Dispatch eligibility system initialized", { source: "startup" });
+
+  // Initialize the worker-ban plugin framework (kind + built-in plugins),
+  // seed the default "Dispatch" ban type and migrate legacy dispatch bans.
+  {
+    const { initializeWorkerBanSystem, seedWorkerBanTypes } = await import(
+      "./plugins/worker-bans"
+    );
+    initializeWorkerBanSystem();
+    await seedWorkerBanTypes();
+  }
+  logger.info("Worker-ban system initialized", { source: "startup" });
 
   // Initialize dashboard plugin system (registration + legacy migrations)
   await initializeDashboardPluginSystem();
@@ -240,6 +356,12 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   initializeEventNotifierPluginSystem();
   logger.info("Event-notifier plugin system initialized", { source: "startup" });
 
+  // Initialize quicksearch plugin system (registration + adapter). No seeding:
+  // a quicksearch config's roles are its access decision, so an administrator
+  // has to create one before anyone gets a search box.
+  initializeQuicksearchPluginSystem();
+  logger.info("Quicksearch plugin system initialized", { source: "startup" });
+
   // Materialize component-owned plugin_configs for components that are already
   // enabled (Task #397). Idempotent: existing rows are left untouched (admin
   // edits preserved), only missing rows are created and disabled-but-present
@@ -249,12 +371,19 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
     const { reconcileComponentPluginConfigs } = await import(
       "./services/component-lifecycle"
     );
-    for (const component of getAllComponents()) {
-      if (!component.pluginConfigs?.length) continue;
-      if (await isComponentEnabled(component.id)) {
-        await reconcileComponentPluginConfigs(component.id, true);
+    // Self-heal, so the writes are the framework's own: stamped with no
+    // person and kept out of the audit log, unlike the same reconcile run
+    // from an administrator's enable/disable request (see the components
+    // module), which is genuinely that administrator's doing.
+    const { withFrameworkWrite } = await import("./middleware/request-context");
+    await withFrameworkWrite(async () => {
+      for (const component of getAllComponents()) {
+        if (!component.pluginConfigs?.length) continue;
+        if (await isComponentEnabled(component.id)) {
+          await reconcileComponentPluginConfigs(component.id, true);
+        }
       }
-    }
+    });
   }
   logger.info("Component-owned plugin configs reconciled", { source: "startup" });
 
@@ -268,9 +397,11 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
     backfillPaymentGatewaySubsidiaries,
     backfillPaymentTypesFromGlobal,
   } = await import("./plugins/ledger/payment-gateway");
+  const { initializeWebServiceSystem } = await import("./plugins/web-service");
   registerChargePluginKind();
   registerTrustEligibilityKind();
   registerPaymentGatewayPluginKind();
+  initializeWebServiceSystem();
   // Every payment-gateway config needs a subsidiary row (the generic search
   // inner-joins it). Backfill pre-existing configs so they don't vanish.
   await backfillPaymentGatewaySubsidiaries();
@@ -297,7 +428,13 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
     const { initializeEventNotifierDispatcher } = await import(
       "./plugins/event-notifier/dispatcher"
     );
+    const { migrateNotifierTemplateTokens } = await import(
+      "./plugins/event-notifier/template-token-migrations"
+    );
     await backfillEventNotifierSubsidiaries();
+    // Custom templates are stored verbatim and rendered verbatim, so a
+    // renamed token root has to be rewritten in the stored data too.
+    await migrateNotifierTemplateTokens();
     initializeEventNotifierDispatcher();
   }
   logger.info("Event-notifier dispatcher initialized", { source: "startup" });
@@ -330,9 +467,30 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   initializeDenormPluginSystem();
   logger.info("Denorm plugins registered", { source: "startup" });
 
+  // Register data-retention plugins (kind + adapter + self-registering plugin imports)
+  initializeDataRetentionPluginSystem();
+  logger.info("Data-retention plugins registered", { source: "startup" });
+
+  // Register system-status plugins (kind + self-registering plugin imports;
+  // no config adapter — results are in-memory only)
+  initializeSystemStatusPluginSystem();
+  logger.info("System status plugins registered", { source: "startup" });
+
   // Register wizards as the sixth plugin kind (self-registering plugin imports)
+  initializeTrustProviderEdiSystem();
+  logger.info("Trust provider EDI system initialized", { source: "startup" });
+
   initializeWizardPluginSystem();
   logger.info("Wizard plugins registered", { source: "startup" });
+
+  // Register menu plugins (pluggable main navigation)
+  initializeMenuPluginSystem();
+  logger.info("Menu plugins registered", { source: "startup" });
+
+  // Register token plugins (chained template tokens; kind + self-registering
+  // plugin imports, no config adapter)
+  initializeTokenPluginSystem();
+  logger.info("Token plugins registered", { source: "startup" });
 
   // Register flood events
   registerFloodEvents();
@@ -346,6 +504,15 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   await bootstrapSingletonPluginConfigs();
   logger.info("Singleton plugin configs bootstrapped", { source: "startup" });
 
+  // Guarantee the admin account described by LOCAL_AUTH_EMAIL /
+  // LOCAL_AUTH_PASSWORD_HASH exists, is active, can administer and carries
+  // that password (no-op when either is unset). Must run after migrations and
+  // before auth setup so the credential is usable on the very first login.
+  {
+    const { ensureLocalAdminAccount } = await import("./auth/local-seed");
+    await ensureLocalAdminAccount();
+  }
+
   // Setup multi-provider auth
   await setupAuth(app);
   logger.info("Authentication system initialized", { source: "startup" });
@@ -358,6 +525,12 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   logger.info("Entity access module registered", { source: "startup" });
 
   await registerRoutes(app, server);
+
+  // Startup is over, so the set of declared catalogs is final. Anything
+  // registering after this point is a module that failed to load in the
+  // startup sequence, not a late arrival to accommodate.
+  closeCatalogRegistration();
+  logger.info("Catalog registration closed", { source: "startup" });
 
   // Initialize WebSocket server for real-time notifications
   const sessionMiddleware = getSession();

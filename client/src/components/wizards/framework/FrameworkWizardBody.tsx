@@ -106,9 +106,9 @@ function StepBody({
   data?: any;
   step: WizardStepManifest;
 }) {
-  if (step.schema) {
-    return <SchemaFormStep wizardId={wizardId} step={step} data={data} />;
-  }
+  // An explicit escape-hatch component always wins — a step may carry BOTH
+  // a schema and a component (the component typically wraps SchemaForm with
+  // bespoke behavior, e.g. dependent field defaults).
   if (step.component) {
     const Component = wizardComponentRegistry.resolve(step.component);
     return (
@@ -119,6 +119,9 @@ function StepBody({
         data={data}
       />
     );
+  }
+  if (step.schema) {
+    return <SchemaFormStep wizardId={wizardId} step={step} data={data} />;
   }
   return (
     <Card>

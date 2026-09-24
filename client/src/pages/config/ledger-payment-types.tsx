@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { useOptionsListName } from "@/hooks/useConfigNavigation";
+import { BackToOptions } from "@/components/shared/BackToOptions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Plus, Edit, Trash2, Save, X, ArrowUp, ArrowDown } from "lucide-react";
 import { getAllCurrencies } from "@shared/currency";
 import {
@@ -45,7 +47,9 @@ const paymentCategories = [
 const currencies = getAllCurrencies();
 
 export default function LedgerPaymentTypesPage() {
-  usePageTitle("Payment Types");
+  // The options registry names this list; this page does not name it again.
+  const { pluralName: listName } = useOptionsListName("ledger-payment-type");
+  usePageTitle(listName ?? "Options");
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -82,7 +86,7 @@ export default function LedgerPaymentTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create ledger payment type.",
+        description: getApiErrorMessage(error, "Failed to create ledger payment type."),
         variant: "destructive",
       });
     },
@@ -109,7 +113,7 @@ export default function LedgerPaymentTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update ledger payment type.",
+        description: getApiErrorMessage(error, "Failed to update ledger payment type."),
         variant: "destructive",
       });
     },
@@ -130,7 +134,7 @@ export default function LedgerPaymentTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete ledger payment type.",
+        description: getApiErrorMessage(error, "Failed to delete ledger payment type."),
         variant: "destructive",
       });
     },
@@ -230,9 +234,12 @@ export default function LedgerPaymentTypesPage() {
 
   return (
     <div className="container mx-auto py-8 max-w-6xl">
+      <div className="mb-4">
+        <BackToOptions />
+      </div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl md:text-3xl font-bold" data-testid="heading-ledger-payment-types">
-          Ledger Payment Types
+          {listName ?? "Options"}
         </h1>
         <Button onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-payment-type">
           <Plus className="mr-2 h-4 w-4" />
@@ -242,7 +249,7 @@ export default function LedgerPaymentTypesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Ledger Payment Types Management</CardTitle>
+          <CardTitle>{listName ? `${listName} Management` : "Management"}</CardTitle>
           <CardDescription>
             Manage the types of payments that can be recorded in the ledger. Use the arrows to reorder types.
           </CardDescription>

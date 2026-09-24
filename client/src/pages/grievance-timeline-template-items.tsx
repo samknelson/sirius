@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -42,6 +42,7 @@ import {
 interface OptionItem {
   id: string;
   name: string;
+  open?: boolean;
 }
 interface StepOptionItem {
   id: string;
@@ -209,7 +210,7 @@ function ItemsContent() {
     } catch (error) {
       toast({
         title: "Could not save step",
-        description: error instanceof Error ? error.message : undefined,
+        description: getApiErrorMessage(error, "An unexpected error occurred"),
         variant: "destructive",
       });
     } finally {
@@ -243,7 +244,7 @@ function ItemsContent() {
     } catch (error) {
       toast({
         title: "Could not reorder step",
-        description: error instanceof Error ? error.message : undefined,
+        description: getApiErrorMessage(error, "An unexpected error occurred"),
         variant: "destructive",
       });
       await invalidate();
@@ -266,7 +267,7 @@ function ItemsContent() {
     } catch (error) {
       toast({
         title: "Could not remove step",
-        description: error instanceof Error ? error.message : undefined,
+        description: getApiErrorMessage(error, "An unexpected error occurred"),
         variant: "destructive",
       });
     } finally {
@@ -396,7 +397,13 @@ function ItemsContent() {
             <div className="space-y-2">
               <Label>From Status</Label>
               <div className="space-y-2 rounded-md border p-3">
-                {statuses.map((status) => (
+                {statuses
+                  .filter(
+                    (status) =>
+                      status.open !== false ||
+                      form.fromStatuses.includes(status.id),
+                  )
+                  .map((status) => (
                   <label
                     key={status.id}
                     className="flex items-center gap-2 text-sm"
@@ -415,7 +422,13 @@ function ItemsContent() {
             <div className="space-y-2">
               <Label>To Status</Label>
               <div className="space-y-2 rounded-md border p-3">
-                {statuses.map((status) => (
+                {statuses
+                  .filter(
+                    (status) =>
+                      status.open !== false ||
+                      form.toStatuses.includes(status.id),
+                  )
+                  .map((status) => (
                   <label
                     key={status.id}
                     className="flex items-center gap-2 text-sm"

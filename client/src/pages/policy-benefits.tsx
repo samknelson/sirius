@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { PolicyLayout, usePolicyLayout } from "@/components/layouts/PolicyLayout";
 import { TrustBenefit } from "@shared/schema";
 import { Save, Loader2, ExternalLink } from "lucide-react";
@@ -55,7 +55,7 @@ function PolicyBenefitsContent() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update policy benefits.",
+        description: getApiErrorMessage(error, "Failed to update policy benefits."),
         variant: "destructive",
       });
     },

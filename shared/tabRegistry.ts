@@ -11,6 +11,22 @@
 /**
  * Base tab definition with access requirements
  */
+/**
+ * A tab whose content is one area of a context-based framework.
+ *
+ * Both frameworks with contexts — entity-files and entity-notes — are
+ * switched on per area by an operator (Config → Entity Files / Entity Notes).
+ * A tab that names its context is hidden wherever that area is switched off,
+ * so the tab and the routes behind it can never disagree. The server resolves
+ * this (see server/modules/entity-contexts.ts); the registry only declares
+ * WHICH area the tab shows.
+ */
+export interface TabEntityContext {
+  framework: 'entity-files' | 'entity-notes';
+  /** Context id as registered in that framework and stored on its rows. */
+  contextId: string;
+}
+
 export interface TabDefinition {
   id: string;
   label: string;
@@ -18,6 +34,8 @@ export interface TabDefinition {
   policyId?: string;
   permission?: string;
   component?: string;
+  /** Hide this tab while its framework area is switched off. */
+  entityContext?: TabEntityContext;
   parent?: string;
   /** Terminology key for dynamic label substitution (e.g., 'steward', 'union') */
   termKey?: string;
@@ -75,7 +93,6 @@ export type TabEntityType =
   | 'user'
   | 'ws_client'
   | 'sftp_client_destination'
-  | 'trust_provider_edi'
   | 'bulk_message'
   | 'ledger_payment_batch'
   | 'facility'
@@ -83,7 +100,25 @@ export type TabEntityType =
   | 'comm'
   | 'grievance'
   | 'grievanceTimelineTemplate'
-  | 'contract';
+  | 'contract'
+  | 'business_calendar'
+  /** A unified-options type; the entity id is the type slug (e.g. `department`). */
+  | 'options'
+  /**
+   * The incoming web services page. A single admin page, not a row, so the
+   * entity id is the constant {@link WS_ADMIN_ENTITY_ID}.
+   */
+  | 'ws'
+  /**
+   * The outgoing web services page. A single admin page, not a row, so the
+   * entity id is the constant {@link WC_ADMIN_ENTITY_ID}.
+   */
+  | 'wc'
+  /**
+   * The record history admin page. A single admin page, not a row, so the
+   * entity id is the constant {@link RECORD_METADATA_ADMIN_ENTITY_ID}.
+   */
+  | 'record_metadata';
 
 /**
  * Tab check request for batch access evaluation
@@ -121,10 +156,12 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'work-status', label: 'Work Status', hrefTemplate: '/workers/{id}/work-status', permission: 'staff' },
       { id: 'member-status', label: 'Member Status', hrefTemplate: '/workers/{id}/member-status', permission: 'staff' },
       { id: 'user', label: 'User', hrefTemplate: '/workers/{id}/user', permission: 'staff' },
+      { id: 'dashboard', label: 'Dashboard', hrefTemplate: '/workers/{id}/dashboard', permission: 'staff' },
       { id: 'skills', label: 'Skills', hrefTemplate: '/workers/{id}/skills', policyId: 'worker.view', component: 'worker.skills' },
       { id: 'certifications', label: 'Certifications', hrefTemplate: '/workers/{id}/certifications', policyId: 'worker.view', component: 'worker.certifications' },
       { id: 'ratings', label: 'Ratings', hrefTemplate: '/workers/{id}/ratings', permission: 'staff', component: 'worker.ratings' },
       { id: 'bans', label: 'Bans', hrefTemplate: '/workers/{id}/bans', policyId: 'worker.view', component: 'dispatch' },
+      { id: 'aat', label: 'Access Tokens', hrefTemplate: '/workers/{id}/aat', policyId: 'worker.mine', component: 'worker.aat' },
     ]
   },
   { 
@@ -186,12 +223,23 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'dispatch-status', label: 'Status', hrefTemplate: '/workers/{id}/dispatch/status', policyId: 'worker.view', component: 'dispatch' },
       { id: 'dispatch-list', label: 'List', hrefTemplate: '/workers/{id}/dispatch/list', policyId: 'worker.view', component: 'dispatch' },
       { id: 'dispatch-dnc', label: 'Do Not Call', hrefTemplate: '/workers/{id}/dispatch/do-not-call', policyId: 'worker.view', component: 'dispatch.dnc' },
+      { id: 'dispatch-departments', label: 'Departments', hrefTemplate: '/workers/{id}/dispatch/departments', policyId: 'worker.view', component: 'dispatch.department' },
       { id: 'dispatch-hfe', label: 'Employer Priority', hrefTemplate: '/workers/{id}/dispatch/hold-for-employer', policyId: 'worker.view', component: 'dispatch.hfe' },
       { id: 'dispatch-eba', label: 'Availability Dates', hrefTemplate: '/workers/{id}/dispatch/eba', policyId: 'worker.mine', component: 'dispatch.eba' },
+      { id: 'dispatch-asi', label: 'Auto Sign-In', hrefTemplate: '/workers/{id}/dispatch/asi', policyId: 'worker.dispatch.asi', component: 'dispatch.asi' },
+      { id: 'dispatch-t631-interviews', label: 'Interviews', hrefTemplate: '/workers/{id}/dispatch/sitespecific_t631_interviews', policyId: 'worker.view', component: 'sitespecific.t631.interviews' },
     ]
   },
   { id: 'political', label: 'Political', hrefTemplate: '/workers/{id}/political', permission: 'staff', component: 'sitespecific.btu.political' },
-  { id: 'edls', label: 'EDLS', hrefTemplate: '/workers/{id}/edls', policyId: 'edls.coordinator', component: 'edls' },
+  {
+    id: 'edls', label: 'EDLS', hrefTemplate: '/workers/{id}/edls', policyId: 'edls.coordinator', component: 'edls',
+    children: [
+      // Keeps the pre-split URL, so existing links and bookmarks still land on
+      // the switch rather than on the new list.
+      { id: 'edls-status', label: 'Status', hrefTemplate: '/workers/{id}/edls', policyId: 'edls.coordinator', component: 'edls' },
+      { id: 'edls-assignments', label: 'Assignments', hrefTemplate: '/workers/{id}/edls/assignments', policyId: 'edls.coordinator', component: 'edls' },
+    ]
+  },
   { id: 'sitespecific-freeman-2shift', label: 'Second Shift', hrefTemplate: '/workers/{id}/sitespecific-freeman-2shift', policyId: 'edls.any', component: 'sitespecific.freeman' },
   { id: 'sitespecific-bao-beneficiaries', label: 'Beneficiaries', hrefTemplate: '/workers/{id}/sitespecific/bao/beneficiaries', policyId: 'worker.view', component: 'sitespecific.bao' },
   {
@@ -203,6 +251,8 @@ export const workerTabTree: HierarchicalTab[] = [
   },
   { id: 'vdb-pension', label: 'VDB Pension', hrefTemplate: '/workers/{id}/vdb-pension', permission: 'staff', component: 'sitespecific.gbhet.pension' },
   { id: 'grievances', label: 'Grievances', hrefTemplate: '/workers/{id}/grievances', permission: 'staff', component: 'grievance' },
+  { id: 'notes', label: 'Notes', hrefTemplate: '/workers/{id}/notes', permission: 'staff', entityContext: { framework: 'entity-notes', contextId: 'worker' } },
+  { id: 'files', label: 'Files', hrefTemplate: '/workers/{id}/files', permission: 'staff', entityContext: { framework: 'entity-files', contextId: 'worker' } },
   { id: 'logs', label: 'Logs', hrefTemplate: '/workers/{id}/logs', permission: 'staff' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/workers/{id}/delete', permission: 'workers.delete' },
 ];
@@ -217,6 +267,8 @@ export const employerTabTree: HierarchicalTab[] = [
   { id: 'contacts', label: 'Contacts', hrefTemplate: '/employers/{id}/contacts', policyId: 'employer.steward.view' },
   { id: 'policy-history', label: 'Policy History', hrefTemplate: '/employers/{id}/policy-history', permission: 'staff' },
   { id: 'wizards', label: 'Wizards', hrefTemplate: '/employers/{id}/wizards', policyId: 'employer.mine' },
+  { id: 'notes', label: 'Notes', hrefTemplate: '/employers/{id}/notes', permission: 'staff', entityContext: { framework: 'entity-notes', contextId: 'employer' } },
+  { id: 'files', label: 'Files', hrefTemplate: '/employers/{id}/files', permission: 'staff', entityContext: { framework: 'entity-files', contextId: 'employer' } },
   { id: 'logs', label: 'Logs', hrefTemplate: '/employers/{id}/logs', permission: 'staff' },
   { 
     id: 'accounting', label: 'Accounting', hrefTemplate: '/employers/{id}/ledger/accounts', policyId: 'employer.ledger', component: 'ledger',
@@ -254,7 +306,8 @@ export const providerTabTree: HierarchicalTab[] = [
   { id: 'view', label: 'View', hrefTemplate: '/trust/provider/{id}', policyId: 'trust.provider.mine' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/trust/provider/{id}/edit', permission: 'staff' },
   { id: 'contacts', label: 'Contacts', hrefTemplate: '/trust/provider/{id}/contacts', policyId: 'trust.provider.mine' },
-  { id: 'edi', label: 'EDI', hrefTemplate: '/trust/provider/{id}/edi', permission: 'admin', component: 'trust.providers.edi' },
+  { id: 'notes', label: 'Notes', hrefTemplate: '/trust/provider/{id}/notes', permission: 'staff', component: 'trust.providers', entityContext: { framework: 'entity-notes', contextId: 'trust_provider' } },
+  { id: 'files', label: 'Files', hrefTemplate: '/trust/provider/{id}/files', permission: 'staff', component: 'trust.providers', entityContext: { framework: 'entity-files', contextId: 'trust_provider' } },
   { id: 'logs', label: 'Logs', hrefTemplate: '/trust/provider/{id}/logs', permission: 'staff' },
 ];
 
@@ -353,6 +406,24 @@ export const dispatchJobTabTree: HierarchicalTab[] = [
       { id: 'eligible-workers-check', label: 'Check', hrefTemplate: '/dispatch/job/{id}/eligible-workers/check', permission: 'staff', component: 'dispatch' },
     ]
   },
+  { id: 'foreperson', label: 'Foreperson', hrefTemplate: '/dispatch/job/{id}/foreperson', permission: 'staff', component: 'dispatch.fore' },
+  {
+    id: 'sitespecific-t631-interviews',
+    label: 'Interviews',
+    hrefTemplate: '/dispatch/job/{id}/sitespecific_t631_interviews',
+    policyId: 'sitespecific.t631.job.interviews',
+    component: 'sitespecific.t631.interviews',
+    children: [
+      // List = the pre-existing interviews page; same relevance policy as the parent.
+      { id: 'sitespecific-t631-interviews-list', label: 'List', hrefTemplate: '/dispatch/job/{id}/sitespecific_t631_interviews', policyId: 'sitespecific.t631.job.interviews', component: 'sitespecific.t631.interviews' },
+      // Offers is staff-only (the parent policy also grants linked employers,
+      // so the child must gate on permission, not the policy).
+      { id: 'sitespecific-t631-interviews-offers', label: 'Offers', hrefTemplate: '/dispatch/job/{id}/sitespecific_t631_interviews/offers', permission: 'staff', component: 'sitespecific.t631.interviews' },
+    ]
+  },
+  // Staff AND employer users linked to the job's employer (policy, not a
+  // staff permission — the policy delegates to employer.mine).
+  { id: 'dispatch-job-employer-contacts', label: 'Employer Contacts', hrefTemplate: '/dispatch/job/{id}/employer_contacts', policyId: 'dispatch.job.employer.contacts', component: 'dispatch' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/dispatch/job/{id}/edit', permission: 'staff', component: 'dispatch' },
 ];
 
@@ -363,6 +434,9 @@ export const dispatchJobTypeTabTree: HierarchicalTab[] = [
   { id: 'view', label: 'View', hrefTemplate: '/config/dispatch-job-type/{id}', permission: 'staff', component: 'dispatch' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/config/dispatch-job-type/{id}/edit', permission: 'staff', component: 'dispatch' },
   { id: 'notifications', label: 'Notifications', hrefTemplate: '/config/dispatch-job-type/{id}/notifications', permission: 'staff', component: 'dispatch' },
+  // Admin-gated (not staff) because the embedded generic plugin-configs page
+  // hits the dispatch-eligibility config APIs, which require the admin policy.
+  { id: 'eligibility-plugins', label: 'Eligibility Plugins', hrefTemplate: '/config/dispatch-job-type/{id}/eligibility-plugins', permission: 'admin', component: 'dispatch' },
   { id: 'run-settings', label: 'Run Settings', hrefTemplate: '/config/dispatch-job-type/{id}/run-settings', permission: 'staff', component: 'dispatch' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/config/dispatch-job-type/{id}/delete', permission: 'staff', component: 'dispatch' },
 ];
@@ -395,11 +469,17 @@ export const dispatchJobGroupTabTree: HierarchicalTab[] = [
  * EDLS sheet entity tab tree
  */
 export const edlsSheetTabTree: HierarchicalTab[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/edls/sheet/{id}', policyId: 'edls.sheet.view', component: 'edls' },
+  { id: 'details', label: 'Details', hrefTemplate: '/edls/sheet/{id}', policyId: 'edls.sheet.view', component: 'edls', children: [
+    { id: 'overview', label: 'Overview', hrefTemplate: '/edls/sheet/{id}', policyId: 'edls.sheet.view', component: 'edls' },
+    { id: 'next-assignments', label: 'Next Assignments', hrefTemplate: '/edls/sheet/{id}/next-assignments', policyId: 'edls.sheet.view', component: 'edls' },
+  ] },
   { id: 'edit', label: 'Edit', hrefTemplate: '/edls/sheet/{id}/edit', policyId: 'edls.sheet.edit', component: 'edls' },
   { id: 'manage', label: 'Manage', hrefTemplate: '/edls/sheet/{id}/manage', policyId: 'edls.sheet.manage', component: 'edls' },
-  { id: 'assignments', label: 'Assignments', hrefTemplate: '/edls/sheet/{id}/assignments', policyId: 'edls.sheet.edit', component: 'edls' },
-  { id: 'logs', label: 'Logs', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.coordinator', component: 'edls' },
+  { id: 'assignments', label: 'Assign Workers', hrefTemplate: '/edls/sheet/{id}/assignments', policyId: 'edls.sheet.edit', component: 'edls' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.coordinator', component: 'edls', children: [
+    { id: 'activity', label: 'Activity', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.coordinator', component: 'edls' },
+    { id: 'snapshots', label: 'Snapshots', hrefTemplate: '/edls/sheet/{id}/logs/snapshots', policyId: 'edls.sheet.view', component: 'edls' },
+  ] },
 ];
 
 /**
@@ -447,9 +527,16 @@ export const commTabTree: HierarchicalTab[] = [
 export const grievanceTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/grievance/{id}', permission: 'staff', component: 'grievance' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/grievance/{id}/edit', permission: 'staff', component: 'grievance' },
-  { id: 'timeline', label: 'Timeline', hrefTemplate: '/grievance/{id}/timeline', permission: 'staff', component: 'grievance' },
-  { id: 'status-history', label: 'Status History', hrefTemplate: '/grievance/{id}/status-history', permission: 'staff', component: 'grievance' },
+  {
+    id: 'timeline', label: 'Timeline', hrefTemplate: '/grievance/{id}/timeline', permission: 'staff', component: 'grievance',
+    children: [
+      { id: 'timeline-view', label: 'View', hrefTemplate: '/grievance/{id}/timeline', permission: 'staff', component: 'grievance' },
+      { id: 'status-history', label: 'Edit', hrefTemplate: '/grievance/{id}/status-history', permission: 'staff', component: 'grievance' },
+    ],
+  },
   { id: 'settlements', label: 'Settlements', hrefTemplate: '/grievance/{id}/settlements', permission: 'staff', component: 'grievance.settlement' },
+  { id: 'files', label: 'Files', hrefTemplate: '/grievance/{id}/files', permission: 'staff', component: 'grievance', entityContext: { framework: 'entity-files', contextId: 'grievance' } },
+  { id: 'notes', label: 'Notes', hrefTemplate: '/grievance/{id}/notes', permission: 'staff', component: 'grievance', entityContext: { framework: 'entity-notes', contextId: 'grievance' } },
   { id: 'logs', label: 'Logs', hrefTemplate: '/grievance/{id}/logs', permission: 'staff', component: 'grievance' },
 ];
 
@@ -579,6 +666,7 @@ export const userTabTree: HierarchicalTab[] = [
       { id: 'send-inapp', label: 'Send In-App', hrefTemplate: '/users/{id}/comm/send-inapp', permission: 'staff' },
     ],
   },
+  { id: 'dashboard', label: 'Dashboard', hrefTemplate: '/users/{id}/dashboard', permission: 'staff' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/users/{id}/logs', permission: 'admin' },
 ];
 
@@ -586,11 +674,12 @@ export const userTabTree: HierarchicalTab[] = [
  * Web service client entity tab tree
  */
 export const wsClientTabTree: HierarchicalTab[] = [
-  { id: 'settings', label: 'Settings', hrefTemplate: '/config/ws/clients/{id}', permission: 'admin' },
-  { id: 'credentials', label: 'Credentials', hrefTemplate: '/config/ws/clients/{id}/credentials', permission: 'admin' },
-  { id: 'ip-rules', label: 'IP Rules', hrefTemplate: '/config/ws/clients/{id}/ip-rules', permission: 'admin' },
-  { id: 'test', label: 'Test', hrefTemplate: '/config/ws/clients/{id}/test', permission: 'admin' },
-  { id: 'logs', label: 'Logs', hrefTemplate: '/config/ws/clients/{id}/logs', permission: 'admin' },
+  { id: 'settings', label: 'Settings', hrefTemplate: '/admin/ws/clients/{id}', permission: 'admin' },
+  { id: 'credentials', label: 'Credentials', hrefTemplate: '/admin/ws/clients/{id}/credentials', permission: 'admin' },
+  { id: 'ip-rules', label: 'IP Rules', hrefTemplate: '/admin/ws/clients/{id}/ip-rules', permission: 'admin' },
+  { id: 'test', label: 'Test', hrefTemplate: '/admin/ws/clients/{id}/test', permission: 'admin' },
+  { id: 'swagger', label: 'Swagger', hrefTemplate: '/admin/ws/clients/{id}/swagger', permission: 'admin' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/admin/ws/clients/{id}/logs', permission: 'admin' },
 ];
 
 export const sftpClientDestinationTabTree: HierarchicalTab[] = [
@@ -599,15 +688,6 @@ export const sftpClientDestinationTabTree: HierarchicalTab[] = [
   { id: 'test', label: 'Test', hrefTemplate: '/config/sftp/client/{id}/test', permission: 'admin', component: 'system.sftp.client' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/config/sftp/client/{id}/logs', permission: 'admin', component: 'system.sftp.client' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/config/sftp/client/{id}/edit', permission: 'admin', component: 'system.sftp.client' },
-];
-
-/**
- * Trust Provider EDI entity tab tree
- */
-export const trustProviderEdiTabTree: HierarchicalTab[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/trust/provider-edi/{id}', permission: 'admin', component: 'trust.providers.edi' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/trust/provider-edi/{id}/edit', permission: 'admin', component: 'trust.providers.edi' },
-  { id: 'logs', label: 'Logs', hrefTemplate: '/trust/provider-edi/{id}/logs', permission: 'admin', component: 'trust.providers.edi' },
 ];
 
 export const ledgerPaymentBatchTabTree: HierarchicalTab[] = [
@@ -633,6 +713,78 @@ export const bulkMessageTabTree: HierarchicalTab[] = [
   { id: 'logs', label: 'Logs', hrefTemplate: '/bulk/{id}/logs', policyId: 'bulk.edit' },
 ];
 
+/**
+ * Business calendar entity tab tree
+ *
+ * Note: the three manual-source tabs (closed-days / vacations / open-days)
+ * are additionally filtered client-side by the calendar's enabled sources
+ * in BusinessCalendarLayout — the registry only handles access gating.
+ */
+export const businessCalendarTabTree: HierarchicalTab[] = [
+  { id: 'settings', label: 'Settings', hrefTemplate: '/config/business-calendars/{id}', permission: 'admin' },
+  { id: 'closed-days', label: 'Closed Days', hrefTemplate: '/config/business-calendars/{id}/closed-days', permission: 'admin' },
+  { id: 'vacations', label: 'Vacations', hrefTemplate: '/config/business-calendars/{id}/vacations', permission: 'admin' },
+  { id: 'open-days', label: 'Forced-Open Days', hrefTemplate: '/config/business-calendars/{id}/open-days', permission: 'admin' },
+  { id: 'test', label: 'Test', hrefTemplate: '/config/business-calendars/{id}/test', permission: 'admin' },
+];
+
+/**
+ * Options-type tab tree
+ *
+ * The "entity" here is an options type slug, not a row: `/config/options/
+ * department/list`. All three tabs are admin-only, matching the page's
+ * existing gate.
+ */
+export const optionsTabTree: HierarchicalTab[] = [
+  { id: 'list', label: 'List', hrefTemplate: '/config/options/{id}/list', permission: 'admin' },
+  { id: 'export', label: 'Export', hrefTemplate: '/config/options/{id}/export', permission: 'admin' },
+  { id: 'import', label: 'Import', hrefTemplate: '/config/options/{id}/import', permission: 'admin' },
+];
+
+/**
+ * The two web services pages, one per direction of traffic.
+ *
+ * `ws` is what other people call on us, `wc` is what we call on other people —
+ * the code-level names, which stay in the URLs and everywhere else. What the
+ * screens are titled is the direction, because "web services" having "clients"
+ * and "web client" being something else again is not a distinction anyone
+ * should have to hold in their head to find a page.
+ *
+ * Neither is an entity: each is one admin page with several views of the same
+ * subject, so their hrefs carry no `{id}` and callers pass the page's constant
+ * id. Every tab is admin-only, matching the endpoints behind it.
+ */
+export const WS_ADMIN_ENTITY_ID = 'admin';
+
+export const wsTabTree: HierarchicalTab[] = [
+  { id: 'ws-services', label: 'Services', hrefTemplate: '/admin/ws/services', permission: 'admin' },
+  { id: 'ws-clients', label: 'Clients', hrefTemplate: '/admin/ws/clients', permission: 'admin' },
+  { id: 'ws-stats', label: 'Stats', hrefTemplate: '/admin/ws/stats', permission: 'admin' },
+];
+
+export const WC_ADMIN_ENTITY_ID = 'admin';
+
+export const wcTabTree: HierarchicalTab[] = [
+  { id: 'wc-overview', label: 'Overview', hrefTemplate: '/admin/wc/overview', permission: 'admin' },
+  { id: 'wc-cache', label: 'Cache', hrefTemplate: '/admin/wc/cache', permission: 'admin' },
+  { id: 'wc-stats', label: 'Stats', hrefTemplate: '/admin/wc/stats', permission: 'admin' },
+];
+
+/**
+ * Record history across the whole system: browsing what has been recorded, and
+ * filling it in for records that predate the bookkeeping.
+ *
+ * Like the web services pages this is one admin page rather than an entity, so
+ * the hrefs carry no `{id}` and callers pass the page's constant id. Both tabs
+ * are admin-only: one is every record in the system with the times and people
+ * attached to it, and the other writes.
+ */
+export const RECORD_METADATA_ADMIN_ENTITY_ID = 'admin';
+
+export const recordMetadataTabTree: HierarchicalTab[] = [
+  { id: 'record-metadata-list', label: 'History', hrefTemplate: '/admin/metadata/list', permission: 'admin' },
+  { id: 'record-metadata-backfill', label: 'Fill In', hrefTemplate: '/admin/metadata/backfill', permission: 'admin' },
+];
 /**
  * Entity tab trees by type
  */
@@ -660,7 +812,6 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   user: userTabTree,
   ws_client: wsClientTabTree,
   sftp_client_destination: sftpClientDestinationTabTree,
-  trust_provider_edi: trustProviderEdiTabTree,
   bulk_message: bulkMessageTabTree,
   ledger_payment_batch: ledgerPaymentBatchTabTree,
   facility: facilityTabTree,
@@ -669,6 +820,11 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   grievance: grievanceTabTree,
   grievanceTimelineTemplate: grievanceTimelineTemplateTabTree,
   contract: contractTabTree,
+  business_calendar: businessCalendarTabTree,
+  options: optionsTabTree,
+  ws: wsTabTree,
+  wc: wcTabTree,
+  record_metadata: recordMetadataTabTree,
 };
 
 /**
@@ -766,6 +922,7 @@ export interface TabAccessRequirements {
   policyId?: string;
   permission?: string;
   component?: string;
+  entityContext?: TabEntityContext;
 }
 
 /**
@@ -787,6 +944,7 @@ export function getTabAccessRequirements(
     policyId: tab.policyId,
     permission: tab.permission,
     component: tab.component,
+    entityContext: tab.entityContext,
   };
 }
 

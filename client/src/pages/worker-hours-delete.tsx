@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, getApiErrorMessage } from "@/lib/queryClient";
 
 interface LedgerNotification {
   type: "created" | "updated" | "deleted";
@@ -69,7 +69,7 @@ function WorkerHoursDeleteContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete hours entry",
+        description: getApiErrorMessage(error, "Failed to delete hours entry"),
         variant: "destructive",
       });
     },

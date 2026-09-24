@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 
 interface CardcheckWithDefinition extends Cardcheck {
   definition?: CardcheckDefinition;
@@ -91,7 +91,7 @@ function WorkerCardchecksContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create cardcheck.",
+        description: getApiErrorMessage(error, "Failed to create cardcheck."),
         variant: "destructive",
       });
     },

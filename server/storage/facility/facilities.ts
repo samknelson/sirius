@@ -68,6 +68,7 @@ export interface FacilityStorage {
 
 export const facilityLoggingConfig: StorageLoggingConfig<FacilityStorage> = {
   module: 'facilities',
+  table: 'facilities',
   methods: {
     create: {
       enabled: true,

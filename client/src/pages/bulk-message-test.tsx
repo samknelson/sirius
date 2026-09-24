@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { Search, Send, CheckCircle2, XCircle, Loader2, User, Mail, Phone, MapPin, Bell, AlertTriangle, ExternalLink } from "lucide-react";
@@ -134,7 +134,7 @@ function BulkMessageTestContent() {
       setLastResult({ success: false, error: error.message });
       toast({
         title: "Error sending test",
-        description: error.message,
+        description: getApiErrorMessage(error, "An unexpected error occurred"),
         variant: "destructive",
       });
     },

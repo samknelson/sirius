@@ -9,11 +9,14 @@ import { sendInapp, markInappAsRead, markAllInappAsRead } from "../services/comm
 import { handleStatusCallback } from "../services/comm/callback-handlers/handler";
 import { serviceRegistry } from "../services/service-registry";
 import type { PostalTransport, PostalAddress } from "../services/comm/providers/postal";
+import { verifyPostalAddress } from "../services/comm/validators/address-verification";
 import { mapVerificationToDeliverabilityStatus, isTerminalDeliverabilityStatus } from "../services/comm/validators/address";
 import { broadcastAlertUpdate } from "../services/websocket";
 import { getEffectiveUser } from "./masquerade";
 import { resolveContactLinks } from "./contact-links";
 import { createCommTagsStorage } from "../storage/comm-tags";
+import { sendIfMaintenanceRefusal } from "../services/maintenance-flag";
+import { deriveEmailPlainText, isSafeRelativePath } from "../delivery/shape";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -55,17 +58,25 @@ const sendSmsSchema = z.object({
   sendOffline: z.boolean().optional(),
 });
 
+/**
+ * An authored email: a subject and an HTML body, and nothing else.
+ *
+ * The subject is required with the blanks taken out of it — a subject of
+ * spaces is a blank subject, and a blank subject is fatal here rather
+ * than substituted (see `MEDIUM_FIELDS.email`).
+ *
+ * There is deliberately no `bodyText`: the plain-text alternative part is
+ * DERIVED from the HTML body below, never authored, because two authored
+ * copies of one message are two things that can disagree.
+ */
 const sendEmailSchema = z.object({
   email: z.string().email("Invalid email address"),
   name: z.string().optional(),
-  subject: z.string().min(1, "Subject is required").max(500, "Subject too long"),
-  bodyText: z.string().optional(),
-  bodyHtml: z.string().optional(),
+  subject: z.string().trim().min(1, "Subject is required").max(500, "Subject too long"),
+  bodyHtml: z.string().trim().min(1, "Message body is required"),
   replyTo: z.string().email().optional(),
   tagIds: tagIdsSchema,
   sendOffline: z.boolean().optional(),
-}).refine(data => data.bodyText || data.bodyHtml, {
-  message: "Either bodyText or bodyHtml is required",
 });
 
 const postalAddressSchema = z.object({
@@ -99,7 +110,20 @@ const sendInappSchema = z.object({
   userId: z.string().uuid("Invalid user ID"),
   title: z.string().min(1, "Title is required").max(100, "Title must be 100 characters or less"),
   body: z.string().min(1, "Body is required").max(500, "Body must be 500 characters or less"),
-  linkUrl: z.string().url("Invalid URL").optional().or(z.literal("")),
+  // The medium's own rule, not this screen's: one alerts bell opens
+  // every in-app notification and hands the address to the browser, so
+  // a link is a same-app path here exactly as it is in a bulk message
+  // or a notifier template. An absolute URL used to be accepted here
+  // alone, which is how the same link could be valid on one screen and
+  // rejected on another.
+  linkUrl: z
+    .string()
+    .max(2048)
+    .refine((value) => value.trim() === "" || isSafeRelativePath(value.trim()), {
+      message: 'Link URL must be a relative path starting with "/" (not "//" or an absolute URL)',
+    })
+    .optional()
+    .or(z.literal("")),
   linkLabel: z.string().max(50, "Link label must be 50 characters or less").optional(),
   tagIds: tagIdsSchema,
 });
@@ -246,6 +270,7 @@ export function registerCommRoutes(
       });
 
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       console.error("Failed to send SMS:", error);
       res.status(500).json({ message: "Failed to send SMS" });
     }
@@ -263,7 +288,8 @@ export function registerCommRoutes(
         });
       }
 
-      const { email, name, subject, bodyText, bodyHtml, replyTo, tagIds, sendOffline } = parsed.data;
+      const { email, name, subject, bodyHtml, replyTo, tagIds, sendOffline } = parsed.data;
+      const plainText = deriveEmailPlainText(bodyHtml);
       const tagErr = await validateTagIds(tagIds);
       if (tagErr) {
         return res.status(400).json({ error: tagErr });
@@ -275,7 +301,7 @@ export function registerCommRoutes(
         toEmail: email,
         toName: name,
         subject,
-        bodyText,
+        bodyText: plainText,
         bodyHtml,
         replyTo,
         userId: user?.id,
@@ -304,6 +330,7 @@ export function registerCommRoutes(
       });
 
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       console.error("Failed to send email:", error);
       res.status(500).json({ message: "Failed to send email" });
     }
@@ -367,6 +394,7 @@ export function registerCommRoutes(
       });
 
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       console.error("Failed to send postal mail:", error);
       res.status(500).json({ message: "Failed to send postal mail" });
     }
@@ -663,11 +691,14 @@ export function registerCommRoutes(
       }
 
       const address: PostalAddress = parsed.data;
-      const result = await postalProvider.verifyAddress(address);
+      const result = await verifyPostalAddress(postalProvider, address);
 
       // If addressId was provided AND verification succeeded, update deliverability_status
       // and apply terminal-status side-effect (markUndeliverable) so primary auto-promotion runs.
       if (typeof addressId === "string" && addressId && result.valid) {
+        // "Last verified" is when the vendor was asked, which for an answer
+        // served from the cache is not now.
+        const verifiedAt = result.verifiedAt ?? new Date();
         const status = mapVerificationToDeliverabilityStatus({
           valid: result.valid,
           deliverable: result.deliverable,
@@ -678,9 +709,9 @@ export function registerCommRoutes(
             // markUndeliverable handles status set + primary demotion + auto-promotion
             await storage.contacts.addresses.markUndeliverable(addressId);
             // Then explicitly set the precise terminal status (vacant vs undeliverable)
-            await storage.contacts.addresses.updateDeliverabilityStatus(addressId, status, new Date());
+            await storage.contacts.addresses.updateDeliverabilityStatus(addressId, status, verifiedAt);
           } else {
-            await storage.contacts.addresses.updateDeliverabilityStatus(addressId, status, new Date());
+            await storage.contacts.addresses.updateDeliverabilityStatus(addressId, status, verifiedAt);
           }
         } catch (sideEffectError) {
           console.error("Failed to apply verify-address side-effect:", sideEffectError);
@@ -704,6 +735,7 @@ export function registerCommRoutes(
       });
 
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       console.error("Failed to verify address:", error);
       res.status(500).json({ message: "Failed to verify address" });
     }
@@ -817,7 +849,7 @@ export function registerCommRoutes(
       }
 
       const address: PostalAddress = parsed.data;
-      const result = await postalProvider.verifyAddress(address);
+      const result = await verifyPostalAddress(postalProvider, address);
 
       if (!result.valid || !result.canonicalAddress) {
         return res.status(400).json({
@@ -830,12 +862,19 @@ export function registerCommRoutes(
       const existingOptin = await postalOptinStorage.getPostalOptinByCanonicalAddress(result.canonicalAddress);
       
       if (existingOptin) {
-        const updated = await postalOptinStorage.updatePostalOptinByCanonicalAddress(result.canonicalAddress, {
-          deliverable: result.deliverable,
-          deliverabilityAnalysis: result.deliverabilityAnalysis as Record<string, unknown>,
-          validatedAt: new Date(),
-          validationResponse: result as unknown as Record<string, unknown>,
-        });
+        // The deliverability fields on the opt-in row are derived from the
+        // verification, and are written as the cache fills — not on every
+        // read of an answer already stored. The exception is a row that has
+        // never carried one: filling that gap is what the fields are for.
+        const record =
+          result.fromNetwork || !existingOptin.validatedAt
+            ? await postalOptinStorage.updatePostalOptinByCanonicalAddress(result.canonicalAddress, {
+                deliverable: result.deliverable,
+                deliverabilityAnalysis: result.deliverabilityAnalysis as Record<string, unknown>,
+                validatedAt: result.verifiedAt ?? new Date(),
+                validationResponse: result as unknown as Record<string, unknown>,
+              })
+            : existingOptin;
         
         res.json({
           valid: true,
@@ -843,7 +882,7 @@ export function registerCommRoutes(
           canonicalAddress: result.canonicalAddress,
           normalizedAddress: result.normalizedAddress,
           deliverabilityAnalysis: result.deliverabilityAnalysis,
-          optinRecord: updated,
+          optinRecord: record,
           created: false,
         });
       } else {
@@ -860,7 +899,9 @@ export function registerCommRoutes(
           allowlist: false,
           deliverable: result.deliverable,
           deliverabilityAnalysis: result.deliverabilityAnalysis as Record<string, unknown>,
-          validatedAt: new Date(),
+          // A brand new row carries the answer whether or not it was bought
+          // just now — but stamped with when the vendor was actually asked.
+          validatedAt: result.verifiedAt ?? new Date(),
           validationResponse: result as unknown as Record<string, unknown>,
         });
         
@@ -875,6 +916,7 @@ export function registerCommRoutes(
         });
       }
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       console.error("Failed to verify and register address:", error);
       res.status(500).json({ message: "Failed to verify and register address" });
     }
@@ -912,6 +954,7 @@ export function registerCommRoutes(
       const templates = await postalProvider.listTemplates();
       res.json({ templates });
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       console.error("Failed to fetch postal templates:", error);
       res.status(500).json({ message: "Failed to fetch postal templates" });
     }

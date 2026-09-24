@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Trash2, Loader2, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useState } from "react";
 
 const STATUS_COLORS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -38,7 +38,7 @@ function BtuCsgViewContent() {
     onError: (error: any) => {
       toast({
         title: "Delete Failed",
-        description: error?.message || "Failed to delete record.",
+        description: getApiErrorMessage(error, "Failed to delete record."),
         variant: "destructive",
       });
       setShowDeleteDialog(false);
@@ -160,10 +160,6 @@ function BtuCsgViewContent() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-muted-foreground">Record ID</label>
-              <p className="text-foreground font-mono text-sm" data-testid="text-record-id">{record.id}</p>
-            </div>
             <div className="space-y-1">
               <label className="text-sm font-medium text-muted-foreground">Created At</label>
               <p className="text-foreground" data-testid="text-created-at">{formatDate(record.createdAt)}</p>

@@ -1,5 +1,35 @@
+import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
 import type { BasePluginMetadata } from "../../_core";
 import type { EventType } from "../../../services/event-bus";
+
+/**
+ * One storage object a denorm plugin writes, plus an ownership claim.
+ *
+ * `storage` names the storage namespace at storage-object granularity — the
+ * property name on the `storage` aggregate (e.g. `"workerMshDenorm"`, `"ebs"`)
+ * or, for factory-only storages that are not on the aggregate, the canonical
+ * lowerCamel name of the storage interface (e.g. `"workerDispatchEba"` for
+ * `WorkerDispatchEbaStorage`). Never a table name.
+ *
+ * `soleWriter: true` claims that NOTHING else in the codebase mutates this
+ * storage object — no other plugin, no module, no cron, no script. This is
+ * the correct claim for a wholly-owned `_denorm` payload store. The
+ * author-time lint (`scripts/dev/check-denorm-declarations.ts`) verifies the
+ * claim codebase-wide and fails the build if another mutator exists.
+ *
+ * `soleWriter: false` marks a shared write target (e.g. the `ebs` deferred
+ * event store, which several reminder plugins plus the pump mutate). Writes
+ * to a shared target MUST be convergent: diff-check first and no-op when the
+ * data is already correct, and go through the normal storage mutation paths
+ * (never bespoke SQL), so that a framework recompute is safe to re-run at any
+ * time and concurrent writers cannot corrupt each other.
+ */
+export interface DenormWriteDeclaration {
+  /** Storage namespace written (storage-object granularity, not a table). */
+  storage: string;
+  /** True when this plugin's slice of the codebase is the only mutator. */
+  soleWriter: boolean;
+}
 
 /**
  * One event a denorm plugin responds to, plus how to react when it fires.
@@ -49,6 +79,26 @@ export interface DenormPlugin<TPayload = unknown> {
   metadata: BasePluginMetadata;
   /** The single entity type this plugin denormalizes (e.g. "worker"). */
   entityType: string;
+  /**
+   * Storage namespaces this plugin READS from — every `storage.<ns>` (or
+   * factory-created storage object) its `compute` / `backfill` / `findWidows` /
+   * `isScheduledEventLive` / event handlers touch for queries, at
+   * storage-object granularity (e.g. `["workers", "workerMsh"]`).
+   *
+   * The denorm framework's own bookkeeping namespaces (`denorm`,
+   * `pluginConfigs`) are implicit — every plugin goes through them via the
+   * wrapper — and must NOT be listed here.
+   *
+   * Enforced by `scripts/dev/check-denorm-declarations.ts`: an undeclared
+   * usage (or a declared-but-unused entry) fails the lint.
+   */
+  reads: string[];
+  /**
+   * Storage namespaces this plugin WRITES (mutates), each with a
+   * {@link DenormWriteDeclaration.soleWriter} ownership claim. The framework's
+   * `denorm` status-row bookkeeping is implicit and must NOT be listed.
+   */
+  writes: DenormWriteDeclaration[];
   /** Events this plugin reacts to. Omit / empty for a plugin with no triggers. */
   eventHandlers?: DenormEventHandler<TPayload>[];
   /** Build the denorm payload for an entity from scratch. */
@@ -84,6 +134,33 @@ export interface DenormPlugin<TPayload = unknown> {
    * Plugins that omit this method do not participate in widow cleanup.
    */
   findWidows?(configId: string, limit: number): Promise<string[]>;
+  /**
+   * Optional pre-fire validity check for denorm plugins that schedule EBS
+   * (deferred event-bus) events. The generic EBS pump calls this for each due
+   * scheduled event IMMEDIATELY before delivering it, passing the event's
+   * `uniqueId`. Return `false` when the underlying subject is no longer a valid
+   * reason to fire (e.g. the absence was ended/deleted, or the worker was
+   * removed): the pump then marks the event terminal (`expired`) without
+   * delivering it.
+   *
+   * This is the correctness guarantee that a due reminder does NOT fire after
+   * its subject changed, independent of when the hourly `findWidows` cleanup
+   * happens to run — it queries LIVE domain state, not the (possibly not-yet
+   * cleaned) `ebs_denorm` row. It must be read-only. Plugins that do not
+   * schedule EBS events omit this method (the pump then delivers unconditionally
+   * once due, as before).
+   */
+  isScheduledEventLive?(uniqueId: string): Promise<boolean>;
+  /**
+   * JSON Schema describing the editable `data` fields the generic plugin admin
+   * UI renders for this plugin's config row. Omit for plugins with no editable
+   * settings (their Edit modal shows only name / enabled). Surfaced through the
+   * denorm manifest entry so the shared RJSF form (mirroring cron) can render
+   * them.
+   */
+  configSchema?: JsonSchema;
+  /** Optional RJSF UI hints paired with {@link configSchema}. */
+  uiSchema?: UiSchema;
 }
 
 /**
@@ -93,4 +170,12 @@ export interface DenormPlugin<TPayload = unknown> {
  */
 export interface DenormManifestEntry extends BasePluginMetadata {
   entityType: string;
+  /** Storage namespaces the plugin reads (storage-object granularity). */
+  reads: string[];
+  /** Storage namespaces the plugin writes, with sole-writer claims. */
+  writes: DenormWriteDeclaration[];
+  /** Per-plugin settings form schema (mirrors cron / event-notifier). */
+  configSchema?: JsonSchema;
+  /** Optional RJSF UI hints paired with {@link configSchema}. */
+  uiSchema?: UiSchema;
 }

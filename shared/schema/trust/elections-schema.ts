@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { workers, policies, employers } from "../../schema";
+import { toYmd, getTodayYmd } from "../../utils/date";
 
 export const workerTrustElections = pgTable("worker_trust_elections", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -30,23 +31,9 @@ export interface WorkerTrustElectionView extends WorkerTrustElection {
   relationships: { id: string; label: string }[];
 }
 
-function toYmdString(value: string | Date): string {
-  if (value instanceof Date) {
-    const yr = value.getFullYear();
-    const mo = String(value.getMonth() + 1).padStart(2, '0');
-    const dy = String(value.getDate()).padStart(2, '0');
-    return `${yr}-${mo}-${dy}`;
-  }
-  return value.length >= 10 ? value.slice(0, 10) : value;
-}
-
-function todayYmdLocal(): string {
-  return toYmdString(new Date());
-}
-
 const ymdOrDate = z
   .union([z.string(), z.coerce.date()])
-  .transform((v) => toYmdString(v));
+  .transform((v) => toYmd(v) ?? String(v));
 
 export const createWorkerTrustElectionRequestSchema = z
   .object({
@@ -59,7 +46,7 @@ export const createWorkerTrustElectionRequestSchema = z
     data: z.unknown().optional(),
   })
   .superRefine((val, ctx) => {
-    if (val.startYmd > todayYmdLocal()) {
+    if (val.startYmd > getTodayYmd()) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['startYmd'], message: 'startYmd cannot be in the future' });
     }
     if (val.endYmd && val.endYmd <= val.startYmd) {
@@ -78,7 +65,7 @@ export const updateWorkerTrustElectionRequestSchema = z
     data: z.unknown().optional(),
   })
   .superRefine((val, ctx) => {
-    if (val.startYmd && val.startYmd > todayYmdLocal()) {
+    if (val.startYmd && val.startYmd > getTodayYmd()) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['startYmd'], message: 'startYmd cannot be in the future' });
     }
     if (val.endYmd && val.startYmd && val.endYmd <= val.startYmd) {

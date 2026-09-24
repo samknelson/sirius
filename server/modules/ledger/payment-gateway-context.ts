@@ -5,6 +5,10 @@ import type {
   PaymentGatewayPlugin,
 } from "../../plugins/ledger/payment-gateway/types";
 import type { PluginConfig } from "@shared/schema";
+import {
+  getEnvironmentVariable,
+  registerEnvironmentVariable,
+} from "../../config/env-registry";
 
 /**
  * A gateway config resolved into everything the generic payment-methods routes
@@ -27,8 +31,8 @@ export class GatewayResolutionError extends Error {
 
 /**
  * Turn a gateway config id into a {@link ResolvedGateway}. Resolves the
- * provider API key from the secret the config names (`data.secretName` ->
- * `process.env[secretName]`), so multiple configs (e.g. two Stripe accounts)
+ * provider API key from the secret the config names (`data.secretName`, read
+ * via the env registry), so multiple configs (e.g. two Stripe accounts)
  * each use their own credentials.
  */
 export async function resolveGateway(
@@ -59,7 +63,18 @@ export async function resolveGateway(
     );
   }
 
-  const apiKey = process.env[secretName];
+  // Dynamically-named credential: register in the env registry at resolve
+  // time (as a secret) so the environment contract stays complete.
+  // changeTakesEffect: "immediate" — the gateway is resolved afresh per
+  // request and the credential is read here each time, never cached.
+  registerEnvironmentVariable({
+    name: secretName,
+    description: `Payment-gateway credential secret named by config '${config.siriusId ?? config.id}'.`,
+    secret: true,
+    category: "ledger",
+    changeTakesEffect: "immediate",
+  });
+  const apiKey = getEnvironmentVariable(secretName);
   if (!apiKey && plugin.requiresSecret !== false) {
     throw new GatewayResolutionError(
       503,

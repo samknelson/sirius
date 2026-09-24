@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MessageSquare } from "lucide-react";
-import DOMPurify from "isomorphic-dompurify";
+import { sanitizeHtml } from "@shared/utils/html";
 import { DashboardPluginProps } from "../registry";
 import { useDashboardContent } from "../useDashboardContent";
 
@@ -15,10 +15,7 @@ export function WelcomeMessages(props: DashboardPluginProps) {
   const message = data?.message;
   if (!message) return null;
 
-  const sanitizedMessage = DOMPurify.sanitize(message, {
-    ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'u', 'p', 'br', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'span', 'div'],
-    ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
-  });
+  const sanitizedMessage = sanitizeHtml(message, "styled-text");
 
   return (
     <Card data-testid={`plugin-welcome-messages-${props.configId ?? "default"}`}>

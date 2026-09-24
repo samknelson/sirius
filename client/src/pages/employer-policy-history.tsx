@@ -33,9 +33,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import type { Policy } from "@shared/schema";
 
 interface PolicyHistoryEntry {
@@ -44,8 +44,15 @@ interface PolicyHistoryEntry {
   employerId: string;
   policyId: string;
   data: any;
-  createdAt: string;
   policy: Policy | null;
+  /**
+   * When this entry was recorded, and by whom, from the record's own history —
+   * not from the table, which keeps only the policy's effective `date`. Null
+   * on both counts is an answer: an entry whose history has not been written
+   * yet, and one recorded before the system tracked who did it.
+   */
+  recordedAt: string | null;
+  recordedByName: string | null;
 }
 
 function EmployerPolicyHistoryContent() {
@@ -86,7 +93,7 @@ function EmployerPolicyHistoryContent() {
       toast({ title: "Policy history entry created successfully" });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -104,7 +111,7 @@ function EmployerPolicyHistoryContent() {
       toast({ title: "Policy history entry updated successfully" });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -120,7 +127,7 @@ function EmployerPolicyHistoryContent() {
       toast({ title: "Policy history entry deleted successfully" });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -211,7 +218,7 @@ function EmployerPolicyHistoryContent() {
                     <TableHead>Effective Date</TableHead>
                     <TableHead>Policy</TableHead>
                     <TableHead>Policy ID</TableHead>
-                    <TableHead>Created</TableHead>
+                    <TableHead>Recorded</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -229,7 +236,16 @@ function EmployerPolicyHistoryContent() {
                         {entry.policy?.siriusId || "—"}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {format(new Date(entry.createdAt), "MMM dd, yyyy HH:mm")}
+                        {entry.recordedAt ? (
+                          <>
+                            <span>{format(new Date(entry.recordedAt), "MMM dd, yyyy HH:mm")}</span>
+                            <span className="block text-xs">
+                              {entry.recordedByName ?? "person not recorded"}
+                            </span>
+                          </>
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">

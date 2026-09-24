@@ -1,8 +1,20 @@
 import type { Request } from "express";
 import { isComponentEnabledSync } from "../../services/component-cache";
-import { isComponentEnabled } from "../../modules/components";
 import { checkAccessInline } from "../../services/access-policy-evaluator";
 import type { BasePluginMetadata } from "./types";
+
+/**
+ * `modules/components` is a route module that reaches back into storage and
+ * the plugin registries, so importing it at the top of this file closes a
+ * module-initialization cycle (`_core/registry` → gating → components →
+ * storage → wizards → `_core`). Node's ESM loader tolerates it; Vite's SSR
+ * transform, which the test runner uses, resolves the barrel to `undefined`
+ * mid-cycle. Every use here is already async, so a lazy import is free.
+ */
+async function isComponentEnabled(componentId: string): Promise<boolean> {
+  const { isComponentEnabled: check } = await import("../../modules/components");
+  return check(componentId);
+}
 
 /**
  * Single source of truth for component gating. Every plugin kind funnels

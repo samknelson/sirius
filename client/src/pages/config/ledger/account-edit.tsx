@@ -37,6 +37,7 @@ function AccountEditContent() {
 
   const [editName, setEditName] = useState(account.name);
   const [editDescription, setEditDescription] = useState(account.description || "");
+  const [editSiriusId, setEditSiriusId] = useState(account.siriusId ?? "");
   const [editIsActive, setEditIsActive] = useState(account.isActive);
   const [editGatewayConfigId, setEditGatewayConfigId] = useState(
     account.gatewayConfigId ?? NO_GATEWAY
@@ -51,6 +52,7 @@ function AccountEditContent() {
     mutationFn: async (data: {
       name: string;
       description?: string;
+      siriusId: string | null;
       isActive: boolean;
       gatewayConfigId: string | null;
     }) => {
@@ -79,6 +81,9 @@ function AccountEditContent() {
       updateAccountMutation.mutate({ 
         name: editName.trim(), 
         description: editDescription.trim() || undefined,
+        // null, not undefined: undefined is omitted from the partial update
+        // and clearing the field would silently do nothing.
+        siriusId: editSiriusId.trim() || null,
         isActive: editIsActive,
         gatewayConfigId: editGatewayConfigId === NO_GATEWAY ? null : editGatewayConfigId,
       });
@@ -117,6 +122,23 @@ function AccountEditContent() {
                   Currency cannot be changed after account creation
                 </p>
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-account-sirius-id" className="text-sm font-medium text-foreground">
+                Sirius ID (Optional)
+              </Label>
+              <Input
+                id="edit-account-sirius-id"
+                type="text"
+                placeholder="External identifier..."
+                value={editSiriusId}
+                onChange={(e) => setEditSiriusId(e.target.value)}
+                className="w-full"
+                data-testid="input-edit-account-sirius-id"
+              />
+              <p className="text-xs text-muted-foreground">
+                Maps this account to a record in the external system. Leave blank if there isn't one.
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-account-description" className="text-sm font-medium text-foreground">

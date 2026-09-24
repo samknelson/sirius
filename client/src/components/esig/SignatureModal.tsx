@@ -1,4 +1,5 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
+import { sanitizeHtml } from "@shared/utils/html";
 import { useMutation } from "@tanstack/react-query";
 import { Loader2, Pen, Type, Check, X, Upload, FileText, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,17 @@ export function SignatureModal({
   const [signatureType, setSignatureType] = useState<"canvas" | "typed" | "upload">("typed");
   const [typedName, setTypedName] = useState("");
   const [uploadedFile, setUploadedFile] = useState<{ fileId: string; fileName: string } | null>(null);
+  // Sanitize ONCE, and use the result for both the preview below and the
+  // value submitted to /sign. That coupling is the point: this modal renders
+  // a document and then records that the signer agreed to it, so displaying
+  // one string while submitting another would mean the stored, hashed
+  // snapshot is not what anybody actually read. `signed-document` is sized
+  // for exactly this content (the definition body plus the inline-styled
+  // blocks the signing page appends) — see shared/utils/html/policies.ts.
+  const safeDocRender = useMemo(
+    () => sanitizeHtml(docRender, "signed-document"),
+    [docRender],
+  );
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isDrawingRef = useRef(false);
@@ -195,7 +207,9 @@ export function SignatureModal({
 
   const handleSign = () => {
     let esigData: any;
-    let finalDocRender = docRender;
+    // The sanitized string, not the raw prop: this is what the signer was
+    // shown, so this is what gets stored and hashed.
+    let finalDocRender = safeDocRender;
     
     if (signatureType === "typed") {
       if (!typedName.trim()) {
@@ -263,7 +277,7 @@ export function SignatureModal({
               <ScrollArea className="h-48">
                 <div 
                   className="prose prose-sm max-w-none dark:prose-invert"
-                  dangerouslySetInnerHTML={{ __html: docRender }}
+                  dangerouslySetInnerHTML={{ __html: safeDocRender }}
                   data-testid="text-document-content"
                 />
               </ScrollArea>
@@ -388,7 +402,7 @@ export function SignatureModal({
                       <ScrollArea className="h-48">
                         <div 
                           className="prose prose-sm max-w-none dark:prose-invert"
-                          dangerouslySetInnerHTML={{ __html: docRender }}
+                          dangerouslySetInnerHTML={{ __html: safeDocRender }}
                           data-testid="text-document-content-upload"
                         />
                       </ScrollArea>

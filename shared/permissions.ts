@@ -166,6 +166,11 @@ export function initializePermissions(): void {
       module: 'core'
     },
     {
+      key: 'metadata.view',
+      description: 'View record history metadata and provenance',
+      module: 'core'
+    },
+    {
       key: 'users.view',
       description: 'View user accounts and profiles',
       module: 'core'
@@ -173,6 +178,11 @@ export function initializePermissions(): void {
     {
       key: 'workers.comm',
       description: 'Access worker communication features (SMS, email, postal, in-app)',
+      module: 'core'
+    },
+    {
+      key: 'workers.ssn',
+      description: 'Search for a worker by Social Security Number (the number itself is never displayed)',
       module: 'core'
     },
     {

@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PolicyLayout, usePolicyLayout } from "@/components/layouts/PolicyLayout";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 
 function PolicyEditContent() {
   const { policy } = usePolicyLayout();
@@ -33,7 +33,7 @@ function PolicyEditContent() {
       setLocation(`/policies/${policy.id}`);
     },
     onError: (error: any) => {
-      const message = error.message || "Failed to update policy. Please try again.";
+      const message = getApiErrorMessage(error, "Failed to update policy. Please try again.");
       toast({
         title: "Error",
         description: message,

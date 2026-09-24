@@ -372,33 +372,45 @@ function swapInOrder<T extends { id: string; sequence: number }>(
 
 export const grievanceContractLoggingConfig: StorageLoggingConfig<GrievanceContractStorage> = {
   module: "grievanceContracts",
+  table: "grievance_contracts",
+  hostTable: "grievances",
   methods: {
     setContract: {
       enabled: true,
+      // The log's entity is the parent, not the row written here.
+      metadataEntityId: () => undefined,
       getEntityId: (args) => args[0],
       getHostEntityId: (args) => args[0],
       getDescription: async () => `Set grievance contract`,
     },
     clearContract: {
       enabled: true,
+      // The log's entity is the parent, not the row written here.
+      metadataEntityId: () => undefined,
       getEntityId: (args) => args[0],
       getHostEntityId: (args) => args[0],
       getDescription: async () => `Cleared grievance contract`,
     },
     addSections: {
       enabled: true,
+      // The log's entity is the parent, not the row written here.
+      metadataEntityId: () => undefined,
       getEntityId: (args) => args[0],
       getHostEntityId: (args) => args[0],
       getDescription: async () => `Linked contract sections to grievance`,
     },
     removeSection: {
       enabled: true,
+      // The log's entity is the parent, not the row written here.
+      metadataEntityId: () => undefined,
       getEntityId: (args) => args[0],
       getHostEntityId: (args) => args[0],
       getDescription: async () => `Unlinked a contract section from grievance`,
     },
     moveSection: {
       enabled: true,
+      // The log's entity is the parent, not the row written here.
+      metadataEntityId: () => undefined,
       getEntityId: (args) => args[0],
       getHostEntityId: (args) => args[0],
       getDescription: async () => `Reordered grievance contract sections`,

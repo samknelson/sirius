@@ -11,7 +11,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useState } from "react";
 import { Award, Plus, Trash2 } from "lucide-react";
 import { renderIcon } from "@/components/ui/icon-picker";
@@ -59,7 +59,7 @@ function SkillsContent() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to add skill.",
+        description: getApiErrorMessage(error, "Failed to add skill."),
         variant: "destructive",
       });
     },
@@ -77,10 +77,10 @@ function SkillsContent() {
       });
       closeRemoveModal();
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to remove skill.",
+        description: getApiErrorMessage(error, "Failed to remove skill."),
         variant: "destructive",
       });
     },

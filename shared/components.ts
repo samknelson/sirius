@@ -66,6 +66,13 @@ export interface ComponentDefinition {
    * See {@link ComponentManagedPluginConfig}.
    */
   pluginConfigs?: ComponentManagedPluginConfig[];
+  /**
+   * Component IDs this component depends on, for components that do NOT
+   * manage a schema. Schema-managing components declare dependencies in
+   * `schemaManifest.dependsOnComponents` instead. The enable flow refuses
+   * to enable this component unless every listed component is enabled.
+   */
+  dependsOnComponents?: string[];
 }
 
 export interface ComponentConfig {
@@ -77,6 +84,14 @@ export interface ComponentSchemaManifest {
   version?: number;
   schemaPath: string;
   tables: string[];
+  /**
+   * Component IDs whose schema this component's tables reference via
+   * foreign keys. Enabling this component requires every listed component
+   * to be enabled with its tables present; the enable flow fails fast with
+   * a clear message naming the missing prerequisites instead of surfacing
+   * a raw SQL foreign-key error.
+   */
+  dependsOnComponents?: string[];
 }
 
 export type ComponentTableStatus = "active" | "dropped" | "pending" | "error";
@@ -216,7 +231,7 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "core",
     managesSchema: true,
     schemaManifest: {
-      version: 15,
+      version: 16,
       schemaPath: "./shared/schema/grievance/schema.ts",
       tables: ["options_grievance_status", "options_grievance_category", "options_grievance_steps", "options_grievance_complaints", "options_grievance_remedies", "options_grievance_roles", "grievances", "grievance_workers", "grievance_employers", "grievance_users", "grievance_complaints", "grievance_remedies", "grievance_steps_denorm", "grievance_timeline_templates", "grievance_timeline_template_steps", "grievance_name_denorm", "grievance_status_history"]
     }
@@ -231,7 +246,8 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/grievance/settlement-schema.ts",
-      tables: ["options_grievance_settlement_type", "grievance_settlements"]
+      tables: ["options_grievance_settlement_type", "grievance_settlements"],
+      dependsOnComponents: ["grievance"]
     }
   },
   {
@@ -244,7 +260,8 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 2,
       schemaPath: "./shared/schema/grievance/contract-schema.ts",
-      tables: ["grievance_contract_sections", "grievance_contracts"]
+      tables: ["grievance_contract_sections", "grievance_contracts"],
+      dependsOnComponents: ["grievance", "contract"]
     }
   },
   {
@@ -474,6 +491,19 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "worker.aat",
+    name: "Worker Access Tokens",
+    description: "Per-worker access token (UUID) and access code",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/worker/aat/schema.ts",
+      tables: ["worker_aat"]
+    }
+  },
+  {
     id: "worker.relations",
     name: "Worker Relations",
     description: "Management of relationships between workers",
@@ -517,14 +547,15 @@ export const componentRegistry: ComponentDefinition[] = [
   {
     id: "trust.providers.edi",
     name: "Provider Data Interchange",
-    description: "Data interchange functionality for trust providers",
+    description: "Data interchange functionality for trust providers (EDI file plugin configs and delivery)",
     enabledByDefault: false,
     category: "trust.providers",
     managesSchema: true,
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/trust/provider-edi-schema.ts",
-      tables: ["trust_provider_edi"]
+      tables: ["plugin_configs_trust_provider_edi"],
+      dependsOnComponents: ["system.sftp.client"]
     }
   },
   {
@@ -537,7 +568,7 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/trust/benefit-eligibility-schema.ts",
-      tables: ["plugin_configs_benefit_eligibility"]
+      tables: ["plugin_configs_benefit_eligibility", "trust_wmb_events"]
     }
   },
   {
@@ -595,9 +626,9 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "core",
     managesSchema: true,
     schemaManifest: {
-      version: 2,
+      version: 3,
       schemaPath: "./shared/schema/dispatch/schema.ts",
-      tables: ["options_dispatch_job_type", "dispatch_jobs", "dispatches", "worker_dispatch_status", "worker_dispatch_elig_denorm", "plugin_configs_dispatch"]
+      tables: ["options_dispatch_job_type", "dispatch_jobs", "dispatches", "worker_dispatch_status", "worker_dispatch_elig_denorm", "plugin_configs_dispatch", "dispatch_job_employer_contacts"]
     },
     permissions: [
       { key: "employer.dispatch", description: "Employer access to dispatch functionality" },
@@ -627,6 +658,62 @@ export const componentRegistry: ComponentDefinition[] = [
         ]
       }
     ]
+  },
+  {
+    id: "dispatch.fore",
+    name: "Dispatch Forepersons",
+    description: "Track Forepersons designated on dispatch jobs",
+    enabledByDefault: false,
+    category: "dispatch",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/dispatch/fore-schema.ts",
+      tables: ["dispatch_job_fore"],
+      dependsOnComponents: ["dispatch"]
+    }
+  },
+  {
+    id: "dispatch.facility",
+    name: "Dispatch Facilities",
+    description: "Link dispatch jobs to facilities",
+    enabledByDefault: false,
+    category: "dispatch",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/dispatch/facility-schema.ts",
+      tables: ["dispatch_job_facility"],
+      dependsOnComponents: ["dispatch", "facility"]
+    }
+  },
+  {
+    id: "dispatch.department",
+    name: "Dispatch Departments",
+    description: "Worker department preferences and job departments for dispatch",
+    enabledByDefault: false,
+    category: "dispatch",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/dispatch/department-schema.ts",
+      tables: ["worker_dispatch_department", "dispatch_job_department"],
+      dependsOnComponents: ["dispatch"]
+    }
+  },
+  {
+    id: "dispatch.bullpen",
+    name: "Dispatch Bullpen",
+    description: "Bullpen functionality for dispatch job types (host/shared bullpens tied to event types)",
+    enabledByDefault: false,
+    category: "dispatch",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/dispatch/bullpen-schema.ts",
+      tables: ["dispatch_job_event"],
+      dependsOnComponents: ["dispatch"]
+    }
   },
   {
     id: "dispatch.dnc",
@@ -661,6 +748,25 @@ export const componentRegistry: ComponentDefinition[] = [
         rules: [
           { permission: "staff" }
         ]
+      }
+    ]
+  },
+  {
+    id: "dispatch.asi",
+    name: "Auto Sign-In",
+    description: "Auto Sign-In tracking for dispatch workers",
+    enabledByDefault: false,
+    category: "dispatch",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/dispatch/asi-schema.ts",
+      tables: ["worker_dispatch_asi"]
+    },
+    permissions: [
+      {
+        key: "worker.dispatch.asi",
+        description: "Access to Auto Sign-In dispatch functionality"
       }
     ]
   },
@@ -750,7 +856,8 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/edls/schema.ts",
-      tables: ["edls_sheets", "edls_crews", "edls_assignments", "options_edls_tasks", "worker_edls"]
+      tables: ["options_edls_tasks", "options_edls_show_status", "edls_sheets", "edls_crews", "edls_assignments", "worker_edls"],
+      dependsOnComponents: ["dispatch.job_group", "facility"]
     },
     permissions: [
       { key: "edls.manager", description: "Full EDLS management access" },
@@ -758,6 +865,19 @@ export const componentRegistry: ComponentDefinition[] = [
       { key: "edls.supervisor", description: "EDLS supervisory access" },
       { key: "edls.reader", description: "Read-only access to EDLS data" },
       { key: "edls.worker.advisor", description: "Worker advisor access for EDLS" }
+    ],
+    // The Sheet Export v1 web service. Materialized on enable (and at boot for
+    // an already-enabled component), deactivated on disable. Configuration ids
+    // are minted per database, so the alias is the only address that is the
+    // same in every environment — it ships by default for that reason.
+    pluginConfigs: [
+      {
+        pluginKind: "web-service",
+        pluginId: "edls-sheet-export-v1",
+        siriusId: "auto.edls.sheet-export-v1",
+        name: "EDLS Sheet Export v1",
+        data: { alias: "edls-sheet-export-v1" },
+      },
     ]
   },
   {
@@ -774,11 +894,41 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "sitespecific.freeman.edls_migrate",
+    name: "Freeman EDLS Migration",
+    description: "Migration of EDLS data from Freeman's legacy system",
+    enabledByDefault: false,
+    category: "site-specific",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/sitespecific/freeman/edls-migrate-schema.ts",
+      // A staging table only: it holds legacy rows as fetched and has no
+      // foreign keys into EDLS, so it is not a schema dependency.
+      tables: ["sitespecific_freeman_edls_migrate"]
+    },
+    dependsOnComponents: ["edls"]
+  },
+  {
     id: "sitespecific.t631.client",
     name: "Teamsters 631 Client",
     description: "Client connection to the Teamsters 631 site",
     enabledByDefault: false,
     category: "site-specific"
+  },
+  {
+    id: "sitespecific.t631.interviews",
+    name: "Teamsters 631 Interviews",
+    description: "Job interview tracking for Teamsters 631",
+    enabledByDefault: false,
+    category: "site-specific",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/sitespecific/t631/interviews-schema.ts",
+      tables: ["sitespecific_t631_job_interviews"],
+      dependsOnComponents: ["dispatch"]
+    }
   },
   {
     id: "sitespecific.bao",

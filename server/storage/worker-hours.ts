@@ -683,6 +683,8 @@ export function createWorkerHoursStorage(
 
 export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> = {
   module: 'worker-hours',
+  table: 'worker_hours',
+  hostTable: 'workers',
   methods: {
     createWorkerHours: {
       enabled: true,

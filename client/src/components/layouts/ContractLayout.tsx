@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode, useMemo } from "react";
-import { FileText, ArrowLeft } from "lucide-react";
+import { FileText } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { Contract } from "@shared/schema";
@@ -8,6 +8,17 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useContractTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
+
+const CONTRACT_BACK_LINK = {
+  href: "/contracts",
+  label: "Back to Contracts",
+  testId: "button-back-to-contracts",
+};
 
 export interface ContractWithCounts extends Contract {
   articleCount?: number;
@@ -65,27 +76,11 @@ export function ContractLayout({ activeTab, children }: ContractLayoutProps) {
   if (contractError) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <FileText className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">Contract Not Found</span>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/contracts">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-contracts">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Contracts
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<FileText className="text-primary-foreground" size={16} />}
+          label="Contract Not Found"
+          backLink={CONTRACT_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -112,26 +107,10 @@ export function ContractLayout({ activeTab, children }: ContractLayoutProps) {
   if (isLoading || !contract) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <FileText className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/contracts">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-contracts">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Contracts
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<FileText className="text-primary-foreground" size={16} />}
+          backLink={CONTRACT_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -156,31 +135,13 @@ export function ContractLayout({ activeTab, children }: ContractLayoutProps) {
     <ContractLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
         {/* Header */}
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <FileText className="text-primary-foreground" size={16} />
-                </div>
-                <h1
-                  className="text-xl font-semibold text-foreground"
-                  data-testid={`text-contract-name-${contract.id}`}
-                >
-                  {contract.name}
-                </h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/contracts">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-contracts">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Contracts
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<FileText className="text-primary-foreground" size={16} />}
+          title={contract.name}
+          titleTestId={`text-contract-name-${contract.id}`}
+          backLink={CONTRACT_BACK_LINK}
+          recordId={contract.id}
+        />
 
         {/* Main Tab Navigation */}
         <div className="bg-card border-b border-border">

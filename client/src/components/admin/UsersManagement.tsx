@@ -17,9 +17,15 @@ import { User } from '@/lib/user-types';
 
 interface UserWithRoles extends User {
   roles: Role[];
+  /**
+   * When the account was created, as the record's history tells it. The
+   * account itself no longer carries the date, and a record nothing has
+   * recorded yet has none at all.
+   */
+  createdDate: string | null;
 }
 
-type SortField = 'email' | 'createdAt' | 'lastLogin';
+type SortField = 'email' | 'createdDate' | 'lastLogin';
 type SortDirection = 'asc' | 'desc';
 
 export default function UsersManagement() {
@@ -84,9 +90,9 @@ export default function UsersManagement() {
           aValue = a.email;
           bValue = b.email;
           break;
-        case 'createdAt':
-          aValue = a.createdAt ? new Date(a.createdAt) : new Date(0);
-          bValue = b.createdAt ? new Date(b.createdAt) : new Date(0);
+        case 'createdDate':
+          aValue = a.createdDate ? new Date(a.createdDate) : new Date(0);
+          bValue = b.createdDate ? new Date(b.createdDate) : new Date(0);
           break;
         case 'lastLogin':
           // Handle null/undefined lastLogin values - put them at end when desc, beginning when asc
@@ -310,12 +316,12 @@ export default function UsersManagement() {
               <TableHead>Roles</TableHead>
               <TableHead 
                 className="cursor-pointer hover:bg-muted/50 select-none"
-                onClick={() => handleSort('createdAt')}
+                onClick={() => handleSort('createdDate')}
                 data-testid="header-created"
               >
                 <div className="flex items-center gap-2">
                   Created At
-                  {getSortIcon('createdAt')}
+                  {getSortIcon('createdDate')}
                 </div>
               </TableHead>
               <TableHead 
@@ -388,7 +394,7 @@ export default function UsersManagement() {
                   </div>
                 </TableCell>
                 <TableCell data-testid={`text-created-${user.id}`}>
-                  {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}
+                  {user.createdDate ? new Date(user.createdDate).toLocaleDateString() : '—'}
                 </TableCell>
                 <TableCell data-testid={`text-lastlogin-${user.id}`}>
                   {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'}

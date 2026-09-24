@@ -1,0 +1,28 @@
+{
+  // Half of the split typecheck (`npm run check`).
+  //
+  // Why the split: checking client + shared + server + tests in ONE tsc
+  // process needs ~2.2 GB of heap, and Node's default ceiling on a stock CI
+  // runner is ~2.08 GB, so the check died with "Reached heap limit" partway
+  // through. Two sequential processes each hold only their own half.
+  //
+  // The root tsconfig.json still covers everything and stays the config the
+  // editor, vite and vitest read; these two exist for the check script.
+  //
+  // This half is client + shared, and it is the larger of the two: 1.86 GB
+  // against the server half's 1.48 GB (measured 2026-08-24).
+  //
+  // Tempting theory, measured and rejected: that the client is expensive
+  // because 177 of its files import `@shared/schema`, which drags drizzle's
+  // and drizzle-zod's inference machinery in with them. Replacing that whole
+  // module with an `any` stub drops 120k types and 2.5M instantiations (−35%)
+  // but only 134 MB of heap (−7%) — the cost is in parsing and binding ~3,900
+  // files and half a million lines of .d.ts, not in the inferred types. Cut
+  // the client off from drizzle for other reasons if you like; it is not the
+  // memory lever.
+  "extends": "./tsconfig.json",
+  "include": ["client/src/**/*", "shared/**/*"],
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo.client"
+  }
+}

@@ -20,7 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 
@@ -143,7 +143,7 @@ function SettlementsContent() {
       toast({ title: "Settlement added" });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to add settlement", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to add settlement", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -165,7 +165,7 @@ function SettlementsContent() {
       toast({ title: "Settlement updated" });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to update settlement", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to update settlement", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -178,7 +178,7 @@ function SettlementsContent() {
       toast({ title: "Settlement removed" });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to remove settlement", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to remove settlement", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 

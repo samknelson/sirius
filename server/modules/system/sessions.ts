@@ -22,7 +22,7 @@ export function registerSessionRoutes(
   app.delete("/api/sessions/:sid", requireAccess('admin'), async (req, res) => {
     try {
       const { sid } = req.params;
-      const deleted = await storage.sessions.deleteSession(sid);
+      const { deleted } = await storage.sessions.deleteSession(sid);
       
       if (!deleted) {
         return res.status(404).json({ message: "Session not found" });

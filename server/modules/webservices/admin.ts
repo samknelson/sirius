@@ -1,129 +1,86 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { storage } from "../../storage";
-import { insertWsBundleSchema, insertWsClientSchema, insertWsClientIpRuleSchema } from "@shared/schema";
-
-export interface BundleEndpointMetadata {
-  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  path: string;
-  description: string;
-  sampleParams?: Record<string, string>;
-  sampleBody?: Record<string, unknown>;
-}
-
-const bundleEndpointsRegistry: Record<string, BundleEndpointMetadata[]> = {
-  edls: [
-    {
-      method: "GET",
-      path: "/sheets",
-      description: "List EDLS sheets with optional filters",
-      sampleParams: {
-        status: "active",
-        page: "1",
-        limit: "20",
-      },
-    },
-    {
-      method: "GET",
-      path: "/sheets/:id",
-      description: "Get a specific EDLS sheet by ID",
-      sampleParams: {
-        id: "<sheet-uuid>",
-      },
-    },
-  ],
-};
-
-export function registerBundleEndpoints(bundleCode: string, endpoints: BundleEndpointMetadata[]): void {
-  bundleEndpointsRegistry[bundleCode] = endpoints;
-}
-
-export function getBundleEndpoints(bundleCode: string): BundleEndpointMetadata[] {
-  return bundleEndpointsRegistry[bundleCode] || [];
-}
+import { insertWsClientSchema, insertWsClientIpRuleSchema } from "@shared/schema";
+import { entityMetadataStorage } from "../../storage/system/entity-metadata";
+import { getEnvironmentVariable } from "../../config/env-registry";
+import { runInTransaction } from "../../storage/transaction-context";
+import { addDaysYmd, getTodayYmd, isValidYmd, isYmdAfter } from "@shared/utils/date";
 
 type RequireAuth = (req: Request, res: Response, next: NextFunction) => void;
 type RequirePermission = (permission: string) => (req: Request, res: Response, next: NextFunction) => void;
+
+/**
+ * The usage read's range and filters.
+ *
+ * Days are Ymd strings all the way through — the counter stores a day, not a
+ * timestamp, so nothing here has to decide what a day means.
+ */
+const statsQuerySchema = z.object({
+  start: z.string().refine(isValidYmd, { message: "Expected a YYYY-MM-DD day" }).optional(),
+  end: z.string().refine(isValidYmd, { message: "Expected a YYYY-MM-DD day" }).optional(),
+  pluginId: z.string().trim().min(1).optional(),
+  clientId: z.string().trim().min(1).optional(),
+  operation: z.string().trim().min(1).optional(),
+});
+
+/** How far back the usage read looks when the caller names no range. */
+const DEFAULT_STATS_DAYS = 30;
+
+/**
+ * When a record was created and by whom, as these screens show it.
+ *
+ * None of the four web-service tables keeps a creation date of its own any
+ * more; the record's history does, and it also knows the person, which the old
+ * columns never did. A record with no history recorded — one made before the
+ * tables came under logging and never touched since, or one whose best-effort
+ * provenance write did not land — answers with nulls rather than a guess.
+ */
+interface CreatedStamp {
+  date: Date | null;
+  personName: string | null;
+}
+
+const NO_STAMP: CreatedStamp = { date: null, personName: null };
+
+/** One read of the history of every record a list is about to return. */
+async function canViewMetadata(req: Request): Promise<boolean> {
+  const user = req.user as any;
+  if (!user?.claims) return false;
+
+  const session = req.session as any;
+  const { getEffectiveUser } = await import("../masquerade");
+  const { dbUser } = await getEffectiveUser(session, user);
+  if (!dbUser) return false;
+
+  // Web-service pages are already admin-only. Keep that established admin
+  // access while also allowing the dedicated permission for non-admin staff.
+  const [canView, isAdmin] = await Promise.all([
+    storage.users.userHasPermission(dbUser.id, "metadata.view"),
+    storage.users.userHasPermission(dbUser.id, "admin"),
+  ]);
+  return canView || isAdmin;
+}
+
+async function createdStamps(ids: string[], req: Request): Promise<Map<string, CreatedStamp>> {
+  if (!(await canViewMetadata(req))) return new Map();
+  const views = await entityMetadataStorage.getMany(ids);
+  const stamps = new Map<string, CreatedStamp>();
+  for (const [id, view] of views) stamps.set(id, view.created);
+  return stamps;
+}
+
+/** The same, for a single record. */
+async function createdStamp(id: string, req: Request): Promise<CreatedStamp> {
+  if (!(await canViewMetadata(req))) return NO_STAMP;
+  return (await entityMetadataStorage.get(id))?.created ?? NO_STAMP;
+}
 
 export function registerWebServiceAdminRoutes(
   app: Express,
   requireAuth: RequireAuth,
   requirePermission: RequirePermission
 ): void {
-  // === Bundles ===
-
-  app.get("/api/admin/ws-bundles", requireAuth, requirePermission("admin"), async (req, res) => {
-    try {
-      const bundles = await storage.wsBundles.getAll();
-      res.json(bundles);
-    } catch (error) {
-      console.error("Failed to fetch WS bundles:", error);
-      res.status(500).json({ message: "Failed to fetch bundles" });
-    }
-  });
-
-  app.get("/api/admin/ws-bundles/:id", requireAuth, requirePermission("admin"), async (req, res) => {
-    try {
-      const bundle = await storage.wsBundles.get(req.params.id);
-      if (!bundle) {
-        return res.status(404).json({ message: "Bundle not found" });
-      }
-      res.json(bundle);
-    } catch (error) {
-      console.error("Failed to fetch WS bundle:", error);
-      res.status(500).json({ message: "Failed to fetch bundle" });
-    }
-  });
-
-  app.post("/api/admin/ws-bundles", requireAuth, requirePermission("admin"), async (req, res) => {
-    try {
-      const parsed = insertWsBundleSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid bundle data", errors: parsed.error.issues });
-      }
-
-      const bundle = await storage.wsBundles.create(parsed.data);
-      res.status(201).json(bundle);
-    } catch (error: any) {
-      console.error("Failed to create WS bundle:", error);
-      if (error.code === "23505") {
-        return res.status(409).json({ message: "Bundle with this code already exists" });
-      }
-      res.status(500).json({ message: "Failed to create bundle" });
-    }
-  });
-
-  app.patch("/api/admin/ws-bundles/:id", requireAuth, requirePermission("admin"), async (req, res) => {
-    try {
-      const parsed = insertWsBundleSchema.partial().safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid bundle data", errors: parsed.error.issues });
-      }
-
-      const bundle = await storage.wsBundles.update(req.params.id, parsed.data);
-      if (!bundle) {
-        return res.status(404).json({ message: "Bundle not found" });
-      }
-      res.json(bundle);
-    } catch (error) {
-      console.error("Failed to update WS bundle:", error);
-      res.status(500).json({ message: "Failed to update bundle" });
-    }
-  });
-
-  app.delete("/api/admin/ws-bundles/:id", requireAuth, requirePermission("admin"), async (req, res) => {
-    try {
-      const deleted = await storage.wsBundles.delete(req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ message: "Bundle not found" });
-      }
-      res.status(204).send();
-    } catch (error) {
-      console.error("Failed to delete WS bundle:", error);
-      res.status(500).json({ message: "Failed to delete bundle" });
-    }
-  });
-
   // === Clients ===
 
   app.get("/api/admin/ws-clients", requireAuth, requirePermission("admin"), async (req, res) => {
@@ -142,7 +99,7 @@ export function registerWebServiceAdminRoutes(
       if (!client) {
         return res.status(404).json({ message: "Client not found" });
       }
-      res.json(client);
+      res.json({ ...client, created: await createdStamp(client.id, req) });
     } catch (error) {
       console.error("Failed to fetch WS client:", error);
       res.status(500).json({ message: "Failed to fetch client" });
@@ -200,6 +157,7 @@ export function registerWebServiceAdminRoutes(
   app.get("/api/admin/ws-clients/:clientId/credentials", requireAuth, requirePermission("admin"), async (req, res) => {
     try {
       const credentials = await storage.wsClientCredentials.getByClient(req.params.clientId);
+       const stamps = await createdStamps(credentials.map((c) => c.id), req);
       res.json(credentials.map(c => ({
         id: c.id,
         clientId: c.clientId,
@@ -208,7 +166,7 @@ export function registerWebServiceAdminRoutes(
         isActive: c.isActive,
         expiresAt: c.expiresAt,
         lastUsedAt: c.lastUsedAt,
-        createdAt: c.createdAt,
+        created: stamps.get(c.id) ?? NO_STAMP,
       })));
     } catch (error) {
       console.error("Failed to fetch WS client credentials:", error);
@@ -241,7 +199,6 @@ export function registerWebServiceAdminRoutes(
         clientSecret: result.clientSecret,
         label: result.credential.label,
         expiresAt: result.credential.expiresAt,
-        createdAt: result.credential.createdAt,
         message: "Store the clientSecret securely - it cannot be retrieved again",
       });
     } catch (error) {
@@ -289,12 +246,97 @@ export function registerWebServiceAdminRoutes(
     }
   });
 
+  // === Grants (client → web service configuration) ===
+
+  /**
+   * The configurations a client may call. Returns the raw grant rows; the
+   * admin UI joins them against the generic web-service config list
+   * (`/api/plugins/web-service/configs`) for names, aliases and operations.
+   */
+  app.get("/api/admin/ws-clients/:clientId/grants", requireAuth, requirePermission("admin"), async (req, res) => {
+    try {
+      const client = await storage.wsClients.get(req.params.clientId);
+      if (!client) {
+        return res.status(404).json({ message: "Client not found" });
+      }
+      const grants = await storage.wsClientGrants.getByClient(req.params.clientId);
+      res.json(grants);
+    } catch (error) {
+      console.error("Failed to fetch WS client grants:", error);
+      res.status(500).json({ message: "Failed to fetch grants" });
+    }
+  });
+
+  const replaceGrantsSchema = z.object({
+    configIds: z.array(z.string().min(1)),
+  });
+
+  /**
+   * Replace a client's entire grant set. Granting and revoking never touches
+   * the client's credentials, so a service can be taken away without rotating
+   * a key.
+   */
+  app.put("/api/admin/ws-clients/:clientId/grants", requireAuth, requirePermission("admin"), async (req, res) => {
+    try {
+      const client = await storage.wsClients.get(req.params.clientId);
+      if (!client) {
+        return res.status(404).json({ message: "Client not found" });
+      }
+      const parsed = replaceGrantsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid grant data", errors: parsed.error.issues });
+      }
+
+      // Every id must name an existing web-service configuration. Without
+      // this, a typo would be stored as a grant that can never match anything
+      // and would look identical to a correctly granted service in the UI.
+      const configs = await storage.pluginConfigs.getByKind("web-service");
+      const known = new Set(configs.map((c) => c.id));
+      const unknown = parsed.data.configIds.filter((id) => !known.has(id));
+      if (unknown.length > 0) {
+        return res.status(400).json({
+          message: `Not a web service configuration: ${unknown.join(", ")}`,
+        });
+      }
+
+      const grants = await runInTransaction(() =>
+        storage.wsClientGrants.replaceForClient(req.params.clientId, parsed.data.configIds),
+      );
+      res.json(grants);
+    } catch (error) {
+      console.error("Failed to update WS client grants:", error);
+      res.status(500).json({ message: "Failed to update grants" });
+    }
+  });
+
+  // === API document ===
+
+  /**
+   * The generated OpenAPI document for one client. Built by the SAME builder
+   * the swagger web service uses, so what an administrator downloads here is
+   * exactly what an integrator granted that service fetches for themselves.
+   */
+  app.get("/api/admin/ws-clients/:clientId/openapi", requireAuth, requirePermission("admin"), async (req, res) => {
+    try {
+      const client = await storage.wsClients.get(req.params.clientId);
+      if (!client) {
+        return res.status(404).json({ message: "Client not found" });
+      }
+      const { buildClientOpenApiDocument } = await import("./openapi");
+      res.json(await buildClientOpenApiDocument(client));
+    } catch (error) {
+      console.error("Failed to build WS client API document:", error);
+      res.status(500).json({ message: "Failed to build API document" });
+    }
+  });
+
   // === IP Rules ===
 
   app.get("/api/admin/ws-clients/:clientId/ip-rules", requireAuth, requirePermission("admin"), async (req, res) => {
     try {
       const rules = await storage.wsClientIpRules.getByClient(req.params.clientId);
-      res.json(rules);
+       const stamps = await createdStamps(rules.map((r) => r.id), req);
+      res.json(rules.map((rule) => ({ ...rule, created: stamps.get(rule.id) ?? NO_STAMP })));
     } catch (error) {
       console.error("Failed to fetch WS IP rules:", error);
       res.status(500).json({ message: "Failed to fetch IP rules" });
@@ -351,36 +393,23 @@ export function registerWebServiceAdminRoutes(
     }
   });
 
-  // === Bundle Endpoints Metadata ===
-
-  app.get("/api/admin/ws-bundles/:id/endpoints", requireAuth, requirePermission("admin"), async (req, res) => {
-    try {
-      const bundle = await storage.wsBundles.get(req.params.id);
-      if (!bundle) {
-        return res.status(404).json({ message: "Bundle not found" });
-      }
-      const endpoints = getBundleEndpoints(bundle.code);
-      res.json({ bundleCode: bundle.code, basePath: `/api/ws/${bundle.code}`, endpoints });
-    } catch (error) {
-      console.error("Failed to get bundle endpoints:", error);
-      res.status(500).json({ message: "Failed to get bundle endpoints" });
-    }
-  });
-
   // === Test Execution ===
 
   const testRequestSchema = z.object({
     clientKey: z.string().min(1, "Client key is required"),
     clientSecret: z.string().min(1, "Client secret is required"),
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
-    path: z.string().min(1, "Path is required"),
+    /** Configuration id (or alias) — the first segment of the public URL. */
+    configRef: z.string().min(1, "Configuration is required"),
+    /** Declared operation name — the second segment of the public URL. */
+    operation: z.string().min(1, "Operation is required"),
     queryParams: z.record(z.string()).optional(),
     body: z.unknown().optional(),
   });
 
   app.post("/api/admin/ws-clients/:id/test", requireAuth, requirePermission("admin"), async (req, res) => {
     const startTime = Date.now();
-    
+
     try {
       const client = await storage.wsClients.get(req.params.id);
       if (!client) {
@@ -395,7 +424,7 @@ export function registerWebServiceAdminRoutes(
         });
       }
 
-      const { clientKey, clientSecret, method, path, queryParams, body } = parseResult.data;
+      const { clientKey, clientSecret, method, configRef, operation, queryParams, body } = parseResult.data;
 
       // Validate the credentials
       const validation = await storage.wsClientCredentials.validateSecret(clientKey, clientSecret);
@@ -441,28 +470,18 @@ export function registerWebServiceAdminRoutes(
         });
       }
 
-      // Get the bundle to construct the URL
-      const bundle = await storage.wsBundles.get(client.bundleId);
-      if (!bundle) {
-        return res.json({
-          success: false,
-          status: 500,
-          error: "Bundle not found",
-          message: "The client's bundle configuration is missing",
-          duration: Date.now() - startTime,
-        });
-      }
+      // The public address of the operation. Grant, enabled and operation
+      // checks are deliberately NOT repeated here — the dispatcher is the one
+      // authority on them, so the test screen shows exactly what an outside
+      // caller would get.
+      const fullPath = `/api/ws/${encodeURIComponent(configRef)}/${encodeURIComponent(operation)}`;
 
-      // Construct the internal URL
-      const basePath = `/api/ws/${bundle.code}`;
-      const fullPath = `${basePath}${path.startsWith("/") ? path : "/" + path}`;
-      
       // Build query string
       const queryString = queryParams && Object.keys(queryParams).length > 0
         ? "?" + new URLSearchParams(queryParams).toString()
         : "";
-      
-      const internalUrl = `http://localhost:${process.env.PORT || 5000}${fullPath}${queryString}`;
+
+      const internalUrl = `http://localhost:${getEnvironmentVariable("PORT") || 5000}${fullPath}${queryString}`;
 
       // Make the internal request with auth headers
       const headers: Record<string, string> = {
@@ -482,7 +501,7 @@ export function registerWebServiceAdminRoutes(
 
       const response = await fetch(internalUrl, fetchOptions);
       const responseText = await response.text();
-      
+
       let responseData: unknown;
       try {
         responseData = JSON.parse(responseText);
@@ -514,6 +533,75 @@ export function registerWebServiceAdminRoutes(
         message: error instanceof Error ? error.message : "An unexpected error occurred",
         duration: Date.now() - startTime,
       });
+    }
+  });
+
+  // === Usage ===
+
+  // How many calls we served, per day and per dimension.
+  //
+  // The counts come from `ws_stats`, not from the request log: the log is
+  // per-request and pruned on a retention schedule, so it stops being able to
+  // answer "how much did this partner use us last quarter" the moment the
+  // window closes.
+  //
+  // The figures are asked for as one report rather than gathered here, because
+  // they are read as one account of the same traffic: the counter storage
+  // reads them in a single snapshot and rolls the breakdowns up from one
+  // grouped read, so a call arriving mid-request cannot land in the chart but
+  // not the totals beneath it.
+  //
+  // The filter catalogue is the deliberate exception. It says which
+  // combinations have ever been counted, not how many, so it does not have to
+  // agree with anything and is read outside that snapshot.
+  app.get("/api/admin/ws-stats", requireAuth, requirePermission("admin"), async (req, res) => {
+    const parsed = statsQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      return res
+        .status(400)
+        .json({ message: "Invalid query parameters", errors: parsed.error.issues });
+    }
+    try {
+      const end = parsed.data.end ?? getTodayYmd();
+      const start = parsed.data.start ?? addDaysYmd(end, -(DEFAULT_STATS_DAYS - 1));
+      if (isYmdAfter(start, end)) {
+        return res.status(400).json({ message: "The range starts after it ends" });
+      }
+
+      const { pluginId, clientId, operation } = parsed.data;
+      const range = { start, end, pluginId, clientId, operation };
+      const [report, dimensions, clients] = await Promise.all([
+        storage.wsStats.report(range),
+        storage.wsStats.listDimensions(),
+        storage.wsClients.getAll(),
+      ]);
+
+      // Clients are named, not numbered. A counted call always has a client
+      // that still exists — the counter's rows are removed with the client
+      // they belong to — but this stays defensive rather than asserting it,
+      // because a usage screen that throws is worse than one that shows an id.
+      const nameById = new Map(clients.map((client) => [client.id, client.name]));
+      const named = (id: string) => nameById.get(id) ?? id;
+
+      res.json({
+        start,
+        end,
+        // Only the days that have calls. The range is stated above so the
+        // caller can fill the silent days itself rather than being handed a
+        // gap it has to guess the meaning of.
+        days: report.days,
+        total: report.total,
+        byPlugin: report.byPlugin,
+        byPluginOperation: report.byPluginOperation,
+        byClient: report.byClient.map((row) => ({ ...row, clientName: named(row.clientId) })),
+        // Every combination ever counted, for the filters — read from the
+        // counts rather than the plugin registry, so an operation a release has
+        // since retired stays selectable and its calls stay accounted for.
+        dimensions: dimensions.map((row) => ({ ...row, clientName: named(row.clientId) })),
+      });
+    } catch (error) {
+      console.error("Failed to read web service call stats:", error);
+      res.status(500).json({ message: "Failed to read call stats" });
     }
   });
 }

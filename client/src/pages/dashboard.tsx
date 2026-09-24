@@ -37,16 +37,30 @@ interface DashboardItem {
   ordering: number;
 }
 
-export default function Dashboard() {
+interface DashboardProps {
+  /**
+   * Staff target-view mode: when set, the dashboard renders as the TARGET
+   * user would see it — items, gating, and every widget `/content` read
+   * resolve server-side from this user id (staff-only, enforced by the API).
+   * When absent, the normal self-view behaves exactly as before.
+   */
+  targetUserId?: string;
+}
+
+export default function Dashboard({ targetUserId }: DashboardProps = {}) {
   const { user, permissions, components } = useAuth();
 
+  const identityUserId = targetUserId ?? user?.id;
+
   const { data: userRoles = [], isLoading: rolesLoading } = useQuery<Role[]>({
-    queryKey: [`/api/users/${user?.id}/roles`],
-    enabled: !!user?.id,
+    queryKey: [`/api/users/${identityUserId}/roles`],
+    enabled: !!identityUserId,
   });
 
   const { data: items = [], isLoading: itemsLoading } = useQuery<DashboardItem[]>({
-    queryKey: ["/api/dashboard-plugins/items"],
+    queryKey: targetUserId
+      ? ["/api/dashboard-plugins/items", { targetUserId }]
+      : ["/api/dashboard-plugins/items"],
   });
 
   const policiesNeeded = useMemo(
@@ -98,11 +112,18 @@ export default function Dashboard() {
   const hasEmployerRole = permissions.includes("employer");
   const hasLinkedWorker = !!user?.workerId;
   const hasLinkedEmployer = myEmployers.length > 0;
-  const showWorkerLinkageMessage = hasWorkerRole && !hasLinkedWorker && !staffPolicyGranted;
-  const showEmployerLinkageMessage = hasEmployerRole && !hasLinkedEmployer && !staffPolicyGranted;
+  const showWorkerLinkageMessage =
+    !targetUserId && hasWorkerRole && !hasLinkedWorker && !staffPolicyGranted;
+  const showEmployerLinkageMessage =
+    !targetUserId && hasEmployerRole && !hasLinkedEmployer && !staffPolicyGranted;
 
   const enabledItems = items.filter((item) => {
     if (!item.enabled) return false;
+
+    // Target-view items arrive pre-filtered against the TARGET's
+    // permissions/policies/components (gating fields stripped server-side);
+    // re-filtering with the viewer's auth context would be wrong.
+    if (targetUserId) return true;
 
     if (item.requiredPermissions.length > 0) {
       if (!item.requiredPermissions.some((perm) => permissions.includes(perm))) {
@@ -144,9 +165,11 @@ export default function Dashboard() {
         pluginName={item.configName ?? item.name}
         componentId={item.componentId}
       >
-        <DashboardConfigContext.Provider value={{ configId: item.configId }}>
+        <DashboardConfigContext.Provider
+          value={{ configId: item.configId, targetUserId: targetUserId ?? null }}
+        >
           <PluginComponent
-            userId={user?.id || ""}
+            userId={identityUserId || ""}
             userRoles={userRoles}
             componentProps={item.componentProps ?? undefined}
             configId={item.configId}

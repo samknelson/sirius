@@ -10,6 +10,7 @@ import { GoogleMap } from "@/components/ui/google-map";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
+import { formatYmd } from "@shared/utils/date";
 
 interface CurrentEmploymentEntry {
   id: string;
@@ -177,9 +178,9 @@ function WorkerDetailsContent() {
               </p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Sirius ID / Record ID</label>
+              <label className="text-sm font-medium text-muted-foreground">Sirius ID</label>
               <p className="text-foreground font-mono text-sm" data-testid={`text-worker-ids-${worker.id}`}>
-                {worker.siriusId} / {worker.id}
+                {worker.siriusId}
               </p>
             </div>
             <div className="space-y-2">
@@ -189,12 +190,7 @@ function WorkerDetailsContent() {
               </label>
               {contact?.birthDate ? (
                 <p className="text-foreground" data-testid="text-worker-birthdate">
-                  {(() => {
-                    const [year, month, day] = contact.birthDate.split('-');
-                    const monthNames = ["January", "February", "March", "April", "May", "June",
-                      "July", "August", "September", "October", "November", "December"];
-                    return `${monthNames[parseInt(month, 10) - 1]} ${parseInt(day, 10)}, ${year}`;
-                  })()}
+                  {formatYmd(contact.birthDate)}
                 </p>
               ) : (
                 <p className="text-muted-foreground text-sm" data-testid="text-no-birthdate">

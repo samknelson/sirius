@@ -1,10 +1,20 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { getOptionsType, getAllOptionsTypes, getOptionsStorage } from "./options-registry";
+import { getOptionsType, getOptionsStorage } from "./options-registry";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { OptionsTypeName } from "../storage/unified-options";
 import { storage } from "../storage";
 import { requireComponent, isComponentEnabled } from "./components";
 import { getComponentById } from "../../shared/components";
+import { logger } from "../logger";
+import {
+  buildOptionCreateData,
+  buildOptionUpdateData,
+  checkOptionDeleteGuard,
+  optionDbErrorMessage,
+  optionInUseDeleteMessage,
+  validateOptionTypeSpecificData,
+} from "./options-write-rules";
+import { registerOptionsTransferRoutes, getDisabledOptionFieldNames } from "./options-transfer";
 
 /**
  * Middleware for the generic `/api/options/:type*` routes that rejects
@@ -46,22 +56,59 @@ function requireOptionTypeComponent() {
   };
 }
 
-export function registerConsolidatedOptionsRoutes(app: Express) {
-  // GET /api/options - List all available options types
-  app.get("/api/options", requireAccess('authenticated'), async (req: Request, res: Response) => {
-    try {
-      res.json({ types: getAllOptionsTypes() });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch options types" });
+/**
+ * Strip fields whose `requiredComponent` is disabled from a definition —
+ * removes them from `fields`, `schema.properties`, `schema.required`, and
+ * `uiSchema` so the client form and table never show them (e.g. the
+ * department "Available for dispatch?" flag when dispatch.department is off).
+ */
+async function filterDefinitionFieldsByComponent(definition: any): Promise<any> {
+  // Same gating the export/import tools apply, so a field hidden from the
+  // form is also invisible and untouchable through the JSON tools.
+  const removedNames = await getDisabledOptionFieldNames(definition.type as OptionsTypeName);
+  if (removedNames.size === 0) return definition;
+
+  const schema = definition.schema ? { ...definition.schema } : definition.schema;
+  if (schema?.properties) {
+    schema.properties = Object.fromEntries(
+      Object.entries(schema.properties).filter(([name]) => !removedNames.has(name)),
+    );
+    if (Array.isArray(schema.required)) {
+      schema.required = schema.required.filter((name: string) => !removedNames.has(name));
     }
-  });
+  }
+  const uiSchema = definition.uiSchema
+    ? Object.fromEntries(Object.entries(definition.uiSchema).filter(([name]) => !removedNames.has(name)))
+    : definition.uiSchema;
+
+  return {
+    ...definition,
+    fields: (definition.fields || []).filter((f: any) => !removedNames.has(f.name)),
+    schema,
+    uiSchema,
+  };
+}
+
+export function registerConsolidatedOptionsRoutes(app: Express) {
+  // Export / import routes. Registered FIRST so their literal path segments
+  // (`export`, `import/preview`, `import/apply`) match before the generic
+  // `/api/options/:type/:id` route swallows them.
+  registerOptionsTransferRoutes(app, requireOptionTypeComponent());
+
+  // "What dropdown lists exist and what are they called" is no longer answered
+  // here. It is the `options-lists` shared catalog, served at
+  // /api/catalogs/options-lists, and this router had two answers to it — a bare
+  // `/api/options` list of identifiers that nothing asked for, and an
+  // `/api/options/catalog` that had to be kept ahead of `/:type` to avoid being
+  // read as a list named "catalog".
 
   // GET /api/options/definitions - Get all options resource definitions (for dynamic UI)
   app.get("/api/options/definitions", requireAccess('authenticated'), async (req: Request, res: Response) => {
     try {
       const storage = getOptionsStorage();
       const definitions = storage.getAllDefinitions();
-      res.json(definitions);
+      const filtered = await Promise.all(definitions.map(filterDefinitionFieldsByComponent));
+      res.json(filtered);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch options definitions" });
     }
@@ -79,7 +126,7 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
         return res.status(404).json({ message: `Unknown options type: ${type}` });
       }
       
-      res.json(definition);
+      res.json(await filterDefinitionFieldsByComponent(definition));
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch options definition" });
     }
@@ -120,15 +167,21 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
   );
 
   // Special-case: facilities exposed as a remote-options source for the
-  // trust eligibility "BAO - Start Healthnet" plugin's site picker.
-  // Read-only; gated by the `sitespecific.bao` component. Register BEFORE
-  // the generic `/api/options/:type` so it matches first.
+  // trust eligibility "BAO - Start Healthnet" plugin's site picker and the
+  // worker-ban Facility behavior's picker. Read-only; available when either
+  // the `facility` or the `sitespecific.bao` component is enabled. Register
+  // BEFORE the generic `/api/options/:type` so it matches first.
   app.get(
     "/api/options/facility",
     requireAccess('authenticated'),
-    requireComponent("sitespecific.bao"),
     async (_req: Request, res: Response) => {
       try {
+        const enabled =
+          (await isComponentEnabled("facility")) ||
+          (await isComponentEnabled("sitespecific.bao"));
+        if (!enabled) {
+          return res.status(403).json({ message: "This feature is not enabled" });
+        }
         const facilities = await storage.facilities.getAll();
         res.json(facilities.map((f) => ({ id: f.id, name: f.name })));
       } catch (error) {
@@ -154,6 +207,127 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
         );
       } catch (error) {
         res.status(500).json({ message: "Failed to fetch policies" });
+      }
+    },
+  );
+
+  // Usage-alert dimensions. The three web service usage alert notifiers let an
+  // admin pick what to watch: an outgoing service (and optionally one of its
+  // request types), an incoming service plugin (and optionally one of its
+  // operations), or an incoming client. Read-only, admin-only — the usage
+  // dashboard cards these alerts mirror are admin-gated too.
+  //
+  // The registry-backed lists come from the registries, NOT from what the
+  // counters happen to have seen: a service nobody has called yet is exactly
+  // the one an admin most wants a first alert on, and a list built from
+  // counted rows could not offer it. Register BEFORE the generic
+  // `/api/options/:type` so these match first.
+  app.get(
+    "/api/options/wc-service",
+    requireAccess('admin'),
+    async (_req: Request, res: Response) => {
+      try {
+        const { listWcRequests } = await import("../services/webclient");
+        const services = Array.from(
+          new Set(listWcRequests().map((b) => b.service)),
+        ).sort((a, b) => a.localeCompare(b));
+        res.json(services.map((service) => ({ id: service, name: service })));
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch outgoing services" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/options/wc-request-type",
+    requireAccess('admin'),
+    async (_req: Request, res: Response) => {
+      try {
+        const { listWcRequests } = await import("../services/webclient");
+        // A request type is only unique within its service ("lookup" belongs
+        // to more than one), so the option is the bare request type and the
+        // label names the services that have one, letting the admin see which
+        // service to pair it with.
+        const servicesByType = new Map<string, string[]>();
+        for (const behavior of listWcRequests()) {
+          const services = servicesByType.get(behavior.requestType) ?? [];
+          if (!services.includes(behavior.service)) services.push(behavior.service);
+          servicesByType.set(behavior.requestType, services);
+        }
+        const options = Array.from(servicesByType.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([requestType, services]) => ({
+            id: requestType,
+            name: `${requestType} (${services.sort().join(", ")})`,
+          }));
+        res.json(options);
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch outgoing request types" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/options/ws-service-plugin",
+    requireAccess('admin'),
+    async (_req: Request, res: Response) => {
+      try {
+        const { webServiceRegistry } = await import("../plugins/web-service/registry");
+        const plugins = await webServiceRegistry.listEnabledAsync();
+        res.json(
+          plugins
+            .map((p) => ({ id: p.id, name: p.name }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch web service plugins" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/options/ws-operation",
+    requireAccess('admin'),
+    async (_req: Request, res: Response) => {
+      try {
+        const { webServiceRegistry } = await import("../plugins/web-service/registry");
+        const plugins = await webServiceRegistry.listEnabledAsync();
+        // Same as request types: an operation name is unique within its
+        // plugin, so the label names the plugins offering it.
+        const pluginsByOperation = new Map<string, string[]>();
+        for (const plugin of plugins) {
+          for (const operation of plugin.operations) {
+            const owners = pluginsByOperation.get(operation.name) ?? [];
+            if (!owners.includes(plugin.name)) owners.push(plugin.name);
+            pluginsByOperation.set(operation.name, owners);
+          }
+        }
+        const options = Array.from(pluginsByOperation.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([operation, owners]) => ({
+            id: operation,
+            name: `${operation} (${owners.sort().join(", ")})`,
+          }));
+        res.json(options);
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch web service operations" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/options/ws-client",
+    requireAccess('admin'),
+    async (_req: Request, res: Response) => {
+      try {
+        const clients = await storage.wsClients.getAll();
+        res.json(
+          clients
+            .map((c) => ({ id: c.id, name: c.name }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch web service clients" });
       }
     },
   );
@@ -205,43 +379,31 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
         return res.status(404).json({ message: `Unknown options type: ${type}` });
       }
       
-      for (const field of config.requiredFields) {
-        if (req.body[field] === undefined || req.body[field] === null || req.body[field] === '') {
-          return res.status(400).json({ message: `${field} is required` });
-        }
+      const built = buildOptionCreateData(config, req.body);
+      if ('error' in built) {
+        return res.status(400).json({ message: built.error });
       }
-      
-      const data: Record<string, any> = {};
-      for (const field of config.requiredFields) {
-        const value = typeof req.body[field] === 'string' ? req.body[field].trim() : req.body[field];
-        data[field] = value;
-      }
-      for (const field of config.optionalFields) {
-        if (req.body[field] !== undefined) {
-          const value = typeof req.body[field] === 'string' ? req.body[field].trim() : req.body[field];
-          // Skip empty strings for optional fields to let database defaults apply
-          if (value !== '') {
-            data[field] = value;
-          }
-        }
-      }
+      const { data } = built;
 
-      // Enforce fixed-value (enum) fields server-side so a direct API call
-      // cannot persist a value outside the allowed set.
-      for (const [field, allowed] of Object.entries(config.enumConstraints)) {
-        const value = data[field];
-        if (value !== undefined && value !== null && !allowed.includes(value)) {
-          return res.status(400).json({ message: `${field} must be one of: ${allowed.join(', ')}` });
-        }
+      const validationError = await validateOptionTypeSpecificData(type, data.data);
+      if (validationError) {
+        return res.status(400).json({ message: validationError });
       }
       
       const item = await config.create(data);
       res.status(201).json(item);
     } catch (error: any) {
-      if (error.code === '23505') {
-        return res.status(400).json({ message: "An item with this value already exists" });
+      const mapped = optionDbErrorMessage(error);
+      if (mapped) {
+        return res.status(mapped.status).json({ message: mapped.message });
       }
-      res.status(500).json({ message: `Failed to create option` });
+      logger.error("Failed to create option", {
+        service: "options-routes",
+        type: req.params.type,
+        error: error?.message,
+        code: error?.code,
+      });
+      res.status(500).json({ message: `Failed to create option: ${error?.message ?? "unknown error"}` });
     }
   });
 
@@ -254,36 +416,46 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
         return res.status(404).json({ message: `Unknown options type: ${type}` });
       }
       
-      const updates: Record<string, any> = {};
-      const allFields = [...config.requiredFields, ...config.optionalFields];
-      
-      for (const field of allFields) {
-        if (req.body[field] !== undefined) {
-          const value = typeof req.body[field] === 'string' ? req.body[field].trim() : req.body[field];
-          if (config.requiredFields.includes(field) && (value === null || value === '')) {
-            return res.status(400).json({ message: `${field} cannot be empty` });
-          }
-          // Skip empty strings for optional fields to let database defaults/current values remain
-          if (config.optionalFields.includes(field) && value === '') {
-            continue;
-          }
-          updates[field] = value;
-        }
+      const built = buildOptionUpdateData(config, req.body);
+      if ('error' in built) {
+        return res.status(400).json({ message: built.error });
       }
+      const { updates } = built;
       
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ message: "No valid fields to update" });
       }
 
-      // Enforce fixed-value (enum) fields server-side on update too.
-      for (const [field, allowed] of Object.entries(config.enumConstraints)) {
-        const value = updates[field];
-        if (value !== undefined && value !== null && !allowed.includes(value)) {
-          return res.status(400).json({ message: `${field} must be one of: ${allowed.join(', ')}` });
+      if (updates.data !== undefined) {
+        const validationError = await validateOptionTypeSpecificData(type, updates.data);
+        if (validationError) {
+          return res.status(400).json({ message: validationError });
         }
       }
       
       const item = await config.update(id, updates);
+
+      // Editing a ban type's behaviors changes what every existing ban of
+      // that type enforces, so re-emit WORKER_BAN_SAVED for each affected
+      // ban. The dispatch_ban denorm plugin recomputes those workers'
+      // global eligibility facts (e.g. all-dispatch added/removed) instead
+      // of waiting for the daily sweep.
+      if (type === "worker-ban-type" && updates.data !== undefined) {
+        const affected = (await storage.workerBans.getAll()).filter(
+          (ban) => ban.type === id,
+        );
+        const { eventBus, EventType } = await import("../services/event-bus");
+        for (const ban of affected) {
+          eventBus.emit(EventType.WORKER_BAN_SAVED, {
+            banId: ban.id,
+            workerId: ban.workerId,
+            type: ban.type,
+            startDate: ban.startDate,
+            endDate: ban.endDate,
+            active: ban.denormActive ?? true,
+          });
+        }
+      }
       
       if (!item) {
         return res.status(404).json({ message: `${config.name} not found` });
@@ -291,10 +463,18 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       
       res.json(item);
     } catch (error: any) {
-      if (error.code === '23505') {
-        return res.status(400).json({ message: "An item with this value already exists" });
+      const mapped = optionDbErrorMessage(error);
+      if (mapped) {
+        return res.status(mapped.status).json({ message: mapped.message });
       }
-      res.status(500).json({ message: `Failed to update option` });
+      logger.error("Failed to update option", {
+        service: "options-routes",
+        type: req.params.type,
+        id: req.params.id,
+        error: error?.message,
+        code: error?.code,
+      });
+      res.status(500).json({ message: `Failed to update option: ${error?.message ?? "unknown error"}` });
     }
   });
 
@@ -306,17 +486,9 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
         return res.status(404).json({ message: `Unknown options type: ${type}` });
       }
 
-      // A grievance status that is referenced by any timeline-template step
-      // cannot be deleted — the step stores status ids as plain arrays (no FK),
-      // so we guard the delete here to avoid orphaning those references.
-      if (type === "grievance-status") {
-        const referenced = await storage.grievanceTimelineTemplates.isStatusReferenced(id);
-        if (referenced) {
-          return res.status(409).json({
-            message:
-              "This status is used by a grievance timeline template and cannot be deleted. Remove it from all timeline steps first.",
-          });
-        }
+      const blocked = await checkOptionDeleteGuard(type, id);
+      if (blocked) {
+        return res.status(blocked.status).json({ message: blocked.message });
       }
 
       const deleted = await config.delete(id);
@@ -331,9 +503,7 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       // row (e.g. a grievance role assigned to people on a grievance).
       // Surface a clear 409 instead of an opaque 500.
       if (error?.code === "23503") {
-        return res.status(409).json({
-          message: `This ${config?.name ?? "option"} is in use and cannot be deleted. Remove it from everything that references it first.`,
-        });
+        return res.status(409).json({ message: optionInUseDeleteMessage(config?.name) });
       }
       res.status(500).json({ message: `Failed to delete option` });
     }

@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, jsonb, date, unique } from "drizzle-orm/pg-core";
+import { foreignKey, pgTable, varchar, text, jsonb, date, unique } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -25,11 +25,17 @@ export const workerRelations = pgTable("worker_relations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   worker1: varchar("worker_1").notNull().references(() => workers.id, { onDelete: 'cascade' }),
   worker2: varchar("worker_2").notNull().references(() => workers.id, { onDelete: 'cascade' }),
-  relationType: varchar("relation_type").notNull().references(() => optionsWorkerRelationType.id),
+  relationType: varchar("relation_type").notNull(),
   startYmd: date("start_ymd"),
   endYmd: date("end_ymd"),
   data: jsonb("data"),
-});
+}, (table) => [
+  foreignKey({
+    name: "worker_relations_relation_type_options_worker_relation_type_id_",
+    columns: [table.relationType],
+    foreignColumns: [optionsWorkerRelationType.id],
+  }),
+]);
 
 export const insertWorkerRelationSchema = createInsertSchema(workerRelations).omit({
   id: true,

@@ -60,7 +60,10 @@ export const stewardAssignmentNotifier: EventNotifierPlugin = {
     ctx: EventNotifierEventContext,
   ): Promise<NotifierMessageContent | null> {
     const { workerId, operation } = payloadOf(ctx);
-    const title = "Steward Assignment Update";
+    // Two segments only: the recipient IS the worker the assignment is
+    // for, so there is no third record to name that they don't already
+    // know. Better than inventing one.
+    const title = "Steward - assignment";
     const body = bodyFor(operation);
     const linkUrl = `/workers/${workerId}/union/steward`;
 
@@ -79,7 +82,7 @@ export const stewardAssignmentNotifier: EventNotifierPlugin = {
         };
       case "sms":
         return {
-          message: body,
+          body: body,
         };
       case "postal": {
         // Compose a basic letter as HTML (the postal sender stores this as the

@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Settings2, RefreshCw, Droplets, RotateCcw, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import {
@@ -53,10 +53,10 @@ export default function FloodEventsConfigPage() {
         description: `Flood config for "${eventName}" has been updated.`,
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to update flood config",
+        description: getApiErrorMessage(error, "Failed to update flood config"),
         variant: "destructive",
       });
     },
@@ -73,10 +73,10 @@ export default function FloodEventsConfigPage() {
         description: `Flood config for "${eventName}" has been reset to default.`,
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to reset flood config",
+        description: getApiErrorMessage(error, "Failed to reset flood config"),
         variant: "destructive",
       });
     },

@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { useOptionsListName } from "@/hooks/useConfigNavigation";
+import { BackToOptions } from "@/components/shared/BackToOptions";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { 
@@ -95,7 +97,9 @@ const availableIcons: { name: string; Icon: LucideIcon }[] = [
 ];
 
 export default function EventTypesPage() {
-  usePageTitle("Event Types");
+  // The options registry names this list; this page does not name it again.
+  const { pluralName: listName } = useOptionsListName("event-type");
+  usePageTitle(listName ?? "Options");
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -141,6 +145,7 @@ export default function EventTypesPage() {
     mutationFn: async (data: InsertEventType) => {
       return apiRequest("POST", "/api/options/event-type", {
         ...data,
+        siriusId: data.siriusId?.trim() ? data.siriusId.trim() : null,
         category: formCategory,
         config: Object.keys(formConfig).length > 0 ? formConfig : null,
         data: { icon: formIcon }
@@ -161,7 +166,7 @@ export default function EventTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create event type.",
+        description: getApiErrorMessage(error, "Failed to create event type."),
         variant: "destructive",
       });
     },
@@ -171,6 +176,7 @@ export default function EventTypesPage() {
     mutationFn: async (data: { id: string; updates: InsertEventType }) => {
       return apiRequest("PUT", `/api/options/event-type/${data.id}`, {
         ...data.updates,
+        siriusId: data.updates.siriusId?.trim() ? data.updates.siriusId.trim() : null,
         category: formCategory,
         config: Object.keys(formConfig).length > 0 ? formConfig : null,
         data: { icon: formIcon }
@@ -191,7 +197,7 @@ export default function EventTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update event type.",
+        description: getApiErrorMessage(error, "Failed to update event type."),
         variant: "destructive",
       });
     },
@@ -212,7 +218,7 @@ export default function EventTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete event type.",
+        description: getApiErrorMessage(error, "Failed to delete event type."),
         variant: "destructive",
       });
     },
@@ -310,12 +316,13 @@ export default function EventTypesPage() {
   }
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="container mx-auto py-8 space-y-4">
+      <BackToOptions />
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
-              <CardTitle data-testid="title-page">Event Types</CardTitle>
+              <CardTitle data-testid="title-page">{listName ?? "Options"}</CardTitle>
               <CardDescription>
                 Manage event types for categorizing in-person and virtual events
               </CardDescription>
@@ -375,12 +382,13 @@ export default function EventTypesPage() {
                                   name="siriusId"
                                   render={({ field }) => (
                                     <FormItem>
-                                      <FormLabel>Sirius ID *</FormLabel>
+                                      <FormLabel>Sirius ID</FormLabel>
                                       <FormControl>
                                         <Input
-                                          placeholder="e.g., CONFERENCE"
+                                          placeholder="e.g., CONFERENCE (optional)"
                                           data-testid="input-edit-siriusId"
                                           {...field}
+                                          value={field.value || ""}
                                         />
                                       </FormControl>
                                       <FormMessage />
@@ -585,12 +593,13 @@ export default function EventTypesPage() {
                 name="siriusId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Sirius ID *</FormLabel>
+                    <FormLabel>Sirius ID</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="e.g., CONFERENCE, WORKSHOP, WEBINAR"
+                        placeholder="e.g., CONFERENCE, WORKSHOP, WEBINAR (optional)"
                         data-testid="input-add-siriusId"
                         {...field}
+                        value={field.value || ""}
                       />
                     </FormControl>
                     <FormMessage />

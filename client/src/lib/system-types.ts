@@ -1,4 +1,4 @@
-export type SystemMode = "dev" | "test" | "live";
+export type SystemMode = "dev" | "test" | "live" | "maintenance";
 
 export interface SystemModeResponse {
   mode: SystemMode;

@@ -19,7 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { TokenCoverageCard, type TokenCoverageResponse } from "@/components/bulk/TokenCoverageCard";
 import {
   Send,
@@ -265,7 +265,7 @@ function BulkMessageDeliverContent() {
       toast({ title: "Status updated", description: "The message status has been updated." });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to update status", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to update status", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 

@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertTriangle, Loader2, Users, CheckCircle, Plus, Trash2, ExternalLink, Building2, Phone, Mail, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { User, Role, Variable, RolePermission, BargainingUnit, Employer, WorkerStewardAssignment } from "@shared/schema";
 import { useTerm } from "@/contexts/TerminologyContext";
 import { Link } from "wouter";
@@ -295,7 +295,7 @@ function StewardAssignmentsSection() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || `Failed to add ${term("steward", { lowercase: true })} assignment`,
+        description: getApiErrorMessage(error, `Failed to add ${term("steward", { lowercase: true })} assignment`),
         variant: "destructive",
       });
     },
@@ -316,7 +316,7 @@ function StewardAssignmentsSection() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || `Failed to remove ${term("steward", { lowercase: true })} assignment`,
+        description: getApiErrorMessage(error, `Failed to remove ${term("steward", { lowercase: true })} assignment`),
         variant: "destructive",
       });
     },
@@ -620,7 +620,7 @@ function WorkerStewardContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || `Failed to enable ${term("steward", { lowercase: true })} status.`,
+        description: getApiErrorMessage(error, `Failed to enable ${term("steward", { lowercase: true })} status.`),
         variant: "destructive",
       });
     },
@@ -643,7 +643,7 @@ function WorkerStewardContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || `Failed to disable ${term("steward", { lowercase: true })} status.`,
+        description: getApiErrorMessage(error, `Failed to disable ${term("steward", { lowercase: true })} status.`),
         variant: "destructive",
       });
     },

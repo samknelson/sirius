@@ -1,6 +1,7 @@
 import { createClerkClient } from "@clerk/express";
 import { storage } from "../storage";
 import { logger } from "../logger";
+import { getEnvironmentVariable } from "../config/env-registry";
 
 export interface ClerkConflictCheckResult {
   configured: boolean;
@@ -16,13 +17,13 @@ export interface ClerkProvisioningResult {
 }
 
 function getClerkClient() {
-  const isProd = process.env.NODE_ENV === "production";
+  const isProd = getEnvironmentVariable("NODE_ENV") === "production";
   const clerkSecretKey = isProd
-    ? (process.env.CLERK_SECRET_KEY_PROD || process.env.CLERK_SECRET_KEY)
-    : process.env.CLERK_SECRET_KEY;
+    ? (getEnvironmentVariable("CLERK_SECRET_KEY_PROD") || getEnvironmentVariable("CLERK_SECRET_KEY"))
+    : getEnvironmentVariable("CLERK_SECRET_KEY");
   const clerkPublishableKey = isProd
-    ? (process.env.CLERK_PUBLISHABLE_KEY_PROD || process.env.CLERK_PUBLISHABLE_KEY || process.env.VITE_CLERK_PUBLISHABLE_KEY)
-    : (process.env.CLERK_PUBLISHABLE_KEY || process.env.VITE_CLERK_PUBLISHABLE_KEY);
+    ? (getEnvironmentVariable("CLERK_PUBLISHABLE_KEY_PROD") || getEnvironmentVariable("CLERK_PUBLISHABLE_KEY") || getEnvironmentVariable("VITE_CLERK_PUBLISHABLE_KEY"))
+    : (getEnvironmentVariable("CLERK_PUBLISHABLE_KEY") || getEnvironmentVariable("VITE_CLERK_PUBLISHABLE_KEY"));
   if (!clerkSecretKey || !clerkPublishableKey) return null;
   return createClerkClient({ secretKey: clerkSecretKey, publishableKey: clerkPublishableKey });
 }

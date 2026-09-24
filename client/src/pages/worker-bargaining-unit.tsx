@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { BargainingUnit } from "@shared/schema";
 import { Link } from "wouter";
 import { ExternalLink } from "lucide-react";
@@ -42,7 +42,7 @@ function WorkerBargainingUnitContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update bargaining unit",
+        description: getApiErrorMessage(error, "Failed to update bargaining unit"),
         variant: "destructive",
       });
     },

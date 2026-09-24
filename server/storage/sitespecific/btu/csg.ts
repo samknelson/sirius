@@ -100,6 +100,7 @@ export function createBtuCsgStorage(): BtuCsgStorage {
 
 export const btuCsgLoggingConfig: StorageLoggingConfig<BtuCsgStorage> = {
   module: 'btu-csg',
+  table: 'sitespecific_btu_csg',
   methods: {
     create: {
       enabled: true,

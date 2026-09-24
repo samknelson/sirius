@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { WsLayout } from "@/components/layouts/WebServicesLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -10,12 +11,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Plus, Key, Eye, Trash2, Shield } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import type { WsClient, WsBundle } from "@shared/schema";
+import type { WsClient } from "@shared/schema";
 
 function StatusBadge({ status }: { status: string }) {
   const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -30,10 +30,6 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-interface ClientWithBundle extends WsClient {
-  bundle?: WsBundle;
-}
-
 export default function WsClientsPage() {
   usePageTitle("Web Service Clients");
   const { toast } = useToast();
@@ -44,17 +40,12 @@ export default function WsClientsPage() {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
-    bundleId: "",
     status: "active" as const,
     ipAllowlistEnabled: false,
   });
 
-  const { data: clients = [], isLoading: clientsLoading, error: clientsError } = useQuery<ClientWithBundle[]>({
+  const { data: clients = [], isLoading: clientsLoading, error: clientsError } = useQuery<WsClient[]>({
     queryKey: ["/api/admin/ws-clients"],
-  });
-
-  const { data: bundles = [] } = useQuery<WsBundle[]>({
-    queryKey: ["/api/admin/ws-bundles"],
   });
 
   const createMutation = useMutation({
@@ -63,10 +54,10 @@ export default function WsClientsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/ws-clients"] });
       toast({ title: "Client created", description: "The new client has been created successfully." });
       setIsCreateOpen(false);
-      setFormData({ name: "", description: "", bundleId: "", status: "active", ipAllowlistEnabled: false });
+      setFormData({ name: "", description: "", status: "active", ipAllowlistEnabled: false });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to create client", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to create client", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 
@@ -78,13 +69,13 @@ export default function WsClientsPage() {
       setDeleteTarget(null);
     },
     onError: (error: any) => {
-      toast({ title: "Failed to delete client", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to delete client", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 
   const handleCreate = () => {
-    if (!formData.name || !formData.bundleId) {
-      toast({ title: "Validation error", description: "Name and bundle are required.", variant: "destructive" });
+    if (!formData.name) {
+      toast({ title: "Validation error", description: "Name is required.", variant: "destructive" });
       return;
     }
     createMutation.mutate(formData);
@@ -92,36 +83,32 @@ export default function WsClientsPage() {
 
   if (clientsLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" data-testid="loader-clients" />
-      </div>
+      <WsLayout activeTab="ws-clients">
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" data-testid="loader-clients" />
+        </div>
+      </WsLayout>
     );
   }
 
   if (clientsError) {
     return (
-      <Alert variant="destructive" data-testid="alert-error">
-        <AlertDescription>Failed to load clients. Please try again.</AlertDescription>
-      </Alert>
+      <WsLayout activeTab="ws-clients">
+        <Alert variant="destructive" data-testid="alert-error">
+          <AlertDescription>Failed to load clients. Please try again.</AlertDescription>
+        </Alert>
+      </WsLayout>
     );
   }
 
-  const getBundleName = (bundleId: string) => {
-    const bundle = bundles.find((b) => b.id === bundleId);
-    return bundle?.name || bundleId;
-  };
-
   return (
-    <div className="space-y-6">
+    <WsLayout activeTab="ws-clients">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold" data-testid="heading-ws-clients">
-            Web Service Clients
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Manage external clients that can access your web service APIs
-          </p>
-        </div>
+        <p className="text-muted-foreground" data-testid="text-page-description">
+          External callers that may reach our web services. What each one is
+          allowed to call is granted per service, from the client's own Settings
+          tab.
+        </p>
         <Button onClick={() => setIsCreateOpen(true)} data-testid="button-create-client">
           <Plus className="h-4 w-4 mr-2" />
           Create Client
@@ -148,7 +135,6 @@ export default function WsClientsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Bundle</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>IP Allowlist</TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
@@ -169,9 +155,6 @@ export default function WsClientsPage() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell data-testid={`text-client-bundle-${client.id}`}>
-                      {getBundleName(client.bundleId)}
-                    </TableCell>
                     <TableCell>
                       <StatusBadge status={client.status} />
                     </TableCell>
@@ -187,7 +170,7 @@ export default function WsClientsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <Link href={`/config/ws/clients/${client.id}`}>
+                        <Link href={`/admin/ws/clients/${client.id}`}>
                           <Button variant="ghost" size="icon" data-testid={`button-view-${client.id}`}>
                             <Eye className="h-4 w-4" />
                           </Button>
@@ -215,7 +198,7 @@ export default function WsClientsPage() {
           <DialogHeader>
             <DialogTitle>Create Client</DialogTitle>
             <DialogDescription>
-              Create a new external client that can access your web service APIs.
+              Create a new external client. Grant it access to individual web services from its Settings tab once it exists.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -239,24 +222,6 @@ export default function WsClientsPage() {
                 data-testid="input-description"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="bundle">Bundle</Label>
-              <Select
-                value={formData.bundleId}
-                onValueChange={(value) => setFormData((prev) => ({ ...prev, bundleId: value }))}
-              >
-                <SelectTrigger id="bundle" data-testid="select-bundle">
-                  <SelectValue placeholder="Select a bundle" />
-                </SelectTrigger>
-                <SelectContent>
-                  {bundles.map((bundle) => (
-                    <SelectItem key={bundle.id} value={bundle.id} data-testid={`option-bundle-${bundle.id}`}>
-                      {bundle.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateOpen(false)} data-testid="button-cancel">
@@ -264,7 +229,7 @@ export default function WsClientsPage() {
             </Button>
             <Button
               onClick={handleCreate}
-              disabled={createMutation.isPending || !formData.name || !formData.bundleId}
+              disabled={createMutation.isPending || !formData.name}
               data-testid="button-submit"
             >
               {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -279,7 +244,7 @@ export default function WsClientsPage() {
           <DialogHeader>
             <DialogTitle>Delete Client</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{deleteTarget?.name}"? This will also delete all associated credentials and IP rules. This action cannot be undone.
+              Are you sure you want to delete "{deleteTarget?.name}"? This will also delete all associated credentials, IP rules and service grants. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -298,6 +263,6 @@ export default function WsClientsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </WsLayout>
   );
 }

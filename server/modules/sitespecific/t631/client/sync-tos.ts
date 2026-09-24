@@ -106,7 +106,27 @@ export async function syncTos(
     }
 
     try {
-      const workerIdRow = await storage.workerIds.getWorkerIdByTypeAndValue(t631TypeId, remoteWorkerId);
+      // TOS rows carry the bare numeric worker id, but the worker fetch
+      // stores Teamsters IDs verbatim WITH their letter prefix ("I118637",
+      // "O118637", ...). Match exact first; if nothing matches exactly, fall
+      // back to single-letter-prefixed variants — and skip (never guess) if
+      // more than one worker holds a prefixed variant.
+      const candidates = await storage.workerIds.getWorkerIdsByTypeAndValueWithOptionalPrefix(t631TypeId, remoteWorkerId);
+      const exact = candidates.find((c) => c.value === remoteWorkerId);
+      let workerIdRow = exact;
+      if (!workerIdRow) {
+        const prefixedWorkerIds = new Set(candidates.map((c) => c.workerId));
+        if (prefixedWorkerIds.size > 1) {
+          result.skipped++;
+          result.details.push({
+            siriusId,
+            action: "skipped",
+            error: `worker_ambiguous (t631=${remoteWorkerId} matches multiple prefixed IDs: ${candidates.map((c) => c.value).join(", ")})`,
+          });
+          continue;
+        }
+        workerIdRow = candidates[0];
+      }
       if (!workerIdRow) {
         result.skipped++;
         result.details.push({ siriusId, action: "skipped", error: `worker_not_found (t631=${remoteWorkerId})` });

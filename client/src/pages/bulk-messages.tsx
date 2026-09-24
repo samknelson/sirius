@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Eye, Megaphone, Plus, Loader2, Search } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import type { BulkMessage } from "@shared/schema/bulk/schema";
 
@@ -73,7 +73,7 @@ export default function BulkMessagesPage() {
       setIsAdding(false);
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to create bulk message", description: error.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to create bulk message", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 

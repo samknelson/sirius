@@ -25,7 +25,7 @@ function PaymentViewContent() {
   const { id } = useParams<{ id: string }>();
   const { payment: layoutPayment, paymentType } = usePaymentLayout();
 
-  const { data: payment, isLoading } = useQuery<LedgerPayment>({
+  const { data: payment, isLoading } = useQuery<LedgerPayment & { dateCreated: Date | null }>({
     queryKey: ["/api/ledger/payments", id],
   });
 
@@ -99,11 +99,6 @@ function PaymentViewContent() {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="text-sm font-medium text-muted-foreground">Payment ID</label>
-              <p className="mt-1 font-mono text-sm" data-testid="text-payment-id">{payment.id}</p>
-            </div>
-
             <div>
               <label className="text-sm font-medium text-muted-foreground">Amount</label>
               <p className="mt-1 font-mono text-lg font-semibold" data-testid="text-amount">

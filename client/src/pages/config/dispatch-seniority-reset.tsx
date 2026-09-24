@@ -1,5 +1,5 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { getApiErrorMessage } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useVariableValue, useSetVariable } from "@/lib/use-variable";
 import { Save, RefreshCw } from "lucide-react";
 import { useEffect } from "react";
 import { dispatchStatusEnum, type DispatchStatus } from "@shared/schema/dispatch/schema";
@@ -20,9 +20,7 @@ const configSchema = z.object({
 
 type ConfigFormValues = z.infer<typeof configSchema>;
 
-interface ConfigResponse {
-  config: ConfigFormValues;
-}
+const VARIABLE_NAME = "dispatch_seniority_reset_settings";
 
 const STATUS_DESCRIPTIONS: Record<DispatchStatus, string> = {
   pending: "Worker has been added to a job but not yet notified.",
@@ -37,9 +35,7 @@ export default function DispatchSeniorityResetConfigPage() {
   usePageTitle("Seniority Reset");
   const { toast } = useToast();
 
-  const { data, isLoading } = useQuery<ConfigResponse>({
-    queryKey: ["/api/config/dispatch/seniority-reset"],
-  });
+  const { data: value, isLoading } = useVariableValue(VARIABLE_NAME);
 
   const form = useForm<ConfigFormValues>({
     resolver: zodResolver(configSchema),
@@ -49,26 +45,23 @@ export default function DispatchSeniorityResetConfigPage() {
   });
 
   useEffect(() => {
-    if (data?.config) {
-      form.reset(data.config);
+    const parsed = configSchema.safeParse(value);
+    if (parsed.success) {
+      form.reset(parsed.data);
     }
-  }, [data, form]);
+  }, [value, form]);
 
-  const saveMutation = useMutation({
-    mutationFn: async (values: ConfigFormValues) => {
-      return apiRequest("PUT", "/api/config/dispatch/seniority-reset", values);
-    },
+  const saveMutation = useSetVariable(VARIABLE_NAME, {
     onSuccess: () => {
       toast({
         title: "Settings saved",
         description: "Seniority reset settings have been updated.",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/config/dispatch/seniority-reset"] });
     },
     onError: (error: Error) => {
       toast({
         title: "Error saving settings",
-        description: error.message,
+        description: getApiErrorMessage(error, "The operation failed."),
         variant: "destructive",
       });
     },

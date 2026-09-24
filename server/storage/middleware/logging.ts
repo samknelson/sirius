@@ -38,7 +38,95 @@
  */
 
 import { storageLogger } from "../../logger";
-import { getRequestContext } from "../../middleware/request-context";
+import { getRequestContext, isFrameworkWrite } from "../../middleware/request-context";
+import { isInTransaction, onAfterCommit, runOutsideTransaction } from "../transaction-context";
+import { entityMetadataStorage } from "../system/entity-metadata";
+
+/**
+ * Where a record lives, for the entity-metadata row this operation maintains.
+ * A constant for the usual case; a function for a polymorphic parent — a note
+ * or a file hangs off a worker, an employer or a provider, and only the call
+ * itself knows which.
+ */
+export type EntityTableResolver<T = any> =
+  | string
+  | ((args: any[], result?: any, beforeState?: any) => string | undefined | Promise<string | undefined>);
+
+/**
+ * What a logged method does to its record's provenance.
+ *
+ * - `created` — the record came into existence here; stamps the creator.
+ * - `modified` — the record changed. The default for every logged method,
+ *   including the ones that are not named like CRUD (`setAddressAsPrimary`,
+ *   `upsert*`, …), because they do change the record.
+ * - `deleted` — the record is gone; its metadata row (and its `seq`) goes too.
+ * - `none` — this method does not mutate a record whose provenance we track.
+ *   The default for the bulk family, whose log entry summarizes a batch rather
+ *   than naming a record (see `withStorageLogging`).
+ */
+export type EntityMetadataMode =
+  | 'created'
+  | 'modified'
+  | 'deleted'
+  | 'none';
+
+/**
+ * What a method did to its record's provenance, when the answer is not the
+ * same every call.
+ *
+ * A method named like CRUD says what it does in its name; an upsert does not.
+ * Whether an upsert created the record or changed one that was already there
+ * is only knowable from the call itself, and a config that has to answer
+ * "created" or "modified" for both cases lies in one of them — either a new
+ * record loses the creator we did observe, or a repair names its repairer as
+ * the author. The resolver is handed the same three things every other hook
+ * gets, so a config can decide from a `before` state whether the record
+ * existed.
+ */
+export type EntityMetadataModeResolver =
+  | EntityMetadataMode
+  | ((args: any[], result?: any, beforeState?: any) => EntityMetadataMode | Promise<EntityMetadataMode>);
+
+/** When metadata maintenance runs; the default remains after commit. */
+export type EntityMetadataTiming = 'afterCommit' | 'transactional';
+/**
+ * Which raw tables the logging configs wired into this process actually name.
+ *
+ * Nothing else can answer this. A config is handed to `withStorageLogging`
+ * one module at a time from `database.ts` (and from the component and plugin
+ * wiring beyond it) and is never collected anywhere, so the only place that
+ * sees them all is the wrapper itself — which records what it was wired with
+ * as it is wired.
+ *
+ * `hostTable` counts as much as `table` does: a host gets a subrecord stamp,
+ * which is a provenance row like any other.
+ *
+ * A config whose table is named by the call rather than by the config (the
+ * options tables) cannot be enumerated from here at all; those modules are
+ * recorded separately so the completeness check can say what it could not
+ * see rather than quietly leaving it out.
+ */
+const loggedTableNames = new Set<string>();
+const modulesNamingTablesAtRuntime = new Set<string>();
+
+/** Every statically-named logged table, as wired so far. */
+export function getLoggedTableNames(): string[] {
+  return Array.from(loggedTableNames).sort();
+}
+
+/** Modules whose table is decided by the call, so it cannot be listed here. */
+export function getModulesNamingTablesAtRuntime(): string[] {
+  return Array.from(modulesNamingTablesAtRuntime).sort();
+}
+
+function noteLoggedTable(module: string, resolver: EntityTableResolver<any> | undefined): void {
+  if (resolver === undefined) return;
+  if (typeof resolver === 'string') {
+    loggedTableNames.add(resolver);
+    return;
+  }
+  modulesNamingTablesAtRuntime.add(module);
+}
 
 /**
  * Configuration for logging a single storage method
@@ -50,19 +138,43 @@ export interface MethodLoggingConfig<T = any> {
   /** Function to capture state after the operation (e.g., return the result) 
    * @param beforeState - The state captured by the before() callback (if any), useful for determining create vs update
    */
+
   after?: (args: any[], result: any, storage: T, beforeState?: any) => Promise<any>;
   
   /** Function to extract a human-readable entity ID from arguments, result, or beforeState */
+
   getEntityId?: (args: any[], result?: any, beforeState?: any) => string | undefined | Promise<string | undefined>;
   
   /** Function to extract the host entity ID (parent entity: user, worker, contact, employer) */
+
   getHostEntityId?: (args: any[], result?: any, beforeState?: any) => string | undefined | Promise<string | undefined>;
   
   /** Custom function to generate a human-readable description of the operation */
+
   getDescription?: (args: any[], result: any, beforeState: any, afterState: any, storage: T) => Promise<string> | string;
   
   /** Whether to enable logging for this method (default: false) */
+
   enabled?: boolean;
+
+  /**
+   * Optional per-call predicate: when it returns false, the successful
+   * operation produces NO log entry. Lets a method log conditionally based
+   * on its arguments or result (e.g. an upsert that only logs when it
+   * actually inserted). Only consulted on success — failed operations still
+   * produce their error log entry regardless of this predicate.
+   */
+
+  shouldLog?: (args: any[], result: any) => boolean;
+
+  /**
+   * Optional projection applied to `args` before they are persisted in the
+   * log entry's `meta.args` (success AND error paths). Use it to redact
+   * sensitive payloads (e.g. full session data, credentials) while keeping
+   * the identifying arguments. The live call always receives the real args.
+   */
+
+  logArgs?: (args: any[]) => any;
 
   // ---- defineLoggingConfig helper hints (consulted only when useDefaults is true) ----
 
@@ -73,6 +185,7 @@ export interface MethodLoggingConfig<T = any> {
    * function may return a value or a Promise; the middleware awaits the
    * result so configs can perform async related-entity lookups.
    */
+
   metadata?: (args: any[], result: any, beforeState?: any) => any | Promise<any>;
 
   /**
@@ -82,6 +195,7 @@ export interface MethodLoggingConfig<T = any> {
    * or `beforeState?.[field]` (when the before state is the raw row).
    * Per-method value wins over the module-level `hostEntityIdField`.
    */
+
   hostEntityIdField?: string;
 
   /**
@@ -89,6 +203,7 @@ export interface MethodLoggingConfig<T = any> {
    * depend on the method kind: `previousKey` for update, `fallbackId` for
    * create, `includeOnDelete` for delete.
    */
+
   state?: StateDescriptor;
 
   /**
@@ -106,7 +221,49 @@ export interface MethodLoggingConfig<T = any> {
    * configured the `[<id>]` bracket is always rendered, even if the
    * resolved id is empty — matching legacy hand-written descriptions.
    */
+
   describe?: DescribeShortcut;
+
+  // ---- entity-metadata declarations ----
+
+  /**
+   * Raw database table this method's record lives in, when it is not the
+   * module's own `table` (a module whose methods write more than one table).
+   */
+  table?: string;
+
+  /**
+   * Raw database table the HOST entity lives in — the record whose
+   * `subrecord_modified_*` pair this operation advances. Per-method value wins
+   * over the module-level `hostTable`. Without it (and without a module-level
+   * one) no subrecord touch is recorded, even when `getHostEntityId` resolves.
+   */
+  hostTable?: EntityTableResolver<T>;
+
+  /**
+   * The record's OWN id, when the log entry's `entity_id` is something else —
+   * a parent's id, a placeholder, a batch summary. Provenance is filed under
+   * this id instead.
+   */
+  metadataEntityId?: (args: any[], result?: any, beforeState?: any) => string | undefined | Promise<string | undefined>;
+
+  /**
+   * Override what this method does to its record's provenance. A function when
+   * only the call can say — see {@link EntityMetadataModeResolver}.
+   */
+  metadataMode?: EntityMetadataModeResolver;
+
+  /**
+   * Run metadata maintenance in the caller's transaction when one is active.
+   * Outside a transaction, the normal after-commit path is retained.
+   */
+  metadataTiming?: EntityMetadataTiming;
+
+  /**
+   * For bulk operations whose synthetic log entity has no provenance row,
+   * still advance the host's subrecord metadata.
+   */
+  metadataHostTouch?: boolean;
 }
 
 /**
@@ -145,6 +302,38 @@ export interface DescribeShortcut {
 export interface StorageLoggingConfig<T> {
   /** Module name for log identification (e.g., 'variables', 'workers', 'contacts.addresses') */
   module: string;
+
+  /**
+   * Raw database table this module's records live in (e.g. `contact_phone`).
+   * Required: every logged mutation maintains an `entity_metadata` row, and
+   * nothing else in the system maps a module name to a table. A method that
+   * writes a different table overrides it with its own `table`.
+   *
+   * A resolver, for the rare module (the options tables) whose records live in
+   * a table named by the call itself.
+   */
+  table: EntityTableResolver<T>;
+
+  /**
+   * Raw database table the host entity lives in — see
+   * `MethodLoggingConfig.hostTable`. Module-level default; per-method values
+   * still win.
+   */
+  hostTable?: EntityTableResolver<T>;
+
+  /**
+   * Module-level default for `MethodLoggingConfig.metadataMode`. Per-method
+   * values still win.
+   *
+   * The reason to set `'none'` here is a module whose rows are not entities in
+   * this sense at all — the session store, whose key is a cookie id rather
+   * than a record id. Declaring it once beats repeating it per method and
+   * says the exemption belongs to the table.
+   */
+  metadataMode?: EntityMetadataMode;
+
+  /** Module-level default for when metadata maintenance runs. */
+  metadataTiming?: EntityMetadataTiming;
 
   /** Per-method logging configurations */
   methods: {
@@ -223,6 +412,14 @@ export interface DefineMethodConfig<T> extends Partial<MethodLoggingConfig<T>> {
  */
 export interface DefineLoggingConfigOptions<T> {
   module: string;
+  /** Raw database table this module's records live in — see `StorageLoggingConfig.table`. */
+  table: EntityTableResolver<T>;
+  /** Raw database table the host entity lives in — see `MethodLoggingConfig.hostTable`. */
+  hostTable?: EntityTableResolver<T>;
+  /** Module-level default for the metadata operation type. */
+  metadataMode?: EntityMetadataMode;
+  /** Module-level default for when metadata maintenance runs. */
+  metadataTiming?: EntityMetadataTiming;
   /** Module-level state descriptor. Only `state.key` is meaningful here. */
   state?: StateDescriptor;
   getter?: string;
@@ -244,6 +441,10 @@ export function defineLoggingConfig<T>(
   }
   return {
     module: opts.module,
+    table: opts.table,
+    hostTable: opts.hostTable,
+    metadataMode: opts.metadataMode,
+    metadataTiming: opts.metadataTiming,
     useDefaults: true,
     state: opts.state,
     getter: opts.getter,
@@ -259,6 +460,26 @@ interface ResolvedHooks {
   before?: MethodLoggingConfig<any>['before'];
   after?: MethodLoggingConfig<any>['after'];
   getDescription?: MethodLoggingConfig<any>['getDescription'];
+}
+
+/**
+ * Attach masquerade provenance to an audit-log meta payload. While the acting
+ * request is masquerading, the log's user_id/user_email are the effective
+ * (masqueraded) actor; the real session user is recorded here under
+ * `masqueradedBy` so the audit trail keeps full provenance.
+ */
+function withMasqueradeMeta(
+  details: Record<string, any>,
+  context: ReturnType<typeof getRequestContext>,
+): Record<string, any> {
+  if (!context?.originalUserId) return details;
+  return {
+    ...details,
+    masqueradedBy: {
+      userId: context.originalUserId,
+      userEmail: context.originalUserEmail,
+    },
+  };
 }
 
 function resolveHooks<T extends Record<string, any>>(
@@ -463,6 +684,145 @@ function resolveHooks<T extends Record<string, any>>(
 }
 
 /**
+ * What a method does to its record's provenance when its config does not say.
+ *
+ * Every logged method counts as a modification — the exceptions are named
+ * like CRUD (create / delete) and the bulk family, whose single log entry
+ * describes a batch rather than a record and therefore has no record id to
+ * file provenance under. A bulk path maintains no per-record metadata; that
+ * follows from riding on the log's grain and is accepted.
+ */
+async function resolveMetadataMode(
+  methodKey: string,
+  methodConfig: MethodLoggingConfig<any>,
+  configMode: EntityMetadataMode | undefined,
+  args: any[],
+  result: any,
+  beforeState: any,
+): Promise<EntityMetadataMode> {
+  if (typeof methodConfig.metadataMode === 'function') {
+    return methodConfig.metadataMode(args, result, beforeState);
+  }
+  if (methodConfig.metadataMode) return methodConfig.metadataMode;
+  if (configMode) return configMode;
+  if (/^(bulkCreate|createMany|bulkUpdate|updateMany|bulkDelete|deleteMany)/i.test(methodKey)) {
+    return 'none';
+  }
+  const lower = methodKey.toLowerCase();
+  if (lower.startsWith('create')) return 'created';
+  if (lower.startsWith('delete')) return 'deleted';
+  return 'modified';
+}
+
+function resolveMetadataTiming<T>(
+  methodConfig: MethodLoggingConfig<T>,
+  config: StorageLoggingConfig<T>,
+): EntityMetadataTiming {
+  return methodConfig.metadataTiming ?? config.metadataTiming ?? 'afterCommit';
+}
+
+async function resolveTable(
+  resolver: EntityTableResolver | undefined,
+  args: any[],
+  result: any,
+  beforeState: any,
+): Promise<string | undefined> {
+  if (typeof resolver === 'function') return resolver(args, result, beforeState);
+  return resolver;
+}
+
+/**
+ * Maintain the `entity_metadata` rows a logged mutation implies: the record's
+ * own, and — when the log entry names a host — the host's subrecord pair.
+ *
+ * Usually runs deferred, off the caller's transaction. Transactional logging
+ * configs call this from the active save transaction instead; that path is
+ * used when a consumer must capture the exact resulting metadata before the
+ * save returns.
+ */
+async function maintainEntityMetadata(params: {
+  config: StorageLoggingConfig<any>;
+  methodConfig: MethodLoggingConfig<any>;
+  args: any[];
+  result: any;
+  beforeState: any;
+  loggedEntityId: string | undefined;
+  hostEntityId: string | undefined;
+  at: Date;
+  actorId: string | null;
+  metadataMode: EntityMetadataMode;
+}): Promise<void> {
+  const {
+    config,
+    methodConfig,
+    args,
+    result,
+    beforeState,
+    at,
+    actorId,
+    metadataMode,
+  } = params;
+
+  const tableName = metadataMode === 'none'
+    ? undefined
+    : await resolveTable(
+        methodConfig.table ?? config.table,
+        args,
+        result,
+        beforeState,
+      );
+
+  // The log's entity id is only usually the record's own id, so a config may
+  // name a different resolver for provenance purposes.
+  const entityId = methodConfig.metadataEntityId
+    ? await methodConfig.metadataEntityId(args, result, beforeState)
+    : params.loggedEntityId;
+
+  const hostTable = await resolveTable(
+    methodConfig.hostTable ?? config.hostTable,
+    args,
+    result,
+    beforeState,
+  );
+  const hostEntityId = params.hostEntityId;
+
+  if (
+    metadataMode !== 'none' &&
+    tableName &&
+    entityId !== undefined &&
+    entityId !== null
+  ) {
+    if (metadataMode === 'deleted') {
+      await entityMetadataStorage.recordDeletion({ tableName, entityId });
+    } else {
+      await entityMetadataStorage.recordMutation({
+        tableName,
+        entityId,
+        at,
+        actorId,
+        created: metadataMode === 'created',
+      });
+    }
+  }
+
+  // Many configs name a record as its own host so that its log entries show
+  // up on its own page. That is not a subrecord change.
+  if (
+    hostTable &&
+    hostEntityId &&
+    hostEntityId !== entityId &&
+    (metadataMode !== 'none' || methodConfig.metadataHostTouch)
+  ) {
+    await entityMetadataStorage.recordSubrecordTouch({
+      tableName: hostTable,
+      entityId: hostEntityId,
+      at,
+      actorId,
+    });
+  }
+}
+
+/**
  * Wraps a storage module with logging middleware
  * 
  * @param storage - The storage instance to wrap (from createXStorage() factory)
@@ -479,6 +839,15 @@ export function withStorageLogging<T extends Record<string, any>>(
   storage: T,
   config: StorageLoggingConfig<T>
 ): T {
+  // Recorded before anything is wrapped, so a module counts as participating
+  // whether or not any of its methods ever run.
+  noteLoggedTable(config.module, config.table);
+  noteLoggedTable(config.module, config.hostTable);
+  for (const methodConfig of Object.values(config.methods)) {
+    noteLoggedTable(config.module, methodConfig?.table);
+    noteLoggedTable(config.module, methodConfig?.hostTable);
+  }
+
   const wrappedStorage: any = {};
 
   for (const key in storage) {
@@ -509,13 +878,26 @@ export function withStorageLogging<T extends Record<string, any>>(
         }
 
         result = await method.apply(storage, args);
+        // Captured here, not in the deferred block below: under load the
+        // deferred work can run appreciably later, and an entity-metadata
+        // stamp claims to be the time the mutation happened. The actor is
+        // captured alongside it — the effective (masquerade-aware) user the
+        // log entry attributes the operation to.
+        const completedAt = new Date();
+        const actorAtCompletion = getRequestContext()?.userId ?? null;
+
+        // Conditional suppression: a method config may declare that only
+        // some successful calls are log-worthy (e.g. upserts that inserted).
+        if (methodConfig.shouldLog && !methodConfig.shouldLog(args, result)) {
+          return result;
+        }
 
         if (hooks.after) {
           afterState = await hooks.after(args, result, storage, beforeState);
         }
 
         const details: Record<string, any> = {
-          args,
+          args: methodConfig.logArgs ? methodConfig.logArgs(args) : args,
         };
 
         if (beforeState !== undefined) {
@@ -534,20 +916,93 @@ export function withStorageLogging<T extends Record<string, any>>(
           details.changes = changes;
         }
 
+        // The log entry and the metadata row name the same record, and the two
+        // are deferred separately, so the lookup is shared: whichever runs
+        // first pays for it, the other reuses the answer.
+        let ids: Promise<{ entityId?: string; hostEntityId?: string }> | undefined;
+        const resolveIds = () =>
+          (ids ??= (async () => ({
+            entityId: hooks.getEntityId
+              ? await hooks.getEntityId(args, result, beforeState)
+              : undefined,
+            hostEntityId: hooks.getHostEntityId
+              ? await hooks.getHostEntityId(args, result, beforeState)
+              : undefined,
+          }))());
+
+        // Entity metadata is normally scheduled by the COMMIT, not by the call. A
+        // storage method can return and its enclosing transaction still roll
+        // back, and this work runs on its own connection — a provenance row
+        // written from here would outlive the mutation that claimed it.
+        // `onAfterCommit` runs the callback straight away when there is no
+        // transaction, and drops it when there is one that rolls back.
+        const metadataMode = await resolveMetadataMode(
+          String(key),
+          methodConfig,
+          config.metadataMode,
+          args,
+          result,
+          beforeState,
+        );
+        const metadataTiming = resolveMetadataTiming(methodConfig, config);
+        const maintain = async () => {
+          const resolved = await resolveIds();
+          await maintainEntityMetadata({
+            config,
+            methodConfig,
+            args,
+            result,
+            beforeState,
+            loggedEntityId: resolved.entityId,
+            hostEntityId: resolved.hostEntityId,
+            at: completedAt,
+            actorId: actorAtCompletion,
+            metadataMode,
+          });
+        };
+
+        if (metadataTiming === 'transactional') {
+          if (isInTransaction()) {
+            await maintain();
+          } else {
+            try {
+              // The wrapped storage call has already committed when there is
+              // no ambient transaction, so this can run immediately without
+              // risking metadata outliving a rolled-back business write.
+              await runOutsideTransaction(maintain);
+            } catch (metadataError) {
+              // Preserve best-effort metadata semantics for standalone calls.
+              console.error('Error maintaining entity metadata:', metadataError);
+            }
+          }
+        } else {
+          onAfterCommit(() => {
+            setImmediate(async () => {
+              try {
+                await runOutsideTransaction(maintain);
+              } catch (metadataError) {
+                // Best effort: metadata never costs the mutation or the log.
+                console.error('Error maintaining entity metadata:', metadataError);
+              }
+            });
+          });
+        }
+
+        // A write the framework performed on its own behalf (see
+        // `withFrameworkWrite`) is provenance, not audit. The metadata row
+        // scheduled above still records that the record changed, and records
+        // it against nobody because the scope cleared the actor; the log
+        // viewer is spared an entry per boot for a self-heal no operator did
+        // or can act on. Failures still log — that path is below.
+        if (isFrameworkWrite()) return result;
+
         // Defer all logging work (including potentially expensive async lookups) to avoid blocking the main operation
         setImmediate(async () => {
           try {
             const context = getRequestContext();
-            
-            // Resolve entity ID asynchronously after the main operation has returned
-            const entityId = hooks.getEntityId
-              ? await hooks.getEntityId(args, result, beforeState)
-              : undefined;
 
-            // Resolve host entity ID asynchronously
-            const hostEntityId = hooks.getHostEntityId
-              ? await hooks.getHostEntityId(args, result, beforeState)
-              : undefined;
+            // Resolved after the main operation has returned
+            const { entityId, hostEntityId } = await resolveIds();
 
             // Resolve description asynchronously
             let description: string;
@@ -570,10 +1025,13 @@ export function withStorageLogging<T extends Record<string, any>>(
               entity_id: entityId,
               host_entity_id: hostEntityId,
               description,
+              // Audit attribution uses the effective actor (the masqueraded
+              // user while masquerading). The real session user, if
+              // different, is recorded in meta.masqueradedBy below.
               user_id: context?.userId,
               user_email: context?.userEmail,
               ip_address: context?.ipAddress,
-              meta: details, // Nest details under 'meta' to match JSONB column
+              meta: withMasqueradeMeta(details, context), // Nest details under 'meta' to match JSONB column
             });
           } catch (loggingError) {
             // Don't let logging errors affect the main operation - just log the error
@@ -586,7 +1044,7 @@ export function withStorageLogging<T extends Record<string, any>>(
         error = err;
 
         const details: Record<string, any> = {
-          args,
+          args: methodConfig.logArgs ? methodConfig.logArgs(args) : args,
           error: error instanceof Error ? {
             message: error.message,
             stack: error.stack,
@@ -621,10 +1079,13 @@ export function withStorageLogging<T extends Record<string, any>>(
               entity_id: entityId,
               host_entity_id: hostEntityId,
               description,
+              // Audit attribution uses the effective actor (the masqueraded
+              // user while masquerading). The real session user, if
+              // different, is recorded in meta.masqueradedBy below.
               user_id: context?.userId,
               user_email: context?.userEmail,
               ip_address: context?.ipAddress,
-              meta: details, // Nest details under 'meta' to match JSONB column
+              meta: withMasqueradeMeta(details, context), // Nest details under 'meta' to match JSONB column
             });
           } catch (loggingError) {
             // Don't let logging errors affect error handling - just log it

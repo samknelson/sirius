@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Plus, Trash2, Loader2, AlertTriangle, Download, Search, X, Map, Pencil, Upload, CheckCircle2, Lightbulb, Edit2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useForm } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -270,7 +270,7 @@ export default function BtuEmployerMapListPage() {
     onError: (error: any) => {
       toast({
         title: "Create Failed",
-        description: error?.message || "Failed to create record.",
+        description: getApiErrorMessage(error, "Failed to create record."),
         variant: "destructive",
       });
     },
@@ -293,7 +293,7 @@ export default function BtuEmployerMapListPage() {
     onError: (error: any) => {
       toast({
         title: "Update Failed",
-        description: error?.message || "Failed to update record.",
+        description: getApiErrorMessage(error, "Failed to update record."),
         variant: "destructive",
       });
     },
@@ -315,7 +315,7 @@ export default function BtuEmployerMapListPage() {
     onError: (error: any) => {
       toast({
         title: "Delete Failed",
-        description: error?.message || "Failed to delete record.",
+        description: getApiErrorMessage(error, "Failed to delete record."),
         variant: "destructive",
       });
     },
@@ -345,7 +345,7 @@ export default function BtuEmployerMapListPage() {
     onError: (error: any) => {
       toast({
         title: "Import Failed",
-        description: error?.message || "Failed to import records.",
+        description: getApiErrorMessage(error, "Failed to import records."),
         variant: "destructive",
       });
     },
@@ -476,7 +476,7 @@ export default function BtuEmployerMapListPage() {
     onError: (error: Error) => {
       toast({
         title: "Bulk Update Failed",
-        description: error.message,
+        description: getApiErrorMessage(error, "An unexpected error occurred"),
         variant: "destructive",
       });
     },

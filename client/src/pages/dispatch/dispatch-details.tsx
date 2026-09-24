@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { format } from "date-fns";
+import { format } from "@/lib/date-format";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { DispatchLayout, useDispatchLayout } from "@/components/layouts/DispatchLayout";
@@ -29,7 +29,8 @@ import {
   ExternalLink, CheckCircle, XCircle, Pause, LogOut, Send, RotateCcw, Loader2,
   type LucideIcon,
 } from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage, getEligibilityFailures } from "@/lib/queryClient";
+import { EligibilityFailureList } from "@/components/dispatch/EligibilityFailureList";
 import { useToast } from "@/hooks/use-toast";
 import type { DispatchStatus } from "@shared/schema";
 import type { CommSummary } from "../../../../server/storage/dispatch/dispatches";
@@ -185,9 +186,18 @@ function StatusTransitionActions({ dispatchId, currentStatus }: { dispatchId: st
       setConfirmingStatus(null);
     },
     onError: (err: any) => {
+      const failures = getEligibilityFailures(err);
       toast({
-        title: "Failed to update status",
-        description: err?.message || "An error occurred while updating the dispatch status.",
+        title: failures.length > 0 ? "Worker not eligible" : "Failed to update status",
+        description:
+          failures.length > 0 ? (
+            <EligibilityFailureList
+              intro="This dispatch can't be accepted because the worker fails these eligibility criteria:"
+              failures={failures}
+            />
+          ) : (
+            getApiErrorMessage(err, "An error occurred while updating the dispatch status.")
+          ),
         variant: "destructive",
       });
       setConfirmingStatus(null);
@@ -291,8 +301,26 @@ function StatusTransitionActions({ dispatchId, currentStatus }: { dispatchId: st
   );
 }
 
+interface ComponentConfig {
+  componentId: string;
+  enabled: boolean;
+}
+
 function DispatchDetailsContent() {
   const { dispatch } = useDispatchLayout();
+
+  const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
+    queryKey: ["/api/components/config"],
+  });
+
+  const facilityComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "dispatch.facility" && c.enabled,
+  );
+
+  const { data: jobFacility } = useQuery<{ facilityId: string; facility?: { id: string; name: string } | null } | null>({
+    queryKey: ["/api/dispatch-jobs", dispatch.jobId, "facility"],
+    enabled: facilityComponentEnabled && !!dispatch.jobId,
+  });
 
   const workerName = dispatch.worker?.contact
     ? `${dispatch.worker.contact.given || ''} ${dispatch.worker.contact.family || ''}`.trim() || dispatch.worker.contact.displayName
@@ -313,9 +341,20 @@ function DispatchDetailsContent() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Badge className={statusColors[dispatch.status] || statusColors.pending} data-testid="badge-dispatch-status">
-              {formatStatus(dispatch.status)}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge className={statusColors[dispatch.status] || statusColors.pending} data-testid="badge-dispatch-status">
+                {formatStatus(dispatch.status)}
+              </Badge>
+              {dispatch.isPrimary ? (
+                <Badge variant="outline" className="border-primary text-primary" data-testid="badge-dispatch-primary">
+                  Primary
+                </Badge>
+              ) : (
+                <span className="text-xs text-muted-foreground" data-testid="text-dispatch-secondary">
+                  Secondary
+                </span>
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -364,6 +403,11 @@ function DispatchDetailsContent() {
                 {dispatch.job.payRate != null && (
                   <p className="text-sm text-muted-foreground" data-testid="text-pay-rate">
                     Pay Rate: ${parseFloat(dispatch.job.payRate).toFixed(2)}
+                  </p>
+                )}
+                {facilityComponentEnabled && jobFacility?.facility?.name && (
+                  <p className="text-sm text-muted-foreground" data-testid="text-job-facility">
+                    Facility: {jobFacility.facility.name}
                   </p>
                 )}
               </div>

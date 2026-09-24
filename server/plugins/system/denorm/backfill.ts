@@ -50,9 +50,10 @@ export interface BackfillAllOptions {
  * enabled):
  *
  *   1. Enqueue: if the plugin implements `backfill`, ask it for the entity ids
- *      missing a denorm row and enqueue them as `stale` via
- *      `storage.denorm.insertStaleBatch` (which skips rows that already exist,
- *      so the sweep is idempotent and never clobbers an existing row).
+ *      needing (re)compute — typically ids missing a denorm row, but a plugin
+ *      may also return live invariant violators — and enqueue them as `stale`
+ *      via `storage.denorm.insertStaleBatch` (idempotent upsert: existing rows
+ *      are re-marked stale so violators with an old computed row re-enqueue).
  *   2. Widow cleanup: if the plugin implements `findWidows`, ask it for the
  *      entity ids whose denorm row has no surviving entity and delete those rows
  *      via `storage.denorm.deleteByEntityIdsForConfig` (dependent payload rows
@@ -105,18 +106,18 @@ export async function backfillAllDenorm(
 
       let enqueued = 0;
       if (plugin.backfill) {
-        const missingIds = await plugin.backfill(config.id, limit);
-        if (missingIds.length > 0) {
+        const staleIds = await plugin.backfill(config.id, limit);
+        if (staleIds.length > 0) {
           if (mode === "live") {
             enqueued = await storage.denorm.insertStaleBatch(
-              missingIds.map((entityId) => ({
+              staleIds.map((entityId) => ({
                 entityId,
                 entityType: plugin.entityType,
                 configId: config.id,
               })),
             );
           } else {
-            enqueued = missingIds.length;
+            enqueued = staleIds.length;
           }
         }
       }

@@ -21,7 +21,7 @@ export const phoneValidateOptional = createAsyncStorageValidator<{ phoneNumber: 
       return { ok: true, value: { phoneNumber: null } };
     }
     
-    const validationResult = await phoneValidationService.validateAndFormat(data.phoneNumber);
+    const validationResult = await phoneValidationService.validateAndFormat(data.phoneNumber, { revalidate: 'never' });
     if (!validationResult.isValid) {
       errors.push({
         field: 'phoneNumber',
@@ -51,7 +51,7 @@ export const phoneValidateRequired = createAsyncStorageValidator<{ phoneNumber: 
       return { ok: false, errors };
     }
     
-    const validationResult = await phoneValidationService.validateAndFormat(data.phoneNumber);
+    const validationResult = await phoneValidationService.validateAndFormat(data.phoneNumber, { revalidate: 'never' });
     if (!validationResult.isValid) {
       errors.push({
         field: 'phoneNumber',
@@ -96,7 +96,26 @@ export interface CommStorage {
   getCommsByContactWithDetails(contactId: string): Promise<CommWithDetails[]>;
   getCommWithSms(id: string): Promise<CommWithSms | undefined>;
   getCommWithDetails(id: string): Promise<CommWithDetails | undefined>;
-  createComm(data: InsertComm): Promise<Comm>;
+  /**
+   * The communication row whose send key was already claimed, if any.
+   *
+   * READ-ONLY OPTIMIZATION, NOT A GUARANTEE. It takes no lock, so two callers
+   * asking at the same time can both be told "not yet". The guarantee is the
+   * conflict-tolerant insert in {@link CommStorage.createComm}; this exists
+   * only so a caller can skip composing a message or spending a rate-limit
+   * budget on a send that is going to be refused anyway.
+   */
+  getCommBySendKey(medium: string, contactId: string, sendKey: string): Promise<Comm | undefined>;
+  /**
+   * Insert a communication row, claiming its send key if it has one.
+   *
+   * Returns `undefined` — and writes nothing — when the key was already
+   * claimed for this (medium, contact). Callers must abandon the send in that
+   * case: the message has already gone out, and nothing may be handed to the
+   * provider a second time. A row with no key (or a blank one, which is
+   * trimmed to absent here) can never lose and always comes back.
+   */
+  createComm(data: InsertComm): Promise<Comm | undefined>;
   updateComm(id: string, data: Partial<InsertComm>): Promise<Comm | undefined>;
   updateWithTags(
     id: string,
@@ -109,6 +128,7 @@ export interface CommStorage {
 
 export const commLoggingConfig: StorageLoggingConfig<CommStorage> = {
   module: 'comm',
+  table: 'comm',
   methods: {
     createComm: { enabled: true },
     updateComm: {
@@ -273,10 +293,42 @@ export function createCommStorage(
       return { ...c, ...base, tags };
     },
 
-    async createComm(data: InsertComm): Promise<Comm> {
+    async getCommBySendKey(medium: string, contactId: string, sendKey: string): Promise<Comm | undefined> {
+      const trimmed = sendKey.trim();
+      if (!trimmed) return undefined;
       const client = getClient();
-      const [result] = await client.insert(comm).values(data).returning();
-      return result;
+      const [result] = await client
+        .select()
+        .from(comm)
+        .where(and(eq(comm.medium, medium), eq(comm.contactId, contactId), eq(comm.sendKey, trimmed)));
+      return result || undefined;
+    },
+
+    async createComm(data: InsertComm): Promise<Comm | undefined> {
+      const client = getClient();
+
+      // The one insert boundary for a communication row, and therefore the one
+      // place a send key is normalized. A blank key is no key: an empty string
+      // is a real value to the unique constraint, so leaving it through would
+      // make two unrelated un-keyed sends collide with each other.
+      const sendKey = typeof data.sendKey === 'string' ? data.sendKey.trim() : data.sendKey;
+      const values = { ...data, sendKey: sendKey ? sendKey : null };
+
+      if (!values.sendKey) {
+        const [result] = await client.insert(comm).values(values).returning();
+        return result;
+      }
+
+      // The insert IS the claim. Losing the race must not raise: inside a
+      // Postgres transaction a unique violation aborts the whole transaction,
+      // so the caller could not recover from a catch even if it wanted to.
+      // Nothing coming back means someone else already sent this message.
+      const [result] = await client
+        .insert(comm)
+        .values(values)
+        .onConflictDoNothing({ target: [comm.medium, comm.contactId, comm.sendKey] })
+        .returning();
+      return result || undefined;
     },
 
     async updateComm(id: string, data: Partial<InsertComm>): Promise<Comm | undefined> {
@@ -397,6 +449,14 @@ export function createCommSmsStorage(): CommSmsStorage {
 
 export interface CommSmsOptinStorage {
   getSmsOptinByPhoneNumber(phoneNumber: string): Promise<CommSmsOptin | undefined>;
+  /**
+   * Opt-in rows for many numbers in one query, keyed by the phone number AS
+   * PASSED IN (callers hold un-normalized contact numbers and need to map the
+   * answer back to them). Numbers with no row are absent from the map.
+   * Normalization matches {@link CommSmsOptinStorage.getSmsOptinByPhoneNumber}
+   * so a bulk pre-check and a single send agree on the same row.
+   */
+  getSmsOptinsByPhoneNumbers(phoneNumbers: string[]): Promise<Map<string, CommSmsOptin>>;
   getSmsOptinByPublicToken(token: string): Promise<CommSmsOptin | undefined>;
   getSmsOptin(id: string): Promise<CommSmsOptin | undefined>;
   createSmsOptin(data: InsertCommSmsOptin): Promise<CommSmsOptin>;
@@ -411,11 +471,39 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
   return {
     async getSmsOptinByPhoneNumber(phoneNumber: string): Promise<CommSmsOptin | undefined> {
       const client = getClient();
-      const validationResult = await phoneValidationService.validateAndFormat(phoneNumber);
+      const validationResult = await phoneValidationService.validateAndFormat(phoneNumber, { revalidate: 'never' });
       const normalizedPhone = validationResult.e164Format || phoneNumber;
       
       const [result] = await client.select().from(commSmsOptin).where(eq(commSmsOptin.phoneNumber, normalizedPhone));
       return result || undefined;
+    },
+
+    async getSmsOptinsByPhoneNumbers(phoneNumbers: string[]): Promise<Map<string, CommSmsOptin>> {
+      const byInput = new Map<string, CommSmsOptin>();
+      const unique = Array.from(new Set(phoneNumbers.filter((p) => !!p)));
+      if (unique.length === 0) return byInput;
+
+      const client = getClient();
+      // Normalize each distinct number once, then read every matching row in a
+      // single query — the same normalization a single lookup does, so both
+      // resolve to the same opt-in row.
+      const normalizedByInput = new Map<string, string>();
+      for (const phoneNumber of unique) {
+        const validationResult = await phoneValidationService.validateAndFormat(phoneNumber, { revalidate: 'never' });
+        normalizedByInput.set(phoneNumber, validationResult.e164Format || phoneNumber);
+      }
+
+      const rows = await client
+        .select()
+        .from(commSmsOptin)
+        .where(inArray(commSmsOptin.phoneNumber, Array.from(new Set(normalizedByInput.values()))));
+
+      const byNormalized = new Map(rows.map((row) => [row.phoneNumber, row]));
+      for (const [input, normalized] of normalizedByInput) {
+        const row = byNormalized.get(normalized);
+        if (row) byInput.set(input, row);
+      }
+      return byInput;
     },
 
     async getSmsOptinByPublicToken(token: string): Promise<CommSmsOptin | undefined> {
@@ -456,7 +544,7 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
 
     async updateSmsOptinByPhoneNumber(phoneNumber: string, data: Partial<InsertCommSmsOptin>): Promise<CommSmsOptin | undefined> {
       const client = getClient();
-      const validationResult = await phoneValidationService.validateAndFormat(phoneNumber);
+      const validationResult = await phoneValidationService.validateAndFormat(phoneNumber, { revalidate: 'never' });
       const normalizedPhone = validationResult.e164Format || phoneNumber;
 
       let updateData = { ...data };
@@ -484,7 +572,7 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
 
     async getOrCreatePublicToken(phoneNumber: string): Promise<string> {
       const client = getClient();
-      const validationResult = await phoneValidationService.validateAndFormat(phoneNumber);
+      const validationResult = await phoneValidationService.validateAndFormat(phoneNumber, { revalidate: 'never' });
       const normalizedPhone = validationResult.e164Format || phoneNumber;
       
       const [existing] = await client.select().from(commSmsOptin).where(eq(commSmsOptin.phoneNumber, normalizedPhone));

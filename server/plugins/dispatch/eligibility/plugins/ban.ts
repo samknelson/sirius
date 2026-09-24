@@ -18,6 +18,7 @@ export const dispatchBanPlugin: DispatchEligPlugin = {
       category: BAN_CATEGORY,
       type: "not_exists_category",
       value: "dispatch:*",
+      failureMessage: "Worker has an active dispatch ban",
     };
   },
 };

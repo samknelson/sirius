@@ -30,6 +30,8 @@ const workerMsDenormPlugin: DenormPlugin<WorkerMsDenorm> = {
     singleton: true,
   },
   entityType: "worker",
+  reads: ["workers", "workerMsh"],
+  writes: [{ storage: "workerMshDenorm", soleWriter: true }],
   eventHandlers: [
     {
       event: EventType.WORKER_MSH_SAVED,

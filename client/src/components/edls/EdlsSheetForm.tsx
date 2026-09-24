@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -37,6 +38,20 @@ interface SupervisorContext {
 
 type CrewInput = Omit<InsertEdlsCrew, "sheetId"> & { id?: string };
 
+/**
+ * Radix's dialog scroll lock listens for wheel/touchmove on `document` and
+ * cancels anything that did not originate inside the dialog's own subtree.
+ * This picker's option list renders in a portal on `document.body`, so inside
+ * the create-sheet dialog the list is treated as "outside" and the wheel does
+ * nothing. Keeping the event off `document` lets the list scroll natively;
+ * outside a dialog no such listener exists, so other surfaces are unchanged.
+ */
+const keepScrollInsideList = (
+  event: React.WheelEvent<HTMLElement> | React.TouchEvent<HTMLElement>
+) => {
+  event.stopPropagation();
+};
+
 interface DepartmentOption {
   id: string;
   name: string;
@@ -49,6 +64,11 @@ interface TaskOption {
 }
 
 interface JobGroupOption {
+  id: string;
+  name: string;
+}
+
+interface ShowStatusOption {
   id: string;
   name: string;
 }
@@ -74,6 +94,8 @@ export interface SheetFormData {
   assignee: string;
   jobGroupId: string;
   facilityId: string;
+  showStatusId: string;
+  notes: string;
   crews: CrewInput[];
 }
 
@@ -124,6 +146,10 @@ export function EdlsSheetForm({
     queryKey: ["/api/edls/tasks/options"],
   });
 
+  const { data: showStatusOptions = [], isLoading: showStatusesLoading } = useQuery<ShowStatusOption[]>({
+    queryKey: ["/api/options/edls-show-status"],
+  });
+
   const [facilitySearch, setFacilitySearch] = useState("");
   const { data: facilitiesData, isLoading: facilitiesLoading } = useQuery<PaginatedFacilities>({
     queryKey: ["/api/facilities", { search: facilitySearch, picker: true }],
@@ -148,6 +174,8 @@ export function EdlsSheetForm({
         assignee: initialData.sheet.assignee || "",
         jobGroupId: initialData.sheet.jobGroupId || "",
         facilityId: initialData.sheet.facilityId || "",
+        showStatusId: initialData.sheet.showStatusId || "",
+        notes: initialData.sheet.notes || "",
         crews: initialData.crews.map((c) => ({
           id: c.id,
           title: c.title,
@@ -170,6 +198,8 @@ export function EdlsSheetForm({
       assignee: "",
       jobGroupId: "",
       facilityId: "",
+      showStatusId: "",
+      notes: "",
       crews: [],
     };
   });
@@ -275,6 +305,8 @@ export function EdlsSheetForm({
       supervisor: effectiveSupervisor,
       jobGroupId: formData.jobGroupId || "",
       facilityId: formData.facilityId || "",
+      showStatusId: formData.showStatusId || "",
+      notes: formData.notes || "",
     });
   };
 
@@ -282,7 +314,7 @@ export function EdlsSheetForm({
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="title">Title *</Label>
+          <Label htmlFor="title">Job # *</Label>
           <Input
             id="title"
             data-testid="input-title"
@@ -290,7 +322,7 @@ export function EdlsSheetForm({
             onChange={(e) =>
               setFormData({ ...formData, title: e.target.value })
             }
-            placeholder="e.g., Morning Shift - January 15"
+            placeholder="e.g., 12345"
           />
         </div>
         {!initialData && (
@@ -467,6 +499,32 @@ export function EdlsSheetForm({
             </Select>
           )}
         </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="showStatus">Show Status</Label>
+          {showStatusesLoading ? (
+            <Skeleton className="h-10 w-full" />
+          ) : (
+            <Select
+              value={formData.showStatusId || "__none__"}
+              onValueChange={(value) =>
+                setFormData({ ...formData, showStatusId: value === "__none__" ? "" : value })
+              }
+            >
+              <SelectTrigger data-testid="select-show-status">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None</SelectItem>
+                {showStatusOptions.map((option) => (
+                  <SelectItem key={option.id} value={option.id}>
+                    {option.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
         <div className="space-y-2">
           <Label htmlFor="facility">Facility</Label>
           <Popover>
@@ -513,7 +571,10 @@ export function EdlsSheetForm({
                   onValueChange={setFacilitySearch}
                   data-testid="input-facility-search"
                 />
-                <CommandList>
+                <CommandList
+                  onWheel={keepScrollInsideList}
+                  onTouchMove={keepScrollInsideList}
+                >
                   <CommandEmpty>
                     {facilitiesLoading ? "Loading..." : "No facilities found."}
                   </CommandEmpty>
@@ -541,6 +602,19 @@ export function EdlsSheetForm({
               </Command>
             </PopoverContent>
           </Popover>
+        </div>
+        <div className="space-y-2 md:col-span-2">
+          <Label htmlFor="notes">Notes</Label>
+          <Textarea
+            id="notes"
+            data-testid="input-notes"
+            value={formData.notes}
+            onChange={(e) =>
+              setFormData({ ...formData, notes: e.target.value })
+            }
+            rows={4}
+            placeholder="Optional notes about this sheet"
+          />
         </div>
       </div>
 

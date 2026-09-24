@@ -1,13 +1,28 @@
-import { pgTable, varchar, date, integer, time, jsonb, unique, text, boolean } from "drizzle-orm/pg-core";
+import { pgTable, varchar, date, integer, time, jsonb, unique, text, boolean, timestamp } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { employers, workers, users, optionsDepartment } from "../../schema";
+import { employers, workers, users, optionsDepartment, comm } from "../../schema";
 import { dispatchJobGroups } from "../dispatch/job-group-schema";
 import { facilities } from "../facility/schema";
 
 export const edlsSheetStatusEnum = ["draft", "request", "lock", "trash", "reserved"] as const;
 export type EdlsSheetStatus = typeof edlsSheetStatusEnum[number];
+
+export const optionsEdlsShowStatus = pgTable("options_edls_show_status", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  siriusId: varchar("sirius_id", { length: 255 }).unique("options_edls_show_status_sirius_id_unique"),
+  sequence: integer("sequence").notNull().default(0),
+  data: jsonb("data"),
+});
+
+export const insertEdlsShowStatusSchema = createInsertSchema(optionsEdlsShowStatus).omit({
+  id: true,
+});
+
+export type EdlsShowStatus = typeof optionsEdlsShowStatus.$inferSelect;
+export type InsertEdlsShowStatus = z.infer<typeof insertEdlsShowStatusSchema>;
 
 export const edlsSheets = pgTable("edls_sheets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -21,15 +36,48 @@ export const edlsSheets = pgTable("edls_sheets", {
   assignee: varchar("assignee").references(() => users.id, { onDelete: 'set null' }),
   jobGroupId: varchar("job_group_id").references(() => dispatchJobGroups.id, { onDelete: 'set null' }),
   facilityId: varchar("facility_id").references(() => facilities.id, { onDelete: 'set null' }),
+  showStatusId: varchar("show_status_id").references(() => optionsEdlsShowStatus.id, { onDelete: 'set null' }),
+  notes: text("notes"),
+  /**
+   * CHANGE WATERMARK, not provenance — business data that happens to be a
+   * timestamp, and a KEEP entry in `docs/provenance-columns.md` for that
+   * reason. Behaviour reads it: the sheet list and the Freeman passport export
+   * filter "changed since" on it, the passport export pages in its order, and
+   * the EDLS worker SMS notifier uses each save's stamp as that save's
+   * identity when it looks back through the sheet's snapshots.
+   *
+   * Refreshed by the storage layer on every create and update — from the
+   * DATABASE clock, never `new Date()` — so no caller can forget it and no two
+   * app hosts can order the same sheet's saves differently.
+   *
+   * WHO made the sheet and WHEN is a separate question, answered for every
+   * logged table by `entity_metadata`; this column is not that answer and the
+   * table no longer carries one of its own.
+   */
+  changed: timestamp("changed").notNull().default(sql`now()`),
+  /**
+   * Per-sheet opt-in for the worker-facing EDLS notifications. Off unless
+   * somebody turns it on for this sheet — including every sheet that already
+   * existed when the column was added — so a sheet reaching a notifier's
+   * trigger status texts nobody by default. Written only by the dedicated
+   * toggle endpoint, never by the general sheet create/update routes.
+   */
+  notificationsEnabled: boolean("notifications_enabled").notNull().default(false),
   data: jsonb("data"),
 });
 
+/**
+ * `changed` is a storage-owned output: it is omitted here so a request body
+ * can never set the watermark (zod strips unknown keys).
+ */
 export const insertEdlsSheetsSchema = createInsertSchema(edlsSheets).omit({
   id: true,
+  changed: true,
 }).extend({
   assignee: z.string().nullish(),
   jobGroupId: z.string().nullish(),
   facilityId: z.string().nullish(),
+  showStatusId: z.string().nullish(),
 });
 
 export type EdlsSheet = typeof edlsSheets.$inferSelect;
@@ -61,13 +109,64 @@ export const edlsAssignments = pgTable("edls_assignments", {
   ymd: date("ymd").notNull(),
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
   crewId: varchar("crew_id").notNull().references(() => edlsCrews.id, { onDelete: 'cascade' }),
+  /**
+   * RECEIPT for the message telling this worker about their assignment: it
+   * means they have been told about the assignment AS IT STOOD when that
+   * message went out. Set by whatever sent the message (today the EDLS sheet
+   * worker SMS notifier), never from a request body.
+   *
+   * It is not merely provenance — it GATES SENDING. A worker holding one is
+   * not texted again; any change to the assignment's values voids it, so the
+   * sheet's next arrival at a trigger status texts exactly the workers whose
+   * rows changed. A failed or undelivered message still counts as told: the
+   * receipt records that the attempt was made, and a resend is forced by
+   * editing the row, not by retrying automatically.
+   *
+   * Deleting the comm row clears the link rather than removing the
+   * assignment, so purging the comm log never destroys scheduling data —
+   * though it does hand the worker back to the next send, since the receipt
+   * is gone with it.
+   */
+  commId: varchar("comm_id").references(() => comm.id, { onDelete: 'set null' }),
+  /**
+   * The WORKER'S OWN ANSWER to this assignment, given from the public
+   * schedule page: null means they have not answered yet, true accepted,
+   * false declined. Written only by its own storage operation
+   * (`setAccepted`), never from a general update or a request body — nobody
+   * answers on the worker's behalf, and staff cannot set, change, or clear
+   * it.
+   *
+   * One answer only: the write is conditional on the row still being
+   * unanswered, so a stale tab, a double tap, or a replayed request is
+   * refused rather than overwriting the first answer.
+   *
+   * Answering is NOT a change to the assignment, so it leaves the receipt
+   * (`commId`) alone — otherwise every acceptance would re-text the worker at
+   * the sheet's next notifying transition. The reverse does apply: an edit to
+   * the assignment's values voids the receipt AND clears the answer, because
+   * the worker has neither been told about the assignment it just became nor
+   * agreed to it, and is asked again.
+   */
+  accepted: boolean("accepted"),
   data: jsonb("data"),
 }, (table) => [
   unique("edls_assignments_ymd_worker_id_unique").on(table.ymd, table.workerId),
 ]);
 
+/**
+ * `commId` is omitted: the link to a communication record is provenance owned
+ * by whatever sends the message, not assignment input a caller may set. A
+ * future writer gets a dedicated storage operation rather than accepting it
+ * from a request body.
+ *
+ * `accepted` is omitted for the same reason from the other side: it is the
+ * worker's own answer, set through `setAccepted` alone, so an assignment is
+ * always created unanswered.
+ */
 export const insertEdlsAssignmentsSchema = createInsertSchema(edlsAssignments).omit({
   id: true,
+  commId: true,
+  accepted: true,
 });
 
 export type EdlsAssignment = typeof edlsAssignments.$inferSelect;

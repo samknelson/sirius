@@ -9,10 +9,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Plus, Key, Copy, Check, Trash2, Ban, RotateCcw } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { WsClientLayout } from "@/components/layouts/WsClientLayout";
+import { RecordCreatedStamp } from "@/components/shared/RecordCreatedStamp";
+import { RecordMetadataAccess } from "@/components/shared/RecordMetadataAccess";
+import type { RecordMetadataStamp } from "@/components/shared/RecordHistoryDialog";
 
 interface CredentialWithoutHash {
   id: string;
@@ -22,7 +25,8 @@ interface CredentialWithoutHash {
   isActive: boolean;
   expiresAt: string | null;
   lastUsedAt: string | null;
-  createdAt: string;
+  /** When the credential was issued and by whom, from its record history. */
+  created: RecordMetadataStamp;
 }
 
 interface NewCredentialResponse {
@@ -31,7 +35,6 @@ interface NewCredentialResponse {
   clientSecret: string;
   label: string | null;
   expiresAt: string | null;
-  createdAt: string;
   message: string;
 }
 
@@ -70,7 +73,7 @@ function CredentialsContent() {
       setCredForm({ label: "" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to create credential", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to create credential", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 
@@ -81,7 +84,7 @@ function CredentialsContent() {
       toast({ title: "Credential deactivated", description: "The credential can no longer be used." });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to deactivate credential", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to deactivate credential", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 
@@ -92,7 +95,7 @@ function CredentialsContent() {
       toast({ title: "Credential reactivated", description: "The credential is now active." });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to reactivate credential", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to reactivate credential", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 
@@ -104,7 +107,7 @@ function CredentialsContent() {
       setDeleteCredTarget(null);
     },
     onError: (error: any) => {
-      toast({ title: "Failed to delete credential", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to delete credential", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 
@@ -154,7 +157,9 @@ function CredentialsContent() {
                   <TableHead>Client Key</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Last Used</TableHead>
-                  <TableHead>Created</TableHead>
+                    <RecordMetadataAccess adminBypass>
+                      <TableHead>Created</TableHead>
+                    </RecordMetadataAccess>
                   <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -179,9 +184,11 @@ function CredentialsContent() {
                     <TableCell className="text-sm" data-testid={`text-cred-used-${cred.id}`}>
                       {formatDate(cred.lastUsedAt)}
                     </TableCell>
-                    <TableCell className="text-sm" data-testid={`text-cred-created-${cred.id}`}>
-                      {formatDate(cred.createdAt)}
-                    </TableCell>
+                    <RecordMetadataAccess adminBypass>
+                      <TableCell className="text-sm">
+                        <RecordCreatedStamp stamp={cred.created} testId={`text-cred-created-${cred.id}`} />
+                      </TableCell>
+                    </RecordMetadataAccess>
                     <TableCell>
                       <div className="flex items-center gap-1">
                         {cred.isActive ? (

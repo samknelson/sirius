@@ -8,9 +8,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { CalendarOff, Play, Square, Pencil, Trash2, Save, X } from "lucide-react";
 import type { WorkerTos } from "@shared/schema";
+import { formatDurationBetween } from "@shared/utils";
 
 function toDatetimeLocal(value: Date | string | null | undefined): string {
   if (!value) return "";
@@ -28,19 +29,7 @@ function formatDisplay(value: Date | string | null | undefined): string {
 }
 
 function formatDuration(start: Date | string, end: Date | string | null): string {
-  const s = typeof start === "string" ? new Date(start) : start;
-  const e = end ? (typeof end === "string" ? new Date(end) : end) : new Date();
-  const ms = e.getTime() - s.getTime();
-  if (ms < 0) return "—";
-  const minutes = Math.floor(ms / 60000);
-  const days = Math.floor(minutes / (60 * 24));
-  const hours = Math.floor((minutes % (60 * 24)) / 60);
-  const mins = minutes % 60;
-  const parts: string[] = [];
-  if (days) parts.push(`${days}d`);
-  if (hours) parts.push(`${hours}h`);
-  if (mins || parts.length === 0) parts.push(`${mins}m`);
-  return parts.join(" ");
+  return formatDurationBetween(start, end) ?? "—";
 }
 
 interface EditState {
@@ -65,7 +54,7 @@ function TosContent() {
   const activeRecord = records.find((r) => r.endDate === null);
 
   const showApiError = (err: unknown, fallback: string) => {
-    const message = err instanceof Error && err.message ? err.message : fallback;
+    const message = getApiErrorMessage(err, fallback);
     toast({ title: "Error", description: message, variant: "destructive" });
   };
 

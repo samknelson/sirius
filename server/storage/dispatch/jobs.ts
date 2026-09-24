@@ -1,5 +1,5 @@
 import { createNoopValidator } from '../utils/validation';
-import { getClient } from '../transaction-context';
+import { getClient, onAfterCommit } from '../transaction-context';
 import { 
   dispatchJobs, 
   dispatches,
@@ -10,11 +10,25 @@ import {
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, SQL, inArray } from "drizzle-orm";
 import { defineLoggingConfig } from "../middleware/logging";
+import { eventBus, EventType } from "../../services/event-bus";
 
 /**
  * Stub validator - add validation logic here when needed
  */
 export const validate = createNoopValidator<InsertDispatchJob, DispatchJob>();
+
+/**
+ * Emit DISPATCH_JOB_SAVED after the surrounding transaction commits (runs
+ * immediately when not in a transaction). Fire-and-forget: listener failures
+ * must never fail the save.
+ */
+function emitJobSaved(jobId: string): void {
+  onAfterCommit(() => {
+    eventBus.emit(EventType.DISPATCH_JOB_SAVED, { jobId }).catch(err => {
+      console.error("Failed to emit DISPATCH_JOB_SAVED event:", err);
+    });
+  });
+}
 
 export interface DispatchJobFilters {
   employerId?: string;
@@ -49,13 +63,19 @@ export interface PaginatedDispatchJobs {
 }
 
 export interface DispatchJobStorage {
-  getAll(): Promise<DispatchJob[]>;
   getPaginated(page: number, limit: number, filters?: DispatchJobFilters): Promise<PaginatedDispatchJobs>;
   get(id: string): Promise<DispatchJob | undefined>;
   getWithRelations(id: string): Promise<DispatchJobWithRelations | undefined>;
   getByEmployer(employerId: string): Promise<DispatchJob[]>;
-  create(job: InsertDispatchJob): Promise<DispatchJob>;
-  update(id: string, job: Partial<InsertDispatchJob>): Promise<DispatchJob | undefined>;
+  /**
+   * `facilityId` (dispatch.facility component) is a first-class optional
+   * field delegated to the dispatchJobFacility child storage AFTER the job
+   * write: a string sets/replaces the link, `null` clears it, `undefined`
+   * leaves it untouched. The job storage contains no facility persistence
+   * logic; a facility failure propagates (the save is not silently partial).
+   */
+  create(job: InsertDispatchJob, facilityId?: string | null): Promise<DispatchJob>;
+  update(id: string, job: Partial<InsertDispatchJob>, facilityId?: string | null): Promise<DispatchJob | undefined>;
   delete(id: string): Promise<boolean>;
 }
 
@@ -70,6 +90,8 @@ async function getJobTypeName(jobTypeId: string | null | undefined): Promise<str
 
 export const dispatchJobLoggingConfig = defineLoggingConfig<DispatchJobStorage>({
   module: 'dispatchJobs',
+  table: 'dispatch_jobs',
+  hostTable: 'employers',
   state: { key: 'job' },
   hostEntityIdField: 'employerId',
   methods: {
@@ -141,13 +163,26 @@ export const dispatchJobLoggingConfig = defineLoggingConfig<DispatchJobStorage>(
   },
 });
 
+/**
+ * Delegate a first-class facilityId to the dispatchJobFacility child storage
+ * (dispatch.facility component). `undefined` = untouched, `null` = clear,
+ * string = set/replace. Errors propagate — a job save must not silently drop
+ * a facility failure. Dynamic import of the storage index avoids the
+ * module-load cycle (index → database → jobs) and goes through the wrapped
+ * (audit-logged) child storage instance.
+ */
+async function applyFacility(jobId: string, facilityId: string | null | undefined): Promise<void> {
+  if (facilityId === undefined) return;
+  const { storage } = await import('../index');
+  if (facilityId === null) {
+    await storage.dispatchJobFacility.clearForJob(jobId);
+  } else {
+    await storage.dispatchJobFacility.setForJob(jobId, facilityId);
+  }
+}
+
 export function createDispatchJobStorage(): DispatchJobStorage {
   return {
-    async getAll(): Promise<DispatchJob[]> {
-      const client = getClient();
-      return client.select().from(dispatchJobs).orderBy(desc(dispatchJobs.createdAt));
-    },
-
     async getPaginated(page: number, limit: number, filters?: DispatchJobFilters): Promise<PaginatedDispatchJobs> {
       const client = getClient();
       const conditions: SQL[] = [];
@@ -301,14 +336,17 @@ export function createDispatchJobStorage(): DispatchJobStorage {
         .orderBy(desc(dispatchJobs.startYmd));
     },
 
-    async create(insertJob: InsertDispatchJob): Promise<DispatchJob> {
+
+    async create(insertJob: InsertDispatchJob, facilityId?: string | null): Promise<DispatchJob> {
       validate.validateOrThrow(insertJob);
       const client = getClient();
       const [job] = await client.insert(dispatchJobs).values(insertJob).returning();
+      await applyFacility(job.id, facilityId);
+      emitJobSaved(job.id);
       return job;
     },
 
-    async update(id: string, jobUpdate: Partial<InsertDispatchJob & { running?: boolean }>): Promise<DispatchJob | undefined> {
+    async update(id: string, jobUpdate: Partial<InsertDispatchJob & { running?: boolean }>, facilityId?: string | null): Promise<DispatchJob | undefined> {
       const client = getClient();
       
       const [existingJob] = await client.select().from(dispatchJobs).where(eq(dispatchJobs.id, id));
@@ -331,6 +369,10 @@ export function createDispatchJobStorage(): DispatchJobStorage {
         .set(updates)
         .where(eq(dispatchJobs.id, id))
         .returning();
+      if (job) {
+        await applyFacility(job.id, facilityId);
+        emitJobSaved(job.id);
+      }
       return job || undefined;
     },
 

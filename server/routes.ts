@@ -8,20 +8,38 @@ import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type WorkerId, type 
 import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
 import { registerVariableRoutes } from "./modules/system/variables";
+import { buildTimeZoneContext } from "./modules/system/timezone";
+import { registerAuthSettingsRoutes } from "./modules/auth-settings";
+import { registerEnvRoutes } from "./modules/system/env";
 import { registerDenormRoutes } from "./modules/system/denorm";
 import { registerContactPostalRoutes } from "./modules/contact-postal";
 import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerCommRoutes } from "./modules/comm";
 import { registerGrievanceRoutes } from "./modules/grievances/grievances";
+import { registerEntityFileContexts } from "./modules/entity-files-contexts";
+import { registerCatalogRoutes } from "./modules/catalogs";
+import { registerEntityFileAreasCatalog } from "./services/entity-files/catalog";
+import { registerEntityNoteAreasCatalog } from "./services/entity-notes/catalog";
+import { registerRecordHistoryAreasCatalog } from "./storage/entity-metadata-record-catalog";
+import { registerOptionsListsCatalog } from "./storage/unified-options-catalog";
+import { registerEntityFileRoutes } from "./modules/entity-files";
+import { registerEntityMetadataRoutes } from "./modules/entity-metadata";
+import { registerRecordGoRoutes } from "./modules/record-go";
+import { wireEntityFilesFileReadAccess } from "./services/entity-files/file-read-access";
+import { initEntityFilesDeleteCleanup } from "./services/entity-files/delete-cleanup";
+import { assertFileContextTablesComplete } from "./storage/entity-files-context-tables";
+import { assertEntityMetadataRecordTablesComplete } from "./storage/entity-metadata-record-tables";
 import { registerGrievanceTimelineTemplateRoutes } from "./modules/grievances/grievance-timeline-templates";
 import { registerEmployerContactRoutes } from "./modules/employers/contacts";
 import { registerTrustBenefitsRoutes } from "./modules/trust/benefits";
 import { registerTrustProvidersRoutes } from "./modules/trust/providers";
 import { registerTrustProviderContactRoutes } from "./modules/trust/provider/contacts";
+import { registerTrustProviderEdiDashboardRoutes } from "./modules/trust/provider-edi-dashboard";
 import { registerConsolidatedOptionsRoutes } from "./modules/options-routes";
 import { getOptionsType } from "./modules/options-registry";
 import { registerWorkerIdsRoutes } from "./modules/workers/ids";
 import { registerAddressValidationRoutes } from "./modules/address-validation";
+import { buildContentDisposition } from "./utils/content-disposition";
 import {
   registerMasqueradeRoutes,
   getEffectiveUser,
@@ -50,19 +68,19 @@ import { registerLogRoutes } from "./modules/system/logs";
 import { registerWorkerWshRoutes } from "./modules/worker-wsh";
 import { registerWorkerMshRoutes } from "./modules/worker-msh";
 import { registerWorkerHoursRoutes } from "./modules/worker-hours";
-import { registerQuickstartRoutes } from "./modules/quickstart";
 import { registerCronJobRoutes } from "./modules/system/cron";
 import { registerEventBusIntrospectRoutes } from "./modules/dev/event-bus-introspect";
+import { registerEbsInspectionRoutes } from "./modules/system/ebs";
+import { registerWcCacheAdminRoutes } from "./modules/system/wc-cache";
 import { registerEligibilityPluginRoutes } from "./modules/eligibility-plugins";
 import { registerTwilioRoutes } from "./modules/twilio";
 import { registerEmailConfigRoutes } from "./modules/email-config";
 import { registerPostalConfigRoutes } from "./modules/postal-config";
-import { registerSiteSettingsRoutes } from "./modules/site-settings";
-import { registerSystemModeRoutes } from "./modules/system/system-mode";
 import { registerBootstrapRoutes } from "./modules/system/bootstrap";
 import { registerBargainingUnitsRoutes } from "./modules/bargaining-units";
 import { registerSftpClientDestinationRoutes } from "./modules/sftp-client-destinations";
-import { registerTrustProviderEdiRoutes } from "./modules/trust/provider/edi";
+import { registerBusinessCalendarRoutes } from "./modules/business-calendars";
+import { registerHelpRoutes } from "./modules/helps";
 import { registerBulkMessageRoutes } from "./modules/bulk/messages";
 import { registerEmployerComplianceRoutes } from "./modules/employer-compliance";
 import { registerEmployerRoutes, registerEmployerLookupRoutes, registerEmployerCountsRoute } from "./modules/employers/employers";
@@ -70,10 +88,9 @@ import { registerEmployerPolicyHistoryRoutes } from "./modules/employers/policy-
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
 import { registerEventNotifierMetaRoutes } from "./modules/event-notifier-meta";
-import { registerDispatchDncConfigRoutes } from "./modules/dispatch/dnc-config";
-import { registerDispatchEbaConfigRoutes } from "./modules/dispatch/eba-config";
-import { registerDispatchSeniorityResetConfigRoutes } from "./modules/dispatch/seniority-reset-config";
-import { registerWorkerBanConfigRoutes } from "./modules/worker-ban-config";
+import { registerTokenStudioRoutes } from "./modules/token-studio";
+import { registerLetterTemplateRoutes } from "./modules/letter-templates";
+import { registerCommComposeRoutes } from "./modules/comm-compose";
 import { registerCardcheckDefinitionsRoutes } from "./modules/cardcheck-definitions";
 import { registerCardchecksRoutes } from "./modules/cardchecks";
 import { registerEsigsRoutes } from "./modules/esigs";
@@ -81,20 +98,29 @@ import { registerSessionRoutes } from "./modules/system/sessions";
 import { registerFloodEventRoutes } from "./modules/system/flood";
 import { registerEventsRoutes } from "./modules/events";
 import { registerDispatchJobsRoutes } from "./modules/dispatch/jobs";
+import { registerDispatchJobEmployerContactsRoutes } from "./modules/dispatch/job-employer-contacts";
 import { registerDispatchJobGroupsRoutes } from "./modules/dispatch/job-groups";
 import { registerFacilityRoutes } from "./modules/facility/facilities";
 import { registerContractRoutes } from "./modules/contract/contract";
 import { registerDispatchesRoutes } from "./modules/dispatch/dispatches";
+import { registerDispatchForeRoutes } from "./modules/dispatch/fore";
+import { registerWorkerDispatchDepartmentRoutes } from "./modules/dispatch/worker-departments";
 import { registerWorkerDispatchStatusRoutes } from "./modules/dispatch/worker-status";
 import { registerWorkerDispatchDncRoutes } from "./modules/dispatch/worker-dnc";
 import { registerWorkerDispatchHfeRoutes } from "./modules/dispatch/worker-hfe";
 import { registerWorkerDispatchEbaRoutes } from "./modules/dispatch/worker-eba";
+import { registerWorkerDispatchAsiRoutes } from "./modules/dispatch/worker-asi";
 import { registerWorkerBansRoutes } from "./modules/worker-bans";
+import { registerEntityNoteContexts } from "./modules/entity-notes-contexts";
+import { registerEntityNotesRoutes } from "./modules/entity-notes";
+import { assertNoteContextTablesComplete } from "./storage/entity-notes-context-tables";
+import { initEntityNotesDeleteCleanup } from "./services/entity-notes/delete-cleanup";
 import { registerWorkerSkillsRoutes } from "./modules/workers/skills";
 import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
 import { registerWorkerTrustElectionsRoutes } from "./modules/trust/elections";
 import { registerTrustBenefitEligibilityExemptionsRoutes } from "./modules/trust/eligibility-exemptions";
 import { registerWorkerTosRoutes } from "./modules/workers/tos";
+import { registerWorkerAatRoutes } from "./modules/workers/aat";
 import { registerWorkerCertificationsRoutes } from "./modules/workers/certifications";
 import { registerWorkerRatingsRoutes } from "./modules/workers/ratings";
 import { requireComponent } from "./modules/components";
@@ -110,21 +136,29 @@ import { registerBaoEchpRoutes } from "./modules/sitespecific/bao/echp";
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
 import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
+import { registerFreemanCrewleadsRoutes } from "./modules/sitespecific/freeman/crewleads";
+import { registerFreemanEdlsMigrateRoutes } from "./modules/sitespecific/freeman/edls-migrate/routes";
+import { registerT631InterviewsRoutes } from "./modules/sitespecific/t631/interviews";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
+import { registerSnapshotsRoutes } from "./modules/snapshots";
 import { registerEdlsTosRoutes } from "./modules/edls/tos";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
 import { registerWorkerEdlsRoutes } from "./modules/edls/workers";
-import { registerWebServiceBundle } from "./modules/webservices";
-import { setupEdlsRoutes, EDLS_BUNDLE_CODE } from "./modules/webservices/edls";
+import { registerEdlsPublicScheduleRoutes } from "./modules/edls/public-schedule";
+import { registerWebServiceDispatcher } from "./modules/webservices";
 import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
-import { registerTerminologyRoutes } from "./modules/terminology";
+import { registerTerminologyCatalog } from "./modules/terminology-catalog";
+import { registerTokenContextsCatalog } from "./modules/token-contexts-catalog";
+import { registerNotifierTokenContexts } from "./plugins/event-notifier/token-contexts";
 import { registerCompaniesRoutes } from "./modules/employers/companies";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
+import { authorizeRecordGoRequest } from "./services/record-go-access";
 import { addressValidationService } from "./services/comm/validators/address";
-import { phoneValidationService } from "./services/comm/validators/phone";
+import { phoneValidationService, DEFAULT_REVALIDATE_AFTER_DAYS } from "./services/comm/validators/phone";
 import { serviceRegistry } from "./services/service-registry";
 import { isAuthenticated } from "./auth";
+import { sendIfMaintenanceRefusal } from "./services/maintenance-flag";
 
 // Authentication middleware
 const requireAuth = isAuthenticated;
@@ -231,8 +265,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           lastName: dbUser.lastName,
           profileImageUrl: dbUser.profileImageUrl,
           isActive: dbUser.isActive,
-          workerId: workerId
+          workerId: workerId,
+          timezone: dbUser.timezone ?? null,
         },
+        // Both halves of the display-zone decision, published together: the
+        // client resolves which zone to render dates in from these plus its
+        // own runtime zone (resolveEffectiveTimeZone in shared/utils/timezone).
+        // Sent here rather than fetched separately so no screen can paint a
+        // date before it knows which zone to paint it in.
+        timezone: await buildTimeZoneContext(dbUser.timezone),
         permissions: userPermissions.map((p) => p.key),
         components: enabledComponents,
         masquerade: session.masqueradeUserId
@@ -271,6 +312,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register user management routes
   registerUserRoutes(app, requireAuth, requirePermission);
+  registerLetterTemplateRoutes(app, requireAccess);
 
   // Register employer user settings routes
   registerEmployerUserSettingsRoutes(app, requireAuth, requirePermission);
@@ -296,6 +338,23 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register grievance routes
   registerGrievanceRoutes(app, requireAuth, requireAccess);
 
+  // Entity file attachments framework: register contexts, assert each one has
+  // a table binding for the orphan sweep, subscribe the immediate cleanup that
+  // removes a deleted record's attachments, then the generic routes.
+  registerEntityFileContexts();
+  registerEntityFileAreasCatalog();
+  assertFileContextTablesComplete();
+  initEntityFilesDeleteCleanup();
+  wireEntityFilesFileReadAccess();
+  registerEntityFileRoutes(app, requireAuth);
+  registerEntityMetadataRoutes(app, requireAuth, requirePermission);
+
+  // Deliberately not behind `requireAuth`: a catalog that declares itself
+  // readable before sign-in has to actually be readable before sign-in, and
+  // every other one refuses an anonymous reader on its own.
+  registerCatalogRoutes(app);
+  registerRecordGoRoutes(app, requireAuth, authorizeRecordGoRequest);
+
   // Register grievance timeline template routes
   registerGrievanceTimelineTemplateRoutes(app, requireAuth, requireAccess);
 
@@ -316,7 +375,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register trust provider contacts routes
   registerTrustProviderContactRoutes(app, requireAuth, requirePermission);
   
-  // Register consolidated options routes (/api/options/:type)
+  // Register consolidated options routes (/api/options/:type). What lists exist
+  // and what they are called is the `options-lists` catalog, not a route here.
+  registerOptionsListsCatalog();
   registerConsolidatedOptionsRoutes(app);
   
   // Register worker IDs routes
@@ -338,14 +399,24 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Unified plugin manifest endpoint (Task #208) — replaces the four
   // legacy per-kind manifest URLs.
-  const { registerPluginsManifestRoutes } = await import("./modules/plugins-manifest");
+  const { registerPluginsManifestRoutes } = await import("./modules/system/plugins-manifest");
   registerPluginsManifestRoutes(app, requireAuth);
 
   // Generic plugin admin endpoints (Task #209) — replaces the per-kind
   // enable / settings / validate-config endpoints across dashboard,
   // charge, trust-eligibility, and dispatch-eligibility.
-  const { registerPluginsAdminRoutes } = await import("./modules/plugins-admin");
+  const { registerPluginsAdminRoutes } = await import("./modules/system/plugins-admin");
   registerPluginsAdminRoutes(app, requireAuth);
+
+  // System status routes (Task #951) — admin-gated list + rescan endpoints
+  // over the in-memory status collector.
+  const { registerSystemStatusRoutes } = await import("./modules/system/status");
+  registerSystemStatusRoutes(app, requireAuth);
+
+  // Quicksearch — the search-from-anywhere endpoint. Which searchers run is
+  // decided server-side from the caller's roles, never from the request.
+  const { registerQuicksearchRoutes } = await import("./modules/system/quicksearch");
+  registerQuicksearchRoutes(app, requireAuth);
 
   // Register bookmark routes
   registerBookmarkRoutes(app, requireAuth, requirePermission);
@@ -356,8 +427,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Adding a wizard plugin adds ZERO routes.
   registerWizardDispatcherRoutes(app, requireAuth);
 
+  // Pluggable main navigation: GET /api/menu resolves the selected menu
+  // plugin's tree per user (permission / policy / component gates).
+  const { registerMenuRoutes } = await import("./plugins/menu");
+  registerMenuRoutes(app, requireAuth);
+
   // Register file management routes
   registerFileRoutes(app, requireAuth, requirePermission);
+
+  // Admin raw file browser (Task #924)
+  const { registerFileBrowserRoutes } = await import("./modules/file-browser");
+  registerFileBrowserRoutes(app, requireAuth);
 
   // Register component configuration routes
   registerComponentRoutes(app, requireAuth, requirePermission);
@@ -385,7 +465,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerWorkerWshRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerWsh);
   registerWorkerMshRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerMsh);
   registerWorkerHoursRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerHours, storage.ledger);
-  registerQuickstartRoutes(app);
   
 
   // Register cron job management routes
@@ -393,6 +472,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register event bus introspection routes (debug component)
   registerEventBusIntrospectRoutes(app);
+
+  // Register read-only EBS (deferred event bus) inspection routes (admin)
+  registerEbsInspectionRoutes(app);
+
+  // Register web client cache viewer routes (admin): what we asked third
+  // parties, what they answered, and a per-entry force-expire.
+  registerWcCacheAdminRoutes(app);
 
   // Charge plugin configs are served by the unified generic config routes
   // (registerPluginsConfigRoutes); the bespoke charge route was removed in
@@ -406,7 +492,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // precedence. These generic routes operate solely on the unified
   // plugin_configs tables and remain dormant for any kind that still owns
   // specific routes.
-  const { registerPluginsConfigRoutes } = await import("./modules/plugins-config");
+  const { registerPluginsConfigRoutes } = await import("./modules/system/plugins-config");
   registerPluginsConfigRoutes(app, requireAuth);
 
   // Register Twilio configuration routes
@@ -418,14 +504,19 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register Postal configuration routes
   registerPostalConfigRoutes(app);
 
-  // Register site settings routes
-  registerSiteSettingsRoutes(app, requireAuth, requirePermission, requireAccess);
-
   // Register terminology routes
-  registerTerminologyRoutes(app, requireAuth, requirePermission, requireAccess);
+  // Terminology has no routes of its own: the configured wording is read and
+  // written through the generic variable routes, and what terms exist is the
+  // `terminology` catalog.
+  registerTerminologyCatalog();
 
-  // Register system mode routes
-  registerSystemModeRoutes(app, requireAuth, requirePermission, requireAccess);
+  // What each Template Studio surface's templates are about. The
+  // notifier family is generated from the notifier registry (one context
+  // per token-templated notifier); the fixed surfaces — bulk messaging
+  // and the compose screens — register their own from their route
+  // modules, beside the roots they name.
+  registerNotifierTokenContexts();
+  registerTokenContextsCatalog();
 
   // Register bootstrap routes (no auth required - intentionally public for initial setup)
   registerBootstrapRoutes(app);
@@ -438,9 +529,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register SFTP client destination routes
   registerSftpClientDestinationRoutes(app, requireAuth, requireAccess, storage);
+  registerBusinessCalendarRoutes(app, requireAuth, requireAccess, storage);
+  registerHelpRoutes(app, requireAuth, requireAccess, storage);
 
   // Register trust provider EDI routes
-  registerTrustProviderEdiRoutes(app, requireAuth, requireAccess, storage);
+  registerTrustProviderEdiDashboardRoutes(app, requireAuth);
 
   // Register bulk message routes
   registerBulkMessageRoutes(app, requireAuth, requireAccess, storage);
@@ -462,16 +555,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   
   // Register event-notifier admin metadata routes (staff user picker source)
   registerEventNotifierMetaRoutes(app, requireAuth, requireAccess, storage);
-  
-  // Register dispatch DNC configuration routes
-  registerDispatchDncConfigRoutes(app, requireAuth, requireAccess, storage);
-  
-  // Register dispatch EBA configuration routes
-  registerDispatchEbaConfigRoutes(app, requireAuth, requireAccess, storage);
-  registerDispatchSeniorityResetConfigRoutes(app, requireAuth, requireAccess, storage);
-  
-  // Register worker ban configuration routes
-  registerWorkerBanConfigRoutes(app, requireAuth, requireAccess, storage);
+
+  // Register generic Template Studio token endpoints (catalog, record
+  // pickers, preview) shared by every token-editing surface
+  registerTokenStudioRoutes(app, requireAuth, requireAccess, storage);
+
+  // Register manual-compose token endpoints: the Template Studio on the
+  // Communications tabs, bound to the record the page is about
+  registerCommComposeRoutes(app, requireAuth, requireAccess);
   
   // Register cardcheck definitions routes
   registerCardcheckDefinitionsRoutes(
@@ -761,7 +852,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       // Send CSV response
       const filename = `workers_export_${new Date().toISOString().split('T')[0]}.csv`;
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', buildContentDisposition('attachment', filename));
       res.send(csv);
     } catch (error) {
       console.error("Failed to export workers:", error);
@@ -1411,6 +1502,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
               "line_type_intelligence",
               "caller_name",
             ],
+            revalidateAfterDays:
+              twilioValidation.revalidateAfterDays ?? DEFAULT_REVALIDATE_AFTER_DAYS,
           },
           fallback: {
             useLocalOnTwilioFailure:
@@ -1435,6 +1528,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       
       if (!mode || (mode !== "local" && mode !== "twilio")) {
         return res.status(400).json({ message: "Invalid validation mode. Must be 'local' or 'twilio'." });
+      }
+
+      let revalidateAfterDays: number | undefined;
+      if (twilio?.revalidateAfterDays !== undefined && twilio.revalidateAfterDays !== null) {
+        revalidateAfterDays = Number(twilio.revalidateAfterDays);
+        if (!Number.isInteger(revalidateAfterDays) || revalidateAfterDays < 1) {
+          return res.status(400).json({ message: "Revalidation interval must be a whole number of days, at least 1." });
+        }
       }
       
       // Store local-specific settings in the local provider
@@ -1464,6 +1565,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         ],
         useLocalOnTwilioFailure: fallback?.useLocalOnTwilioFailure ?? existingTwilioValidation.useLocalOnTwilioFailure ?? true,
         logValidationAttempts: fallback?.logValidationAttempts ?? existingTwilioValidation.logValidationAttempts ?? true,
+        // How long a Twilio answer stays good for. Every path that formats a
+        // phone number runs through the validator, so without an age the app
+        // would pay for a lookup on each of them.
+        revalidateAfterDays: revalidateAfterDays ?? existingTwilioValidation.revalidateAfterDays ?? DEFAULT_REVALIDATE_AFTER_DAYS,
       };
       await serviceRegistry.saveProviderSettings("sms", "twilio", {
         ...twilioCurrentSettings,
@@ -1496,6 +1601,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             "line_type_intelligence",
             "caller_name",
           ],
+          revalidateAfterDays:
+            twilioValidation.revalidateAfterDays ?? DEFAULT_REVALIDATE_AFTER_DAYS,
         },
         fallback: {
           useLocalOnTwilioFailure: twilioValidation.useLocalOnTwilioFailure ?? true,
@@ -1526,6 +1633,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       res.json(result);
     } catch (error) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       res.status(500).json({
         success: false,
         error: "Failed to geocode address",
@@ -1598,6 +1706,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register generic variable management routes (MUST come after specific routes)
   registerVariableRoutes(app, requireAuth, requirePermission);
+  registerAuthSettingsRoutes(app);
+  registerEnvRoutes(app);
   registerDenormRoutes(app, requireAuth, requirePermission);
 
   // Register events routes
@@ -1605,6 +1715,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register dispatch jobs routes
   registerDispatchJobsRoutes(app, requireAuth, requirePermission);
+  registerDispatchJobEmployerContactsRoutes(app, requireAuth, requireAccess);
 
   // Register dispatch job groups routes
   registerDispatchJobGroupsRoutes(app, requireAuth, requirePermission);
@@ -1613,6 +1724,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register dispatches routes
   registerDispatchesRoutes(app, requireAuth, requirePermission);
+  registerDispatchForeRoutes(app);
+  registerWorkerDispatchDepartmentRoutes(app);
 
   // Register worker dispatch status routes (handles all access control internally)
   registerWorkerDispatchStatusRoutes(app, requireAuth, requireAccess);
@@ -1626,8 +1739,20 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register worker dispatch EBA routes (handles all access control internally)
   registerWorkerDispatchEbaRoutes(app, requireAuth, requireAccess);
 
+  // Register worker dispatch ASI routes (handles all access control internally)
+  registerWorkerDispatchAsiRoutes(app, requireAuth, requireAccess);
+
   // Register worker bans routes (handles all access control internally)
   registerWorkerBansRoutes(app, requireAuth, requireAccess);
+
+  // Register notes routes (staff-only, all record types)
+  // Entity notes framework: register contexts, assert each one has a table
+  // binding for the orphan sweep, then the generic routes.
+  registerEntityNoteContexts();
+  registerEntityNoteAreasCatalog();
+  assertNoteContextTablesComplete();
+  initEntityNotesDeleteCleanup();
+  registerEntityNotesRoutes(app, requireAuth);
 
   // Register worker skills routes (handles all access control internally)
   registerWorkerSkillsRoutes(app, requireAuth, requireAccess);
@@ -1643,6 +1768,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register worker time-off-sick (TOS) routes
   registerWorkerTosRoutes(app, requireAuth, requireAccess);
+
+  // Register worker access token (worker.aat) routes
+  registerWorkerAatRoutes(app, requireAuth, requireAccess);
 
   // Register worker certifications routes (handles all access control internally)
   registerWorkerCertificationsRoutes(app, requireAuth, requireAccess, requirePermission);
@@ -1667,28 +1795,63 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register Freeman Second Shift routes
   registerFreemanSecondShiftRoutes(app, requireAuth, requireAccess);
 
+  // Register Freeman Crew Leads routes
+  registerFreemanCrewleadsRoutes(app, requireAuth, requirePermission, requireAccess);
+
+  // Register Freeman EDLS migration routes
+  registerFreemanEdlsMigrateRoutes(app, requireAuth, requirePermission);
+
+  registerT631InterviewsRoutes(app, requireAuth, requirePermission, requireAccess);
+
   // Register HTA routes
   registerHtaRoutes(app, requireAuth, requirePermission);
   registerGbhetPensionRoutes(app, requireAuth, requirePermission);
+
+  // Register generic snapshots routes
+  registerSnapshotsRoutes(app, requireAuth);
 
   // Register EDLS routes
   registerEdlsSheetsRoutes(app, requireAuth, requirePermission);
   registerEdlsTosRoutes(app, requireAuth);
   registerEdlsTasksRoutes(app, requireAuth, requirePermission);
   registerWorkerEdlsRoutes(app, requireAuth);
+  // Public (unauthenticated) worker schedule page — still gated on the `edls`
+  // component like every other EDLS route.
+  registerEdlsPublicScheduleRoutes(app);
 
-  // Register Web Service bundles (API access via client credentials)
-  registerWebServiceBundle(app, {
-    bundleCode: EDLS_BUNDLE_CODE,
-    setupRoutes: setupEdlsRoutes,
-  });
+  // Register the single web service dispatcher (API access via client
+  // credentials); every configuration of every web-service plugin is served
+  // from here.
+  registerWebServiceDispatcher(app);
 
-  // Register Web Service admin routes (for managing bundles, clients, credentials)
+  // Register Web Service admin routes (clients, grants, credentials, IP rules)
   registerWebServiceAdminRoutes(app, requireAuth, requirePermission);
 
   // Register companies routes
   registerCompaniesRoutes(app, requireAuth);
 
+  // Every logged table must be declared in the record history registry.
+  // Asserted here, at the end of route registration, rather than beside the
+  // entity metadata routes: a logging config is recorded as it is wired, and
+  // the dispatch, ledger, contact and options modules wire theirs while
+  // registering their own routes above. Anything wired later still than this
+  // — a component's storage brought up on enable — is not visible from here
+  // and is caught the next time the process starts with that component on.
+  assertEntityMetadataRecordTablesComplete();
+
+  // Declared after the assertion above, so the catalog can only ever be built
+  // from a registry that has just been proven complete and self-consistent.
+  registerRecordHistoryAreasCatalog();
+
   const httpServer = existingServer || createServer(app);
+
+  // Restart & Reload admin endpoints (Task #1258). Registered here because
+  // the restart handler needs the HTTP server handle in order to close it
+  // before the process exits.
+  {
+    const { registerRestartRoutes } = await import("./modules/system/restart");
+    registerRestartRoutes(app, httpServer);
+  }
+
   return httpServer;
 }

@@ -19,7 +19,7 @@ import {
   useAddressValidationConfig,
   AddressValidationConfig,
 } from "@/hooks/useAddressValidationConfig";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 
 export default function PostalAddressesConfigPage() {
   usePageTitle("Address Settings");
@@ -77,7 +77,7 @@ export default function PostalAddressesConfigPage() {
     onError: (error: any) => {
       toast({
         title: "Update Failed",
-        description: error?.message || "Failed to update configuration.",
+        description: getApiErrorMessage(error, "Failed to update configuration."),
         variant: "destructive",
       });
       // Revert local state on error

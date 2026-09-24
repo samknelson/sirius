@@ -1,10 +1,15 @@
 import { createContext, useContext, ReactNode } from "react";
-import { FileText, ArrowLeft } from "lucide-react";
+import { FileText } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
 import { useGrievanceTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { type GrievanceCardinality } from "@shared/schema";
@@ -12,8 +17,14 @@ import {
   type GrievanceTimelineStepItem,
   useDeadlineThresholds,
   deadlineColorClass,
-  formatYmd,
+  formatYmdWithCountdown,
 } from "@/lib/grievance-deadlines";
+
+const GRIEVANCE_BACK_LINK = {
+  href: "/grievances",
+  label: "Back to Grievances",
+  testId: "button-back-to-grievances",
+};
 
 export interface GrievanceLinkedWorker {
   workerId: string;
@@ -142,7 +153,7 @@ function GrievanceSummaryBox({ grievance }: { grievance: GrievanceWithDetails })
               className={deadline ? deadlineColorClass(deadline, thresholds) : "font-medium"}
               data-testid="text-summary-deadline"
             >
-              {formatYmd(deadline)}
+              {formatYmdWithCountdown(deadline)}
             </p>
           </div>
         </div>
@@ -171,7 +182,10 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
       },
     });
 
-  const { tabs } = useGrievanceTabAccess(id || "");
+  const { tabs, getActiveRoot } = useGrievanceTabAccess(id || "");
+
+  const activeRoot = getActiveRoot(activeTab);
+  const subTabs = activeRoot?.children;
 
   usePageTitle(grievance ? grievanceTitle(grievance) : undefined);
 
@@ -180,27 +194,11 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
   if (grievanceError) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <FileText className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">Grievance Not Found</span>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/grievances">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-grievances">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Grievances
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<FileText className="text-primary-foreground" size={16} />}
+          label="Grievance Not Found"
+          backLink={GRIEVANCE_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -227,26 +225,10 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
   if (isLoading || !grievance) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <FileText className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/grievances">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-grievances">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Grievances
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<FileText className="text-primary-foreground" size={16} />}
+          backLink={GRIEVANCE_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -270,37 +252,19 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
   return (
     <GrievanceLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <FileText className="text-primary-foreground" size={16} />
-                </div>
-                <h1
-                  className="text-xl font-semibold text-foreground"
-                  data-testid={`text-grievance-title-${grievance.id}`}
-                >
-                  {grievanceTitle(grievance)}
-                </h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/grievances">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-grievances">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Grievances
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<FileText className="text-primary-foreground" size={16} />}
+          title={grievanceTitle(grievance)}
+          titleTestId={`text-grievance-title-${grievance.id}`}
+          backLink={GRIEVANCE_BACK_LINK}
+          recordId={grievance.id}
+        />
 
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex flex-wrap items-center gap-2 py-3">
               {tabs.map((tab) => {
-                const isActive = tab.id === activeTab;
+                const isActive = tab.id === (activeRoot?.id ?? activeTab);
                 return isActive ? (
                   <Button
                     key={tab.id}
@@ -325,6 +289,38 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
             </div>
           </div>
         </div>
+
+        {/* Sub-Tab Navigation - rendered when the active root tab has children */}
+        {subTabs && subTabs.length > 0 && (
+          <div className="bg-muted/30 border-b border-border">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex flex-wrap items-center gap-2 py-2 pl-4">
+                {subTabs.map((tab) =>
+                  tab.id === activeTab ? (
+                    <Button
+                      key={tab.id}
+                      variant="secondary"
+                      size="sm"
+                      data-testid={`button-grievance-${tab.id}`}
+                    >
+                      {tab.label}
+                    </Button>
+                  ) : (
+                    <Link key={tab.id} href={tab.href}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid={`button-grievance-${tab.id}`}
+                      >
+                        {tab.label}
+                      </Button>
+                    </Link>
+                  )
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
           <GrievanceSummaryBox grievance={grievance} />

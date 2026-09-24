@@ -1,10 +1,15 @@
 import { createContext, useContext, ReactNode } from "react";
-import { FileText, ArrowLeft } from "lucide-react";
+import { FileText } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  RecordTitleBar,
+  RecordTitleBarLoading,
+  RecordTitleBarNotFound,
+} from "@/components/shared/RecordTitleBar";
 import { useGrievanceTimelineTemplateTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 
@@ -53,7 +58,11 @@ interface GrievanceTimelineTemplateLayoutProps {
   children: ReactNode;
 }
 
-const BACK_HREF = "/grievance-timeline-templates";
+const TIMELINE_TEMPLATE_BACK_LINK = {
+  href: "/grievance-timeline-templates",
+  label: "Back to Timeline Templates",
+  testId: "button-back-to-timeline-templates",
+};
 
 export function GrievanceTimelineTemplateLayout({
   activeTab,
@@ -83,29 +92,11 @@ export function GrievanceTimelineTemplateLayout({
   if (templateError) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <FileText className="text-primary-foreground" size={16} />
-                </div>
-                <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">
-                  Timeline Template Not Found
-                </span>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href={BACK_HREF}>
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-timeline-templates">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Timeline Templates
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarNotFound
+          icon={<FileText className="text-primary-foreground" size={16} />}
+          label="Timeline Template Not Found"
+          backLink={TIMELINE_TEMPLATE_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -119,7 +110,7 @@ export function GrievanceTimelineTemplateLayout({
               <p className="text-muted-foreground text-center">
                 The timeline template you're looking for doesn't exist or has been removed.
               </p>
-              <Link href={BACK_HREF}>
+              <Link href={TIMELINE_TEMPLATE_BACK_LINK.href}>
                 <Button className="mt-4" data-testid="button-return-to-timeline-templates">
                   Return to Timeline Templates
                 </Button>
@@ -134,26 +125,10 @@ export function GrievanceTimelineTemplateLayout({
   if (templateLoading || !template) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <FileText className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href={BACK_HREF}>
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-timeline-templates">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Timeline Templates
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBarLoading
+          icon={<FileText className="text-primary-foreground" size={16} />}
+          backLink={TIMELINE_TEMPLATE_BACK_LINK}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
@@ -177,31 +152,13 @@ export function GrievanceTimelineTemplateLayout({
   return (
     <GrievanceTimelineTemplateLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <FileText className="text-primary-foreground" size={16} />
-                </div>
-                <h1
-                  className="text-xl font-semibold text-foreground"
-                  data-testid={`text-timeline-template-title-${template.id}`}
-                >
-                  {template.title}
-                </h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href={BACK_HREF}>
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-timeline-templates">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Timeline Templates
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
+        <RecordTitleBar
+          icon={<FileText className="text-primary-foreground" size={16} />}
+          title={template.title}
+          titleTestId={`text-timeline-template-title-${template.id}`}
+          backLink={TIMELINE_TEMPLATE_BACK_LINK}
+          recordId={template.id}
+        />
 
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

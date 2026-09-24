@@ -1,5 +1,5 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { getApiErrorMessage } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useVariableValue, useSetVariable } from "@/lib/use-variable";
 import { Save, Mail, MessageSquare, Bell } from "lucide-react";
 import { useEffect } from "react";
 
@@ -21,17 +21,13 @@ const configSchema = z.object({
 
 type ConfigFormValues = z.infer<typeof configSchema>;
 
-interface ConfigResponse {
-  config: ConfigFormValues;
-}
+const VARIABLE_NAME = "dispatch_dnc_notifications";
 
 export default function DispatchDncConfigPage() {
   usePageTitle("Do Not Call");
   const { toast } = useToast();
 
-  const { data, isLoading } = useQuery<ConfigResponse>({
-    queryKey: ["/api/config/dispatch/dnc"],
-  });
+  const { data: value, isLoading } = useVariableValue(VARIABLE_NAME);
 
   const form = useForm<ConfigFormValues>({
     resolver: zodResolver(configSchema),
@@ -43,26 +39,23 @@ export default function DispatchDncConfigPage() {
   });
 
   useEffect(() => {
-    if (data?.config) {
-      form.reset(data.config);
+    const parsed = configSchema.safeParse(value);
+    if (parsed.success) {
+      form.reset(parsed.data);
     }
-  }, [data, form]);
+  }, [value, form]);
 
-  const saveMutation = useMutation({
-    mutationFn: async (values: ConfigFormValues) => {
-      return apiRequest("PUT", "/api/config/dispatch/dnc", values);
-    },
+  const saveMutation = useSetVariable(VARIABLE_NAME, {
     onSuccess: () => {
       toast({
         title: "Settings saved",
         description: "DNC notification preferences have been updated.",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/config/dispatch/dnc"] });
     },
     onError: (error: Error) => {
       toast({
         title: "Error saving settings",
-        description: error.message,
+        description: getApiErrorMessage(error, "The operation failed."),
         variant: "destructive",
       });
     },

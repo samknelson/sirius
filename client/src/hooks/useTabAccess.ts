@@ -6,6 +6,9 @@ import {
   HierarchicalTab,
   getTabTreeForEntity,
   buildTabHref,
+  WS_ADMIN_ENTITY_ID,
+  WC_ADMIN_ENTITY_ID,
+  RECORD_METADATA_ADMIN_ENTITY_ID,
 } from "@shared/tabRegistry";
 import { apiRequest } from "@/lib/queryClient";
 import { useTerm } from "@/contexts/TerminologyContext";
@@ -434,17 +437,6 @@ export function useSftpClientDestinationTabAccess(destinationId: string | undefi
   });
 }
 
-/**
- * Hook specifically for Trust Provider EDI entity tabs
- */
-export function useTrustProviderEdiTabAccess(ediId: string | undefined, enabled = true) {
-  return useTabAccess({ 
-    entityType: 'trust_provider_edi', 
-    entityId: ediId, 
-    enabled 
-  });
-}
-
 export function useBulkMessageTabAccess(bulkMessageId: string | undefined, enabled = true) {
   return useTabAccess({ 
     entityType: 'bulk_message', 
@@ -466,6 +458,59 @@ export function useLedgerPaymentBatchTabAccess(batchId: string | undefined, enab
     entityType: 'ledger_payment_batch', 
     entityId: batchId, 
     enabled 
+  });
+}
+
+/** Tab access for an options page; the "entity id" is the options type slug. */
+export function useOptionsTabAccess(optionsType: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'options',
+    entityId: optionsType,
+    enabled,
+  });
+}
+
+/**
+ * Tab access for the incoming web services page. It is one page rather than an
+ * entity, so the id is the registry's constant.
+ */
+export function useWsTabAccess(enabled = true) {
+  return useTabAccess({
+    entityType: 'ws',
+    entityId: WS_ADMIN_ENTITY_ID,
+    enabled,
+  });
+}
+
+/**
+ * Tab access for the outgoing web services page. It is one page rather than an
+ * entity, so the id is the registry's constant.
+ */
+export function useWcTabAccess(enabled = true) {
+  return useTabAccess({
+    entityType: 'wc',
+    entityId: WC_ADMIN_ENTITY_ID,
+    enabled,
+  });
+}
+
+/**
+ * Tab access for the record history admin page. It is one page rather than an
+ * entity, so the id is the registry's constant.
+ */
+export function useRecordMetadataTabAccess(enabled = true) {
+  return useTabAccess({
+    entityType: 'record_metadata',
+    entityId: RECORD_METADATA_ADMIN_ENTITY_ID,
+    enabled,
+  });
+}
+
+export function useBusinessCalendarTabAccess(calendarId: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'business_calendar',
+    entityId: calendarId,
+    enabled,
   });
 }
 

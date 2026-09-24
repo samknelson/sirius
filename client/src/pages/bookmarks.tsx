@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { Link } from "wouter";
 import type { Bookmark as BookmarkType } from "@shared/schema";
 import {
@@ -21,6 +21,12 @@ import {
 
 interface EnrichedBookmark extends BookmarkType {
   displayName: string;
+  /**
+   * When the bookmark was added, from the record's provenance — the table
+   * itself no longer carries the date. Null when nothing was recorded yet,
+   * which the list has to survive rather than hide the bookmark over.
+   */
+  createdDate: string | null;
 }
 
 type SortOption = "name" | "timestamp";
@@ -47,10 +53,10 @@ export default function Bookmarks() {
       });
       setDeleteTarget(null);
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to delete bookmark",
+        description: getApiErrorMessage(error, "Failed to delete bookmark"),
         variant: "destructive",
       });
     },
@@ -78,11 +84,17 @@ export default function Bookmarks() {
     }
   };
 
+  // A bookmark with no recorded date sorts newest, matching the order the
+  // server sends: the stamp is written just after the bookmark is, so the one
+  // without it is the one just added.
+  const addedAt = (bookmark: EnrichedBookmark): number =>
+    bookmark.createdDate ? new Date(bookmark.createdDate).getTime() : Infinity;
+
   const sortedBookmarks = [...bookmarks].sort((a, b) => {
     if (sortBy === "name") {
       return a.displayName.localeCompare(b.displayName);
     }
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    return addedAt(b) - addedAt(a);
   });
 
   const toggleSort = () => {
@@ -145,8 +157,9 @@ export default function Bookmarks() {
                               {bookmark.displayName}
                             </div>
                             <div className="text-xs text-muted-foreground">
-                              Bookmarked {new Date(bookmark.createdAt).toLocaleDateString()} at{" "}
-                              {new Date(bookmark.createdAt).toLocaleTimeString()}
+                              {bookmark.createdDate
+                                ? `Bookmarked ${new Date(bookmark.createdDate).toLocaleDateString()} at ${new Date(bookmark.createdDate).toLocaleTimeString()}`
+                                : "Bookmarked (date not recorded)"}
                             </div>
                           </div>
                         </div>

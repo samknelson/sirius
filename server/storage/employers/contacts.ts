@@ -375,10 +375,13 @@ function calculateChanges(before: any, after: any): Record<string, { from: any; 
 
 export const employerContactLoggingConfig: StorageLoggingConfig<EmployerContactStorage> = {
   module: 'employerContacts',
+  table: 'employer_contacts',
+  hostTable: 'employers',
   methods: {
     create: {
       enabled: true,
       getEntityId: (args) => args[0]?.contactId || 'new employer contact',
+      metadataEntityId: (_args, result) => result?.id,
       getHostEntityId: (args, result) => result?.employerId || args[0]?.employerId,
       after: async (args, result, storage) => {
         return await storage.get(result.id);

@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2, Loader2, Search, X, MapPin, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useForm } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -81,7 +81,7 @@ export default function BtuRegionsListPage() {
     onError: (error: any) => {
       toast({
         title: "Create Failed",
-        description: error?.message || "Failed to create region.",
+        description: getApiErrorMessage(error, "Failed to create region."),
         variant: "destructive",
       });
     },
@@ -103,7 +103,7 @@ export default function BtuRegionsListPage() {
     onError: (error: any) => {
       toast({
         title: "Update Failed",
-        description: error?.message || "Failed to update region.",
+        description: getApiErrorMessage(error, "Failed to update region."),
         variant: "destructive",
       });
     },
@@ -124,7 +124,7 @@ export default function BtuRegionsListPage() {
     onError: (error: any) => {
       toast({
         title: "Delete Failed",
-        description: error?.message || "Failed to delete region.",
+        description: getApiErrorMessage(error, "Failed to delete region."),
         variant: "destructive",
       });
     },

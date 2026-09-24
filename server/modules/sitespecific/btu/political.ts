@@ -3,6 +3,7 @@ import { requireComponent } from "../../components";
 import { storage } from "../../../storage";
 import { lookupRepresentatives, CivicApiError, type CivicLookupResult } from "../../../services/google-civics";
 import { z } from "zod";
+import { isMaintenanceModeError, sendIfMaintenanceRefusal } from "../../../services/maintenance-flag";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -159,6 +160,7 @@ export function registerBtuPoliticalRoutes(
         cacheHit: result.cacheHit,
       });
     } catch (error: unknown) {
+      if (sendIfMaintenanceRefusal(res, error)) return;
       const err = error instanceof Error ? error : new Error(String(error));
       if (err.message === "COMPONENT_TABLE_NOT_FOUND") {
         return res.status(503).json({ message: "Political profile tables not found." });
@@ -253,6 +255,25 @@ export function registerBtuPoliticalRoutes(
           await storage.btuPolitical.setWorkerReps(worker.id, officialIds, result.normalizedAddress);
           succeeded++;
         } catch (err: unknown) {
+          // The response is already streaming, so there is no status code left
+          // to send. A maintenance refusal is not this worker's problem and it
+          // will refuse for every remaining worker too: stop, and say why,
+          // instead of reporting thousands of ordinary failures.
+          if (isMaintenanceModeError(err)) {
+            sendEvent({
+              type: "error",
+              message: err.message,
+              maintenance: true,
+              processed,
+              succeeded,
+              skippedNoAddress,
+              skippedExisting,
+              cacheHits,
+              failed,
+            });
+            res.end();
+            return;
+          }
           failed++;
           const msg = err instanceof Error ? err.message : String(err);
           errors.push({ workerId: worker.id, error: msg });

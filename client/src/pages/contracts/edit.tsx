@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Loader2, Save, Trash2 } from "lucide-react";
 import { ContractLayout, useContractLayout } from "@/components/layouts/ContractLayout";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,7 +51,7 @@ function EditBody() {
     } catch (error) {
       toast({
         title: "Failed to save contract",
-        description: error instanceof Error ? error.message : "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
     } finally {
@@ -69,7 +69,7 @@ function EditBody() {
     } catch (error) {
       toast({
         title: "Failed to delete contract",
-        description: error instanceof Error ? error.message : "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
       setDeleting(false);

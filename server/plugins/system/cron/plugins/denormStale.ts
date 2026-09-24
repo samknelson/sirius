@@ -21,7 +21,7 @@ registerCronPlugin({
       "Hourly job that recomputes stale denorm rows and marks them ok across all denorm plugins.",
     singleton: true,
   },
-  defaultSchedule: "0 * * * *", // Hourly, on the hour
+  defaultSchedule: "30 * * * *", // Hourly at :30 — deliberately offset from denorm_backfill (:00) so rows enqueued by the backfill sweep are recomputed within the same hour, not raced.
   defaultEnabled: true,
 
   async execute(context: CronJobContext): Promise<CronJobResult> {

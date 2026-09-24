@@ -1,5 +1,12 @@
-import { PluginRegistry } from "../_core";
-import type { BasePluginMetadata } from "../_core";
+// Import the base class + metadata type from the defining submodules, NOT the
+// `../_core` barrel. The barrel re-exports the singleton seeder, which imports
+// `../../storage`; because `server/storage/wizards.ts` imports this registry,
+// going through the barrel closes a storage→plugins→_core→storage cycle. In the
+// esbuild production bundle that cycle leaves `PluginRegistry` undefined at
+// class-evaluation time ("Class extends value undefined"). Direct submodule
+// imports make the base class an ordered, cycle-free dependency.
+import { PluginRegistry } from "../_core/registry";
+import type { BasePluginMetadata } from "../_core/types";
 import type { Wizard } from "@shared/schema";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type {

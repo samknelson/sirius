@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { getApiErrorMessage } from "@/lib/queryClient";
 
 interface ExportResult {
   matched: number;
@@ -95,7 +96,7 @@ export default function ContactExportPage() {
     } catch (error: any) {
       toast({
         title: "Export failed",
-        description: error.message || "An unexpected error occurred.",
+        description: getApiErrorMessage(error, "An unexpected error occurred."),
         variant: "destructive",
       });
     } finally {

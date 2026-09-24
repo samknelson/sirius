@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
 import { Loader2, ArrowLeft, Pencil, CheckSquare, DollarSign, FileText } from "lucide-react";
+import { sanitizeHtml } from "@shared/utils/html";
 import { CardcheckDefinition } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -90,12 +91,6 @@ export default function CardcheckDefinitionViewPage() {
                 </p>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">Record ID</label>
-                <p className="text-foreground font-mono text-sm" data-testid="text-id">
-                  {definition.id}
-                </p>
-              </div>
-              <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">Name</label>
                 <p className="text-foreground" data-testid="text-name">
                   {definition.name}
@@ -117,7 +112,15 @@ export default function CardcheckDefinitionViewPage() {
                 data-testid="text-body"
               >
                 {definition.body ? (
-                  <div dangerouslySetInnerHTML={{ __html: definition.body }} />
+                  // Stored admin-authored HTML with nothing sanitizing it on the
+                  // way here, so it is sanitized at render. `authored-document`
+                  // is what the editor on cardcheck-definition-edit lets an
+                  // author write, so nothing legitimate is lost.
+                  <div
+                    dangerouslySetInnerHTML={{
+                      __html: sanitizeHtml(definition.body, "authored-document"),
+                    }}
+                  />
                 ) : (
                   <span className="text-muted-foreground italic">No body content</span>
                 )}

@@ -18,12 +18,6 @@ function TrustProviderViewContent() {
             <h3 className="text-sm font-medium text-muted-foreground mb-3">Basic Information</h3>
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-medium">Provider ID</label>
-                <p className="text-sm text-muted-foreground mt-1" data-testid="text-provider-id">
-                  {provider.id}
-                </p>
-              </div>
-              <div>
                 <label className="text-sm font-medium">Name</label>
                 <p className="text-sm mt-1" data-testid="text-provider-name">
                   {provider.name}

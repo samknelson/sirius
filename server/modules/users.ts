@@ -1,11 +1,15 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
+import { RoleInUseError, UserInUseError } from "../storage/users";
+import { getEffectiveUser } from "./masquerade";
 import { 
   createUserSchema,
   insertRoleSchema,
   assignRoleSchema,
   assignPermissionSchema
 } from "@shared/schema";
+import { userTimeZoneInputSchema } from "@shared/utils/timezone";
+import { buildTimeZoneContext, getTimeZonePolicy } from "./system/timezone";
 import { requireAccess, clearAccessCache } from "../services/access-policy-evaluator";
 import { checkClerkConflict, provisionClerkAccount } from "../services/clerk-provisioning";
 
@@ -18,6 +22,65 @@ export function registerUserRoutes(
   requireAuth: AuthMiddleware, 
   requirePermission: PermissionMiddleware
 ) {
+  // Self-service time zone.
+  //
+  // Registered before the /api/users/:userId/* routes below so the literal
+  // "me" segment can never be captured as a user id.
+  //
+  // These act on the EFFECTIVE user: while masquerading, the masqueraded
+  // person is the actor everywhere in this app, and their display preference
+  // is what is being read and written. That is the established convention, not
+  // an oversight.
+
+  // GET /api/users/me/timezone - the caller's own zone plus the two facts
+  // needed to interpret it (the system zone and whether policy honours a
+  // personal one). Returned together because a client that has one without
+  // the others cannot decide anything.
+  app.get("/api/users/me/timezone", requireAuth, async (req, res) => {
+    try {
+      const { dbUser } = await getEffectiveUser(req.session as any, req.user as any);
+      if (!dbUser) return res.status(404).json({ message: "User not found" });
+      res.json(await buildTimeZoneContext(dbUser.timezone));
+    } catch (error) {
+      console.error("Failed to fetch time zone settings:", error);
+      res.status(500).json({ message: "Failed to fetch time zone settings" });
+    }
+  });
+
+  // PUT /api/users/me/timezone - set or clear the caller's own zone.
+  //
+  // Refused outright when site policy says everyone uses site time: storing a
+  // preference that the resolver is going to ignore would leave the person
+  // with a saved setting that does nothing, and would quietly take effect
+  // later if an admin ever flipped the policy back.
+  app.put("/api/users/me/timezone", requireAuth, async (req, res) => {
+    try {
+      const { dbUser } = await getEffectiveUser(req.session as any, req.user as any);
+      if (!dbUser) return res.status(404).json({ message: "User not found" });
+
+      const policy = await getTimeZonePolicy();
+      if (!policy.allowUserTimezones) {
+        return res.status(403).json({
+          message:
+            "This site displays all dates and times in the site's time zone. Personal time zones are turned off.",
+        });
+      }
+
+      const parsed = userTimeZoneInputSchema.safeParse((req.body ?? {}).timezone);
+      if (!parsed.success) {
+        return res.status(400).json({
+          message: parsed.error.errors[0]?.message ?? "Invalid time zone",
+        });
+      }
+
+      await storage.users.updateUser(dbUser.id, { timezone: parsed.data });
+      res.json(await buildTimeZoneContext(parsed.data));
+    } catch (error) {
+      console.error("Failed to save time zone:", error);
+      res.status(500).json({ message: "Failed to save time zone" });
+    }
+  });
+
   // Admin routes for user management
   
   // GET /api/admin/users/search - Search users by email (staff+)
@@ -94,8 +157,6 @@ export function registerUserRoutes(
         profileImageUrl: user.profileImageUrl,
         accountStatus: user.accountStatus,
         isActive: user.isActive,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
         lastLogin: user.lastLogin,
       });
     } catch (error) {
@@ -118,7 +179,10 @@ export function registerUserRoutes(
         profileImageUrl: user.profileImageUrl,
         accountStatus: user.accountStatus,
         isActive: user.isActive,
-        createdAt: user.createdAt,
+        // When the account was created, as the record's history tells it.
+        // The list sorts on this, so it is sent with the list rather than
+        // asked for per row.
+        createdDate: user.createdDate,
         lastLogin: user.lastLogin,
         roles: user.roles
       }));
@@ -165,8 +229,7 @@ export function registerUserRoutes(
         firstName: updatedUser?.firstName || user.firstName,
         lastName: updatedUser?.lastName || user.lastName,
         accountStatus: updatedUser?.accountStatus || user.accountStatus,
-        isActive: updatedUser?.isActive ?? user.isActive, 
-        createdAt: updatedUser?.createdAt || user.createdAt 
+        isActive: updatedUser?.isActive ?? user.isActive,
       };
       if (clerkResult.warning) {
         responseData.clerkWarning = clerkResult.warning;
@@ -201,7 +264,6 @@ export function registerUserRoutes(
         profileImageUrl: user.profileImageUrl,
         accountStatus: user.accountStatus,
         isActive: user.isActive, 
-        createdAt: user.createdAt,
         lastLogin: user.lastLogin
       });
     } catch (error) {
@@ -227,11 +289,44 @@ export function registerUserRoutes(
         firstName: user.firstName,
         lastName: user.lastName,
         isActive: user.isActive, 
-        createdAt: user.createdAt,
         lastLogin: user.lastLogin
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to update user status" });
+    }
+  });
+
+  // DELETE /api/admin/users/:id - Permanently delete a user account (admin only)
+  app.delete("/api/admin/users/:id", requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      // Neither the signed-in admin nor the user they are masquerading as may
+      // be deleted from this session.
+      const sessionUser = req.user as any;
+      const { dbUser, originalUser } = await getEffectiveUser((req as any).session ?? {}, sessionUser);
+      if (id === dbUser?.id || id === originalUser?.id) {
+        return res.status(400).json({ message: "You cannot delete the account you are currently signed in as." });
+      }
+
+      const user = await storage.users.getUser(id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const deleted = await storage.users.deleteUserAccount(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      clearAccessCache();
+      res.json({ success: true });
+    } catch (error) {
+      if (error instanceof UserInUseError) {
+        return res.status(409).json({ message: error.message });
+      }
+      console.error("Failed to delete user:", error);
+      res.status(500).json({ message: "Failed to delete user" });
     }
   });
 
@@ -297,6 +392,11 @@ export function registerUserRoutes(
       
       res.status(204).send();
     } catch (error) {
+      // Storage-layer replacement for the old FK RESTRICT: a role still
+      // referenced by a dashboard config's roles array cannot be deleted.
+      if (error instanceof RoleInUseError) {
+        return res.status(409).json({ message: error.message });
+      }
       res.status(500).json({ message: "Failed to delete role" });
     }
   });

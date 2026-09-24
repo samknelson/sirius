@@ -1,0 +1,357 @@
+import type { Express, Request, Response, NextFunction } from "express";
+import multer from "multer";
+import { requireAccess, buildContext } from "../services/access-policy-evaluator";
+import { isComponentEnabled } from "./components";
+import { fileSystemService, listFileSystemConfigs, FileSystemNotConfiguredError } from "../services/files";
+import {
+  getEntityFileContext,
+  type EntityFileContext,
+  type EntityFilesVerb,
+} from "../services/entity-files/registry";
+import { readCatalogDeclaration } from "@shared/catalog";
+import { catalogViewerForCatalog } from "../services/catalog-viewer";
+import { ENTITY_FILE_AREAS_CATALOG } from "../services/entity-files/catalog";
+import {
+  getEntityFilesContextConfig,
+  resolveUsableContextConfig,
+  expandDirectoryTemplate,
+  isExtensionAllowed,
+  ENTITY_FILES_DIRECTORY_TOKEN,
+} from "../services/entity-files/config";
+import { storage } from "../storage";
+import { insertFileSchema } from "@shared/schema";
+import { logger } from "../logger";
+import { z } from "zod";
+
+type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+});
+
+const updateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(255).optional(),
+    data: z.unknown().optional(),
+    // null clears the type; absent leaves it alone.
+    typeId: z.string().min(1).nullable().optional(),
+  })
+  .strict();
+
+/**
+ * Validate that a file type exists and applies to the given context. The
+ * dropdown already filters by record type, but a hand-made request must not be
+ * able to pair a type with a record type it does not declare.
+ *
+ * A type is OPTIONAL: null / undefined is always fine.
+ */
+async function checkFileType(
+  typeId: string | null | undefined,
+  context: EntityFileContext,
+): Promise<{ status: number; message: string } | null> {
+  if (typeId === null || typeId === undefined) return null;
+  const optionsStorage = (await import("./options-registry")).getOptionsStorage();
+  const fileType = await optionsStorage.get("file-type", typeId);
+  if (!fileType) {
+    return { status: 400, message: "Unknown file type" };
+  }
+  const contextIds = (fileType.data as { contextIds?: unknown } | null)?.contextIds;
+  const applies = Array.isArray(contextIds) && contextIds.includes(context.id);
+  if (!applies) {
+    return {
+      status: 400,
+      message: `File type "${fileType.name}" does not apply to ${context.recordLabel} records`,
+    };
+  }
+  return null;
+}
+
+/**
+ * Resolve the context from :context, enforce its component gate, its access
+ * callback for the given verb, and entity existence. Attaches nothing to
+ * req — returns the context or undefined after responding.
+ */
+async function resolveContextAndAuthorize(
+  req: Request,
+  res: Response,
+  verb: EntityFilesVerb,
+): Promise<EntityFileContext | undefined> {
+  const context = getEntityFileContext(req.params.context);
+  if (!context) {
+    res.status(404).json({ message: "Unknown entity file context" });
+    return undefined;
+  }
+  if (context.component && !(await isComponentEnabled(context.component))) {
+    res.status(404).json({ message: "Unknown entity file context" });
+    return undefined;
+  }
+  const granted = await context.checkAccess(verb, req.params.entityId, req);
+  if (!granted) {
+    res.status(403).json({ message: "Insufficient permissions" });
+    return undefined;
+  }
+  if (!(await context.entityExists(req.params.entityId))) {
+    res.status(404).json({ message: "Entity not found" });
+    return undefined;
+  }
+  return context;
+}
+
+/**
+ * Generic entity file attachment routes. Contexts are registered in code
+ * (server/services/entity-files/registry.ts); where files land is operator
+ * configuration in the `entity_files_config` variable.
+ */
+export function registerEntityFileRoutes(app: Express, requireAuth: AuthMiddleware) {
+  // Admin metadata for the config page: registered contexts (with their
+  // current config), the available filesystems, and the ONE directory token
+  // the framework expands — the page should not hardcode its spelling.
+  app.get(
+    "/api/entity-files/contexts",
+    requireAuth,
+    requireAccess("admin"),
+    async (req, res) => {
+      try {
+        // The declaration, not the offer: this page configures areas, so it
+        // lists one whose component is switched off and says so on the row,
+        // rather than dropping it. Whether each component is on is asked
+        // separately — that is configured state, which a catalog never reports.
+        const viewer = await catalogViewerForCatalog(req, ENTITY_FILE_AREAS_CATALOG);
+        const declared = readCatalogDeclaration(ENTITY_FILE_AREAS_CATALOG, viewer);
+        if (!declared.ok) {
+          return res.status(declared.reason === "unknown" ? 500 : 403).json({
+            message: declared.message,
+          });
+        }
+
+        const contexts = await Promise.all(
+          declared.catalog.entries.map(async (entry) => ({
+            id: entry.id,
+            label: entry.name,
+            component: entry.component ?? null,
+            componentEnabled: entry.component
+              ? await isComponentEnabled(entry.component)
+              : true,
+            config: (await getEntityFilesContextConfig(entry.id)) ?? null,
+          })),
+        );
+        const fileSystems = listFileSystemConfigs().map((fs) => ({
+          id: fs.id,
+          access: fs.access,
+        }));
+        res.json({ contexts, fileSystems, directoryToken: ENTITY_FILES_DIRECTORY_TOKEN });
+      } catch (error) {
+        logger.error("Failed to list entity file contexts", {
+          service: "entityFiles",
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res.status(500).json({ message: "Failed to list entity file contexts" });
+      }
+    },
+  );
+
+  // List attachments (plus whether uploads are currently possible).
+  app.get("/api/entity-files/:context/:entityId", requireAuth, async (req, res) => {
+    try {
+      const context = await resolveContextAndAuthorize(req, res, "view");
+      if (!context) return;
+      const [files, usable] = await Promise.all([
+        storage.entityFiles.list(context.id, req.params.entityId),
+        resolveUsableContextConfig(context.id),
+      ]);
+      res.json({
+        configured: !!usable.config,
+        message: usable.config ? null : usable.reason,
+        allowed: usable.config?.allowed ?? null,
+        files,
+      });
+    } catch (error) {
+      logger.error("Failed to list entity files", {
+        service: "entityFiles",
+        context: req.params.context,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      res.status(500).json({ message: "Failed to list files" });
+    }
+  });
+
+  // Upload: bytes first (a failed row insert leaves a sweepable orphan
+  // object), then files row + attachment row in ONE transaction.
+  app.post(
+    "/api/entity-files/:context/:entityId",
+    requireAuth,
+    upload.single("file"),
+    async (req, res) => {
+      try {
+        const context = await resolveContextAndAuthorize(req, res, "manage");
+        if (!context) return;
+        if (!req.file) {
+          return res.status(400).json({ message: "No file provided" });
+        }
+        const usable = await resolveUsableContextConfig(context.id);
+        if (!usable.config) {
+          return res.status(503).json({ message: usable.reason });
+        }
+        if (!isExtensionAllowed(req.file.originalname, usable.config.allowed)) {
+          return res.status(400).json({
+            message: `File type not allowed. Allowed extensions: ${usable.config.allowed!.join(", ")}`,
+          });
+        }
+
+        // Multipart carries everything as a string; an empty field means
+        // "no type". Checked BEFORE any bytes are uploaded.
+        const rawTypeId = typeof req.body?.typeId === "string" ? req.body.typeId.trim() : "";
+        const typeId = rawTypeId === "" ? null : rawTypeId;
+        const typeError = await checkFileType(typeId, context);
+        if (typeError) {
+          return res.status(typeError.status).json({ message: typeError.message });
+        }
+
+        const accessContext = await buildContext(req);
+        const uploaderId = accessContext.user?.id;
+        if (!uploaderId) {
+          return res.status(401).json({ message: "Could not determine the current user for this upload. Please sign in again." });
+        }
+
+        // Throws when the stored template names a token the framework does
+        // not supply — refuse the upload rather than write a path with a
+        // literal ":something" segment in it.
+        let directory: string;
+        try {
+          directory = expandDirectoryTemplate(usable.config.directory, req.params.entityId);
+        } catch (error) {
+          return res.status(503).json({
+            message: `${error instanceof Error ? error.message : String(error)} An administrator must fix it under Config → Entity Files.`,
+          });
+        }
+        const safeName = req.file.originalname.split(/[/\\]/).pop() || "file";
+        const customPath = `${directory ? directory + "/" : ""}${Date.now()}-${safeName.replace(/[^\w.\-]+/g, "_").slice(0, 200)}`;
+
+        const uploadResult = await fileSystemService.upload({
+          fileSystemId: usable.config.file_system,
+          fileName: req.file.originalname,
+          fileContent: req.file.buffer,
+          mimeType: req.file.mimetype,
+          customPath,
+        });
+
+        const displayName =
+          typeof req.body?.name === "string" && req.body.name.trim()
+            ? req.body.name.trim().slice(0, 255)
+            : req.file.originalname.slice(0, 255);
+
+        const fileData = insertFileSchema.parse({
+          fileName: req.file.originalname,
+          storagePath: uploadResult.storagePath,
+          mimeType: req.file.mimetype,
+          size: uploadResult.size,
+          uploadedBy: uploaderId,
+          entityType: `entity-files:${context.id}`,
+          entityId: req.params.entityId,
+          fileSystemId: usable.config.file_system,
+          metadata: null,
+        });
+
+        const record = await storage.entityFiles.createWithFile(
+          context.id,
+          req.params.entityId,
+          fileData,
+          displayName,
+          typeId,
+        );
+        res.status(201).json(record);
+      } catch (error) {
+        logger.error("Entity file upload failed", {
+          service: "entityFiles",
+          context: req.params.context,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        if (error instanceof z.ZodError) {
+          const fields = error.issues
+            .map((issue) => (issue.path.length ? issue.path.join(".") : "(root)"))
+            .filter((v, i, a) => a.indexOf(v) === i)
+            .join(", ");
+          res.status(400).json({
+            message: `The file record failed validation${fields ? ` (invalid or missing: ${fields})` : ""}. Please try again or contact an administrator.`,
+          });
+        } else if (error instanceof FileSystemNotConfiguredError) {
+          res.status(503).json({ message: error.message });
+        } else {
+          res.status(500).json({ message: "Failed to upload file" });
+        }
+      }
+    },
+  );
+
+  // Downloads go through the generic /api/files/:id/download route — the
+  // file.read policy delegates to this context's access callback and the
+  // download serves the attachment's display name (see
+  // server/services/entity-files/file-read-access.ts and files.ts).
+
+  // Rename / edit attachment data.
+  app.patch(
+    "/api/entity-files/:context/:entityId/:attachmentId",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const context = await resolveContextAndAuthorize(req, res, "manage");
+        if (!context) return;
+        const parsed = updateSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({ message: "Invalid update", errors: parsed.error.issues });
+        }
+        const typeError = await checkFileType(parsed.data.typeId, context);
+        if (typeError) {
+          return res.status(typeError.status).json({ message: typeError.message });
+        }
+        const record = await storage.entityFiles.update(
+          context.id,
+          req.params.entityId,
+          req.params.attachmentId,
+          parsed.data,
+        );
+        if (!record) {
+          return res.status(404).json({ message: "File not found" });
+        }
+        res.json(record);
+      } catch (error) {
+        logger.error("Entity file update failed", {
+          service: "entityFiles",
+          context: req.params.context,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res.status(500).json({ message: "Failed to update file" });
+      }
+    },
+  );
+
+  // Delete: attachment row + files row in one transaction, bytes after
+  // commit inside the storage method.
+  app.delete(
+    "/api/entity-files/:context/:entityId/:attachmentId",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const context = await resolveContextAndAuthorize(req, res, "manage");
+        if (!context) return;
+        const removed = await storage.entityFiles.deleteWithFile(
+          context.id,
+          req.params.entityId,
+          req.params.attachmentId,
+        );
+        if (!removed) {
+          return res.status(404).json({ message: "File not found" });
+        }
+        res.json({ message: "File deleted successfully" });
+      } catch (error) {
+        logger.error("Entity file delete failed", {
+          service: "entityFiles",
+          context: req.params.context,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res.status(500).json({ message: "Failed to delete file" });
+      }
+    },
+  );
+}

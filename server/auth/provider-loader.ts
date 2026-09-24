@@ -17,6 +17,11 @@ const loadClerkProvider = async (): Promise<ProviderModule> => {
   return clerkProvider as ProviderModule;
 };
 
+const loadLocalProvider = async (): Promise<ProviderModule> => {
+  const localProvider = await import("./providers/local");
+  return localProvider as ProviderModule;
+};
+
 export async function loadProvider(config: AuthProviderConfig): Promise<AuthProvider> {
   if (config.type === "replit") {
     return (replitProvider as ProviderModule).createProvider(config);
@@ -30,6 +35,11 @@ export async function loadProvider(config: AuthProviderConfig): Promise<AuthProv
   if (config.type === "clerk") {
     const clerkProvider = await loadClerkProvider();
     return clerkProvider.createProvider(config);
+  }
+
+  if (config.type === "local") {
+    const localProvider = await loadLocalProvider();
+    return localProvider.createProvider(config);
   }
 
   throw new Error(`Unknown auth provider type: ${config.type}`);
