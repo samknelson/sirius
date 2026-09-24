@@ -1,4 +1,4 @@
-# Saved postal templates: real-browser frontend regression
+# Template Studio authoring and saved postal templates: browser regression
 
 Run from the repository root:
 
@@ -38,7 +38,33 @@ Assertions exercise the actual contenteditable rich-text DOM with keyboard input
 - Unknown API requests, external network requests, writes outside the allowlist,
   and uncaught browser errors fail the run. No send endpoint is allowed.
 
-Success writes `screenshots/postal-template-regression.png` and prints assertions.
+The isolated editor fixtures additionally exercise the production email and postal
+editors (the fixture's localStorage Save/Reopen buttons are test persistence, not
+production database saves):
+
+- Imported nested tables, inline styles, quoted attribute/style tokens, clipboard
+  HTML, source/visual switching and reload/reopen preserve supported content.
+- Typing, formatting, token insertion and nested-table paste undo/redo through
+  keyboard shortcuts; disabled imperative token insertion cannot change content.
+- Font, size, alignment and line spacing; ordinary text links add/update/remove;
+  clear formatting and its undo.
+- Table insertion, row/column additions and deletions, horizontal merge/split,
+  width and padding; two-column email layout and styled linked button insertion.
+- HTTPS image validation, alternative text, proportional width, editing,
+  deletion/undo and source/save/reopen. The one allowed image URL is intercepted
+  with local PNG bytes; no image host receives a request.
+- Postal page-break insertion and marker-free authored text; email and unrelated
+  rich-text editors have no physical page-break control, and unrelated editors
+  retain their stricter style sanitization.
+
+DOM ranges simulate text selection; document mutations are production editor
+commands, clipboard handlers and keyboard input. These tests do not establish
+cross-browser/IME behavior, real email-client rendering, actual provider delivery,
+image downloader security or PDF geometry. The separate comm delivery/PDF unit
+and integration suites cover their respective backend contracts.
+
+Success writes `screenshots/postal-template-regression.png` and
+`screenshots/template-design-authoring.png` and prints assertions.
 `POSTAL_BROWSER_KEEP_OPEN=1` retains the fixture browser and Vite until Ctrl+C for
 inspection. Interception belongs to that Puppeteer page: a separate screenshot
 browser cannot authenticate/use the fixture APIs. Inspect the saved PNG instead.

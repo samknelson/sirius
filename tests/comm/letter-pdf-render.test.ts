@@ -68,4 +68,45 @@ describe("actual Chromium letter PDF", () => {
     await expect(renderLetterPdf('<p>Letter</p><img src="https://images.example/missing.png">'))
       .rejects.toThrow("Image unavailable");
   });
+
+  it("prints authored break markers as blank boundaries, not text, and retains the first-page address reserve", async () => {
+    const body = `<p>RESERVEDFIRST</p>
+      <div data-template-page-break="true" style="break-before:page"></div>
+      <table style="width:100%;border-collapse:collapse"><tr><td style="padding:8pt">
+        <p>AFTERBREAK</p><table><tr><td>NESTEDCELL</td></tr></table>
+      </td></tr></table>
+      <div data-template-page-break="true" style="break-before:page"></div>
+      <p>LASTPAGE</p>`;
+    const dir = await mkdtemp(join(tmpdir(), "letter-break-test-"));
+    try {
+      const sent = await renderLetterPdf(body);
+      const preview = await renderLetterPdf(body, { previewGuides: true });
+      for (const [kind, bytes] of [["sent", sent], ["preview", preview]] as const) {
+        const pdf = await PDFDocument.load(bytes);
+        expect(pdf.getPageCount()).toBe(3);
+        expect(pdf.getPages().map((page) => page.getSize()))
+          .toEqual(Array(3).fill({ width: 612, height: 792 }));
+        const path = join(dir, `${kind}.pdf`);
+        await writeFile(path, bytes);
+        const text = execFileSync("pdftotext", ["-layout", path, "-"], { encoding: "utf8" });
+        const sheets = text.trim().split("\f");
+        expect(sheets).toHaveLength(3);
+        expect(sheets[0]).toContain("RESERVEDFIRST");
+        expect(sheets[1]).toContain("AFTERBREAK");
+        expect(sheets[1]).toContain("NESTEDCELL");
+        expect(sheets[2]).toContain("LASTPAGE");
+        expect(text).not.toMatch(/Page break|data-template-page-break/);
+        const bbox = execFileSync("pdftotext", ["-bbox", path, "-"], { encoding: "utf8" });
+        const first = bbox.match(/<word xMin="([^"]+)" yMin="([^"]+)"[^>]*>RESERVEDFIRST<\/word>/);
+        const second = bbox.match(/<word xMin="([^"]+)" yMin="([^"]+)"[^>]*>AFTERBREAK<\/word>/);
+        expect(first).not.toBeNull();
+        expect(second).not.toBeNull();
+        expect(Number(first![1])).toBeGreaterThanOrEqual(71.99);
+        expect(Number(first![2])).toBeGreaterThanOrEqual(215.99);
+        expect(Number(second![2])).toBeGreaterThanOrEqual(71.99);
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

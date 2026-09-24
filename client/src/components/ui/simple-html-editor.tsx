@@ -12,6 +12,8 @@ import {
 import { cn } from "@/lib/utils";
 import { type TokenPickerEntry as TokenDefinition } from "@shared/tokens";
 import { escapeHtml, sanitizeHtml, normalizeTemplateHtml } from "@shared/utils/html";
+import { TemplateDesignTools } from "./template-design-tools";
+import { captureBookmark, restoreBookmark, TemplateEditorHistory } from "./template-editor-history";
 
 const SPECIAL_CHARACTERS = [
   { name: 'Copyright', symbol: '©' },
@@ -286,6 +288,17 @@ export function SimpleHtmlEditor({
   const [isFocused, setIsFocused] = useState(false);
   const [rawMode, setRawMode] = useState(false);
   const [rawHtml, setRawHtml] = useState(value);
+  const [selectionVersion, setSelectionVersion] = useState(0);
+  const history = useRef(new TemplateEditorHistory());
+  const lastEmitted = useRef<string | null>(null);
+  const representedDom = useRef<{ node: HTMLDivElement; value: string } | null>(null);
+  const composing = useRef(false);
+  const mutationDepth = useRef(0);
+  const emit = (html: string) => {
+    lastEmitted.current = html;
+    if (editorRef.current && !rawMode) representedDom.current = { node: editorRef.current, value: html };
+    onChange(html);
+  };
   const cleanHtml = useCallback((html: string) => templateMode
     ? normalizeTemplateHtml(html, { preserveTokens: enableTokens })
     : sanitizeEditorHtml(html), [templateMode, enableTokens]);
@@ -295,14 +308,27 @@ export function SimpleHtmlEditor({
   // text tokens stay ordinary editable text.
   const attributeTokens = useRef(new Map<string, string>());
   const tokenMarkerPrefix = useRef(`sirius${crypto.randomUUID().replace(/-/g, "")}token`);
-  const protectAttributeTokens = (html: string) => html.replace(
-    /<[^>]*>/g,
-    (tag) => tag.replace(/\{\{[^{}]*\}\}/g, (token) => {
-      const marker = `${tokenMarkerPrefix.current}${attributeTokens.current.size}slot`;
-      attributeTokens.current.set(marker, token);
+  const protectAttributeTokens = (html: string) => {
+    const pending = new Map<string, string>();
+    // Hide complete expressions before scanning tags: arguments may contain >.
+    html = html.replace(/\{\{[^{}]*\}\}/g, (token) => {
+      const marker = `${tokenMarkerPrefix.current}pending${pending.size}slot`;
+      pending.set(marker, token);
       return marker;
-    }),
-  );
+    });
+    html = html.replace(/<[^>]*>/g, (tag) => {
+      for (const [temporary, token] of pending) {
+        if (!tag.includes(temporary)) continue;
+        const marker = Array.from(attributeTokens.current).find(([, original]) => original === token)?.[0]
+          ?? `${tokenMarkerPrefix.current}${attributeTokens.current.size}slot`;
+        attributeTokens.current.set(marker, token);
+        tag = tag.split(temporary).join(marker);
+      }
+      return tag;
+    });
+    for (const [temporary, token] of pending) html = html.split(temporary).join(token);
+    return html;
+  };
   const restoreAttributeTokens = (html: string) => {
     for (const [marker, token] of attributeTokens.current) html = html.split(marker).join(token);
     return html;
@@ -359,6 +385,12 @@ export function SimpleHtmlEditor({
 
   useEffect(() => {
     if (editorRef.current && !isFocused && !rawMode) {
+      const editor = editorRef.current;
+      if (templateMode && representedDom.current?.node === editor && representedDom.current.value === value) return;
+      const ownEcho = lastEmitted.current === value;
+      // An emitted value is only an echo until a host replacement arrives.
+      // A later load of the same string must not be mistaken for that old echo.
+      if (!ownEcho) lastEmitted.current = null;
       // Tokens are shown as the text they are; only stale chip markup
       // from the old editor needs converting on the way in.
       const cleaned = cleanHtml(
@@ -367,7 +399,15 @@ export function SimpleHtmlEditor({
       const rendered = templateMode && enableTokens ? protectAttributeTokens(cleaned) : cleaned;
       if (editorRef.current.innerHTML !== rendered) {
         editorRef.current.innerHTML = rendered;
+        lastRichRangeRef.current = null;
       }
+      representedDom.current = { node: editor, value };
+      if (templateMode) {
+        if (!ownEcho) history.current.reset({ html: rendered });
+        else if (history.current.entries[history.current.index]?.html !== rendered) history.current.push({ html: rendered });
+        setSelectionVersion((version) => version + 1);
+      }
+      if (templateMode && history.current.index < 0) history.current.reset({ html: rendered });
     }
   }, [value, isFocused, rawMode, enableTokens, cleanHtml]);
 
@@ -376,6 +416,10 @@ export function SimpleHtmlEditor({
       setRawHtml(value);
     }
   }, [value, rawMode]);
+
+  useEffect(() => {
+    if (templateMode) setSelectionVersion((version) => version + 1);
+  }, [rawMode, templateMode]);
 
   // ── Imperative insert-at-cursor API (Template Studio token browser) ──
   // Track the last caret position in the rich editor so an external
@@ -388,11 +432,23 @@ export function SimpleHtmlEditor({
       sel &&
       sel.rangeCount > 0 &&
       editorRef.current &&
-      editorRef.current.contains(sel.getRangeAt(0).startContainer)
+      editorRef.current.contains(sel.getRangeAt(0).startContainer) &&
+      editorRef.current.contains(sel.getRangeAt(0).endContainer)
     ) {
       lastRichRangeRef.current = sel.getRangeAt(0).cloneRange();
+      if (templateMode) {
+        const entry = history.current.entries[history.current.index];
+        if (entry && entry.html === editorRef.current.innerHTML) entry.bookmark = captureBookmark(editorRef.current);
+        setSelectionVersion((version) => version + 1);
+      }
     }
-  }, []);
+  }, [templateMode]);
+
+  useEffect(() => {
+    if (!templateMode) return;
+    document.addEventListener("selectionchange", saveRichSelection);
+    return () => document.removeEventListener("selectionchange", saveRichSelection);
+  }, [templateMode, saveRichSelection]);
 
   useEffect(() => {
     if (!editorApiRef) return;
@@ -405,7 +461,10 @@ export function SimpleHtmlEditor({
           const end = el?.selectionEnd ?? rawHtml.length;
           const next = rawHtml.slice(0, start) + snippet + rawHtml.slice(end);
           setRawHtml(next);
-          onChange(next);
+          if (templateMode) history.current.push({
+            html: enableTokens ? protectAttributeTokens(cleanHtml(next)) : cleanHtml(next), source: next,
+          });
+          emit(next);
           requestAnimationFrame(() => {
             if (!el) return;
             el.focus();
@@ -424,9 +483,7 @@ export function SimpleHtmlEditor({
           sel.addRange(saved);
         }
         // A token is text like any other snippet.
-        document.execCommand("insertHTML", false, escapeHtml(snippet));
-        saveRichSelection();
-        handleInput();
+        execCommand("insertHTML", escapeHtml(snippet));
       },
     };
     return () => {
@@ -434,8 +491,8 @@ export function SimpleHtmlEditor({
     };
   });
 
-  const handleInput = () => {
-    if (!editorRef.current) return;
+  const handleInput = (recordHistory = true) => {
+    if (disabled || !editorRef.current || composing.current || mutationDepth.current > 0) return;
     let serialized: string;
     if (enableTokens) {
       const clone = editorRef.current.cloneNode(true) as HTMLElement;
@@ -446,25 +503,73 @@ export function SimpleHtmlEditor({
     } else {
       serialized = editorRef.current.innerHTML;
     }
-    onChange(cleanHtml(restoreAttributeTokens(serialized)));
+    if (templateMode && recordHistory) history.current.push({
+      html: editorRef.current.innerHTML, bookmark: captureBookmark(editorRef.current),
+    });
+    emit(cleanHtml(restoreAttributeTokens(serialized)));
+    saveRichSelection();
   };
 
-  const execCommand = (command: string, value?: string) => {
-    if (disabled) return;
+  const execute = (mutation: () => void) => {
+    if (disabled || rawMode || !editorRef.current) return;
+    // Capture before focus(): some browsers move the selection on focus.
+    const saved = lastRichRangeRef.current?.cloneRange();
     editorRef.current?.focus();
-    const saved = lastRichRangeRef.current;
     const selection = window.getSelection();
     if (saved && selection && editorRef.current?.contains(saved.startContainer)) {
       selection.removeAllRanges();
       selection.addRange(saved);
+    } else if (templateMode) {
+      restoreBookmark(editorRef.current);
     }
-    document.execCommand(command, false, value);
-    editorRef.current?.focus();
     saveRichSelection();
-    handleInput();
+    // execCommand dispatches input synchronously. Structural commands can
+    // perform additional DOM changes after it returns; none of those
+    // intermediate states may become an undo step or an emitted host value.
+    mutationDepth.current++;
+    try {
+      mutation();
+    } finally {
+      mutationDepth.current--;
+      if (mutationDepth.current === 0) {
+        editorRef.current?.focus();
+        saveRichSelection();
+        handleInput();
+      }
+    }
+  };
+
+  const moveHistory = (delta: number) => {
+    if (disabled) return;
+    const snapshot = history.current.move(delta);
+    if (!snapshot) return;
+    if (rawMode) {
+      const source = snapshot.source ?? cleanHtml(restoreAttributeTokens(snapshot.html));
+      setRawHtml(source);
+      emit(source);
+      return;
+    }
+    if (!editorRef.current) return;
+    editorRef.current.innerHTML = snapshot.html;
+    editorRef.current.focus();
+    restoreBookmark(editorRef.current, snapshot.bookmark);
+    handleInput(false);
+  };
+
+  const execCommand = (command: string, value?: string) => {
+    if (templateMode && (command === "undo" || command === "redo")) {
+      moveHistory(command === "undo" ? -1 : 1);
+      return;
+    }
+    execute(() => {
+      if (templateMode) document.execCommand("styleWithCSS", false, "true");
+      document.execCommand(command, false, value);
+      if (templateMode) document.execCommand("styleWithCSS", false, "false");
+    });
   };
 
   const handleCreateLink = () => {
+    if (disabled) return;
     const url = prompt('Enter URL:');
     if (url) {
       execCommand('createLink', url);
@@ -472,15 +577,15 @@ export function SimpleHtmlEditor({
   };
 
   const handleInsertCharacter = (character: string) => {
-    document.execCommand('insertHTML', false, character);
-    editorRef.current?.focus();
-    handleInput();
+    execCommand('insertHTML', character);
   };
 
   const toggleRawMode = () => {
+    if (disabled) return;
     closeSlash();
     if (rawMode) {
-      onChange(templateMode ? cleanHtml(rawHtml) : rawHtml);
+      const next = templateMode ? cleanHtml(rawHtml) : rawHtml;
+      emit(next);
       setIsFocused(false);
       setRawMode(false);
     } else {
@@ -490,9 +595,14 @@ export function SimpleHtmlEditor({
   };
 
   const handleRawHtmlChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    if (disabled) return;
     const newValue = e.target.value;
     setRawHtml(newValue);
-    onChange(newValue);
+    if (templateMode) history.current.push({
+      html: enableTokens ? protectAttributeTokens(cleanHtml(newValue)) : cleanHtml(newValue),
+      source: newValue,
+    });
+    emit(newValue);
     if (enableTokens) detectSlashRaw(e.target);
   };
 
@@ -509,6 +619,16 @@ export function SimpleHtmlEditor({
   };
 
   const handleEditorKeyDown = (e: React.KeyboardEvent) => {
+    if (disabled) return;
+    if (templateMode && (e.ctrlKey || e.metaKey) && !e.altKey) {
+      const key = e.key.toLowerCase();
+      if (key === "z" || key === "y") {
+        e.preventDefault();
+        moveHistory(key === "y" || e.shiftKey ? 1 : -1);
+        return;
+      }
+    }
+    if (composing.current || e.nativeEvent.isComposing) return;
     if (enableTokens && slashOpen) {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -533,6 +653,46 @@ export function SimpleHtmlEditor({
           return;
         }
       }
+    }
+    if (templateMode && !rawMode) {
+      const selection = window.getSelection();
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+      const node = range?.startContainer;
+      const element = node?.nodeType === Node.ELEMENT_NODE ? node as Element : node?.parentElement;
+      const cell = element?.closest("td,th");
+      if (e.key === "Tab" && cell && editorRef.current?.contains(cell)) {
+        const table = cell.closest("table");
+        const cells = Array.from(table?.querySelectorAll("td,th") ?? [])
+          .filter((item) => item.closest("table") === table);
+        const target = cells[cells.indexOf(cell) + (e.shiftKey ? -1 : 1)];
+        if (target) {
+          e.preventDefault();
+          const next = document.createRange();
+          next.selectNodeContents(target);
+          next.collapse(true);
+          selection?.removeAllRanges();
+          selection?.addRange(next);
+          saveRichSelection();
+        }
+        return;
+      }
+      // A selected break is a real, empty block, not persisted UI text.
+      if (templateMode === "postal" && range && !range.collapsed &&
+          (e.key === "Backspace" || e.key === "Delete") &&
+          range.startContainer === range.endContainer &&
+          range.endOffset === range.startOffset + 1) {
+        const selected = range.startContainer.childNodes[range.startOffset];
+        if (selected instanceof HTMLElement && selected.matches("[data-template-page-break]")) {
+          e.preventDefault();
+          execute(() => {
+            selected.remove();
+            range.collapse(true);
+          });
+          return;
+        }
+      }
+      // Let the browser implement paragraphs, list splitting and Shift+Enter.
+      return;
     }
     if (!rawMode && e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -615,6 +775,7 @@ export function SimpleHtmlEditor({
   }, [enableTokens, closeSlash]);
 
   const insertTokenAtSlash = (t: TokenDefinition) => {
+    if (disabled) return;
     const ctx = slashContext.current;
     if (!ctx) return;
     const snippet = t.insertText || `{{${t.id}}}`;
@@ -647,7 +808,10 @@ export function SimpleHtmlEditor({
       const endIdx = startIdx + 1 + slashQuery.length;
       const next = rawHtml.slice(0, startIdx) + snippet + rawHtml.slice(endIdx);
       setRawHtml(next);
-      onChange(next);
+      if (templateMode) history.current.push({
+        html: protectAttributeTokens(cleanHtml(next)), source: next,
+      });
+      emit(next);
       requestAnimationFrame(() => {
         el.focus();
         const newCaret = startIdx + snippet.length;
@@ -674,8 +838,31 @@ export function SimpleHtmlEditor({
   return (
     <div ref={containerRef} className={cn("relative border border-input rounded-md", className)}>
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-1 p-2 border-b border-border bg-muted/30"
+      {templateMode && !rawMode && (
+        <TemplateDesignTools editor={editorRef.current} disabled={disabled}
+          mode={templateMode} execute={execute} command={execCommand}
+          selectionVersion={selectionVersion} />
+      )}
+      <fieldset disabled={disabled} className="flex flex-wrap items-center gap-1 p-2 border-b border-border bg-muted/30 min-w-0"
         onMouseDown={(event) => { if (!rawMode) event.preventDefault(); }}>
+        {templateMode && (
+          <>
+            <Button type="button" variant="ghost" size="sm"
+              aria-label="Undo" title="Undo (Ctrl/⌘ Z)"
+              disabled={disabled || history.current.index <= 0}
+              onClick={() => moveHistory(-1)}
+              data-testid={testId ? `${testId}-undo` : undefined}>
+              Undo
+            </Button>
+            <Button type="button" variant="ghost" size="sm"
+              aria-label="Redo" title="Redo (Ctrl/⌘ Shift Z)"
+              disabled={disabled || history.current.index >= history.current.entries.length - 1}
+              onClick={() => moveHistory(1)}
+              data-testid={testId ? `${testId}-redo` : undefined}>
+              Redo
+            </Button>
+          </>
+        )}
         {!rawMode && (
           <>
             <Button
@@ -786,7 +973,7 @@ export function SimpleHtmlEditor({
         {enableTokens && (
           <span className="ml-auto text-xs text-muted-foreground hidden sm:inline">Type <kbd className="rounded border bg-background px-1 py-0.5 font-mono text-[10px]">/</kbd> to insert a token</span>
         )}
-      </div>
+      </fieldset>
 
       {/* Editor */}
       {rawMode ? (
@@ -817,6 +1004,18 @@ export function SimpleHtmlEditor({
           // content preference — same affordance as the raw-HTML textarea.
           style={{ minHeight, resize: "vertical", overflow: "auto" }}
           onInput={handleEditorInput}
+          onCompositionStart={() => { composing.current = true; }}
+          onCompositionEnd={() => { composing.current = false; handleEditorInput(); }}
+          onBeforeInput={(event) => {
+            if (!templateMode) return;
+            const inputType = (event.nativeEvent as InputEvent).inputType;
+            if (inputType === "historyUndo" || inputType === "historyRedo") {
+              event.preventDefault();
+              moveHistory(inputType === "historyUndo" ? -1 : 1);
+            } else {
+              saveRichSelection();
+            }
+          }}
           onPaste={handleTemplatePaste}
           data-template-editor={templateMode}
           onFocus={() => setIsFocused(true)}
@@ -832,6 +1031,17 @@ export function SimpleHtmlEditor({
           }}
           onMouseUp={saveRichSelection}
           onClick={(e) => {
+            const target = e.target as HTMLElement;
+            const pageBreak = target.closest("[data-template-page-break]");
+            const selectedObject = templateMode && target.tagName === "IMG"
+              ? target
+              : templateMode === "postal" ? pageBreak : null;
+            if (!disabled && selectedObject && editorRef.current?.contains(selectedObject)) {
+              const range = document.createRange();
+              range.selectNode(selectedObject);
+              window.getSelection()?.removeAllRanges();
+              window.getSelection()?.addRange(range);
+            }
             saveRichSelection();
             handleEditorClick();
           }}

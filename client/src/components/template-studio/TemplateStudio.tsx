@@ -788,14 +788,18 @@ export function TemplateStudio({
   const [panel, setPanel] = useState<StudioPanelId>("preview");
   const [templateToLoad, setTemplateToLoad] =
     useState<StudioLetterTemplate | null>(null);
+  // Content equality is not document identity. An intentional replacement
+  // must discard undo, caret and temporary token state even for identical HTML.
+  const [editorDocumentGeneration, setEditorDocumentGeneration] = useState(0);
 
   // Both cleared during the render that opens the studio, so the seed pickers
   // never render the previous session's picks before the reset lands, and the
   // column never flashes the section the last session was left on.
-  useModalSeed(open, null, () => {
+  useModalSeed(open, JSON.stringify([contextId, channel]), () => {
     setChosen({});
     setPanel("preview");
     setTemplateToLoad(null);
+    setEditorDocumentGeneration((generation) => generation + 1);
   });
 
   /** This root's personas-only choice — the first one it declares. */
@@ -1197,6 +1201,7 @@ export function TemplateStudio({
                     }}
                   >
                     <SimpleHtmlEditor
+                      key={`${f.key}:${editorDocumentGeneration}`}
                       templateMode={channel === "email" || channel === "postal" ? channel : undefined}
                       data-testid={`studio-editor-${f.key}`}
                       value={values[f.key] ?? ""}
@@ -1626,6 +1631,7 @@ export function TemplateStudio({
                       onValueChange(key, value);
                     }
                   }
+                  setEditorDocumentGeneration((generation) => generation + 1);
                   setTemplateToLoad(null);
                 }}
               >

@@ -10,12 +10,15 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { CommPostal } from "@/components/comm/CommPostal";
 import BulkMessageMessagePage from "@/pages/bulk-message-message";
-import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
+import { SimpleHtmlEditor, type SimpleHtmlEditorApi } from "@/components/ui/simple-html-editor";
 import "@/index.css";
 
 function EditorFixtures() {
   const [body, setBody] = React.useState("");
   const [plain, setPlain] = React.useState("");
+  const [email, setEmail] = React.useState("");
+  const [disabled, setDisabled] = React.useState(false);
+  const emailApi = React.useRef<SimpleHtmlEditorApi | null>(null);
   return <>
     <SimpleHtmlEditor templateMode="postal" enableTokens value={body} onChange={setBody} data-testid="fixture-editor" />
     <output data-testid="fixture-source">{body}</output>
@@ -23,6 +26,15 @@ function EditorFixtures() {
     <button data-testid="fixture-reopen" onClick={() => setBody(localStorage.getItem("fixture-template") || "")}>Reopen</button>
     <SimpleHtmlEditor value={plain} onChange={setPlain} data-testid="fixture-unrelated" />
     <output data-testid="fixture-unrelated-source">{plain}</output>
+    <h2>Email authoring regression</h2>
+    <SimpleHtmlEditor templateMode="email" enableTokens disabled={disabled} editorApiRef={emailApi}
+      value={email} onChange={setEmail} data-testid="fixture-email" />
+    <output data-testid="fixture-email-source">{email}</output>
+    <button data-testid="fixture-email-token" onClick={() => emailApi.current?.insertText('{{contact.field(name="firstName")}}')}>Insert token</button>
+    <button data-testid="fixture-email-disabled" onClick={() => setDisabled(value => !value)}>Toggle disabled</button>
+    <button data-testid="fixture-email-save" onClick={() => localStorage.setItem("fixture-email", email)}>Save email</button>
+    <button data-testid="fixture-email-reopen" onClick={() => setEmail(localStorage.getItem("fixture-email") || "")}>Reopen email</button>
+    <button data-testid="fixture-email-load-other" onClick={() => setEmail("<p>External document B</p>")}>Load other email</button>
   </>;
 }
 

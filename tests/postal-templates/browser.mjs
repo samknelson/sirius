@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import react from "@vitejs/plugin-react";
 import puppeteer from "puppeteer-core";
+import { exerciseAuthoring } from "./authoring.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const executablePath = process.env.CHROMIUM_PATH || [
@@ -57,7 +58,8 @@ const server = await bounded("Vite createServer", createServer({
     },
   }],
   resolve: { alias: { "@": path.join(root, "client/src"), "@shared": path.join(root, "shared") } },
-  server: { host: "127.0.0.1", port: Number(process.env.POSTAL_BROWSER_PORT || 5188), strictPort: true, hmr: false },
+  server: { host: "127.0.0.1", port: Number(process.env.POSTAL_BROWSER_PORT || 5188), strictPort: true, hmr: false,
+    watch: { ignored: ["**/.local/**", "**/artifacts/**", "**/screenshots/**"] } },
 }));
 
 // Only explicit fixture endpoints can succeed; unexpected requests fail the suite.
@@ -124,6 +126,10 @@ try {
     try {
       const url = new URL(request.url());
       if (["data:", "blob:"].includes(url.protocol)) return await request.continue();
+      if (url.href === "https://fixture-images.invalid/logo.png") {
+        return await request.respond({ status: 200, contentType: "image/png",
+          body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9ioAAAAASUVORK5CYII=", "base64") });
+      }
       assert.equal(url.origin, origin, `External network forbidden: ${url.href}`);
       if (url.pathname.startsWith("/api/")) {
         // PDF generation is outside this regression. Serve an inert local PDF, never a provider.
@@ -164,6 +170,25 @@ try {
     await click("button-load-template-confirm");
     await page.waitForSelector(sel("dialog-load-letter-template"), { hidden: true });
     await expectFields(content);
+    // Edit this document away and back to the next template's exact bytes.
+    // Loading that template is still a new document, not an onChange echo.
+    await click("studio-editor-bodyHtml-raw-mode");
+    await replaceByTyping("studio-editor-bodyHtml-raw", "<p>Previous template content</p>");
+    await replaceByTyping("studio-editor-bodyHtml-raw", content.bodyHtml);
+    await click("studio-editor-bodyHtml-raw-mode");
+    await expectFields(content);
+    assert.equal(await page.$eval(sel("studio-editor-bodyHtml-undo"), el => el.disabled), false);
+    await click("button-load-template-saved-postal");
+    await click("button-load-template-confirm");
+    await page.waitForSelector(sel("dialog-load-letter-template"), { hidden: true });
+    await expectFields(content);
+    assert.equal(await page.$eval(sel("studio-editor-bodyHtml-undo"), el => el.disabled), true,
+      "Same-content saved template replacement discards the previous document history");
+    assert.equal(await page.$eval(sel("studio-editor-bodyHtml-redo"), el => el.disabled), true);
+    await click("studio-editor-bodyHtml");
+    await page.keyboard.down("Control"); await page.keyboard.press("KeyZ"); await page.keyboard.up("Control");
+    await expectFields(content);
+    console.log("PASS same-content saved-template replacement resets editor history");
     assert.equal(await page.$eval(sel("studio-editor-bodyHtml"), el => el.isContentEditable), true);
     await replaceByTyping("studio-editor-bodyHtml", "My edited body");
     await replaceByTyping("studio-editor-description", "My edited description");
@@ -182,7 +207,7 @@ try {
   console.log("Checking imported template editor round trips");
   await page.goto(`${origin}/editor-fixture`);
   await click("fixture-editor-raw-mode");
-  const imported = '<!doctype html><html><head><style>.letter {color: #123456;} td {padding: 8px;}</style></head><body><div class="letter"><p>BEFORE</p><table><tr><td>Cell</td></tr></table><a href="{{contact.field(name=\"url\")}}">Link</a><p style="color:{{contact.field(name=\"color\")}}">AFTER</p></div></body></html>';
+  const imported = '<!doctype html><html><head><style>.letter {color: #123456;} td {padding: 8px;}</style></head><body><div class="letter"><p>BEFORE</p><table><tr><td>Cell</td><td><table><tr><td>Nested</td></tr></table></td></tr></table><img src="{{contact.field(name=\"logoUrl\")}}" alt="Logo" width="120" style="max-width:100%;height:auto"><a href="{{contact.field(name=\"url\")}}">Link</a><p style="color:{{contact.field(name=\"color\")}}">AFTER</p></div></body></html>';
   await replaceByTyping("fixture-editor-raw", imported);
   assert.equal(await page.$eval(sel("fixture-source"), el => el.textContent), imported, "Incomplete raw/source editing must remain literal");
   await click("fixture-editor-raw-mode");
@@ -190,6 +215,9 @@ try {
   assert.match(await page.$eval(sel("fixture-source"), el => el.textContent), /padding:\s*8px/);
   assert.match(await page.$eval(sel("fixture-source"), el => el.textContent), /\{\{contact.field\(name="url"\)\}\}/);
   assert.match(await page.$eval(sel("fixture-source"), el => el.textContent), /\{\{contact.field\(name="color"\)\}\}/);
+  assert.match(await page.$eval(sel("fixture-source"), el => el.textContent), /\{\{contact.field\(name="logoUrl"\)\}\}/);
+  assert.equal(await page.$$eval(`${sel("fixture-editor")} table`, els => els.length), 2, "Imported nested tables remain nested");
+  assert.equal(await page.$eval(`${sel("fixture-editor")} img`, el => el.getAttribute("alt")), "Logo");
   await page.$eval(sel("fixture-editor"), el => {
     const range = document.createRange(); range.selectNodeContents(el); range.collapse(false);
     const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
@@ -197,7 +225,7 @@ try {
     clipboardData.setData("text/plain", '<table><tr><td style="text-align:right">PLAIN HTML</td></tr></table>');
     el.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData }));
   });
-  assert.equal(await page.$$eval(`${sel("fixture-editor")} table`, els => els.length), 2, "Plain clipboard HTML becomes a table, not literal angle brackets");
+  assert.equal(await page.$$eval(`${sel("fixture-editor")} table`, els => els.length), 3, "Plain clipboard HTML becomes a table without losing imported nested tables");
   await page.$eval(sel("fixture-editor"), el => {
     const text = el.querySelector("p").firstChild;
     const range = document.createRange();
@@ -206,7 +234,7 @@ try {
     el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
   });
   await click("fixture-editor-bold");
-  assert.match(await page.$eval(sel("fixture-source"), el => el.textContent), /<(?:b|strong)>BEFORE/);
+  assert.match(await page.$eval(sel("fixture-source"), el => el.textContent), /(?:<(?:b|strong)>|<span style="font-weight:bold">)BEFORE/);
   await page.$eval(sel("fixture-editor"), el => {
     const text = el.querySelector("p").firstChild;
     const range = document.createRange(); range.selectNodeContents(text);
@@ -229,6 +257,7 @@ try {
   assert.equal(await value("fixture-editor-raw"), canonical);
   await click("fixture-editor-raw-mode");
   assert.match(await page.$eval(sel("fixture-source"), el => el.textContent), /\{\{contact.field\(name="url"\)\}\}/);
+  assert.match(await page.$eval(sel("fixture-source"), el => el.textContent), /\{\{contact.field\(name="logoUrl"\)\}\}/);
   assert.equal(await page.$(sel("fixture-unrelated-page-break")), null);
   await click("fixture-unrelated-raw-mode");
   await replaceByTyping("fixture-unrelated-raw", '<p style="color:red">Ordinary editor</p>');
@@ -236,6 +265,7 @@ try {
   assert.equal(await page.$eval(`${sel("fixture-unrelated")} p`, el => el.getAttribute("style")), null);
   console.log("PASS imported layout, source/apply, attribute tokens, selection paste/toolbar, page break and local save/reopen; unrelated editor unchanged");
   console.log("Opening one-off compose");
+  await exerciseAuthoring(page, origin);
   await page.goto(`${origin}/workers/worker-fixture/comm/send-postal`);
   await page.waitForSelector(sel("fixture-staff"));
   await exerciseStudio("button-compose-postal-template");
