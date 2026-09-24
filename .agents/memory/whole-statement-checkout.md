@@ -22,6 +22,21 @@ reconciliation, not an invented allocation. Method-management permission governs
 saving/managing methods, not an otherwise authorized payer's use of an existing
 method.
 
+For a pending statement payment, treat the immutable quote's statement due,
+cash allocation, credit attribution and period as one proof set. An increase
+in that same period can be offered only after the earlier cash and committed
+credits are deducted, with all reservations reconciled to the account pending
+total. Incomplete snapshots cannot prove a new increment, even when the
+current account balance minus pending payments looks payable.
+
+**Why:** Reserving a whole period hides later charges, while subtracting only
+the pending cash without checking its historical credit attribution can collect
+the old statement twice. The provider may settle attempts in either order.
+
+**How to apply:** Keep the quote snapshot and allocation immutable at attempt
+creation; use the same shared calculator for preview and locked confirmation.
+Never infer a missing historical snapshot from today's invoice balance.
+
 New checkout collection is intentionally one-off; reusable methods belong to
 the separately authorized setup flow. Historical attempts that requested
 saving must remain replayable and settle under their original recorded intent.

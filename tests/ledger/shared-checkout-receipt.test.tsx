@@ -292,7 +292,7 @@ describe("shared checkout", () => {
     // The payer must see source, destination, and amount before accepting the quote.
     expect(text()).toContain("Account-credit transfers");
     expect(text()).toContain("$25.00 from CREDIT-FEB (2026-02-01) to INV-100 (2026-03-01)");
-    expect(text()).toContain("INV-100Statement due $40.00$15.00 cash");
+     expect(text()).toContain("INV-100Unreserved statement due $40.00$15.00 cash");
     await clickCheckboxContaining("I authorize");
     await submit();
     expect(postBody()).toEqual(expect.objectContaining({
@@ -408,7 +408,9 @@ describe("shared checkout", () => {
 
   it("blocks stale pending allocations rather than accepting a mismatched quote", async () => {
     const input: CheckoutSelectionInput = { ...selectionInput, reserved: "20.00",
-      reservations: [{ amount: "20.00", statementSelection: [{ invoiceNumber: "INV-100", amount: "20.00" }] }] };
+       reservations: [{ amount: "20.00", statementSelection: [{ invoiceNumber: "INV-100", amount: "20.00" }],
+         metadata: { invoicePeriods: [{ invoiceNumber: "INV-100", statementYmd: "2026-03-01" }],
+           checkoutQuote: { unstatementedAmount: "0.00" } } }] };
     workerFixture = fixture(input);
     await render();
     await clickCheckboxContaining("I authorize");
@@ -419,6 +421,25 @@ describe("shared checkout", () => {
     await clickCheckboxContaining("INV-101");
     await clickCheckboxContaining("I authorize");
     expect(button("Review payment").disabled).toBe(false);
+  });
+  it("offers the $500 new COBRA charge in either choice and sends only its incremental allocation", async () => {
+    const original = calculateCheckoutSelection({ ...selectionInput, balance: "802.05",
+      invoices: [{ invoiceNumber: "COBRA-SEP", month: 9, year: 2026, invoiceBalance: "802.05" }] },
+    { mode: "full", invoiceNumbers: [] });
+    workerFixture = fixture({ ...selectionInput, balance: "1302.05", reserved: "802.05",
+      invoices: [{ invoiceNumber: "COBRA-SEP", month: 9, year: 2026, invoiceBalance: "1302.05" }],
+      reservations: [{ amount: "802.05", statementSelection: original.statementSelection,
+        metadata: { invoicePeriods: original.invoicePeriods, checkoutQuote: original } }] });
+    await render();
+    expect(text()).toContain("Available to pay: $500.00");
+    expect(text()).toContain("Unreserved statement due $500.00");
+    await selectRadio("Pay selected statements");
+    await clickCheckboxContaining("COBRA-SEP");
+    expect(text()).toContain("$500.00 due");
+    await clickCheckboxContaining("I authorize");
+    await submit();
+    expect(postBody()).toEqual(expect.objectContaining({ amount: "500.00",
+      statementSelection: [{ invoiceNumber: "COBRA-SEP", amount: "500.00" }] }));
   });
 
   it("offers only full balance when partial selection is disabled", async () => {
@@ -555,7 +576,7 @@ describe("shared checkout", () => {
     await act(async () => { await queryClient!.invalidateQueries({ queryKey: ["checkout"] }); });
     await settle();
     expect(container!.querySelector('[data-testid="provider-amount"]')?.textContent).toBe("$125.00");
-    expect(text()).toContain("Payment total$125.00INV-100Statement due $40.00$40.00 cashINV-101Statement due $85.00$85.00 cash");
+     expect(text()).toContain("Payment total$125.00INV-100Unreserved statement due $40.00$40.00 cashINV-101Unreserved statement due $85.00$85.00 cash");
     expect(radio("Pay full balance").disabled).toBe(true);
     expect(apiRequest.mock.calls.filter(([method, url]) => method === "POST" && String(url).endsWith("/sessions"))).toHaveLength(1);
   });

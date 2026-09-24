@@ -27,7 +27,7 @@ vi.mock("../../server/storage/unified-options", () => ({
 }));
 vi.mock("../../server/modules/ledger/payment-gateway-context", () => ({ resolveGateway: vi.fn() }));
 vi.mock("../../server/modules/ledger/payments", () => ({
-  createPaymentFromRequestBody: async (body: any) => ({ ok: true, payment: { ...body, id: "posted-payment" } }),
+  createPaymentFromRequestBody: async (body: any) => ({ ok: true, payment: { ...body, id: `posted-${body.details.paymentAttemptId}` } }),
   triggerPaymentChargePlugins: async (payment: any) => {
     if (fixture.failCashPosting) throw new Error("injected cash posting failure");
     for (const [index, allocation] of payment.details.proposedAllocation.entries()) {
@@ -78,15 +78,15 @@ async function quote(mode: "full" | "statements" = "full", invoiceNumbers: strin
     reserved: "0.00", reservations: [], allowPartial: true, minAmount: 1,
   }, { mode, invoiceNumbers });
 }
-function snapshot(quote: CheckoutQuote) {
+function snapshot(quote: CheckoutQuote, id = "attempt") {
   fixture.attempt = {
-    id: "attempt", gatewayConfigId: "gateway", providerIntentRef: "ref", status: "processing",
+    id, gatewayConfigId: "gateway", providerIntentRef: "ref", status: "processing",
     ledgerEaId: "ea", accountId: "account", amount: quote.amount, currency: "USD",
     statementSelection: quote.statementSelection,
     metadata: { checkoutQuote: quote, invoicePeriods: quote.invoicePeriods }, saveMethod: false,
   };
 }
-const settle = () => settlePayment("attempt", "gateway", {
+const settle = () => settlePayment(fixture.attempt.id, "gateway", {
   type: "payment.succeeded", providerRef: "ref", amountMinor: Math.round(Number(fixture.attempt.amount) * 100), currency: "USD",
 });
 
@@ -120,6 +120,36 @@ beforeEach(async () => {
 });
 
 describe("cross-period credit settlement against ledger storage", () => {
+  it("posts two pending allocations to the same month without collecting the original debt twice", async () => {
+    fixture.tables.ledger = [];
+    await fixture.ledger.entries.create({ chargePlugin: "fixture", chargePluginKey: "first",
+      eaId: "ea", amount: "802.05", statementYmd: "2026-09-01", date: new Date("2026-09-01T00:00:00Z") });
+    const firstQuote = await quote();
+    snapshot(firstQuote, "first");
+    const first = fixture.attempt;
+    await fixture.ledger.entries.create({ chargePlugin: "fixture", chargePluginKey: "new",
+      eaId: "ea", amount: "500.00", statementYmd: "2026-09-01", date: new Date("2026-09-02T00:00:00Z") });
+    const secondQuote = calculateCheckoutSelection({
+      balance: await fixture.ledger.ea.getBalance("ea"), invoices: await fixture.ledger.invoices.listForEa("ea"),
+      reserved: first.amount, reservations: [{ amount: first.amount, statementSelection: first.statementSelection,
+        metadata: first.metadata }], allowPartial: true, minAmount: 1,
+    }, { mode: "full", invoiceNumbers: [] });
+    expect(secondQuote).toMatchObject({ amount: "500.00", issues: [],
+      statementSelection: [{ invoiceNumber: firstQuote.statementSelection[0].invoiceNumber, amount: "500.00" }] });
+    snapshot(secondQuote, "second");
+    const second = fixture.attempt;
+    await settle();
+    expect(await fixture.ledger.ea.getBalance("ea")).toBe("802.05");
+    expect((await fixture.ledger.invoices.listForEa("ea"))[0].invoiceBalance).toBe("802.05");
+    fixture.attempt = first;
+    await settle();
+    await settle(); // repeated webhook must not post again
+    expect(await fixture.ledger.ea.getBalance("ea")).toBe("0.00");
+    expect((await fixture.ledger.invoices.listForEa("ea"))[0].invoiceBalance).toBe("0.00");
+    expect(fixture.tables.ledger.filter(row => row.charge_plugin === "payment-simple-allocation")
+      .map(row => row.amount).sort()).toEqual(["-500.00", "-802.05"]);
+    expect(second.ledgerPaymentId).toBe("posted-second");
+  });
   it("full150 clears Jan100 Feb100 March-50, with zero account and invoice balances after replay", async () => {
     const preview = await quote();
     expect(preview.amount).toBe("150.00");

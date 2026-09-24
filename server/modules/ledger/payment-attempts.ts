@@ -410,7 +410,8 @@ export function registerLedgerPaymentAttemptRoutes(
         metadata: { invoicePeriods: (row.metadata as any)?.invoicePeriods,
           checkoutQuote: (row.metadata as any)?.checkoutQuote
           ? { unstatementedAmount: (row.metadata as any).checkoutQuote.unstatementedAmount,
-              creditTransfers: (row.metadata as any).checkoutQuote.creditTransfers } : undefined },
+              creditTransfers: (row.metadata as any).checkoutQuote.creditTransfers,
+              statements: (row.metadata as any).checkoutQuote.statements } : undefined },
       })),
       allowPartial: loaded.settings.allowPartial, minAmount: loaded.settings.minAmount,
     };

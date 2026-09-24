@@ -1,6 +1,7 @@
 import express from "express";
 import http from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { calculateCheckoutSelection } from "../../shared/ledger/checkout-selection";
 
 const mocks = vi.hoisted(() => ({
   authority: vi.fn(),
@@ -118,6 +119,38 @@ beforeEach(() => {
 });
 
 describe("online checkout HTTP contract", () => {
+  it("locks and snapshots the $500 same-period increment without letting the pending $802.05 be selected again", async () => {
+    const original = calculateCheckoutSelection({
+      balance: "802.05", reserved: "0.00", reservations: [], allowPartial: true, minAmount: 1,
+      invoices: [{ invoiceNumber: "INV-1", invoiceBalance: "802.05", year: 2026, month: 9 }],
+    }, { mode: "full", invoiceNumbers: [] });
+    mocks.storage.ledger.ea.getBalance.mockResolvedValue("1302.05");
+    mocks.storage.ledger.invoices.listForEa.mockResolvedValue([{ invoiceNumber: "INV-1", invoiceBalance: "1302.05", year: 2026, month: 9 }]);
+    mocks.storage.ledger.paymentAttempts.getReservations.mockResolvedValue([{
+      amount: "802.05", statementSelection: original.statementSelection,
+      metadata: { invoicePeriods: original.invoicePeriods, checkoutQuote: original },
+    }]);
+    const preview = await (await fetch(`${base}/api/ledger/checkout/worker/worker-1/ea-1`)).json();
+    expect(preview.quote).toMatchObject({ amount: "500.00", available: "500.00", issues: [],
+      statementSelection: [{ invoiceNumber: "INV-1", amount: "500.00" }] });
+    const body = valid({ amount: "500.00", selection: { mode: "full", invoiceNumbers: [] },
+      statementSelection: preview.quote.statementSelection });
+    expect((await checkout(valid({ amount: "802.05", statementSelection: original.statementSelection }))).status).toBe(409);
+    expect((await checkout(body)).status).toBe(201);
+    expect(mocks.storage.ledger.paymentAttempts.create).toHaveBeenCalledWith(expect.objectContaining({
+      amount: "500.00", statementSelection: [{ invoiceNumber: "INV-1", amount: "500.00" }],
+      metadata: expect.objectContaining({ invoicePeriods: [{ invoiceNumber: "INV-1", statementYmd: "2026-09-01" }],
+        checkoutQuote: expect.objectContaining({ statements: [expect.objectContaining({ due: "500.00", payable: "500.00" })] }) }),
+    }));
+    mocks.storage.ledger.paymentAttempts.getReservations.mockResolvedValue([{
+      amount: "802.05", statementSelection: original.statementSelection,
+      metadata: { invoicePeriods: original.invoicePeriods, checkoutQuote: original },
+    }, { amount: "500.00", statementSelection: preview.quote.statementSelection,
+      metadata: { invoicePeriods: preview.quote.invoicePeriods, checkoutQuote: preview.quote } }]);
+    const after = await (await fetch(`${base}/api/ledger/checkout/worker/worker-1/ea-1`)).json();
+    expect(after.quote).toMatchObject({ amount: "0.00", available: "0.00" });
+    expect((await checkout(body)).status).toBe(409);
+  });
   it("returns scoped page data including invoices and provider UI metadata", async () => {
     const response = await fetch(`${base}/api/ledger/checkout/worker/worker-1/ea-1`);
     expect(response.status).toBe(200);
