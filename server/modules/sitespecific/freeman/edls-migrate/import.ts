@@ -36,6 +36,7 @@ import {
   FREEMAN_EDLS_FETCH_SHEETS_OPERATION,
   FREEMAN_EDLS_MIGRATE_PLUGIN_ID,
 } from "../../../../plugins/wc-vendors/plugins/sitespecific-freeman-edls-migrate";
+import { importedJobNumber } from "./job-number";
 
 export const FREEMAN_MIGRATE_STATUSES = ["draft", "request", "lock", "reserved"] as const;
 export type FreemanMigrateStatus = (typeof FREEMAN_MIGRATE_STATUSES)[number];
@@ -340,7 +341,7 @@ function sourceIdentity(source: unknown): { nid?: string; title: string } {
   const sheet = record(source);
   return {
     nid: sourceNid(pick(sheet, "nid", "node_id", "nodeId", "id")) ?? undefined,
-    title: text(pick(sheet, "title", "name", "job_number", "jobNumber")) ?? "Untitled sheet",
+    title: importedJobNumber(sheet),
   };
 }
 
@@ -1007,7 +1008,7 @@ async function reconcileSheet(
   if (live) {
     await client.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"freeman-edls:" + nid}, 0))`);
   }
-  const title = text(pick(sheet, "title", "name", "job_number", "jobNumber")) ?? `Freeman ${nid}`;
+  const title = importedJobNumber(sheet);
   const ymd = parseDate(pick(sheet, "ymd", "date", "start_date", "startDate"));
   const departmentName = text(pick(sheet, "dept", "department", "department_name", "departmentName"));
   const departmentId = await resolveNamed(optionsDepartment, departmentName, live) ?? (await resolveNamed(optionsDepartment, "Freeman Migration", live));
