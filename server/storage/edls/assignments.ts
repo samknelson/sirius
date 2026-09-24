@@ -299,9 +299,8 @@ export interface EdlsAssignmentsStorage {
    * true — so voiding the receipt here would re-text them at the sheet's
    * next notifying transition.
    *
-   * Returns false when nothing was recorded: no such assignment, or it has
-   * already been answered. The caller uses that to tell a first answer from
-   * a repeat.
+   * Returns false when nothing was recorded: no such assignment, an
+   * unconfirmed sheet, or an answer already recorded.
    */
   setAccepted(id: string, accepted: boolean): Promise<boolean>;
   getAvailableWorkersForSheet(
@@ -620,26 +619,44 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
     },
 
     async setAccepted(id: string, accepted: boolean): Promise<boolean> {
-      const client = getClient();
-      // `accepted IS NULL` is the whole of the one-answer rule, and it lives
-      // in the WHERE so the database decides the race: a double tap, a stale
-      // tab, or a replayed request finds the row already answered and
-      // matches nothing.
-      //
-      // Note what is NOT in the SET clause: `commId`. The worker has still
-      // been told about this assignment as it stands, so the receipt keeps
-      // standing and answering never puts them back into the next send.
-      const result = await client
-        .update(edlsAssignments)
-        .set({ accepted })
-        .where(
-          and(
-            eq(edlsAssignments.id, id),
-            sql`${edlsAssignments.accepted} IS NULL`,
-          ),
-        )
-        .returning({ id: edlsAssignments.id });
-      return result.length > 0;
+      return runInTransaction(async () => {
+        const client = getClient();
+        // A sheet status edit also locks the sheet row. Lock it here before
+        // answering so a concurrent move to Requested cannot race this write.
+        const sheet = await client.execute(sql`
+          SELECT s.status
+          FROM edls_sheets s
+          JOIN edls_crews c ON c.sheet_id = s.id
+          JOIN edls_assignments a ON a.crew_id = c.id
+          WHERE a.id = ${id}
+          FOR UPDATE OF s
+        `);
+        if (!sheet.rows.length || !["lock", "reserved"].includes(String(sheet.rows[0].status))) {
+          return false;
+        }
+
+        // Recheck the current parent sheet as well as the one-answer rule in
+        // the UPDATE: an assignment moved to another crew after the lock was
+        // acquired must not gain permission through the old sheet.
+        // Answering does not void commId, so the worker isn't re-texted.
+        const result = await client
+          .update(edlsAssignments)
+          .set({ accepted })
+          .where(
+            and(
+              eq(edlsAssignments.id, id),
+              sql`${edlsAssignments.accepted} IS NULL`,
+              sql`EXISTS (
+                SELECT 1 FROM ${edlsCrews} c
+                JOIN ${edlsSheets} s ON s.id = c.sheet_id
+                WHERE c.id = ${edlsAssignments.crewId}
+                  AND s.status IN ('lock', 'reserved')
+              )`,
+            ),
+          )
+          .returning({ id: edlsAssignments.id });
+        return result.length > 0;
+      });
     },
 
     async setCommId(id: string, commId: string, dataWhenResolved: unknown): Promise<boolean> {

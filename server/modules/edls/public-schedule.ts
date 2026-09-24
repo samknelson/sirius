@@ -13,12 +13,11 @@ import {
   checkAccess,
 } from "../../services/access-policy-evaluator";
 
-/**
- * Sheet statuses a worker may see on the public schedule page. Draft/request
- * sheets are still being built and `trash` sheets are cancelled, so none of
- * them are anybody's schedule yet.
- */
-const PUBLIC_SHEET_STATUSES = ["lock", "reserved"];
+/** Requested assignments are visible as drafts; Draft and Trash stay hidden. */
+const PUBLIC_SHEET_STATUSES = ["request", "lock", "reserved"];
+
+/** Only confirmed sheet statuses allow a worker's final answer. */
+const ANSWERABLE_SHEET_STATUSES = ["lock", "reserved"];
 
 /** Number of calendar days shown, counting today. */
 const SCHEDULE_DAYS = 7;
@@ -70,9 +69,8 @@ async function resolveScheduleWorkerId(id: string): Promise<string | null> {
 }
 
 /**
- * The window the page shows, resolved once so the read and the answer
- * endpoint agree on it: an assignment the page would not show is not one the
- * link may answer for.
+ * The window the page shows, resolved once so the read and answer endpoints
+ * agree on it. Visibility alone does not make a Requested assignment answerable.
  */
 function scheduleWindow(): { startYmd: string; endYmd: string } {
   const startYmd = getTodayYmd();
@@ -179,8 +177,8 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
    * once.
    *
    * Every refusal — malformed or unknown credential, an assignment belonging
-   * to somebody else, one outside the week the page shows, one already
-   * answered — is the SAME generic access-denied body the read endpoint
+   * to somebody else, one outside the week the page shows, one on a Requested
+   * sheet, one already answered — is the SAME generic access-denied body the read endpoint
    * uses, so the endpoint never confirms which of those it was and cannot be
    * used to probe for assignment ids.
    *
@@ -189,8 +187,9 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
    * manually rotated; that trade-off is intentional for the AAT-based worker
    * access flow.
    *
-   * The assignment must be one this credential's own page would show, and the
-   * answer is recorded at most once, conditionally, in the storage write.
+    * The assignment must be one this credential's own page would show and on
+    * a confirmed sheet. Storage rechecks the status when writing so a sheet
+    * becoming Requested between this read and the write cannot be answered.
    */
   app.post(
     "/api/public/edls/schedule/:id/assignments/:assignmentId/answer",
@@ -247,7 +246,7 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
         // The storage write is the real one-answer guard (its condition is
         // part of the UPDATE); this only saves a pointless write on the
         // common stale-tab case.
-        if (assignment.accepted !== null) {
+        if (!ANSWERABLE_SHEET_STATUSES.includes(assignment.sheetStatus) || assignment.accepted !== null) {
           denied();
           return;
         }

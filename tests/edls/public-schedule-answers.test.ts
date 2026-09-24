@@ -15,14 +15,15 @@ const OTHER_ASSIGNMENT_ID = "66666666-6666-4666-8666-666666666666";
 
 interface Scenario {
   tokens: Record<string, { workerId: string } | undefined>;
-  visibleAssignments: Array<{ assignmentId: string; accepted: boolean | null }>;
+  visibleAssignments: Array<{ assignmentId: string; sheetStatus: string; accepted: boolean | null }>;
   setAcceptedResult: boolean;
 }
 
 let scenario: Scenario;
-const { componentState, setAccepted } = vi.hoisted(() => ({
+const { componentState, setAccepted, getAssignmentsForWorker } = vi.hoisted(() => ({
   componentState: { enabled: {} as Record<string, boolean> },
   setAccepted: vi.fn(),
+  getAssignmentsForWorker: vi.fn(),
 }));
 
 vi.mock("../../server/storage", () => ({
@@ -38,9 +39,7 @@ vi.mock("../../server/storage", () => ({
         // test explicitly forbids that fallback for irreversible answers.
         return id === WORKER_ID ? { workerId: WORKER_ID } : undefined;
       },
-      async getAssignmentsForWorker() {
-        return scenario.visibleAssignments;
-      },
+      getAssignmentsForWorker,
       setAccepted,
     },
     workerEdls: {
@@ -112,11 +111,14 @@ import { registerEdlsPublicScheduleRoutes } from "../../server/modules/edls/publ
 
 type Handler = (req: any, res: any) => Promise<void>;
 let answerHandler: Handler;
+let scheduleHandler: Handler;
 let answerMiddleware: Array<(req: any, res: any, next: () => void) => Promise<void> | void>;
 
 beforeAll(() => {
   registerEdlsPublicScheduleRoutes({
-    get() {},
+    get(...args: unknown[]) {
+      scheduleHandler = args.at(-1) as Handler;
+    },
     post(...args: unknown[]) {
       answerMiddleware = args.slice(1, -1) as typeof answerMiddleware;
       answerHandler = args.at(-1) as Handler;
@@ -128,11 +130,13 @@ beforeEach(() => {
   componentState.enabled = { edls: true, "worker.aat": true };
   scenario = {
     tokens: { [ACCESS_TOKEN]: { workerId: WORKER_ID } },
-    visibleAssignments: [{ assignmentId: ASSIGNMENT_ID, accepted: null }],
+    visibleAssignments: [{ assignmentId: ASSIGNMENT_ID, sheetStatus: "lock", accepted: null }],
     setAcceptedResult: true,
   };
   setAccepted.mockReset();
   setAccepted.mockImplementation(async () => scenario.setAcceptedResult);
+  getAssignmentsForWorker.mockReset();
+  getAssignmentsForWorker.mockImplementation(async () => scenario.visibleAssignments);
 });
 
 async function answer(scheduleId: string, assignmentId = ASSIGNMENT_ID, accepted = true) {
@@ -161,12 +165,42 @@ async function answer(scheduleId: string, assignmentId = ASSIGNMENT_ID, accepted
 }
 
 describe("public EDLS schedule answers", () => {
+  it("offers Requested sheets in the same public schedule window", async () => {
+    const res = {
+      set: vi.fn(),
+      vary: vi.fn(),
+      json: vi.fn(),
+    };
+    await scheduleHandler({ params: { id: ACCESS_TOKEN } }, res);
+
+    expect(getAssignmentsForWorker).toHaveBeenCalledWith(
+      WORKER_ID,
+      expect.objectContaining({ sheetStatuses: ["request", "lock", "reserved"] }),
+    );
+    expect(res.json).toHaveBeenCalled();
+  });
+
   it("records an answer for an assignment shown to the current AAT token", async () => {
     await expect(answer(ACCESS_TOKEN, ASSIGNMENT_ID, false)).resolves.toEqual({
       status: 200,
       body: { assignmentId: ASSIGNMENT_ID, accepted: false },
     });
     expect(setAccepted).toHaveBeenCalledWith(ASSIGNMENT_ID, false);
+  });
+
+  it("allows Reserved sheets to be answered", async () => {
+    scenario.visibleAssignments[0].sheetStatus = "reserved";
+    expect((await answer(ACCESS_TOKEN)).status).toBe(200);
+    expect(setAccepted).toHaveBeenCalledOnce();
+  });
+
+  it("refuses answers to visible Requested assignments", async () => {
+    scenario.visibleAssignments[0].sheetStatus = "request";
+    expect(await answer(ACCESS_TOKEN)).toEqual({
+      status: 403,
+      body: { message: "Access denied" },
+    });
+    expect(setAccepted).not.toHaveBeenCalled();
   });
 
   it.each([

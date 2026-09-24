@@ -186,8 +186,22 @@ function AssignmentDetails({
   assignment: ScheduleAssignment;
   scheduleId: string;
 }) {
+  const isRequested = assignment.sheetStatus === "request";
   return (
-    <div className="space-y-4">
+    <div
+      className={isRequested
+        ? "space-y-4 rounded-lg bg-slate-700 p-4 text-slate-50 [&_.text-muted-foreground]:text-slate-200"
+        : "space-y-4"}
+      data-testid={`assignment-${assignment.assignmentId}`}
+    >
+      {isRequested && (
+        <Badge
+          className="bg-slate-100 text-slate-900 hover:bg-slate-100"
+          data-testid={`badge-draft-${assignment.assignmentId}`}
+        >
+          Draft - Awaiting Confirmation
+        </Badge>
+      )}
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-2">
           <Field label="Event" value={assignment.jobGroup?.name ?? ""} testId="text-event" />
@@ -210,7 +224,7 @@ function AssignmentDetails({
           <Field label="Checkin Location" value={assignment.location ?? ""} testId="text-checkin-location" />
         </div>
       </div>
-      <AssignmentAnswer scheduleId={scheduleId} assignment={assignment} />
+      {!isRequested && <AssignmentAnswer scheduleId={scheduleId} assignment={assignment} />}
     </div>
   );
 }
