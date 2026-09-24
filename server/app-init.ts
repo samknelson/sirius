@@ -70,7 +70,7 @@ export function redactSensitiveData(data: any): any {
   // `accesscode` / `accessuuid` are the worker.aat access-token pair: they are
   // bearer-like credentials (a future link is authorized by the UUID alone),
   // so they must never reach a response preview in the admin log viewer.
-  const sensitiveFields = ['ssn', 'password', 'token', 'secret', 'accesscode', 'accessuuid'];
+  const sensitiveFields = ['ssn', 'password', 'passwordhash', 'token', 'secret', 'clientsecret', 'refreshtoken', 'accesscode', 'accessuuid'];
   const redacted = Array.isArray(data) ? [...data] : { ...data };
 
   for (const key in redacted) {

@@ -493,6 +493,13 @@ export function registerLedgerPaymentMethodRoutes(app: Express, requireAuth?: im
 
       const resolved = await resolveGateway(gatewayConfigId);
       await assertPluginComponent(resolved);
+      // Customer creation happens before createSetupSession. Reject live Stripe
+      // credentials here as well, before either provider call is made.
+      if (resolved.config.pluginId === "stripe" &&
+          (!resolved.context.apiKey.startsWith("sk_test_") ||
+            !String((resolved.config.data as Record<string, unknown> | null)?.publishableKey ?? "").startsWith("pk_test_"))) {
+        throw new HttpError(503, "Online Stripe method setup requires test-mode keys");
+      }
 
       const customerRef = await ensureCustomer(entityType, entityId, resolved);
       const session = await resolved.plugin.createSetupSession(resolved.context, {
