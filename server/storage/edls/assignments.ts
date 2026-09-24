@@ -24,6 +24,7 @@ import { defineLoggingConfig } from "../middleware/logging";
 import { getClient, runInTransaction } from "../transaction-context";
 import { createUnifiedOptionsStorage } from "../unified-options";
 import { createEdlsCrewsStorage } from "./crews";
+import { assignmentAnswerMetadataMode, assignmentUpdateMetadataMode } from "./assignment-provenance";
 import { isComponentEnabledSync } from "../../services/component-cache";
 import { provenanceCreatedDate } from "../system/entity-metadata-order";
 import type { SnapshotNode } from "@shared/snapshots";
@@ -1167,6 +1168,8 @@ export const edlsAssignmentsLoggingConfig = defineLoggingConfig<EdlsAssignmentsS
       },
     },
     updateData: {
+      metadataMode: (_args, result, beforeState) =>
+        assignmentUpdateMetadataMode(beforeState, result),
       before: async (args, storage) => {
         const assignment = await storage.get(args[0]);
         if (!assignment) return undefined;
@@ -1193,6 +1196,10 @@ export const edlsAssignmentsLoggingConfig = defineLoggingConfig<EdlsAssignmentsS
     // description therefore has to say who answered as well as which way,
     // or the sheet's history records an answer from nobody.
     setAccepted: {
+      // The worker's recorded answer is a real mutation of this assignment
+      // record (though not a change to the values that trigger a new SMS).
+      // Rejected/replayed attempts must keep the prior modification stamp.
+      metadataMode: (_args, recorded) => assignmentAnswerMetadataMode(recorded),
       getEntityId: (args) => args[0],
       before: async (args, storage) => {
         const assignment = await storage.get(args[0]);

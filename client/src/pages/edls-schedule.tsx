@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { ShieldAlert, ThumbsDown, ThumbsUp } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { addDaysYmd, ymdToLocalDate, type Ymd } from "@shared/utils/date";
 import { useAuth } from "@/contexts/AuthContext";
+import { assignmentUpdateAge } from "@/lib/assignment-update-age";
 
 /** Number of dated sections rendered, counting today. Mirrors the endpoint's window. */
 const SCHEDULE_DAYS = 7;
@@ -19,6 +20,7 @@ interface ScheduleAssignment {
   sheetId: string;
   sheetTitle: string;
   sheetStatus: string;
+  updatedAt: string | null;
   crewId: string;
   crewTitle: string;
   startTime: string | null;
@@ -182,9 +184,11 @@ function AssignmentAnswer({
 function AssignmentDetails({
   assignment,
   scheduleId,
+  now,
 }: {
   assignment: ScheduleAssignment;
   scheduleId: string;
+  now: number;
 }) {
   const isRequested = assignment.sheetStatus === "request";
   return (
@@ -225,6 +229,12 @@ function AssignmentDetails({
         </div>
       </div>
       {!isRequested && <AssignmentAnswer scheduleId={scheduleId} assignment={assignment} />}
+      <p
+        className={isRequested ? "text-right text-xs text-slate-200" : "text-right text-xs text-muted-foreground"}
+        data-testid={`text-updated-${assignment.assignmentId}`}
+      >
+        {assignmentUpdateAge(assignment.updatedAt, now)}
+      </p>
     </div>
   );
 }
@@ -252,6 +262,16 @@ function AccessDenied() {
 export default function EdlsSchedulePage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const refresh = () => setNow(Date.now());
+    const interval = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
   const scheduleUrl = `/api/public/edls/schedule/${id}`;
 
   const { data, isLoading, isError } = useQuery<PublicWorkerSchedule>({
@@ -339,6 +359,7 @@ export default function EdlsSchedulePage() {
                   key={assignment.assignmentId}
                   assignment={assignment}
                   scheduleId={id}
+                  now={now}
                 />
               ))
             )}

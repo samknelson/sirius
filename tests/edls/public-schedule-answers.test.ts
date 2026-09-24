@@ -20,10 +20,15 @@ interface Scenario {
 }
 
 let scenario: Scenario;
-const { componentState, setAccepted, getAssignmentsForWorker } = vi.hoisted(() => ({
+const { componentState, setAccepted, getAssignmentsForWorker, getManyMetadata } = vi.hoisted(() => ({
   componentState: { enabled: {} as Record<string, boolean> },
   setAccepted: vi.fn(),
   getAssignmentsForWorker: vi.fn(),
+  getManyMetadata: vi.fn(),
+}));
+
+vi.mock("../../server/storage/system/entity-metadata", () => ({
+  entityMetadataStorage: { getMany: getManyMetadata },
 }));
 
 vi.mock("../../server/storage", () => ({
@@ -137,7 +142,20 @@ beforeEach(() => {
   setAccepted.mockImplementation(async () => scenario.setAcceptedResult);
   getAssignmentsForWorker.mockReset();
   getAssignmentsForWorker.mockImplementation(async () => scenario.visibleAssignments);
+  getManyMetadata.mockReset();
+  getManyMetadata.mockResolvedValue(new Map());
 });
+
+async function schedule(scheduleId = ACCESS_TOKEN) {
+  const res = {
+    set: vi.fn(),
+    vary: vi.fn(),
+    json: vi.fn(),
+    status: vi.fn().mockReturnThis(),
+  };
+  await scheduleHandler({ params: { id: scheduleId } }, res);
+  return res;
+}
 
 async function answer(scheduleId: string, assignmentId = ASSIGNMENT_ID, accepted = true) {
   const result: { status: number; body?: unknown } = { status: 200 };
@@ -166,18 +184,71 @@ async function answer(scheduleId: string, assignmentId = ASSIGNMENT_ID, accepted
 
 describe("public EDLS schedule answers", () => {
   it("offers Requested sheets in the same public schedule window", async () => {
-    const res = {
-      set: vi.fn(),
-      vary: vi.fn(),
-      json: vi.fn(),
-    };
-    await scheduleHandler({ params: { id: ACCESS_TOKEN } }, res);
+    const res = await schedule();
 
     expect(getAssignmentsForWorker).toHaveBeenCalledWith(
       WORKER_ID,
       expect.objectContaining({ sheetStatuses: ["request", "lock", "reserved"] }),
     );
     expect(res.json).toHaveBeenCalled();
+  });
+
+  it("returns only the assignment's modification date, without actor or unrelated metadata", async () => {
+    const date = new Date("2026-09-24T12:12:00.000Z");
+    getManyMetadata.mockResolvedValue(new Map([
+      [ASSIGNMENT_ID, {
+        contextId: "edls_assignments",
+        modified: { date, personName: "Private Staff Name" },
+        created: { date: new Date("2020-01-01T00:00:00.000Z"), personName: null },
+      }],
+    ]));
+    const res = await schedule();
+    const payload = res.json.mock.calls[0][0];
+
+    expect(getManyMetadata).toHaveBeenCalledWith([ASSIGNMENT_ID]);
+    expect(payload.assignments[0].updatedAt).toBe("2026-09-24T12:12:00.000Z");
+    expect(JSON.stringify(payload)).not.toContain("Private Staff Name");
+    expect(JSON.stringify(payload)).not.toContain("2020-01-01");
+  });
+
+  it("does not invent an update date for missing, unrelated, or invalid metadata", async () => {
+    expect((await schedule()).json.mock.calls[0][0].assignments[0].updatedAt).toBeNull();
+    getManyMetadata.mockResolvedValue(new Map([
+      [ASSIGNMENT_ID, { contextId: "edls_sheets", modified: { date: new Date() } }],
+    ]));
+    expect((await schedule()).json.mock.calls[0][0].assignments[0].updatedAt).toBeNull();
+    getManyMetadata.mockResolvedValue(new Map([
+      [ASSIGNMENT_ID, { contextId: "edls_assignments", modified: { date: new Date(NaN) } }],
+    ]));
+    expect((await schedule()).json.mock.calls[0][0].assignments[0].updatedAt).toBeNull();
+  });
+
+  it("refreshes the update date after a recorded answer, but not after a refused attempt", async () => {
+    let modifiedAt = new Date("2026-09-24T11:00:00.000Z");
+    getManyMetadata.mockImplementation(async () => new Map([
+      [ASSIGNMENT_ID, {
+        contextId: "edls_assignments",
+        modified: { date: modifiedAt },
+      }],
+    ]));
+    setAccepted.mockImplementation(async () => {
+      if (!scenario.setAcceptedResult) return false;
+      modifiedAt = new Date("2026-09-24T12:00:00.000Z");
+      scenario.visibleAssignments[0].accepted = true;
+      return true;
+    });
+
+    expect((await schedule()).json.mock.calls[0][0].assignments[0].updatedAt)
+      .toBe("2026-09-24T11:00:00.000Z");
+    expect((await answer(ACCESS_TOKEN)).status).toBe(200);
+    expect((await schedule()).json.mock.calls[0][0].assignments[0].updatedAt)
+      .toBe("2026-09-24T12:00:00.000Z");
+
+    scenario.visibleAssignments[0].accepted = null;
+    scenario.setAcceptedResult = false;
+    expect((await answer(ACCESS_TOKEN)).status).toBe(403);
+    expect((await schedule()).json.mock.calls[0][0].assignments[0].updatedAt)
+      .toBe("2026-09-24T12:00:00.000Z");
   });
 
   it("records an answer for an assignment shown to the current AAT token", async () => {

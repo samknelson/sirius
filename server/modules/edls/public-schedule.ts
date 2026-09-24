@@ -8,6 +8,7 @@ import { checkFlood, recordFloodEvent } from "../../flood/service";
 import { EDLS_SCHEDULE_ANSWER_FLOOD_EVENT } from "../../flood/events";
 import { logger } from "../../logger";
 import type { AssignmentForWorker } from "../../storage/edls/assignments";
+import { entityMetadataStorage } from "../../storage/system/entity-metadata";
 import {
   buildContext,
   checkAccess,
@@ -26,7 +27,7 @@ export interface PublicWorkerSchedule {
   workerName: string;
   startYmd: string;
   endYmd: string;
-  assignments: AssignmentForWorker[];
+  assignments: Array<AssignmentForWorker & { updatedAt: string | null }>;
   workerBackPath?: string;
 }
 
@@ -152,12 +153,27 @@ export function registerEdlsPublicScheduleRoutes(app: Express) {
         }
         const contact = await storage.contacts.getContact(worker.contactId);
 
+        // "Updated" is this assignment record's provenance, not a derived
+        // max over its crew or sheet (whose edits have their own history).
+        const metadata = await entityMetadataStorage.getMany(
+          resolved.assignments.map((assignment) => assignment.assignmentId),
+        );
+        const assignments = resolved.assignments.map((assignment) => {
+          const record = metadata.get(assignment.assignmentId);
+          const modified = record?.contextId === "edls_assignments" ? record.modified.date : null;
+          return {
+            ...assignment,
+            updatedAt: modified && Number.isFinite(modified.getTime())
+              ? modified.toISOString()
+              : null,
+          };
+        });
         const { startYmd, endYmd } = scheduleWindow();
         const payload: PublicWorkerSchedule = {
           workerName: formatWorkerName(contact),
           startYmd,
           endYmd,
-          assignments: resolved.assignments,
+          assignments,
         };
         const workerBackPath = await getWorkerBackPath(
           req,
