@@ -7,11 +7,14 @@ const stripe = vi.hoisted(() => ({
   handleNextAction: vi.fn(),
   confirmPayment: vi.fn(),
 }));
+const paymentElementOptions = vi.hoisted(() => vi.fn());
 vi.mock("@stripe/stripe-js", () => ({ loadStripe: () => Promise.resolve(stripe) }));
 vi.mock("@stripe/react-stripe-js", () => ({
   Elements: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  PaymentElement: ({ onReady, onLoadError }: { onReady: () => void; onLoadError: () => void }) =>
-    <div data-testid="payment-element"><button onClick={onReady}>Provider ready</button><button onClick={onLoadError}>Provider load error</button></div>,
+  PaymentElement: ({ onReady, onLoadError, options }: { onReady: () => void; onLoadError: () => void; options: unknown }) => {
+    paymentElementOptions(options);
+    return <div data-testid="payment-element"><button onClick={onReady}>Provider ready</button><button onClick={onLoadError}>Provider load error</button></div>;
+  },
   useStripe: () => stripe,
   useElements: () => ({}),
 }));
@@ -44,6 +47,9 @@ describe("Stripe saved-method checkout action", () => {
         amount="$12.00" returnUrl="https://example.test/pay/receipt/session-1" onComplete={onComplete} />);
     });
     const submit = container.querySelector('[data-testid="button-confirm-stripe-pay"]') as HTMLButtonElement;
+    expect(paymentElementOptions).toHaveBeenCalledWith({
+      layout: "auto", wallets: { applePay: "never", googlePay: "never", link: "never" },
+    });
     expect(submit.textContent).toContain(label);
     expect(submit.disabled).toBe(true);
     await act(async () => { (container!.querySelector('[data-testid="payment-element"] button') as HTMLButtonElement).click(); });
@@ -72,6 +78,21 @@ describe("Stripe saved-method checkout action", () => {
     });
     await act(async () => { (container!.querySelectorAll('[data-testid="payment-element"] button')[1] as HTMLButtonElement).click(); });
     expect(container.textContent).toContain("Secure payment entry could not load");
+  });
+  it("remounts secure entry and requires fresh readiness when reopening with a different intent", async () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const render = (clientSecret: string, type: string) =>
+      root!.render(<StripePayComponent clientSecret={clientSecret}
+        publicConfig={{ publishableKey: "pk_test_fixture", paymentTypes: [type] }}
+        amount="$12.00" returnUrl="https://example.test/pay/receipt/session-1" onComplete={vi.fn()} />);
+    await act(async () => { render("card_secret", "card"); });
+    await act(async () => { (container!.querySelector('[data-testid="payment-element"] button') as HTMLButtonElement).click(); });
+    expect((container.querySelector('[data-testid="button-confirm-stripe-pay"]') as HTMLButtonElement).disabled).toBe(false);
+    await act(async () => { render("bank_secret", "us_bank_account"); });
+    expect(container.textContent).toContain("Confirm bank transfer");
+    expect((container.querySelector('[data-testid="button-confirm-stripe-pay"]') as HTMLButtonElement).disabled).toBe(true);
   });
   it("handles a saved card's 3DS challenge using the existing intent secret", async () => {
     const onComplete = vi.fn();

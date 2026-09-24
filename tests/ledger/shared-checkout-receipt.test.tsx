@@ -257,7 +257,7 @@ describe("shared checkout", () => {
      await render();
      await clickCheckboxContaining("I authorize");
      await submit();
-     expect(text()).toContain("Secure payment entry is unavailable");
+      expect(text()).toContain("Provider confirmation is unavailable");
      expect(text()).toContain("Check this payment's status");
      expect(navigate).not.toHaveBeenCalled();
    });
@@ -452,22 +452,20 @@ describe("shared checkout", () => {
       readiness: { ...checkout.readiness, paymentAuthorization: "configuration_required", saveMethod: "configuration_required" } };
     await render();
     expect(text()).toContain("Payment authorization wording has not been configured");
-    expect(text()).toContain("Saving requires current payment authorization");
+     expect(text()).toContain("used for this payment only");
     expect(button("Review payment").disabled).toBe(true);
     noPost();
   });
 
-  it.each([
-    ["permission_denied", "You do not have permission to save payment methods"],
-    ["provider_unsupported", "This payment provider does not support saving methods"],
-  ] as const)("explains %s while leaving one-time payment available", async (state, message) => {
+   it.each([
+     ["permission_denied"],
+     ["provider_unsupported"],
+   ] as const)("keeps %s checkout one-off", async (state) => {
     workerFixture = { ...checkout, readiness: { ...checkout.readiness, methodPermission: "denied", saveMethod: state } };
     await render();
-    expect(text()).toContain("You do not have permission to manage or save payment methods");
     expect(text()).toContain("Visa •••• 4242");
-    expect(text()).toContain(message);
-    const saveBox = Array.from(container!.querySelectorAll("label")).find(node => node.textContent?.includes("Save this method"))!.querySelector('[role="checkbox"]') as HTMLElement;
-    expect(saveBox.hasAttribute("data-disabled") || saveBox.hasAttribute("disabled")).toBe(true);
+     expect(text()).not.toContain("Manage saved payment methods");
+     expect(text()).not.toContain("Save this method");
     await clickCheckboxContaining("I authorize");
     await submit();
     expect(postBody().saveMethod).toBe(false);
@@ -483,34 +481,32 @@ describe("shared checkout", () => {
      expect(text()).toContain("Saved method action required");
   });
 
-  it("blocks a reviewed save when saving permission is revoked by a refetch", async () => {
+   it("does not expose management when permission is revoked by a refetch", async () => {
     await render();
-    await clickCheckboxContaining("Save this method");
+     expect(container!.querySelector('a[href="/workers/worker-1/ledger/payment-methods"]')).toBeTruthy();
     await clickCheckboxContaining("I authorize");
     await act(async () => { button("Review payment").click(); });
      expect(button("Continue to secure confirmation").disabled).toBe(false);
     workerFixture = { ...checkout, readiness: { ...checkout.readiness, methodPermission: "denied", saveMethod: "permission_denied" } };
     await act(async () => { await queryClient!.invalidateQueries({ queryKey: ["checkout"] }); });
     await settle();
-    expect(text()).toContain("You do not have permission to save payment methods");
-     expect(button("Continue to secure confirmation").disabled).toBe(true);
+     expect(container!.querySelector('a[href="/workers/worker-1/ledger/payment-methods"]')).toBeNull();
      await act(async () => { button("Continue to secure confirmation").click(); });
-    noPost();
+     expect(postBody().saveMethod).toBe(false);
   });
 
-  it("leaves saving unchecked for a one-time payment and sends consent and explicit save intent", async () => {
+  it("keeps new payment one-off and links to authorized management", async () => {
     await render();
     expect(text()).toContain("Visa •••• 4242");
     expect(text()).toContain("Test Bank •••• 6789");
     expect(text()).not.toContain("pm-bad");
-    const saveBox = Array.from(container!.querySelectorAll("label")).find(node => node.textContent?.includes("Save this method"))!.querySelector('[role="checkbox"]') as HTMLElement;
-    expect(saveBox.getAttribute("aria-checked")).toBe("false");
+    expect(text()).not.toContain("Save this method");
+    expect(container!.querySelector('a[href="/workers/worker-1/ledger/payment-methods"]')).toBeTruthy();
     expect(button("Review payment").disabled).toBe(true);
-    await act(async () => { saveBox.click(); });
     await clickCheckboxContaining("I authorize");
     await submit();
     expect(postBody()).toEqual(expect.objectContaining({
-      saveMethod: true, consent: { version: "v1", text: "I authorize this payment.", accepted: true },
+      saveMethod: false, consent: { version: "v1", text: "I authorize this payment.", accepted: true },
       idempotencyKey: "idempotency-1",
     }));
   });
@@ -595,6 +591,35 @@ describe("shared checkout", () => {
     await act(async () => { button("Retry").click(); });
     await settle();
     expect(text()).toContain("Visa •••• 4242");
+  });
+  it("distinguishes empty and incompatible saved methods from a failed read", async () => {
+    apiRequest.mockImplementation((method: string, url: string, body?: unknown) =>
+      Promise.resolve(method === "GET" && url.includes("/payment-methods/") ? [] : response(method, url, body)));
+    await render();
+    expect(text()).toContain("No saved methods for this payer yet");
+    expect(text()).not.toContain("Saved methods could not be loaded");
+    await act(async () => { await queryClient!.invalidateQueries({ queryKey: ["checkout-methods"] }); });
+    apiRequest.mockImplementation((method: string, url: string, body?: unknown) =>
+      Promise.resolve(method === "GET" && url.includes("/payment-methods/")
+        ? [{ id: "other", isActive: true, gatewayConfigId: "other", providerDetails: { card: { brand: "Visa", last4: "1234" } } },
+          { id: "broken", isActive: true, gatewayConfigId: "stripe", providerError: "provider failed" }]
+        : response(method, url, body)));
+    await act(async () => { await queryClient!.invalidateQueries({ queryKey: ["checkout-methods"] }); });
+    await settle();
+    expect(text()).toContain("2 saved methods are unavailable for this account");
+    expect(text()).not.toContain("Visa •••• 1234");
+    expect(text()).not.toContain("provider failed");
+  });
+  it("refuses a provider form that disagrees with the selected payment type", async () => {
+    apiRequest.mockImplementation((method: string, url: string, body?: unknown) => Promise.resolve(
+      method === "POST" ? { id: "session-1", status: "created", clientSecret: "secret",
+        publicConfig: { paymentTypes: ["card", "us_bank_account"] } } : response(method, url, body)));
+    await render();
+    await clickCheckboxContaining("I authorize");
+    await submit();
+    expect(text()).toContain("does not match your selection");
+    expect(text()).not.toContain("New card entry");
+    expect(text()).toContain("Check this payment's status");
   });
 });
 

@@ -21,3 +21,14 @@ attempt creation, and settlement. Historical unallocated attempts need explicit
 reconciliation, not an invented allocation. Method-management permission governs
 saving/managing methods, not an otherwise authorized payer's use of an existing
 method.
+
+New checkout collection is intentionally one-off; reusable methods belong to
+the separately authorized setup flow. Historical attempts that requested
+saving must remain replayable and settle under their original recorded intent.
+
+**Why:** Mixing reuse consent into a purchase made it unclear whether the payer
+was adding a reusable method or merely paying once. Rejecting old replays
+would strand already-created provider intents and pending ACH reservations.
+
+**How to apply:** Keep checkout's new-method requests without future-use setup,
+while maintaining existing saved-method use and legacy attempt reconciliation.

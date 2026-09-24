@@ -543,6 +543,9 @@ export function registerLedgerPaymentAttemptRoutes(
            publicConfig: safePublicConfig({ publishableKey: (loaded.resolved.config.data as any)?.publishableKey, paymentTypes: existingMetadata.paymentTypes }),
            providerRef: existing.providerIntentRef }));
       }
+      // Reusable methods are created only by the separately authorized setup
+      // flow. Historical saved attempts remain replayable above this boundary.
+      if (body.saveMethod) return error(res, 400, "Save payment methods in payment method management, not checkout");
       try { await enforceFloodLimit(CHECKOUT_FLOOD_EVENT, { userId, eaId: loaded.ea.id }); }
       catch (e) { if (e instanceof FloodError) return error(res, 429, "Too many checkout attempts"); /* flood storage is advisory */ }
       let savedMethod: any;

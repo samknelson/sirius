@@ -44,9 +44,15 @@ function WorkerPaymentMethodsContent() {
 
   const methods = useQuery<PaymentMethod[]>({ queryKey: key, queryFn: () => apiRequest("GET", `${BASE}/worker/${worker.id}`) });
   const gateways = useQuery<Gateway[]>({ queryKey: [...key, "gateways"], queryFn: () => apiRequest("GET", `${BASE}/worker/${worker.id}/gateways`) });
+  const capabilities = useQuery<{ canManageMethods: boolean }>({
+    queryKey: [...key, "capabilities"],
+    queryFn: () => apiRequest("GET", `${BASE}/worker/${worker.id}/capabilities`),
+  });
+  const canManage = capabilities.data?.canManageMethods === true;
   const authorization = useQuery<{ authorization: Consent | null }>({
     queryKey: [...key, "authorization"],
     queryFn: () => apiRequest("GET", `${BASE}/worker/${worker.id}/authorization`),
+    enabled: canManage,
   });
 
   const resetAdd = () => {
@@ -120,10 +126,11 @@ function WorkerPaymentMethodsContent() {
         <CardHeader>
           <div className="flex items-center justify-between gap-3">
             <div><CardTitle>Payment methods</CardTitle><CardDescription>Manage your saved cards and US bank accounts.</CardDescription></div>
-             <Button onClick={() => setAddOpen(true)} disabled={authorization.isError} data-testid="button-worker-add-payment-method"><Plus className="mr-2 h-4 w-4" />Add payment method</Button>
+              {canManage && <Button onClick={() => setAddOpen(true)} disabled={authorization.isError} data-testid="button-worker-add-payment-method"><Plus className="mr-2 h-4 w-4" />Add payment method</Button>}
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
+          {capabilities.isError && <Alert variant="destructive"><AlertDescription>Unable to verify payment method permissions. Management controls are unavailable.</AlertDescription></Alert>}
           {methods.isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> :
             methods.isError ? <Alert variant="destructive"><AlertDescription>{getApiErrorMessage(methods.error, "Unable to load saved payment methods.")}<Button variant="link" className="h-auto p-0 ml-1" onClick={() => methods.refetch()}>Retry</Button></AlertDescription></Alert> :
             methods.data?.length ? methods.data.map((method) => {
@@ -141,15 +148,15 @@ function WorkerPaymentMethodsContent() {
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  {!method.isDefault && !method.providerError && <Button size="sm" variant="ghost" onClick={() => setDefault.mutate(method.id)} aria-label="Set default"><Star className="h-4 w-4" /></Button>}
-                  <Button size="sm" variant="ghost" onClick={() => setDeleteId(method.id)} aria-label="Remove"><Trash2 className="h-4 w-4" /></Button>
+                   {canManage && !method.isDefault && !method.providerError && <Button size="sm" variant="ghost" onClick={() => setDefault.mutate(method.id)} aria-label="Set default"><Star className="h-4 w-4" /></Button>}
+                   {canManage && <Button size="sm" variant="ghost" onClick={() => setDeleteId(method.id)} aria-label="Remove"><Trash2 className="h-4 w-4" /></Button>}
                 </div>
               </div>;
             }) : <p className="text-sm text-muted-foreground" data-testid="text-worker-no-payment-methods">No saved payment methods yet.</p>}
         </CardContent>
       </Card>
 
-      <Dialog open={addOpen} onOpenChange={(open) => open ? setAddOpen(true) : resetAdd()}>
+       <Dialog open={addOpen && canManage} onOpenChange={(open) => open && canManage ? setAddOpen(true) : resetAdd()}>
         <DialogContent>
           <DialogHeader><DialogTitle>Add payment method</DialogTitle><DialogDescription>Your sensitive payment details go directly to the payment provider.</DialogDescription></DialogHeader>
           <label className="flex items-start gap-2 text-sm">
@@ -164,7 +171,7 @@ function WorkerPaymentMethodsContent() {
             <Alert variant="destructive"><AlertDescription>This payment provider is not available.</AlertDescription></Alert>}
         </DialogContent>
       </Dialog>
-      <AlertDialog open={Boolean(deleteId)} onOpenChange={() => setDeleteId(undefined)}>
+       <AlertDialog open={Boolean(deleteId) && canManage} onOpenChange={() => setDeleteId(undefined)}>
         <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Remove payment method?</AlertDialogTitle><AlertDialogDescription>You can add it again later.</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => deleteId && remove.mutate(deleteId)}>Remove</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>

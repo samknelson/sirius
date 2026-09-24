@@ -56,7 +56,7 @@ function StripePaymentForm({
 
   return (
     <form onSubmit={submit} className="space-y-4" data-testid="form-stripe-pay">
-      {!savedMethod && selectedType && <PaymentElement onReady={() => setReady(true)} onLoadError={() => setEntryError("Secure payment entry could not load. Check your connection and reload the page, then check this payment's status before starting another.")} />}
+      {!savedMethod && selectedType && <PaymentElement options={{ layout: "auto", wallets: { applePay: "never", googlePay: "never", link: "never" } }} onReady={() => setReady(true)} onLoadError={() => setEntryError("Secure payment entry could not load. Check your connection and reload the page, then check this payment's status before starting another.")} />}
       {!savedMethod && !selectedType && <p role="alert">The provider did not return a single selected payment type. Check this payment's status before trying again.</p>}
       {entryError && <p role="alert" className="text-sm text-destructive">{entryError}</p>}
       <Button type="submit" disabled={!stripe || (!savedMethod && (!elements || !ready || !selectedType)) || processing} data-testid="button-confirm-stripe-pay">
@@ -98,7 +98,7 @@ export function StripePayComponent({
     ? publicConfig.paymentTypes.filter((type): type is string => typeof type === "string")
     : [];
   return (
-    <Elements stripe={stripe} options={options}>
+    <Elements key={clientSecret} stripe={stripe} options={options}>
       <StripePaymentForm amount={amount} onComplete={onComplete} returnUrl={returnUrl} clientSecret={clientSecret} savedMethod={savedMethod} paymentTypes={paymentTypes} />
     </Elements>
   );

@@ -46,6 +46,7 @@ const h = vi.hoisted(() => ({
     getByEntityWithBalance: vi.fn(),
   },
   storage: {
+    variables: { getByName: vi.fn() },
     workers: {
       getWorker: vi.fn(),
       getWorkerDisplayName: vi.fn(),
@@ -80,6 +81,9 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock("../../server/storage", () => ({ storage: h.storage }));
+vi.mock("../../server/modules/ledger/online-payment-authority", () => ({
+  assertOnlinePaymentAuthority: vi.fn().mockResolvedValue("user-1"),
+}));
 vi.mock("../../server/services/access-policy-evaluator", () => ({
   checkAccessInline: h.access,
   getComponentChecker: () => async () => true,
@@ -136,6 +140,10 @@ beforeEach(() => {
   vi.clearAllMocks();
 
   h.access.mockResolvedValue({ granted: true });
+  h.storage.variables.getByName.mockResolvedValue({ value: {
+    consumer: { version: "v1", text: "I authorize payment." },
+    business: { version: "v1", text: "I authorize payment." },
+  } });
   h.storage.workers.getWorker.mockImplementation(async (id) => ({
     id,
     siriusId: 42,
@@ -239,7 +247,7 @@ describe("worker payment method setup routes", () => {
   it("supports setup, attach, list/default, and remove at zero debt without ledger activity", async () => {
     const setup = await post(
       "/api/ledger/payment-methods/worker/worker-1/setup",
-      { gatewayConfigId: "gateway-1" },
+      { gatewayConfigId: "gateway-1", consent: { version: "v1", text: "I authorize payment.", accepted: true } },
     );
     expect(setup.status).toBe(200);
     expect(await setup.json()).toEqual({
@@ -251,14 +259,14 @@ describe("worker payment method setup routes", () => {
     for (const methodToken of ["pm_visa_4242", "pm_visa_4444"]) {
       const attached = await post(
         "/api/ledger/payment-methods/worker/worker-1",
-        { gatewayConfigId: "gateway-1", methodToken },
+        { gatewayConfigId: "gateway-1", methodToken, consent: { version: "v1", text: "I authorize payment.", accepted: true } },
       );
       expect(attached.status).toBe(200);
     }
     expect(h.methods.map((method) => method.isDefault)).toEqual([true, false]);
 
     const madeDefault = await post(
-      "/api/ledger/payment-methods/worker/worker-1/method-2/set-default",
+      "/api/ledger/payment-methods/worker/worker-1/method-2/set-default", {},
     );
     expect(madeDefault.status).toBe(200);
     expect(h.methods.map((method) => method.isDefault)).toEqual([false, true]);
@@ -331,7 +339,7 @@ describe("worker payment method setup routes", () => {
     h.plugin.attachMethod.mockRejectedValueOnce(refusal);
     const response = await post(
       "/api/ledger/payment-methods/worker/worker-1",
-      { gatewayConfigId: "gateway-1", methodToken: "pm_declined" },
+      { gatewayConfigId: "gateway-1", methodToken: "pm_declined", consent: { version: "v1", text: "I authorize payment.", accepted: true } },
     );
     expect(response.status).toBe(402);
     expect(await response.json()).toEqual({

@@ -438,7 +438,7 @@ describe("online checkout HTTP contract", () => {
     expect(await response.json()).toEqual({ message: "Online checkout is not enabled" });
   });
 
-  it("gates saveMethod authority and rejects an incompatible saved method", async () => {
+  it("rejects saving in checkout and an incompatible saved method", async () => {
     mocks.authority.mockResolvedValueOnce("user-1").mockImplementationOnce(() => {
       throw new mocks.AuthorityError("Methods access denied");
     });
@@ -447,6 +447,10 @@ describe("online checkout HTTP contract", () => {
     expect(mocks.authority).toHaveBeenLastCalledWith(expect.anything(), "worker", "worker-1", "methods");
 
     mocks.authority.mockResolvedValue("user-1");
+    const save = await checkout(valid({ saveMethod: true }));
+    expect(save.status).toBe(400);
+    expect(await save.json()).toEqual({ message: "Save payment methods in payment method management, not checkout" });
+    expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();
     mocks.storage.ledger.paymentMethods.get.mockResolvedValue({
       id: "method-1", isActive: true, entityType: "worker", entityId: "worker-1",
       gatewayConfigId: "gw-1", providerMethodRef: "pm-1",

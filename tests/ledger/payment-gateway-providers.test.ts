@@ -175,7 +175,10 @@ describe("payment gateway provider contract", () => {
         providerRef: `pi_${paymentType}`, status: "created", clientSecret: "cs_test",
       });
       expect(stripeCreate).toHaveBeenLastCalledWith(
-        expect.objectContaining({ payment_method_types: [paymentType], confirm: undefined }),
+        expect.objectContaining({
+          payment_method_types: [paymentType], confirm: undefined,
+          customer: undefined, setup_future_usage: undefined,
+        }),
         { idempotencyKey: `checkout-${paymentType}` },
       );
     }
