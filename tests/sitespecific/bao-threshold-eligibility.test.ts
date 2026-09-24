@@ -22,6 +22,7 @@ import { updateComponentCache } from "../../server/services/component-cache";
 import { getOptionsStorage } from "../../server/modules/options-registry";
 import { fetchThresholdStatus } from "../../server/plugins/trust/eligibility/plugins/sitespecific-bao-threshold";
 import { resolveBaoThreshold } from "../../server/plugins/trust/eligibility/plugins/bao-shared";
+import { evaluateEligibilityRules } from "../../server/plugins/trust/eligibility/executor";
 import { runBenefitsScan } from "../../server/services/benefits-scan";
 
 const run = `bao-thresh-${Date.now()}`;
@@ -34,6 +35,9 @@ const AS_OF_YMD = "2026-04-30";
 let industryId = "";
 let msId = "";
 let employerId = "";
+let lowerThresholdIndustryId = "";
+let lowerThresholdMsId = "";
+let lowerThresholdEmployerId = "";
 let employmentStatusId = "";
 let benefitId = "";
 let policyId = "";
@@ -44,6 +48,9 @@ let belowWorkerId = "";
 let defaultWorkerId = "";
 let activeDependentId = "";
 let lapsedDependentId = "";
+let inferredWorkerId = "";
+let multiEmployerWorkerId = "";
+let noEmployerWorkerId = "";
 let activeRelId = "";
 let lapsedRelId = "";
 let electionId = "";
@@ -70,6 +77,23 @@ beforeAll(async () => {
     industryId,
   } as any);
   employerId = employer.id;
+
+  lowerThresholdIndustryId = (
+    await options.create("industry", { name: `${run} lower-threshold industry` })
+  ).id;
+  lowerThresholdMsId = (
+    await options.create("worker-ms", {
+      name: `${run} lower-threshold worker status`,
+      industryId: lowerThresholdIndustryId,
+      data: { sitespecific: { bao: { threshold: 40 } } },
+    })
+  ).id;
+  lowerThresholdEmployerId = (
+    await storage.employers.createEmployer({
+      name: `${run} lower-threshold employer`,
+      industryId: lowerThresholdIndustryId,
+    } as any)
+  ).id;
 
   const statuses: Array<{ id: string; name: string }> = await options.list("employment-status");
   const active = statuses.find((s) => s.name.toLowerCase() === "active") ?? statuses[0];
@@ -115,6 +139,9 @@ beforeAll(async () => {
   defaultWorkerId = (await storage.workers.createWorker(`${run} default`)).id;
   activeDependentId = (await storage.workers.createWorker(`${run} dependent active`)).id;
   lapsedDependentId = (await storage.workers.createWorker(`${run} dependent lapsed`)).id;
+  inferredWorkerId = (await storage.workers.createWorker(`${run} inferred employer`)).id;
+  multiEmployerWorkerId = (await storage.workers.createWorker(`${run} multiple employers`)).id;
+  noEmployerWorkerId = (await storage.workers.createWorker(`${run} no employer`)).id;
 
   // Member-status history binds subscriber+below to the 60-hour status in
   // the hospitality industry (the default worker gets NO history row).
@@ -126,6 +153,24 @@ beforeAll(async () => {
       industryId,
     });
   }
+  await storage.workerMsh.createWorkerMsh({
+    workerId: inferredWorkerId,
+    date: "2024-01-01",
+    msId,
+    industryId,
+  });
+  await storage.workerMsh.createWorkerMsh({
+    workerId: multiEmployerWorkerId,
+    date: "2024-01-01",
+    msId,
+    industryId,
+  });
+  await storage.workerMsh.createWorkerMsh({
+    workerId: multiEmployerWorkerId,
+    date: "2024-01-01",
+    msId: lowerThresholdMsId,
+    industryId: lowerThresholdIndustryId,
+  });
 
   // Hours in the examined month (January 2032).
   const hoursOf: Array<[string, number]> = [
@@ -137,6 +182,29 @@ beforeAll(async () => {
     await storage.workerHours.upsertWorkerHours({
       workerId,
       employerId,
+      employmentStatusId,
+      year: TARGET.year,
+      month: TARGET.month,
+      hours,
+      home: true,
+    } as any);
+  }
+  await storage.workerHours.upsertWorkerHours({
+    workerId: inferredWorkerId,
+    employerId,
+    employmentStatusId,
+    year: TARGET.year,
+    month: TARGET.month,
+    hours: 60,
+    home: true,
+  } as any);
+  for (const [candidateEmployerId, hours] of [
+    [employerId, 25],
+    [lowerThresholdEmployerId, 25],
+  ] as const) {
+    await storage.workerHours.upsertWorkerHours({
+      workerId: multiEmployerWorkerId,
+      employerId: candidateEmployerId,
       employmentStatusId,
       year: TARGET.year,
       month: TARGET.month,
@@ -192,17 +260,56 @@ afterAll(async () => {
   const options = getOptionsStorage();
   if (electionId) await storage.workerTrustElections.delete(electionId).catch(() => {});
   if (belowElectionId) await storage.workerTrustElections.delete(belowElectionId).catch(() => {});
-  for (const id of [subscriberId, belowWorkerId, defaultWorkerId, activeDependentId, lapsedDependentId]) {
+  for (const id of [
+    subscriberId,
+    belowWorkerId,
+    defaultWorkerId,
+    activeDependentId,
+    lapsedDependentId,
+    inferredWorkerId,
+    multiEmployerWorkerId,
+    noEmployerWorkerId,
+  ]) {
     if (id) await storage.workers.deleteWorker(id).catch(() => {});
   }
   if (ruleConfigId) await storage.pluginConfigs.delete(ruleConfigId).catch(() => {});
   if (employerId) await storage.employers.deleteEmployer(employerId).catch(() => {});
+  if (lowerThresholdEmployerId) {
+    await storage.employers.deleteEmployer(lowerThresholdEmployerId).catch(() => {});
+  }
   if (policyId) await storage.policies.deletePolicy?.(policyId).catch(() => {});
   if (benefitId) await storage.trustBenefits.deleteTrustBenefit(benefitId).catch(() => {});
   if (relationTypeId) await options.delete("worker-relation-type", relationTypeId).catch(() => {});
   if (msId) await options.delete("worker-ms", msId).catch(() => {});
   if (industryId) await options.delete("industry", industryId).catch(() => {});
+  if (lowerThresholdMsId) await options.delete("worker-ms", lowerThresholdMsId).catch(() => {});
+  if (lowerThresholdIndustryId) {
+    await options.delete("industry", lowerThresholdIndustryId).catch(() => {});
+  }
 }, 120_000);
+
+async function evaluateThreshold(
+  workerId: string,
+  employerId?: string,
+): Promise<{ eligible: boolean; reason?: string }> {
+  const [result] = await evaluateEligibilityRules(
+    [
+      {
+        pluginKey: "sitespecific-bao-threshold",
+        appliesTo: ["continue"],
+        config: { defaultThreshold: 100 },
+      },
+    ],
+    {
+      scanType: "continue",
+      workerId,
+      employerId,
+      asOfMonth: AS_OF.month,
+      asOfYear: AS_OF.year,
+    },
+  );
+  return result;
+}
 
 describe("threshold resolution reads the canonical configured value", () => {
   it("resolves 60 from the member-status history, not the 100 default", async () => {
@@ -238,6 +345,59 @@ describe("hospitality subscriber at the 60-hour boundary", () => {
     expect(status.threshold).toBe(100);
     expect(status.thresholdResolved).toBe(false);
     expect(status.success).toBe(false); // 60 hours < default 100
+  });
+});
+
+describe("BAO Threshold when no election employer is available", () => {
+  it("uses the active employer's status threshold and the three-month target month", async () => {
+    const result = await evaluateThreshold(inferredWorkerId);
+
+    expect(result.eligible).toBe(true);
+    expect(result.reason).toContain("60 hours in January 2026");
+    expect(result.reason).toContain("threshold of 60");
+    expect(result.reason).toContain("derived from active employer hours");
+    expect(result.reason).not.toContain("default threshold");
+  });
+
+  it("uses the lowest threshold across multiple qualifying active employers", async () => {
+    const result = await evaluateThreshold(multiEmployerWorkerId);
+
+    // 50 total hours would fail the 60-hour threshold, but meets the 40-hour
+    // threshold for the other active employer.
+    expect(result.eligible).toBe(true);
+    expect(result.reason).toContain("50 hours in January 2026");
+    expect(result.reason).toContain("threshold of 40");
+    expect(result.reason).toContain("derived from active employer hours");
+  });
+
+  it("identifies when an inferred employer has no configured member-status threshold", async () => {
+    const result = await evaluateThreshold(defaultWorkerId);
+
+    expect(result.eligible).toBe(false);
+    expect(result.reason).toContain("threshold of 100");
+    expect(result.reason).toContain("default threshold");
+    expect(result.reason).toContain("derived from active employer hours");
+  });
+
+  it("keeps the no-employer failure when no active employer can be inferred", async () => {
+    const result = await evaluateThreshold(noEmployerWorkerId);
+
+    expect(result.eligible).toBe(false);
+    expect(result.reason).toBe(
+      "No employer could be resolved for the subscriber on the evaluated date, so the hours threshold cannot be determined.",
+    );
+  });
+
+  it("leaves explicit and election-resolved employers on the normal threshold path", async () => {
+    const explicit = await evaluateThreshold(multiEmployerWorkerId, employerId);
+    expect(explicit.eligible).toBe(false);
+    expect(explicit.reason).toContain("threshold of 60");
+    expect(explicit.reason).not.toContain("derived from active employer hours");
+
+    const elected = await evaluateThreshold(subscriberId);
+    expect(elected.eligible).toBe(true);
+    expect(elected.reason).toContain("threshold of 60");
+    expect(elected.reason).not.toContain("derived from active employer hours");
   });
 });
 

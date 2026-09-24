@@ -6,7 +6,13 @@ import {
   BaseEligibilityConfig,
 } from "../types";
 import { registerEligibilityPlugin } from "../registry";
-import { monthName } from "./bao-shared";
+import {
+  fromOrdinal,
+  lastDayOfMonthYmd,
+  monthName,
+  resolveLowestActiveEmployerThreshold,
+  toOrdinal,
+} from "./bao-shared";
 import { fetchBuildupStatus } from "./sitespecific-bao-buildup";
 
 /**
@@ -160,26 +166,48 @@ class BaoThresholdPlugin extends EligibilityPlugin<BaoThresholdConfig> {
     context: EligibilityContext,
     config: BaoThresholdConfig,
   ): Promise<EligibilityResult> {
+    const defaultThreshold = config.defaultThreshold ?? DEFAULT_THRESHOLD;
+    let employerId = context.employer?.id;
+    let employerInferred = false;
+
     if (!context.employer) {
-      return {
-        eligible: false,
-        reason:
-          "No employer could be resolved for the subscriber on the evaluated date, so the hours threshold cannot be determined.",
-      };
+      const targetMonth = fromOrdinal(
+        toOrdinal(context.asOfYear, context.asOfMonth) - LOOKBACK_MONTHS,
+      );
+      const inferred = await resolveLowestActiveEmployerThreshold(
+        context.subscriberWorker.id,
+        lastDayOfMonthYmd(context.asOfYear, context.asOfMonth),
+        targetMonth,
+        defaultThreshold,
+      );
+      if (!inferred) {
+        return {
+          eligible: false,
+          reason:
+            "No employer could be resolved for the subscriber on the evaluated date, so the hours threshold cannot be determined.",
+        };
+      }
+      employerId = inferred.employerId;
+      employerInferred = true;
     }
 
     const status = await fetchThresholdStatus(
       context.subscriberWorker.id,
       { year: context.asOfYear, month: context.asOfMonth },
       {
-        employerId: context.employer.id,
-        defaultThreshold: config.defaultThreshold ?? DEFAULT_THRESHOLD,
+        // Resolve the inferred employer again through the usual path rather
+        // than passing its numeric threshold as an override. This preserves
+        // whether a configured member-status threshold or the default won.
+        employerId,
+        defaultThreshold,
       },
     );
 
     return {
       eligible: status.success,
-      reason: status.reason,
+      reason: employerInferred
+        ? `${status.reason} (No trust election employer was found, so the threshold was derived from active employer hours.)`
+        : status.reason,
     };
   }
 }
