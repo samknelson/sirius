@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Bookmark, BookmarkCheck } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -20,13 +19,9 @@ export function BookmarkButton({ entityType, entityId, entityName }: BookmarkBut
   // Check if user has bookmark permission or admin access
   const canBookmark = hasPermission('bookmark') || hasPermission('admin');
   
-  // Don't render the button if user doesn't have permission
-  if (!canBookmark) {
-    return null;
-  }
-
   const { data: bookmarkStatus } = useQuery({
     queryKey: ["/api/bookmarks/check", entityType, entityId],
+    enabled: canBookmark,
     queryFn: async () => {
       const response = await fetch(`/api/bookmarks/check?entityType=${entityType}&entityId=${entityId}`);
       if (!response.ok) throw new Error("Failed to check bookmark");
@@ -77,6 +72,12 @@ export function BookmarkButton({ entityType, entityId, entityName }: BookmarkBut
       });
     },
   });
+
+  // Permissions can change while mounted (for example, when masquerade stops).
+  // Keep every hook above this guard, but never offer unauthorized actions.
+  if (!canBookmark) {
+    return null;
+  }
 
   const handleToggle = () => {
     if (bookmarkStatus?.bookmarked) {
