@@ -91,11 +91,8 @@ function Field({ label, value, testId }: { label: string; value: string; testId:
 /**
  * The worker's answer to one assignment.
  *
- * While unanswered it offers accept and decline, with the finality said up
- * front — the choice cannot be changed from this page, and a worker reading
- * a text on their phone should know that before they tap, not in a dialog
- * afterwards. Once answered the buttons are gone for good and the recorded
- * answer stands in their place.
+ * While unanswered it offers accept and decline. Once answered the buttons
+ * are gone for good and the recorded answer stands in their place.
  *
  * A refused answer (a stale tab, a second tap, an assignment edited out from
  * under the page) says so plainly and re-reads the schedule, so the page
@@ -146,10 +143,6 @@ function AssignmentAnswer({
 
   return (
     <div className="space-y-2">
-      <p className="text-sm text-muted-foreground" data-testid={`text-answer-finality-${assignment.assignmentId}`}>
-        Accept or decline this assignment. Your answer is final — once you choose, you cannot change
-        it here. Call your dispatcher if something changes.
-      </p>
       <div className="flex flex-col gap-2 sm:flex-row">
         <Button
           type="button"
@@ -197,7 +190,6 @@ function AssignmentDetails({
     <div className="space-y-4">
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-2">
-          <h3 className="text-sm font-semibold uppercase tracking-wide">Job Information</h3>
           <Field label="Event" value={assignment.jobGroup?.name ?? ""} testId="text-event" />
           <Field label="Event Status" value={assignment.showStatus?.name ?? ""} testId="text-event-status" />
           <Field label="Department" value={assignment.department?.name ?? ""} testId="text-department" />
@@ -205,7 +197,6 @@ function AssignmentDetails({
           <Field label="Facility" value={assignment.facility?.name ?? ""} testId="text-facility" />
         </div>
         <div className="space-y-2">
-          <h3 className="text-sm font-semibold uppercase tracking-wide">Crew</h3>
           <Field label="Crew" value={assignment.crewTitle ?? ""} testId="text-crew" />
           <Field label="Task" value={assignment.task?.name ?? ""} testId="text-task" />
           {assignment.classification && (
