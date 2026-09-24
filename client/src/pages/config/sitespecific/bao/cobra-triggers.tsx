@@ -157,8 +157,8 @@ export default function BaoCobraTriggersPage() {
                 <TableRow>
                   <TableHead>Eligibility rule</TableHead>
                   <TableHead>Description</TableHead>
+                  <TableHead className="min-w-64">Covered relationships</TableHead>
                   <TableHead className="w-40">Triggers COBRA</TableHead>
-                   <TableHead className="min-w-64">Covered relationships</TableHead>
                   <TableHead className="w-64">Qualifying event</TableHead>
                 </TableRow>
               </TableHeader>
