@@ -25,10 +25,11 @@ vi.mock("wouter", () => ({
 }));
 vi.mock("@/plugins/payment-gateway/registry", () => ({
   hasPaymentGatewayPayComponent: () => payEnabled.value,
-  resolvePaymentGatewayPayComponent: () => (props: { clientSecret: string; amount: string; savedMethod?: boolean; onComplete: (status: "processing") => void }) =>
-    <div><span>{props.savedMethod ? "Saved method action required" : "New method entry"}</span>
+   resolvePaymentGatewayPayComponent: () => (props: { clientSecret: string; amount: string; savedMethod?: boolean; publicConfig: { paymentTypes?: string[] }; onComplete: (status: "processing" | "failed", message?: string) => void }) =>
+     <div><span>{props.savedMethod ? "Saved method action required" : `New ${props.publicConfig.paymentTypes?.[0]} entry`}</span>
       <span data-testid="provider-amount">{props.amount}</span>
-      <button data-testid="mock-pay" onClick={() => props.onComplete("processing")}>Confirm provider payment</button></div>,
+       <button data-testid="mock-pay" onClick={() => props.onComplete("processing")}>Confirm provider payment</button>
+       <button onClick={() => props.onComplete("failed", "Check your provider details")}>Fail provider payment</button></div>,
 }));
 
 import Checkout from "@/pages/shared-checkout";
@@ -79,7 +80,7 @@ function response(method: string, url: string, body?: any): unknown {
     return { authorization: { version: "v1", text: "I authorize this payment." } };
   }
   if (method === "POST" && url.includes("/sessions")) {
-    return { id: "session-1", status: "requires_action", clientSecret: "secret", publicConfig: {} };
+     return { id: "session-1", status: "requires_action", clientSecret: "secret", publicConfig: { paymentTypes: [body.paymentMethodType ?? (body.paymentMethodId === "pm-ach" ? "us_bank_account" : "card")] } };
   }
   throw new Error(`Unexpected request ${method} ${url} ${JSON.stringify(body)}`);
 }
@@ -131,7 +132,7 @@ function noPost() {
 }
 async function submit() {
   await act(async () => { button("Review payment").click(); });
-  await act(async () => { button("Submit payment").click(); });
+   await act(async () => { button("Continue to secure confirmation").click(); });
   await settle();
 }
 async function clickCheckboxContaining(label: string) {
@@ -161,6 +162,73 @@ afterEach(async () => {
 });
 
 describe("shared checkout", () => {
+   it("offers both new methods, reviews the chosen type, and hands off to provider entry before receipt", async () => {
+     await render();
+     expect(radio("New credit/debit card").checked).toBe(true);
+     expect(radio("New US bank transfer").checked).toBe(false);
+     expect(text()).toContain("securely enter your card details");
+     await selectRadio("New US bank transfer");
+     expect(text()).toContain("link or enter your US bank account");
+     await clickCheckboxContaining("I authorize");
+     await act(async () => { button("Review payment").click(); });
+     expect(text()).toContain("using a new US bank transfer");
+     expect(text()).toContain("does not complete your payment");
+     await act(async () => { button("Continue to secure confirmation").click(); });
+     await settle();
+     expect(postBody().paymentMethodType).toBe("us_bank_account");
+     expect(text()).toContain("New us_bank_account entry");
+     expect(document.activeElement).toBe(container?.querySelector('[aria-label="Secure payment confirmation"]'));
+     expect(text()).toContain("Payment not complete");
+     expect(navigate).not.toHaveBeenCalled();
+     await act(async () => { button("Fail provider payment").click(); });
+     expect(text()).toContain("Check your provider details");
+     expect(navigate).not.toHaveBeenCalled();
+     await act(async () => { button("Confirm provider payment").click(); });
+     expect(navigate).toHaveBeenCalledWith("/pay/receipt/session-1");
+   });
+
+   it("switching method resets review and consent, then submits the newly chosen card", async () => {
+     await render();
+     await clickCheckboxContaining("I authorize");
+     await act(async () => { button("Review payment").click(); });
+     await selectRadio("New US bank transfer");
+     expect(button("Review payment").disabled).toBe(true);
+     await clickCheckboxContaining("I authorize");
+     await act(async () => { button("Review payment").click(); });
+     expect(text()).toContain("using a new US bank transfer");
+     await selectRadio("New credit/debit card");
+     expect(button("Review payment").disabled).toBe(true);
+     await clickCheckboxContaining("I authorize");
+     await submit();
+     expect(postBody().paymentMethodType).toBe("card");
+     expect(text()).toContain("New card entry");
+   });
+
+   it.each([
+     [["card"], "New credit/debit card", "New US bank transfer", "card"],
+     [["us_bank_account"], "New US bank transfer", "New credit/debit card", "us_bank_account"],
+   ] as const)("shows only the permitted %j method", async (types, visible, hidden, selected) => {
+     workerFixture = { ...checkout, paymentTypes: [...types] };
+     await render();
+     expect(radio(visible).checked).toBe(true);
+     expect(text()).not.toContain(hidden);
+     await clickCheckboxContaining("I authorize");
+     await submit();
+     expect(postBody().paymentMethodType).toBe(selected);
+   });
+
+   it("gives a recovery path when provider entry is unavailable after a session starts", async () => {
+     apiRequest.mockImplementation((method: string, url: string, body?: unknown) =>
+       Promise.resolve(method === "POST" && url.includes("/sessions")
+         ? { id: "session-1", status: "requires_action", clientSecret: null }
+         : response(method, url, body)));
+     await render();
+     await clickCheckboxContaining("I authorize");
+     await submit();
+     expect(text()).toContain("Secure payment entry is unavailable");
+     expect(text()).toContain("Check this payment's status");
+     expect(navigate).not.toHaveBeenCalled();
+   });
   it("pays the complete COBRA $267.35 statement, not an editable arbitrary amount", async () => {
     const input: CheckoutSelectionInput = { ...selectionInput, balance: "267.35", invoices: [
       { invoiceNumber: "COBRA-APR", month: 4, year: 2026, invoiceBalance: "267.35" },
@@ -379,8 +447,8 @@ describe("shared checkout", () => {
     await selectRadio("Visa");
     await clickCheckboxContaining("I authorize");
     await submit();
-    expect(postBody()).toEqual(expect.objectContaining({ paymentMethodId: "pm-card", saveMethod: false }));
-    expect(text()).toContain("Saved method action required");
+     expect(postBody()).toEqual(expect.objectContaining({ paymentMethodId: "pm-card", paymentMethodType: undefined, saveMethod: false }));
+     expect(text()).toContain("Saved method action required");
   });
 
   it("blocks a reviewed save when saving permission is revoked by a refetch", async () => {
@@ -388,13 +456,13 @@ describe("shared checkout", () => {
     await clickCheckboxContaining("Save this method");
     await clickCheckboxContaining("I authorize");
     await act(async () => { button("Review payment").click(); });
-    expect(button("Submit payment").disabled).toBe(false);
+     expect(button("Continue to secure confirmation").disabled).toBe(false);
     workerFixture = { ...checkout, readiness: { ...checkout.readiness, methodPermission: "denied", saveMethod: "permission_denied" } };
     await act(async () => { await queryClient!.invalidateQueries({ queryKey: ["checkout"] }); });
     await settle();
     expect(text()).toContain("You do not have permission to save payment methods");
-    expect(button("Submit payment").disabled).toBe(true);
-    await act(async () => { button("Submit payment").click(); });
+     expect(button("Continue to secure confirmation").disabled).toBe(true);
+     await act(async () => { button("Continue to secure confirmation").click(); });
     noPost();
   });
 
@@ -440,7 +508,7 @@ describe("shared checkout", () => {
     expect(text()).toContain("Secure payment confirmation");
     expect(radio("Pay selected statements").disabled).toBe(true);
     expect(radio("Visa").disabled).toBe(true);
-    expect(button("Submit payment").disabled).toBe(true);
+     expect(button("Continue to secure confirmation").disabled).toBe(true);
     await act(async () => { radio("Pay selected statements").click(); });
     expect(radio("Pay full balance").checked).toBe(true);
     expect(apiRequest.mock.calls.filter(([method, url]) => method === "POST" && String(url).endsWith("/sessions"))).toHaveLength(1);
@@ -471,7 +539,7 @@ describe("shared checkout", () => {
     window.history.replaceState({}, "", "/pay/ea-1?invoice=INV-100&amount=1");
     await render();
     expect(radio("Pay selected statements").checked).toBe(true);
-    expect(text()).toContain("New bank transfer (recommended)");
+     expect(text()).toContain("New US bank transfer");
     expect(text()).not.toContain("Visa •••• 4242");
     expect(text()).toContain("$40.00");
     await clickCheckboxContaining("I authorize the business debit.");

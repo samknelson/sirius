@@ -70,7 +70,7 @@ try {
     entityType: "worker", entityId: "fixture-worker", eaId: "fixture-ea",
     account: { name: "COBRA account", currency: "USD", gatewayConfigId: "fixture-gateway" },
     balance: "307.35", available: "307.35", invoices: selectionInput.invoices,
-    paymentTypes: ["card"], payComponentId: null, reusableMethodsSupported: false,
+    paymentTypes: ["card", "us_bank_account"], payComponentId: "fixture:pay", reusableMethodsSupported: false,
     settings: { allowPartial: true, minAmount: 1 },
     authorization: { version: "fixture-v1", text: "I authorize this payment." },
     readiness: {
@@ -109,6 +109,15 @@ try {
           providerDetails: { card: { brand: "Visa", last4: "4242" } } },
       ],
     };
+    if (request.method() === "POST" && url.pathname.endsWith("/sessions")) {
+      const body = JSON.parse(request.postData());
+      if (body.paymentMethodType !== "us_bank_account" || body.paymentMethodId) {
+        failures.push(`Wrong provider selection: ${JSON.stringify(body)}`);
+      }
+      return request.respond({ status: 201, contentType: "application/json",
+        body: JSON.stringify({ id: "fixture-session", status: "requires_action", clientSecret: "fixture-secret",
+          publicConfig: { paymentTypes: [body.paymentMethodType] } }) });
+    }
     if (request.method() !== "GET" || !Object.hasOwn(responses, url.pathname)) {
       failures.push(`Unexpected API request: ${request.method()} ${url.pathname}`);
       return request.abort();
@@ -181,7 +190,7 @@ try {
       ?.querySelector('[role="checkbox"]')?.getAttribute("aria-checked") === "true");
   assert.equal(await reviewDisabled(), false);
   await clickButton("Review payment");
-  await page.waitForFunction(() => document.body.textContent.includes("$267.35 to COBRA account using a saved method"));
+   await page.waitForFunction(() => document.body.textContent.includes("$267.35 to COBRA account using a saved card"));
   await assertNoOverflow("COBRA review");
   const screenshotPath = path.join(root, "tests/ledger/checkout-browser-cobra-review.png");
   await page.screenshot({ path: screenshotPath, fullPage: true });
@@ -198,6 +207,20 @@ try {
   await clickLabel("Pay full balance");
   assert.equal(await total(), "$307.35", "full-balance choice restores the full quote");
   await assertNoOverflow("full-balance selection");
+   assert.ok(await page.$('xpath/.//label[contains(., "New credit/debit card")]'));
+   assert.ok(await page.$('xpath/.//label[contains(., "New US bank transfer")]'));
+   await clickLabel("New US bank transfer");
+   assert.equal(await reviewDisabled(), true, "method switch requires renewed consent");
+   await clickLabel("I authorize this payment.");
+   await clickButton("Review payment");
+   await page.waitForFunction(() => document.body.textContent.includes("using a new US bank transfer"));
+   await clickButton("Continue to secure confirmation");
+   await page.waitForSelector('[data-testid="fixture-provider"]');
+   assert.ok((await page.$eval('[data-testid="fixture-provider"]', node => node.textContent)).includes("Secure us_bank_account entry"));
+   assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Secure payment confirmation");
+   assert.ok((await page.$eval("main", node => node.textContent)).includes("Payment not complete"));
+   assert.ok(!page.url().includes("/receipt"), "provider confirmation has not happened yet");
+   await assertNoOverflow("secure bank entry");
   assert.deepEqual(failures, [], "no browser errors or unexpected network requests");
   console.log(`Checkout browser fixture passed; screenshot: ${screenshotPath}`);
 } finally {

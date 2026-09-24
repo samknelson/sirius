@@ -136,6 +136,7 @@ describe("online checkout HTTP contract", () => {
     });
   const valid = (overrides: Record<string, unknown> = {}) => ({
     amount: "12.34", idempotencyKey: "idem-1",
+    paymentMethodType: "card",
     selection: { mode: "statements", invoiceNumbers: ["INV-1"] },
     consent: { version: "v1", text: "Pay now", accepted: true },
     statementSelection: [{ invoiceNumber: "INV-1", amount: "12.34" }], saveMethod: false, ...overrides,
@@ -235,7 +236,7 @@ describe("online checkout HTTP contract", () => {
       providerIntentRef: "pi-old", ledgerPaymentId: "posted",
       consent: { version: "v1", text: "Pay now" },
       statementSelection: [{ invoiceNumber: "INV-1", amount: "12.34" }],
-      metadata: { paymentMethodRef: null, checkoutSelection: { mode: "statements", invoiceNumbers: ["INV-1"] } },
+       metadata: { paymentMethodRef: null, paymentTypes: ["card"], checkoutSelection: { mode: "statements", invoiceNumbers: ["INV-1"] } },
     });
     mocks.storage.ledger.ea.getBalance.mockResolvedValue("0.00");
     mocks.storage.ledger.invoices.listForEa.mockResolvedValue([]);
@@ -256,6 +257,62 @@ describe("online checkout HTTP contract", () => {
     expect(gateway.plugin.createPaymentSession).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       amountMinor: 1234, currency: "USD", paymentTypes: ["card"], saveMethod: false,
     }));
+  });
+
+  it.each([
+    [["card", "us_bank_account"], "card"],
+    [["card", "us_bank_account"], "us_bank_account"],
+    [["card"], "card"],
+    [["us_bank_account"], "us_bank_account"],
+  ] as const)("restricts %j checkout to selected %s", async (allowed, selected) => {
+    mocks.storage.ledger.accounts.get.mockResolvedValue({
+      id: "acct-1", name: "Health", currencyCode: "USD", isActive: true, gatewayConfigId: "gw-1",
+      data: { onlinePayments: { enabled: true, payerTypes: ["worker"], allowPartial: true, minAmount: 1, paymentTypes: [...allowed] } },
+    });
+    mocks.resolve.mockResolvedValue({ ...gateway, config: { ...gateway.config, data: { paymentTypes: [...allowed], publishableKey: "pk_test" } },
+      plugin: { ...gateway.plugin, supportedPaymentTypes: [{ id: "card" }, { id: "us_bank_account" }] } });
+    const page = await (await fetch(`${base}/api/ledger/checkout/worker/worker-1/ea-1`)).json();
+    expect(page.paymentTypes).toEqual([...allowed]);
+    const response = await checkout(valid({ paymentMethodType: selected }));
+    expect(response.status).toBe(201);
+    expect(mocks.storage.ledger.paymentAttempts.create).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: expect.objectContaining({ paymentTypes: [selected] }),
+    }));
+    expect(gateway.plugin.createPaymentSession).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ paymentTypes: [selected] }));
+  });
+
+  it("rejects missing, conflicting, and disallowed type choices before creating a reservation", async () => {
+    expect((await checkout(valid({ paymentMethodType: undefined }))).status).toBe(400);
+    expect((await checkout(valid({ paymentMethodType: "us_bank_account" }))).status).toBe(400);
+    expect((await checkout(valid({ paymentMethodId: "saved-card" }))).status).toBe(400);
+    expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();
+    expect(gateway.plugin.createPaymentSession).not.toHaveBeenCalled();
+  });
+
+  it("keeps saved-method sessions bound to their provider's authorized type", async () => {
+    mocks.storage.ledger.paymentMethods.get.mockResolvedValue({
+      id: "method-1", isActive: true, entityType: "worker", entityId: "worker-1",
+      gatewayConfigId: "gw-1", providerMethodRef: "pm-1",
+    });
+    mocks.storage.ledger.gatewayCustomers.get.mockResolvedValue({ customerRef: "cus-1" });
+    gateway.plugin.getMethodSummary.mockResolvedValue({ type: "card" });
+    const response = await checkout(valid({ paymentMethodId: "method-1", paymentMethodType: undefined }));
+    expect(response.status).toBe(201);
+    expect(gateway.plugin.createPaymentSession).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      savedMethodRef: "pm-1", customerRef: "cus-1", paymentTypes: ["card"],
+    }));
+  });
+
+  it("rejects a replay that changes the selected payment type", async () => {
+    mocks.storage.ledger.paymentAttempts.getByIdempotencyKey.mockResolvedValue({
+      id: "old", entityType: "worker", entityId: "worker-1", ledgerEaId: "ea-1", gatewayConfigId: "gw-1",
+      createdByUserId: "user-1", amount: "12.34", currency: "USD", saveMethod: false, status: "requires_action",
+      providerIntentRef: "pi-old", consent: { version: "v1", text: "Pay now" },
+      statementSelection: [{ invoiceNumber: "INV-1", amount: "12.34" }],
+      metadata: { paymentMethodRef: null, paymentTypes: ["card"], checkoutSelection: { mode: "statements", invoiceNumbers: ["INV-1"] } },
+    });
+    expect((await checkout(valid({ paymentMethodType: "us_bank_account" }))).status).toBe(409);
+    expect(gateway.plugin.retrievePayment).not.toHaveBeenCalled();
   });
 
   it("rejects bad amount, stale consent, and invalid invoice selection before reservation", async () => {
@@ -292,7 +349,7 @@ describe("online checkout HTTP contract", () => {
       gatewayConfigId: "gw-1", providerMethodRef: "pm-1",
     });
     gateway.plugin.getMethodSummary.mockResolvedValue({ type: "us_bank_account" });
-    const mismatch = await checkout(valid({ paymentMethodId: "method-1" }));
+     const mismatch = await checkout(valid({ paymentMethodId: "method-1", paymentMethodType: undefined }));
     expect(mismatch.status).toBe(400);
     expect(await mismatch.json()).toEqual({ message: "Saved payment method type is not enabled" });
   });
@@ -303,7 +360,7 @@ describe("online checkout HTTP contract", () => {
       gatewayConfigId: "gw-1", createdByUserId: "user-1", amount: "12.34", currency: "USD",
       saveMethod: false, status: "succeeded", providerIntentRef: "pi-existing",
       consent: { version: "v1", text: "Pay now" }, statementSelection: [{ invoiceNumber: "INV-1", amount: "12.34" }],
-      metadata: { paymentMethodRef: null, checkoutSelection: { mode: "statements", invoiceNumbers: ["INV-1"] } },
+       metadata: { paymentMethodRef: null, paymentTypes: ["card"], checkoutSelection: { mode: "statements", invoiceNumbers: ["INV-1"] } },
     });
     gateway.plugin.retrievePayment.mockResolvedValue({ clientSecret: "cs-existing" });
     mocks.storage.ledger.paymentAttempts.get.mockResolvedValue({
@@ -320,7 +377,7 @@ describe("online checkout HTTP contract", () => {
       gatewayConfigId: "gw-1", createdByUserId: "user-1", amount: "12.34", currency: "USD",
       saveMethod: false, status: "processing", providerIntentRef: null,
       consent: { version: "v1", text: "Pay now" }, statementSelection: [{ invoiceNumber: "INV-1", amount: "12.34" }],
-      metadata: { paymentMethodRef: null, checkoutSelection: { mode: "statements", invoiceNumbers: ["INV-1"] } },
+       metadata: { paymentMethodRef: null, paymentTypes: ["card"], checkoutSelection: { mode: "statements", invoiceNumbers: ["INV-1"] } },
     });
     response = await checkout(valid());
     expect(response.status).toBe(200);

@@ -37,6 +37,7 @@ export default function SharedCheckoutPage() {
   const [choice, setChoice] = useState<"full" | "statements">("full");
   const [statementIds, setStatementIds] = useState<string[]>([]);
   const [method, setMethod] = useState("");
+  const [newType, setNewType] = useState<"card" | "us_bank_account" | null>(null);
   const [save, setSave] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [review, setReview] = useState(false);
@@ -49,6 +50,7 @@ export default function SharedCheckoutPage() {
   const quoteSnapshot = useRef<string | null>(null);
   const generation = useRef(0);
   const submitting = useRef(false);
+  const providerSection = useRef<HTMLDivElement>(null);
   const invoiceSelection = new URLSearchParams(window.location.search).get("invoice");
   const ea = useQuery<{ entityType: string; entityId: string }>({ queryKey: ["checkout-ea", eaId], queryFn: () => apiRequest("GET", `/api/ledger/ea/${encodeURIComponent(eaId)}`) });
   const scope = ea.data?.entityType === "worker" || ea.data?.entityType === "employer" ? `${ea.data.entityType}/${ea.data.entityId}` : null;
@@ -68,6 +70,10 @@ export default function SharedCheckoutPage() {
   }) : undefined, [choice, data, statementIds]);
   const compatibleMethods = methods.data?.filter(item => item.isActive && !item.providerError && item.gatewayConfigId === data?.account.gatewayConfigId && (item.providerDetails?.card ? data?.paymentTypes.includes("card") : item.providerDetails?.us_bank_account ? data?.paymentTypes.includes("us_bank_account") : false)) ?? [];
   const chosenMethod = compatibleMethods.find(item => item.id === method);
+  const selectedNewType = newType ?? (data?.paymentTypes.includes("card") ? "card" : data?.paymentTypes.includes("us_bank_account") ? "us_bank_account" : null);
+  const methodDescription = method
+    ? chosenMethod?.providerDetails?.card ? "saved card" : "saved bank account"
+    : selectedNewType === "card" ? "new credit/debit card" : "new US bank transfer";
   const authReady = data?.readiness ? data.readiness.paymentAuthorization === "ready" : !!data?.authorization;
   const saveReady = data?.readiness ? data.readiness.saveMethod === "ready" : !!data?.reusableMethodsSupported && authReady;
   const Pay = data?.payComponentId && hasPaymentGatewayPayComponent(data.payComponentId) ? resolvePaymentGatewayPayComponent(data.payComponentId) : null;
@@ -81,8 +87,14 @@ export default function SharedCheckoutPage() {
     update();
   };
   useEffect(() => {
-    seeded.current = false; generation.current++; setChoice("full"); setStatementIds([]); setMethod(""); setSave(false); setAccepted(false); setReview(false); setSession(undefined); setLockedQuote(undefined); setError("");
+    seeded.current = false; generation.current++; setChoice("full"); setStatementIds([]); setMethod(""); setNewType(null); setSave(false); setAccepted(false); setReview(false); setSession(undefined); setLockedQuote(undefined); setError("");
   }, [eaId]);
+  useEffect(() => {
+    if (session) {
+      providerSection.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+      providerSection.current?.focus();
+    }
+  }, [session]);
   useEffect(() => {
     if (!data || seeded.current) return;
     seeded.current = true;
@@ -112,7 +124,7 @@ export default function SharedCheckoutPage() {
   });
   const selectionReady = !!breakdown && !breakdown.issues.length && (choice === "full" || statementIds.length > 0);
   const shownBreakdown = session && lockedQuote ? lockedQuote : breakdown;
-  const canReview = selectionReady && authReady && !!data?.paymentTypes.length && (!save || saveReady) && (method ? !!chosenMethod : !!Pay);
+  const canReview = selectionReady && authReady && !!data?.paymentTypes.length && (!save || saveReady) && (method ? !!chosenMethod : !!Pay && !!selectedNewType && data.paymentTypes.includes(selectedNewType));
   const submit = async () => {
     if (!data || !scope || !breakdown || !canReview || !accepted || (method && !chosenMethod) || (save && !saveReady) || submitting.current) return;
     submitting.current = true; setBusy(true); setError("");
@@ -122,11 +134,11 @@ export default function SharedCheckoutPage() {
         selection: { mode: choice, invoiceNumbers: choice === "full" ? [] : statementIds },
         amount: breakdown.amount, statementSelection: breakdown.statementSelection,
         creditTransfers: breakdown.creditTransfers,
-        paymentMethodId: method || undefined, saveMethod: save, consent: { ...data.authorization, accepted: true }, idempotencyKey: crypto.randomUUID(),
+        paymentMethodId: method || undefined, paymentMethodType: method ? undefined : selectedNewType, saveMethod: save, consent: { ...data.authorization, accepted: true }, idempotencyKey: crypto.randomUUID(),
       });
       if (current !== generation.current || created.status !== "requires_action") navigate(`/pay/receipt/${encodeURIComponent(created.id)}`);
       else if (created.clientSecret && Pay) { setLockedQuote(breakdown); setSession(created); }
-      else { setLockedQuote(breakdown); setSession(created); setError("Secure payment confirmation is unavailable. Use the payment status link below."); }
+       else { setLockedQuote(breakdown); setSession(created); setError("Secure payment entry is unavailable. Check the payment status below; if it is still awaiting confirmation, contact support with the confirmation number. Do not start another payment until its status is known."); }
     } catch (cause) { if (current === generation.current) setError(getApiErrorMessage(cause, "Could not start payment. Please try again.")); }
     finally { submitting.current = false; setBusy(false); }
   };
@@ -150,19 +162,21 @@ export default function SharedCheckoutPage() {
         {methods.isLoading ? <p role="status">Loading saved methods…</p> : null}
         {methods.isError ? <Alert variant="destructive"><AlertDescription>Saved methods could not be loaded. <Button variant="link" onClick={() => void methods.refetch()}>Retry</Button></AlertDescription></Alert> : null}
         {data.readiness?.methodPermission === "denied" && <p className="text-sm text-muted-foreground">You do not have permission to manage or save payment methods for this account.</p>}
-        <label className="flex items-center gap-2"><input type="radio" name="method" checked={!method} disabled={frozen} onChange={() => change(() => { setMethod(""); setSave(false); })} />{data.paymentTypes.includes("us_bank_account") ? "New bank transfer (recommended)" : "New card"}</label>
+         {data.paymentTypes.includes("card") && <label className="flex items-center gap-2"><input type="radio" name="method" checked={!method && selectedNewType === "card"} disabled={frozen} onChange={() => change(() => { setMethod(""); setNewType("card"); setSave(false); })} />New credit/debit card</label>}
+         {data.paymentTypes.includes("us_bank_account") && <label className="flex items-center gap-2"><input type="radio" name="method" checked={!method && selectedNewType === "us_bank_account"} disabled={frozen} onChange={() => change(() => { setMethod(""); setNewType("us_bank_account"); setSave(false); })} />New US bank transfer</label>}
         {compatibleMethods.map(item => <label key={item.id} className="flex items-center gap-2 break-words"><input type="radio" name="method" checked={method === item.id} disabled={frozen} onChange={() => change(() => { setMethod(item.id); setSave(false); })} />{item.providerDetails?.card ? `${item.providerDetails.card.brand} •••• ${item.providerDetails.card.last4}` : `${item.providerDetails?.us_bank_account?.bank_name || "Bank"} •••• ${item.providerDetails?.us_bank_account?.last4}`}</label>)}
         {!method && <label className="flex items-center gap-2 text-sm"><Checkbox checked={save} disabled={!saveReady || frozen} onCheckedChange={value => change(() => setSave(value === true))} />Save this method for future payments</label>}
         {!method && !saveReady && <p className="text-sm text-muted-foreground">{data.readiness?.saveMethod === "permission_denied" ? "You do not have permission to save payment methods for this account." : data.readiness?.saveMethod === "provider_unsupported" ? "This payment provider does not support saving methods for this account." : data.readiness?.saveMethod === "configuration_required" ? "Saving requires current payment authorization." : "Saving methods is not enabled for this account."}</p>}
+         {!method && selectedNewType && <p className="text-sm text-muted-foreground">After you review and start this payment, securely {selectedNewType === "card" ? "enter your card details" : "link or enter your US bank account with the payment provider"} and confirm there. Your payment is not complete yet.</p>}
         {!data.paymentTypes.length && <Alert variant="destructive"><AlertDescription>No payment types are available for this account.</AlertDescription></Alert>}
       </CardContent></Card>
       <Card><CardContent className="space-y-4 pt-6">
         {!authReady ? <Alert variant="destructive"><AlertDescription>Payment authorization wording has not been configured. An administrator must finish ledger payment settings before online payments can be made.{isAdmin && <> <Link href="/config/ledger/settings#payment-authorization" className="font-medium underline">Open payment authorization settings</Link></>}</AlertDescription></Alert> : <label className="flex items-start gap-2 text-sm"><Checkbox checked={accepted} disabled={frozen} onCheckedChange={value => change(() => setAccepted(value === true))} /><span>{data.authorization?.text}</span></label>}
-        {review ? <div className="space-y-3"><h2 className="font-semibold">Review payment</h2><p className="text-sm">{shownBreakdown && `${money(shownBreakdown.amount, currency)} to ${data.account.name}`} using {method ? "a saved method" : "a new method"}{save ? ", saved for future use" : ""}.</p><div className="flex flex-col gap-2 sm:flex-row"><Button onClick={() => void submit()} disabled={busy || frozen || !canReview || !accepted}>{busy ? "Starting…" : "Submit payment"}</Button><Button variant="outline" onClick={() => setReview(false)} disabled={busy || frozen}>Edit</Button></div></div> : <Button onClick={() => setReview(true)} disabled={!canReview || !accepted}>Review payment</Button>}
-        {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
+         {review ? <div className="space-y-3"><h2 className="font-semibold">Review payment</h2><p className="text-sm">{shownBreakdown && `${money(shownBreakdown.amount, currency)} to ${data.account.name}`} using a {methodDescription}{save ? ", saved for future use" : ""}.</p><p className="text-sm text-muted-foreground">Starting the secure step does not complete your payment. Confirm it with the payment provider next.</p><div className="flex flex-col gap-2 sm:flex-row"><Button onClick={() => void submit()} disabled={busy || frozen || !canReview || !accepted}>{busy ? "Starting…" : "Continue to secure confirmation"}</Button><Button variant="outline" onClick={() => setReview(false)} disabled={busy || frozen}>Edit</Button></div></div> : <Button onClick={() => setReview(true)} disabled={!canReview || !accepted}>Review payment</Button>}
+         {error && !session && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
       </CardContent></Card>
     </>}
-    {session && <Card><CardHeader><CardTitle>Secure payment confirmation</CardTitle></CardHeader><CardContent>{Pay && session.clientSecret ? <Pay clientSecret={session.clientSecret} publicConfig={{ ...session.publicConfig, preferredPaymentType: data.entityType === "employer" ? "us_bank_account" : undefined }} amount={shownBreakdown ? money(shownBreakdown.amount, currency) : ""} savedMethod={!!method} returnUrl={`${window.location.origin}/pay/receipt/${encodeURIComponent(session.id)}`} onComplete={(status, message) => status === "failed" ? setError(message || "Provider confirmation failed.") : navigate(`/pay/receipt/${encodeURIComponent(session.id)}`)} /> : <p role="alert">Provider confirmation is unavailable. Use the status link below or contact support with confirmation {session.id}.</p>}<Link href={`/pay/receipt/${encodeURIComponent(session.id)}`} className="mt-3 inline-block underline">Check this payment's status</Link></CardContent></Card>}
+     {session && <div ref={providerSection} tabIndex={-1} className="scroll-mt-4 outline-none" aria-label="Secure payment confirmation"><Card><CardHeader><CardTitle>Secure payment confirmation</CardTitle></CardHeader><CardContent className="space-y-3"><p className="text-sm">Payment not complete. {method ? "Complete verification with the payment provider." : selectedNewType === "card" ? "Enter your card details securely below, then confirm with the payment provider." : "Link or enter your US bank account securely below, then confirm with the payment provider."}</p>{error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}{Pay && session.clientSecret ? <Pay clientSecret={session.clientSecret} publicConfig={session.publicConfig ?? {}} amount={shownBreakdown ? money(shownBreakdown.amount, currency) : ""} savedMethod={!!method} returnUrl={`${window.location.origin}/pay/receipt/${encodeURIComponent(session.id)}`} onComplete={(status, message) => status === "failed" ? setError(message || "Provider confirmation failed. Check your details and try again below.") : navigate(`/pay/receipt/${encodeURIComponent(session.id)}`)} /> : <p role="alert">Provider confirmation is unavailable. Check the status below or contact support with confirmation {session.id}.</p>}<Link href={`/pay/receipt/${encodeURIComponent(session.id)}`} className="mt-3 inline-block underline">Check this payment's status</Link></CardContent></Card></div>}
     {data.entityType === "worker" ? <Link href={`/workers/${data.entityId}/ledger/accounts`} className="inline-block text-sm underline">Back to accounts</Link> : <Link href={`/ea/${eaId}`} className="inline-block text-sm underline">Back to account</Link>}
   </main>;
 }

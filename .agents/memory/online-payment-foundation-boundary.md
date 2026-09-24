@@ -21,3 +21,15 @@ second charge while the first is still capable of settling.
 **How to apply:** Treat no-reference recovery as a provider operation, not a
 local clock-based cleanup. Cancel or verify provider state before releasing
 funds; keep in-flight bank transfers reserved regardless of their age.
+
+For new-method checkout, the chosen provider method type is part of the
+attempt's immutable intent. A replay must reject a different type and return
+the original type's public collection configuration when provider entry is
+still required.
+
+**Why:** A replay can occur after a session was created but before the payer
+confirmed it. Reopening the form without the original type would either offer
+an unauthorized method or leave a reserved payment impossible to confirm.
+
+**How to apply:** Keep the provider session restricted to one selected type
+and make replay responses sufficient to reconstruct the same secure form.
