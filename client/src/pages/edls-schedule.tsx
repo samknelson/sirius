@@ -47,14 +47,15 @@ interface PublicWorkerSchedule {
   workerBackPath?: string;
 }
 
-/** "Sunday, August 23, 2026" — full weekday, matching the legacy page's headings. */
-function formatDayHeading(ymd: Ymd): string {
-  return ymdToLocalDate(ymd).toLocaleDateString("en-US", {
+/** Prefix the two imminent days; later headings keep their full date. */
+function formatDayHeading(ymd: Ymd, relative?: "Today" | "Tomorrow"): string {
+  const date = ymdToLocalDate(ymd).toLocaleDateString("en-US", {
     weekday: "long",
-    year: "numeric",
+    ...(!relative && { year: "numeric" as const }),
     month: "long",
     day: "numeric",
   });
+  return relative ? `${relative}, ${date}` : date;
 }
 
 function formatTime(time: string | null | undefined): string {
@@ -267,7 +268,9 @@ export default function EdlsSchedulePage() {
     }
     return Array.from({ length: SCHEDULE_DAYS }, (_, offset) => {
       const ymd = addDaysYmd(data.startYmd, offset);
-      return { ymd, assignments: byYmd.get(ymd) ?? [] };
+      const relative: "Today" | "Tomorrow" | undefined =
+        offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : undefined;
+      return { ymd, relative, assignments: byYmd.get(ymd) ?? [] };
     });
   }, [data]);
 
@@ -299,10 +302,23 @@ export default function EdlsSchedulePage() {
       )}
 
       {days.map((day) => (
-        <Card key={day.ymd} data-testid={`card-day-${day.ymd}`}>
+        <Card
+          key={day.ymd}
+          className={
+            day.relative === "Today"
+              ? "border-2 border-primary/60 bg-primary/5"
+              : day.relative === "Tomorrow"
+                ? "border-2 border-primary/30 bg-muted/30"
+                : undefined
+          }
+          data-testid={`card-day-${day.ymd}`}
+        >
           <CardHeader>
-            <CardTitle className="text-lg" data-testid={`text-day-heading-${day.ymd}`}>
-              {formatDayHeading(day.ymd)}
+            <CardTitle
+              className={day.relative === "Today" ? "text-xl" : "text-lg"}
+              data-testid={`text-day-heading-${day.ymd}`}
+            >
+              {formatDayHeading(day.ymd, day.relative)}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
