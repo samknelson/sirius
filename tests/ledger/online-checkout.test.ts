@@ -282,12 +282,44 @@ describe("online checkout HTTP contract", () => {
   });
 
   it("rejects missing, conflicting, and disallowed type choices before creating a reservation", async () => {
-    expect((await checkout(valid({ paymentMethodType: undefined }))).status).toBe(400);
-    expect((await checkout(valid({ paymentMethodType: "us_bank_account" }))).status).toBe(400);
-    expect((await checkout(valid({ paymentMethodId: "saved-card" }))).status).toBe(400);
+    let response = await checkout(valid({ paymentMethodType: undefined }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ message: "Choose exactly one saved method or new payment type" });
+    response = await checkout(valid({ paymentMethodType: "crypto" }));
+    expect(response.status).toBe(400);
+    expect((await response.json()).message).toContain("paymentMethodType");
+    response = await checkout(valid({ paymentMethodType: "us_bank_account" }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ message: expect.stringContaining("not enabled for this account") });
+    response = await checkout(valid({ paymentMethodId: "saved-card" }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ message: "Choose exactly one saved method or new payment type" });
     expect(mocks.storage.ledger.paymentAttempts.create).not.toHaveBeenCalled();
     expect(gateway.plugin.createPaymentSession).not.toHaveBeenCalled();
   });
+
+  it.each(["card", "us_bank_account"] as const)(
+    "reports the provider failure after accepting a new %s session request",
+    async (selected) => {
+      mocks.storage.ledger.accounts.get.mockResolvedValue({
+        id: "acct-1", name: "Health", currencyCode: "USD", isActive: true, gatewayConfigId: "gw-1",
+        data: { onlinePayments: { enabled: true, payerTypes: ["worker"], allowPartial: true, minAmount: 1, paymentTypes: ["card", "us_bank_account"] } },
+      });
+      mocks.resolve.mockResolvedValue({
+        ...gateway,
+        config: { ...gateway.config, data: { paymentTypes: ["card", "us_bank_account"], publishableKey: "pk_test" } },
+        plugin: { ...gateway.plugin, supportedPaymentTypes: [{ id: "card" }, { id: "us_bank_account" }] },
+      });
+      gateway.plugin.createPaymentSession.mockRejectedValueOnce(new Error("Test gateway unavailable"));
+      const response = await checkout(valid({ paymentMethodType: selected }));
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({ message: "Test gateway unavailable" });
+      expect(mocks.storage.ledger.paymentAttempts.create).toHaveBeenCalled();
+      expect(gateway.plugin.createPaymentSession).toHaveBeenCalledWith(
+        expect.anything(), expect.objectContaining({ paymentTypes: [selected] }),
+      );
+    },
+  );
 
   it("keeps saved-method sessions bound to their provider's authorized type", async () => {
     mocks.storage.ledger.paymentMethods.get.mockResolvedValue({
