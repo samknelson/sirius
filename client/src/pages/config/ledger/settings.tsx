@@ -165,10 +165,11 @@ export default function LedgerSettingsPage() {
   const { toast } = useToast();
   const [selectedPaymentTypeId, setSelectedPaymentTypeId] = useState<string>("");
 
-  // Fetch all ledger payment types
-  const { data: paymentTypes = [], isLoading: isLoadingPaymentTypes } = useQuery<LedgerPaymentType[]>({
-    queryKey: ["/api/ledger-payment-types"],
+  // Share the canonical ledger payment-type cache with other ledger screens.
+  const paymentTypeQuery = useQuery<LedgerPaymentType[]>({
+    queryKey: ["/api/ledger/payment-types"],
   });
+  const paymentTypes = paymentTypeQuery.data ?? [];
 
   // Fetch current setting
   const { data: currentSetting, isLoading: isLoadingSettings } = useQuery<{ id: string; value: { paymentTypeId: string } | null } | null>({
@@ -227,7 +228,7 @@ export default function LedgerSettingsPage() {
     saveMutation.mutate(selectedPaymentTypeId);
   };
 
-  if (isLoadingPaymentTypes || isLoadingSettings) {
+  if (paymentTypeQuery.isLoading || isLoadingSettings) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin" data-testid="loading-spinner" />
@@ -249,17 +250,29 @@ export default function LedgerSettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {paymentTypeQuery.isError && (
+            <Alert variant="destructive" data-testid="payment-types-load-error">
+              <AlertTitle>Unable to load payment types</AlertTitle>
+              <AlertDescription>
+                {getApiErrorMessage(paymentTypeQuery.error, "Check your access or try again.")}
+                <Button variant="outline" size="sm" className="ml-3" onClick={() => paymentTypeQuery.refetch()}>
+                  Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
           <div className="space-y-2">
             <Label htmlFor="payment-type">Payment Type</Label>
             <Select
               value={selectedPaymentTypeId}
               onValueChange={setSelectedPaymentTypeId}
+              disabled={!paymentTypeQuery.isSuccess || paymentTypes.length === 0}
             >
               <SelectTrigger id="payment-type" data-testid="select-payment-type">
                 <SelectValue placeholder="Select a payment type" />
               </SelectTrigger>
               <SelectContent>
-                {paymentTypes.length === 0 ? (
+                {paymentTypeQuery.isSuccess && paymentTypes.length === 0 ? (
                   <SelectItem value="__none__" disabled>
                     No payment types available
                   </SelectItem>
@@ -281,7 +294,7 @@ export default function LedgerSettingsPage() {
                 )}
               </SelectContent>
             </Select>
-            {paymentTypes.length === 0 && (
+            {paymentTypeQuery.isSuccess && paymentTypes.length === 0 && (
               <p className="text-sm text-muted-foreground">
                 No payment types configured. Please add payment types first.
               </p>
@@ -291,7 +304,7 @@ export default function LedgerSettingsPage() {
           <div className="flex justify-end">
             <Button
               onClick={handleSave}
-              disabled={saveMutation.isPending || !selectedPaymentTypeId}
+              disabled={saveMutation.isPending || !paymentTypeQuery.isSuccess || !paymentTypes.some((type) => type.id === selectedPaymentTypeId)}
               data-testid="button-save-settings"
             >
               {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

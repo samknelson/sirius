@@ -13,6 +13,7 @@ vi.mock("@/lib/queryClient", async () => {
 });
 
 import Page from "@/pages/config/ledger/settings";
+import { getQueryFn } from "@/lib/queryClient";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const name = "ledger.online_payment_authorizations";
@@ -23,6 +24,8 @@ const approved = {
 let root: Root | null;
 let container: HTMLDivElement | null;
 let variableResponse: { status: number; value?: unknown };
+let paymentTypeResponse: { status: number; types?: { id: string; name: string; description: string | null; sequence: number }[] };
+let defaultPaymentTypeSetting: { id: string; value: { paymentTypeId: string } } | null;
 let queryClient: QueryClient;
 
 async function settle() {
@@ -32,7 +35,7 @@ async function settle() {
 }
 
 async function renderPage() {
-  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, queryFn: getQueryFn({ on401: "throw" }) } } });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -63,21 +66,107 @@ function saveButton() {
 
 beforeEach(() => {
   variableResponse = { status: 404 };
+  paymentTypeResponse = { status: 200, types: [] };
+  defaultPaymentTypeSetting = null;
   toast.mockReset();
   apiRequest.mockReset();
   apiRequest.mockResolvedValue({});
+  vi.stubGlobal("PointerEvent", MouseEvent);
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  });
+  Object.defineProperty(HTMLElement.prototype, "hasPointerCapture", { configurable: true, value: () => false });
+  Object.defineProperty(HTMLElement.prototype, "setPointerCapture", { configurable: true, value: () => undefined });
+  Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", { configurable: true, value: () => undefined });
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => undefined });
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     if (url === `/api/variables/by-name/${name}`) {
       return { ok: variableResponse.status === 200, status: variableResponse.status, json: async () => ({ value: variableResponse.value }) };
     }
     if (url === "/api/variables/by-name/ledger_payment_type") {
-      return { ok: true, status: 200, json: async () => null };
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: (): string => "application/json" },
+        json: async () => defaultPaymentTypeSetting,
+      };
     }
-    if (url === "/api/ledger-payment-types") {
-      return { ok: true, status: 200, json: async () => [] };
+    if (url === "/api/ledger/payment-types") {
+      return {
+        ok: paymentTypeResponse.status === 200,
+        status: paymentTypeResponse.status,
+        statusText: "Request failed",
+        headers: { get: (): string => "application/json" },
+        json: async () => paymentTypeResponse.status === 200
+          ? paymentTypeResponse.types
+          : { message: "Payment types request failed" },
+      };
     }
     throw new Error(`Unexpected fetch ${url}`);
   }));
+});
+
+describe("Ledger Settings default payment type", () => {
+  const types = [
+    { id: "card", name: "Card", description: "Credit or debit", sequence: 1 },
+    { id: "bank", name: "Bank transfer", description: null, sequence: 2 },
+  ];
+
+  it("loads the canonical ledger types, selects one, and saves the default", async () => {
+    paymentTypeResponse = { status: 200, types };
+    defaultPaymentTypeSetting = { id: "default-variable", value: { paymentTypeId: "card" } };
+    await renderPage();
+    expect(fetch).toHaveBeenCalledWith("/api/ledger/payment-types", expect.objectContaining({ credentials: "include" }));
+    expect(fetch).not.toHaveBeenCalledWith("/api/ledger-payment-types", expect.anything());
+    const trigger = container!.querySelector('[data-testid="select-payment-type"]') as HTMLButtonElement;
+    expect(trigger.textContent).toContain("Card");
+    await act(async () => {
+      trigger.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowDown" }));
+    });
+    expect(Array.from(document.querySelectorAll('[role="option"]')).map((option) => option.textContent)).toEqual(
+      expect.arrayContaining([expect.stringContaining("Card"), expect.stringContaining("Bank transfer")]),
+    );
+    const bank = document.querySelector('[data-testid="option-payment-type-bank"]')!;
+    await act(async () => {
+      bank.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0 }));
+      bank.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(trigger.textContent).toContain("Bank transfer");
+    await act(async () => {
+      (container!.querySelector('[data-testid="button-save-settings"]') as HTMLButtonElement).click();
+    });
+    expect(apiRequest).toHaveBeenCalledWith("PUT", "/api/variables/default-variable", {
+      value: { paymentTypeId: "bank" },
+    });
+  });
+
+  it.each([403, 500])("shows a retryable load error for a %i response without showing empty setup guidance", async (status) => {
+    paymentTypeResponse = { status };
+    await renderPage();
+    expect(container!.textContent).toContain("Unable to load payment types");
+    expect(container!.textContent).toContain("Payment types request failed");
+    expect(container!.textContent).not.toContain("No payment types configured");
+    expect((container!.querySelector('[data-testid="select-payment-type"]') as HTMLButtonElement).disabled).toBe(true);
+    expect((container!.querySelector('[data-testid="button-save-settings"]') as HTMLButtonElement).disabled).toBe(true);
+
+    paymentTypeResponse = { status: 200, types };
+    await act(async () => {
+      (container!.querySelector('[data-testid="payment-types-load-error"] button') as HTMLButtonElement).click();
+    });
+    await settle();
+    expect(container!.textContent).not.toContain("Unable to load payment types");
+    expect((container!.querySelector('[data-testid="select-payment-type"]') as HTMLButtonElement).disabled).toBe(false);
+    expect(fetch).toHaveBeenCalledWith("/api/ledger/payment-types", expect.anything());
+  });
+
+  it("only shows setup guidance after a successful empty response", async () => {
+    await renderPage();
+    expect(container!.textContent).toContain("No payment types configured. Please add payment types first.");
+    expect(container!.textContent).not.toContain("Unable to load payment types");
+    expect((container!.querySelector('[data-testid="button-save-settings"]') as HTMLButtonElement).disabled).toBe(true);
+  });
 });
 
 afterEach(async () => {
