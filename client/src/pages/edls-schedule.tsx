@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ShieldAlert, ThumbsDown, ThumbsUp } from "lucide-react";
@@ -47,15 +48,13 @@ interface PublicWorkerSchedule {
   workerBackPath?: string;
 }
 
-/** Prefix the two imminent days; later headings keep their full date. */
-function formatDayHeading(ymd: Ymd, relative?: "Today" | "Tomorrow"): string {
-  const date = ymdToLocalDate(ymd).toLocaleDateString("en-US", {
+/** All card dates use the same yearless weekday and month/day format. */
+function formatDayHeading(ymd: Ymd): string {
+  return ymdToLocalDate(ymd).toLocaleDateString("en-US", {
     weekday: "long",
-    ...(!relative && { year: "numeric" as const }),
     month: "long",
     day: "numeric",
   });
-  return relative ? `${relative}, ${date}` : date;
 }
 
 function formatTime(time: string | null | undefined): string {
@@ -304,22 +303,25 @@ export default function EdlsSchedulePage() {
       {days.map((day) => (
         <Card
           key={day.ymd}
-          className={
-            day.relative === "Today"
-              ? "border-2 border-primary/60 bg-primary/5"
-              : day.relative === "Tomorrow"
-                ? "border-2 border-primary/30 bg-muted/30"
-                : undefined
-          }
+          className={day.relative ? "border-2 border-blue-500 dark:border-blue-400" : undefined}
           data-testid={`card-day-${day.ymd}`}
         >
-          <CardHeader>
+          <CardHeader className={day.relative ? "flex-row flex-wrap items-start gap-2 space-y-0" : undefined}>
             <CardTitle
               className={day.relative === "Today" ? "text-xl" : "text-lg"}
               data-testid={`text-day-heading-${day.ymd}`}
             >
-              {formatDayHeading(day.ymd, day.relative)}
+              {formatDayHeading(day.ymd)}
             </CardTitle>
+            {day.relative && (
+              <Badge
+                variant="outline"
+                className="ml-auto shrink-0 border-blue-600 bg-blue-50 text-blue-800 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-200"
+                data-testid={`badge-day-${day.ymd}`}
+              >
+                {day.relative}'s Schedule
+              </Badge>
+            )}
           </CardHeader>
           <CardContent className="space-y-6">
             {day.assignments.length === 0 ? (
