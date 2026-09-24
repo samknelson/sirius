@@ -3,13 +3,23 @@ import { Router } from "wouter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BaoCoverageSummary } from "../../client/src/plugins/dashboard/bao-worker-coverage/BaoWorkerCoverage";
 import { BaoWorkerCoverage, BaoWorkerCoverageView } from "../../client/src/plugins/dashboard/bao-worker-coverage/BaoWorkerCoverage";
+import WorkerBenefitsSummary from "../../client/src/pages/worker-benefits-summary";
 
 const dashboardContent = vi.hoisted(() => ({
   result: { data: null as BaoCoverageSummary | null, isLoading: false, isError: false },
+  calls: [] as unknown[][],
 }));
 
 vi.mock("../../client/src/plugins/dashboard/useDashboardContent", () => ({
-  useDashboardContent: () => dashboardContent.result,
+  useDashboardContent: (...args: unknown[]) => {
+    dashboardContent.calls.push(args);
+    return dashboardContent.result;
+  },
+}));
+
+vi.mock("../../client/src/components/layouts/WorkerLayout", () => ({
+  WorkerLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  useWorkerLayout: () => ({ worker: { id: "staff-worker-456" } }),
 }));
 
 const summary = (overrides: Partial<BaoCoverageSummary> = {}): BaoCoverageSummary => ({
@@ -49,7 +59,7 @@ function renderWidget(data: BaoCoverageSummary) {
   dashboardContent.result = { data, isLoading: false, isError: false };
   return renderToStaticMarkup(
     <Router hook={() => ["/", () => {}]}>
-      <BaoWorkerCoverage userId="worker/123" userRoles={[]} />
+      <BaoWorkerCoverage userId="signed-in-viewer" userRoles={[]} />
     </Router>,
   );
 }
@@ -57,6 +67,49 @@ function renderWidget(data: BaoCoverageSummary) {
 describe("BAO worker coverage dashboard widget", () => {
   beforeEach(() => {
     dashboardContent.result = { data: null, isLoading: false, isError: false };
+    dashboardContent.calls = [];
+  });
+
+  it("links the member's balance to the card worker, not the signed-in user", () => {
+    const html = renderWidget(summary());
+    expect(html).toContain('href="/workers/worker%2F123/ledger/pay"');
+    expect(html).toMatch(/<a\b[^>]*href="\/workers\/worker%2F123\/ledger\/pay"[^>]*>Pay Balance<\/a>/);
+    expect(html).not.toContain("/workers/signed-in-viewer/ledger/pay");
+    expect(html).toContain('href="/workers/worker%2F123/employment/monthly"');
+  });
+
+  it("shows the balance action for zero, positive, credit and unavailable totals, including a blocking balance", () => {
+    const base = summary();
+    const balances: BaoCoverageSummary["balance"][] = [
+      base.balance,
+      { available: true, totals: [{ currency: "USD", amount: "12.50", formatted: "$12.50" }] },
+      { available: true, totals: [{ currency: "USD", amount: "-12.50", formatted: "-$12.50" }] },
+      { available: false, totals: [] },
+    ];
+    for (const balance of balances) {
+      const html = renderWidget(summary({
+        balance,
+        current: { ...base.current, coverage: "not-covered", causes: { hours: null, balance: true } },
+      }));
+      expect(html).toContain("Pay Balance");
+      expect(html).toContain('href="/workers/worker%2F123/ledger/pay"');
+      expect(html).toContain('data-blocking="balance"');
+      expect(html).toContain("Blocking coverage");
+      expect(html).toContain(balance.available ? balance.totals[0].formatted : "Not available");
+    }
+  });
+
+  it("uses the same card worker link in the staff benefits summary", () => {
+    dashboardContent.result = { data: summary({ workerId: "staff-worker-456" }), isLoading: false, isError: false };
+    const html = renderToStaticMarkup(
+      <Router hook={() => ["/", () => {}]}><WorkerBenefitsSummary /></Router>,
+    );
+    expect(dashboardContent.calls).toContainEqual([
+      "bao-worker-coverage", { action: "staff-worker", params: { workerId: "staff-worker-456" } },
+    ]);
+    expect(html).toContain('href="/workers/staff-worker-456/ledger/pay"');
+    expect(html).toContain("Pay Balance");
+    expect(html).not.toContain("/workers/signed-in-viewer/ledger/pay");
   });
 
   it("shows actual covered status, months, exact hours and balance without marking a cause", () => {
@@ -167,10 +220,18 @@ describe("BAO worker coverage dashboard widget", () => {
 
   it("preserves loading, error, unlinked and unavailable messages", () => {
     dashboardContent.result = { data: null, isLoading: true, isError: false };
-    expect(renderToStaticMarkup(<BaoWorkerCoverage userId="" userRoles={[]} />)).toContain('aria-busy="true"');
+    const loading = renderToStaticMarkup(<BaoWorkerCoverage userId="" userRoles={[]} />);
+    expect(loading).toContain('aria-busy="true"');
+    expect(loading).not.toContain("Pay Balance");
     dashboardContent.result = { data: null, isLoading: false, isError: true };
-    expect(renderToStaticMarkup(<BaoWorkerCoverage userId="" userRoles={[]} />)).toContain("Coverage information is temporarily unavailable.");
-    expect(renderWidget(summary({ state: "unlinked" }))).toContain("Your worker account is not linked");
-    expect(renderWidget(summary({ state: "unavailable" }))).toContain("Coverage information is unavailable.");
+    const error = renderToStaticMarkup(<BaoWorkerCoverage userId="" userRoles={[]} />);
+    expect(error).toContain("Coverage information is temporarily unavailable.");
+    expect(error).not.toContain("Pay Balance");
+    const unlinked = renderWidget(summary({ state: "unlinked" }));
+    expect(unlinked).toContain("Your worker account is not linked");
+    expect(unlinked).not.toContain("Pay Balance");
+    const unavailable = renderWidget(summary({ state: "unavailable" }));
+    expect(unavailable).toContain("Coverage information is unavailable.");
+    expect(unavailable).not.toContain("Pay Balance");
   });
 });

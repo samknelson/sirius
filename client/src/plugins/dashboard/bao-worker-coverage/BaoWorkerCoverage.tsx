@@ -1,6 +1,7 @@
 import { ArrowRight, Check, Clock3, ShieldCheck, WalletCards, X } from "lucide-react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardPluginProps } from "../registry";
 import { useDashboardContent } from "../useDashboardContent";
@@ -106,6 +107,7 @@ export function BaoWorkerCoverage(_props: DashboardPluginProps) {
 export function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
   if (data.state !== "available") return null;
   const monthlyHoursHref = `/workers/${encodeURIComponent(data.workerId)}/employment/monthly`;
+  const paymentHref = `/workers/${encodeURIComponent(data.workerId)}/ledger/pay`;
   const currentNotCovered = data.current.coverage === "not-covered";
   const hoursHighlight = currentNotCovered && data.current.causes.hours === true;
   const balanceHighlight = currentNotCovered && data.current.causes.balance === true;
@@ -173,6 +175,9 @@ export function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
               </div>
               <strong className="mt-3 block break-words text-lg font-semibold tabular-nums">{balanceText}</strong>
               {balanceHighlight && <p className="mt-1 text-xs font-medium text-[hsl(8_58%_43%)]">Blocking coverage</p>}
+              <Button asChild variant="outline" size="sm" className="mt-3">
+                <Link href={paymentHref} data-testid="link-bao-worker-coverage-pay-balance">Pay Balance</Link>
+              </Button>
             </div>
           </div>
         </section>
