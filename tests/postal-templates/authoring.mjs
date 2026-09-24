@@ -145,6 +145,7 @@ export async function exerciseAuthoring(page, origin) {
   await click("fixture-email-raw-mode");
   await set(id("fixture-email-raw"), "<p>Designed email</p>");
   await click("fixture-email-raw-mode");
+  await page.$eval(`${tools} summary[aria-label="Template design tools"]`, el => { if (!el.parentElement.open) el.click(); });
   await select(`${editor} p`);
   await page.select(control("Font"), "Georgia, serif");
   await page.select(control("Size"), "24px");
@@ -153,6 +154,26 @@ export async function exerciseAuthoring(page, origin) {
   assert.match(await source(), /font-family:Georgia,serif/);
   assert.match(await source(), /font-size:24px/);
   assert.match(await source(), /text-align:center/);
+  await select(`${editor} p`);
+  await page.keyboard.down("Shift");
+  await page.keyboard.press("F10");
+  await page.keyboard.up("Shift");
+  await page.waitForSelector('[role="menu"][aria-label="Editor selection actions"]');
+  assert.match(await page.$eval('[role="menu"][aria-label="Editor selection actions"]', el => el.textContent), /Font….*Text color….*Highlight color…/s);
+  await page.$eval('[role="menu"][aria-label="Editor selection actions"]', el => {
+    [...el.querySelectorAll("button")].find(button => button.textContent.includes("Text color"))?.click();
+  });
+  const beforeColor = await source();
+  await set(control("Text color hex"), "#12"); // incomplete RGB is only a draft
+  assert.equal(await source(), beforeColor);
+  await textClick("Cancel color changes");
+  assert.equal(await source(), beforeColor);
+  await set(control("Text color hex"), "#123456");
+  assert.equal(await source(), beforeColor);
+  await textClick("Apply text color");
+  assert.match(await source(), /color:(?:#123456|rgb\(18,52,86\))/);
+  await key("KeyZ");
+  assert.equal(await source(), beforeColor);
   await select(`${editor} p`);
   await textClick("Text links", "summary");
   await set(control("Text link URL"), "https://example.invalid/help");
@@ -226,6 +247,26 @@ export async function exerciseAuthoring(page, origin) {
   assert.equal(await page.$eval(`${editor} img`, el => el.alt), "Benefits logo");
   assert.equal(await page.$eval(`${editor} img`, el => el.style.height), "auto");
   await page.click(`${editor} img`);
+  await page.keyboard.down("Shift"); await page.keyboard.press("ArrowRight"); await page.keyboard.up("Shift");
+  assert.equal(await page.$eval(`${editor} img`, el => el.width), 130, "Keyboard resize preserves the image ratio");
+  await key("KeyZ");
+  assert.equal(await page.$eval(`${editor} img`, el => el.width), 120);
+  await page.$eval(editor, el => {
+    const image = el.querySelector("img");
+    const target = el.querySelector("p");
+    const point = target.getBoundingClientRect();
+    const transfer = new DataTransfer();
+    image.dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer: transfer }));
+    target.dispatchEvent(new DragEvent("drop", {
+      bubbles: true, cancelable: true, dataTransfer: transfer,
+      clientX: point.left + 8, clientY: point.top + 8,
+    }));
+  });
+  assert.equal(await page.$eval(`${editor} img`, el => el.closest("p")?.textContent), "Designed email",
+    "Dropping moves the image to a new insertion point in document flow");
+  await key("KeyZ");
+  assert.equal(await page.$eval(`${editor} img`, el => el.closest("p")), null);
+  await page.click(`${editor} img`);
   await set(control("Image alternative text"), "Updated benefits logo");
   await textClick("Update image");
   assert.equal(await page.$eval(`${editor} img`, el => el.alt), "Updated benefits logo");
@@ -234,6 +275,11 @@ export async function exerciseAuthoring(page, origin) {
   await click("fixture-email-raw-mode");
   assert.equal(await page.$eval(id("fixture-email-raw"), el => el.value), designed);
   await click("fixture-email-raw-mode");
+  await page.$eval(`${tools} summary[aria-label="Template design tools"]`, el => { if (!el.parentElement.open) el.click(); });
+  await page.$$eval(`${tools} summary`, nodes => {
+    const images = nodes.find(el => el.textContent.trim() === "Images");
+    if (images && !images.parentElement.open) images.click();
+  });
   await page.click(`${editor} img`);
   await textClick("Delete image");
   assert.equal(await page.$(`${editor} img`), null);

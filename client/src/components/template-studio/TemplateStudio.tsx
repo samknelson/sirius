@@ -34,7 +34,16 @@ import {
 import { SlashTokenField } from "./SlashTokenField";
 import { cn } from "@/lib/utils";
 import { getApiErrorMessage } from "@/lib/queryClient";
-import { AlertTriangle, Bell, ChevronDown, Loader2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Bell,
+  ChevronDown,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  PanelRightClose,
+  PanelRightOpen,
+} from "lucide-react";
 import {
   analyzeTemplateTokens,
   type TokenPickerEntry,
@@ -303,6 +312,21 @@ export interface TemplateStudioProps {
    * else belongs here: the studio's own requests report themselves.
    */
   hostNotice?: ReactNode;
+}
+
+/** The upload endpoint persists a public image; never embed a temporary object URL. */
+async function uploadTemplateImage(file: File): Promise<string> {
+  if (!["image/png", "image/jpeg"].includes(file.type)) throw new Error("Choose a PNG or JPEG image.");
+  if (file.size > 1024 * 1024) throw new Error("Template images must be 1 MB or smaller.");
+  const body = new FormData();
+  body.append("file", file);
+  const response = await fetch("/api/template-assets", { method: "POST", body, credentials: "same-origin" });
+  const result = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(result?.message || `Image upload failed (${response.status}).`);
+  if (typeof result?.url !== "string" || !/^https:\/\//i.test(result.url)) {
+    throw new Error("Image upload did not return a reusable HTTPS URL.");
+  }
+  return result.url;
 }
 
 /** Plain text, unless the editor is a rich-text one. */
@@ -786,6 +810,11 @@ export function TemplateStudio({
 
   /** The expanded right-hand section; the studio always opens on the preview. */
   const [panel, setPanel] = useState<StudioPanelId>("preview");
+  const [rightColumnCollapsed, setRightColumnCollapsed] = useState(false);
+  const hasHtmlField = fields.some((field) => field.mode === "html");
+  const fullViewportByDefault =
+    hasHtmlField && (channel === "email" || channel === "postal");
+  const [maximized, setMaximized] = useState(fullViewportByDefault);
   const [templateToLoad, setTemplateToLoad] =
     useState<StudioLetterTemplate | null>(null);
   // Content equality is not document identity. An intentional replacement
@@ -795,9 +824,11 @@ export function TemplateStudio({
   // Both cleared during the render that opens the studio, so the seed pickers
   // never render the previous session's picks before the reset lands, and the
   // column never flashes the section the last session was left on.
-  useModalSeed(open, JSON.stringify([contextId, channel]), () => {
+  useModalSeed(open, JSON.stringify([contextId, channel, fullViewportByDefault]), () => {
     setChosen({});
     setPanel("preview");
+    setRightColumnCollapsed(false);
+    setMaximized(fullViewportByDefault);
     setTemplateToLoad(null);
     setEditorDocumentGeneration((generation) => generation + 1);
   });
@@ -1171,11 +1202,55 @@ export function TemplateStudio({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-[96vw] sm:max-w-[96vw] lg:max-w-[1400px] h-[92vh] flex flex-col p-0 gap-0"
+        className={cn(
+          "max-w-[96vw] sm:max-w-[96vw] lg:max-w-[1400px] h-[92vh] flex flex-col p-0 gap-0",
+          maximized &&
+            "lg:!left-0 lg:!top-0 lg:!translate-x-0 lg:!translate-y-0 lg:!w-screen lg:!max-w-none lg:!h-screen lg:!max-h-screen lg:!rounded-none",
+        )}
         data-testid="dialog-template-studio"
+        data-maximized={maximized}
       >
-        <DialogHeader className="px-6 py-4 border-b shrink-0">
-          <DialogTitle data-testid="studio-title">{title}</DialogTitle>
+        <DialogHeader className="px-6 py-4 pr-14 border-b shrink-0 text-left">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <DialogTitle data-testid="studio-title">{title}</DialogTitle>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={rightColumnCollapsed ? "Show right column" : "Hide right column"}
+                title={rightColumnCollapsed ? "Show right column" : "Hide right column"}
+                aria-expanded={!rightColumnCollapsed}
+                aria-controls="studio-right-column"
+                data-testid="button-studio-toggle-right-column"
+                onClick={() => setRightColumnCollapsed((collapsed) => !collapsed)}
+              >
+                {rightColumnCollapsed ? (
+                  <PanelRightOpen className="h-4 w-4" />
+                ) : (
+                  <PanelRightClose className="h-4 w-4" />
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="hidden lg:inline-flex"
+                aria-label={maximized ? "Restore studio size" : "Maximize studio"}
+                title={maximized ? "Restore studio size" : "Maximize studio"}
+                data-testid="button-studio-toggle-maximize"
+                onClick={() => setMaximized((value) => !value)}
+              >
+                {maximized ? (
+                  <Minimize2 className="h-4 w-4" />
+                ) : (
+                  <Maximize2 className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </div>
           {description && <DialogDescription>{description}</DialogDescription>}
           {hostNotice && (
             <div className="pt-1" data-testid="studio-host-notice">
@@ -1184,7 +1259,13 @@ export function TemplateStudio({
           )}
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[1fr_minmax(360px,42%)]">
+        <div
+          className={cn(
+            "flex-1 min-h-0 grid grid-cols-1",
+            !rightColumnCollapsed && "lg:grid-cols-[1fr_minmax(360px,42%)]",
+          )}
+          data-testid="studio-workspace"
+        >
           {/* ── Editors ── */}
           <div className="min-h-0 min-w-0 overflow-y-auto p-6 space-y-5 border-b lg:border-b-0 lg:border-r">
             {fields.map((f) => (
@@ -1201,6 +1282,7 @@ export function TemplateStudio({
                     }}
                   >
                     <SimpleHtmlEditor
+                      uploadImage={channel === "email" || channel === "postal" ? uploadTemplateImage : undefined}
                       key={`${f.key}:${editorDocumentGeneration}`}
                       templateMode={channel === "email" || channel === "postal" ? channel : undefined}
                       data-testid={`studio-editor-${f.key}`}
@@ -1316,7 +1398,12 @@ export function TemplateStudio({
           </div>
 
           {/* ── Preview + context + token browser ── */}
-          <div className="min-h-0 min-w-0 flex flex-col">
+          <div
+            id="studio-right-column"
+            className={cn("min-h-0 min-w-0 flex flex-col", rightColumnCollapsed && "hidden")}
+            data-testid="studio-right-column"
+            aria-hidden={rightColumnCollapsed}
+          >
             <StudioPanel
               id="preview"
               title="Preview"

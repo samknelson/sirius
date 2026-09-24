@@ -22,10 +22,25 @@ const network = vi.hoisted(() => ({
     destroy: ReturnType<typeof vi.fn>;
   }>,
 }));
+const managedFiles = vi.hoisted(() => ({
+  lookup: vi.fn(),
+  download: vi.fn(),
+}));
 
 vi.mock("node:dns/promises", () => ({ resolve4: network.resolve4 }));
 vi.mock("node:https", () => ({
   request: network.request,
+}));
+vi.mock("../../server/storage", () => ({
+  storage: { files: { getByStoragePath: managedFiles.lookup } },
+}));
+vi.mock("../../server/services/files", () => ({
+  fileSystemService: { download: managedFiles.download },
+  getFileSystemConfig: vi.fn(() => ({ access: "public" })),
+  isFileSystemConfigured: vi.fn(() => true),
+}));
+vi.mock("../../server/config/env-registry", () => ({
+  getEnvironmentVariable: vi.fn(() => "https://app.example"),
 }));
 
 import { downloadRemoteLetterPdf } from "../../server/services/comm/remote-letter-pdf";
@@ -193,6 +208,27 @@ describe("downloadRemoteLetterPdf", () => {
     const result = await prepareLetterImages(["https://images.example/logo.png"]);
     expect(result).toEqual([`data:image/png;base64,${png.toString("base64")}`]);
     expect(network.pinned).toEqual(["8.8.8.8/4"]);
+  });
+
+  it("resolves managed template images internally without the external downloader", async () => {
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9ioAAAAASUVORK5CYII=", "base64");
+    managedFiles.lookup.mockResolvedValue({
+      status: "live",
+      entityType: "template-asset",
+      size: png.length,
+    });
+    managedFiles.download.mockResolvedValue(png);
+
+    const result = await prepareLetterImages([
+      "https://app.example/public-files/public/letter-template-assets/logo.png",
+    ]);
+
+    expect(result).toEqual([`data:image/png;base64,${png.toString("base64")}`]);
+    expect(managedFiles.lookup).toHaveBeenCalledWith(
+      "letter-template-assets/logo.png",
+      "public",
+    );
+    expect(network.request).not.toHaveBeenCalled();
   });
 
   it("refuses images redirected into a private network", async () => {

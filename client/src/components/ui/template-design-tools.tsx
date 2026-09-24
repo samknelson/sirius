@@ -12,13 +12,25 @@ export interface TemplateDesignToolsProps {
   execute: (mutation: () => void) => void;
   command: (name: string, value?: string) => void;
   selectionVersion: number;
+  uploadImage?: (file: File) => Promise<string>;
 }
 
 const control = "h-8 rounded border bg-background px-2 text-xs";
 const blockSelector = "p,div,h1,h2,h3,h4,h5,h6,li,td,th,blockquote";
 
+/** Inline formatting intentionally requires a non-collapsed selection. */
+export function selectedInlineTextNodes(editor: HTMLElement, range: Range): Text[] | null {
+  if (range.collapsed || !editor.contains(range.startContainer) || !editor.contains(range.endContainer)) return null;
+  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  while (walker.nextNode()) {
+    if (range.intersectsNode(walker.currentNode)) nodes.push(walker.currentNode as Text);
+  }
+  return nodes;
+}
+
 /** Selection is observed only inside this editor; focusing a control keeps its target. */
-export function TemplateDesignTools({ editor, disabled, mode, execute, command, selectionVersion }: TemplateDesignToolsProps) {
+export function TemplateDesignTools({ editor, disabled, mode, execute, command, selectionVersion, uploadImage }: TemplateDesignToolsProps) {
   const [cell, setCell] = useState<HTMLTableCellElement | null>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const imagePanel = useRef<HTMLDetailsElement>(null);
@@ -37,6 +49,17 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
   const [buttonColor, setButtonColor] = useState("#2563eb");
   const [anchor, setAnchor] = useState<HTMLAnchorElement | null>(null);
   const [linkUrl, setLinkUrl] = useState("");
+  const [draftColor, setDraftColor] = useState("#000000");
+  const [draftHighlight, setDraftHighlight] = useState("#ffffff");
+  const lastSelection = useRef<Range | null>(null);
+  const rememberToolSelection = () => {
+    const selection = window.getSelection();
+    if (!editor || !selection?.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    if (!range.collapsed && editor.contains(range.startContainer) && editor.contains(range.endContainer)) {
+      lastSelection.current = range.cloneRange();
+    }
+  };
   useEffect(() => {
     const click = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
@@ -51,9 +74,11 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
   }, [editor]);
   useEffect(() => {
     const selection = window.getSelection();
-    if (!editor || !selection?.rangeCount) return;
+    if (!editor || !selection?.rangeCount ||
+        (document.activeElement !== editor && !editor.contains(document.activeElement))) return;
     const range = selection.getRangeAt(0);
     if (!editor.contains(range.commonAncestorContainer)) return;
+    lastSelection.current = range.cloneRange();
     const node = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer as HTMLElement : range.startContainer.parentElement;
     if (!node) return;
     const selectedCell = node.closest("td,th") as HTMLTableCellElement | null;
@@ -62,13 +87,18 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
     setLinkUrl(selectedAnchor?.getAttribute("href") ?? "");
     setCell(selectedCell && editor.contains(selectedCell) ? selectedCell : null);
     const child = range.startContainer.childNodes[range.startOffset];
-    setImage(child instanceof HTMLImageElement && range.endOffset === range.startOffset + 1 ? child : node.closest("img"));
+    const selectedImage = child instanceof HTMLImageElement && range.endOffset === range.startOffset + 1 ? child : node.closest("img");
+    // Browser selectionchange can trail an image click with a caret beside the
+    // image. Do not replace the explicit click target with that adjacent caret.
+    if (selectedImage) setImage(selectedImage);
     const css = getComputedStyle(node);
     const block = node.closest(blockSelector);
     const blockCss = block ? getComputedStyle(block) : css;
     setFormat({ fontFamily: css.fontFamily, fontSize: css.fontSize, color: css.color, backgroundColor: css.backgroundColor,
       textAlign: blockCss.textAlign, lineHeight: (block as HTMLElement | null)?.style.lineHeight || blockCss.lineHeight, marginBottom: blockCss.marginBottom,
       block: block && editor.contains(block) ? block.tagName.toLowerCase() : "p" });
+    setDraftColor(toHex(css.color));
+    setDraftHighlight(toHex(css.backgroundColor));
     setActive(Object.fromEntries(["bold", "italic", "underline", "insertUnorderedList", "insertOrderedList"].map(name => [name, document.queryCommandState(name)])));
     if (selectedCell) {
       const table = selectedCell.closest("table")!;
@@ -79,6 +109,16 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
       setVertical(selectedCell.style.verticalAlign || "top");
     }
   }, [editor, selectionVersion]);
+
+  const restoreToolSelection = () => {
+    const range = lastSelection.current;
+    if (!editor || !range || !editor.contains(range.startContainer) || !editor.contains(range.endContainer)) return false;
+    const selection = window.getSelection();
+    if (!selection) return false;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return true;
+  };
 
   const run = (mutation: () => void) => {
     setError("");
@@ -108,18 +148,12 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
       }
     } else {
       if (range.collapsed) {
-        const start = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer as Element : range.startContainer.parentElement!;
-        const paragraph = start.closest("p,h1,h2,h3,h4,h5,h6,li,blockquote");
-        if (paragraph && editor.contains(paragraph)) {
-          (paragraph as HTMLElement).style.setProperty(property, value);
-        } else setError("Select text or place the caret in a paragraph to apply this formatting.");
+        setError("Select text before applying inline formatting.");
         return;
       }
-      // Format each selected text fragment in place, never extracting nested
-      // table/layout markup into an invalid inline wrapper.
-      const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
-      const nodes: Text[] = [];
-      while (walker.nextNode()) if (range.intersectsNode(walker.currentNode)) nodes.push(walker.currentNode as Text);
+      // Format selected text only; collapsed carets never alter paragraph styles.
+      const nodes = selectedInlineTextNodes(editor, range);
+      if (!nodes) { setError("Select text before applying inline formatting."); return; }
       for (const text of nodes.reverse()) {
         const end = text === range.endContainer ? range.endOffset : text.length;
         const start = text === range.startContainer ? range.startOffset : 0;
@@ -140,14 +174,22 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
     if (!cell || !editor?.contains(cell)) throw new Error("Place the caret in a table cell first.");
     editTable(cell, operation);
   });
-  return <fieldset disabled={disabled} className="border-t p-2 space-y-2" aria-label="Template design tools">
+  return <div className="border-b bg-background" onMouseDownCapture={rememberToolSelection}>
+    <details>
+      <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium" aria-label="Template design tools">Design tools</summary>
+      <fieldset disabled={disabled} className="border-t p-2 space-y-2" aria-label="Template design tools">
     <div role="group" aria-label="Typography" className="flex flex-wrap items-center gap-2">
       {select("Paragraph", format.block, [["p", "Paragraph"], ["h1", "Heading 1"], ["h2", "Heading 2"], ["h3", "Heading 3"]], value => command("formatBlock", value))}
       {select("Font", format.fontFamily?.replaceAll('"', ""), [["Arial, sans-serif", "Arial"], ["Verdana, sans-serif", "Verdana"], ["Georgia, serif", "Georgia"], ["Times New Roman, serif", "Times New Roman"], ["Courier New, monospace", "Courier New"]], value => style("font-family", value))}
       {select("Size", format.fontSize, [10, 12, 14, 16, 18, 24, 32, 48].map(n => [`${n}px`, `${n}px`]), value => style("font-size", value))}
       {(["bold", "italic", "underline"] as const).map(name => <Button type="button" size="sm" variant={active[name] ? "secondary" : "ghost"} aria-pressed={!!active[name]} key={name} onClick={() => command(name)}>{name[0].toUpperCase() + name.slice(1)}</Button>)}
-      <label className="text-xs">Text color<input aria-label="Text color" type="color" value={toHex(format.color)} onChange={e => style("color", e.target.value)} /></label>
-      <label className="text-xs">Highlight<input aria-label="Text background color" type="color" value={toHex(format.backgroundColor)} onChange={e => style("background-color", e.target.value)} /></label>
+      <label className="text-xs">Text color<input aria-label="Text color" type="color" value={toHex(draftColor)} onChange={e => setDraftColor(e.target.value)} /></label>
+      <Input aria-label="Text color hex" className="h-8 w-24 text-xs" value={draftColor} onChange={e => setDraftColor(e.target.value)} />
+      <label className="text-xs">Highlight<input aria-label="Text background color" type="color" value={toHex(draftHighlight)} onChange={e => setDraftHighlight(e.target.value)} /></label>
+      <Input aria-label="Highlight hex" className="h-8 w-24 text-xs" value={draftHighlight} onChange={e => setDraftHighlight(e.target.value)} />
+      <Button type="button" size="sm" variant="outline" onClick={() => { if (/^#[\da-f]{6}$/i.test(draftColor)) style("color", draftColor); else setError("Enter a complete six-digit hex text color."); }}>Apply text color</Button>
+      <Button type="button" size="sm" variant="outline" onClick={() => { if (/^#[\da-f]{6}$/i.test(draftHighlight)) style("background-color", draftHighlight); else setError("Enter a complete six-digit hex highlight."); }}>Apply highlight</Button>
+      <Button type="button" size="sm" variant="ghost" onClick={() => { setDraftColor(toHex(format.color)); setDraftHighlight(toHex(format.backgroundColor)); setError(""); }}>Cancel color changes</Button>
     </div>
     <div role="group" aria-label="Paragraph spacing and alignment" className="flex flex-wrap gap-2 items-center">
       {select("Align", format.textAlign, [["left", "Left"], ["center", "Center"], ["right", "Right"], ["justify", "Justify"]], value => style("text-align", value, true))}
@@ -166,6 +208,10 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
             if (!safeDesignUrl(linkUrl)) throw new Error("Enter a valid http(s), mailto or tel link.");
             if (anchor && editor?.contains(anchor)) anchor.setAttribute("href", linkUrl);
             else {
+              // The URL field takes focus and some browsers clear window.selection
+              // rather than merely moving it. Restore the last editor range from
+              // before the toolbar interaction before checking/applying the link.
+              restoreToolSelection();
               if (!window.getSelection()?.toString()) throw new Error("Select the text to link first.");
               document.execCommand("createLink", false, linkUrl);
             }
@@ -211,7 +257,7 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
           })}>Apply table and cell properties</Button>
         </div>
       </details>
-      <details ref={imagePanel} className="rounded border p-2 min-w-64"><summary className="cursor-pointer text-xs font-medium">Images</summary><div className="pt-2"><TemplateImageTools editor={editor} image={image} execute={execute} disabled={disabled} /></div></details>
+      <details ref={imagePanel} className="rounded border p-2 min-w-64"><summary className="cursor-pointer text-xs font-medium">Images</summary><div className="pt-2"><TemplateImageTools editor={editor} image={image} execute={execute} disabled={disabled} uploadImage={uploadImage} /></div></details>
       <details className="rounded border p-2 min-w-64">
         <summary className="cursor-pointer text-xs font-medium">Layouts and linked buttons</summary>
         <div className="pt-2 space-y-2">
@@ -233,7 +279,9 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
       </details>
     </div>
     {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
-  </fieldset>;
+      </fieldset>
+    </details>
+  </div>;
 }
 
 function toHex(color?: string): string {

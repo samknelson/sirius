@@ -14,6 +14,7 @@ import { type TokenPickerEntry as TokenDefinition } from "@shared/tokens";
 import { escapeHtml, sanitizeHtml, normalizeTemplateHtml } from "@shared/utils/html";
 import { TemplateDesignTools } from "./template-design-tools";
 import { captureBookmark, restoreBookmark, TemplateEditorHistory } from "./template-editor-history";
+import { moveImageInFlow, resizeImageBy } from "./template-image-tools";
 
 const SPECIAL_CHARACTERS = [
   { name: 'Copyright', symbol: '©' },
@@ -63,6 +64,8 @@ interface SimpleHtmlEditorProps {
   /** Receives the imperative insert API (insert snippet at last caret). */
   editorApiRef?: React.MutableRefObject<SimpleHtmlEditorApi | null>;
   "data-testid"?: string;
+  /** Host API adapter for uploads; should return the stored HTTPS image URL. */
+  uploadImage?: (file: File) => Promise<string>;
 }
 
 /**
@@ -76,6 +79,19 @@ interface SimpleHtmlEditorProps {
  * allowlist and href checks. It is DOMPurify now, under that policy.)
  */
 const EDITOR_POLICY = "authored-document" as const;
+
+/*
+ * Editor-engine compatibility boundary (reviewed for task 700): neither a
+ * default Tiptap/ProseMirror schema nor Lexical's registered-node HTML
+ * converters promises round-trip preservation of arbitrary imported email
+ * markup. Both need explicit schema/node work to retain nested table
+ * structures and arbitrary inline/table CSS; custom tokenized attributes and
+ * the postal page-break marker need explicit attribute serializers/nodes.
+ * Switching from either engine to source would serialize its normalized
+ * document, not recover the original source. Retain contentEditable + the
+ * existing sanitized raw-HTML switch rather than imply lossless parity: raw
+ * edits remain source text until visual mode applies the existing policy.
+ */
 
 function sanitizeEditorHtml(html: string): string {
   return sanitizeHtml(html, EDITOR_POLICY);
@@ -280,6 +296,7 @@ export function SimpleHtmlEditor({
   disabled = false,
   templateMode,
   editorApiRef,
+  uploadImage,
   "data-testid": testId,
 }: SimpleHtmlEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
@@ -289,6 +306,8 @@ export function SimpleHtmlEditor({
   const [rawMode, setRawMode] = useState(false);
   const [rawHtml, setRawHtml] = useState(value);
   const [selectionVersion, setSelectionVersion] = useState(0);
+  const [contextMenu, setContextMenu] = useState<{ left: number; top: number } | null>(null);
+  const toolSelectionLocked = useRef(false);
   const history = useRef(new TemplateEditorHistory());
   const lastEmitted = useRef<string | null>(null);
   const representedDom = useRef<{ node: HTMLDivElement; value: string } | null>(null);
@@ -428,6 +447,9 @@ export function SimpleHtmlEditor({
   const lastRichRangeRef = useRef<Range | null>(null);
   const saveRichSelection = useCallback(() => {
     const sel = window.getSelection();
+    // Moving focus into the sticky tool controls can collapse/clear the
+    // browser's live selection. Keep the last editor bookmark in that case;
+    // it is the range those controls are meant to act on.
     if (
       sel &&
       sel.rangeCount > 0 &&
@@ -435,6 +457,10 @@ export function SimpleHtmlEditor({
       editorRef.current.contains(sel.getRangeAt(0).startContainer) &&
       editorRef.current.contains(sel.getRangeAt(0).endContainer)
     ) {
+      // Synthetic/editor-scripted text selections can arrive while this
+      // editor is still marked as blurred. They are authoritative; ignore
+      // only the collapsed selection browsers report after toolbar focus.
+      if (toolSelectionLocked.current && sel.getRangeAt(0).collapsed) return;
       lastRichRangeRef.current = sel.getRangeAt(0).cloneRange();
       if (templateMode) {
         const entry = history.current.entries[history.current.index];
@@ -629,6 +655,62 @@ export function SimpleHtmlEditor({
       }
     }
     if (composing.current || e.nativeEvent.isComposing) return;
+    if (templateMode && !rawMode && (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))) {
+      e.preventDefault();
+      const rect = editorRef.current?.getBoundingClientRect();
+      if (rect) setContextMenu({ left: 12, top: Math.min(rect.height - 44, Math.max(8, rect.height / 2)) });
+      return;
+    }
+    if (templateMode && !rawMode) {
+      const selection = window.getSelection();
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+      const start = range?.startContainer;
+      const node = start?.nodeType === Node.ELEMENT_NODE ? start as Element : start?.parentElement;
+      const selectedChild = range && !range.collapsed && range.startContainer === range.endContainer &&
+        range.endOffset === range.startOffset + 1 ? range.startContainer.childNodes[range.startOffset] : null;
+      const image = selectedChild instanceof HTMLImageElement ? selectedChild : node?.closest("img") as HTMLImageElement | null;
+      if (image && editorRef.current?.contains(image)) {
+        if (e.key === "Enter" || e.key.toLowerCase() === "e") {
+          e.preventDefault();
+          image.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+          return;
+        }
+        if (e.key === "Delete" || e.key === "Backspace") {
+          e.preventDefault();
+          execute(() => {
+            const parent = image.parentElement;
+            image.remove();
+            if (parent?.tagName === "A" && !parent.childNodes.length) parent.remove();
+          });
+          return;
+        }
+        if (e.shiftKey && !e.altKey && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
+          e.preventDefault();
+          const deltaX = e.key === "ArrowRight" ? 10 : e.key === "ArrowLeft" ? -10 : 0;
+          const deltaY = e.key === "ArrowDown" ? 10 : e.key === "ArrowUp" ? -10 : 0;
+          execute(() => resizeImageBy(image, deltaX, deltaY));
+          return;
+        }
+        if (e.altKey && !e.shiftKey && ["ArrowLeft", "ArrowUp", "ArrowRight"].includes(e.key)) {
+          e.preventDefault();
+          execute(() => {
+            const align = e.key === "ArrowLeft" ? "left" : e.key === "ArrowRight" ? "right" : "center";
+            image.style.marginLeft = align === "left" ? "0" : "auto";
+            image.style.marginRight = align === "right" ? "0" : "auto";
+          });
+          return;
+        }
+        if (e.altKey && e.shiftKey && ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+          e.preventDefault();
+          execute(() => {
+            const backward = e.key === "ArrowUp" || e.key === "ArrowLeft";
+            const sibling = backward ? image.previousSibling : image.nextSibling;
+            if (sibling) moveImageInFlow(image, sibling, backward);
+          });
+          return;
+        }
+      }
+    }
     if (enableTokens && slashOpen) {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -836,14 +918,25 @@ export function SimpleHtmlEditor({
   };
 
   return (
-    <div ref={containerRef} className={cn("relative border border-input rounded-md", className)}>
+    <div ref={containerRef} className={cn("relative border border-input rounded-md", className)}
+      onMouseDownCapture={event => {
+        const target = event.target as Node;
+        if (editorRef.current?.contains(target)) return;
+        saveRichSelection();
+        toolSelectionLocked.current = true;
+      }}
+      onFocusCapture={event => {
+        const target = event.target as Node;
+        if (editorRef.current?.contains(target)) toolSelectionLocked.current = false;
+        else if (containerRef.current?.contains(target)) toolSelectionLocked.current = true;
+      }}>
       {/* Toolbar */}
       {templateMode && !rawMode && (
-        <TemplateDesignTools editor={editorRef.current} disabled={disabled}
+          <TemplateDesignTools editor={editorRef.current} disabled={disabled}
           mode={templateMode} execute={execute} command={execCommand}
-          selectionVersion={selectionVersion} />
+          selectionVersion={selectionVersion} uploadImage={uploadImage} />
       )}
-      <fieldset disabled={disabled} className="flex flex-wrap items-center gap-1 p-2 border-b border-border bg-muted/30 min-w-0"
+      <fieldset disabled={disabled} className={cn("flex flex-wrap items-center gap-1 p-2 border-b border-border bg-muted/30 min-w-0", templateMode && "sticky top-0 z-20")}
         onMouseDown={(event) => { if (!rawMode) event.preventDefault(); }}>
         {templateMode && (
           <>
@@ -1017,10 +1110,18 @@ export function SimpleHtmlEditor({
             }
           }}
           onPaste={handleTemplatePaste}
+          onContextMenu={event => {
+            if (!templateMode || disabled) return;
+            event.preventDefault();
+            saveRichSelection();
+            const rect = containerRef.current?.getBoundingClientRect();
+            if (rect) setContextMenu({ left: event.clientX - rect.left, top: event.clientY - rect.top });
+          }}
           data-template-editor={templateMode}
-          onFocus={() => setIsFocused(true)}
+          onFocus={() => { toolSelectionLocked.current = false; setIsFocused(true); }}
           onBlur={() => {
             saveRichSelection();
+            toolSelectionLocked.current = true;
             setIsFocused(false);
             if (enableTokens) window.setTimeout(closeSlash, 150);
           }}
@@ -1049,6 +1150,32 @@ export function SimpleHtmlEditor({
           data-testid={testId}
           suppressContentEditableWarning
         />
+      )}
+
+      {contextMenu && templateMode && !rawMode && (
+        <div role="menu" aria-label="Editor selection actions" className="absolute z-50 min-w-40 rounded-md border bg-popover p-1 shadow-md"
+          style={{ left: contextMenu.left, top: contextMenu.top }} onMouseDown={event => event.preventDefault()}>
+          {([
+            ["Bold", () => execCommand("bold")],
+            ["Italic", () => execCommand("italic")],
+            ["Bulleted list", () => execCommand("insertUnorderedList")],
+            ["Numbered list", () => execCommand("insertOrderedList")],
+            ["Insert link", handleCreateLink],
+          ] as [string, () => void][]).map(([label, action]) => <button key={label} type="button" role="menuitem"
+            className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent" onClick={() => { action(); setContextMenu(null); }}>{label}</button>)}
+          {([["Font", "Font"], ["Text color", "Text color hex"], ["Highlight color", "Highlight hex"]] as const).map(([label, target]) =>
+            <button key={label} type="button" role="menuitem"
+              className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent"
+              onClick={() => {
+                setContextMenu(null);
+                const details = containerRef.current?.querySelector<HTMLDetailsElement>('summary[aria-label="Template design tools"]')?.parentElement as HTMLDetailsElement | undefined;
+                if (details) details.open = true;
+                requestAnimationFrame(() => containerRef.current?.querySelector<HTMLElement>(`[aria-label="${target}"]`)?.focus());
+              }}>{label}…</button>)}
+          <button type="button" role="menuitem" className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent"
+            onClick={() => { setContextMenu(null); execCommand("removeFormat"); }}>Clear formatting</button>
+          <button type="button" className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent" onClick={() => setContextMenu(null)}>Close</button>
+        </div>
       )}
 
       {enableTokens && slashOpen && (

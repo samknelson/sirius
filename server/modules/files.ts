@@ -7,6 +7,7 @@ import {
   isFileSystemConfigured,
   getFileSystemConfig,
   getFileSystemProvider,
+  listFileSystemConfigs,
   FileSystemNotConfiguredError,
   FilePathTraversalError,
 } from "../services/files";
@@ -15,6 +16,15 @@ import multer from "multer";
 import { logger } from "../logger";
 import { buildContentDisposition } from "../utils/content-disposition";
 import { getEntityFileContext } from "../services/entity-files/registry";
+import {
+  getEnvironmentVariable,
+  PUBLIC_URL_LOCAL_FALLBACK,
+} from "../config/env-registry";
+import { randomUUID } from "node:crypto";
+import {
+  MAX_LETTER_IMAGE_BYTES,
+  rasterImageType,
+} from "../services/comm/letter-images";
 
 /**
  * For files owned by the entity-files framework (entityType
@@ -64,6 +74,115 @@ export function registerFileRoutes(
   requireAuth: AuthMiddleware, 
   requirePermission: PermissionMiddleware
 ) {
+  const templateAssetUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_LETTER_IMAGE_BYTES, files: 1 },
+  }).single("file");
+
+  app.post(
+    "/api/template-assets",
+    requireAuth,
+    requirePermission("staff"),
+    (req, res, next) => {
+      templateAssetUpload(req, res, (error) => {
+        if (error) {
+          const tooLarge = error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE";
+          return res.status(tooLarge ? 413 : 400).json({
+            message: tooLarge
+              ? `Template images may not exceed ${MAX_LETTER_IMAGE_BYTES} bytes.`
+              : "Expected one multipart file field named 'file'.",
+          });
+        }
+        next();
+      });
+    },
+    async (req, res) => {
+      if (!req.file) return res.status(400).json({ message: "No file provided in field 'file'." });
+      try {
+        const contentType = req.file.mimetype.toLowerCase();
+        if (contentType !== "image/png" && contentType !== "image/jpeg") {
+          return res.status(415).json({ message: "Template images must be PNG or JPEG." });
+        }
+        const detectedType = rasterImageType(req.file.buffer);
+        if (detectedType !== contentType) {
+          return res.status(415).json({ message: "Image content does not match its PNG/JPEG MIME type." });
+        }
+        if (req.file.size > MAX_LETTER_IMAGE_BYTES) {
+          return res.status(413).json({ message: `Template images may not exceed ${MAX_LETTER_IMAGE_BYTES} bytes.` });
+        }
+
+        const origin = getEnvironmentVariable("PUBLIC_URL");
+        if (!isRecipientReachablePublicOrigin(origin)) {
+          return res.status(503).json({
+            message: "Template image upload requires PUBLIC_URL to be configured as a recipient-reachable HTTPS origin.",
+          });
+        }
+
+        const publicFilesystems = listFileSystemConfigs()
+          .filter((filesystem) => filesystem.access === "public")
+          .sort((a, b) => a.id.localeCompare(b.id));
+        const filesystem = publicFilesystems.find((candidate) => candidate.id === "public") ??
+          (publicFilesystems.length === 1 ? publicFilesystems[0] : undefined);
+        if (!filesystem) {
+          return res.status(503).json({
+            message: "Template image storage is unavailable. Configure exactly one public filesystem, preferably named 'public'.",
+          });
+        }
+
+        const extension = detectedType === "image/png" ? "png" : "jpg";
+        const storagePath = `letter-template-assets/${randomUUID()}.${extension}`;
+        const uploaded = await fileSystemService.upload({
+          fileSystemId: filesystem.id,
+          fileName: `${randomUUID()}.${extension}`,
+          fileContent: req.file.buffer,
+          mimeType: detectedType,
+          customPath: storagePath,
+        });
+        let file;
+        try {
+          file = await storage.files.create(insertFileSchema.parse({
+            fileName: req.file.originalname || `template-image.${extension}`,
+            storagePath: uploaded.storagePath,
+            mimeType: detectedType,
+            size: uploaded.size,
+            uploadedBy: (req.user as any)?.id,
+            entityType: "template-asset",
+            entityId: null,
+            fileSystemId: filesystem.id,
+            metadata: { purpose: "letter-template" },
+          }));
+        } catch (error) {
+          try { await fileSystemService.remove(filesystem.id, uploaded.storagePath); } catch { /* preserve original failure */ }
+          throw error;
+        }
+        if (file.status !== "live") {
+          return res.status(503).json({ message: "Template image could not be published." });
+        }
+        return res.status(201).json({
+          url: `${origin}/public-files/${encodeURIComponent(filesystem.id)}/${storagePath
+            .split("/")
+            .map(encodeURIComponent)
+            .join("/")}`,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === "ZodError") {
+          return res.status(400).json({ message: "Invalid template image data." });
+        }
+        if (error instanceof FileSystemNotConfiguredError) {
+          return res.status(503).json({ message: error.message });
+        }
+        if (error instanceof Error && error.message.startsWith("Letter image refused:")) {
+          return res.status(400).json({ message: error.message });
+        }
+        logger.error("Template image upload failed", {
+          service: "files",
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return res.status(500).json({ message: "Failed to upload template image." });
+      }
+    },
+  );
+
   app.post("/api/files", 
     upload.single('file'),
     requireAuth,
@@ -403,4 +522,21 @@ export function registerFileRoutes(
       return res.status(500).json({ message: "Failed to serve file" });
     }
   });
+}
+
+/** Do not publish absolute image URLs pointing at localhost or an HTTP origin. */
+function isRecipientReachablePublicOrigin(origin: string | undefined): origin is string {
+  if (!origin || origin === PUBLIC_URL_LOCAL_FALLBACK) return false;
+  try {
+    const parsed = new URL(origin);
+    const host = parsed.hostname.toLowerCase();
+    return parsed.protocol === "https:" &&
+      Boolean(host) &&
+      host !== "localhost" &&
+      !host.endsWith(".localhost") &&
+      host !== "127.0.0.1" &&
+      host !== "::1";
+  } catch {
+    return false;
+  }
 }

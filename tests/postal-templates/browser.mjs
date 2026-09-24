@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -22,6 +22,10 @@ const reads = [];
 const templateQueries = [];
 const renders = [];
 let stored = { bodyHtml: "", description: "", templateId: "", fileUrl: "", color: false, doubleSided: false, mailType: "usps_first_class" };
+const imageBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9ioAAAAASUVORK5CYII=", "base64");
+const managedImageUrl = "https://assets.example.invalid/public-files/public/letter-template-assets/fixture.png";
+const imageFixture = "/tmp/postal-template-image-fixture.png";
+await writeFile(imageFixture, imageBytes);
 let browser;
 // Keep lifecycle failures observable even if a Vite dependency crawl/close hangs.
 async function bounded(label, operation, timeout = 30000) {
@@ -125,13 +129,18 @@ try {
   page.on("request", async request => {
     try {
       const url = new URL(request.url());
-      if (["data:", "blob:"].includes(url.protocol)) return await request.continue();
+      if (["data:", "blob:", "chrome:", "chrome-extension:"].includes(url.protocol)) return await request.continue();
       if (url.href === "https://fixture-images.invalid/logo.png") {
         return await request.respond({ status: 200, contentType: "image/png",
-          body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9ioAAAAASUVORK5CYII=", "base64") });
+          body: imageBytes });
       }
+      if (url.href === managedImageUrl) return await request.respond({ status: 200, contentType: "image/png", body: imageBytes });
       assert.equal(url.origin, origin, `External network forbidden: ${url.href}`);
       if (url.pathname.startsWith("/api/")) {
+        if (url.pathname === "/api/template-assets" && request.method() === "POST") {
+          assert.match(request.headers()["content-type"], /multipart\/form-data/);
+          return await request.respond({ status: 201, contentType: "application/json", body: JSON.stringify({ url: managedImageUrl }) });
+        }
         // PDF generation is outside this regression. Serve an inert local PDF, never a provider.
         if (url.pathname === "/api/comm/postal/preview" && request.method() === "POST") {
           return await request.respond({ status: 200, contentType: "application/pdf", body: "%PDF-1.1\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 0/Kids[]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF" });
@@ -161,14 +170,49 @@ try {
   const replaceByTyping = async (id, text) => {
     await click(id);
     await page.keyboard.down("Control"); await page.keyboard.press("KeyA"); await page.keyboard.up("Control");
-    await page.keyboard.type(text);
+    await page.keyboard.sendCharacter(text);
   };
   async function exerciseStudio(openId) {
     await click(openId);
+    assert.equal(await page.$eval(sel("dialog-template-studio"), el => el.dataset.maximized), "true");
+    const editorNode = await page.$(sel("studio-editor-bodyHtml"));
+    await click("button-studio-toggle-right-column");
+    assert.equal(await page.$eval("#studio-right-column", el => getComputedStyle(el).display), "none");
+    await page.$eval(sel("button-studio-toggle-maximize"), el => el.click());
+    assert.equal(await page.$eval(sel("dialog-template-studio"), el => el.dataset.maximized), "false");
+    await page.$eval(sel("button-studio-toggle-maximize"), el => el.click());
+    await page.$eval(sel("button-studio-toggle-right-column"), el => el.click());
+    assert.equal(await editorNode.evaluate(el => el === document.querySelector('[data-testid="studio-editor-bodyHtml"]')), true,
+      "Resizing the workspace must not remount the editor");
     await click("button-studio-panel-templates");
     await click("button-load-template-saved-postal");
     await click("button-load-template-confirm");
     await page.waitForSelector(sel("dialog-load-letter-template"), { hidden: true });
+    await expectFields(content);
+    // Upload is a reusable HTTPS image reference, never a blob or expiring signed URL.
+    await page.$eval(sel("studio-editor-bodyHtml"), el => {
+      el.focus();
+      const range = document.createRange(); range.selectNodeContents(el); range.collapse(false);
+      const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+      el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+    await page.$eval('summary[aria-label="Template design tools"]', el => { if (!el.parentElement.open) el.click(); });
+    await page.$$eval("summary", nodes => {
+      const images = nodes.find(el => el.textContent?.trim() === "Images");
+      if (images && !images.parentElement.open) images.click();
+    });
+    const upload = await page.$('input[aria-label="Upload image"]');
+    assert.ok(upload, "Template Studio provides image upload");
+    await upload.uploadFile(imageFixture);
+    await page.waitForFunction(url => document.querySelector('input[aria-label="Image URL"]')?.value === url, {}, managedImageUrl);
+    await page.evaluate(() => {
+      const button = [...document.querySelectorAll("button")].find(el => el.textContent?.trim() === "Insert image");
+      if (!button) throw new Error("Insert image control not found");
+      button.click();
+    });
+    await page.waitForSelector(`${sel("studio-editor-bodyHtml")} img`);
+    assert.equal(await page.$eval(`${sel("studio-editor-bodyHtml")} img`, el => el.getAttribute("src")), managedImageUrl);
+    await click("studio-editor-bodyHtml-undo");
     await expectFields(content);
     // Edit this document away and back to the next template's exact bytes.
     // Loading that template is still a new document, not an onChange echo.
