@@ -40,6 +40,7 @@ import { registerTrustProviderEdiDashboardRoutes } from "./modules/trust/provide
 import { registerConsolidatedOptionsRoutes } from "./modules/options-routes";
 import { getOptionsType } from "./modules/options-registry";
 import { registerWorkerIdsRoutes } from "./modules/workers/ids";
+import { registerWorkerMonthlyCoverageHistoryRoute } from "./modules/workers/monthly-coverage-history";
 import { registerWorkerExportRoute } from "./modules/workers/export";
 import { registerAddressValidationRoutes } from "./modules/address-validation";
 import {
@@ -1722,6 +1723,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // Worker Benefits (WMB) routes
+
+  registerWorkerMonthlyCoverageHistoryRoute(
+    app, requireAccess("worker.view", req => req.params.workerId),
+  );
 
   // GET /api/workers/:workerId/benefits - Get all benefits for a worker (requires worker.view policy: staff or worker with matching email)
   app.get("/api/workers/:workerId/benefits", requireAccess('worker.view', req => req.params.workerId), async (req, res) => {

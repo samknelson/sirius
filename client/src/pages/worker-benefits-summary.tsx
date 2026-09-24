@@ -5,6 +5,7 @@ import {
 } from "@/plugins/dashboard/bao-worker-coverage/BaoWorkerCoverage";
 import { useDashboardContent } from "@/plugins/dashboard/useDashboardContent";
 import { Skeleton } from "@/components/ui/skeleton";
+import { WorkerMonthlyCoverageHistory } from "./worker-monthly-coverage-history";
 
 function SummaryContent() {
   const { worker } = useWorkerLayout();
@@ -24,6 +25,12 @@ export default function WorkerBenefitsSummary() {
   return (
     <WorkerLayout activeTab="benefits-summary">
       <SummaryContent />
+      <MonthlyHistoryContent />
     </WorkerLayout>
   );
+}
+
+function MonthlyHistoryContent() {
+  const { worker } = useWorkerLayout();
+  return <WorkerMonthlyCoverageHistory workerId={worker.id} />;
 }

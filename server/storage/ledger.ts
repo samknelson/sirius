@@ -138,6 +138,14 @@ export interface LedgerEntryStorage {
   getBalancesByEaIds(eaIds: string[]): Promise<Map<string, string>>;
   getBalancesByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[]): Promise<Array<{ entityId: string; accountId: string; total: string }>>;
   getMonthlyDeltasByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[], monthKeys: string[]): Promise<Array<{ entityId: string; ym: string; total: string }>>;
+  /** Monthly posted account net and non-payment charge net, kept per account for historical balance checks. */
+  getMonthlyAccountHistoryByEntityAndAccount(
+    entityType: string,
+    entityId: string,
+    accountIds: string[],
+    chargeConfigIds: string[],
+  ): Promise<Array<{ accountId: string; ym: string; balanceDelta: string; chargeTotal: string; hadNonzeroBalance: boolean }>>;
+  getBaoEeAccountIdsByWorker(workerId: string): Promise<string[]>;
   getByReference(referenceType: string, referenceId: string): Promise<Ledger[]>;
   getByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<Ledger | undefined>;
   getByReferenceAndConfig(referenceId: string, chargePluginConfigId: string): Promise<Ledger[]>;
@@ -1239,6 +1247,74 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         entityId: r.entityId,
         ym: r.ym,
         total: r.total ? String(r.total) : "0.00",
+      }));
+    },
+
+    async getBaoEeAccountIdsByWorker(workerId: string): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .selectDistinct({ accountId: ledgerEa.accountId })
+        .from(ledger)
+        .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+        .where(and(
+          eq(ledgerEa.entityType, "worker"),
+          eq(ledgerEa.entityId, workerId),
+          eq(ledger.chargePlugin, "sitespecific-bao-ee-contribution"),
+        ));
+      return rows.map((row) => row.accountId);
+    },
+
+    async getMonthlyAccountHistoryByEntityAndAccount(entityType: string, entityId: string, accountIds: string[], chargeConfigIds: string[]): Promise<Array<{ accountId: string; ym: string; balanceDelta: string; chargeTotal: string; hadNonzeroBalance: boolean }>> {
+      if (accountIds.length === 0) return [];
+      const client = getClient();
+      const ymExpr = sqlRaw<string>`to_char(${ledger.statementYmd}, 'YYYY-MM')`;
+      // A config can be disabled, moved to another account or deleted after
+      // posting. The posted plugin identity, not today's config list, is the
+      // historical charge classifier.
+      const isBaoEeCharge = sqlRaw`${ledger.chargePlugin} = 'sitespecific-bao-ee-contribution'`;
+      const rows = await client
+        .select({
+          accountId: ledgerEa.accountId,
+          ym: ymExpr,
+          balanceDelta: sum(ledger.amount),
+          chargeTotal: sum(sqlRaw`CASE
+            WHEN ${isBaoEeCharge}
+              AND ${ledger.referenceType} IS DISTINCT FROM 'payment'
+              AND ${ledger.chargePlugin} <> 'payment-simple-allocation'
+            THEN ${ledger.amount}
+            ELSE 0::numeric
+          END`),
+        })
+        .from(ledger)
+        .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+        .where(and(
+          eq(ledgerEa.entityType, entityType),
+          eq(ledgerEa.entityId, entityId),
+          inArray(ledgerEa.accountId, accountIds),
+        ))
+        .groupBy(ledgerEa.accountId, ymExpr);
+      // A charge paid in the same statement month still created a nonzero
+      // balance at one point. Monthly netting alone loses that evidence.
+      const balanceHistory = await client.execute(sqlRaw`
+        SELECT EXISTS (
+          SELECT 1 FROM (
+            SELECT SUM(l.amount) OVER (
+              PARTITION BY l.ea_id ORDER BY l.date, l.id ROWS UNBOUNDED PRECEDING
+            ) AS running_balance
+            FROM ledger l
+            JOIN ledger_ea ea ON ea.id = l.ea_id
+            WHERE ea.entity_type = ${entityType} AND ea.entity_id = ${entityId}
+              AND ea.account_id IN (${sqlRaw.join(accountIds.map((id) => sqlRaw`${id}`), sqlRaw`, `)})
+          ) history WHERE running_balance <> 0::numeric
+        ) AS had_balance
+      `);
+      const hadNonzeroBalance = (balanceHistory.rows[0] as { had_balance: boolean } | undefined)?.had_balance === true;
+      return rows.map((row) => ({
+        accountId: row.accountId,
+        ym: row.ym,
+        balanceDelta: row.balanceDelta === null ? "0" : String(row.balanceDelta),
+        chargeTotal: row.chargeTotal === null ? "0" : String(row.chargeTotal),
+        hadNonzeroBalance,
       }));
     },
 

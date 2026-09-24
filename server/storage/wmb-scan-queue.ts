@@ -97,6 +97,8 @@ export interface WmbScanQueueStorage {
   getQueueEntriesWithWorkerInfo(statusId: string): Promise<QueueEntryWithWorker[]>;
   getQueueEntriesPaged(statusId: string, page: number, pageSize: number, filter?: QueueEntriesFilter): Promise<PagedQueueEntriesResult>;
   getWorkerQueueEntry(workerId: string, month: number, year: number): Promise<TrustWmbScanQueue | undefined>;
+  /** All of one worker's scan decisions, used to build a bounded history page. */
+  getWorkerCoverageHistoryScans(workerId: string): Promise<Array<TrustWmbScanQueue & { queuedAt: Date }>>;
   /**
    * Per-worker scan state for UI display: the most recently completed scan
    * job (success or failed) plus any months currently waiting in the queue
@@ -423,6 +425,17 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
         .orderBy(desc(trustWmbScanStatus.queuedAt))
         .limit(1);
       return row?.entry || undefined;
+    },
+
+    async getWorkerCoverageHistoryScans(workerId: string): Promise<Array<TrustWmbScanQueue & { queuedAt: Date }>> {
+      const client = getClient();
+      const rows = await client
+        .select({ entry: trustWmbScanQueue, queuedAt: trustWmbScanStatus.queuedAt })
+        .from(trustWmbScanQueue)
+        .innerJoin(trustWmbScanStatus, eq(trustWmbScanQueue.statusId, trustWmbScanStatus.id))
+        .where(eq(trustWmbScanQueue.workerId, workerId))
+        .orderBy(desc(trustWmbScanQueue.year), desc(trustWmbScanQueue.month), desc(trustWmbScanStatus.queuedAt));
+      return rows.map(({ entry, queuedAt }) => ({ ...entry, queuedAt }));
     },
 
     async getWorkerScanState(workerId: string): Promise<{
