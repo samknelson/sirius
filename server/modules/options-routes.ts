@@ -6,6 +6,7 @@ import { storage } from "../storage";
 import { requireComponent, isComponentEnabled } from "./components";
 import { getComponentById } from "../../shared/components";
 import { logger } from "../logger";
+import { registerPaymentTypeCorrectionRoutes } from "./ledger/payment-type-correction";
 import {
   buildOptionCreateData,
   buildOptionUpdateData,
@@ -95,6 +96,7 @@ async function filterDefinitionFieldsByComponent(definition: any): Promise<any> 
 }
 
 export function registerConsolidatedOptionsRoutes(app: Express) {
+  registerPaymentTypeCorrectionRoutes(app);
   // Export / import routes. Registered FIRST so their literal path segments
   // (`export`, `import/preview`, `import/apply`) match before the generic
   // `/api/options/:type/:id` route swallows them.

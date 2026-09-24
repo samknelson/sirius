@@ -82,4 +82,25 @@ describe("payment type ledger direction", () => {
     expect(result.transactions).toEqual([]);
     expect(deleteEntry).toHaveBeenCalledWith("entry-1");
   });
+
+  it.each([null, "Original payment memo"])("keeps persisted provenance identical across directions for memo %s", async memo => {
+    const config = { id: "config-1", account: "account-1", settings: {} };
+    getType.mockResolvedValue({ name: "Legacy", direction: "credit", currencyCode: "USD" });
+    const credit = (await plugin.execute(context({ memo }), config)).transactions[0];
+    getType.mockResolvedValue({ name: "Legacy", direction: "charge", currencyCode: "USD" });
+    const charge = (await plugin.execute(context({ memo }), config)).transactions[0];
+    // createLedgerEntries persists memo, NOT description, even for null.
+    expect(credit.memo).toBe(memo);
+    expect(charge.memo).toBe(memo);
+    expect(credit.description).not.toBe(charge.description);
+    const { amount: creditAmount, description: creditDescription, ...creditProvenance } = credit;
+    const { amount: chargeAmount, description: chargeDescription, ...chargeProvenance } = charge;
+    expect(chargeProvenance).toEqual(creditProvenance);
+    expect(charge.metadata).toEqual({
+      pluginId: "payment-simple-allocation", pluginConfigId: "config-1", paymentId: "payment-1",
+      originalAmount: "50.00", ledgerEaId: "ea-1", allocationId: "ea-1:2026-01-01",
+    });
+    expect(chargeAmount).toBe("50.00");
+    expect(creditAmount).toBe("-50.00");
+  });
 });
