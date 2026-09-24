@@ -64,6 +64,9 @@ import { useSiteSettings, useSystemMode } from "@/lib/use-variable";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Portal as TooltipPortal } from "@radix-ui/react-tooltip";
 import type { ResolvedMenu, ResolvedMenuItem } from "@shared/menu-types";
+import { cn } from "@/lib/utils";
+
+const desktopLabeledClass = "gap-1 px-2.5 text-[13px]";
 
 /** Map server-provided icon names to lucide components. */
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -184,14 +187,14 @@ export default function Header() {
       <Button
         variant={isItemActive(item, location) ? "default" : "ghost"}
         size={compactNav ? "icon" : "sm"}
-        className={compactNav ? "h-9 w-full" : "w-full"}
+        className={compactNav ? "h-9 w-full" : `w-full ${desktopLabeledClass}`}
         aria-label={compactNav ? itemLabel(item) : undefined}
         aria-current={!dropdown && isItemActive(item, location) ? "page" : undefined}
         data-testid={item.testId || `nav-${item.id}`}
       >
-        <Icon className={`h-4 w-4 ${compactNav ? "" : "mr-2"}`} />
+        <Icon className="h-4 w-4" />
         {!compactNav && itemLabel(item)}
-        {dropdown && !compactNav && <ChevronDown className="h-4 w-4 ml-2" />}
+        {dropdown && !compactNav && <ChevronDown className="h-4 w-4" />}
       </Button>
     );
   };
@@ -464,18 +467,18 @@ export default function Header() {
       </div>
 
       {/* Row 2: Desktop Navigation Links - hidden on mobile */}
-      <nav ref={desktopNavRef} id="site-menu" data-compact={compactNav} className="relative hidden md:flex items-center h-10 px-4 md:px-6">
+      <nav ref={desktopNavRef} id="site-menu" data-compact={compactNav} className="relative hidden md:flex items-center gap-1 h-10 px-4">
         {/* This copy never participates in layout or interaction. It always has labeled widths,
             so switching to icons cannot make the measured width shrink and oscillate. */}
         <div aria-hidden="true" className="pointer-events-none invisible absolute left-0 top-0 h-0 w-0 overflow-hidden">
-          <div ref={labeledWidthRef} className="flex w-max items-center gap-4">
+          <div ref={labeledWidthRef} className="flex w-max items-center gap-1">
             {desktopItems.map(item => {
               const Icon = getIcon(item.icon);
               return (
-                <span key={item.id} className={buttonVariants({ size: "sm", variant: "ghost" })}>
-                  <Icon className="h-4 w-4 mr-2" />
+                <span key={item.id} className={cn(buttonVariants({ size: "sm", variant: "ghost" }), desktopLabeledClass)}>
+                  <Icon className="h-4 w-4" />
                   {itemLabel(item)}
-                  {!!item.children?.length && <ChevronDown className="h-4 w-4 ml-2" />}
+                  {!!item.children?.length && <ChevronDown className="h-4 w-4" />}
                 </span>
               );
             })}
