@@ -35,6 +35,10 @@ const months = [
 ];
 const monthLabel = (month: number) => months[month - 1] ?? "";
 const monthIndex = (year: number, month: number) => year * 12 + month;
+const fromMonthIndex = (index: number) => ({
+  year: Math.floor((index - 1) / 12),
+  month: ((index - 1) % 12) + 1,
+});
 const formatPeriod = (year: number, month: number) => `${monthLabel(month)} ${year}`;
 
 type Era = {
@@ -43,6 +47,7 @@ type Era = {
   end: { year: number; month: number };
   months: BenefitHistoryRecord[][];
   records: BenefitHistoryRecord[];
+  boundaryReason: string;
 };
 
 function identity(record: BenefitHistoryRecord) {
@@ -77,13 +82,72 @@ function buildEras(records: BenefitHistoryRecord[]) {
         end: { year: monthRecords[0].year, month: monthRecords[0].month },
         months: [monthRecords],
         records: monthRecords,
+        boundaryReason: "Starting point",
       });
     } else {
       previous.end = { year: monthRecords[0].year, month: monthRecords[0].month };
       previous.months.push(monthRecords);
     }
   });
+  eras.forEach((era, index) => {
+    if (index === 0) return;
+    const previous = eras[index - 1];
+    const previousKey = monthIndex(previous.end.year, previous.end.month);
+    const currentKey = monthIndex(era.start.year, era.start.month);
+    if (currentKey > previousKey + 1) {
+      const missing: string[] = [];
+      const previousBenefits = new Map(previous.records.map((record) => [record.benefit.id, record.benefit.name]));
+      const currentBenefitIds = new Set(era.records.map((record) => record.benefit.id));
+      previousBenefits.forEach((name, id) => {
+        if (!currentBenefitIds.has(id)) missing.push(name);
+      });
+      const firstMissing = previousKey + 1;
+      const lastMissing = currentKey - 1;
+      const firstMissingDate = fromMonthIndex(firstMissing);
+      const lastMissingDate = fromMonthIndex(lastMissing);
+      const missingLabel = firstMissing === lastMissing
+        ? formatPeriod(firstMissingDate.year, firstMissingDate.month)
+        : `${formatPeriod(firstMissingDate.year, firstMissingDate.month)}–${formatPeriod(lastMissingDate.year, lastMissingDate.month)}`;
+      era.boundaryReason = `After gap: ${missing.length ? missing.join(", ") : "prior coverage"} missing ${missingLabel}`;
+      return;
+    }
+    const previousByBenefit = new Map(previous.records.map((record) => [record.benefit.id, record]));
+    const currentByBenefit = new Map(era.records.map((record) => [record.benefit.id, record]));
+    const added = era.records.filter((record) => !previousByBenefit.has(record.benefit.id)).map((record) => record.benefit.name);
+    const removed = previous.records.filter((record) => !currentByBenefit.has(record.benefit.id)).map((record) => record.benefit.name);
+    const retainedBenefits = [...currentByBenefit].filter(([id]) => previousByBenefit.has(id));
+    const employerChanged = retainedBenefits.some(([id, record]) => previousByBenefit.get(id)?.employer.id !== record.employer.id);
+    const sourceChanges = retainedBenefits.flatMap(([id, record]) => {
+      const prior = previousByBenefit.get(id);
+      if (!prior || identity(prior).split("|").slice(2).join("|") === identity(record).split("|").slice(2).join("|")) return [];
+      return [`${record.benefit.name}: ${sourceLabel(prior)} → ${sourceLabel(record)}`];
+    });
+    const changes: string[] = [];
+    if (employerChanged) changes.push("employer changed");
+    if (sourceChanges.length) changes.push(...sourceChanges);
+    if (added.length) changes.push(`added ${added.join(", ")}`);
+    if (removed.length) changes.push(`removed ${removed.join(", ")}`);
+    era.boundaryReason = changes.length ? changes.join(" · ") : "Coverage set updated";
+  });
   return eras.reverse();
+}
+
+function findShortGaps(records: BenefitHistoryRecord[]) {
+  const byBenefit = new Map<string, BenefitHistoryRecord[]>();
+  records.forEach((record) => byBenefit.set(record.benefit.id, [...(byBenefit.get(record.benefit.id) ?? []), record]));
+  return [...byBenefit.values()].flatMap((items) => {
+    const sorted = [...items].sort((a, b) => monthIndex(a.year, a.month) - monthIndex(b.year, b.month));
+    const notes: string[] = [];
+    for (let index = 1; index < sorted.length; index += 1) {
+      const gap = monthIndex(sorted[index].year, sorted[index].month) - monthIndex(sorted[index - 1].year, sorted[index - 1].month) - 1;
+      if (gap > 0 && gap <= 2) {
+        const missingKey = monthIndex(sorted[index - 1].year, sorted[index - 1].month) + 1;
+        const missingDate = fromMonthIndex(missingKey);
+        notes.push(`${sorted[index].benefit.name}: ${formatPeriod(missingDate.year, missingDate.month)}`);
+      }
+    }
+    return notes;
+  });
 }
 
 function sourceLabel(record: BenefitHistoryRecord) {
@@ -123,6 +187,8 @@ function EraRow({
             <span>{era.months.length} {era.months.length === 1 ? "month" : "months"}</span>
             <span aria-hidden="true">·</span>
             <span>{ownCount} own{receivedCount ? ` · ${receivedCount} received` : ""}</span>
+            <span aria-hidden="true">·</span>
+            <span className="text-primary/80">{era.boundaryReason}</span>
           </span>
         </span>
         <span className="hidden text-right text-xs text-muted-foreground sm:block">
@@ -206,6 +272,7 @@ export function GroupedEras() {
     [benefits, filter],
   );
   const eras = useMemo(() => buildEras(filteredBenefits), [filteredBenefits]);
+  const shortGaps = useMemo(() => findShortGaps(filteredBenefits), [filteredBenefits]);
   const years = Array.from({ length: 6 }, (_, index) => new Date().getFullYear() - index);
   const selectedBenefit = benefitOptions.find((item) => item.id === benefitId);
   const selectedEmployer = employerOptions.find((item) => item.id === employerId);
@@ -298,6 +365,14 @@ export function GroupedEras() {
               <Info size={15} className="mt-0.5 shrink-0 text-primary" />
               <p>Era boundaries reflect a gap, employer change, benefit change, or a change between own and received coverage. Records are never merged across those changes.</p>
             </div>
+            {shortGaps.length > 0 && (
+              <div className="border-b border-border bg-sky-50/60 px-5 py-3">
+                <p className="text-xs font-semibold text-sky-900">Record continuity check</p>
+                <p className="mt-1 text-xs leading-relaxed text-sky-900/75">
+                  Missing monthly record{shortGaps.length > 1 ? "s" : ""}: {shortGaps.join(" · ")}. This is a benefit-level gap, not a statement that the worker had no coverage.
+                </p>
+              </div>
+            )}
             {eras.length === 0 ? <div className="px-5 py-14 text-center text-sm text-muted-foreground">No monthly records match this filter.</div> : eras.map((era) => <EraRow key={era.id} era={era} onDelete={deleteRecord} />)}
           </CardContent>
         </Card>
