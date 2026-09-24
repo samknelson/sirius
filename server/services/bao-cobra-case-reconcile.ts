@@ -92,20 +92,21 @@ export async function reconcileCobraCases(
         year: event.year,
         month: event.month,
         benefits: [],
-        failedPlugins: [],
         trigger: "reconcile",
       };
       groups.set(key, group);
     }
-    if (!group.benefits.some((b) => b.benefitId === event.benefitId)) {
-      group.benefits.push({ benefitId: event.benefitId, kind });
-    }
     const data = (event.data ?? {}) as TerminateEventData;
-    for (const fp of data.failedPlugins ?? []) {
-      if (!fp?.pluginKey) continue;
-      if (!group.failedPlugins.some((existing) => existing.pluginKey === fp.pluginKey)) {
-        group.failedPlugins.push({ pluginKey: fp.pluginKey, reason: fp.reason ?? null });
+    const failedPlugins = (data.failedPlugins ?? [])
+      .filter((fp): fp is { pluginKey: string; reason?: string | null } => typeof fp?.pluginKey === "string" && fp.pluginKey.length > 0)
+      .map((fp) => ({ pluginKey: fp.pluginKey, reason: fp.reason ?? null }));
+    const existing = group.benefits.find((b) => b.benefitId === event.benefitId);
+    if (existing) {
+      for (const fp of failedPlugins) {
+        if (!existing.failedPlugins.some((r) => r.pluginKey === fp.pluginKey)) existing.failedPlugins.push(fp);
       }
+    } else {
+      group.benefits.push({ benefitId: event.benefitId, kind, failedPlugins });
     }
   }
   summary.groups = groups.size;

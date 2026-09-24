@@ -23,6 +23,9 @@ export const BAO_COBRA_TRIGGER_CONFIG_VARIABLE = "bao_cobra_trigger_config";
 export const baoCobraTriggerPluginConfigSchema = z.object({
   trigger: z.boolean(),
   qualifyingEventId: z.string().nullable().optional(),
+  /** Omitted together with dependentRelationshipTypeIds means unrestricted (legacy). */
+  self: z.boolean().optional(),
+  dependentRelationshipTypeIds: z.array(z.string().min(1)).optional(),
 });
 
 export const baoCobraTriggerConfigSchema = z.object({
@@ -62,6 +65,20 @@ export function resolveTriggerForPlugin(
   };
 }
 
+/** An omitted scope is unrestricted; any explicit scope is an allowlist. */
+export function triggerAppliesToPerson(
+  setting: BaoCobraTriggerPluginConfig,
+  relationshipTypeId: string | null,
+  isSubscriber: boolean,
+): boolean {
+  if (!setting.trigger) return false;
+  if (setting.self === undefined && setting.dependentRelationshipTypeIds === undefined) return true;
+  return isSubscriber
+    ? setting.self === true
+    : relationshipTypeId !== null &&
+        (setting.dependentRelationshipTypeIds ?? []).includes(relationshipTypeId);
+}
+
 /** One row of the merged view the config screen renders. */
 export interface BaoCobraTriggerConfigRow {
   pluginId: string;
@@ -69,5 +86,7 @@ export interface BaoCobraTriggerConfigRow {
   pluginDescription: string;
   trigger: boolean;
   qualifyingEventId: string | null;
+  self?: boolean;
+  dependentRelationshipTypeIds?: string[];
   isDefault: boolean;
 }

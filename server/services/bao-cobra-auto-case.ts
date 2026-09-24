@@ -43,6 +43,7 @@ import {
   BAO_COBRA_TRIGGER_CONFIG_VARIABLE,
   baoCobraTriggerConfigSchema,
   resolveTriggerForPlugin,
+  triggerAppliesToPerson,
   type BaoCobraTriggerConfig,
 } from "../../shared/schema/sitespecific/bao/cobra-triggers";
 import { eligibilityPluginRegistry } from "../plugins/trust/eligibility/registry";
@@ -164,17 +165,17 @@ async function createCaseIdempotent(
   }
 }
 
-/** relationId → { dependent workerId, relation type label } for a subscriber. */
+/** Election as of coverage loss determines membership; relation rows supply stable type ids. */
 async function mapRelationsToDependents(
   subscriberWorkerId: string,
   relationIds: string[],
-): Promise<Array<{ relationId: string; workerId: string; relationship: string | null }>> {
+): Promise<Array<{ relationId: string; workerId: string; relationship: string | null; relationshipTypeId: string | null }>> {
   if (relationIds.length === 0) return [];
   const wanted = new Set(relationIds);
   const relations = await storage.workerRelations.searchWorkerRelations({
     workerId: subscriberWorkerId,
   });
-  const out: Array<{ relationId: string; workerId: string; relationship: string | null }> = [];
+  const out: Array<{ relationId: string; workerId: string; relationship: string | null; relationshipTypeId: string | null }> = [];
   for (const rel of relations) {
     if (!wanted.has(rel.id)) continue;
     if (!rel.otherWorker?.id) continue;
@@ -182,6 +183,7 @@ async function mapRelationsToDependents(
       relationId: rel.id,
       workerId: rel.otherWorker.id,
       relationship: rel.relationTypeName ?? null,
+      relationshipTypeId: rel.relationType ?? null,
     });
   }
   return out;
@@ -191,7 +193,7 @@ async function mapRelationsToDependents(
 // 1. WMB termination core (shared by the live listener and reconciliation)
 // ---------------------------------------------------------------------------
 
-/** One (worker, month) termination group: the med/dental benefits lost. */
+/** One (worker, month) termination group: failures stay attached to each lost benefit. */
 export interface WmbTerminationGroup {
   subscriberWorkerId: string;
   year: number;
@@ -200,9 +202,8 @@ export interface WmbTerminationGroup {
     benefitId: string;
     benefitName?: string | null;
     kind: "medical" | "dental";
+    failedPlugins: Array<{ pluginKey: string; reason: string | null }>;
   }>;
-  /** Union of failed eligibility plugins across the group's scans. */
-  failedPlugins: Array<{ pluginKey: string; reason: string | null }>;
   /** Provenance label: "wmb_scan" (live) or "reconcile". */
   trigger: string;
 }
@@ -245,20 +246,16 @@ export async function openCobraCasesForTermination(
 
   const config = await loadTriggerConfig();
 
-  // Qualification: at least one failed plugin is configured (or defaults)
-  // to trigger COBRA.
-  const triggering = group.failedPlugins.filter((r) => {
-    const name = eligibilityPluginRegistry.get(r.pluginKey)?.metadata.name;
-    return resolveTriggerForPlugin(config, r.pluginKey, name).trigger;
-  });
-  if (triggering.length === 0) {
+  const settingFor = (pluginKey: string) =>
+    resolveTriggerForPlugin(config, pluginKey, eligibilityPluginRegistry.get(pluginKey)?.metadata.name);
+  if (!group.benefits.some((b) => b.failedPlugins.some((r) => settingFor(r.pluginKey).trigger))) {
     outcome.qualified = false;
     logger.info("WMB termination did not qualify for COBRA", {
       service: SERVICE_NAME,
       workerId: group.subscriberWorkerId,
       year: group.year,
       month: group.month,
-      failedPlugins: group.failedPlugins.map((r) => r.pluginKey),
+      failedPlugins: group.benefits.flatMap((b) => b.failedPlugins.map((r) => r.pluginKey)),
     });
     return outcome;
   }
@@ -271,40 +268,36 @@ export async function openCobraCasesForTermination(
     return outcome;
   }
 
-  // Qualifying event: the first triggering plugin with a mapped event.
-  let qualifyingEventId: string | null = null;
-  for (const r of triggering) {
-    const name = eligibilityPluginRegistry.get(r.pluginKey)?.metadata.name;
-    const resolved = resolveTriggerForPlugin(config, r.pluginKey, name);
-    if (resolved.qualifyingEventId) {
-      qualifyingEventId = resolved.qualifyingEventId;
-      break;
-    }
-  }
-
-  const medicalBenefitLostId =
-    group.benefits.find((b) => b.kind === "medical")?.benefitId ?? null;
-  const dentalBenefitLostId =
-    group.benefits.find((b) => b.kind === "dental")?.benefitId ?? null;
   const cobraEffectiveYmd = `${group.year}-${String(group.month).padStart(2, "0")}-01`;
-  const provenance = {
-    trigger: group.trigger,
-    benefits: group.benefits.map((b) => ({
-      benefitId: b.benefitId,
-      benefitName: b.benefitName ?? null,
-      kind: b.kind,
-    })),
-    month: group.month,
-    year: group.year,
-    failedPlugins: group.failedPlugins,
-  };
 
   /** Reuse/merge an existing case for the person+month, or create one. */
   const upsertForPerson = async (
     coveredPersonWorkerId: string,
     relationship: string | null,
+    relationshipTypeId: string | null,
+    isSubscriber: boolean,
     extraProvenance: Record<string, unknown> = {},
   ): Promise<void> => {
+    const applicable = group.benefits.map((benefit) => ({
+      benefit,
+      failures: benefit.failedPlugins.filter((r) =>
+        triggerAppliesToPerson(settingFor(r.pluginKey), relationshipTypeId, isSubscriber)),
+    })).filter((entry) => entry.failures.length > 0);
+    if (applicable.length === 0) return;
+    const medicalBenefitLostId = applicable.find(({ benefit }) => benefit.kind === "medical")?.benefit.benefitId ?? null;
+    const dentalBenefitLostId = applicable.find(({ benefit }) => benefit.kind === "dental")?.benefit.benefitId ?? null;
+    const qualifyingEventId = applicable.flatMap(({ failures }) => failures)
+      .map((r) => settingFor(r.pluginKey).qualifyingEventId)
+      .find((id) => Boolean(id)) ?? null;
+    const provenance = {
+      trigger: group.trigger,
+      benefits: applicable.map(({ benefit }) => ({
+        benefitId: benefit.benefitId, benefitName: benefit.benefitName ?? null, kind: benefit.kind,
+      })),
+      month: group.month,
+      year: group.year,
+      failedPlugins: applicable.flatMap(({ failures }) => failures),
+    };
     const existing = await storage.baoCobraCases.listForCoveredPersonEffective(
       coveredPersonWorkerId,
       cobraEffectiveYmd,
@@ -362,7 +355,7 @@ export async function openCobraCasesForTermination(
   };
 
   // Subscriber's own case.
-  await upsertForPerson(group.subscriberWorkerId, "self");
+  await upsertForPerson(group.subscriberWorkerId, "self", null, true);
 
   // One case per covered dependent on the election that was active when
   // coverage ended — as of the last day before the termination month, so
@@ -377,7 +370,7 @@ export async function openCobraCasesForTermination(
   const relationIds = election?.relationshipIds ?? [];
   const dependents = await mapRelationsToDependents(group.subscriberWorkerId, relationIds);
   for (const dep of dependents) {
-    await upsertForPerson(dep.workerId, dep.relationship, { relationId: dep.relationId });
+    await upsertForPerson(dep.workerId, dep.relationship, dep.relationshipTypeId, false, { relationId: dep.relationId });
   }
 
   return outcome;
@@ -408,16 +401,13 @@ async function handleWmbScanWorkerCompleted(
     // Group the month's terminated med/dental benefits into ONE case per
     // covered person (medical + dental combined).
     const benefits: WmbTerminationGroup["benefits"] = [];
-    const failedByKey = new Map<string, { pluginKey: string; reason: string | null }>();
     for (const action of terminations) {
       const kind = await storage.baoCobraCases.classifyMedicalDentalBenefit(action.benefitId);
       if (!kind) continue; // COBRA only applies to medical/dental coverage.
-      benefits.push({ benefitId: action.benefitId, benefitName: action.benefitName, kind });
-      for (const r of action.pluginResults.filter((p) => !p.eligible)) {
-        if (!failedByKey.has(r.pluginKey)) {
-          failedByKey.set(r.pluginKey, { pluginKey: r.pluginKey, reason: r.reason ?? null });
-        }
-      }
+      const failedPlugins = (action.pluginResults ?? [])
+        .filter((p) => !p.eligible)
+        .map((r) => ({ pluginKey: r.pluginKey, reason: r.reason ?? null }));
+      benefits.push({ benefitId: action.benefitId, benefitName: action.benefitName, kind, failedPlugins });
     }
     if (benefits.length === 0) return;
 
@@ -426,7 +416,6 @@ async function handleWmbScanWorkerCompleted(
       year: payload.year,
       month: payload.month,
       benefits,
-      failedPlugins: Array.from(failedByKey.values()),
       trigger: "wmb_scan",
     });
   } catch (err) {

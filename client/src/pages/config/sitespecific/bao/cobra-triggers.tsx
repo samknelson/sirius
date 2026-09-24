@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -43,6 +44,8 @@ const NONE = "__none__";
 interface RowState {
   trigger: boolean;
   qualifyingEventId: string | null;
+  self?: boolean;
+  dependentRelationshipTypeIds?: string[];
 }
 
 export default function BaoCobraTriggersPage() {
@@ -56,22 +59,27 @@ export default function BaoCobraTriggersPage() {
   const { data: qualifyingEvents } = useQuery<QualifyingEventOption[]>({
     queryKey: ["/api/options/bao-cobra-qualifying-event"],
   });
+  const { data: relationshipTypes } = useQuery<QualifyingEventOption[]>({
+    queryKey: ["/api/options/worker-relation-type"],
+  });
 
   const [rowState, setRowState] = useState<Record<string, RowState>>({});
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
-    if (!data) return;
+    if (!data || dirty) return;
     const next: Record<string, RowState> = {};
     for (const row of data.rows) {
       next[row.pluginId] = {
         trigger: row.trigger,
         qualifyingEventId: row.qualifyingEventId,
+        self: row.self,
+        dependentRelationshipTypeIds: row.dependentRelationshipTypeIds,
       };
     }
     setRowState(next);
     setDirty(false);
-  }, [data]);
+  }, [data, dirty]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -80,11 +88,15 @@ export default function BaoCobraTriggersPage() {
         config.plugins[pluginId] = {
           trigger: state.trigger,
           qualifyingEventId: state.qualifyingEventId,
+          ...(state.self !== undefined || state.dependentRelationshipTypeIds !== undefined
+            ? { self: state.self ?? false, dependentRelationshipTypeIds: state.dependentRelationshipTypeIds ?? [] }
+            : {}),
         };
       }
       return apiRequest("PUT", "/api/sitespecific/bao/cobra/trigger-config", config);
     },
     onSuccess: () => {
+      setDirty(false);
       queryClient.invalidateQueries({
         queryKey: ["/api/sitespecific/bao/cobra/trigger-config"],
       });
@@ -118,7 +130,8 @@ export default function BaoCobraTriggersPage() {
                 Choose which eligibility failure reasons open a COBRA case when a
                 medical or dental benefit ends. Failure-to-pay reasons are excluded
                 by default. Optionally map each reason to a qualifying event stamped
-                on auto-created cases.
+                 on auto-created cases. Leave a rule unrestricted to include all
+                 elected covered people, or choose exactly which relationships qualify.
               </CardDescription>
             </div>
             <Button
@@ -145,6 +158,7 @@ export default function BaoCobraTriggersPage() {
                   <TableHead>Eligibility rule</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead className="w-40">Triggers COBRA</TableHead>
+                   <TableHead className="min-w-64">Covered relationships</TableHead>
                   <TableHead className="w-64">Qualifying event</TableHead>
                 </TableRow>
               </TableHeader>
@@ -153,6 +167,8 @@ export default function BaoCobraTriggersPage() {
                   const state = rowState[row.pluginId] ?? {
                     trigger: row.trigger,
                     qualifyingEventId: row.qualifyingEventId,
+                     self: row.self,
+                     dependentRelationshipTypeIds: row.dependentRelationshipTypeIds,
                   };
                   return (
                     <TableRow key={row.pluginId} data-testid={`row-cobra-trigger-${row.pluginId}`}>
@@ -162,6 +178,58 @@ export default function BaoCobraTriggersPage() {
                       <TableCell className="text-muted-foreground text-sm">
                         {row.pluginDescription}
                       </TableCell>
+                       <TableCell>
+                         <div className="space-y-2">
+                           <Select
+                             value={state.self === undefined && state.dependentRelationshipTypeIds === undefined ? "all" : "selected"}
+                             onValueChange={(value) => setRow(row.pluginId, value === "all"
+                               ? { self: undefined, dependentRelationshipTypeIds: undefined }
+                               : { self: true, dependentRelationshipTypeIds: [] })}
+                             disabled={!state.trigger}
+                           >
+                             <SelectTrigger aria-label={`Relationship scope for ${row.pluginName}`} data-testid={`select-scope-${row.pluginId}`}>
+                               <SelectValue />
+                             </SelectTrigger>
+                             <SelectContent>
+                               <SelectItem value="all">All elected covered people (unrestricted)</SelectItem>
+                               <SelectItem value="selected">Selected relationships only</SelectItem>
+                             </SelectContent>
+                           </Select>
+                           {(state.self !== undefined || state.dependentRelationshipTypeIds !== undefined) && (
+                             <div className="space-y-1" aria-label={`Selected relationships for ${row.pluginName}`}>
+                               <label className="flex items-center gap-2 text-sm">
+                                 <Checkbox
+                                   checked={state.self === true}
+                                   onCheckedChange={(checked) => setRow(row.pluginId, { self: checked === true })}
+                                   disabled={!state.trigger}
+                                   data-testid={`checkbox-self-${row.pluginId}`}
+                                 />
+                                 Subscriber (self)
+                               </label>
+                               {(relationshipTypes ?? []).map((type) => (
+                                 <label key={type.id} className="flex items-center gap-2 text-sm">
+                                   <Checkbox
+                                     checked={(state.dependentRelationshipTypeIds ?? []).includes(type.id)}
+                                     onCheckedChange={(checked) => setRow(row.pluginId, {
+                                       dependentRelationshipTypeIds: checked === true
+                                         ? [...(state.dependentRelationshipTypeIds ?? []), type.id]
+                                         : (state.dependentRelationshipTypeIds ?? []).filter((id) => id !== type.id),
+                                     })}
+                                     disabled={!state.trigger}
+                                     data-testid={`checkbox-relation-${row.pluginId}-${type.id}`}
+                                   />
+                                   {type.name}
+                                 </label>
+                               ))}
+                               {!relationshipTypes && <span className="text-xs text-muted-foreground">Loading relationship types…</span>}
+                               {relationshipTypes?.length === 0 && <span className="text-xs text-muted-foreground">No dependent relationship types available.</span>}
+                               {!state.self && !(state.dependentRelationshipTypeIds ?? []).length && (
+                                 <p className="text-xs text-muted-foreground">No people selected; this rule will open no cases.</p>
+                               )}
+                             </div>
+                           )}
+                         </div>
+                       </TableCell>
                       <TableCell>
                         <Switch
                           checked={state.trigger}

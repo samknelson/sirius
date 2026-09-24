@@ -250,6 +250,8 @@ export function registerBaoCobraRoutes(
               pluginDescription: metadata.description,
               trigger: resolved.trigger,
               qualifyingEventId: resolved.qualifyingEventId ?? null,
+              self: resolved.self,
+              dependentRelationshipTypeIds: resolved.dependentRelationshipTypeIds,
               isDefault: !config?.plugins?.[id],
             };
           })
