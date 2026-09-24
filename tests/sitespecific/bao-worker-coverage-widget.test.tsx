@@ -74,6 +74,7 @@ describe("BAO worker coverage dashboard widget", () => {
     const html = renderWidget(summary());
     expect(html).toContain('href="/workers/worker%2F123/ledger/pay"');
     expect(html).toMatch(/<a\b[^>]*href="\/workers\/worker%2F123\/ledger\/pay"[^>]*>Pay Balance<\/a>/);
+    expect(html).toMatch(/class="coverage-first-balance-row"[\s\S]*Account balance[\s\S]*\$0\.00[\s\S]*Pay Balance/);
     expect(html).not.toContain("/workers/signed-in-viewer/ledger/pay");
     expect(html).toContain('href="/workers/worker%2F123/employment/monthly"');
   });

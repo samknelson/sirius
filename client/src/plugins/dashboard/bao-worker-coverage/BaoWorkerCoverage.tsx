@@ -169,15 +169,19 @@ export function BaoWorkerCoverageView({ data }: { data: BaoCoverageSummary }) {
               data-blocking={balanceHighlight ? "balance" : undefined}
               aria-label={balanceHighlight ? "Balance is blocking current coverage" : balanceNonZero ? "Account balance is non-zero" : undefined}
             >
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <WalletCards className="h-4 w-4" aria-hidden="true" />
-                <span className="text-xs font-medium uppercase tracking-[0.08em]">Account balance</span>
+              <div className="coverage-first-balance-row">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <WalletCards className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span className="text-xs font-medium uppercase tracking-[0.08em]">Account balance</span>
+                  </div>
+                  <strong className="mt-3 block break-words text-lg font-semibold tabular-nums">{balanceText}</strong>
+                  {balanceHighlight && <p className="mt-1 text-xs font-medium text-[hsl(8_58%_43%)]">Blocking coverage</p>}
+                </div>
+                <Button asChild variant="outline" size="sm">
+                  <Link href={paymentHref} data-testid="link-bao-worker-coverage-pay-balance">Pay Balance</Link>
+                </Button>
               </div>
-              <strong className="mt-3 block break-words text-lg font-semibold tabular-nums">{balanceText}</strong>
-              {balanceHighlight && <p className="mt-1 text-xs font-medium text-[hsl(8_58%_43%)]">Blocking coverage</p>}
-              <Button asChild variant="outline" size="sm" className="mt-3">
-                <Link href={paymentHref} data-testid="link-bao-worker-coverage-pay-balance">Pay Balance</Link>
-              </Button>
             </div>
           </div>
         </section>
