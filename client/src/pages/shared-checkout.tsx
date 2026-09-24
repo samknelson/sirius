@@ -136,7 +136,7 @@ export default function SharedCheckoutPage() {
         creditTransfers: breakdown.creditTransfers,
         paymentMethodId: method || undefined, paymentMethodType: method ? undefined : selectedNewType, saveMethod: save, consent: { ...data.authorization, accepted: true }, idempotencyKey: crypto.randomUUID(),
       });
-      if (current !== generation.current || created.status !== "requires_action") navigate(`/pay/receipt/${encodeURIComponent(created.id)}`);
+      if (current !== generation.current || !["created", "requires_action"].includes(created.status)) navigate(`/pay/receipt/${encodeURIComponent(created.id)}`);
       else if (created.clientSecret && Pay) { setLockedQuote(breakdown); setSession(created); }
        else { setLockedQuote(breakdown); setSession(created); setError("Secure payment entry is unavailable. Check the payment status below; if it is still awaiting confirmation, contact support with the confirmation number. Do not start another payment until its status is known."); }
     } catch (cause) { if (current === generation.current) setError(getApiErrorMessage(cause, "Could not start payment. Please try again.")); }
@@ -169,6 +169,7 @@ export default function SharedCheckoutPage() {
         {!method && !saveReady && <p className="text-sm text-muted-foreground">{data.readiness?.saveMethod === "permission_denied" ? "You do not have permission to save payment methods for this account." : data.readiness?.saveMethod === "provider_unsupported" ? "This payment provider does not support saving methods for this account." : data.readiness?.saveMethod === "configuration_required" ? "Saving requires current payment authorization." : "Saving methods is not enabled for this account."}</p>}
          {!method && selectedNewType && <p className="text-sm text-muted-foreground">After you review and start this payment, securely {selectedNewType === "card" ? "enter your card details" : "link or enter your US bank account with the payment provider"} and confirm there. Your payment is not complete yet.</p>}
         {!data.paymentTypes.length && <Alert variant="destructive"><AlertDescription>No payment types are available for this account.</AlertDescription></Alert>}
+        {!method && !Pay && <Alert variant="destructive"><AlertDescription>Secure payment entry is unavailable for this account. Contact support before starting a new payment.</AlertDescription></Alert>}
       </CardContent></Card>
       <Card><CardContent className="space-y-4 pt-6">
         {!authReady ? <Alert variant="destructive"><AlertDescription>Payment authorization wording has not been configured. An administrator must finish ledger payment settings before online payments can be made.{isAdmin && <> <Link href="/config/ledger/settings#payment-authorization" className="font-medium underline">Open payment authorization settings</Link></>}</AlertDescription></Alert> : <label className="flex items-start gap-2 text-sm"><Checkbox checked={accepted} disabled={frozen} onCheckedChange={value => change(() => setAccepted(value === true))} /><span>{data.authorization?.text}</span></label>}

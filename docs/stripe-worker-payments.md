@@ -108,9 +108,22 @@ Saving during checkout is opt-in and only offered when the entity has methods
 authority and the gateway supports reusable methods. The receipt URL
 `/pay/receipt/:sessionId` can be bookmarked after a redirect; the server
 reconciles the provider state and exposes a ledger link only after posting.
-Only the existing confirmed-payment lifecycle posts a credit; a successful
-provider confirmation still appears as processing until ledger posting is
-confirmed.
+Only the existing confirmed-payment lifecycle posts a credit. The shared
+receipt distinguishes provider success awaiting ledger posting from provider
+processing, and keeps polling until a ledger payment is linked.
+
+New card and ACH PaymentIntents awaiting details normalize to `created`, not
+`processing`. Both `created` and `requires_action` open secure entry when the
+client secret and provider component are available. Missing entry prerequisites
+show an explicit error, not a processing receipt. Unconfirmed receipts show
+awaiting-details/confirmation wording and reservation guidance without ACH
+settlement advice.
+
+Preconfirmation regression coverage includes mocked Stripe session creation,
+HTTP session/receipt contracts, rendered receipt states and polling, and the
+375px browser fixture for both new card and ACH `created` responses. These
+checks do not confirm real Stripe payments or replace the separate test-mode
+integration rehearsal.
 
 ## Regression evidence and verification boundary
 
@@ -188,3 +201,42 @@ send signed test-mode webhook events for duplicate delivery and out-of-order
 statuses; the receipt and ledger must remain monotonic and a replay must not
 create a second payment. Never use production keys or real bank details for
 this verification.
+
+## Preview attempt investigation (read-only, 2026-09-24 14:42 UTC)
+
+For attempt `5c35d928-8ece-4464-aa35-97fb5f931fbd`, a targeted read of
+the accessible **development** database found $100.00 USD stored as `created`,
+with a provider PaymentIntent reference on a configured, enabled Stripe
+test-mode gateway. The attempt was created at 14:29:50 UTC and last updated
+at 14:39:14 UTC. Its `ledger_payment_id` and `reservation_expires_at` are
+null. There were no inbox events associated with this attempt. The linked
+ledger entity account's active-attempt reservation total was $100.00;
+the attempt itself contributes $100.00 to that total. The application treats
+`created` attempts as reserved even without a reservation expiry timestamp.
+There is **no linked ledger payment** and no evidence in this read of a
+posted credit.
+
+A direct, read-only Stripe PaymentIntent GET using the gateway's **test**
+credential returned `requires_payment_method`, amount 10000 cents USD,
+`livemode: false`, created at 14:29:51 UTC. Its metadata attempt ID matched
+the database row; it had no attached payment method and no last payment
+error. The provider intent is not succeeded or canceled. In the current
+gateway normalization, `requires_payment_method` without a last payment
+error maps to `created`, consistent with the stored state. No key, client
+secret, customer details, raw provider response, or receipt was exposed.
+
+This is a point-in-time observation of the development preview, **not**
+production or proof that the intent cannot later be confirmed. The receipt
+route performs reconciliation and can write ledger state; it was deliberately
+not called. No records or provider objects were changed. Before deciding
+whether to proceed or retire the attempt, the payment owner should re-check
+the same intent in the matching Stripe test account and re-read the attempt,
+reservation, and ledger link. If checkout is to continue, use the existing
+intent through the authorized test checkout flow and verify eventual posting
+via normal provider/webhook processing. Do not release the reservation or
+create a replacement charge based only on the stale `created` row; any
+abandonment decision needs provider-confirmed state and an approved
+reconciliation plan, **not an ad hoc cancellation**. Note that the current
+background recovery code can attempt provider cancellation for
+created/requires-action intents older than one day; this investigation did
+not run recovery or trigger that path.

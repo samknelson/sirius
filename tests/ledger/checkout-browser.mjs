@@ -111,11 +111,11 @@ try {
     };
     if (request.method() === "POST" && url.pathname.endsWith("/sessions")) {
       const body = JSON.parse(request.postData());
-      if (body.paymentMethodType !== "us_bank_account" || body.paymentMethodId) {
+      if (!["card", "us_bank_account"].includes(body.paymentMethodType) || body.paymentMethodId) {
         failures.push(`Wrong provider selection: ${JSON.stringify(body)}`);
       }
       return request.respond({ status: 201, contentType: "application/json",
-        body: JSON.stringify({ id: "fixture-session", status: "requires_action", clientSecret: "fixture-secret",
+        body: JSON.stringify({ id: "fixture-session", status: "created", clientSecret: "fixture-secret",
           publicConfig: { paymentTypes: [body.paymentMethodType] } }) });
     }
     if (request.method() !== "GET" || !Object.hasOwn(responses, url.pathname)) {
@@ -221,6 +221,16 @@ try {
    assert.ok((await page.$eval("main", node => node.textContent)).includes("Payment not complete"));
    assert.ok(!page.url().includes("/receipt"), "provider confirmation has not happened yet");
    await assertNoOverflow("secure bank entry");
+   await page.goto(`${origin}/pay/fixture-ea`, { waitUntil: "domcontentloaded" });
+   await page.waitForSelector('main[aria-label="Checkout"]');
+   await clickLabel("New credit/debit card");
+   await clickLabel("I authorize this payment.");
+   await clickButton("Review payment");
+   await clickButton("Continue to secure confirmation");
+   await page.waitForSelector('[data-testid="fixture-provider"]');
+   assert.ok((await page.$eval('[data-testid="fixture-provider"]', node => node.textContent)).includes("Secure card entry"));
+   assert.ok(!page.url().includes("/receipt"), "created card session stays at secure entry");
+   await assertNoOverflow("secure card entry");
   assert.deepEqual(failures, [], "no browser errors or unexpected network requests");
   console.log(`Checkout browser fixture passed; screenshot: ${screenshotPath}`);
 } finally {

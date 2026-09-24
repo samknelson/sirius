@@ -366,7 +366,7 @@ export function registerLedgerPaymentAttemptRoutes(
   }).strict();
   const safeAttempt = (a: any, extra: Record<string, unknown> = {}) => ({
     id: a.id, entityType: a.entityType, entityId: a.entityId, eaId: a.ledgerEaId,
-    amount: a.amount, currency: a.currency, status: workerVisibleStatus(a),
+    amount: a.amount, currency: a.currency, status: a.status,
     ledgerPaymentId: a.ledgerPaymentId ?? null,
     statementSelection: a.statementSelection ?? [],
     creditTransfers: a.metadata?.checkoutQuote?.creditTransfers ?? [],

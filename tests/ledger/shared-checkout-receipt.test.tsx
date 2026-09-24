@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { calculateCheckoutSelection, type CheckoutSelectionInput } from "@shared/ledger/checkout-selection";
 
@@ -80,7 +80,7 @@ function response(method: string, url: string, body?: any): unknown {
     return { authorization: { version: "v1", text: "I authorize this payment." } };
   }
   if (method === "POST" && url.includes("/sessions")) {
-     return { id: "session-1", status: "requires_action", clientSecret: "secret", publicConfig: { paymentTypes: [body.paymentMethodType ?? (body.paymentMethodId === "pm-ach" ? "us_bank_account" : "card")] } };
+      return { id: "session-1", status: body.paymentMethodId ? "requires_action" : "created", clientSecret: "secret", publicConfig: { paymentTypes: [body.paymentMethodType ?? (body.paymentMethodId === "pm-ach" ? "us_bank_account" : "card")] } };
   }
   throw new Error(`Unexpected request ${method} ${url} ${JSON.stringify(body)}`);
 }
@@ -162,6 +162,38 @@ afterEach(async () => {
 });
 
 describe("shared checkout", () => {
+   it.each([
+     ["created", "card"], ["created", "us_bank_account"],
+     ["requires_action", "card"], ["requires_action", "us_bank_account"],
+   ])("opens %s secure entry for new %s", async (status, type) => {
+     apiRequest.mockImplementation((method: string, url: string, body?: unknown) =>
+       Promise.resolve(method === "POST" ? { id: "session-1", status, clientSecret: "secret", publicConfig: { paymentTypes: [type] } } : response(method, url, body)));
+     await render();
+     await selectRadio(type === "card" ? "New credit/debit card" : "New US bank transfer");
+     await clickCheckboxContaining("I authorize");
+     await submit();
+     expect(text()).toContain(`New ${type} entry`);
+     expect(navigate).not.toHaveBeenCalled();
+     expect(button("Continue to secure confirmation").disabled).toBe(true);
+   });
+
+   it.each(["processing", "succeeded", "failed", "canceled", "expired"])("routes %s directly to the receipt", async status => {
+     apiRequest.mockImplementation((method: string, url: string, body?: unknown) =>
+       Promise.resolve(method === "POST" ? { id: "session-1", status, clientSecret: "secret" } : response(method, url, body)));
+     await render();
+     await clickCheckboxContaining("I authorize");
+     await submit();
+     expect(navigate).toHaveBeenCalledWith("/pay/receipt/session-1");
+     expect(container?.querySelector('[aria-label="Secure payment confirmation"]')).toBeNull();
+   });
+
+   it("blocks new-method review when the secure component is missing", async () => {
+     payEnabled.value = false;
+     await render();
+     await clickCheckboxContaining("I authorize");
+     expect(button("Review payment").disabled).toBe(true);
+     noPost();
+   });
    it("offers both new methods, reviews the chosen type, and hands off to provider entry before receipt", async () => {
      await render();
      expect(radio("New credit/debit card").checked).toBe(true);
@@ -217,10 +249,10 @@ describe("shared checkout", () => {
      expect(postBody().paymentMethodType).toBe(selected);
    });
 
-   it("gives a recovery path when provider entry is unavailable after a session starts", async () => {
+    it.each(["created", "requires_action"])("gives a recovery path when %s has no client secret", async (status) => {
      apiRequest.mockImplementation((method: string, url: string, body?: unknown) =>
        Promise.resolve(method === "POST" && url.includes("/sessions")
-         ? { id: "session-1", status: "requires_action", clientSecret: null }
+          ? { id: "session-1", status, clientSecret: null }
          : response(method, url, body)));
      await render();
      await clickCheckboxContaining("I authorize");
@@ -613,6 +645,37 @@ describe("shared payment receipt", () => {
     expect(container?.querySelector('a[href="/ea/ea-1"]')).toBeTruthy();
     expect(container?.querySelector('a[href="/ledger/payment/ledger-employer"]')).toBeTruthy();
     expect(container?.querySelector('a[href="/workers/worker-1/ledger/accounts"]')).toBeNull();
+  });
+
+  it.each([
+    ["created", "Awaiting payment details or confirmation"],
+    ["requires_action", "Awaiting payment confirmation"],
+    ["succeeded", "Payment confirmed — awaiting ledger posting"],
+  ])("does not imply settlement for unposted %s", async (status, heading) => {
+    apiRequest.mockImplementation(() => Promise.resolve(receipt(status)));
+    await render("receipt");
+    expect(text()).toContain(heading);
+    expect(text()).not.toContain("business days to settle");
+    expect(container?.querySelector('a[href="/pay/ea-1"]')).toBeNull();
+    expect(container?.querySelector('a[href^="/ledger/payment/"]')).toBeNull();
+    expect(button("Check status")).toBeTruthy();
+  });
+
+  it("continues polling provider success until ledger posting", async () => {
+    vi.useFakeTimers();
+    focusManager.setFocused(true);
+    try {
+      let current = receipt("succeeded");
+      apiRequest.mockImplementation(() => Promise.resolve(current));
+      await render("receipt");
+      current = receipt("succeeded", { ledgerPaymentId: "ledger-1" });
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      expect(text()).toContain("Payment posted");
+      const calls = apiRequest.mock.calls.length;
+      await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+      expect(apiRequest).toHaveBeenCalledTimes(calls);
+    } finally { focusManager.setFocused(undefined); vi.useRealTimers(); }
   });
 
   it("reloads a processing receipt to posted and stops terminal polling", async () => {

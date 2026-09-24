@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { PaymentGatewayContext } from "../../server/plugins/ledger/payment-gateway/types";
 import { dummyPaymentGatewayPlugin } from "../../server/plugins/ledger/payment-gateway/plugins/dummy";
 import {
@@ -8,6 +8,13 @@ import {
   normalizeStripeWebhookEvent,
   stripePaymentGatewayPlugin,
 } from "../../server/plugins/ledger/payment-gateway/plugins/stripe";
+
+const stripeCreate = vi.hoisted(() => vi.fn());
+vi.mock("stripe", () => ({
+  default: class {
+    paymentIntents = { create: stripeCreate };
+  },
+}));
 
 const context = {
   apiKey: "",
@@ -146,6 +153,32 @@ describe("payment gateway provider contract", () => {
       status: "future_provider_state",
       last_payment_error: null,
     } as any)).toBe("failed");
+  });
+
+  it("returns created for a new Stripe SDK intent awaiting a card or ACH method", async () => {
+    const testContext = {
+      apiKey: "sk_test_not_a_real_key",
+      config: { id: "stripe-test", data: {
+        publishableKey: "pk_test_not_a_real_key", paymentTypes: ["card", "us_bank_account"],
+      } },
+    } as PaymentGatewayContext;
+    for (const paymentType of ["card", "us_bank_account"]) {
+      stripeCreate.mockResolvedValueOnce({
+        id: `pi_${paymentType}`, status: "requires_payment_method", amount: 1234,
+        currency: "usd", client_secret: "cs_test", payment_method: null, last_payment_error: null,
+      });
+      const session = await stripePaymentGatewayPlugin.createPaymentSession!(testContext, {
+        sessionId: `checkout-${paymentType}`, amountMinor: 1234, currency: "USD",
+        saveMethod: false, paymentTypes: [paymentType], description: "Account payment", metadata: {},
+      });
+      expect(session).toMatchObject({
+        providerRef: `pi_${paymentType}`, status: "created", clientSecret: "cs_test",
+      });
+      expect(stripeCreate).toHaveBeenLastCalledWith(
+        expect.objectContaining({ payment_method_types: [paymentType], confirm: undefined }),
+        { idempotencyKey: `checkout-${paymentType}` },
+      );
+    }
   });
 
   it("refuses to create live Stripe charges", async () => {
