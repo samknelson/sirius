@@ -5,14 +5,28 @@ export async function exerciseAuthoring(page, origin) {
   const id = value => `[data-testid="${value}"]`;
   const editor = id("fixture-email");
   const source = () => page.$eval(id("fixture-email-source"), el => el.textContent);
-  const click = value => page.click(id(value));
+  const click = async value => {
+    if (value.endsWith("-raw-mode")) {
+      const target = await page.$(id(value));
+      const visible = target && await target.evaluate(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length));
+      const editorTestId = value.replace(/-raw-mode$/, "");
+      const toolbarSelector = `div:has(> ${id(editorTestId)}) [data-template-design-toolbar]`;
+      if (!visible && await page.$(toolbarSelector)) {
+        const more = await page.$(`${toolbarSelector} button[aria-label="More formatting"]`);
+        if (more) await more.click();
+      }
+    }
+    await page.waitForSelector(id(value), { visible: true });
+    await page.click(id(value));
+  };
   const key = async key => {
     await page.keyboard.down("Control");
     await page.keyboard.press(key);
     await page.keyboard.up("Control");
   };
   const set = async (selector, value) => {
-    await page.click(selector);
+    if (selector.includes('Text link URL') || selector.includes('Text color hex')) await page.focus(selector);
+    else await page.click(selector);
     await key("KeyA");
     await page.keyboard.sendCharacter(value);
   };
@@ -25,6 +39,24 @@ export async function exerciseAuthoring(page, origin) {
     selection.removeAllRanges(); selection.addRange(range);
     el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
   }, collapse);
+  const selectText = async (selector, selectedText) => page.$eval(selector, (el, selectedText) => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      const start = node.textContent.indexOf(selectedText);
+      if (start < 0) continue;
+      el.closest("[contenteditable]")?.focus();
+      const range = document.createRange();
+      range.setStart(node, start);
+      range.setEnd(node, start + selectedText.length);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      return;
+    }
+    throw new Error(`Cannot select text: ${selectedText}`);
+  }, selectedText);
   await page.goto(`${origin}/editor-fixture`);
   await page.waitForSelector(editor);
   const mountedEditor = await page.$(editor);
@@ -34,6 +66,7 @@ export async function exerciseAuthoring(page, origin) {
   await click("fixture-email-save");
   await click("fixture-email-load-other");
   assert.equal(await page.$eval(editor, el => el.textContent), "External document B");
+  await page.waitForFunction(() => document.querySelector('[data-testid="fixture-email-undo"]')?.disabled === true);
   assert.equal(await page.$eval(id("fixture-email-undo"), el => el.disabled), true);
   await click("fixture-email-reopen");
   assert.equal(await mountedEditor.evaluate(el => el === document.querySelector('[data-testid="fixture-email"]')), true,
@@ -131,30 +164,108 @@ export async function exerciseAuthoring(page, origin) {
   assert.equal(await source(), canonical, "Disabled imperative insertion is refused");
   await click("fixture-email-disabled");
   const tools = `div:has(> ${editor})`;
-  const control = label => `${tools} [aria-label="${label}"]`;
-  const textClick = async (text, tag = "button") => {
-    const handles = await page.$$(`${tools} ${tag}`);
-    for (const handle of handles) {
-      if ((await handle.evaluate(el => el.textContent.trim())) === text) {
-        await handle.click(); return;
-      }
-    }
-    throw new Error(`Missing ${tag}: ${text}`);
+  const toolbarSelector = `${tools} [data-template-design-toolbar]`;
+  const control = label => ["Font", "Size", "Paragraph"].includes(label)
+    ? `${toolbarSelector} [aria-label="${label}"]`
+    : `[aria-label="${label}"]`;
+  const toolbarLayoutFailures = [];
+  const openToolbarPopover = async label => {
+    const trigger = await page.$(`${toolbarSelector} button[aria-label="${label}"]`);
+    assert.ok(trigger, `Missing toolbar button: ${label}`);
+    await trigger.click();
   };
+  const textClick = async (text, tag = "button") => {
+    await page.waitForFunction((tag, text) => {
+      const target = [...document.querySelectorAll(tag)].find(el => {
+        const style = getComputedStyle(el);
+        return el.textContent.trim() === text && (el.offsetWidth || el.offsetHeight || el.getClientRects().length) &&
+          style.display !== "none" && style.visibility !== "hidden" && !el.closest('[data-state="closed"]');
+      });
+      if (!target) return false;
+      target.click();
+      return true;
+    }, {}, tag, text);
+  };
+  const openInsertSection = async section => {
+    const state = async () => page.$$eval("summary", (nodes, section) => {
+      const summary = nodes.find(el => el.textContent.trim() === section);
+      const style = summary && getComputedStyle(summary);
+      return summary && (summary.offsetWidth || summary.offsetHeight || summary.getClientRects().length) &&
+        style.display !== "none" && style.visibility !== "hidden" && !summary.closest('[data-state="closed"]')
+        ? { visible: true, open: summary.parentElement.open } : { visible: false, open: false };
+    }, section);
+    let current = await state();
+    const isVisible = current.visible;
+    if (!isVisible) {
+      const trigger = await page.$(`${toolbarSelector} button[aria-label="Insert"]`);
+      const expanded = trigger && await trigger.evaluate(el => el.getAttribute("aria-expanded") === "true");
+      if (!expanded) await openToolbarPopover("Insert");
+      await page.waitForFunction(section => [...document.querySelectorAll("summary")].some(el =>
+        el.textContent.trim() === section && (el.offsetWidth || el.offsetHeight || el.getClientRects().length) &&
+        getComputedStyle(el).visibility !== "hidden" && !el.closest('[data-state="closed"]')), {}, section);
+    }
+    current = await state();
+    if (!current.open) await textClick(section, "summary");
+  };
+  const assertToolbarLayout = async width => {
+    await page.setViewport({ width, height: 1100 });
+    // Container ResizeObserver updates the overflow grouping after layout.
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const layout = await page.$eval(toolbarSelector, toolbar => {
+      const rect = toolbar.getBoundingClientRect();
+      const children = [...toolbar.children].filter(el => {
+        const child = el.getBoundingClientRect();
+        return child.width > 0 && child.height > 0;
+      });
+      const tops = children.map(el => el.getBoundingClientRect().top);
+      return {
+        height: rect.height,
+        rows: tops.length ? Math.max(...tops) - Math.min(...tops) : 0,
+        toolbarWidth: toolbar.clientWidth,
+        toolbarScrollWidth: toolbar.scrollWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+      };
+    });
+    if (layout.height !== 46) toolbarLayoutFailures.push(`${width}px: toolbar height ${layout.height}px (expected 46px)`);
+    if (layout.rows > 8) toolbarLayoutFailures.push(`${width}px: controls span ${layout.rows}px vertically (expected one row)`);
+    if (layout.toolbarScrollWidth > layout.toolbarWidth) {
+      toolbarLayoutFailures.push(`${width}px: toolbar overflow ${layout.toolbarScrollWidth}/${layout.toolbarWidth}px`);
+    }
+    if (layout.documentWidth > layout.viewportWidth) {
+      toolbarLayoutFailures.push(`${width}px: document overflow ${layout.documentWidth}/${layout.viewportWidth}px`);
+    }
+  };
+  await page.setViewport({ width: 1400, height: 1100 });
+  const canvasBeforePopover = await page.$eval(editor, el => {
+    const { x, y, width, height } = el.getBoundingClientRect();
+    return { x, y, width, height };
+  });
+  await openToolbarPopover("More formatting");
+  const canvasAfterPopover = await page.$eval(editor, el => {
+    const { x, y, width, height } = el.getBoundingClientRect();
+    return { x, y, width, height };
+  });
+  assert.deepEqual(canvasAfterPopover, canvasBeforePopover, "Opening a toolbar popover must not move or resize the canvas");
+  await page.keyboard.press("Escape");
   // Build a fresh email entirely through the visual controls.
   await click("fixture-email-raw-mode");
   await set(id("fixture-email-raw"), "<p>Designed email</p>");
   await click("fixture-email-raw-mode");
-  await page.$eval(`${tools} summary[aria-label="Template design tools"]`, el => { if (!el.parentElement.open) el.click(); });
+  await page.waitForSelector(`${toolbarSelector} [aria-label="Font"]`, { visible: true });
   await select(`${editor} p`);
   await page.select(control("Font"), "Georgia, serif");
   await page.select(control("Size"), "24px");
-  await page.select(control("Align"), "center");
+  await openToolbarPopover("Alignment");
+  await page.click('button[aria-label="Align center"]');
+  await page.keyboard.press("Escape");
+  await openToolbarPopover("More formatting");
   await page.select(control("Line spacing"), "1.5");
+  await page.keyboard.press("Escape");
   assert.match(await source(), /font-family:Georgia,serif/);
   assert.match(await source(), /font-size:24px/);
   assert.match(await source(), /text-align:center/);
-  await select(`${editor} p`);
+  await selectText(`${editor} p`, "Designed");
   await page.keyboard.down("Shift");
   await page.keyboard.press("F10");
   await page.keyboard.up("Shift");
@@ -166,80 +277,94 @@ export async function exerciseAuthoring(page, origin) {
   const beforeColor = await source();
   await set(control("Text color hex"), "#12"); // incomplete RGB is only a draft
   assert.equal(await source(), beforeColor);
-  await textClick("Cancel color changes");
-  assert.equal(await source(), beforeColor);
   await set(control("Text color hex"), "#123456");
-  assert.equal(await source(), beforeColor);
-  await textClick("Apply text color");
   assert.match(await source(), /color:(?:#123456|rgb\(18,52,86\))/);
+  assert.equal(await page.$eval(`${editor} span[style*="color"]`, el => el.textContent), "Designed",
+    "Focusing the color input must preserve the original selected text only");
   await key("KeyZ");
   assert.equal(await source(), beforeColor);
   await select(`${editor} p`);
-  await textClick("Text links", "summary");
+  await openInsertSection("Link");
   await set(control("Text link URL"), "https://example.invalid/help");
   await textClick("Add text link");
   assert.equal(await page.$eval(`${editor} a`, el => el.getAttribute("href")), "https://example.invalid/help");
-  await select(`${editor} a`, true);
+  await page.click(`${editor} a`);
+  await select(`${editor} a`);
+  await openInsertSection("Link");
   await set(control("Text link URL"), "https://example.invalid/updated-help");
+  await page.waitForFunction(() => [...document.querySelectorAll("button")].some(el =>
+    el.textContent.trim() === "Update text link" && (el.offsetWidth || el.offsetHeight || el.getClientRects().length)));
   await textClick("Update text link");
   assert.equal(await page.$eval(`${editor} a`, el => el.getAttribute("href")), "https://example.invalid/updated-help");
-  await select(`${editor} a`, true);
+  await select(`${editor} a`);
+  await openInsertSection("Link");
   await textClick("Remove text link");
   assert.equal(await page.$(`${editor} a`), null);
   assert.match(await source(), /Designed email/);
   const beforeClear = await source();
   assert.match(beforeClear, /line-height:1.5/);
   await select(`${editor} p`);
+  await openToolbarPopover("More formatting");
   await textClick("Clear formatting");
   assert.doesNotMatch(await source(), /font-family:|font-size:|text-align:|line-height:/);
   assert.match(await source(), /Designed email/);
   await key("KeyZ");
   assert.equal(await source(), beforeClear, "Clear formatting is undoable");
+  await page.keyboard.press("Escape");
   console.log("PASS ordinary text links add/update/remove and selection clear formatting/undo");
   await select(editor, true);
-  await textClick("Tables", "summary");
+  await openInsertSection("Table");
   await set(control("Table rows"), "2");
   await set(control("Table columns"), "2");
   await textClick("Insert table");
   assert.equal(await page.$$eval(`${editor} td`, els => els.length), 4);
   await select(`${editor} td`, true);
+  await openInsertSection("Table");
   await textClick("Row below");
   assert.equal(await page.$$eval(`${editor} tr`, els => els.length), 3);
   await select(`${editor} td`, true);
+  await openInsertSection("Table");
   await textClick("Column right");
   assert.equal(await page.$$eval(`${editor} td`, els => els.length), 9);
   await select(`${editor} td`, true);
+  await openInsertSection("Table");
   await textClick("Merge right");
   assert.equal(await page.$eval(`${editor} td`, el => el.colSpan), 2);
   await select(`${editor} td`, true);
+  await openInsertSection("Table");
   await textClick("Split cell");
   assert.equal(await page.$$eval(`${editor} td`, els => els.length), 9);
   await select(`${editor} td`, true);
+  await openInsertSection("Table");
   await set(control("Table width"), "80");
   await set(control("Cell padding"), "16");
+  await openInsertSection("Table");
   await textClick("Apply table and cell properties");
   assert.equal(await page.$eval(`${editor} table`, el => el.style.width), "80%");
   assert.equal(await page.$eval(`${editor} td`, el => el.style.padding), "16px");
   await select(`${editor} td`, true);
+  await openInsertSection("Table");
   await textClick("Delete column");
   await select(`${editor} td`, true);
+  await openInsertSection("Table");
   await textClick("Delete row");
   assert.equal(await page.$$eval(`${editor} td`, els => els.length), 4);
   await select(editor, true);
-  await textClick("Layouts and linked buttons", "summary");
+  await openInsertSection("Layout");
   await textClick("2-column layout");
   assert.equal(await page.$$eval(`${editor} table`, els => els.length), 2);
   await select(editor, true);
+  await openInsertSection("Button");
   await set(control("Button text"), "View benefits");
   await set(control("Button link"), "https://example.invalid/benefits");
   await textClick("Insert linked button");
   assert.equal(await page.$eval(`${editor} a`, el => el.textContent), "View benefits");
   await select(editor, true);
-  await textClick("Images", "summary");
+  await openInsertSection("Image");
   await set(control("Image URL"), "javascript:alert(1)");
   await textClick("Insert image");
   assert.equal(await page.$(`${editor} img`), null);
-  assert.match(await page.$eval(tools, el => el.textContent), /HTTPS image URL/);
+  assert.match(await page.$eval("body", el => el.textContent), /HTTPS image URL/);
   await set(control("Image URL"), "https://fixture-images.invalid/logo.png");
   await set(control("Image alternative text"), "Benefits logo");
   await set(control("Image width"), "120");
@@ -275,21 +400,23 @@ export async function exerciseAuthoring(page, origin) {
   await click("fixture-email-raw-mode");
   assert.equal(await page.$eval(id("fixture-email-raw"), el => el.value), designed);
   await click("fixture-email-raw-mode");
-  await page.$eval(`${tools} summary[aria-label="Template design tools"]`, el => { if (!el.parentElement.open) el.click(); });
-  await page.$$eval(`${tools} summary`, nodes => {
-    const images = nodes.find(el => el.textContent.trim() === "Images");
+  await openInsertSection("Image");
+  await page.$$eval("summary", nodes => {
+    const images = nodes.find(el => el.textContent.trim() === "Image");
     if (images && !images.parentElement.open) images.click();
   });
   await page.click(`${editor} img`);
   await textClick("Delete image");
   assert.equal(await page.$(`${editor} img`), null);
-  await page.click(editor);
-  await key("KeyZ");
+  await click("fixture-email-undo");
   assert.equal(await page.$eval(`${editor} img`, el => el.alt), "Updated benefits logo");
+  for (const width of [390, 800, 1400]) await assertToolbarLayout(width);
+  await page.setViewport({ width: 1400, height: 1100 });
   await page.screenshot({ path: "screenshots/template-design-authoring.png", fullPage: true });
   await page.reload();
   await click("fixture-email-reopen");
   await page.waitForFunction(expected => document.querySelector('[data-testid="fixture-email-source"]').textContent === expected, {}, designed);
   console.log("PASS visual typography, table rows/columns/merge/split/properties, columns, linked button, HTTPS image validation/edit/delete/undo and save/reopen");
   console.log("PASS email history: typing, formatting, token insertion, nested paste; quoted tokens source/save/reopen and disabled isolation");
+  return toolbarLayoutFailures;
 }

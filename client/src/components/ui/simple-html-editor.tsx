@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Bold, Italic, List, ListOrdered, Link, Type, Code, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -309,6 +310,10 @@ export function SimpleHtmlEditor({
   const [contextMenu, setContextMenu] = useState<{ left: number; top: number } | null>(null);
   const toolSelectionLocked = useRef(false);
   const history = useRef(new TemplateEditorHistory());
+  useEffect(() => {
+    if (!contextMenu) return;
+    requestAnimationFrame(() => document.querySelector<HTMLElement>('[role="menu"][aria-label="Editor selection actions"] button')?.focus());
+  }, [contextMenu]);
   const lastEmitted = useRef<string | null>(null);
   const representedDom = useRef<{ node: HTMLDivElement; value: string } | null>(null);
   const composing = useRef(false);
@@ -359,7 +364,7 @@ export function SimpleHtmlEditor({
   const [slashPos, setSlashPos] = useState({ top: 0, left: 0 });
   const [highlight, setHighlight] = useState(0);
   const slashContext = useRef<{
-    mode: "rich" | "raw";
+    mode: "rich" | "raw" | "picker";
     // For rich mode: the text node + offset where '/' sits
     node?: Node;
     slashOffset?: number;
@@ -395,6 +400,10 @@ export function SimpleHtmlEditor({
   useEffect(() => {
     setHighlight(0);
   }, [slashQuery, slashOpen]);
+  useEffect(() => {
+    if (!slashOpen || slashContext.current?.mode !== "picker") return;
+    requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid^="button-slash-token-"]')?.focus());
+  }, [slashOpen, filteredTokens]);
 
   const closeSlash = useCallback(() => {
     setSlashOpen(false);
@@ -658,7 +667,7 @@ export function SimpleHtmlEditor({
     if (templateMode && !rawMode && (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))) {
       e.preventDefault();
       const rect = editorRef.current?.getBoundingClientRect();
-      if (rect) setContextMenu({ left: 12, top: Math.min(rect.height - 44, Math.max(8, rect.height / 2)) });
+      if (rect) setContextMenu({ left: Math.min(window.innerWidth - 200, Math.max(8, rect.left + 12)), top: Math.min(window.innerHeight - 240, Math.max(8, rect.top + rect.height / 2)) });
       return;
     }
     if (templateMode && !rawMode) {
@@ -816,10 +825,9 @@ export function SimpleHtmlEditor({
     probe.setStart(node, slashOffset);
     probe.setEnd(node, slashOffset);
     const rect = probe.getBoundingClientRect();
-    const containerRect = containerRef.current.getBoundingClientRect();
     setSlashPos({
-      top: rect.bottom - containerRect.top + 2,
-      left: rect.left - containerRect.left,
+      top: Math.max(8, Math.min(rect.bottom + 2, window.innerHeight - 300)),
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - 304)),
     });
     slashContext.current = { mode: "rich", node, slashOffset };
     setSlashQuery(query);
@@ -840,7 +848,6 @@ export function SimpleHtmlEditor({
 
     // Approximate caret position relative to the textarea.
     const elRect = el.getBoundingClientRect();
-    const containerRect = containerRef.current.getBoundingClientRect();
     const lines = before.split("\n");
     const lineIdx = lines.length - 1;
     const computed = window.getComputedStyle(el);
@@ -848,8 +855,8 @@ export function SimpleHtmlEditor({
     const paddingTop = parseFloat(computed.paddingTop || "0") || 0;
     const paddingLeft = parseFloat(computed.paddingLeft || "0") || 0;
     setSlashPos({
-      top: elRect.top - containerRect.top + paddingTop + (lineIdx + 1) * lineHeight - el.scrollTop + 2,
-      left: elRect.left - containerRect.left + paddingLeft,
+      top: Math.max(8, Math.min(elRect.top + paddingTop + (lineIdx + 1) * lineHeight - el.scrollTop + 2, window.innerHeight - 300)),
+      left: Math.max(8, Math.min(elRect.left + paddingLeft, window.innerWidth - 304)),
     });
     slashContext.current = { mode: "raw", rawIndex };
     setSlashQuery(query);
@@ -899,6 +906,16 @@ export function SimpleHtmlEditor({
         const newCaret = startIdx + snippet.length;
         try { el.setSelectionRange(newCaret, newCaret); } catch { /* noop */ }
       });
+    } else if (ctx.mode === "picker" && editorRef.current) {
+      const editor = editorRef.current;
+      editor.focus();
+      const selection = window.getSelection();
+      const saved = lastRichRangeRef.current;
+      if (selection && saved && editor.contains(saved.startContainer) && editor.contains(saved.endContainer)) {
+        selection.removeAllRanges();
+        selection.addRange(saved);
+      }
+      execCommand("insertHTML", escapeHtml(snippet));
     }
 
     const recent = loadRecent();
@@ -908,6 +925,35 @@ export function SimpleHtmlEditor({
 
   const handleEditorClick = () => {
     if (enableTokens) detectSlashRich();
+  };
+
+  const openToolbarAction = (action: string) => {
+    const toolbar = containerRef.current?.querySelector<HTMLElement>("[data-template-design-toolbar]");
+    if (!toolbar) return;
+    if (action === "Font") {
+      if (!toolbar.querySelector<HTMLSelectElement>('[aria-label="Font"]')) {
+        toolbar.querySelector<HTMLButtonElement>('[aria-label="More formatting"]')?.click();
+        requestAnimationFrame(() => document.querySelector<HTMLSelectElement>('[aria-label="Font"]')?.focus());
+      } else toolbar.querySelector<HTMLSelectElement>('[aria-label="Font"]')?.focus();
+      return;
+    }
+    const trigger = toolbar.querySelector<HTMLButtonElement>(`[aria-label="${action === "Highlight hex" ? "Highlight color" : "Text color"}"]`);
+    trigger?.click();
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`[aria-label="${action}"]`)?.focus());
+  };
+
+  const openTokenPicker = () => {
+    if (!enableTokens || !editorRef.current) return;
+    saveRichSelection();
+    const range = lastRichRangeRef.current;
+    if (!range || !editorRef.current.contains(range.startContainer) || !editorRef.current.contains(range.endContainer)) return;
+    slashContext.current = { mode: "picker" };
+    setSlashQuery("");
+    setSlashPos({
+      top: Math.max(8, Math.min(range.getBoundingClientRect().bottom + 2, window.innerHeight - 300)),
+      left: Math.max(8, Math.min(range.getBoundingClientRect().left, window.innerWidth - 304)),
+    });
+    setSlashOpen(true);
   };
 
   const handleEditorInput = () => {
@@ -932,11 +978,17 @@ export function SimpleHtmlEditor({
       }}>
       {/* Toolbar */}
       {templateMode && !rawMode && (
-          <TemplateDesignTools editor={editorRef.current} disabled={disabled}
+        <TemplateDesignTools editor={editorRef.current} disabled={disabled}
           mode={templateMode} execute={execute} command={execCommand}
-          selectionVersion={selectionVersion} uploadImage={uploadImage} />
+          selectionVersion={selectionVersion} uploadImage={uploadImage}
+          undo={() => moveHistory(-1)} redo={() => moveHistory(1)}
+          canUndo={history.current.index > 0} canRedo={history.current.index < history.current.entries.length - 1}
+          toggleRaw={toggleRawMode}
+          insertPageBreak={() => execCommand("insertHTML", '<div data-template-page-break="true" style="break-before: page;"></div><p><br></p>')}
+          openTokenPicker={enableTokens ? openTokenPicker : undefined}
+          testId={testId} />
       )}
-      <fieldset disabled={disabled} className={cn("flex flex-wrap items-center gap-1 p-2 border-b border-border bg-muted/30 min-w-0", templateMode && "sticky top-0 z-20")}
+      {(!templateMode || rawMode) && <fieldset disabled={disabled} className={cn("flex flex-wrap items-center gap-1 p-2 border-b border-border bg-muted/30 min-w-0", templateMode && "sticky top-0 z-20 h-[46px] flex-nowrap px-1.5 py-0")}
         onMouseDown={(event) => { if (!rawMode) event.preventDefault(); }}>
         {templateMode && (
           <>
@@ -1066,7 +1118,7 @@ export function SimpleHtmlEditor({
         {enableTokens && (
           <span className="ml-auto text-xs text-muted-foreground hidden sm:inline">Type <kbd className="rounded border bg-background px-1 py-0.5 font-mono text-[10px]">/</kbd> to insert a token</span>
         )}
-      </fieldset>
+      </fieldset>}
 
       {/* Editor */}
       {rawMode ? (
@@ -1095,7 +1147,12 @@ export function SimpleHtmlEditor({
           )}
           // resize: vertical makes the visual editor grow with the author's
           // content preference — same affordance as the raw-HTML textarea.
-          style={{ minHeight, resize: "vertical", overflow: "auto" }}
+          style={{
+            minHeight, resize: "vertical", overflow: "auto",
+            // A neutral email-safe writing baseline, not serialized into the
+            // template's HTML. Explicit formatting inside a template still wins.
+            ...(templateMode ? { fontFamily: "Arial, sans-serif", fontSize: "14px" } : {}),
+          }}
           onInput={handleEditorInput}
           onCompositionStart={() => { composing.current = true; }}
           onCompositionEnd={() => { composing.current = false; handleEditorInput(); }}
@@ -1114,8 +1171,7 @@ export function SimpleHtmlEditor({
             if (!templateMode || disabled) return;
             event.preventDefault();
             saveRichSelection();
-            const rect = containerRef.current?.getBoundingClientRect();
-            if (rect) setContextMenu({ left: event.clientX - rect.left, top: event.clientY - rect.top });
+            setContextMenu({ left: Math.min(window.innerWidth - 200, Math.max(8, event.clientX)), top: Math.min(window.innerHeight - 240, Math.max(8, event.clientY)) });
           }}
           data-template-editor={templateMode}
           onFocus={() => { toolSelectionLocked.current = false; setIsFocused(true); }}
@@ -1153,8 +1209,15 @@ export function SimpleHtmlEditor({
       )}
 
       {contextMenu && templateMode && !rawMode && (
-        <div role="menu" aria-label="Editor selection actions" className="absolute z-50 min-w-40 rounded-md border bg-popover p-1 shadow-md"
-          style={{ left: contextMenu.left, top: contextMenu.top }} onMouseDown={event => event.preventDefault()}>
+        createPortal(<div role="menu" aria-label="Editor selection actions" className="fixed z-[120] max-h-[70vh] min-w-40 overflow-auto rounded-md border bg-popover p-1 shadow-md"
+          style={{ left: contextMenu.left, top: contextMenu.top, maxWidth: "calc(100vw - 16px)" }}
+          onKeyDown={event => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setContextMenu(null);
+              editorRef.current?.focus();
+            }
+          }} onMouseDown={event => event.preventDefault()}>
           {([
             ["Bold", () => execCommand("bold")],
             ["Italic", () => execCommand("italic")],
@@ -1166,23 +1229,39 @@ export function SimpleHtmlEditor({
           {([["Font", "Font"], ["Text color", "Text color hex"], ["Highlight color", "Highlight hex"]] as const).map(([label, target]) =>
             <button key={label} type="button" role="menuitem"
               className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent"
-              onClick={() => {
-                setContextMenu(null);
-                const details = containerRef.current?.querySelector<HTMLDetailsElement>('summary[aria-label="Template design tools"]')?.parentElement as HTMLDetailsElement | undefined;
-                if (details) details.open = true;
-                requestAnimationFrame(() => containerRef.current?.querySelector<HTMLElement>(`[aria-label="${target}"]`)?.focus());
-              }}>{label}…</button>)}
+              onClick={() => { setContextMenu(null); openToolbarAction(target === "Font" ? "Font" : target); }}>{label}…</button>)}
           <button type="button" role="menuitem" className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent"
             onClick={() => { setContextMenu(null); execCommand("removeFormat"); }}>Clear formatting</button>
-          <button type="button" className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent" onClick={() => setContextMenu(null)}>Close</button>
-        </div>
+          <button type="button" className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent" onClick={() => { setContextMenu(null); editorRef.current?.focus(); }}>Close</button>
+        </div>, document.body)
       )}
 
       {enableTokens && slashOpen && (
-        <div
-          className="absolute z-50 w-72 rounded-md border bg-popover text-popover-foreground shadow-md max-h-72 overflow-y-auto"
+        createPortal(<div
+          className="fixed z-[120] w-[min(18rem,calc(100vw-1rem))] rounded-md border bg-popover text-popover-foreground shadow-md max-h-[min(70vh,18rem)] overflow-y-auto"
           style={{ top: slashPos.top, left: slashPos.left }}
           data-testid="menu-slash-token"
+          tabIndex={-1}
+          onKeyDown={event => {
+            if (slashContext.current?.mode !== "picker") return;
+            if (event.key === "Escape") {
+              event.preventDefault();
+              closeSlash();
+              containerRef.current?.querySelector<HTMLButtonElement>('[aria-label="Insert"]')?.focus();
+            } else if (event.key === "ArrowDown") {
+              event.preventDefault();
+              setHighlight(h => filteredTokens.length ? Math.min(h + 1, filteredTokens.length - 1) : 0);
+            } else if (event.key === "ArrowUp") {
+              event.preventDefault();
+              setHighlight(h => Math.max(h - 1, 0));
+            } else if (event.key === "Enter" || event.key === "Tab") {
+              const token = filteredTokens[highlight];
+              if (token) {
+                event.preventDefault();
+                insertTokenAtSlash(token);
+              }
+            }
+          }}
           onMouseDown={(e) => e.preventDefault()}
         >
           <div className="p-2 border-b text-xs text-muted-foreground flex items-center justify-between gap-2">
@@ -1226,7 +1305,7 @@ export function SimpleHtmlEditor({
               )}
             </button>
           ))}
-        </div>
+        </div>, document.body)
       )}
 
       <style>{`

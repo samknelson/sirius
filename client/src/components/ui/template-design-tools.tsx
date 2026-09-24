@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { Button } from "./button";
 import { Input } from "./input";
+import { Popover, PopoverContent, PopoverTrigger } from "./popover";
+import { AlignCenter, AlignJustify, AlignLeft, AlignRight, Bold, Braces, ChevronDown, Columns2, Highlighter, ImageIcon, Italic, Link2, List, ListOrdered, MoreHorizontal, MousePointer2, Redo2, Table2, Type, Underline, Undo2 } from "lucide-react";
 import { TemplateImageTools, safeDesignUrl } from "./template-image-tools";
 import { editTable, insertAtSelection, makeTable, tableRows, type TableOperation } from "./template-table-tools";
 import { clearTemplateFormatting, removeTemplateLink } from "./template-text-tools";
@@ -13,6 +15,14 @@ export interface TemplateDesignToolsProps {
   command: (name: string, value?: string) => void;
   selectionVersion: number;
   uploadImage?: (file: File) => Promise<string>;
+  undo?: () => void;
+  redo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  toggleRaw?: () => void;
+  insertPageBreak?: () => void;
+  openTokenPicker?: () => void;
+  testId?: string;
 }
 
 const control = "h-8 rounded border bg-background px-2 text-xs";
@@ -30,12 +40,16 @@ export function selectedInlineTextNodes(editor: HTMLElement, range: Range): Text
 }
 
 /** Selection is observed only inside this editor; focusing a control keeps its target. */
-export function TemplateDesignTools({ editor, disabled, mode, execute, command, selectionVersion, uploadImage }: TemplateDesignToolsProps) {
+export function TemplateDesignTools({ editor, disabled, mode, execute, command, selectionVersion, uploadImage,
+  undo, redo, canUndo = true, canRedo = true, toggleRaw, insertPageBreak, openTokenPicker, testId }: TemplateDesignToolsProps) {
+  const toolbarRef = useRef<HTMLFieldSetElement>(null);
   const [cell, setCell] = useState<HTMLTableCellElement | null>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const imagePanel = useRef<HTMLDetailsElement>(null);
-  const [format, setFormat] = useState<Record<string, string>>({});
-  const [active, setActive] = useState<Record<string, boolean>>({});
+  const [format, setFormat] = useState<Record<string, string>>({
+    block: "p", fontFamily: "Arial, sans-serif", fontSize: "14px",
+  });
+  const [active, setActive] = useState<Record<string, boolean | "mixed">>({});
   const [error, setError] = useState("");
   const [rows, setRows] = useState("2");
   const [columns, setColumns] = useState("2");
@@ -49,9 +63,30 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
   const [buttonColor, setButtonColor] = useState("#2563eb");
   const [anchor, setAnchor] = useState<HTMLAnchorElement | null>(null);
   const [linkUrl, setLinkUrl] = useState("");
+  const [linkText, setLinkText] = useState("");
   const [draftColor, setDraftColor] = useState("#000000");
   const [draftHighlight, setDraftHighlight] = useState("#ffffff");
+  const [colorDraftEdited, setColorDraftEdited] = useState(false);
+  const [highlightDraftEdited, setHighlightDraftEdited] = useState(false);
+  const [insertOpen, setInsertOpen] = useState(false);
+  const [insertExpanded, setInsertExpanded] = useState(false);
+  const [compact, setCompact] = useState(true);
+  const [ultraCompact, setUltraCompact] = useState(false);
   const lastSelection = useRef<Range | null>(null);
+  useEffect(() => {
+    // The editor can be much narrower than the viewport in the Studio's
+    // two-column layout. Collapse against its actual available width.
+    const toolbar = toolbarRef.current;
+    if (!toolbar) return;
+    const update = () => {
+      setCompact(toolbar.clientWidth < 730);
+      setUltraCompact(toolbar.clientWidth < 375);
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(toolbar);
+    update();
+    return () => observer.disconnect();
+  }, []);
   const rememberToolSelection = () => {
     const selection = window.getSelection();
     if (!editor || !selection?.rangeCount) return;
@@ -65,6 +100,7 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
       const target = event.target as HTMLElement;
       if (target.tagName === "IMG") {
         setImage(target as HTMLImageElement);
+        setInsertOpen(true);
         if (imagePanel.current) imagePanel.current.open = true;
       }
       else setImage(null);
@@ -72,6 +108,9 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
     editor?.addEventListener("click", click);
     return () => editor?.removeEventListener("click", click);
   }, [editor]);
+  useEffect(() => {
+    if (image && insertOpen && imagePanel.current) imagePanel.current.open = true;
+  }, [image, insertOpen]);
   useEffect(() => {
     const selection = window.getSelection();
     if (!editor || !selection?.rangeCount ||
@@ -85,6 +124,7 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
     const selectedAnchor = node.closest("a");
     setAnchor(selectedAnchor && editor.contains(selectedAnchor) ? selectedAnchor : null);
     setLinkUrl(selectedAnchor?.getAttribute("href") ?? "");
+    setLinkText(selectedAnchor?.textContent ?? selection.toString());
     setCell(selectedCell && editor.contains(selectedCell) ? selectedCell : null);
     const child = range.startContainer.childNodes[range.startOffset];
     const selectedImage = child instanceof HTMLImageElement && range.endOffset === range.startOffset + 1 ? child : node.closest("img");
@@ -93,19 +133,57 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
     if (selectedImage) setImage(selectedImage);
     const css = getComputedStyle(node);
     const block = node.closest(blockSelector);
-    const blockCss = block ? getComputedStyle(block) : css;
-    setFormat({ fontFamily: css.fontFamily, fontSize: css.fontSize, color: css.color, backgroundColor: css.backgroundColor,
-      textAlign: blockCss.textAlign, lineHeight: (block as HTMLElement | null)?.style.lineHeight || blockCss.lineHeight, marginBottom: blockCss.marginBottom,
-      block: block && editor.contains(block) ? block.tagName.toLowerCase() : "p" });
-    setDraftColor(toHex(css.color));
-    setDraftHighlight(toHex(css.backgroundColor));
-    setActive(Object.fromEntries(["bold", "italic", "underline", "insertUnorderedList", "insertOrderedList"].map(name => [name, document.queryCommandState(name)])));
+    const selectedNodes: HTMLElement[] = [];
+    if (range.collapsed) selectedNodes.push(node);
+    else {
+      const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const text = walker.currentNode as Text;
+        if (range.intersectsNode(text) && text.parentElement) selectedNodes.push(text.parentElement);
+      }
+    }
+    const selectedBlocks = Array.from(editor.querySelectorAll<HTMLElement>(blockSelector))
+      .filter(el => range.collapsed ? el === block : range.intersectsNode(el) && !el.querySelector(blockSelector));
+    const unique = (values: string[]) => {
+      const distinct = Array.from(new Set(values));
+      return distinct.length > 1 ? "mixed" : distinct[0];
+    };
+    const inlineCss = selectedNodes.length ? selectedNodes.map(el => getComputedStyle(el)) : [css];
+    const blockCss = selectedBlocks.length ? selectedBlocks.map(el => getComputedStyle(el)) : [block ? getComputedStyle(block) : css];
+    const value = (property: string, blocks = false) => unique((blocks ? blockCss : inlineCss).map(style => style.getPropertyValue(property).trim()));
+    const blocks = selectedBlocks.map(el => el.tagName.toLowerCase());
+    setFormat({ fontFamily: value("font-family"), fontSize: value("font-size"), color: value("color"), backgroundColor: value("background-color"),
+      textAlign: value("text-align", true),
+      lineHeight: unique(selectedBlocks.length ? selectedBlocks.map(el => el.style.lineHeight || getComputedStyle(el).lineHeight) : [(block as HTMLElement | null)?.style.lineHeight || blockCss[0].lineHeight]),
+      marginBottom: value("margin-bottom", true),
+      block: unique(blocks.length ? blocks : [block && editor.contains(block) ? block.tagName.toLowerCase() : "p"]) });
+    if (value("color") !== "mixed") setDraftColor(toHex(value("color")));
+    if (value("background-color") !== "mixed") setDraftHighlight(toHex(value("background-color")));
+    setColorDraftEdited(false);
+    setHighlightDraftEdited(false);
+    const inlineNodes = selectedNodes.length ? selectedNodes : [node];
+    const activeValue = (name: "bold" | "italic" | "underline") => {
+      const values = inlineNodes.map(el => {
+        const style = getComputedStyle(el);
+        if (name === "bold") return style.fontWeight === "bold" || Number(style.fontWeight) >= 600;
+        if (name === "italic") return style.fontStyle === "italic" || style.fontStyle === "oblique";
+        return style.textDecorationLine.split(" ").includes("underline");
+      });
+      const mixed = new Set(values).size > 1;
+      return mixed ? "mixed" : values[0] ?? document.queryCommandState(name);
+    };
+    const listValue = (tag: "ul" | "ol") => {
+      const values = (selectedBlocks.length ? selectedBlocks : [node]).map(el => Boolean(el.closest(tag)));
+      return new Set(values).size > 1 ? "mixed" : values[0] ?? false;
+    };
+    setActive({ bold: activeValue("bold"), italic: activeValue("italic"), underline: activeValue("underline"),
+      insertUnorderedList: listValue("ul"), insertOrderedList: listValue("ol") });
     if (selectedCell) {
       const table = selectedCell.closest("table")!;
       setTableWidth(table.style.width.endsWith("%") ? table.style.width.slice(0, -1) : "100");
       setPadding(String(parseFloat(selectedCell.style.padding) || 0));
       setBorder(String(parseFloat(selectedCell.style.borderWidth) || 0));
-      setBackground(selectedCell.style.backgroundColor || "#ffffff");
+      setBackground(toHex(selectedCell.style.backgroundColor || "#ffffff"));
       setVertical(selectedCell.style.verticalAlign || "top");
     }
   }, [editor, selectionVersion]);
@@ -166,64 +244,96 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
       }
     }
   });
-  const select = (label: string, value: string, options: [string, string][], change: (value: string) => void) =>
-    <label className="flex items-center gap-1 text-xs">{label}<select className={control} aria-label={label} value={options.some(([v]) => v === value) ? value : ""} onChange={e => change(e.target.value)}>
-      <option value="" disabled>Current / mixed</option>{options.map(([v, text]) => <option key={v} value={v}>{text}</option>)}
+  const select = (label: string, value: string, options: [string, string][], change: (value: string) => void, compact = false) =>
+    <label className={`flex min-w-0 items-center gap-1 text-xs ${label === "Font" && !compact ? "hidden md:flex" : ""} ${label === "Size" && !compact ? "hidden sm:flex" : ""}`}>
+      <span className="sr-only">{label}</span><select className={`${control} ${label === "Paragraph" ? "w-[70px] px-1 sm:w-[100px]" : label === "Font" ? "w-full md:w-[118px]" : label === "Size" ? "w-[58px] px-1 sm:w-[68px]" : "w-full"}`} aria-label={label} value={options.some(([v]) => v === value) ? value : ""} onChange={e => change(e.target.value)}>
+      <option value="" disabled>{value === "mixed" ? "Mixed" : value || "Current"}</option>{options.map(([v, text]) => <option key={v} value={v}>{text}</option>)}
     </select></label>;
   const tableAction = (operation: TableOperation) => run(() => {
     if (!cell || !editor?.contains(cell)) throw new Error("Place the caret in a table cell first.");
     editTable(cell, operation);
   });
-  return <div className="border-b bg-background" onMouseDownCapture={rememberToolSelection}>
-    <details>
-      <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium" aria-label="Template design tools">Design tools</summary>
-      <fieldset disabled={disabled} className="border-t p-2 space-y-2" aria-label="Template design tools">
-    <div role="group" aria-label="Typography" className="flex flex-wrap items-center gap-2">
-      {select("Paragraph", format.block, [["p", "Paragraph"], ["h1", "Heading 1"], ["h2", "Heading 2"], ["h3", "Heading 3"]], value => command("formatBlock", value))}
-      {select("Font", format.fontFamily?.replaceAll('"', ""), [["Arial, sans-serif", "Arial"], ["Verdana, sans-serif", "Verdana"], ["Georgia, serif", "Georgia"], ["Times New Roman, serif", "Times New Roman"], ["Courier New, monospace", "Courier New"]], value => style("font-family", value))}
-      {select("Size", format.fontSize, [10, 12, 14, 16, 18, 24, 32, 48].map(n => [`${n}px`, `${n}px`]), value => style("font-size", value))}
-      {(["bold", "italic", "underline"] as const).map(name => <Button type="button" size="sm" variant={active[name] ? "secondary" : "ghost"} aria-pressed={!!active[name]} key={name} onClick={() => command(name)}>{name[0].toUpperCase() + name.slice(1)}</Button>)}
-      <label className="text-xs">Text color<input aria-label="Text color" type="color" value={toHex(draftColor)} onChange={e => setDraftColor(e.target.value)} /></label>
-      <Input aria-label="Text color hex" className="h-8 w-24 text-xs" value={draftColor} onChange={e => setDraftColor(e.target.value)} />
-      <label className="text-xs">Highlight<input aria-label="Text background color" type="color" value={toHex(draftHighlight)} onChange={e => setDraftHighlight(e.target.value)} /></label>
-      <Input aria-label="Highlight hex" className="h-8 w-24 text-xs" value={draftHighlight} onChange={e => setDraftHighlight(e.target.value)} />
-      <Button type="button" size="sm" variant="outline" onClick={() => { if (/^#[\da-f]{6}$/i.test(draftColor)) style("color", draftColor); else setError("Enter a complete six-digit hex text color."); }}>Apply text color</Button>
-      <Button type="button" size="sm" variant="outline" onClick={() => { if (/^#[\da-f]{6}$/i.test(draftHighlight)) style("background-color", draftHighlight); else setError("Enter a complete six-digit hex highlight."); }}>Apply highlight</Button>
-      <Button type="button" size="sm" variant="ghost" onClick={() => { setDraftColor(toHex(format.color)); setDraftHighlight(toHex(format.backgroundColor)); setError(""); }}>Cancel color changes</Button>
-    </div>
-    <div role="group" aria-label="Paragraph spacing and alignment" className="flex flex-wrap gap-2 items-center">
-      {select("Align", format.textAlign, [["left", "Left"], ["center", "Center"], ["right", "Right"], ["justify", "Justify"]], value => style("text-align", value, true))}
-      {select("Line spacing", format.lineHeight, [["normal", "Normal"], ["1", "Single"], ["1.5", "1.5"], ["2", "Double"]], value => style("line-height", value, true))}
-      {select("Space after", format.marginBottom, [0, 8, 16, 24, 32].map(n => [`${n}px`, `${n}px`]), value => style("margin-bottom", value, true))}
-      {(["insertUnorderedList", "insertOrderedList"] as const).map((name, i) => <Button key={name} type="button" size="sm" variant="ghost" aria-pressed={!!active[name]} onClick={() => command(name)}>{i ? "Numbered list" : "Bullet list"}</Button>)}
-      <Button type="button" size="sm" variant="ghost" onClick={() => run(() => { if (editor) clearTemplateFormatting(editor); })}>Clear formatting</Button>
-    </div>
-    <div className="flex flex-wrap gap-2">
-      <details className="rounded border p-2 min-w-64">
-        <summary className="cursor-pointer text-xs font-medium">Text links</summary>
-        <div className="space-y-2 pt-2">
+  const colorEditor = (highlight = false) => {
+    const property = highlight ? "background-color" : "color";
+    const draft = highlight ? draftHighlight : draftColor;
+    const setDraft = highlight ? setDraftHighlight : setDraftColor;
+    const edited = highlight ? highlightDraftEdited : colorDraftEdited;
+    const setEdited = highlight ? setHighlightDraftEdited : setColorDraftEdited;
+    const presets = highlight
+      ? ["#ffffff", "#fef08a", "#bbf7d0", "#bfdbfe", "#fecaca", "#e9d5ff", "#fcd34d", "#a7f3d0"]
+      : ["#111827", "#374151", "#6b7280", "#d1d5db", "#dc2626", "#f97316", "#facc15", "#16a34a",
+          "#3b82f6", "#1d4ed8", "#9333ea", "#db2777", "#92400e", "#fda4af", "#0891b2", "#f3f4f6"];
+    const apply = (color: string) => {
+      setDraft(color);
+      setEdited(false);
+      if (/^#[\da-f]{6}$/i.test(color)) style(property, color);
+    };
+    return <div className="space-y-2">
+      <div className="grid grid-cols-4 gap-1.5" role="group" aria-label={highlight ? "Highlight presets" : "Text color presets"}>
+        {presets.map(color => <button key={color} type="button" aria-label={`Apply ${highlight ? "highlight" : "text color"} ${color}`} title={color}
+          className="h-7 w-7 rounded border" style={{ backgroundColor: color }} onClick={() => apply(color)} />)}
+      </div>
+      <label className="flex items-center gap-2 text-xs">{highlight ? "Custom highlight" : "Custom text color"}
+        <input aria-label={highlight ? "Text background color" : "Text color"} type="color" value={toHex(draft)} onChange={e => apply(e.target.value)} className="h-7 w-10" />
+        <Input aria-label={highlight ? "Highlight hex" : "Text color hex"} className="h-8 w-28 text-xs"
+          value={highlight ? (format.backgroundColor === "mixed" && !edited ? "" : draft) : (format.color === "mixed" && !edited ? "" : draft)}
+          placeholder={highlight ? (format.backgroundColor === "mixed" ? "Mixed" : "#ffffff") : (format.color === "mixed" ? "Mixed" : "#000000")}
+          onChange={e => { const next = e.target.value; setDraft(next); setEdited(true); if (/^#[\da-f]{6}$/i.test(next)) { setEdited(false); style(property, next); } }}
+          onKeyDown={e => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (/^#[\da-f]{6}$/i.test(draft)) style(property, draft);
+              else setError("Enter a complete six-digit hex color.");
+            }
+          }} />
+      </label>
+      <Button type="button" size="sm" variant="ghost" onClick={() => style(property, highlight ? "transparent" : "inherit")}>
+        Reset {highlight ? "highlight" : "text color"}
+      </Button>
+    </div>;
+  };
+  const linkMenu = <div className="space-y-2">
           <p className="text-xs text-muted-foreground">Select text to add a link, or place the caret in a link to edit it.</p>
+          <label className="block text-xs">Display text<Input aria-label="Text link display text" value={linkText} onChange={e => setLinkText(e.target.value)} placeholder="Link text" /></label>
           <label className="block text-xs">Link URL<Input aria-label="Text link URL" value={linkUrl} onChange={e => setLinkUrl(e.target.value)} /></label>
           <Button type="button" size="sm" onClick={() => run(() => {
             if (!safeDesignUrl(linkUrl)) throw new Error("Enter a valid http(s), mailto or tel link.");
-            if (anchor && editor?.contains(anchor)) anchor.setAttribute("href", linkUrl);
+            if (anchor && editor?.contains(anchor)) {
+              anchor.setAttribute("href", linkUrl);
+              if (linkText.trim()) anchor.textContent = linkText;
+            }
             else {
               // The URL field takes focus and some browsers clear window.selection
               // rather than merely moving it. Restore the last editor range from
               // before the toolbar interaction before checking/applying the link.
               restoreToolSelection();
-              if (!window.getSelection()?.toString()) throw new Error("Select the text to link first.");
-              document.execCommand("createLink", false, linkUrl);
+              const selected = window.getSelection()?.toString();
+              if (!selected && !linkText.trim()) throw new Error("Select text or enter display text first.");
+              if (linkText.trim() && linkText !== selected && editor) {
+                const link = document.createElement("a");
+                link.href = linkUrl;
+                link.textContent = linkText;
+                insertAtSelection(editor, link);
+              } else document.execCommand("createLink", false, linkUrl);
             }
           })}>{anchor ? "Update text link" : "Add text link"}</Button>
           <Button type="button" size="sm" variant="outline" className="ml-2" disabled={!anchor} onClick={() => run(() => {
             if (anchor && editor?.contains(anchor)) removeTemplateLink(anchor);
           })}>Remove text link</Button>
-        </div>
-      </details>
-      <details className="rounded border p-2 min-w-64">
-        <summary className="cursor-pointer text-xs font-medium">Tables</summary>
-        <div className="space-y-2 pt-2">
+        </div>;
+  const tableMenu = <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Choose a table size</p>
+          <div className="grid w-fit grid-cols-5 gap-1" role="group" aria-label="Table size">
+            {Array.from({ length: 25 }, (_, index) => {
+              const row = Math.floor(index / 5) + 1;
+              const column = index % 5 + 1;
+              return <button key={index} type="button" title={`${row} rows × ${column} columns`}
+                aria-label={`Insert ${row} by ${column} table`}
+                className="h-6 w-6 rounded-sm border border-border hover:border-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => run(() => { if (editor) insertAtSelection(editor, makeTable(row, column)); })} />;
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">Or enter a custom size</p>
           <div className="flex gap-2">
             <label className="text-xs">Rows<Input aria-label="Table rows" type="number" min="1" max="20" value={rows} onChange={e => setRows(e.target.value)} /></label>
             <label className="text-xs">Columns<Input aria-label="Table columns" type="number" min="1" max="10" value={columns} onChange={e => setColumns(e.target.value)} /></label>
@@ -232,12 +342,12 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
             if (!/^\d+$/.test(rows) || !/^\d+$/.test(columns) || +rows < 1 || +rows > 20 || +columns < 1 || +columns > 10) throw new Error("Use 1–20 rows and 1–10 columns.");
             if (editor) insertAtSelection(editor, makeTable(+rows, +columns));
           })}>Insert table</Button>
-          <div className="flex flex-wrap gap-1 max-w-sm">{([
+          {cell && <div role="group" aria-label="Table actions" className="flex flex-wrap gap-1">{([
             ["row-before", "Row above"], ["row-after", "Row below"], ["delete-row", "Delete row"],
             ["column-before", "Column left"], ["column-after", "Column right"], ["delete-column", "Delete column"],
             ["merge", "Merge right"], ["split", "Split cell"], ["delete", "Delete table"],
-          ] as [TableOperation, string][]).map(([action, label]) => <Button type="button" key={action} size="sm" variant="outline" disabled={!cell} onClick={() => tableAction(action)}>{label}</Button>)}</div>
-          <p className="text-xs text-muted-foreground">Merged or irregular tables are protected from row/column edits. Merge joins the cell to its right; split supports horizontal merges.</p>
+          ] as [TableOperation, string][]).map(([action, label]) => <Button type="button" key={action} size="sm" variant="outline" onClick={() => tableAction(action)}>{label}</Button>)}</div>}
+          {cell && <><p className="text-xs text-muted-foreground">Merged or irregular tables are protected from row/column edits. Merge joins the cell to its right; split supports horizontal merges.</p>
           <div className="flex gap-2 max-w-sm">
             <label className="text-xs">Width (%)<Input aria-label="Table width" value={tableWidth} onChange={e => setTableWidth(e.target.value)} /></label>
             <label className="text-xs">Padding (px)<Input aria-label="Cell padding" value={padding} onChange={e => setPadding(e.target.value)} /></label>
@@ -254,14 +364,12 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
               target.style.padding = `${padding}px`; target.style.border = `${border}px solid #999999`;
             }));
             cell.style.backgroundColor = background; cell.style.verticalAlign = vertical;
-          })}>Apply table and cell properties</Button>
-        </div>
-      </details>
-      <details ref={imagePanel} className="rounded border p-2 min-w-64"><summary className="cursor-pointer text-xs font-medium">Images</summary><div className="pt-2"><TemplateImageTools editor={editor} image={image} execute={execute} disabled={disabled} uploadImage={uploadImage} /></div></details>
-      <details className="rounded border p-2 min-w-64">
-        <summary className="cursor-pointer text-xs font-medium">Layouts and linked buttons</summary>
-        <div className="pt-2 space-y-2">
-          {mode === "email" && <><div className="flex gap-2">{[1, 2].map(count => <Button key={count} type="button" variant="outline" size="sm" onClick={() => run(() => { if (editor) insertAtSelection(editor, makeTable(1, count, true)); })}>{count}-column layout</Button>)}</div><p className="text-xs text-muted-foreground">Table-based layouts fit the container. Email clients may render them differently.</p></>}
+          })}>Apply table and cell properties</Button></>}
+        </div>;
+  const layoutMenu = <div className="space-y-2">
+          <div className="flex gap-2">{[1, 2].map(count => <Button key={count} type="button" variant="outline" size="sm" onClick={() => run(() => { if (editor) insertAtSelection(editor, makeTable(1, count, true)); })}>{count}-column layout</Button>)}</div><p className="text-xs text-muted-foreground">Table-based layouts fit the container. Email clients may render them differently.</p>
+        </div>;
+  const buttonMenu = <div className="space-y-2">
           <label className="block text-xs">Button text<Input aria-label="Button text" value={buttonText} onChange={e => setButtonText(e.target.value)} /></label>
           <label className="block text-xs">Button link<Input aria-label="Button link" value={buttonLink} onChange={e => setButtonLink(e.target.value)} /></label>
           <label className="text-xs">Button background<input aria-label="Button background" type="color" value={buttonColor} onChange={e => setButtonColor(e.target.value)} /></label>
@@ -275,17 +383,151 @@ export function TemplateDesignTools({ editor, disabled, mode, execute, command, 
             anchor.style.cssText = `display:inline-block;padding:12px 20px;background-color:${buttonColor};color:#ffffff;text-decoration:none;font-weight:bold;max-width:100%;overflow-wrap:break-word`;
             insertAtSelection(editor, anchor);
           })}>Insert linked button</Button>
-        </div>
-      </details>
-    </div>
-    {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
-      </fieldset>
+        </div>;
+  const chars = [{ name: "Copyright", symbol: "©" }, { name: "Registered", symbol: "®" }, { name: "Trademark", symbol: "™" },
+    { name: "Bullet", symbol: "•" }, { name: "En dash", symbol: "–" }, { name: "Em dash", symbol: "—" },
+    { name: "Left quote", symbol: "“" }, { name: "Right quote", symbol: "”" }, { name: "Left single quote", symbol: "‘" },
+    { name: "Right single quote", symbol: "’" }, { name: "Ellipsis", symbol: "…" }, { name: "Section", symbol: "§" },
+    { name: "Paragraph", symbol: "¶" }, { name: "Degree", symbol: "°" }];
+  const fontOptions: [string, string][] = [["Arial, sans-serif", "Arial"], ["Verdana, sans-serif", "Verdana"], ["Georgia, serif", "Georgia"], ["Times New Roman, serif", "Times New Roman"], ["Courier New, monospace", "Courier New"]];
+  const sizeOptions: [string, string][] = [10, 12, 14, 16, 18, 24, 32, 48].map(n => [`${n}px`, `${n}px`]);
+  const paragraphOptions: [string, string][] = [["p", "Normal"], ["h1", "Heading 1"], ["h2", "Heading 2"], ["h3", "Heading 3"]];
+  const alignmentOptions: [string, string][] = [["left", "Left"], ["center", "Center"], ["right", "Right"], ["justify", "Justify"]];
+  const listButtons = (mobile = false) => (["insertUnorderedList", "insertOrderedList"] as const).map((name, i) =>
+    <Button key={name} type="button" size="sm" variant={active[name] === true ? "secondary" : "ghost"}
+      className={mobile ? "h-8 w-full justify-start px-2" : "h-8 w-8 p-0"} aria-pressed={active[name] === "mixed" ? "mixed" : !!active[name]}
+      aria-label={i ? "Numbered list" : "Bullet list"} title={i ? "Numbered list" : "Bullet list"}
+      data-testid={testId ? `${testId}-${i ? "ol" : "ul"}` : undefined} onClick={() => command(name)}>
+      {i ? <ListOrdered className="h-4 w-4" /> : <List className="h-4 w-4" />}{mobile && <span>{i ? "Numbered list" : "Bullet list"}</span>}
+    </Button>);
+  const insertRow = "flex w-full cursor-pointer list-none items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent [&::-webkit-details-marker]:hidden";
+  const trackInsertExpansion = (event: SyntheticEvent<HTMLDetailsElement>) => {
+    setInsertExpanded(Boolean(event.currentTarget.parentElement?.querySelector("details[open]")));
+  };
+  const insertContent = <div className="space-y-0.5">
+    <details className="rounded open:bg-muted/30" onToggle={trackInsertExpansion}>
+      <summary data-testid={testId ? `${testId}-link` : undefined} className={insertRow}><Link2 className="h-4 w-4" />Link</summary>
+      <div className="pb-2">{linkMenu}</div>
     </details>
+    <details ref={imagePanel} className="rounded open:bg-muted/30" onToggle={trackInsertExpansion}>
+      <summary className={insertRow}><ImageIcon className="h-4 w-4" />Image</summary>
+      <div className="pb-2"><TemplateImageTools editor={editor} image={image} execute={execute} disabled={disabled} uploadImage={uploadImage} /></div>
+    </details>
+    <details className="rounded open:bg-muted/30" onToggle={trackInsertExpansion}>
+      <summary className={insertRow}><Table2 className="h-4 w-4" />Table</summary>
+      <div className="pb-2">{tableMenu}</div>
+    </details>
+    {mode === "email" && <details className="rounded open:bg-muted/30" onToggle={trackInsertExpansion}>
+      <summary className={insertRow}><Columns2 className="h-4 w-4" />Layout</summary>
+      <div className="pb-2">{layoutMenu}</div>
+    </details>}
+    <details className="rounded open:bg-muted/30" onToggle={trackInsertExpansion}>
+      <summary className={insertRow}><MousePointer2 className="h-4 w-4" />Button</summary>
+      <div className="pb-2">{buttonMenu}</div>
+    </details>
+    {openTokenPicker && <Button type="button" size="sm" variant="ghost" className="h-8 w-full justify-start gap-2 px-2 text-sm font-normal" onClick={openTokenPicker}><Braces className="h-4 w-4" />Merge field</Button>}
+    <details className="rounded open:bg-muted/30" onToggle={trackInsertExpansion}>
+      <summary data-testid={testId ? `${testId}-special` : undefined} className={insertRow}><Type className="h-4 w-4" />Special characters</summary>
+      <div className="flex flex-wrap gap-1 pb-2">{chars.map(char => <Button key={char.symbol} type="button" size="sm" variant="outline"
+        aria-label={`Insert ${char.name}`} data-testid={testId ? `${testId}-char-${char.name.toLowerCase().replace(/\s/g, "-")}` : undefined}
+        onClick={() => command("insertHTML", char.symbol)}>{char.symbol}</Button>)}</div>
+    </details>
+    {mode === "postal" && <Button type="button" size="sm" variant="outline" className="w-full justify-start"
+      data-testid={testId ? `${testId}-page-break` : undefined} onClick={insertPageBreak}>Insert page break</Button>}
   </div>;
+  const triggerClass = "h-8 shrink-0 gap-1 px-1.5 text-xs sm:px-2";
+  const CurrentAlignIcon = format.textAlign === "center" ? AlignCenter
+    : format.textAlign === "right" ? AlignRight
+      : format.textAlign === "justify" ? AlignJustify : AlignLeft;
+  return <fieldset ref={toolbarRef} data-template-design-toolbar disabled={disabled} onMouseDownCapture={rememberToolSelection}
+    className="sticky top-0 z-30 flex h-[46px] w-full min-w-0 items-center gap-px overflow-visible border-b bg-background px-1.5"
+    aria-label="Template editing toolbar">
+    {undo && <Button type="button" size="sm" variant="ghost" className="h-8 w-8 shrink-0 p-0" aria-label="Undo" title="Undo (Ctrl/⌘ Z)"
+      disabled={!canUndo} onClick={undo} data-testid={testId ? `${testId}-undo` : undefined}><Undo2 className="h-4 w-4" /></Button>}
+    {redo && <Button type="button" size="sm" variant="ghost" className="h-8 w-8 shrink-0 p-0" aria-label="Redo" title="Redo (Ctrl/⌘ Shift Z)"
+      disabled={!canRedo} onClick={redo} data-testid={testId ? `${testId}-redo` : undefined}><Redo2 className="h-4 w-4" /></Button>}
+    <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden="true" />
+    {!compact && select("Paragraph", format.block, paragraphOptions, value => command("formatBlock", value))}
+    {!compact && select("Font", format.fontFamily?.replaceAll('"', ""), fontOptions, value => style("font-family", value))}
+    {!compact && select("Size", format.fontSize, sizeOptions, value => style("font-size", value))}
+    {!compact && <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden="true" />}
+    {(["bold", "italic", "underline"] as const).map(name => {
+      const Icon = name === "bold" ? Bold : name === "italic" ? Italic : Underline;
+      return <Button key={name} type="button" size="sm" className="h-8 w-8 shrink-0 p-0"
+        variant={active[name] === true ? "secondary" : "ghost"} aria-pressed={active[name] === "mixed" ? "mixed" : !!active[name]}
+        aria-label={name} title={name} data-testid={name !== "underline" && testId ? `${testId}-${name}` : undefined}
+        onClick={() => command(name)}><Icon className="h-4 w-4" /></Button>;
+    })}
+    {!compact && <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden="true" />}
+    {!ultraCompact && <>
+    <Popover>
+      <PopoverTrigger asChild><Button type="button" size="sm" variant="ghost" className="h-8 w-8 shrink-0 gap-0 p-0" aria-label="Text color" title={`Text color${format.color === "mixed" ? ": Mixed" : format.color ? `: ${format.color}` : ""}`}><span className="relative text-sm font-semibold leading-none">A<span className="absolute -bottom-1 left-0 h-0.5 w-full bg-blue-600" /></span><ChevronDown className="h-2.5 w-2.5" /></Button></PopoverTrigger>
+      <PopoverContent side="bottom" align="start" collisionPadding={8} className="z-[100] max-h-[min(75vh,34rem)] w-[min(13rem,calc(100vw-1rem))] overflow-auto p-3">
+        <fieldset disabled={disabled} className="min-w-0 border-0 p-0"><div className="space-y-1"><h3 className="text-sm font-medium">Text color</h3>{colorEditor(false)}</div></fieldset>
+      </PopoverContent>
+    </Popover>
+    <Popover>
+      <PopoverTrigger asChild><Button type="button" size="sm" variant="ghost" className="h-8 w-8 shrink-0 gap-0 p-0" aria-label="Highlight color" title={`Highlight color${format.backgroundColor === "mixed" ? ": Mixed" : format.backgroundColor ? `: ${format.backgroundColor}` : ""}`}><span className="relative"><Highlighter className="h-4 w-4" /><span className="absolute -bottom-1 left-0 h-0.5 w-full bg-yellow-400" /></span><ChevronDown className="h-2.5 w-2.5" /></Button></PopoverTrigger>
+      <PopoverContent side="bottom" align="start" collisionPadding={8} className="z-[100] max-h-[min(75vh,34rem)] w-[min(13rem,calc(100vw-1rem))] overflow-auto p-3">
+        <fieldset disabled={disabled} className="min-w-0 border-0 p-0"><div className="space-y-1"><h3 className="text-sm font-medium">Highlight color</h3>{colorEditor(true)}</div></fieldset>
+      </PopoverContent>
+    </Popover>
+    </>}
+    {!compact && <Popover>
+      <PopoverTrigger asChild><Button type="button" size="sm" variant="ghost" className="h-8 w-8 shrink-0 p-0" aria-label="Alignment" title={`Alignment${format.textAlign === "mixed" ? ": Mixed" : format.textAlign ? `: ${format.textAlign}` : ""}`}><CurrentAlignIcon className="h-4 w-4" /></Button></PopoverTrigger>
+      <PopoverContent side="bottom" align="start" collisionPadding={8} className="z-[100] w-56 p-3">
+        <fieldset disabled={disabled} className="min-w-0 border-0 p-0"><div className="flex gap-1" role="group" aria-label="Paragraph alignment">{[
+            ["left", AlignLeft], ["center", AlignCenter], ["right", AlignRight], ["justify", AlignJustify],
+          ].map(([value, Icon]) => {
+            const AlignIcon = Icon as typeof AlignLeft;
+            return <Button key={value as string} type="button" size="sm" variant={format.textAlign === value ? "secondary" : "outline"} className="h-8 w-8 p-0"
+              aria-label={`Align ${value}`} aria-pressed={format.textAlign === "mixed" ? "mixed" : format.textAlign === value}
+              onClick={() => style("text-align", value as string, true)}><AlignIcon className="h-4 w-4" /></Button>;
+          })}</div></fieldset>
+      </PopoverContent>
+    </Popover>}
+    {!compact && <div className="flex shrink-0">{listButtons()}</div>}
+    {!compact && <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden="true" />}
+    <Popover open={insertOpen} onOpenChange={open => { setInsertOpen(open); if (!open) setInsertExpanded(false); }}>
+      <PopoverTrigger asChild><Button type="button" size="sm" variant="ghost" className={triggerClass} aria-label="Insert" title="Insert">
+        <span>Insert</span><ChevronDown className="h-3 w-3" />
+      </Button></PopoverTrigger>
+      <PopoverContent side="bottom" align="start" collisionPadding={8} className={`z-[100] max-h-[min(75vh,34rem)] overflow-auto p-2 ${insertExpanded ? "w-[min(26rem,calc(100vw-1rem))]" : "w-[min(13rem,calc(100vw-1rem))]"}`}>
+        <fieldset disabled={disabled} className="min-w-0 border-0 p-0">{insertContent}</fieldset>
+      </PopoverContent>
+    </Popover>
+    <Popover>
+      <PopoverTrigger asChild><Button type="button" size="sm" variant="ghost" className={`${triggerClass} ml-auto`} aria-label="More formatting" title="More">
+        <MoreHorizontal className="h-4 w-4" /><span className="sr-only">More</span>
+      </Button></PopoverTrigger>
+      <PopoverContent side="bottom" align="end" collisionPadding={8} className="z-[100] max-h-[min(75vh,34rem)] w-[min(22rem,calc(100vw-1rem))] overflow-auto p-3">
+        <fieldset disabled={disabled} className="min-w-0 border-0 p-0"><div className="space-y-3">
+          {compact && <div className="space-y-2">
+            {select("Paragraph", format.block, paragraphOptions, value => command("formatBlock", value), true)}
+            {select("Font", format.fontFamily?.replaceAll('"', ""), fontOptions, value => style("font-family", value), true)}
+            {select("Size", format.fontSize, sizeOptions, value => style("font-size", value), true)}
+            {select("Align", format.textAlign, alignmentOptions, value => style("text-align", value, true), true)}
+            <div className="grid grid-cols-2 gap-1">{listButtons(true)}</div>
+          </div>}
+          {ultraCompact && <div className="space-y-1">
+            <details className="rounded border px-2"><summary className="cursor-pointer py-1 text-sm">Text color</summary>{colorEditor(false)}</details>
+            <details className="rounded border px-2"><summary className="cursor-pointer py-1 text-sm">Highlight</summary>{colorEditor(true)}</details>
+          </div>}
+          {select("Line spacing", format.lineHeight, [["normal", "Normal"], ["1", "Single"], ["1.5", "1.5"], ["2", "Double"]], value => style("line-height", value, true), true)}
+          {select("Space after", format.marginBottom, [0, 8, 16, 24, 32].map(n => [`${n}px`, `${n}px`]), value => style("margin-bottom", value, true), true)}
+          <Button type="button" size="sm" variant="outline" className="w-full justify-start" onClick={() => run(() => { if (editor) clearTemplateFormatting(editor); })}>Clear formatting</Button>
+          {toggleRaw && <Button type="button" size="sm" variant="outline" className="w-full justify-start"
+            data-testid={testId ? `${testId}-raw-mode` : undefined} onClick={toggleRaw}>HTML source</Button>}
+        </div></fieldset>
+      </PopoverContent>
+    </Popover>
+    {error && <span className="absolute left-2 top-full z-[130] max-w-[calc(100vw-1rem)] rounded bg-destructive px-3 py-2 text-xs text-destructive-foreground shadow" role="alert">{error}</span>}
+  </fieldset>;
 }
 
 function toHex(color?: string): string {
   if (color?.startsWith("#")) return color;
+  if (color?.startsWith("rgba") && Number(color.match(/,\s*([\d.]+)\s*\)$/)?.[1]) === 0) return "#ffffff";
   const parts = color?.match(/\d+/g);
   return parts && parts.length >= 3 ? `#${parts.slice(0, 3).map(part => (+part).toString(16).padStart(2, "0")).join("")}` : "#ffffff";
 }

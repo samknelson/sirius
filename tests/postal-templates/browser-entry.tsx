@@ -11,7 +11,27 @@ import { Toaster } from "@/components/ui/toaster";
 import { CommPostal } from "@/components/comm/CommPostal";
 import BulkMessageMessagePage from "@/pages/bulk-message-message";
 import { SimpleHtmlEditor, type SimpleHtmlEditorApi } from "@/components/ui/simple-html-editor";
+import { TemplateStudio } from "@/components/template-studio/TemplateStudio";
 import "@/index.css";
+
+// A visual fixture for the production email studio. This content is local to
+// the browser test and never touches a saved application template.
+function EmailStudioFixture() {
+  const [open, setOpen] = React.useState(true);
+  const [values, setValues] = React.useState({
+    subject: "A quick follow-up, {{first_name}}",
+    bodyHtml: '<p>Hi {{first_name}},</p><p>Thanks for taking the time to connect. I wanted to follow up and share a few details with you.</p><p><a href="https://example.invalid/details" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;text-decoration:none;font-weight:bold">View details</a></p><p>Best,<br>{{sender_name}}</p>',
+  });
+  return <>
+    <button type="button" onClick={() => setOpen(true)}>Open email editor</button>
+    <TemplateStudio open={open} onOpenChange={setOpen} title="Edit email template"
+      description="Changes are kept until you save the template"
+      channel="email" contextId="compose-worker"
+      fields={[{ key: "subject", label: "Subject", mode: "line" }, { key: "bodyHtml", label: "Body", mode: "html" }]}
+      values={values} onValueChange={(key, value) => setValues(current => ({ ...current, [key]: value }))}
+      tokens={[]} rootNames={[]} />
+  </>;
+}
 
 function EditorFixtures() {
   const [body, setBody] = React.useState("");
@@ -42,6 +62,7 @@ function Routes() {
   const auth = useAuth();
   if (!auth.isAuthenticated) return <p>Waiting for fixture staff session</p>;
   return <>
+    <Route path="/email-studio-fixture"><EmailStudioFixture /></Route>
     <Route path="/editor-fixture"><EditorFixtures /></Route>
     <p data-testid="fixture-staff">Authenticated API fixture: {auth.user?.email}</p>
     <Route path="/workers/:id/comm/send-postal">

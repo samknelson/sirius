@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   SimpleHtmlEditor,
   type SimpleHtmlEditorApi,
@@ -38,6 +39,7 @@ import {
   AlertTriangle,
   Bell,
   ChevronDown,
+  CircleHelp,
   Loader2,
   Maximize2,
   Minimize2,
@@ -535,14 +537,15 @@ function StudioDiagnostics({
     : "no error";
   const line = "break-all";
   return (
-    <details className="min-w-0 flex-1 text-xs" data-testid="studio-diagnostics">
-      <summary
-        className="cursor-pointer select-none text-muted-foreground"
-        data-testid="button-studio-diagnostics"
-      >
-        Where this studio's data came from
-      </summary>
-      <div className="mt-2 max-h-32 overflow-y-auto space-y-1 font-mono text-[11px] text-muted-foreground">
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground" data-testid="button-studio-diagnostics">
+          Details
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="end" className="z-[100] w-[min(28rem,calc(100vw-1rem))] max-h-[65vh] overflow-y-auto" data-testid="studio-diagnostics">
+        <p className="mb-2 text-xs font-medium">Where this studio's data came from</p>
+        <div className="space-y-1 font-mono text-[11px] text-muted-foreground">
         <div className={line} data-testid="text-diagnostic-graph">
           graph: {graphState?.url ?? "(supplied by the host, not fetched here)"} — {graphStatus}
         </div>
@@ -559,8 +562,9 @@ function StudioDiagnostics({
           roots asked for:{" "}
           {rootNames?.length ? rootNames.join(", ") : "(none named — this host's default set)"}
         </div>
-      </div>
-    </details>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -810,7 +814,9 @@ export function TemplateStudio({
 
   /** The expanded right-hand section; the studio always opens on the preview. */
   const [panel, setPanel] = useState<StudioPanelId>("preview");
-  const [rightColumnCollapsed, setRightColumnCollapsed] = useState(false);
+  // Email authors start with the full writing canvas; preview, token browser,
+  // and saved templates remain one click away in the right-hand column.
+  const [rightColumnCollapsed, setRightColumnCollapsed] = useState(channel === "email");
   const hasHtmlField = fields.some((field) => field.mode === "html");
   const fullViewportByDefault =
     hasHtmlField && (channel === "email" || channel === "postal");
@@ -827,7 +833,7 @@ export function TemplateStudio({
   useModalSeed(open, JSON.stringify([contextId, channel, fullViewportByDefault]), () => {
     setChosen({});
     setPanel("preview");
-    setRightColumnCollapsed(false);
+    setRightColumnCollapsed(channel === "email");
     setMaximized(fullViewportByDefault);
     setTemplateToLoad(null);
     setEditorDocumentGeneration((generation) => generation + 1);
@@ -1212,9 +1218,9 @@ export function TemplateStudio({
       >
         <DialogHeader className="px-4 py-1 pr-12 border-b shrink-0 text-left space-y-0">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
-              <DialogTitle className="min-w-0 break-words text-base leading-tight" data-testid="studio-title">{title}</DialogTitle>
-              {description && <DialogDescription className="text-xs leading-tight">{description}</DialogDescription>}
+            <div className="flex min-w-0 flex-1 items-center justify-between gap-4">
+              <DialogTitle className="min-w-0 truncate text-base leading-tight" title={title} data-testid="studio-title">{title}</DialogTitle>
+              {description && <DialogDescription className="sr-only sm:not-sr-only sm:block sm:max-w-[48%] sm:shrink-0 sm:text-right sm:text-[11px] sm:leading-tight">{description}</DialogDescription>}
             </div>
             <div className="flex shrink-0 items-center gap-0.5">
               <Button
@@ -1268,10 +1274,22 @@ export function TemplateStudio({
           data-testid="studio-workspace"
         >
           {/* ── Editors ── */}
-          <div className="min-h-0 min-w-0 overflow-y-auto p-6 space-y-5 border-b lg:border-b-0 lg:border-r">
+          <div className="min-h-0 min-w-0 overflow-y-auto p-3 sm:p-4 space-y-3 border-b lg:border-b-0 lg:border-r">
             {fields.map((f) => (
-              <div key={f.key} className="space-y-1.5">
-                <Label htmlFor={`studio-field-${f.key}`}>{f.label}</Label>
+              <div key={f.key} className={cn("space-y-1", channel === "email" && f.key === "subject" && "flex items-center gap-2 space-y-0")}>
+                <div className="flex items-center gap-1">
+                  <Label htmlFor={`studio-field-${f.key}`} className={cn("text-xs font-medium", channel === "email" && f.mode === "html" && "sr-only")}>{f.label}</Label>
+                  {(f.hint || literalKeys.has(f.key)) && (
+                    <button
+                      type="button"
+                      className="rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      title={[f.hint, literalKeys.has(f.key) ? "Sent exactly as typed — tokens are not rendered in this field." : ""].filter(Boolean).join(" ")}
+                      aria-label={`${f.label}: ${[f.hint, literalKeys.has(f.key) ? "Sent exactly as typed — tokens are not rendered in this field." : ""].filter(Boolean).join(" ")}`}
+                    >
+                      <CircleHelp className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
                 {f.mode === "html" ? (
                   <div
                     onFocusCapture={() => {
@@ -1289,7 +1307,7 @@ export function TemplateStudio({
                       data-testid={`studio-editor-${f.key}`}
                       value={values[f.key] ?? ""}
                       onChange={(v) => onValueChange(f.key, v)}
-                      minHeight={260}
+                      minHeight={320}
                       enableTokens
                       tokens={tokens}
                       editorApiRef={getHtmlApiRef(f.key)}
@@ -1337,6 +1355,7 @@ export function TemplateStudio({
                   <Input
                     id={`studio-field-${f.key}`}
                     data-testid={`studio-editor-${f.key}`}
+                    className="h-8 min-w-0 flex-1"
                     value={values[f.key] ?? ""}
                     placeholder={f.placeholder || undefined}
                     maxLength={f.maxLength}
@@ -1350,6 +1369,8 @@ export function TemplateStudio({
                     as="input"
                     id={`studio-field-${f.key}`}
                     data-testid={`studio-editor-${f.key}`}
+                    className="h-8"
+                    containerClassName={channel === "email" && f.key === "subject" ? "min-w-0 flex-1" : undefined}
                     value={values[f.key] ?? ""}
                     onChange={(v) => onValueChange(f.key, v)}
                     tokens={tokens}
@@ -1360,15 +1381,6 @@ export function TemplateStudio({
                     }}
                   />
                 )}
-                {literalKeys.has(f.key) && (
-                  <p
-                    className="text-xs text-muted-foreground"
-                    data-testid={`studio-literal-${f.key}`}
-                  >
-                    Sent exactly as typed — tokens are not rendered in this field.
-                  </p>
-                )}
-                {f.hint && <p className="text-xs text-muted-foreground">{f.hint}</p>}
                 {f.maxLength !== undefined && (
                   <p
                     className={cn(
@@ -1659,7 +1671,10 @@ export function TemplateStudio({
           </div>
         </div>
 
-        <div className="px-6 py-3 border-t shrink-0 flex items-start gap-4">
+        <div className="px-4 py-1.5 border-t shrink-0 flex items-center gap-3">
+          <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+            Type <kbd className="font-mono">/</kbd> to insert a merge field
+          </span>
           <StudioDiagnostics
             graphState={graphState}
             seedsState={seedsState}

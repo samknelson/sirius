@@ -46,8 +46,11 @@ production database saves):
   HTML, source/visual switching and reload/reopen preserve supported content.
 - Typing, formatting, token insertion and nested-table paste undo/redo through
   keyboard shortcuts; disabled imperative token insertion cannot change content.
-- Font, size, alignment and line spacing; ordinary text links add/update/remove;
-  clear formatting and its undo.
+- Single-row toolbar geometry (48px tall, no horizontal overflow) at 390px,
+  800px and 1400px; opening a popover leaves the editor canvas in place.
+- Font, size, alignment and line spacing; formatting controls retain the
+  original selection while their menu inputs receive focus; ordinary text
+  links add/update/remove; clear formatting and its undo.
 - Table insertion, row/column additions and deletions, horizontal merge/split,
   width and padding; two-column email layout and styled linked button insertion.
 - HTTPS image validation, alternative text, proportional width, editing,
@@ -64,7 +67,12 @@ image downloader security or PDF geometry. The separate comm delivery/PDF unit
 and integration suites cover their respective backend contracts.
 
 Success writes `screenshots/postal-template-regression.png` and
-`screenshots/template-design-authoring.png` and prints assertions.
+`screenshots/template-design-authoring.png`, plus
+`screenshots/email-template-editor.png`,
+`screenshots/email-template-insert-menu.png`, and
+`screenshots/email-template-color-menu.png` from an isolated email Studio
+fixture, and prints assertions. The email fixture's sample text is not
+written to any application template.
 `POSTAL_BROWSER_KEEP_OPEN=1` retains the fixture browser and Vite until Ctrl+C for
 inspection. Interception belongs to that Puppeteer page: a separate screenshot
 browser cannot authenticate/use the fixture APIs. Inspect the saved PNG instead.

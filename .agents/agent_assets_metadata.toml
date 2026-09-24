@@ -217,3 +217,45 @@ mtime_ms = 1789683692093
 storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:8a1a98ac-267a-49fc-bedd-c98aa4f89294/04ec2d50-ad99-491d-b568-5df3f4808c6e/7305a455-ebe1-4719-a087-435e33165a2f"
 storage_version_token = "1789683774509835"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "8ptFVaQ0yAwn4A8l8vHyj"
+uri = "file://screenshots/email-template-editor.png"
+type = "image"
+title = "Email template editor — finished layout"
+description = "Actual Template Studio component in an isolated browser fixture; sample content does not change stored templates."
+logical_id = "f61e5b73-0468-45d6-b2a4-51e0c9dde9fd"
+content_hash = "sha256:c412987981ca702b7a4623d6ff7e763ca276d46ec147ebce2353aec3665764fe"
+size = 36251
+mtime_ms = 1790286237610
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:8a1a98ac-267a-49fc-bedd-c98aa4f89294/f61e5b73-0468-45d6-b2a4-51e0c9dde9fd/7197833d-636d-4717-bde0-6900893beaca"
+storage_version_token = "1790286292560760"
+content_type = "image/png"
+
+[[outputs]]
+id = "fREF-3pf2HcE3KuJVE5uu"
+uri = "file://screenshots/email-template-insert-menu.png"
+type = "image"
+title = "Insert menu — floating state"
+description = "Insert actions open over the document without changing its position."
+logical_id = "3ed87efa-d119-4e85-af1f-dce3e73c4ba3"
+content_hash = "sha256:98aa5e04163e27514b27384c8bbe21d053f9bd93541bf73aa1a11dc78e08d216"
+size = 44878
+mtime_ms = 1790286237970
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:8a1a98ac-267a-49fc-bedd-c98aa4f89294/3ed87efa-d119-4e85-af1f-dce3e73c4ba3/f8e8f8b6-6bba-42ef-8359-1f669afab6f0"
+storage_version_token = "1790286293110904"
+content_type = "image/png"
+
+[[outputs]]
+id = "I8c979GI02BFYXZSzEMnP"
+uri = "file://screenshots/email-template-color-menu.png"
+type = "image"
+title = "Text color menu — floating state"
+description = "Color presets and hex input stay anchored to the single toolbar."
+logical_id = "4783c5d2-b07e-4147-9fea-c0053195acf1"
+content_hash = "sha256:756fa67ba28167e369d3c6391e045123c5ad335b360a7d46016ac2a78634779d"
+size = 44672
+mtime_ms = 1790286238294
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:8a1a98ac-267a-49fc-bedd-c98aa4f89294/4783c5d2-b07e-4147-9fea-c0053195acf1/368635ce-907f-48af-9bf8-ac43218f1262"
+storage_version_token = "1790286293739863"
+content_type = "image/png"

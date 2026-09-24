@@ -54,7 +54,7 @@ const server = await bounded("Vite createServer", createServer({
     name: "postal-browser-entry",
     configureServer(s) {
       s.middlewares.use((req, _res, next) => {
-        if (/^\/(editor-fixture|workers\/[^/]+\/comm\/send-postal|bulk\/[^/]+\/message)(\?|$)/.test(req.url || "")) {
+        if (/^\/(editor-fixture|email-studio-fixture|workers\/[^/]+\/comm\/send-postal|bulk\/[^/]+\/message)(\?|$)/.test(req.url || "")) {
           req.url = "/tests/postal-templates/browser.html";
         }
         next();
@@ -156,7 +156,24 @@ try {
     }
   });
   const sel = id => `[data-testid="${id}"]`;
-  const click = async id => { await page.waitForSelector(sel(id), { visible: true }); await page.click(sel(id)); };
+  const click = async id => {
+    const editorTestId = id.replace(/-(?:page-break|raw-mode)$/, "");
+    const toolbarSelector = `div:has(> ${sel(editorTestId)}) [data-template-design-toolbar]`;
+    if (id.endsWith("-page-break") && !await page.$(sel(id)) && await page.$(toolbarSelector)) {
+      await page.click(`${toolbarSelector} button[aria-label="Insert"]`);
+    }
+    if (id.endsWith("-raw-mode")) {
+      const target = await page.$(sel(id));
+      const visible = target && await target.evaluate(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length));
+      if (!visible && await page.$(toolbarSelector)) {
+        await page.$eval(`${toolbarSelector} button[aria-label="More formatting"]`, el => el.click());
+      }
+    }
+    await page.waitForSelector(sel(id), { visible: true });
+    const tagName = await page.$eval(sel(id), el => el.tagName);
+    if (tagName === "DIV" || tagName === "TEXTAREA" || tagName === "INPUT") await page.click(sel(id));
+    else await page.$eval(sel(id), el => el.click());
+  };
   const value = id => page.$eval(sel(id), el => el.isContentEditable ? el.innerHTML : el.value);
   const expectFields = async expected => {
     await page.waitForFunction((expected) => {
@@ -196,7 +213,7 @@ try {
       const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
       el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     });
-    await page.$eval('summary[aria-label="Template design tools"]', el => { if (!el.parentElement.open) el.click(); });
+    await page.click('[data-template-design-toolbar] button[aria-label="Insert"]');
     await page.$$eval("summary", nodes => {
       const images = nodes.find(el => el.textContent?.trim() === "Images");
       if (images && !images.parentElement.open) images.click();
@@ -309,7 +326,7 @@ try {
   assert.equal(await page.$eval(`${sel("fixture-unrelated")} p`, el => el.getAttribute("style")), null);
   console.log("PASS imported layout, source/apply, attribute tokens, selection paste/toolbar, page break and local save/reopen; unrelated editor unchanged");
   console.log("Opening one-off compose");
-  await exerciseAuthoring(page, origin);
+  const toolbarLayoutFailures = await exerciseAuthoring(page, origin);
   await page.goto(`${origin}/workers/worker-fixture/comm/send-postal`);
   await page.waitForSelector(sel("fixture-staff"));
   await exerciseStudio("button-compose-postal-template");
@@ -334,9 +351,36 @@ try {
   assert.deepEqual(reads.at(-1), saves[0]);
   assert.deepEqual([...new Set(templateQueries)].sort(), [...contexts].sort());
   assert.deepEqual(failures, [], "No unexpected API/external requests or browser errors");
+  assert.deepEqual(toolbarLayoutFailures, [], "Responsive toolbar must remain 46px tall, one row and overflow-free at 390px, 800px and 1400px");
   await mkdir(path.join(root, "screenshots"), { recursive: true });
   await page.screenshot({ path: path.join(root, "screenshots/postal-template-regression.png"), fullPage: true });
   console.log("PASS bulk: both fields saved in PUT, fresh GET after reload, reopened actual editor");
+  // Capture the real email Studio component separately from the postal flow.
+  // Its sample text lives only in this isolated browser fixture.
+  await page.setViewport({ width: 1024, height: 720 });
+  await page.goto(`${origin}/email-studio-fixture`);
+  await page.waitForSelector(sel("dialog-template-studio"), { visible: true });
+  assert.equal(await page.$eval("#studio-right-column", el => getComputedStyle(el).display), "none",
+    "Email editor opens with the full writing canvas");
+  const emailToolbar = `[data-template-design-toolbar]`;
+  assert.equal(await page.$eval(emailToolbar, el => el.getBoundingClientRect().height), 46);
+  const emailCanvasTop = await page.$eval(sel("studio-editor-bodyHtml"), el => el.getBoundingClientRect().top);
+  await new Promise(resolve => setTimeout(resolve, 300)); // Wait for dialog entrance animation before capture.
+  await page.screenshot({ path: path.join(root, "screenshots/email-template-editor.png") });
+  await page.click(`${emailToolbar} button[aria-label="Insert"]`);
+  await page.waitForFunction(() => document.querySelector('[data-template-design-toolbar] button[aria-label="Insert"]')?.getAttribute("aria-expanded") === "true");
+  assert.equal(await page.$eval(sel("studio-editor-bodyHtml"), el => el.getBoundingClientRect().top), emailCanvasTop,
+    "Insert menu floats without moving the email document");
+  await new Promise(resolve => setTimeout(resolve, 250));
+  await page.screenshot({ path: path.join(root, "screenshots/email-template-insert-menu.png") });
+  await page.keyboard.press("Escape");
+  await page.click(`${emailToolbar} button[aria-label="Text color"]`);
+  await page.waitForSelector('[role="group"][aria-label="Text color presets"]', { visible: true });
+  assert.equal(await page.$eval(sel("studio-editor-bodyHtml"), el => el.getBoundingClientRect().top), emailCanvasTop,
+    "Color menu floats without moving the email document");
+  await new Promise(resolve => setTimeout(resolve, 250));
+  await page.screenshot({ path: path.join(root, "screenshots/email-template-color-menu.png") });
+  console.log("PASS email Studio full-width canvas, 46px toolbar, and floating Insert/color menus");
   console.log(`PASS fail-closed networking; screenshot: screenshots/postal-template-regression.png; Chromium ${await browser.version()}`);
   if (process.env.POSTAL_BROWSER_KEEP_OPEN === "1") {
     console.log(`Fixture browser retained at ${origin}; Ctrl+C to close. A separate browser has no API interception.`);

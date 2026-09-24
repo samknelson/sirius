@@ -6,6 +6,7 @@ export const modules: ModuleMap = {
   "./components/mockups/benefit-history/GroupedEras.tsx": () => import("../components/mockups/benefit-history/GroupedEras.tsx"),
   "./components/mockups/worker-coverage/CoverageFirst.tsx": () => import("../components/mockups/worker-coverage/CoverageFirst.tsx"),
   "./components/mockups/worker-coverage/Current.tsx": () => import("../components/mockups/worker-coverage/Current.tsx"),
+  "./components/mockups/worker-coverage/CurrentRefined.tsx": () => import("../components/mockups/worker-coverage/CurrentRefined.tsx"),
   "./components/mockups/worker-coverage/MonthlyLedger.tsx": () => import("../components/mockups/worker-coverage/MonthlyLedger.tsx"),
   "./components/mockups/worker-coverage/RailLedger.tsx": () => import("../components/mockups/worker-coverage/RailLedger.tsx")
 };
