@@ -31,6 +31,7 @@ export interface PaymentAttemptStorage {
   lockAttempt(id: string): Promise<void>;
   expireReservations(eaId: string): Promise<void>;
   getReservedAmount(eaId: string): Promise<number>;
+  getReservations(eaId: string): Promise<LedgerPaymentAttempt[]>;
   listForRecovery(limit: number, olderThan: Date): Promise<LedgerPaymentAttempt[]>;
   listPendingEvents(limit: number): Promise<InboxEvent[]>;
   setDefaultIfAbsent(id: string, entityType: string, entityId: string, gatewayConfigId: string): Promise<void>;
@@ -169,9 +170,15 @@ export function createPaymentAttemptStorage(): PaymentAttemptStorage {
         .from(ledgerPaymentAttempts)
         .where(and(
           eq(ledgerPaymentAttempts.ledgerEaId, eaId),
-          sql`${ledgerPaymentAttempts.status} IN ('created','requires_action','processing')`,
+          sql`(${ledgerPaymentAttempts.status} IN ('created','requires_action','processing') OR (${ledgerPaymentAttempts.status} = 'succeeded' AND ${ledgerPaymentAttempts.ledgerPaymentId} IS NULL))`,
         ));
       return Number(row?.total ?? 0);
+    },
+    async getReservations(eaId) {
+      return getClient().select().from(ledgerPaymentAttempts).where(and(
+        eq(ledgerPaymentAttempts.ledgerEaId, eaId),
+        sql`(${ledgerPaymentAttempts.status} IN ('created','requires_action','processing') OR (${ledgerPaymentAttempts.status} = 'succeeded' AND ${ledgerPaymentAttempts.ledgerPaymentId} IS NULL))`,
+      ));
     },
     async listForRecovery(limit, olderThan) {
       return getClient().select().from(ledgerPaymentAttempts)

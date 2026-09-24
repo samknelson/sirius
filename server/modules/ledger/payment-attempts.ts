@@ -11,6 +11,7 @@ import { getCurrency } from "@shared/currency";
 import { assertOnlinePaymentAuthority, OnlinePaymentAuthorityError } from "./online-payment-authority";
 import { onlinePaymentSettingsSchema, onlinePaymentAuthorizationTextsSchema, ONLINE_PAYMENT_AUTHORIZATION_VARIABLE } from "@shared/ledger/online-payments";
 import { z } from "zod";
+import { calculateCheckoutSelection, type CheckoutSelectionInput } from "@shared/ledger/checkout-selection";
 import { enforceFloodLimit, FloodError } from "../../flood/service";
 import { CHECKOUT_FLOOD_EVENT } from "../../flood/events";
 import { PaymentCancellationError } from "../../plugins/ledger/payment-gateway/types";
@@ -344,6 +345,15 @@ export function registerLedgerPaymentAttemptRoutes(
   const checkoutEntity = z.enum(["worker", "employer"]);
   const checkoutBody = z.object({
     amount: z.union([z.string(), z.number()]),
+    selection: z.object({
+      mode: z.enum(["full", "statements"]),
+      invoiceNumbers: z.array(z.string().trim().min(1)).max(500),
+    }).strict(),
+    creditTransfers: z.array(z.object({
+      sourceInvoiceNumber: z.string(), sourceStatementYmd: z.string(),
+      targetInvoiceNumber: z.string(), targetStatementYmd: z.string(),
+      amount: z.string(),
+    }).strict()).max(1000).default([]),
     idempotencyKey: z.string().trim().min(1).max(200),
     paymentMethodId: z.string().trim().min(1).optional(),
     saveMethod: z.boolean().default(false),
@@ -357,6 +367,8 @@ export function registerLedgerPaymentAttemptRoutes(
     id: a.id, entityType: a.entityType, entityId: a.entityId, eaId: a.ledgerEaId,
     amount: a.amount, currency: a.currency, status: workerVisibleStatus(a),
     ledgerPaymentId: a.ledgerPaymentId ?? null,
+    statementSelection: a.statementSelection ?? [],
+    creditTransfers: a.metadata?.checkoutQuote?.creditTransfers ?? [],
     failureMessage: a.status === "failed" ? a.failureMessage : null, ...extra,
   });
   const safePublicConfig = (config: Record<string, unknown>) => Object.fromEntries(
@@ -384,6 +396,24 @@ export function registerLedgerPaymentAttemptRoutes(
     if (!resolved.plugin.createPaymentSession || !resolved.plugin.retrievePayment || !resolved.plugin.cancelPayment) throw new PaymentAttemptConflictError("Payment gateway does not support checkout");
     return { ea, account, settings, resolved };
   };
+  const selectionInput = async (loaded: Awaited<ReturnType<typeof loadCheckout>>): Promise<CheckoutSelectionInput> => {
+    const balance = parseStoredMoney(await storage.ledger.ea.getBalance(loaded.ea.id), "Balance");
+    const reservations = await storage.ledger.paymentAttempts.getReservations(loaded.ea.id);
+    const reserved = reservations.reduce((sum, row) => sum + Math.round(parseStoredMoney(row.amount, "Pending payment", { nonNegative: true }) * 100), 0);
+    return {
+      balance: balance.toFixed(2), reserved: (reserved / 100).toFixed(2),
+      invoices: await storage.ledger.invoices.listForEa(loaded.ea.id),
+      // Do not expose provider references, consent, actor IDs or method metadata.
+      reservations: reservations.map(row => ({
+        amount: row.amount, statementSelection: row.statementSelection,
+        metadata: { invoicePeriods: (row.metadata as any)?.invoicePeriods,
+          checkoutQuote: (row.metadata as any)?.checkoutQuote
+          ? { unstatementedAmount: (row.metadata as any).checkoutQuote.unstatementedAmount,
+              creditTransfers: (row.metadata as any).checkoutQuote.creditTransfers } : undefined },
+      })),
+      allowPartial: loaded.settings.allowPartial, minAmount: loaded.settings.minAmount,
+    };
+  };
   app.get("/api/ledger/pay-accounts/:entityType/:entityId", requireAuth, async (req, res) => {
     if (!(await authorizeCheckout(req, res))) return;
     try {
@@ -406,9 +436,15 @@ export function registerLedgerPaymentAttemptRoutes(
       const loaded = await loadCheckout(req.params.entityType, req.params.entityId, req.params.eaId);
       const auth = await storage.variables.getByName(ONLINE_PAYMENT_AUTHORIZATION_VARIABLE);
       const authorization = onlinePaymentAuthorizationTextsSchema.safeParse(auth?.value);
-      const balance = parseStoredMoney(await storage.ledger.ea.getBalance(loaded.ea.id), "Balance");
-      const reserved = parseStoredMoney(await storage.ledger.paymentAttempts.getReservedAmount(loaded.ea.id), "Reserved amount", { nonNegative: true, allowNumber: true });
-      const invoices = await storage.ledger.invoices.listForEa(loaded.ea.id);
+      const input = await runInTransaction(async () => {
+        await storage.ledger.paymentAttempts.lockEa(loaded.ea.id);
+        return selectionInput(loaded);
+      });
+      const quote = calculateCheckoutSelection(input, { mode: "full", invoiceNumbers: [] });
+      let methodPermission = true;
+      try { await assertOnlinePaymentAuthority(req, req.params.entityType as "worker" | "employer", req.params.entityId, "methods"); }
+      catch (e) { if (e instanceof OnlinePaymentAuthorityError) methodPermission = false; else throw e; }
+      const reusable = !!loaded.resolved.plugin.attachMethod;
       const configuredTypes = Array.isArray((loaded.resolved.config.data as any)?.paymentTypes)
         ? (loaded.resolved.config.data as any).paymentTypes.filter((x: unknown): x is string => typeof x === "string") : [];
       const supportedTypes = (loaded.resolved.plugin.supportedPaymentTypes ?? []).map((x) => x.id);
@@ -418,9 +454,16 @@ export function registerLedgerPaymentAttemptRoutes(
       return res.json({
         entityType: req.params.entityType, entityId: req.params.entityId, eaId: loaded.ea.id,
         account: { id: loaded.account.id, name: loaded.account.name, currency: loaded.account.currencyCode, gatewayConfigId: loaded.account.gatewayConfigId },
-        balance: balance.toFixed(2), available: Math.max(0, balance - reserved).toFixed(2),
-        invoices, paymentTypes, payComponentId: loaded.resolved.plugin.payComponentId ?? null,
-        reusableMethodsSupported: !!loaded.resolved.plugin.attachMethod,
+        balance: input.balance, reserved: input.reserved, available: quote.available,
+        invoices: input.invoices, selectionInput: input, quote,
+        readiness: {
+          paymentAuthorization: authorization.success ? "ready" : "configuration_required",
+          methodPermission: methodPermission ? "allowed" : "denied",
+          reusableMethods: reusable ? "supported" : "unsupported",
+          saveMethod: !methodPermission ? "permission_denied" : !authorization.success ? "configuration_required" : !reusable ? "provider_unsupported" : "ready",
+        },
+        paymentTypes, payComponentId: loaded.resolved.plugin.payComponentId ?? null,
+        reusableMethodsSupported: reusable,
         settings: loaded.settings,
         authorization: authorization.success
           ? authorization.data[req.params.entityType === "worker" ? "consumer" : "business"]
@@ -444,28 +487,8 @@ export function registerLedgerPaymentAttemptRoutes(
           if (e instanceof OnlinePaymentAuthorityError) return error(res, 403, e.message);
           throw e;
         }
+        if (!loaded.resolved.plugin.attachMethod) return error(res, 409, "Payment gateway does not support reusable methods");
       }
-      if (cents < Math.round(loaded.settings.minAmount * 100)) return error(res, 400, "Amount is below the minimum");
-      const invoices = await storage.ledger.invoices.listForEa(loaded.ea.id);
-      const invoiceMap = new Map(invoices.map((invoice: any) => [invoice.invoiceNumber, invoice]));
-      const selectedInvoices = new Set<string>();
-      let selectedCents = 0;
-      for (const selection of body.statementSelection) {
-        if (selectedInvoices.has(selection.invoiceNumber)) return error(res, 400, "Invoice selection contains a duplicate");
-        selectedInvoices.add(selection.invoiceNumber);
-        const invoice = invoiceMap.get(selection.invoiceNumber);
-        if (!invoice) return error(res, 400, "Invoice selection does not belong to this ledger account");
-        if (!/^\d+(?:\.\d{1,2})?$/.test(String(selection.amount))) return error(res, 400, "Invoice selection amount is invalid");
-        const selected = Math.round(Number(selection.amount) * 100);
-        const due = Math.round(Number(invoice.invoiceBalance) * 100);
-        if (!Number.isSafeInteger(selected) || !Number.isSafeInteger(due) || selected <= 0 || selected > due) return error(res, 400, "Invoice selection exceeds its balance");
-        selectedCents += selected;
-      }
-      if (body.statementSelection.length > 0 && selectedCents !== cents) return error(res, 400, "Invoice selections must add up to the payment amount");
-      const accountBalance = parseStoredMoney(await storage.ledger.ea.getBalance(loaded.ea.id), "Balance");
-      const reservedBalance = parseStoredMoney(await storage.ledger.paymentAttempts.getReservedAmount(loaded.ea.id), "Reserved amount", { nonNegative: true, allowNumber: true });
-      const availableCents = Math.max(0, Math.round((accountBalance - reservedBalance) * 100));
-      if (!loaded.settings.allowPartial && cents !== availableCents) return error(res, 400, "This account requires payment of its full available balance");
       const existing = await storage.ledger.paymentAttempts.getByIdempotencyKey(body.idempotencyKey);
       if (existing) {
         if (["expired", "canceled", "failed"].includes(existing.status) ||
@@ -482,6 +505,10 @@ export function registerLedgerPaymentAttemptRoutes(
             existing.createdByUserId !== userId ||
             existingMetadata.paymentMethodRef !== (body.paymentMethodId ? (await storage.ledger.paymentMethods.get(body.paymentMethodId))?.providerMethodRef : null) ||
             existingConsent.version !== body.consent.version || existingConsent.text !== body.consent.text ||
+            JSON.stringify(existingMetadata.checkoutSelection) !== JSON.stringify({
+              mode: body.selection.mode, invoiceNumbers: [...body.selection.invoiceNumbers].sort(),
+            }) ||
+            JSON.stringify((existingMetadata.checkoutQuote as any)?.creditTransfers ?? []) !== JSON.stringify(body.creditTransfers) ||
             JSON.stringify(existing.statementSelection ?? []) !== JSON.stringify(body.statementSelection)) {
           return error(res, 409, "Idempotency key was already used for a different checkout");
         }
@@ -539,13 +566,38 @@ export function registerLedgerPaymentAttemptRoutes(
       const attempt = await runInTransaction(async () => {
         await storage.ledger.paymentAttempts.lockEa(loaded.ea.id);
         await storage.ledger.paymentAttempts.expireReservations(loaded.ea.id);
-        const balance = parseStoredMoney(await storage.ledger.ea.getBalance(loaded.ea.id), "Balance");
-        const reserved = parseStoredMoney(await storage.ledger.paymentAttempts.getReservedAmount(loaded.ea.id), "Reserved amount", { nonNegative: true, allowNumber: true });
-        if (cents > Math.round((balance - reserved) * 100)) throw new PaymentAttemptConflictError("Payment amount exceeds the available balance");
-        if (!loaded.settings.allowPartial && cents !== Math.max(0, Math.round((balance - reserved) * 100))) {
-          throw new PaymentAttemptConflictError("This account requires payment of its full available balance");
+        // All authoritative balances and statement reservations are read after
+        // the EA lock, not from the earlier preview or request.
+        const current = await loadCheckout(req.params.entityType, req.params.entityId, req.params.eaId);
+        if (current.account.gatewayConfigId !== loaded.account.gatewayConfigId ||
+            current.account.currencyCode !== loaded.account.currencyCode) {
+          throw new PaymentAttemptConflictError("Checkout configuration changed. Refresh and review before confirming.");
         }
-        return storage.ledger.paymentAttempts.create({ workerId: req.params.entityType === "worker" ? req.params.entityId : null, ledgerEaId: loaded.ea.id, gatewayConfigId: loaded.account.gatewayConfigId!, accountId: loaded.account.id, entityType: req.params.entityType, entityId: req.params.entityId, createdByUserId: userId, createdAt: new Date(), updatedAt: new Date(), saveMethod: body.saveMethod, consent: { ...body.consent, acceptedAt: new Date().toISOString(), authorizationVersion: selectedText.version, authorizationText: selectedText.text }, statementSelection: body.statementSelection, idempotencyKey: body.idempotencyKey, amount: (cents / 100).toFixed(2), currency: loaded.account.currencyCode, status: "requires_action", reservationExpiresAt: null, metadata: { source: "online_checkout", paymentMethodRef: savedMethod?.providerMethodRef ?? null, paymentTypes, invoicePeriods: body.statementSelection.map(s => { const invoice = invoiceMap.get(s.invoiceNumber)!; return { invoiceNumber: s.invoiceNumber, statementYmd: `${invoice.year}-${String(invoice.month).padStart(2, "0")}-01` }; }) } } as any);
+        const quote = calculateCheckoutSelection(await selectionInput(current), body.selection);
+        if (quote.issues.length) throw new PaymentAttemptConflictError(quote.issues.join(" "));
+        if (quote.amountMinor !== cents || JSON.stringify(quote.statementSelection) !== JSON.stringify(body.statementSelection) ||
+            JSON.stringify(quote.creditTransfers) !== JSON.stringify(body.creditTransfers)) {
+          throw new PaymentAttemptConflictError("Statement balances changed. Review the updated selection before confirming.");
+        }
+        const currentAuth = onlinePaymentAuthorizationTextsSchema.safeParse(
+          (await storage.variables.getByName(ONLINE_PAYMENT_AUTHORIZATION_VARIABLE))?.value,
+        );
+        const currentText = currentAuth.success ? currentAuth.data[req.params.entityType === "worker" ? "consumer" : "business"] : null;
+        if (!currentText || currentText.version !== body.consent.version || currentText.text !== body.consent.text) {
+          throw new PaymentAttemptConflictError("Current payment authorization must be accepted");
+        }
+        return storage.ledger.paymentAttempts.create({
+          workerId: req.params.entityType === "worker" ? req.params.entityId : null,
+          ledgerEaId: loaded.ea.id, gatewayConfigId: loaded.account.gatewayConfigId!,
+          accountId: loaded.account.id, entityType: req.params.entityType, entityId: req.params.entityId,
+          createdByUserId: userId, createdAt: new Date(), updatedAt: new Date(), saveMethod: body.saveMethod,
+          consent: { ...body.consent, acceptedAt: new Date().toISOString(), authorizationVersion: selectedText.version, authorizationText: selectedText.text },
+          statementSelection: quote.statementSelection, idempotencyKey: body.idempotencyKey,
+          amount: quote.amount, currency: loaded.account.currencyCode, status: "requires_action", reservationExpiresAt: null,
+          metadata: { source: "online_checkout", paymentMethodRef: savedMethod?.providerMethodRef ?? null, paymentTypes,
+            checkoutSelection: { mode: body.selection.mode, invoiceNumbers: [...body.selection.invoiceNumbers].sort() },
+            checkoutQuote: quote, invoicePeriods: quote.invoicePeriods },
+        } as any);
       });
       if ((attempt as any).__created === false) {
         // A competing request inserted the same key after our initial lookup.

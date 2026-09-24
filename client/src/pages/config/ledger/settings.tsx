@@ -14,6 +14,144 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Save } from "lucide-react";
 import { useState, useEffect } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { parseVariableJson, useSetVariable, useVariableValue } from "@/lib/use-variable";
+import {
+  ONLINE_PAYMENT_AUTHORIZATION_VARIABLE,
+  onlinePaymentAuthorizationTextsSchema,
+  type OnlinePaymentAuthorizationTexts,
+} from "@shared/ledger/online-payments";
+
+const emptyAuthorization: OnlinePaymentAuthorizationTexts = {
+  consumer: { version: "", text: "" },
+  business: { version: "", text: "" },
+};
+
+function PaymentAuthorizationEditor() {
+  const { toast } = useToast();
+  const variable = useVariableValue(ONLINE_PAYMENT_AUTHORIZATION_VARIABLE);
+  const stored = variable.data === null ? null
+    : onlinePaymentAuthorizationTextsSchema.safeParse(parseVariableJson(variable.data));
+  const current = stored && stored.success ? stored.data : null;
+  const [draft, setDraft] = useState<OnlinePaymentAuthorizationTexts>(emptyAuthorization);
+
+  useEffect(() => {
+    if (variable.data === null) setDraft(emptyAuthorization);
+    else if (current) setDraft(current);
+  }, [variable.data]);
+
+  const save = useSetVariable(ONLINE_PAYMENT_AUTHORIZATION_VARIABLE, {
+    onSuccess: () => toast({
+      title: "Payment authorization saved",
+      description: "The shared consumer and business authorization configuration was updated.",
+    }),
+    onError: (error) => toast({
+      title: "Unable to save payment authorization",
+      description: getApiErrorMessage(error, "The authorization configuration was not changed."),
+      variant: "destructive",
+    }),
+  });
+  const validation = onlinePaymentAuthorizationTextsSchema.safeParse(draft);
+  const changed = JSON.stringify(draft) !== JSON.stringify(current ?? emptyAuthorization);
+  const canEdit = !variable.isLoading && !variable.isError && (variable.data === null || !!current);
+
+  function update(payer: "consumer" | "business", field: "version" | "text", value: string) {
+    setDraft((previous) => ({
+      ...previous,
+      [payer]: { ...previous[payer], [field]: value },
+    }));
+  }
+
+  return (
+    <Card id="payment-authorization" data-testid="payment-authorization-editor">
+      <CardHeader>
+        <CardTitle>Online payment authorization</CardTitle>
+        <CardDescription>
+          Shared across all ledger accounts and both worker and employer checkout. Enter only
+          approved authorization language and its corresponding version for each payer type.
+          Changes affect future consents; existing consent snapshots retain the wording accepted at payment.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {variable.isLoading ? (
+          <p role="status" className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />Loading authorization configuration…</p>
+        ) : variable.isError ? (
+          <Alert variant="destructive" data-testid="authorization-load-error">
+            <AlertTitle>Unable to load authorization configuration</AlertTitle>
+            <AlertDescription>
+              {getApiErrorMessage(variable.error, "Check your access or retry the request.")}
+              <Button variant="outline" size="sm" className="ml-3" onClick={() => variable.refetch()}>Retry</Button>
+            </AlertDescription>
+          </Alert>
+        ) : variable.data !== null && !current ? (
+          <Alert variant="destructive">
+            <AlertTitle>Stored authorization needs review</AlertTitle>
+            <AlertDescription>The stored configuration does not match the required consumer and business format. No changes can be saved here until the existing value is reviewed; it has not been replaced.</AlertDescription>
+          </Alert>
+        ) : (
+          <>
+            <Alert variant={current ? "default" : "destructive"} data-testid="authorization-readiness">
+              <AlertTitle>{current ? "Authorization configured" : "Authorization not configured"}</AlertTitle>
+              <AlertDescription>
+                {current
+                  ? `Consumer version ${current.consumer.version} and business version ${current.business.version} are available for checkout.`
+                  : "Checkout cannot collect payment authorization until an administrator enters approved consumer and business text with versions. No legal wording is supplied automatically."}
+              </AlertDescription>
+            </Alert>
+            {(["consumer", "business"] as const).map((payer) => (
+              <fieldset key={payer} className="space-y-3 rounded-md border p-4">
+                <legend className="px-1 font-semibold capitalize">{payer} authorization</legend>
+                <div className="space-y-2">
+                  <Label htmlFor={`${payer}-authorization-version`}>Version</Label>
+                  <Input
+                    id={`${payer}-authorization-version`}
+                    data-testid={`${payer}-authorization-version`}
+                    value={draft[payer].version}
+                    onChange={(event) => update(payer, "version", event.target.value)}
+                    disabled={!canEdit || save.isPending}
+                    aria-required="true"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`${payer}-authorization-text`}>Approved authorization text</Label>
+                  <Textarea
+                    id={`${payer}-authorization-text`}
+                    data-testid={`${payer}-authorization-text`}
+                    rows={6}
+                    value={draft[payer].text}
+                    onChange={(event) => update(payer, "text", event.target.value)}
+                    disabled={!canEdit || save.isPending}
+                    aria-required="true"
+                  />
+                </div>
+              </fieldset>
+            ))}
+            {!validation.success && changed && (
+              <p role="alert" className="text-sm text-destructive">
+                Consumer and business versions and authorization text are all required. Blank or whitespace-only values cannot be saved.
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" disabled={!changed || save.isPending} onClick={() => setDraft(current ?? emptyAuthorization)}>
+                Reset
+              </Button>
+              <Button
+                data-testid="save-payment-authorization"
+                disabled={!canEdit || !changed || !validation.success || save.isPending}
+                onClick={() => { if (validation.success) save.mutate(validation.data); }}
+              >
+                {save.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save authorization
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 interface LedgerPaymentType {
   id: string;
@@ -98,7 +236,7 @@ export default function LedgerSettingsPage() {
   }
 
   return (
-    <div className="container mx-auto py-8 max-w-4xl">
+    <div className="container mx-auto py-8 max-w-4xl space-y-6">
       <h1 className="text-2xl md:text-3xl font-bold mb-6" data-testid="heading-ledger-settings">
         Ledger Settings
       </h1>
@@ -163,6 +301,7 @@ export default function LedgerSettingsPage() {
           </div>
         </CardContent>
       </Card>
+      <PaymentAuthorizationEditor />
     </div>
   );
 }

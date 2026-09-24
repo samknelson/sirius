@@ -145,6 +145,7 @@
 - [Worker-list sensitive filters](worker-list-sensitive-filters.md) — body-only searches, opaque cache generations, and consistent selection/export without exposing lookup values.
 - [Worker export traversal consistency](worker-export-traversal-consistency.md) — keyset batches preserve a total order without a long-lived snapshot; edits to filter/sort keys during a download may move rows.
 - [Online payment rollout](online-payment-foundation-boundary.md) — reuse existing attempts and pending ACH recovery; historical payer/consent stay unknown; foundation does not authorize live charging.
+- [Whole-statement checkout](whole-statement-checkout.md) — net credits apply oldest-first; unknown pending allocations block checkout rather than guessing; method management differs from method use.
 - [Payment direction historical correction](payment-direction-historical-correction.md) — changing a type's charge/credit meaning after clearing needs a reviewed snapshot and payment-plugin reconciliation, never a blind sign flip.
 - [WMB inferred event ownership](wmb-inferred-event-ownership.md) — coverage gaps are not failed scans; preserve inferred terminations through denorm recompute, but let confirmed scans win collisions.
 - [Navigation measurement and scroll width](nav-measurement-scrollwidth.md) — invisible absolute width probes still enlarge scrollWidth unless clipped inside a zero-width wrapper.

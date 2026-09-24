@@ -1,5 +1,6 @@
 import { createNoopValidator } from './utils/validation';
-import { getClient, onAfterCommit } from './transaction-context';
+import { getClient, onAfterCommit, runInTransaction } from './transaction-context';
+import { checkoutMinor, type CheckoutCreditTransfer } from "@shared/ledger/checkout-selection";
 import { eventBus, EventType } from "../services/event-bus";
 import { logger } from "../logger";
 import { entityMetadata, ledgerAccounts, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
@@ -119,6 +120,8 @@ export interface LedgerEntryFilter {
 }
 
 export interface LedgerEntryStorage {
+  /** Zero-sum statement credit attribution, atomic and keyed to the immutable attempt. */
+  applyCheckoutCreditTransfers(attemptId: string, eaId: string, transfers: CheckoutCreditTransfer[]): Promise<void>;
   getAll(): Promise<Ledger[]>;
   get(id: string): Promise<Ledger | undefined>;
   getByEaId(eaId: string): Promise<Ledger[]>;
@@ -990,6 +993,49 @@ async function emitLedgerEntryEvents(
 
 export function createLedgerEntryStorage(): LedgerEntryStorage {
   return {
+    async applyCheckoutCreditTransfers(attemptId, eaId, transfers) {
+      if (!transfers.length) return;
+      await runInTransaction(async () => {
+        await getClient().execute(sqlRaw`SELECT id FROM ${ledgerEa} WHERE id = ${eaId} FOR UPDATE`);
+        const entries = await this.getByEaId(eaId);
+        const expected = transfers.flatMap((transfer, index) => {
+          const cents = checkoutMinor(transfer.amount);
+          if (cents <= 0 || !/^\d{4}-(0[1-9]|1[0-2])-01$/.test(transfer.sourceStatementYmd) ||
+              !/^\d{4}-(0[1-9]|1[0-2])-01$/.test(transfer.targetStatementYmd) ||
+              transfer.sourceStatementYmd === transfer.targetStatementYmd) throw new Error("Invalid checkout credit attribution");
+          return [
+            { key: `${attemptId}:${index}:source`, amount: (cents / 100).toFixed(2), period: transfer.sourceStatementYmd, transfer },
+            { key: `${attemptId}:${index}:target`, amount: (-cents / 100).toFixed(2), period: transfer.targetStatementYmd, transfer },
+          ];
+        });
+        const existing = entries.filter(entry => entry.chargePlugin === "checkout-credit-transfer" && entry.referenceId === attemptId);
+        if (existing.length) {
+          if (existing.length !== expected.length || expected.some(row => !existing.some(entry =>
+            entry.chargePluginKey === row.key && entry.amount === row.amount && entry.statementYmd === row.period))) {
+            throw new Error("Checkout credit attribution snapshot mismatch");
+          }
+          return;
+        }
+        const balances = new Map<string, number>();
+        for (const entry of entries) {
+          const period = `${entry.statementYmd.slice(0, 7)}-01`;
+          balances.set(period, (balances.get(period) ?? 0) + checkoutMinor(entry.amount));
+        }
+        const used = new Map<string, number>();
+        for (const transfer of transfers) used.set(transfer.sourceStatementYmd,
+          (used.get(transfer.sourceStatementYmd) ?? 0) + checkoutMinor(transfer.amount));
+        for (const [period, cents] of used) {
+          if (cents > -(balances.get(period) ?? 0)) throw new Error("Reserved statement credit is no longer available; settlement requires review");
+        }
+        for (const row of expected) await this.create({
+          chargePlugin: "checkout-credit-transfer", chargePluginKey: row.key,
+          eaId, amount: row.amount, statementYmd: row.period, date: new Date(),
+          referenceType: "checkout-credit", referenceId: attemptId,
+          memo: `Checkout credit from ${row.transfer.sourceInvoiceNumber} to ${row.transfer.targetInvoiceNumber}`,
+          data: { paymentAttemptId: attemptId, ...row.transfer },
+        });
+      });
+    },
     async getAll(): Promise<Ledger[]> {
       const client = getClient();
       return await client.select().from(ledger);

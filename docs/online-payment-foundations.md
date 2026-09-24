@@ -84,7 +84,7 @@ The existing webhook URL remains supported.
    USD card and ACH only.
 3. The downstream authorization/checkout work must enforce login, worker
    ownership or explicit employer-contact grants, and refusal of staff-assisted
-   and masqueraded checkout. A configured account alone does not grant access.
+   checkout under the effective actor, including masquerade. A configured account alone does not grant access.
 4. That checkout must validate current balances and selections server-side,
    enforce the account minimum/partial policy, and leave saving unchecked.
    New and saved methods use the same durable attempt record.
@@ -107,8 +107,9 @@ Staff grant `Pay employer balances` and `Manage saved payment methods`
 independently on each employer-contact relationship's user administration
 page. Billing contact type alone grants neither capability. A contact with
 only pay authority may make a one-time payment or use an existing saved
-method but cannot save or manage methods. Staff and masquerading sessions
-cannot check out. Revocation is checked on every payment request.
+method but cannot save or manage methods. Normal staff cannot check out;
+masquerade uses the effective user's ownership and grants, not the staff user's
+privileges. Revocation is checked on every payment request.
 
 Before live activation, rehearse successful and failed dummy gateway outcomes
 for worker and employer accounts, ACH processing/settlement and receipt

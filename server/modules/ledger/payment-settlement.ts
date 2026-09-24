@@ -8,6 +8,7 @@ import { resolveGateway } from "./payment-gateway-context";
 import { createPaymentFromRequestBody, triggerPaymentChargePlugins } from "./payments";
 import { paymentEventMatchesAmount, selectFinancialPaymentType, shouldApplyPaymentEvent } from "./payment-attempt-state";
 import { storageLogger } from "../../logger";
+import { checkoutMinor, type CheckoutCreditTransfer } from "@shared/ledger/checkout-selection";
 
 type Evidence = Omit<Pick<NormalizedGatewayEvent, "type" | "providerRef" | "amountMinor" | "currency" | "methodRef" | "methodSummary" | "providerCreated" | "failureCode">, "type"> & {
   type: NormalizedGatewayEvent["type"] | "payment.created" | "payment.requires_action";
@@ -48,6 +49,8 @@ export async function settlePayment(attemptId: string, gatewayId: string, eviden
     await storage.ledger.paymentAttempts.lockAttempt(attemptId);
     const attempt = await storage.ledger.paymentAttempts.get(attemptId);
     if (!attempt) throw new SettlementRefusal("Payment attempt not found");
+    // Serialize posting/reservation release with checkout's balance quote.
+    await storage.ledger.paymentAttempts.lockEa(attempt.ledgerEaId);
     if (attempt.gatewayConfigId !== gatewayId) throw new SettlementRefusal("Payment gateway mismatch");
     if (!evidence.providerRef || (attempt.providerIntentRef && attempt.providerIntentRef !== evidence.providerRef)) {
       throw new SettlementRefusal("Payment reference mismatch");
@@ -82,6 +85,23 @@ export async function settlePayment(attemptId: string, gatewayId: string, eviden
           allocations[index].statementYmd = ymd;
         }
       }
+      const quote = (attempt.metadata as Record<string, unknown> | null)?.checkoutQuote as {
+        unstatementedAmount?: string; creditAdjustment?: string; creditTransfers?: CheckoutCreditTransfer[];
+      } | undefined;
+      if (quote) {
+        const unstatemented = Number(quote.unstatementedAmount);
+        if (!Number.isFinite(unstatemented) || unstatemented < 0) throw new SettlementRefusal("Unstatemented allocation is invalid");
+        if (selection?.length && unstatemented > 0) allocations.push({
+          eaId: attempt.ledgerEaId, amount: unstatemented.toFixed(2), statementYmd: "",
+        });
+        const total = allocations.reduce((sum, row) => sum + Math.round(Number(row.amount) * 100), 0);
+        if (total !== Math.round(Number(attempt.amount) * 100)) throw new SettlementRefusal("Checkout allocation total does not match payment");
+        const creditTotal = (quote.creditTransfers ?? []).reduce((sum, transfer) => sum + checkoutMinor(transfer.amount), 0);
+        if (creditTotal !== checkoutMinor(quote.creditAdjustment ?? "0.00")) throw new SettlementRefusal("Checkout credit attribution snapshot is incomplete");
+        if (quote.creditTransfers?.length) {
+          await storage.ledger.entries.applyCheckoutCreditTransfers(attempt.id, attempt.ledgerEaId, quote.creditTransfers);
+        }
+      }
       const now = new Date();
       const result = await createPaymentFromRequestBody({
         id: randomUUID(), status: "cleared", allocated: false, amount: attempt.amount,
@@ -91,6 +111,7 @@ export async function settlePayment(attemptId: string, gatewayId: string, eviden
           provider: gatewayId, paymentAttemptId: attempt.id,
           providerIntentRef: evidence.providerRef, proposedAllocation: allocations,
           statementSelection: selection ?? [],
+          creditTransfers: quote?.creditTransfers ?? [],
         },
       }, { requireAccountId: attempt.accountId });
       if (!result.ok) throw new SettlementRefusal(result.message);

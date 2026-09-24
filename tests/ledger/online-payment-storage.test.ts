@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ledgerPaymentAttempts } from "@shared/schema";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 const state = vi.hoisted(() => ({
   values: undefined as any,
   updates: undefined as any,
   rows: [] as any[],
+  where: undefined as any,
 }));
 vi.mock("../../server/storage/transaction-context", () => ({
   getClient: () => ({
-    select: () => ({ from: () => ({ where: async () => state.rows }) }),
+    select: () => ({ from: () => ({ where: async (where: unknown) => { state.where = where; return state.rows; } }) }),
     insert: () => ({
       values: (values: unknown) => {
         state.values = values;
@@ -46,8 +48,13 @@ describe("online payment storage boundaries", () => {
   it("refuses runtime mutation of immutable financial context", async () => {
     await createPaymentAttemptStorage().updateStatus("attempt", "processing", {
       amount: "999", currency: "EUR", gatewayConfigId: "other", providerIntentRef: "pi",
+      statementSelection: [{ invoiceNumber: "OTHER", amount: "999" }],
+      metadata: { invoicePeriods: [] }, consent: { text: "Changed" },
     } as Partial<typeof ledgerPaymentAttempts.$inferSelect>);
     expect(state.updates).toMatchObject({ status: "processing", providerIntentRef: "pi" });
+    expect(state.updates).not.toHaveProperty("statementSelection");
+    expect(state.updates).not.toHaveProperty("metadata");
+    expect(state.updates).not.toHaveProperty("consent");
     expect(state.updates).not.toHaveProperty("amount");
     expect(state.updates).not.toHaveProperty("currency");
     expect(state.updates).not.toHaveProperty("gatewayConfigId");
@@ -69,5 +76,19 @@ describe("online payment storage boundaries", () => {
     expect(state.updates).toEqual({ error: "Posting failed" });
     await storage.completeEvent("gateway", "event");
     expect(state.updates).toMatchObject({ error: null, processedAt: expect.any(Date) });
+  });
+
+  it("reserves both active attempts and succeeded attempts awaiting ledger posting", async () => {
+    const storage = createPaymentAttemptStorage();
+    state.rows = [{ id: "pending", amount: "267.35", statementSelection: [{ invoiceNumber: "COBRA", amount: "267.35" }] }];
+    expect(await storage.getReservations("ea")).toEqual(state.rows);
+    const query = new PgDialect().sqlToQuery(state.where);
+    expect(query.sql).toContain("'created','requires_action','processing'");
+    expect(query.sql).toContain("'succeeded'");
+    expect(query.sql).toContain("IS NULL");
+    expect(query.params).toContain("ea");
+    state.rows = [{ total: "267.35" }];
+    expect(await storage.getReservedAmount("ea")).toBe(267.35);
+    expect(new PgDialect().sqlToQuery(state.where)).toEqual(query);
   });
 });

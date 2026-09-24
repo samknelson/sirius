@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Link } from "wouter";
+import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useMutation } from "@tanstack/react-query";
 import { LedgerAccountLayout, useLedgerAccountLayout } from "@/components/layouts/LedgerAccountLayout";
@@ -32,6 +34,7 @@ interface OnlinePaymentAccountData {
 
 function AccountSettingsContent() {
   usePageTitle("Account Settings");
+  const { hasPermission } = useAuth();
   const { account } = useLedgerAccountLayout();
   const { toast } = useToast();
 
@@ -213,6 +216,13 @@ function AccountSettingsContent() {
               Confirm that this account has a payment gateway configured, the gateway is ready
               to accept charges and webhooks, and the current payment authorization text is
               configured. Saving these settings does not enable checkout automatically.
+              {hasPermission("admin") && (
+                <> Manage the shared consumer and business authorization wording in{" "}
+                  <Link href="/config/ledger/settings#payment-authorization" className="underline font-medium">
+                    Ledger Settings
+                  </Link>. This wording applies to every ledger account, not only this one.
+                </>
+              )}
             </AlertDescription>
           </Alert>
           {!account.gatewayConfigId && (

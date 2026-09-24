@@ -11,6 +11,7 @@ const cancel = vi.fn();
 const createSession = vi.fn();
 let configuredTypes: Array<{ id: string; category: string; currencyCode: string; direction: "charge" | "credit" }> = [];
 const events = {
+  lockEa: vi.fn(),
   lockAttempt: vi.fn(),
   get: vi.fn(async () => ({ ...attempt })),
   claimLedgerPosting: vi.fn(async (_id: string, paymentId: string) => {
@@ -132,6 +133,38 @@ describe("online settlement", () => {
     attempt.metadata.ledgerPaymentTypeId = "charge-usd";
     await processPaymentEvidence("attempt-1", "gateway-1", success());
     expect(paymentCreate.mock.calls[0][0].paymentType).toBe("financial-usd");
+  });
+
+  it("settles the immutable COBRA selection exactly once without allocating unrelated statements", async () => {
+    attempt.amount = "267.35";
+    attempt.statementSelection = [{ invoiceNumber: "2163-COBRA-202609", amount: "267.35" }];
+    attempt.metadata = {
+      invoicePeriods: [{ invoiceNumber: "2163-COBRA-202609", statementYmd: "2026-09-01" }],
+      checkoutQuote: { unstatementedAmount: "0.00" },
+    };
+    await processPaymentEvidence("attempt-1", "gateway-1", success({ amountMinor: 26735 }));
+    await processPaymentEvidence("attempt-1", "gateway-1", success({ amountMinor: 26735 }));
+    expect(paymentCreate).toHaveBeenCalledOnce();
+    expect(paymentCreate.mock.calls[0][0].details.proposedAllocation).toEqual([
+      { eaId: "ea-1", amount: "267.35", statementYmd: "2026-09-01" },
+    ]);
+    expect(events.lockEa).toHaveBeenCalledWith("ea-1");
+  });
+
+  it("preserves full balance unstatemented remainder alongside immutable statement periods", async () => {
+    attempt.statementSelection = [{ invoiceNumber: "INV-JAN", amount: "60.00" }];
+    attempt.metadata.checkoutQuote = { unstatementedAmount: "40.00" };
+    await processPaymentEvidence("attempt-1", "gateway-1", success());
+    expect(paymentCreate.mock.calls[0][0].details.proposedAllocation).toEqual([
+      { eaId: "ea-1", amount: "60.00", statementYmd: "2026-01-01" },
+      { eaId: "ea-1", amount: "40.00", statementYmd: "" },
+    ]);
+  });
+
+  it("refuses malformed selection snapshots rather than redirecting funds", async () => {
+    attempt.metadata.checkoutQuote = { unstatementedAmount: "10.00" };
+    await expect(processPaymentEvidence("attempt-1", "gateway-1", success())).rejects.toThrow("allocation total");
+    expect(paymentCreate).not.toHaveBeenCalled();
   });
 
   it("does not insert two payments for concurrent confirmations", async () => {
