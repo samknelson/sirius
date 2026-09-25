@@ -46,6 +46,7 @@ import { useToast } from "@/hooks/use-toast";
 import { AlertsBell } from "./AlertsBell";
 import { QuickSearch } from "./QuickSearch";
 import { TimeZoneClock } from "./TimeZoneClock";
+import { QuickMasquerade } from "./QuickMasquerade";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -358,7 +359,7 @@ export default function Header() {
 
       {/* Row 1: Site name, system mode, and user menu */}
       <div id="site-banner" className="flex items-center justify-between h-12 px-4 md:px-6 border-b border-gray-100 dark:border-gray-800">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2 md:gap-3">
           {/* Mobile hamburger menu */}
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild>
@@ -392,7 +393,7 @@ export default function Header() {
           </Sheet>
 
           <h1
-            className="text-lg md:text-xl font-bold text-gray-900 dark:text-gray-100"
+            className="truncate text-lg md:text-xl font-bold text-gray-900 dark:text-gray-100"
             data-testid="text-site-name"
           >
             {settings?.siteName || "Sirius"}
@@ -416,17 +417,18 @@ export default function Header() {
         </div>
 
         {/* User menu - right side of row 1 */}
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1 md:gap-2">
           {user && <TimeZoneClock />}
           {user && <QuickSearch />}
           {user && <AlertsBell />}
+          {user && <QuickMasquerade />}
           {user && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" data-testid="button-user-menu">
-                  <User className="h-4 w-4 mr-2" />
-                  <span data-testid="text-username">{getUserDisplayName()}</span>
-                  <ChevronDown className="h-4 w-4 ml-2" />
+                   <User className="h-4 w-4 md:mr-2" />
+                   <span className="hidden md:inline max-w-40 truncate" data-testid="text-username">{getUserDisplayName()}</span>
+                   <ChevronDown className="hidden md:block h-4 w-4 ml-2" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">

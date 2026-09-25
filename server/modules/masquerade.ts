@@ -61,6 +61,25 @@ export function registerMasqueradeRoutes(
   requireAuth: AuthMiddleware,
   requirePermission: PermissionMiddleware
 ) {
+  // Search for targets under the same authorization as start/recent. The
+  // general staff user picker is not accessible to masquerade-only users.
+  app.get("/api/auth/masquerade/search", requireAccess('masquerade'), async (req, res) => {
+    try {
+      const query = typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "";
+      if (query.length < 2) return res.json([]);
+      const users = await storage.users.searchUsers(query, undefined, 20);
+      res.json(users.filter(user => user.isActive).map(user => ({
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        isActive: user.isActive,
+      })));
+    } catch (error) {
+      res.status(500).json({ message: "Failed to search masquerade targets" });
+    }
+  });
+
   // POST /api/auth/masquerade/start - Start masquerading as another user
   app.post("/api/auth/masquerade/start", requireAccess('masquerade'), async (req, res) => {
     try {

@@ -46,7 +46,7 @@ export default function MasqueradePage() {
 
       setIsSearching(true);
       try {
-        const response = await fetch(`/api/admin/users/search?q=${encodeURIComponent(searchQuery)}`);
+        const response = await fetch(`/api/auth/masquerade/search?q=${encodeURIComponent(searchQuery)}`);
         if (response.ok) {
           const data = await response.json();
           setSearchResults(data.filter((u: User) => u.isActive));
