@@ -9,6 +9,12 @@ Report browser failures before awaiting fixture-server cleanup, and bound cleanu
 
 **How to apply:** For standalone browser runners, distinguish navigation time from interaction time and print the primary error before cleanup. After confirming or cancelling a Radix alert, wait until its portal disappears before typing into the underlying editor: value hydration can complete while the closing overlay still intercepts clicks.
 
+Separate browser-launch failure from page failure in fixture diagnosis.
+
+**Why:** The browser wrapper could report a valid version yet fail to expose its debugging endpoint; a different executable completed the same fixture. The default launch timeout also proved too short under load.
+
+**How to apply:** When a fixture times out before navigation, check the browser binary and launch timeout before changing app code or layout assertions.
+
 Assert initial viewport geometry before clicking or focusing the control being tested, and include the surrounding page chrome in layout fixtures.
 
 **Why:** Browser automation can scroll an offscreen control into view before interacting with it, masking a first-load placement defect. An isolated sidebar without its normal-flow header can also pass while the real page fails.

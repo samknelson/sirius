@@ -157,7 +157,7 @@ function WorkerPaymentMethodsContent() {
       </Card>
 
        <Dialog open={addOpen && canManage} onOpenChange={(open) => open && canManage ? setAddOpen(true) : resetAdd()}>
-        <DialogContent>
+         <DialogContent className="w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto sm:w-full" data-testid="dialog-worker-add-payment-method">
           <DialogHeader><DialogTitle>Add payment method</DialogTitle><DialogDescription>Your sensitive payment details go directly to the payment provider.</DialogDescription></DialogHeader>
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={consentAccepted} onChange={(event) => setConsentAccepted(event.target.checked)} disabled={!authorization.data?.authorization} data-testid="checkbox-worker-method-consent" />
