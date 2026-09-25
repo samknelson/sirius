@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Trash2, Plus, ExternalLink, CreditCard } from "lucide-react";
+import { Loader2, Trash2, Plus, ExternalLink } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -133,12 +133,6 @@ function WorkerLedgerAccountsContent() {
               <CardTitle>Accounts</CardTitle>
               <CardDescription>Manage ledger account entries for this worker</CardDescription>
             </div>
-               {payableAccounts.length > 0 && <Button asChild variant="outline" data-testid="button-worker-pay-balance">
-                <Link href={`/workers/${workerId}/ledger/pay`}>
-                 <ExternalLink className="h-4 w-4 mr-2" />
-                 Make a payment
-               </Link>
-              </Button>}
             {isFormOpen ? (
               <Button
                 onClick={() => setIsFormOpen(false)}
@@ -240,10 +234,10 @@ function WorkerLedgerAccountsContent() {
                     className="border rounded-lg p-4 hover:border-primary/50 transition-colors"
                     data-testid={`card-entry-${entry.id}`}
                   >
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
                       <Link
                         href={`/ea/${entry.id}`}
-                        className="flex-1 hover:opacity-80 transition-opacity"
+                        className="min-w-0 flex-[1_1_10rem] hover:opacity-80 transition-opacity"
                         data-testid={`link-entry-${entry.id}`}
                       >
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -256,24 +250,24 @@ function WorkerLedgerAccountsContent() {
                           <p className="text-sm text-muted-foreground mt-1">{account.description}</p>
                         )}
                       </Link>
-                      <div className="flex items-center gap-2">
+                      <div className="ml-auto flex items-center gap-2">
                         <span 
                           className={`font-mono text-sm ${balanceNum < 0 ? "text-destructive" : "text-foreground"}`}
                           data-testid={`text-balance-${entry.id}`}
                         >
                           {formatAmount(balanceNum, currencyCode)}
                         </span>
-                         {payableAccounts.some(payable => payable.eaId === entry.id && Number(payable.available) > 0) && <Button
+                          {payableAccounts.some(payable => payable.eaId === entry.id && Number(payable.available) > 0) && <Button
                           asChild
-                          variant="ghost"
-                          size="icon"
+                           variant="outline"
+                           size="sm"
                           data-testid={`button-pay-entry-${entry.id}`}
                         >
                           <Link
                             href={`/pay/${encodeURIComponent(entry.id)}`}
                             aria-label={`Pay ${account?.name || "account"} balance`}
                           >
-                            <CreditCard className="h-4 w-4" />
+                             Pay Balance
                           </Link>
                          </Button>}
                         <Button
